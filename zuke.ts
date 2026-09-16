@@ -70,6 +70,10 @@ import {
 } from "./build/action_release.ts";
 import { localVersion, PACKAGES } from "./build/packages.ts";
 import {
+  acknowledgeReviewCommand,
+  reviewCommentToken,
+} from "./build/review_app.ts";
+import {
   CODECOV_CLI_VERSION,
   installCli,
   publishOne,
@@ -155,6 +159,15 @@ const CHECK_GLOBS = [
   "packages/*/src/**/*.ts",
   "packages/*/tests/**/*.ts",
 ];
+
+/**
+ * The token both reviewers post with: the `zuke-build` App's when the review
+ * job carries the App's credentials (the comment-started one does), so the
+ * assessments come from `zuke-build[bot]`, the account the maintainer
+ * addressed; `GITHUB_TOKEN` otherwise. One resolver for both, so the token is
+ * minted once per run.
+ */
+const reviewToken = reviewCommentToken((name) => Deno.env.get(name));
 
 class ZukeBuild extends Build {
   clean = target()
@@ -961,10 +974,16 @@ class ZukeBuild extends Build {
       .apiKey(this.openaiKey)
       .budget(this.aiBudget)
       .skipIfKeyMissing()
-      // A fresh PR comment per run (uses GITHUB_TOKEN): earlier assessments —
-      // and their finding ids — stay on the thread as history instead of being
-      // overwritten in place.
+      // A fresh PR comment per run: earlier assessments — and their finding
+      // ids — stay on the thread as history instead of being overwritten in
+      // place. Posted as the zuke-build App when its credentials are present,
+      // as GITHUB_TOKEN otherwise (see `reviewToken`).
       .comment("append")
+      .commentToken(reviewToken)
+      // The base for a review of the checkout. On a comment-started run
+      // `ZUKE_REVIEW_PR` takes over: the reviewer fetches that pull request's
+      // merge and diffs it against the base it was merged onto, and nothing
+      // from this checkout — the default branch — is reviewed.
       .diff((d) => d.base(Deno.env.get("ZUKE_REVIEW_BASE") ?? "origin/master"))
       .maxDiffTokens(20000)
       // Deeper review: judge against this file's documented conventions (read
@@ -1178,8 +1197,10 @@ class ZukeBuild extends Build {
       .budget(this.aiBudget)
       .skipIfKeyMissing()
       // Separate comments from the security review (keyed by reviewer name),
-      // appended per run for the same history-keeping reasons.
+      // appended per run for the same history-keeping reasons, and posted
+      // with the same token.
       .comment("append")
+      .commentToken(reviewToken)
       // The built-in rubric already covers clarity, cohesion, tests, and docs;
       // `.criteria(...)` adds just the project-specific conventions on top.
       // These stay inline — read from the head — rather than moving to a
@@ -1283,9 +1304,22 @@ class ZukeBuild extends Build {
       );
     });
 
+  // On a comment-started run, react 👀 on the `@zuke-build review` comment
+  // before the reviewers start, so the maintainer sees the command was picked
+  // up. A no-op on every other run — there is no comment to acknowledge.
+  reviewAck = target()
+    .description("Acknowledge the comment that asked for the AI review")
+    .executes(async () => {
+      const reacted = await acknowledgeReviewCommand(
+        (name) => Deno.env.get(name),
+        reviewToken,
+      );
+      if (reacted) ConsoleTasks.info("Acknowledged the review command (👀).");
+    });
+
   review = target()
     .description("AI review of the diff (security + code quality)")
-    .dependsOn(this.reviewBase)
+    .dependsOn(this.reviewBase, this.reviewAck)
     .validateBefore(this.securityReview, this.generalReview)
     .executes(() => {});
 
@@ -1300,6 +1334,17 @@ class ZukeBuild extends Build {
     // the base itself — so the same command works locally, where no workflow
     // step exists to do it.
     fetchBase: false,
+    // The second flow: a maintainer comments `@zuke-build review` on any pull
+    // request — a fork's included, which the `pull_request` job must skip —
+    // and the review runs from master's checkout with that pull request
+    // fetched as data. The App's credentials ride only on that job, so the
+    // assessments come from zuke-build[bot], and `reviewToken` narrows what is
+    // minted from them to comments and reactions.
+    command: (c) =>
+      c.text("@zuke-build review").secrets(
+        "ZUKE_BUILD_APP_ID",
+        "ZUKE_BUILD_APP_KEY",
+      ),
     // The same resolver every other workflow uses, so this file names the same
     // commit they do. Without it the prelude falls back to the reference baked
     // into core, which is a release behind the moment the action is released

@@ -3170,6 +3170,13 @@ interface CiTriggers
     it changes what a check should see without pushing a commit. GitHub only.
   manual?: boolean
     Allow manual runs (workflow dispatch / web).
+  issueComment?: string[]
+    Run when a comment is created, edited, or deleted on an issue or a pull
+    request (`issue_comment`), filtered to these activity types — an empty
+    array means every type. A comment on a pull request arrives as an issue
+    comment too, which is what lets a maintainer's comment start a job; the job
+    runs on the default branch, so its `if:` must decide who may start it.
+    GitHub only.
   branchProtectionRule?: boolean
     Run when a branch protection rule is created, edited, or deleted
     (`branch_protection_rule`) — a supply-chain scan wants to re-score when the

@@ -28,15 +28,15 @@ public registry. From that, its security requirements are:
 
 Adversaries considered, and the assets they target:
 
-| Adversary                            | Target                          | Primary counter                                                                                                                                     |
-| ------------------------------------ | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Malicious contributor (fork PR)      | CI secrets, write token         | Fork PRs run with a read-only token and no secrets; `pull_request` (never `pull_request_target`) triggers                                           |
-| Compromised third-party action       | CI secrets, published artifacts | Every action pinned to a full commit SHA; Dependabot bumps pins; zizmor audits workflows                                                            |
-| Compromised build-time dependency    | Release credentials, egress     | `--frozen` lockfile; zero runtime dependencies; egress **blocked** to an allowlist on every job holding a write-scoped token                        |
-| Registry-level attacker              | Consumers of `@zuke/*`          | OIDC trusted publishing; Sigstore provenance per version; no long-lived registry tokens exist                                                       |
-| Network attacker (MITM) on bootstrap | Developer/CI machines           | Launcher downloads the pinned Deno release over HTTPS and verifies a per-platform SHA-256 baked into the launcher; `DENO_VERSION=latest` is refused |
-| Careless or compromised insider      | Repository history              | gitleaks scans full history on schedule and pushes; PR-scoped scans on every pull request; secret parameters are redacted from output               |
-| Contributor with write access (same-repo PR) | CI secrets, write token  | Not defended against, by design: the lint fixer pushes fixes and Codecov uploads from pull-request runs, so same-repo PRs carry `OPENAI_API_KEY`, `CODECOV_TOKEN` and a write-scoped token. Write access is held only by maintainers, whose own secrets these are; the residual is a compromised maintainer account yielding an OpenAI key and an upload-only Codecov token |
+| Adversary                                    | Target                          | Primary counter                                                                                                                                                                                                                                                                                                                                                             |
+| -------------------------------------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Malicious contributor (fork PR)              | CI secrets, write token         | Fork PRs run with a read-only token and no secrets; `pull_request` (never `pull_request_target`) triggers. The one job that runs with secrets for a fork PR — the AI review a maintainer's `@zuke-build review` comment starts — runs `master`'s code and fetches the PR as data, never executing it                                                                        |
+| Compromised third-party action               | CI secrets, published artifacts | Every action pinned to a full commit SHA; Dependabot bumps pins; zizmor audits workflows                                                                                                                                                                                                                                                                                    |
+| Compromised build-time dependency            | Release credentials, egress     | `--frozen` lockfile; zero runtime dependencies; egress **blocked** to an allowlist on every job holding a write-scoped token                                                                                                                                                                                                                                                |
+| Registry-level attacker                      | Consumers of `@zuke/*`          | OIDC trusted publishing; Sigstore provenance per version; no long-lived registry tokens exist                                                                                                                                                                                                                                                                               |
+| Network attacker (MITM) on bootstrap         | Developer/CI machines           | Launcher downloads the pinned Deno release over HTTPS and verifies a per-platform SHA-256 baked into the launcher; `DENO_VERSION=latest` is refused                                                                                                                                                                                                                         |
+| Careless or compromised insider              | Repository history              | gitleaks scans full history on schedule and pushes; PR-scoped scans on every pull request; secret parameters are redacted from output                                                                                                                                                                                                                                       |
+| Contributor with write access (same-repo PR) | CI secrets, write token         | Not defended against, by design: the lint fixer pushes fixes and Codecov uploads from pull-request runs, so same-repo PRs carry `OPENAI_API_KEY`, `CODECOV_TOKEN` and a write-scoped token. Write access is held only by maintainers, whose own secrets these are; the residual is a compromised maintainer account yielding an OpenAI key and an upload-only Codecov token |
 
 Out of scope: vulnerabilities in GitHub, JSR, or Deno themselves (they are the
 trusted computing base — see the boundaries below), and denial of service
@@ -59,10 +59,10 @@ against public CI.
    does not yield the other's authority.
 4. **CI jobs → network.** Every job that holds a write-scoped token runs with
    egress _blocked_ to a named allowlist. That bounds **which third parties** a
-   job can reach; it does not stop a secret leaving. GitHub is on the
-   allowlist by necessity — the lint fixer pushes and comments through it — and
-   a public repository's job log is world-readable, so masking is defeated by
-   any encoding. The counter this boundary provides is against a compromised
+   job can reach; it does not stop a secret leaving. GitHub is on the allowlist
+   by necessity — the lint fixer pushes and comments through it — and a public
+   repository's job log is world-readable, so masking is defeated by any
+   encoding. The counter this boundary provides is against a compromised
    build-time dependency phoning home, not against code that is already trusted
    with the token.
 5. **Repository → third-party code.** Actions cross the boundary only at pinned

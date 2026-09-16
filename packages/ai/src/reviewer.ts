@@ -26,6 +26,7 @@ import {
   DEFAULT_EXCLUDES,
   DiffSettings,
   fetchBaseDiff,
+  fetchPullRequestDiff,
   filterDiff,
   truncate,
 } from "./diff.ts";
@@ -107,6 +108,17 @@ import { rebuttalComment } from "./prompts/templates.ts";
 import type { Redact } from "./comment.ts";
 
 /**
+ * Where a reviewer's comment-posting token comes from: a secret parameter (for
+ * its env var), a literal, or a function that produces the token when a post
+ * first needs it — the shape for a token minted by the build itself, such as a
+ * GitHub App installation token, so the comments carry the app's identity.
+ */
+export type CommentTokenSource =
+  | AnyParameter
+  | string
+  | (() => Promise<string>);
+
+/**
  * A fluent AI reviewer. Construct one via {@link securityReviewer} (and the
  * sibling factories), configure it, and attach it to a target with
  * `.validateBefore(...)` / `.validateAfter(...)`. `.provider(...)` and
@@ -130,7 +142,7 @@ export class Reviewer implements Validation {
   #skipIfKeyMissing = false;
   #comment = false;
   #commentMode: "update" | "append" = "update";
-  #commentToken?: AnyParameter | string;
+  #commentToken?: CommentTokenSource;
   #retry?: RetryOptions;
   #quiet = false;
   #fetch?: typeof fetch;
@@ -170,7 +182,7 @@ export class Reviewer implements Validation {
   }
 
   /** The configured comment-posting token, if `.commentToken(...)` was called. */
-  get commentToken_(): AnyParameter | string | undefined {
+  get commentToken_(): CommentTokenSource | undefined {
     return this.#commentToken;
   }
 
@@ -306,14 +318,22 @@ export class Reviewer implements Validation {
    * The token used to post the PR/MR comment. Defaults to the active host's
    * conventional env var: `GITHUB_TOKEN` (GitHub), `GITLAB_TOKEN` (GitLab),
    * `SYSTEM_ACCESSTOKEN` (Azure), `BITBUCKET_TOKEN` (Bitbucket).
+   *
+   * A function is called each time a post needs the token — for a token that
+   * does not exist until the build mints it, such as a GitHub App installation
+   * token narrowed to `pull_requests: write`, which makes the comments the
+   * app's rather than `github-actions[bot]`'s. A function that mints should
+   * remember its result, since a review posts more than once. The generated
+   * workflow cannot name a secret for a function, so it passes the host's
+   * default token alongside, for the function to fall back to.
    */
-  commentToken(token: AnyParameter | string): this {
+  commentToken(token: CommentTokenSource): this {
     this.#commentToken = token;
     return this;
   }
 
   /** Backwards-compatible alias for {@link commentToken}. */
-  githubToken(token: AnyParameter | string): this {
+  githubToken(token: CommentTokenSource): this {
     return this.commentToken(token);
   }
 
@@ -487,28 +507,41 @@ export class Reviewer implements Validation {
   }
 
   /**
-   * Resolve the diff text from the configured source, reporting whether a
-   * requested `.fetchBase()` failed. `fetchFailed` is true only when a fetch was
-   * asked for but could not produce a base diff (offline, not a PR, unsafe ref):
-   * the caller must not let an empty working-tree fallback pass the gate silently.
-   * `baseRef` is the ref the diff was taken against (`FETCH_HEAD` after a
-   * successful fetch, the configured `.base(...)` otherwise) — the trusted side
-   * conventions are read from — or `undefined` for a literal/working-tree diff.
+   * Resolve the diff text from the configured source, reporting a fetch that
+   * failed. `fetchFailure` names the reason only when a fetch was asked for but
+   * could not produce the diff — `.fetchBase()` offline, not a PR, an unsafe
+   * ref, or the pull request `ZUKE_REVIEW_PR` names could not be fetched: the
+   * caller must not let an empty fallback pass the gate silently. `baseRef` is
+   * the ref the diff was taken against (`FETCH_HEAD` after a successful fetch,
+   * the configured `.base(...)` otherwise) — the trusted side conventions are
+   * read from — or `undefined` for a literal/working-tree diff. `headRef` is
+   * where the changed files' contents are read from when it is not `HEAD`.
+   *
+   * A pull request named by `ZUKE_REVIEW_PR` takes precedence over every git
+   * source (a literal `.text(...)` still wins): the job that sets it has the
+   * default branch checked out, so any working-tree diff there is empty, and an
+   * empty diff would pass the gate without reviewing anything. That is why its
+   * failure is a failure and never a fallback.
    */
   async #resolveDiff(): Promise<
-    { diff: string; fetchFailed: boolean; baseRef?: string }
+    { diff: string; fetchFailure?: string; baseRef?: string; headRef?: string }
   > {
     const text = this.#diff.text_();
-    if (text !== undefined) return { diff: text, fetchFailed: false };
+    if (text !== undefined) return { diff: text };
     const run = this.#run();
+    try {
+      const pull = await fetchPullRequestDiff(run, this.#env);
+      if (pull !== undefined) return pull;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { diff: "", fetchFailure: message };
+    }
     // Honour `.fetchBase()` (fetch the base branch, diff against FETCH_HEAD) so
     // CI PR review needs no manual `git fetch`; fall through to the configured
     // source when no fetch was requested or it couldn't be done.
     const wantsFetch = this.#diff.fetch_() !== undefined;
     const fetched = await fetchBaseDiff(this.#diff, run, this.#env);
-    if (fetched !== undefined) {
-      return { diff: fetched, fetchFailed: false, baseRef: "FETCH_HEAD" };
-    }
+    if (fetched !== undefined) return { diff: fetched, baseRef: "FETCH_HEAD" };
     if (wantsFetch && !this.#quiet) {
       console.warn(
         `[${this.name}] fetchBase could not compute the base diff — ` +
@@ -518,7 +551,12 @@ export class Reviewer implements Validation {
     const base = this.#diff.base_();
     return {
       diff: await run(this.#diff.argv_()),
-      fetchFailed: wantsFetch,
+      ...(wantsFetch
+        ? {
+          fetchFailure:
+            "could not compute the base diff (git fetch for the base branch failed)",
+        }
+        : {}),
       ...(base !== undefined ? { baseRef: base } : {}),
     };
   }
@@ -621,11 +659,18 @@ export class Reviewer implements Validation {
     await this.#publish(skipMarkdown(this.name, target, reason), redact);
   }
 
-  /** The comment-posting token for `host` (explicit, or its default env var). */
-  #resolveCommentToken(host: { defaultTokenEnv: string }): string {
-    return this.#commentToken !== undefined
-      ? resolveKey(this.#commentToken)
-      : this.#env(host.defaultTokenEnv) ?? "";
+  /**
+   * The comment-posting token for `host`: the configured source — called, when
+   * it is a function — or the host's default env var.
+   */
+  #resolveCommentToken(host: { defaultTokenEnv: string }): Promise<string> {
+    const source = this.#commentToken;
+    if (typeof source === "function") return source();
+    return Promise.resolve(
+      source !== undefined
+        ? resolveKey(source)
+        : this.#env(host.defaultTokenEnv) ?? "",
+    );
   }
 
   /**
@@ -647,7 +692,7 @@ export class Reviewer implements Validation {
       );
       return;
     }
-    const token = this.#resolveCommentToken(host);
+    const token = await this.#resolveCommentToken(host);
     const upsert = host.prepare(token, this.#env);
     if (upsert === undefined) {
       console.warn(
@@ -697,7 +742,10 @@ export class Reviewer implements Validation {
       warn("the active host cannot list PR comments");
       return undefined;
     }
-    const list = host.listComments(this.#resolveCommentToken(host), this.#env);
+    const list = host.listComments(
+      await this.#resolveCommentToken(host),
+      this.#env,
+    );
     if (list === undefined) return undefined; // no PR context (local run)
     try {
       const comments = await list(this.#fetch ?? fetch);
@@ -923,12 +971,12 @@ export class Reviewer implements Validation {
     ).trim();
     if (diff === "") {
       // A requested fetchBase that failed leaves an empty working-tree fallback
-      // on a clean CI checkout. Passing that as an empty assessment would let the
+      // on a clean CI checkout, and a pull request that could not be fetched
+      // leaves nothing at all. Passing that as an empty assessment would let the
       // gate go green without reviewing anything — a silent security bypass. Fail
       // (or, under `onError: "warn"`, skip visibly), never pass silently.
-      if (resolved.fetchFailed) {
-        const reason =
-          "could not compute the base diff (git fetch for the base branch failed)";
+      if (resolved.fetchFailure !== undefined) {
+        const reason = resolved.fetchFailure;
         if (this.#onError === "warn") {
           await this.#reportSkip(context.target, reason, context.redact);
           return;
@@ -974,6 +1022,7 @@ export class Reviewer implements Validation {
         changedPaths(diff),
         this.#run(),
         this.#fileContextTokens,
+        resolved.headRef ?? "HEAD",
       );
       files = built === "" ? undefined : built;
     }

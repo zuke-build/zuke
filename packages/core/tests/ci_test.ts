@@ -853,6 +853,28 @@ Deno.test("github: pull-request types and branch protection triggers render", ()
   assertStringIncludes(yaml, "branch_protection_rule: {}");
 });
 
+Deno.test("issueComment renders an issue_comment trigger with its activity types", () => {
+  const yaml = generateCi({
+    triggers: { pullRequest: [], issueComment: ["created"] },
+    jobs: [{ steps: [{ run: "x" }] }],
+  }, "github");
+  assertStringIncludes(yaml, "issue_comment:\n    types:\n      - created");
+  // An empty list is every activity type — no filter at all.
+  const every = generateCi({
+    triggers: { issueComment: [] },
+    jobs: [{ steps: [{ run: "x" }] }],
+  }, "github");
+  assertStringIncludes(every, "issue_comment: {}");
+  // GitHub only: the other hosts have no equivalent and emit nothing for it.
+  for (const provider of ["gitlab", "azure", "bitbucket"] as const) {
+    const other = generateCi({
+      triggers: { pullRequest: [], issueComment: ["created"] },
+      jobs: [{ steps: [{ run: "x" }] }],
+    }, provider);
+    assertEquals(other.includes("issue_comment"), false);
+  }
+});
+
 Deno.test("invokes: one job per target, wired from the build graph", () => {
   // The point of the feature: naming targets is the whole declaration. Ids,
   // display names, commands, and needs edges all come from the graph.

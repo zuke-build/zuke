@@ -1,17 +1,22 @@
 name: AI Review
 "on":
   pull_request: {}
+  issue_comment:
+    types:
+      - created
 permissions:
   contents: read
-  pull-requests: write
 concurrency:
-  group: "ai-review-${{ github.workflow }}-${{ github.ref }}"
+  group: "ai-review-${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number }}"
   cancel-in-progress: true
 jobs:
   review:
     name: AI review
     runs-on: ubuntu-latest
-    if: "${{ github.event.pull_request.head.repo.fork == false }}"
+    permissions:
+      contents: read
+      pull-requests: write
+    if: "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}"
     timeout-minutes: 15
     steps:
       - name: Harden and check out with Zuke
@@ -24,3 +29,26 @@ jobs:
         env:
           OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}"
           GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+  commandReview:
+    name: AI review on command
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    if: "${{ github.event_name == 'issue_comment' && github.event.issue.pull_request && github.event.comment.user.type != 'Bot' && (github.event.comment.author_association == 'OWNER' || github.event.comment.author_association == 'MEMBER' || github.event.comment.author_association == 'COLLABORATOR') && startsWith(github.event.comment.body, '@zuke-build review') }}"
+    timeout-minutes: 15
+    steps:
+      - name: Harden and check out with Zuke
+        uses: zuke-build/zuke@2478fa5a69fb4f16540e54959c98cd976ec3f075 # v1.0.5
+        with:
+          egress-policy: audit
+          persist-credentials: "false"
+      - name: AI review with Zuke
+        run: ./zuke review
+        env:
+          OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}"
+          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          ZUKE_BUILD_APP_ID: "${{ secrets.ZUKE_BUILD_APP_ID }}"
+          ZUKE_BUILD_APP_KEY: "${{ secrets.ZUKE_BUILD_APP_KEY }}"
+          ZUKE_REVIEW_PR: "${{ github.event.issue.number }}"
+          ZUKE_REVIEW_COMMENT: "${{ github.event.comment.id }}"

@@ -1583,3 +1583,36 @@ Deno.test("bitbucketHost.prepare needs a PR context", () => {
     "function",
   );
 });
+
+Deno.test("resolveGithubContext takes the pull number from ZUKE_REVIEW_PR first", () => {
+  // A comment-started run: the ref is the default branch, the pull request is
+  // named by the env var the command job sets.
+  assertEquals(
+    resolveGithubContext(
+      "tkn",
+      env({
+        GITHUB_REPOSITORY: "zuke-build/zuke",
+        GITHUB_REF: "refs/heads/master",
+        ZUKE_REVIEW_PR: "100",
+      }),
+    ),
+    CONTEXT,
+  );
+  // Set, it wins over a pull ref too — the run is about what it names.
+  assertEquals(
+    resolveGithubContext("tkn", env({ ...VALID, ZUKE_REVIEW_PR: "7" }))?.pull,
+    7,
+  );
+  // Set to something that is not a number, it names nothing — and the pull
+  // ref is not consulted behind it, so an operator's typo cannot land the
+  // comment on a different pull request.
+  assertEquals(
+    resolveGithubContext("tkn", env({ ...VALID, ZUKE_REVIEW_PR: "seven" })),
+    undefined,
+  );
+  // Empty is unset.
+  assertEquals(
+    resolveGithubContext("tkn", env({ ...VALID, ZUKE_REVIEW_PR: "" })),
+    CONTEXT,
+  );
+});

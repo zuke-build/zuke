@@ -236,6 +236,92 @@ export class DiffSettings {
 }
 
 /**
+ * The env var naming a pull request to review when it is not the checkout: the
+ * number of a pull request whose merge the reviewer fetches and diffs instead of
+ * the working tree. The comment-triggered job `aiReviewWorkflow` generates sets
+ * it, because that job checks out the default branch — the pull request's own
+ * code never runs there, it is only read.
+ */
+export const REVIEW_PR_ENV = "ZUKE_REVIEW_PR";
+
+/** A pull-request number: digits only, so it can never read as a git option. */
+const PULL_NUMBER = /^[1-9]\d{0,8}$/;
+
+/**
+ * Parse a pull-request number as {@link REVIEW_PR_ENV} carries it, or
+ * `undefined` for anything that is not one — including a value that would
+ * reach `git` as an option.
+ */
+export function parsePullNumber(raw: string): number | undefined {
+  return PULL_NUMBER.test(raw) ? Number(raw) : undefined;
+}
+
+/** The diff of a pull request fetched as data, and the refs it was read from. */
+export interface PullRequestDiff {
+  /** The unified diff: what merging the pull request changes. */
+  diff: string;
+  /**
+   * The base the merge was made onto — the trusted side, which the reviewer's
+   * reference documents are read from.
+   */
+  baseRef: string;
+  /** The merge itself — where the changed files' post-image contents live. */
+  headRef: string;
+}
+
+/**
+ * Fetch the pull request {@link REVIEW_PR_ENV} names and diff it, for a run
+ * whose checkout is not that pull request. Fetches GitHub's
+ * `refs/pull/<n>/merge` — the pull request merged onto its base — two commits
+ * deep, into `refs/zuke/pull/<n>/merge`, and diffs that merge against its
+ * first parent: exactly what merging the pull request changes, from no more
+ * history than those two commits, so it works from a shallow checkout and is
+ * unaffected by how far the base has moved since the branch was cut.
+ *
+ * Returns `undefined` when the variable is unset. Throws when it is set but is
+ * not a number, and when the fetch fails — a pull request with merge conflicts
+ * has no merge ref — so the caller fails or skips visibly rather than reviewing
+ * the checkout: on the default branch that diff is empty, and an empty diff
+ * would green the gate without reviewing anything.
+ */
+export async function fetchPullRequestDiff(
+  run: (argv: string[]) => Promise<string>,
+  env: (name: string) => string | undefined,
+): Promise<PullRequestDiff | undefined> {
+  const raw = env(REVIEW_PR_ENV);
+  if (raw === undefined || raw === "") return undefined;
+  const pull = parsePullNumber(raw);
+  if (pull === undefined) {
+    throw new Error(
+      `${REVIEW_PR_ENV}=${JSON.stringify(raw)} is not a pull request number`,
+    );
+  }
+  const ref = `refs/zuke/pull/${pull}/merge`;
+  try {
+    await run([
+      "git",
+      "fetch",
+      "--no-tags",
+      "--depth=2",
+      "origin",
+      `+refs/pull/${pull}/merge:${ref}`,
+    ]);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `could not fetch pull request #${pull} (refs/pull/${pull}/merge): ` +
+        `${message} — a pull request with merge conflicts has no merge ref`,
+    );
+  }
+  const baseRef = `${ref}^1`;
+  return {
+    diff: await run(["git", "diff", baseRef, ref]),
+    baseRef,
+    headRef: ref,
+  };
+}
+
+/**
  * Whether a value is safe to pass as a positional `git` argument: non-empty and
  * not option-like (a leading `-` could be misread as a flag — e.g. an injected
  * `--upload-pack=...` — so such values are rejected rather than fetched).

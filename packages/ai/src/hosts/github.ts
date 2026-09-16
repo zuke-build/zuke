@@ -9,6 +9,7 @@
  * @module
  */
 
+import { parsePullNumber, REVIEW_PR_ENV } from "../diff.ts";
 import { dig } from "../json.ts";
 import { githubReviewThreads } from "./github_threads.ts";
 import {
@@ -47,6 +48,20 @@ function pullFromRef(ref: string | undefined): number | undefined {
 }
 
 /**
+ * The pull request this run is about: `ZUKE_REVIEW_PR` when set (a run whose
+ * checkout is not the pull request — the comment-triggered review job, where
+ * `GITHUB_REF` is the default branch), otherwise the `refs/pull/<n>/merge` ref
+ * a `pull_request` event checks out.
+ */
+function pullFromEnv(env: EnvReader): number | undefined {
+  const explicit = env(REVIEW_PR_ENV);
+  if (explicit !== undefined && explicit !== "") {
+    return parsePullNumber(explicit);
+  }
+  return pullFromRef(env("GITHUB_REF"));
+}
+
+/**
  * Resolve the GitHub context from the ambient environment and a token. Returns
  * `undefined` when any piece is missing — commenting is best-effort, so a local
  * run without a PR simply skips it.
@@ -60,7 +75,7 @@ export function resolveGithubContext(
   if (repo === undefined) return undefined;
   const slash = repo.indexOf("/");
   if (slash <= 0 || slash === repo.length - 1) return undefined;
-  const pull = pullFromRef(env("GITHUB_REF"));
+  const pull = pullFromEnv(env);
   if (pull === undefined) return undefined;
   return {
     token,
