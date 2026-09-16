@@ -31,7 +31,29 @@ request.
    tags each release (`<component>-v<version>`, e.g. `core-v1.30.0`) and cuts
    the GitHub releases.
 
-4. **`publishJsr` pushes to JSR.** The `publishJsr` target walks the packages
+4. **`actionRelease` versions the Marketplace action.** The composite action at
+   the repository root releases on its own tag line (`v1`, `v1.0.5`, …),
+   separate from the component tags release-please cuts, because it is one
+   artifact rather than a package. When `action.yml` has changed since the last
+   one, `actionRelease` cuts the next patch tag, moves `v1` onto it, publishes
+   the GitHub release with notes derived from the `action.yml` diff, and opens a
+   `chore:` PR carrying the updated `build/action_version.json` and the
+   workflows regenerated from it.
+
+   It also **reconciles** on every run, not only when it cuts something: any
+   `vX.Y.Z` tag without a GitHub release gets one, and `v1` is repointed if it
+   drifted. That is deliberate — a release is several writes with nothing
+   binding them, and once the tag exists nothing else would ever notice the rest
+   going missing. `v1.0.4` and `v1.0.5` sat tagged-but-unreleased for six days,
+   which left the repository's "Latest release" pointer on a package release and
+   stopped the Gemini extension archive refreshing, with every run green.
+
+   The one step that stays manual is ticking **Publish this Action to the GitHub
+   Marketplace**, which GitHub gates behind a 2FA confirmation no token can
+   perform. It affects the Marketplace listing only: `uses: zuke-build/zuke@v1`
+   resolves through the tag and never consults it.
+
+5. **`publishJsr` pushes to JSR.** The `publishJsr` target walks the packages
    **core first** (so the workspace's `jsr:@zuke/core` dependency resolves) and
    publishes each one whose `deno.json` version is **not yet on JSR** — it
    queries each package's JSR `meta.json` first, so it is idempotent and a no-op

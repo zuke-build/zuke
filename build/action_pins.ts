@@ -27,6 +27,7 @@
 
 import type { CiActionRef } from "@zuke/core";
 import { ACTION_PIN, ACTION_SLUG } from "./action_release.ts";
+import { usesPins } from "./action_uses.ts";
 
 /** Where the committed workflows live. */
 const WORKFLOW_DIR = ".github/workflows";
@@ -41,13 +42,6 @@ const WORKFLOW_DIR = ".github/workflows";
  * generated workflow.
  */
 const ACTION_MANIFEST = "action.yml";
-
-/**
- * A `uses:` line: the action (with any subpath), its pinned SHA, and the version
- * comment beside it. Anchored to `uses:` so a SHA mentioned in prose is ignored.
- */
-const USES_LINE =
-  /^\s*(?:-\s+)?uses:\s*([\w.-]+\/[\w.\-/]+)@([0-9a-f]{40})\s*(?:#\s*(\S+))?/;
 
 /**
  * The pins to fall back on when no committed workflow mentions an action yet —
@@ -99,16 +93,13 @@ interface FoundPin extends CiActionRef {
   source: string;
 }
 
-/** Read every `uses:` pin in `text`, keyed by action. */
+/** Read every `uses:` pin in `text`, keyed by action, noting where it was found. */
 function pinsIn(text: string, source: string): Map<string, FoundPin> {
-  const found = new Map<string, FoundPin>();
-  for (const line of text.split("\n")) {
-    const match = USES_LINE.exec(line);
-    if (match === null) continue;
-    const [, action, sha, version] = match;
-    found.set(action, { ref: `${action}@${sha}`, version, source });
-  }
-  return found;
+  return new Map(
+    [...usesPins(text)].map((
+      [action, { ref, version }],
+    ) => [action, { ref, version, source }]),
+  );
 }
 
 /** A file's text, or `""` when it does not exist. */
