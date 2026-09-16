@@ -16279,6 +16279,9 @@ function assertRefName(name: string, what: string): void
 async function commitFiles(configure?: (settings: GhCommitSettings) => GhCommitSettings): Promise<GhCommitResult>
   Perform the configured commit.
 
+async function ensureRelease(configure?: Configure<GhReleaseEnsureSettings>): Promise<GhReleaseEnsureResult>
+  Perform the configured ensure-release call.
+
 async function findPullRequest(configure?: (settings: GhPullRequestSettings) => GhPullRequestSettings): Promise<GhPullRequestResult | undefined>
   Look for an open pull request without opening one.
 
@@ -17248,6 +17251,63 @@ class GhReleaseEditSettings extends GhCommandSettings
     The `gh release edit` command path.
   override protected commandFlags(): string[]
     Assemble the `gh release edit` flags.
+
+class GhReleaseEnsureSettings
+  Settings for ensuring a release exists.
+
+  `owner/repo` and the token fall back to the Actions environment, so a job
+  that already has them names only the release.
+
+  tag_?: string
+    The tag to release. Set by {@link tag}.
+  name_?: string
+    The release title. Set by {@link name}.
+  body_?: string
+    The release notes. Set by {@link body}.
+  latest_: boolean
+    Whether to move the "Latest release" pointer. Set by {@link latest}.
+  repo_?: string
+    `owner/repo`. Set by {@link repo}.
+  token_?: string
+    The token. Set by {@link token}.
+  baseUrl_: string
+    The API root. Set by {@link baseUrl}.
+  fetch_: typeof fetch
+    The `fetch` implementation. Set by {@link fetch}.
+  tag(value: string): this
+    The tag to release (required).
+
+    It should already exist. GitHub creates a missing tag on the default
+    branch rather than refusing, so a typo here publishes a tag as well as a
+    release — which is why the caller that reconciles a backlog reads its tags
+    from git rather than composing them.
+  name(text: string): this
+    The release title (required), e.g. `Zuke Build v1.2.3`.
+  body(text: string): this
+    The release notes (required); pass `""` for a release with none.
+  latest(value: boolean): this
+    Move the repository's "Latest release" pointer onto this release.
+
+    Off unless asked, which is the opposite of GitHub's own default — it
+    treats a new release as latest unless told otherwise. The default is
+    inverted because the first thing this is used for is back-filling
+    releases a pipeline missed, and those are created oldest-first: taking
+    GitHub's default would walk the pointer backwards through the backlog and
+    leave it on whichever release was created last, which is the oldest one.
+    Naming it explicitly costs the one caller that wants it a method call, and
+    costs the ones that do not want it nothing at all.
+  repo(slug: string): this
+    `owner/repo`. Defaults to `GITHUB_REPOSITORY`.
+  token(value: string): this
+    The token to authenticate with — needs `contents: write`. Defaults to `GITHUB_TOKEN`.
+  baseUrl(url: string): this
+    The API root, for GitHub Enterprise.
+  fetch(fn: typeof fetch): this
+    Override the `fetch` implementation (a test seam).
+  repoSlug_(): string
+    The effective `owner/repo`, from the setting or the environment.
+  authToken_(): string
+    The effective token, from the setting or the environment.
 
 class GhReleaseLatestSettings
   Settings for marking a release as latest.
@@ -18376,6 +18436,30 @@ interface GhReleaseAssetResult
   url?: string
     The asset's download URL, when it was uploaded or already present.
 
+interface GhReleaseEnsureApi
+  The ensure-release operation {@link GhTasks} exposes.
+
+  ensureRelease(configure?: Configure<GhReleaseEnsureSettings>): Promise<GhReleaseEnsureResult>
+    Publish a release for `.tag(...)` unless it already has one.
+
+    Reads the tag's release first and returns `state: "exists"` when there is
+    one, writing nothing — so an unattended pipeline can run this on every
+    push without overwriting notes a maintainer wrote by hand. Needs a token
+    with `contents: write`.
+
+interface GhReleaseEnsureResult
+  What became of a {@link GhReleaseEnsureApi.ensureRelease} call.
+
+  state: "created" | "exists"
+    `created` when this call published the release; `exists` when the tag
+    already had one and nothing was written.
+  tag: string
+    The tag the release is attached to.
+  releaseId: number
+    The release's id.
+  url: string
+    The release's page, for a log line a human can follow.
+
 interface GhReleaseEntry
   One release of {@link "./gh.ts".GhTasks.releaseListEntries}.
 
@@ -18556,7 +18640,7 @@ interface GhSecretEntry
   visibility?: string
     The visibility of an organization secret.
 
-interface GhTasksApi extends GhAppTokenApi, GhSarifApi, GhReleaseAssetApi, GhReleaseLatestApi, GhCommitApi, GhPullRequestApi, GhCheckRunApi, GhPrApi, GhIssueApi, GhReleaseApi, GhRunApi, GhWorkflowApi, GhSecretApi, GhVariableApi, GhCacheApi, GhRepoApi, GhLabelApi
+interface GhTasksApi extends GhAppTokenApi, GhSarifApi, GhReleaseAssetApi, GhReleaseLatestApi, GhReleaseEnsureApi, GhCommitApi, GhPullRequestApi, GhCheckRunApi, GhPrApi, GhIssueApi, GhReleaseApi, GhRunApi, GhWorkflowApi, GhSecretApi, GhVariableApi, GhCacheApi, GhRepoApi, GhLabelApi
   The shape of {@link GhTasks}: the `gh` CLI plus the GitHub operations that
   have no CLI subcommand (see {@link GhAppTokenApi}, {@link GhSarifApi}) and
   would otherwise force a build back to a marketplace action.

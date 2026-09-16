@@ -1372,14 +1372,25 @@ class ZukeBuild extends Build {
           s.tag(ACTION_PIN.version).repo(repo).token(token)
         );
         actionReleaseExists = latest.state !== "no-release";
-        ConsoleTasks.info(
-          actionReleaseExists
-            ? `Latest release pointer: ${ACTION_PIN.version} ` +
-              `(${latest.state}).`
-            : `${ACTION_PIN.version} is tagged but has no GitHub release ` +
-              `yet — actionRelease's browser step creates it. The Latest ` +
-              `pointer is unchanged.`,
-        );
+        if (actionReleaseExists) {
+          ConsoleTasks.info(
+            `Latest release pointer: ${ACTION_PIN.version} (${latest.state}).`,
+          );
+        } else {
+          // A warning now, not a note. It used to be an ordinary state — the
+          // release was cut by a human, who might not have got to it yet — and
+          // it stayed quiet for six days across v1.0.4 and v1.0.5 while the
+          // Latest pointer sat on a package release and the Gemini archive
+          // went unrefreshed. `actionRelease` publishes the release itself
+          // now, so reaching here means either that job has not run since the
+          // tag was cut, or it failed.
+          ConsoleTasks.warn(
+            `${ACTION_PIN.version} is tagged but has no GitHub release. The ` +
+              `Latest pointer is unchanged and the Gemini archive is not ` +
+              `refreshed. actionRelease reconciles this on the next push to ` +
+              `master; if it already ran, read its log.`,
+          );
+        }
       } catch (error) {
         ConsoleTasks.warn(
           "Re-marking the action release as Latest failed — the releases " +
@@ -1390,6 +1401,9 @@ class ZukeBuild extends Build {
       if (!actionReleaseExists) {
         // Nothing to attach the archive to either: the uploads below are
         // pinned to the same release, and skipping beats three 404 warnings.
+        // This job runs before `actionRelease`, which is what publishes the
+        // release, so the archive lands one run later — the same one-run lag
+        // the asset top-up below already accepts.
         ConsoleTasks.info("Skipping the Gemini archive until it exists.");
         return;
       }
@@ -1457,6 +1471,9 @@ class ZukeBuild extends Build {
         }
         return repo;
       };
+
+      // Said once, however many releases the reconciliation walks past.
+      let reportedLocalReleases = false;
 
       // Minted once and reused: each call is a round trip, and this target
       // makes several writes.
@@ -1626,6 +1643,46 @@ class ZukeBuild extends Build {
           );
         },
         actionSource: () => FileTasks.readText(repoRoot("action.yml")),
+        // `git show <ref>:action.yml` rather than a checkout: the notes diff
+        // two revisions of one file, and swapping the working tree to read
+        // each of them would leave a failed run with the wrong tree on disk.
+        // A tag that predates the file exits non-zero, which is `undefined`
+        // rather than an error — see the dep's own doc.
+        sourceAt: async (ref) => {
+          const shown = await GitTasks.run((s) =>
+            s.command("show", `${ref}:action.yml`).noThrow()
+          );
+          return shown.code === 0 ? shown.stdout : undefined;
+        },
+        ensureRelease: async ({ tag, title, notes, latest }) => {
+          // Locally there is no credential to publish with — and no way to
+          // tell which of these releases already exist, since finding that out
+          // is itself an authenticated call. So say once that none of it is
+          // happening here, rather than a line per tag claiming a release that
+          // has existed for months is about to be cut.
+          if (!isCI()) {
+            if (!reportedLocalReleases) {
+              reportedLocalReleases = true;
+              ConsoleTasks.info(
+                "Not publishing GitHub releases from a local clone: there is " +
+                  "no credential here. CI reconciles them on the next push " +
+                  "to master.",
+              );
+            }
+            return false;
+          }
+          const minted = await apiToken();
+          const result = await GhTasks.ensureRelease((s) => {
+            const settings = s
+              .tag(tag)
+              .name(title)
+              .body(notes)
+              .repo(actionRepo())
+              .token(minted);
+            return latest ? settings.latest() : settings;
+          });
+          return result.state === "created";
+        },
         writePin: async (pin) => {
           await FileTasks.writeText(
             repoRoot(ACTION_VERSION_FILE),
