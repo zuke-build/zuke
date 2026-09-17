@@ -596,7 +596,10 @@ class ReviewCommandSettings
   when the comment is on a pull request, starts with {@link text}, was written
   by a human (not a bot account), and its author's `author_association` is
   `OWNER`, `MEMBER` or `COLLABORATOR`. The comment body is matched in the
-  expression and never interpolated into a `run:` line.
+  expression and never interpolated into a `run:` line. Then, before the
+  review runs, the job asks the collaborators API whether the commenter has
+  push access, and stops if not — an association alone admits read-only
+  members and collaborators.
 
   What runs is the default branch's build, never the pull request's: the job
   passes `ZUKE_REVIEW_PR`, and the reviewers fetch that pull request's merge

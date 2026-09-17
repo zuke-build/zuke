@@ -46,6 +46,22 @@ jobs:
         with:
           egress-policy: audit
           persist-credentials: "false"
+      - name: Require push access for the commenter
+        run: |
+          case "$ZUKE_REVIEW_ACTOR" in
+            ""|*[!A-Za-z0-9-]*)
+              echo "::error::the commenter's login is not a GitHub login"
+              exit 1 ;;
+          esac
+          permission="$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$ZUKE_REVIEW_ACTOR/permission" --jq .permission)"
+          case "$permission" in
+            admin|write) echo "$ZUKE_REVIEW_ACTOR has $permission access." ;;
+            *) echo "::error::$ZUKE_REVIEW_ACTOR has $permission access to $GITHUB_REPOSITORY; the review command needs push access."
+               exit 1 ;;
+          esac
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          ZUKE_REVIEW_ACTOR: "${{ github.event.comment.user.login }}"
       - name: AI review with Zuke
         run: ./zuke review
         env:

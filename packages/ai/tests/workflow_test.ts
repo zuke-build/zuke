@@ -617,3 +617,28 @@ Deno.test("the command is GitHub-only: another host renders no comment job", () 
   assertEquals(yaml.includes("issue_comment"), false);
   assertEquals(yaml.includes("commandReview"), false);
 });
+
+Deno.test("the command job checks the commenter's push access before the review", () => {
+  // `author_association` admits read-only members and collaborators, so the
+  // job asks the collaborators API first: admin/write pass, read/none fail.
+  const commandJob = commandBuild().split("  commandReview:")[1];
+  const check = commandJob.indexOf("Require push access for the commenter");
+  const review = commandJob.indexOf("AI review with Zuke");
+  assertEquals(check > 0 && check < review, true);
+  const step = commandJob.slice(check, review);
+  assertStringIncludes(step, 'GH_TOKEN: "${{ github.token }}"');
+  assertStringIncludes(
+    step,
+    'ZUKE_REVIEW_ACTOR: "${{ github.event.comment.user.login }}"',
+  );
+  assertStringIncludes(step, "collaborators/$ZUKE_REVIEW_ACTOR/permission");
+  assertStringIncludes(step, "admin|write)");
+  assertStringIncludes(step, "exit 1");
+  // The login is validated before it is put in a URL, and it reaches the
+  // script only as env — never interpolated into the script text.
+  assertStringIncludes(step, "*[!A-Za-z0-9-]*)");
+  assertEquals(
+    step.split("${{ github.event.comment.user.login }}").length,
+    2,
+  );
+});

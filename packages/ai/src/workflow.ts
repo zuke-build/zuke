@@ -88,6 +88,31 @@ const SAFE_COMMAND = /^[A-Za-z0-9@/][A-Za-z0-9@/_.:-]*( [A-Za-z0-9@/_.:-]+)*$/;
  */
 const REVIEW_COMMENT_ENV = "ZUKE_REVIEW_COMMENT";
 
+/**
+ * The command job's first step after the checkout: refuse to run the review
+ * unless the commenter has push access. `author_association` — all the gate's
+ * `if:` can see — says only that someone is an organisation member or a
+ * collaborator, and both include read-only accounts. The collaborators API
+ * says what they may actually do, so the job asks it before spending a key:
+ * `admin` and `write` (which `maintain` reports as) pass; `read` (which
+ * `triage` reports as) and `none` fail the job with the reason. The login
+ * reaches the script as env, never interpolated, and is checked against the
+ * characters a GitHub login can contain before it is put in a URL.
+ */
+const PUSH_ACCESS_STEP = [
+  'case "$ZUKE_REVIEW_ACTOR" in',
+  '  ""|*[!A-Za-z0-9-]*)',
+  '    echo "::error::the commenter\'s login is not a GitHub login"',
+  "    exit 1 ;;",
+  "esac",
+  'permission="$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$ZUKE_REVIEW_ACTOR/permission" --jq .permission)"',
+  'case "$permission" in',
+  '  admin|write) echo "$ZUKE_REVIEW_ACTOR has $permission access." ;;',
+  '  *) echo "::error::$ZUKE_REVIEW_ACTOR has $permission access to $GITHUB_REPOSITORY; the review command needs push access."',
+  "     exit 1 ;;",
+  "esac",
+].join("\n");
+
 /** A secret name as GitHub Actions accepts it in `${{ secrets.NAME }}`. */
 const SECRET_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
@@ -109,7 +134,10 @@ const COMMAND_AUTHORS = ["OWNER", "MEMBER", "COLLABORATOR"];
  * when the comment is on a pull request, starts with {@link text}, was written
  * by a human (not a bot account), and its author's `author_association` is
  * `OWNER`, `MEMBER` or `COLLABORATOR`. The comment body is matched in the
- * expression and never interpolated into a `run:` line.
+ * expression and never interpolated into a `run:` line. Then, before the
+ * review runs, the job asks the collaborators API whether the commenter has
+ * push access, and stops if not — an association alone admits read-only
+ * members and collaborators.
  *
  * What runs is the default branch's build, never the pull request's: the job
  * passes `ZUKE_REVIEW_PR`, and the reviewers fetch that pull request's merge
@@ -553,11 +581,21 @@ class AiReviewWorkflow extends CiFile {
         "commandReview",
         "AI review on command",
         AiReviewWorkflow.#commandGate(command.text),
-        [{
-          name: "AI review with Zuke",
-          run: `./zuke ${target}`,
-          env: commandEnv,
-        }],
+        [
+          {
+            name: "Require push access for the commenter",
+            run: PUSH_ACCESS_STEP,
+            env: {
+              GH_TOKEN: "${{ github.token }}",
+              ZUKE_REVIEW_ACTOR: "${{ github.event.comment.user.login }}",
+            },
+          },
+          {
+            name: "AI review with Zuke",
+            run: `./zuke ${target}`,
+            env: commandEnv,
+          },
+        ],
         reviewers.commentEnabled,
         "github.event.issue.number",
       ));
