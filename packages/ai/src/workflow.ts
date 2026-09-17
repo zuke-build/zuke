@@ -95,17 +95,24 @@ const REVIEW_COMMENT_ENV = "ZUKE_REVIEW_COMMENT";
  * collaborator, and both include read-only accounts. The collaborators API
  * says what they may actually do, so the job asks it before spending a key:
  * `admin` and `write` (which `maintain` reports as) pass; `read` (which
- * `triage` reports as) and `none` fail the job with the reason. The login
+ * `triage` reports as) and `none` fail the job with the reason, and so does
+ * an answer that cannot be read at all — the step fails closed. The login
  * reaches the script as env, never interpolated, and is checked against the
  * characters a GitHub login can contain before it is put in a URL.
  */
 const PUSH_ACCESS_STEP = [
+  // Fail closed, explicitly: a failed API call, an unset variable, or a
+  // broken pipe stops the step, whatever shell flags the runner defaults to.
+  "set -euo pipefail",
   'case "$ZUKE_REVIEW_ACTOR" in',
   '  ""|*[!A-Za-z0-9-]*)',
   '    echo "::error::the commenter\'s login is not a GitHub login"',
   "    exit 1 ;;",
   "esac",
-  'permission="$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$ZUKE_REVIEW_ACTOR/permission" --jq .permission)"',
+  'permission="$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$ZUKE_REVIEW_ACTOR/permission" --jq .permission)" || {',
+  '  echo "::error::could not read $ZUKE_REVIEW_ACTOR\'s permission on $GITHUB_REPOSITORY; refusing to run the review"',
+  "  exit 1",
+  "}",
   'case "$permission" in',
   '  admin|write) echo "$ZUKE_REVIEW_ACTOR has $permission access." ;;',
   '  *) echo "::error::$ZUKE_REVIEW_ACTOR has $permission access to $GITHUB_REPOSITORY; the review command needs push access."',
@@ -584,6 +591,7 @@ class AiReviewWorkflow extends CiFile {
         [
           {
             name: "Require push access for the commenter",
+            shell: "bash",
             run: PUSH_ACCESS_STEP,
             env: {
               GH_TOKEN: "${{ github.token }}",

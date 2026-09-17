@@ -634,6 +634,11 @@ Deno.test("the command job checks the commenter's push access before the review"
   assertStringIncludes(step, "collaborators/$ZUKE_REVIEW_ACTOR/permission");
   assertStringIncludes(step, "admin|write)");
   assertStringIncludes(step, "exit 1");
+  // Fails closed, explicitly: its own shell and flags, and an API call that
+  // cannot be read refuses the run rather than falling through.
+  assertStringIncludes(step, "shell: bash");
+  assertStringIncludes(step, "set -euo pipefail");
+  assertStringIncludes(step, "refusing to run the review");
   // The login is validated before it is put in a URL, and it reaches the
   // script only as env — never interpolated into the script text.
   assertStringIncludes(step, "*[!A-Za-z0-9-]*)");

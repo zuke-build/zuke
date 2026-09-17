@@ -47,13 +47,18 @@ jobs:
           egress-policy: audit
           persist-credentials: "false"
       - name: Require push access for the commenter
+        shell: bash
         run: |
+          set -euo pipefail
           case "$ZUKE_REVIEW_ACTOR" in
             ""|*[!A-Za-z0-9-]*)
               echo "::error::the commenter's login is not a GitHub login"
               exit 1 ;;
           esac
-          permission="$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$ZUKE_REVIEW_ACTOR/permission" --jq .permission)"
+          permission="$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$ZUKE_REVIEW_ACTOR/permission" --jq .permission)" || {
+            echo "::error::could not read $ZUKE_REVIEW_ACTOR's permission on $GITHUB_REPOSITORY; refusing to run the review"
+            exit 1
+          }
           case "$permission" in
             admin|write) echo "$ZUKE_REVIEW_ACTOR has $permission access." ;;
             *) echo "::error::$ZUKE_REVIEW_ACTOR has $permission access to $GITHUB_REPOSITORY; the review command needs push access."
