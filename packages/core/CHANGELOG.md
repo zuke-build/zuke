@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.56.0](https://github.com/zuke-build/zuke/compare/core-v1.55.1...core-v1.56.0) (2026-09-17)
+
+
+### Features
+
+* **core:** job-level concurrency and an issue_comment trigger ([#619](https://github.com/zuke-build/zuke/issues/619)) ([8efb253](https://github.com/zuke-build/zuke/commit/8efb2532fb5664ed8164c626ee005d1775e2afbf)), closes [#618](https://github.com/zuke-build/zuke/issues/618)
+
 ## [1.55.1](https://github.com/zuke-build/zuke/compare/core-v1.55.0...core-v1.55.1) (2026-09-14)
 
 

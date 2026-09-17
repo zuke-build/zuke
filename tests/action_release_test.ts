@@ -21,6 +21,7 @@ import {
   ACTION_VERSION_FILE,
   actionDigest,
   type ActionPinFile,
+  type ActionRelease,
   assertReleasable,
   assertWorkflowInputsAvailable,
   declaredInputs,
@@ -34,6 +35,7 @@ import {
   pinFor,
   pinnedSha,
   pinSubject,
+  reconcileReleases,
   releaseAction,
   type ReleaseActionDeps,
   releaseIsOwed,
@@ -68,9 +70,11 @@ function fakeDeps(overrides: Partial<ReleaseActionDeps> = {}): {
   deps: ReleaseActionDeps;
   calls: string[];
   pins: ActionPinFile[];
+  releases: ActionRelease[];
 } {
   const calls: string[] = [];
   const pins: ActionPinFile[] = [];
+  const releases: ActionRelease[] = [];
   const deps: ReleaseActionDeps = {
     state: () =>
       Promise.resolve({
@@ -90,6 +94,13 @@ function fakeDeps(overrides: Partial<ReleaseActionDeps> = {}): {
     // otherwise.
     shaOf: () => Promise.resolve(TAGGED_SHA),
     actionSource: () => Promise.resolve(MANIFEST),
+    sourceAt: () => Promise.resolve(MANIFEST),
+    // Defaults to "the release already exists", so the tests that are about
+    // tags record nothing here and the ones that are about releases say so.
+    ensureRelease: (release) => {
+      releases.push(release);
+      return Promise.resolve(false);
+    },
     tag: (t, _m, force, sha) => {
       calls.push(`tag:${t}${force ? ":force" : ""}@${sha.slice(0, 4)}`);
       return Promise.resolve();
@@ -106,7 +117,7 @@ function fakeDeps(overrides: Partial<ReleaseActionDeps> = {}): {
     info: () => {},
     ...overrides,
   };
-  return { deps, calls, pins };
+  return { deps, calls, pins, releases };
 }
 
 Deno.test("only a full v-major-minor-patch tag parses as a release", () => {
@@ -692,4 +703,121 @@ Deno.test("a release tag that does not resolve is refused rather than guessed", 
     message = error instanceof Error ? error.message : String(error);
   }
   assertStringIncludes(message, "does not resolve to a commit");
+});
+
+Deno.test("a tag whose release was never created gets one", async () => {
+  // The gap this exists to close, and it is invisible from inside the release
+  // flow: v1.0.4 and v1.0.5 were tagged, `v1` was moved onto v1.0.5, and
+  // neither had a GitHub release for six days. Nothing failed — the tags were
+  // right — so every run reported success while the Latest pointer sat on a
+  // package release and the Gemini archive went unrefreshed.
+  const { deps, releases, calls } = fakeDeps({
+    tags: () => Promise.resolve(["v1.0.4", "v1.0.5", "core-v1.33.0", "v1"]),
+    changedSince: () => Promise.resolve(false),
+    committedPin: () => pinFor(SHA, "v1.0.5", INPUTS, DIGEST),
+    ensureRelease: (release) => {
+      releases.push(release);
+      return Promise.resolve(true);
+    },
+  });
+  await releaseAction(deps);
+
+  // Both, oldest first — and no tag was touched, because the tags were never
+  // the broken half.
+  assertEquals(releases.map((r) => r.tag), ["v1.0.4", "v1.0.5"]);
+  assertEquals(calls, []);
+});
+
+Deno.test("only the newest release of a back-filled run becomes latest", async () => {
+  // GitHub treats a new release as latest unless told otherwise, and
+  // back-filling works oldest-first — so taking that default would walk the
+  // pointer backwards through the backlog and leave it on the oldest release
+  // created. That is the same wrong state this is meant to repair.
+  const { deps, releases } = fakeDeps({
+    tags: () => Promise.resolve(["v1.0.3", "v1.0.4", "v1.0.5"]),
+    changedSince: () => Promise.resolve(false),
+    committedPin: () => pinFor(SHA, "v1.0.5", INPUTS, DIGEST),
+  });
+  await releaseAction(deps);
+  assertEquals(releases.map((r) => r.latest), [false, false, true]);
+});
+
+Deno.test("a freshly cut release is published from the commit, not a lookup", async () => {
+  // One code path for the backlog and for the cut — but the cut path cannot
+  // resolve its own tag. On CI the tags are created through the API, so the
+  // version just released is not in this clone and every lookup for it answers
+  // the way it answers for a tag that does not exist. Left to `sourceAt`, the
+  // new release would be skipped as "predates action.yml": silently, on the
+  // one path that most needs to work.
+  const { deps, releases } = fakeDeps({
+    tags: () => Promise.resolve(["v1.4.0"]),
+    changedSince: () => Promise.resolve(true),
+    // Exactly what a clone that never saw the tag would say.
+    sourceAt: (ref) => Promise.resolve(ref === "v1.4.1" ? undefined : MANIFEST),
+    shaOf: (ref) => Promise.resolve(ref === "v1.4.1" ? undefined : TAGGED_SHA),
+  });
+  const result = await releaseAction(deps);
+  assertEquals(result.released, "v1.4.1");
+  // Twice over v1.4.0 — once before the cut, once after — which is harmless
+  // because `ensureRelease` writes nothing for a release that exists.
+  assertEquals(releases.map((r) => r.tag), ["v1.4.0", "v1.4.0", "v1.4.1"]);
+  // The new one is the latest; the one it supersedes is not.
+  assertEquals(releases.at(-1)?.latest, true);
+  assertEquals(releases.at(-1)?.title, "Zuke Build v1.4.1");
+  // And its notes name the commit that was released — HEAD, which is what the
+  // tag was pointed at — rather than the one an older tag resolves to.
+  assertStringIncludes(releases.at(-1)?.notes ?? "", `zuke-build/zuke@${SHA}`);
+});
+
+Deno.test("a release tag from before action.yml existed is walked past", async () => {
+  // The action was added to a repository that already had tags. A `vX.Y.Z`
+  // predating the file has nothing to describe, and notes about a file the tag
+  // does not contain would be worse than no release at all.
+  const messages: string[] = [];
+  const { deps, releases } = fakeDeps({
+    tags: () => Promise.resolve(["v1.0.0", "v1.0.1"]),
+    changedSince: () => Promise.resolve(false),
+    committedPin: () => pinFor(SHA, "v1.0.1", INPUTS, DIGEST),
+    sourceAt: (ref) => Promise.resolve(ref === "v1.0.0" ? undefined : MANIFEST),
+    info: (m) => messages.push(m),
+  });
+  await releaseAction(deps);
+  assertEquals(releases.map((r) => r.tag), ["v1.0.1"]);
+  assertStringIncludes(messages.join("\n"), "predates action.yml");
+});
+
+Deno.test("a version tag that does not resolve fails rather than releasing a guess", async () => {
+  // Symmetric with the major-pointer reconciliation: publishing a release
+  // whose notes name the wrong commit is worse than publishing none.
+  const { deps } = fakeDeps({
+    tags: () => Promise.resolve(["v1.4.0"]),
+    shaOf: (ref) => Promise.resolve(ref === "v1.4.0" ? undefined : TAGGED_SHA),
+  });
+  let message = "";
+  try {
+    await reconcileReleases(deps, ["v1.4.0"]);
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error);
+  }
+  assertStringIncludes(message, "cannot name what it contains");
+});
+
+Deno.test("a repository with no action tags reconciles nothing", async () => {
+  // Every other tag in this repository is component-scoped, and treating one
+  // as an action release would publish a release for somebody else's version.
+  const { deps, releases } = fakeDeps();
+  assertEquals(await reconcileReleases(deps, ["core-v1.33.0", "v1"]), []);
+  assertEquals(releases, []);
+});
+
+Deno.test("reconciliation reports only what it actually published", async () => {
+  // The caller logs this, so a release that already existed must not be
+  // reported as though this run created it.
+  const { deps } = fakeDeps({
+    ensureRelease: ({ tag }) => Promise.resolve(tag === "v1.0.5"),
+  });
+  assertEquals(
+    await reconcileReleases(deps, ["v1.0.4", "v1.0.5"]),
+    ["v1.0.5"],
+  );
 });

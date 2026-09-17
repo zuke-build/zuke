@@ -191,6 +191,12 @@ export {
   markReleaseLatest,
 } from "./src/release_latest.ts";
 export {
+  ensureRelease,
+  type GhReleaseEnsureApi,
+  type GhReleaseEnsureResult,
+  GhReleaseEnsureSettings,
+} from "./src/release_ensure.ts";
+export {
   type CorrelateMode,
   githubWorkflow,
   GithubWorkflowSettings,

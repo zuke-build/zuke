@@ -73,6 +73,12 @@ import {
   type GhReleaseLatestSettings,
   markReleaseLatest,
 } from "./release_latest.ts";
+import {
+  ensureRelease,
+  type GhReleaseEnsureApi,
+  type GhReleaseEnsureResult,
+  type GhReleaseEnsureSettings,
+} from "./release_ensure.ts";
 import { callApi, type GhApiSettings } from "./api_command.ts";
 export { GhSettings };
 import {
@@ -102,6 +108,7 @@ export interface GhTasksApi
     GhSarifApi,
     GhReleaseAssetApi,
     GhReleaseLatestApi,
+    GhReleaseEnsureApi,
     GhCommitApi,
     GhPullRequestApi,
     GhCheckRunApi,
@@ -184,5 +191,10 @@ export const GhTasks: GhTasksApi = {
     configure?: Configure<GhReleaseLatestSettings>,
   ): Promise<GhReleaseLatestResult> {
     return markReleaseLatest(configure);
+  },
+  ensureRelease(
+    configure?: Configure<GhReleaseEnsureSettings>,
+  ): Promise<GhReleaseEnsureResult> {
+    return ensureRelease(configure);
   },
 };

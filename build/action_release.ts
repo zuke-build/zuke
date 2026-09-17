@@ -24,6 +24,11 @@
 import { parse as parseYaml } from "@std/yaml";
 
 import actionVersion from "./action_version.json" with { type: "json" };
+import {
+  type ActionReleaseChange,
+  actionReleaseNotes,
+  actionReleaseTitle,
+} from "./action_notes.ts";
 import { compareSemver } from "./semver.ts";
 
 /** A parsed `v<major>.<minor>.<patch>` action tag. */
@@ -440,10 +445,63 @@ export interface ReleaseActionDeps {
   push(tag: string, force: boolean): Promise<void>;
   /** The action's source, as the tree being released contains it. */
   actionSource(): Promise<string>;
+  /**
+   * `action.yml` as `ref` contains it, or `undefined` when that revision has
+   * no such file.
+   *
+   * Undefined rather than a throw because the action was added to a repository
+   * that already had tags: a release tag predating `action.yml` is an ordinary
+   * thing to walk past, not a fault.
+   */
+  sourceAt(ref: string): Promise<string | undefined>;
+  /**
+   * Publish the release for `tag` unless it already has one, and report
+   * whether this call created it.
+   *
+   * Idempotent because it is called on every run, and non-destructive because
+   * a maintainer's notes are better than generated ones.
+   */
+  ensureRelease(release: ActionRelease): Promise<boolean>;
   /** Write the committed self-pin. */
   writePin(pin: ActionPinFile): Promise<void>;
   /** Report progress. */
   info(message: string): void;
+}
+
+/**
+ * A release this run cut, whose tag the local clone does not have yet.
+ *
+ * On CI the tags are written through the API rather than with `git push`, so
+ * nothing in the working copy can answer for the version just released —
+ * {@link reconcileReleases} is handed the two facts it would otherwise have
+ * looked up.
+ */
+export interface PendingRelease {
+  /** The tag just cut. */
+  tag: string;
+  /** The commit it names. */
+  sha: string;
+  /** `action.yml` as that commit contains it. */
+  source: string;
+}
+
+/** One release for {@link ReleaseActionDeps.ensureRelease} to publish. */
+export interface ActionRelease {
+  /** The tag it is attached to. */
+  tag: string;
+  /** Its title on the releases page. */
+  title: string;
+  /** Its notes. */
+  notes: string;
+  /**
+   * Whether it becomes the repository's "Latest release".
+   *
+   * True for exactly one release per run — the newest. Back-filling works
+   * oldest-first, so letting GitHub apply its own default (a new release is
+   * latest) would walk the pointer backwards through the backlog and leave it
+   * on the oldest release created.
+   */
+  latest: boolean;
 }
 
 /** What a run of {@link releaseAction} did. */
@@ -527,16 +585,132 @@ export async function reconcileMajorTag(
   return true;
 }
 
+/**
+ * Publish a GitHub release for every action tag that has none.
+ *
+ * The second half of a release, and the half nothing forced to happen. Tagging
+ * is what reaches a consumer — `uses: zuke-build/zuke@v1` resolves through the
+ * tag and never consults the releases page — so a missing release breaks
+ * nothing and announces nothing. It was left to a human because the module doc
+ * above says publishing needs a browser, and that is true of the Marketplace
+ * checkbox and of nothing else: the release itself is a `POST /releases`, which
+ * the app token this target already mints can perform with the `contents:
+ * write` it already holds.
+ *
+ * Left undone it is not cosmetic, because two things key on the release rather
+ * than the tag. `markReleaseLatest` cannot pin the "Latest release" pointer to
+ * a release that does not exist, so the pointer stays wherever the last package
+ * release dragged it — and the Marketplace listing reads that pointer as the
+ * action's current version. The Gemini extension archive is attached to the
+ * same release, and `gemini extensions install` resolves the same pointer, so
+ * it silently falls back to downloading the whole monorepo source tarball. Both
+ * failed that way for six days across v1.0.4 and v1.0.5, with every run green.
+ *
+ * Reconciled on every run rather than created once at the moment of the cut,
+ * for the same reason {@link reconcileMajorTag} re-checks the major pointer: a
+ * create-on-cut prevents the *next* gap and leaves the existing one open
+ * forever, because once the tag exists `changedSince` answers "unchanged" and
+ * the release path is never entered again. Checking the state repairs a
+ * backlog; inferring it from what this run did cannot.
+ *
+ * Oldest first, so the newest release is created last and the one marked latest
+ * is the one that should be.
+ *
+ * `pending` is the release this run has just cut, and it is not an
+ * optimisation. On CI the tags are created through the API — there is no
+ * credential on disk to push with — so the local clone does not have the tag
+ * this run just made, and both `sourceAt` and `shaOf` would answer for it the
+ * way they answer for a tag that does not exist. The release would then be
+ * skipped as "predates action.yml", silently, on the one path that most needs
+ * to work.
+ *
+ * @returns the tags this call published, in the order it published them.
+ */
+export async function reconcileReleases(
+  deps: ReleaseActionDeps,
+  tags: readonly string[],
+  pending?: PendingRelease,
+): Promise<string[]> {
+  const versions = tags
+    .map(parseVersion)
+    .filter((version): version is ActionVersion => version !== undefined)
+    .sort(compareSemver);
+  const newest = versions.at(-1);
+  if (newest === undefined) return [];
+
+  const published: string[] = [];
+  for (const [index, version] of versions.entries()) {
+    const isPending = pending?.tag === version.tag;
+    const source = isPending
+      ? pending.source
+      : await deps.sourceAt(version.tag);
+    if (source === undefined) {
+      // A release tag from before `action.yml` existed. Nothing to describe,
+      // and a release whose notes are about a file the tag does not contain
+      // would be worse than no release.
+      deps.info(
+        `${version.tag} predates action.yml; leaving it without a release.`,
+      );
+      continue;
+    }
+    const sha = isPending ? pending.sha : await deps.shaOf(version.tag);
+    if (sha === undefined) {
+      throw new Error(
+        `${version.tag} is in the tag list but does not resolve to a commit, ` +
+          `so its release cannot name what it contains.`,
+      );
+    }
+    // The previous *release*, not the previous tag in the repository: the
+    // notes diff two revisions of the action, and the tag before this one on
+    // the action's own line is the only meaningful base.
+    const previous = versions[index - 1];
+    const previousSource = previous === undefined
+      ? undefined
+      : await deps.sourceAt(previous.tag);
+    const change: ActionReleaseChange = {
+      slug: ACTION_SLUG,
+      version: version.tag,
+      sha,
+      source,
+      inputs: declaredInputs(source),
+      // Both halves or neither: notes that diff against a revision whose
+      // source could not be read would report every input as added.
+      ...(previous !== undefined && previousSource !== undefined
+        ? {
+          previous: {
+            tag: previous.tag,
+            source: previousSource,
+            inputs: declaredInputs(previousSource),
+          },
+        }
+        : {}),
+    };
+    const created = await deps.ensureRelease({
+      tag: version.tag,
+      title: actionReleaseTitle(version.tag),
+      notes: actionReleaseNotes(change),
+      latest: version.tag === newest.tag,
+    });
+    if (created) {
+      published.push(version.tag);
+      deps.info(`Published the GitHub release for ${version.tag}.`);
+    }
+  }
+  return published;
+}
+
 export async function releaseAction(
   deps: ReleaseActionDeps,
 ): Promise<ReleaseActionResult> {
   assertReleasable(await deps.state());
 
-  const current = latestVersion(await deps.tags());
+  const tags = await deps.tags();
+  const current = latestVersion(tags);
 
-  // Before the gate below, not after: the state this repairs is one where the
-  // gate says there is nothing to do.
+  // Both reconciliations before the gate below, not after: the state they
+  // repair is one where the gate says there is nothing to do.
   if (current !== undefined) await reconcileMajorTag(deps, current.tag);
+  await reconcileReleases(deps, tags);
   if (current !== undefined && !(await deps.changedSince(current.tag))) {
     // Nothing new to cut. That is not the same as nothing to do: a release is
     // two halves, the tags that reach consumers and the pin that this
@@ -615,9 +789,22 @@ export async function releaseAction(
   await deps.push(major, true);
   deps.info(`Moved ${major} to ${version}.`);
 
+  // With the tag pushed, the same reconciliation that heals a backlog publishes
+  // this release too — one code path for both, rather than a create here that
+  // would have to stay in step with the one above. The new tag is handed over
+  // rather than looked up: on CI it was created through the API and is not in
+  // this clone, so every lookup for it would answer "no such revision".
+  await reconcileReleases(deps, [...tags, version], {
+    tag: version,
+    sha,
+    source,
+  });
+
   deps.info(
-    `Publishing to the Marketplace still needs one browser step, because ` +
-      `GitHub gates it behind a 2FA confirmation no token can perform: ` +
+    `Listing it on the Marketplace still needs one browser step, because ` +
+      `GitHub gates that behind a 2FA confirmation no token can perform — ` +
+      `and only that step: the release itself is published above, and ` +
+      `${ACTION_SLUG}@${major} resolves through the tag either way. ` +
       draftReleaseUrl(version),
   );
   return { released: version };
