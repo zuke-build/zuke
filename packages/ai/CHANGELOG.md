@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.7.0](https://github.com/zuke-build/zuke/compare/ai-v2.6.0...ai-v2.7.0) (2026-09-17)
+
+
+### Features
+
+* **ai:** on-demand review via maintainer comment command ([#617](https://github.com/zuke-build/zuke/issues/617)) ([d7d7c20](https://github.com/zuke-build/zuke/commit/d7d7c2077eb51d713b425cda9d489a535f263c69))
+
 ## [2.6.0](https://github.com/zuke-build/zuke/compare/ai-v2.5.1...ai-v2.6.0) (2026-09-14)
 
 
