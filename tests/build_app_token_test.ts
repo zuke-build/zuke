@@ -6,7 +6,7 @@
  * caller's scope, and the credential reader every minting target starts from.
  */
 
-import { assertEquals } from "../packages/core/tests/_assert.ts";
+import { assertEquals, assertRejects } from "../packages/core/tests/_assert.ts";
 import { GhAppTokenSettings } from "../packages/gh/mod.ts";
 import { mintAppToken, resolveAppCredentials } from "../build/app_token.ts";
 
@@ -45,4 +45,26 @@ Deno.test("resolveAppCredentials needs both halves, and treats empty as absent",
   assertEquals(resolveAppCredentials({ privateKey: "pem" }), null);
   assertEquals(resolveAppCredentials({ appId: "", privateKey: "pem" }), null);
   assertEquals(resolveAppCredentials({ appId: "1", privateKey: "" }), null);
+});
+
+Deno.test("mintAppToken refuses a repository that is not one owner/name pair", async () => {
+  // A slug with no name would leave the repository unset on the settings,
+  // and an unset repository is the app's org-level installation: a token for
+  // every repository the app is installed on. Refuse before any request.
+  let minted = 0;
+  const appToken = () => {
+    minted++;
+    return Promise.reject(new Error("must not be reached"));
+  };
+  for (const repo of ["zuke-build", "zuke-build/", "/zuke", "a/b/c", ""]) {
+    await assertRejects(
+      () =>
+        mintAppToken({ appId: "1", privateKey: "pem" }, repo, {
+          contents: "read",
+        }, appToken),
+      Error,
+      'expected "owner/name"',
+    );
+  }
+  assertEquals(minted, 0);
 });

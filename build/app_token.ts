@@ -60,7 +60,18 @@ export async function mintAppToken(
   permissions: Readonly<Record<string, GhPermissionLevel>>,
   appToken: AppTokenMint = GhTasks.appToken,
 ): Promise<string> {
-  const [owner, name] = repo.split("/");
+  // The shape is checked here because the settings cannot: they validate each
+  // segment's characters, but a slug with no name would leave the repository
+  // unset, and an unset repository means the app's org-level installation —
+  // a token for every repository the app is installed on, not one.
+  const parts = repo.split("/");
+  if (parts.length !== 2 || parts.some((part) => part === "")) {
+    throw new Error(
+      `cannot mint an app token for ${JSON.stringify(repo)}: expected ` +
+        `"owner/name".`,
+    );
+  }
+  const [owner, name] = parts;
   const { token } = await appToken((s) => {
     s.appId(credentials.appId).privateKey(credentials.privateKey)
       .owner(owner).repositories(name);
