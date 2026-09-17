@@ -41,7 +41,7 @@ export interface ThreadPhaseSettings {
   /** The `fetch` implementation host calls go through. */
   readonly doFetch: typeof fetch;
   /** Resolve the comment-posting token for the detected host. */
-  readonly token: (host: { defaultTokenEnv: string }) => string;
+  readonly token: (host: { defaultTokenEnv: string }) => Promise<string>;
   /**
    * Mask the run's declared secrets in a thread body before it reaches the
    * host — `ValidationContext.redact`, which core hands a validation for
@@ -86,7 +86,7 @@ export async function prepareThreads(
     }
     return undefined;
   }
-  const ops = host.reviewThreads(settings.token(host), settings.env);
+  const ops = host.reviewThreads(await settings.token(host), settings.env);
   if (ops === undefined) return undefined; // no PR context (local run)
   try {
     const threads = await findingThreads(

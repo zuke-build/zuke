@@ -14,17 +14,19 @@
 const CHARS_PER_TOKEN = 4;
 
 /**
- * Read the contents of `paths` at `HEAD` (via `git show`, through the same
- * exec seam the diff uses) and assemble them into one labelled block, bounded
- * at roughly `maxTokens`. Files are included in diff order until the budget
- * runs out (the file that crosses it is truncated, the rest are listed as
- * omitted); a file `git` cannot show (deleted, binary quirk) is skipped.
- * Returns an empty string when nothing could be read.
+ * Read the contents of `paths` at `headRef` — `HEAD` for a review of the
+ * checkout, the fetched merge for a pull request reviewed as data — via
+ * `git show`, through the same exec seam the diff uses, and assemble them into
+ * one labelled block, bounded at roughly `maxTokens`. Files are included in
+ * diff order until the budget runs out (the file that crosses it is truncated,
+ * the rest are listed as omitted); a file `git` cannot show (deleted, binary
+ * quirk) is skipped. Returns an empty string when nothing could be read.
  */
 export async function buildFileContext(
   paths: string[],
   run: (argv: string[]) => Promise<string>,
   maxTokens: number,
+  headRef: string,
 ): Promise<string> {
   let remaining = maxTokens * CHARS_PER_TOKEN;
   const parts: string[] = [];
@@ -36,9 +38,9 @@ export async function buildFileContext(
     }
     let content: string;
     try {
-      content = await run(["git", "show", `HEAD:${path}`]);
+      content = await run(["git", "show", `${headRef}:${path}`]);
     } catch {
-      continue; // deleted or unreadable at HEAD — the diff still shows it
+      continue; // deleted or unreadable at the head — the diff still shows it
     }
     const body = content.length <= remaining
       ? content

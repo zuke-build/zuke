@@ -1186,3 +1186,174 @@ Deno.test("the fetchBase fallback is announced on the console when not quiet", a
     true,
   );
 });
+
+// ─── ZUKE_REVIEW_PR: a pull request reviewed as data ────────────────────────
+
+Deno.test("ZUKE_REVIEW_PR reviews the named pull request instead of the checkout", async () => {
+  const { fetch, calls } = recordFetch(
+    claude({ score: 0, severity: "none", summary: "", findings: [] }),
+  );
+  const git: string[][] = [];
+  await securityReviewer((r) =>
+    r.provider("claude").apiKey("k").quiet()
+      // What a build configures for a review of its own checkout: the pull
+      // request must take over from it without the build changing anything.
+      .diff((d) => d.base("origin/master"))
+      .conventionsFile("AGENTS.md")
+      .fileContext()
+      .env((n) => n === "ZUKE_REVIEW_PR" ? "7" : undefined)
+      .exec((argv) => {
+        git.push(argv);
+        if (argv[1] === "diff") return Promise.resolve(DIFF);
+        if (argv[1] === "show") return Promise.resolve(`<${argv[2]}>`);
+        return Promise.resolve("");
+      })
+      .fetch(fetch)
+  ).validate(noRedactionContext("t"));
+  const merge = "refs/zuke/pull/7/merge";
+  // The merge ref is fetched two commits deep — the merge and both parents —
+  // and the diff is the merge against the base it was made onto.
+  assertEquals(git[0], [
+    "git",
+    "fetch",
+    "--no-tags",
+    "--depth=2",
+    "origin",
+    `+refs/pull/7/merge:${merge}`,
+  ]);
+  assertEquals(git[1], ["git", "diff", `${merge}^1`, merge]);
+  // The conventions come from the base side, the changed file from the merge:
+  // the pull request's copy of the rules never loads, its code is only read.
+  assertEquals(
+    git.some((g) => g[1] === "show" && g[2] === `${merge}^1:AGENTS.md`),
+    true,
+  );
+  assertEquals(
+    git.some((g) => g[1] === "show" && g[2] === `${merge}:src/app.ts`),
+    true,
+  );
+  // Nothing ever diffed the working tree.
+  assertEquals(git.some((g) => g[1] === "diff" && g.length === 3), false);
+  const content = JSON.parse(calls[0].body).messages[0].content;
+  assertEquals(content.includes("eval(input)"), true);
+  assertEquals(content.includes(`<${merge}^1:AGENTS.md>`), true);
+  assertEquals(content.includes(`<${merge}:src/app.ts>`), true);
+});
+
+Deno.test("a ZUKE_REVIEW_PR that is not a number fails the gate without touching git", async () => {
+  const { fetch, calls } = recordFetch(
+    claude({ score: 0, severity: "none", summary: "", findings: [] }),
+  );
+  const git: string[][] = [];
+  await assertRejects(
+    () =>
+      securityReviewer((r) =>
+        r.provider("claude").apiKey("k").quiet()
+          .env((n) => n === "ZUKE_REVIEW_PR" ? "--upload-pack=evil" : undefined)
+          .exec((argv) => {
+            git.push(argv);
+            return Promise.resolve(DIFF);
+          })
+          .fetch(fetch)
+      ).validate(noRedactionContext("t")),
+    AiReviewError,
+    "is not a pull request number",
+  );
+  assertEquals(git, []); // never reached `git`, as an option-like value must not
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("a pull request that cannot be fetched fails, never reviews the checkout", async () => {
+  const { fetch, calls } = recordFetch(
+    claude({ score: 0, severity: "none", summary: "", findings: [] }),
+  );
+  const git: string[][] = [];
+  const exec = (argv: string[]) => {
+    git.push(argv);
+    if (argv[1] === "fetch") return Promise.reject(new Error("not found"));
+    return Promise.resolve(DIFF); // the checkout has a diff — it must not count
+  };
+  await assertRejects(
+    () =>
+      securityReviewer((r) =>
+        r.provider("claude").apiKey("k").quiet()
+          .env((n) => n === "ZUKE_REVIEW_PR" ? "7" : undefined)
+          .exec(exec).fetch(fetch)
+      ).validate(noRedactionContext("t")),
+    AiReviewError,
+    "could not fetch pull request #7",
+  );
+  assertEquals(git.length, 1); // the fetch, and no fallback diff after it
+  assertEquals(calls.length, 0);
+  // Under onError:"warn" the same failure is a visible skip, still no review.
+  await securityReviewer((r) =>
+    r.provider("claude").apiKey("k").quiet().onError("warn")
+      .env((n) => n === "ZUKE_REVIEW_PR" ? "7" : undefined)
+      .exec(exec).fetch(fetch)
+  ).validate(noRedactionContext("t"));
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("a literal .text() diff still wins over ZUKE_REVIEW_PR", async () => {
+  const { fetch, calls } = recordFetch(
+    claude({ score: 0, severity: "none", summary: "", findings: [] }),
+  );
+  const git: string[][] = [];
+  await securityReviewer((r) =>
+    r.provider("claude").apiKey("k").quiet()
+      .diff((d) => d.text(DIFF))
+      .env((n) => n === "ZUKE_REVIEW_PR" ? "7" : undefined)
+      .exec((argv) => {
+        git.push(argv);
+        return Promise.resolve("");
+      })
+      .fetch(fetch)
+  ).validate(noRedactionContext("t"));
+  assertEquals(git, []);
+  assertEquals(calls.length, 1);
+});
+
+Deno.test("commentToken accepts a function whose token every post uses", async () => {
+  await withEnv(
+    {
+      GITHUB_ACTIONS: "true",
+      GITHUB_REPOSITORY: "zuke-build/zuke",
+      GITHUB_REF: "refs/heads/master",
+      ZUKE_REVIEW_PR: "42",
+      GITHUB_TOKEN: "env-token",
+    },
+    async () => {
+      const { fetch, calls } = routedFetch({
+        provider: claude({ score: 1, findings: [] }),
+        comments: [],
+      });
+      let minted = 0;
+      await captured(() =>
+        securityReviewer((r) =>
+          r.provider("claude").apiKey("k").comment().discussion()
+            .commentToken(() => {
+              minted++;
+              return Promise.resolve("app-token");
+            })
+            .diff((d) => d.text(DIFF)).fetch(fetch)
+        ).validate(noRedactionContext("deploy"))
+      );
+      const github = calls.filter((c) =>
+        c.url.startsWith("https://api.github.com/")
+      );
+      // The listing (discussion) and the post both authenticate as the app,
+      // never as the env token the function replaced; the pull request comes
+      // from ZUKE_REVIEW_PR, since the ref is the default branch.
+      assertEquals(github.length >= 2, true);
+      for (const call of github) {
+        const headers = new Headers(call.init?.headers);
+        assertEquals(headers.get("authorization"), "Bearer app-token");
+        assertEquals(call.url.includes("/issues/42/comments"), true);
+      }
+      // Resolved once for the discussion listing and once for the post (which
+      // lists, then writes, on one token): called per use, never cached here —
+      // a function that mints remembers its own result.
+      assertEquals(minted, 2);
+    },
+  );
+});

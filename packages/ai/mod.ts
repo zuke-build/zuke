@@ -57,6 +57,7 @@ export {
 } from "./src/suppress.ts";
 export { DiscussionSettings } from "./src/discussion.ts";
 export {
+  type CommentTokenSource,
   correctnessReviewer,
   genericReviewer,
   licenseReviewer,
@@ -64,4 +65,8 @@ export {
   secretsReviewer,
   securityReviewer,
 } from "./src/reviewer.ts";
-export { aiReviewWorkflow, type AiReviewWorkflowSpec } from "./src/workflow.ts";
+export {
+  aiReviewWorkflow,
+  type AiReviewWorkflowSpec,
+  ReviewCommandSettings,
+} from "./src/workflow.ts";

@@ -182,15 +182,15 @@ A few opt-in passes trade a little cost for findings that hold up:
   successful `.fetchBase()`), the file is read from that **base** via `git show`
   — never from the head under review, so a pull request cannot rewrite the rules
   it is judged by. A second argument caps its size (default ≈8000 tokens).
-- **`.criteriaFile(".github/review-criteria.md")`** feeds project-specific
-  notes the same way, and from the same **base** ref. It is the base-anchored
-  half of `.criteria(...)`: a note that records an accepted design suppresses
-  the findings that restate it, which makes it a rule the review is judged by,
-  and a pull request should not be able to add one to its own run. `.criteria`
-  itself is build code, evaluated by the build under review, so it is read from
-  the head and cannot be anything else — put what a branch should not be able
-  to widen in the file. The cost is one merge of lag, the same lag the
-  conventions document already accepts.
+- **`.criteriaFile(".github/review-criteria.md")`** feeds project-specific notes
+  the same way, and from the same **base** ref. It is the base-anchored half of
+  `.criteria(...)`: a note that records an accepted design suppresses the
+  findings that restate it, which makes it a rule the review is judged by, and a
+  pull request should not be able to add one to its own run. `.criteria` itself
+  is build code, evaluated by the build under review, so it is read from the
+  head and cannot be anything else — put what a branch should not be able to
+  widen in the file. The cost is one merge of lag, the same lag the conventions
+  document already accepts.
 - **`.fileContext()`** also sends the full post-image contents of the changed
   files (via `git show HEAD:<path>`, bounded — default ≈12000 tokens), letting
   the model check a suspicion against the surrounding code — the guard two
@@ -497,6 +497,83 @@ azReview = aiReviewWorkflow({ host: "azure", reviewers: [this.security] });
 bbReview = aiReviewWorkflow({ host: "bitbucket", reviewers: [this.security] });
 ```
 
+### On demand: a comment command
+
+The `pull_request` job skips a fork's pull request, and must: `./zuke review`
+runs the branch's own `zuke.ts`, launcher and imports, and a same-repository
+branch runs with the reviewers' keys and a `pull-requests: write` token in the
+environment. Running that on a fork's code would hand the secrets to whoever
+opened the pull request. Mirroring the fork's branch into the repository does
+not change that — it is still the fork's code that runs.
+
+A `command` adds the flow that does cover forks: a maintainer comments the
+command on the pull request, and a second job runs the review **from the default
+branch's checkout, with the pull request fetched as data**.
+
+```ts
+reviewWorkflow = aiReviewWorkflow({
+  reviewers: [this.security],
+  command: (c) =>
+    c.text("@zuke-build review")
+      // Only this job receives these — here, the GitHub App credentials the
+      // build mints its `.commentToken(...)` from, so the review posts as
+      // the app.
+      .secrets("ZUKE_BUILD_APP_ID", "ZUKE_BUILD_APP_KEY"),
+});
+```
+
+The generated job listens on `issue_comment` (GitHub delivers a pull request's
+conversation comments as issue comments) and runs only when every clause of its
+`if:` holds, all of them metadata GitHub asserts rather than anything in the
+comment's text: the comment is on a pull request; its author is not a bot
+account; the author's `author_association` is `OWNER`, `MEMBER` or
+`COLLABORATOR` (never `CONTRIBUTOR`, which anyone with one merged pull request
+carries); and the body starts with the command. An association alone is not push
+access: `MEMBER` is membership of the organisation and `COLLABORATOR` any direct
+collaborator, a read-only one included. So the job's first step after the
+checkout asks the collaborators API what the commenter may do, and stops with
+the reason unless the answer is `admin` or `write` — before any key is spent.
+`startsWith` is case-insensitive, and a reply that quotes the command
+(`> @zuke-build review`) does not start a run. The comment body is matched in
+the expression and never interpolated into a `run:` line.
+
+What runs is the default branch's build. The job passes `ZUKE_REVIEW_PR`, and
+every reviewer honours it ahead of its configured `git` source: it fetches
+GitHub's `refs/pull/<n>/merge` — the pull request merged onto its base — two
+commits deep, and diffs that merge against its first parent, which is exactly
+what merging the pull request changes and needs no history beyond those two
+commits. `conventionsFile` and `criteriaFile` are read from the parent (the base
+side), `fileContext` from the merge, and the comment lands on the pull request
+the variable names. A pull request that cannot be fetched — one with merge
+conflicts has no merge ref — **fails the gate** (or skips visibly under
+`onError("warn")`), never falls back to the checkout: on the default branch that
+diff is empty, and an empty diff would green the gate without reviewing
+anything. A literal `.diff((d) => d.text(...))` still wins, so tests are
+unaffected.
+
+That is the trust boundary the flow keeps: trusted code, untrusted input. The
+pull request's `zuke.ts`, suppressions and criteria never load, so it cannot
+change the rules it is judged by from this flow; the maintainer's comment is the
+human gate, as it is for Dependabot's `@dependabot` commands; and the diff and
+the thread are the same untrusted text the reviewers already read. The job also
+passes `ZUKE_REVIEW_COMMENT`, the command comment's id, for a build that wants
+to acknowledge the command — Zuke's own reacts 👀 on it before the reviewers
+start.
+
+Two things a build can set to make the reply come from the account the
+maintainer addressed. `.commentToken(...)` accepts a **function** that produces
+the token when a post first needs it, so the build can mint a GitHub App
+installation token narrowed to `pull_requests: write` (and `issues: write` for
+the reaction) and post as `<app>[bot]` instead of `github-actions[bot]`. And
+`.secrets(...)` on the command passes the App's credentials to that job alone;
+the `pull_request` job is unchanged. Comments an App posts do trigger
+`issue_comment` workflows (unlike `GITHUB_TOKEN`'s), which is what the bot check
+in the gate is for.
+
+The command is GitHub-only; the other hosts render no comment job. Concurrency
+is keyed on the pull request number for both events, since `github.ref` is the
+default branch for every comment-started run.
+
 ## Worked example: Zuke reviews itself
 
 Zuke's own build gates the `review` target with **two reviewers** on every
@@ -562,7 +639,13 @@ gate on the target: rather than the target vanishing silently when a key is
 absent, the reviewer runs, sees no key, and prints a "skipped — no API key" line
 (and a matching job-summary note). The
 [`ai-review.yml`](../.github/workflows/ai-review.yml) workflow runs
-`./zuke review` on pull requests (non-fork only, so the secrets are never
-exposed to untrusted code), passing `OPENAI_API_KEY`, the `GITHUB_TOKEN` (for
-the comments), and a `ZUKE_REVIEW_BASE` to diff against. Each assessment lands
-in that run's job summary and as an upserted PR comment.
+`./zuke review` in two ways. On every same-repository pull request it runs as
+the `pull_request` job — non-fork only, so the secrets are never exposed to code
+the repository does not control — passing `OPENAI_API_KEY` and the
+`GITHUB_TOKEN` for the comments. And on any pull request, a fork's included, a
+maintainer starts it by commenting `@zuke-build review`: the
+[comment command](#on-demand-a-comment-command) job runs the same target from
+master's checkout with that pull request fetched as data, posts as
+`zuke-build[bot]` (both reviewers share one `.commentToken(...)` that mints the
+App's token, narrowed to comments and reactions), and reacts 👀 on the comment
+first. Each assessment lands in that run's job summary and as a PR comment.

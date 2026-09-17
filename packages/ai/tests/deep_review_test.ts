@@ -86,7 +86,12 @@ Deno.test("buildFileContext reads files at HEAD within the budget", async () => 
     "HEAD:c.ts": "cccc".repeat(100),
   });
   // 150 tokens ≈ 600 chars: a.ts whole, b.ts truncated, c.ts omitted.
-  const context = await buildFileContext(["a.ts", "b.ts", "c.ts"], run, 150);
+  const context = await buildFileContext(
+    ["a.ts", "b.ts", "c.ts"],
+    run,
+    150,
+    "HEAD",
+  );
   assertEquals(context.includes("--- a.ts ---"), true);
   assertEquals(context.includes("… (file truncated) …"), true);
   assertEquals(context.includes("(omitted for budget: c.ts)"), true);
@@ -98,7 +103,25 @@ Deno.test("buildFileContext reads files at HEAD within the budget", async () => 
 
 Deno.test("buildFileContext skips unreadable files and can come up empty", async () => {
   const { run } = fakeGit({});
-  assertEquals(await buildFileContext(["missing.ts"], run, 100), "");
+  assertEquals(await buildFileContext(["missing.ts"], run, 100, "HEAD"), "");
+});
+
+Deno.test("buildFileContext reads from the head ref it is given", async () => {
+  // A pull request reviewed as data: the checkout is the default branch, so
+  // the changed file must be read from the fetched merge, not from HEAD.
+  const { run, calls } = fakeGit({
+    "refs/zuke/pull/7/merge:a.ts": "from the merge",
+    "HEAD:a.ts": "from the checkout",
+  });
+  const context = await buildFileContext(
+    ["a.ts"],
+    run,
+    100,
+    "refs/zuke/pull/7/merge",
+  );
+  assertEquals(context.includes("from the merge"), true);
+  assertEquals(context.includes("from the checkout"), false);
+  assertEquals(calls, [["git", "show", "refs/zuke/pull/7/merge:a.ts"]]);
 });
 
 // ─── conventionsFile ────────────────────────────────────────────────────────

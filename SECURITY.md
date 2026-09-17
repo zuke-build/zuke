@@ -100,6 +100,21 @@ boundaries, and the design-principle arguments behind the list below:
   write and persisted credential apply only to same-repository branches, never
   to code a fork controls. Workflow egress is audited by
   `step-security/harden-runner`.
+- **The comment-started AI review runs with secrets on any pull request.** The
+  `commandReview` job in `ai-review.yml` runs on `issue_comment` when a
+  maintainer (an `OWNER`, `MEMBER` or `COLLABORATOR`, and not a bot account)
+  comments `@zuke-build review` on a pull request — a fork's included, which the
+  `pull_request` job must skip. It holds `OPENAI_API_KEY` and the `zuke-build`
+  App's credentials, and it is safe for a fork because **the pull request's code
+  never runs there**: the job checks out `master`, and the reviewers fetch the
+  pull request's merge ref as data and diff it. The App's credentials are used
+  only to mint a token narrowed to `pull_requests` and `issues` write, so the
+  review posts as `zuke-build[bot]`; nothing the release needs is minted. The
+  maintainer's comment is the human gate, and the gate is the job's `if:`, every
+  clause of which reads metadata GitHub asserts. An association alone admits
+  read-only organisation members and collaborators, so the job's first step asks
+  the collaborators API for the commenter's permission and stops unless it is
+  `admin` or `write`, before any key is spent.
 
 ## Verifying a release
 

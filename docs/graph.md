@@ -4,7 +4,7 @@
 
 The dependency graph of [`zuke.ts`](../zuke.ts) — Zuke building itself. An arrow points from a dependency to the target that depends on it, so a target runs after everything that points at it. This is the same graph `./zuke graph` prints as text and `./zuke graph --output=html` renders interactively.
 
-42 target(s), 27 dependency edge(s). Regenerate with `./zuke graphDoc`; the `graphDocCheck` target in the CI gate fails when this page drifts from the build.
+43 target(s), 28 dependency edge(s). Regenerate with `./zuke graphDoc`; the `graphDocCheck` target in the CI gate fails when this page drifts from the build.
 
 ```mermaid
 flowchart TD
@@ -44,12 +44,13 @@ flowchart TD
   t33["scorecard"]
   t34["codeql"]
   t35["reviewBase"]
-  t36["review"]
-  t37["release"]
-  t38["actionRelease"]
-  t39["publishJsr"]
-  t40["publish"]
-  t41["default"]
+  t36["reviewAck"]
+  t37["review"]
+  t38["release"]
+  t39["actionRelease"]
+  t40["publishJsr"]
+  t41["publish"]
+  t42["default"]
   t1 --> t5
   t5 --> t6
   t6 --> t8
@@ -73,10 +74,11 @@ flowchart TD
   t31 --> t32
   t30 --> t32
   t29 --> t32
-  t35 --> t36
-  t37 --> t40
-  t39 --> t40
-  t32 --> t41
+  t35 --> t37
+  t36 --> t37
+  t38 --> t41
+  t40 --> t41
+  t32 --> t42
 ```
 
 ## Targets
@@ -119,7 +121,8 @@ flowchart TD
 | `scorecard` | OpenSSF Scorecard (runs in CI via scorecard.yml) | — |
 | `codeql` | CodeQL static analysis (runs in CI via codeql.yml) | — |
 | `reviewBase` | Fetch the base branch the AI review diffs against | — |
-| `review` | AI review of the diff (security + code quality) | `reviewBase` |
+| `reviewAck` | Acknowledge the comment that asked for the AI review | — |
+| `review` | AI review of the diff (security + code quality) | `reviewBase`, `reviewAck` |
 | `release` | Maintain release PRs and GitHub releases (release-please) | — |
 | `actionRelease` | Tag a new version of the Marketplace action when it changed | — |
 | `publishJsr` | Publish new package versions to JSR, core first | — |

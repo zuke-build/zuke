@@ -20142,6 +20142,44 @@ class GateSettings
   rules_(): GateRule[]
     The configured gate rules, in the order they were added.
 
+class ReviewCommandSettings
+  The comment command that runs the review on demand, configured through
+  {@link AiReviewWorkflowSpec.command}.
+
+  The job it adds runs on `issue_comment`, which GitHub delivers for comments on
+  pull requests too, always from the default branch and always with the
+  repository's secrets — so its `if:` is the whole access control. It fires only
+  when the comment is on a pull request, starts with {@link text}, was written
+  by a human (not a bot account), and its author's `author_association` is
+  `OWNER`, `MEMBER` or `COLLABORATOR`. The comment body is matched in the
+  expression and never interpolated into a `run:` line. Then, before the
+  review runs, the job asks the collaborators API whether the commenter has
+  push access, and stops if not — an association alone admits read-only
+  members and collaborators.
+
+  What runs is the default branch's build, never the pull request's: the job
+  passes `ZUKE_REVIEW_PR`, and the reviewers fetch that pull request's merge
+  as data and diff it. That is what makes the flow safe for a fork — the code
+  under review is read, not executed — and it is why a pull request cannot
+  change the rules it is judged by from this flow: its `zuke.ts`, suppressions
+  and criteria never load. The maintainer's comment is the human gate, as it
+  is for Dependabot's `@dependabot` commands.
+
+  text_?: string
+    The command a comment must start with. Set by {@link text}.
+  secrets_: string[]
+    Secrets the command job's review step receives beyond the reviewers' own
+    keys and the host token. Set by {@link secrets}.
+  text(command: string): this
+    The command, e.g. `"@zuke-build review"`. Matched case-insensitively at
+    the start of the comment, so a reply that quotes it (`> @zuke-build review`) does not start a run. Letters, digits, `@/_.:-` and single spaces
+    only.
+  secrets(...names: string[]): this
+    Pass these repository secrets to the command job's review step as env vars
+    of the same name — e.g. the GitHub App credentials the build mints its
+    `commentToken` from, so the review posts as the app. Only the command job
+    receives them; the `pull_request` job is unchanged.
+
 class Reviewer implements Validation
   A fluent AI reviewer. Construct one via {@link securityReviewer} (and the
   sibling factories), configure it, and attach it to a target with
@@ -20158,7 +20196,7 @@ class Reviewer implements Validation
     The configured API key (a parameter — for its env var — or a literal).
   get commentEnabled_(): boolean
     Whether `.comment()` is set — i.e. this reviewer posts to the PR.
-  get commentToken_(): AnyParameter | string | undefined
+  get commentToken_(): CommentTokenSource | undefined
     The configured comment-posting token, if `.commentToken(...)` was called.
   provider(provider: Provider): this
     Set the model provider (required).
@@ -20218,11 +20256,19 @@ class Reviewer implements Validation
     every run, so earlier assessments — and their finding ids — stay on the
     thread as history. The discussion feature works with both: its state block
     rides on every comment, and the newest one is read back.
-  commentToken(token: AnyParameter | string): this
+  commentToken(token: CommentTokenSource): this
     The token used to post the PR/MR comment. Defaults to the active host's
     conventional env var: `GITHUB_TOKEN` (GitHub), `GITLAB_TOKEN` (GitLab),
     `SYSTEM_ACCESSTOKEN` (Azure), `BITBUCKET_TOKEN` (Bitbucket).
-  githubToken(token: AnyParameter | string): this
+
+    A function is called each time a post needs the token — for a token that
+    does not exist until the build mints it, such as a GitHub App installation
+    token narrowed to `pull_requests: write`, which makes the comments the
+    app's rather than `github-actions[bot]`'s. A function that mints should
+    remember its result, since a review posts more than once. The generated
+    workflow cannot name a secret for a function, so it passes the host's
+    default token alongside, for the function to fall back to.
+  githubToken(token: CommentTokenSource): this
     Backwards-compatible alias for {@link commentToken}.
   quiet(): this
     Suppress the findings printout and the job-summary section.
@@ -20406,6 +20452,20 @@ interface AiReviewWorkflowSpec
     Workflow name shown in the host's UI. Defaults to `"AI Review"`.
   timeoutMinutes?: number
     Per-job timeout in minutes. Defaults to 15.
+  command?: Configure<ReviewCommandSettings>
+    Run the review on demand when a maintainer comments a command on a pull
+    request — any pull request, a fork's included. GitHub only; see
+    {@link ReviewCommandSettings} for the job it adds and the gate it runs
+    behind.
+
+    ```ts
+    aiReviewWorkflow({
+      reviewers: [this.security],
+      command: (c) =>
+        c.text("@zuke-build review")
+          .secrets("ZUKE_BUILD_APP_ID", "ZUKE_BUILD_APP_KEY"),
+    });
+    ```
 
 interface Assessment
   The structured result of a review.
@@ -20579,6 +20639,12 @@ type AgentRunner = (context: AgentContext) => Promise<AgentResult> | AgentResult
 
 type AssessmentType = "generic" | "security" | "secrets" | "correctness" | "license"
   The kind of review an assessment performs.
+
+type CommentTokenSource = AnyParameter | string | (() => Promise<string>)
+  Where a reviewer's comment-posting token comes from: a secret parameter (for
+  its env var), a literal, or a function that produces the token when a post
+  first needs it — the shape for a token minted by the build itself, such as a
+  GitHub App installation token, so the comments carry the app's identity.
 
 type Confidence = "low" | "medium" | "high"
   The model's confidence that a fix is correct.

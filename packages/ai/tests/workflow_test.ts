@@ -10,6 +10,7 @@ import { Build, discoverParameters, parameter, target } from "@zuke/core";
 import {
   aiReviewWorkflow,
   genericReviewer,
+  type ReviewCommandSettings,
   type Reviewer,
   securityReviewer,
 } from "../mod.ts";
@@ -48,16 +49,20 @@ Deno.test("the generated YAML carries the right triggers, permissions, concurren
   assertStringIncludes(yaml, "name: AI Review");
   // Every branch's pull requests.
   assertStringIncludes(yaml, "pull_request: {}");
-  // Comment is enabled on at least one reviewer → pull-requests write.
-  assertStringIncludes(yaml, "permissions:\n  contents: read");
-  assertStringIncludes(yaml, "pull-requests: write");
-  // Concurrency keyed by workflow + ref, cancel-in-progress true.
-  assertStringIncludes(yaml, "concurrency:\n  group:");
-  assertStringIncludes(yaml, "cancel-in-progress: true");
-  // Fork gating.
+  // Comment is enabled on at least one reviewer → pull-requests write, on the
+  // job that posts; the workflow itself stays read-only.
+  assertStringIncludes(yaml, "permissions:\n  contents: read\njobs:");
   assertStringIncludes(
     yaml,
-    'if: "${{ github.event.pull_request.head.repo.fork',
+    "    permissions:\n      contents: read\n      pull-requests: write",
+  );
+  // Concurrency on the job, cancel-in-progress true.
+  assertStringIncludes(yaml, "    concurrency:\n      group:");
+  assertStringIncludes(yaml, "cancel-in-progress: true");
+  // Fork gating, on the pull_request event by name.
+  assertStringIncludes(
+    yaml,
+    "if: \"${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}\"",
   );
   // Job-level timeout matches the original hand-written workflow.
   assertStringIncludes(yaml, "timeout-minutes: 15");
@@ -437,4 +442,208 @@ Deno.test("the prelude pin comes from the resolver, not core's fallback", () => 
   const yaml = b.wf.render();
 
   assertStringIncludes(yaml, `zuke-build/zuke@${"e".repeat(40)} # v9`);
+});
+
+// ─── command: the on-demand job ─────────────────────────────────────────────
+
+/** A build whose workflow declares the comment command. */
+function commandBuild(
+  configure = (c: ReviewCommandSettings) =>
+    c.text("@zuke-build review").secrets("APP_ID", "APP_KEY"),
+): string {
+  class B extends Build {
+    key = parameter("Key").secret().env("OPENAI_API_KEY");
+    security = securityReviewer((r) =>
+      r.provider("openai").apiKey(this.key).comment()
+    );
+    review = target().validateBefore(this.security).executes(() => {});
+    wf = aiReviewWorkflow({ reviewers: [this.security], command: configure });
+  }
+  const b = new B();
+  discoverParameters(b);
+  return b.wf.render();
+}
+
+Deno.test("command adds the issue_comment trigger and a job gated on the command, a human maintainer and a pull request", () => {
+  const yaml = commandBuild();
+  assertStringIncludes(yaml, "pull_request: {}");
+  assertStringIncludes(yaml, "issue_comment:\n    types:\n      - created");
+  assertStringIncludes(yaml, "commandReview:\n    name: AI review on command");
+  // Every clause of the gate reads metadata GitHub asserts; the body is only
+  // prefix-matched, so a reply quoting the command (`> @zuke-build review`)
+  // does not match.
+  const gate =
+    yaml.split("\n").find((line) =>
+      line.includes("github.event_name == 'issue_comment'")
+    ) ?? "";
+  assertStringIncludes(gate, "github.event.issue.pull_request &&");
+  assertStringIncludes(gate, "github.event.comment.user.type != 'Bot'");
+  for (const association of ["OWNER", "MEMBER", "COLLABORATOR"]) {
+    assertStringIncludes(
+      gate,
+      `github.event.comment.author_association == '${association}'`,
+    );
+  }
+  assertEquals(gate.includes("CONTRIBUTOR"), false);
+  assertStringIncludes(
+    gate,
+    "startsWith(github.event.comment.body, '@zuke-build review')",
+  );
+  // The comment's text never reaches a `run:` line — only the number of the
+  // pull request and the id of the comment do, as env.
+  assertEquals(yaml.includes("github.event.comment.body }}"), false);
+  assertStringIncludes(
+    yaml,
+    'ZUKE_REVIEW_PR: "${{ github.event.issue.number }}"',
+  );
+  assertStringIncludes(
+    yaml,
+    'ZUKE_REVIEW_COMMENT: "${{ github.event.comment.id }}"',
+  );
+});
+
+Deno.test("the command job carries the named secrets and no base fetch; the pull_request job is unchanged", () => {
+  const yaml = commandBuild();
+  const [reviewJob, commandJob] = yaml.split("  commandReview:");
+  // Only the command job receives the extra secrets.
+  assertStringIncludes(commandJob, 'APP_ID: "${{ secrets.APP_ID }}"');
+  assertStringIncludes(commandJob, 'APP_KEY: "${{ secrets.APP_KEY }}"');
+  assertEquals(reviewJob.includes("APP_ID"), false);
+  // Both get the reviewers' keys and the host token.
+  assertStringIncludes(
+    commandJob,
+    'OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}"',
+  );
+  assertStringIncludes(
+    commandJob,
+    'GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"',
+  );
+  // The reviewers fetch the pull request themselves: no base fetch step and no
+  // base hint on the command job, which would point at the default branch.
+  assertEquals(commandJob.includes("Fetch the base branch"), false);
+  assertEquals(commandJob.includes("ZUKE_REVIEW_BASE"), false);
+  assertStringIncludes(reviewJob, "Fetch the base branch");
+  assertStringIncludes(reviewJob, "ZUKE_REVIEW_BASE: FETCH_HEAD");
+  // The pull_request job now states its event, since the workflow has two.
+  assertStringIncludes(
+    reviewJob,
+    "if: \"${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}\"",
+  );
+  // Same prelude and timeout on both.
+  assertEquals(commandJob.includes("uses: zuke-build/zuke@"), true);
+  assertStringIncludes(commandJob, "timeout-minutes: 15");
+});
+
+Deno.test("concurrency is per job and keyed on the pull request, never on the workflow", () => {
+  // The review's own comment, posted as an app, fires `issue_comment` again.
+  // That run is skipped by the bot check — but a workflow-level group would
+  // still admit it, and cancel-in-progress would cancel the review mid-post.
+  // A skipped job never enters a job-level group. `github.ref` is the default
+  // branch for every comment-started run, so the key is the pull request.
+  const yaml = commandBuild();
+  assertEquals(yaml.includes("\nconcurrency:"), false);
+  assertEquals(yaml.includes("${{ github.ref }}"), false);
+  const [reviewJob, commandJob] = yaml.split("  commandReview:");
+  assertStringIncludes(
+    reviewJob,
+    '    concurrency:\n      group: "ai-review-${{ github.workflow }}-review-${{ github.event.pull_request.number }}"\n      cancel-in-progress: true',
+  );
+  assertStringIncludes(
+    commandJob,
+    '    concurrency:\n      group: "ai-review-${{ github.workflow }}-commandReview-${{ github.event.issue.number }}"\n      cancel-in-progress: true',
+  );
+  // The same shape without a command: one job, its own group.
+  const plain = dualBuild().wf.render();
+  assertEquals(plain.includes("\nconcurrency:"), false);
+  assertStringIncludes(
+    plain,
+    "-review-${{ github.event.pull_request.number }}",
+  );
+});
+
+Deno.test("without a command there is no issue_comment trigger and no second job", () => {
+  const yaml = dualBuild().wf.render();
+  assertEquals(yaml.includes("issue_comment"), false);
+  assertEquals(yaml.includes("commandReview"), false);
+  assertEquals(yaml.includes("ZUKE_REVIEW_PR"), false);
+});
+
+Deno.test("a command that could break out of the expression, or no command text, is rejected", () => {
+  for (
+    const text of [
+      "",
+      "review') || true || ('",
+      "@zuke\nreview",
+      "two  spaces",
+      " lead",
+    ]
+  ) {
+    assertThrows(
+      () => commandBuild((c) => c.text(text)),
+      Error,
+      "is not a valid comment command",
+    );
+  }
+  assertThrows(
+    () => commandBuild((c) => c),
+    Error,
+    "is not a valid comment command",
+  );
+  assertThrows(
+    () => commandBuild((c) => c.text("/zuke review").secrets("BAD-NAME")),
+    Error,
+    "is not a valid secret name",
+  );
+  // The shapes the docs suggest all pass.
+  for (const text of ["@zuke-build review", "/zuke review", "zuke: review"]) {
+    assertStringIncludes(commandBuild((c) => c.text(text)), text);
+  }
+});
+
+Deno.test("the command is GitHub-only: another host renders no comment job", () => {
+  class B extends Build {
+    key = parameter("Key").secret().env("K");
+    rev = securityReviewer((r) => r.provider("claude").apiKey(this.key));
+    review = target().validateBefore(this.rev).executes(() => {});
+    wf = aiReviewWorkflow({
+      host: "gitlab",
+      reviewers: [this.rev],
+      command: (c) => c.text("@zuke-build review"),
+    });
+  }
+  const b = new B();
+  discoverParameters(b);
+  const yaml = b.wf.render();
+  assertEquals(yaml.includes("issue_comment"), false);
+  assertEquals(yaml.includes("commandReview"), false);
+});
+
+Deno.test("the command job checks the commenter's push access before the review", () => {
+  // `author_association` admits read-only members and collaborators, so the
+  // job asks the collaborators API first: admin/write pass, read/none fail.
+  const commandJob = commandBuild().split("  commandReview:")[1];
+  const check = commandJob.indexOf("Require push access for the commenter");
+  const review = commandJob.indexOf("AI review with Zuke");
+  assertEquals(check > 0 && check < review, true);
+  const step = commandJob.slice(check, review);
+  assertStringIncludes(step, 'GH_TOKEN: "${{ github.token }}"');
+  assertStringIncludes(
+    step,
+    'ZUKE_REVIEW_ACTOR: "${{ github.event.comment.user.login }}"',
+  );
+  assertStringIncludes(step, "collaborators/$ZUKE_REVIEW_ACTOR/permission");
+  assertStringIncludes(step, "admin|write)");
+  assertStringIncludes(step, "exit 1");
+  // Fails closed, explicitly: its own shell and flags, and an API call that
+  // cannot be read refuses the run rather than falling through.
+  assertStringIncludes(step, "shell: bash");
+  assertStringIncludes(step, "set -euo pipefail");
+  assertStringIncludes(step, "refusing to run the review");
+  // The login is validated before it is put in a URL, and it reaches the
+  // script only as env — never interpolated into the script text.
+  assertStringIncludes(step, "*[!A-Za-z0-9-]*)");
+  assertEquals(
+    step.split("${{ github.event.comment.user.login }}").length,
+    2,
+  );
 });

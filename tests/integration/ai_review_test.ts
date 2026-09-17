@@ -49,6 +49,8 @@ interface Call {
   url: string;
   method: string;
   body: string;
+  /** The `Authorization` header, recorded by the fake that asserts on it. */
+  authorization?: string;
 }
 
 /**
@@ -69,6 +71,7 @@ function fakeFetch(
       url,
       method,
       body: typeof init?.body === "string" ? init.body : "",
+      authorization: new Headers(init?.headers).get("authorization") ?? "",
     });
     if (url.startsWith("https://api.github.com/")) {
       if (url.endsWith("/user")) {
@@ -575,4 +578,84 @@ Deno.test("a reworded finding inherits its dismissal through the CLI", async () 
   assertEquals(state?.findings.length, 1);
   assertEquals(state?.findings[0].id, ID);
   assertEquals(state?.findings[0].aliases, [rewordedId]);
+});
+
+Deno.test("a maintainer's comment reviews a pull request that is not checked out", async () => {
+  // The comment-started job: the checkout is the default branch, and the
+  // command job passes the pull request's number. The reviewer must fetch that
+  // pull request's merge and review it as data — reading the rules from the
+  // base side and the changed file from the merge — and post to it with the
+  // token the build minted, never with the env token.
+  const { fetch, calls } = fakeFetch([], [
+    claude({ score: 0, findings: [] }),
+  ]);
+  const gitCalls: string[][] = [];
+  const exec = (argv: string[]) => {
+    gitCalls.push(argv);
+    if (argv[1] === "diff") return Promise.resolve(DIFF);
+    if (argv[1] === "show") return Promise.resolve(`<${argv[2]}>`);
+    return Promise.resolve("");
+  };
+  const executed: string[] = [];
+  class Pipeline extends Build {
+    review = securityReviewer((r) =>
+      r.provider("claude").apiKey("test-key")
+        .comment()
+        .commentToken(() => Promise.resolve("minted-app-token"))
+        .diff((d) => d.base("origin/master"))
+        .conventionsFile("AGENTS.md")
+        .fileContext()
+        .exec(exec)
+        .fetch(fetch)
+    );
+    deploy = target()
+      .description("Deploy, gated by the AI review")
+      .validateBefore(this.review)
+      .executes(() => {
+        executed.push("deploy");
+        return Promise.resolve();
+      });
+  }
+
+  await withEnv(
+    {
+      GITHUB_ACTIONS: "true",
+      GITHUB_REPOSITORY: "zuke-build/zuke",
+      GITHUB_REF: "refs/heads/master",
+      GITHUB_TOKEN: "env-token",
+      ZUKE_REVIEW_PR: "7",
+      GITHUB_STEP_SUMMARY: undefined,
+    },
+    async () => {
+      const result = await runCli(Pipeline, ["deploy"]);
+      assertEquals(result.code, 0);
+      assertEquals(executed, ["deploy"]);
+    },
+  );
+
+  const merge = "refs/zuke/pull/7/merge";
+  assertEquals(gitCalls[0], [
+    "git",
+    "fetch",
+    "--no-tags",
+    "--depth=2",
+    "origin",
+    `+refs/pull/7/merge:${merge}`,
+  ]);
+  assertEquals(gitCalls[1], ["git", "diff", `${merge}^1`, merge]);
+  assertEquals(gitCalls.some((g) => g[2] === `${merge}^1:AGENTS.md`), true);
+  assertEquals(gitCalls.some((g) => g[2] === `${merge}:src/app.ts`), true);
+  // The prompt saw the base's rules and the merge's file, not the checkout's.
+  const prompt = JSON.parse(calls[0].body).messages[0].content;
+  assertStringIncludes(prompt, `<${merge}^1:AGENTS.md>`);
+  assertStringIncludes(prompt, `<${merge}:src/app.ts>`);
+  // The comment landed on pull request 7, authenticated as the minted token.
+  const write = calls.find((c) =>
+    c.url.startsWith("https://api.github.com/") && c.method === "POST"
+  );
+  assertEquals(
+    write?.url,
+    "https://api.github.com/repos/zuke-build/zuke/issues/7/comments",
+  );
+  assertEquals(write?.authorization, "Bearer minted-app-token");
 });
