@@ -3018,6 +3018,12 @@ interface CiJob
     `condition:`. Ignored on GitLab. Use it to e.g. skip forked pull requests.
   timeoutMinutes?: number
     Fail the job if it runs longer than this many minutes.
+  concurrency?: CiConcurrency
+    A concurrency group for this job alone (GitHub only), as opposed to the
+    pipeline-level {@link CiPipeline.concurrency}. A job the `if:` skips never
+    enters its group, whereas a run whose every job is skipped still enters the
+    pipeline's — and, with `cancelInProgress`, cancels the run it shares the
+    group with. Use it when a trigger can fire runs that do no work.
   steps?: CiStep[]
     The steps to run, in order. Defaults to a single step that runs the build.
 
@@ -3116,6 +3122,13 @@ interface CiTriggers
     it changes what a check should see without pushing a commit. GitHub only.
   manual?: boolean
     Allow manual runs (workflow dispatch / web).
+  issueComment?: string[]
+    Run when a comment is created, edited, or deleted on an issue or a pull
+    request (`issue_comment`), filtered to these activity types — an empty
+    array means every type. A comment on a pull request arrives as an issue
+    comment too, which is what lets a maintainer's comment start a job; the job
+    runs on the default branch, so its `if:` must decide who may start it.
+    GitHub only.
   branchProtectionRule?: boolean
     Run when a branch protection rule is created, edited, or deleted
     (`branch_protection_rule`) — a supply-chain scan wants to re-score when the

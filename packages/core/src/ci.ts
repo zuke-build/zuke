@@ -262,6 +262,14 @@ export interface CiJob {
   if?: string;
   /** Fail the job if it runs longer than this many minutes. */
   timeoutMinutes?: number;
+  /**
+   * A concurrency group for this job alone (GitHub only), as opposed to the
+   * pipeline-level {@link CiPipeline.concurrency}. A job the `if:` skips never
+   * enters its group, whereas a run whose every job is skipped still enters the
+   * pipeline's — and, with `cancelInProgress`, cancels the run it shares the
+   * group with. Use it when a trigger can fire runs that do no work.
+   */
+  concurrency?: CiConcurrency;
   /** The steps to run, in order. Defaults to a single step that runs the build. */
   steps?: CiStep[];
 }
@@ -287,6 +295,15 @@ export interface CiTriggers {
   pullRequestTypes?: string[];
   /** Allow manual runs (workflow dispatch / web). */
   manual?: boolean;
+  /**
+   * Run when a comment is created, edited, or deleted on an issue or a pull
+   * request (`issue_comment`), filtered to these activity types — an empty
+   * array means every type. A comment on a pull request arrives as an issue
+   * comment too, which is what lets a maintainer's comment start a job; the job
+   * runs on the default branch, so its `if:` must decide who may start it.
+   * GitHub only.
+   */
+  issueComment?: string[];
   /**
    * Run when a branch protection rule is created, edited, or deleted
    * (`branch_protection_rule`) — a supply-chain scan wants to re-score when the
@@ -727,6 +744,9 @@ function github(pipeline: CiPipeline): YamlValue {
     );
   }
   if (triggers.manual) on.workflow_dispatch = {};
+  if (triggers.issueComment) {
+    on.issue_comment = githubTrigger([], triggers.issueComment);
+  }
   if (triggers.branchProtectionRule) on.branch_protection_rule = {};
   // A tz-aware schedule compiles to UTC cron(s); a DST zone adds a guard job.
   const scheduleCrons = [
@@ -778,6 +798,12 @@ function github(pipeline: CiPipeline): YamlValue {
         }
         : undefined,
       env: job.env,
+      concurrency: job.concurrency
+        ? {
+          group: job.concurrency.group,
+          "cancel-in-progress": job.concurrency.cancelInProgress,
+        }
+        : undefined,
       steps,
     };
   }
