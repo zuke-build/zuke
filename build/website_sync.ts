@@ -13,6 +13,11 @@ import { ConsoleTasks } from "@zuke/console";
 import { DocsTasks } from "@zuke/docs";
 import { GitTasks } from "@zuke/git";
 import { GhTasks } from "@zuke/gh";
+import {
+  type AppCredentials,
+  mintAppToken,
+  resolveAppCredentials,
+} from "./app_token.ts";
 import { collectPackageDocs, docsOptions } from "./docs.ts";
 import { writeApiJson } from "./api_reference.ts";
 import { localVersion, PACKAGES } from "./packages.ts";
@@ -76,30 +81,6 @@ export function resolveSyncRepo(env: { repo?: string }): string {
 }
 
 /**
- * The credentials of the GitHub App the sync mints its cross-repo token from,
- * when no explicit `WEBSITE_SYNC_TOKEN` is supplied.
- */
-export interface AppCredentials {
-  /** The app's id (`ZUKE_BUILD_APP_ID`). */
-  appId: string;
-  /** The app's PEM private key (`ZUKE_BUILD_APP_KEY`). */
-  privateKey: string;
-}
-
-/**
- * The app credentials in `env`, or `null` when either half is missing — absent
- * locally and on fork PRs, where the sync skips rather than fails.
- */
-export function resolveAppCredentials(
-  env: { appId?: string; privateKey?: string },
-): AppCredentials | null {
-  const { appId, privateKey } = env;
-  if (appId === undefined || appId === "") return null;
-  if (privateKey === undefined || privateKey === "") return null;
-  return { appId, privateKey };
-}
-
-/**
  * Whether a token may be *minted* for `repo`.
  *
  * Minting is the powerful path, so it is restricted to the one repository this
@@ -133,21 +114,14 @@ export function mintRefusal(repo: string): string {
  * a pull request, and the squash-merge of it (the merge API is a contents write,
  * so it needs no third permission).
  */
-export async function mintWebsiteToken(
+export function mintWebsiteToken(
   credentials: AppCredentials,
   repo: string,
 ): Promise<string> {
-  const [owner, name] = repo.split("/");
-  const { token } = await GhTasks.appToken((s) =>
-    s
-      .appId(credentials.appId)
-      .privateKey(credentials.privateKey)
-      .owner(owner)
-      .repositories(name)
-      .permission("contents", "write")
-      .permission("pull_requests", "write")
-  );
-  return token;
+  return mintAppToken(credentials, repo, {
+    contents: "write",
+    pull_requests: "write",
+  });
 }
 
 /** The sync branch name and commit message for a given `core` version. */

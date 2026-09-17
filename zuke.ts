@@ -68,6 +68,7 @@ import {
   releaseIsOwed,
   workflowActionInputs,
 } from "./build/action_release.ts";
+import { mintAppToken } from "./build/app_token.ts";
 import { localVersion, PACKAGES } from "./build/packages.ts";
 import {
   acknowledgeReviewCommand,
@@ -1531,21 +1532,15 @@ class ZukeBuild extends Build {
               `for.`,
           );
         }
-        const { token } = await GhTasks.appToken((s) =>
-          s
-            .appId(appId)
-            .privateKey(privateKey)
-            .owner(owner)
-            .repositories(name)
-            // Exactly what this target performs: the tags and the branch are
-            // contents, the proposal is pull_requests, and `workflows` is what
-            // makes writing the regenerated workflow files permitted at all.
-            .permission("contents", "write")
-            .permission("pull_requests", "write")
-            .permission("workflows", "write")
-        );
-        minted = token;
-        return token;
+        // Exactly what this target performs: the tags and the branch are
+        // contents, the proposal is pull_requests, and `workflows` is what
+        // makes writing the regenerated workflow files permitted at all.
+        minted = await mintAppToken({ appId, privateKey }, `${owner}/${name}`, {
+          contents: "write",
+          pull_requests: "write",
+          workflows: "write",
+        });
+        return minted;
       };
 
       const result = await releaseAction({

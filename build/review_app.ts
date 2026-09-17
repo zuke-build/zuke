@@ -18,13 +18,13 @@
  * @module
  */
 
-import {
-  type GhAppTokenResult,
-  type GhAppTokenSettings,
-  GhTasks,
-} from "@zuke/gh";
 import { ACTION_SLUG } from "./action_release.ts";
-import { type AppCredentials, resolveAppCredentials } from "./website_sync.ts";
+import {
+  type AppCredentials,
+  type AppTokenMint,
+  mintAppToken,
+  resolveAppCredentials,
+} from "./app_token.ts";
 
 /** An environment reader — `Deno.env.get` in the build, a map in tests. */
 export type EnvReader = (name: string) => string | undefined;
@@ -42,24 +42,15 @@ const API = "https://api.github.com";
  * comments). Nothing the release needs is requested, so this token cannot tag,
  * push, or touch a workflow file.
  */
-export async function mintReviewToken(
+export function mintReviewToken(
   credentials: AppCredentials,
   repo: string,
-  appToken: (
-    configure: (s: GhAppTokenSettings) => GhAppTokenSettings,
-  ) => Promise<GhAppTokenResult> = GhTasks.appToken,
+  appToken?: AppTokenMint,
 ): Promise<string> {
-  const [owner, name] = repo.split("/");
-  const { token } = await appToken((s) =>
-    s
-      .appId(credentials.appId)
-      .privateKey(credentials.privateKey)
-      .owner(owner)
-      .repositories(name)
-      .permission("pull_requests", "write")
-      .permission("issues", "write")
-  );
-  return token;
+  return mintAppToken(credentials, repo, {
+    pull_requests: "write",
+    issues: "write",
+  }, appToken);
 }
 
 /**

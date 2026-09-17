@@ -18,7 +18,7 @@ import {
   mintReviewToken,
   reviewCommentToken,
 } from "../build/review_app.ts";
-import type { AppCredentials } from "../build/website_sync.ts";
+import type { AppCredentials } from "../build/app_token.ts";
 import { GhAppTokenSettings } from "../packages/gh/mod.ts";
 
 /** A reader over a fixed env map. */
