@@ -529,5 +529,11 @@ export async function runImport(
     return { ...setup, source: candidate.source, taskCount: tasks.length };
   }
 
-  return { files: [], source: null, taskCount: 0 };
+  return {
+    files: [],
+    manualSteps: [],
+    notes: [],
+    source: null,
+    taskCount: 0,
+  };
 }

@@ -22,6 +22,7 @@ import {
   type McpSetupOptions,
   runSetup,
   type SetupHost,
+  type SetupResult,
 } from "./src/setup.ts";
 import { type ImportSource, runImport } from "./src/import.ts";
 import {
@@ -282,6 +283,11 @@ async function commandSetup(
     host,
   );
   const written = result.files.filter((f) => f.status !== "skipped").length;
+  reportNotes(host, result);
+  if (result.manualSteps.length > 0) {
+    reportManualSteps(host, result, `${written} file(s) written`);
+    return 1;
+  }
   host.log(
     `Done — ${written} file(s) written. Next: ./${launcherName ?? "zuke"}`,
   );
@@ -289,6 +295,31 @@ async function commandSetup(
     await promptStar(host, prompter, starActions);
   }
   return 0;
+}
+
+/** Print the advisory notes a scaffold run collected, if any. */
+function reportNotes(host: SetupHost, result: SetupResult): void {
+  for (const note of result.notes) host.log(`  note     ${note}`);
+}
+
+/**
+ * Report a scaffold that could not be finished automatically.
+ *
+ * The files are on disk, but the build cannot run until the reader acts, so
+ * this never prints `Next: ./zuke` — the caller returns a non-zero exit code.
+ * A scaffold that claims success over a build that errors on its first import
+ * is worse than one that says plainly what is left to do.
+ */
+function reportManualSteps(
+  host: SetupHost,
+  result: SetupResult,
+  written: string,
+): void {
+  host.log(
+    `Incomplete — ${written}, but ${result.manualSteps.length} step(s) ` +
+      `need you:`,
+  );
+  for (const step of result.manualSteps) host.log(`  - ${step}`);
 }
 
 /** Flags accepted by `zuke import` — the setup flags plus `--from`. */
@@ -359,6 +390,16 @@ async function commandImport(
     return 1;
   }
   const written = result.files.filter((f) => f.status !== "skipped").length;
+  reportNotes(host, result);
+  if (result.manualSteps.length > 0) {
+    reportManualSteps(
+      host,
+      result,
+      `imported ${result.taskCount} task(s) from ${result.source}, ` +
+        `${written} file(s) written`,
+    );
+    return 1;
+  }
   host.log(
     `Done — imported ${result.taskCount} task(s) from ${result.source}; ` +
       `${written} file(s) written. Next: ./zuke`,

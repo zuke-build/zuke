@@ -97,10 +97,18 @@ wrappers.
   inlined one would fail the project's own `deno task lint` on its only source
   file. The caret major is pinned in the import map instead. Merging is additive
   per key: a task or import the file already declares is kept exactly as it is
-  (so a deliberate version pin survives), only what is missing is added, and an
-  unparseable file is skipped with a notice. A file that has the `zuke` task but
-  not the imports is still completed — skipping it would leave the `zuke.ts`
-  written in the same run with nothing to resolve.
+  (so a deliberate version pin survives), only what is missing is added. A file
+  that has the `zuke` task but not the imports is still completed — skipping it
+  would leave the `zuke.ts` written in the same run with nothing to resolve. Two
+  shapes cannot be completed automatically, and setup reports them as steps for
+  you and **exits 1** rather than printing `Next: ./zuke` over a build that
+  cannot start: a `deno.json` that is JSONC (Deno accepts `//` comments and
+  trailing commas that a JSON parser does not, and rewriting the file would
+  discard them), and one that delegates via `importMap` to a separate file (Deno
+  ignores that field the moment `imports` appears beside it, so the entry
+  belongs in the other file). Both are left byte-for-byte untouched. A mapping
+  that already points somewhere other than the JSR package is kept — that is how
+  a pin or a local checkout survives — with a note saying so.
 - **`zuke.json`** — `{ "name": "..." }`, which marks the repo root.
 - **`.gitignore`** — created or appended so `.zuke/` is ignored (the cache and
   durable run state live there); untouched if it already covers it.
@@ -151,10 +159,10 @@ heal a stale lockfile where `./zuke` would fail on it.
 
 ## Manual setup (no CLI)
 
-Declare the packages the build imports in `deno.json` — bare specifier to
-`jsr:` dependency, caret major — so the build can import them by bare
-specifier. An inline `jsr:@zuke/core@^1` in the import statement fails
-`deno lint` under its default `no-import-prefix` rule:
+Declare the packages the build imports in `deno.json` — bare specifier to `jsr:`
+dependency, caret major — so the build can import them by bare specifier. An
+inline `jsr:@zuke/core@^1` in the import statement fails `deno lint` under its
+default `no-import-prefix` rule:
 
 ```json
 {

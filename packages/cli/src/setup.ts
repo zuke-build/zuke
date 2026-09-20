@@ -53,6 +53,44 @@ const DEFAULT_TASKS: ReadonlyArray<readonly [string, string]> = [
 export type ScaffoldImports = Readonly<Record<string, string>>;
 
 /**
+ * Add every entry of `defaults` that `root[key]` does not already declare,
+ * leaving the ones it does exactly as they are.
+ *
+ * Shared by the `imports` and `tasks` merges, which differ only in the
+ * collection they draw from: one implementation, so the "never overwrite what
+ * the project already declared" rule cannot come to mean two things.
+ */
+function mergeMissing(
+  root: Record<string, unknown>,
+  key: string,
+  defaults: Iterable<readonly [string, string]>,
+): void {
+  const existing = root[key];
+  const merged: Record<string, unknown> = isRecord(existing)
+    ? { ...existing }
+    : {};
+  for (const [name, value] of defaults) {
+    if (!(name in merged)) merged[name] = value;
+  }
+  root[key] = merged;
+}
+
+/**
+ * Whether a `deno.json` document delegates its import map to a separate file
+ * and would be broken by growing an `imports` block.
+ *
+ * Deno ignores the `importMap` field the moment `imports` or `scopes` appears
+ * in the config, so writing `imports` beside a lone `importMap` silently
+ * disables the project's entire module resolution. A document that already has
+ * `imports` or `scopes` is not delegating — Deno is ignoring `importMap` there
+ * already — so merging into it changes nothing.
+ */
+export function delegatesImportMap(root: Record<string, unknown>): boolean {
+  return typeof root.importMap === "string" &&
+    !isRecord(root.imports) && !isRecord(root.scopes);
+}
+
+/**
  * Merge the default Zuke tasks and `imports` into a `deno.json` document,
  * preserving the existing content. `existing` is the file text, or `null` to
  * start fresh; `imports` are the bare-specifier mappings the scaffolded build
@@ -60,7 +98,10 @@ export type ScaffoldImports = Readonly<Record<string, string>>;
  *
  * Merging is additive per key: a task or import the document already declares
  * is left exactly as it is, so a project that has pinned `@zuke/core` to a
- * specific version keeps that pin.
+ * specific version keeps that pin. A document that delegates to an external
+ * `importMap` keeps that delegation and grows no `imports` block — see
+ * {@link delegatesImportMap}; the caller reports the entry as a manual step
+ * instead.
  */
 export function mergeDenoJson(
   existing: string | null,
@@ -74,20 +115,10 @@ export function mergeDenoJson(
   // Seed `imports` before `tasks` so a file created from scratch lists the
   // dependencies first, the order deno.json conventionally uses. On a file that
   // already has either key, assigning it keeps its original position.
-  const merged: Record<string, unknown> = isRecord(root.imports)
-    ? { ...root.imports }
-    : {};
-  for (const [specifier, dependency] of Object.entries(imports)) {
-    if (!(specifier in merged)) merged[specifier] = dependency;
+  if (!delegatesImportMap(root)) {
+    mergeMissing(root, "imports", Object.entries(imports));
   }
-  root.imports = merged;
-  const tasks: Record<string, unknown> = isRecord(root.tasks)
-    ? { ...root.tasks }
-    : {};
-  for (const [task, command] of DEFAULT_TASKS) {
-    if (!(task in tasks)) tasks[task] = command;
-  }
-  root.tasks = tasks;
+  mergeMissing(root, "tasks", DEFAULT_TASKS);
   return `${JSON.stringify(root, null, 2)}\n`;
 }
 
@@ -121,9 +152,34 @@ export function denoJsonState(
   }
   if (!isRecord(parsed)) return "absent";
   const hasTask = isRecord(parsed.tasks) && "zuke" in parsed.tasks;
+  // A document delegating to an external `importMap` will not grow an
+  // `imports` block (it would disable the delegation), so the imports are not
+  // something this file is still missing — they are reported as a manual step.
   const declared = isRecord(parsed.imports) ? parsed.imports : {};
-  const hasImports = Object.keys(imports).every((s) => s in declared);
+  const hasImports = delegatesImportMap(parsed) ||
+    Object.keys(imports).every((s) => s in declared);
   return hasTask && hasImports ? "present" : "absent";
+}
+
+/**
+ * The scaffold specifiers `root` maps somewhere other than their `jsr:@zuke/…`
+ * dependency, in declaration order.
+ *
+ * Keeping a mapping the project already declared is the right default — it is
+ * how a deliberate version pin, or a link to a local checkout, survives. But
+ * the run should not go on to report the dependency as simply "present", so the
+ * caller names what it found and leaves the decision to the reader.
+ */
+export function remappedImports(
+  root: Record<string, unknown>,
+  imports: ScaffoldImports,
+): string[] {
+  const declared = isRecord(root.imports) ? root.imports : {};
+  return Object.keys(imports).filter((specifier) => {
+    const value = declared[specifier];
+    return typeof value === "string" &&
+      !value.startsWith(`jsr:${specifier}@`);
+  });
 }
 
 /** Injected side effects, so {@link runSetup} is unit-testable. */
@@ -273,6 +329,21 @@ export interface FileResult {
 export interface SetupResult {
   /** One entry per file `setup` considered. */
   files: FileResult[];
+  /**
+   * What `setup` could not do, each line naming the problem and the fix.
+   *
+   * Non-empty means the scaffold is **incomplete**: the `zuke.ts` on disk
+   * imports `@zuke/core` by bare specifier, and nothing resolves it until the
+   * reader acts. The caller reports these and exits non-zero rather than
+   * printing `Next: ./zuke` over a build that cannot start.
+   */
+  manualSteps: string[];
+  /**
+   * Advisory observations about the existing project that `setup` deliberately
+   * left alone. Worth printing, but nothing is broken and the exit code stays
+   * 0.
+   */
+  notes: string[];
 }
 
 /** Join a directory and file name without pulling in path utilities. */
@@ -337,6 +408,8 @@ export async function runSetup(
   host: SetupHost = defaultHost,
 ): Promise<SetupResult> {
   const files: FileResult[] = [];
+  const manualSteps: string[] = [];
+  const notes: string[] = [];
   const launcher = options.launcherName ?? DEFAULT_LAUNCHER;
   assertLauncherName(launcher);
   const variant = { bootstrapDeno: options.bootstrapDeno ?? true };
@@ -418,7 +491,13 @@ export async function runSetup(
   }
 
   files.push(
-    await setupDenoJson(options.dir, options.imports ?? STARTER_IMPORTS, host),
+    await setupDenoJson(
+      options.dir,
+      options.imports ?? STARTER_IMPORTS,
+      host,
+      manualSteps,
+      notes,
+    ),
   );
   files.push(await setupGitignore(options.dir, host));
   if (options.mcp) {
@@ -426,7 +505,7 @@ export async function runSetup(
       await setupMcpConfig(options.dir, options.mcp, options.force, host),
     );
   }
-  return { files };
+  return { files, manualSteps, notes };
 }
 
 /**
@@ -490,16 +569,36 @@ async function setupGitignore(
   return { path: name, status: "overwritten" };
 }
 
+/** The `imports` entries `steps` tells the reader to add, as JSON lines. */
+function importLines(imports: ScaffoldImports): string {
+  return Object.entries(imports)
+    .map(([specifier, dependency]) => `"${specifier}": "${dependency}"`)
+    .join(", ");
+}
+
 /**
  * Create or merge `deno.json`, returning what happened to it. `imports` are the
  * bare specifiers the `zuke.ts` written alongside it resolves through, so the
  * file is completed whenever any of them is missing — not only when the `zuke`
  * task is.
+ *
+ * Two shapes cannot be completed automatically, and both are fatal to the
+ * scaffold now that the build resolves through this file rather than carrying
+ * its own `jsr:` specifier. They go into `steps` so the run reports an
+ * incomplete scaffold instead of pointing at a `./zuke` that cannot start:
+ *
+ * - **Unparseable.** `deno.json` is JSONC — Deno accepts `//` comments and
+ *   trailing commas that `JSON.parse` rejects. Such a file is perfectly valid
+ *   and must not be rewritten: doing so would strip the reader's comments.
+ * - **Delegated.** The document points `importMap` at a separate file, and
+ *   `imports` belongs in *that* file (see {@link delegatesImportMap}).
  */
 async function setupDenoJson(
   dir: string,
   imports: ScaffoldImports,
   host: SetupHost,
+  steps: string[],
+  notes: string[],
 ): Promise<FileResult> {
   const name = "deno.json";
   const path = joinPath(dir, name);
@@ -511,12 +610,38 @@ async function setupDenoJson(
 
   const before = await host.readText(path);
   const state = denoJsonState(before, imports);
-  if (state === "present") {
-    host.log(`  skip     ${name}  (zuke task and imports already present)`);
+  if (state === "unparseable") {
+    host.log(`  skip     ${name}  (not plain JSON, edit by hand)`);
+    steps.push(
+      `${path} has comments or a trailing comma, so it could not be edited ` +
+        `without discarding them. Add to its "imports": ` +
+        `${importLines(imports)} — the scaffolded zuke.ts will not run until ` +
+        `you do.`,
+    );
     return { path: name, status: "skipped" };
   }
-  if (state === "unparseable") {
-    host.log(`  skip     ${name}  (unparseable, edit by hand)`);
+
+  const parsed: unknown = JSON.parse(before);
+  const root: Record<string, unknown> = isRecord(parsed) ? parsed : {};
+  if (delegatesImportMap(root)) {
+    // Writing `imports` here would make Deno ignore `importMap` and take the
+    // project's whole module resolution down with it.
+    steps.push(
+      `${path} delegates its import map to ${String(root.importMap)}, which ` +
+        `Deno ignores as soon as "imports" appears beside it. Add to that ` +
+        `file's "imports" instead: ${importLines(imports)} — the scaffolded ` +
+        `zuke.ts will not run until you do.`,
+    );
+  }
+  for (const specifier of remappedImports(root, imports)) {
+    notes.push(
+      `${path} already maps "${specifier}" to something other than its JSR ` +
+        `package; setup kept that mapping. Check it is what you intend.`,
+    );
+  }
+
+  if (state === "present") {
+    host.log(`  skip     ${name}  (zuke task and imports already declared)`);
     return { path: name, status: "skipped" };
   }
   await host.writeText(path, mergeDenoJson(before, imports));

@@ -153,3 +153,50 @@ Deno.test("e2e: setup completes a deno.json that already declares the zuke task"
     },
   );
 });
+
+Deno.test("e2e: setup leaves a delegated import map resolving for real", async () => {
+  // The regression: writing an `imports` block beside a lone `importMap` makes
+  // Deno ignore the delegation, so a project that resolved before setup ran
+  // stops resolving after. Only a real `deno run` shows that — the in-process
+  // test can read the JSON, but not what Deno does with it. Fully local
+  // modules, so nothing is fetched.
+  const dir = await Deno.makeTempDir({ prefix: "zuke-scaffold-import-map-" });
+  const host: SetupHost = { ...defaultHost, log: () => {} };
+  try {
+    await Deno.writeTextFile(
+      `${dir}/deno.json`,
+      `${JSON.stringify({ importMap: "./import_map.json" }, null, 2)}\n`,
+    );
+    await Deno.writeTextFile(
+      `${dir}/import_map.json`,
+      `${JSON.stringify({ imports: { "lib/": "./lib/" } }, null, 2)}\n`,
+    );
+    await Deno.mkdir(`${dir}/lib`);
+    await Deno.writeTextFile(`${dir}/lib/a.ts`, "export const x = 1;\n");
+    await Deno.writeTextFile(
+      `${dir}/main.ts`,
+      'import { x } from "lib/a.ts";\nconsole.log(x);\n',
+    );
+
+    // It resolves before setup runs...
+    const before = await deno(dir, ["run", "main.ts"]);
+    assertEquals(before.code, 0, before.output);
+
+    // ...setup reports the import as a manual step rather than writing it...
+    assertEquals(
+      await main(["setup", "--yes", "--name", "Demo", "--dir", dir], host),
+      1,
+    );
+
+    // ...and it still resolves afterwards.
+    const after = await deno(dir, ["run", "main.ts"]);
+    assertEquals(
+      after.code,
+      0,
+      `setup broke a project that delegates its import map:\n${after.output}`,
+    );
+    assertEquals(after.output.includes("is ignored when"), false);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
