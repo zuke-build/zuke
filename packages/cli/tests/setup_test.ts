@@ -8,12 +8,17 @@ import {
 } from "../../core/tests/_assert.ts";
 import {
   defaultHost,
+  denoJsonState,
   isRecord,
   mergeDenoJson,
   runSetup,
-  zukeTaskState,
 } from "../src/setup.ts";
-import { starterBuild, starterConfig } from "../src/starter.ts";
+import {
+  STARTER_IMPORTS,
+  starterBuild,
+  starterConfig,
+  zukeDependency,
+} from "../src/starter.ts";
 import { FakeHost } from "./_fakes.ts";
 import { withTemp } from "../../core/tests/_temp.ts";
 
@@ -28,9 +33,25 @@ Deno.test("isRecord distinguishes plain objects", () => {
 Deno.test("starterBuild embeds the class name and entry point", () => {
   const out = starterBuild("Acme");
   assertEquals(out.includes("import { Build, run, target }"), true);
-  assertEquals(out.includes('jsr:@zuke/core@^1"'), true);
+  assertEquals(out.includes('from "@zuke/core";'), true);
   assertEquals(out.includes("class Acme extends Build"), true);
   assertEquals(out.includes("await run(Acme)"), true);
+});
+
+Deno.test("starterBuild imports no inline jsr: specifier", () => {
+  // Deno's default lint set rejects an inline `jsr:`/`npm:`/`https:` specifier
+  // (no-import-prefix), and the scaffold writes a deno.json that configures no
+  // lint rules — so a specifier here fails `deno lint` on the project's own
+  // first file. The dependency lives in STARTER_IMPORTS instead.
+  const out = starterBuild("Acme");
+  assertEquals(/from "(jsr|npm|https):/.test(out), false);
+  assertEquals(STARTER_IMPORTS["@zuke/core"], "jsr:@zuke/core@^1");
+});
+
+Deno.test("zukeDependency pins the caret major", () => {
+  // The pin the scaffold puts in deno.json in place of the inline specifier.
+  assertEquals(zukeDependency("core"), "jsr:@zuke/core@^1");
+  assertEquals(zukeDependency("cmd"), "jsr:@zuke/cmd@^1");
 });
 
 Deno.test("starterConfig records the build name as JSON", () => {
@@ -39,42 +60,93 @@ Deno.test("starterConfig records the build name as JSON", () => {
   assertEquals(starterConfig("Acme").endsWith("\n"), true);
 });
 
-Deno.test("mergeDenoJson seeds tasks from scratch", () => {
-  const text = mergeDenoJson(null);
+Deno.test("mergeDenoJson seeds tasks and imports from scratch", () => {
+  const text = mergeDenoJson(null, STARTER_IMPORTS);
   const parsed: unknown = JSON.parse(text);
   assertEquals(isRecord(parsed) && isRecord(parsed.tasks), true);
   if (isRecord(parsed) && isRecord(parsed.tasks)) {
     assertEquals(parsed.tasks.zuke, "deno run -A zuke.ts");
     assertEquals(parsed.tasks.test, "deno test -A");
   }
+  if (isRecord(parsed) && isRecord(parsed.imports)) {
+    assertEquals(parsed.imports["@zuke/core"], "jsr:@zuke/core@^1");
+  }
+  // Dependencies first, the order deno.json conventionally uses.
+  assertEquals(text.indexOf('"imports"') < text.indexOf('"tasks"'), true);
   assertEquals(text.endsWith("\n"), true);
 });
 
-Deno.test("mergeDenoJson preserves existing keys and tasks", () => {
-  const before = '{"name":"x","tasks":{"fmt":"custom"}}';
-  const parsed: unknown = JSON.parse(mergeDenoJson(before));
+Deno.test("mergeDenoJson preserves existing keys, tasks, and import pins", () => {
+  const before =
+    '{"name":"x","imports":{"@zuke/core":"jsr:@zuke/core@1.2.3"},"tasks":{"fmt":"custom"}}';
+  const parsed: unknown = JSON.parse(mergeDenoJson(before, STARTER_IMPORTS));
   assertEquals(isRecord(parsed), true);
-  if (isRecord(parsed) && isRecord(parsed.tasks)) {
+  if (isRecord(parsed) && isRecord(parsed.tasks) && isRecord(parsed.imports)) {
     assertEquals(parsed.name, "x");
     assertEquals(parsed.tasks.fmt, "custom");
     assertEquals(parsed.tasks.zuke, "deno run -A zuke.ts");
+    // A deliberate pin is never rewritten to the caret range.
+    assertEquals(parsed.imports["@zuke/core"], "jsr:@zuke/core@1.2.3");
+  }
+});
+
+Deno.test("mergeDenoJson adds a missing import beside existing ones", () => {
+  const before = '{"imports":{"@std/yaml":"jsr:@std/yaml@^1"}}';
+  const parsed: unknown = JSON.parse(
+    mergeDenoJson(before, {
+      ...STARTER_IMPORTS,
+      "@zuke/cmd": "jsr:@zuke/cmd@^1",
+    }),
+  );
+  if (isRecord(parsed) && isRecord(parsed.imports)) {
+    assertEquals(parsed.imports["@std/yaml"], "jsr:@std/yaml@^1");
+    assertEquals(parsed.imports["@zuke/core"], "jsr:@zuke/core@^1");
+    assertEquals(parsed.imports["@zuke/cmd"], "jsr:@zuke/cmd@^1");
   }
 });
 
 Deno.test("mergeDenoJson ignores a non-object document", () => {
-  const parsed: unknown = JSON.parse(mergeDenoJson("[]"));
+  const parsed: unknown = JSON.parse(mergeDenoJson("[]", STARTER_IMPORTS));
   assertEquals(isRecord(parsed) && isRecord(parsed.tasks), true);
-  if (isRecord(parsed) && isRecord(parsed.tasks)) {
+  if (isRecord(parsed) && isRecord(parsed.tasks) && isRecord(parsed.imports)) {
     assertEquals(parsed.tasks.zuke, "deno run -A zuke.ts");
+    assertEquals(parsed.imports["@zuke/core"], "jsr:@zuke/core@^1");
   }
 });
 
-Deno.test("zukeTaskState classifies deno.json text", () => {
-  assertEquals(zukeTaskState('{"tasks":{"zuke":"x"}}'), "present");
-  assertEquals(zukeTaskState('{"tasks":{"a":"b"}}'), "absent");
-  assertEquals(zukeTaskState('{"tasks":5}'), "absent");
-  assertEquals(zukeTaskState("[]"), "absent");
-  assertEquals(zukeTaskState("not json"), "unparseable");
+Deno.test("mergeDenoJson ignores a non-object imports block", () => {
+  const parsed: unknown = JSON.parse(
+    mergeDenoJson('{"imports":5}', STARTER_IMPORTS),
+  );
+  if (isRecord(parsed) && isRecord(parsed.imports)) {
+    assertEquals(parsed.imports["@zuke/core"], "jsr:@zuke/core@^1");
+  }
+});
+
+Deno.test("denoJsonState classifies deno.json text", () => {
+  const complete =
+    '{"tasks":{"zuke":"x"},"imports":{"@zuke/core":"jsr:@zuke/core@^1"}}';
+  assertEquals(denoJsonState(complete, STARTER_IMPORTS), "present");
+  // The zuke task alone is not enough: the zuke.ts written in the same run
+  // imports @zuke/core by bare specifier, so the import has to be there too.
+  assertEquals(
+    denoJsonState('{"tasks":{"zuke":"x"}}', STARTER_IMPORTS),
+    "absent",
+  );
+  assertEquals(
+    denoJsonState(complete, {
+      ...STARTER_IMPORTS,
+      "@zuke/cmd": "jsr:@zuke/cmd@^1",
+    }),
+    "absent",
+  );
+  assertEquals(denoJsonState('{"tasks":{"a":"b"}}', STARTER_IMPORTS), "absent");
+  assertEquals(denoJsonState('{"tasks":5}', STARTER_IMPORTS), "absent");
+  assertEquals(denoJsonState('{"imports":5}', STARTER_IMPORTS), "absent");
+  assertEquals(denoJsonState("[]", STARTER_IMPORTS), "absent");
+  assertEquals(denoJsonState("not json", STARTER_IMPORTS), "unparseable");
+  // Nothing to add: an empty import set makes the task the whole question.
+  assertEquals(denoJsonState('{"tasks":{"zuke":"x"}}', {}), "present");
 });
 
 Deno.test("runSetup scaffolds an empty project", async () => {
@@ -271,12 +343,46 @@ Deno.test("runSetup tolerates chmod failing", async () => {
   assertEquals(host.files.has("zuke"), true);
 });
 
-Deno.test("runSetup skips deno.json that already has the zuke task", async () => {
-  const host = new FakeHost({ "deno.json": '{"tasks":{"zuke":"x"}}' });
+Deno.test("runSetup skips deno.json that already has the zuke task and imports", async () => {
+  const complete =
+    '{"tasks":{"zuke":"x"},"imports":{"@zuke/core":"jsr:@zuke/core@^1"}}';
+  const host = new FakeHost({ "deno.json": complete });
   const result = await runSetup({ dir: ".", force: false, name: "Foo" }, host);
   const dj = result.files.find((f) => f.path === "deno.json");
   assertEquals(dj?.status, "skipped");
-  assertEquals(host.files.get("deno.json"), '{"tasks":{"zuke":"x"}}');
+  assertEquals(host.files.get("deno.json"), complete);
+});
+
+Deno.test("runSetup completes a deno.json that has the zuke task but no imports", async () => {
+  // The regression: skipping on the task alone left the zuke.ts written by the
+  // same run importing "@zuke/core" with nothing to resolve it.
+  const host = new FakeHost({ "deno.json": '{"tasks":{"zuke":"x"}}' });
+  const result = await runSetup({ dir: ".", force: true, name: "Foo" }, host);
+  const dj = result.files.find((f) => f.path === "deno.json");
+  assertEquals(dj?.status, "overwritten");
+  const parsed: unknown = JSON.parse(host.files.get("deno.json") ?? "{}");
+  if (isRecord(parsed) && isRecord(parsed.imports) && isRecord(parsed.tasks)) {
+    assertEquals(parsed.imports["@zuke/core"], "jsr:@zuke/core@^1");
+    assertEquals(parsed.tasks.zuke, "x"); // the project's own task survives
+  }
+});
+
+Deno.test("runSetup declares the imports the supplied buildContent needs", async () => {
+  const host = new FakeHost();
+  await runSetup({
+    dir: ".",
+    force: false,
+    name: "Foo",
+    buildContent: 'import { CmdTasks } from "@zuke/cmd";\n',
+    imports: {
+      "@zuke/core": "jsr:@zuke/core@^1",
+      "@zuke/cmd": "jsr:@zuke/cmd@^1",
+    },
+  }, host);
+  const parsed: unknown = JSON.parse(host.files.get("deno.json") ?? "{}");
+  if (isRecord(parsed) && isRecord(parsed.imports)) {
+    assertEquals(parsed.imports["@zuke/cmd"], "jsr:@zuke/cmd@^1");
+  }
 });
 
 Deno.test("runSetup merges a deno.json missing the zuke task", async () => {

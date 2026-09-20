@@ -20,7 +20,7 @@ import { isRecord } from "./records.ts";
 import { launcherBash, launcherPwsh } from "./launcher.ts";
 import { exists, lstatOrNull } from "./fs.ts";
 import { output } from "./output.ts";
-import { starterBuild, starterConfig } from "./starter.ts";
+import { STARTER_IMPORTS, starterBuild, starterConfig } from "./starter.ts";
 
 // Re-exported so the merge guard keeps its historical home for importers.
 export { isRecord };
@@ -43,15 +43,44 @@ const DEFAULT_TASKS: ReadonlyArray<readonly [string, string]> = [
 ];
 
 /**
- * Merge the default Zuke tasks into a `deno.json` document, preserving the
- * existing content. `existing` is the file text, or `null` to start fresh.
+ * The import map entries a scaffolded build needs, keyed by bare specifier.
+ *
+ * The scaffolded `zuke.ts` imports `@zuke/core` (and `zuke import`'s output
+ * `@zuke/cmd`) by bare specifier, so `deno.json` has to map each one to its
+ * `jsr:` dependency — see {@link "./starter.ts".STARTER_IMPORTS} for why the
+ * specifier does not go in the source file.
  */
-export function mergeDenoJson(existing: string | null): string {
+export type ScaffoldImports = Readonly<Record<string, string>>;
+
+/**
+ * Merge the default Zuke tasks and `imports` into a `deno.json` document,
+ * preserving the existing content. `existing` is the file text, or `null` to
+ * start fresh; `imports` are the bare-specifier mappings the scaffolded build
+ * resolves through.
+ *
+ * Merging is additive per key: a task or import the document already declares
+ * is left exactly as it is, so a project that has pinned `@zuke/core` to a
+ * specific version keeps that pin.
+ */
+export function mergeDenoJson(
+  existing: string | null,
+  imports: ScaffoldImports,
+): string {
   const root: Record<string, unknown> = {};
   if (existing !== null) {
     const parsed: unknown = JSON.parse(existing);
     if (isRecord(parsed)) Object.assign(root, parsed);
   }
+  // Seed `imports` before `tasks` so a file created from scratch lists the
+  // dependencies first, the order deno.json conventionally uses. On a file that
+  // already has either key, assigning it keeps its original position.
+  const merged: Record<string, unknown> = isRecord(root.imports)
+    ? { ...root.imports }
+    : {};
+  for (const [specifier, dependency] of Object.entries(imports)) {
+    if (!(specifier in merged)) merged[specifier] = dependency;
+  }
+  root.imports = merged;
   const tasks: Record<string, unknown> = isRecord(root.tasks)
     ? { ...root.tasks }
     : {};
@@ -62,21 +91,39 @@ export function mergeDenoJson(existing: string | null): string {
   return `${JSON.stringify(root, null, 2)}\n`;
 }
 
-/** Whether a `deno.json` text already declares the `zuke` task. */
+/**
+ * Whether a `deno.json` text already carries everything the scaffold needs.
+ *
+ * `"present"` means both the `zuke` task and every scaffold import are already
+ * declared, so there is nothing to merge.
+ */
 export type DenoJsonState = "present" | "absent" | "unparseable";
 
-/** Classify a `deno.json` text by whether it already has the `zuke` task. */
-export function zukeTaskState(text: string): DenoJsonState {
+/**
+ * Classify a `deno.json` text by whether the scaffold has anything to add to
+ * it: the `zuke` task, or any of `imports`.
+ *
+ * The imports are part of the question because the build file is written by the
+ * same run and imports them by bare specifier. Treating the `zuke` task alone
+ * as "already set up" — as this did before the imports existed — would skip the
+ * file on a project being re-scaffolded and leave a `zuke.ts` whose specifiers
+ * nothing resolves.
+ */
+export function denoJsonState(
+  text: string,
+  imports: ScaffoldImports,
+): DenoJsonState {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
   } catch {
     return "unparseable";
   }
-  if (isRecord(parsed) && isRecord(parsed.tasks) && "zuke" in parsed.tasks) {
-    return "present";
-  }
-  return "absent";
+  if (!isRecord(parsed)) return "absent";
+  const hasTask = isRecord(parsed.tasks) && "zuke" in parsed.tasks;
+  const declared = isRecord(parsed.imports) ? parsed.imports : {};
+  const hasImports = Object.keys(imports).every((s) => s in declared);
+  return hasTask && hasImports ? "present" : "absent";
 }
 
 /** Injected side effects, so {@link runSetup} is unit-testable. */
@@ -182,6 +229,14 @@ export interface SetupOptions {
    * import` passes a build generated from an existing project's tasks instead.
    */
   buildContent?: string;
+  /**
+   * The bare specifiers {@link SetupOptions.buildContent} imports, mapped to
+   * their `jsr:` dependencies, merged into `deno.json` so they resolve.
+   * Defaults to {@link STARTER_IMPORTS}; a caller that supplies its own
+   * `buildContent` supplies the imports that build needs (`zuke import` adds
+   * `@zuke/cmd` when it generates a command).
+   */
+  imports?: ScaffoldImports;
   /**
    * Scaffold launchers that bootstrap a pinned, checksum-verified Deno when
    * none is on `PATH` (the default), or plain ones that require Deno and fail
@@ -362,7 +417,9 @@ export async function runSetup(
     files.push({ path: item.name, status });
   }
 
-  files.push(await setupDenoJson(options.dir, host));
+  files.push(
+    await setupDenoJson(options.dir, options.imports ?? STARTER_IMPORTS, host),
+  );
   files.push(await setupGitignore(options.dir, host));
   if (options.mcp) {
     files.push(
@@ -433,30 +490,36 @@ async function setupGitignore(
   return { path: name, status: "overwritten" };
 }
 
-/** Create or merge `deno.json`, returning what happened to it. */
+/**
+ * Create or merge `deno.json`, returning what happened to it. `imports` are the
+ * bare specifiers the `zuke.ts` written alongside it resolves through, so the
+ * file is completed whenever any of them is missing — not only when the `zuke`
+ * task is.
+ */
 async function setupDenoJson(
   dir: string,
+  imports: ScaffoldImports,
   host: SetupHost,
 ): Promise<FileResult> {
   const name = "deno.json";
   const path = joinPath(dir, name);
   if (!(await host.exists(path))) {
-    await host.writeText(path, mergeDenoJson(null));
+    await host.writeText(path, mergeDenoJson(null, imports));
     host.log(`  create   ${name}`);
     return { path: name, status: "created" };
   }
 
   const before = await host.readText(path);
-  const state = zukeTaskState(before);
+  const state = denoJsonState(before, imports);
   if (state === "present") {
-    host.log(`  skip     ${name}  (zuke task already present)`);
+    host.log(`  skip     ${name}  (zuke task and imports already present)`);
     return { path: name, status: "skipped" };
   }
   if (state === "unparseable") {
     host.log(`  skip     ${name}  (unparseable, edit by hand)`);
     return { path: name, status: "skipped" };
   }
-  await host.writeText(path, mergeDenoJson(before));
+  await host.writeText(path, mergeDenoJson(before, imports));
   host.log(`  update   ${name}`);
   return { path: name, status: "overwritten" };
 }

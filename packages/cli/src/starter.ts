@@ -12,9 +12,35 @@
  * @module
  */
 
+/**
+ * The `jsr:` dependency a scaffolded `deno.json` maps `@zuke/<name>` to.
+ *
+ * The caret major is what gets pinned: every Zuke package is 1.x on full
+ * semver, so `@^1` takes minors and patches and stops a future major from
+ * landing in a scaffolded build unannounced. One definition, so the starter
+ * build and `zuke import`'s generated one cannot drift apart on it.
+ */
+export function zukeDependency(name: string): string {
+  return `jsr:@zuke/${name}@^1`;
+}
+
+/**
+ * The `deno.json` import map entries the starter build resolves through.
+ *
+ * The build imports `@zuke/core` by its **bare** specifier rather than writing
+ * `jsr:@zuke/core@^1` inline, because Deno's default lint set (the one that
+ * applies to a `deno.json` that does not configure `lint.rules`, which is
+ * exactly what `setup` writes) rejects an inline `jsr:` specifier under
+ * `no-import-prefix` — so a scaffold that inlined it failed `deno lint` on its
+ * own first file. The pin moves to the map instead; it is not lost.
+ */
+export const STARTER_IMPORTS: Readonly<Record<string, string>> = {
+  "@zuke/core": zukeDependency("core"),
+};
+
 /** The starter `zuke.ts`, with the build class named `name`. */
 export function starterBuild(name: string): string {
-  return `import { Build, run, target } from "jsr:@zuke/core@^1";
+  return `import { Build, run, target } from "@zuke/core";
 
 /** Your project's build. Run a target with \`./zuke <target>\`. */
 class ${name} extends Build {

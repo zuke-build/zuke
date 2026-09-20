@@ -7,10 +7,13 @@
  * its logging captured) and assert the files that land on disk are a scaffold
  * whose advertised next step — `./zuke <target>` — can actually run.
  *
- * The regression this pins: a scaffold has no `deno.lock` yet, and
+ * The regressions this pins. First: a scaffold has no `deno.lock` yet, and
  * `deno run --frozen` against a missing lockfile fails ("The lockfile is out of
  * date") instead of writing one, so an unconditional `--frozen` in the launcher
- * or the `deno.json` task breaks every project on its very first run.
+ * or the `deno.json` task breaks every project on its very first run. Second:
+ * the build file and the `deno.json` beside it have to agree, so the `lint`
+ * task setup writes passes on the file setup wrote — see
+ * `tests/e2e/setup_lint_e2e.ts`, which runs the real linter over a scaffold.
  *
  * @module
  */
@@ -87,9 +90,26 @@ Deno.test("zuke setup scaffolds a project whose first run has no lockfile to fre
       : undefined;
   assertEquals(zukeTask, "deno run -A zuke.ts");
 
-  // The starter build stays pinned, so the lock the first run writes is
-  // meaningful for every run after it.
-  assertEquals((await read("zuke.ts")).includes('jsr:@zuke/core@^1"'), true);
+  // The starter build imports by bare specifier and deno.json resolves it, so
+  // `deno lint` — the lint task setup writes — passes on the scaffold's own
+  // first file. An inline `jsr:` specifier trips Deno's default
+  // `no-import-prefix` rule, which applies because setup configures no
+  // lint.rules.
+  const build = await read("zuke.ts");
+  assertEquals(build.includes('from "@zuke/core";'), true);
+  assertEquals(/from "(jsr|npm|https):/.test(build), false);
+
+  // The pin lives in the import map instead, so the lock the first run writes
+  // is still meaningful for every run after it.
+  const imports =
+    denoJson !== null && typeof denoJson === "object" && "imports" in denoJson
+      ? denoJson.imports
+      : undefined;
+  const core =
+    imports !== null && typeof imports === "object" && "@zuke/core" in imports
+      ? imports["@zuke/core"]
+      : undefined;
+  assertEquals(core, "jsr:@zuke/core@^1");
 });
 
 Deno.test("integration: setup exits 1 on a symlinked scaffold name, leaving it alone", async () => {

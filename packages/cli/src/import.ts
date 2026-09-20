@@ -26,9 +26,11 @@ import {
   joinPath,
   type McpSetupOptions,
   runSetup,
+  type ScaffoldImports,
   type SetupHost,
   type SetupResult,
 } from "./setup.ts";
+import { STARTER_IMPORTS, zukeDependency } from "./starter.ts";
 
 /** A task discovered in an existing project, before identifier normalisation. */
 export interface RawTask {
@@ -367,6 +369,19 @@ function renderBody(items: readonly BodyItem[]): string {
   return `${runnable ? "async " : ""}() => {\n${lines}\n    }`;
 }
 
+/** A generated `zuke.ts`, with the import map its bare specifiers need. */
+export interface GeneratedBuild {
+  /** The `zuke.ts` source text. */
+  readonly source: string;
+  /**
+   * The `deno.json` `imports` entries {@link GeneratedBuild.source} resolves
+   * through — always `@zuke/core`, plus `@zuke/cmd` when a task translated to a
+   * command. {@link runImport} hands these to the scaffolder, which merges them
+   * into `deno.json`.
+   */
+  readonly imports: ScaffoldImports;
+}
+
 /**
  * Generate a `zuke.ts` build class named `className` from imported tasks.
  * Exposed for tools and tests; {@link runImport} writes the result to disk.
@@ -374,7 +389,7 @@ function renderBody(items: readonly BodyItem[]): string {
 export function generateBuild(
   className: string,
   raw: readonly RawTask[],
-): string {
+): GeneratedBuild {
   const { ordered, dropped } = order(normalize(raw));
   const bodies = new Map(
     ordered.map((t) => [t.id, translateCommand(t.command)]),
@@ -401,17 +416,22 @@ export function generateBuild(
     return chain.join("\n");
   });
 
-  // Pin the caret major, matching what `zuke setup` scaffolds: every package is
-  // 1.x on full semver, so `@^1` takes minors and patches and stops a future
-  // major from landing in an imported build unannounced.
-  const imports = [`import { Build, run, target } from "jsr:@zuke/core@^1";`];
-  if (usesCmd) imports.push(`import { CmdTasks } from "jsr:@zuke/cmd@^1";`);
+  // Import by bare specifier and declare the `jsr:` dependency in `deno.json`,
+  // exactly as `zuke setup` scaffolds it — an inline `jsr:` specifier trips
+  // Deno's default `no-import-prefix` lint rule on the generated file. The
+  // caret-major pin lives in the map, via the one definition of it.
+  const imports: Record<string, string> = { ...STARTER_IMPORTS };
+  const lines = [`import { Build, run, target } from "@zuke/core";`];
+  if (usesCmd) {
+    imports["@zuke/cmd"] = zukeDependency("cmd");
+    lines.push(`import { CmdTasks } from "@zuke/cmd";`);
+  }
 
   const body = fields.length > 0
     ? fields.join("\n\n")
     : "  // No tasks were found to import — add targets here.";
 
-  return `${imports.join("\n")}
+  const source = `${lines.join("\n")}
 
 /** Imported build — refine these targets into typed Zuke tasks. */
 class ${className} extends Build {
@@ -420,6 +440,7 @@ ${body}
 
 await run(${className});
 `;
+  return { source, imports };
 }
 
 // --- orchestration --------------------------------------------------------
@@ -495,11 +516,13 @@ export async function runImport(
         options.dir === "." ? "the current directory" : options.dir
       }:`,
     );
+    const generated = generateBuild(options.name, tasks);
     const setup = await runSetup({
       dir: options.dir,
       force: options.force,
       name: options.name,
-      buildContent: generateBuild(options.name, tasks),
+      buildContent: generated.source,
+      imports: generated.imports,
       mcp: options.mcp,
       bootstrapDeno: options.bootstrapDeno,
     }, host);
