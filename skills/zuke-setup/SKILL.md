@@ -106,9 +106,12 @@ wrappers.
   trailing commas that a JSON parser does not, and rewriting the file would
   discard them), and one that delegates via `importMap` to a separate file (Deno
   ignores that field the moment `imports` appears beside it, so the entry
-  belongs in the other file). Both are left byte-for-byte untouched. A mapping
-  that already points somewhere other than the JSR package is kept — that is how
-  a pin or a local checkout survives — with a note saying so.
+  belongs in the other file — setup reads that file and stays quiet once it
+  declares the entry, so a correctly configured project still exits 0). Both are
+  left byte-for-byte untouched. A mapping that already points somewhere other
+  than the JSR package is kept — that is how a pin or a local checkout survives
+  — with a note saying so. `--mcp` that cannot register into an unparseable
+  `.mcp.json` is reported the same way, as a note.
 - **`zuke.json`** — `{ "name": "..." }`, which marks the repo root.
 - **`.gitignore`** — created or appended so `.zuke/` is ignored (the cache and
   durable run state live there); untouched if it already covers it.

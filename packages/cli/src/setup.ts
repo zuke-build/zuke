@@ -502,7 +502,13 @@ export async function runSetup(
   files.push(await setupGitignore(options.dir, host));
   if (options.mcp) {
     files.push(
-      await setupMcpConfig(options.dir, options.mcp, options.force, host),
+      await setupMcpConfig(
+        options.dir,
+        options.mcp,
+        options.force,
+        host,
+        notes,
+      ),
     );
   }
   return { files, manualSteps, notes };
@@ -512,13 +518,15 @@ export async function runSetup(
  * Create or merge `.mcp.json` so the build's MCP server is registered. An
  * existing `zuke` entry is left alone unless `force` is set (it may carry a
  * deliberate `--allow-run` choice); every other server in the file survives
- * either way. An unparseable file is skipped with a notice, like `deno.json`.
+ * either way. An unparseable file is skipped, recorded in `notes` so the
+ * caller can report that `--mcp` did not take effect.
  */
 async function setupMcpConfig(
   dir: string,
   mcp: McpSetupOptions,
   force: boolean,
   host: SetupHost,
+  notes: string[],
 ): Promise<FileResult> {
   const name = MCP_CONFIG_FILE;
   const path = joinPath(dir, name);
@@ -531,6 +539,14 @@ async function setupMcpConfig(
   const config = parseMcpConfig(await host.readText(path));
   if (config.state === "unparseable") {
     host.log(`  skip     ${name}  (unparseable, edit by hand)`);
+    // `--mcp` asked for the server to be registered and it was not, so say so
+    // in the result rather than only in a line of progress output. A note, not
+    // a manual step: the build itself runs regardless, only an agent client
+    // will not find it.
+    notes.push(
+      `${path} could not be parsed, so the zuke MCP server was not ` +
+        `registered. Fix the file and re-run with --mcp to add it.`,
+    );
     return { path: name, status: "skipped" };
   }
   if (config.state === "present" && !force) {
@@ -574,6 +590,48 @@ function importLines(imports: ScaffoldImports): string {
   return Object.entries(imports)
     .map(([specifier, dependency]) => `"${specifier}": "${dependency}"`)
     .join(", ");
+}
+
+/**
+ * Where an `importMap` field points, as a path inside the setup directory, or
+ * `null` when it points anywhere else.
+ *
+ * Only a plain relative path is resolved. An absolute path, a URL, or one
+ * climbing out with `..` names a file this directory does not own, and setup
+ * has no business reading it just to decide what to print — those report as
+ * unverified instead.
+ */
+function delegatedMapPath(dir: string, importMap: string): string | null {
+  const rel = importMap.replace(/^\.[\\/]/, "");
+  const escapes = rel === "" || rel.startsWith("/") || rel.startsWith("\\") ||
+    /^[a-z][a-z0-9+.-]*:/i.test(rel) || rel.split(/[\\/]/).includes("..");
+  return escapes ? null : joinPath(dir, rel);
+}
+
+/**
+ * Whether the import map at `path` already declares every scaffold specifier.
+ *
+ * Setup cannot write into a delegated import map — it is the project's file,
+ * in a shape setup did not choose — but it can read it, and must: without this
+ * a project that has already added the entry would be told to add it again on
+ * every run, and `setup` would never exit 0 on a correctly configured project.
+ * Anything unreadable or unparseable answers `false`, so an unverifiable map
+ * still gets the manual step rather than a silent pass.
+ */
+async function delegatedMapDeclares(
+  path: string,
+  imports: ScaffoldImports,
+  host: SetupHost,
+): Promise<boolean> {
+  try {
+    if (!(await host.exists(path))) return false;
+    const parsed: unknown = JSON.parse(await host.readText(path));
+    if (!isRecord(parsed) || !isRecord(parsed.imports)) return false;
+    const declared = parsed.imports;
+    return Object.keys(imports).every((specifier) => specifier in declared);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -625,13 +683,21 @@ async function setupDenoJson(
   const root: Record<string, unknown> = isRecord(parsed) ? parsed : {};
   if (delegatesImportMap(root)) {
     // Writing `imports` here would make Deno ignore `importMap` and take the
-    // project's whole module resolution down with it.
-    steps.push(
-      `${path} delegates its import map to ${String(root.importMap)}, which ` +
-        `Deno ignores as soon as "imports" appears beside it. Add to that ` +
-        `file's "imports" instead: ${importLines(imports)} — the scaffolded ` +
-        `zuke.ts will not run until you do.`,
-    );
+    // project's whole module resolution down with it. Ask for the entry only
+    // when the delegated map does not already carry it — otherwise a project
+    // that has done exactly this would be nagged on every run.
+    const delegated = String(root.importMap);
+    const target = delegatedMapPath(dir, delegated);
+    const already = target !== null &&
+      await delegatedMapDeclares(target, imports, host);
+    if (!already) {
+      steps.push(
+        `${path} delegates its import map to ${delegated}, which Deno ignores ` +
+          `as soon as "imports" appears beside it. Add to that file's ` +
+          `"imports" instead: ${importLines(imports)} — the scaffolded ` +
+          `zuke.ts will not run until you do.`,
+      );
+    }
   }
   for (const specifier of remappedImports(root, imports)) {
     notes.push(

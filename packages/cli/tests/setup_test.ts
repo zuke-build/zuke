@@ -506,6 +506,75 @@ Deno.test("runSetup notes a kept mapping that is not the JSR package", async () 
   );
 });
 
+Deno.test("runSetup stops asking once the delegated import map declares it", async () => {
+  // The project did exactly what the previous run asked. Re-running must not
+  // report the same step again — setup has to read the delegated map, since it
+  // is the one place the entry can legitimately live.
+  const host = new FakeHost({
+    "deno.json": '{"importMap":"./import_map.json","tasks":{"zuke":"x"}}',
+    "import_map.json": '{"imports":{"@zuke/core":"jsr:@zuke/core@^1"}}',
+  });
+  const result = await runSetup({ dir: ".", force: false, name: "Foo" }, host);
+  assertEquals(result.manualSteps, []);
+});
+
+Deno.test("runSetup still asks when the delegated map cannot confirm it", async () => {
+  // Every shape setup cannot read answers "not declared", so an unverifiable
+  // map gets the step rather than a silent pass.
+  const cases: Array<Record<string, string>> = [
+    // Declares other things, but not @zuke/core.
+    { "import_map.json": '{"imports":{"lib/":"./lib/"}}' },
+    // Unparseable.
+    { "import_map.json": "{oops" },
+    // No imports block at all.
+    { "import_map.json": "{}" },
+    // Missing entirely.
+    {},
+  ];
+  for (const extra of cases) {
+    const host = new FakeHost({
+      "deno.json": '{"importMap":"./import_map.json","tasks":{"zuke":"x"}}',
+      ...extra,
+    });
+    const result = await runSetup(
+      { dir: ".", force: false, name: "Foo" },
+      host,
+    );
+    assertEquals(result.manualSteps.length, 1, JSON.stringify(extra));
+  }
+});
+
+Deno.test("runSetup does not read an importMap pointing outside the directory", async () => {
+  // An absolute path, a URL, or one climbing out with `..` names a file this
+  // directory does not own; setup reports it unverified instead of reading it.
+  for (
+    const target of ["/etc/passwd", "../../outside.json", "https://x/m.json"]
+  ) {
+    const host = new FakeHost({
+      "deno.json": `{"importMap":"${target}","tasks":{"zuke":"x"}}`,
+    });
+    const result = await runSetup(
+      { dir: ".", force: false, name: "Foo" },
+      host,
+    );
+    assertEquals(result.manualSteps.length, 1, target);
+    assertEquals(host.reads.includes(target), false, target);
+  }
+});
+
+Deno.test("runSetup notes that --mcp could not register into an unparseable file", async () => {
+  // The user asked for the server and did not get it; that belongs in the
+  // result, not only in a line of progress output.
+  const host = new FakeHost({ ".mcp.json": "oops" });
+  const result = await runSetup(
+    { dir: ".", force: false, name: "Foo", mcp: { allowRun: false } },
+    host,
+  );
+  assertEquals(result.manualSteps, []); // the build still runs
+  assertEquals(result.notes.length, 1);
+  assertStringIncludes(result.notes[0], "was not registered");
+});
+
 Deno.test("runSetup reports no manual steps or notes for a clean scaffold", async () => {
   const host = new FakeHost();
   const result = await runSetup({ dir: ".", force: false, name: "Foo" }, host);
