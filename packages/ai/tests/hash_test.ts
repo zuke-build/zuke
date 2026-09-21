@@ -53,5 +53,5 @@ Deno.test("sha256Hex digests UTF-8 text to the known lowercase hex", async () =>
   );
   // One changed byte changes the digest; the same text never does.
   assertEquals(await sha256Hex("abd") === await sha256Hex("abc"), false);
-  assertEquals(await sha256Hex("héllo"), await sha256Hex("héllo"));
+  assertEquals(await sha256Hex("caf\u00e9"), await sha256Hex("caf\u00e9"));
 });
