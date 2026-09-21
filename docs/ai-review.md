@@ -370,9 +370,13 @@ buys nothing: the reviewer reads no rebuttals from such a thread, never replies
 into it, and never resolves it. A reply is a rebuttal for the finding **its
 thread** names, never for one its text mentions.
 
-Resolution needs GraphQL, on the same `pull-requests: write` scope `.comment()`
-already requires. If it is unavailable the outcome reply still lands — the part
-a human reads — and a note records that the thread stays open. Two caveats worth
+Resolution needs GraphQL, and a token GitHub lets run the mutation: an App
+installation token with `pull_requests: write` may, while the Actions token is
+refused with `Resource not accessible by integration` on the same scope that
+lets it post the reply. So a build that wants its threads closed mints an App
+token for **both** jobs (`secrets` on the spec, below). If resolution is
+unavailable the outcome reply still lands — the part a human reads — and a note
+records that the thread stays open, with the host's reason. Two caveats worth
 knowing: GitHub validates anchors against its own merge-base diff, so a line
 that looks anchorable locally can still be refused (that finding falls back to
 the table), and a thread is not re-anchored when a later push moves the code —
@@ -514,12 +518,12 @@ from the workflow env (the generator can't infer a secret name).
 generate the equivalent for those providers — matching the cross-platform PR
 commenting above. Output shape per host:
 
-| `host`        | Default path                              | What's generated                                                                                                                                                                                                                                                                        |
-| ------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `"github"`    | `.github/workflows/ai-review.yml`         | Full workflow — fork-gated, harden-runner + pinned checkout, base-branch fetch, `pull-requests: write` if any reviewer comments.                                                                                                                                                        |
-| `"gitlab"`    | `.gitlab/ai-review.gitlab-ci.yml`         | Merge-request-only job snippet on `denoland/deno:latest`. **Include from your `.gitlab-ci.yml`** (`include: { local: '.gitlab/ai-review.gitlab-ci.yml' }`). GitLab project-level CI variables flow into the job automatically — no `variables:` block emitted.                          |
-| `"azure"`     | `pipelines/ai-review.azure-pipelines.yml` | PR-only job snippet. Each reviewer's secret is wired into the script step's `env:` block as `$(NAME)` (Azure doesn't expose pipeline secrets as env vars by default); `SYSTEM_ACCESSTOKEN` is added when any reviewer uses `.comment()`. **Use as a template** from your main pipeline. |
-| `"bitbucket"` | `bitbucket-pipelines.yml`                 | Pull-request-only step on `denoland/deno:latest`, written to the repo-root pipelines file Bitbucket expects (it has no `include` mechanism). Repository variables flow into the step automatically — no env block emitted; map your secrets as **secured** repository variables.        |
+| `host`        | Default path                              | What's generated                                                                                                                                                                                                                                                                                   |
+| ------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `"github"`    | `.github/workflows/ai-review.yml`         | Full workflow — fork-gated, harden-runner + pinned checkout (egress audited, or blocked to `allowedEndpoints` plus each reviewer's provider host with `egress: "block"`), base-branch fetch, `pull-requests: write` if any reviewer comments, and any `secrets` the spec names on the review step. |
+| `"gitlab"`    | `.gitlab/ai-review.gitlab-ci.yml`         | Merge-request-only job snippet on `denoland/deno:latest`. **Include from your `.gitlab-ci.yml`** (`include: { local: '.gitlab/ai-review.gitlab-ci.yml' }`). GitLab project-level CI variables flow into the job automatically — no `variables:` block emitted.                                     |
+| `"azure"`     | `pipelines/ai-review.azure-pipelines.yml` | PR-only job snippet. Each reviewer's secret is wired into the script step's `env:` block as `$(NAME)` (Azure doesn't expose pipeline secrets as env vars by default); `SYSTEM_ACCESSTOKEN` is added when any reviewer uses `.comment()`. **Use as a template** from your main pipeline.            |
+| `"bitbucket"` | `bitbucket-pipelines.yml`                 | Pull-request-only step on `denoland/deno:latest`, written to the repo-root pipelines file Bitbucket expects (it has no `include` mechanism). Repository variables flow into the step automatically — no env block emitted; map your secrets as **secured** repository variables.                   |
 
 ```ts
 // Declare one per host you care about — they share the same reviewers.
@@ -600,11 +604,22 @@ Two things a build can set to make the reply come from the account the
 maintainer addressed. `.commentToken(...)` accepts a **function** that produces
 the token when a post first needs it, so the build can mint a GitHub App
 installation token narrowed to `pull_requests: write` (and `issues: write` for
-the reaction) and post as `<app>[bot]` instead of `github-actions[bot]`. And
-`.secrets(...)` on the command passes the App's credentials to that job alone;
-the `pull_request` job is unchanged. Comments an App posts do trigger
-`issue_comment` workflows (unlike `GITHUB_TOKEN`'s), which is what the bot check
-in the gate is for.
+the reaction) and post as `<app>[bot]` instead of `github-actions[bot]`. And the
+App's credentials reach the jobs one of two ways: `.secrets(...)` on the command
+passes them to that job alone, leaving the `pull_request` job with the workflow
+token; `secrets` on the spec passes them to the review step of **both** jobs.
+The second is what a review that resolves its threads needs, because GitHub
+refuses the Actions token the mutation that resolves a review thread while
+letting it post the reply, so a thread answered on a push run stays open until a
+token that may close it comes by. Name secrets on the spec only for a repository
+whose pull-request job you would hand them to: it executes the pull request's
+own build, so everyone who can push a branch can read what it holds, while a
+fork's run receives no secrets from GitHub at all and the job's gate skips it
+besides. A job holding such a key should also block egress: `egress: "block"`
+with `allowedEndpoints` naming what the launcher and module resolution reach,
+and the generator adds each reviewer's provider host itself. Comments an App
+posts do trigger `issue_comment` workflows (unlike `GITHUB_TOKEN`'s), which is
+what the bot check in the gate is for.
 
 The command is GitHub-only; the other hosts render no comment job. Every job of
 the workflow shares one concurrency group keyed on the pull request number,

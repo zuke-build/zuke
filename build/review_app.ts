@@ -7,10 +7,12 @@
  *
  * The reviewers post with whatever {@link reviewCommentToken} resolves: an
  * installation token of the `zuke-build` GitHub App when the App's credentials
- * are in the environment — the comment-started review job passes them, so its
- * assessments arrive from `zuke-build[bot]`, the account a maintainer addressed
- * with `@zuke-build review` — and the workflow's `GITHUB_TOKEN` otherwise, as
- * the `pull_request` job has always posted. {@link acknowledgeReviewCommand}
+ * are in the environment — both review jobs pass them, so every assessment
+ * arrives from `zuke-build[bot]`, the account a maintainer addresses with
+ * `@zuke-build review`, and the token can resolve the review threads it
+ * answers, which GitHub refuses the workflow's `GITHUB_TOKEN` — and that
+ * `GITHUB_TOKEN` otherwise, as a local or credential-less run posts.
+ * {@link acknowledgeReviewCommand}
  * reacts 👀 on the command comment before the review runs, the way Dependabot
  * acknowledges its commands, so the maintainer sees the command was picked up
  * without opening the Actions tab.

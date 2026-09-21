@@ -16,6 +16,17 @@ import { dig, expectString } from "./json.ts";
 import { retryingFetch, type RetryOptions } from "./retry.ts";
 import { ASSESSMENT_GEMINI_SCHEMA, ASSESSMENT_JSON_SCHEMA } from "./schema.ts";
 
+/**
+ * The API host each provider is reached at — the one place the endpoints are
+ * named, so the generated workflow's egress allow-list and the calls it
+ * permits cannot disagree.
+ */
+export const PROVIDER_HOSTS: Record<Provider, string> = {
+  claude: "api.anthropic.com",
+  openai: "api.openai.com",
+  gemini: "generativelanguage.googleapis.com",
+};
+
 /** Default model per provider, used when `.model(...)` is not set. */
 export const DEFAULT_MODELS: Record<Provider, string> = {
   claude: "claude-opus-4-8",
@@ -148,7 +159,7 @@ export async function callProvider(
       messages: [{ role: "user", content: user }],
       output_config: outputConfig,
     };
-    const url = "https://api.anthropic.com/v1/messages";
+    const url = `https://${PROVIDER_HOSTS.claude}/v1/messages`;
     const response = await retryingFetch(doFetch, url, {
       method: "POST",
       headers: {
@@ -172,7 +183,7 @@ export async function callProvider(
     };
   }
   if (provider === "openai") {
-    const url = "https://api.openai.com/v1/chat/completions";
+    const url = `https://${PROVIDER_HOSTS.openai}/v1/chat/completions`;
     const response = await retryingFetch(doFetch, url, {
       method: "POST",
       headers: {
@@ -208,8 +219,8 @@ export async function callProvider(
   }
   // Send the key in a header, never the query string: a URL can leak into
   // access logs, proxies, and error messages, whereas the header does not.
-  const url =
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+  const url = `https://${PROVIDER_HOSTS.gemini}/v1beta/models/${model}` +
+    ":generateContent";
   const response = await retryingFetch(doFetch, url, {
     method: "POST",
     headers: { "content-type": "application/json", "x-goog-api-key": key },

@@ -64,10 +64,25 @@ Deno.test("only the gate job in ci.yml holds secrets", async (t) => {
   });
 });
 
-Deno.test("the ai-review job holds only what posting a review needs", () => {
-  const review = jobs(AI_REVIEW).get("review");
-  assertEquals(review === undefined, false);
-  assertEquals(secretsOf(review ?? {}), ["GITHUB_TOKEN", "OPENAI_API_KEY"]);
+Deno.test("the ai-review jobs hold only what posting a review needs", () => {
+  // The reviewers' key, the workflow token, and the zuke-build App's
+  // credentials — the last because GitHub refuses the Actions token the
+  // mutation that resolves a review thread (#631), so the job that answers a
+  // thread must hold a token that can close it. The App key on the
+  // pull-request job is the widening `docs/assurance-case.md` records under
+  // the write-access adversary: maintainers can already read every repository
+  // secret from a branch they push, and a fork's run receives none.
+  const expected = [
+    "GITHUB_TOKEN",
+    "OPENAI_API_KEY",
+    "ZUKE_BUILD_APP_ID",
+    "ZUKE_BUILD_APP_KEY",
+  ];
+  for (const id of ["review", "commandReview"]) {
+    const job = jobs(AI_REVIEW).get(id);
+    assertEquals(job === undefined, false, `${id} is missing`);
+    assertEquals(secretsOf(job ?? {}), expected, id);
+  }
 });
 
 Deno.test("no workflow triggers on pull_request_target", async () => {
@@ -103,12 +118,18 @@ Deno.test("only the gate persists credentials, and only it needs to", () => {
   }
 });
 
-Deno.test("the gate blocks egress and the review job does not", () => {
-  // Recorded rather than aspirational: the review job audits, which is why
-  // `docs/assurance-case.md` claims blocking only for jobs that hold a
-  // write-scoped token. If that changes, the prose has to change with it.
+Deno.test("the gate and both review jobs block egress", () => {
+  // `docs/assurance-case.md` claims blocking for every job that holds a
+  // credential a compromised dependency could send somewhere. The review jobs
+  // hold the App key, so they block like the gate, to the launcher's
+  // endpoints plus the reviewers' provider. If that changes, the prose has to
+  // change with it.
   const gate = JSON.stringify(jobs(CI).get("ci") ?? {});
   assertEquals(gate.includes('"egress-policy":"block"'), true);
-  const review = JSON.stringify(jobs(AI_REVIEW).get("review") ?? {});
-  assertEquals(review.includes('"egress-policy":"audit"'), true);
+  for (const id of ["review", "commandReview"]) {
+    const job = JSON.stringify(jobs(AI_REVIEW).get(id) ?? {});
+    assertEquals(job.includes('"egress-policy":"block"'), true, id);
+    assertEquals(job.includes("api.openai.com:443"), true, id);
+    assertEquals(job.includes("dl.deno.land:443"), true, id);
+  }
 });

@@ -47,7 +47,9 @@ import {
   ZUKE_ACTION,
 } from "@zuke/core";
 import { REVIEW_PR_ENV } from "./diff.ts";
+import { PROVIDER_HOSTS } from "./provider.ts";
 import type { Reviewer } from "./reviewer.ts";
+import type { Provider } from "./types.ts";
 
 /** Default output paths per host — see {@link AiReviewWorkflowSpec}. */
 const DEFAULT_PATHS: Record<CiProvider, string> = {
@@ -203,7 +205,8 @@ export class ReviewCommandSettings {
    * Pass these repository secrets to the command job's review step as env vars
    * of the same name — e.g. the GitHub App credentials the build mints its
    * `commentToken` from, so the review posts as the app. Only the command job
-   * receives them; the `pull_request` job is unchanged.
+   * receives them; the `pull_request` job is unchanged. Secrets both jobs
+   * should hold go on {@link AiReviewWorkflowSpec.secrets} instead.
    */
   secrets(...names: string[]): this {
     this.secrets_.push(...names);
@@ -277,6 +280,37 @@ export interface AiReviewWorkflowSpec {
   /** Per-job timeout in minutes. Defaults to 15. */
   timeoutMinutes?: number;
   /**
+   * Repository secrets every review step receives as env vars of the same
+   * name, beyond the reviewers' own keys and the host token — on the
+   * pull-request job and, with a {@link command}, the command job alike. The
+   * case for it is a GitHub App the build mints its `.commentToken(...)`
+   * from: the Actions token may post a review and reply in its threads, but
+   * GitHub refuses it the mutation that **resolves** a thread, so a review
+   * that closes the threads it answers needs the App's token on the job that
+   * answers most of them, the pull-request job. Name secrets here only for a
+   * repository whose pull-request job you would hand them to: it executes the
+   * pull request's own build, so everyone who can push a branch can read what
+   * it holds. Secrets for the command job alone go on
+   * {@link ReviewCommandSettings.secrets}.
+   */
+  secrets?: readonly string[];
+  /**
+   * The harden-runner egress policy of the GitHub jobs. `"audit"` (the
+   * default) records outbound connections; `"block"` drops everything outside
+   * {@link allowedEndpoints}, which is what a job holding a credential worth
+   * stealing should do — the App key {@link secrets} names, say. Each
+   * reviewer's provider host is added to the allow-list automatically, so a
+   * build lists only what its own launcher and module resolution reach.
+   */
+  egress?: "audit" | "block";
+  /**
+   * The `host:port` endpoints a `"block"` {@link egress} permits, on top of
+   * every reviewer's provider host. For a Zuke launcher that is the Deno
+   * download, JSR, and GitHub (`github.com`, `api.github.com`, and the
+   * release-asset hosts the bootstrap fetches from). Ignored when auditing.
+   */
+  allowedEndpoints?: readonly string[];
+  /**
    * Run the review on demand when a maintainer comments a command on a pull
    * request — any pull request, a fork's included. GitHub only; see
    * {@link ReviewCommandSettings} for the job it adds and the gate it runs
@@ -285,9 +319,10 @@ export interface AiReviewWorkflowSpec {
    * ```ts
    * aiReviewWorkflow({
    *   reviewers: [this.security],
-   *   command: (c) =>
-   *     c.text("@zuke-build review")
-   *       .secrets("ZUKE_BUILD_APP_ID", "ZUKE_BUILD_APP_KEY"),
+   *   secrets: ["ZUKE_BUILD_APP_ID", "ZUKE_BUILD_APP_KEY"],
+   *   egress: "block",
+   *   allowedEndpoints: ["dl.deno.land:443", "jsr.io:443", "api.github.com:443"],
+   *   command: (c) => c.text("@zuke-build review"),
    * });
    * ```
    */
@@ -338,7 +373,13 @@ function resolveCommand(
         `separated by single spaces, e.g. "@zuke-build review".`,
     );
   }
-  for (const name of command.secrets_) {
+  assertSecretNames(command.secrets_);
+  return { text, secrets: command.secrets_ };
+}
+
+/** Reject a secret name the host's `secrets.NAME` syntax would not accept. */
+function assertSecretNames(names: readonly string[]): void {
+  for (const name of names) {
     if (!SECRET_NAME.test(name)) {
       throw new Error(
         `aiReviewWorkflow: secret ${JSON.stringify(name)} is not a valid ` +
@@ -346,7 +387,6 @@ function resolveCommand(
       );
     }
   }
-  return { text, secrets: command.secrets_ };
 }
 
 /** Resolve the env var name for a parameter — honours `.env(...)` overrides. */
@@ -357,7 +397,9 @@ function envOf(param: AnyParameter): string | undefined {
 }
 
 /**
- * Each reviewer's effective key env var, plus whether any uses `.comment()`.
+ * Each reviewer's effective key env var, whether any uses `.comment()`, and
+ * the distinct providers they call — the hosts a blocking egress policy must
+ * let through.
  */
 function reviewerEnv(
   reviewers: readonly Reviewer[],
@@ -365,11 +407,17 @@ function reviewerEnv(
   keyEnvs: string[];
   commentEnvs: string[];
   commentEnabled: boolean;
+  providers: Provider[];
 } {
   const keyEnvs: string[] = [];
   const commentEnvs: string[] = [];
+  const providers: Provider[] = [];
   let commentEnabled = false;
   for (const reviewer of reviewers) {
+    const provider = reviewer.provider_;
+    if (provider !== undefined && !providers.includes(provider)) {
+      providers.push(provider);
+    }
     const key = reviewer.apiKey_;
     if (typeof key === "object") {
       const name = envOf(key);
@@ -386,7 +434,7 @@ function reviewerEnv(
       }
     }
   }
-  return { keyEnvs, commentEnvs, commentEnabled };
+  return { keyEnvs, commentEnvs, commentEnabled, providers };
 }
 
 /** GitHub-style secret reference, e.g. `${{ secrets.OPENAI_API_KEY }}`. */
@@ -422,6 +470,7 @@ class AiReviewWorkflow extends CiFile {
       assertSafeRef(spec.baseBranch, "baseBranch");
     }
     if (spec.target !== undefined) assertSafeRef(spec.target, "target");
+    assertSecretNames(spec.secrets ?? []);
     if (spec.command !== undefined) {
       this.#command = resolveCommand(spec.command);
     }
@@ -449,9 +498,11 @@ class AiReviewWorkflow extends CiFile {
   /**
    * The script step's `env:` block for a host whose secrets are not ambient:
    * every reviewer's API-key secret, plus the comment token — `defaultToken`
-   * when no reviewer named one explicitly. `ref` renders one secret reference in
-   * the host's own syntax ({@link githubRef}, {@link azureRef}), which is the
-   * only thing that differs between the two hosts needing the block at all.
+   * when no reviewer named one explicitly — plus whatever
+   * {@link AiReviewWorkflowSpec.secrets} names. `ref` renders one secret
+   * reference in the host's own syntax ({@link githubRef}, {@link azureRef}),
+   * which is the only thing that differs between the two hosts needing the
+   * block at all.
    */
   #secretEnv(
     reviewers: ReturnType<typeof reviewerEnv>,
@@ -466,7 +517,28 @@ class AiReviewWorkflow extends CiFile {
         : [defaultToken];
       for (const name of tokens) env[name] = ref(name);
     }
+    for (const name of this.#spec.secrets ?? []) env[name] = ref(name);
     return env;
+  }
+
+  /**
+   * The GitHub jobs' hardening: the policy the spec asks for, and under
+   * `"block"` the allow-list — the build's own endpoints first, then each
+   * reviewer's provider host, which the generator adds so a policy that
+   * blocks can never block the review itself. Under `"audit"` no list is
+   * rendered, since the action ignores one.
+   */
+  #harden(): CiJob["harden"] {
+    const egress = this.#spec.egress ?? "audit";
+    if (egress !== "block") {
+      return { egress, action: this.#spec.hardenRunner };
+    }
+    const allowedEndpoints = [...(this.#spec.allowedEndpoints ?? [])];
+    for (const provider of reviewerEnv(this.#spec.reviewers).providers) {
+      const endpoint = `${PROVIDER_HOSTS[provider]}:443`;
+      if (!allowedEndpoints.includes(endpoint)) allowedEndpoints.push(endpoint);
+    }
+    return { egress, allowedEndpoints, action: this.#spec.hardenRunner };
   }
 
   /**
@@ -532,7 +604,7 @@ class AiReviewWorkflow extends CiFile {
       // bumped ai-review.yml, the next regeneration wrote the stale constant
       // back, and the bump was silently reverted. That happened, and the
       // constant had to be hand-updated to match.
-      harden: { egress: "audit", action: this.#spec.hardenRunner },
+      harden: this.#harden(),
       checkout: { persistCredentials: false, action: this.#spec.checkout },
       // Resolved here rather than left to core, whose fallback is the reference
       // baked into the release this package resolved against — a release behind

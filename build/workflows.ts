@@ -88,8 +88,12 @@ const GATE_ENDPOINTS = [
   "storage.googleapis.com:443",
 ];
 
-/** What the core-floor check needs: the Deno bootstrap, JSR, and GitHub. */
-const FLOOR_CHECK_ENDPOINTS = [
+/**
+ * What a job that only bootstraps Deno, resolves modules and talks to GitHub
+ * needs: the core-floor check, and the AI review, whose model provider the
+ * workflow generator adds on its own.
+ */
+export const BOOTSTRAP_ENDPOINTS = [
   "deno.land:443",
   "dl.deno.land:443",
   "jsr.io:443",
@@ -222,7 +226,7 @@ export function githubWorkflows(
           // carries only `jsr:@zuke/*` specifiers, but that governs the import map
           // and cannot stop a source file in a PR importing an absolute URL that
           // `deno check` would then follow.
-          harden: { egress: "block", allowedEndpoints: FLOOR_CHECK_ENDPOINTS },
+          harden: { egress: "block", allowedEndpoints: BOOTSTRAP_ENDPOINTS },
         },
         {
           target: targets.test,
