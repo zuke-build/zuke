@@ -73,11 +73,25 @@ import { withAmbientRedactor } from "./ambient_redactor.ts";
 import type { StateStore } from "./state/store.ts";
 import type { Plugin, RunInfo } from "./plugin.ts";
 import type { Renderer } from "./renderer.ts";
+import { type BannerFacts, bannerLines } from "./banner.ts";
+import { detectCiHost } from "./host.ts";
+import { VERSION } from "./version.ts";
 
 /** Options for {@link execute}. */
 export interface ExecuteOptions {
   /** Suppress all banner/summary output (used by tests). */
   silent?: boolean;
+  /**
+   * Print the opening banner — the wordmark (off CI), the framework, runtime
+   * and platform versions, and this run's id and directory. Defaults to on;
+   * `false` is the CLI's `--no-banner`, and `ZUKE_NO_BANNER` turns it off from
+   * the environment.
+   *
+   * Only ever printed when the run writes to the real console. A `silent` run
+   * or one given its own {@link ExecuteOptions.reporter} is embedding the
+   * executor, and gets no banner whatever this says.
+   */
+  banner?: boolean;
   /** Custom reporter; overrides `silent`. */
   reporter?: Reporter;
   /**
@@ -348,6 +362,19 @@ export async function execute(
   // lifecycle so every plugin hook can carry it.
   const runId = options.resume ? options.resume.record.id : crypto.randomUUID();
   const runInfo: RunInfo = { runId, dryRun };
+
+  // The opening banner, printed once the run has an identity to report and
+  // before the first target header.
+  //
+  // Gated on `writesToConsole` for the same reason the job-summary write is:
+  // when a caller supplies its own reporter it is embedding the executor, and
+  // painting six lines of ASCII into somebody else's sink is not this module's
+  // decision to make. That also covers `silent`, which clears the same flag.
+  if (writesToConsole && showBanner(options.banner, readEnv)) {
+    for (const line of bannerLines(runtimeFacts(runId, readEnv), style)) {
+      reporter.info(line);
+    }
+  }
 
   const life = makeLifecycle(
     build,
@@ -704,4 +731,41 @@ async function resolveCache(
     remote,
     warn: (message) => reporter.info(message),
   });
+}
+
+/**
+ * Whether to print the opening banner: on unless the caller turned it off
+ * (`--no-banner`) or the environment did (`ZUKE_NO_BANNER`).
+ *
+ * The explicit option wins over the variable, so a `--banner` caller is not
+ * overridden by an exported `ZUKE_NO_BANNER` in the shell it runs from. Any
+ * non-empty value but the conventional `false`/`0` counts as set, matching how
+ * the rest of Zuke reads a boolean from the environment.
+ */
+function showBanner(
+  option: boolean | undefined,
+  readEnv: (name: string) => string | undefined,
+): boolean {
+  if (option !== undefined) return option;
+  const value = readEnv("ZUKE_NO_BANNER");
+  if (value === undefined || value === "") return true;
+  return value === "false" || value === "0";
+}
+
+/**
+ * The facts the banner reports, read from the runtime here so
+ * {@link bannerLines} stays pure and unit-testable without an environment.
+ */
+function runtimeFacts(
+  runId: string,
+  readEnv: (name: string) => string | undefined,
+): BannerFacts {
+  return {
+    version: VERSION,
+    deno: Deno.version.deno,
+    platform: `${Deno.build.os}-${Deno.build.arch}`,
+    host: detectCiHost(readEnv),
+    runId,
+    cwd: Deno.cwd(),
+  };
 }

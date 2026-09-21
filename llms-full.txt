@@ -121,6 +121,20 @@ function assertSafeLinkTarget(entryName: string, target: string): void
   name is bounded by {@link assertSafeEntryName}; a symlink adds a second escape
   vector (its target), so a poisoned tarball can't plant `bin/x -> ../../etc`.
 
+function bannerLines(facts: BannerFacts, options: BannerOptions): string[]
+  The banner as printable lines: the wordmark off CI, then
+  `zuke <version> · deno <version> · <platform>` — with the CI host appended
+  when there is one — then `run <id> · <cwd>`.
+
+  The wordmark is decided here, from `facts.host`, rather than by the caller:
+  "art off CI, identity everywhere" is the rule this module exists to state,
+  and a flag for it would be a second place to get it wrong. Suppressing the
+  banner entirely is the caller's business, and a different question.
+
+  The run id is printed in full rather than abbreviated: its reason for being
+  here is that it can be pasted into `zuke runs show`, and a truncated id
+  cannot.
+
 function bearerChallenge(parts: BearerChallenge): string
   A `WWW-Authenticate: Bearer` challenge built from `parts`.
 
@@ -518,6 +532,12 @@ function lockKey(...parts: Array<string | number>): string
   Join parts into a lock key that is safe to use as a filename and URL segment.
   Each part is sanitised (non-`[A-Za-z0-9._-]` runs become `_`) and empty parts
   are dropped, so `lockKey("deploy", repo)` is stable and injection-free.
+
+function logoLines(color: boolean, options: LogoOptions): string[]
+  The logo as printable lines: the {@link ZUKE_LOGO} art painted two-tone when
+  `color` is on (letters bright, shadow dimmed), plus the optional tagline.
+  Pure — no I/O and no environment reads — so callers that manage their own
+  output (like the `zuke` CLI) can route the lines through any sink.
 
 function metadataDocument(settings: ProtectedResourceSettings): Record<string, unknown>
   The metadata document itself, as the JSON object RFC 9728 §2 defines.
@@ -924,9 +944,21 @@ const UNAUTHORIZED: McpAuthReject
   and rejected gets {@link INVALID_TOKEN} instead: the two are different facts
   about the caller, and only the second one is about a credential.
 
+const VERSION: "1.56.0"
+  The `@zuke/core` version. Kept in sync with deno.json by release-please.
+
 const ZUKE_ACTION: "zuke-build/zuke"
   The name a {@link CiPinResolver} is asked for the prelude action, so a
   repository that pins its own actions can pin this one the same way.
+
+const ZUKE_LOGO: `███████╗██╗   ██╗██╗  ██╗███████╗
+╚══███╔╝██║   ██║██║ ██╔╝██╔════╝
+  ███╔╝ ██║   ██║█████╔╝ █████╗
+ ███╔╝  ██║   ██║██╔═██╗ ██╔══╝
+███████╗╚██████╔╝██║  ██╗███████╗
+╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝`
+  The Zuke wordmark in FIGlet's ANSI-shadow style. Solid `█` blocks form the
+  letters; box-drawing characters draw the shadow.
 
 const cliReporter: Reporter
   The sink every command-surface module writes through, neutralised for a
@@ -2617,6 +2649,28 @@ interface AnyParameter
   stringValue_(): string | undefined
     The resolved value as a string, or `undefined` if unset (for masking).
 
+interface BannerFacts
+  What a run reports about itself, gathered by the caller.
+
+  version: string
+    The `@zuke/core` version executing this build.
+  deno: string
+    The Deno runtime version, e.g. `2.8.3`.
+  platform: string
+    The platform as `<os>-<arch>`, e.g. `darwin-aarch64`.
+  host: CiHost
+    The detected CI host, or `"local"` off CI.
+  runId: string
+    This run's id — the one `zuke runs show <id>` takes.
+  cwd: string
+    The directory the run started in.
+
+interface BannerOptions
+  How {@link bannerLines} renders.
+
+  color: boolean
+    Emit ANSI colour codes.
+
 interface BearerChallenge
   The parts of a `WWW-Authenticate: Bearer` challenge Zuke emits.
 
@@ -3302,6 +3356,11 @@ interface ExecuteOptions
 
   silent?: boolean
     Suppress all banner/summary output (used by tests).
+  banner?: boolean
+    Print the opening banner — the wordmark (off CI), the framework, runtime
+    and platform versions, and this run's id and directory. Defaults to on;
+    `false` is the CLI's `--no-banner`, and `ZUKE_NO_BANNER` turns it off from
+    the environment. `silent` suppresses it along with everything else.
   reporter?: Reporter
     Custom reporter; overrides `silent`.
   plugins?: Plugin[]
@@ -3719,6 +3778,16 @@ interface LockHolder
     ISO-8601 timestamp when it was acquired.
   runUrl?: string
     A link to the holding run (e.g. its CI job), when known.
+
+interface LogoOptions
+  Options for {@link logoLines} and `ConsoleTasks.logo`.
+
+  tagline?: string
+    A line printed dimmed under the art (e.g. a version or strapline).
+  letterStyle?: readonly StyleName[]
+    Styles for the solid letter blocks. Defaults to `["cyan", "bold"]`.
+  shadowStyle?: readonly StyleName[]
+    Styles for the shadow characters. Defaults to `["dim"]`.
 
 interface McpAuthReject
   Why a request was refused, and how the transport should say so.

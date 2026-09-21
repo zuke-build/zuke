@@ -133,6 +133,13 @@ export {
   type TestCounts,
 } from "./src/summary_note.ts";
 export type { Style } from "./src/render.ts";
+export {
+  type BannerFacts,
+  bannerLines,
+  type BannerOptions,
+} from "./src/banner.ts";
+export { logoLines, type LogoOptions, ZUKE_LOGO } from "./src/logo.ts";
+export { VERSION } from "./src/version.ts";
 export type { BuildCache, OpenCacheOptions } from "./src/cache.ts";
 export {
   archiveOutputs,
