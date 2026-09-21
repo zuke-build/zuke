@@ -75,29 +75,22 @@ export const RESERVED_COMMANDS: readonly ReservedCommand[] = [
     name: GRAPH_COMMAND,
     description: "Show the dependency graph",
     usage: ["graph [--output=html] [--no-open]"],
-    detail: "Show the dependency graph. The default output is the terminal " +
-      "adjacency listing; --output=html writes an interactive page to .zuke/ " +
-      "and opens it in a browser.",
+    detail:
+      "The default output is the terminal adjacency listing. --output=html writes an interactive page to .zuke/ and opens it in a browser.",
   },
   {
     name: GENERATE_CI_COMMAND,
     description: "Write declared CI configuration files",
     usage: ["generate-ci [--check]"],
     detail:
-      "Write the CI configuration files declared on the build via cicd(). " +
-      "Running any target regenerates them too, so this is for generating " +
-      "them on their own, and --check verifies they are current.",
+      "The files are the ones the build declares through cicd(). Running any target regenerates them too, so this command is for writing them on their own; --check verifies they are current instead.",
   },
   {
     name: COMPLETIONS_COMMAND,
     description: "Print a shell-completion script",
     usage: ["completions <install|print> <bash|zsh|fish>"],
     detail:
-      "Shell completion for bash, zsh, or fish, completing target names, " +
-      "commands, and flags.\n\n" +
-      "'print <shell>' writes the script to stdout for you to source, e.g. " +
-      "source <(./zuke completions print bash). 'install <shell>' writes it " +
-      "and wires it into your shell's startup automatically.",
+      "Completes target names, commands and flags, for bash, zsh or fish.\n\n'print <shell>' writes the script to stdout for you to source, e.g. source <(./zuke completions print bash). 'install <shell>' writes it and wires it into your shell's startup automatically.",
   },
   {
     name: MCP_COMMAND,
@@ -108,14 +101,7 @@ export const RESERVED_COMMANDS: readonly ReservedCommand[] = [
       "mcp --registry [--max-concurrent-runs <n>]",
     ],
     detail:
-      "Run an MCP server over the build on stdio, exposing its targets to AI " +
-      "agents as typed tools.\n\n" +
-      "Read-only by default: an agent may inspect the targets, parameters and " +
-      "graph, but not execute anything. The authorization flags below open " +
-      "that up in tiers, and they have deliberately different reach — " +
-      "--allow-run controls which targets may be invoked, and invoking one " +
-      "runs its dependencies, so allow-listing a target allows everything it " +
-      "does. See docs/mcp.md.",
+      "Serves on stdio, exposing the build's targets as typed tools.\n\nRead-only by default: an agent may inspect the targets, parameters and graph, but not execute anything. The options below open that up in tiers, and they have deliberately different reach — --allow-run decides which targets may be invoked, and invoking one runs its dependencies, so allow-listing a target allows everything it does. See docs/mcp.md.",
   },
   {
     name: RESUME_COMMAND,
@@ -125,11 +111,7 @@ export const RESERVED_COMMANDS: readonly ReservedCommand[] = [
       "resume --check [<run-id>]",
     ],
     detail:
-      "Continue a suspended run — one stopped at a .waitsFor() gate.\n\n" +
-      'Exactly one resumer wins; the rest report "already resumed", so it is ' +
-      "safe to wire to a webhook that may deliver twice. With --check it " +
-      "re-checks suspended runs instead, evaluating predicate waits and " +
-      "timeouts, which is the entry point for a cron schedule.",
+      "A suspended run is one stopped at a .waitsFor() gate.\n\nExactly one resumer wins; the rest report that it was already resumed, so it is safe to wire to a webhook that may deliver twice. --check re-checks suspended runs instead, evaluating predicate waits and timeouts, which is the entry point for a cron schedule.",
   },
   {
     name: RUNS_COMMAND,
@@ -140,21 +122,15 @@ export const RESERVED_COMMANDS: readonly ReservedCommand[] = [
       "runs show <run-id> [--json]",
       "runs prune [--keep <age>] [--keep-last <n>] [--dry-run]",
     ],
-    detail: "Inspect persisted run records from the state store.\n\n" +
-      "'list' prints one row per run, newest first. 'show <run-id>' " +
-      "reconstructs a run's full per-target status and metadata. 'prune' " +
-      "deletes old terminal records. All accept --json for tools. " +
-      "See docs/state.md.",
+    detail:
+      "Reads the records the state store persisted.\n\n'list' prints one row per run, newest first. 'show <run-id>' reconstructs a run's full per-target status and metadata. 'prune' deletes old terminal records. All accept --json for tools. See docs/state.md.",
   },
   {
     name: CANCEL_COMMAND,
     description: "Cancel a run and run its compensations",
     usage: ["cancel <run-id> [--actor <name>]"],
-    detail: "Cancel a run: stop it — a live run aborts — then run the " +
-      "compensations of every target that had succeeded, in reverse order, " +
-      "and mark the record cancelled.\n\n" +
-      "Idempotent: cancelling a finished run is a no-op. " +
-      "See docs/orchestration.md.",
+    detail:
+      "A live run aborts; then the compensations of every target that had succeeded run in reverse order, and the record is marked cancelled.\n\nIdempotent: cancelling a finished run is a no-op. See docs/orchestration.md.",
   },
   {
     name: FORCE_COMMAND,
@@ -163,48 +139,29 @@ export const RESERVED_COMMANDS: readonly ReservedCommand[] = [
       "force <run-id> <target> --outcome skipped|succeeded [--reason <why>]",
     ],
     detail:
-      "Settle one target of a run without running it, so a stuck run can " +
-      "move on.\n\n" +
-      "--outcome skipped takes the step off the plan; --outcome succeeded " +
-      "records that someone did it by hand, and a later cancel compensates " +
-      "it. --reason is recorded on the run beside who forced it.",
+      "Settles the target without running it, so a stuck run can move on.\n\n--outcome skipped takes the step off the plan; --outcome succeeded records that someone did it by hand, and a later cancel compensates it.",
   },
   {
     name: REGISTER_COMMAND,
     description: "Register this build in the build registry",
     usage: ["register [--actor <name>] [--json]"],
     detail:
-      "Record this build in the build registry — its targets, parameters and " +
-      "launch location — so a registry-backed MCP server can discover it.\n\n" +
-      "Idempotent, and excludes secrets. Writes to .zuke/builds unless " +
-      "ZUKE_REGISTRY_URL, ZUKE_REGISTRY_DIR or the build's registry() " +
-      "configures a store. See docs/registry.md.",
+      "Records the build's targets, parameters and launch location, so a registry-backed MCP server can discover it.\n\nIdempotent, and excludes secrets. Writes to .zuke/builds unless ZUKE_REGISTRY_URL, ZUKE_REGISTRY_DIR or the build's registry() configures a store. See docs/registry.md.",
   },
   {
     name: DOC_COMMAND,
     description:
       "Print a package's API docs (deno doc), isolated from the repo",
     usage: ["doc <spec>"],
-    detail: "Print a package's API docs by running 'deno doc <spec>' from an " +
-      "isolated empty directory, e.g. doc jsr:@zuke/deno.\n\n" +
-      "The empty directory is the point. Run in a Node repo, deno doc " +
-      "otherwise resolves node_modules/@types and buries the API under " +
-      "type-resolution warnings; an empty cwd has nothing to resolve. A " +
-      "relative path such as ./mod.ts is resolved against the real working " +
-      "directory first.",
+    detail:
+      "Runs 'deno doc <spec>' from an isolated empty directory, e.g. doc jsr:@zuke/deno.\n\nThe empty directory is the point. Run in a Node repo, deno doc otherwise resolves node_modules/@types and buries the API under type-resolution warnings; an empty cwd has nothing to resolve. A relative path such as ./mod.ts is resolved against the real working directory first.",
   },
   {
     name: OUTDATED_COMMAND,
     description: "Report JSR packages the lock resolves behind their latest",
     usage: ["outdated [--update [<package>...]] [--exit-code]"],
     detail:
-      "Report the JSR packages the lock resolves to a version older than the " +
-      "registry's latest, and with --update move them up.\n\n" +
-      "It needs the network, which is why it is a command rather than a line " +
-      "in --list: those stay offline and instant. It exists because a build " +
-      "whose specifiers are written inline, such as jsr:@zuke/git@^1, gets no " +
-      "signal from deno outdated at all — that reads manifests, and an inline " +
-      "specifier is in no manifest.",
+      "Compares what the lock resolves against each package's latest release, and with --update moves them up.\n\nIt needs the network, which is why it is a command rather than a line in --list: those stay offline and instant. It exists because a build whose specifiers are written inline, such as jsr:@zuke/git@^1, gets no signal from deno outdated at all — that reads manifests, and an inline specifier is in no manifest.",
   },
 ];
 
