@@ -1,0 +1,35 @@
+# TEMPORARY diagnostic for #629: prints what a pull_request_review_comment
+# event exposes to a job-level `if:`. Removed once the reply gate is settled.
+name: Diag review comment
+"on":
+  pull_request_review_comment:
+    types:
+      - created
+permissions: {}
+jobs:
+  diag:
+    name: Diag review comment
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Print the gate's inputs
+        shell: bash
+        run: |
+          echo "event_name=$EVENT_NAME"
+          echo "in_reply_to_id=$IN_REPLY_TO_ID"
+          echo "user_type=$USER_TYPE"
+          echo "author_association=$AUTHOR_ASSOCIATION"
+          echo "head_repo_full_name=$HEAD_REPO_FULL_NAME"
+          echo "head_repo_fork=$HEAD_REPO_FORK"
+          echo "repository=$REPOSITORY"
+          echo "gate=$GATE"
+        env:
+          EVENT_NAME: "${{ github.event_name }}"
+          IN_REPLY_TO_ID: "${{ github.event.comment.in_reply_to_id }}"
+          USER_TYPE: "${{ github.event.comment.user.type }}"
+          AUTHOR_ASSOCIATION: "${{ github.event.comment.author_association }}"
+          HEAD_REPO_FULL_NAME: "${{ github.event.pull_request.head.repo.full_name }}"
+          HEAD_REPO_FORK: "${{ github.event.pull_request.head.repo.fork }}"
+          REPOSITORY: "${{ github.repository }}"
+          GATE: "${{ github.event_name == 'pull_request_review_comment' && github.event.pull_request.head.repo.full_name == github.repository && github.event.comment.in_reply_to_id && github.event.comment.user.type != 'Bot' && (github.event.comment.author_association == 'OWNER' || github.event.comment.author_association == 'MEMBER' || github.event.comment.author_association == 'COLLABORATOR') }}"
