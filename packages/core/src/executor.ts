@@ -21,7 +21,7 @@
  */
 
 import type { Build, BuildResult } from "./build.ts";
-import { defaultReadEnv, messageOf } from "./internal.ts";
+import { defaultReadEnv, envFlag, messageOf } from "./internal.ts";
 import { escapingReporter, type Reporter } from "./reporter.ts";
 export type { Reporter } from "./reporter.ts";
 import {
@@ -74,7 +74,7 @@ import type { StateStore } from "./state/store.ts";
 import type { Plugin, RunInfo } from "./plugin.ts";
 import type { Renderer } from "./renderer.ts";
 import { type BannerFacts, bannerLines } from "./banner.ts";
-import { detectCiHost } from "./host.ts";
+import { detectCiHost, isCI } from "./host.ts";
 import { VERSION } from "./version.ts";
 
 /** Options for {@link execute}. */
@@ -370,10 +370,15 @@ export async function execute(
   // when a caller supplies its own reporter it is embedding the executor, and
   // painting six lines of ASCII into somebody else's sink is not this module's
   // decision to make. That also covers `silent`, which clears the same flag.
+  //
+  // Through `messages`, not `reporter`: the banner composes no workflow
+  // command of its own, and it carries text this process did not author — the
+  // working directory, and on a resume a run id read from the shared state
+  // store. A directory named `::error::…` would otherwise reach a runner's log
+  // as a live command.
   if (writesToConsole && showBanner(options.banner, readEnv)) {
-    for (const line of bannerLines(runtimeFacts(runId, readEnv), style)) {
-      reporter.info(line);
-    }
+    const facts = runtimeFacts(runId, readEnv, style.width);
+    for (const line of bannerLines(facts, style.color)) messages.info(line);
   }
 
   const life = makeLifecycle(
@@ -735,21 +740,20 @@ async function resolveCache(
 
 /**
  * Whether to print the opening banner: on unless the caller turned it off
- * (`--no-banner`) or the environment did (`ZUKE_NO_BANNER`).
+ * (`--no-banner`, or `banner: false` programmatically) or the environment did
+ * (`ZUKE_NO_BANNER`).
  *
- * The explicit option wins over the variable, so a `--banner` caller is not
- * overridden by an exported `ZUKE_NO_BANNER` in the shell it runs from. Any
- * non-empty value but the conventional `false`/`0` counts as set, matching how
- * the rest of Zuke reads a boolean from the environment.
+ * The explicit option wins, so a decision made for one run is not overridden
+ * by a standing preference exported in the shell it runs from — in either
+ * direction. What counts as "set" is {@link envFlag}'s business, so
+ * `ZUKE_NO_BANNER=FALSE` cannot come to mean the opposite of `false`.
  */
 function showBanner(
   option: boolean | undefined,
   readEnv: (name: string) => string | undefined,
 ): boolean {
   if (option !== undefined) return option;
-  const value = readEnv("ZUKE_NO_BANNER");
-  if (value === undefined || value === "") return true;
-  return value === "false" || value === "0";
+  return !envFlag(readEnv("ZUKE_NO_BANNER"));
 }
 
 /**
@@ -759,13 +763,19 @@ function showBanner(
 function runtimeFacts(
   runId: string,
   readEnv: (name: string) => string | undefined,
+  width: number,
 ): BannerFacts {
   return {
     version: VERSION,
     deno: Deno.version.deno,
     platform: `${Deno.build.os}-${Deno.build.arch}`,
+    // Both, because they answer different questions: `isCI` knows the systems
+    // with no `CiHost` name (Jenkins, CircleBuild, a bare `CI=true`) and
+    // decides the art; `detectCiHost` names the four Zuke supports.
+    ci: isCI(readEnv),
     host: detectCiHost(readEnv),
     runId,
     cwd: Deno.cwd(),
+    width,
   };
 }

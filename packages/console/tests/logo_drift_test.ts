@@ -28,12 +28,24 @@ Deno.test("the console and core copies of the wordmark are identical", () => {
   assertEquals(CONSOLE_LOGO, CORE_LOGO);
 });
 
-Deno.test("the console and core logo renderers agree, plain and coloured", () => {
+Deno.test("the console and core logo renderers agree on every option", () => {
+  // Every option, not just the defaults: a copy that quietly ignored
+  // `letterStyle` still rendered the default palette identically, so a
+  // defaults-only comparison passed while the two had genuinely diverged.
+  const cases: Parameters<typeof logoLines>[1][] = [
+    undefined,
+    { tagline: "v1" },
+    { letterStyle: ["red"] },
+    { shadowStyle: ["green", "bold"] },
+    { tagline: "x", letterStyle: ["magenta"], shadowStyle: ["dim", "italic"] },
+  ];
   for (const color of [false, true]) {
-    assertEquals(consoleLogoLines(color), logoLines(color));
-    assertEquals(
-      consoleLogoLines(color, { tagline: "v1" }),
-      logoLines(color, { tagline: "v1" }),
-    );
+    for (const options of cases) {
+      assertEquals(
+        consoleLogoLines(color, options),
+        logoLines(color, options),
+        `${color} ${JSON.stringify(options)}`,
+      );
+    }
   }
 });

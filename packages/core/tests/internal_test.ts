@@ -5,6 +5,7 @@ import { assertEquals, assertRejects } from "./_assert.ts";
 import {
   defaultReadEnv,
   delay,
+  envFlag,
   messageOf,
   readFileOrNull,
   readTextOrNull,
@@ -166,4 +167,26 @@ Deno.test("runWithTimeout propagates a rejection from fn", async () => {
     Error,
     "inner",
   );
+});
+
+Deno.test("envFlag: unset and empty are off", () => {
+  assertEquals(envFlag(undefined), false);
+  assertEquals(envFlag(""), false);
+  assertEquals(envFlag("   "), false);
+});
+
+Deno.test("envFlag: the conventional negatives are off, whatever their case", () => {
+  // FALSE must not mean the opposite of false. That is the defect this
+  // replaced: a hand-rolled comparison against the lowercase spellings.
+  for (const value of ["false", "FALSE", "False", "0", "no", "NO", " false "]) {
+    assertEquals(envFlag(value), false, value);
+  }
+});
+
+Deno.test("envFlag: anything else is on", () => {
+  // An unfamiliar value still means the variable was set on purpose; refusing
+  // to guess would be a silent no.
+  for (const value of ["1", "true", "TRUE", "yes", "on", "please"]) {
+    assertEquals(envFlag(value), true, value);
+  }
 });

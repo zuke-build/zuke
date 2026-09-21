@@ -20,7 +20,7 @@
  */
 
 import type { CiHost } from "./host.ts";
-import { logoLines } from "./logo.ts";
+import { logoLines, ZUKE_LOGO } from "./logo.ts";
 import { stylize } from "./render.ts";
 
 /** What a run reports about itself, gathered by the caller. */
@@ -31,60 +31,69 @@ export interface BannerFacts {
   deno: string;
   /** The platform as `<os>-<arch>`, e.g. `darwin-aarch64`. */
   platform: string;
-  /** The detected CI host, or `"local"` off CI. */
+  /**
+   * Whether this is CI at all — including the systems {@link CiHost} has no
+   * name for.
+   *
+   * Separate from {@link BannerFacts.host} on purpose. "Is this a runner log?"
+   * and "which runner?" are different questions, and only the first decides
+   * the art: a `CiHost` of `"local"` covers Jenkins, CircleBuild, Buildkite,
+   * Travis, TeamCity and a bare `CI=true`, so deriving the art from the host
+   * would put six lines of ASCII in exactly the logs this feature exists to
+   * keep clean.
+   */
+  ci: boolean;
+  /** The named CI host, or `"local"` when it is not one Zuke names. */
   host: CiHost;
-  /** This run's id — the one `zuke runs show <id>` takes. */
+  /** This run's id. */
   runId: string;
   /** The directory the run started in. */
   cwd: string;
-}
-
-/** How {@link bannerLines} renders. */
-export interface BannerOptions {
-  /** Emit ANSI colour codes. */
-  color: boolean;
+  /** Terminal width, so the art is dropped where it would wrap into noise. */
+  width: number;
 }
 
 /** The separator between fields, matching the run's closing line. */
 const SEPARATOR = " · ";
+
+/** The art's printable width; below it the wordmark wraps into garbage. */
+const ART_WIDTH = Math.max(...ZUKE_LOGO.split("\n").map((l) => l.length));
 
 /**
  * The banner as printable lines: the wordmark off CI, then
  * `zuke <version> · deno <version> · <platform>` — with the CI host appended
  * when there is one — then `run <id> · <cwd>`.
  *
- * The wordmark is decided here, from `facts.host`, rather than by the caller:
- * "art off CI, identity everywhere" is the rule this module exists to state,
- * and a flag for it would be a second place to get it wrong. Suppressing the
- * banner entirely is the caller's business, and a different question.
+ * The wordmark is decided here rather than by the caller: "art off CI,
+ * identity everywhere" is the rule this module exists to state, and a flag for
+ * it would be a second place to get it wrong.
  *
- * The run id is printed in full rather than abbreviated: its reason for being
- * here is that it can be pasted into `zuke runs show`, and a truncated id
- * cannot.
+ * The run id is printed in full rather than abbreviated because a truncated
+ * one is not usable for the thing it is for. With durable state (`--state`, or
+ * a configured store) it is the id `zuke runs show` takes; without one no
+ * record is written and it serves only to tie this log to a plugin's or a
+ * summary's report of the same run, which is still worth the line.
  */
-export function bannerLines(
-  facts: BannerFacts,
-  options: BannerOptions,
-): string[] {
-  const { color } = options;
-  const lines = facts.host === "local" ? logoLines(color) : [];
+export function bannerLines(facts: BannerFacts, color: boolean): string[] {
+  // Two reasons to skip the art, and they are different: on CI it is noise in
+  // somebody's log, and in a narrow terminal it is not the wordmark at all —
+  // it wraps, and six lines of broken block characters say nothing.
+  const art = !facts.ci && facts.width >= ART_WIDTH;
+  const lines = art ? logoLines(color) : [];
 
   const fields = [
     `${stylize(color, ["cyan", "bold"], "zuke")} ${facts.version}`,
     `deno ${facts.deno}`,
     facts.platform,
   ];
-  // "local" is the absence of a CI host, not a host worth naming: on a laptop
-  // the word is noise, and the line is already saying where it runs.
+  // Name the host when Zuke knows it, and otherwise say plainly that this is
+  // CI — which is also what explains the missing art to whoever is reading.
   if (facts.host !== "local") fields.push(facts.host);
+  else if (facts.ci) fields.push("ci");
   lines.push(fields.join(SEPARATOR));
 
   lines.push(
-    stylize(
-      color,
-      ["dim"],
-      `run ${facts.runId}${SEPARATOR}${facts.cwd}`,
-    ),
+    stylize(color, ["dim"], `run ${facts.runId}${SEPARATOR}${facts.cwd}`),
   );
   return lines;
 }

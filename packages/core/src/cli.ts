@@ -1012,6 +1012,7 @@ async function runResume(
       actor: parsed.actor,
       forceGraph: parsed.forceGraph,
       resumeDegraded: parsed.resumeDegraded,
+      banner: parsed.banner,
       plugins,
     });
     return result.ok ? 0 : 1;

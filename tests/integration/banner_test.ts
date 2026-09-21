@@ -17,8 +17,14 @@
  */
 
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
-import { runCli } from "./_harness.ts";
-import { Build, target } from "../../packages/core/mod.ts";
+import { runCli, withStateDir } from "./_harness.ts";
+import {
+  Build,
+  defaultStateHost,
+  externalSignal,
+  FileSystemStateStore,
+  target,
+} from "../../packages/core/mod.ts";
 import { execute } from "../../packages/core/src/executor.ts";
 import { discoverTargets } from "../../packages/core/src/build.ts";
 import { VERSION } from "../../packages/core/src/version.ts";
@@ -115,4 +121,63 @@ Deno.test("integration: an embedded execute() gets no banner in its own sink", a
   );
   // The run still reported itself normally.
   assertEquals(lines.some((l) => l.includes("work")), true);
+});
+
+Deno.test("integration: a hostile cwd cannot inject a workflow command", async () => {
+  // The banner prints the working directory, which this process did not
+  // author. Two shapes reach a runner as a live command if the line skips the
+  // escaping sink: the legacy `##[` marker, which counts anywhere in a line,
+  // and a newline in the name, which makes the next physical line start with
+  // `::`. Both are why the banner goes through `messages`, not `reporter`.
+  if (Deno.build.os === "windows") return; // Neither name is legal there.
+  for (const name of ["##[error]INJECTED", "tail\n::error::INJECTED"]) {
+    const parent = await Deno.makeTempDir({ prefix: "zuke-banner-cwd-" });
+    const hostile = `${parent}/${name}`;
+    const previousCwd = Deno.cwd();
+    const previousActions = Deno.env.get("GITHUB_ACTIONS");
+    try {
+      await Deno.mkdir(hostile);
+      Deno.chdir(hostile);
+      Deno.env.set("GITHUB_ACTIONS", "true");
+
+      const { out } = await runCli(Quiet, ["work"]);
+      assertEquals(out.includes("##[error]"), false, out);
+      // A `::` that begins a physical line is the dangerous one.
+      assertEquals(
+        out.split("\n").some((l) => l.trimStart().startsWith("::error::")),
+        false,
+        out,
+      );
+    } finally {
+      Deno.chdir(previousCwd);
+      if (previousActions === undefined) Deno.env.delete("GITHUB_ACTIONS");
+      else Deno.env.set("GITHUB_ACTIONS", previousActions);
+      await Deno.remove(parent, { recursive: true });
+    }
+  }
+});
+
+Deno.test("integration: --no-banner is honoured on resume too", async () => {
+  // `resume` builds its own options object, so a flag the run path respects
+  // can be silently dropped on the resume path -- parsed, accepted, ignored.
+  class Gated extends Build {
+    gate = target().waitsFor((s) => s.on(externalSignal("approved")));
+  }
+  await withStateDir(async (dir) => {
+    const first = await runCli(Gated, ["gate", "--state"]);
+    assertEquals(first.code, 0);
+
+    const store = new FileSystemStateStore(dir, defaultStateHost);
+    const runs = await store.listRuns({});
+    assertEquals(runs.length, 1);
+
+    const { out } = await runCli(Gated, [
+      "resume",
+      runs[0].id,
+      "--signal",
+      "approved",
+      "--no-banner",
+    ]);
+    assertEquals(out.includes(IDENTITY), false, out);
+  });
 });

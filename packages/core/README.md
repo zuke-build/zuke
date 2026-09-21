@@ -175,20 +175,6 @@ function assertSafeLinkTarget(entryName: string, target: string): void
   name is bounded by {@link assertSafeEntryName}; a symlink adds a second escape
   vector (its target), so a poisoned tarball can't plant `bin/x -> ../../etc`.
 
-function bannerLines(facts: BannerFacts, options: BannerOptions): string[]
-  The banner as printable lines: the wordmark off CI, then
-  `zuke <version> · deno <version> · <platform>` — with the CI host appended
-  when there is one — then `run <id> · <cwd>`.
-
-  The wordmark is decided here, from `facts.host`, rather than by the caller:
-  "art off CI, identity everywhere" is the rule this module exists to state,
-  and a flag for it would be a second place to get it wrong. Suppressing the
-  banner entirely is the caller's business, and a different question.
-
-  The run id is printed in full rather than abbreviated: its reason for being
-  here is that it can be pasted into `zuke runs show`, and a truncated id
-  cannot.
-
 function bearerChallenge(parts: BearerChallenge): string
   A `WWW-Authenticate: Bearer` challenge built from `parts`.
 
@@ -2703,28 +2689,6 @@ interface AnyParameter
   stringValue_(): string | undefined
     The resolved value as a string, or `undefined` if unset (for masking).
 
-interface BannerFacts
-  What a run reports about itself, gathered by the caller.
-
-  version: string
-    The `@zuke/core` version executing this build.
-  deno: string
-    The Deno runtime version, e.g. `2.8.3`.
-  platform: string
-    The platform as `<os>-<arch>`, e.g. `darwin-aarch64`.
-  host: CiHost
-    The detected CI host, or `"local"` off CI.
-  runId: string
-    This run's id — the one `zuke runs show <id>` takes.
-  cwd: string
-    The directory the run started in.
-
-interface BannerOptions
-  How {@link bannerLines} renders.
-
-  color: boolean
-    Emit ANSI colour codes.
-
 interface BearerChallenge
   The parts of a `WWW-Authenticate: Bearer` challenge Zuke emits.
 
@@ -3414,7 +3378,11 @@ interface ExecuteOptions
     Print the opening banner — the wordmark (off CI), the framework, runtime
     and platform versions, and this run's id and directory. Defaults to on;
     `false` is the CLI's `--no-banner`, and `ZUKE_NO_BANNER` turns it off from
-    the environment. `silent` suppresses it along with everything else.
+    the environment.
+
+    Only ever printed when the run writes to the real console. A `silent` run
+    or one given its own {@link ExecuteOptions.reporter} is embedding the
+    executor, and gets no banner whatever this says.
   reporter?: Reporter
     Custom reporter; overrides `silent`.
   plugins?: Plugin[]
@@ -4167,6 +4135,8 @@ interface ResumeOptions
     The signal's JSON payload (defaults to `{}`); ignored without {@link signal}.
   params?: Record<string, string>
     Non-secret parameter overrides; the rest come from the record.
+  banner?: boolean
+    Print the opening banner (see {@link "./executor.ts".ExecuteOptions.banner}).
   readEnv?: (name: string) => string | undefined
     Reads an environment variable (secrets re-resolve from here).
   actor?: string
