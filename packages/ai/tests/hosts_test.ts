@@ -1728,4 +1728,12 @@ Deno.test("parseCommentMarker reads the reviewer name only from an opening marke
   );
   assertEquals(parseCommentMarker("plain text"), undefined);
   assertEquals(parseCommentMarker("<!-- zuke-ai-state:abc -->"), undefined);
+  assertEquals(parseCommentMarker(commentMarker("a")), "a"); // marker alone
+  assertEquals(parseCommentMarker(`${commentMarker("a")}\r\nreport`), "a");
+  // The marker is the whole first line, as the reviewer writes it: a payload
+  // that runs on after the closing `-->` is not a reviewer's comment.
+  assertEquals(
+    parseCommentMarker("<!-- zuke-ai-review:x --> trailing payload\nmore"),
+    undefined,
+  );
 });

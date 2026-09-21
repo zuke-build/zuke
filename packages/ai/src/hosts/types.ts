@@ -285,10 +285,12 @@ export function commentMarker(name: string): string {
  * for finding the **other** reviewers' comments on a pull request — the ones
  * whose decisions this reviewer may inherit. Opening the body is required
  * here for the same reason it is in {@link findOwn}; the authorship half of
- * that rule is the caller's, as it is there.
+ * that rule is the caller's, as it is there. The marker must also be the
+ * whole first line, as the reviewer writes it: a body that runs on after the
+ * closing `-->` is not a reviewer's comment, whatever it opens with.
  */
 export function parseCommentMarker(body: string): string | undefined {
-  const match = body.match(/^<!-- zuke-ai-review:([^\n]+?) -->/);
+  const match = body.match(/^<!-- zuke-ai-review:([^\n]+?) -->(?:\r?\n|$)/);
   return match === null ? undefined : match[1];
 }
 
