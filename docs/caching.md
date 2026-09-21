@@ -97,7 +97,7 @@ details worth knowing:
 - **A cancelled run persists its cache only if nothing was rolled back.** A
   target records its fingerprint the moment its body returns, and a
   [compensation](./orchestration.md#cancellation--compensation--oncancel) then
-  reverses that work — usually a *side effect* (a deployment, a migration)
+  reverses that work — usually a _side effect_ (a deployment, a migration)
   rather than the declared outputs, which is why the outputs-still-exist check
   does not notice. So when a compensation runs, the whole store is left
   untouched and the next run rebuilds. When **no** compensation runs — the
@@ -238,9 +238,9 @@ target:
   innocuous-looking `deno.json` or lockfile riding along in an otherwise valid
   artifact.
 - **A restore never writes through a symbolic link.** The checks above are
-  lexical — they reason about the entry's *name*. An archive cannot carry a
-  link, but a workspace can already hold one at a declared output, and writing
-  a file follows it. So before anything is written, each destination and every
+  lexical — they reason about the entry's _name_. An archive cannot carry a
+  link, but a workspace can already hold one at a declared output, and writing a
+  file follows it. So before anything is written, each destination and every
   directory above it is checked against what is actually on disk, and a link
   anywhere on that path refuses the restore.
 
@@ -249,13 +249,12 @@ target:
   surprise. The consequence is a real behaviour change — a workspace whose
   declared outputs are symlinks (`dist -> /tmp/build`, a checked-out
   `bazel-bin`, a Windows junction, which `lstat` also reports as a link) no
-  longer restores from the remote cache and rebuilds every time instead.
-  Uploads are unaffected. Replace the link with a real directory to get
-  restores back.
+  longer restores from the remote cache and rebuilds every time instead. Uploads
+  are unaffected. Replace the link with a real directory to get restores back.
 - **An oversized artifact is refused before it is buffered.** A fetched archive
-  is bounded on the wire and again as it decompresses — counted while
-  inflating, so a small archive that expands without limit is refused rather
-  than exhausting memory first. The two bounds are separate numbers on purpose:
+  is bounded on the wire and again as it decompresses — counted while inflating,
+  so a small archive that expands without limit is refused rather than
+  exhausting memory first. The two bounds are separate numbers on purpose:
   outputs compress, so a legitimate archive inflates several times over and a
   shared cap would refuse real artifacts. The wire bound defaults to 512 MiB and
   is `maxArtifactBytes` on `HttpCacheStore`; the inflated bound defaults to 2

@@ -938,8 +938,17 @@ const UNAUTHORIZED: McpAuthReject
   and rejected gets {@link INVALID_TOKEN} instead: the two are different facts
   about the caller, and only the second one is about a credential.
 
-const VERSION: "1.56.0"
+const VERSION: string
   The `@zuke/core` version. Kept in sync with deno.json by release-please.
+
+  Annotated `string` rather than left to inference on purpose. Without the
+  annotation the declared type is the version itself, as a string literal
+  type, and `deno doc` records a declared type verbatim — so the version
+  would be baked into `llms-full.txt` and the package README. release-please
+  rewrites the marked line below when it cuts a release but cannot run
+  `deno doc`, so those generated files would drift on every bump and
+  `apiDocsCheck` would fail on the release PR itself. Widening keeps a
+  version bump a self-contained edit.
 
 const ZUKE_ACTION: "zuke-build/zuke"
   The name a {@link CiPinResolver} is asked for the prelude action, so a

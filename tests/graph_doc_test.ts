@@ -14,12 +14,14 @@ import {
   assertStringIncludes,
 } from "../packages/core/tests/_assert.ts";
 import {
+  canonicalGraphDoc,
   checkGraphDoc,
   graphDocTargets,
   renderGraphDoc,
   renderMermaid,
   writeGraphDoc,
 } from "../build/graph_doc.ts";
+import { formatText } from "../build/fmt_text.ts";
 
 class Demo extends Build {
   lint = target().description("Lint the workspace").executes(() => {});
@@ -123,4 +125,22 @@ Deno.test("writeGraphDoc writes, reports no-op, and checkGraphDoc sees drift", a
   } finally {
     await Deno.remove(dir, { recursive: true });
   }
+});
+
+Deno.test("the canonical page is formatter-clean", async () => {
+  // `docs/` is inside the formatter's scope, so a page the formatter would
+  // rewrite puts `format` and `graphDocCheck` in contradiction: each one's fix
+  // breaks the other, which is exactly how this surfaced. Formatting is
+  // idempotent, so the canonical page is a fixed point of it — assert that,
+  // rather than that some particular layout was produced, which would only
+  // restate the formatter's rules in a second place.
+  const page = await canonicalGraphDoc(discoverTargets(new Demo()));
+  assertEquals(await formatText(page, "md"), page);
+});
+
+Deno.test("an empty build still renders a formatter-clean page", async () => {
+  // The no-targets branch takes a different path through the renderer, and it
+  // is the one a fresh project hits first.
+  const page = await canonicalGraphDoc(new Map());
+  assertEquals(await formatText(page, "md"), page);
 });

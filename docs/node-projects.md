@@ -75,12 +75,12 @@ await run(AppBuild);
 ```
 
 Now `npm run build` runs the default pipeline, `npm run build -- test` runs one
-target, and `npm run build -- --list` / `-- graph` show what the build can do
-— no one has to learn Deno commands.
+target, and `npm run build -- --list` / `-- graph` show what the build can do —
+no one has to learn Deno commands.
 
-> **`./zuke` launcher note.** The bootstrap launcher (`./zuke` /
-> `zuke.ps1`) hardcodes a repo-root `zuke.ts` — it does not know about a
-> `build/` subdirectory. With this layout, invoke the build directly with
+> **`./zuke` launcher note.** The bootstrap launcher (`./zuke` / `zuke.ps1`)
+> hardcodes a repo-root `zuke.ts` — it does not know about a `build/`
+> subdirectory. With this layout, invoke the build directly with
 > `deno run -A build/zuke.ts` (or the `npm run build` script above), not
 > `./zuke`. If you'd rather use the `./zuke` launcher as-is, put `zuke.ts` at
 > the repo root instead of under `build/`.

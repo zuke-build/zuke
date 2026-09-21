@@ -46,42 +46,98 @@ Deno.test("manifest versions match each package deno.json", async () => {
   }
 });
 
-Deno.test("extra-file version markers match the manifest version", async () => {
-  // A package may list files beyond its deno.json — @zuke/cli embeds its
-  // version in src/version.ts so `zuke --version` can print it. release-please
-  // rewrites the line tagged `x-release-please-version`, so a version set by
-  // hand (a graduation, a bootstrap) has to update it too or the CLI reports a
-  // version it no longer has.
+/** One extra-file and the lines in it carrying release-please's inline marker. */
+interface MarkedFile {
+  /** The package directory that lists the file, e.g. `packages/core`. */
+  pkg: string;
+  /** The file, repo-relative, for assertion messages. */
+  path: string;
+  /** Every line in it tagged `x-release-please-version`. */
+  lines: string[];
+}
+
+/**
+ * Every extra-file the release config lists, with its marked lines.
+ *
+ * Walked once and shared by the two tests below rather than each opening the
+ * config for itself: they assert different properties of the same set of
+ * lines, and a second copy of the walk is a second thing to keep in step with
+ * the config's shape.
+ */
+async function markedFiles(): Promise<MarkedFile[]> {
   interface ReleaseConfig {
     packages: Record<string, { "extra-files"?: unknown }>;
   }
   const config: ReleaseConfig = JSON.parse(await Deno.readTextFile(CONFIG));
-  const manifest = await readJson(".release-please-manifest.json");
-  for (const [path, entry] of Object.entries(config.packages)) {
+  const files: MarkedFile[] = [];
+  for (const [pkg, entry] of Object.entries(config.packages)) {
     const extras = entry["extra-files"];
     if (!Array.isArray(extras)) continue;
     for (const extra of extras) {
       // Object entries are the json updaters, which target deno.json's
       // $.version; only the plain string paths carry an inline marker.
       if (typeof extra !== "string") continue;
-      const text = await Deno.readTextFile(`${path}/${extra}`);
-      const marked = text.split("\n").filter((line) =>
+      const path = `${pkg}/${extra}`;
+      const text = await Deno.readTextFile(path);
+      const lines = text.split("\n").filter((line) =>
         line.includes("x-release-please-version")
       );
+      files.push({ pkg, path, lines });
+    }
+  }
+  return files;
+}
+
+Deno.test("extra-file version markers match the manifest version", async () => {
+  // A package may list files beyond its deno.json — @zuke/cli embeds its
+  // version in src/version.ts so `zuke --version` can print it. release-please
+  // rewrites the line tagged `x-release-please-version`, so a version set by
+  // hand (a graduation, a bootstrap) has to update it too or the CLI reports a
+  // version it no longer has.
+  const manifest = await readJson(".release-please-manifest.json");
+  for (const { pkg, path, lines } of await markedFiles()) {
+    assertEquals(
+      lines.length > 0,
+      true,
+      `${path} is a release-please extra-file but marks no line ` +
+        `with x-release-please-version`,
+    );
+    for (const line of lines) {
       assertEquals(
-        marked.length > 0,
+        line.includes(`"${manifest[pkg]}"`),
         true,
-        `${path}/${extra} is a release-please extra-file but marks no line ` +
-          `with x-release-please-version`,
+        `${path} must carry version ${manifest[pkg]}; got: ` + line.trim(),
       );
-      for (const line of marked) {
-        assertEquals(
-          line.includes(`"${manifest[path]}"`),
-          true,
-          `${path}/${extra} must carry version ${manifest[path]}; got: ` +
-            line.trim(),
-        );
-      }
+    }
+  }
+});
+
+Deno.test("a marked constant declares a widened type", async () => {
+  // `export const VERSION = "1.2.3"` declares the *literal* type "1.2.3", and
+  // `deno doc` records a declared type verbatim — so an exported one is copied
+  // into llms-full.txt and the package README. release-please rewrites the
+  // marked line when it cuts a release but cannot run `deno doc`, so those
+  // generated files drift on the bump alone and apiDocsCheck fails on the
+  // release PR itself. That is exactly how #632 broke: core started exporting
+  // its version in #630, and the next release could not pass its own gate.
+  //
+  // The annotation is what keeps a bump a self-contained edit, so require it
+  // on every marked constant rather than only on the ones exported today —
+  // whether a package re-exports its version module is a decision that can
+  // change later, quietly, and reintroduce this from a file nobody re-read.
+  const declaration = /^\s*export\s+const\s+([A-Za-z_$][\w$]*)\s*([^=]*)=/;
+  for (const { path, lines } of await markedFiles()) {
+    for (const line of lines) {
+      const match = declaration.exec(line);
+      if (match === null) continue; // not a constant; nothing to widen.
+      const [, name, annotation] = match;
+      assertEquals(
+        annotation.trim().startsWith(":"),
+        true,
+        `${path} declares ${name} with an inferred literal type; annotate it ` +
+          `(\`export const ${name}: string = …\`) so a version bump cannot ` +
+          `stale the generated API docs. Got: ${line.trim()}`,
+      );
     }
   }
 });

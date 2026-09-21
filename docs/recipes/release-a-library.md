@@ -1,10 +1,10 @@
 # Recipe: release a small library
 
 Build, test, bump the version, tag, push, cut the GitHub release, write the
-notes, publish. For a small library this is where the real pain lives: a
-routine you run once a month, from a script that grew ugly, with a step you
-always forget. This recipe is that routine as one chain of targets — every step
-a typed wrapper, and a chain you can stop anywhere.
+notes, publish. For a small library this is where the real pain lives: a routine
+you run once a month, from a script that grew ugly, with a step you always
+forget. This recipe is that routine as one chain of targets — every step a typed
+wrapper, and a chain you can stop anywhere.
 
 ## The chain
 
@@ -96,11 +96,12 @@ VERSION=1.1.0 ./zuke                     # the parameter from the environment
 ## Why a chain beats a script
 
 - **You can stop anywhere.** `./zuke tag` runs check → test → bump → tag and
-  nothing after it; `--dry-run` prints the plan for any target. A script has
-  one entry point and a comment that says "don't run past here".
-- **Every step is the real CLI, typed.** `GitTasks.tag((s) => s.name(…).message(…))`
-  is `git tag -a … -m …`; `GhTasks.releaseCreate((s) => s.generateNotes().latest())`
-  is `gh release create --generate-notes --latest`; `DenoTasks.publish()` is
+  nothing after it; `--dry-run` prints the plan for any target. A script has one
+  entry point and a comment that says "don't run past here".
+- **Every step is the real CLI, typed.**
+  `GitTasks.tag((s) => s.name(…).message(…))` is `git tag -a … -m …`;
+  `GhTasks.releaseCreate((s) => s.generateNotes().latest())` is
+  `gh release create --generate-notes --latest`; `DenoTasks.publish()` is
   `deno publish`, which reads your `jsr.json` (or `deno.json`). The flags are
   methods, a typo is a compile error, and the argv is built without a shell.
 - **The version is a typed input.** `parameter(…).required()` is read from
@@ -118,8 +119,8 @@ VERSION=1.1.0 ./zuke                     # the parameter from the environment
   so a `CHANGELOG.md` section you maintain by hand becomes the release body.
 - **Fully automated:** `@zuke/release-please` wraps release-please, which opens
   a release pull request from your conventional commits, keeps the changelog,
-  and cuts the GitHub release when the PR merges — the routine Zuke uses for
-  its own 58 packages (see [`RELEASING.md`](../../RELEASING.md)).
+  and cuts the GitHub release when the PR merges — the routine Zuke uses for its
+  own 58 packages (see [`RELEASING.md`](../../RELEASING.md)).
 - **Secrets:** a token for `gh` or `npm` is a `parameter("…").secret()`, which
   Zuke masks in every log — see [Secrets](../secrets.md).
 

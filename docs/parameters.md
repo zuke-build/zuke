@@ -156,12 +156,12 @@ The rule is one dash (or underscore) at **each lower-to-upper transition**. A
 run of capitals has no internal transition and so stays together — but a digit
 ends a run, which is where the rule surprises people:
 
-| Property name | Flag           | Environment variable |
-| ------------- | -------------- | -------------------- |
-| `apiURL`      | `--api-url`    | `API_URL`            |
-| `useHTTPS`    | `--use-https`  | `USE_HTTPS`          |
-| `skipE2E`     | `--skip-e2-e`  | `SKIP_E2_E`          |
-| `runE2E`      | `--run-e2-e`   | `RUN_E2_E`           |
+| Property name | Flag          | Environment variable |
+| ------------- | ------------- | -------------------- |
+| `apiURL`      | `--api-url`   | `API_URL`            |
+| `useHTTPS`    | `--use-https` | `USE_HTTPS`          |
+| `skipE2E`     | `--skip-e2-e` | `SKIP_E2_E`          |
+| `runE2E`      | `--run-e2-e`  | `RUN_E2_E`           |
 
 `skipE2E` gives `--skip-e2-e` because the `2` ends the run of capitals, making
 `2E` a transition of its own. Two ways out, and the first is often enough:
@@ -176,12 +176,12 @@ class CI extends Build {
 }
 ```
 
-A declared flag **replaces** the derived one: only it is accepted on the
-command line, and it is what `--help`, `--list --json`, shell completions and a
-registered build's descriptor all show. It must be lowercase letters, digits
-and dashes starting with a letter, it may not be a built-in flag (see below),
-and no two parameters may claim the same one — each is a `ParameterError` when
-the build loads, naming the field.
+A declared flag **replaces** the derived one: only it is accepted on the command
+line, and it is what `--help`, `--list --json`, shell completions and a
+registered build's descriptor all show. It must be lowercase letters, digits and
+dashes starting with a letter, it may not be a built-in flag (see below), and no
+two parameters may claim the same one — each is a `ParameterError` when the
+build loads, naming the field.
 
 The environment variable is derived separately and is unaffected by a declared
 flag; override that half with `.env("NAME")`.

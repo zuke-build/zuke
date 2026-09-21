@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/zuke-build/zuke/compare/console-v1.1.1...console-v1.2.0) (2026-09-21)
+
+
+### Features
+
+* **core:** open every run with a version and platform banner ([#630](https://github.com/zuke-build/zuke/issues/630)) ([5917780](https://github.com/zuke-build/zuke/commit/59177807f1bb5cb3d211622f9987761b6cae6899))
+
 ## [1.1.1](https://github.com/zuke-build/zuke/compare/console-v1.1.0...console-v1.1.1) (2026-09-10)
 
 

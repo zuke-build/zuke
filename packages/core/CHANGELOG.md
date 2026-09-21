@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.57.0](https://github.com/zuke-build/zuke/compare/core-v1.56.0...core-v1.57.0) (2026-09-21)
+
+
+### Features
+
+* **ai:** remember refutations, adjudicate dropped findings, answer rebuttals on command ([#629](https://github.com/zuke-build/zuke/issues/629)) ([f63dd63](https://github.com/zuke-build/zuke/commit/f63dd6387f8a2b470e2f43572ecfb132028a4f89))
+* **core:** open every run with a version and platform banner ([#630](https://github.com/zuke-build/zuke/issues/630)) ([5917780](https://github.com/zuke-build/zuke/commit/59177807f1bb5cb3d211622f9987761b6cae6899))
+
+
+### Bug Fixes
+
+* **core:** widen the version constant so a bump cannot stale the API docs ([#635](https://github.com/zuke-build/zuke/issues/635)) ([fdefeeb](https://github.com/zuke-build/zuke/commit/fdefeeb2fa3c95a211006be6f6adca9f09303305)), closes [#633](https://github.com/zuke-build/zuke/issues/633)
+
 ## [1.56.0](https://github.com/zuke-build/zuke/compare/core-v1.55.1...core-v1.56.0) (2026-09-17)
 
 

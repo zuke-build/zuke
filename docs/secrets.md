@@ -42,12 +42,12 @@ value wherever it prints:
 - Every line the executor writes through its reporter — banners, per-target
   status, the build summary, and **error messages** (including a target that
   throws with the secret in its message, or a parse error on a malformed value).
-- The rendered **command line** of any `$` command: the echo under `--dry-run`, a
-  `CommandError`/`CommandTimeoutError` message, and a spawned service's recorded
-  line. A secret passed to a command as an argv token is masked there even if the
-  build prints the line itself, because the masking happens where the line is
-  built rather than at the reporter. The argv handed to the operating system is
-  unchanged — the command still works.
+- The rendered **command line** of any `$` command: the echo under `--dry-run`,
+  a `CommandError`/`CommandTimeoutError` message, and a spawned service's
+  recorded line. A secret passed to a command as an argv token is masked there
+  even if the build prints the line itself, because the masking happens where
+  the line is built rather than at the reporter. The argv handed to the
+  operating system is unchanged — the command still works.
 - Under GitHub Actions, Zuke additionally emits `::add-mask::<value>` so the
   runner masks the value in its own log stream.
 
@@ -58,7 +58,7 @@ characters is masked literally and there is no injection surface.
 A **multi-line** secret — a PEM private key is the common one — is masked line
 by line as well as whole. Both sinks read a line at a time: Zuke's redactor
 rewrites one reporter line, and the Actions runner reads an `::add-mask::`
-directive to the end of *its* line. So a key registered only as one string would
+directive to the end of _its_ line. So a key registered only as one string would
 match no line of itself, and the whole of it after the header would print in the
 clear. Each of its lines is registered as its own pattern, and one directive is
 emitted per line rather than one carrying the whole key. Lines under eight

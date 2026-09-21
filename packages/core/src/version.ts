@@ -13,5 +13,16 @@
  * @module
  */
 
-/** The `@zuke/core` version. Kept in sync with deno.json by release-please. */
-export const VERSION = "1.56.0"; // x-release-please-version
+/**
+ * The `@zuke/core` version. Kept in sync with deno.json by release-please.
+ *
+ * Annotated `string` rather than left to inference on purpose. Without the
+ * annotation the declared type is the version itself, as a string literal
+ * type, and `deno doc` records a declared type verbatim — so the version
+ * would be baked into `llms-full.txt` and the package README. release-please
+ * rewrites the marked line below when it cuts a release but cannot run
+ * `deno doc`, so those generated files would drift on every bump and
+ * `apiDocsCheck` would fail on the release PR itself. Widening keeps a
+ * version bump a self-contained edit.
+ */
+export const VERSION: string = "1.57.0"; // x-release-please-version

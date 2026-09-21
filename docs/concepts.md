@@ -1,11 +1,11 @@
 # Core concepts
 
-| Concept              | Description                                                           |
-| -------------------- | --------------------------------------------------------------------- |
-| **Build**            | A class extending `Build`. Each target is a field.                    |
-| **Target**           | A named unit of work: a description, dependencies, and a body.        |
-| **Dependency graph** | A DAG derived from `.dependsOn(...)`. Cycles are an error.            |
-| **Plan**             | The requested target's transitive dependencies, topologically sorted. |
+| Concept              | Description                                                                   |
+| -------------------- | ----------------------------------------------------------------------------- |
+| **Build**            | A class extending `Build`. Each target is a field.                            |
+| **Target**           | A named unit of work: a description, dependencies, and a body.                |
+| **Dependency graph** | A DAG derived from `.dependsOn(...)`. Cycles are an error.                    |
+| **Plan**             | The requested target's transitive dependencies, topologically sorted.         |
 | **Executor**         | Runs the plan (serially or in parallel), with timing and pass/fail reporting. |
 
 ## Execution semantics
@@ -18,9 +18,10 @@
 5. **Validate:** an undefined/unknown dependency or a cycle fails fast (with the
    offending path) and exits `1`.
 6. Compute the requested target's transitive closure.
-7. **Topologically sort** (honouring `before`/`after`). Targets run one at a time
-   in deterministic order by default; [`--parallel`](./cli.md#parallel-execution)
-   (or a [`group()`](./authoring.md#group-and-partof)) runs independent targets
+7. **Topologically sort** (honouring `before`/`after`). Targets run one at a
+   time in deterministic order by default;
+   [`--parallel`](./cli.md#parallel-execution) (or a
+   [`group()`](./authoring.md#group-and-partof)) runs independent targets
    concurrently while still completing every dependency before its dependents.
 8. For each target, honour its `onlyWhen` conditions and the incremental
    [cache](./caching.md): a target whose inputs are unchanged is skipped and

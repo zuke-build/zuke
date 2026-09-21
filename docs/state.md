@@ -114,15 +114,15 @@ finish, and when the run ends. So if the process is killed mid-run, the record
 on disk shows the target that was executing as `running`, with its `startedAt`
 stamped.
 
-`params` holds the values the run was **launched** with, and is never
-rewritten. A [resume](./orchestration.md#resuming-a-suspended-run) may supply
-different ones — re-supplying a rotated credential is the usual reason — and
-those take effect, so a resumed run can execute under two sets of values. One
-map cannot hold both, and this one keeps the launch's for a concrete reason: a
-cancellation resolves each compensation body's parameters from it, and the
-targets a compensation unwinds are the ones that ran *before* the suspension. A
-deploy that went to `sit` must be rolled back against `sit`, whatever a later
-resume was given.
+`params` holds the values the run was **launched** with, and is never rewritten.
+A [resume](./orchestration.md#resuming-a-suspended-run) may supply different
+ones — re-supplying a rotated credential is the usual reason — and those take
+effect, so a resumed run can execute under two sets of values. One map cannot
+hold both, and this one keeps the launch's for a concrete reason: a cancellation
+resolves each compensation body's parameters from it, and the targets a
+compensation unwinds are the ones that ran _before_ the suspension. A deploy
+that went to `sit` must be rolled back against `sit`, whatever a later resume
+was given.
 
 What the resume changed is recorded in the audit trail instead, naming the
 values and who supplied them:
@@ -139,17 +139,17 @@ Audit:
 resolved once when the run is created. It says which build a run belongs to when
 a store is shared, because the class name above cannot — a `zuke.ts` templated
 across services shares its name, its target names and its graph. Every recovery
-path compares it and touches a run only when the two origins agree; an absent one
-on either side abstains rather than refusing, so records written before the field
-existed stay recoverable. See
+path compares it and touches a run only when the two origins agree; an absent
+one on either side abstains rather than refusing, so records written before the
+field existed stay recoverable. See
 [Whose run is it?](./orchestration.md#whose-run-is-it).
 
 ### `actor` and `initiator` — two different questions
 
 `actor` is the run's **last writer**. It resolves from `--actor`, then
 `ZUKE_ACTOR`, then the CI actor, else `"anonymous"` — and **every resume
-overwrites it** with whoever picked the run up. On a deploy that parked at a gate
-and was resumed by a sweep, `actor` is the sweep's service account.
+overwrites it** with whoever picked the run up. On a deploy that parked at a
+gate and was resumed by a sweep, `actor` is the sweep's service account.
 
 `initiator` is who **asked for** the run. It is stamped once when the run is
 created and never written again, so it still names the engineer who started that
@@ -160,14 +160,14 @@ default is `human`: a service claim is what lets a policy treat a run as unowned
 machinery, so it must be stated rather than guessed from an actor's name. A typo
 in the flag fails the run; an unrecognised environment value reads as unstated.
 
-Read it from a body as `ctx.initiator`, see it on `zuke runs show`, and filter by
-it with `zuke runs list --initiator <name>`. That filter is applied after the
+Read it from a body as `ctx.initiator`, see it on `zuke runs show`, and filter
+by it with `zuke runs list --initiator <name>`. That filter is applied after the
 store answers, so that a store which does not project the field cannot return an
-unfiltered list that looks filtered — which also means `--limit` is applied after
-it, not by the store. On a large store, narrow server-side first with `--since`
-or `--status`; those still go to the store. The field is optional: a record
-written before it existed has none, and `actor` is then the closest answer —
-which is the exact one for a run nobody ever resumed.
+unfiltered list that looks filtered — which also means `--limit` is applied
+after it, not by the store. On a large store, narrow server-side first with
+`--since` or `--status`; those still go to the store. The field is optional: a
+record written before it existed has none, and `actor` is then the closest
+answer — which is the exact one for a run nobody ever resumed.
 
 ### Forcing a target — `overrides`
 
@@ -233,10 +233,10 @@ persisted. It is the carrier for anything that must survive a
 
 ### Checking that a write landed
 
-`set` resolves when the write has been attempted, whether or not it landed.
-When a body needs to *know*, use **`trySet`**, which resolves `true` when the
-patch reached the store and `false` when the write was dropped — conflicted
-away for good, or refused by a store that errored:
+`set` resolves when the write has been attempted, whether or not it landed. When
+a body needs to _know_, use **`trySet`**, which resolves `true` when the patch
+reached the store and `false` when the write was dropped — conflicted away for
+good, or refused by a store that errored:
 
 ```ts
 deploy = target().executes(async (ctx) => {
@@ -251,8 +251,8 @@ deploy = target().executes(async (ctx) => {
 ```
 
 Treat `false` as **not recorded**: a dropped write is sometimes re-persisted by
-a later one, but nothing guarantees it. A dropped write also warns, and one
-that is definitely unrecoverable marks the record `degraded` so a later resume
+a later one, but nothing guarantees it. A dropped write also warns, and one that
+is definitely unrecoverable marks the record `degraded` so a later resume
 refuses it rather than repeating a step against state it cannot trust.
 
 Two contexts have nothing durable behind them and so always answer `true`: a
@@ -342,19 +342,20 @@ real work outweighs its bookkeeping.
 Most dropped writes lose nothing. The writer applies its mutation at the top of
 its retry loop, so a compare-and-swap that conflicts is simply re-applied to the
 freshly-read record on the next attempt; and when it gives up because the run
-vanished from the store, or because the store threw, the mutation is still held in
-memory for any later write to re-persist. Those paths warn and carry on.
+vanished from the store, or because the store threw, the mutation is still held
+in memory for any later write to re-persist. Those paths warn and carry on.
 
 Two paths genuinely lose a write. If a **foreign writer** — an MCP audit append,
 a concurrent `zuke cancel` — wins the compare-and-swap race often enough to
-exhaust the writer's retry budget, the last attempt's mutation is discarded along
-with the base it was applied to. And a mutation that was merely *held* in memory
-is lost the moment a conflict replaces the record it was waiting in: the write
-that was going to carry it is the one that just conflicted, and the freshly read
-base has never seen it. Either way the writer sets **`degraded: true`** on the
-record, and the next write that _does_ land persists the flag (the failing write,
-by definition, could not carry it). `zuke runs show` prints it. So `degraded`
-means exactly one thing: **a mutation was permanently lost.**
+exhaust the writer's retry budget, the last attempt's mutation is discarded
+along with the base it was applied to. And a mutation that was merely _held_ in
+memory is lost the moment a conflict replaces the record it was waiting in: the
+write that was going to carry it is the one that just conflicted, and the
+freshly read base has never seen it. Either way the writer sets
+**`degraded: true`** on the record, and the next write that _does_ land persists
+the flag (the failing write, by definition, could not carry it).
+`zuke runs show` prints it. So `degraded` means exactly one thing: **a mutation
+was permanently lost.**
 
 The concrete consequence is a target that succeeded but is still recorded
 `running` or `pending`. A resume trusts the record as written and re-runs every
@@ -438,15 +439,16 @@ A run is removed only when it is **terminal** (`succeeded`, `failed`,
 `cancelled`) **and** matches neither rule — it is both older than `--keep` and
 beyond the newest `--keep-last`. A **non-terminal** run (`suspended`, `running`,
 `cancelling`) is **never** pruned: a run suspended for days awaiting a human is
-the point of the system. At least one of `--keep` / `--keep-last` is required, so
-an accidental bare `prune` never wipes the store.
+the point of the system. At least one of `--keep` / `--keep-last` is required,
+so an accidental bare `prune` never wipes the store.
 
-Who owns retention depends on the backend. The **filesystem** store is
-dev-grade and single-host, so it owns its pruning through this CLI. For the
-**HTTP** backend, retention is the **server's** job (a TTL or scheduled sweep) —
-`GET /runs` takes a `limit` so large stores stay listable, and `DELETE /runs/:id`
-(which `prune` drives) is an optional endpoint a hosted store implements only if
-it wants the CLI to prune it too. See [the state HTTP API](./state-api.md#notes-for-implementers).
+Who owns retention depends on the backend. The **filesystem** store is dev-grade
+and single-host, so it owns its pruning through this CLI. For the **HTTP**
+backend, retention is the **server's** job (a TTL or scheduled sweep) —
+`GET /runs` takes a `limit` so large stores stay listable, and
+`DELETE /runs/:id` (which `prune` drives) is an optional endpoint a hosted store
+implements only if it wants the CLI to prune it too. See
+[the state HTTP API](./state-api.md#notes-for-implementers).
 
 ## API stability
 
