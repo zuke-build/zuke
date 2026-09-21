@@ -370,17 +370,19 @@ buys nothing: the reviewer reads no rebuttals from such a thread, never replies
 into it, and never resolves it. A reply is a rebuttal for the finding **its
 thread** names, never for one its text mentions.
 
-Resolution needs GraphQL, and a token GitHub lets run the mutation: an App
-installation token with `pull_requests: write` may, while the Actions token is
-refused with `Resource not accessible by integration` on the same scope that
-lets it post the reply. So a build that wants its threads closed mints an App
-token for **both** jobs (`secrets` on the spec, below). If resolution is
-unavailable the outcome reply still lands — the part a human reads — and a note
-records that the thread stays open, with the host's reason. Two caveats worth
-knowing: GitHub validates anchors against its own merge-base diff, so a line
-that looks anchorable locally can still be refused (that finding falls back to
-the table), and a thread is not re-anchored when a later push moves the code —
-the summary table always carries the current location.
+Resolution needs GraphQL, and a token GitHub lets run the mutation, which it
+allows to repository **write** access: an App installation token minted with
+`contents: write` may resolve, while the Actions token, and an App token holding
+`pull_requests: write` alone, are refused with
+`Resource not accessible by integration` on the same scope that lets them post
+the reply. So a build that wants its threads closed mints an App token with
+`contents: write` for **both** jobs (`secrets` on the spec, below). If
+resolution is unavailable the outcome reply still lands — the part a human reads
+— and a note records that the thread stays open, with the host's reason. Two
+caveats worth knowing: GitHub validates anchors against its own merge-base diff,
+so a line that looks anchorable locally can still be refused (that finding falls
+back to the table), and a thread is not re-anchored when a later push moves the
+code — the summary table always carries the current location.
 
 ### Who counts as a maintainer, per host
 
@@ -604,22 +606,22 @@ Two things a build can set to make the reply come from the account the
 maintainer addressed. `.commentToken(...)` accepts a **function** that produces
 the token when a post first needs it, so the build can mint a GitHub App
 installation token narrowed to `pull_requests: write` (and `issues: write` for
-the reaction) and post as `<app>[bot]` instead of `github-actions[bot]`. And the
-App's credentials reach the jobs one of two ways: `.secrets(...)` on the command
-passes them to that job alone, leaving the `pull_request` job with the workflow
-token; `secrets` on the spec passes them to the review step of **both** jobs.
-The second is what a review that resolves its threads needs, because GitHub
-refuses the Actions token the mutation that resolves a review thread while
-letting it post the reply, so a thread answered on a push run stays open until a
-token that may close it comes by. Name secrets on the spec only for a repository
-whose pull-request job you would hand them to: it executes the pull request's
-own build, so everyone who can push a branch can read what it holds, while a
-fork's run receives no secrets from GitHub at all and the job's gate skips it
-besides. A job holding such a key should also block egress: `egress: "block"`
-with `allowedEndpoints` naming what the launcher and module resolution reach,
-and the generator adds each reviewer's provider host itself. Comments an App
-posts do trigger `issue_comment` workflows (unlike `GITHUB_TOKEN`'s), which is
-what the bot check in the gate is for.
+the reaction, and `contents: write` to resolve threads) and post as `<app>[bot]`
+instead of `github-actions[bot]`. And the App's credentials reach the jobs one
+of two ways: `.secrets(...)` on the command passes them to that job alone,
+leaving the `pull_request` job with the workflow token; `secrets` on the spec
+passes them to the review step of **both** jobs. The second is what a review
+that resolves its threads needs, because GitHub refuses the Actions token the
+mutation that resolves a review thread while letting it post the reply, so a
+thread answered on a push run stays open until a token that may close it comes
+by. Name secrets on the spec only for a repository whose pull-request job you
+would hand them to: it executes the pull request's own build, so everyone who
+can push a branch can read what it holds, while a fork's run receives no secrets
+from GitHub at all and the job's gate skips it besides. A job holding such a key
+should also block egress: `egress: "block"` with `allowedEndpoints` naming what
+the launcher and module resolution reach, and the generator adds each reviewer's
+provider host itself. Comments an App posts do trigger `issue_comment` workflows
+(unlike `GITHUB_TOKEN`'s), which is what the bot check in the gate is for.
 
 The command is GitHub-only; the other hosts render no comment job. Every job of
 the workflow shares one concurrency group keyed on the pull request number,
