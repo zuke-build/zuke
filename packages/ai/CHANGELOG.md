@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.8.0](https://github.com/zuke-build/zuke/compare/ai-v2.7.0...ai-v2.8.0) (2026-09-21)
+
+
+### Features
+
+* **ai:** remember refutations, adjudicate dropped findings, answer rebuttals on command ([#629](https://github.com/zuke-build/zuke/issues/629)) ([f63dd63](https://github.com/zuke-build/zuke/commit/f63dd6387f8a2b470e2f43572ecfb132028a4f89))
+
 ## [2.7.0](https://github.com/zuke-build/zuke/compare/ai-v2.6.0...ai-v2.7.0) (2026-09-17)
 
 
