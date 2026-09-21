@@ -625,20 +625,25 @@ class GateSettings
 
 class ReviewCommandSettings
   The comment command that runs the review on demand, configured through
-  {@link AiReviewWorkflowSpec.command}.
+  {@link AiReviewWorkflowSpec.command} — and derived from the reviewers
+  without it: a reviewer that takes commands (`.discussion((d) => d.commands("@acme-bot"))`) names the mention, and the job it needs is
+  generated with `<mention> review` and `<mention> accept`, so the Commands
+  panel the reviewer posts is true by construction. The lambda refines the
+  job: who may start a run, which secrets it holds, or a command text of its
+  own.
 
   The job it adds runs on `issue_comment`, which GitHub delivers for comments on
   pull requests too, always from the default branch and always with the
   repository's secrets. Its `if:` fires only when the comment is on a pull
-  request, starts with {@link text}, and was written by a human (not a bot
-  account); the comment body is matched in the expression and never
+  request, starts with one of the commands, and was written by a human (not a
+  bot account); the comment body is matched in the expression and never
   interpolated into a `run:` line. The access control is the job's first
-  step: it asks the collaborators API whether the commenter has push access,
-  and every later step is skipped if not (see {@link PUSH_ACCESS_STEP}). The
-  event's `author_association` is deliberately not consulted — it reports a
-  private organisation member as `CONTRIBUTOR`, and `MEMBER` and
-  `COLLABORATOR` admit read-only accounts, so it can neither admit nor refuse
-  anyone correctly.
+  step: it asks the collaborators API what role the commenter holds, and
+  every later step is skipped unless it is at or above {@link role} or the
+  login is among {@link users}. The event's `author_association` is
+  deliberately not consulted — it reports a private organisation member as
+  `CONTRIBUTOR`, and `MEMBER` and `COLLABORATOR` admit read-only accounts, so
+  it can neither admit nor refuse anyone correctly.
 
   The command is also how a maintainer who contested a finding in its review
   thread, and pushed nothing, gets an answer: the run it starts reads every
@@ -653,28 +658,43 @@ class ReviewCommandSettings
   is for Dependabot's `@dependabot` commands.
 
   text_?: string
-    The command a comment must start with. Set by {@link text}.
+    A command text of its own, replacing the derived ones. Set by {@link text}.
   also_: string[]
     Other commands that also start a run. Set by {@link also}.
-  secrets_: string[]
+  secrets_: ReviewSecret[]
     Secrets the command job's review step receives beyond the reviewers' own
     keys and the host token. Set by {@link secrets}.
+  role_: CommandRole
+    The least role that may start a run. Set by {@link role}.
+  users_: string[]
+    Logins admitted whatever their role. Set by {@link users}.
   text(command: string): this
-    The command, e.g. `"@zuke-build review"`. Matched case-insensitively at
-    the start of the comment, so a reply that quotes it (`> @zuke-build review`) does not start a run. Letters, digits, `@/_.:-` and single spaces
-    only.
+    A command text of its own, e.g. `"/review"`, replacing the ones derived
+    from the reviewers' mention. Matched case-insensitively at the start of
+    the comment, so a reply that quotes it (`> /review`) does not start a run.
+    Letters, digits, `@/_.:-` and single spaces only. A reviewer that takes
+    commands still parses `accept` under its own mention, so name that too
+    with {@link also} when overriding.
   also(...commands: string[]): this
-    Other comment commands that also start a run, matched like {@link text}
-    — e.g. `"@zuke-build accept"`, so a maintainer's acceptance of a finding
-    (see `DiscussionSettings.commands`) is applied by the run the comment
-    starts, with no second comment to ask for it. Same alphabet as
-    {@link text}.
-  secrets(...names: string[]): this
+    Other comment commands that also start a run, matched like {@link text}.
+    Same alphabet.
+  secrets(...secrets: ReviewSecret[]): this
     Pass these repository secrets to the command job's review step as env vars
-    of the same name — e.g. the GitHub App credentials the build mints its
-    `commentToken` from, so the review posts as the app. Only the command job
-    receives them; the `pull_request` job is unchanged. Secrets both jobs
-    should hold go on {@link AiReviewWorkflowSpec.secrets} instead.
+    — the build's parameters, whose env names the workflow reads off them, or
+    plain names. Only the command job receives them; the `pull_request` job is
+    unchanged. Secrets both jobs should hold go on
+    {@link AiReviewWorkflowSpec.secrets} instead.
+  role(role: CommandRole): this
+    The least repository role a commenter needs to start a run — `"read"`,
+    `"triage"`, `"write"` (the default: push access), `"maintain"` or
+    `"admin"`, as GitHub's collaborators API reports them. Every role above
+    it is admitted too. `"read"` admits anyone the repository admits, which
+    on a public repository is everyone: the run spends the reviewers' keys,
+    so choose that knowingly.
+  users(...logins: string[]): this
+    Logins admitted to start a run whatever their role — an outside
+    contributor the project trusts, say. Checked before the collaborators API
+    is asked.
 
 class Reviewer implements Validation
   A fluent AI reviewer. Construct one via {@link securityReviewer} (and the
@@ -694,6 +714,9 @@ class Reviewer implements Validation
     Whether `.comment()` is set — i.e. this reviewer posts to the PR.
   get commentToken_(): CommentTokenSource | undefined
     The configured comment-posting token, if `.commentToken(...)` was called.
+  get mention_(): string | undefined
+    The mention this reviewer takes commands under, when it takes any — what
+    the workflow generator derives the command job from.
   provider(provider: Provider): this
     Set the model provider (required).
   apiKey(apiKey: AnyParameter | string): this
@@ -948,7 +971,7 @@ interface AiReviewWorkflowSpec
     Workflow name shown in the host's UI. Defaults to `"AI Review"`.
   timeoutMinutes?: number
     Per-job timeout in minutes. Defaults to 15.
-  secrets?: readonly string[]
+  secrets?: readonly ReviewSecret[]
     Repository secrets every review step receives as env vars of the same
     name, beyond the reviewers' own keys and the host token — on the
     pull-request job and, with a {@link command}, the command job alike. The
@@ -961,6 +984,9 @@ interface AiReviewWorkflowSpec
     pull request's own build, so everyone who can push a branch can read what
     it holds. Secrets for the command job alone go on
     {@link ReviewCommandSettings.secrets}.
+
+    Each is the build's parameter — its env name is read off it, so a rename
+    follows — or, for a secret the build never reads itself, its plain name.
   egress?: "audit" | "block"
     The harden-runner egress policy of the GitHub jobs. `"audit"` (the
     default) records outbound connections; `"block"` drops everything outside
@@ -974,8 +1000,11 @@ interface AiReviewWorkflowSpec
     download, JSR, and GitHub (`github.com`, `api.github.com`, and the
     release-asset hosts the bootstrap fetches from). Ignored when auditing.
   command?: Configure<ReviewCommandSettings>
-    Run the review on demand when a maintainer comments a command on a pull
-    request — any pull request, a fork's included. GitHub only; see
+    Refine the job that runs the review on demand when a maintainer comments
+    a command on a pull request — any pull request, a fork's included. The
+    job is generated whenever a reviewer takes commands, with that reviewer's
+    mention, so this is only needed to change who may start a run, the
+    secrets the job holds, or the command text. GitHub only; see
     {@link ReviewCommandSettings} for the job it adds and the gate it runs
     behind.
 
@@ -1162,6 +1191,10 @@ type AgentRunner = (context: AgentContext) => Promise<AgentResult> | AgentResult
 type AssessmentType = "generic" | "security" | "secrets" | "correctness" | "license"
   The kind of review an assessment performs.
 
+type CommandRole = "read" | "triage" | "write" | "maintain" | "admin"
+  A repository role a commenter may hold, as GitHub's collaborators API
+  reports it (`role_name`) — see {@link ReviewCommandSettings.role}.
+
 type CommentTokenSource = AnyParameter | string | (() => Promise<string>)
   Where a reviewer's comment-posting token comes from: a secret parameter (for
   its env var), a literal, or a function that produces the token when a post
@@ -1182,6 +1215,9 @@ type GateRule = { kind: "score"; value: number; } | { kind: "severity"; value: S
 
 type Provider = "claude" | "openai" | "gemini"
   A supported model provider.
+
+type ReviewSecret = AnyParameter | string
+  A repository secret named to a workflow: the build's parameter, or its name.
 
 type RunScope = "local" | "ci" | "both"
   Where a fixer may run, set with `.runOnly(...)`.

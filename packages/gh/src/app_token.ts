@@ -29,6 +29,10 @@
 
 import type { Configure } from "@zuke/core/tooling";
 import { assertRefName, DEFAULT_BASE_URL, encodePath } from "./api.ts";
+import type {
+  GhAppTokenSource,
+  GhAppTokenSourceSettings,
+} from "./app_token_source.ts";
 
 /** How long the signed app JWT is valid. GitHub rejects anything over 10 minutes. */
 const JWT_TTL_SECONDS = 540;
@@ -356,7 +360,7 @@ function maskInActions(value: string): void {
   if (inActions) console.log(`::add-mask::${value}`);
 }
 
-/** The shape of the app-token task, mixed into `GhTasks`. */
+/** The shape of the app-token tasks, mixed into `GhTasks`. */
 export interface GhAppTokenApi {
   /**
    * Mint a GitHub App installation token, scoped to the repositories and
@@ -366,6 +370,23 @@ export interface GhAppTokenApi {
   appToken(
     configure?: Configure<GhAppTokenSettings>,
   ): Promise<GhAppTokenResult>;
+  /**
+   * A token **source** for the App: a function that mints the installation
+   * token the first time it is called and returns the same token after, or
+   * yields `GITHUB_TOKEN` when the App is not configured — the credential a
+   * build hands to an AI reviewer's `.commentToken(...)` so its reviews post
+   * as the App where it is installed and as `github-actions[bot]` everywhere
+   * else. Nothing runs until the first call.
+   *
+   * ```ts
+   * appId = parameter("GitHub App id").env("REVIEW_APP_ID");
+   * appKey = parameter("GitHub App key").secret().env("REVIEW_APP_KEY");
+   * botToken = GhTasks.appTokenSource((s) => s.app(this.appId, this.appKey));
+   * ```
+   */
+  appTokenSource(
+    configure?: Configure<GhAppTokenSourceSettings>,
+  ): GhAppTokenSource;
 }
 
 /** Mint an installation token from the settings a lambda configures. */

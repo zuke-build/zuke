@@ -485,10 +485,12 @@ Which API gets called is decided at runtime by [`detectCiHost()`](authoring.md):
 | **Bitbucket Pipelines** | PR comments         | `BITBUCKET_TOKEN`    | app password or workspace access token                                 |
 
 Override the token explicitly with `.commentToken(param | string)` (or, for
-backwards compatibility, the GitHub-only alias `.githubToken(...)`). Outside a
-PR context (a local run, or a branch push rather than a PR/MR pipeline) the
-review skips the comment with a notice — a failed post never breaks the build,
-it's a best-effort side effect like the summary.
+backwards compatibility, the GitHub-only alias `.githubToken(...)`), or with a
+token source such as `GhTasks.appTokenSource` — see
+[Who the reviews post as](#who-the-reviews-post-as). Outside a PR context (a
+local run, or a branch push rather than a PR/MR pipeline) the review skips the
+comment with a notice — a failed post never breaks the build, it's a best-effort
+side effect like the summary.
 
 For GitHub Actions, the generator below also adds `pull-requests: write` to the
 workflow permissions automatically when any reviewer has `.comment()` set.
@@ -567,44 +569,67 @@ environment. Running that on a fork's code would hand the secrets to whoever
 opened the pull request. Mirroring the fork's branch into the repository does
 not change that — it is still the fork's code that runs.
 
-A `command` adds the flow that does cover forks: a maintainer comments the
-command on the pull request, and a second job runs the review **from the default
-branch's checkout, with the pull request fetched as data**.
+A reviewer that takes commands adds the flow that does cover forks. Name the
+mention maintainers address it by, and the generator adds a second job that runs
+the review **from the default branch's checkout, with the pull request fetched
+as data** whenever a maintainer comments `<mention> review` or
+`<mention> accept …` on any pull request:
+
+```ts
+security = securityReviewer((r) =>
+  r.provider("openai").apiKey(this.openaiKey).comment()
+    .discussion((d) => d.threads().commands("@acme-bot"))
+);
+reviewWorkflow = aiReviewWorkflow({ reviewers: [this.security] });
+```
+
+That is the whole setup. The mention is a prefix, not an account: `@acme-bot`
+reads well when a GitHub App of that name posts the reviews (below), and
+`/review`-style words work just as well with none. Every reviewer on the
+workflow must use the same mention; two different ones are refused, since the
+Commands panel each posts would promise a command the job does not honour. A
+`command` lambda on the spec refines the job rather than declaring it:
 
 ```ts
 reviewWorkflow = aiReviewWorkflow({
   reviewers: [this.security],
   command: (c) =>
-    c.text("@zuke-build review")
-      // Any of these also starts a run — here the accept command, so a
-      // maintainer's acceptance is applied by the comment that gives it.
-      .also("@zuke-build accept")
-      // Only this job receives these — here, the GitHub App credentials the
-      // build mints its `.commentToken(...)` from, so the review posts as
-      // the app.
-      .secrets("ZUKE_BUILD_APP_ID", "ZUKE_BUILD_APP_KEY"),
+    c
+      // Who may start a run: the least repository role, and named logins.
+      // The default is `write` — push access.
+      .role("triage")
+      .users("trusted-contributor")
+      // Secrets this job alone receives, as the build's parameters.
+      .secrets(this.appId, this.appKey),
 });
 ```
+
+`.text("/review")` replaces the derived commands with one of its own, and
+`.also(...)` adds more; a reviewer still parses `accept` under its mention, so
+name that too when overriding.
 
 The generated job listens on `issue_comment` (GitHub delivers a pull request's
 conversation comments as issue comments) and runs only when every clause of its
 `if:` holds, all of them metadata GitHub asserts rather than anything in the
 comment's text: the comment is on a pull request; its author is not a bot
-account; and the body starts with the command (or one named by `.also(...)`).
-Who may start a run is decided by the job's first step after the checkout, which
-asks the collaborators API what the commenter may do: `admin` or `write` lets
-the review run, and anything else ends the job succeeded with nothing spent and
-the reason in the step's log — before any key is spent. The event's
-`author_association` is deliberately not in the gate: GitHub reports an
-organisation member whose membership is private as `CONTRIBUTOR` (it turned this
-repository's own maintainers away), and `MEMBER` and `COLLABORATOR` both include
-read-only accounts, so the field can neither admit nor refuse anyone correctly.
-The step skips rather than fails because, with no pre-filter, anyone who can
-comment can type the command, and a red check for each of them would be noise
-and a lever anyone could pull. `startsWith` is case-insensitive, and a reply
-that quotes the command (`> @zuke-build review`) does not start a run. The
-comment body is matched in the expression and never interpolated into a `run:`
-line.
+account; and the body starts with one of the commands. Who may start a run is
+decided by the job's first step after the checkout, which asks the collaborators
+API what role the commenter holds: a login named by `.users(...)` is admitted
+outright; otherwise `write` and above (or whatever `.role(...)` lowers that to:
+`triage`, or `read`, which on a public repository is everyone) lets the review
+run, and anything below ends the job succeeded with nothing spent and the reason
+in the step's log — before any key is spent. The event's `author_association` is
+deliberately not in the gate: GitHub reports an organisation member whose
+membership is private as `CONTRIBUTOR` (it turned this repository's own
+maintainers away), and `MEMBER` and `COLLABORATOR` both include read-only
+accounts, so the field can neither admit nor refuse anyone correctly. The step
+skips rather than fails because, with no pre-filter, anyone who can comment can
+type the command, and a red check for each of them would be noise and a lever
+anyone could pull. `startsWith` is case-insensitive, and a reply that quotes the
+command (`> @acme-bot review`) does not start a run. The comment body is matched
+in the expression and never interpolated into a `run:` line; a login reaches the
+gate script as env and is checked against the characters a login can contain
+before it is put in a URL.
 
 What runs is the default branch's build. The job passes `ZUKE_REVIEW_PR`, and
 every reviewer honours it ahead of its configured `git` source: it fetches
@@ -625,30 +650,84 @@ pull request's `zuke.ts`, suppressions and criteria never load, so it cannot
 change the rules it is judged by from this flow; the maintainer's comment is the
 human gate, as it is for Dependabot's `@dependabot` commands; and the diff and
 the thread are the same untrusted text the reviewers already read. The job also
-passes `ZUKE_REVIEW_COMMENT`, the command comment's id, for a build that wants
-to acknowledge the command — Zuke's own reacts 👀 on it before the reviewers
-start.
+passes `ZUKE_REVIEW_COMMENT`, the command comment's id, and each reviewer reacts
+👀 on that comment before it starts, so the maintainer sees the command was
+picked up without opening the Actions tab.
 
-Two things a build can set to make the reply come from the account the
-maintainer addressed. `.commentToken(...)` accepts a **function** that produces
-the token when a post first needs it, so the build can mint a GitHub App
-installation token narrowed to `pull_requests: write` (and `issues: write` for
-the reaction, and `contents: write` to resolve threads) and post as `<app>[bot]`
-instead of `github-actions[bot]`. And the App's credentials reach the jobs one
-of two ways: `.secrets(...)` on the command passes them to that job alone,
-leaving the `pull_request` job with the workflow token; `secrets` on the spec
-passes them to the review step of **both** jobs. The second is what a review
-that resolves its threads needs, because GitHub refuses the Actions token the
-mutation that resolves a review thread while letting it post the reply, so a
-thread answered on a push run stays open until a token that may close it comes
-by. Name secrets on the spec only for a repository whose pull-request job you
-would hand them to: it executes the pull request's own build, so everyone who
-can push a branch can read what it holds, while a fork's run receives no secrets
-from GitHub at all and the job's gate skips it besides. A job holding such a key
-should also block egress: `egress: "block"` with `allowedEndpoints` naming what
-the launcher and module resolution reach, and the generator adds each reviewer's
-provider host itself. Comments an App posts do trigger `issue_comment` workflows
-(unlike `GITHUB_TOKEN`'s), which is what the bot check in the gate is for.
+### Who the reviews post as
+
+Three setups, from none to an App of your own. Pick by what you need: the first
+is enough for a review that comments and gates; an App is what closes review
+threads and gives the reviewer a name of its own.
+
+**`github-actions[bot]`, with nothing to set up.** With `.comment()` and no
+token named, the reviewer posts with the workflow's `GITHUB_TOKEN`: comments,
+review threads and the outcome replies in them all work. What that token cannot
+do is **resolve** a thread — GitHub allows the mutation to repository write
+access only and refuses the Actions token on the same scope that lets it post
+the reply — so an answered thread stays open until someone closes it, and the
+report's Notes say so.
+
+**Your own GitHub App.** Create an App on your organisation (any name; it is the
+account the reviews come from, so `acme-bot` reads better than
+`acme-ci-helper-2`), with repository permissions Pull requests, Issues and
+Contents set to read and write, no webhooks, and install it on the repository.
+Put its id and private key in two repository secrets, declare them as
+parameters, and hand `GhTasks.appTokenSource` to `.commentToken(...)`:
+
+```ts
+import { GhTasks } from "@zuke/gh";
+
+appId = parameter("GitHub App id").env("REVIEW_APP_ID");
+appKey = parameter("GitHub App private key").secret().env("REVIEW_APP_KEY");
+botToken = GhTasks.appTokenSource((s) => s.app(this.appId, this.appKey));
+
+security = securityReviewer((r) =>
+  r.provider("openai").apiKey(this.openaiKey)
+    .comment().commentToken(this.botToken)
+    .discussion((d) => d.threads().commands("@acme-bot"))
+);
+reviewWorkflow = aiReviewWorkflow({
+  reviewers: [this.security],
+  secrets: [this.appId, this.appKey],
+  egress: "block",
+  allowedEndpoints: [/* what your launcher and module resolution reach */],
+});
+```
+
+The source mints an installation token the first time a post needs one and
+shares it with every reviewer after; the repository defaults to the one the run
+is on and the permissions to the App's own grant (name `.repository(...)` or
+`.permission(...)` to narrow either). Without the credentials — locally, on a
+fork's run, on a repository without the App — it yields `GITHUB_TOKEN`, so the
+same build posts as the App where it is installed and as `github-actions[bot]`
+everywhere else, and a mint that fails is a warning and the fallback, never a
+failed build. The App's credentials reach the jobs one of two ways: `secrets` on
+the spec passes them to the review step of **both** jobs, which is what a review
+that resolves its threads needs, because most threads are answered on push runs;
+`.secrets(...)` on the command passes them to that job alone, leaving the
+`pull_request` job with the workflow token. Name secrets on the spec only for a
+repository whose pull-request job you would hand them to: it executes the pull
+request's own build, so everyone who can push a branch can read what it holds,
+while a fork's run receives no secrets from GitHub at all and the job's gate
+skips it besides. A job holding such a key should also block egress:
+`egress: "block"` with `allowedEndpoints` naming what the launcher and module
+resolution reach, and the generator adds each reviewer's provider host itself.
+Comments an App posts do trigger `issue_comment` workflows (unlike
+`GITHUB_TOKEN`'s), which is what the bot check in the gate is for.
+
+**On GitLab, Azure DevOps and Bitbucket.** There is no App to mint from and no
+comment-started job to generate; a bot identity there is a token variable — a
+GitLab project access token, an Azure bot account's PAT, a Bitbucket access
+token — declared as a parameter and handed to `.commentToken(this.botToken)`.
+Everything the reviewer does with comments works the same on those hosts: the
+discussion, the `accept` command, the Commands panel (without its `review` row,
+since no comment can start a run there; an acceptance is applied by the next
+pipeline run).
+
+The `zuke-build` App this repository posts as is ours: an App's identity is its
+private key, which only its owner holds, so it cannot be shared without a hosted
+service standing between the key and every installation. Name your own, or none.
 
 The command is GitHub-only; the other hosts render no comment job. Every job of
 the workflow shares one concurrency group keyed on the pull request number,
@@ -713,10 +792,9 @@ a finding wins, so a reason can be restated. An accepted finding is a
 maintainer's decision for the dedup pass above: any reviewer's restatement of
 it, on any file and at any severity, inherits it.
 
-For the command to be applied by the comment that gives it, the workflow's
-command lists it too: `c.text("@zuke-build review").also("@zuke-build accept")`
-makes either prefix start the on-demand run. Without that, the acceptance is
-applied by the next run, whichever starts it.
+On GitHub the generated command job starts on the accept comment too, so the
+acceptance is applied by the comment that gives it. Elsewhere it is applied by
+the next run, whichever starts it, and the panel leaves the `review` row out.
 
 ## Worked example: Zuke reviews itself
 
@@ -788,8 +866,9 @@ the `pull_request` job — non-fork only, so the secrets are never exposed to co
 the repository does not control — passing `OPENAI_API_KEY` and the
 `GITHUB_TOKEN` for the comments. And on any pull request, a fork's included, a
 maintainer starts it by commenting `@zuke-build review`: the
-[comment command](#on-demand-a-comment-command) job runs the same target from
-master's checkout with that pull request fetched as data, posts as
-`zuke-build[bot]` (both reviewers share one `.commentToken(...)` that mints the
-App's token, narrowed to comments and reactions), and reacts 👀 on the comment
+[comment command](#on-demand-a-comment-command) job, derived from the reviewers'
+`commands("@zuke-build")`, runs the same target from master's checkout with that
+pull request fetched as data, posts as `zuke-build[bot]` (both reviewers share
+one `GhTasks.appTokenSource` pinned to this repository and narrowed to comments,
+reactions and thread resolution), and each reviewer reacts 👀 on the comment
 first. Each assessment lands in that run's job summary and as a PR comment.

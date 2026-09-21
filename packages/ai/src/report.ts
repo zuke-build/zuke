@@ -116,10 +116,10 @@ export interface ReportExtras {
    */
   discussion?: boolean;
   /**
-   * The mention maintainers address commands to (`@zuke-build`), when the
-   * reviewer takes them — renders the collapsed Commands panel.
+   * The commands the reviewer takes, when it takes any — renders the collapsed
+   * Commands panel.
    */
-  commands?: string;
+  commands?: ReviewCommands;
   /**
    * Findings from earlier rounds that no longer reproduce against the current
    * diff — the PR's progress. Cumulative: every fixed finding stays listed, so
@@ -134,6 +134,18 @@ export interface ReportExtras {
    * as "nothing matched".
    */
   notes?: string[];
+}
+
+/** What the Commands panel lists. */
+export interface ReviewCommands {
+  /** The mention maintainers address commands to, e.g. `@zuke-build`. */
+  mention: string;
+  /**
+   * Whether a comment can start a run on this host — GitHub, where the
+   * generated workflow runs on command. Elsewhere the `review` row is left
+   * out: an `accept` is applied by the next run, whichever starts it.
+   */
+  onDemand: boolean;
 }
 
 /** A candidate finding the verify pass refuted, and why. */
@@ -412,7 +424,7 @@ function decidedRow(d: DismissedFinding): string {
  * the help lives on the pull request rather than in the docs. The mention
  * is build configuration, not model output, so it is rendered as given.
  */
-function commandsSection(mention: string): string[] {
+function commandsSection({ mention, onDemand }: ReviewCommands): string[] {
   return [
     "<details><summary>Commands</summary>",
     "",
@@ -421,8 +433,12 @@ function commandsSection(mention: string): string[] {
     "",
     "| Say | What happens |",
     "| --- | --- |",
-    `| \`${mention} review\` | Runs the review again now, with no push: ` +
-    "every rebuttal is adjudicated and answered where it was made. |",
+    ...(onDemand
+      ? [
+        `| \`${mention} review\` | Runs the review again now, with no push: ` +
+        "every rebuttal is adjudicated and answered where it was made. |",
+      ]
+      : []),
     `| \`${mention} accept <id> <reason>\` | Accepts a finding as intended ` +
     "for this pull request: it is recorded with your reason, its thread is " +
     "closed, and no reviewer raises it again here — reworded, moved to " +

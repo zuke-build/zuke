@@ -41,6 +41,45 @@ export interface GithubContext {
   pull: number;
 }
 
+/**
+ * The env var the generated command job sets to the id of the comment that
+ * started the run, for the reviewer to acknowledge before it starts.
+ */
+export const REVIEW_COMMENT_ENV = "ZUKE_REVIEW_COMMENT";
+
+/**
+ * React 👀 on the comment {@link REVIEW_COMMENT_ENV} names. `false` when the
+ * run was not comment-started, the id is not a number, the repository is
+ * unknown, or GitHub refuses — best-effort, like every post the review makes.
+ * The id is checked against digits before it is put in a URL.
+ */
+export function acknowledgeGithubCommand(
+  env: EnvReader,
+): ((token: string, doFetch: typeof fetch) => Promise<boolean>) | undefined {
+  const id = env(REVIEW_COMMENT_ENV);
+  if (id === undefined || id === "") return undefined;
+  const repo = env("GITHUB_REPOSITORY");
+  return async (token, doFetch) => {
+    if (!/^[1-9]\d{0,15}$/.test(id) || repo === undefined || token === "") {
+      return false;
+    }
+    try {
+      const response = await doFetch(
+        `${API}/repos/${repo}/issues/comments/${id}/reactions`,
+        {
+          method: "POST",
+          headers: githubHeaders(token),
+          body: JSON.stringify({ content: "eyes" }),
+        },
+      );
+      await response.body?.cancel();
+      return response.ok;
+    } catch {
+      return false;
+    }
+  };
+}
+
 /** Parse a `refs/pull/<n>/merge` ref into its pull-request number. */
 function pullFromRef(ref: string | undefined): number | undefined {
   const match = (ref ?? "").match(/^refs\/pull\/(\d+)\/merge$/);
@@ -277,4 +316,5 @@ export const githubHost: ReviewHost = {
     if (context === undefined) return undefined;
     return githubReviewThreads(context);
   },
+  acknowledgeCommand: acknowledgeGithubCommand,
 };

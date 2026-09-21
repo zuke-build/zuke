@@ -71,10 +71,6 @@ import {
 import { mintAppToken } from "./build/app_token.ts";
 import { localVersion, PACKAGES } from "./build/packages.ts";
 import {
-  acknowledgeReviewCommand,
-  reviewCommentToken,
-} from "./build/review_app.ts";
-import {
   CODECOV_CLI_VERSION,
   installCli,
   publishOne,
@@ -165,16 +161,6 @@ const CHECK_GLOBS = [
   "packages/*/src/**/*.ts",
   "packages/*/tests/**/*.ts",
 ];
-
-/**
- * The token both reviewers post with: the `zuke-build` App's when the review
- * job carries the App's credentials (the comment-started one does), so the
- * assessments come from `zuke-build[bot]`, the account the maintainer
- * addressed; `GITHUB_TOKEN` otherwise. One resolver for both, so the token is
- * minted once per run.
- */
-const reviewToken = reviewCommentToken((name) => Deno.env.get(name));
-
 class ZukeBuild extends Build {
   clean = target()
     .description("Remove build artifacts")
@@ -217,6 +203,33 @@ class ZukeBuild extends Build {
   // fixer leaves the underlying lint failure standing. Declared here because a
   // field can only be referenced by fields declared below it.
   aiBudget = budget((b) => b.maxTokens(500_000));
+
+  // The `zuke-build` GitHub App's credentials, present on both review jobs
+  // (the workflow passes them as secrets) and absent locally and on a fork's
+  // run. Ours alone: another project names its own App here, or names none
+  // and posts as `github-actions[bot]` — see docs/ai-review.md, "Who the
+  // reviews post as".
+  zukeBuildAppId = parameter("GitHub App id of the zuke-build App")
+    .env("ZUKE_BUILD_APP_ID");
+  zukeBuildAppKey = parameter("Private key (PEM) of the zuke-build App")
+    .secret()
+    .env("ZUKE_BUILD_APP_KEY");
+
+  // The token both reviewers post with: the App's when its credentials are
+  // set, so the assessments come from `zuke-build[bot]`, the account a
+  // maintainer addresses, and the reviewer can resolve the threads it answers
+  // (GitHub allows that mutation to repository write access, which for an
+  // installation token is `contents: write`; the Actions token is refused);
+  // `GITHUB_TOKEN` otherwise. Minted once per run and shared. Pinned to this
+  // repository, so a run anywhere else gets the fallback rather than a token
+  // minted for whatever the environment names.
+  reviewToken = GhTasks.appTokenSource((s) =>
+    s.app(this.zukeBuildAppId, this.zukeBuildAppKey)
+      .repository("zuke-build/zuke")
+      .permission("pull-requests", "write")
+      .permission("issues", "write")
+      .permission("contents", "write")
+  );
 
   lint = target()
     .description("Lint the workspace (deno lint)")
@@ -1006,7 +1019,7 @@ class ZukeBuild extends Build {
       // place. Posted as the zuke-build App when its credentials are present,
       // as GITHUB_TOKEN otherwise (see `reviewToken`).
       .comment("append")
-      .commentToken(reviewToken)
+      .commentToken(this.reviewToken)
       // The base for a review of the checkout. On a comment-started run
       // `ZUKE_REVIEW_PR` takes over: the reviewer fetches that pull request's
       // merge and diffs it against the base it was merged onto, and nothing
@@ -1230,7 +1243,7 @@ class ZukeBuild extends Build {
       // appended per run for the same history-keeping reasons, and posted
       // with the same token.
       .comment("append")
-      .commentToken(reviewToken)
+      .commentToken(this.reviewToken)
       // The built-in rubric already covers clarity, cohesion, tests, and docs;
       // `.criteria(...)` adds just the project-specific conventions on top.
       // These stay inline — read from the head — rather than moving to a
@@ -1334,22 +1347,9 @@ class ZukeBuild extends Build {
       );
     });
 
-  // On a comment-started run, react 👀 on the `@zuke-build review` comment
-  // before the reviewers start, so the maintainer sees the command was picked
-  // up. A no-op on every other run — there is no comment to acknowledge.
-  reviewAck = target()
-    .description("Acknowledge the comment that asked for the AI review")
-    .executes(async () => {
-      const reacted = await acknowledgeReviewCommand(
-        (name) => Deno.env.get(name),
-        reviewToken,
-      );
-      if (reacted) ConsoleTasks.info("Acknowledged the review command (👀).");
-    });
-
   review = target()
     .description("AI review of the diff (security + code quality)")
-    .dependsOn(this.reviewBase, this.reviewAck)
+    .dependsOn(this.reviewBase)
     .validateBefore(this.securityReview, this.generalReview)
     .executes(() => {});
 
@@ -1373,18 +1373,18 @@ class ZukeBuild extends Build {
     // build, which is acceptable here because only maintainers can push a
     // branch and the key is already theirs; a fork's run receives no secrets
     // from GitHub at all, and the job's gate skips it besides.
-    secrets: ["ZUKE_BUILD_APP_ID", "ZUKE_BUILD_APP_KEY"],
+    secrets: [this.zukeBuildAppId, this.zukeBuildAppKey],
     // With a key worth stealing on the job, egress is blocked rather than
     // audited, as on every other job holding one: the launcher's bootstrap and
     // GitHub, plus the reviewers' provider host, which the generator adds.
     egress: "block",
     allowedEndpoints: BOOTSTRAP_ENDPOINTS,
-    // The second flow: a maintainer comments `@zuke-build review` on any pull
-    // request — a fork's included, which the `pull_request` job must skip —
-    // and the review runs from master's checkout with that pull request
-    // fetched as data. `accept` starts a run too, so a maintainer's
-    // acceptance of a finding is applied by the comment that gives it.
-    command: (c) => c.text("@zuke-build review").also("@zuke-build accept"),
+    // The second flow needs no declaring: both reviewers take commands under
+    // `@zuke-build`, so the generator adds the job that runs on
+    // `@zuke-build review` and `@zuke-build accept` from any pull request — a
+    // fork's included, which the `pull_request` job must skip — with master's
+    // checkout and that pull request fetched as data. Who may start it is the
+    // default: anyone with push access.
     // The same resolver every other workflow uses, so this file names the same
     // commit they do. Without it the prelude falls back to the reference baked
     // into core, which is a release behind the moment the action is released
