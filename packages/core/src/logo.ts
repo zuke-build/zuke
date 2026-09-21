@@ -10,13 +10,9 @@
  * depends on core alone — `@zuke/console` may not be installed at all. Core
  * cannot import console (console depends on core), so the art has to be here.
  *
- * `@zuke/console` carries an identical copy for the moment. It cannot import
- * this one yet: `coreFloorCheck` type-checks every package against the exact
- * minimum of its declared core range, resolved from JSR, and no published core
- * exports this module — so the floor bump has to be a later PR, the pattern
- * `docs/versioning.md` records as `d8f51c0`. Until then
- * `packages/console/tests/logo_drift_test.ts` asserts the two constants are
- * identical, so the copies cannot drift apart.
+ * `@zuke/console` re-exports these from here rather than keeping its own copy,
+ * so `ConsoleTasks.logo` and a run's opening banner render the same art from
+ * one implementation.
  *
  * @module
  */
