@@ -22,13 +22,16 @@ jobs:
       - name: Harden and check out with Zuke
         uses: zuke-build/zuke@2478fa5a69fb4f16540e54959c98cd976ec3f075 # v1.0.5
         with:
-          egress-policy: audit
+          egress-policy: block
           persist-credentials: "false"
+          allowed-endpoints: "deno.land:443 dl.deno.land:443 jsr.io:443 github.com:443 api.github.com:443 codeload.github.com:443 objects.githubusercontent.com:443 release-assets.githubusercontent.com:443 api.openai.com:443"
       - name: AI review with Zuke
         run: ./zuke review
         env:
           OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}"
           GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          ZUKE_BUILD_APP_ID: "${{ secrets.ZUKE_BUILD_APP_ID }}"
+          ZUKE_BUILD_APP_KEY: "${{ secrets.ZUKE_BUILD_APP_KEY }}"
   commandReview:
     name: AI review on command
     runs-on: ubuntu-latest
@@ -44,8 +47,9 @@ jobs:
       - name: Harden and check out with Zuke
         uses: zuke-build/zuke@2478fa5a69fb4f16540e54959c98cd976ec3f075 # v1.0.5
         with:
-          egress-policy: audit
+          egress-policy: block
           persist-credentials: "false"
+          allowed-endpoints: "deno.land:443 dl.deno.land:443 jsr.io:443 github.com:443 api.github.com:443 codeload.github.com:443 objects.githubusercontent.com:443 release-assets.githubusercontent.com:443 api.openai.com:443"
       - name: Require push access for the commenter
         id: push
         shell: bash

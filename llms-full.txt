@@ -20240,7 +20240,8 @@ class ReviewCommandSettings
     Pass these repository secrets to the command job's review step as env vars
     of the same name — e.g. the GitHub App credentials the build mints its
     `commentToken` from, so the review posts as the app. Only the command job
-    receives them; the `pull_request` job is unchanged.
+    receives them; the `pull_request` job is unchanged. Secrets both jobs
+    should hold go on {@link AiReviewWorkflowSpec.secrets} instead.
 
 class Reviewer implements Validation
   A fluent AI reviewer. Construct one via {@link securityReviewer} (and the
@@ -20514,6 +20515,31 @@ interface AiReviewWorkflowSpec
     Workflow name shown in the host's UI. Defaults to `"AI Review"`.
   timeoutMinutes?: number
     Per-job timeout in minutes. Defaults to 15.
+  secrets?: readonly string[]
+    Repository secrets every review step receives as env vars of the same
+    name, beyond the reviewers' own keys and the host token — on the
+    pull-request job and, with a {@link command}, the command job alike. The
+    case for it is a GitHub App the build mints its `.commentToken(...)`
+    from: the Actions token may post a review and reply in its threads, but
+    GitHub refuses it the mutation that resolves a thread, so a review
+    that closes the threads it answers needs the App's token on the job that
+    answers most of them, the pull-request job. Name secrets here only for a
+    repository whose pull-request job you would hand them to: it executes the
+    pull request's own build, so everyone who can push a branch can read what
+    it holds. Secrets for the command job alone go on
+    {@link ReviewCommandSettings.secrets}.
+  egress?: "audit" | "block"
+    The harden-runner egress policy of the GitHub jobs. `"audit"` (the
+    default) records outbound connections; `"block"` drops everything outside
+    {@link allowedEndpoints}, which is what a job holding a credential worth
+    stealing should do — the App key {@link secrets} names, say. Each
+    reviewer's provider host is added to the allow-list automatically, so a
+    build lists only what its own launcher and module resolution reach.
+  allowedEndpoints?: readonly string[]
+    The `host:port` endpoints a `"block"` {@link egress} permits, on top of
+    every reviewer's provider host. For a Zuke launcher that is the Deno
+    download, JSR, and GitHub (`github.com`, `api.github.com`, and the
+    release-asset hosts the bootstrap fetches from). Ignored when auditing.
   command?: Configure<ReviewCommandSettings>
     Run the review on demand when a maintainer comments a command on a pull
     request — any pull request, a fork's included. GitHub only; see
@@ -20523,9 +20549,10 @@ interface AiReviewWorkflowSpec
     ```ts
     aiReviewWorkflow({
       reviewers: [this.security],
-      command: (c) =>
-        c.text("@zuke-build review")
-          .secrets("ZUKE_BUILD_APP_ID", "ZUKE_BUILD_APP_KEY"),
+      secrets: ["ZUKE_BUILD_APP_ID", "ZUKE_BUILD_APP_KEY"],
+      egress: "block",
+      allowedEndpoints: ["dl.deno.land:443", "jsr.io:443", "api.github.com:443"],
+      command: (c) => c.text("@zuke-build review"),
     });
     ```
 

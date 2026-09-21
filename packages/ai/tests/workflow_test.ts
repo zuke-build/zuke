@@ -564,6 +564,116 @@ Deno.test("concurrency is one group per pull request, declared on the jobs, neve
   );
 });
 
+Deno.test("spec secrets reach the review step of both jobs; the command's stay on its own", () => {
+  class B extends Build {
+    key = parameter("Key").secret().env("OPENAI_API_KEY");
+    security = securityReviewer((r) =>
+      r.provider("openai").apiKey(this.key).comment()
+    );
+    review = target().validateBefore(this.security).executes(() => {});
+    wf = aiReviewWorkflow({
+      reviewers: [this.security],
+      secrets: ["APP_ID", "APP_KEY"],
+      command: (c) => c.text("@zuke-build review").secrets("COMMAND_ONLY"),
+    });
+  }
+  const b = new B();
+  discoverParameters(b);
+  const yaml = b.wf.render();
+  const [reviewJob, commandJob] = yaml.split("  commandReview:");
+  for (const job of [reviewJob, commandJob]) {
+    assertStringIncludes(job, 'APP_ID: "${{ secrets.APP_ID }}"');
+    assertStringIncludes(job, 'APP_KEY: "${{ secrets.APP_KEY }}"');
+  }
+  assertStringIncludes(
+    commandJob,
+    'COMMAND_ONLY: "${{ secrets.COMMAND_ONLY }}"',
+  );
+  assertEquals(reviewJob.includes("COMMAND_ONLY"), false);
+  // Step-scoped, like every other secret: on the review step, never the job.
+  const step = reviewJob.slice(reviewJob.indexOf("AI review with Zuke"));
+  assertStringIncludes(step, "APP_KEY");
+  assertEquals(
+    reviewJob.slice(0, reviewJob.indexOf("AI review with Zuke")).includes(
+      "APP_KEY",
+    ),
+    false,
+  );
+});
+
+Deno.test("a spec secret that is not a valid secret name is rejected", () => {
+  class B extends Build {
+    key = parameter("Key").secret().env("OPENAI_API_KEY");
+    security = securityReviewer((r) => r.provider("openai").apiKey(this.key));
+    review = target().validateBefore(this.security).executes(() => {});
+    wf = aiReviewWorkflow({
+      reviewers: [this.security],
+      secrets: ["BAD-NAME"],
+    });
+  }
+  assertThrows(
+    () => {
+      const b = new B();
+      discoverParameters(b);
+      b.wf.render();
+    },
+    Error,
+    "is not a valid secret name",
+  );
+});
+
+/** A build whose workflow blocks egress, with two reviewers on two providers. */
+function blockingBuild(allowedEndpoints?: string[]): string {
+  class B extends Build {
+    key = parameter("Key").secret().env("OPENAI_API_KEY");
+    claudeKey = parameter("Claude").secret().env("ANTHROPIC_API_KEY");
+    security = securityReviewer((r) =>
+      r.provider("openai").apiKey(this.key).comment()
+    );
+    generic = securityReviewer((r) =>
+      r.provider("claude").apiKey(this.claudeKey)
+    );
+    review = target().validateBefore(this.security, this.generic).executes(
+      () => {},
+    );
+    wf = aiReviewWorkflow({
+      reviewers: [this.security, this.generic],
+      egress: "block",
+      allowedEndpoints,
+      command: (c) => c.text("@zuke-build review"),
+    });
+  }
+  const b = new B();
+  discoverParameters(b);
+  return b.wf.render();
+}
+
+Deno.test("a blocking egress policy lists the build's endpoints and every provider host, on both jobs", () => {
+  const yaml = blockingBuild(["dl.deno.land:443", "api.openai.com:443"]);
+  const [reviewJob, commandJob] = yaml.split("  commandReview:");
+  for (const job of [reviewJob, commandJob]) {
+    assertStringIncludes(job, "egress-policy: block");
+    // The build's list first, then each provider's host — the one already
+    // listed is not repeated, so a build may name it for its own reasons.
+    assertStringIncludes(
+      job,
+      'allowed-endpoints: "dl.deno.land:443 api.openai.com:443 api.anthropic.com:443"',
+    );
+  }
+  // No list at all: the providers alone, so a policy that blocks can never
+  // block the review itself.
+  assertStringIncludes(
+    blockingBuild(),
+    'allowed-endpoints: "api.openai.com:443 api.anthropic.com:443"',
+  );
+});
+
+Deno.test("auditing egress renders no allow-list, and is the default", () => {
+  const yaml = commandBuild();
+  assertStringIncludes(yaml, "egress-policy: audit");
+  assertEquals(yaml.includes("allowed-endpoints"), false);
+});
+
 Deno.test("without a command there is no issue_comment trigger and no second job", () => {
   const yaml = dualBuild().wf.render();
   assertEquals(yaml.includes("issue_comment"), false);

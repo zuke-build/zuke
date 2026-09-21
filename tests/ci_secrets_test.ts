@@ -23,7 +23,7 @@
  */
 
 import { assertEquals } from "../packages/core/tests/_assert.ts";
-import { isRecord, jobsOf, readWorkflow } from "./_workflow.ts";
+import { isRecord, jobsOf, readWorkflow, stepsOf } from "./_workflow.ts";
 
 const CI = ".github/workflows/ci.yml";
 const AI_REVIEW = ".github/workflows/ai-review.yml";
@@ -64,10 +64,25 @@ Deno.test("only the gate job in ci.yml holds secrets", async (t) => {
   });
 });
 
-Deno.test("the ai-review job holds only what posting a review needs", () => {
-  const review = jobs(AI_REVIEW).get("review");
-  assertEquals(review === undefined, false);
-  assertEquals(secretsOf(review ?? {}), ["GITHUB_TOKEN", "OPENAI_API_KEY"]);
+Deno.test("the ai-review jobs hold only what posting a review needs", () => {
+  // The reviewers' key, the workflow token, and the zuke-build App's
+  // credentials — the last because GitHub refuses the Actions token the
+  // mutation that resolves a review thread (#631), so the job that answers a
+  // thread must hold a token that can close it. The App key on the
+  // pull-request job is the widening `docs/assurance-case.md` records under
+  // the write-access adversary: maintainers can already read every repository
+  // secret from a branch they push, and a fork's run receives none.
+  const expected = [
+    "GITHUB_TOKEN",
+    "OPENAI_API_KEY",
+    "ZUKE_BUILD_APP_ID",
+    "ZUKE_BUILD_APP_KEY",
+  ];
+  for (const id of ["review", "commandReview"]) {
+    const job = jobs(AI_REVIEW).get(id);
+    assertEquals(job === undefined, false, `${id} is missing`);
+    assertEquals(secretsOf(job ?? {}), expected, id);
+  }
 });
 
 Deno.test("no workflow triggers on pull_request_target", async () => {
@@ -103,12 +118,37 @@ Deno.test("only the gate persists credentials, and only it needs to", () => {
   }
 });
 
-Deno.test("the gate blocks egress and the review job does not", () => {
-  // Recorded rather than aspirational: the review job audits, which is why
-  // `docs/assurance-case.md` claims blocking only for jobs that hold a
-  // write-scoped token. If that changes, the prose has to change with it.
+Deno.test("the gate and both review jobs block egress", () => {
+  // `docs/assurance-case.md` claims blocking for every job that holds a
+  // credential a compromised dependency could send somewhere. The review jobs
+  // hold the App key, so they block like the gate, to the launcher's
+  // endpoints plus the reviewers' provider. If that changes, the prose has to
+  // change with it.
   const gate = JSON.stringify(jobs(CI).get("ci") ?? {});
   assertEquals(gate.includes('"egress-policy":"block"'), true);
-  const review = JSON.stringify(jobs(AI_REVIEW).get("review") ?? {});
-  assertEquals(review.includes('"egress-policy":"audit"'), true);
+  // The launcher's bootstrap and GitHub, then the one provider Zuke's
+  // reviewers call — compared whole, so an endpoint arriving or leaving is a
+  // deliberate edit here too.
+  const expected = [
+    "deno.land:443",
+    "dl.deno.land:443",
+    "jsr.io:443",
+    "github.com:443",
+    "api.github.com:443",
+    "codeload.github.com:443",
+    "objects.githubusercontent.com:443",
+    "release-assets.githubusercontent.com:443",
+    "api.openai.com:443",
+  ];
+  for (const id of ["review", "commandReview"]) {
+    const [prelude] = stepsOf(jobs(AI_REVIEW).get(id) ?? {});
+    const inputs = isRecord(prelude.with) ? prelude.with : {};
+    assertEquals(inputs["egress-policy"], "block", id);
+    const allowed = inputs["allowed-endpoints"];
+    assertEquals(
+      typeof allowed === "string" ? allowed.split(" ") : [],
+      expected,
+      id,
+    );
+  }
 });

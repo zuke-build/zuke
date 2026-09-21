@@ -131,7 +131,7 @@ import {
 import { actionPin } from "./build/action_pins.ts";
 import { scannerConfigDenial } from "./build/scanner_policy.ts";
 import { actionlintTool, gitleaksTool, zizmorTool } from "./build/scanners.ts";
-import { githubWorkflows } from "./build/workflows.ts";
+import { BOOTSTRAP_ENDPOINTS, githubWorkflows } from "./build/workflows.ts";
 
 /**
  * Where the `security` target writes gitleaks' findings. The security workflow
@@ -1361,17 +1361,26 @@ class ZukeBuild extends Build {
     // the base itself — so the same command works locally, where no workflow
     // step exists to do it.
     fetchBase: false,
+    // The App's credentials ride on both jobs, so every assessment comes from
+    // zuke-build[bot] and `reviewToken` narrows what is minted from them to
+    // comments and reactions. Both jobs need them: GitHub refuses the Actions
+    // token the mutation that resolves a review thread (#631), so a thread the
+    // reviewer answers on a push run stayed open until a run holding the App's
+    // token came by. The pull-request job executes the pull request's own
+    // build, which is acceptable here because only maintainers can push a
+    // branch and the key is already theirs; a fork's run receives no secrets
+    // from GitHub at all, and the job's gate skips it besides.
+    secrets: ["ZUKE_BUILD_APP_ID", "ZUKE_BUILD_APP_KEY"],
+    // With a key worth stealing on the job, egress is blocked rather than
+    // audited, as on every other job holding one: the launcher's bootstrap and
+    // GitHub, plus the reviewers' provider host, which the generator adds.
+    egress: "block",
+    allowedEndpoints: BOOTSTRAP_ENDPOINTS,
     // The second flow: a maintainer comments `@zuke-build review` on any pull
     // request — a fork's included, which the `pull_request` job must skip —
     // and the review runs from master's checkout with that pull request
-    // fetched as data. The App's credentials ride only on that job, so the
-    // assessments come from zuke-build[bot], and `reviewToken` narrows what is
-    // minted from them to comments and reactions.
-    command: (c) =>
-      c.text("@zuke-build review").secrets(
-        "ZUKE_BUILD_APP_ID",
-        "ZUKE_BUILD_APP_KEY",
-      ),
+    // fetched as data.
+    command: (c) => c.text("@zuke-build review"),
     // The same resolver every other workflow uses, so this file names the same
     // commit they do. Without it the prelude falls back to the reference baked
     // into core, which is a release behind the moment the action is released
