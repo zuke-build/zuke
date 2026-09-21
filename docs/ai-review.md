@@ -633,12 +633,13 @@ naming the gap, and the maintainer can reply again to continue the discussion.
 There is nothing to configure: a build that anchors findings to threads gets the
 job, and one that does not has no reply to listen for.
 
-Two limits of an expression gate are worth knowing. It cannot tell whose thread
-a reply is in, so a maintainer's reply in any review thread on the pull request
-starts a run (the reviewer then reads only its own threads, and a run that
-changes nothing costs one review). And it tells the reviewer's own outcome
-replies apart only by account type: posted with the workflow's token or a GitHub
-App they are bot-authored and start nothing, while a personal token makes them a
+The gate cannot tell whose thread a reply is in, so the job's next step reads
+the comment the reply answers (GitHub's `in_reply_to_id` is always the thread's
+root) and lets the review run only when that root opens with a Zuke finding
+marker; a reply in any other review thread ends the job there, succeeded, with
+nothing spent. One limit remains: the reviewer's own outcome replies are told
+apart only by account type. Posted with the workflow's token or a GitHub App
+they are bot-authored and start nothing, while a personal token makes them a
 maintainer's comments, so each reply-posting run is followed by one more.
 
 ## Worked example: Zuke reviews itself

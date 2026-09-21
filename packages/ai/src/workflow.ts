@@ -49,6 +49,7 @@ import {
 } from "@zuke/core";
 import { REVIEW_PR_ENV } from "./diff.ts";
 import type { Reviewer } from "./reviewer.ts";
+import { FINDING_MARKER_PREFIX } from "./threads.ts";
 
 /** Default output paths per host — see {@link AiReviewWorkflowSpec}. */
 const DEFAULT_PATHS: Record<CiProvider, string> = {
@@ -145,20 +146,55 @@ const SAME_REPO =
  * request from this repository ({@link SAME_REPO} — the review job's rule,
  * for the same reason), and — before any key is spent — by someone the
  * collaborators API says has push access, the same step the command job runs.
+ * The gate cannot see whose thread the reply is in, so a further step reads
+ * the thread's root and lets the review run only when it is a Zuke finding
+ * thread ({@link REPLY_THREAD_STEP}).
  *
- * Two things the gate cannot see. It cannot tell whose thread the reply is in,
- * so a maintainer's reply in any review thread on the pull request starts a
- * run — the reviewer then reads only its own threads, and a run that changes
- * nothing costs one review. And it tells the reviewer's own outcome replies
- * apart only by account type: posted with the workflow's token or an App they
- * are bot-authored and start nothing, while a personal token makes them a
- * maintainer's comments, and each reply-posting run is followed by one more.
+ * One thing neither can see: the reviewer's own outcome replies are told apart
+ * only by account type. Posted with the workflow's token or an App they are
+ * bot-authored and start nothing; a personal token makes them a maintainer's
+ * comments, and each reply-posting run is then followed by one more.
  *
  * Emitted only when a reviewer uses `.discussion((d) => d.threads())`: without
  * threads there is no reply to listen for, and a maintainer contests a finding
  * by quoting its id, which the next push or the command picks up.
  */
 const REPLY_JOB = "replyReview";
+
+/**
+ * The reply job's step after the push-access check: read the comment the reply
+ * answers — GitHub's `in_reply_to_id` is always the thread's root, never an
+ * intermediate reply — and let the review run only when that root opens with
+ * a Zuke finding marker. The job's `if:` cannot see the root at all, so without
+ * this every maintainer reply in every review thread on the pull request would
+ * spend a review; with it, a reply anywhere else ends the job here, succeeded,
+ * having done nothing. The id reaches the script as env, never interpolated,
+ * and is checked to be a number before it is put in a URL; an answer that
+ * cannot be read fails closed, like the push-access step.
+ */
+const REPLY_THREAD_STEP = [
+  "set -euo pipefail",
+  'case "$ZUKE_REVIEW_PARENT" in',
+  '  ""|*[!0-9]*)',
+  '    echo "::error::the reply\'s parent comment id is not a number"',
+  "    exit 1 ;;",
+  "esac",
+  'root="$(gh api "repos/$GITHUB_REPOSITORY/pulls/comments/$ZUKE_REVIEW_PARENT" --jq .body)" || {',
+  '  echo "::error::could not read the comment the reply answers; refusing to run the review"',
+  "  exit 1",
+  "}",
+  'case "$root" in',
+  `  "${FINDING_MARKER_PREFIX}"*)`,
+  '    echo "The reply is in a Zuke review thread."',
+  '    echo "review=true" >> "$GITHUB_OUTPUT" ;;',
+  "  *)",
+  '    echo "The reply is not in a Zuke review thread; nothing to review."',
+  '    echo "review=false" >> "$GITHUB_OUTPUT" ;;',
+  "esac",
+].join("\n");
+
+/** The step id the reply job's later steps read their go-ahead from. */
+const REPLY_THREAD_STEP_ID = "thread";
 
 /** A secret name as GitHub Actions accepts it in `${{ secrets.NAME }}`. */
 const SECRET_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -601,6 +637,20 @@ class AiReviewWorkflow extends CiFile {
     ].join(" && ");
   }
 
+  /** The reply job's thread check — see {@link REPLY_THREAD_STEP}. */
+  static #replyThreadStep(): NonNullable<CiJob["steps"]>[number] {
+    return {
+      id: REPLY_THREAD_STEP_ID,
+      name: "Require the reply to be in a Zuke review thread",
+      shell: "bash",
+      run: REPLY_THREAD_STEP,
+      env: {
+        GH_TOKEN: "${{ github.token }}",
+        ZUKE_REVIEW_PARENT: "${{ github.event.comment.in_reply_to_id }}",
+      },
+    };
+  }
+
   /** The command job's first step: refuse a commenter without push access. */
   static #pushAccessStep(): NonNullable<CiJob["steps"]>[number] {
     return {
@@ -661,12 +711,20 @@ class AiReviewWorkflow extends CiFile {
     const jobs = [review];
     if (reviewers.threadsEnabled) {
       // The same steps as the review job — this event checks the pull request
-      // out too — behind the reply gate and the push-access check.
+      // out too — behind the reply gate, the push-access check, and the thread
+      // check whose go-ahead every later step waits for.
       jobs.push(this.#githubJob(
         REPLY_JOB,
         "AI review on thread reply",
         AiReviewWorkflow.#replyGate(),
-        [AiReviewWorkflow.#pushAccessStep(), ...reviewSteps],
+        [
+          AiReviewWorkflow.#pushAccessStep(),
+          AiReviewWorkflow.#replyThreadStep(),
+          ...reviewSteps.map((step) => ({
+            ...step,
+            if: `steps.${REPLY_THREAD_STEP_ID}.outputs.review == 'true'`,
+          })),
+        ],
         reviewers.commentEnabled,
         "github.event.pull_request.number",
       ));

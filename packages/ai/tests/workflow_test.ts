@@ -704,6 +704,22 @@ Deno.test("threads add the pull_request_review_comment trigger and a job gated o
   const [, replyJob] = yaml.split("  replyReview:");
   const [reply] = replyJob.split("  commandReview:");
   assertStringIncludes(reply, "Require push access for the commenter");
+  // Then the thread check: the root the reply answers must open with a Zuke
+  // finding marker, or every later step is skipped and the job still passes.
+  assertStringIncludes(
+    reply,
+    "Require the reply to be in a Zuke review thread",
+  );
+  assertStringIncludes(
+    reply,
+    'ZUKE_REVIEW_PARENT: "${{ github.event.comment.in_reply_to_id }}"',
+  );
+  assertStringIncludes(reply, '"<!-- zuke-ai-finding:"*)');
+  assertEquals(
+    reply.split("steps.thread.outputs.review == 'true'").length,
+    3,
+    "the fetch and the review step both wait for the thread check",
+  );
   assertStringIncludes(reply, "Fetch the base branch");
   assertStringIncludes(reply, "ZUKE_REVIEW_BASE: FETCH_HEAD");
   assertEquals(reply.includes("ZUKE_REVIEW_PR"), false);

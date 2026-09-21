@@ -70,7 +70,33 @@ jobs:
         env:
           GH_TOKEN: "${{ github.token }}"
           ZUKE_REVIEW_ACTOR: "${{ github.event.comment.user.login }}"
+      - name: Require the reply to be in a Zuke review thread
+        id: thread
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$ZUKE_REVIEW_PARENT" in
+            ""|*[!0-9]*)
+              echo "::error::the reply's parent comment id is not a number"
+              exit 1 ;;
+          esac
+          root="$(gh api "repos/$GITHUB_REPOSITORY/pulls/comments/$ZUKE_REVIEW_PARENT" --jq .body)" || {
+            echo "::error::could not read the comment the reply answers; refusing to run the review"
+            exit 1
+          }
+          case "$root" in
+            "<!-- zuke-ai-finding:"*)
+              echo "The reply is in a Zuke review thread."
+              echo "review=true" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "The reply is not in a Zuke review thread; nothing to review."
+              echo "review=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          ZUKE_REVIEW_PARENT: "${{ github.event.comment.in_reply_to_id }}"
       - name: AI review with Zuke
+        if: "steps.thread.outputs.review == 'true'"
         run: ./zuke review
         env:
           OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}"
