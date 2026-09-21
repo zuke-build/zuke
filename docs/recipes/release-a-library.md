@@ -17,9 +17,13 @@ import { GhTasks } from "@zuke/gh";
 import { GitTasks } from "@zuke/git";
 
 class Release extends Build {
-  // `--version 1.1.0` on the command line, or VERSION in the environment.
-  // Required: a missing value is an error before anything runs.
-  version = parameter("The version to release, e.g. 1.1.0").required();
+  // `--release-version 1.1.0` on the command line, or RELEASE_VERSION in the
+  // environment. Required: a missing value is an error before anything runs.
+  //
+  // Not `version`: that renders as `--version`, which Zuke reserves for
+  // reporting its own version, and a parameter that collides with a built-in
+  // flag is refused at discovery rather than quietly losing to it.
+  releaseVersion = parameter("The version to release, e.g. 1.1.0").required();
 
   check = target()
     .description("Type-check the public entrypoint")
@@ -37,14 +41,14 @@ class Release extends Build {
       const manifest: Record<string, unknown> = JSON.parse(
         await FileTasks.readText("jsr.json"),
       );
-      const bumped = { ...manifest, version: this.version.value };
+      const bumped = { ...manifest, version: this.releaseVersion.value };
       await FileTasks.writeText(
         "jsr.json",
         `${JSON.stringify(bumped, null, 2)}\n`,
       );
       await GitTasks.add((s) => s.paths("jsr.json"));
       await GitTasks.commit((s) =>
-        s.message(`chore: release ${this.version.value}`)
+        s.message(`chore: release ${this.releaseVersion.value}`)
       );
     });
 
@@ -53,8 +57,8 @@ class Release extends Build {
     .dependsOn(this.bump)
     .executes(() =>
       GitTasks.tag((s) =>
-        s.name(`v${this.version.value}`)
-          .message(`Release ${this.version.value}`)
+        s.name(`v${this.releaseVersion.value}`)
+          .message(`Release ${this.releaseVersion.value}`)
       )
     );
 
@@ -68,7 +72,7 @@ class Release extends Build {
     .dependsOn(this.push)
     .executes(() =>
       GhTasks.releaseCreate((s) =>
-        s.tag(`v${this.version.value}`).generateNotes().latest()
+        s.tag(`v${this.releaseVersion.value}`).generateNotes().latest()
       )
     );
 
@@ -87,10 +91,10 @@ await run(Release);
 ```
 
 ```sh
-./zuke --version 1.1.0                   # the whole release
-./zuke tag --version 1.1.0               # stop after the tag: a safe local rehearsal
-./zuke release --version 1.1.0 --dry-run # print the plan, run nothing
-VERSION=1.1.0 ./zuke                     # the parameter from the environment
+./zuke --release-version 1.1.0           # the whole release
+./zuke tag --release-version 1.1.0       # stop after the tag: a safe local rehearsal
+./zuke release --release-version 1.1.0 --dry-run # print the plan, run nothing
+RELEASE_VERSION=1.1.0 ./zuke             # the parameter from the environment
 ```
 
 ## Why a chain beats a script
@@ -105,8 +109,9 @@ VERSION=1.1.0 ./zuke                     # the parameter from the environment
   `deno publish`, which reads your `jsr.json` (or `deno.json`). The flags are
   methods, a typo is a compile error, and the argv is built without a shell.
 - **The version is a typed input.** `parameter(…).required()` is read from
-  `--version` or `VERSION`, checked before the first target runs, and used in
-  the targets as `this.version.value`. `./zuke --list` documents it.
+  `--release-version` or `RELEASE_VERSION`, checked before the first target
+  runs, and used in the targets as `this.releaseVersion.value`. `./zuke --list`
+  documents it.
 - **The release notes write themselves.** `--generate-notes` turns the merged
   pull requests since the previous tag into the release body.
 

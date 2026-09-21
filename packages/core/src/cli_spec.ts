@@ -422,6 +422,12 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
       "Serve the streamable-HTTP transport on the given address instead of stdio. A bare <port> binds 127.0.0.1. A non-loopback host must authenticate its callers, with a bearer token (ZUKE_MCP_TOKEN) or an mcpAuth() authenticator on the build. Put real TLS in front for production. See docs/mcp.md.",
   },
   { name: "--help", description: "Show usage" },
+  {
+    name: "--version",
+    description: "Print the Zuke version this build runs on",
+    detail:
+      "Prints the @zuke/core version the build resolved, and nothing else, so a script can read it directly.\n\nThis is the build's own version rather than the installed CLI's: the two are separate packages on separate release cadences, and a project pins core through its own import map and lock. Asking the installed zuke prints both, each labelled, so it is never ambiguous which one answered.",
+  },
 ];
 
 /**

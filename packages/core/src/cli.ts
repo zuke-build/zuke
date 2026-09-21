@@ -37,6 +37,8 @@ import {
   formatCompletions,
   isCompletionShell,
 } from "./completions.ts";
+import { resolveDocSpec } from "./doc_spec.ts";
+import { VERSION } from "./version.ts";
 import {
   BUILTIN_FLAG_NAMES,
   BUILTIN_FLAGS,
@@ -241,6 +243,8 @@ export interface ParsedArgs {
   /** Raw parameter values from declared flags, keyed by property name. */
   values: Record<string, string>;
   help: boolean;
+  /** Whether `--version` (or `-V`) asked for the core version and nothing else. */
+  version: boolean;
 }
 
 /** Parse a `--parallel=N` value (the inline text after `=`): a positive count, or `true`. */
@@ -442,6 +446,7 @@ export function parseArgs(
     confirmDestructive: false,
     mcpRegistry: false,
     help: false,
+    version: false,
   };
   const byFlag = new Map<string, ParamFlag>();
   for (const pf of paramFlags) byFlag.set(pf.flag, pf);
@@ -503,6 +508,8 @@ export function parseArgs(
       parsed.parallel = parseParallel(arg.slice("--parallel=".length));
     } else if (arg === "--help" || arg === "-h") {
       parsed.help = true;
+    } else if (arg === "--version" || arg === "-V") {
+      parsed.version = true;
     } else if (arg === "--skip") {
       // Not in VALUE_FLAGS on purpose: `--skip=dep` has never parsed, and must
       // keep falling through to unknownFlagError rather than gaining a form.
@@ -1183,42 +1190,28 @@ const defaultDocRunner: DocRunner = async (spec) => {
 };
 
 /**
- * Whether a `deno doc` spec is a URL or an absolute path — i.e. not something to
- * resolve against the working directory. A URL has a multi-character scheme
- * (`jsr:`, `npm:`, `https:`, …); a lone drive letter (`C:`) is a Windows
- * absolute path, not a scheme; a leading `/` is a POSIX absolute path.
- */
-function isUrlOrAbsolute(spec: string): boolean {
-  const normalized = spec.replace(/\\/g, "/");
-  if (normalized.startsWith("/")) return true; // POSIX absolute
-  if (/^[A-Za-z]:/.test(normalized)) return true; // Windows drive absolute
-  return /^[a-z][a-z0-9+.-]+:/i.test(normalized); // URL scheme (2+ chars)
-}
-
-/**
  * Run the `doc` command: print a package's API docs via `deno doc`, isolated
- * from the repo so type-resolution noise doesn't bury the output. Any relative
- * spec (a file path, not a `jsr:`/`npm:`/`https:` URL or absolute path) is
- * resolved against the real working directory first, since the runner documents
- * from a different (empty) directory. Errors resolve to a non-zero exit with a
- * friendly message, matching the other commands.
+ * from the repo so type-resolution noise doesn't bury the output. The argument
+ * is resolved by {@link resolveDocSpec} — the same rule the installed `zuke`
+ * applies, so `zuke doc core` and `./zuke doc core` name the same package
+ * rather than one of them looking for a file. Errors resolve to a non-zero
+ * exit with a friendly message, matching the other commands.
  */
 async function runDoc(
   parsed: ParsedArgs,
   runner: DocRunner = defaultDocRunner,
 ): Promise<number> {
-  let spec = parsed.docSpec;
+  const spec = parsed.docSpec;
   if (spec === undefined) {
     cliReporter.error(
-      "Usage: zuke doc <spec>   (e.g. zuke doc jsr:@zuke/deno, or ./mod.ts)",
+      "Usage: zuke doc <spec>   (e.g. zuke doc core, jsr:@zuke/deno, or ./mod.ts)",
     );
     return 1;
   }
-  // A file path is relative to the caller's cwd, but the runner documents from
-  // an isolated empty directory — resolve it to absolute before it changes.
-  if (!isUrlOrAbsolute(spec)) spec = `${Deno.cwd()}/${spec}`;
+  // A path is relative to the caller's cwd, but the runner documents from an
+  // isolated empty directory — resolve it while that directory is still ours.
   try {
-    return await runner(spec);
+    return await runner(resolveDocSpec(spec, Deno.cwd()));
   } catch (error) {
     cliReporter.error(messageOf(error));
     return 1;
@@ -1419,6 +1412,14 @@ async function runCommand(
       ? undefined
       : formatCommandHelp(command);
     cliReporter.info(detail ?? formatHelp(targets, params));
+    return 0;
+  }
+
+  if (parsed.version) {
+    // Bare, so a script can read it without parsing around a banner. Help
+    // wins when both are given, matching how `--help` beats an unknown flag:
+    // whoever asked for help is the one who needs it.
+    cliReporter.info(VERSION);
     return 0;
   }
 

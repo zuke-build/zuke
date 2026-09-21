@@ -140,10 +140,11 @@ lines of ASCII are not — and the detected host is appended to the first line.
 With the global CLI installed, the bare `zuke` works from anywhere inside the
 project: `zuke <target>`, `zuke --list`, `zuke graph`, `zuke mcp`, bare `zuke`
 for the default target — every command that is not the CLI's own (`setup`,
-`import`, `doc`, `--help`, `--version`) is forwarded to the nearest `zuke.ts`;
-`zuke -- --help` is the build's own usage, and `zuke -- <target>` reaches a
-target that shares one of those names. It walks up to the `zuke.json` that marks
-the repository root and runs `deno run -A zuke.ts <args>` from there, with
+`import`, `doc`) is forwarded to the nearest `zuke.ts`. `--help` and `--version`
+show both surfaces, the CLI's and then the build's, each labelled;
+`zuke -- --help` is the build's own usage alone, and `zuke -- <target>` reaches
+a target that shares one of those names. It walks up to the `zuke.json` that
+marks the repository root and runs `deno run -A zuke.ts <args>` from there, with
 `--frozen` once a `deno.lock` exists — the launcher's exact behaviour, minus the
 Deno bootstrap. Outside a project, `zuke <target>` reports the unknown command
 and the missing `zuke.json`, and a bare `zuke` prints the usage. The forwarding

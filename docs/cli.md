@@ -21,7 +21,7 @@ equivalent — the forwarding runs `deno run -A zuke.ts <command>` from the
 directory holding `zuke.json`, with `--frozen` once a `deno.lock` exists beside
 it (the launchers' rule), stdio inherited so `zuke mcp` and prompts work, and
 exits with the build's code. A bare `zuke` inside a project runs the default
-target, as `./zuke` does; `--version`/`-V` always answers for the global CLI.
+target, as `./zuke` does.
 
 `--help`/`-h` shows **both** surfaces inside a project, under headings that say
 which is which: the global CLI's own commands, which work anywhere, and then the
@@ -57,21 +57,28 @@ never silent about what it ran. On Windows, which reports no file ownership to
 compare, the gate is inert, so a `zuke.json` in a shared writable location is
 run as found.
 
-The words the global CLI keeps for itself — `setup`, `import`, `doc`,
-`--version`/`-V` — never reach the build, so a target named `setup` or `import`
-is reached as `zuke -- setup`, the build's `doc` as `zuke -- doc <package>`, or
-any of them through `./zuke`.
+The words the global CLI keeps for itself are `setup`, `import` and `doc`.
+`setup` and `import` cannot be the build's, because they exist to create a
+project: if there were a `./zuke` to run them you would not need them. `doc` is
+the CLI's only so that `zuke doc jsr:@zuke/deno` works outside a project too —
+it resolves the same specifier the build's own `doc` would, by the same rule, so
+`zuke doc core` and `./zuke doc core` name the same package.
+
+A target named `setup` or `import` is therefore shadowed from the global
+command, and is reached as `zuke -- setup` or through `./zuke`. That shadowing
+is silent: the CLI answers before it knows what the build declares, and finding
+out would mean running the build on every `zuke setup`.
 
 ## The global `zuke` CLI (`jsr:@zuke/cli`)
 
-| Command                  | Behaviour                                                                                                                                                                                                                                       |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `zuke setup [options]`   | Scaffold a starter `zuke.ts`, the `./zuke`/`zuke.ps1` launchers, `deno.json`, and `zuke.json` into a directory. See [Getting started](./getting-started.md#scaffold-a-project-with-zuke-setup).                                                 |
-| `zuke import [options]`  | Generate a `zuke.ts` with one target per `package.json` script or Makefile target, plus the same scaffolding as `setup`. See [Getting started](./getting-started.md#migrate-an-existing-project-with-zuke-import).                              |
-| `zuke doc <package>`     | Print a `@zuke/*` package's API (`zuke doc core`, `zuke doc @scope/pkg`, or a `jsr:`/`npm:`/`https:` spec as-is) via an isolated `deno doc`.                                                                                                    |
-| `zuke [target\|command]` | Anything else — `zuke ci`, `zuke --list`, `zuke graph`, `zuke mcp`, and bare `zuke` for the default target — is forwarded to the project's build, as `./zuke <command>` would run it. Needs a `zuke.json` in the current directory or a parent. |
-| `zuke --help` / `-h`     | Usage.                                                                                                                                                                                                                                          |
-| `zuke --version` / `-V`  | Print the installed `@zuke/cli` version.                                                                                                                                                                                                        |
+| Command                  | Behaviour                                                                                                                                                                                                                                                         |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `zuke setup [options]`   | Scaffold a starter `zuke.ts`, the `./zuke`/`zuke.ps1` launchers, `deno.json`, and `zuke.json` into a directory. See [Getting started](./getting-started.md#scaffold-a-project-with-zuke-setup).                                                                   |
+| `zuke import [options]`  | Generate a `zuke.ts` with one target per `package.json` script or Makefile target, plus the same scaffolding as `setup`. See [Getting started](./getting-started.md#migrate-an-existing-project-with-zuke-import).                                                |
+| `zuke doc <spec>`        | Print a package's API via an isolated `deno doc`. A bare name takes the `@zuke` scope (`zuke doc core`), a scoped name takes only the scheme (`zuke doc @scope/pkg`), a path is resolved against your directory, and a `jsr:`/`npm:`/`https:` spec is used as-is. |
+| `zuke [target\|command]` | Anything else — `zuke ci`, `zuke --list`, `zuke graph`, `zuke mcp`, and bare `zuke` for the default target — is forwarded to the project's build, as `./zuke <command>` would run it. Needs a `zuke.json` in the current directory or a parent.                   |
+| `zuke --help` / `-h`     | Usage.                                                                                                                                                                                                                                                            |
+| `zuke --version` / `-V`  | Print the installed `@zuke/cli` version on the first line, then — inside a project — the Zuke version the build itself runs on, labelled. The first line is bare, so a script can read it.                                                                        |
 
 `setup` and `import` share `--dir <path>`, `--name <Class>`, `--force`/`-f`,
 `--yes`/`-y`, and `--mcp`, which also writes a `.mcp.json` registering the
@@ -130,6 +137,7 @@ word you install them for.
 | `./zuke force <id> <target> --outcome skipped\|succeeded [--reason <why>]`       | Settle one target of a live run without running it ([details](./state.md#forcing-a-target--overrides)).         |
 | `./zuke register [--actor <name>] [--json]`                                      | Register this build in the build registry (`--json` prints the written descriptor).                             |
 | `./zuke doc <spec>`                                                              | Print a package's API docs (`deno doc <spec>`) from an isolated empty directory.                                |
+| `./zuke --version` / `-V`                                                        | Print the Zuke version this build runs on, bare, so a script can read it.                                       |
 | `./zuke outdated [--exit-code]`                                                  | Report the JSR packages the lock resolves behind their latest release (needs the network).                      |
 | `./zuke outdated --update [<package>...]`                                        | Move those packages' locked versions up to the latest, or only the ones named.                                  |
 | `./zuke --help` / `-h`                                                           | Usage.                                                                                                          |
@@ -260,17 +268,18 @@ guide: [MCP server](./mcp.md).
 current one. Run inside a Node repository, a bare `deno doc jsr:@zuke/...`
 resolves the repo's `node_modules/@types/*` and buries the API under dozens of
 `Failed resolving types …` warnings; the isolated empty working directory has
-nothing to resolve, so the output is just the API. Any relative file path
-(`./zuke doc ./mod.ts` or `./zuke doc mod.ts`) is resolved against the real
-working directory before the isolated `deno doc` runs; `jsr:`/`npm:`/`https:`
-specifiers and absolute paths are passed through unchanged. `doc` is a reserved
-command name. (This complements the generated
-[`llms-full.txt`](../llms-full.txt) and each package's README `## API` block.)
+nothing to resolve, so the output is just the API. `doc` is a reserved command
+name. (This complements the generated [`llms-full.txt`](../llms-full.txt) and
+each package's README `## API` block.)
 
-This is a different command from the global `zuke doc` above: the global one
-takes a bare package name (`zuke doc core`) and resolves it to `jsr:@zuke/core`
-for you; the build's own `./zuke doc` needs the full spec (or a relative path),
-since it is just another reserved command on your build's CLI.
+This is the same command as the global `zuke doc` above, and resolves its
+argument by the same rule: a bare name takes the `@zuke` scope (`core` becomes
+`jsr:@zuke/core`), a scoped name takes only the scheme, a path — anything with a
+leading `.`, an embedded `/`, or a source extension like `mod.ts` — is resolved
+against your working directory before the isolated `deno doc` runs, and a
+`jsr:`/`npm:`/`https:` specifier or absolute path is passed through unchanged.
+The two used to differ, and `./zuke doc core` reported a missing module while
+`zuke doc core` printed the API.
 
 ## `zuke outdated`
 
