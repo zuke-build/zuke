@@ -11,4 +11,4 @@
  * reads it — the annotation is what keeps that from mattering if it is ever
  * exported.
  */
-export const VERSION: string = "1.6.0"; // x-release-please-version
+export const VERSION: string = "1.7.0"; // x-release-please-version
