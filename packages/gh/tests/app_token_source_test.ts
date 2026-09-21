@@ -66,7 +66,7 @@ Deno.test("appTokenSource reads the credentials from parameters when first calle
   const appKey = parameter("App key").secret().env("APP_KEY");
   const { mint, seen } = fakeMint();
   const source = appTokenSource((s) =>
-    s.app(appId, appKey).repository("acme/widgets").mint(mint)
+    s.app(appId, appKey).repository("acme/widgets").env(env({})).mint(mint)
   );
   // Resolved after the source was built, as a build's parameters are.
   appId.resolve_("42");
@@ -141,7 +141,7 @@ Deno.test("permissions, fetch and baseUrl are handed to the mint", async () => {
     ((input: string | URL | Request) =>
       Promise.resolve(new Response(String(input)))) as typeof fetch;
   const source = appTokenSource((s) =>
-    s.app("123", "PEM").repository("acme/widgets")
+    s.app("123", "PEM").repository("acme/widgets").env(env({}))
       .permission("pull-requests", "write")
       .permission("contents", "write")
       .fetch(doFetch).baseUrl("https://ghe.example/api/v3")
