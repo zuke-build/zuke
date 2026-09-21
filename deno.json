@@ -81,9 +81,14 @@
       "build/",
       "tests/",
       "packages/",
-      "examples/"
+      "examples/",
+      "docs/",
+      "skills/",
+      ".github/",
+      "*.md"
     ],
     "exclude": [
+      "CHANGELOG.md",
       "packages/*/CHANGELOG.md",
       "examples/*/.github/",
       "examples/*/*.yml",

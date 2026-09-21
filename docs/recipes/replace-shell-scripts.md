@@ -1,10 +1,10 @@
 # Recipe: replace your shell scripts
 
-Every small project has a `scripts/release.sh`. It started as three lines,
-grew a flag and two guards, and now nobody wants to touch it. This recipe
-replaces it with the `$` shell from `@zuke/core/shell` — and nothing else. No
-build class, no targets: the smallest possible door into Zuke, and a script you
-run exactly as before.
+Every small project has a `scripts/release.sh`. It started as three lines, grew
+a flag and two guards, and now nobody wants to touch it. This recipe replaces it
+with the `$` shell from `@zuke/core/shell` — and nothing else. No build class,
+no targets: the smallest possible door into Zuke, and a script you run exactly
+as before.
 
 ## The script you have
 
@@ -66,25 +66,24 @@ deno run -A scripts/release.ts 1.1.0
 
 - **No shell, so nothing to break out of.** Every `${…}` interpolation becomes
   one discrete argv entry; the process is spawned directly. A version with a
-  space, a quote, or a `;` in it is just a string — the bash script has to
-  trust its quoting.
+  space, a quote, or a `;` in it is just a string — the bash script has to trust
+  its quoting.
 - **A non-zero exit throws.** `set -e` is not something you can forget, and the
   error names the command and its code. `.noThrow()` is the explicit opt-out,
   and `.code()` gives you the exit code as a number when that is what you want.
-- **Typed output.** `.text()` is trimmed stdout, `.lines()` is a `string[]`,
-  and both replace `$(...)`, `IFS` tricks and `$?`. `.quiet()` replaces
+- **Typed output.** `.text()` is trimmed stdout, `.lines()` is a `string[]`, and
+  both replace `$(...)`, `IFS` tricks and `$?`. `.quiet()` replaces
   `> /dev/null 2>&1`.
 - **The rest of TypeScript.** Arrays expand to multiple arguments
   (`` $`deno fmt ${files}` ``), a value can be validated before it is used, and
-  the editor knows what `$` returns. See the
-  [shell guide](../shell.md) for `.env()`, `.cwd()`, `.killAfter()` and
-  `.spawn()`.
+  the editor knows what `$` returns. See the [shell guide](../shell.md) for
+  `.env()`, `.cwd()`, `.killAfter()` and `.spawn()`.
 
 ## When to take the next step
 
 The moment you have two scripts that share a step, give the steps names. The
-same routine as targets — each one runnable alone, visible in `--list`, and
-free to depend on the others:
+same routine as targets — each one runnable alone, visible in `--list`, and free
+to depend on the others:
 
 <!-- check -->
 
@@ -136,6 +135,6 @@ await run(Release);
 
 The git steps moved from `$` to the typed `GitTasks` wrapper, where the flags
 are methods and a typo is a compile error. `./zuke --list`, `graph`,
-`--parallel` and `./zuke mcp` come with the targets for free. All three
-versions of this script, side by side, are in
+`--parallel` and `./zuke mcp` come with the targets for free. All three versions
+of this script, side by side, are in
 [`examples/scripts-to-zuke`](../../examples/scripts-to-zuke).

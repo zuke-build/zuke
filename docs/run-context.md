@@ -20,25 +20,25 @@ class Deploy extends Build {
 
 ## What's on the context
 
-| Field        | Type                | What it is                                                            |
-| ------------ | ------------------- | -------------------------------------------------------------------- |
-| `runId`      | `string`            | Unique id of this run, **stable for every target** in the run.       |
-| `initiator`  | `RunInitiator?`     | Who **asked for** this run (`actor`, `kind`, `at`) — stamped once at creation, so a resume never rewrites it. Absent with no state store. See [Durable run state](./state.md). |
-| `target`     | `string`            | The executing target's dotted name.                                  |
-| `signal`     | `AbortSignal`       | Aborted when the run is cancelled (see below).                       |
-| `state`      | `TargetStateHandle` | Durable per-target metadata — see [Durable run state](./state.md).   |
-| `stateOf`    | `(t) => …`          | The state handle of **another** target — read a dependency's published metadata (e.g. a wait's result). |
-| `outcomeOf`  | `(t) => …`          | What another target in this run **did** — `succeeded`, `failed`, `skipped`, … or `undefined` if it has none yet. |
-| `outcomes`   | `() => ReadonlyMap` | Every outcome settled so far, keyed by target name. |
-| `plan`       | `() => RunPlan`     | The run's **planned shape** — which targets it set out to run, and how they relate. See [Reading the run's shape](#reading-the-runs-shape--ctxplan). |
-| `signals`    | `ReadonlyMap`       | Payloads of external signals received so far (see [waits](./orchestration.md)). |
-| `dryRun`     | `boolean`           | `true` when the run is a dry run (bodies don't execute in a dry run). |
-| `reportSummary` | `(pairs) => void` | Put `key: value` notes on **this target's row** of the Build Summary — see [Notes on the summary row](#notes-on-the-summary-row). |
+| Field           | Type                | What it is                                                                                                                                                                     |
+| --------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `runId`         | `string`            | Unique id of this run, **stable for every target** in the run.                                                                                                                 |
+| `initiator`     | `RunInitiator?`     | Who **asked for** this run (`actor`, `kind`, `at`) — stamped once at creation, so a resume never rewrites it. Absent with no state store. See [Durable run state](./state.md). |
+| `target`        | `string`            | The executing target's dotted name.                                                                                                                                            |
+| `signal`        | `AbortSignal`       | Aborted when the run is cancelled (see below).                                                                                                                                 |
+| `state`         | `TargetStateHandle` | Durable per-target metadata — see [Durable run state](./state.md).                                                                                                             |
+| `stateOf`       | `(t) => …`          | The state handle of **another** target — read a dependency's published metadata (e.g. a wait's result).                                                                        |
+| `outcomeOf`     | `(t) => …`          | What another target in this run **did** — `succeeded`, `failed`, `skipped`, … or `undefined` if it has none yet.                                                               |
+| `outcomes`      | `() => ReadonlyMap` | Every outcome settled so far, keyed by target name.                                                                                                                            |
+| `plan`          | `() => RunPlan`     | The run's **planned shape** — which targets it set out to run, and how they relate. See [Reading the run's shape](#reading-the-runs-shape--ctxplan).                           |
+| `signals`       | `ReadonlyMap`       | Payloads of external signals received so far (see [waits](./orchestration.md)).                                                                                                |
+| `dryRun`        | `boolean`           | `true` when the run is a dry run (bodies don't execute in a dry run).                                                                                                          |
+| `reportSummary` | `(pairs) => void`   | Put `key: value` notes on **this target's row** of the Build Summary — see [Notes on the summary row](#notes-on-the-summary-row).                                              |
 
 `runId` is minted once per run (`crypto.randomUUID()`), so it correlates every
-target, the run record ([Durable run state](./state.md)), a resumed run's
-spans ([Observability](./observability.md)), and a
-[resumption](./orchestration.md) of a suspended run.
+target, the run record ([Durable run state](./state.md)), a resumed run's spans
+([Observability](./observability.md)), and a [resumption](./orchestration.md) of
+a suspended run.
 
 ## Notes on the summary row
 
@@ -86,80 +86,83 @@ class Checks extends Build {
 }
 ```
 
-Notes accumulate across calls in one target, and reporting a key again
-replaces its value in place. Each key and value renders on a single line
-(whitespace collapsed, colour codes removed) in both the terminal table and the
-GitHub Actions job summary, where they form a `Notes` column. A failed target
-keeps the notes it reported before failing, so a red `test` row still says how
-many tests failed.
+Notes accumulate across calls in one target, and reporting a key again replaces
+its value in place. Each key and value renders on a single line (whitespace
+collapsed, colour codes removed) in both the terminal table and the GitHub
+Actions job summary, where they form a `Notes` column. A failed target keeps the
+notes it reported before failing, so a red `test` row still says how many tests
+failed.
 
 Library code that has no `ctx` in hand — a tool wrapper, or a helper a body
 calls — reports through the **ambient** form, `reportSummary(pairs)` from
 `@zuke/core`. It lands on the row of whichever target is running, scoped like
 the [ambient signal](#scope-of-the-ambient-signal) to that target's async
-subtree, so concurrent targets never mix notes. Outside a running target it is
-a no-op: a wrapper never has to ask where it runs. This is the seam a tool
-wrapper reports through, so a body only adds what its tools do not:
-every test-runner wrapper reports its counts from its runner's own result
-line — on a failed run too, so a red row says how many failed — and
-`DenoTasks.coverage` reports the measured line and branch percentages.
+subtree, so concurrent targets never mix notes. Outside a running target it is a
+no-op: a wrapper never has to ask where it runs. This is the seam a tool wrapper
+reports through, so a body only adds what its tools do not: every test-runner
+wrapper reports its counts from its runner's own result line — on a failed run
+too, so a red row says how many failed — and `DenoTasks.coverage` reports the
+measured line and branch percentages.
 
-Test runners share one shape. `reportTestCounts({ passed, failed, skipped?,
-todo?, flaky? })` from `@zuke/core` reports `Tests` (the sum), `Passed` and
-`Failed`, then `Skipped`, `Todo` and `Flaky` only when non-zero, so every
-test-runner wrapper puts the same labels on its row and a body that runs tests
-some other way can match them. The wrappers that report this way, each from
-the closing lines its runner's default reporters print: `DenoTasks.test`,
-`VitestTasks.run`, `JestTasks.run`, `BunTasks.test`, `NodeTasks.test`,
-`PlaywrightTasks.test` and `CypressTasks.run`. A reporter that replaces those
-lines (JSON, JUnit, or a machine-readable format) reports nothing.
+Test runners share one shape.
+`reportTestCounts({ passed, failed, skipped?,
+todo?, flaky? })` from
+`@zuke/core` reports `Tests` (the sum), `Passed` and `Failed`, then `Skipped`,
+`Todo` and `Flaky` only when non-zero, so every test-runner wrapper puts the
+same labels on its row and a body that runs tests some other way can match them.
+The wrappers that report this way, each from the closing lines its runner's
+default reporters print: `DenoTasks.test`, `VitestTasks.run`, `JestTasks.run`,
+`BunTasks.test`, `NodeTasks.test`, `PlaywrightTasks.test` and
+`CypressTasks.run`. A reporter that replaces those lines (JSON, JUnit, or a
+machine-readable format) reports nothing.
 
 ### What the wrappers report
 
-| Wrapper | Notes on the row |
-| --- | --- |
-| `DenoTasks.test` (and every test-runner wrapper) | `Tests`, `Passed`, `Failed`, then `Skipped`, `Todo`, `Flaky` when non-zero |
-| `DenoTasks.coverage` | `Lines`, and `Branches` when any were measured |
-| `DenoTasks.lint` | `Files`, `Problems` |
-| `DenoTasks.fmt` | `Files`, and `Unformatted` under `.check()` |
-| `DenoTasks.check` | `Errors` |
-| `EslintTasks.lint` | `Problems`, `Errors`, `Warnings` |
-| `OxlintTasks.lint` | `Errors`, `Warnings`, and `Files` when the timing line names them |
-| `BiomeTasks.check` / `lint` / `format` / `ci` | `Files`, `Errors`, `Warnings` |
-| `TscTasks.tsc` / `build` | `Errors` |
-| `CspellTasks.lint` | `Files`, `Issues` |
-| `DprintTasks.check` | `Unformatted` |
-| `DprintTasks.fmt` | `Formatted` |
-| `KnipTasks.run` | `Issues`, summed over its sections |
-| `DpdmTasks.analyze` | `Circular` |
-| `ShellcheckTasks.lint` | `Findings` |
-| `TscAliasTasks.run` | `Files` rewritten, under `.verbose()` only |
-| `NpmTasks.install` / `ci` / `uninstall` / `update` / … | `Added`, `Removed`, `Changed`, and `Vulnerabilities` when audited |
-| `PnpmTasks.install` / `add` / `remove` | `Added`, `Downloaded`, `Reused` |
-| `YarnTasks.install` / `add` / `remove` | `Added`, `Removed` (Yarn Berry; Classic prints no count) |
-| `BunTasks.install` / `add` / `remove` | `Installed`, `Removed` |
+| Wrapper                                                | Notes on the row                                                           |
+| ------------------------------------------------------ | -------------------------------------------------------------------------- |
+| `DenoTasks.test` (and every test-runner wrapper)       | `Tests`, `Passed`, `Failed`, then `Skipped`, `Todo`, `Flaky` when non-zero |
+| `DenoTasks.coverage`                                   | `Lines`, and `Branches` when any were measured                             |
+| `DenoTasks.lint`                                       | `Files`, `Problems`                                                        |
+| `DenoTasks.fmt`                                        | `Files`, and `Unformatted` under `.check()`                                |
+| `DenoTasks.check`                                      | `Errors`                                                                   |
+| `EslintTasks.lint`                                     | `Problems`, `Errors`, `Warnings`                                           |
+| `OxlintTasks.lint`                                     | `Errors`, `Warnings`, and `Files` when the timing line names them          |
+| `BiomeTasks.check` / `lint` / `format` / `ci`          | `Files`, `Errors`, `Warnings`                                              |
+| `TscTasks.tsc` / `build`                               | `Errors`                                                                   |
+| `CspellTasks.lint`                                     | `Files`, `Issues`                                                          |
+| `DprintTasks.check`                                    | `Unformatted`                                                              |
+| `DprintTasks.fmt`                                      | `Formatted`                                                                |
+| `KnipTasks.run`                                        | `Issues`, summed over its sections                                         |
+| `DpdmTasks.analyze`                                    | `Circular`                                                                 |
+| `ShellcheckTasks.lint`                                 | `Findings`                                                                 |
+| `TscAliasTasks.run`                                    | `Files` rewritten, under `.verbose()` only                                 |
+| `NpmTasks.install` / `ci` / `uninstall` / `update` / … | `Added`, `Removed`, `Changed`, and `Vulnerabilities` when audited          |
+| `PnpmTasks.install` / `add` / `remove`                 | `Added`, `Downloaded`, `Reused`                                            |
+| `YarnTasks.install` / `add` / `remove`                 | `Added`, `Removed` (Yarn Berry; Classic prints no count)                   |
+| `BunTasks.install` / `add` / `remove`                  | `Installed`, `Removed`                                                     |
 
-Each is read from the closing line the tool itself prints, on a failed run
-too, so a red row says how many. A clean run reports its zeros — a green
-`lint` row that says `Problems: 0` is the point. A run that exited non-zero
-without printing its closing line (a bad flag, a missing config) reports
-nothing rather than a misleading zero. A machine-readable reporter that
-replaces the closing line (`--format json`, JUnit) reports nothing either.
+Each is read from the closing line the tool itself prints, on a failed run too,
+so a red row says how many. A clean run reports its zeros — a green `lint` row
+that says `Problems: 0` is the point. A run that exited non-zero without
+printing its closing line (a bad flag, a missing config) reports nothing rather
+than a misleading zero. A machine-readable reporter that replaces the closing
+line (`--format json`, JUnit) reports nothing either.
 
 ### Notes are durable
 
-A settled target's notes are written to its row of the
-[run record](./state.md) alongside its status and timing, redacted like every
-other stored string. So they survive the process: `zuke runs show <id>` prints
-them after each target's duration (`✔ test  succeeded  128.1s  // Tests: 4094
-· Passed: 4094 · Failed: 0`), the MCP `show_run` tool returns them in the
-record, and a target that reads a dependency's outcome sees them as
-`ctx.outcomeOf("test")?.summary` — after a resume too, since the record is
-what a resumed run reads.
+A settled target's notes are written to its row of the [run record](./state.md)
+alongside its status and timing, redacted like every other stored string. So
+they survive the process: `zuke runs show <id>` prints them after each target's
+duration
+(`✔ test  succeeded  128.1s  // Tests: 4094
+· Passed: 4094 · Failed: 0`), the
+MCP `show_run` tool returns them in the record, and a target that reads a
+dependency's outcome sees them as `ctx.outcomeOf("test")?.summary` — after a
+resume too, since the record is what a resumed run reads.
 
 ## Reading the run's shape — `ctx.plan()`
 
-`ctx.plan()` answers what the run *set out to do*: which targets it planned, in
+`ctx.plan()` answers what the run _set out to do_: which targets it planned, in
 execution order, and which targets must finish before a given one starts. It is
 the seam for a body whose work depends on what else was asked for.
 
@@ -204,10 +207,10 @@ class Ci extends Build {
 Receiving the context is optional: an existing `.onlyWhen(() => …)` keeps
 working, since a zero-argument function is assignable to the one-parameter type.
 
-A condition gets a **narrower** context than a body — `target` and `plan()` only.
-A `.whenSkipped("skip-dependencies")` condition is evaluated *before* the run
-starts, to decide what the run prunes, and at that point the run's identity, its
-state handles, and its cancellation signal do not exist yet.
+A condition gets a **narrower** context than a body — `target` and `plan()`
+only. A `.whenSkipped("skip-dependencies")` condition is evaluated _before_ the
+run starts, to decide what the run prunes, and at that point the run's identity,
+its state handles, and its cancellation signal do not exist yet.
 
 ### The plan is not the outcome
 
@@ -239,17 +242,17 @@ A `.forEach()` fan-out expands into its sub-targets **while the run executes**,
 after the graph has been planned. So `fan[us].prep` has a summary row, a run
 record entry and an outcome — but `plan().includes("fan[us].prep")` is `false`,
 and only the `fan` target that produced it is in `targets`. This is the one
-place the plan reports *less* than the outcomes do; ask `outcomeOf` about a
+place the plan reports _less_ than the outcomes do; ask `outcomeOf` about a
 fan-out's sub-targets.
 
 ### The plan does not cross processes
 
 Within one process the plan is fixed: two bodies agree, and both evaluations of
-a `skip-dependencies` condition agree. A **second** process re-resolves the graph
-from the build class it was handed, so it can legitimately differ:
+a `skip-dependencies` condition agree. A **second** process re-resolves the
+graph from the build class it was handed, so it can legitimately differ:
 
-- a resume runs against today's build class, which may have changed since the run
-  was suspended — `--force-graph` exists precisely for that case;
+- a resume runs against today's build class, which may have changed since the
+  run was suspended — `--force-graph` exists precisely for that case;
 - a lazy `orderWith` provider may answer differently, and `zuke cancel` degrades
   to the base topological order when the provider is unreachable, rather than
   abandoning the rollback.
@@ -300,7 +303,7 @@ A target body that dies halfway leaves no trace of what it was doing. For work
 where that matters — posting a required status check, publishing a release,
 telling another system something finished — declare it as an **effect**. The
 intent to run it is written to the [run record](./state.md) and confirmed
-*before* the body runs, so a process killed anywhere inside it leaves evidence
+_before_ the body runs, so a process killed anywhere inside it leaves evidence
 that the effect was owed, and a resume drives it again.
 
 <!-- check -->
@@ -323,20 +326,20 @@ declare function postVerdict(
 ): Promise<void>;
 ```
 
-- **At-least-once, not exactly-once.** A process that dies *after* the side
+- **At-least-once, not exactly-once.** A process that dies _after_ the side
   effect but before recording it will repeat the effect. Write bodies that
   tolerate it — because repeating is harmless, or because the far side converges
   (an upsert rather than an append). `ctx.redriven` is `true` when a previous
   attempt already committed its intent.
 - **A completed effect is skipped, not repeated.** Once recorded `done`,
   re-driving the target is free.
-- **What re-drives it, precisely.** A resume acts on a run recorded
-  `suspended`, so an effect owed by a run that suspended at a wait is driven
-  again by the ordinary `zuke resume` / `zuke resume --check`. A process that was
-  *killed* leaves its run `running`, and a run in that state is not resumable
-  until something moves it back to `suspended` — so an effect owed by a killed
-  process waits for a reaping sweep or an operator. The intent itself is durable
-  either way; what differs is what comes along to act on it.
+- **What re-drives it, precisely.** A resume acts on a run recorded `suspended`,
+  so an effect owed by a run that suspended at a wait is driven again by the
+  ordinary `zuke resume` / `zuke resume --check`. A process that was _killed_
+  leaves its run `running`, and a run in that state is not resumable until
+  something moves it back to `suspended` — so an effect owed by a killed process
+  waits for a reaping sweep or an operator. The intent itself is durable either
+  way; what differs is what comes along to act on it.
 - **Pin what the effect acts on.** Read it from `ctx.state` /
   `ctx.stateOf(...)`, which is replayed from the record and cannot be overridden
   from outside. A parameter is nearly as good: the record seeds a resume, so one
@@ -378,23 +381,25 @@ When the signal aborts:
   ship = target().executes(async () => {
     await $`terraform apply`; // killed with SIGTERM if the run is cancelled
   });
-```
+  ```
 
+````
   To cancel a command explicitly (or to override the ambient signal), use
   `.signal(...)`:
 
   ```ts
   await $`long-running`.signal(ctx.signal);
-```
+````
 
-  `.signal()` composes with [`.killAfter()`](./shell.md): whichever fires first
-  — the timeout or the cancellation — terminates the process.
+`.signal()` composes with [`.killAfter()`](./shell.md): whichever fires first —
+the timeout or the cancellation — terminates the process.
 
 A body that ignores its signal and never touches the shell still runs to
 completion; Zuke does not forcibly interrupt arbitrary JavaScript. Cancellation
 is also a first-class **graph operation**: `zuke cancel <run-id>` (or `Ctrl-C`)
 unwinds every succeeded target's declared `.onCancel(...)` compensation in
-reverse order — see [Orchestration](./orchestration.md#cancellation--compensation--oncancel).
+reverse order — see
+[Orchestration](./orchestration.md#cancellation--compensation--oncancel).
 
 ### Scope of the ambient signal
 

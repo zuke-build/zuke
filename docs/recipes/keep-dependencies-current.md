@@ -102,16 +102,16 @@ jobs:
       - name: Check
         run: ./zuke outdated --exit-code
   zuke-schedule-guard:
-    # …resolves the local time and sets run=true only in the intended hour
+# …resolves the local time and sets run=true only in the intended hour
 ```
 
 **Two UTC crons for one schedule, and a guard job.** GitHub only understands UTC
 cron, so a schedule in a daylight-saving zone contributes one UTC cron per
-distinct offset — `0 4` for winter, `0 3` for summer here. Both fire on **every**
-occurrence, so a bare pair of crons would run this job twice a week, once of them
-at the wrong local hour. Zuke generates the `zuke-schedule-guard` job to compare
-the real local time against the schedule and let the run proceed only on the
-matching one. A fixed-offset zone, or plain UTC, needs no guard.
+distinct offset — `0 4` for winter, `0 3` for summer here. Both fire on
+**every** occurrence, so a bare pair of crons would run this job twice a week,
+once of them at the wrong local hour. Zuke generates the `zuke-schedule-guard`
+job to compare the real local time against the schedule and let the run proceed
+only on the matching one. A fixed-offset zone, or plain UTC, needs no guard.
 
 The guard is only generated for **GitHub**. On **Azure**, a daylight-saving zone
 is a hard error at generation time — write the cron in UTC, or use a
@@ -121,13 +121,13 @@ See [schedules](../schedules.md) for the full matrix.
 
 **Egress.** The default hardening policy is `audit`, which reports egress rather
 than blocking it. If you tighten a job to `egress-policy: block`, this one needs
-`jsr.io:443` on its allowed endpoints — it is the one job in the repository whose
-whole purpose is to talk to the registry.
+`jsr.io:443` on its allowed endpoints — it is the one job in the repository
+whose whole purpose is to talk to the registry.
 
 ## What `--exit-code` treats as a failure
 
 Without the flag, `outdated` is a report: being behind exits `0`. With it, the
-command exits `1` when a package is **behind** *or* when a package **could not
+command exits `1` when a package is **behind** _or_ when a package **could not
 be checked** — a private scope, a rename, a runner behind a proxy.
 
 One case fails either way: with **no lock file** there are no resolved versions
@@ -153,17 +153,17 @@ Refreshing the lock is the part that catches people out, because the obvious
 commands do nothing. Measured against deno 2.9.5, on a stale entry for an inline
 `jsr:` specifier:
 
-| Command | Effect on the locked version |
-| --- | --- |
-| `deno cache --reload=jsr:` | unchanged — re-resolves from cached registry metadata |
-| `deno cache --reload` | unchanged — re-downloads sources, keeps the locked resolution |
-| `deno outdated --update` | unchanged — it reads manifests, and an inline specifier is in no manifest |
-| delete the lock, then re-cache | **re-resolved** |
+| Command                        | Effect on the locked version                                              |
+| ------------------------------ | ------------------------------------------------------------------------- |
+| `deno cache --reload=jsr:`     | unchanged — re-resolves from cached registry metadata                     |
+| `deno cache --reload`          | unchanged — re-downloads sources, keeps the locked resolution             |
+| `deno outdated --update`       | unchanged — it reads manifests, and an inline specifier is in no manifest |
+| delete the lock, then re-cache | **re-resolved**                                                           |
 
-That last row is the one that works. `deno outdated --update` *is* the right tool
-when the dependency is declared in a `deno.json` imports map — but then you would
-not have needed `zuke outdated` to find it, which is the whole point of this
-command.
+That last row is the one that works. `deno outdated --update` _is_ the right
+tool when the dependency is declared in a `deno.json` imports map — but then you
+would not have needed `zuke outdated` to find it, which is the whole point of
+this command.
 
 And in a repository that also has a `package.json`, `deno cache` resolves the
 whole npm tree and writes an `npm` section a jsr-only lock never had.

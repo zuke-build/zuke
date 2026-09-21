@@ -57,4 +57,3 @@ target), so the install downloads two skills, not the whole monorepo.
 > [Agent Skills](https://agentskills.io) standard); each manifest above is a
 > thin adapter over the shared [`skills/`](../skills) source, so every harness
 > serves the same two skills.
-

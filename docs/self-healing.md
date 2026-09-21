@@ -85,8 +85,8 @@ failed command, its output, the diff, and your project conventions (`CLAUDE.md`
 / `AGENTS.md`) to the model, parses a **structured fix**, and reports — without
 touching any files. The output, the diff and the conventions all travel
 [fenced as untrusted data](#untrusted-input), because all three come from the
-branch under repair. The diagnosis lands in the GitHub Actions job summary and on
-the pull request.
+branch under repair. The diagnosis lands in the GitHub Actions job summary and
+on the pull request.
 
 ```ts
 test = target()
@@ -313,8 +313,8 @@ being hidden behind the suppress list).
 
 ## Untrusted input
 
-Everything a fixer sends the model comes from the branch being repaired, and on a
-pull request that branch belongs to the contributor:
+Everything a fixer sends the model comes from the branch being repaired, and on
+a pull request that branch belongs to the contributor:
 
 - the **error output** — a failing test prints whatever its author wrote;
 - the **diff** — the change itself;
@@ -322,19 +322,20 @@ pull request that branch belongs to the contributor:
 
 All three are wrapped in fence markers and the system prompt names them as data,
 never instructions. That matters most for the conventions, because the same
-prompt separately tells the model to *respect the project's conventions* — so
+prompt separately tells the model to _respect the project's conventions_ — so
 without the fence, the one input a contributor can edit would arrive as
 direction.
 
 A fence is defence-in-depth, not a guarantee: it removes the deterministic
-breakout (forging the closing marker, which is neutralised) but a model can still
-be coaxed by persuasive text. So where a fixer is authorized to **write** —
-`.autoApply()`, `.commitFixes()`, or any `agentFixer`, which runs an agent with
-no path allow-list — pin the conventions instead of reading them from the branch:
+breakout (forging the closing marker, which is neutralised) but a model can
+still be coaxed by persuasive text. So where a fixer is authorized to **write**
+— `.autoApply()`, `.commitFixes()`, or any `agentFixer`, which runs an agent
+with no path allow-list — pin the conventions instead of reading them from the
+branch:
 
 ```ts
 aiFixer((f) => f.provider("openai").apiKey(this.key).autoApply())
-  .conventions(await FileTasks.readText("AGENTS.md")) // from your default branch
+  .conventions(await FileTasks.readText("AGENTS.md")); // from your default branch
 ```
 
 Passing `""` sends none at all. The reviewer already does the stronger thing

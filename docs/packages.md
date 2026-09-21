@@ -78,4 +78,3 @@ latest release on JSR. All of them are `1.x` and follow full semver; see
 | [`@zuke/vite`](https://jsr.io/@zuke/vite)                     | [![JSR](https://jsr.io/badges/@zuke/vite)](https://jsr.io/@zuke/vite) [![JSR score](https://jsr.io/badges/@zuke/vite/score)](https://jsr.io/@zuke/vite)                                         |
 | [`@zuke/vitest`](https://jsr.io/@zuke/vitest)                 | [![JSR](https://jsr.io/badges/@zuke/vitest)](https://jsr.io/@zuke/vitest) [![JSR score](https://jsr.io/badges/@zuke/vitest/score)](https://jsr.io/@zuke/vitest)                                 |
 | [`@zuke/yarn`](https://jsr.io/@zuke/yarn)                     | [![JSR](https://jsr.io/badges/@zuke/yarn)](https://jsr.io/@zuke/yarn) [![JSR score](https://jsr.io/badges/@zuke/yarn/score)](https://jsr.io/@zuke/yarn)                                         |
-

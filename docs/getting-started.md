@@ -101,11 +101,10 @@ If you already have Deno, `deno task zuke <target>` (via the `zuke` task in
 `zuke setup`/`zuke import` scaffold this launcher for you, so once it's in place
 run every target with `./zuke <target>` — or, from anywhere inside the project,
 with the bare `zuke <target>` you installed globally, which forwards to the
-project's build (the [CLI reference](./cli.md) has the rules). Shell
-completions (`./zuke completions install <shell>`) register the words `zuke`
-and `./zuke`, so both forms complete targets;
-`deno task zuke <target>` does not, because the shell matches the completion on
-the first word of the line.
+project's build (the [CLI reference](./cli.md) has the rules). Shell completions
+(`./zuke completions install <shell>`) register the words `zuke` and `./zuke`,
+so both forms complete targets; `deno task zuke <target>` does not, because the
+shell matches the completion on the first word of the line.
 
 ## Quick start
 
@@ -216,15 +215,15 @@ your workspace, so it needs no checkout before it — which is the point, since
 [`step-security/harden-runner`](https://github.com/step-security/harden-runner)
 only governs what runs after it.
 
-| Input                 | Default | What it does                                                                       |
-| --------------------- | ------- | ---------------------------------------------------------------------------------- |
-| `target`              | `""`    | The Zuke target to run. Omit to harden and check out only.                         |
-| `egress-policy`       | `audit` | `audit` records outbound traffic; `block` enforces `allowed-endpoints`.            |
-| `allowed-endpoints`   | `""`    | Space-separated `host:port` list permitted under `block`.                          |
-| `persist-credentials` | `false` | Leave the token in git config, for a later push.                                   |
-| `fetch-depth`         | `1`     | Commits to fetch. `0` is the full history, which a secret scan needs.              |
+| Input                 | Default | What it does                                                                                                              |
+| --------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `target`              | `""`    | The Zuke target to run. Omit to harden and check out only.                                                                |
+| `egress-policy`       | `audit` | `audit` records outbound traffic; `block` enforces `allowed-endpoints`.                                                   |
+| `allowed-endpoints`   | `""`    | Space-separated `host:port` list permitted under `block`.                                                                 |
+| `persist-credentials` | `false` | Leave the token in git config, for a later push.                                                                          |
+| `fetch-depth`         | `1`     | Commits to fetch. `0` is the full history, which a secret scan needs.                                                     |
 | `ref`                 | `""`    | Branch, tag or SHA to check out. Empty follows the event — the base or default branch on a secret-bearing one. See below. |
-| `deno-version`        | `""`    | Install this Deno. Usually unnecessary — the `./zuke` launcher bootstraps its own. |
+| `deno-version`        | `""`    | Install this Deno. Usually unnecessary — the `./zuke` launcher bootstraps its own.                                        |
 
 Running a target needs a committed `./zuke` launcher in the repository (that is
 what `zuke setup` writes); the step fails with an annotation saying so if there
@@ -276,14 +275,14 @@ the version you have pinned.
 
 #### `ref` is refused on every secret-bearing event
 
-`ref` checks out something other than what the event points at — the head
-branch of a pull request, say, so a job can push a fix back to it. On
-`pull_request` that is ordinary: the token is read-only and secrets are absent.
+`ref` checks out something other than what the event points at — the head branch
+of a pull request, say, so a job can push a fix back to it. On `pull_request`
+that is ordinary: the token is read-only and secrets are absent.
 
 On **`pull_request_target`** it is not. That event runs with the base
 repository's secrets and a writable token, so a `ref` aimed at a contributor's
-head puts *their* `zuke.ts` in the workspace — and the last step executes it.
-No configuration makes that safe, so the action refuses it outright:
+head puts _their_ `zuke.ts` in the workspace — and the last step executes it. No
+configuration makes that safe, so the action refuses it outright:
 
 ```
 Error: Refusing to check out a custom ref on a pull_request_target event: it
