@@ -38,11 +38,19 @@ export const REVIEW_COMMENT_ENV = "ZUKE_REVIEW_COMMENT";
 const API = "https://api.github.com";
 
 /**
- * Mint an App installation token narrowed to what the review posts: comments
- * and inline review threads (`pull_requests`), and the reaction on the command
+ * Mint an App installation token narrowed to what the review does: comments
+ * and inline review threads (`pull_requests`), the reaction on the command
  * comment (`issues` — a pull request's conversation comments are issue
- * comments). Nothing the release needs is requested, so this token cannot tag,
- * push, or touch a workflow file.
+ * comments), and **resolving** a thread it has answered, which needs
+ * `contents: write`. That last one is GitHub's rule, not a preference: the
+ * GraphQL mutation that resolves a review thread is allowed to whoever has
+ * write access to the repository, and for an installation token that is what
+ * `contents: write` means — a token holding `pull_requests: write` alone is
+ * refused with "Resource not accessible by integration" while the reply it
+ * posted a moment earlier stands (#631). So this token can push and tag; it
+ * cannot touch a workflow file or Actions, which are not requested. The
+ * narrowing is a courtesy rather than a boundary: the credentials this mints
+ * from sit in the same environment, and could mint anything the App holds.
  */
 export function mintReviewToken(
   credentials: AppCredentials,
@@ -52,6 +60,7 @@ export function mintReviewToken(
   return mintAppToken(credentials, repo, {
     pull_requests: "write",
     issues: "write",
+    contents: "write",
   }, appToken);
 }
 

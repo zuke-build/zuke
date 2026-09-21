@@ -190,10 +190,12 @@ Deno.test("acknowledgeReviewCommand never throws: a refusal or a network error i
   assertStringIncludes(lines.join("\n"), "offline");
 });
 
-Deno.test("mintReviewToken asks for exactly the scopes the review posts with", async () => {
+Deno.test("mintReviewToken asks for exactly the scopes the review needs", async () => {
   // The scope is the security claim SECURITY.md makes: comments and inline
-  // threads, plus the reaction — nothing the release needs. A widening here
-  // must fail a test, not pass the gate.
+  // threads, the reaction, and contents write — the repository write access
+  // GitHub demands of whoever resolves a review thread, which an installation
+  // token holding pull_requests write alone is refused. Nothing touching
+  // workflows or Actions. A widening here must fail a test, not pass the gate.
   let settings: GhAppTokenSettings | undefined;
   const token = await mintReviewToken(
     { appId: "12345", privateKey: "pem" },
@@ -215,5 +217,6 @@ Deno.test("mintReviewToken asks for exactly the scopes the review posts with", a
   assertEquals(settings?.permissions_, {
     pull_requests: "write",
     issues: "write",
+    contents: "write",
   });
 });
