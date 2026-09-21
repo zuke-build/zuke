@@ -290,18 +290,16 @@ Deno.test("formatOutdated aligns the report and says how to refresh", () => {
   assertEquals(one.includes("@zuke/git  1.5.0  →  1.11.0"), true);
   assertEquals(one.includes("1 package is behind"), true);
   // The refresh hint is the part users act on, so it is pinned here rather than
-  // left to drift. It used to tell them to run `deno cache --reload`, which
-  // re-downloads sources and leaves the locked version exactly where it was —
-  // so the report repeated itself and the advice looked like a no-op. What
-  // actually re-resolves is removing the entry.
-  assertEquals(one.includes("Delete these entries from the lock"), true);
-  // And it must not send them back to either reload, or to `deno outdated`,
-  // as the fix: none of them changes a locked version for an inline specifier.
-  assertEquals(/(?<!neither )`deno cache --reload`/.test(one), false);
-  assertEquals(
-    one.includes("only sees dependencies declared in an imports map"),
-    true,
-  );
+  // left to drift. It has twice been wrong: first `deno cache --reload`, which
+  // re-downloads sources and leaves the locked version where it was, then an
+  // instruction to delete the entries by hand — correct, but work the command
+  // can do itself. It now points at `--update`, which does.
+  assertEquals(one.includes("outdated --update"), true);
+  // It must not send anyone to a command that cannot move a locked version for
+  // an inline specifier: neither reload flavour does, and `deno outdated`
+  // reads manifests, so it never sees one.
+  assertEquals(one.includes("deno cache --reload"), false);
+  assertEquals(one.includes("deno outdated"), false);
 
   const two = formatOutdated({
     behind: [

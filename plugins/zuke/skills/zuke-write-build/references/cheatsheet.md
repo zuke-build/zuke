@@ -1344,6 +1344,9 @@ Copy the closest one instead of composing from primitives; each is a full
 ./zuke register [--json]      # record this build in the build registry (idempotent)
 ./zuke doc jsr:@zuke/deno     # print a package's API (deno doc) from an isolated empty dir
 ./zuke outdated [--exit-code]  # jsr packages the lock resolves behind their latest (network)
+./zuke outdated --update       # ...and move them up; name packages to narrow it.
+                               # Touches the lock only: a package its specifier
+                               # pins is reported as held, never rewritten.
                                # --exit-code exits 1 when behind OR uncheckable.
                                # Wire it as a SCHEDULED pipeline, never in the ci
                                # gate: it needs the network, and a dependency's
