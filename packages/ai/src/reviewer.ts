@@ -189,15 +189,6 @@ export class Reviewer implements Validation {
     return this.#commentToken;
   }
 
-  /**
-   * Whether `.discussion((d) => d.threads())` is set — findings are anchored
-   * to review threads, so a maintainer's reply in one is a rebuttal the
-   * generated workflow should run the review for.
-   */
-  get threadsEnabled_(): boolean {
-    return this.#discussion?.threads_() === true;
-  }
-
   /** Set the model provider (required). */
   provider(provider: Provider): this {
     this.#provider = provider;

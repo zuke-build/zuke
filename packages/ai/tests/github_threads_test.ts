@@ -194,7 +194,9 @@ Deno.test("resolving joins the thread node id to the root comment id", async () 
       ]);
     },
   ]]);
-  assertEquals(await setThreadsResolved(CONTEXT, fetch, [42], true), 1);
+  assertEquals(await setThreadsResolved(CONTEXT, fetch, [42], true), {
+    done: 1,
+  });
   const graph = calls.filter((c) => c.url.includes("/graphql"));
   // One query for the whole join, then one mutation per thread.
   assertEquals(graph.length, 2);
@@ -235,28 +237,75 @@ Deno.test("the node-id query is paged by cursor", async () => {
         : threadPage([{ id: "N2", root: 2 }]);
     },
   ]]);
-  assertEquals(await setThreadsResolved(CONTEXT, fetch, [2], true), 1);
+  assertEquals(await setThreadsResolved(CONTEXT, fetch, [2], true), {
+    done: 1,
+  });
   const graph = calls.filter((c) => c.url.includes("/graphql"));
   assertEquals(JSON.parse(graph[1].body).variables.cursor, "cur");
 });
 
-Deno.test("a GraphQL failure resolves nothing and throws nothing", async () => {
-  const failures: Array<() => Response> = [
+Deno.test("a GraphQL failure resolves nothing, throws nothing, and says why", async () => {
+  const failures: Array<[() => Response, string]> = [
     // GraphQL reports errors in a 200 — checking `ok` alone reads this as
-    // success and the reviewer would believe it resolved the thread.
-    () => json({ data: null, errors: [{ message: "Forbidden" }] }),
-    () => json({ message: "forbidden" }, 403),
-    () => json({}),
+    // success and the reviewer would believe it resolved the thread. The
+    // message is what GitHub says about it, so it is the reason.
+    [
+      () => json({ data: null, errors: [{ message: "Forbidden" }] }),
+      "listing the threads: Forbidden",
+    ],
+    [
+      () => json({ message: "forbidden" }, 403),
+      "listing the threads: HTTP 403",
+    ],
+    // An error entry without a message is still a failure, named as such.
+    [
+      () => json({ data: null, errors: [{ type: "NOT_FOUND" }] }),
+      "listing the threads: GraphQL error",
+    ],
+    // No thread starts at the comment: the join found nothing to resolve.
+    [() => json({}), "no review thread starts at the comment"],
   ];
-  for (const respond of failures) {
+  for (const [respond, reason] of failures) {
     const { fetch } = fake([["/graphql", respond]]);
-    assertEquals(await setThreadsResolved(CONTEXT, fetch, [42], true), 0);
+    assertEquals(await setThreadsResolved(CONTEXT, fetch, [42], true), {
+      done: 0,
+      reason,
+    });
   }
+});
+
+Deno.test("a refused mutation carries the host's reason, bounded to one line", async () => {
+  // The join succeeds; the mutation itself is what the host refuses — the
+  // shape a token that may not resolve threads produces. Only the first
+  // refusal is kept, flattened and capped, since it heads for a report note.
+  const long = `Resource not\n  accessible ${"x".repeat(300)}`;
+  const { fetch, calls } = fake([[
+    "/graphql",
+    () =>
+      calls.filter((c) => c.url.includes("/graphql")).length > 1
+        ? json({ data: null, errors: [{ message: long }] })
+        : threadPage([{ id: "NODE_A", root: 42 }, { id: "NODE_B", root: 43 }]),
+  ]]);
+  const result = await setThreadsResolved(CONTEXT, fetch, [42, 43], true);
+  assertEquals(result.done, 0);
+  assertEquals(result.reason?.startsWith("Resource not accessible xxx"), true);
+  assertEquals(result.reason?.length, 201);
+  assertEquals(result.reason?.endsWith("…"), true);
+  // A thrown fetch is a reason too, never an exception.
+  const thrower =
+    (() =>
+      Promise.reject(new Error("socket hung up"))) as unknown as typeof fetch;
+  assertEquals(await setThreadsResolved(CONTEXT, thrower, [42], true), {
+    done: 0,
+    reason: "listing the threads: socket hung up",
+  });
 });
 
 Deno.test("resolving nothing issues no GraphQL call at all", async () => {
   const { fetch, calls } = fake([["/graphql", () => json({})]]);
-  assertEquals(await setThreadsResolved(CONTEXT, fetch, [], true), 0);
+  assertEquals(await setThreadsResolved(CONTEXT, fetch, [], true), {
+    done: 0,
+  });
   assertEquals(calls.length, 0);
 });
 
@@ -309,7 +358,9 @@ Deno.test("a node-id page without a cursor ends the walk", async () => {
       });
     },
   ]]);
-  assertEquals(await setThreadsResolved(CONTEXT, fetch, [5], true), 1);
+  assertEquals(await setThreadsResolved(CONTEXT, fetch, [5], true), {
+    done: 1,
+  });
 });
 
 Deno.test("a thread with no known node id is skipped", async () => {
@@ -317,8 +368,12 @@ Deno.test("a thread with no known node id is skipped", async () => {
     "/graphql",
     () => threadPage([{ id: "N", root: 1 }]),
   ]]);
-  // Root 42 is not in the join, so there is nothing to resolve.
-  assertEquals(await setThreadsResolved(CONTEXT, fetch, [42], true), 0);
+  // Root 42 is not in the join, so there is nothing to resolve — and the
+  // note says so, since a root no thread claims is a diagnosis in itself.
+  assertEquals(await setThreadsResolved(CONTEXT, fetch, [42], true), {
+    done: 0,
+    reason: "no review thread starts at the comment",
+  });
 });
 
 Deno.test("a review-comment listing restores a hidden maintainer's standing too", async () => {

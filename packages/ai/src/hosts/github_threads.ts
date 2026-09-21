@@ -34,6 +34,7 @@ import {
   type ReviewComments,
   type ReviewThreads,
   type ThreadPost,
+  type ThreadResolution,
 } from "./types.ts";
 
 /** The GitHub REST API origin. */
@@ -185,18 +186,43 @@ const THREAD_IDS_QUERY =
       nodes { id comments(first:1){ nodes { databaseId } } }
       pageInfo { hasNextPage endCursor } } } } }`;
 
+/** What one GraphQL call came back with: its `data`, or why there is none. */
+interface GraphqlResult {
+  /** The `data` payload, on success. */
+  data?: unknown;
+  /** Why the call failed, as a short host-derived string, on failure. */
+  reason?: string;
+}
+
+/** Cap on the reason text kept from a failed GraphQL call. */
+const MAX_REASON_LENGTH = 200;
+
 /**
- * Post one GraphQL request, returning the `data` payload — or `undefined` on
- * any failure. GraphQL reports errors in a **200** response carrying a
+ * A GraphQL error's message as one bounded line: GitHub's messages are prose,
+ * but they are still host output headed for a report, so newlines and length
+ * are both capped.
+ */
+function reasonOf(message: string): string {
+  const flat = message.replace(/\s+/g, " ").trim();
+  return flat.length > MAX_REASON_LENGTH
+    ? `${flat.slice(0, MAX_REASON_LENGTH)}…`
+    : flat;
+}
+
+/**
+ * Post one GraphQL request, returning the `data` payload — or the reason
+ * there is none. GraphQL reports errors in a **200** response carrying a
  * non-empty `errors` array, so checking `response.ok` alone would read a
- * failed mutation as a success.
+ * failed mutation as a success; the first error's message is what the caller
+ * gets to show, since that is where GitHub says why (a token that may not
+ * resolve threads, a thread that no longer exists).
  */
 async function graphql(
   context: GithubContext,
   doFetch: typeof fetch,
   query: string,
   variables: Record<string, unknown>,
-): Promise<unknown> {
+): Promise<GraphqlResult> {
   try {
     const response = await doFetch(GRAPHQL, {
       method: "POST",
@@ -205,14 +231,23 @@ async function graphql(
     });
     if (!response.ok) {
       await response.body?.cancel();
-      return undefined;
+      return { reason: `HTTP ${response.status}` };
     }
     const payload: unknown = await response.json();
     const errors = dig(payload, "errors");
-    if (Array.isArray(errors) && errors.length > 0) return undefined;
-    return dig(payload, "data");
-  } catch {
-    return undefined;
+    if (Array.isArray(errors) && errors.length > 0) {
+      const message = dig(errors[0], "message");
+      return {
+        reason: typeof message === "string" && message !== ""
+          ? reasonOf(message)
+          : "GraphQL error",
+      };
+    }
+    return { data: dig(payload, "data") };
+  } catch (error) {
+    return {
+      reason: reasonOf(error instanceof Error ? error.message : String(error)),
+    };
   }
 }
 
@@ -224,19 +259,25 @@ async function graphql(
 async function threadNodeIds(
   context: GithubContext,
   doFetch: typeof fetch,
-): Promise<Map<number, string>> {
+): Promise<{ ids: Map<number, string>; reason?: string }> {
   const ids = new Map<number, string>();
   let cursor: string | null = null;
   for (let page = 0; page < MAX_COMMENT_PAGES; page++) {
-    const data: unknown = await graphql(context, doFetch, THREAD_IDS_QUERY, {
-      owner: context.owner,
-      repo: context.repo,
-      number: context.pull,
-      cursor,
-    });
+    const { data, reason } = await graphql(
+      context,
+      doFetch,
+      THREAD_IDS_QUERY,
+      {
+        owner: context.owner,
+        repo: context.repo,
+        number: context.pull,
+        cursor,
+      },
+    );
+    if (reason !== undefined) return { ids, reason };
     const threads = dig(data, "repository", "pullRequest", "reviewThreads");
     const nodes = dig(threads, "nodes");
-    if (!Array.isArray(nodes)) return ids;
+    if (!Array.isArray(nodes)) return { ids };
     for (const node of nodes) {
       const nodeId = dig(node, "id");
       const rootId = dig(node, "comments", "nodes", 0, "databaseId");
@@ -244,12 +285,12 @@ async function threadNodeIds(
         ids.set(rootId, nodeId);
       }
     }
-    if (dig(threads, "pageInfo", "hasNextPage") !== true) return ids;
+    if (dig(threads, "pageInfo", "hasNextPage") !== true) return { ids };
     const next = dig(threads, "pageInfo", "endCursor");
-    if (typeof next !== "string") return ids;
+    if (typeof next !== "string") return { ids };
     cursor = next;
   }
-  return ids;
+  return { ids };
 }
 
 /** The resolve and unresolve mutations, keyed by the flag the caller passes. */
@@ -261,26 +302,39 @@ const MUTATIONS = {
 };
 
 /**
- * Resolve (or unresolve) each thread, returning how many succeeded. Never
- * throws: resolution is cosmetic next to the outcome reply that precedes it,
- * and a token without the scope for the mutation must not fail a build.
+ * Resolve (or unresolve) each thread, returning how many succeeded and, when
+ * any did not, the first reason the host gave — the failed node-id join, a
+ * root comment no thread claims, or the mutation's own error. Never throws:
+ * resolution is cosmetic next to the outcome reply that precedes it, and a
+ * token without the scope for the mutation must not fail a build — but the
+ * reason travels, because a refusal that repeats on every run is a
+ * configuration problem the report should name.
  */
 export async function setThreadsResolved(
   context: GithubContext,
   doFetch: typeof fetch,
   rootIds: readonly number[],
   resolved: boolean,
-): Promise<number> {
-  if (rootIds.length === 0) return 0;
+): Promise<ThreadResolution> {
+  if (rootIds.length === 0) return { done: 0 };
   const nodes = await threadNodeIds(context, doFetch);
+  if (nodes.reason !== undefined) {
+    return { done: 0, reason: `listing the threads: ${nodes.reason}` };
+  }
   const mutation = resolved ? MUTATIONS.resolve : MUTATIONS.unresolve;
   let done = 0;
+  let reason: string | undefined;
   for (const rootId of rootIds) {
-    const id = nodes.get(rootId);
-    if (id === undefined) continue;
-    if (await graphql(context, doFetch, mutation, { id }) !== undefined) done++;
+    const id = nodes.ids.get(rootId);
+    if (id === undefined) {
+      reason ??= "no review thread starts at the comment";
+      continue;
+    }
+    const result = await graphql(context, doFetch, mutation, { id });
+    if (result.reason === undefined) done++;
+    else reason ??= result.reason;
   }
-  return done;
+  return reason === undefined ? { done } : { done, reason };
 }
 
 /** The {@link ReviewThreads} implementation for a resolved GitHub context. */

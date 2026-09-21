@@ -4,9 +4,6 @@ name: AI Review
   issue_comment:
     types:
       - created
-  pull_request_review_comment:
-    types:
-      - created
 permissions:
   contents: read
 jobs:
@@ -32,16 +29,16 @@ jobs:
         env:
           OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}"
           GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
-  replyReview:
-    name: AI review on thread reply
+  commandReview:
+    name: AI review on command
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
-    if: "${{ github.event_name == 'pull_request_review_comment' && github.event.pull_request.head.repo.full_name == github.repository && github.event.comment.in_reply_to_id && github.event.comment.user.type != 'Bot' }}"
+    if: "${{ github.event_name == 'issue_comment' && github.event.issue.pull_request && github.event.comment.user.type != 'Bot' && startsWith(github.event.comment.body, '@zuke-build review') }}"
     timeout-minutes: 15
     concurrency:
-      group: "ai-review-${{ github.workflow }}-${{ github.event.pull_request.number }}"
+      group: "ai-review-${{ github.workflow }}-${{ github.event.issue.number }}"
       cancel-in-progress: false
     steps:
       - name: Harden and check out with Zuke
@@ -74,81 +71,8 @@ jobs:
         env:
           GH_TOKEN: "${{ github.token }}"
           ZUKE_REVIEW_ACTOR: "${{ github.event.comment.user.login }}"
-      - name: Require the reply to be in a Zuke review thread
-        id: thread
+      - name: AI review with Zuke
         if: "steps.push.outputs.push == 'true'"
-        shell: bash
-        run: |
-          set -euo pipefail
-          case "$ZUKE_REVIEW_PARENT" in
-            ""|*[!0-9]*)
-              echo "::error::the reply's parent comment id is not a number"
-              exit 1 ;;
-          esac
-          root="$(gh api "repos/$GITHUB_REPOSITORY/pulls/comments/$ZUKE_REVIEW_PARENT" --jq .body)" || {
-            echo "::error::could not read the comment the reply answers; refusing to run the review"
-            exit 1
-          }
-          case "$root" in
-            "<!-- zuke-ai-finding:"*)
-              echo "The reply is in a Zuke review thread."
-              echo "review=true" >> "$GITHUB_OUTPUT" ;;
-            *)
-              echo "The reply is not in a Zuke review thread; nothing to review."
-              echo "review=false" >> "$GITHUB_OUTPUT" ;;
-          esac
-        env:
-          GH_TOKEN: "${{ github.token }}"
-          ZUKE_REVIEW_PARENT: "${{ github.event.comment.in_reply_to_id }}"
-      - name: AI review with Zuke
-        if: "steps.push.outputs.push == 'true' && steps.thread.outputs.review == 'true'"
-        run: ./zuke review
-        env:
-          OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}"
-          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
-  commandReview:
-    name: AI review on command
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-    if: "${{ github.event_name == 'issue_comment' && github.event.issue.pull_request && github.event.comment.user.type != 'Bot' && (github.event.comment.author_association == 'OWNER' || github.event.comment.author_association == 'MEMBER' || github.event.comment.author_association == 'COLLABORATOR') && startsWith(github.event.comment.body, '@zuke-build review') }}"
-    timeout-minutes: 15
-    concurrency:
-      group: "ai-review-${{ github.workflow }}-${{ github.event.issue.number }}"
-      cancel-in-progress: false
-    steps:
-      - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@2478fa5a69fb4f16540e54959c98cd976ec3f075 # v1.0.5
-        with:
-          egress-policy: audit
-          persist-credentials: "false"
-      - name: Require push access for the commenter
-        id: push
-        shell: bash
-        run: |
-          set -euo pipefail
-          case "$ZUKE_REVIEW_ACTOR" in
-            ""|*[!A-Za-z0-9-]*)
-              echo "::error::the commenter's login is not a GitHub login"
-              exit 1 ;;
-          esac
-          permission="$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$ZUKE_REVIEW_ACTOR/permission" --jq .permission)" || {
-            echo "::error::could not read $ZUKE_REVIEW_ACTOR's permission on $GITHUB_REPOSITORY; refusing to run the review"
-            exit 1
-          }
-          case "$permission" in
-            admin|write)
-              echo "$ZUKE_REVIEW_ACTOR has $permission access."
-              echo "push=true" >> "$GITHUB_OUTPUT" ;;
-            *)
-              echo "::error::$ZUKE_REVIEW_ACTOR has $permission access to $GITHUB_REPOSITORY; starting a review needs push access."
-              exit 1 ;;
-          esac
-        env:
-          GH_TOKEN: "${{ github.token }}"
-          ZUKE_REVIEW_ACTOR: "${{ github.event.comment.user.login }}"
-      - name: AI review with Zuke
         run: ./zuke review
         env:
           OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}"

@@ -1,7 +1,11 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import {
+  assertEquals,
+  assertRejects,
+  assertStringIncludes,
+} from "../../core/tests/_assert.ts";
 import { AiReviewError, budget, securityReviewer } from "../mod.ts";
 import { findingFingerprint } from "../src/suppress.ts";
 import { decodeState, encodeState } from "../src/state.ts";
@@ -2205,9 +2209,12 @@ Deno.test("a failed resolve keeps the outcome reply and reports the gap", async 
   const write = calls.find((c) =>
     c.url.includes("/issues/") && c.method !== "GET"
   );
-  assertEquals(
-    JSON.parse(write?.body ?? "{}").body.includes("could not resolve"),
-    true,
+  // The note names what the host answered, so a refusal that repeats on
+  // every run reads as the configuration problem it is, not a hiccup.
+  assertStringIncludes(
+    JSON.parse(write?.body ?? "{}").body,
+    "could not resolve 1 review thread(s) (listing the threads: Forbidden) " +
+      "— the outcome was still posted in the thread",
   );
 });
 

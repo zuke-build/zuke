@@ -296,9 +296,9 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   `.verify()` are remembered too, and a rebuttal is adjudicated even when the
   next round's model drops the finding — only platform-verified maintainer
   comments ever reach the model, on GitHub, GitLab, Azure DevOps and Bitbucket
-  alike). With threads, `aiReviewWorkflow` adds a job that re-runs the review
-  when a maintainer replies in a thread, so a rebuttal needs no push. See the
-  cheatsheet's AI section.
+  alike). A rebuttal needs no push: commenting the workflow's `command` (e.g.
+  `@zuke-build review`) starts a run that adjudicates it and answers in the
+  thread. See the cheatsheet's AI section.
 - **Wait on an external GitHub workflow (`@zuke/gh`):** in a `.waitsFor(...)`
   gate, `s.on(githubWorkflow((g) => g.repo("o/r").workflow("e2e.yml")))`
   dispatches a workflow in another repo and suspends until it finishes; read the

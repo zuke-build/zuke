@@ -75,9 +75,9 @@ moves or a maintainer replies), and `.discussion()` (engage with maintainer
 rebuttals on the PR — an accepted refutation stays dismissed instead of
 resurfacing, and is adjudicated even when the next round's model no longer
 reports the finding; only comments whose author the host platform attributes as
-a maintainer ever reach the model). With `.discussion((d) => d.threads())`,
-`aiReviewWorkflow` also emits a job that re-runs the review when a maintainer
-replies in a finding's thread, so a rebuttal gets its answer without a push.
+a maintainer ever reach the model). A rebuttal left in a thread gets its answer
+without a push when a maintainer comments the workflow's command, which re-runs
+the review and answers in the thread.
 
 `.skipIfKeyMissing()` skips the review instead of failing when the API key is
 absent — handy when the key is a CI-only secret — and announces the skip on the
@@ -598,14 +598,20 @@ class ReviewCommandSettings
 
   The job it adds runs on `issue_comment`, which GitHub delivers for comments on
   pull requests too, always from the default branch and always with the
-  repository's secrets — so its `if:` is the whole access control. It fires only
-  when the comment is on a pull request, starts with {@link text}, was written
-  by a human (not a bot account), and its author's `author_association` is
-  `OWNER`, `MEMBER` or `COLLABORATOR`. The comment body is matched in the
-  expression and never interpolated into a `run:` line. Then, before the
-  review runs, the job asks the collaborators API whether the commenter has
-  push access, and stops if not — an association alone admits read-only
-  members and collaborators.
+  repository's secrets. Its `if:` fires only when the comment is on a pull
+  request, starts with {@link text}, and was written by a human (not a bot
+  account); the comment body is matched in the expression and never
+  interpolated into a `run:` line. The access control is the job's first
+  step: it asks the collaborators API whether the commenter has push access,
+  and every later step is skipped if not (see {@link PUSH_ACCESS_STEP}). The
+  event's `author_association` is deliberately not consulted — it reports a
+  private organisation member as `CONTRIBUTOR`, and `MEMBER` and
+  `COLLABORATOR` admit read-only accounts, so it can neither admit nor refuse
+  anyone correctly.
+
+  The command is also how a maintainer who contested a finding in its review
+  thread, and pushed nothing, gets an answer: the run it starts reads every
+  thread, adjudicates the rebuttals, and replies in the threads.
 
   What runs is the default branch's build, never the pull request's: the job
   passes `ZUKE_REVIEW_PR`, and the reviewers fetch that pull request's merge
@@ -648,10 +654,6 @@ class Reviewer implements Validation
     Whether `.comment()` is set — i.e. this reviewer posts to the PR.
   get commentToken_(): CommentTokenSource | undefined
     The configured comment-posting token, if `.commentToken(...)` was called.
-  get threadsEnabled_(): boolean
-    Whether `.discussion((d) => d.threads())` is set — findings are anchored
-    to review threads, so a maintainer's reply in one is a rebuttal the
-    generated workflow should run the review for.
   provider(provider: Provider): this
     Set the model provider (required).
   apiKey(apiKey: AnyParameter | string): this

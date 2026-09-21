@@ -3191,13 +3191,6 @@ interface CiTriggers
     comment too, which is what lets a maintainer's comment start a job; the job
     runs on the default branch, so its `if:` must decide who may start it.
     GitHub only.
-  pullRequestReviewComment?: string[]
-    Run when a comment on a pull request's review thread (a file/line
-    comment, or a reply in one) is created, edited, or deleted
-    (`pull_request_review_comment`), filtered to these activity types — an
-    empty array means every type. Unlike `issue_comment`, the job runs against
-    the pull request's merge ref, exactly as `pull_request` does, so the same
-    fork gate applies. GitHub only.
   branchProtectionRule?: boolean
     Run when a branch protection rule is created, edited, or deleted
     (`branch_protection_rule`) — a supply-chain scan wants to re-score when the

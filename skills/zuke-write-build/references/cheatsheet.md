@@ -1112,11 +1112,10 @@ Depth and discussion knobs (all optional, per reviewer):
   invented line, a line only present as a deletion) loses nothing — it stays in
   the table and the report's Notes say why. Lines are never guessed at. GitHub
   only; other hosts note it and post the summary alone. A finding the verifier
-  refutes gets a "refuted" reply with the evidence and its thread resolved. With
-  threads on, `aiReviewWorkflow` emits a third job, `replyReview`, that runs the
-  review when a human with push access (checked against the collaborators API,
-  not the event's association field) **replies** in a Zuke finding thread on a
-  same-repository PR — so a rebuttal is answered without a push.
+  refutes gets a "refuted" reply with the evidence and its thread resolved. A
+  rebuttal is answered without a push by commenting the workflow's `command`
+  (e.g. `@zuke-build review`): that run adjudicates every reply and answers in
+  the thread. The workflow does not run on every reply — that would snowball.
 - `.discussion()` — the reviewer engages with the PR thread instead of looping:
   a maintainer contests a finding by replying with its id quoted, an
   adjudication pass weighs the rebuttal on merit, and an accepted dismissal is

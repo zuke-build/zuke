@@ -52,10 +52,8 @@ const MAX_PARENT_HOPS = 16;
 /**
  * What every finding thread's root marker opens with — the one string that
  * tells a Zuke review thread from any other review thread on a pull request.
- * The generated workflow's reply job reads it off the thread root before it
- * spends a review, so it is defined once, here, for both.
  */
-export const FINDING_MARKER_PREFIX = "<!-- zuke-ai-finding:";
+const FINDING_MARKER_PREFIX = "<!-- zuke-ai-finding:";
 
 /** The hidden marker that opens a finding thread's root comment. */
 export function findingMarker(nameHash: string, id: string): string {

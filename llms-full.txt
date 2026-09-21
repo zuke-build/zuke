@@ -3137,13 +3137,6 @@ interface CiTriggers
     comment too, which is what lets a maintainer's comment start a job; the job
     runs on the default branch, so its `if:` must decide who may start it.
     GitHub only.
-  pullRequestReviewComment?: string[]
-    Run when a comment on a pull request's review thread (a file/line
-    comment, or a reply in one) is created, edited, or deleted
-    (`pull_request_review_comment`), filtered to these activity types — an
-    empty array means every type. Unlike `issue_comment`, the job runs against
-    the pull request's merge ref, exactly as `pull_request` does, so the same
-    fork gate applies. GitHub only.
   branchProtectionRule?: boolean
     Run when a branch protection rule is created, edited, or deleted
     (`branch_protection_rule`) — a supply-chain scan wants to re-score when the
@@ -20163,14 +20156,20 @@ class ReviewCommandSettings
 
   The job it adds runs on `issue_comment`, which GitHub delivers for comments on
   pull requests too, always from the default branch and always with the
-  repository's secrets — so its `if:` is the whole access control. It fires only
-  when the comment is on a pull request, starts with {@link text}, was written
-  by a human (not a bot account), and its author's `author_association` is
-  `OWNER`, `MEMBER` or `COLLABORATOR`. The comment body is matched in the
-  expression and never interpolated into a `run:` line. Then, before the
-  review runs, the job asks the collaborators API whether the commenter has
-  push access, and stops if not — an association alone admits read-only
-  members and collaborators.
+  repository's secrets. Its `if:` fires only when the comment is on a pull
+  request, starts with {@link text}, and was written by a human (not a bot
+  account); the comment body is matched in the expression and never
+  interpolated into a `run:` line. The access control is the job's first
+  step: it asks the collaborators API whether the commenter has push access,
+  and every later step is skipped if not (see {@link PUSH_ACCESS_STEP}). The
+  event's `author_association` is deliberately not consulted — it reports a
+  private organisation member as `CONTRIBUTOR`, and `MEMBER` and
+  `COLLABORATOR` admit read-only accounts, so it can neither admit nor refuse
+  anyone correctly.
+
+  The command is also how a maintainer who contested a finding in its review
+  thread, and pushed nothing, gets an answer: the run it starts reads every
+  thread, adjudicates the rebuttals, and replies in the threads.
 
   What runs is the default branch's build, never the pull request's: the job
   passes `ZUKE_REVIEW_PR`, and the reviewers fetch that pull request's merge
@@ -20213,10 +20212,6 @@ class Reviewer implements Validation
     Whether `.comment()` is set — i.e. this reviewer posts to the PR.
   get commentToken_(): CommentTokenSource | undefined
     The configured comment-posting token, if `.commentToken(...)` was called.
-  get threadsEnabled_(): boolean
-    Whether `.discussion((d) => d.threads())` is set — findings are anchored
-    to review threads, so a maintainer's reply in one is a rebuttal the
-    generated workflow should run the review for.
   provider(provider: Provider): this
     Set the model provider (required).
   apiKey(apiKey: AnyParameter | string): this

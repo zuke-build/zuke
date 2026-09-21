@@ -558,16 +558,20 @@ The generated job listens on `issue_comment` (GitHub delivers a pull request's
 conversation comments as issue comments) and runs only when every clause of its
 `if:` holds, all of them metadata GitHub asserts rather than anything in the
 comment's text: the comment is on a pull request; its author is not a bot
-account; the author's `author_association` is `OWNER`, `MEMBER` or
-`COLLABORATOR` (never `CONTRIBUTOR`, which anyone with one merged pull request
-carries); and the body starts with the command. An association alone is not push
-access: `MEMBER` is membership of the organisation and `COLLABORATOR` any direct
-collaborator, a read-only one included. So the job's first step after the
-checkout asks the collaborators API what the commenter may do, and stops with
-the reason unless the answer is `admin` or `write` — before any key is spent.
-`startsWith` is case-insensitive, and a reply that quotes the command
-(`> @zuke-build review`) does not start a run. The comment body is matched in
-the expression and never interpolated into a `run:` line.
+account; and the body starts with the command. Who may start a run is decided by
+the job's first step after the checkout, which asks the collaborators API what
+the commenter may do: `admin` or `write` lets the review run, and anything else
+ends the job succeeded with nothing spent and the reason in the step's log —
+before any key is spent. The event's `author_association` is deliberately not in
+the gate: GitHub reports an organisation member whose membership is private as
+`CONTRIBUTOR` (it turned this repository's own maintainers away), and `MEMBER`
+and `COLLABORATOR` both include read-only accounts, so the field can neither
+admit nor refuse anyone correctly. The step skips rather than fails because,
+with no pre-filter, anyone who can comment can type the command, and a red check
+for each of them would be noise and a lever anyone could pull. `startsWith` is
+case-insensitive, and a reply that quotes the command (`> @zuke-build review`)
+does not start a run. The comment body is matched in the expression and never
+interpolated into a `run:` line.
 
 What runs is the default branch's build. The job passes `ZUKE_REVIEW_PR`, and
 every reviewer honours it ahead of its configured `git` source: it fetches
@@ -613,43 +617,21 @@ queues behind it and starts from the state it posted.
 
 ### Answering a rebuttal without a push
 
-A maintainer who contests a finding in its review thread and pushes nothing has,
-without this, no run to answer them: `pull_request` fires on a push, and the
-command is a step nobody remembers. So when any reviewer uses
-`.discussion((d) => d.threads())`, the generated workflow gains a third job,
-`replyReview`, on `pull_request_review_comment`. It runs the same target when
-the comment is a **reply** in a thread (a fresh line comment starts nothing), by
-a human account, on a pull request **from this repository**, and — before any
-key is spent — by someone the collaborators API says has push access. That is
-the command job's check in a skipping mode: a reply by anyone else ends the job
-succeeded with nothing spent, since a reply in a review thread is ordinary
-conversation and a red check for every non-pusher who joins one would be noise.
-The event's own `author_association` field is deliberately not in the gate: on
-this event GitHub reports an organisation member as `CONTRIBUTOR`, so a gate on
-it turned real maintainers away while admitting nobody the API check would not.
+A maintainer who contests a finding — in its review thread, or by quoting its id
+— and pushes nothing gets the answer by commenting the command. The run it
+starts reads every thread and every quoting comment on the pull request,
+adjudicates each rebuttal, and replies where it was made: an accepted rebuttal
+closes the thread as dismissed, and one that does not hold gets an "upheld"
+reply naming the gap, so the maintainer can reply again and comment the command
+again to continue the discussion. The command runs from the default branch with
+the pull request fetched as data, so it works for a same-repository pull request
+exactly as for a fork's, and it reads the same state block and threads the
+push-started run writes, whichever bot account each posts as.
 
-Unlike `issue_comment`, this event checks out the pull request's merge ref
-exactly as `pull_request` does, so the job is the `pull_request` job's steps
-behind a different gate, and it carries the same fork rule for the same reason.
-Both state that rule as a repository-name comparison rather than
-`head.repo.fork == false`: a fork deleted after the pull request was opened
-leaves the head repository null, which the expression language's loose
-comparison would read as "not a fork", and a null name compares unequal instead.
-The reply's text is never read by the workflow at all — the reviewer reads it
-from the thread, through the trust gate, and answers there: an accepted rebuttal
-closes the thread as dismissed; one that does not hold gets an "upheld" reply
-naming the gap, and the maintainer can reply again to continue the discussion.
-There is nothing to configure: a build that anchors findings to threads gets the
-job, and one that does not has no reply to listen for.
-
-The gate cannot tell whose thread a reply is in, so the job's next step reads
-the comment the reply answers (GitHub's `in_reply_to_id` is always the thread's
-root) and lets the review run only when that root opens with a Zuke finding
-marker; a reply in any other review thread ends the job there, succeeded, with
-nothing spent. One limit remains: the reviewer's own outcome replies are told
-apart only by account type. Posted with the workflow's token or a GitHub App
-they are bot-authored and start nothing, while a personal token makes them a
-maintainer's comments, so each reply-posting run is followed by one more.
+The workflow deliberately does **not** run on every reply in a thread. A busy
+review has many replies, and a run for each would snowball into reviews of the
+replies to the reviews; one run, when the maintainer asks for it, answers them
+all.
 
 ## Worked example: Zuke reviews itself
 
