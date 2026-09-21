@@ -306,7 +306,9 @@ Deno.test("main doc resolves a relative spec to an absolute path before running"
     main(Demo, ["doc", "C:/mods/mod.ts"], { docRunner: runner })
   );
   assertEquals(seen, [
-    `${Deno.cwd()}/./mod.ts`,
+    // Normalised, not concatenated: the `./` is resolved rather than carried
+    // into the specifier, where it would show up in any error echoing it.
+    `${Deno.cwd()}/mod.ts`,
     `${Deno.cwd()}/src/lib.ts`,
     "npm:cowsay",
     "/abs/mod.ts",

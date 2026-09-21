@@ -50,12 +50,15 @@ Deno.test("an absolute path is untouched, on either platform's spelling", () => 
   assertEquals(resolveDocSpec("\\\\server\\share", CWD), "\\\\server\\share");
 });
 
-Deno.test("a relative path is joined to the given directory", () => {
+Deno.test("a relative path is joined to the given directory, normalised", () => {
   // `deno doc` runs from an isolated empty directory, so a relative spec has
-  // to be made absolute while the caller's directory is still known.
-  assertEquals(resolveDocSpec("./mod.ts", CWD), "/work/./mod.ts");
-  assertEquals(resolveDocSpec("../up/mod.ts", CWD), "/work/../up/mod.ts");
+  // to be made absolute while the caller's directory is still known. The
+  // result is canonical: concatenating would leave `.` and `..` segments in
+  // the specifier, which then appear verbatim in any error that echoes it.
+  assertEquals(resolveDocSpec("./mod.ts", CWD), "/work/mod.ts");
+  assertEquals(resolveDocSpec("../up/mod.ts", CWD), "/up/mod.ts");
   assertEquals(resolveDocSpec("src/mod.ts", CWD), "/work/src/mod.ts");
+  assertEquals(resolveDocSpec("./a/../b.ts", CWD), "/work/b.ts");
 });
 
 Deno.test("a bare word ending in a source extension is a file, not a package", () => {
@@ -76,6 +79,6 @@ Deno.test("a dot inside a package name is not an extension", () => {
 Deno.test("the rule reads the directory it is given, not the process's", () => {
   // The cwd is a parameter so this is pure: the same input under two
   // directories differs only by the directory.
-  assertEquals(resolveDocSpec("./m.ts", "/a"), "/a/./m.ts");
-  assertEquals(resolveDocSpec("./m.ts", "/b"), "/b/./m.ts");
+  assertEquals(resolveDocSpec("./m.ts", "/a"), "/a/m.ts");
+  assertEquals(resolveDocSpec("./m.ts", "/b"), "/b/m.ts");
 });

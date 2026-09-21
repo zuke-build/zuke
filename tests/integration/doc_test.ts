@@ -57,7 +57,7 @@ Deno.test("the build's doc still treats a path as a path", async () => {
     return Promise.resolve(0);
   };
   await runCli(Noop, ["doc", "./lib.ts"], { docRunner: runner });
-  assertEquals(seen, `${Deno.cwd()}/./lib.ts`);
+  assertEquals(seen, `${Deno.cwd()}/lib.ts`);
 
   await runCli(Noop, ["doc", "@scope/pkg"], { docRunner: runner });
   assertEquals(seen, "jsr:@scope/pkg");

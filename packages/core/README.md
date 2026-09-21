@@ -764,6 +764,12 @@ function resolveDocSpec(spec: string, cwd: string): string
   file extension — is joined to `cwd` instead, and a specifier that already
   carries a URL scheme or is absolute is returned untouched.
 
+  A joined path comes back normalised, through {@link absolutePath}: the
+  `.` and `..` segments are resolved rather than carried into the specifier,
+  so `deno doc` is handed a canonical path and an error that echoes it names
+  a path the reader recognises. `cwd` must itself be absolute, which is what
+  makes that possible; {@link absolutePath} throws if it is not.
+
 function resolveRemoteStore(option: RemoteCacheStore | false | undefined, declared: RemoteCacheStore | undefined, readEnv: (name: string) => string | undefined): RemoteCacheStore | undefined
   Pick the remote store for a run by precedence: an explicit `option` wins
   (`false` disables the remote cache entirely), then a `declared` store (a

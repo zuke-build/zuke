@@ -254,7 +254,7 @@ Deno.test("resolveDocSpec resolves bare, scoped, and explicit specifiers", () =>
   assertEquals(resolveDocSpec("https://x/y.ts", cwd), "https://x/y.ts");
   // A path is pinned to the caller's directory here, because `deno doc` runs
   // from an isolated empty one where a relative spec would resolve to nothing.
-  assertEquals(resolveDocSpec("./local.ts", cwd), "/work/./local.ts");
+  assertEquals(resolveDocSpec("./local.ts", cwd), "/work/local.ts");
   assertEquals(resolveDocSpec("src/mod.ts", cwd), "/work/src/mod.ts");
   // A bare name that names a file is a file: `@zuke/mod.ts` is not a package.
   assertEquals(resolveDocSpec("mod.ts", cwd), "/work/mod.ts");

@@ -51,10 +51,11 @@ const SPECS: readonly string[] = [
   "C:/repo/mod.ts",
   "C:\\repo\\mod.ts",
   "\\\\server\\share",
-  // Relative paths.
+  // Relative paths, including ones whose normalisation is visible.
   "./mod.ts",
   "../up/mod.ts",
   "src/mod.ts",
+  "./a/../b.ts",
   // Bare words that name a file.
   "mod.ts",
   "build.mjs",

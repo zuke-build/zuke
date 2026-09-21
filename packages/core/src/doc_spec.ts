@@ -36,6 +36,8 @@
  * @module
  */
 
+import { absolutePath } from "./path.ts";
+
 /**
  * A URL scheme needs two or more characters before its colon, so a lone
  * Windows drive letter (`C:`) is not mistaken for one. `jsr:`, `npm:`,
@@ -66,6 +68,12 @@ const MODULE_EXTENSION = /\.(?:[cm]?[jt]sx?|json)$/i;
  * Anything that looks like a path — leading `.`, an embedded `/`, or a module
  * file extension — is joined to `cwd` instead, and a specifier that already
  * carries a URL scheme or is absolute is returned untouched.
+ *
+ * A joined path comes back **normalised**, through {@link absolutePath}: the
+ * `.` and `..` segments are resolved rather than carried into the specifier,
+ * so `deno doc` is handed a canonical path and an error that echoes it names
+ * a path the reader recognises. `cwd` must itself be absolute, which is what
+ * makes that possible; {@link absolutePath} throws if it is not.
  */
 export function resolveDocSpec(spec: string, cwd: string): string {
   // Already unambiguous: a scheme or an absolute path names its own target.
@@ -73,11 +81,13 @@ export function resolveDocSpec(spec: string, cwd: string): string {
   if (spec.startsWith("/") || spec.startsWith("\\")) return spec;
   if (DRIVE_ABSOLUTE.test(spec)) return spec;
   // Explicitly relative — the one form that can only be a path.
-  if (spec.startsWith(".")) return `${cwd}/${spec}`;
+  if (spec.startsWith(".")) return absolutePath(cwd, spec).path;
   // A leading `@` makes the following slash a scope separator, not a
   // directory, so this check has to come before the slash check below.
   if (spec.startsWith("@")) return `jsr:${spec}`;
-  if (spec.includes("/") || spec.includes("\\")) return `${cwd}/${spec}`;
-  if (MODULE_EXTENSION.test(spec)) return `${cwd}/${spec}`;
+  if (spec.includes("/") || spec.includes("\\")) {
+    return absolutePath(cwd, spec).path;
+  }
+  if (MODULE_EXTENSION.test(spec)) return absolutePath(cwd, spec).path;
   return `jsr:@zuke/${spec}`;
 }

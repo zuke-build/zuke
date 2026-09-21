@@ -517,12 +517,16 @@ export function resolveDocSpec(spec: string, cwd: string): string {
   if (URL_SCHEME.test(spec)) return spec;
   if (spec.startsWith("/") || spec.startsWith("\\")) return spec;
   if (DRIVE_ABSOLUTE.test(spec)) return spec;
-  if (spec.startsWith(".")) return `${cwd}/${spec}`;
+  // A joined path is normalised rather than concatenated, so a `.` or `..`
+  // segment is resolved instead of being carried into the specifier.
+  if (spec.startsWith(".")) return absolutePath(cwd, spec).path;
   // A leading `@` makes the following slash a scope separator, not a
   // directory, so this check has to come before the slash check below.
   if (spec.startsWith("@")) return `jsr:${spec}`;
-  if (spec.includes("/") || spec.includes("\\")) return `${cwd}/${spec}`;
-  if (MODULE_EXTENSION.test(spec)) return `${cwd}/${spec}`;
+  if (spec.includes("/") || spec.includes("\\")) {
+    return absolutePath(cwd, spec).path;
+  }
+  if (MODULE_EXTENSION.test(spec)) return absolutePath(cwd, spec).path;
   return `jsr:@zuke/${spec}`;
 }
 
