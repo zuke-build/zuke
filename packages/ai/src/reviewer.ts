@@ -67,7 +67,7 @@ import type { RetryInfo, RetryOptions } from "./retry.ts";
 import type { Budget } from "./budget.ts";
 import type { AiCache } from "./cache.ts";
 import { findingFingerprint, type Suppressions } from "./suppress.ts";
-import { sha256Hex } from "./hash.ts";
+import { sha256Hex } from "@zuke/core";
 import { rank, severityScore } from "./severity.ts";
 import {
   type Acceptance,
