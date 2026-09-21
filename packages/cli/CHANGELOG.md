@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.3](https://github.com/zuke-build/zuke/compare/cli-v1.5.2...cli-v1.5.3) (2026-09-21)
+
+
+### Bug Fixes
+
+* **cli:** scaffold bare specifiers in deno.json import map ([#624](https://github.com/zuke-build/zuke/issues/624)) ([90b2bba](https://github.com/zuke-build/zuke/commit/90b2bbaf5c52999bd98033bb3df7b150da9c36df))
+
 ## [1.5.2](https://github.com/zuke-build/zuke/compare/cli-v1.5.1...cli-v1.5.2) (2026-09-15)
 
 
