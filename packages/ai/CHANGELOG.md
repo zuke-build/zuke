@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.9.0](https://github.com/zuke-build/zuke/compare/ai-v2.8.1...ai-v2.9.0) (2026-09-21)
+
+
+### Features
+
+* **ai:** inherit maintainer decisions across files, severities and reviewers, and add the accept command ([#647](https://github.com/zuke-build/zuke/issues/647)) ([51a2c0e](https://github.com/zuke-build/zuke/commit/51a2c0e0550fc2c2e22ab8b1d37c1519aefdaecd))
+
 ## [2.8.1](https://github.com/zuke-build/zuke/compare/ai-v2.8.0...ai-v2.8.1) (2026-09-21)
 
 
