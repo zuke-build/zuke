@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.8.1](https://github.com/zuke-build/zuke/compare/ai-v2.8.0...ai-v2.8.1) (2026-09-21)
+
+
+### Bug Fixes
+
+* **ai:** carry an App token on both review jobs so answered threads get resolved ([#634](https://github.com/zuke-build/zuke/issues/634)) ([7b2197f](https://github.com/zuke-build/zuke/commit/7b2197f36a2fa68a1c0170a81acef6afc348475e))
+
 ## [2.8.0](https://github.com/zuke-build/zuke/compare/ai-v2.7.0...ai-v2.8.0) (2026-09-21)
 
 

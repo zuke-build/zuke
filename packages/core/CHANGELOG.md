@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.58.0](https://github.com/zuke-build/zuke/compare/core-v1.57.0...core-v1.58.0) (2026-09-21)
+
+
+### Features
+
+* **core:** export the default env reader, and drop console's wordmark copy ([#643](https://github.com/zuke-build/zuke/issues/643)) ([0b67f33](https://github.com/zuke-build/zuke/commit/0b67f335f444fc52291b9abddcd571726d5c7c56)), closes [#639](https://github.com/zuke-build/zuke/issues/639)
+
 ## [1.57.0](https://github.com/zuke-build/zuke/compare/core-v1.56.0...core-v1.57.0) (2026-09-21)
 
 
