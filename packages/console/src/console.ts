@@ -47,7 +47,7 @@ import {
   themeTags,
 } from "./theme.ts";
 import { escapeMarkup, renderMarkup } from "./markup.ts";
-import { logoLines, type LogoOptions } from "./logo.ts";
+import { logoLines, type LogoOptions } from "@zuke/core";
 
 /** A destination for rendered lines. Overridable to capture output in tests. */
 export interface Sink {

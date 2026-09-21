@@ -133,10 +133,9 @@ export {
   type TestCounts,
 } from "./src/summary_note.ts";
 export type { Style } from "./src/render.ts";
-// The wordmark is exported for `@zuke/console`, which renders the same art and
-// will import it from here once a published core carries it (see logo.ts). The
-// banner's own line builder is not: the executor is its only caller, and
-// `mod.ts` is semver-protected surface.
+// The wordmark is exported for `@zuke/console`, which re-exports it rather than
+// rendering its own copy. The banner's own line builder is not: the executor is
+// its only caller, and `mod.ts` is semver-protected surface.
 export { logoLines, type LogoOptions, ZUKE_LOGO } from "./src/logo.ts";
 export { VERSION } from "./src/version.ts";
 export type { BuildCache, OpenCacheOptions } from "./src/cache.ts";
@@ -418,4 +417,7 @@ export { type RunPlan } from "./src/run_plan.ts";
 // The SHA-256 digest helper, for a package that needs a collision-resistant
 // fingerprint of untrusted text (the AI reviewer's memory of what a verifier
 // saw) rather than the fast, non-cryptographic hash it keys caches with.
-export { sha256Hex } from "./src/internal.ts";
+// A wrapper package may depend only on core, so a helper two of them need is
+// exported here or retyped in each. `defaultReadEnv` was the latter, in
+// `@zuke/otel` and `@zuke/gcloud`, which is how env readers drift apart.
+export { defaultReadEnv, sha256Hex } from "./src/internal.ts";

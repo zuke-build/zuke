@@ -190,6 +190,11 @@ function defaultMcpAuthorize(identity: McpIdentity, call: McpCall): McpAuthoriza
   its owner would mean nobody could intervene. Documented, and overridable by
   `Build.mcpAuthorize`.
 
+function defaultReadEnv(name: string): string | undefined
+  Read an environment variable, tolerating a denied `--allow-env` permission by
+  returning `undefined` rather than throwing. The default env reader every
+  command uses when the caller doesn't inject one.
+
 function denoExecutable(standalone: boolean): string
   The executable that runs Deno here — what to spawn when a build needs `deno`
   itself, rather than a tool it installed.

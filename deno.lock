@@ -1593,7 +1593,7 @@
       },
       "packages/console": {
         "dependencies": [
-          "jsr:@zuke/core@^1.51.0"
+          "jsr:@zuke/core@^1.57.0"
         ]
       },
       "packages/cspell": {
