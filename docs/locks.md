@@ -18,7 +18,9 @@ class CD extends Build {
         .withTtl("4h")
         .onConflict((holder) =>
           `${this.repo.value} is being deployed by ${holder.actor} ` +
-          `(run ${holder.runId}, since ${holder.since}). Wait, then retry.`))
+          `(run ${holder.runId}, since ${holder.since}). Wait, then retry.`
+        )
+    )
     .executes(async (ctx) => {/* … */});
 }
 ```
@@ -38,11 +40,11 @@ parameters resolve, so the key can read `this.<param>.value`.
   filename and URL segment) or `s.key(literal)`. Because the whole settings
   lambda runs after parameters resolve, a key built from `this.repo.value` sees
   the final value.
-- **TTL.** `s.withTtl(...)` (a duration like `"4h"`, `"30m"`, or milliseconds) bounds how
-  long the lock survives **if the holder disappears**. A live holder renews it
-  automatically at half the TTL while its body runs, so a long deploy under a
-  short TTL never loses its lock. If the holding process is `kill -9`'d, the
-  renewals stop and the lock becomes free once the TTL passes — no manual
+- **TTL.** `s.withTtl(...)` (a duration like `"4h"`, `"30m"`, or milliseconds)
+  bounds how long the lock survives **if the holder disappears**. A live holder
+  renews it automatically at half the TTL while its body runs, so a long deploy
+  under a short TTL never loses its lock. If the holding process is `kill -9`'d,
+  the renewals stop and the lock becomes free once the TTL passes — no manual
   cleanup, no wedged pipeline.
 - **Release.** The lock is released when the target settles — **success,
   failure, or cancellation** — in a `finally`, so the common path never relies
@@ -51,7 +53,7 @@ parameters resolve, so the key can read `this.<param>.value`.
 ## Waiting instead of failing
 
 Failing fast is right for a resource where a second run is a mistake worth
-reporting. It is the wrong answer for a resource a developer wants to *use* —
+reporting. It is the wrong answer for a resource a developer wants to _use_ —
 one dev environment, one database, one port — where the useful behaviour is to
 keep asking until the resource frees, instead of making the developer run the
 command again.
@@ -61,8 +63,9 @@ devStack = target()
   .lock((s) =>
     s.lockKey("dev-env")
       .withTtl("4h")
-      .waitUpTo("30m")     // queue instead of failing
-      .pollEvery("5s"))    // how often to retry; 5s is the default
+      .waitUpTo("30m") // queue instead of failing
+      .pollEvery("5s")
+  ) // how often to retry; 5s is the default
   .executes(async (ctx) => {/* … */});
 ```
 
@@ -107,7 +110,9 @@ contending — the usual case when a shared resource looks stuck — list them:
 import { listStoreLocks } from "@zuke/core";
 
 for (const { key, holder, expiresAt } of await listStoreLocks(store)) {
-  console.log(`${key}: ${holder.actor} (run ${holder.runId}) since ${holder.since}`);
+  console.log(
+    `${key}: ${holder.actor} (run ${holder.runId}) since ${holder.since}`,
+  );
 }
 ```
 
@@ -147,11 +152,11 @@ its 60-second TTL.
 
 Its whole job is to make "slow" and "dead" different things. A run record cannot
 tell them apart on its own — a process mid-step and a process that was
-`SIGKILL`ed both leave a record that says `running` and stops changing. The lease
-answers it: a live holder keeps renewing, so a claim that has lapsed means the
-holder is gone and the run can be taken over.
+`SIGKILL`ed both leave a record that says `running` and stops changing. The
+lease answers it: a live holder keeps renewing, so a claim that has lapsed means
+the holder is gone and the run can be taken over.
 
-- **Ordering matters.** The lease is taken *before* the record says `running`,
+- **Ordering matters.** The lease is taken _before_ the record says `running`,
   and on a resume before the record leaves `suspended` — so a `running` record
   always has a live holder. Acquiring afterwards would leave a window in which a
   perfectly healthy run looked abandoned.
@@ -160,42 +165,44 @@ holder is gone and the run can be taken over.
   compare-and-swap and a resumer that cannot take it stops.
 - **Losing it stops the run — it does not cancel it.** If a renewal is refused —
   the claim is demonstrably somebody else's now — the run stops rather than
-  carrying on beside whoever took it over. Stopping is *all* it does: it does
+  carrying on beside whoever took it over. Stopping is _all_ it does: it does
   **not** run the compensations, and it does **not** settle the record. Both
   belong to the new holder now, and unwinding work that holder is already
   building on would be the very "two processes on one run" the lease exists to
   prevent. Per-target progress already queued is dropped rather than flushed —
   the writer stops writing the moment the claim is lost, so nothing it had left
   to say lands on the new holder's record — nothing new is started, and the
-  process reports that the run was taken over. A claim lost *during* a
+  process reports that the run was taken over. A claim lost _during_ a
   cancellation's rollback stops that walk where it stands, for the same reason:
   the remaining compensations belong to whoever holds the run now.
 - **A refused renewal is loss; a failed one is not.** A store answers "no" when
-  the claim has changed hands, but it *throws* for a filesystem mutex it could
+  the claim has changed hands, but it _throws_ for a filesystem mutex it could
   not take in time, or an HTTP 503, or a DNS blip. None of those say who holds
   the lease, so they are retried on the next tick rather than aborting a healthy
   build over a bad second.
 - **The heartbeat never keeps a process alive** — and, like any timer, it does
-  not fire while the event loop is blocked in synchronous work. A run that blocks for longer than the TTL can therefore have
-  its lease lapse and be taken over; losing the claim then stops it, so the
-  outcome is a stopped run rather than two writers.
+  not fire while the event loop is blocked in synchronous work. A run that
+  blocks for longer than the TTL can therefore have its lease lapse and be taken
+  over; losing the claim then stops it, so the outcome is a stopped run rather
+  than two writers.
 - **Whoever takes the claim gives it back.** A resume releases the lease it took
   on every path out, including one where the run fails — a claim held by nobody
   would make a run that has demonstrably stopped look like one still being
   worked on. A run that took its own lease releases it when it settles, and
   **cancellation is settling**: a Ctrl-C'd run hands the claim back as soon as
-  its record is terminal, rather than holding it for the rest of the TTL. The two
-  exceptions are a lease that was *lost* (not ours to give back) and a process
-  that breaks before it can release, where the claim lapses at its TTL instead.
-- **A crashed holder's claim lapses at the TTL.** Nothing polls for it: expiry is
-  evaluated by the store the next time somebody tries to acquire — and until
+  its record is terminal, rather than holding it for the rest of the TTL. The
+  two exceptions are a lease that was _lost_ (not ours to give back) and a
+  process that breaks before it can release, where the claim lapses at its TTL
+  instead.
+- **A crashed holder's claim lapses at the TTL.** Nothing polls for it: expiry
+  is evaluated by the store the next time somebody tries to acquire — and until
   somebody does, a lapsed claim is still its holder's: a renewal extends it
   whatever its expiry says. So "expired" is not "abandoned", and nothing may
   delete a lock record on expiry alone. `runs prune` deliberately leaves them
-  behind for that reason; clearing one belongs to whoever can *prove* the holder
+  behind for that reason; clearing one belongs to whoever can _prove_ the holder
   is gone, which a sweep does by acquiring it.
 - **A run that cannot take its lease does not start.** Acquiring is retried past
   a store having a bad moment, but a store that never answers fails the run with
-  a named error rather than running unclaimed — a `running` record with no holder
-  is exactly what a sweep reads as abandoned, so running without one would leave
-  a healthy build looking dead for its whole duration.
+  a named error rather than running unclaimed — a `running` record with no
+  holder is exactly what a sweep reads as abandoned, so running without one
+  would leave a healthy build looking dead for its whole duration.

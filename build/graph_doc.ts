@@ -17,6 +17,7 @@
  */
 
 import { FileTasks, type TargetBuilder } from "@zuke/core";
+import { formatText } from "./fmt_text.ts";
 
 /** Where the generated graph page is committed. */
 export const GRAPH_DOC_PATH = "docs/graph.md";
@@ -146,6 +147,24 @@ export function renderGraphDoc(targets: Map<string, TargetBuilder>): string {
 }
 
 /**
+ * The exact bytes the page should hold: {@link renderGraphDoc}'s output run
+ * through `deno fmt`.
+ *
+ * The page lives under `docs/`, which the formatter covers, so the rendered
+ * text is not the committed text: `deno fmt` rewraps the prose paragraphs to
+ * the margin and pads the target table's columns into alignment. Comparing
+ * against the raw render would make `format` and `graphDocCheck` contradict
+ * each other — each one's fix breaks the other. Formatting here, at the one
+ * place that reads and writes the file, keeps {@link renderGraphDoc} pure and
+ * leaves the formatter the sole authority on layout.
+ */
+export async function canonicalGraphDoc(
+  targets: Map<string, TargetBuilder>,
+): Promise<string> {
+  return await formatText(renderGraphDoc(targets), "md");
+}
+
+/**
  * Render and write the graph page. Returns `true` when the file changed (or
  * was created), `false` when it was already current — so the target can say
  * which happened.
@@ -154,7 +173,7 @@ export async function writeGraphDoc(
   targets: Map<string, TargetBuilder>,
   path: string = GRAPH_DOC_PATH,
 ): Promise<boolean> {
-  const content = renderGraphDoc(targets);
+  const content = await canonicalGraphDoc(targets);
   if (await FileTasks.exists(path)) {
     if (await FileTasks.readText(path) === content) return false;
   }
@@ -164,8 +183,8 @@ export async function writeGraphDoc(
 
 /**
  * The ways the committed page has drifted from the build: missing, or its
- * content no longer matches what {@link renderGraphDoc} produces. Empty means
- * the page is current.
+ * content no longer matches what {@link canonicalGraphDoc} produces. Empty
+ * means the page is current.
  */
 export async function checkGraphDoc(
   targets: Map<string, TargetBuilder>,
@@ -173,6 +192,8 @@ export async function checkGraphDoc(
 ): Promise<string[]> {
   if (!await FileTasks.exists(path)) return [`${path} (missing)`];
   const committed = await FileTasks.readText(path);
-  if (committed !== renderGraphDoc(targets)) return [`${path} (stale)`];
+  if (committed !== await canonicalGraphDoc(targets)) {
+    return [`${path} (stale)`];
+  }
   return [];
 }

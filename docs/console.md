@@ -3,9 +3,9 @@
 `@zuke/console` is the output engine behind every Zuke build — the ruled
 banners, the coloured status lines, and the aligned **Build Summary** all come
 from it. It's also a package you can import directly: a levelled logger with
-tag-based markup and a set of layout primitives (`line`, `rule`, `box`,
-`table`) that render cleanly to a terminal and degrade gracefully in CI, so a
-build never has to reach for `console.log`.
+tag-based markup and a set of layout primitives (`line`, `rule`, `box`, `table`)
+that render cleanly to a terminal and degrade gracefully in CI, so a build never
+has to reach for `console.log`.
 
 <!-- check -->
 
@@ -28,13 +28,13 @@ Seven methods form a severity ladder. `trace`, `debug`, `info`, `log`, and
 message accepts [markup](#markup).
 
 ```ts
-Log.trace("resolved 42 source files");        // most verbose
+Log.trace("resolved 42 source files"); // most verbose
 Log.debug("cache hit for 'check'");
-Log.info("pushing [bold]core@1.2.0[/]");       // → stdout
+Log.info("pushing [bold]core@1.2.0[/]"); // → stdout
 Log.log("a plain line — no icon, no styling"); // alias for info → stdout
-Log.success("published [bold]4[/] packages");  // ✔ is added for you
-Log.warn("coverage [yellow]94.2%[/] — below gate");  // → stderr
-Log.error("type-check failed", { error: err });      // → stderr, prints the cause
+Log.success("published [bold]4[/] packages"); // ✔ is added for you
+Log.warn("coverage [yellow]94.2%[/] — below gate"); // → stderr
+Log.error("type-check failed", { error: err }); // → stderr, prints the cause
 ```
 
 Each line is prefixed with a level mark: `·` (trace), `›` (debug), `ℹ` (info),
@@ -86,10 +86,10 @@ so tags nest cleanly. Every `ConsoleTasks` method that takes a message renders
 it through the markup parser.
 
 ```ts
-Log.info("[bold]core[/] is [green]ready[/]");            // one tag each
+Log.info("[bold]core[/] is [green]ready[/]"); // one tag each
 Log.info("[red bold]2 errors[/] in [underline]mod.ts[/]"); // combine styles
-Log.info("[yellow]outer [cyan]inner[/] still yellow[/]");  // [/] closes the nearest tag
-Log.info("[muted]12 files[/] scanned");                    // semantic theme token
+Log.info("[yellow]outer [cyan]inner[/] still yellow[/]"); // [/] closes the nearest tag
+Log.info("[muted]12 files[/] scanned"); // semantic theme token
 ```
 
 The recognised style names are:
@@ -112,8 +112,8 @@ A literal bracket is written by doubling it — `[[` renders as `[` and `]]` as
 which doubles every bracket so nothing in it can be mistaken for a tag:
 
 ```ts
-Log.info("array access looks like arr[[0]]");   // → arr[0]
-Log.info("branch: " + Log.escape(userInput));   // untrusted text can't smuggle tags
+Log.info("array access looks like arr[[0]]"); // → arr[0]
+Log.info("branch: " + Log.escape(userInput)); // untrusted text can't smuggle tags
 ```
 
 Matching is purely structural, so escaping is the boundary for any arbitrary or
@@ -126,13 +126,13 @@ accept the same options — `char` (the glyph to repeat), `width`, and `style` (
 array of style names).
 
 ```ts
-Log.line();                              // a full-width ── divider
-Log.line({ char: "═", width: 40 });      // custom glyph and width
+Log.line(); // a full-width ── divider
+Log.line({ char: "═", width: 40 }); // custom glyph and width
 Log.line({ char: "·", style: ["dim"] }); // styled divider
 
-Log.rule("Deploy");                       // a title centred in the rule
-Log.rule("Tests", { style: ["cyan"] });   // rules take the same options as line()
-Log.rule();                               // untitled — identical to line()
+Log.rule("Deploy"); // a title centred in the rule
+Log.rule("Tests", { style: ["cyan"] }); // rules take the same options as line()
+Log.rule(); // untitled — identical to line()
 ```
 
 A title too wide for the given width falls back to a plain, untitled line.
@@ -150,11 +150,11 @@ Log.box("Deployed core@1.2.0 to production.");
 Log.box(
   ["core   1.2.0   ✔", "cli    1.2.0   ✔", "cmd    1.2.0   ✔"],
   {
-    title: "Release",       // shown in the top border
-    padding: 1,             // blank cells inside the border
-    width: 40,              // fixed width (defaults to fit the content)
-    border: ["green"],      // style the border glyphs…
-    titleStyle: ["bold"],   // …and the title
+    title: "Release", // shown in the top border
+    padding: 1, // blank cells inside the border
+    width: 40, // fixed width (defaults to fit the content)
+    border: ["green"], // style the border glyphs…
+    titleStyle: ["bold"], // …and the title
   },
 );
 ```
@@ -172,8 +172,8 @@ strings. Options control the look.
 ```ts
 Log.table(
   [
-    { header: "Package", align: "left" },   // align: "left" | "right"
-    { header: "Version" },                    // defaults to left
+    { header: "Package", align: "left" }, // align: "left" | "right"
+    { header: "Version" }, // defaults to left
     { header: "Size", align: "right" },
   ],
   [
@@ -182,8 +182,8 @@ Log.table(
     ["@zuke/cmd", "1.2.0", "6 kB"],
   ],
   {
-    divider: true,            // rule between header and body
-    separator: "  ",          // gap between columns
+    divider: true, // rule between header and body
+    separator: "  ", // gap between columns
     headerStyle: ["bold"],
     dividerStyle: ["dim"],
   },
@@ -243,25 +243,25 @@ to its default (re-seeding the level from the environment).
 
 ```ts
 Log.configure({
-  level: "debug",   // "trace" | "debug" | "info" | "warn" | "error" | "silent"
-  color: true,      // force ANSI colour on/off (auto-detected from the TTY otherwise)
-  width: 100,       // width used for rules, boxes, and wrapping
-  github: true,     // emit ::group:: / ::warning:: / ::error:: annotations
+  level: "debug", // "trace" | "debug" | "info" | "warn" | "error" | "silent"
+  color: true, // force ANSI colour on/off (auto-detected from the TTY otherwise)
+  width: 100, // width used for rules, boxes, and wrapping
+  github: true, // emit ::group:: / ::warning:: / ::error:: annotations
   // sink:  a custom { out, err } target; theme: a custom palette
 });
 
-Log.level();        // read the active threshold
-Log.reset();        // restore every option to its default
+Log.level(); // read the active threshold
+Log.reset(); // restore every option to its default
 ```
 
-| `ConsoleOptions` field | Effect |
-| --- | --- |
-| `level` | The minimum severity to print (default from `ZUKE_LOG_LEVEL`, else `info`). |
-| `sink` | Where rendered lines go — an `{ out(line), err(line) }` target (default: stdout/stderr). Handy for capturing output in tests. |
-| `theme` | A custom colour palette (a `Theme`). |
-| `color` | Force ANSI colour on or off (default: auto — a TTY with `NO_COLOR` unset). |
-| `width` | Force the width used for rules, boxes, and wrapping (default: the terminal width). |
-| `github` | Force GitHub Actions output formatting (default: auto-detected from `GITHUB_ACTIONS`). |
+| `ConsoleOptions` field | Effect                                                                                                                        |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `level`                | The minimum severity to print (default from `ZUKE_LOG_LEVEL`, else `info`).                                                   |
+| `sink`                 | Where rendered lines go — an `{ out(line), err(line) }` target (default: stdout/stderr). Handy for capturing output in tests. |
+| `theme`                | A custom colour palette (a `Theme`).                                                                                          |
+| `color`                | Force ANSI colour on or off (default: auto — a TTY with `NO_COLOR` unset).                                                    |
+| `width`                | Force the width used for rules, boxes, and wrapping (default: the terminal width).                                            |
+| `github`               | Force GitHub Actions output formatting (default: auto-detected from `GITHUB_ACTIONS`).                                        |
 
 When left unset, `color`, `width`, and `github` are auto-detected per call:
 colour follows `NO_COLOR` and TTY detection, width follows the terminal, and
@@ -294,8 +294,9 @@ semantic markup tokens (`success`, `warn`, `muted`, …) then follow your palett
 everywhere they appear, in both your own `Log` calls and Zuke's built-in output.
 
 The target header is themed (its colour comes from the `Theme`); the footers,
-summary table, and job-summary Markdown reuse Zuke's canonical `defaultRenderer`,
-so output stays identical to a plain build unless a custom theme changes it.
+summary table, and job-summary Markdown reuse Zuke's canonical
+`defaultRenderer`, so output stays identical to a plain build unless a custom
+theme changes it.
 
 ## Reference
 

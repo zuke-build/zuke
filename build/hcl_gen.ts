@@ -18,7 +18,7 @@
  */
 
 import { FileTasks } from "@zuke/core";
-import { DenoTasks } from "@zuke/deno";
+import { formatText } from "./fmt_text.ts";
 
 /** One generated wrapper: its names, binary, output path, and module-doc source. */
 export interface HclTarget {
@@ -76,16 +76,7 @@ export function renderHcl(
 async function canonicalSource(target: HclTarget): Promise<string> {
   const template = await FileTasks.readText(HCL_TEMPLATE);
   const moduleDoc = await FileTasks.readText(target.docPath);
-  const raw = renderHcl(template, moduleDoc, target);
-  const dir = await Deno.makeTempDir({ dir: Deno.cwd(), prefix: ".hclgen-" });
-  try {
-    const tmp = `${dir}/out.ts`;
-    await FileTasks.writeText(tmp, raw);
-    await DenoTasks.fmt((s) => s.paths(tmp).quiet());
-    return await FileTasks.readText(tmp);
-  } finally {
-    await FileTasks.remove(dir, { recursive: true });
-  }
+  return await formatText(renderHcl(template, moduleDoc, target), "ts");
 }
 
 /** Regenerate every wrapper source from the template; returns the paths written. */

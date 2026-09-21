@@ -31,7 +31,7 @@ The plugin observes each run-level transition (via
 | Signal               | When                                     | Shape                                                                          |
 | -------------------- | ---------------------------------------- | ------------------------------------------------------------------------------ |
 | **trace**            | the run settles                          | a run span (`createdAt` → `updatedAt`) with one child span per executed target |
-| `zuke.run.started`   | a *fresh* run begins                     | counter, tagged `zuke.build` / `zuke.root_target`                              |
+| `zuke.run.started`   | a _fresh_ run begins                     | counter, tagged `zuke.build` / `zuke.root_target`                              |
 | `zuke.run.suspended` | the run parks at a `.waitsFor(...)` gate | counter per waiting target, tagged with its `trigger`                          |
 | `zuke.runs`          | the run settles                          | counter, tagged `outcome` = `succeeded` / `failed` / `cancelled`               |
 

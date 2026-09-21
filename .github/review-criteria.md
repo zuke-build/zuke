@@ -44,5 +44,5 @@ fallback rather than a pinned copy; and every input to the choice (`PATH`,
 so preferring one over another moves the lever instead of removing it.
 
 Do not report the `PATH`-first ordering, or the environment being read at all,
-as findings. Report a concrete path by which input the *caller did not choose*
+as findings. Report a concrete path by which input the _caller did not choose_
 reaches the spawn.
