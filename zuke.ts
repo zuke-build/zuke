@@ -1035,8 +1035,11 @@ class ZukeBuild extends Build {
       // drive-by comment never reaches the model.
       // Threads: each finding is anchored to its line, and a maintainer
       // contests it by replying there. This repo reviewing its own PRs is the
-      // only real-world exercise this feature gets.
-      .discussion((d) => d.threads())
+      // only real-world exercise this feature gets. Commands: the comment
+      // carries a Commands panel, and `@zuke-build accept <id> reason` records
+      // a finding as accepted for the PR — the honest vehicle for "by design"
+      // that the reworded-finding loop on #634 lacked (#637, #641).
+      .discussion((d) => d.threads().commands("@zuke-build"))
       // Dismissed false positives, kept auditable under "Suppressed": a build's
       // own readiness probe / tcpReachable run build-author code that connects
       // to an address the author typed — no more capability than any other line
@@ -1263,7 +1266,7 @@ class ZukeBuild extends Build {
       // this reviewer (which lacked it) kept re-asserting a fixed finding and
       // a reworded false positive — so it verifies now as well.
       .conventionsFile("AGENTS.md")
-      .discussion((d) => d.threads())
+      .discussion((d) => d.threads().commands("@zuke-build"))
       .verify()
       // Dismissed false positives from the v2 PR, kept auditable under
       // "Suppressed": `31ce99tz9w4ef` claims the comment upsert trusts any
@@ -1379,8 +1382,9 @@ class ZukeBuild extends Build {
     // The second flow: a maintainer comments `@zuke-build review` on any pull
     // request — a fork's included, which the `pull_request` job must skip —
     // and the review runs from master's checkout with that pull request
-    // fetched as data.
-    command: (c) => c.text("@zuke-build review"),
+    // fetched as data. `accept` starts a run too, so a maintainer's
+    // acceptance of a finding is applied by the comment that gives it.
+    command: (c) => c.text("@zuke-build review").also("@zuke-build accept"),
     // The same resolver every other workflow uses, so this file names the same
     // commit they do. Without it the prelude falls back to the reference baked
     // into core, which is a release behind the moment the action is released

@@ -1116,34 +1116,47 @@ Depth and discussion knobs (all optional, per reviewer):
   rebuttal is answered without a push by commenting the workflow's `command`
   (e.g. `@zuke-build review`): that run adjudicates every reply and answers in
   the thread. The workflow does not run on every reply — that would snowball.
+- `.discussion((d) => d.commands("@zuke-build"))` — take commands addressed to
+  that mention (the workflow command's handle). Every review comment then
+  carries a collapsed **Commands** panel with one line of help per command, and
+  `@zuke-build accept <id> <reason>` from a trusted maintainer records the
+  finding as **accepted** for the pull request — no adjudication, listed under
+  its own heading, its thread answered with ✅ and resolved, never raised again
+  by any reviewer however it is reworded, moved or escalated. In a finding's
+  thread the id may be left out. Pair it with
+  `c.text("@zuke-build review").also("@zuke-build accept")` on the workflow so
+  the accept comment starts the run that applies it.
 - `.discussion()` — the reviewer engages with the PR thread instead of looping:
   a maintainer contests a finding by replying with its id quoted, an
   adjudication pass weighs the rebuttal on merit, and an accepted dismissal is
   remembered (in a state block inside the reviewer's own comment) so the finding
   — or a rewording — doesn't resurface without new evidence. A rewording is
   caught structurally, not just by asking the model nicely: a finding whose id
-  the state doesn't know is compared against the decided findings in the same
-  file, and a match adopts that identity, so a dismissal is inherited (shown
-  with the earlier title) and a fixed finding reopens under the id the thread
-  already knows. The rewording is recorded as an alias, making later rounds
-  free. The pass can only rename — same file only, never a more severe finding
-  inheriting a less severe one's decision, bounded comparisons per run — and
-  every failure leaves the finding reported. It also tracks progress: still-open
-  findings are re-assessed each round, ones that stop reproducing are marked
-  fixed and listed cumulatively ("✅ Fixed since first review"), and a fixed
-  finding that reappears reopens. A contested finding the next round does not
-  re-report (or the verifier refutes) is still adjudicated: an accepted rebuttal
-  records it dismissed — sticky, replied in-thread — never "fixed". Trust is
-  decided in code from the host's author metadata (`OWNER`/`MEMBER`/
-  `COLLABORATOR` by default; tune with
-  `.discussion((d) => d.trustAuthors(...))`) — untrusted comments never reach
-  the model, which blunts comment-based prompt injection. Requires `.comment()`;
-  works on every supported host, each mapping its own metadata onto those
-  association names: GitHub uses `author_association` plus a collaborators API
-  lookup that counts push access as `COLLABORATOR` (the Actions token sees a
-  private organisation member as `CONTRIBUTOR`), GitLab derives it from project
-  membership (Owner 50 → `OWNER`, Developer/Maintainer 30/40 → `MEMBER`, below
-  that `NONE`), Bitbucket from workspace permissions
+  the state doesn't know is compared against the decided findings, and a match
+  adopts that identity, so a dismissal is inherited (shown with the earlier
+  title) and a fixed finding reopens under the id the thread already knows. A
+  maintainer's decision — a dismissal, an acceptance, a contested finding — is
+  inherited across the files of the diff and at any severity, is offered first
+  and outside the comparison cap, and is shared with every reviewer on the pull
+  request (each reads the others' state blocks); the model's own decisions
+  (refuted, fixed, still open) match same file only and never a more severe
+  finding. The rewording is recorded as an alias, making later rounds free. The
+  pass can only rename, with bounded comparisons per run, and every failure
+  leaves the finding reported. It also tracks progress: still-open findings are
+  re-assessed each round, ones that stop reproducing are marked fixed and listed
+  cumulatively ("✅ Fixed since first review"), and a fixed finding that
+  reappears reopens. A contested finding the next round does not re-report (or
+  the verifier refutes) is still adjudicated: an accepted rebuttal records it
+  dismissed — sticky, replied in-thread — never "fixed". Trust is decided in
+  code from the host's author metadata (`OWNER`/`MEMBER`/ `COLLABORATOR` by
+  default; tune with `.discussion((d) => d.trustAuthors(...))`) — untrusted
+  comments never reach the model, which blunts comment-based prompt injection.
+  Requires `.comment()`; works on every supported host, each mapping its own
+  metadata onto those association names: GitHub uses `author_association` plus a
+  collaborators API lookup that counts push access as `COLLABORATOR` (the
+  Actions token sees a private organisation member as `CONTRIBUTOR`), GitLab
+  derives it from project membership (Owner 50 → `OWNER`, Developer/Maintainer
+  30/40 → `MEMBER`, below that `NONE`), Bitbucket from workspace permissions
   (`owner`/`collaborator`/`member`). **Azure DevOps reports no such
   relationship**, so nobody is trusted there by association — name the
   maintainers with `.trustAuthors(...)`. The mapping fails closed: if the

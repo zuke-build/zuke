@@ -33,7 +33,12 @@ import {
   resolveBitbucketContext,
   upsertBitbucketComment,
 } from "../src/hosts/bitbucket.ts";
-import { findOwn, type HostComment } from "../src/hosts/types.ts";
+import {
+  commentMarker,
+  findOwn,
+  type HostComment,
+  parseCommentMarker,
+} from "../src/hosts/types.ts";
 import { DiscussionSettings, trustedComments } from "../src/discussion.ts";
 
 /** A recorded request. */
@@ -1710,4 +1715,17 @@ Deno.test("a failed push-access lookup leaves the association as reported", asyn
     fetchImpl,
   );
   assertEquals(comments[0].association, "CONTRIBUTOR");
+});
+
+Deno.test("parseCommentMarker reads the reviewer name only from an opening marker", () => {
+  assertEquals(
+    parseCommentMarker(`${commentMarker("security review")}\nreport`),
+    "security review",
+  );
+  assertEquals(
+    parseCommentMarker("quoting <!-- zuke-ai-review:x -->"),
+    undefined,
+  );
+  assertEquals(parseCommentMarker("plain text"), undefined);
+  assertEquals(parseCommentMarker("<!-- zuke-ai-state:abc -->"), undefined);
 });

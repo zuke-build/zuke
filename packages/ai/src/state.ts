@@ -28,6 +28,9 @@ import { dig } from "./json.ts";
  *   it, with the rationale recorded.
  * - `dismissed` — a maintainer refuted it and the reviewer accepted the
  *   refutation; it stays recorded (and muted) instead of resurfacing.
+ * - `accepted` — a maintainer accepted it as intended for this pull request
+ *   with the `accept` command, no adjudication asked: the concern is decided,
+ *   and it stays recorded (and muted) exactly like a dismissal.
  * - `fixed` — a previously open finding that no longer reproduces against the
  *   current diff: the reviewer re-assessed it and the issue is gone. Kept in
  *   the state (and listed in the report) so the PR's progress is visible; it
@@ -44,6 +47,7 @@ export type FindingStatus =
   | "open"
   | "upheld"
   | "dismissed"
+  | "accepted"
   | "fixed"
   | "refuted";
 
@@ -59,9 +63,12 @@ export interface StoredFinding {
   status: FindingStatus;
   /** The file the finding was attributed to, if any. */
   file?: string;
-  /** Why the finding was dismissed or upheld, when adjudicated. */
+  /** Why the finding was dismissed, accepted or upheld, when decided. */
   rationale?: string;
-  /** The login of the maintainer whose rebuttal drove the adjudication. */
+  /**
+   * The login of the maintainer whose rebuttal drove the adjudication, or who
+   * accepted the finding.
+   */
   author?: string;
   /**
    * For a `refuted` finding: the SHA-256 digest of everything the verifier
@@ -204,7 +211,7 @@ function toStoredFinding(item: unknown): StoredFinding | undefined {
   if (typeof id !== "string" || typeof title !== "string") return undefined;
   if (
     status !== "open" && status !== "upheld" && status !== "dismissed" &&
-    status !== "fixed" && status !== "refuted"
+    status !== "accepted" && status !== "fixed" && status !== "refuted"
   ) {
     return undefined;
   }
@@ -285,11 +292,16 @@ function byStatus(
   return matched;
 }
 
-/** The dismissed findings in `state`, keyed by fingerprint. */
+/**
+ * The findings in `state` a maintainer's decision muted — `dismissed` through
+ * adjudication or `accepted` outright — keyed by fingerprint. Both are sticky,
+ * both are shown to the model as decided, and both are priors a restatement
+ * inherits whatever file or severity it comes back under.
+ */
 export function dismissedOf(
   state: ReviewState | undefined,
 ): Map<string, StoredFinding> {
-  return byStatus(state, "dismissed");
+  return byStatus(state, "dismissed", "accepted");
 }
 
 /**

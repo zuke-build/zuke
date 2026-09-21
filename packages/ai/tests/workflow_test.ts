@@ -771,3 +771,24 @@ Deno.test("the command job checks the commenter's push access before the review"
     2,
   );
 });
+
+Deno.test("also adds commands that start the run too, each matched like the first", () => {
+  const yaml = commandBuild((c) =>
+    c.text("@zuke-build review").also("@zuke-build accept")
+  );
+  const gate =
+    yaml.split("\n").find((line) =>
+      line.includes("github.event_name == 'issue_comment'")
+    ) ?? "";
+  assertStringIncludes(
+    gate,
+    "(startsWith(github.event.comment.body, '@zuke-build review') || " +
+      "startsWith(github.event.comment.body, '@zuke-build accept'))",
+  );
+  // The extra command is held to the same alphabet.
+  assertThrows(
+    () => commandBuild((c) => c.text("@zuke-build review").also("x') || ('")),
+    Error,
+    "is not a valid comment command",
+  );
+});

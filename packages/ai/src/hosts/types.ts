@@ -93,12 +93,13 @@ export interface HostComment {
 
 /**
  * How a finding's review thread was last answered by the reviewer. `fixed`,
- * `dismissed` and `refuted` close the thread; `upheld` leaves it open;
- * `reopened` reverses an earlier close.
+ * `dismissed`, `accepted` and `refuted` close the thread; `upheld` leaves it
+ * open; `reopened` reverses an earlier close.
  */
 export type ThreadOutcome =
   | "fixed"
   | "dismissed"
+  | "accepted"
   | "upheld"
   | "reopened"
   | "refuted";
@@ -276,6 +277,19 @@ export async function paginateLinked(
 /** Render the hidden marker (an HTML comment) used to identify a reviewer's prior comment. */
 export function commentMarker(name: string): string {
   return `<!-- zuke-ai-review:${name} -->`;
+}
+
+/**
+ * The reviewer name a comment body's opening marker declares, or `undefined`
+ * when the body does not open with one. The inverse of {@link commentMarker},
+ * for finding the **other** reviewers' comments on a pull request — the ones
+ * whose decisions this reviewer may inherit. Opening the body is required
+ * here for the same reason it is in {@link findOwn}; the authorship half of
+ * that rule is the caller's, as it is there.
+ */
+export function parseCommentMarker(body: string): string | undefined {
+  const match = body.match(/^<!-- zuke-ai-review:([^\n]+?) -->/);
+  return match === null ? undefined : match[1];
 }
 
 /**

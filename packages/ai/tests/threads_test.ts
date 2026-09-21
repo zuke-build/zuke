@@ -636,6 +636,7 @@ Deno.test("every outcome renders a distinct human sentence", () => {
   const kinds = [
     "fixed",
     "dismissed",
+    "accepted",
     "upheld",
     "reopened",
     "refuted",
@@ -832,4 +833,55 @@ Deno.test("the reviewer never argues with itself across mixed tokens", async () 
   );
   assertEquals(threads.get("aa11")?.outcomes, ["dismissed"]);
   assertEquals(threads.get("aa11")?.replies, []);
+});
+
+Deno.test("an acceptance this round is answered as accepted and resolved", () => {
+  const plan = planThreads(inputs({
+    dismissed: [{ id: "aa11", reason: "by design", accepted: true }],
+    threads: new Map([["aa11", thread("aa11", 7)]]),
+  }));
+  assertEquals(plan.actions[0].outcome, "accepted");
+  assertEquals(plan.actions[0].reason, "by design");
+  assertEquals(plan.resolve.map((t) => t.rootId), [7]);
+  // Already answered as accepted: not repeated, still resolved.
+  const again = planThreads(inputs({
+    dismissed: [{ id: "aa11", accepted: true }],
+    threads: new Map([["aa11", thread("aa11", 7, { outcomes: ["accepted"] })]]),
+  }));
+  assertEquals(again.actions, []);
+  assertEquals(again.resolve.map((t) => t.rootId), [7]);
+});
+
+Deno.test("an accepted outcome marker round-trips, and its body leads with ✅", () => {
+  const marker = outcomeMarker(NAME, "aa11", "accepted");
+  assertEquals(parseOutcomeMarker(NAME, marker), {
+    id: "aa11",
+    kind: "accepted",
+  });
+  assertEquals(
+    threadOutcomeBody("accepted", "by design"),
+    "✅ **Accepted by a maintainer** — by design",
+  );
+});
+
+Deno.test("a thread root names the accept command only when the reviewer takes commands", () => {
+  const action = {
+    id: "aa11",
+    kind: "open" as const,
+    finding: finding("aa11"),
+  };
+  const plain = threadRootBody(action);
+  assertEquals(plain.includes("accept"), false);
+  assertEquals(
+    plain.endsWith("Reply in this thread to contest it. `aa11`"),
+    true,
+  );
+  const withCommands = threadRootBody(action, "@zuke-build");
+  assertEquals(
+    withCommands.endsWith(
+      "Reply in this thread to contest it, or `@zuke-build accept <reason>` " +
+        "to accept it as intended. `aa11`",
+    ),
+    true,
+  );
 });

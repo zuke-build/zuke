@@ -1,15 +1,18 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
 import {
+  acceptances,
   budgetComments,
+  DEFAULT_ACCEPT_REASON,
   DEFAULT_TRUSTED_ASSOCIATIONS,
   DiscussionSettings,
   rebuttalsFor,
   trustedComments,
 } from "../src/discussion.ts";
-import type { HostComment } from "../src/hosts/types.ts";
+import { AiReviewError } from "../src/errors.ts";
+import type { FindingThread, HostComment } from "../src/hosts/types.ts";
 
 function comment(over: Partial<HostComment>): HostComment {
   return {
@@ -116,4 +119,167 @@ Deno.test("budgetComments caps total text, keeping the newest comments", () => {
   const all = budgetComments(comments, new DiscussionSettings());
   assertEquals(all.map((c) => c.id), [1, 2, 3]);
   assertEquals(all[0].body, "a".repeat(400));
+});
+
+// ─── The accept command ─────────────────────────────────────────────────────
+
+/** A reviewer thread for `id` whose replies are `replyIds`. */
+function thread(id: string, ...replyIds: number[]): [string, FindingThread] {
+  return [id, {
+    id,
+    rootId: 500,
+    outcomes: [],
+    replies: replyIds.map((replyId) =>
+      comment({ id: replyId, kind: "review", author: "maintainer" })
+    ),
+  }];
+}
+
+Deno.test("acceptances reads a command naming a tracked finding", () => {
+  const accepted = acceptances(
+    [
+      comment({
+        id: 1,
+        author: "maintainer",
+        body: "@zuke-build accept abc123: by design — the worker is sandboxed",
+      }),
+      comment({ id: 2, body: "@zuke-build accept `def456` — fine" }),
+      comment({ id: 3, body: "@zuke-build accept ghi789" }),
+    ],
+    "@zuke-build",
+    ["abc123", "def456", "ghi789"],
+    new Map(),
+  );
+  assertEquals(accepted.get("abc123"), {
+    author: "maintainer",
+    reason: "by design — the worker is sandboxed",
+  });
+  assertEquals(accepted.get("def456")?.reason, "fine");
+  // A bare command is a decision too, with the default reason recorded.
+  assertEquals(accepted.get("ghi789")?.reason, DEFAULT_ACCEPT_REASON);
+});
+
+Deno.test("acceptances ignores an unknown id, a quoted command and a lookalike", () => {
+  const accepted = acceptances(
+    [
+      comment({ id: 1, body: "@zuke-build accept zzz999: not tracked" }),
+      comment({ id: 2, body: "> @zuke-build accept abc123\n\nquoting" }),
+      comment({ id: 3, body: "please @zuke-build accept abc123" }),
+      comment({ id: 4, body: "@zuke-build acceptance abc123" }),
+      comment({ id: 5, body: "@zuke-build accept" }), // top-level, no id
+    ],
+    "@zuke-build",
+    ["abc123"],
+    new Map(),
+  );
+  assertEquals(accepted.size, 0);
+});
+
+Deno.test("acceptances matches the mention case-insensitively, like the workflow gate", () => {
+  const accepted = acceptances(
+    [comment({ id: 1, body: "@Zuke-Build ACCEPT abc123 ok" })],
+    "@zuke-build",
+    ["abc123"],
+    new Map(),
+  );
+  assertEquals(accepted.get("abc123")?.reason, "ok");
+});
+
+Deno.test("acceptances takes the thread's finding for a reply that names none", () => {
+  const threads = new Map([thread("abc123", 7)]);
+  const accepted = acceptances(
+    [
+      comment({
+        id: 7,
+        kind: "review",
+        author: "maintainer",
+        body: "@zuke-build accept this is intentional",
+      }),
+    ],
+    "@zuke-build",
+    ["abc123"],
+    threads,
+  );
+  // "this" is not a tracked id, so the whole remainder is the reason.
+  assertEquals(accepted.get("abc123")?.reason, "this is intentional");
+  // A reply that does name an id keeps naming it, even inside a thread.
+  const named = acceptances(
+    [
+      comment({
+        id: 7,
+        kind: "review",
+        body: "@zuke-build accept def456 — the other one",
+      }),
+    ],
+    "@zuke-build",
+    ["abc123", "def456"],
+    threads,
+  );
+  assertEquals([...named.keys()], ["def456"]);
+  // A top-level comment with the same body names nothing.
+  assertEquals(
+    acceptances(
+      [comment({ id: 8, body: "@zuke-build accept intentional" })],
+      "@zuke-build",
+      ["abc123"],
+      threads,
+    ).size,
+    0,
+  );
+});
+
+Deno.test("acceptances keeps the newest command per finding, bounded and one-lined", () => {
+  const accepted = acceptances(
+    [
+      comment({ id: 1, body: "@zuke-build accept abc123 first" }),
+      comment({
+        id: 2,
+        body: `@zuke-build accept abc123\n\n  second,\n  with lines ${
+          "x".repeat(400)
+        }`,
+      }),
+    ],
+    "@zuke-build",
+    ["abc123"],
+    new Map(),
+  );
+  const reason = accepted.get("abc123")?.reason ?? "";
+  assertEquals(reason.startsWith("second, with lines xxx"), true);
+  assertEquals(reason.includes("\n"), false);
+  assertEquals(reason.length, 301); // 300 characters and the ellipsis
+  assertEquals(reason.endsWith("…"), true);
+});
+
+Deno.test("acceptances carries the display name when the host reports one", () => {
+  const accepted = acceptances(
+    [
+      comment({
+        id: 1,
+        author: "uuid-1",
+        displayName: "Toto",
+        body: "@zuke-build accept abc123",
+      }),
+    ],
+    "@zuke-build",
+    ["abc123"],
+    new Map(),
+  );
+  assertEquals(accepted.get("abc123")?.displayName, "Toto");
+});
+
+Deno.test("commands takes one mention word and rejects anything else", () => {
+  for (const mention of ["@zuke-build", "/zuke", "zuke:"]) {
+    assertEquals(
+      new DiscussionSettings().commands(mention).mention_(),
+      mention,
+    );
+  }
+  assertEquals(new DiscussionSettings().mention_(), undefined);
+  for (const bad of ["", "two words", "@zuke\nbuild", "a'b"]) {
+    assertThrows(
+      () => new DiscussionSettings().commands(bad),
+      AiReviewError,
+      "is not a valid mention",
+    );
+  }
 });

@@ -34,6 +34,12 @@ import {
 export interface ThreadPhaseSettings {
   /** The reviewer's diagnostic name — also the seed for its thread markers. */
   readonly name: string;
+  /**
+   * The mention maintainers address commands to, when the reviewer takes
+   * them — named in each thread root so the `accept` command is one reply
+   * away.
+   */
+  readonly mention?: string;
   /** Whether `.quiet()` is set: no console notes when it is. */
   readonly quiet: boolean;
   /** The reviewer's environment reader, for host detection. */
@@ -159,7 +165,9 @@ export async function postThreads(
       // Masked once, before the branch: opening a thread and replying into one
       // publish the same text to the same pull request, so redacting at each
       // call separately would be two places to forget instead of one.
-      const body = settings.redact(threadBody(nameHash, action));
+      const body = settings.redact(
+        threadBody(nameHash, action, settings.mention),
+      );
       const result = action.kind === "reply"
         ? await context.ops.reply(doFetch, action.rootId ?? 0, body)
         : sha === undefined || action.anchor === undefined
@@ -263,9 +271,15 @@ function warnResolution(
 }
 
 /** The body of a thread root or outcome reply, with its marker leading. */
-function threadBody(nameHash: string, action: ThreadAction): string {
+function threadBody(
+  nameHash: string,
+  action: ThreadAction,
+  mention: string | undefined,
+): string {
   if (action.kind === "open") {
-    return `${findingMarker(nameHash, action.id)}\n${threadRootBody(action)}`;
+    return `${findingMarker(nameHash, action.id)}\n${
+      threadRootBody(action, mention)
+    }`;
   }
   const outcome = action.outcome ?? "upheld";
   return `${outcomeMarker(nameHash, action.id, outcome)}\n${
