@@ -7,7 +7,14 @@ import {
   assertStringIncludes,
   assertThrows,
 } from "./_assert.ts";
-import { Build, cicd, group, type Plugin, target } from "../mod.ts";
+import {
+  absolutePath,
+  Build,
+  cicd,
+  group,
+  type Plugin,
+  target,
+} from "../mod.ts";
 import {
   formatCommandHelp,
   formatGraph,
@@ -308,8 +315,10 @@ Deno.test("main doc resolves a relative spec to an absolute path before running"
   assertEquals(seen, [
     // Normalised, not concatenated: the `./` is resolved rather than carried
     // into the specifier, where it would show up in any error echoing it.
-    `${Deno.cwd()}/mod.ts`,
-    `${Deno.cwd()}/src/lib.ts`,
+    // Expressed through the same helper the resolver uses, because on Windows
+    // the cwd has backslashes and the normalised result does not.
+    absolutePath(Deno.cwd(), "mod.ts").path,
+    absolutePath(Deno.cwd(), "src/lib.ts").path,
     "npm:cowsay",
     "/abs/mod.ts",
     "C:/mods/mod.ts",

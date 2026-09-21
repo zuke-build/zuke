@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
-import { Build, target } from "../../packages/core/mod.ts";
+import { absolutePath, Build, target } from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
 import { withTemp } from "../../packages/core/tests/_temp.ts";
 import { VERSION } from "../../packages/core/src/version.ts";
@@ -57,7 +57,11 @@ Deno.test("the build's doc still treats a path as a path", async () => {
     return Promise.resolve(0);
   };
   await runCli(Noop, ["doc", "./lib.ts"], { docRunner: runner });
-  assertEquals(seen, `${Deno.cwd()}/lib.ts`);
+  // Built through the resolver's own helper rather than by interpolating
+  // Deno.cwd(): on Windows the cwd comes back with backslashes and the
+  // resolver normalises them, so a hand-built string disagrees there and
+  // nowhere else — which is what the three-OS matrix is for.
+  assertEquals(seen, absolutePath(Deno.cwd(), "lib.ts").path);
 
   await runCli(Noop, ["doc", "@scope/pkg"], { docRunner: runner });
   assertEquals(seen, "jsr:@scope/pkg");
