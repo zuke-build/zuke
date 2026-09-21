@@ -80,3 +80,19 @@ Deno.test("--help wins when --version is also given", async () => {
   assertEquals(out.trim() === VERSION, false);
   assertEquals(out.includes("Usage"), true);
 });
+
+Deno.test("the build's doc refuses an empty spec instead of building a bad one", async () => {
+  // Resolving "" would produce `jsr:@zuke/`, which deno doc rejects with a
+  // message about a specifier the caller never typed. The installed CLI
+  // already refused it; this is the same command, so it refuses it too.
+  let seen: string | undefined;
+  const { code, err } = await runCli(Noop, ["doc", ""], {
+    docRunner: (spec: string) => {
+      seen = spec;
+      return Promise.resolve(0);
+    },
+  });
+  assertEquals(code, 1);
+  assertEquals(seen, undefined);
+  assertEquals(err.includes("Usage: zuke doc"), true);
+});

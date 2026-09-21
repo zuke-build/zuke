@@ -1202,7 +1202,10 @@ async function runDoc(
   runner: DocRunner = defaultDocRunner,
 ): Promise<number> {
   const spec = parsed.docSpec;
-  if (spec === undefined) {
+  // An empty spec is a missing one, not a package name: resolving "" would
+  // build `jsr:@zuke/` and hand deno doc a malformed specifier to complain
+  // about. The installed CLI already refuses it, and these two agree.
+  if (spec === undefined || spec === "") {
     cliReporter.error(
       "Usage: zuke doc <spec>   (e.g. zuke doc core, jsr:@zuke/deno, or ./mod.ts)",
     );
