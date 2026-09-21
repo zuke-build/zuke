@@ -14,35 +14,35 @@ Everything is optional except a body (`.executes`) — with four exceptions, all
 below: a `service()`, a `.forEach()` fan-out, a `.waitsFor()` gate, and a target
 that declares only `.effect(...)` each legitimately have no `.executes(...)`.
 
-| Method                                                                                                   | Purpose                                                                                                                                                   |
-| -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `.description(text)`                                                                                     | Summary shown in `--list`.                                                                                                                                |
-| `.dependsOn(...t)`                                                                                       | Hard prerequisites; run first, transitively. Pass `this.<field>`.                                                                                         |
-| `.executes(fn)`                                                                                          | The body. Sync or async. **Required.** `fn` may take a `TargetContext` (`(ctx) => …`); see below.                                                         |
-| `.before(...t)` / `.after(...t)`                                                                         | Soft ordering — only reorders targets already in the plan; never pulls new ones in.                                                                       |
-| `.triggers(...t)`                                                                                        | Pull targets into the plan and run them _after_ this one.                                                                                                 |
-| `.dependentFor(...t)`                                                                                    | Reverse of `dependsOn`: make this a prerequisite of others.                                                                                               |
-| `.inputs(...p)` / `.outputs(...p)`                                                                       | Incremental cache: skip when inputs unchanged and outputs exist.                                                                                          |
-| `.cacheKey(fn)`                                                                                          | Add a non-file value (version, git sha, param) to the cache fingerprint.                                                                                  |
+| Method                                                                                                   | Purpose                                                                                                                                                    |
+| -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.description(text)`                                                                                     | Summary shown in `--list`.                                                                                                                                 |
+| `.dependsOn(...t)`                                                                                       | Hard prerequisites; run first, transitively. Pass `this.<field>`.                                                                                          |
+| `.executes(fn)`                                                                                          | The body. Sync or async. **Required.** `fn` may take a `TargetContext` (`(ctx) => …`); see below.                                                          |
+| `.before(...t)` / `.after(...t)`                                                                         | Soft ordering — only reorders targets already in the plan; never pulls new ones in.                                                                        |
+| `.triggers(...t)`                                                                                        | Pull targets into the plan and run them _after_ this one.                                                                                                  |
+| `.dependentFor(...t)`                                                                                    | Reverse of `dependsOn`: make this a prerequisite of others.                                                                                                |
+| `.inputs(...p)` / `.outputs(...p)`                                                                       | Incremental cache: skip when inputs unchanged and outputs exist.                                                                                           |
+| `.cacheKey(fn)`                                                                                          | Add a non-file value (version, git sha, param) to the cache fingerprint.                                                                                   |
 | `.onlyWhen(cond)`                                                                                        | Run only when the (possibly async) predicate holds, else skip. The predicate may take a context: `(ctx) => ctx.plan().includes("deploy")`.                 |
-| `.whenSkipped("skip-dependencies")`                                                                      | When `onlyWhen` skips this target, also skip deps no other planned target needs. Condition is evaluated up front, so it must not read run-produced state. |
-| `.requires(...params)`                                                                                   | Fail unless the listed parameters resolved to a value.                                                                                                    |
-| `.retry(times, delayMs?)`                                                                                | Retry the body on failure.                                                                                                                                |
-| `.timeout(ms)`                                                                                           | Fail the body if it runs longer than `ms` (per attempt).                                                                                                  |
-| `.lock((s) => s.lockKey(...).withTtl(...))`                                                              | Hold a cross-run lock while running; a second run wanting the key fails, or queues with `.waitUpTo(...)`. See below.                                      |
-| `.waitsFor((s) => s.on(externalSignal(...)))`                                                            | Gate (no body): suspend the run until an external event; resume later. See below.                                                                         |
-| `.onCancel(() => this.rollback)`                                                                         | Compensation run (reverse order) iff this target succeeded when the run is cancelled. See below.                                                          |
-| `.effect(name, fn)`                                                                                      | A side effect whose intent is recorded before it runs, so a resume re-drives it. At-least-once. See below.                                                |
-| `.forEach(() => items, (item) => ({stage: target()…}), (s) => s.concurrency(3).continueOnItemFailure())` | Fan out a pipeline over a runtime list: items concurrent, stages sequential per item. See below.                                                          |
-| `.proceedAfterFailure()`                                                                                 | Keep the build going if this target fails.                                                                                                                |
-| `.always()`                                                                                              | Run even after the build failed (cleanup/teardown).                                                                                                       |
-| `.unlisted()`                                                                                            | Hide from `--list`/`--help`; still runnable by name.                                                                                                      |
-| `.dryRunnable()`                                                                                         | Run this body under `--dry-run` with `$` in echo mode (prints argv, no spawn); others stay skipped.                                                       |
-| `.validateBefore(...v)` / `.validateAfter(...v)`                                                         | Run `Validation` checks around the body; a throw fails the target.                                                                                        |
+| `.whenSkipped("skip-dependencies")`                                                                      | When `onlyWhen` skips this target, also skip deps no other planned target needs. Condition is evaluated up front, so it must not read run-produced state.  |
+| `.requires(...params)`                                                                                   | Fail unless the listed parameters resolved to a value.                                                                                                     |
+| `.retry(times, delayMs?)`                                                                                | Retry the body on failure.                                                                                                                                 |
+| `.timeout(ms)`                                                                                           | Fail the body if it runs longer than `ms` (per attempt).                                                                                                   |
+| `.lock((s) => s.lockKey(...).withTtl(...))`                                                              | Hold a cross-run lock while running; a second run wanting the key fails, or queues with `.waitUpTo(...)`. See below.                                       |
+| `.waitsFor((s) => s.on(externalSignal(...)))`                                                            | Gate (no body): suspend the run until an external event; resume later. See below.                                                                          |
+| `.onCancel(() => this.rollback)`                                                                         | Compensation run (reverse order) iff this target succeeded when the run is cancelled. See below.                                                           |
+| `.effect(name, fn)`                                                                                      | A side effect whose intent is recorded before it runs, so a resume re-drives it. At-least-once. See below.                                                 |
+| `.forEach(() => items, (item) => ({stage: target()…}), (s) => s.concurrency(3).continueOnItemFailure())` | Fan out a pipeline over a runtime list: items concurrent, stages sequential per item. See below.                                                           |
+| `.proceedAfterFailure()`                                                                                 | Keep the build going if this target fails.                                                                                                                 |
+| `.always()`                                                                                              | Run even after the build failed (cleanup/teardown).                                                                                                        |
+| `.unlisted()`                                                                                            | Hide from `--list`/`--help`; still runnable by name.                                                                                                       |
+| `.dryRunnable()`                                                                                         | Run this body under `--dry-run` with `$` in echo mode (prints argv, no spawn); others stay skipped.                                                        |
+| `.validateBefore(...v)` / `.validateAfter(...v)`                                                         | Run `Validation` checks around the body; a throw fails the target.                                                                                         |
 | `.recoverWith(...r)` / `.recoverAttempts(n)`                                                             | Run `Remediation`s if the body fails (self-healing); re-run when one asks to. A remediation gets the target name, attempt and error — **no state handle**. |
-| `.partOf(group)`                                                                                         | Join a parallel batch (see `group()`).                                                                                                                    |
-| `.produces(...p)` / `.consumes(...t)`                                                                    | Declare and consume artifact paths.                                                                                                                       |
-| `.readOnly()`                                                                                            | Advertise the target as query-only over MCP (`readOnlyHint` instead of `destructiveHint`).                                                                |
+| `.partOf(group)`                                                                                         | Join a parallel batch (see `group()`).                                                                                                                     |
+| `.produces(...p)` / `.consumes(...t)`                                                                    | Declare and consume artifact paths.                                                                                                                        |
+| `.readOnly()`                                                                                            | Advertise the target as query-only over MCP (`readOnlyHint` instead of `destructiveHint`).                                                                 |
 
 **Lifecycle hooks** — `override` on the `Build` to observe a run without
 wrapping every target: `onStart()` once before anything runs, `onFinish(result)`
@@ -109,8 +109,8 @@ it, waits until ready, keeps it alive, then stops it in a `finally` (reverse
 order) so a failed test never leaks a process.
 
 ```ts
-import { Build, run, service, target, tcpReachable } from "jsr:@zuke/core";
-import { $ } from "jsr:@zuke/core/shell";
+import { Build, run, service, target, tcpReachable } from "@zuke/core";
+import { $ } from "@zuke/core/shell";
 
 class E2E extends Build {
   api = service()
@@ -167,17 +167,17 @@ deploy = target().executes(async (ctx) => {
 pairs on the target's own row of the end-of-build summary, NUKE-style:
 `test  Succeeded  8.1s  // Tests: 837 · Passed: 837 · Failed: 0`. Notes
 accumulate; a repeated key replaces its value; each renders on one line, in the
-terminal and in the Actions job summary. A failed target keeps its notes.
-Every test-runner wrapper (`DenoTasks.test`, `VitestTasks.run`,
-`JestTasks.run`, `BunTasks.test`, `NodeTasks.test`, `PlaywrightTasks.test`,
-`CypressTasks.run`) reports Tests/Passed/Failed (and Skipped/Todo/Flaky when
-non-zero) itself, and `DenoTasks.coverage` reports the measured
-Lines/Branches — a body only adds what its tools do not. Library code with no `ctx` (a wrapper, a
-helper) uses the ambient `reportSummary(pairs)` from `@zuke/core`, which lands
-on the running target's row and is a no-op outside a run. Test counts have one
-shared shape: `reportTestCounts({ passed, failed, skipped?, todo?, flaky? })`
-reports `Tests` (the sum), `Passed`, `Failed`, then `Skipped`/`Todo`/`Flaky`
-only when non-zero — the labels every test-runner wrapper uses.
+terminal and in the Actions job summary. A failed target keeps its notes. Every
+test-runner wrapper (`DenoTasks.test`, `VitestTasks.run`, `JestTasks.run`,
+`BunTasks.test`, `NodeTasks.test`, `PlaywrightTasks.test`, `CypressTasks.run`)
+reports Tests/Passed/Failed (and Skipped/Todo/Flaky when non-zero) itself, and
+`DenoTasks.coverage` reports the measured Lines/Branches — a body only adds what
+its tools do not. Library code with no `ctx` (a wrapper, a helper) uses the
+ambient `reportSummary(pairs)` from `@zuke/core`, which lands on the running
+target's row and is a no-op outside a run. Test counts have one shared shape:
+`reportTestCounts({ passed, failed, skipped?, todo?, flaky? })` reports `Tests`
+(the sum), `Passed`, `Failed`, then `Skipped`/`Todo`/`Flaky` only when non-zero
+— the labels every test-runner wrapper uses.
 
 `ctx.outcomes()` is a snapshot, not a live view, and a target that has not
 settled is **absent** rather than present with a placeholder — so depend on what
@@ -207,7 +207,7 @@ back. Loopback is exempt; `ZUKE_ALLOW_INSECURE_URL=1` opts a deliberate
 plaintext endpoint back in.
 
 ```ts
-import { Build, HttpStateStore, target } from "jsr:@zuke/core";
+import { Build, HttpStateStore, target } from "@zuke/core";
 
 class CD extends Build {
   override stateStore() {
@@ -216,7 +216,9 @@ class CD extends Build {
   deploy = target().executes(async (ctx) => {
     // trySet resolves true when the patch reached the store, false when the
     // write was dropped. Check it before an irreversible step that needs it.
-    if (!await ctx.state.trySet({ image: tag })) throw new Error("not recorded");
+    if (!await ctx.state.trySet({ image: tag })) {
+      throw new Error("not recorded");
+    }
     const meta = ctx.state.get(); // read back (this run and later ones)
   });
 }
@@ -304,7 +306,7 @@ the same key **fails** with a `LockConflictError` (naming the holder) — it doe
 not queue.
 
 ```ts
-import { Build, target } from "jsr:@zuke/core";
+import { Build, target } from "@zuke/core";
 
 class CD extends Build {
   repo = parameter("service");
@@ -344,7 +346,7 @@ state is saved, independent branches finish, and the process exits 0 — to be
 resumed later in a fresh process.
 
 ```ts
-import { Build, externalSignal, target } from "jsr:@zuke/core";
+import { Build, externalSignal, target } from "@zuke/core";
 
 class Deploy extends Build {
   deploy = target().executes(async (ctx) => {
@@ -373,14 +375,14 @@ class Deploy extends Build {
   it correlates via a marker echoed into the run's `run-name:`; for a workflow
   you can't modify use `.correlate("created-window")` (best-effort). A marker is
   copyable and anyone who can dispatch the workflow can wear it, so a run is
-  adopted only if it is *also* a `workflow_dispatch`, on the dispatched ref, and
+  adopted only if it is _also_ a `workflow_dispatch`, on the dispatched ref, and
   created within the discovery window; two survivors are a refusal, and the
   identity is re-checked before the result is read. A holder of `actions: write`
   on that repo can still dispatch the same workflow (branch protection does not
   gate a dispatch), so narrow that permission or use an environment with
-  required reviewers when the gate authorizes work in another trust domain. Either way it
-  **fails fast** (`.discoveryTimeout(...)`, default 1m) if the run never
-  correlates, instead of eating the whole `.timeout()`. The **dispatched**
+  required reviewers when the gate authorizes work in another trust domain.
+  Either way it **fails fast** (`.discoveryTimeout(...)`, default 1m) if the run
+  never correlates, instead of eating the whole `.timeout()`. The **dispatched**
   workflow has its own contract (marker input, run-name, required inputs) — see
   [The dispatched workflow's contract](#the-dispatched-workflows-contract-githubworkflow)
   below. Write your own trigger against the exported `WaitTrigger` /
@@ -454,8 +456,8 @@ class CD extends Build {
   names the compensation but `ctx.state` holds `deploy`'s meta), while a
   timed-out `.onTimeout(() => this.cleanup)` makes `cleanup` compensate
   **itself** — its own meta, `{}` if it never ran forward. One rule spans both:
-  `ctx.stateOf(ctx.target)` is `ctx.state`, every other name reads **empty**
-  (so `stateOf("deploy")` is empty under `.onCancel`). Writes stay in memory.
+  `ctx.stateOf(ctx.target)` is `ctx.state`, every other name reads **empty** (so
+  `stateOf("deploy")` is empty under `.onCancel`). Writes stay in memory.
   `ctx.outcomeOf(...)` works; `ctx.plan()` is the whole run's plan, so a
   compensation is in it only when it is also a graph target.
 - Cancel with `zuke cancel <id>`, `Ctrl-C`/`SIGTERM`, or the MCP `cancel_run`
@@ -521,7 +523,7 @@ concurrency.
 > **before or after** the fan-out instead.
 
 ```ts
-import { Build, parameter, target } from "jsr:@zuke/core";
+import { Build, parameter, target } from "@zuke/core";
 
 class CD extends Build {
   repos = parameter("services").required().array();
@@ -560,7 +562,7 @@ class CD extends Build {
 <!-- check -->
 
 ```ts
-import { Build, parameter, target } from "jsr:@zuke/core";
+import { Build, parameter, target } from "@zuke/core";
 
 class MyBuild extends Build {
   apiKey = parameter("Anthropic API key").secret().required();
@@ -598,11 +600,11 @@ yields a `number[]`. Order is kind/options → `.required()` → `.array()`: put
 `[]`.
 
 Reserved names: a parameter may not be named so that it renders as a built-in
-CLI flag (`actor` → `--actor`, `actorKind` → `--actor-kind`, `limit`,
-`target`, `output`, `state`, … — every flag `zuke --help` lists), nor
-`dryRun`, `confirm` or `operatorToken` (the MCP run-tool control keys). The
-build fails to load with a `ParameterError` naming the field. Only the
-rendered flag collides, so `actorName` and a grouped `runs.limit` are fine.
+CLI flag (`actor` → `--actor`, `actorKind` → `--actor-kind`, `limit`, `target`,
+`output`, `state`, … — every flag `zuke --help` lists), nor `dryRun`, `confirm`
+or `operatorToken` (the MCP run-tool control keys). The build fails to load with
+a `ParameterError` naming the field. Only the rendered flag collides, so
+`actorName` and a grouped `runs.limit` are fine.
 
 ### Secrets from a manager — `.from(source)`
 
@@ -611,7 +613,7 @@ in a shell, `.env`, or CI YAML — and its resolved value is **redacted from all
 of Zuke's output**:
 
 ```ts
-import { execSecret, parameter } from "jsr:@zuke/core";
+import { execSecret, parameter } from "@zuke/core";
 
 token = parameter("Deploy token")
   .secret()
@@ -636,7 +638,7 @@ hand it to a wrapper's `.toolPath(...)`, to `CmdTasks`, or to `defineTool`
 (`jsr:@zuke/core/tooling` — the submodule, not the package root).
 
 ```ts
-import { toolchain, ToolTasks } from "jsr:@zuke/core";
+import { toolchain, ToolTasks } from "@zuke/core";
 
 // One release binary:
 bin = target().executes(async () =>
@@ -668,7 +670,7 @@ executables (symlinks preserved). It returns the tree root as a callable
 directory to put on PATH:
 
 ```ts
-import { prependPath, ToolTasks } from "jsr:@zuke/core";
+import { prependPath, ToolTasks } from "@zuke/core";
 
 const node = await ToolTasks.installTree((s) =>
   s.name("node").archive("tar.gz").strip(1).bins("bin/node", "bin/npm")
@@ -699,8 +701,8 @@ the full task list and settings methods of each):
 
 | Package                                                                                                                                             | Object                                                    | Typical tasks                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | --------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `@zuke/core`                                                                                                                                        | `FileTasks`, `AnnounceTasks`, `ToolTasks`, `BrowserTasks` | copy/move/remove files, symlink/readLink (`force` re-points an existing link); Slack/Teams/Discord posts; install tool binaries; open an http(s) URL in the default browser (`BrowserTasks.open`)                                                                                                                                                                                                                                                                                                                                                             |
-| `@zuke/cli`                                                                                                                                         | the `zuke` command                                        | not a wrapper — `deno install -A -g -n zuke jsr:@zuke/cli`, then `zuke setup` scaffolds a project; inside one, `zuke <target>` forwards to its `zuke.ts` like `./zuke <target>`                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `@zuke/core`                                                                                                                                        | `FileTasks`, `AnnounceTasks`, `ToolTasks`, `BrowserTasks` | copy/move/remove files, symlink/readLink (`force` re-points an existing link); Slack/Teams/Discord posts; install tool binaries; open an http(s) URL in the default browser (`BrowserTasks.open`)                                                                                                                                                                                                                                                                                                      |
+| `@zuke/cli`                                                                                                                                         | the `zuke` command                                        | not a wrapper — `deno install -A -g -n zuke jsr:@zuke/cli`, then `zuke setup` scaffolds a project; inside one, `zuke <target>` forwards to its `zuke.ts` like `./zuke <target>`                                                                                                                                                                                                                                                                                                                        |
 | `@zuke/console`                                                                                                                                     | `ConsoleTasks`                                            | themed console output (headings, notices, the `logo()` splash) so a build never hand-rolls `console.log`                                                                                                                                                                                                                                                                                                                                                                                               |
 | `@zuke/deno`                                                                                                                                        | `DenoTasks`                                               | `check`, `test`, `bench`, `fmt`, `lint`, `cache`, `clean`, `doc`, `run`, `serve`, `eval`, `task`, `compile`, `info`, `init`, `upgrade`, `add`, `remove`, `install`, `uninstall`, `outdated`, `why`, `ci`, `approveScripts`, `bumpVersion`, `publish`, `pack`, `coverage`; readers `moduleGraph`, `cacheInfo`                                                                                                                                                                                           |
 | `@zuke/docs`                                                                                                                                        | `DocsTasks`                                               | turn generated API docs into published output                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
@@ -708,7 +710,7 @@ the full task list and settings methods of each):
 | `@zuke/cmd`                                                                                                                                         | `CmdTasks`                                                | `exec` — generic fallback for any CLI                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `@zuke/docker`, `@zuke/docker-compose`                                                                                                              | `DockerTasks`, ...                                        | build/run/compose. `DockerComposeTasks` covers the Compose surface — the lifecycle (`up`/`down`/`create`/`scale`/`wait`), images, containers (`run`/`exec`/`cp`/`export`), and the listings — with `servicePort`, `waitExitCode` and `composeVersion` handing back values. `DockerTasks` covers the everyday docker surface — containers, images, registry, and the `volume`/`network`/`system`/`context` groups — with `psEntries`, `imageEntries`, `volumeNames`, `networkNames` handing back values |
 | `@zuke/git`, `@zuke/gh`                                                                                                                             | `GitTasks`, `GhTasks`                                     | git — the everyday surface, typed (see below) — and GitHub CLI: typed `pr`/`issue`/`release`/`run`/`workflow`/`repo`/`secret`/`variable`/`label`/`cache` tasks (see below), `GhTasks.run` for the long tail, `GhTasks.api` for REST endpoints without a verb                                                                                                                                                                                                                                           |
-| `@zuke/cspell`, `@zuke/eslint`, `@zuke/oxlint`, `@zuke/biome`, `@zuke/dprint`, `@zuke/knip`, `@zuke/dpdm`, `@zuke/lint-staged`, `@zuke/shellcheck`  | `*Tasks`                                                  | lint/format/spell/dead-code. `ShellcheckTasks.lint` analyses shell scripts; give it `.shell("sh")` or ShellCheck reads the shebang and checks a POSIX script as bash                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `@zuke/cspell`, `@zuke/eslint`, `@zuke/oxlint`, `@zuke/biome`, `@zuke/dprint`, `@zuke/knip`, `@zuke/dpdm`, `@zuke/lint-staged`, `@zuke/shellcheck`  | `*Tasks`                                                  | lint/format/spell/dead-code. `ShellcheckTasks.lint` analyses shell scripts; give it `.shell("sh")` or ShellCheck reads the shebang and checks a POSIX script as bash                                                                                                                                                                                                                                                                                                                                   |
 | `@zuke/tsc`, `@zuke/tsx`, `@zuke/tsc-alias`, `@zuke/tsup`, `@zuke/tsdown`, `@zuke/vite`, `@zuke/storybook`, `@zuke/turbo`, `@zuke/nx`, `@zuke/nest` | `*Tasks`                                                  | TS compile / bundle / monorepo / framework CLIs                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `@zuke/openapi-ts`, `@zuke/orval`, `@zuke/redocly`                                                                                                  | `*Tasks`                                                  | generate API clients from OpenAPI                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `@zuke/husky`                                                                                                                                       | `HuskyTasks`                                              | git hooks                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -826,10 +828,10 @@ They pin the machine-readable form (`-z`, a separator-based `--format`), so a
 path with a space in it or a multi-line commit message parses correctly.
 
 To assert that a generated file is tracked — which a drift check has to do
-before it diffs, since `git diff` reports nothing at all about an untracked
-file — either read the listing and check it is non-empty, or let git decide the
-exit code with `lsFiles` and `.errorUnmatch()`, which needs `.paths(...)` to
-have anything to assert about.
+before it diffs, since `git diff` reports nothing at all about an untracked file
+— either read the listing and check it is non-empty, or let git decide the exit
+code with `lsFiles` and `.errorUnmatch()`, which needs `.paths(...)` to have
+anything to assert about.
 
 The interrogation commands add the answers CI asks for most — a base ref, a
 commit count, whether one ref is contained in another:
@@ -866,17 +868,17 @@ checkout.
 
 The deploy path is typed, so a build never string-builds it:
 
-| Area        | Tasks                                                                                |
-| ----------- | ------------------------------------------------------------------------------------ |
-| Auth        | `authActivateServiceAccount`, `authConfigureDocker`, `authList`, `authRevoke`        |
-| Config      | `configSet`, `configUnset`, `configGetValue`, `configList`                           |
-| Cloud Build | `buildsSubmit`, `buildsList`, `buildsDescribe`, `buildsLog`                          |
+| Area        | Tasks                                                                                          |
+| ----------- | ---------------------------------------------------------------------------------------------- |
+| Auth        | `authActivateServiceAccount`, `authConfigureDocker`, `authList`, `authRevoke`                  |
+| Config      | `configSet`, `configUnset`, `configGetValue`, `configList`                                     |
+| Cloud Build | `buildsSubmit`, `buildsList`, `buildsDescribe`, `buildsLog`                                    |
 | Cloud Run   | `runDeploy`, `runServicesUpdate`, `runServicesDescribe`, `runServicesList`, `runUpdateTraffic` |
-| Registry    | `artifactsImagesList`, `artifactsImagesDelete`, `artifactsRepositoriesList/Describe` |
-| Storage     | `storageCp`, `storageRsync`, `storageLs`, `storageRm`                                |
-| GKE         | `clustersGetCredentials`, `clustersList`, `clustersDescribe`                         |
-| Functions   | `functionsDeploy`, `functionsDescribe`                                               |
-| Secrets     | `secretsAccess`                                                                      |
+| Registry    | `artifactsImagesList`, `artifactsImagesDelete`, `artifactsRepositoriesList/Describe`           |
+| Storage     | `storageCp`, `storageRsync`, `storageLs`, `storageRm`                                          |
+| GKE         | `clustersGetCredentials`, `clustersList`, `clustersDescribe`                                   |
+| Functions   | `functionsDeploy`, `functionsDescribe`                                                         |
+| Secrets     | `secretsAccess`                                                                                |
 
 `runDeploy` and `runServicesUpdate` are not interchangeable: `run deploy`
 creates the service when it is absent and resets settings the call does not
@@ -1065,7 +1067,7 @@ mechanical rather than a model's job.
 `.validateAfter`. It scores the diff and breaks the build past a threshold.
 
 ```ts
-import { securityReviewer } from "jsr:@zuke/ai";
+import { securityReviewer } from "@zuke/ai";
 
 key = parameter("OpenAI API key").secret();
 review = securityReviewer((r) =>
@@ -1148,7 +1150,7 @@ the PR — writing no files. The build re-runs the real command to verify any
 applied fix.
 
 ```ts
-import { aiFixer } from "jsr:@zuke/ai";
+import { aiFixer } from "@zuke/ai";
 
 // Per target:
 test = target()
@@ -1174,10 +1176,10 @@ at all off it), or `"both"`. **Any fixer that can write should be
 rewriting a working tree someone is editing, and an exported API key is not a
 local guard. `.allowCI()` is the deprecated alias for `"both"`.
 
-Everything a fixer sends the model comes from the branch under repair — the error
-output, the diff, and the conventions read from `CLAUDE.md`/`AGENTS.md` — so all
-three go out fenced as untrusted data, with the system prompt naming them as
-data rather than instructions. **`.conventions(text)` is a trust pin**: it
+Everything a fixer sends the model comes from the branch under repair — the
+error output, the diff, and the conventions read from `CLAUDE.md`/`AGENTS.md` —
+so all three go out fenced as untrusted data, with the system prompt naming them
+as data rather than instructions. **`.conventions(text)` is a trust pin**: it
 overrides that read, so a fixer authorized to write (`.autoApply()`,
 `.commitFixes()`, or any `agentFixer`, which runs an agent with no path
 allowlist) is not taking direction from a document the author of the failing
@@ -1192,8 +1194,8 @@ generic fixer, agent chosen at the call site; takes the same `.runOnly(scope)`,
 and `"ci"` matters most here since the agent edits files autonomously.
 
 ```ts
-import { agentFixer } from "jsr:@zuke/ai";
-import { ClaudeTasks } from "jsr:@zuke/claude";
+import { agentFixer } from "@zuke/ai";
+import { ClaudeTasks } from "@zuke/claude";
 
 test = target()
   .executes(() => DenoTasks.test((s) => s.allowAll()))
@@ -1211,8 +1213,8 @@ collector. Register it on the run, not the build — it observes durable run
 state, so a **state store is required**.
 
 ```ts
-import { run } from "jsr:@zuke/core";
-import { otel } from "jsr:@zuke/otel";
+import { run } from "@zuke/core";
+import { otel } from "@zuke/otel";
 
 await run(MyBuild, {
   plugins: [
@@ -1277,9 +1279,10 @@ Copy the closest one instead of composing from primitives; each is a full
   gate.
 - **Release a library** (`docs/recipes/release-a-library.md`,
   `examples/release-library`) — `parameter().required()` version, then
-  `GitTasks.add/commit/tag/push` → `GhTasks.releaseCreate((s) =>
-  s.generateNotes().latest())` → `DenoTasks.publish()`, one chain you can stop
-  anywhere.
+  `GitTasks.add/commit/tag/push` →
+  `GhTasks.releaseCreate((s) =>
+  s.generateNotes().latest())` →
+  `DenoTasks.publish()`, one chain you can stop anywhere.
 
 ## Run & inspect
 
@@ -1364,13 +1367,12 @@ a descriptor whose entry module is **remote** (not a local path or `file:` URL �
 spawned. A `command` location is gated the same way against
 `ZUKE_REGISTRY_LAUNCH_COMMANDS` (comma-separated; matched against `command[0]`
 exactly, never by basename, since the descriptor picks the program string; `*`
-allows any), because the registry writer chooses the program *and its
-arguments* — audited `launch_command_not_allowed`. Listing a program does not
-license it to fetch: a remote argument still has to pass
-`ZUKE_REGISTRY_LAUNCH_HOSTS`. Prefer absolute paths: a relative program resolves
-against the descriptor's own cwd. `zuke register`
-writes a local `file:` module, so both only bite a hand-authored or
-second-party registry entry.
+allows any), because the registry writer chooses the program _and its arguments_
+— audited `launch_command_not_allowed`. Listing a program does not license it to
+fetch: a remote argument still has to pass `ZUKE_REGISTRY_LAUNCH_HOSTS`. Prefer
+absolute paths: a relative program resolves against the descriptor's own cwd.
+`zuke register` writes a local `file:` module, so both only bite a hand-authored
+or second-party registry entry.
 
 **Authorization by role** (`docs/mcp.md`): once the server authenticates its
 callers, `target().requiresRole("operator")` raises the bar for one target and
@@ -1463,6 +1465,7 @@ maintained JOSE library even though the published packages may not.
 metadata URL. The well-known path insertion (`/mcp` publishes at
 `/.well-known/oauth-protected-resource/mcp`) is handled for you, and only that
 one location is served — a root copy would name a path the root route does not
-expect, so a conformant client must discard it. `UNAUTHORIZED` and `INVALID_TOKEN` are separate refusals on purpose:
-a caller that presented nothing gets no `error` parameter, one whose token was
-rejected gets `error="invalid_token"`.
+expect, so a conformant client must discard it. `UNAUTHORIZED` and
+`INVALID_TOKEN` are separate refusals on purpose: a caller that presented
+nothing gets no `error` parameter, one whose token was rejected gets
+`error="invalid_token"`.

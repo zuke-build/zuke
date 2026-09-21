@@ -7,10 +7,13 @@
  * its logging captured) and assert the files that land on disk are a scaffold
  * whose advertised next step — `./zuke <target>` — can actually run.
  *
- * The regression this pins: a scaffold has no `deno.lock` yet, and
+ * The regressions this pins. First: a scaffold has no `deno.lock` yet, and
  * `deno run --frozen` against a missing lockfile fails ("The lockfile is out of
  * date") instead of writing one, so an unconditional `--frozen` in the launcher
- * or the `deno.json` task breaks every project on its very first run.
+ * or the `deno.json` task breaks every project on its very first run. Second:
+ * the build file and the `deno.json` beside it have to agree, so the `lint`
+ * task setup writes passes on the file setup wrote — see
+ * `tests/e2e/setup_lint_e2e.ts`, which runs the real linter over a scaffold.
  *
  * @module
  */
@@ -87,9 +90,26 @@ Deno.test("zuke setup scaffolds a project whose first run has no lockfile to fre
       : undefined;
   assertEquals(zukeTask, "deno run -A zuke.ts");
 
-  // The starter build stays pinned, so the lock the first run writes is
-  // meaningful for every run after it.
-  assertEquals((await read("zuke.ts")).includes('jsr:@zuke/core@^1"'), true);
+  // The starter build imports by bare specifier and deno.json resolves it, so
+  // `deno lint` — the lint task setup writes — passes on the scaffold's own
+  // first file. An inline `jsr:` specifier trips Deno's default
+  // `no-import-prefix` rule, which applies because setup configures no
+  // lint.rules.
+  const build = await read("zuke.ts");
+  assertEquals(build.includes('from "@zuke/core";'), true);
+  assertEquals(/from "(jsr|npm|https):/.test(build), false);
+
+  // The pin lives in the import map instead, so the lock the first run writes
+  // is still meaningful for every run after it.
+  const imports =
+    denoJson !== null && typeof denoJson === "object" && "imports" in denoJson
+      ? denoJson.imports
+      : undefined;
+  const core =
+    imports !== null && typeof imports === "object" && "@zuke/core" in imports
+      ? imports["@zuke/core"]
+      : undefined;
+  assertEquals(core, "jsr:@zuke/core@^1");
 });
 
 Deno.test("integration: setup exits 1 on a symlinked scaffold name, leaving it alone", async () => {
@@ -122,5 +142,83 @@ Deno.test("integration: setup exits 1 on a symlinked scaffold name, leaving it a
   } finally {
     await Deno.remove(dir, { recursive: true });
     await Deno.remove(outside, { recursive: true });
+  }
+});
+
+/** Run `zuke setup` in `dir` through the real main(), capturing its log. */
+async function setupIn(
+  dir: string,
+  extra: string[] = [],
+): Promise<{ code: number; log: string }> {
+  const lines: string[] = [];
+  const host: SetupHost = {
+    ...defaultHost,
+    log: (message: string) => void lines.push(message),
+  };
+  const code = await main(
+    ["setup", "--yes", "--name", "Foo", "--dir", dir, ...extra],
+    host,
+  );
+  return { code, log: lines.join("\n") };
+}
+
+Deno.test("integration: setup exits 1 rather than claim success over a JSONC deno.json", async () => {
+  // deno.json is JSONC — Deno accepts `//` comments that JSON.parse rejects.
+  // The scaffolded build resolves @zuke/core through this file, so a skip here
+  // leaves a build that cannot start; saying "Next: ./zuke" over that is worse
+  // than saying plainly what is left to do. The file keeps its comments.
+  const dir = await Deno.makeTempDir({ prefix: "zuke-setup-jsonc-" });
+  const jsonc = '{\n  // cfg\n  "tasks": { "dev": "echo hi" }\n}\n';
+  try {
+    await Deno.writeTextFile(`${dir}/deno.json`, jsonc);
+    const { code, log } = await setupIn(dir);
+
+    assertEquals(code, 1);
+    assertEquals(await Deno.readTextFile(`${dir}/deno.json`), jsonc);
+    assertEquals(log.includes("Next: ./zuke"), false);
+    assertEquals(log.includes("Incomplete —"), true);
+    assertEquals(log.includes('"@zuke/core": "jsr:@zuke/core@^1"'), true);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("integration: setup keeps a delegated importMap working", async () => {
+  // Deno ignores `importMap` as soon as `imports` appears beside it, so writing
+  // one would silently disable the project's whole module resolution. Prove the
+  // pre-existing project still resolves after setup has run over it.
+  const dir = await Deno.makeTempDir({ prefix: "zuke-setup-import-map-" });
+  try {
+    await Deno.writeTextFile(
+      `${dir}/deno.json`,
+      `${JSON.stringify({ importMap: "./import_map.json" }, null, 2)}\n`,
+    );
+    await Deno.writeTextFile(
+      `${dir}/import_map.json`,
+      `${JSON.stringify({ imports: { "lib/": "./lib/" } }, null, 2)}\n`,
+    );
+    await Deno.mkdir(`${dir}/lib`);
+    await Deno.writeTextFile(`${dir}/lib/a.ts`, "export const x = 1;\n");
+
+    const { code, log } = await setupIn(dir);
+
+    assertEquals(code, 1);
+    assertEquals(log.includes("./import_map.json"), true);
+    // The delegation is intact: no `imports` block was written beside it.
+    const parsed: unknown = JSON.parse(
+      await Deno.readTextFile(`${dir}/deno.json`),
+    );
+    assertEquals(
+      parsed !== null && typeof parsed === "object" && "imports" in parsed,
+      false,
+    );
+    assertEquals(
+      parsed !== null && typeof parsed === "object" && "importMap" in parsed
+        ? parsed.importMap
+        : undefined,
+      "./import_map.json",
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
   }
 });

@@ -12,8 +12,8 @@ bottom of `zuke.ts` (no `import.meta.main` guard — `run` no-ops on import).
 <!-- check -->
 
 ```ts
-import { Build, run, target } from "jsr:@zuke/core";
-import { DenoTasks } from "jsr:@zuke/deno";
+import { Build, run, target } from "@zuke/core";
+import { DenoTasks } from "@zuke/deno";
 
 class CI extends Build {
   lint = target()
@@ -38,14 +38,24 @@ await run(CI);
 
 ## Non-negotiable rules
 
-1. **Dependencies are `this.<field>` references, never strings.**
+1. **Import `@zuke/*` by bare specifier, and declare it in `deno.json`.** Write
+   `import { DenoTasks } from "@zuke/deno";` and add
+   `"@zuke/deno": "jsr:@zuke/deno@^1"` to the `imports` block of the project's
+   `deno.json` — never an inline `jsr:@zuke/deno@^1` in the import statement.
+   Deno's default lint set (the one that applies when `deno.json` configures no
+   `lint.rules`, which is what `zuke setup` scaffolds) rejects an inline `jsr:`
+   specifier under `no-import-prefix`, so an inlined one fails the project's own
+   `deno task lint`. Pin the caret major in the import map instead, so a future
+   `@zuke` major cannot land unannounced. `zuke setup` already declares
+   `@zuke/core` there; adding a wrapper means adding its entry too.
+2. **Dependencies are `this.<field>` references, never strings.**
    `.dependsOn(this.lint)`, not `.dependsOn("lint")` — so renames and typos are
    compile-time errors.
-2. **A target may only depend on siblings declared _above_ it.** Class fields
+3. **A target may only depend on siblings declared _above_ it.** Class fields
    initialise top-to-bottom; a forward reference is `undefined` and is reported
    as an error (TypeScript also flags it, `TS2729`). Order fields so
    dependencies come first.
-3. **Check the package catalogue before writing any command.** `llms.txt`'s
+4. **Check the package catalogue before writing any command.** `llms.txt`'s
    `## Packages` catalogue (raw:
    <https://raw.githubusercontent.com/zuke-build/zuke/master/llms.txt>) and the
    package table in [`references/cheatsheet.md`](references/cheatsheet.md) are
@@ -62,7 +72,7 @@ await run(CI);
    discards typed flags, argv purity, and tool resolution. (If a build delegates
    its side effects to your own tested modules behind injected clients, the
    wrapper rule still governs whatever those modules run in the target body.)
-4. **A body is required**, unless the target is one of the four forms that
+5. **A body is required**, unless the target is one of the four forms that
    replace it: a `service()`, a `.forEach()` fan-out, a `.waitsFor()` gate, or a
    target declaring only `.effect(...)`. Otherwise set `.executes(...)`; it may
    be sync or async, and its return value is ignored —
@@ -118,20 +128,19 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   `override mcpAuthorize(identity, call)` decides the rest. See the cheatsheet.
 - **Target context & cancellation:** a body may take a context —
   `.executes((ctx) => …)` — with `ctx.runId`, `ctx.initiator` (who asked for the
-  run, unchanged by a resume), `ctx.target`, `ctx.signal` (an
-  `AbortSignal` fired when the run is cancelled; a plain `` $`…` `` in the body
-  is `SIGTERM`'d automatically), `ctx.state`, `ctx.dryRun`, `ctx.plan()` (the
-  run's planned shape — `targets`, `includes(name)`, `dependenciesOf(name)` — so
-  a body can ask whether `deploy` was part of what was asked for; it reports the
-  plan, never what will actually execute, which is `ctx.outcomeOf(name)`), and
-  `ctx.reportSummary({ … })` (`key: value` notes on the target's own row of
-  the Build Summary; every test-runner wrapper — `DenoTasks.test`,
+  run, unchanged by a resume), `ctx.target`, `ctx.signal` (an `AbortSignal`
+  fired when the run is cancelled; a plain `` $`…` `` in the body is `SIGTERM`'d
+  automatically), `ctx.state`, `ctx.dryRun`, `ctx.plan()` (the run's planned
+  shape — `targets`, `includes(name)`, `dependenciesOf(name)` — so a body can
+  ask whether `deploy` was part of what was asked for; it reports the plan,
+  never what will actually execute, which is `ctx.outcomeOf(name)`), and
+  `ctx.reportSummary({ … })` (`key: value` notes on the target's own row of the
+  Build Summary; every test-runner wrapper — `DenoTasks.test`,
   `VitestTasks.run`, `JestTasks.run`, `BunTasks.test`, `NodeTasks.test`,
-  `PlaywrightTasks.test`, `CypressTasks.run` — reports its test counts there
-  by itself, and the ambient `reportSummary` does the same from code with no
-  `ctx`).
-  Zero-argument bodies keep working unchanged. Cancel a run programmatically by
-  passing `{ signal }` to `execute`. See the cheatsheet.
+  `PlaywrightTasks.test`, `CypressTasks.run` — reports its test counts there by
+  itself, and the ambient `reportSummary` does the same from code with no
+  `ctx`). Zero-argument bodies keep working unchanged. Cancel a run
+  programmatically by passing `{ signal }` to `execute`. See the cheatsheet.
 - **Caching:** `.inputs(...)` / `.outputs(...)` make a target incremental. Add a
   **remote store** to share results across machines (fresh CI, teammates);
   `--affected` runs only targets changed since a git base; `--no-cache` /
@@ -145,26 +154,25 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   `ZUKE_*_URL` backend must be `https:` (loopback exempt;
   `ZUKE_ALLOW_INSECURE_URL=1` opts out). In a body, `ctx.state.set({ … })` /
   `ctx.state.get()` records per-target metadata (JSON, **never secrets** —
-  secret parameters and redacted values are excluded). `set` awaits the
-  write; `ctx.state.trySet({ … })` is the same write reporting `true` when it
-  reached the store and `false` when it was dropped — use it before an
-  irreversible step that depends on the value. A store-less build and a
-  compensation body always see `true` (nothing durable behind them). Inspect persisted runs
-  afterwards with `zuke runs list` (filter by
-  `--status`/`--target`/`--since`/`--limit`) and `zuke runs show <id>` (`--json`
-  on both). Prune old ones with `zuke runs prune --keep <age> --keep-last <n>`
-  (only terminal runs; never suspended/running). A run whose process is killed
-  is picked up by `zuke resume --check`, which reaps it — its lease tells a dead
-  holder from a slow one — and resumes it in the same sweep. A process that
-  merely _looked_ dead and then finds its lease taken over **stops**, running no
-  compensations and settling nothing: the run is the new holder's now.
-  `override deadline()` gives a run a wall-clock budget (`"45m"`, or
-  milliseconds) that survives suspension; an abandoned run found past it is
-  settled `failed` with its compensations instead of resumed. On a **shared**
-  store, set `ZUKE_BUILD_ID` (or rely on `GITHUB_REPOSITORY`) so each build only
-  recovers its own runs — a resume runs _this_ build's bodies against whatever
-  record it is given, and a templated `zuke.ts` looks identical to the shape
-  checks. See the cheatsheet.
+  secret parameters and redacted values are excluded). `set` awaits the write;
+  `ctx.state.trySet({ … })` is the same write reporting `true` when it reached
+  the store and `false` when it was dropped — use it before an irreversible step
+  that depends on the value. A store-less build and a compensation body always
+  see `true` (nothing durable behind them). Inspect persisted runs afterwards
+  with `zuke runs list` (filter by `--status`/`--target`/`--since`/`--limit`)
+  and `zuke runs show <id>` (`--json` on both). Prune old ones with
+  `zuke runs prune --keep <age> --keep-last <n>` (only terminal runs; never
+  suspended/running). A run whose process is killed is picked up by
+  `zuke resume --check`, which reaps it — its lease tells a dead holder from a
+  slow one — and resumes it in the same sweep. A process that merely _looked_
+  dead and then finds its lease taken over **stops**, running no compensations
+  and settling nothing: the run is the new holder's now. `override deadline()`
+  gives a run a wall-clock budget (`"45m"`, or milliseconds) that survives
+  suspension; an abandoned run found past it is settled `failed` with its
+  compensations instead of resumed. On a **shared** store, set `ZUKE_BUILD_ID`
+  (or rely on `GITHUB_REPOSITORY`) so each build only recovers its own runs — a
+  resume runs _this_ build's bodies against whatever record it is given, and a
+  templated `zuke.ts` looks identical to the shape checks. See the cheatsheet.
 - **Cross-run locks:** `.lock((s) => s.lockKey(...).withTtl("4h"))` — a settings
   lambda — gives a target an exclusive claim across runs/machines; a second run
   wanting the same key fails with a `LockConflictError` naming the holder, or
@@ -213,10 +221,10 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   `number[]`, and a required list is `.required().array()` (required before
   array — `.array().required()` does not typecheck). A parameter may not be
   named so that it renders as a built-in CLI flag (`actor`, `actorKind`,
-  `limit`, `target`, `output`, …) or as an MCP control key (`dryRun`,
-  `confirm`, `operatorToken`) — the build refuses to load, naming the field.
-  The flag is one dash per lower-to-upper transition, and a **digit ends a run
-  of capitals**, so `skipE2E` gives `--skip-e2-e`; name it `skipE2e` or declare
+  `limit`, `target`, `output`, …) or as an MCP control key (`dryRun`, `confirm`,
+  `operatorToken`) — the build refuses to load, naming the field. The flag is
+  one dash per lower-to-upper transition, and a **digit ends a run of
+  capitals**, so `skipE2E` gives `--skip-e2-e`; name it `skipE2e` or declare
   `.flag("--skip-e2e")`, which replaces the derived spelling everywhere.
 - **Secrets from a manager:** `parameter(...).secret().from(source)` sources a
   value at run time (e.g. `execSecret(...)` shelling out to a secret CLI) and
@@ -279,12 +287,12 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   can go deeper and hold a discussion: `.conventionsFile("AGENTS.md")` (judged
   against the project's rules, read from the diff base), `.criteriaFile(...)`
   (project-specific notes read from that base too — `.criteria(text)` is build
-  code and travels with the change), `.fileContext()` (whole
-  changed files, not bare hunks), `.verify()` (adversarial re-check of every
-  finding), and `.discussion()` (maintainers refute a finding by replying with
-  its id — or, with `.discussion((d) => d.threads())`, by replying in the
-  finding's own line-anchored review thread; accepted dismissals persist instead
-  of resurfacing, including when the model rewords the finding — only
+  code and travels with the change), `.fileContext()` (whole changed files, not
+  bare hunks), `.verify()` (adversarial re-check of every finding), and
+  `.discussion()` (maintainers refute a finding by replying with its id — or,
+  with `.discussion((d) => d.threads())`, by replying in the finding's own
+  line-anchored review thread; accepted dismissals persist instead of
+  resurfacing, including when the model rewords the finding — only
   platform-verified maintainer comments ever reach the model, on GitHub, GitLab,
   Azure DevOps and Bitbucket alike). See the cheatsheet's AI section.
 - **Wait on an external GitHub workflow (`@zuke/gh`):** in a `.waitsFor(...)`

@@ -133,7 +133,7 @@ Deno.test("translateCommand keeps a newline from breaking out of the TODO commen
 Deno.test("generateBuild escapes an unusual task name in the description", () => {
   // A name with a quote/newline is emitted through a string literal, so it
   // cannot break out of the generated source.
-  const out = generateBuild("B", [
+  const { source: out } = generateBuild("B", [
     { name: 'weird"\nname', command: "echo hi", deps: [] },
   ]);
   assertStringIncludes(out, String.raw`imported: weird\"\nname`);
@@ -211,17 +211,15 @@ Deno.test("toIdentifier produces valid camelCase field names", () => {
 // --- generateBuild ---
 
 Deno.test("generateBuild emits a runnable class with ordered deps", () => {
-  const out = generateBuild("MyBuild", [
+  const { source: out } = generateBuild("MyBuild", [
     { name: "test", command: "jest", deps: ["build"] },
     { name: "build", command: "tsc", deps: [] },
   ]);
-  // Both imports pin the caret major, like the `setup` scaffold — an imported
-  // build must not silently resolve a future @zuke major.
-  assertStringIncludes(
-    out,
-    `import { Build, run, target } from "jsr:@zuke/core@^1";`,
-  );
-  assertStringIncludes(out, `import { CmdTasks } from "jsr:@zuke/cmd@^1";`);
+  // Bare specifiers, like the `setup` scaffold — an inline `jsr:` one trips
+  // Deno's default no-import-prefix lint rule on the generated file.
+  assertStringIncludes(out, `import { Build, run, target } from "@zuke/core";`);
+  assertStringIncludes(out, `import { CmdTasks } from "@zuke/cmd";`);
+  assertEquals(/from "(jsr|npm|https):/.test(out), false);
   assertStringIncludes(out, "class MyBuild extends Build");
   assertStringIncludes(out, "await run(MyBuild);");
   // A dependency must be declared before its dependent (topological order).
@@ -233,17 +231,32 @@ Deno.test("generateBuild emits a runnable class with ordered deps", () => {
 });
 
 Deno.test("generateBuild omits the cmd import when nothing runs", () => {
-  const out = generateBuild("B", [{
+  const { source: out, imports } = generateBuild("B", [{
     name: "aggregate",
     command: "",
     deps: [],
   }]);
   assertEquals(out.includes("@zuke/cmd"), false);
+  assertEquals("@zuke/cmd" in imports, false);
   assertStringIncludes(out, ".executes(() => {})");
 });
 
+Deno.test("generateBuild reports the imports its bare specifiers need", () => {
+  // The caret major is pinned here, in the map the scaffolder merges into
+  // deno.json, rather than inline in the source — an imported build must not
+  // silently resolve a future @zuke major either way.
+  const plain = generateBuild("B", [{ name: "a", command: "", deps: [] }]);
+  assertEquals(plain.imports, { "@zuke/core": "jsr:@zuke/core@^1" });
+
+  const running = generateBuild("B", [{ name: "a", command: "tsc", deps: [] }]);
+  assertEquals(running.imports, {
+    "@zuke/core": "jsr:@zuke/core@^1",
+    "@zuke/cmd": "jsr:@zuke/cmd@^1",
+  });
+});
+
 Deno.test("generateBuild breaks a dependency cycle with a note", () => {
-  const out = generateBuild("B", [
+  const { source: out } = generateBuild("B", [
     { name: "a", command: "", deps: ["b"] },
     { name: "b", command: "", deps: ["a"] },
   ]);
@@ -251,7 +264,7 @@ Deno.test("generateBuild breaks a dependency cycle with a note", () => {
 });
 
 Deno.test("generateBuild de-duplicates colliding identifiers", () => {
-  const out = generateBuild("B", [
+  const { source: out } = generateBuild("B", [
     { name: "build:prod", command: "a", deps: [] },
     { name: "build-prod", command: "b", deps: [] },
   ]);
@@ -260,7 +273,7 @@ Deno.test("generateBuild de-duplicates colliding identifiers", () => {
 });
 
 Deno.test("generateBuild renders a shell-only task as a TODO body without async", () => {
-  const out = generateBuild("B", [
+  const { source: out } = generateBuild("B", [
     { name: "bundle", command: "esbuild in > out.js", deps: [] },
   ]);
   assertEquals(out.includes("@zuke/cmd"), false); // nothing runnable
@@ -273,7 +286,7 @@ Deno.test("generateBuild renders a shell-only task as a TODO body without async"
 });
 
 Deno.test("generateBuild handles an empty task list", () => {
-  const out = generateBuild("Empty", []);
+  const { source: out } = generateBuild("Empty", []);
   assertStringIncludes(out, "No tasks were found to import");
 });
 

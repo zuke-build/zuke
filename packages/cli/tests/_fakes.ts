@@ -18,6 +18,9 @@ export class FakeHost implements SetupHost {
   readonly logs: string[] = [];
   /** `[path, mode]` pairs passed to {@link chmod}. */
   readonly chmods: Array<[string, number]> = [];
+  /** Paths passed to {@link readText}, so a test can assert what was *not*
+   * read — setup refusing to open a file outside its directory. */
+  readonly reads: string[] = [];
   /** When true, {@link chmod} rejects (simulating an unsupported platform). */
   chmodFails = false;
 
@@ -45,6 +48,7 @@ export class FakeHost implements SetupHost {
   }
 
   readText(path: string): Promise<string> {
+    this.reads.push(path);
     const value = this.files.get(path);
     return value === undefined
       ? Promise.reject(new Error(`missing: ${path}`))

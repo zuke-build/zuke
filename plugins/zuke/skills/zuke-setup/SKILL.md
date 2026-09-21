@@ -29,15 +29,16 @@ deno run -A jsr:@zuke/cli setup
 `setup` flags: `--dir <path>`, `--name <ClassName>`, `--force` (overwrite
 existing files), `--yes` (non-interactive), `--bootstrap-deno` /
 `--no-bootstrap-deno` (which launchers to write — see below; the wizard asks
-when interactive, and `--yes` takes the default, bootstrap), `--mcp` (also write `.mcp.json`
-registering the build's MCP server, so this agent — and any other stdio MCP
-client — can list and run the targets through typed calls; `--allow-run`
-registers it with execution enabled and implies `--mcp`), `--launcher-name
-<name>` (write the launcher under a different name when a `zuke/` directory
-already occupies it — a directory collision now fails with an actionable error
-instead of silently skipping the launcher). With `--mcp`, an MCP client lists
-and runs the targets through typed calls; without it, the build is still
-discoverable through `./zuke --list --json`.
+when interactive, and `--yes` takes the default, bootstrap), `--mcp` (also write
+`.mcp.json` registering the build's MCP server, so this agent — and any other
+stdio MCP client — can list and run the targets through typed calls;
+`--allow-run` registers it with execution enabled and implies `--mcp`),
+`--launcher-name
+<name>` (write the launcher under a different name when a
+`zuke/` directory already occupies it — a directory collision now fails with an
+actionable error instead of silently skipping the launcher). With `--mcp`, an
+MCP client lists and runs the targets through typed calls; without it, the build
+is still discoverable through `./zuke --list --json`.
 
 Running as an agent, always pass `--yes`: it skips every interactive question,
 including the closing "star the Zuke repository?" prompt — that question is for
@@ -71,26 +72,46 @@ shell-specific to translate (pipes, redirects, env assignments) is preserved
 behind a `// TODO` so the file still compiles. It scaffolds the launchers and
 `deno.json` exactly like `setup`, and takes the same `--dir`, `--name`,
 `--force`, `--yes`, `--bootstrap-deno` / `--no-bootstrap-deno`, `--mcp` and
-`--allow-run` flags. Afterwards, use the **zuke-write-build** skill to
-finish replacing any remaining generated `CmdTasks.exec` calls with typed
-`*Tasks` wrappers.
+`--allow-run` flags. Afterwards, use the **zuke-write-build** skill to finish
+replacing any remaining generated `CmdTasks.exec` calls with typed `*Tasks`
+wrappers.
 
 ### What `zuke setup` writes
 
 - **`zuke.ts`** — a starter build class with a sample target and a `default`.
 - **`./zuke`** + **`./zuke.ps1`** — launchers that locate the project and run
   `zuke.ts`. By default (`--bootstrap-deno`) they use the Deno on `PATH` and,
-  when there is none, download the pinned release Zuke itself runs on, verify
-  it against a per-platform SHA-256, and install it under `~/.deno` — never an
+  when there is none, download the pinned release Zuke itself runs on, verify it
+  against a per-platform SHA-256, and install it under `~/.deno` — never an
   install script, never an unverified binary — so a clone needs nothing
   installed first. With `--no-bootstrap-deno` they require Deno on `PATH` and
   exit with the install docs URL when it is missing, for a project that must
-  never download a tool from its build entry point. Both pass `--frozen` once
-  a `deno.lock` exists, so the first run writes the lockfile and every run
-  after verifies it.
-- **`deno.json`** — merged to add a `zuke` task, plus `fmt`/`lint`/`test` if
-  absent. The merge is all-or-nothing: if a `zuke` task is already declared the
-  file is left alone entirely, and an unparseable one is skipped with a notice.
+  never download a tool from its build entry point. Both pass `--frozen` once a
+  `deno.lock` exists, so the first run writes the lockfile and every run after
+  verifies it.
+- **`deno.json`** — merged to add an `imports` entry for `@zuke/core`
+  (`zuke import` adds `@zuke/cmd` too when it generates one), a `zuke` task, and
+  `fmt`/`lint`/`test` if absent. The scaffolded build imports by **bare
+  specifier** (`from "@zuke/core"`), not an inline `jsr:@zuke/core@^1` — Deno's
+  default lint set rejects an inline specifier under `no-import-prefix`, so an
+  inlined one would fail the project's own `deno task lint` on its only source
+  file. The caret major is pinned in the import map instead. Merging is additive
+  per key: a task or import the file already declares is kept exactly as it is
+  (so a deliberate version pin survives), only what is missing is added. A file
+  that has the `zuke` task but not the imports is still completed — skipping it
+  would leave the `zuke.ts` written in the same run with nothing to resolve. Two
+  shapes cannot be completed automatically, and setup reports them as steps for
+  you and **exits 1** rather than printing `Next: ./zuke` over a build that
+  cannot start: a `deno.json` that is JSONC (Deno accepts `//` comments and
+  trailing commas that a JSON parser does not, and rewriting the file would
+  discard them), and one that delegates via `importMap` to a separate file (Deno
+  ignores that field the moment `imports` appears beside it, so the entry
+  belongs in the other file — setup reads that file and stays quiet once it
+  declares the entry, so a correctly configured project still exits 0). Both are
+  left byte-for-byte untouched. A mapping that already points somewhere other
+  than the JSR package is kept — that is how a pin or a local checkout survives
+  — with a note saying so. `--mcp` that cannot register into an unparseable
+  `.mcp.json` is reported the same way, as a note.
 - **`zuke.json`** — `{ "name": "..." }`, which marks the repo root.
 - **`.gitignore`** — created or appended so `.zuke/` is ignored (the cache and
   durable run state live there); untouched if it already covers it.
@@ -114,17 +135,17 @@ project: `zuke <target>`, `zuke --list`, `zuke graph`, `zuke mcp`, bare `zuke`
 for the default target — every command that is not the CLI's own (`setup`,
 `import`, `doc`, `--help`, `--version`) is forwarded to the nearest `zuke.ts`;
 `zuke -- --help` is the build's own usage, and `zuke -- <target>` reaches a
-target that shares one of those names.
-It walks up to the `zuke.json` that marks the repository root and runs
-`deno run -A zuke.ts <args>` from there, with `--frozen` once a `deno.lock`
-exists — the launcher's exact behaviour, minus the Deno bootstrap. Outside a
-project, `zuke <target>` reports the unknown command and the missing
-`zuke.json`, and a bare `zuke` prints the usage. The forwarding refuses a project whose root directory is owned by
-another user or is world-writable, and one where an ancestor `deno.json`,
-`deno.jsonc` or `package.json` Deno would read is owned by another user (the
-`safe.directory` rule git applies, since discovery runs code the caller never
-named); the error names what was refused and the fix — run that project's own
-`./zuke` there, or fix the ownership. On Windows the gate is inert.
+target that shares one of those names. It walks up to the `zuke.json` that marks
+the repository root and runs `deno run -A zuke.ts <args>` from there, with
+`--frozen` once a `deno.lock` exists — the launcher's exact behaviour, minus the
+Deno bootstrap. Outside a project, `zuke <target>` reports the unknown command
+and the missing `zuke.json`, and a bare `zuke` prints the usage. The forwarding
+refuses a project whose root directory is owned by another user or is
+world-writable, and one where an ancestor `deno.json`, `deno.jsonc` or
+`package.json` Deno would read is owned by another user (the `safe.directory`
+rule git applies, since discovery runs code the caller never named); the error
+names what was refused and the fix — run that project's own `./zuke` there, or
+fix the ownership. On Windows the gate is inert.
 
 The CLI is self-describing: `./zuke --help` prints the usage grammar plus the
 build's live targets and parameters, so an agent discovers the real command
@@ -141,14 +162,28 @@ heal a stale lockfile where `./zuke` would fail on it.
 
 ## Manual setup (no CLI)
 
-Create `zuke.ts` in the project root, extend `Build`, declare targets with
+Declare the packages the build imports in `deno.json` — bare specifier to `jsr:`
+dependency, caret major — so the build can import them by bare specifier. An
+inline `jsr:@zuke/core@^1` in the import statement fails `deno lint` under its
+default `no-import-prefix` rule:
+
+```json
+{
+  "imports": {
+    "@zuke/core": "jsr:@zuke/core@^1",
+    "@zuke/deno": "jsr:@zuke/deno@^1"
+  }
+}
+```
+
+Then create `zuke.ts` in the project root, extend `Build`, declare targets with
 `target()`, and call `await run(MyBuild)` at the bottom:
 
 <!-- check -->
 
 ```ts
-import { Build, run, target } from "jsr:@zuke/core";
-import { DenoTasks } from "jsr:@zuke/deno";
+import { Build, run, target } from "@zuke/core";
+import { DenoTasks } from "@zuke/deno";
 
 class CI extends Build {
   lint = target().executes(() => DenoTasks.lint());

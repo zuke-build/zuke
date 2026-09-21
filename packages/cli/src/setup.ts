@@ -20,7 +20,7 @@ import { isRecord } from "./records.ts";
 import { launcherBash, launcherPwsh } from "./launcher.ts";
 import { exists, lstatOrNull } from "./fs.ts";
 import { output } from "./output.ts";
-import { starterBuild, starterConfig } from "./starter.ts";
+import { STARTER_IMPORTS, starterBuild, starterConfig } from "./starter.ts";
 
 // Re-exported so the merge guard keeps its historical home for importers.
 export { isRecord };
@@ -43,40 +43,143 @@ const DEFAULT_TASKS: ReadonlyArray<readonly [string, string]> = [
 ];
 
 /**
- * Merge the default Zuke tasks into a `deno.json` document, preserving the
- * existing content. `existing` is the file text, or `null` to start fresh.
+ * The import map entries a scaffolded build needs, keyed by bare specifier.
+ *
+ * The scaffolded `zuke.ts` imports `@zuke/core` (and `zuke import`'s output
+ * `@zuke/cmd`) by bare specifier, so `deno.json` has to map each one to its
+ * `jsr:` dependency — see {@link "./starter.ts".STARTER_IMPORTS} for why the
+ * specifier does not go in the source file.
  */
-export function mergeDenoJson(existing: string | null): string {
+export type ScaffoldImports = Readonly<Record<string, string>>;
+
+/**
+ * Add every entry of `defaults` that `root[key]` does not already declare,
+ * leaving the ones it does exactly as they are.
+ *
+ * Shared by the `imports` and `tasks` merges, which differ only in the
+ * collection they draw from: one implementation, so the "never overwrite what
+ * the project already declared" rule cannot come to mean two things.
+ */
+function mergeMissing(
+  root: Record<string, unknown>,
+  key: string,
+  defaults: Iterable<readonly [string, string]>,
+): void {
+  const existing = root[key];
+  const merged: Record<string, unknown> = isRecord(existing)
+    ? { ...existing }
+    : {};
+  for (const [name, value] of defaults) {
+    if (!(name in merged)) merged[name] = value;
+  }
+  root[key] = merged;
+}
+
+/**
+ * Whether a `deno.json` document delegates its import map to a separate file
+ * and would be broken by growing an `imports` block.
+ *
+ * Deno ignores the `importMap` field the moment `imports` or `scopes` appears
+ * in the config, so writing `imports` beside a lone `importMap` silently
+ * disables the project's entire module resolution. A document that already has
+ * `imports` or `scopes` is not delegating — Deno is ignoring `importMap` there
+ * already — so merging into it changes nothing.
+ */
+export function delegatesImportMap(root: Record<string, unknown>): boolean {
+  return typeof root.importMap === "string" &&
+    !isRecord(root.imports) && !isRecord(root.scopes);
+}
+
+/**
+ * Merge the default Zuke tasks and `imports` into a `deno.json` document,
+ * preserving the existing content. `existing` is the file text, or `null` to
+ * start fresh; `imports` are the bare-specifier mappings the scaffolded build
+ * resolves through.
+ *
+ * Merging is additive per key: a task or import the document already declares
+ * is left exactly as it is, so a project that has pinned `@zuke/core` to a
+ * specific version keeps that pin. A document that delegates to an external
+ * `importMap` keeps that delegation and grows no `imports` block — see
+ * {@link delegatesImportMap}; the caller reports the entry as a manual step
+ * instead.
+ */
+export function mergeDenoJson(
+  existing: string | null,
+  imports: ScaffoldImports,
+): string {
   const root: Record<string, unknown> = {};
   if (existing !== null) {
     const parsed: unknown = JSON.parse(existing);
     if (isRecord(parsed)) Object.assign(root, parsed);
   }
-  const tasks: Record<string, unknown> = isRecord(root.tasks)
-    ? { ...root.tasks }
-    : {};
-  for (const [task, command] of DEFAULT_TASKS) {
-    if (!(task in tasks)) tasks[task] = command;
+  // Seed `imports` before `tasks` so a file created from scratch lists the
+  // dependencies first, the order deno.json conventionally uses. On a file that
+  // already has either key, assigning it keeps its original position.
+  if (!delegatesImportMap(root)) {
+    mergeMissing(root, "imports", Object.entries(imports));
   }
-  root.tasks = tasks;
+  mergeMissing(root, "tasks", DEFAULT_TASKS);
   return `${JSON.stringify(root, null, 2)}\n`;
 }
 
-/** Whether a `deno.json` text already declares the `zuke` task. */
+/**
+ * Whether a `deno.json` text already carries everything the scaffold needs.
+ *
+ * `"present"` means both the `zuke` task and every scaffold import are already
+ * declared, so there is nothing to merge.
+ */
 export type DenoJsonState = "present" | "absent" | "unparseable";
 
-/** Classify a `deno.json` text by whether it already has the `zuke` task. */
-export function zukeTaskState(text: string): DenoJsonState {
+/**
+ * Classify a `deno.json` text by whether the scaffold has anything to add to
+ * it: the `zuke` task, or any of `imports`.
+ *
+ * The imports are part of the question because the build file is written by the
+ * same run and imports them by bare specifier. Treating the `zuke` task alone
+ * as "already set up" — as this did before the imports existed — would skip the
+ * file on a project being re-scaffolded and leave a `zuke.ts` whose specifiers
+ * nothing resolves.
+ */
+export function denoJsonState(
+  text: string,
+  imports: ScaffoldImports,
+): DenoJsonState {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
   } catch {
     return "unparseable";
   }
-  if (isRecord(parsed) && isRecord(parsed.tasks) && "zuke" in parsed.tasks) {
-    return "present";
-  }
-  return "absent";
+  if (!isRecord(parsed)) return "absent";
+  const hasTask = isRecord(parsed.tasks) && "zuke" in parsed.tasks;
+  // A document delegating to an external `importMap` will not grow an
+  // `imports` block (it would disable the delegation), so the imports are not
+  // something this file is still missing — they are reported as a manual step.
+  const declared = isRecord(parsed.imports) ? parsed.imports : {};
+  const hasImports = delegatesImportMap(parsed) ||
+    Object.keys(imports).every((s) => s in declared);
+  return hasTask && hasImports ? "present" : "absent";
+}
+
+/**
+ * The scaffold specifiers `root` maps somewhere other than their `jsr:@zuke/…`
+ * dependency, in declaration order.
+ *
+ * Keeping a mapping the project already declared is the right default — it is
+ * how a deliberate version pin, or a link to a local checkout, survives. But
+ * the run should not go on to report the dependency as simply "present", so the
+ * caller names what it found and leaves the decision to the reader.
+ */
+export function remappedImports(
+  root: Record<string, unknown>,
+  imports: ScaffoldImports,
+): string[] {
+  const declared = isRecord(root.imports) ? root.imports : {};
+  return Object.keys(imports).filter((specifier) => {
+    const value = declared[specifier];
+    return typeof value === "string" &&
+      !value.startsWith(`jsr:${specifier}@`);
+  });
 }
 
 /** Injected side effects, so {@link runSetup} is unit-testable. */
@@ -183,6 +286,14 @@ export interface SetupOptions {
    */
   buildContent?: string;
   /**
+   * The bare specifiers {@link SetupOptions.buildContent} imports, mapped to
+   * their `jsr:` dependencies, merged into `deno.json` so they resolve.
+   * Defaults to {@link STARTER_IMPORTS}; a caller that supplies its own
+   * `buildContent` supplies the imports that build needs (`zuke import` adds
+   * `@zuke/cmd` when it generates a command).
+   */
+  imports?: ScaffoldImports;
+  /**
    * Scaffold launchers that bootstrap a pinned, checksum-verified Deno when
    * none is on `PATH` (the default), or plain ones that require Deno and fail
    * closed when it is missing (`false`). See {@link "./launcher.ts"}.
@@ -218,6 +329,21 @@ export interface FileResult {
 export interface SetupResult {
   /** One entry per file `setup` considered. */
   files: FileResult[];
+  /**
+   * What `setup` could not do, each line naming the problem and the fix.
+   *
+   * Non-empty means the scaffold is **incomplete**: the `zuke.ts` on disk
+   * imports `@zuke/core` by bare specifier, and nothing resolves it until the
+   * reader acts. The caller reports these and exits non-zero rather than
+   * printing `Next: ./zuke` over a build that cannot start.
+   */
+  manualSteps: string[];
+  /**
+   * Advisory observations about the existing project that `setup` deliberately
+   * left alone. Worth printing, but nothing is broken and the exit code stays
+   * 0.
+   */
+  notes: string[];
 }
 
 /** Join a directory and file name without pulling in path utilities. */
@@ -282,6 +408,8 @@ export async function runSetup(
   host: SetupHost = defaultHost,
 ): Promise<SetupResult> {
   const files: FileResult[] = [];
+  const manualSteps: string[] = [];
+  const notes: string[] = [];
   const launcher = options.launcherName ?? DEFAULT_LAUNCHER;
   assertLauncherName(launcher);
   const variant = { bootstrapDeno: options.bootstrapDeno ?? true };
@@ -362,27 +490,43 @@ export async function runSetup(
     files.push({ path: item.name, status });
   }
 
-  files.push(await setupDenoJson(options.dir, host));
+  files.push(
+    await setupDenoJson(
+      options.dir,
+      options.imports ?? STARTER_IMPORTS,
+      host,
+      manualSteps,
+      notes,
+    ),
+  );
   files.push(await setupGitignore(options.dir, host));
   if (options.mcp) {
     files.push(
-      await setupMcpConfig(options.dir, options.mcp, options.force, host),
+      await setupMcpConfig(
+        options.dir,
+        options.mcp,
+        options.force,
+        host,
+        notes,
+      ),
     );
   }
-  return { files };
+  return { files, manualSteps, notes };
 }
 
 /**
  * Create or merge `.mcp.json` so the build's MCP server is registered. An
  * existing `zuke` entry is left alone unless `force` is set (it may carry a
  * deliberate `--allow-run` choice); every other server in the file survives
- * either way. An unparseable file is skipped with a notice, like `deno.json`.
+ * either way. An unparseable file is skipped, recorded in `notes` so the
+ * caller can report that `--mcp` did not take effect.
  */
 async function setupMcpConfig(
   dir: string,
   mcp: McpSetupOptions,
   force: boolean,
   host: SetupHost,
+  notes: string[],
 ): Promise<FileResult> {
   const name = MCP_CONFIG_FILE;
   const path = joinPath(dir, name);
@@ -395,6 +539,14 @@ async function setupMcpConfig(
   const config = parseMcpConfig(await host.readText(path));
   if (config.state === "unparseable") {
     host.log(`  skip     ${name}  (unparseable, edit by hand)`);
+    // `--mcp` asked for the server to be registered and it was not, so say so
+    // in the result rather than only in a line of progress output. A note, not
+    // a manual step: the build itself runs regardless, only an agent client
+    // will not find it.
+    notes.push(
+      `${path} could not be parsed, so the zuke MCP server was not ` +
+        `registered. Fix the file and re-run with --mcp to add it.`,
+    );
     return { path: name, status: "skipped" };
   }
   if (config.state === "present" && !force) {
@@ -433,30 +585,132 @@ async function setupGitignore(
   return { path: name, status: "overwritten" };
 }
 
-/** Create or merge `deno.json`, returning what happened to it. */
+/** The `imports` entries `steps` tells the reader to add, as JSON lines. */
+function importLines(imports: ScaffoldImports): string {
+  return Object.entries(imports)
+    .map(([specifier, dependency]) => `"${specifier}": "${dependency}"`)
+    .join(", ");
+}
+
+/**
+ * Where an `importMap` field points, as a path inside the setup directory, or
+ * `null` when it points anywhere else.
+ *
+ * Only a plain relative path is resolved. An absolute path, a URL, or one
+ * climbing out with `..` names a file this directory does not own, and setup
+ * has no business reading it just to decide what to print — those report as
+ * unverified instead.
+ */
+function delegatedMapPath(dir: string, importMap: string): string | null {
+  const rel = importMap.replace(/^\.[\\/]/, "");
+  const escapes = rel === "" || rel.startsWith("/") || rel.startsWith("\\") ||
+    /^[a-z][a-z0-9+.-]*:/i.test(rel) || rel.split(/[\\/]/).includes("..");
+  return escapes ? null : joinPath(dir, rel);
+}
+
+/**
+ * Whether the import map at `path` already declares every scaffold specifier.
+ *
+ * Setup cannot write into a delegated import map — it is the project's file,
+ * in a shape setup did not choose — but it can read it, and must: without this
+ * a project that has already added the entry would be told to add it again on
+ * every run, and `setup` would never exit 0 on a correctly configured project.
+ * Anything unreadable or unparseable answers `false`, so an unverifiable map
+ * still gets the manual step rather than a silent pass.
+ */
+async function delegatedMapDeclares(
+  path: string,
+  imports: ScaffoldImports,
+  host: SetupHost,
+): Promise<boolean> {
+  try {
+    if (!(await host.exists(path))) return false;
+    const parsed: unknown = JSON.parse(await host.readText(path));
+    if (!isRecord(parsed) || !isRecord(parsed.imports)) return false;
+    const declared = parsed.imports;
+    return Object.keys(imports).every((specifier) => specifier in declared);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Create or merge `deno.json`, returning what happened to it. `imports` are the
+ * bare specifiers the `zuke.ts` written alongside it resolves through, so the
+ * file is completed whenever any of them is missing — not only when the `zuke`
+ * task is.
+ *
+ * Two shapes cannot be completed automatically, and both are fatal to the
+ * scaffold now that the build resolves through this file rather than carrying
+ * its own `jsr:` specifier. They go into `steps` so the run reports an
+ * incomplete scaffold instead of pointing at a `./zuke` that cannot start:
+ *
+ * - **Unparseable.** `deno.json` is JSONC — Deno accepts `//` comments and
+ *   trailing commas that `JSON.parse` rejects. Such a file is perfectly valid
+ *   and must not be rewritten: doing so would strip the reader's comments.
+ * - **Delegated.** The document points `importMap` at a separate file, and
+ *   `imports` belongs in *that* file (see {@link delegatesImportMap}).
+ */
 async function setupDenoJson(
   dir: string,
+  imports: ScaffoldImports,
   host: SetupHost,
+  steps: string[],
+  notes: string[],
 ): Promise<FileResult> {
   const name = "deno.json";
   const path = joinPath(dir, name);
   if (!(await host.exists(path))) {
-    await host.writeText(path, mergeDenoJson(null));
+    await host.writeText(path, mergeDenoJson(null, imports));
     host.log(`  create   ${name}`);
     return { path: name, status: "created" };
   }
 
   const before = await host.readText(path);
-  const state = zukeTaskState(before);
-  if (state === "present") {
-    host.log(`  skip     ${name}  (zuke task already present)`);
-    return { path: name, status: "skipped" };
-  }
+  const state = denoJsonState(before, imports);
   if (state === "unparseable") {
-    host.log(`  skip     ${name}  (unparseable, edit by hand)`);
+    host.log(`  skip     ${name}  (not plain JSON, edit by hand)`);
+    steps.push(
+      `${path} has comments or a trailing comma, so it could not be edited ` +
+        `without discarding them. Add to its "imports": ` +
+        `${importLines(imports)} — the scaffolded zuke.ts will not run until ` +
+        `you do.`,
+    );
     return { path: name, status: "skipped" };
   }
-  await host.writeText(path, mergeDenoJson(before));
+
+  const parsed: unknown = JSON.parse(before);
+  const root: Record<string, unknown> = isRecord(parsed) ? parsed : {};
+  if (delegatesImportMap(root)) {
+    // Writing `imports` here would make Deno ignore `importMap` and take the
+    // project's whole module resolution down with it. Ask for the entry only
+    // when the delegated map does not already carry it — otherwise a project
+    // that has done exactly this would be nagged on every run.
+    const delegated = String(root.importMap);
+    const target = delegatedMapPath(dir, delegated);
+    const already = target !== null &&
+      await delegatedMapDeclares(target, imports, host);
+    if (!already) {
+      steps.push(
+        `${path} delegates its import map to ${delegated}, which Deno ignores ` +
+          `as soon as "imports" appears beside it. Add to that file's ` +
+          `"imports" instead: ${importLines(imports)} — the scaffolded ` +
+          `zuke.ts will not run until you do.`,
+      );
+    }
+  }
+  for (const specifier of remappedImports(root, imports)) {
+    notes.push(
+      `${path} already maps "${specifier}" to something other than its JSR ` +
+        `package; setup kept that mapping. Check it is what you intend.`,
+    );
+  }
+
+  if (state === "present") {
+    host.log(`  skip     ${name}  (zuke task and imports already declared)`);
+    return { path: name, status: "skipped" };
+  }
+  await host.writeText(path, mergeDenoJson(before, imports));
   host.log(`  update   ${name}`);
   return { path: name, status: "overwritten" };
 }

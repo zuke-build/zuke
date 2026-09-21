@@ -8,12 +8,19 @@ import {
 } from "../../core/tests/_assert.ts";
 import {
   defaultHost,
+  delegatesImportMap,
+  denoJsonState,
   isRecord,
   mergeDenoJson,
+  remappedImports,
   runSetup,
-  zukeTaskState,
 } from "../src/setup.ts";
-import { starterBuild, starterConfig } from "../src/starter.ts";
+import {
+  STARTER_IMPORTS,
+  starterBuild,
+  starterConfig,
+  zukeDependency,
+} from "../src/starter.ts";
 import { FakeHost } from "./_fakes.ts";
 import { withTemp } from "../../core/tests/_temp.ts";
 
@@ -28,9 +35,25 @@ Deno.test("isRecord distinguishes plain objects", () => {
 Deno.test("starterBuild embeds the class name and entry point", () => {
   const out = starterBuild("Acme");
   assertEquals(out.includes("import { Build, run, target }"), true);
-  assertEquals(out.includes('jsr:@zuke/core@^1"'), true);
+  assertEquals(out.includes('from "@zuke/core";'), true);
   assertEquals(out.includes("class Acme extends Build"), true);
   assertEquals(out.includes("await run(Acme)"), true);
+});
+
+Deno.test("starterBuild imports no inline jsr: specifier", () => {
+  // Deno's default lint set rejects an inline `jsr:`/`npm:`/`https:` specifier
+  // (no-import-prefix), and the scaffold writes a deno.json that configures no
+  // lint rules — so a specifier here fails `deno lint` on the project's own
+  // first file. The dependency lives in STARTER_IMPORTS instead.
+  const out = starterBuild("Acme");
+  assertEquals(/from "(jsr|npm|https):/.test(out), false);
+  assertEquals(STARTER_IMPORTS["@zuke/core"], "jsr:@zuke/core@^1");
+});
+
+Deno.test("zukeDependency pins the caret major", () => {
+  // The pin the scaffold puts in deno.json in place of the inline specifier.
+  assertEquals(zukeDependency("core"), "jsr:@zuke/core@^1");
+  assertEquals(zukeDependency("cmd"), "jsr:@zuke/cmd@^1");
 });
 
 Deno.test("starterConfig records the build name as JSON", () => {
@@ -39,42 +62,149 @@ Deno.test("starterConfig records the build name as JSON", () => {
   assertEquals(starterConfig("Acme").endsWith("\n"), true);
 });
 
-Deno.test("mergeDenoJson seeds tasks from scratch", () => {
-  const text = mergeDenoJson(null);
+Deno.test("mergeDenoJson seeds tasks and imports from scratch", () => {
+  const text = mergeDenoJson(null, STARTER_IMPORTS);
   const parsed: unknown = JSON.parse(text);
   assertEquals(isRecord(parsed) && isRecord(parsed.tasks), true);
   if (isRecord(parsed) && isRecord(parsed.tasks)) {
     assertEquals(parsed.tasks.zuke, "deno run -A zuke.ts");
     assertEquals(parsed.tasks.test, "deno test -A");
   }
+  if (isRecord(parsed) && isRecord(parsed.imports)) {
+    assertEquals(parsed.imports["@zuke/core"], "jsr:@zuke/core@^1");
+  }
+  // Dependencies first, the order deno.json conventionally uses.
+  assertEquals(text.indexOf('"imports"') < text.indexOf('"tasks"'), true);
   assertEquals(text.endsWith("\n"), true);
 });
 
-Deno.test("mergeDenoJson preserves existing keys and tasks", () => {
-  const before = '{"name":"x","tasks":{"fmt":"custom"}}';
-  const parsed: unknown = JSON.parse(mergeDenoJson(before));
+Deno.test("mergeDenoJson preserves existing keys, tasks, and import pins", () => {
+  const before =
+    '{"name":"x","imports":{"@zuke/core":"jsr:@zuke/core@1.2.3"},"tasks":{"fmt":"custom"}}';
+  const parsed: unknown = JSON.parse(mergeDenoJson(before, STARTER_IMPORTS));
   assertEquals(isRecord(parsed), true);
-  if (isRecord(parsed) && isRecord(parsed.tasks)) {
+  if (isRecord(parsed) && isRecord(parsed.tasks) && isRecord(parsed.imports)) {
     assertEquals(parsed.name, "x");
     assertEquals(parsed.tasks.fmt, "custom");
     assertEquals(parsed.tasks.zuke, "deno run -A zuke.ts");
+    // A deliberate pin is never rewritten to the caret range.
+    assertEquals(parsed.imports["@zuke/core"], "jsr:@zuke/core@1.2.3");
+  }
+});
+
+Deno.test("mergeDenoJson adds a missing import beside existing ones", () => {
+  const before = '{"imports":{"@std/yaml":"jsr:@std/yaml@^1"}}';
+  const parsed: unknown = JSON.parse(
+    mergeDenoJson(before, {
+      ...STARTER_IMPORTS,
+      "@zuke/cmd": "jsr:@zuke/cmd@^1",
+    }),
+  );
+  if (isRecord(parsed) && isRecord(parsed.imports)) {
+    assertEquals(parsed.imports["@std/yaml"], "jsr:@std/yaml@^1");
+    assertEquals(parsed.imports["@zuke/core"], "jsr:@zuke/core@^1");
+    assertEquals(parsed.imports["@zuke/cmd"], "jsr:@zuke/cmd@^1");
   }
 });
 
 Deno.test("mergeDenoJson ignores a non-object document", () => {
-  const parsed: unknown = JSON.parse(mergeDenoJson("[]"));
+  const parsed: unknown = JSON.parse(mergeDenoJson("[]", STARTER_IMPORTS));
   assertEquals(isRecord(parsed) && isRecord(parsed.tasks), true);
-  if (isRecord(parsed) && isRecord(parsed.tasks)) {
+  if (isRecord(parsed) && isRecord(parsed.tasks) && isRecord(parsed.imports)) {
     assertEquals(parsed.tasks.zuke, "deno run -A zuke.ts");
+    assertEquals(parsed.imports["@zuke/core"], "jsr:@zuke/core@^1");
   }
 });
 
-Deno.test("zukeTaskState classifies deno.json text", () => {
-  assertEquals(zukeTaskState('{"tasks":{"zuke":"x"}}'), "present");
-  assertEquals(zukeTaskState('{"tasks":{"a":"b"}}'), "absent");
-  assertEquals(zukeTaskState('{"tasks":5}'), "absent");
-  assertEquals(zukeTaskState("[]"), "absent");
-  assertEquals(zukeTaskState("not json"), "unparseable");
+Deno.test("mergeDenoJson ignores a non-object imports block", () => {
+  const parsed: unknown = JSON.parse(
+    mergeDenoJson('{"imports":5}', STARTER_IMPORTS),
+  );
+  if (isRecord(parsed) && isRecord(parsed.imports)) {
+    assertEquals(parsed.imports["@zuke/core"], "jsr:@zuke/core@^1");
+  }
+});
+
+Deno.test("denoJsonState classifies deno.json text", () => {
+  const complete =
+    '{"tasks":{"zuke":"x"},"imports":{"@zuke/core":"jsr:@zuke/core@^1"}}';
+  assertEquals(denoJsonState(complete, STARTER_IMPORTS), "present");
+  // The zuke task alone is not enough: the zuke.ts written in the same run
+  // imports @zuke/core by bare specifier, so the import has to be there too.
+  assertEquals(
+    denoJsonState('{"tasks":{"zuke":"x"}}', STARTER_IMPORTS),
+    "absent",
+  );
+  assertEquals(
+    denoJsonState(complete, {
+      ...STARTER_IMPORTS,
+      "@zuke/cmd": "jsr:@zuke/cmd@^1",
+    }),
+    "absent",
+  );
+  assertEquals(denoJsonState('{"tasks":{"a":"b"}}', STARTER_IMPORTS), "absent");
+  assertEquals(denoJsonState('{"tasks":5}', STARTER_IMPORTS), "absent");
+  assertEquals(denoJsonState('{"imports":5}', STARTER_IMPORTS), "absent");
+  assertEquals(denoJsonState("[]", STARTER_IMPORTS), "absent");
+  assertEquals(denoJsonState("not json", STARTER_IMPORTS), "unparseable");
+  // Nothing to add: an empty import set makes the task the whole question.
+  assertEquals(denoJsonState('{"tasks":{"zuke":"x"}}', {}), "present");
+});
+
+Deno.test("delegatesImportMap spots a document that points elsewhere", () => {
+  // Deno ignores `importMap` the moment `imports` or `scopes` appears, so only
+  // a lone `importMap` is still delegating.
+  assertEquals(delegatesImportMap({ importMap: "./m.json" }), true);
+  assertEquals(
+    delegatesImportMap({ importMap: "./m.json", imports: {} }),
+    false,
+  );
+  assertEquals(
+    delegatesImportMap({ importMap: "./m.json", scopes: {} }),
+    false,
+  );
+  assertEquals(delegatesImportMap({ importMap: 5 }), false);
+  assertEquals(delegatesImportMap({}), false);
+});
+
+Deno.test("mergeDenoJson leaves a delegated import map alone", () => {
+  // Writing `imports` beside a lone `importMap` makes Deno ignore the latter,
+  // taking the project's whole module resolution down with it.
+  const before = '{"importMap":"./import_map.json"}';
+  const parsed: unknown = JSON.parse(mergeDenoJson(before, STARTER_IMPORTS));
+  if (isRecord(parsed)) {
+    assertEquals(parsed.importMap, "./import_map.json");
+    assertEquals("imports" in parsed, false);
+    // The tasks still land — only the imports are withheld.
+    assertEquals(
+      isRecord(parsed.tasks) && parsed.tasks.zuke,
+      "deno run -A zuke.ts",
+    );
+  }
+});
+
+Deno.test("remappedImports names a scaffold specifier pointing elsewhere", () => {
+  const core = "@zuke/core";
+  assertEquals(
+    remappedImports(
+      { imports: { [core]: "./.ci/helper.ts" } },
+      STARTER_IMPORTS,
+    ),
+    [core],
+  );
+  // A deliberate version pin is still the JSR package, so it is not a remap.
+  assertEquals(
+    remappedImports(
+      { imports: { [core]: "jsr:@zuke/core@1.2.3" } },
+      STARTER_IMPORTS,
+    ),
+    [],
+  );
+  assertEquals(remappedImports({}, STARTER_IMPORTS), []);
+  assertEquals(
+    remappedImports({ imports: { [core]: 5 } }, STARTER_IMPORTS),
+    [],
+  );
 });
 
 Deno.test("runSetup scaffolds an empty project", async () => {
@@ -271,12 +401,46 @@ Deno.test("runSetup tolerates chmod failing", async () => {
   assertEquals(host.files.has("zuke"), true);
 });
 
-Deno.test("runSetup skips deno.json that already has the zuke task", async () => {
-  const host = new FakeHost({ "deno.json": '{"tasks":{"zuke":"x"}}' });
+Deno.test("runSetup skips deno.json that already has the zuke task and imports", async () => {
+  const complete =
+    '{"tasks":{"zuke":"x"},"imports":{"@zuke/core":"jsr:@zuke/core@^1"}}';
+  const host = new FakeHost({ "deno.json": complete });
   const result = await runSetup({ dir: ".", force: false, name: "Foo" }, host);
   const dj = result.files.find((f) => f.path === "deno.json");
   assertEquals(dj?.status, "skipped");
-  assertEquals(host.files.get("deno.json"), '{"tasks":{"zuke":"x"}}');
+  assertEquals(host.files.get("deno.json"), complete);
+});
+
+Deno.test("runSetup completes a deno.json that has the zuke task but no imports", async () => {
+  // The regression: skipping on the task alone left the zuke.ts written by the
+  // same run importing "@zuke/core" with nothing to resolve it.
+  const host = new FakeHost({ "deno.json": '{"tasks":{"zuke":"x"}}' });
+  const result = await runSetup({ dir: ".", force: true, name: "Foo" }, host);
+  const dj = result.files.find((f) => f.path === "deno.json");
+  assertEquals(dj?.status, "overwritten");
+  const parsed: unknown = JSON.parse(host.files.get("deno.json") ?? "{}");
+  if (isRecord(parsed) && isRecord(parsed.imports) && isRecord(parsed.tasks)) {
+    assertEquals(parsed.imports["@zuke/core"], "jsr:@zuke/core@^1");
+    assertEquals(parsed.tasks.zuke, "x"); // the project's own task survives
+  }
+});
+
+Deno.test("runSetup declares the imports the supplied buildContent needs", async () => {
+  const host = new FakeHost();
+  await runSetup({
+    dir: ".",
+    force: false,
+    name: "Foo",
+    buildContent: 'import { CmdTasks } from "@zuke/cmd";\n',
+    imports: {
+      "@zuke/core": "jsr:@zuke/core@^1",
+      "@zuke/cmd": "jsr:@zuke/cmd@^1",
+    },
+  }, host);
+  const parsed: unknown = JSON.parse(host.files.get("deno.json") ?? "{}");
+  if (isRecord(parsed) && isRecord(parsed.imports)) {
+    assertEquals(parsed.imports["@zuke/cmd"], "jsr:@zuke/cmd@^1");
+  }
 });
 
 Deno.test("runSetup merges a deno.json missing the zuke task", async () => {
@@ -293,6 +457,129 @@ Deno.test("runSetup leaves an unparseable deno.json alone", async () => {
   const dj = result.files.find((f) => f.path === "deno.json");
   assertEquals(dj?.status, "skipped");
   assertEquals(host.files.get("deno.json"), "oops");
+});
+
+Deno.test("runSetup reports a manual step for a JSONC deno.json", async () => {
+  // deno.json is JSONC: Deno accepts `//` comments that JSON.parse rejects, and
+  // rewriting the file would discard them. The build now resolves through this
+  // file, so silently skipping it left a scaffold that could not start.
+  const jsonc = '{\n  // cfg\n  "tasks": { "dev": "echo hi" }\n}\n';
+  const host = new FakeHost({ "deno.json": jsonc });
+  const result = await runSetup({ dir: ".", force: false, name: "Foo" }, host);
+  assertEquals(host.files.get("deno.json"), jsonc); // comments survive
+  assertEquals(result.manualSteps.length, 1);
+  assertStringIncludes(
+    result.manualSteps[0],
+    '"@zuke/core": "jsr:@zuke/core@^1"',
+  );
+  assertStringIncludes(result.manualSteps[0], "will not run until you do");
+});
+
+Deno.test("runSetup will not break a project that delegates its import map", async () => {
+  // Deno ignores `importMap` as soon as `imports` appears beside it, so writing
+  // one would disable the project's entire module resolution.
+  const host = new FakeHost({
+    "deno.json": '{"importMap":"./import_map.json"}',
+  });
+  const result = await runSetup({ dir: ".", force: false, name: "Foo" }, host);
+  const parsed: unknown = JSON.parse(host.files.get("deno.json") ?? "{}");
+  assertEquals(isRecord(parsed) && "imports" in parsed, false);
+  assertEquals(result.manualSteps.length, 1);
+  assertStringIncludes(result.manualSteps[0], "./import_map.json");
+  assertStringIncludes(result.manualSteps[0], 'that file\'s "imports" instead');
+});
+
+Deno.test("runSetup notes a kept mapping that is not the JSR package", async () => {
+  // Keeping the mapping is right — it is how a pin or a local checkout link
+  // survives — but the run must not go on to call the dependency verified.
+  const host = new FakeHost({
+    "deno.json":
+      '{"tasks":{"zuke":"x"},"imports":{"@zuke/core":"./.ci/helper.ts"}}',
+  });
+  const result = await runSetup({ dir: ".", force: true, name: "Foo" }, host);
+  assertEquals(result.manualSteps, []); // deliberate, so not a failure
+  assertEquals(result.notes.length, 1);
+  assertStringIncludes(result.notes[0], "kept that mapping");
+  assertEquals(
+    host.logs.some((l) => l.includes("already declared")),
+    true, // "declared", not a claim that it was verified
+  );
+});
+
+Deno.test("runSetup stops asking once the delegated import map declares it", async () => {
+  // The project did exactly what the previous run asked. Re-running must not
+  // report the same step again — setup has to read the delegated map, since it
+  // is the one place the entry can legitimately live.
+  const host = new FakeHost({
+    "deno.json": '{"importMap":"./import_map.json","tasks":{"zuke":"x"}}',
+    "import_map.json": '{"imports":{"@zuke/core":"jsr:@zuke/core@^1"}}',
+  });
+  const result = await runSetup({ dir: ".", force: false, name: "Foo" }, host);
+  assertEquals(result.manualSteps, []);
+});
+
+Deno.test("runSetup still asks when the delegated map cannot confirm it", async () => {
+  // Every shape setup cannot read answers "not declared", so an unverifiable
+  // map gets the step rather than a silent pass.
+  const cases: Array<Record<string, string>> = [
+    // Declares other things, but not @zuke/core.
+    { "import_map.json": '{"imports":{"lib/":"./lib/"}}' },
+    // Unparseable.
+    { "import_map.json": "{oops" },
+    // No imports block at all.
+    { "import_map.json": "{}" },
+    // Missing entirely.
+    {},
+  ];
+  for (const extra of cases) {
+    const host = new FakeHost({
+      "deno.json": '{"importMap":"./import_map.json","tasks":{"zuke":"x"}}',
+      ...extra,
+    });
+    const result = await runSetup(
+      { dir: ".", force: false, name: "Foo" },
+      host,
+    );
+    assertEquals(result.manualSteps.length, 1, JSON.stringify(extra));
+  }
+});
+
+Deno.test("runSetup does not read an importMap pointing outside the directory", async () => {
+  // An absolute path, a URL, or one climbing out with `..` names a file this
+  // directory does not own; setup reports it unverified instead of reading it.
+  for (
+    const target of ["/etc/passwd", "../../outside.json", "https://x/m.json"]
+  ) {
+    const host = new FakeHost({
+      "deno.json": `{"importMap":"${target}","tasks":{"zuke":"x"}}`,
+    });
+    const result = await runSetup(
+      { dir: ".", force: false, name: "Foo" },
+      host,
+    );
+    assertEquals(result.manualSteps.length, 1, target);
+    assertEquals(host.reads.includes(target), false, target);
+  }
+});
+
+Deno.test("runSetup notes that --mcp could not register into an unparseable file", async () => {
+  // The user asked for the server and did not get it; that belongs in the
+  // result, not only in a line of progress output.
+  const host = new FakeHost({ ".mcp.json": "oops" });
+  const result = await runSetup(
+    { dir: ".", force: false, name: "Foo", mcp: { allowRun: false } },
+    host,
+  );
+  assertEquals(result.manualSteps, []); // the build still runs
+  assertEquals(result.notes.length, 1);
+  assertStringIncludes(result.notes[0], "was not registered");
+});
+
+Deno.test("runSetup reports no manual steps or notes for a clean scaffold", async () => {
+  const host = new FakeHost();
+  const result = await runSetup({ dir: ".", force: false, name: "Foo" }, host);
+  assertEquals(result.manualSteps, []);
+  assertEquals(result.notes, []);
 });
 
 Deno.test("runSetup writes to disk via the default host", async () => {
