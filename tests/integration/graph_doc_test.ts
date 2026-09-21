@@ -60,7 +60,14 @@ Deno.test("graphDoc target writes the page and graphDocCheck then passes", async
     const page = await Deno.readTextFile(path);
     assertStringIncludes(page, "```mermaid");
     assertStringIncludes(page, '"graphDocCheck"');
-    assertStringIncludes(page, "| `test` | Test | `lint` |");
+    // The page is written through `deno fmt`, which pads the table's columns
+    // into alignment. That is layout, not content, and it shifts whenever a
+    // fixture target's name changes length — so collapse runs of spaces and
+    // assert the row is present, rather than how wide its neighbours made it.
+    assertStringIncludes(
+      page.replaceAll(/ +/g, " "),
+      "| `test` | Test | `lint` |",
+    );
 
     // …and the check passes against the written page.
     const after = await runCli(Demo, ["graphDocCheck"]);
