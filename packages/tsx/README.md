@@ -7,7 +7,7 @@ and `watch` re-runs it on changes. Arguments stay a discrete argv array, so
 command construction is injection-free.
 
 ```ts
-import { TsxTasks } from "jsr:@zuke/tsx";
+import { TsxTasks } from "@zuke/tsx";
 
 await TsxTasks.tsx((s) =>
   s.script("src/main.ts").tsconfig("tsconfig.json").scriptArgs("--port", 3000)
@@ -37,7 +37,7 @@ runs it. The task names mirror the CLI: `tsx` runs an entry point and `watch`
 re-runs it on changes.
 
 ```ts
-import { TsxTasks } from "jsr:@zuke/tsx";
+import { TsxTasks } from "@zuke/tsx";
 await TsxTasks.tsx((s) => s.script("src/main.ts").tsconfig("tsconfig.json"));
 ```
 @module

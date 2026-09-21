@@ -5,7 +5,7 @@ Typed OpenTofu CLI task wrappers for
 `plan`, `apply`, `destroy`, `fmt`, and `output`.
 
 ```ts
-import { TofuTasks } from "jsr:@zuke/tofu";
+import { TofuTasks } from "@zuke/tofu";
 
 await TofuTasks.init((s) => s.upgrade());
 await TofuTasks.plan((s) => s.out("plan.tfplan").var("env", "prod"));
@@ -27,7 +27,7 @@ OpenTofu mirrors Terraform's command surface; each `-var` is emitted as a single
 use in Zuke build targets (infrastructure-as-code workflows).
 
 ```ts
-import { TofuTasks } from "jsr:@zuke/tofu";
+import { TofuTasks } from "@zuke/tofu";
 
 await TofuTasks.init((s) => s.upgrade());
 await TofuTasks.apply((s) => s.autoApprove().var("env", "prod"));

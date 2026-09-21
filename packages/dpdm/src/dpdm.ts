@@ -11,7 +11,7 @@
  * `dpdm <flags> <entries...>`.
  *
  * ```ts
- * import { DpdmTasks } from "jsr:@zuke/dpdm";
+ * import { DpdmTasks } from "@zuke/dpdm";
  *
  * // Fail the build on any circular dependency among the entry files.
  * await DpdmTasks.analyze((s) =>

@@ -6,7 +6,7 @@
  * reach the service it is testing by name, without publishing a port.
  *
  * ```ts
- * import { DockerTasks } from "jsr:@zuke/docker";
+ * import { DockerTasks } from "@zuke/docker";
  * await DockerTasks.network((s) => s.create("test-net"));
  * await DockerTasks.network((s) => s.connect("test-net", "db"));
  * const networks = await DockerTasks.networkNames();

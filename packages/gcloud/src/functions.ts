@@ -5,7 +5,7 @@
  * The `gcloud functions` group — deploying and inspecting Cloud Functions.
  *
  * ```ts
- * import { GcloudTasks } from "jsr:@zuke/gcloud";
+ * import { GcloudTasks } from "@zuke/gcloud";
  * await GcloudTasks.functionsDeploy((s) =>
  *   s.function("ingest").runtime("nodejs20").triggerHttp()
  *     .region("us-central1").entryPoint("main").gen2()

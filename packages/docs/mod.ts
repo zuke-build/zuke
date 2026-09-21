@@ -17,7 +17,7 @@
  * produces your doc text (`@zuke/deno`'s `DenoTasks.doc`, a checked-in file, …).
  *
  * ```ts
- * import { DocsTasks } from "jsr:@zuke/docs";
+ * import { DocsTasks } from "@zuke/docs";
  *
  * const docs = [{ name: "@acme/core", dir: "core", doc: denoDocText }];
  * await DocsTasks.apiDocs(docs, { project: { title: "Acme", summary: "…" } });

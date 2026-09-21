@@ -5,7 +5,7 @@
  * `git submodule` — the repositories checked out inside this one.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * await GitTasks.submodule((s) => s.update().withInit().recursive().depth(1));
  * await GitTasks.submodule((s) => s.status().recursive());
  * ```

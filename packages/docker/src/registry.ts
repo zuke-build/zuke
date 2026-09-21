@@ -6,7 +6,7 @@
  * `docker login`, `logout`, and `search`.
  *
  * ```ts
- * import { DockerTasks } from "jsr:@zuke/docker";
+ * import { DockerTasks } from "@zuke/docker";
  * await DockerTasks.login((s) =>
  *   s.registry("ghcr.io").username(user).passwordStdin(token)
  * );

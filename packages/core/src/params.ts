@@ -12,7 +12,7 @@
  * a resolved value off `this`.
  *
  * ```ts
- * import { Build, parameter, target } from "jsr:@zuke/core";
+ * import { Build, parameter, target } from "@zuke/core";
  *
  * class Deploy extends Build {
  *   environment = parameter("Target environment")

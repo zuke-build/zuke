@@ -6,7 +6,7 @@
  * for use in Zuke build targets (end-to-end browser testing).
  *
  * ```ts
- * import { PlaywrightTasks } from "jsr:@zuke/playwright";
+ * import { PlaywrightTasks } from "@zuke/playwright";
  *
  * await PlaywrightTasks.install((s) => s.withDeps());
  * await PlaywrightTasks.test((s) => s.project("chromium").grep("@smoke"));

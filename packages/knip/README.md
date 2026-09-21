@@ -5,7 +5,7 @@ Typed [Knip](https://knip.dev) CLI task wrapper for
 dependencies, and exports.
 
 ```ts
-import { KnipTasks } from "jsr:@zuke/knip";
+import { KnipTasks } from "@zuke/knip";
 
 await KnipTasks.run((s) => s.production().strict());
 ```
@@ -22,7 +22,7 @@ await KnipTasks.run((s) => s.production().strict());
 CLI (unused files, dependencies, and exports), for use in Zuke builds.
 
 ```ts
-import { KnipTasks } from "jsr:@zuke/knip";
+import { KnipTasks } from "@zuke/knip";
 
 await KnipTasks.run((s) => s.production().strict());
 ```

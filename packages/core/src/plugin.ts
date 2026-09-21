@@ -12,7 +12,7 @@
  * not alter the plan or a target's result.
  *
  * ```ts
- * import { type Plugin, run } from "jsr:@zuke/core";
+ * import { type Plugin, run } from "@zuke/core";
  *
  * const timing: Plugin = {
  *   name: "timing",

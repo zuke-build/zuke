@@ -6,7 +6,7 @@
  * passes through.
  *
  * ```ts
- * import { GcloudTasks } from "jsr:@zuke/gcloud";
+ * import { GcloudTasks } from "@zuke/gcloud";
  * await GcloudTasks.authActivateServiceAccount((s) => s.keyFile(keyPath));
  * await GcloudTasks.authConfigureDocker((s) =>
  *   s.registries("us-central1-docker.pkg.dev")

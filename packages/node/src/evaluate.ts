@@ -13,7 +13,7 @@
  * still streams to the terminal untouched.
  *
  * ```ts
- * import { NodeTasks } from "jsr:@zuke/node";
+ * import { NodeTasks } from "@zuke/node";
  * const spec = await NodeTasks.evaluate("tools/openapi.mjs");
  * ```
  *

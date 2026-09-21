@@ -10,7 +10,7 @@
  * wrapper.
  *
  * ```ts
- * import { CodexTasks } from "jsr:@zuke/codex";
+ * import { CodexTasks } from "@zuke/codex";
  *
  * await CodexTasks.exec((s) =>
  *   s.prompt("Draft a release note for the staged diff").sandbox("read-only")

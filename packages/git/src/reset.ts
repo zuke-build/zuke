@@ -6,7 +6,7 @@
  * tree back to a commit.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * await GitTasks.reset((s) => s.hard().ref("origin/main")); // discard everything local
  * await GitTasks.reset((s) => s.paths("dist"));             // unstage some paths
  * ```

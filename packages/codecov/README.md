@@ -8,7 +8,7 @@ environment, so it never lands in argv, and arguments stay a discrete argv
 array, so command construction is injection-free.
 
 ```ts
-import { CodecovTasks } from "jsr:@zuke/codecov";
+import { CodecovTasks } from "@zuke/codecov";
 
 // Upload an lcov report, tagged with a flag, and fail the build on error.
 await CodecovTasks.upload((s) =>
@@ -22,7 +22,7 @@ global install: fetch Codecov's standalone CLI with `installRelease` (from
 tooling, no separate CI step required.
 
 ```ts
-import { installRelease } from "jsr:@zuke/core";
+import { installRelease } from "@zuke/core";
 
 // Codecov publishes a standalone binary per platform (linux/macos/windows).
 const bin = await installRelease({
@@ -48,7 +48,7 @@ builds.
 Codecov; the token is read from `CODECOV_TOKEN` so it never lands in argv.
 
 ```ts
-import { CodecovTasks } from "jsr:@zuke/codecov";
+import { CodecovTasks } from "@zuke/codecov";
 await CodecovTasks.upload((s) => s.files("cov.lcov").flags("unit"));
 ```
 @module

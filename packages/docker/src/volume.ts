@@ -6,7 +6,7 @@
  * database fixture, and removes again afterwards.
  *
  * ```ts
- * import { DockerTasks } from "jsr:@zuke/docker";
+ * import { DockerTasks } from "@zuke/docker";
  * await DockerTasks.volume((s) => s.create("build-cache"));
  * const volumes = await DockerTasks.volumeNames();
  * await DockerTasks.volume((s) => s.remove("build-cache").force());

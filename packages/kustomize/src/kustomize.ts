@@ -8,7 +8,7 @@
  * the command line and executes it.
  *
  * ```ts
- * import { KustomizeTasks } from "jsr:@zuke/kustomize";
+ * import { KustomizeTasks } from "@zuke/kustomize";
  * await KustomizeTasks.build((s) => s.dir("overlays/prod").output("out.yaml"));
  * await KustomizeTasks.editSetImage((s) => s.image("api", "api:1.4"));
  * ```

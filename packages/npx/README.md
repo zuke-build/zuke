@@ -5,7 +5,7 @@ Typed `npx` package-runner task wrappers for
 a package binary in one step (npm's sibling of `bun x` and `pnpm dlx`).
 
 ```ts
-import { NpxTasks } from "jsr:@zuke/npx";
+import { NpxTasks } from "@zuke/npx";
 
 await NpxTasks.npx((s) => s.command("cowsay").yes().execArgs("hello"));
 ```
@@ -22,7 +22,7 @@ await NpxTasks.npx((s) => s.command("cowsay").yes().execArgs("hello"));
 in Zuke build targets (including builds that drive Node projects).
 
 ```ts
-import { NpxTasks } from "jsr:@zuke/npx";
+import { NpxTasks } from "@zuke/npx";
 
 await NpxTasks.npx((s) => s.command("cowsay").yes().execArgs("hello"));
 ```

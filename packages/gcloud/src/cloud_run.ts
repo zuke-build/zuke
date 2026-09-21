@@ -6,7 +6,7 @@
  * deploy produced.
  *
  * ```ts
- * import { GcloudTasks } from "jsr:@zuke/gcloud";
+ * import { GcloudTasks } from "@zuke/gcloud";
  * await GcloudTasks.runDeploy((s) =>
  *   s.service("api").image(image).region("us-central1").allowUnauthenticated()
  * );

@@ -9,7 +9,7 @@ resolver. Arguments stay a discrete argv array, so command construction is
 injection-free.
 
 ```ts
-import { TscAliasTasks } from "jsr:@zuke/tsc-alias";
+import { TscAliasTasks } from "@zuke/tsc-alias";
 
 await TscAliasTasks.run((s) => s.project("tsconfig.json").resolveFullPaths());
 ```
@@ -38,7 +38,7 @@ JavaScript runs without a path resolver. Configure a fluent settings object in
 a lambda; the task builds the argv and runs it.
 
 ```ts
-import { TscAliasTasks } from "jsr:@zuke/tsc-alias";
+import { TscAliasTasks } from "@zuke/tsc-alias";
 await TscAliasTasks.run((s) => s.project("tsconfig.json").resolveFullPaths());
 ```
 @module

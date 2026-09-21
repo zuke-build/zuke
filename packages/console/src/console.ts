@@ -13,7 +13,7 @@
  * primitives, so console output matches a build's own banners exactly.
  *
  * ```ts
- * import { ConsoleTasks as Log } from "jsr:@zuke/console";
+ * import { ConsoleTasks as Log } from "@zuke/console";
  *
  * Log.rule("Deploy");
  * Log.info("pushing [bold]core@1.2.0[/]");

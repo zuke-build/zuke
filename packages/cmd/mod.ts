@@ -11,7 +11,7 @@
  * example below deliberately uses a tool Zuke does not wrap.
  *
  * ```ts
- * import { CmdTasks } from "jsr:@zuke/cmd";
+ * import { CmdTasks } from "@zuke/cmd";
  *
  * await CmdTasks.exec("shellcheck", (s) => s.args("--severity", "warning"));
  * ```

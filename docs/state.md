@@ -25,7 +25,7 @@ A run gets a **state store** by the first of these that applies:
 If none apply, the run has no store and no record is written.
 
 ```ts
-import { Build, HttpStateStore, parameter, target } from "jsr:@zuke/core";
+import { Build, HttpStateStore, parameter, target } from "@zuke/core";
 
 class CD extends Build {
   stateUrl = parameter("state service URL");
@@ -288,7 +288,7 @@ for compare-and-swap is a content hash.
 <!-- check -->
 
 ```ts
-import { FileSystemStateStore } from "jsr:@zuke/core";
+import { FileSystemStateStore } from "@zuke/core";
 const store = new FileSystemStateStore(".zuke/runs");
 ```
 
@@ -303,7 +303,7 @@ and they share run state. The one-page contract is in
 it — don't re-derive correctness from the prose.
 
 ```ts
-import { HttpStateStore } from "jsr:@zuke/core";
+import { HttpStateStore } from "@zuke/core";
 const store = new HttpStateStore({ url: "https://zuke-state.internal", token });
 ```
 

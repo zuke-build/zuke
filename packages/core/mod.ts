@@ -9,8 +9,8 @@
  * {@link run}:
  *
  * ```ts
- * import { Build, target, run } from "jsr:@zuke/core";
- * import { $ } from "jsr:@zuke/core/shell";
+ * import { Build, target, run } from "@zuke/core";
+ * import { $ } from "@zuke/core/shell";
  *
  * class MyBuild extends Build {
  *   test = target()

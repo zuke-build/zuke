@@ -12,7 +12,7 @@
  * (`tsx watch <file>`).
  *
  * ```ts
- * import { TsxTasks } from "jsr:@zuke/tsx";
+ * import { TsxTasks } from "@zuke/tsx";
  * await TsxTasks.tsx((s) => s.script("src/main.ts").tsconfig("tsconfig.json"));
  * await TsxTasks.watch((s) => s.script("src/main.ts").noClearScreen());
  * ```

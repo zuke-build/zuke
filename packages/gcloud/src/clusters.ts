@@ -6,7 +6,7 @@
  * what lets a build talk to GKE at all.
  *
  * ```ts
- * import { GcloudTasks } from "jsr:@zuke/gcloud";
+ * import { GcloudTasks } from "@zuke/gcloud";
  * await GcloudTasks.clustersGetCredentials((s) =>
  *   s.cluster("prod").region("us-central1")
  * );

@@ -643,7 +643,7 @@ export interface DefineToolOptions {
  * `arg`/`flag`/`option` for argv and the shared `cwd`/`env`/`noThrow`/… chainers.
  *
  * ```ts
- * import { defineTool } from "jsr:@zuke/core/tooling";
+ * import { defineTool } from "@zuke/core/tooling";
  *
  * const terraform = defineTool("terraform");
  * await terraform((s) => s.arg("plan").option("out", "plan.tfplan"));

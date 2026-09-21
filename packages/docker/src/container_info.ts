@@ -6,7 +6,7 @@
  * `docker ps`, `logs`, `inspect`, `top`, `stats`, `port`, and `diff`.
  *
  * ```ts
- * import { DockerTasks } from "jsr:@zuke/docker";
+ * import { DockerTasks } from "@zuke/docker";
  * await DockerTasks.logs((s) => s.container("app").tail(100).since("10m"));
  * const running = await DockerTasks.psEntries();
  * ```

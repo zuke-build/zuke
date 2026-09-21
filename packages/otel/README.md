@@ -11,8 +11,8 @@ No runtime dependencies: the OTLP JSON is hand-rolled, and `@zuke/core` stays
 OpenTelemetry-free.
 
 ```ts
-import { run } from "jsr:@zuke/core";
-import { otel } from "jsr:@zuke/otel";
+import { run } from "@zuke/core";
+import { otel } from "@zuke/otel";
 
 await run(MyBuild, {
   plugins: [
@@ -99,8 +99,8 @@ is derived from the run id, so a run that suspends in one process and resumes
 in another lands its spans under a single trace with no handoff.
 
 ```ts
-import { run } from "jsr:@zuke/core";
-import { otel } from "jsr:@zuke/otel";
+import { run } from "@zuke/core";
+import { otel } from "@zuke/otel";
 
 await run(MyBuild, {
   plugins: [otel((s) => s.endpoint("http://localhost:4318").serviceName("ci"))],
@@ -118,8 +118,8 @@ function otel(configure?: Configure<OtelSettings>): Plugin
   run/target transition is exported as OTLP/HTTP JSON:
 
   ```ts
-  import { run } from "jsr:@zuke/core";
-  import { otel } from "jsr:@zuke/otel";
+  import { run } from "@zuke/core";
+  import { otel } from "@zuke/otel";
 
   await run(MyBuild, {
     plugins: [otel((s) => s.endpoint("http://localhost:4318").serviceName("ci"))],

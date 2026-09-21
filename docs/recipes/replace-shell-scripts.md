@@ -36,7 +36,7 @@ project without `set -e`, or the `$(...)` quoting is one level off.
 
 ```ts
 #!/usr/bin/env -S deno run -A
-import { $ } from "jsr:@zuke/core/shell";
+import { $ } from "@zuke/core/shell";
 
 const [version, flag] = Deno.args;
 if (version === undefined) {
@@ -89,10 +89,10 @@ free to depend on the others:
 <!-- check -->
 
 ```ts
-import { Build, parameter, run, target } from "jsr:@zuke/core";
-import { $ } from "jsr:@zuke/core/shell";
-import { DenoTasks } from "jsr:@zuke/deno";
-import { GitTasks } from "jsr:@zuke/git";
+import { Build, parameter, run, target } from "@zuke/core";
+import { $ } from "@zuke/core/shell";
+import { DenoTasks } from "@zuke/deno";
+import { GitTasks } from "@zuke/git";
 
 class Release extends Build {
   version = parameter("The version to release, e.g. 1.1.0").required();

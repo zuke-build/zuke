@@ -19,7 +19,7 @@
  * parameter} rather than being hard-coded:
  *
  * ```ts
- * import { AnnounceTasks, Build, parameter, target } from "jsr:@zuke/core";
+ * import { AnnounceTasks, Build, parameter, target } from "@zuke/core";
  *
  * class MyBuild extends Build {
  *   slack = parameter("Slack incoming-webhook URL").secret().required();

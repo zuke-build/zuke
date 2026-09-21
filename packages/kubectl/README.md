@@ -15,7 +15,7 @@ Kubernetes from a pipeline.
 | Nodes                | `cordon`, `drain`, `taint`                                                                                                                                         |
 
 ```ts
-import { KubectlTasks } from "jsr:@zuke/kubectl";
+import { KubectlTasks } from "@zuke/kubectl";
 
 // Deploy and roll forward.
 await KubectlTasks.apply((s) => s.file("k8s/").namespace("prod"));
@@ -118,7 +118,7 @@ suppresses Zuke's own echo of the command, so kubectl's `--quiet` on
 deploying to and managing Kubernetes from a pipeline.
 
 ```ts
-import { KubectlTasks } from "jsr:@zuke/kubectl";
+import { KubectlTasks } from "@zuke/kubectl";
 
 await KubectlTasks.apply((s) => s.file("k8s/").namespace("prod"));
 await KubectlTasks.setImage((s) =>

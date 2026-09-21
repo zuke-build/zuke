@@ -7,7 +7,7 @@
  * seam so they can be unit-tested without network access.
  *
  * ```ts
- * import { httpDownload, httpJson } from "jsr:@zuke/core";
+ * import { httpDownload, httpJson } from "@zuke/core";
  *
  * await httpDownload("https://example.com/tool.tar.gz", ".zuke/tool.tar.gz");
  * const release = await httpJson<{ tag_name: string }>(

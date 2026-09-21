@@ -19,7 +19,10 @@ import {
   CHECK_MARKER,
   checkSnippets,
   collectCheckedSnippets,
+  collectInlineSpecifiers,
   extractCheckedSnippets,
+  findInlineSpecifiers,
+  formatInlineSpecifiers,
   formatSnippetFailures,
   reduceTempPath,
   type SnippetChecker,
@@ -210,4 +213,96 @@ Deno.test("check (real deno): the pilot's wrong order fails, the correct order p
     assertEquals(failures[0].detail.includes(".snippets-"), false);
     assertEquals(failures[0].detail.includes("snippet_"), false);
   });
+});
+
+// --- the inline-specifier guard ---
+
+Deno.test("inline: an inlined jsr import is found with its line and text", () => {
+  const md = [
+    "# Doc",
+    "",
+    "```ts",
+    'import { Build } from "jsr:@zuke/core";',
+    "```",
+  ].join("\n");
+  const found = findInlineSpecifiers(md, "docs/x.md");
+  assertEquals(found.length, 1);
+  assertEquals(found[0].file, "docs/x.md");
+  assertEquals(found[0].line, 4);
+  assertEquals(found[0].text, 'import { Build } from "jsr:@zuke/core";');
+});
+
+Deno.test("inline: a bare specifier is not a finding", () => {
+  const md = 'import { Build } from "@zuke/core";';
+  assertEquals(findInlineSpecifiers(md, "docs/x.md"), []);
+});
+
+Deno.test("inline: a command line keeps its jsr: specifier", () => {
+  // The `jsr:` form is correct — and the only thing that works — on a command
+  // line, so the guard is anchored on `from "…"` and must not touch these.
+  const md = [
+    "Run `deno doc jsr:@zuke/deno` for one package's API.",
+    "",
+    "```sh",
+    "deno run -A jsr:@zuke/cli setup",
+    "deno install -A -g -n zuke jsr:@zuke/cli",
+    "deno add jsr:@zuke/core",
+    "```",
+  ].join("\n");
+  assertEquals(findInlineSpecifiers(md, "README.md"), []);
+});
+
+Deno.test("inline: a non-zuke inline specifier is out of scope", () => {
+  // The rule this guard enforces is about the @zuke packages' own docs; a
+  // third-party specifier in a snippet is the doc author's call.
+  const md = 'import { parse } from "jsr:@std/yaml";';
+  assertEquals(findInlineSpecifiers(md, "docs/x.md"), []);
+});
+
+Deno.test("inline: a subpath import is caught too", () => {
+  const md = 'import { $ } from "jsr:@zuke/core/shell";';
+  const found = findInlineSpecifiers(md, "docs/shell.md");
+  assertEquals(found.length, 1);
+  assertStringIncludes(found[0].text, "@zuke/core/shell");
+});
+
+Deno.test("inline: every matching line is found, not every other one", () => {
+  // The scanner tests one shared regex against line after line. That is only
+  // safe while the pattern has no `g` flag: a global regex carries `lastIndex`
+  // between calls, and `.test()` would start each line where the previous
+  // match ended — reporting every other line and letting the ones in between
+  // slip past the gate. Three consecutive matches prove it does not.
+  const md = [
+    'import { A } from "jsr:@zuke/core";',
+    'import { B } from "jsr:@zuke/deno";',
+    'import { C } from "jsr:@zuke/git";',
+  ].join("\n");
+  const found = findInlineSpecifiers(md, "docs/x.md");
+  assertEquals(found.map((f) => f.line), [1, 2, 3]);
+});
+
+Deno.test("inline: collect aggregates across files in order", async () => {
+  await withTemp(async (dir) => {
+    const a = `${dir}/a.md`;
+    const b = `${dir}/b.md`;
+    await Deno.writeTextFile(a, 'import { A } from "jsr:@zuke/core";');
+    await Deno.writeTextFile(b, 'import { B } from "@zuke/deno";');
+    const found = await collectInlineSpecifiers([a, b]);
+    assertEquals(found.length, 1);
+    assertEquals(found[0].file, a);
+  });
+});
+
+Deno.test("format: the inline report names each location and the remedy", () => {
+  const message = formatInlineSpecifiers([
+    {
+      file: "docs/x.md",
+      line: 4,
+      text: 'import { Build } from "jsr:@zuke/core";',
+    },
+  ]);
+  assertStringIncludes(message, "1 documented import(s)");
+  assertStringIncludes(message, "docs/x.md:4");
+  assertStringIncludes(message, "no-import-prefix");
+  assertStringIncludes(message, "Command lines keep the `jsr:` specifier.");
 });

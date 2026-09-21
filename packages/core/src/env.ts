@@ -7,7 +7,7 @@
  * spawns can find it.
  *
  * ```ts
- * import { installTree, prependPath } from "jsr:@zuke/core";
+ * import { installTree, prependPath } from "@zuke/core";
  *
  * const node = await installTree({ name: "node", ...  });
  * prependPath(node("bin")); // now `node`, `npm`, `npx` resolve on PATH

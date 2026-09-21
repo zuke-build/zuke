@@ -8,7 +8,7 @@
  * runs it.
  *
  * ```ts
- * import { LintStagedTasks } from "jsr:@zuke/lint-staged";
+ * import { LintStagedTasks } from "@zuke/lint-staged";
  * await LintStagedTasks.run((s) => s.config(".lintstagedrc.json").relative());
  * ```
  *

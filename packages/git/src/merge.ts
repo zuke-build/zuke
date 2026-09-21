@@ -6,7 +6,7 @@
  * another.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * await GitTasks.merge((s) => s.refs("origin/main").noFf());
  * await GitTasks.rebase((s) => s.upstream("origin/main").autostash());
  * await GitTasks.rebase((s) => s.abort()); // unwind one left in progress

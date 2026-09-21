@@ -170,7 +170,7 @@ wins:
 Declare it in code — the everything-typed path:
 
 ```ts
-import { Build, HttpCacheStore, parameter, target } from "jsr:@zuke/core";
+import { Build, HttpCacheStore, parameter, target } from "@zuke/core";
 
 class CI extends Build {
   cacheToken = parameter("Cache token").secret().env("CACHE_TOKEN");
@@ -291,7 +291,7 @@ unchanged diff. `aiCache(...)` persists each provider response so an
 again.
 
 ```ts
-import { aiCache, securityReviewer } from "jsr:@zuke/ai";
+import { aiCache, securityReviewer } from "@zuke/ai";
 
 review = target()
   .validateBefore(
@@ -348,7 +348,7 @@ it via `.store(...)`, which is how tests inject an in-memory store for a single
 run:
 
 ```ts
-import { type CacheEntry, type CacheStore } from "jsr:@zuke/ai";
+import { type CacheEntry, type CacheStore } from "@zuke/ai";
 
 const memory = new Map<string, CacheEntry>();
 const inMemory: CacheStore = {

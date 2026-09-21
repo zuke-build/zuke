@@ -6,7 +6,7 @@
  * the commands that answer what refs exist and what they point at.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * const tags = await GitTasks.refs((s) =>
  *   s.patterns("refs/tags/").sort("-creatordate").count(10)
  * );

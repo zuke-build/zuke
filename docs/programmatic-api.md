@@ -14,7 +14,7 @@ import {
   GraphError,
   plan, // (rootTarget) => TargetBuilder[]  (topological order)
   validateGraph, // (targets) => void  (throws GraphError)
-} from "jsr:@zuke/core";
+} from "@zuke/core";
 ```
 
 ## `execute` options
@@ -44,7 +44,7 @@ options object mirrors the CLI flags:
 `ExecuteOptions` JSDoc for the full list.
 
 ```ts
-import { discoverTargets, execute } from "jsr:@zuke/core";
+import { discoverTargets, execute } from "@zuke/core";
 
 const build = new MyBuild();
 const target = discoverTargets(build).get("test");
@@ -68,7 +68,7 @@ that backs `zuke --help`, `zuke --list`, and `zuke --list --json`. Use it to
 build tooling around a build without shelling out or parsing `--help` text.
 
 ```ts
-import { describeCli } from "jsr:@zuke/core";
+import { describeCli } from "@zuke/core";
 
 const cli = describeCli(new MyBuild());
 for (const t of cli.targets) console.log(t.name, "→", t.dependsOn.join(", "));
@@ -83,7 +83,7 @@ restyle the output. A renderer receives each `TargetReport` and the `Style`
 palette, so custom rendering doesn't have to reimplement colour handling.
 
 ```ts
-import { defaultRenderer, execute, type Renderer } from "jsr:@zuke/core";
+import { defaultRenderer, execute, type Renderer } from "@zuke/core";
 
 const quiet: Renderer = {
   ...defaultRenderer,

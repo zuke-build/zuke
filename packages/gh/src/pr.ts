@@ -6,7 +6,7 @@
  * merge, checks, comment, edit, and close.
  *
  * ```ts
- * import { GhTasks } from "jsr:@zuke/gh";
+ * import { GhTasks } from "@zuke/gh";
  * await GhTasks.prMerge((s) => s.selector("123").squash().deleteBranch());
  * const open = await GhTasks.prListEntries((s) => s.state("open"));
  * ```

@@ -7,7 +7,7 @@
  * builds the command line and executes it.
  *
  * ```ts
- * import { BunTasks } from "jsr:@zuke/bun";
+ * import { BunTasks } from "@zuke/bun";
  * await BunTasks.install((s) => s.frozenLockfile());
  * await BunTasks.run((s) => s.script("build"));
  * ```

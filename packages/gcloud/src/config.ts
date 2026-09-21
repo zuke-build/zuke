@@ -5,7 +5,7 @@
  * The `gcloud config` group — the properties every other command inherits.
  *
  * ```ts
- * import { GcloudTasks } from "jsr:@zuke/gcloud";
+ * import { GcloudTasks } from "@zuke/gcloud";
  * await GcloudTasks.configSet((s) => s.property("project").value(projectId));
  * const project = await GcloudTasks.configValue((s) => s.property("project"));
  * ```

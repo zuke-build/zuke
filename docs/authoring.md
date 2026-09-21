@@ -247,7 +247,7 @@ static prefix, and does not follow symlinked directories. Supported syntax: `*`
 brace alternation `{a,b}`.
 
 ```ts
-import { glob } from "jsr:@zuke/core";
+import { glob } from "@zuke/core";
 
 format = target().executes(async () => {
   const sources = await glob("src/**/*.ts");
@@ -294,7 +294,7 @@ async `assertFileExists(path)` / `assertDirectoryExists(path)` check the
 filesystem. All throw an `AssertionError`.
 
 ```ts
-import { assert, assertExists, assertFileExists } from "jsr:@zuke/core";
+import { assert, assertExists, assertFileExists } from "@zuke/core";
 
 const token = assertExists(Deno.env.get("TOKEN"), "TOKEN is required");
 assert(this.environment.value !== "", "environment must be set");
@@ -313,7 +313,7 @@ an `absolutePath(...)` or a plain string both work.
 <!-- check -->
 
 ```ts
-import { FileTasks } from "jsr:@zuke/core";
+import { FileTasks } from "@zuke/core";
 
 await FileTasks.cleanDirectory("dist"); // empty it if it exists
 await FileTasks.createDirectory("dist/assets"); // mkdir -p
@@ -361,7 +361,7 @@ a non-2xx response.
 <!-- check -->
 
 ```ts
-import { httpDownload, httpJson } from "jsr:@zuke/core";
+import { httpDownload, httpJson } from "@zuke/core";
 
 await httpDownload("https://example.com/tool.tar.gz", ".zuke/tool.tar.gz");
 const release = await httpJson<{ tag_name: string }>(
@@ -391,7 +391,7 @@ with `.from(...)` (see [Secrets](./secrets.md)).
 <!-- check -->
 
 ```ts
-import { AnnounceTasks, Build, parameter, target } from "jsr:@zuke/core";
+import { AnnounceTasks, Build, parameter, target } from "@zuke/core";
 
 class MyBuild extends Build {
   slack = parameter("Slack incoming-webhook URL").secret().required();
@@ -473,7 +473,7 @@ use a fixed mtime, so output is reproducible.
 <!-- check -->
 
 ```ts
-import { createTarGzip } from "jsr:@zuke/core";
+import { createTarGzip } from "@zuke/core";
 
 await createTarGzip(["dist/app.js", "README.md"], "artifact.tar.gz");
 ```
@@ -526,7 +526,7 @@ what else you need:
 <!-- check -->
 
 ```ts
-import { Build, cicd, target } from "jsr:@zuke/core";
+import { Build, cicd, target } from "@zuke/core";
 
 class MyBuild extends Build {
   ci = cicd({ provider: "github" }); // runs ./zuke on push/PR to main
@@ -666,7 +666,7 @@ on `"macos"` rather than the raw `"darwin"` (other Unixes report as `"linux"`).
 [tool download URLs](./installing-tools.md#cross-platform-url-resolution).
 
 ```ts
-import { hostPlatform, operatingSystem } from "jsr:@zuke/core";
+import { hostPlatform, operatingSystem } from "@zuke/core";
 
 publish = target().onlyWhen(() => operatingSystem() === "linux").executes(
   /* … */
@@ -684,7 +684,7 @@ case resolves the bare name on `PATH` instead. Prefer
 rare spawn it does not cover.
 
 ```ts
-import { denoExecutable } from "jsr:@zuke/core";
+import { denoExecutable } from "@zuke/core";
 
 const deno = new Deno.Command(denoExecutable(), { args: ["doc", "./mod.ts"] });
 ```

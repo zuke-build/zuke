@@ -5,7 +5,7 @@ Typed [Vite](https://vitejs.dev) CLI task wrappers for
 `preview`.
 
 ```ts
-import { ViteTasks } from "jsr:@zuke/vite";
+import { ViteTasks } from "@zuke/vite";
 
 await ViteTasks.build((s) => s.outDir("dist").mode("production"));
 await ViteTasks.preview((s) => s.port(4173));
@@ -23,7 +23,7 @@ await ViteTasks.preview((s) => s.port(4173));
 CLI, for use in Zuke builds.
 
 ```ts
-import { ViteTasks } from "jsr:@zuke/vite";
+import { ViteTasks } from "@zuke/vite";
 
 await ViteTasks.build((s) => s.outDir("dist").mode("production"));
 await ViteTasks.preview((s) => s.port(4173));

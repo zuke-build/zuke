@@ -6,7 +6,7 @@
  * for packaging and deploying to Kubernetes from a Zuke build.
  *
  * ```ts
- * import { HelmTasks } from "jsr:@zuke/helm";
+ * import { HelmTasks } from "@zuke/helm";
  *
  * await HelmTasks.upgrade((s) =>
  *   s.release("api").chart("./charts/api").install().namespace("prod").wait()

@@ -13,8 +13,8 @@
  * `.runOnly("both")` permits either. Bring your own runner:
  *
  * ```ts
- * import { agentFixer } from "jsr:@zuke/ai";
- * import { ClaudeTasks } from "jsr:@zuke/claude";
+ * import { agentFixer } from "@zuke/ai";
+ * import { ClaudeTasks } from "@zuke/claude";
  *
  * test = target()
  *   .executes(() => DenoTasks.test((s) => s.allowAll()))

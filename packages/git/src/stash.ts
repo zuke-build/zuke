@@ -5,7 +5,7 @@
  * `git stash` — parking uncommitted work and getting it back.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * await GitTasks.stash((s) => s.push().message("before regen").includeUntracked());
  * await GitTasks.stash((s) => s.pop());
  * await GitTasks.stash((s) => s.list());

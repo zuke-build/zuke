@@ -11,8 +11,8 @@
 ## Example
 
 ```ts
-import { Build, run, target } from "jsr:@zuke/core";
-import { DenoTasks } from "jsr:@zuke/deno";
+import { Build, run, target } from "@zuke/core";
+import { DenoTasks } from "@zuke/deno";
 
 class CI extends Build {
   lint = target().executes(() => DenoTasks.lint());

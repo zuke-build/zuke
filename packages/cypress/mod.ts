@@ -7,7 +7,7 @@
  * in Zuke builds.
  *
  * ```ts
- * import { CypressTasks } from "jsr:@zuke/cypress";
+ * import { CypressTasks } from "@zuke/cypress";
  *
  * await CypressTasks.run((s) => s.e2e().browser("chrome"));
  * ```

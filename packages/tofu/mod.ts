@@ -6,7 +6,7 @@
  * use in Zuke build targets (infrastructure-as-code workflows).
  *
  * ```ts
- * import { TofuTasks } from "jsr:@zuke/tofu";
+ * import { TofuTasks } from "@zuke/tofu";
  *
  * await TofuTasks.init((s) => s.upgrade());
  * await TofuTasks.apply((s) => s.autoApprove().var("env", "prod"));

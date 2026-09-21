@@ -10,7 +10,7 @@
  * time, so the same build works on either host.
  *
  * ```ts
- * import { DockerComposeTasks } from "jsr:@zuke/docker-compose";
+ * import { DockerComposeTasks } from "@zuke/docker-compose";
  *
  * await DockerComposeTasks.up((s) => s.file("compose.yml").detach().build());
  * await DockerComposeTasks.logs((s) => s.follow().tail(100));

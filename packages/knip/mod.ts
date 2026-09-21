@@ -6,7 +6,7 @@
  * CLI (unused files, dependencies, and exports), for use in Zuke builds.
  *
  * ```ts
- * import { KnipTasks } from "jsr:@zuke/knip";
+ * import { KnipTasks } from "@zuke/knip";
  *
  * await KnipTasks.run((s) => s.production().strict());
  * ```

@@ -7,7 +7,7 @@
  * and the task function builds the command line and executes it.
  *
  * ```ts
- * import { BiomeTasks } from "jsr:@zuke/biome";
+ * import { BiomeTasks } from "@zuke/biome";
  * await BiomeTasks.ci((s) => s.paths("src"));
  * await BiomeTasks.check((s) => s.write().paths("src"));
  * ```

@@ -5,7 +5,7 @@ Typed [Helm](https://helm.sh) CLI task wrappers for
 `uninstall`, `template`, `lint`, `dependencyUpdate`, `repoAdd`, and `package`.
 
 ```ts
-import { HelmTasks } from "jsr:@zuke/helm";
+import { HelmTasks } from "@zuke/helm";
 
 await HelmTasks.upgrade((s) =>
   s.release("api").chart("./charts/api").install().namespace("prod")
@@ -30,7 +30,7 @@ injection-free.
 for packaging and deploying to Kubernetes from a Zuke build.
 
 ```ts
-import { HelmTasks } from "jsr:@zuke/helm";
+import { HelmTasks } from "@zuke/helm";
 
 await HelmTasks.upgrade((s) =>
   s.release("api").chart("./charts/api").install().namespace("prod").wait()

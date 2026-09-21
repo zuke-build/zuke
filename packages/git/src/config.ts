@@ -5,7 +5,7 @@
  * `git config` — reading and writing configuration values.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * await GitTasks.config((s) => s.set("user.name", "ci-bot").local());
  * const url = await GitTasks.configGet((s) => s.get("remote.origin.url"));
  * ```

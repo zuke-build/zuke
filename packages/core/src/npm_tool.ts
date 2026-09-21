@@ -19,8 +19,8 @@
  * {@link "./tool.ts".ToolTasks.npm}.
  *
  * ```ts
- * import { installNpmTool } from "jsr:@zuke/core";
- * import { CmdTasks } from "jsr:@zuke/cmd";
+ * import { installNpmTool } from "@zuke/core";
+ * import { CmdTasks } from "@zuke/cmd";
  *
  * const vitest = await installNpmTool({ name: "vitest", version: "4.1.9" });
  * await CmdTasks.exec(String(vitest), (s) => s.args("run"));

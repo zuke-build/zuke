@@ -8,7 +8,7 @@
  * the command line and executes it.
  *
  * ```ts
- * import { StorybookTasks } from "jsr:@zuke/storybook";
+ * import { StorybookTasks } from "@zuke/storybook";
  * await StorybookTasks.dev((s) => s.port(6006).noOpen().ci());
  * await StorybookTasks.build((s) => s.outputDir("storybook-static"));
  * ```

@@ -6,7 +6,7 @@
  * deploying to and managing Kubernetes from a pipeline.
  *
  * ```ts
- * import { KubectlTasks } from "jsr:@zuke/kubectl";
+ * import { KubectlTasks } from "@zuke/kubectl";
  *
  * await KubectlTasks.apply((s) => s.file("k8s/").namespace("prod"));
  * await KubectlTasks.setImage((s) =>

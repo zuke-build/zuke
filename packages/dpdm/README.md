@@ -5,7 +5,7 @@ Typed [dpdm](https://github.com/acrazing/dpdm) CLI task wrapper for
 module dependency graph and report circular imports.
 
 ```ts
-import { DpdmTasks } from "jsr:@zuke/dpdm";
+import { DpdmTasks } from "@zuke/dpdm";
 
 // Fail the build on any circular dependency among the entry files.
 await DpdmTasks.analyze((s) =>
@@ -30,7 +30,7 @@ dpdm (https://github.com/acrazing/dpdm) CLI (module dependency graph and
 circular-import analysis), for use in Zuke builds.
 
 ```ts
-import { DpdmTasks } from "jsr:@zuke/dpdm";
+import { DpdmTasks } from "@zuke/dpdm";
 
 await DpdmTasks.analyze((s) =>
   s.noTree().noWarning().exitCode("circular:1").entries("src/index.ts")

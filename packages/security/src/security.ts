@@ -19,7 +19,7 @@
  * | {@link SecurityTasksApi.trivyFs} / {@link SecurityTasksApi.trivyConfig} | [`trivy`](https://github.com/aquasecurity/trivy) | Filesystem & IaC/config |
  *
  * ```ts
- * import { SecurityTasks } from "jsr:@zuke/security";
+ * import { SecurityTasks } from "@zuke/security";
  *
  * await SecurityTasks.zizmor((s) => s.paths(".github/workflows").format("sarif"));
  * await SecurityTasks.gitleaks((s) => s.source(".").redact());

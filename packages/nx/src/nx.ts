@@ -7,7 +7,7 @@
  * the task function builds the command line and executes it.
  *
  * ```ts
- * import { NxTasks } from "jsr:@zuke/nx";
+ * import { NxTasks } from "@zuke/nx";
  * await NxTasks.affected((s) => s.target("test").base("main").parallel(3));
  * await NxTasks.runMany((s) => s.target("build").projects("web", "api"));
  * ```

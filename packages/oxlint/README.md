@@ -6,7 +6,7 @@ settings-lambda API. Arguments stay a discrete argv array, so command
 construction is injection-free.
 
 ```ts
-import { OxlintTasks } from "jsr:@zuke/oxlint";
+import { OxlintTasks } from "@zuke/oxlint";
 
 await OxlintTasks.lint((s) =>
   s.paths("src").config(".oxlintrc.json").fix().denyWarnings()
@@ -32,7 +32,7 @@ Configure a fluent settings object in a lambda; the task builds the argv and
 runs it.
 
 ```ts
-import { OxlintTasks } from "jsr:@zuke/oxlint";
+import { OxlintTasks } from "@zuke/oxlint";
 await OxlintTasks.lint((s) => s.paths("src").fix().denyWarnings());
 ```
 @module

@@ -7,7 +7,7 @@
  * and the task function builds the command line and executes it.
  *
  * ```ts
- * import { ViteTasks } from "jsr:@zuke/vite";
+ * import { ViteTasks } from "@zuke/vite";
  * await ViteTasks.build((s) => s.outDir("dist").mode("production"));
  * await ViteTasks.preview((s) => s.port(4173));
  * ```

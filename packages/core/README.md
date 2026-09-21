@@ -5,7 +5,7 @@ TypeScript classes; each target is a field wired to others by reference, forming
 a dependency graph that Zuke sorts and runs.
 
 ```ts
-import { Build, run, target } from "jsr:@zuke/core";
+import { Build, run, target } from "@zuke/core";
 
 class MyBuild extends Build {
   hello = target()
@@ -41,7 +41,7 @@ an incoming webhook or, in bot mode (`.bot().token(t).channel(c)`), through the
 platform's API.
 
 ```ts
-import { AnnounceTasks } from "jsr:@zuke/core";
+import { AnnounceTasks } from "@zuke/core";
 
 await AnnounceTasks.slack((s) =>
   s.webhook(slackWebhookUrl)
@@ -72,8 +72,8 @@ the {@link target} fluent builder, and make the file runnable with
 {@link run}:
 
 ```ts
-import { Build, target, run } from "jsr:@zuke/core";
-import { $ } from "jsr:@zuke/core/shell";
+import { Build, target, run } from "@zuke/core";
+import { $ } from "@zuke/core/shell";
 
 class MyBuild extends Build {
   test = target()
@@ -261,7 +261,7 @@ function denoExecutable(standalone: boolean): string
   real Deno on `PATH`. `Deno.build.standalone` is what tells the two apart.
 
   ```ts
-  import { denoExecutable } from "jsr:@zuke/core";
+  import { denoExecutable } from "@zuke/core";
   const deno = new Deno.Command(denoExecutable(), { args: ["doc", "jsr:@zuke/core"] });
   ```
 
@@ -284,7 +284,7 @@ function describeCli(build: Build, options: DescribeCliOptions): CliDescription
   available to tooling and agents that introspect a build in code.
 
   ```ts
-  import { describeCli } from "jsr:@zuke/core";
+  import { describeCli } from "@zuke/core";
   const surface = describeCli(new MyBuild());
   console.log(surface.targets.map((t) => t.name));
   ```
@@ -601,7 +601,7 @@ function operatingSystem(os: typeof Deno.build.os): OperatingSystem
   {@link isCI}.
 
   ```ts
-  import { operatingSystem } from "jsr:@zuke/core";
+  import { operatingSystem } from "@zuke/core";
   if (operatingSystem() === "macos") { ... }
   ```
 
@@ -660,7 +660,7 @@ function protectedResource(resource: string): ProtectedResourceSettings
   this MCP endpoint (`https://build.example.com/mcp`).
 
   ```ts
-  import { Build, protectedResource } from "jsr:@zuke/core";
+  import { Build, protectedResource } from "@zuke/core";
 
   class CI extends Build {
     override mcpProtectedResource() {
@@ -5291,7 +5291,7 @@ function defineTool(tool: string, options: DefineToolOptions): ToolTask
   `arg`/`flag`/`option` for argv and the shared `cwd`/`env`/`noThrow`/… chainers.
 
   ```ts
-  import { defineTool } from "jsr:@zuke/core/tooling";
+  import { defineTool } from "@zuke/core/tooling";
 
   const terraform = defineTool("terraform");
   await terraform((s) => s.arg("plan").option("out", "plan.tfplan"));

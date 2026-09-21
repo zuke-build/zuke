@@ -6,7 +6,7 @@
  * matching paths, dependency-free (built on `Deno.readDir`).
  *
  * ```ts
- * import { glob } from "jsr:@zuke/core";
+ * import { glob } from "@zuke/core";
  * const sources = await glob("src/**\/*.ts");
  * await DenoTasks.fmt((s) => s.check().paths(...sources));
  * ```

@@ -10,7 +10,7 @@
  * a lambda; the task builds the argv and runs it.
  *
  * ```ts
- * import { TscAliasTasks } from "jsr:@zuke/tsc-alias";
+ * import { TscAliasTasks } from "@zuke/tsc-alias";
  * await TscAliasTasks.run((s) => s.project("tsconfig.json").resolveFullPaths());
  * ```
  *

@@ -6,7 +6,7 @@
  * project: `npm view`, `ping`, `whoami`, `access`, `owner`, and `token`.
  *
  * ```ts
- * import { NpmTasks } from "jsr:@zuke/npm";
+ * import { NpmTasks } from "@zuke/npm";
  * await NpmTasks.view((s) => s.spec("react").field("dist-tags.latest"));
  * await NpmTasks.access((s) => s.setStatus("public"));
  * const who = await NpmTasks.whoamiName(); // undefined when logged out

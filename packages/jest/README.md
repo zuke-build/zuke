@@ -6,7 +6,7 @@ settings-lambda API. Arguments stay a discrete argv array, so command
 construction is injection-free.
 
 ```ts
-import { JestTasks } from "jsr:@zuke/jest";
+import { JestTasks } from "@zuke/jest";
 
 await JestTasks.run((s) => s.ci().coverage().maxWorkers("50%").bail());
 ```
@@ -30,7 +30,7 @@ Configure a fluent settings object in a lambda; the task builds the argv and
 runs it.
 
 ```ts
-import { JestTasks } from "jsr:@zuke/jest";
+import { JestTasks } from "@zuke/jest";
 await JestTasks.run((s) => s.ci().coverage().maxWorkers(2));
 ```
 @module

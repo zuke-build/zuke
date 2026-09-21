@@ -8,7 +8,7 @@
  * and executes it.
  *
  * ```ts
- * import { OxlintTasks } from "jsr:@zuke/oxlint";
+ * import { OxlintTasks } from "@zuke/oxlint";
  * await OxlintTasks.lint((s) => s.paths("src").fix().denyWarnings());
  * ```
  *

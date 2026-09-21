@@ -7,7 +7,7 @@
  * again or stashing.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * await GitTasks.worktree((s) => s.add("../feature").branch("feature").createBranch());
  * const trees = await GitTasks.worktreeList();
  * await GitTasks.worktree((s) => s.remove("../feature"));

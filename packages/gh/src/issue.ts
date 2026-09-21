@@ -6,7 +6,7 @@
  * comment, and close.
  *
  * ```ts
- * import { GhTasks } from "jsr:@zuke/gh";
+ * import { GhTasks } from "@zuke/gh";
  * await GhTasks.issueCreate((s) => s.title("flaky test").body(details).label("bug"));
  * await GhTasks.issueClose((s) => s.selector(42).reason("completed"));
  * const bugs = await GhTasks.issueListEntries((s) => s.label("bug"));

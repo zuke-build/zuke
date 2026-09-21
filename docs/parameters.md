@@ -14,7 +14,7 @@ precedence):
 <!-- check -->
 
 ```ts
-import { Build, parameter, run, target } from "jsr:@zuke/core";
+import { Build, parameter, run, target } from "@zuke/core";
 
 class Deploy extends Build {
   environment = parameter("Target environment")
@@ -120,7 +120,7 @@ Pair `.secret()` with `.from(source)` to fetch the value from a secret manager
 (1Password, Vault, a mounted file, …) instead of the environment:
 
 ```ts
-import { execSecret } from "jsr:@zuke/core";
+import { execSecret } from "@zuke/core";
 
 token = parameter("Deploy token")
   .secret()
@@ -218,7 +218,7 @@ Resolution lives in the execution engine, not the CLI, so a programmatic
 values via `params` and/or rely on environment variables:
 
 ```ts
-import { discoverTargets, execute } from "jsr:@zuke/core";
+import { discoverTargets, execute } from "@zuke/core";
 
 const build = new Deploy();
 const deploy = discoverTargets(build).get("deploy");

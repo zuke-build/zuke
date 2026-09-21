@@ -8,7 +8,7 @@
  * and executes it.
  *
  * ```ts
- * import { DockerComposeTasks } from "jsr:@zuke/docker-compose";
+ * import { DockerComposeTasks } from "@zuke/docker-compose";
  * await DockerComposeTasks.up((s) => s.file("compose.yml").detach());
  * await DockerComposeTasks.down((s) => s.volumes());
  * ```

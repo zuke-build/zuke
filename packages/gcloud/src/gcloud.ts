@@ -11,7 +11,7 @@
  * the `.args(...)` escape hatch.
  *
  * ```ts
- * import { GcloudTasks } from "jsr:@zuke/gcloud";
+ * import { GcloudTasks } from "@zuke/gcloud";
  * await GcloudTasks.run((s) =>
  *   s.command("run", "deploy", "api")
  *     .project("my-proj").flag("region", "us-central1").quiet()

@@ -14,8 +14,8 @@
  * wrapper's `.toolPath(...)`.
  *
  * ```ts
- * import { Build, target, toolchain, ToolTasks } from "jsr:@zuke/core";
- * import { HelmTasks } from "jsr:@zuke/helm";
+ * import { Build, target, toolchain, ToolTasks } from "@zuke/core";
+ * import { HelmTasks } from "@zuke/helm";
  *
  * class Deploy extends Build {
  *   tools = toolchain((t) =>

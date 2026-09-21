@@ -9,7 +9,7 @@
  * Codecov; the token is read from `CODECOV_TOKEN` so it never lands in argv.
  *
  * ```ts
- * import { CodecovTasks } from "jsr:@zuke/codecov";
+ * import { CodecovTasks } from "@zuke/codecov";
  * await CodecovTasks.upload((s) => s.files("cov.lcov").flags("unit"));
  * ```
  *

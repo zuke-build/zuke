@@ -7,7 +7,7 @@ across separate `zuke` invocations, separate machines (with the HTTP backend),
 and process restarts.
 
 ```ts
-import { Build, target } from "jsr:@zuke/core";
+import { Build, target } from "@zuke/core";
 
 class CD extends Build {
   repo = parameter("service to deploy");
@@ -104,7 +104,7 @@ A lock's holder is visible to the run that loses a race for it. To ask without
 contending — the usual case when a shared resource looks stuck — list them:
 
 ```ts
-import { listStoreLocks } from "jsr:@zuke/core";
+import { listStoreLocks } from "@zuke/core";
 
 for (const { key, holder, expiresAt } of await listStoreLocks(store)) {
   console.log(`${key}: ${holder.actor} (run ${holder.runId}) since ${holder.since}`);

@@ -7,7 +7,7 @@
  * to skip versions already on JSR (idempotent re-runs).
  *
  * ```ts
- * import { isPublished, jsrVersions } from "jsr:@zuke/jsr";
+ * import { isPublished, jsrVersions } from "@zuke/jsr";
  *
  * if (!(await isPublished("@zuke/core", "0.13.0"))) {
  *   // ...publish it

@@ -7,7 +7,7 @@
  * `update`.
  *
  * ```ts
- * import { DockerTasks } from "jsr:@zuke/docker";
+ * import { DockerTasks } from "@zuke/docker";
  * await DockerTasks.restart((s) => s.containers("app").timeout(5));
  * const exitCode = await DockerTasks.wait((s) => s.containers("app"));
  * await DockerTasks.rm((s) => s.containers("app").force().volumes());

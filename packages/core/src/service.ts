@@ -14,8 +14,8 @@
  * shell dance around end-to-end tests.
  *
  * ```ts
- * import { service, target, tcpReachable } from "jsr:@zuke/core";
- * import { $ } from "jsr:@zuke/core/shell";
+ * import { service, target, tcpReachable } from "@zuke/core";
+ * import { $ } from "@zuke/core/shell";
  *
  * class E2E extends Build {
  *   api = service()

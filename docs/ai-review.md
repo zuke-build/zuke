@@ -19,8 +19,8 @@ it runs; the reviewer decides _what_ it checks.
 <!-- check -->
 
 ```ts
-import { Build, parameter, run, target } from "jsr:@zuke/core";
-import { securityReviewer } from "jsr:@zuke/ai";
+import { Build, parameter, run, target } from "@zuke/core";
+import { securityReviewer } from "@zuke/ai";
 
 class Pipeline extends Build {
   key = parameter("Anthropic API key").secret().required();
@@ -454,7 +454,7 @@ declare it on the build and Zuke writes a
 standard `cicd` sync keeps current.
 
 ```ts
-import { aiReviewWorkflow, securityReviewer } from "jsr:@zuke/ai";
+import { aiReviewWorkflow, securityReviewer } from "@zuke/ai";
 
 class Pipeline extends Build {
   openaiKey = parameter("OpenAI key").secret().env("OPENAI_API_KEY");

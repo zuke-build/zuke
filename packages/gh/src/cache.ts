@@ -5,7 +5,7 @@
  * `gh cache` — reading and reclaiming a repository's Actions caches.
  *
  * ```ts
- * import { GhTasks } from "jsr:@zuke/gh";
+ * import { GhTasks } from "@zuke/gh";
  * const caches = await GhTasks.cacheListEntries((s) => s.key("deno-").sort("size_in_bytes"));
  * await GhTasks.cacheDelete((s) => s.all().succeedOnNoCaches());
  * ```

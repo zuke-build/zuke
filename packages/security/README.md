@@ -19,7 +19,7 @@ The tools are not bundled (Zuke has no runtime dependencies); install the ones
 you use and they are resolved on `PATH` (override with `.toolPath(...)`).
 
 ```ts
-import { SecurityTasks } from "jsr:@zuke/security";
+import { SecurityTasks } from "@zuke/security";
 
 // Audit your workflows and fail the build on findings.
 await SecurityTasks.zizmor((s) => s.paths(".github/workflows"));
@@ -51,7 +51,7 @@ Every path argument accepts either a string or an `AbsolutePath` from
 (zizmor, actionlint, gitleaks, osv-scanner, semgrep, trivy) for Zuke builds.
 
 ```ts
-import { SecurityTasks } from "jsr:@zuke/security";
+import { SecurityTasks } from "@zuke/security";
 
 await SecurityTasks.zizmor((s) => s.paths(".github/workflows"));
 await SecurityTasks.osvScanner((s) => s.lockfile("package-lock.json"));

@@ -6,7 +6,7 @@
  * a release note names its contributors.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * const authors = await GitTasks.shortlogEntries((s) =>
  *   s.email().commits("v1.0.0..HEAD")
  * );

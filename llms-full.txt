@@ -18,8 +18,8 @@ the {@link target} fluent builder, and make the file runnable with
 {@link run}:
 
 ```ts
-import { Build, target, run } from "jsr:@zuke/core";
-import { $ } from "jsr:@zuke/core/shell";
+import { Build, target, run } from "@zuke/core";
+import { $ } from "@zuke/core/shell";
 
 class MyBuild extends Build {
   test = target()
@@ -207,7 +207,7 @@ function denoExecutable(standalone: boolean): string
   real Deno on `PATH`. `Deno.build.standalone` is what tells the two apart.
 
   ```ts
-  import { denoExecutable } from "jsr:@zuke/core";
+  import { denoExecutable } from "@zuke/core";
   const deno = new Deno.Command(denoExecutable(), { args: ["doc", "jsr:@zuke/core"] });
   ```
 
@@ -230,7 +230,7 @@ function describeCli(build: Build, options: DescribeCliOptions): CliDescription
   available to tooling and agents that introspect a build in code.
 
   ```ts
-  import { describeCli } from "jsr:@zuke/core";
+  import { describeCli } from "@zuke/core";
   const surface = describeCli(new MyBuild());
   console.log(surface.targets.map((t) => t.name));
   ```
@@ -547,7 +547,7 @@ function operatingSystem(os: typeof Deno.build.os): OperatingSystem
   {@link isCI}.
 
   ```ts
-  import { operatingSystem } from "jsr:@zuke/core";
+  import { operatingSystem } from "@zuke/core";
   if (operatingSystem() === "macos") { ... }
   ```
 
@@ -606,7 +606,7 @@ function protectedResource(resource: string): ProtectedResourceSettings
   this MCP endpoint (`https://build.example.com/mcp`).
 
   ```ts
-  import { Build, protectedResource } from "jsr:@zuke/core";
+  import { Build, protectedResource } from "@zuke/core";
 
   class CI extends Build {
     override mcpProtectedResource() {
@@ -5237,7 +5237,7 @@ function defineTool(tool: string, options: DefineToolOptions): ToolTask
   `arg`/`flag`/`option` for argv and the shared `cwd`/`env`/`noThrow`/… chainers.
 
   ```ts
-  import { defineTool } from "jsr:@zuke/core/tooling";
+  import { defineTool } from "@zuke/core/tooling";
 
   const terraform = defineTool("terraform");
   await terraform((s) => s.arg("plan").option("out", "plan.tfplan"));
@@ -5833,7 +5833,7 @@ type StateStoreFactory = () => StateStore | Promise<StateStore>
 Zuke build targets.
 
 ```ts
-import { DenoTasks } from "jsr:@zuke/deno";
+import { DenoTasks } from "@zuke/deno";
 
 await DenoTasks.check((s) => s.paths("mod.ts"));
 await DenoTasks.test((s) => s.allowAll().coverage("cov_profile"));
@@ -7105,7 +7105,7 @@ It runs no subprocess and depends only on `@zuke/core`, so it works without
 produces your doc text (`@zuke/deno`'s `DenoTasks.doc`, a checked-in file, …).
 
 ```ts
-import { DocsTasks } from "jsr:@zuke/docs";
+import { DocsTasks } from "@zuke/docs";
 
 const docs = [{ name: "@acme/core", dir: "core", doc: denoDocText }];
 await DocsTasks.apiDocs(docs, { project: { title: "Acme", summary: "…" } });
@@ -7219,7 +7219,7 @@ interface ProjectInfo
 build targets (including builds that drive Node projects).
 
 ```ts
-import { NpmTasks } from "jsr:@zuke/npm";
+import { NpmTasks } from "@zuke/npm";
 
 await NpmTasks.ci();
 await NpmTasks.run((s) => s.script("build"));
@@ -7995,7 +7995,7 @@ type NpmOmitType = "dev" | "optional" | "peer"
 in Zuke build targets (including builds that drive Node projects).
 
 ```ts
-import { NpxTasks } from "jsr:@zuke/npx";
+import { NpxTasks } from "@zuke/npx";
 
 await NpxTasks.npx((s) => s.command("cowsay").yes().execArgs("hello"));
 ```
@@ -8040,7 +8040,7 @@ interface NpxTasksApi
 build targets (package management, scripts, and the built-in test runner).
 
 ```ts
-import { BunTasks } from "jsr:@zuke/bun";
+import { BunTasks } from "@zuke/bun";
 
 await BunTasks.install((s) => s.frozenLockfile());
 await BunTasks.run((s) => s.script("build"));
@@ -8154,7 +8154,7 @@ interface BunTasksApi
 build targets (including builds that drive Node/workspace projects).
 
 ```ts
-import { PnpmTasks } from "jsr:@zuke/pnpm";
+import { PnpmTasks } from "@zuke/pnpm";
 
 await PnpmTasks.install((s) => s.frozenLockfile());
 await PnpmTasks.run((s) => s.script("build").filter("app"));
@@ -8272,7 +8272,7 @@ build targets (Yarn Classic v1 and Berry v2+; version-specific options are
 documented on each method).
 
 ```ts
-import { YarnTasks } from "jsr:@zuke/yarn";
+import { YarnTasks } from "@zuke/yarn";
 
 await YarnTasks.install((s) => s.immutable());
 await YarnTasks.run((s) => s.script("build"));
@@ -8369,7 +8369,7 @@ here instead gives up typed flags and the wrapper's tool resolution, so the
 example below deliberately uses a tool Zuke does not wrap.
 
 ```ts
-import { CmdTasks } from "jsr:@zuke/cmd";
+import { CmdTasks } from "@zuke/cmd";
 
 await CmdTasks.exec("shellcheck", (s) => s.args("--severity", "warning"));
 ```
@@ -8404,7 +8404,7 @@ markup and a semantic theme, and the primitives Zuke draws its own output with
 (`line`, `rule`, `box`, `table`, target `header`/`summary`).
 
 ```ts
-import { ConsoleTasks as Log } from "jsr:@zuke/console";
+import { ConsoleTasks as Log } from "@zuke/console";
 
 Log.rule("Deploy");
 Log.info("pushing [bold]core@1.2.0[/]");
@@ -8414,8 +8414,8 @@ Log.success("published 4 packages");
 A build can also route the executor's own banners through this package:
 
 ```ts
-import { run } from "jsr:@zuke/core";
-import { consoleRenderer } from "jsr:@zuke/console";
+import { run } from "@zuke/core";
+import { consoleRenderer } from "@zuke/console";
 
 await run(MyBuild, { renderer: consoleRenderer });
 ```
@@ -8731,7 +8731,7 @@ type ImportSource = "package.json" | "Makefile"
 `@zuke/docker` — typed `DockerTasks` wrappers for the `docker` CLI.
 
 ```ts
-import { DockerTasks } from "jsr:@zuke/docker";
+import { DockerTasks } from "@zuke/docker";
 
 await DockerTasks.build((s) => s.tag("app:latest"));
 await DockerTasks.run((s) => s.rm().image("app:latest"));
@@ -9614,7 +9614,7 @@ runs it. The wrapper detects whether Compose is installed as the v2 plugin
 time, so the same build works on either host.
 
 ```ts
-import { DockerComposeTasks } from "jsr:@zuke/docker-compose";
+import { DockerComposeTasks } from "@zuke/docker-compose";
 
 await DockerComposeTasks.up((s) => s.file("compose.yml").detach().build());
 await DockerComposeTasks.logs((s) => s.follow().tail(100));
@@ -10267,7 +10267,7 @@ type DockerComposePullPolicy = "always" | "missing" | "never"
 deploying to and managing Kubernetes from a pipeline.
 
 ```ts
-import { KubectlTasks } from "jsr:@zuke/kubectl";
+import { KubectlTasks } from "@zuke/kubectl";
 
 await KubectlTasks.apply((s) => s.file("k8s/").namespace("prod"));
 await KubectlTasks.setImage((s) =>
@@ -11248,7 +11248,7 @@ type TaintEffect = "NoSchedule" | "PreferNoSchedule" | "NoExecute"
 for packaging and deploying to Kubernetes from a Zuke build.
 
 ```ts
-import { HelmTasks } from "jsr:@zuke/helm";
+import { HelmTasks } from "@zuke/helm";
 
 await HelmTasks.upgrade((s) =>
   s.release("api").chart("./charts/api").install().namespace("prod").wait()
@@ -11423,7 +11423,7 @@ interface HelmTasksApi
 Kustomize (https://kustomize.io) CLI, for use in Zuke builds.
 
 ```ts
-import { KustomizeTasks } from "jsr:@zuke/kustomize";
+import { KustomizeTasks } from "@zuke/kustomize";
 
 await KustomizeTasks.build((s) => s.dir("overlays/prod"));
 await KustomizeTasks.editSetImage((s) => s.image("api", "api:1.4"));
@@ -11480,7 +11480,7 @@ Configure a fluent settings object in a lambda; the task builds the argv and
 runs it.
 
 ```ts
-import { OxlintTasks } from "jsr:@zuke/oxlint";
+import { OxlintTasks } from "@zuke/oxlint";
 await OxlintTasks.lint((s) => s.paths("src").fix().denyWarnings());
 ```
 @module
@@ -11546,7 +11546,7 @@ Configure a fluent settings object in a lambda; the task builds the argv and
 runs it.
 
 ```ts
-import { EslintTasks } from "jsr:@zuke/eslint";
+import { EslintTasks } from "@zuke/eslint";
 await EslintTasks.lint((s) => s.paths("src").ext(".ts", ".tsx").fix());
 ```
 @module
@@ -11616,7 +11616,7 @@ Configure a fluent settings object in a lambda; the task builds the argv and
 runs it.
 
 ```ts
-import { CspellTasks } from "jsr:@zuke/cspell";
+import { CspellTasks } from "@zuke/cspell";
 await CspellTasks.lint((s) => s.files("**").noProgress().showSuggestions());
 ```
 @module
@@ -11695,7 +11695,7 @@ Configure a fluent settings object in a lambda; the task builds the argv and
 runs it.
 
 ```ts
-import { ShellcheckTasks } from "jsr:@zuke/shellcheck";
+import { ShellcheckTasks } from "@zuke/shellcheck";
 await ShellcheckTasks.lint((s) =>
   s.shell("sh").severity("warning").paths("sh/lib.sh", "bin/gate")
 );
@@ -11764,7 +11764,7 @@ Configure a fluent settings object in a lambda; the task builds the argv and
 runs it.
 
 ```ts
-import { JestTasks } from "jsr:@zuke/jest";
+import { JestTasks } from "@zuke/jest";
 await JestTasks.run((s) => s.ci().coverage().maxWorkers(2));
 ```
 @module
@@ -11837,7 +11837,7 @@ runs it. The one-shot `run` subcommand is emitted by default; switch to
 watch mode with `.watch()`.
 
 ```ts
-import { VitestTasks } from "jsr:@zuke/vitest";
+import { VitestTasks } from "@zuke/vitest";
 await VitestTasks.run((s) => s.coverage().reporter("dot"));
 ```
 @module
@@ -11918,7 +11918,7 @@ type VitestPool = "threads" | "forks" | "vmThreads" | "vmForks"
 for use in Zuke build targets (end-to-end browser testing).
 
 ```ts
-import { PlaywrightTasks } from "jsr:@zuke/playwright";
+import { PlaywrightTasks } from "@zuke/playwright";
 
 await PlaywrightTasks.install((s) => s.withDeps());
 await PlaywrightTasks.test((s) => s.project("chromium").grep("@smoke"));
@@ -12013,7 +12013,7 @@ Cypress (https://cypress.io) CLI (end-to-end and component testing), for use
 in Zuke builds.
 
 ```ts
-import { CypressTasks } from "jsr:@zuke/cypress";
+import { CypressTasks } from "@zuke/cypress";
 
 await CypressTasks.run((s) => s.e2e().browser("chrome"));
 ```
@@ -12115,7 +12115,7 @@ interface CypressTasksApi
 CLI (lint + format + import organizing in one tool), for use in Zuke builds.
 
 ```ts
-import { BiomeTasks } from "jsr:@zuke/biome";
+import { BiomeTasks } from "@zuke/biome";
 
 await BiomeTasks.ci((s) => s.paths("src"));
 await BiomeTasks.check((s) => s.write().paths("src"));
@@ -12205,7 +12205,7 @@ interface BiomeTasksApi
 CLI (unused files, dependencies, and exports), for use in Zuke builds.
 
 ```ts
-import { KnipTasks } from "jsr:@zuke/knip";
+import { KnipTasks } from "@zuke/knip";
 
 await KnipTasks.run((s) => s.production().strict());
 ```
@@ -12259,7 +12259,7 @@ dpdm (https://github.com/acrazing/dpdm) CLI (module dependency graph and
 circular-import analysis), for use in Zuke builds.
 
 ```ts
-import { DpdmTasks } from "jsr:@zuke/dpdm";
+import { DpdmTasks } from "@zuke/dpdm";
 
 await DpdmTasks.analyze((s) =>
   s.noTree().noWarning().exitCode("circular:1").entries("src/index.ts")
@@ -12329,7 +12329,7 @@ typed `JsrTasks` wrappers for the `jsr` CLI (publish, add, remove), plus
 read-only registry queries to check which versions are already published.
 
 ```ts
-import { isPublished, JsrTasks } from "jsr:@zuke/jsr";
+import { isPublished, JsrTasks } from "@zuke/jsr";
 
 if (!(await isPublished("@zuke/core", "0.13.0"))) {
   await JsrTasks.publish((s) => s.allowDirty());
@@ -12430,7 +12430,7 @@ interface JsrTasksApi
 CLI, for use in Zuke builds.
 
 ```ts
-import { ViteTasks } from "jsr:@zuke/vite";
+import { ViteTasks } from "@zuke/vite";
 
 await ViteTasks.build((s) => s.outDir("dist").mode("production"));
 await ViteTasks.preview((s) => s.port(4173));
@@ -12526,7 +12526,7 @@ Configure a fluent settings object in a lambda; the task builds the argv and
 runs it.
 
 ```ts
-import { StorybookTasks } from "jsr:@zuke/storybook";
+import { StorybookTasks } from "@zuke/storybook";
 await StorybookTasks.build((s) => s.outputDir("storybook-static"));
 ```
 @module
@@ -12596,7 +12596,7 @@ Configure a fluent settings object in a lambda; the task builds the argv and
 runs it.
 
 ```ts
-import { RedoclyTasks } from "jsr:@zuke/redocly";
+import { RedoclyTasks } from "@zuke/redocly";
 await RedoclyTasks.lint((s) => s.paths("openapi.yaml").format("summary"));
 ```
 @module
@@ -12681,7 +12681,7 @@ Configure a fluent settings object in a lambda; the task builds the argv and
 runs it.
 
 ```ts
-import { LintStagedTasks } from "jsr:@zuke/lint-staged";
+import { LintStagedTasks } from "@zuke/lint-staged";
 await LintStagedTasks.run((s) => s.config(".lintstagedrc.json").relative());
 ```
 @module
@@ -12736,7 +12736,7 @@ interface LintStagedTasksApi
 tsup (https://tsup.egoist.dev) bundler, for use in Zuke builds.
 
 ```ts
-import { TsupTasks } from "jsr:@zuke/tsup";
+import { TsupTasks } from "@zuke/tsup";
 
 await TsupTasks.build((s) =>
   s.entry("src/index.ts").format("esm", "cjs").dts().minify().clean()
@@ -12796,7 +12796,7 @@ type TsupFormat = "esm" | "cjs" | "iife"
 Turborepo (https://turbo.build) CLI, for use in Zuke builds.
 
 ```ts
-import { TurboTasks } from "jsr:@zuke/turbo";
+import { TurboTasks } from "@zuke/turbo";
 
 await TurboTasks.run((s) => s.tasks("build", "test").filter("web"));
 ```
@@ -12865,7 +12865,7 @@ interface TurboTasksApi
 use in Zuke builds.
 
 ```ts
-import { NxTasks } from "jsr:@zuke/nx";
+import { NxTasks } from "@zuke/nx";
 
 await NxTasks.affected((s) => s.target("test").base("main"));
 await NxTasks.runMany((s) => s.target("build").projects("web", "api"));
@@ -12946,7 +12946,7 @@ runs it. The task names mirror the CLI: `tsx` runs an entry point and `watch`
 re-runs it on changes.
 
 ```ts
-import { TsxTasks } from "jsr:@zuke/tsx";
+import { TsxTasks } from "@zuke/tsx";
 await TsxTasks.tsx((s) => s.script("src/main.ts").tsconfig("tsconfig.json"));
 ```
 @module
@@ -13020,7 +13020,7 @@ standard {@link TscTasks.tsc} compile/type-check and a
 {@link TscTasks.build} project-references build (`tsc --build`).
 
 ```ts
-import { TscTasks } from "jsr:@zuke/tsc";
+import { TscTasks } from "@zuke/tsc";
 await TscTasks.tsc((s) => s.project("tsconfig.json").noEmit());
 await TscTasks.build((s) => s.projects("packages/a", "packages/b"));
 ```
@@ -13121,7 +13121,7 @@ JavaScript runs without a path resolver. Configure a fluent settings object in
 a lambda; the task builds the argv and runs it.
 
 ```ts
-import { TscAliasTasks } from "jsr:@zuke/tsc-alias";
+import { TscAliasTasks } from "@zuke/tsc-alias";
 await TscAliasTasks.run((s) => s.project("tsconfig.json").resolveFullPaths());
 ```
 @module
@@ -13179,7 +13179,7 @@ interface TscAliasTasksApi
 tsdown (https://tsdown.dev) bundler, for use in Zuke builds.
 
 ```ts
-import { TsdownTasks } from "jsr:@zuke/tsdown";
+import { TsdownTasks } from "@zuke/tsdown";
 
 await TsdownTasks.build((s) =>
   s.entry("src/index.ts").format("esm", "cjs").dts().minify().clean()
@@ -13262,7 +13262,7 @@ settings-lambda style as the other Zuke tool wrappers: configure a fluent
 settings object in a lambda; the task builds the argv and runs it.
 
 ```ts
-import { NestTasks } from "jsr:@zuke/nest";
+import { NestTasks } from "@zuke/nest";
 await NestTasks.generate((s) => s.schematic("service").name("users"));
 await NestTasks.build((s) => s.webpack());
 ```
@@ -13405,7 +13405,7 @@ client. Configure a fluent settings object in a lambda; the task builds the
 argv and runs it.
 
 ```ts
-import { OpenapiTsTasks } from "jsr:@zuke/openapi-ts";
+import { OpenapiTsTasks } from "@zuke/openapi-ts";
 await OpenapiTsTasks.generate((s) =>
   s.input("openapi.yaml").output("src/client")
 );
@@ -13457,7 +13457,7 @@ optional mocks. Configure a fluent settings object in a lambda; the task
 builds the argv and runs it.
 
 ```ts
-import { OrvalTasks } from "jsr:@zuke/orval";
+import { OrvalTasks } from "@zuke/orval";
 await OrvalTasks.generate((s) => s.config("orval.config.ts").clean());
 ```
 @module
@@ -13509,7 +13509,7 @@ interface OrvalTasksApi
 fluent settings object in a lambda; the task builds the argv and runs it.
 
 ```ts
-import { HuskyTasks } from "jsr:@zuke/husky";
+import { HuskyTasks } from "@zuke/husky";
 await HuskyTasks.init();
 await HuskyTasks.install();
 ```
@@ -13576,7 +13576,7 @@ of its exports' JSON value, so a target can read something out of the Node
 side of a project instead of shelling out to a script.
 
 ```ts
-import { NodeTasks } from "jsr:@zuke/node";
+import { NodeTasks } from "@zuke/node";
 await NodeTasks.run((s) => s.script("server.js").enableSourceMaps());
 const spec = await NodeTasks.evaluate("tools/openapi.mjs");
 ```
@@ -13756,7 +13756,7 @@ Configure a fluent settings object in a lambda; the task builds the argv and
 runs it. `fmt` formats files in place; `check` verifies formatting.
 
 ```ts
-import { DprintTasks } from "jsr:@zuke/dprint";
+import { DprintTasks } from "@zuke/dprint";
 await DprintTasks.check((s) => s.config("dprint.json"));
 ```
 @module
@@ -13819,7 +13819,7 @@ interface DprintTasksApi
 groups that share `gcloud`-based auth (no Google SDK dependency).
 
 ```ts
-import { GcloudTasks, GcsTasks, SecretManagerTasks } from "jsr:@zuke/gcloud";
+import { GcloudTasks, GcsTasks, SecretManagerTasks } from "@zuke/gcloud";
 
 await GcloudTasks.run((s) => s.containerImagesAddTag(src, dst)); // CLI
 await GcsTasks.writeJson("bucket", "state.json", { slot: "sit-7" }); // REST
@@ -14558,7 +14558,7 @@ config, submodules, archives, patches — and `GitTasks.run` with
 `.command(...)` covers the long tail.
 
 ```ts
-import { GitTasks, gitInfo } from "jsr:@zuke/git";
+import { GitTasks, gitInfo } from "@zuke/git";
 await GitTasks.commit((s) => s.all().message("ci: release"));
 const changed = await GitTasks.diffNames((s) => s.mergeBase("origin/main"));
 const { branch, shortCommit } = await gitInfo();
@@ -16264,7 +16264,7 @@ wrapper plus {@link githubWorkflow}, a wait trigger that dispatches and awaits
 an external GitHub Actions workflow.
 
 ```ts
-import { GhTasks, githubWorkflow } from "jsr:@zuke/gh";
+import { GhTasks, githubWorkflow } from "@zuke/gh";
 
 await GhTasks.run((s) => s.command("pr", "list").flag("state", "open"));
 
@@ -18804,7 +18804,7 @@ builds.
 Codecov; the token is read from `CODECOV_TOKEN` so it never lands in argv.
 
 ```ts
-import { CodecovTasks } from "jsr:@zuke/codecov";
+import { CodecovTasks } from "@zuke/codecov";
 await CodecovTasks.upload((s) => s.files("cov.lcov").flags("unit"));
 ```
 @module
@@ -18882,7 +18882,7 @@ with the `mcp`/`config` builders, and self-update with `update` — all in the
 settings-lambda style shared by every Zuke tool wrapper.
 
 ```ts
-import { ClaudeTasks } from "jsr:@zuke/claude";
+import { ClaudeTasks } from "@zuke/claude";
 
 await ClaudeTasks.run((s) =>
   s.prompt("Draft a release note for the staged diff").model("sonnet")
@@ -19003,7 +19003,7 @@ Drive a prompt non-interactively with `exec` and manage MCP servers with the
 wrapper.
 
 ```ts
-import { CodexTasks } from "jsr:@zuke/codex";
+import { CodexTasks } from "@zuke/codex";
 
 await CodexTasks.exec((s) =>
   s.prompt("Draft a release note for the staged diff").sandbox("read-only")
@@ -19093,7 +19093,7 @@ extensions with the `mcp`/`extensions` builders — all in the settings-lambda
 style shared by every Zuke tool wrapper.
 
 ```ts
-import { GeminiTasks } from "jsr:@zuke/gemini";
+import { GeminiTasks } from "@zuke/gemini";
 
 await GeminiTasks.run((s) =>
   s.prompt("Draft a release note for the staged diff").model("gemini-2.5-pro")
@@ -19191,7 +19191,7 @@ type GeminiOutputFormat = "text" | "json" | "stream-json"
 for use in Zuke build targets (infrastructure-as-code workflows).
 
 ```ts
-import { TerraformTasks } from "jsr:@zuke/terraform";
+import { TerraformTasks } from "@zuke/terraform";
 
 await TerraformTasks.init((s) => s.upgrade());
 await TerraformTasks.apply((s) => s.autoApprove().var("env", "prod"));
@@ -19323,7 +19323,7 @@ interface TerraformTasksApi
 use in Zuke build targets (infrastructure-as-code workflows).
 
 ```ts
-import { TofuTasks } from "jsr:@zuke/tofu";
+import { TofuTasks } from "@zuke/tofu";
 
 await TofuTasks.init((s) => s.upgrade());
 await TofuTasks.apply((s) => s.autoApprove().var("env", "prod"));
@@ -19456,7 +19456,7 @@ release-please (https://github.com/googleapis/release-please) CLI, for use in
 Zuke builds (maintaining release PRs and cutting GitHub releases).
 
 ```ts
-import { ReleasePleaseTasks } from "jsr:@zuke/release-please";
+import { ReleasePleaseTasks } from "@zuke/release-please";
 
 await ReleasePleaseTasks.releasePr((s) =>
   s.token(token).repoUrl("owner/repo").targetBranch("main"));
@@ -19522,7 +19522,7 @@ interface ReleasePleaseTasksApi
 (zizmor, actionlint, gitleaks, osv-scanner, semgrep, trivy) for Zuke builds.
 
 ```ts
-import { SecurityTasks } from "jsr:@zuke/security";
+import { SecurityTasks } from "@zuke/security";
 
 await SecurityTasks.zizmor((s) => s.paths(".github/workflows"));
 await SecurityTasks.osvScanner((s) => s.lockfile("package-lock.json"));
@@ -19715,8 +19715,8 @@ Define a reviewer fluently and plug it into a target as a {@link
 Only the provider and API key are required; everything else is defaulted.
 
 ```ts
-import { Build, parameter, target } from "jsr:@zuke/core";
-import { securityReviewer } from "jsr:@zuke/ai";
+import { Build, parameter, target } from "@zuke/core";
+import { securityReviewer } from "@zuke/ai";
 
 class Pipeline extends Build {
   key = parameter("Anthropic API key").secret().required();
@@ -20698,8 +20698,8 @@ is derived from the run id, so a run that suspends in one process and resumes
 in another lands its spans under a single trace with no handoff.
 
 ```ts
-import { run } from "jsr:@zuke/core";
-import { otel } from "jsr:@zuke/otel";
+import { run } from "@zuke/core";
+import { otel } from "@zuke/otel";
 
 await run(MyBuild, {
   plugins: [otel((s) => s.endpoint("http://localhost:4318").serviceName("ci"))],
@@ -20717,8 +20717,8 @@ function otel(configure?: Configure<OtelSettings>): Plugin
   run/target transition is exported as OTLP/HTTP JSON:
 
   ```ts
-  import { run } from "jsr:@zuke/core";
-  import { otel } from "jsr:@zuke/otel";
+  import { run } from "@zuke/core";
+  import { otel } from "@zuke/otel";
 
   await run(MyBuild, {
     plugins: [otel((s) => s.endpoint("http://localhost:4318").serviceName("ci"))],

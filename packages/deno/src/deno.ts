@@ -7,7 +7,7 @@
  * the task function builds the command line and executes it.
  *
  * ```ts
- * import { DenoTasks } from "jsr:@zuke/deno";
+ * import { DenoTasks } from "@zuke/deno";
  * await DenoTasks.test((s) => s.allowAll().coverage("cov_profile"));
  * ```
  *

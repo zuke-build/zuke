@@ -7,7 +7,7 @@
  * and the task function builds the command line and executes it.
  *
  * ```ts
- * import { HelmTasks } from "jsr:@zuke/helm";
+ * import { HelmTasks } from "@zuke/helm";
  *
  * await HelmTasks.upgrade((s) =>
  *   s.release("api").chart("./charts/api").install().namespace("prod")

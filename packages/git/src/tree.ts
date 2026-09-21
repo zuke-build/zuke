@@ -6,7 +6,7 @@
  * contents of an object, without checking anything out.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * const entries = await GitTasks.treeEntries((s) => s.tree("HEAD").recursive());
  * const manifest = await GitTasks.blobText((s) => s.object("v1.0.0:deno.json"));
  * ```

@@ -7,7 +7,7 @@
  * typed wrappers; arguments stay a discrete argv array, never a shell string.
  *
  * ```ts
- * import { CmdTasks } from "jsr:@zuke/cmd";
+ * import { CmdTasks } from "@zuke/cmd";
  * await CmdTasks.exec("git", (s) => s.args("rev-parse", "HEAD"));
  * ```
  */

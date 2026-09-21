@@ -6,7 +6,7 @@
  * `git checkout`, and its modern half `git switch`.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * await GitTasks.branch((s) => s.name("release/1.2").startPoint("origin/main"));
  * await GitTasks.switch((s) => s.create().branch("feature"));
  * await GitTasks.checkout((s) => s.ref("origin/main").paths("docs"));

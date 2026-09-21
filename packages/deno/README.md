@@ -9,7 +9,7 @@ non-interactive CLI in a fluent settings-lambda API: `run`, `serve`, `task` and
 `init` and `upgrade`.
 
 ```ts
-import { DenoTasks } from "jsr:@zuke/deno";
+import { DenoTasks } from "@zuke/deno";
 
 await DenoTasks.test((s) => s.allowAll().coverage("cov_profile"));
 await DenoTasks.fmt((s) => s.check());
@@ -62,7 +62,7 @@ Every path argument accepts either a string or an `AbsolutePath` from
 Zuke build targets.
 
 ```ts
-import { DenoTasks } from "jsr:@zuke/deno";
+import { DenoTasks } from "@zuke/deno";
 
 await DenoTasks.check((s) => s.paths("mod.ts"));
 await DenoTasks.test((s) => s.allowAll().coverage("cov_profile"));

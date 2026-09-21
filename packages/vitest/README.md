@@ -10,7 +10,7 @@ Vitest defaults to watch mode when invoked bare; this wrapper emits the one-shot
 `.watch()`.
 
 ```ts
-import { VitestTasks } from "jsr:@zuke/vitest";
+import { VitestTasks } from "@zuke/vitest";
 
 await VitestTasks.run((s) => s.coverage().reporter("dot").bail(1));
 ```
@@ -35,7 +35,7 @@ runs it. The one-shot `run` subcommand is emitted by default; switch to
 watch mode with `.watch()`.
 
 ```ts
-import { VitestTasks } from "jsr:@zuke/vitest";
+import { VitestTasks } from "@zuke/vitest";
 await VitestTasks.run((s) => s.coverage().reporter("dot"));
 ```
 @module

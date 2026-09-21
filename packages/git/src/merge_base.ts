@@ -6,7 +6,7 @@
  * question a build asks about a branch.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * const base = await GitTasks.mergeBase((s) => s.commits("HEAD", "origin/main"));
  * if (await GitTasks.isAncestor((s) => s.commits("v1.0.0", "HEAD"))) {
  *   // the release tag is contained in this branch

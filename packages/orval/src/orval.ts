@@ -15,7 +15,7 @@
  * line, entirely through a config file (`.config(...)`), or a mix of both.
  *
  * ```ts
- * import { OrvalTasks } from "jsr:@zuke/orval";
+ * import { OrvalTasks } from "@zuke/orval";
  * await OrvalTasks.generate((s) => s.config("orval.config.ts").clean());
  * ```
  *

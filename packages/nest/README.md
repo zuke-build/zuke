@@ -8,7 +8,7 @@ subcommands and flags. Arguments stay a discrete argv array, so command
 construction is injection-free.
 
 ```ts
-import { NestTasks } from "jsr:@zuke/nest";
+import { NestTasks } from "@zuke/nest";
 
 await NestTasks.generate((s) => s.schematic("service").name("users").flat());
 await NestTasks.build((s) => s.webpack().preserveWatchOutput());
@@ -34,7 +34,7 @@ settings-lambda style as the other Zuke tool wrappers: configure a fluent
 settings object in a lambda; the task builds the argv and runs it.
 
 ```ts
-import { NestTasks } from "jsr:@zuke/nest";
+import { NestTasks } from "@zuke/nest";
 await NestTasks.generate((s) => s.schematic("service").name("users"));
 await NestTasks.build((s) => s.webpack());
 ```

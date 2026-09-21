@@ -6,7 +6,7 @@ settings-lambda API. Arguments stay a discrete argv array, so command
 construction is injection-free.
 
 ```ts
-import { EslintTasks } from "jsr:@zuke/eslint";
+import { EslintTasks } from "@zuke/eslint";
 
 await EslintTasks.lint((s) =>
   s.paths("src").ext(".ts", ".tsx").fix().maxWarnings(0)
@@ -32,7 +32,7 @@ Configure a fluent settings object in a lambda; the task builds the argv and
 runs it.
 
 ```ts
-import { EslintTasks } from "jsr:@zuke/eslint";
+import { EslintTasks } from "@zuke/eslint";
 await EslintTasks.lint((s) => s.paths("src").ext(".ts", ".tsx").fix());
 ```
 @module

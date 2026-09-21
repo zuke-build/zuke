@@ -6,7 +6,7 @@
  * Storage.
  *
  * ```ts
- * import { GcloudTasks } from "jsr:@zuke/gcloud";
+ * import { GcloudTasks } from "@zuke/gcloud";
  * await GcloudTasks.storageCp((s) =>
  *   s.sources("dist").destination("gs://releases/app").recursive()
  * );

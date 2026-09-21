@@ -6,7 +6,7 @@
  * revision.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * await GitTasks.grep((s) => s.pattern("TODO").lineNumber().paths("packages/"));
  * ```
  *

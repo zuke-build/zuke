@@ -14,8 +14,8 @@
  * tree (symlinks included) for a runtime like Node.js that ships several bins.
  *
  * ```ts
- * import { installRelease } from "jsr:@zuke/core";
- * import { CmdTasks } from "jsr:@zuke/cmd";
+ * import { installRelease } from "@zuke/core";
+ * import { CmdTasks } from "@zuke/cmd";
  *
  * const bin = await installRelease({
  *   name: "helm",

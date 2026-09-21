@@ -7,7 +7,7 @@
  * steps, e.g. `publish.onlyWhen(async () => (await gitInfo()).branch === "main")`.
  *
  * ```ts
- * import { gitInfo } from "jsr:@zuke/git";
+ * import { gitInfo } from "@zuke/git";
  *
  * const git = await gitInfo();
  * console.log(`${git.branch} @ ${git.shortCommit}${git.dirty ? " (dirty)" : ""}`);

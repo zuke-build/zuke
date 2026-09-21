@@ -10,7 +10,7 @@ build never has to reach for `console.log`.
 <!-- check -->
 
 ```ts
-import { ConsoleTasks as Log } from "jsr:@zuke/console";
+import { ConsoleTasks as Log } from "@zuke/console";
 
 Log.rule("Deploy");
 Log.info("pushing [bold]core@1.2.0[/]");
@@ -274,12 +274,12 @@ GitHub mode follows the `GITHUB_ACTIONS` environment variable.
 build a custom-themed one with `createConsoleRenderer(theme)`.
 
 ```ts
-import { Build, run } from "jsr:@zuke/core";
+import { Build, run } from "@zuke/core";
 import {
   consoleRenderer,
   createConsoleRenderer,
   defaultTheme,
-} from "jsr:@zuke/console";
+} from "@zuke/console";
 
 // Route the whole build's banners and summary through @zuke/console:
 await run(MyBuild, { renderer: consoleRenderer });

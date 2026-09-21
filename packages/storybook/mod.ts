@@ -9,7 +9,7 @@
  * runs it.
  *
  * ```ts
- * import { StorybookTasks } from "jsr:@zuke/storybook";
+ * import { StorybookTasks } from "@zuke/storybook";
  * await StorybookTasks.build((s) => s.outputDir("storybook-static"));
  * ```
  *

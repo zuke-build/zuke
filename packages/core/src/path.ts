@@ -11,7 +11,7 @@
  * the original — and a `.join(...)` method does the same thing explicitly.
  *
  * ```ts
- * import { absolutePath } from "jsr:@zuke/core";
+ * import { absolutePath } from "@zuke/core";
  *
  * const root = absolutePath("/app");
  * const main = root("src", "main.ts");      // /app/src/main.ts  (callable)

@@ -13,7 +13,7 @@
  * groups, and `update` self-updates the CLI.
  *
  * ```ts
- * import { ClaudeTasks } from "jsr:@zuke/claude";
+ * import { ClaudeTasks } from "@zuke/claude";
  *
  * const out = await ClaudeTasks.run((s) =>
  *   s.prompt("Summarise the staged diff in one line")

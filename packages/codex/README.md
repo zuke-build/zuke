@@ -8,7 +8,7 @@ builder. Arguments stay a discrete argv array, so command construction is
 injection-free.
 
 ```ts
-import { CodexTasks } from "jsr:@zuke/codex";
+import { CodexTasks } from "@zuke/codex";
 
 // Headless prompt: capture machine-readable output.
 const out = await CodexTasks.exec((s) =>
@@ -49,7 +49,7 @@ Drive a prompt non-interactively with `exec` and manage MCP servers with the
 wrapper.
 
 ```ts
-import { CodexTasks } from "jsr:@zuke/codex";
+import { CodexTasks } from "@zuke/codex";
 
 await CodexTasks.exec((s) =>
   s.prompt("Draft a release note for the staged diff").sandbox("read-only")

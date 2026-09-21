@@ -10,7 +10,7 @@
  * style shared by every Zuke tool wrapper.
  *
  * ```ts
- * import { GeminiTasks } from "jsr:@zuke/gemini";
+ * import { GeminiTasks } from "@zuke/gemini";
  *
  * await GeminiTasks.run((s) =>
  *   s.prompt("Draft a release note for the staged diff").model("gemini-2.5-pro")

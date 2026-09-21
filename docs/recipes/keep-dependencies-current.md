@@ -28,8 +28,8 @@ So it gets its own pipeline, on a schedule.
 <!-- check -->
 
 ```ts
-import { Build, cicd, run, target } from "jsr:@zuke/core";
-import { DenoTasks } from "jsr:@zuke/deno";
+import { Build, cicd, run, target } from "@zuke/core";
+import { DenoTasks } from "@zuke/deno";
 
 class MyBuild extends Build {
   // The ordinary gate: hermetic, on every push and pull request.

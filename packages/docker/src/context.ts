@@ -5,7 +5,7 @@
  * `docker context` — the named daemons a build can talk to.
  *
  * ```ts
- * import { DockerTasks } from "jsr:@zuke/docker";
+ * import { DockerTasks } from "@zuke/docker";
  * await DockerTasks.context((s) => s.create("remote").dockerHost("ssh://build@host"));
  * await DockerTasks.context((s) => s.use("remote"));
  * ```

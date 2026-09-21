@@ -8,7 +8,7 @@
  * for the subprocesses that are Deno itself.
  *
  * ```ts
- * import { detectCiHost, isCI } from "jsr:@zuke/core";
+ * import { detectCiHost, isCI } from "@zuke/core";
  * deploy = target().onlyWhen(() => isCI()).executes(...);
  * if (detectCiHost() === "gitlab") { ... }
  * ```
@@ -138,7 +138,7 @@ export type Architecture = "x86_64" | "aarch64";
  * {@link isCI}.
  *
  * ```ts
- * import { operatingSystem } from "jsr:@zuke/core";
+ * import { operatingSystem } from "@zuke/core";
  * if (operatingSystem() === "macos") { ... }
  * ```
  */
@@ -172,7 +172,7 @@ export function operatingSystem(
  * real Deno on `PATH`. `Deno.build.standalone` is what tells the two apart.
  *
  * ```ts
- * import { denoExecutable } from "jsr:@zuke/core";
+ * import { denoExecutable } from "@zuke/core";
  * const deno = new Deno.Command(denoExecutable(), { args: ["doc", "jsr:@zuke/core"] });
  * ```
  *

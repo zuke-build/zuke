@@ -5,7 +5,7 @@
  * The commands that run something: `npm run`, `npm exec`, and `npm test`.
  *
  * ```ts
- * import { NpmTasks } from "jsr:@zuke/npm";
+ * import { NpmTasks } from "@zuke/npm";
  * await NpmTasks.run((s) => s.script("build").workspace("app"));
  * await NpmTasks.exec((s) => s.command("tsc").execArgs("--noEmit"));
  * await NpmTasks.test();

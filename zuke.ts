@@ -92,7 +92,12 @@ import {
   gitleaksSummary,
   parseGitleaksReport,
 } from "./build/gitleaks_report.ts";
-import { checkSnippets, formatSnippetFailures } from "./build/snippets.ts";
+import {
+  checkSnippets,
+  collectInlineSpecifiers,
+  formatInlineSpecifiers,
+  formatSnippetFailures,
+} from "./build/snippets.ts";
 import {
   checkExamples,
   discoverExamples,
@@ -469,7 +474,7 @@ class ZukeBuild extends Build {
     });
 
   snippetsCheck = target()
-    .description("Type-check the marked ts snippets in docs and skills")
+    .description("Type-check marked doc snippets; ban inline jsr: imports")
     .executes(async () => {
       // Opt-in: only `<!-- check -->`-marked ```ts blocks are checked (the rest
       // of the corpus is intentionally-elided prose). Snippets resolve `@zuke/…`
@@ -484,7 +489,28 @@ class ZukeBuild extends Build {
       if (failures.length > 0) {
         throw new Error(formatSnippetFailures(failures));
       }
-      ConsoleTasks.info("Doc snippets type-check clean.");
+
+      // Every reader-facing import must use the bare specifier. Checked by a
+      // direct scan over a wider corpus than the type-check: `checkSnippets`
+      // normalises the specifier before running `deno check`, and inside this
+      // repository the inline form resolves to the workspace and type-checks
+      // happily, so nothing else can notice it coming back. `examples/` is
+      // excluded on purpose — see `examplesCheck`.
+      const documented = [
+        ...files,
+        "README.md",
+        "AGENTS.md",
+        "SECURITY.md",
+        ...await glob("packages/*/README.md"),
+      ];
+      const inlined = await collectInlineSpecifiers(documented);
+      if (inlined.length > 0) {
+        throw new Error(formatInlineSpecifiers(inlined));
+      }
+      ConsoleTasks.info(
+        `Doc snippets type-check clean; ${documented.length} file(s) import ` +
+          "@zuke/* by bare specifier.",
+      );
     });
 
   examplesCheck = target()

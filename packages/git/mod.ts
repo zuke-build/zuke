@@ -11,7 +11,7 @@
  * `.command(...)` covers the long tail.
  *
  * ```ts
- * import { GitTasks, gitInfo } from "jsr:@zuke/git";
+ * import { GitTasks, gitInfo } from "@zuke/git";
  * await GitTasks.commit((s) => s.all().message("ci: release"));
  * const changed = await GitTasks.diffNames((s) => s.mergeBase("origin/main"));
  * const { branch, shortCommit } = await gitInfo();

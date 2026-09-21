@@ -8,7 +8,7 @@ builders. Arguments stay a discrete argv array, so command construction is
 injection-free.
 
 ```ts
-import { GeminiTasks } from "jsr:@zuke/gemini";
+import { GeminiTasks } from "@zuke/gemini";
 
 // Headless prompt: capture a structured response.
 const out = await GeminiTasks.run((s) =>
@@ -49,7 +49,7 @@ extensions with the `mcp`/`extensions` builders — all in the settings-lambda
 style shared by every Zuke tool wrapper.
 
 ```ts
-import { GeminiTasks } from "jsr:@zuke/gemini";
+import { GeminiTasks } from "@zuke/gemini";
 
 await GeminiTasks.run((s) =>
   s.prompt("Draft a release note for the staged diff").model("gemini-2.5-pro")

@@ -15,7 +15,7 @@
  * a module and hands the target back its export's value.
  *
  * ```ts
- * import { NodeTasks } from "jsr:@zuke/node";
+ * import { NodeTasks } from "@zuke/node";
  * await NodeTasks.run((s) => s.script("server.js").enableSourceMaps());
  * await NodeTasks.eval((s) => s.code("console.log(process.version)"));
  * await NodeTasks.test((s) => s.paths("test/").experimentalTestCoverage());

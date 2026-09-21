@@ -6,7 +6,7 @@
  * `git pull`, and `git fetch`.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * await GitTasks.fetch((s) => s.noTags().depth(1).remote("origin")
  *   .refspec("+main:refs/remotes/origin/main"));
  * await GitTasks.push((s) => s.setUpstream().remote("origin").ref("main"));

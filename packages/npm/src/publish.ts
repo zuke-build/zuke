@@ -7,7 +7,7 @@
  * `dist-tag`.
  *
  * ```ts
- * import { NpmTasks } from "jsr:@zuke/npm";
+ * import { NpmTasks } from "@zuke/npm";
  * await NpmTasks.pack((s) => s.packDestination("dist"));
  * await NpmTasks.publish((s) => s.access("public").provenance());
  * await NpmTasks.distTag((s) => s.add("app@1.2.3", "latest"));

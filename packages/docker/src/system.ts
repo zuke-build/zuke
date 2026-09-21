@@ -6,7 +6,7 @@
  * `docker info`, `version`, and `system prune|df`.
  *
  * ```ts
- * import { DockerTasks } from "jsr:@zuke/docker";
+ * import { DockerTasks } from "@zuke/docker";
  * await DockerTasks.system((s) => s.prune().all().force()); // reclaim disk in CI
  * await DockerTasks.version((s) => s.format("{{.Server.Version}}"));
  * ```

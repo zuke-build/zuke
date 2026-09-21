@@ -15,7 +15,7 @@
  * line, entirely through a config file (`.file(...)`), or a mix of both.
  *
  * ```ts
- * import { OpenapiTsTasks } from "jsr:@zuke/openapi-ts";
+ * import { OpenapiTsTasks } from "@zuke/openapi-ts";
  * await OpenapiTsTasks.generate((s) =>
  *   s.input("openapi.yaml").output("src/client").client("@hey-api/client-fetch")
  * );

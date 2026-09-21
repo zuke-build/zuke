@@ -6,7 +6,7 @@
  * [tsup](https://tsup.egoist.dev) bundler, for use in Zuke builds.
  *
  * ```ts
- * import { TsupTasks } from "jsr:@zuke/tsup";
+ * import { TsupTasks } from "@zuke/tsup";
  *
  * await TsupTasks.build((s) =>
  *   s.entry("src/index.ts").format("esm", "cjs").dts().minify().clean()

@@ -7,7 +7,7 @@
  * Zuke builds (maintaining release PRs and cutting GitHub releases).
  *
  * ```ts
- * import { ReleasePleaseTasks } from "jsr:@zuke/release-please";
+ * import { ReleasePleaseTasks } from "@zuke/release-please";
  *
  * await ReleasePleaseTasks.releasePr((s) =>
  *   s.token(token).repoUrl("owner/repo").targetBranch("main"));

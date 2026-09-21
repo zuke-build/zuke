@@ -7,7 +7,7 @@
  * the task function builds the command line and executes it.
  *
  * ```ts
- * import { JsrTasks } from "jsr:@zuke/jsr";
+ * import { JsrTasks } from "@zuke/jsr";
  * await JsrTasks.publish((s) => s.dryRun().allowSlowTypes());
  * await JsrTasks.add((s) => s.packages("@std/assert"));
  * ```

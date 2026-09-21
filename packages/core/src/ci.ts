@@ -8,7 +8,7 @@
  * or Azure Pipelines with {@link generateCi}.
  *
  * ```ts
- * import { generateCi } from "jsr:@zuke/core";
+ * import { generateCi } from "@zuke/core";
  *
  * const pipeline = {
  *   name: "CI",

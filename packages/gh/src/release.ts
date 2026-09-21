@@ -6,7 +6,7 @@
  * download, edit, and delete.
  *
  * ```ts
- * import { GhTasks } from "jsr:@zuke/gh";
+ * import { GhTasks } from "@zuke/gh";
  * await GhTasks.releaseCreate((s) => s.tag("v1.2.3").generateNotes().latest());
  * await GhTasks.releaseUpload((s) => s.tag("v1.2.3").files("dist/app.tgz").clobber());
  * const published = await GhTasks.releaseListEntries((s) => s.excludeDrafts());

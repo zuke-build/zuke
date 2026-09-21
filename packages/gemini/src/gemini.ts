@@ -13,7 +13,7 @@
  * groups.
  *
  * ```ts
- * import { GeminiTasks } from "jsr:@zuke/gemini";
+ * import { GeminiTasks } from "@zuke/gemini";
  *
  * const out = await GeminiTasks.run((s) =>
  *   s.prompt("Summarise the staged diff in one line")

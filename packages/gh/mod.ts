@@ -7,7 +7,7 @@
  * an external GitHub Actions workflow.
  *
  * ```ts
- * import { GhTasks, githubWorkflow } from "jsr:@zuke/gh";
+ * import { GhTasks, githubWorkflow } from "@zuke/gh";
  *
  * await GhTasks.run((s) => s.command("pr", "list").flag("state", "open"));
  *
