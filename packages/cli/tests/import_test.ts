@@ -6,7 +6,7 @@ import {
   assertRejects,
   assertStringIncludes,
 } from "../../core/tests/_assert.ts";
-import { FakeHost, FakePrompter } from "./_fakes.ts";
+import { FakeHost, FakePrompter, noProjectProbe } from "./_fakes.ts";
 import { main, parseImportFlags } from "../mod.ts";
 import {
   generateBuild,
@@ -416,8 +416,20 @@ Deno.test("main import returns 1 when nothing is found (with --from)", async () 
 
 Deno.test("help lists the import command", async () => {
   const host = new FakeHost({});
-  await main(["--help"], host, new FakePrompter(false));
-  assertStringIncludes(host.logs.join("\n"), "zuke import");
+  // No project probe: this test reads help text, and the real probe would
+  // find the repository's own build and spawn it.
+  await main(
+    ["--help"],
+    host,
+    new FakePrompter(false),
+    undefined,
+    undefined,
+    undefined,
+    noProjectProbe,
+  );
+  // Listed as a row under the CLI's own commands, which is the section that
+  // says these work anywhere, project or not.
+  assertStringIncludes(host.logs.join("\n"), "import [options]");
 });
 
 Deno.test("import refuses a symlinked source file rather than reading through it", async () => {

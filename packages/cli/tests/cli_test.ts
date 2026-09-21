@@ -1,7 +1,10 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import {
+  assertEquals,
+  assertStringIncludes,
+} from "../../core/tests/_assert.ts";
 import {
   type BuildProbe,
   defaultPrompter,
@@ -11,7 +14,12 @@ import {
 } from "../mod.ts";
 import { VERSION } from "../src/version.ts";
 import { DENO_PIN } from "../src/deno_pin.ts";
-import { FakeHost, FakePrompter, FakeStarActions } from "./_fakes.ts";
+import {
+  FakeHost,
+  FakePrompter,
+  FakeStarActions,
+  noProjectProbe,
+} from "./_fakes.ts";
 import { withTemp } from "../../core/tests/_temp.ts";
 import { withEnv } from "../../core/tests/_env.ts";
 import { capture } from "../../core/tests/_console.ts";
@@ -175,7 +183,18 @@ Deno.test("main import honours the launcher flags and question too", async () =>
 
 Deno.test("main --help documents both launcher flags", async () => {
   const host = new FakeHost();
-  assertEquals(await main(["--help"], host), 0);
+  assertEquals(
+    await main(
+      ["--help"],
+      host,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      noProjectProbe,
+    ),
+    0,
+  );
   const help = host.logs.join("\n");
   assertEquals(help.includes("--bootstrap-deno"), true);
   assertEquals(help.includes("--no-bootstrap-deno"), true);
@@ -718,8 +737,8 @@ Deno.test("main propagates the build's exit code and forwards flags verbatim", a
 });
 
 Deno.test("main keeps its own commands even inside a project", async () => {
-  // A zuke.json is present, yet setup/import/doc/--help/--version stay the
-  // global CLI's: none of them reaches the build runner.
+  // A zuke.json is present, yet doc/--version stay the global CLI's: neither
+  // reaches the build runner. (--help is deliberately different; see below.)
   const host = new FakeHost();
   const forwarded: string[][] = [];
   const runner = (_root: string, denoArgs: string[]) => {
@@ -728,7 +747,7 @@ Deno.test("main keeps its own commands even inside a project", async () => {
   };
   const docRunner = () => Promise.resolve(0);
   const probe = probeAt(["zuke.json"]);
-  for (const args of [["--help"], ["--version"], ["doc", "core"]]) {
+  for (const args of [["--version"], ["doc", "core"]]) {
     assertEquals(
       await main(
         args,
@@ -743,8 +762,148 @@ Deno.test("main keeps its own commands even inside a project", async () => {
     );
   }
   assertEquals(forwarded, []);
-  // The help documents the forwarding so the split is discoverable.
-  assertEquals(host.logs[0].includes("zuke [target|command]"), true);
+});
+
+Deno.test("--help inside a project shows both surfaces, each labelled", async () => {
+  // The two used to disagree for no visible reason: `zuke --help` described
+  // the installed CLI and `./zuke --help` the build, and from inside a project
+  // nothing said which you were looking at. Both are shown now, and the
+  // build's half is produced by the build rather than re-rendered here.
+  const host = new FakeHost();
+  const forwarded: string[][] = [];
+  const code = await main(
+    ["--help"],
+    host,
+    defaultPrompter,
+    undefined,
+    undefined,
+    (_root, denoArgs) => {
+      forwarded.push(denoArgs);
+      return Promise.resolve(0);
+    },
+    probeAt(["zuke.json"]),
+  );
+  assertEquals(code, 0);
+  const logs = host.logs.join("\n");
+  // The CLI's own half, under a heading that says it works anywhere.
+  assertStringIncludes(logs, "Zuke commands (available anywhere)");
+  assertStringIncludes(logs, "setup [options]");
+  // …and a heading introducing the build's, before it is asked for.
+  assertStringIncludes(logs, "This project's build");
+  assertEquals(forwarded, [["run", "-A", "zuke.ts", "--help"]]);
+});
+
+Deno.test("--help names a build that ran its help and failed", async () => {
+  // The runner returns the build's exit code rather than throwing on one, so
+  // a build whose `--help` runs and fails was the one outcome this command
+  // passed over without a word: the heading was printed, nothing followed it,
+  // and the exit said success. The heading cannot be held back — the build
+  // inherits stdio, so there is nothing to inspect first — so the empty
+  // section is explained instead.
+  const host = new FakeHost();
+  let code = 1;
+  const err = await capturingErr(async () => {
+    code = await main(
+      ["--help"],
+      host,
+      defaultPrompter,
+      undefined,
+      undefined,
+      () => Promise.resolve(2),
+      probeAt(["zuke.json"]),
+    );
+  });
+  // Still 0: help is what you reach for when a project is already broken.
+  assertEquals(code, 0);
+  assertStringIncludes(
+    host.logs.join("\n"),
+    "Zuke commands (available anywhere)",
+  );
+  assertStringIncludes(err.join("\n"), "could not describe itself");
+});
+
+Deno.test("--help names a build that could not be spawned at all", async () => {
+  // The other shape of the same failure: the spawn throws rather than
+  // returning a code. Both get the same explanation, so the reader is not
+  // left to tell a missing section from an empty one.
+  const host = new FakeHost();
+  let code = 1;
+  const err = await capturingErr(async () => {
+    code = await main(
+      ["--help"],
+      host,
+      defaultPrompter,
+      undefined,
+      undefined,
+      () => Promise.reject(new Error("deno could not be started")),
+      probeAt(["zuke.json"]),
+    );
+  });
+  assertEquals(code, 0);
+  const stderr = err.join("\n");
+  // The cause, and what it means for the output.
+  assertStringIncludes(stderr, "deno could not be started");
+  assertStringIncludes(stderr, "could not describe itself");
+});
+
+Deno.test("--help refuses an untrusted build, and says so rather than hiding it", async () => {
+  // The help reaches the build now, so the trust gate reaches the help. A
+  // refused root must not be reported as an absent one: "there is no build
+  // here" would turn a security refusal into a shrug, and the build must not
+  // run either way.
+  const host = new FakeHost();
+  const forwarded: string[][] = [];
+  let code = 0;
+  const err = await capturingErr(async () => {
+    code = await main(
+      ["--help"],
+      host,
+      defaultPrompter,
+      undefined,
+      undefined,
+      (_root, denoArgs) => {
+        forwarded.push(denoArgs);
+        return Promise.resolve(0);
+      },
+      // A zuke.json owned by root while we are uid 1000.
+      probeAt(["zuke.json"], { uid: 1000, owner: 0 }),
+    );
+  });
+  assertEquals(code, 0);
+  // Never executed.
+  assertEquals(forwarded, []);
+  // The CLI's own half still printed — it does not depend on the build.
+  assertStringIncludes(
+    host.logs.join("\n"),
+    "Zuke commands (available anywhere)",
+  );
+  // And the refusal was reported, naming the reason, on stderr.
+  assertStringIncludes(err.join("\n"), "owned by user 0");
+});
+
+Deno.test("--help outside a project says why there is no build section", async () => {
+  // Silence would read as "this project has no targets" rather than "you are
+  // not in a project", which is a different problem with a different fix.
+  const host = new FakeHost();
+  const forwarded: string[][] = [];
+  const code = await main(
+    ["--help"],
+    host,
+    defaultPrompter,
+    undefined,
+    undefined,
+    (_root, denoArgs) => {
+      forwarded.push(denoArgs);
+      return Promise.resolve(0);
+    },
+    probeAt([]),
+  );
+  assertEquals(code, 0);
+  const logs = host.logs.join("\n");
+  assertStringIncludes(logs, "Zuke commands (available anywhere)");
+  assertStringIncludes(logs, "No zuke.json");
+  assertStringIncludes(logs, "zuke setup");
+  assertEquals(forwarded, []);
 });
 
 Deno.test("main with no arguments runs the default target inside a project, like ./zuke", async () => {

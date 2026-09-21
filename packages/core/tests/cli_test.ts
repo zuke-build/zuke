@@ -9,6 +9,7 @@ import {
 } from "./_assert.ts";
 import { Build, cicd, group, type Plugin, target } from "../mod.ts";
 import {
+  formatCommandHelp,
   formatGraph,
   formatHelp,
   formatList,
@@ -160,7 +161,74 @@ Deno.test("every reserved command is honoured by the parser and help", () => {
     // …and it is documented, so a new command can't be added without help.
     assertStringIncludes(help, command.name);
   }
-  for (const flag of BUILTIN_FLAGS) assertStringIncludes(help, flag.name);
+  // Every flag is documented somewhere reachable: the general ones in the
+  // main help, and the rest in the help of the command they qualify. The
+  // assertion is "no flag is undocumented", which is what it always meant —
+  // it is only the place that changed when the detail moved behind
+  // `<command> --help`.
+  for (const flag of BUILTIN_FLAGS) {
+    const where = flag.command === undefined
+      ? help
+      : formatCommandHelp(flag.command);
+    assertEquals(
+      where !== undefined && where.includes(flag.name),
+      true,
+      `${flag.name} appears in no help page (command: ${flag.command})`,
+    );
+  }
+});
+
+Deno.test("the main help groups commands and options separately", () => {
+  // The defect this replaced: commands and flags were interleaved in one
+  // Options block, so `graph` and `mcp` read as though they were flags.
+  const help = formatHelp(discoverTargets(new Demo()));
+  const commands = help.indexOf("\nCommands:\n");
+  const options = help.indexOf("\nOptions:\n");
+  assertEquals(commands > 0, true, "no Commands section");
+  assertEquals(options > commands, true, "no Options section after Commands");
+  // Compare row labels, not any occurrence: a command's one-line description
+  // may legitimately name a flag, as resume's mentions --check.
+  const labels = help.slice(commands, options)
+    .split("\n")
+    .map((line) => line.trim().split(/\s{2,}/)[0])
+    .filter((label) => label !== "");
+  for (const flag of BUILTIN_FLAGS) {
+    assertEquals(
+      labels.includes(flag.name),
+      false,
+      `${flag.name} is listed as a command`,
+    );
+  }
+  // And the converse: every command is a row here, so the section is the
+  // whole map of the surface rather than a selection.
+  for (const command of RESERVED_COMMANDS) {
+    assertEquals(
+      labels.includes(command.name),
+      true,
+      `${command.name} is missing from the Commands section`,
+    );
+  }
+});
+
+Deno.test("every command's help carries its own usage and flags", () => {
+  for (const command of RESERVED_COMMANDS) {
+    const page = formatCommandHelp(command.name);
+    assertEquals(page !== undefined, true, `no help for ${command.name}`);
+    if (page === undefined) continue;
+    assertStringIncludes(page, command.name);
+    assertStringIncludes(page, "Usage:");
+    for (const flag of BUILTIN_FLAGS) {
+      if (flag.command !== command.name) continue;
+      assertStringIncludes(page, flag.name);
+    }
+  }
+});
+
+Deno.test("formatCommandHelp declines a name that is not a command", () => {
+  // The caller falls back to the main help on undefined, so a target that
+  // happens to be passed here must not render an empty page.
+  assertEquals(formatCommandHelp("build"), undefined);
+  assertEquals(formatCommandHelp("--list"), undefined);
 });
 
 Deno.test("parseArgs accumulates --allowed-origin (repeatable and comma-list)", () => {
