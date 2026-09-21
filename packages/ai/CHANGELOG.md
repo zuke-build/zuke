@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.10.0](https://github.com/zuke-build/zuke/compare/ai-v2.9.0...ai-v2.10.0) (2026-09-21)
+
+
+### Features
+
+* **ai,gh:** wire the review with parameters and a token task, derive the command from the reviewers, choose its callers ([#651](https://github.com/zuke-build/zuke/issues/651)) ([9393c2e](https://github.com/zuke-build/zuke/commit/9393c2e4938a2baf602a9ea4fe2d7cc8a4683e13))
+
 ## [2.9.0](https://github.com/zuke-build/zuke/compare/ai-v2.8.1...ai-v2.9.0) (2026-09-21)
 
 

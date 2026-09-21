@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/zuke-build/zuke/compare/cli-v1.5.4...cli-v1.6.0) (2026-09-21)
+
+
+### Features
+
+* **cli:** group the help, move detail behind per-command help, merge both surfaces ([#649](https://github.com/zuke-build/zuke/issues/649)) ([50987ff](https://github.com/zuke-build/zuke/commit/50987ff8b3a64fee4efa576e6f211732e1d917a7))
+
 ## [1.5.4](https://github.com/zuke-build/zuke/compare/cli-v1.5.3...cli-v1.5.4) (2026-09-21)
 
 

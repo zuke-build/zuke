@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.0](https://github.com/zuke-build/zuke/compare/gh-v1.11.0...gh-v1.12.0) (2026-09-21)
+
+
+### Features
+
+* **ai,gh:** wire the review with parameters and a token task, derive the command from the reviewers, choose its callers ([#651](https://github.com/zuke-build/zuke/issues/651)) ([9393c2e](https://github.com/zuke-build/zuke/commit/9393c2e4938a2baf602a9ea4fe2d7cc8a4683e13))
+
 ## [1.11.0](https://github.com/zuke-build/zuke/compare/gh-v1.10.0...gh-v1.11.0) (2026-09-16)
 
 
