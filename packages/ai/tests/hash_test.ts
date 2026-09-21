@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import { assertEquals } from "../../core/tests/_assert.ts";
-import { stableHash } from "../src/hash.ts";
+import { sha256Hex, stableHash } from "../src/hash.ts";
 
 Deno.test("stableHash is deterministic for the same input", () => {
   assertEquals(stableHash("hello world"), stableHash("hello world"));
@@ -40,4 +40,18 @@ Deno.test("stableHash uses the full 64-bit space (tokens exceed 32-bit width)", 
     }
   }
   assertEquals(sawWide, true);
+});
+
+Deno.test("sha256Hex digests UTF-8 text to the known lowercase hex", async () => {
+  assertEquals(
+    await sha256Hex("abc"),
+    "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+  );
+  assertEquals(
+    await sha256Hex(""),
+    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  );
+  // One changed byte changes the digest; the same text never does.
+  assertEquals(await sha256Hex("abd") === await sha256Hex("abc"), false);
+  assertEquals(await sha256Hex("héllo"), await sha256Hex("héllo"));
 });

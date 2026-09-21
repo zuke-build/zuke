@@ -16,7 +16,7 @@ import { Build, target } from "../../packages/core/mod.ts";
 import { securityReviewer } from "../../packages/ai/mod.ts";
 import { findingFingerprint } from "../../packages/ai/src/suppress.ts";
 import { decodeState, encodeState } from "../../packages/ai/src/state.ts";
-import { sha256Hex } from "../../packages/core/mod.ts";
+import { sha256Hex } from "../../packages/ai/src/hash.ts";
 import { SUPPRESS_HINT } from "../../packages/ai/src/report.ts";
 import { commentMarker } from "../../packages/ai/src/hosts/types.ts";
 import { runCli } from "./_harness.ts";

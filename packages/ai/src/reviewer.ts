@@ -9,12 +9,7 @@
  * @module
  */
 
-import {
-  type AnyParameter,
-  sha256Hex,
-  type Validation,
-  type ValidationContext,
-} from "@zuke/core";
+import type { AnyParameter, Validation, ValidationContext } from "@zuke/core";
 import type { Configure } from "@zuke/core/tooling";
 import { Command } from "@zuke/core/shell";
 import type {
@@ -68,6 +63,7 @@ import type { RetryInfo, RetryOptions } from "./retry.ts";
 import type { Budget } from "./budget.ts";
 import type { AiCache } from "./cache.ts";
 import { findingFingerprint, type Suppressions } from "./suppress.ts";
+import { sha256Hex } from "./hash.ts";
 import { rank, severityScore } from "./severity.ts";
 import {
   budgetComments,

@@ -12,7 +12,7 @@ import {
   outcomeMarker,
 } from "../src/threads.ts";
 import { stableHash } from "../src/hash.ts";
-import { sha256Hex } from "@zuke/core";
+import { sha256Hex } from "../src/hash.ts";
 import { withEnv } from "../../core/tests/_env.ts";
 import { captureLines as captured } from "../../core/tests/_console.ts";
 import { maskingContext, noRedactionContext } from "./_context.ts";
