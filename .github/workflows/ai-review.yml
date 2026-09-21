@@ -38,7 +38,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    if: "${{ github.event_name == 'pull_request_review_comment' && github.event.pull_request.head.repo.full_name == github.repository && github.event.comment.in_reply_to_id && github.event.comment.user.type != 'Bot' && (github.event.comment.author_association == 'OWNER' || github.event.comment.author_association == 'MEMBER' || github.event.comment.author_association == 'COLLABORATOR') }}"
+    if: "${{ github.event_name == 'pull_request_review_comment' && github.event.pull_request.head.repo.full_name == github.repository && github.event.comment.in_reply_to_id && github.event.comment.user.type != 'Bot' }}"
     timeout-minutes: 15
     concurrency:
       group: "ai-review-${{ github.workflow }}-replyReview-${{ github.event.pull_request.number }}"
@@ -50,6 +50,7 @@ jobs:
           egress-policy: audit
           persist-credentials: "false"
       - name: Require push access for the commenter
+        id: push
         shell: bash
         run: |
           set -euo pipefail
@@ -63,15 +64,19 @@ jobs:
             exit 1
           }
           case "$permission" in
-            admin|write) echo "$ZUKE_REVIEW_ACTOR has $permission access." ;;
-            *) echo "::error::$ZUKE_REVIEW_ACTOR has $permission access to $GITHUB_REPOSITORY; the review command needs push access."
-               exit 1 ;;
+            admin|write)
+              echo "$ZUKE_REVIEW_ACTOR has $permission access."
+              echo "push=true" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "$ZUKE_REVIEW_ACTOR has $permission access to $GITHUB_REPOSITORY; starting a review needs push access."
+              echo "push=false" >> "$GITHUB_OUTPUT" ;;
           esac
         env:
           GH_TOKEN: "${{ github.token }}"
           ZUKE_REVIEW_ACTOR: "${{ github.event.comment.user.login }}"
       - name: Require the reply to be in a Zuke review thread
         id: thread
+        if: "steps.push.outputs.push == 'true'"
         shell: bash
         run: |
           set -euo pipefail
@@ -96,7 +101,7 @@ jobs:
           GH_TOKEN: "${{ github.token }}"
           ZUKE_REVIEW_PARENT: "${{ github.event.comment.in_reply_to_id }}"
       - name: AI review with Zuke
-        if: "steps.thread.outputs.review == 'true'"
+        if: "steps.push.outputs.push == 'true' && steps.thread.outputs.review == 'true'"
         run: ./zuke review
         env:
           OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}"
@@ -119,6 +124,7 @@ jobs:
           egress-policy: audit
           persist-credentials: "false"
       - name: Require push access for the commenter
+        id: push
         shell: bash
         run: |
           set -euo pipefail
@@ -132,9 +138,12 @@ jobs:
             exit 1
           }
           case "$permission" in
-            admin|write) echo "$ZUKE_REVIEW_ACTOR has $permission access." ;;
-            *) echo "::error::$ZUKE_REVIEW_ACTOR has $permission access to $GITHUB_REPOSITORY; the review command needs push access."
-               exit 1 ;;
+            admin|write)
+              echo "$ZUKE_REVIEW_ACTOR has $permission access."
+              echo "push=true" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "::error::$ZUKE_REVIEW_ACTOR has $permission access to $GITHUB_REPOSITORY; starting a review needs push access."
+              exit 1 ;;
           esac
         env:
           GH_TOKEN: "${{ github.token }}"

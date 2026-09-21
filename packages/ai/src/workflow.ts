@@ -103,26 +103,48 @@ const REVIEW_COMMENT_ENV = "ZUKE_REVIEW_COMMENT";
  * an answer that cannot be read at all — the step fails closed. The login
  * reaches the script as env, never interpolated, and is checked against the
  * characters a GitHub login can contain before it is put in a URL.
+ *
+ * `onDenied` is what a commenter without push access gets. The command job
+ * fails the step: a maintainer typed a command and should see why it did not
+ * run. The reply job records `push=false` in the step's outputs and ends
+ * succeeded: a reply in a review thread is ordinary conversation, and a red
+ * check for every non-pusher who joins one would be noise, and a lever anyone
+ * could pull. An answer that cannot be read fails closed in both.
  */
-const PUSH_ACCESS_STEP = [
-  // Fail closed, explicitly: a failed API call, an unset variable, or a
-  // broken pipe stops the step, whatever shell flags the runner defaults to.
-  "set -euo pipefail",
-  'case "$ZUKE_REVIEW_ACTOR" in',
-  '  ""|*[!A-Za-z0-9-]*)',
-  '    echo "::error::the commenter\'s login is not a GitHub login"',
-  "    exit 1 ;;",
-  "esac",
-  'permission="$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$ZUKE_REVIEW_ACTOR/permission" --jq .permission)" || {',
-  '  echo "::error::could not read $ZUKE_REVIEW_ACTOR\'s permission on $GITHUB_REPOSITORY; refusing to run the review"',
-  "  exit 1",
-  "}",
-  'case "$permission" in',
-  '  admin|write) echo "$ZUKE_REVIEW_ACTOR has $permission access." ;;',
-  '  *) echo "::error::$ZUKE_REVIEW_ACTOR has $permission access to $GITHUB_REPOSITORY; the review command needs push access."',
-  "     exit 1 ;;",
-  "esac",
-].join("\n");
+function pushAccessScript(onDenied: "fail" | "skip"): string {
+  return [
+    // Fail closed, explicitly: a failed API call, an unset variable, or a
+    // broken pipe stops the step, whatever shell flags the runner defaults to.
+    "set -euo pipefail",
+    'case "$ZUKE_REVIEW_ACTOR" in',
+    '  ""|*[!A-Za-z0-9-]*)',
+    '    echo "::error::the commenter\'s login is not a GitHub login"',
+    "    exit 1 ;;",
+    "esac",
+    'permission="$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$ZUKE_REVIEW_ACTOR/permission" --jq .permission)" || {',
+    '  echo "::error::could not read $ZUKE_REVIEW_ACTOR\'s permission on $GITHUB_REPOSITORY; refusing to run the review"',
+    "  exit 1",
+    "}",
+    'case "$permission" in',
+    "  admin|write)",
+    '    echo "$ZUKE_REVIEW_ACTOR has $permission access."',
+    '    echo "push=true" >> "$GITHUB_OUTPUT" ;;',
+    "  *)",
+    ...(onDenied === "fail"
+      ? [
+        '    echo "::error::$ZUKE_REVIEW_ACTOR has $permission access to $GITHUB_REPOSITORY; starting a review needs push access."',
+        "    exit 1 ;;",
+      ]
+      : [
+        '    echo "$ZUKE_REVIEW_ACTOR has $permission access to $GITHUB_REPOSITORY; starting a review needs push access."',
+        '    echo "push=false" >> "$GITHUB_OUTPUT" ;;',
+      ]),
+    "esac",
+  ].join("\n");
+}
+
+/** The step id the push-access check publishes its verdict under. */
+const PUSH_STEP_ID = "push";
 
 /**
  * The clause that keeps a fork's code away from the secrets: the head
@@ -142,13 +164,16 @@ const SAME_REPO =
  * pull request's merge ref exactly as `pull_request` does, so it is the
  * `pull_request` job's steps behind a different gate: the comment is a
  * **reply** in a thread (a fresh line comment starts nothing), by a human
- * account whose association is one of {@link COMMAND_AUTHORS}, on a pull
- * request from this repository ({@link SAME_REPO} — the review job's rule,
- * for the same reason), and — before any key is spent — by someone the
- * collaborators API says has push access, the same step the command job runs.
- * The gate cannot see whose thread the reply is in, so a further step reads
- * the thread's root and lets the review run only when it is a Zuke finding
- * thread ({@link REPLY_THREAD_STEP}).
+ * account, on a pull request from this repository ({@link SAME_REPO} — the
+ * review job's rule, for the same reason), and — before any key is spent — by
+ * someone the collaborators API says has push access, the command job's step
+ * in its skipping mode. The event's own `author_association` is deliberately
+ * not in the gate: on this event GitHub reports an organisation member as
+ * `CONTRIBUTOR` (observed on this repository's own pull requests), so a gate
+ * on it turned real maintainers away while admitting nobody the API check
+ * would not. The gate cannot see whose thread the reply is in either, so a
+ * further step reads the thread's root and lets the review run only when it
+ * is a Zuke finding thread ({@link REPLY_THREAD_STEP}).
  *
  * One thing neither can see: the reviewer's own outcome replies are told apart
  * only by account type. Posted with the workflow's token or an App they are
@@ -624,16 +649,11 @@ class AiReviewWorkflow extends CiFile {
    * fork's code must never run with the secrets.
    */
   static #replyGate(): string {
-    const author = "github.event.comment.author_association";
-    const trusted = COMMAND_AUTHORS.map((a) => `${author} == '${a}'`).join(
-      " || ",
-    );
     return [
       "github.event_name == 'pull_request_review_comment'",
       SAME_REPO,
       "github.event.comment.in_reply_to_id",
       "github.event.comment.user.type != 'Bot'",
-      `(${trusted})`,
     ].join(" && ");
   }
 
@@ -651,12 +671,18 @@ class AiReviewWorkflow extends CiFile {
     };
   }
 
-  /** The command job's first step: refuse a commenter without push access. */
-  static #pushAccessStep(): NonNullable<CiJob["steps"]>[number] {
+  /**
+   * The push-access check, first step of both comment-started jobs — see
+   * {@link pushAccessScript} for what `onDenied` decides.
+   */
+  static #pushAccessStep(
+    onDenied: "fail" | "skip",
+  ): NonNullable<CiJob["steps"]>[number] {
     return {
+      id: PUSH_STEP_ID,
       name: "Require push access for the commenter",
       shell: "bash",
-      run: PUSH_ACCESS_STEP,
+      run: pushAccessScript(onDenied),
       env: {
         GH_TOKEN: "${{ github.token }}",
         ZUKE_REVIEW_ACTOR: "${{ github.event.comment.user.login }}",
@@ -718,11 +744,15 @@ class AiReviewWorkflow extends CiFile {
         "AI review on thread reply",
         AiReviewWorkflow.#replyGate(),
         [
-          AiReviewWorkflow.#pushAccessStep(),
-          AiReviewWorkflow.#replyThreadStep(),
+          AiReviewWorkflow.#pushAccessStep("skip"),
+          {
+            ...AiReviewWorkflow.#replyThreadStep(),
+            if: `steps.${PUSH_STEP_ID}.outputs.push == 'true'`,
+          },
           ...reviewSteps.map((step) => ({
             ...step,
-            if: `steps.${REPLY_THREAD_STEP_ID}.outputs.review == 'true'`,
+            if: `steps.${PUSH_STEP_ID}.outputs.push == 'true' && ` +
+              `steps.${REPLY_THREAD_STEP_ID}.outputs.review == 'true'`,
           })),
         ],
         reviewers.commentEnabled,
@@ -743,7 +773,7 @@ class AiReviewWorkflow extends CiFile {
         "AI review on command",
         AiReviewWorkflow.#commandGate(command.text),
         [
-          AiReviewWorkflow.#pushAccessStep(),
+          AiReviewWorkflow.#pushAccessStep("fail"),
           {
             name: "AI review with Zuke",
             run: `./zuke ${target}`,

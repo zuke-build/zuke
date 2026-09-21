@@ -1114,9 +1114,9 @@ Depth and discussion knobs (all optional, per reviewer):
   only; other hosts note it and post the summary alone. A finding the verifier
   refutes gets a "refuted" reply with the evidence and its thread resolved. With
   threads on, `aiReviewWorkflow` emits a third job, `replyReview`, that runs the
-  review when a maintainer (human, `OWNER`/`MEMBER`/`COLLABORATOR`, push access
-  checked) **replies** in a thread on a non-fork PR — so a rebuttal is answered
-  without a push.
+  review when a human with push access (checked against the collaborators API,
+  not the event's association field) **replies** in a Zuke finding thread on a
+  same-repository PR — so a rebuttal is answered without a push.
 - `.discussion()` — the reviewer engages with the PR thread instead of looping:
   a maintainer contests a finding by replying with its id quoted, an
   adjudication pass weighs the rebuttal on merit, and an accepted dismissal is

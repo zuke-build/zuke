@@ -614,10 +614,14 @@ command is a step nobody remembers. So when any reviewer uses
 `.discussion((d) => d.threads())`, the generated workflow gains a third job,
 `replyReview`, on `pull_request_review_comment`. It runs the same target when
 the comment is a **reply** in a thread (a fresh line comment starts nothing), by
-a human account whose `author_association` is `OWNER`, `MEMBER` or
-`COLLABORATOR`, on a pull request **from this repository**, and — before any key
-is spent — by someone the collaborators API says has push access, the same step
-the command job runs.
+a human account, on a pull request **from this repository**, and — before any
+key is spent — by someone the collaborators API says has push access. That is
+the command job's check in a skipping mode: a reply by anyone else ends the job
+succeeded with nothing spent, since a reply in a review thread is ordinary
+conversation and a red check for every non-pusher who joins one would be noise.
+The event's own `author_association` field is deliberately not in the gate: on
+this event GitHub reports an organisation member as `CONTRIBUTOR`, so a gate on
+it turned real maintainers away while admitting nobody the API check would not.
 
 Unlike `issue_comment`, this event checks out the pull request's merge ref
 exactly as `pull_request` does, so the job is the `pull_request` job's steps

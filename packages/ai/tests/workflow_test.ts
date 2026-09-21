@@ -691,19 +691,20 @@ Deno.test("threads add the pull_request_review_comment trigger and a job gated o
   );
   assertStringIncludes(gate, "github.event.comment.in_reply_to_id &&");
   assertStringIncludes(gate, "github.event.comment.user.type != 'Bot'");
-  for (const association of ["OWNER", "MEMBER", "COLLABORATOR"]) {
-    assertStringIncludes(
-      gate,
-      `github.event.comment.author_association == '${association}'`,
-    );
-  }
-  assertEquals(gate.includes("CONTRIBUTOR"), false);
-  // The push-access check runs before the key is spent, then the review job's
-  // own steps: the base fetch and the review against FETCH_HEAD — no
+  // No association clause: on this event GitHub reports an organisation
+  // member as CONTRIBUTOR, so the field would turn maintainers away. The
+  // collaborators API decides, in the first step.
+  assertEquals(gate.includes("author_association"), false);
+  // The push-access check runs before the key is spent — skipping, not
+  // failing, for a reply by someone without push access — then the review
+  // job's own steps: the base fetch and the review against FETCH_HEAD — no
   // ZUKE_REVIEW_PR, since the checkout is the pull request itself.
   const [, replyJob] = yaml.split("  replyReview:");
   const [reply] = replyJob.split("  commandReview:");
   assertStringIncludes(reply, "Require push access for the commenter");
+  assertStringIncludes(reply, 'echo "push=false" >> "$GITHUB_OUTPUT"');
+  assertEquals(reply.includes("::error::$ZUKE_REVIEW_ACTOR has"), false);
+  assertStringIncludes(reply, "if: \"steps.push.outputs.push == 'true'\"");
   // Then the thread check: the root the reply answers must open with a Zuke
   // finding marker, or every later step is skipped and the job still passes.
   assertStringIncludes(
@@ -716,9 +717,11 @@ Deno.test("threads add the pull_request_review_comment trigger and a job gated o
   );
   assertStringIncludes(reply, '"<!-- zuke-ai-finding:"*)');
   assertEquals(
-    reply.split("steps.thread.outputs.review == 'true'").length,
+    reply.split(
+      "steps.push.outputs.push == 'true' && steps.thread.outputs.review == 'true'",
+    ).length,
     3,
-    "the fetch and the review step both wait for the thread check",
+    "the fetch and the review step both wait for both checks",
   );
   assertStringIncludes(reply, "Fetch the base branch");
   assertStringIncludes(reply, "ZUKE_REVIEW_BASE: FETCH_HEAD");
