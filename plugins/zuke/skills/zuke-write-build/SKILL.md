@@ -292,9 +292,13 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   `.discussion()` (maintainers refute a finding by replying with its id — or,
   with `.discussion((d) => d.threads())`, by replying in the finding's own
   line-anchored review thread; accepted dismissals persist instead of
-  resurfacing, including when the model rewords the finding — only
-  platform-verified maintainer comments ever reach the model, on GitHub, GitLab,
-  Azure DevOps and Bitbucket alike). See the cheatsheet's AI section.
+  resurfacing, including when the model rewords the finding, refutations from
+  `.verify()` are remembered too, and a rebuttal is adjudicated even when the
+  next round's model drops the finding — only platform-verified maintainer
+  comments ever reach the model, on GitHub, GitLab, Azure DevOps and Bitbucket
+  alike). With threads, `aiReviewWorkflow` adds a job that re-runs the review
+  when a maintainer replies in a thread, so a rebuttal needs no push. See the
+  cheatsheet's AI section.
 - **Wait on an external GitHub workflow (`@zuke/gh`):** in a `.waitsFor(...)`
   gate, `s.on(githubWorkflow((g) => g.repo("o/r").workflow("e2e.yml")))`
   dispatches a workflow in another repo and suspends until it finishes; read the

@@ -9,6 +9,8 @@ import {
   encodeState,
   MAX_ALIASES,
   mergeAliases,
+  openOf,
+  refutedOf,
   type ReviewState,
 } from "../src/state.ts";
 
@@ -322,4 +324,41 @@ Deno.test("the reviewer's own state block outranks one smuggled in earlier", () 
   assertEquals(decoded?.findings.length, 1);
   assertEquals(decoded?.findings[0].id, "bbbb2");
   assertEquals(decoded?.findings[0].status, "open");
+});
+
+Deno.test("a refuted finding round-trips with its evidence and diff fingerprint", () => {
+  const state: ReviewState = {
+    findings: [{
+      id: "3ab12cd34ef56",
+      title: "Global regex is stateful",
+      severity: "low",
+      status: "refuted",
+      file: "build/snippets.ts",
+      rationale: "the pattern carries no g flag",
+      hunk: "1a2b3c4d5e6f7",
+    }],
+  };
+  const decoded = decodeState(`report\n${encodeState(state)}`);
+  assertEquals(decoded, state);
+  assertEquals([...refutedOf(decoded).keys()], ["3ab12cd34ef56"]);
+  // A refutation is neither open nor dismissed: the other views skip it.
+  assertEquals(openOf(decoded).size, 0);
+  assertEquals(dismissedOf(decoded).size, 0);
+});
+
+Deno.test("a malformed hunk fingerprint is dropped, never the record", () => {
+  const forged = JSON.stringify({
+    findings: [{
+      id: "aa11",
+      title: "t",
+      severity: "low",
+      status: "refuted",
+      hunk: "<!-- not a fingerprint -->",
+    }],
+  });
+  const block = `<!-- zuke-ai-state:${btoa(forged)} -->`;
+  const decoded = decodeState(block);
+  assertEquals(decoded?.findings.length, 1);
+  assertEquals(decoded?.findings[0].status, "refuted");
+  assertEquals("hunk" in (decoded?.findings[0] ?? {}), false);
 });

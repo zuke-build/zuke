@@ -647,3 +647,75 @@ Deno.test("the command job checks the commenter's push access before the review"
     2,
   );
 });
+
+// ─── threads: the reply job ─────────────────────────────────────────────────
+
+/** A build whose reviewer anchors findings to review threads. */
+function threadsBuild(threads: boolean): string {
+  class B extends Build {
+    key = parameter("Key").secret().env("OPENAI_API_KEY");
+    security = securityReviewer((r) =>
+      threads
+        ? r.provider("openai").apiKey(this.key).comment()
+          .discussion((d) => d.threads())
+        : r.provider("openai").apiKey(this.key).comment().discussion()
+    );
+    review = target().validateBefore(this.security).executes(() => {});
+    wf = aiReviewWorkflow({ reviewers: [this.security] });
+  }
+  const b = new B();
+  discoverParameters(b);
+  return b.wf.render();
+}
+
+Deno.test("threads add the pull_request_review_comment trigger and a job gated on a maintainer's reply on a non-fork pull request", () => {
+  const yaml = threadsBuild(true);
+  assertStringIncludes(
+    yaml,
+    "pull_request_review_comment:\n    types:\n      - created",
+  );
+  assertStringIncludes(
+    yaml,
+    "replyReview:\n    name: AI review on thread reply",
+  );
+  const gate =
+    yaml.split("\n").find((line) =>
+      line.includes("github.event_name == 'pull_request_review_comment'")
+    ) ?? "";
+  // The event checks the pull request out, so a fork is refused exactly as
+  // the pull_request job refuses it; only a reply, by a human maintainer.
+  assertStringIncludes(
+    gate,
+    "github.event.pull_request.head.repo.fork == false &&",
+  );
+  assertStringIncludes(gate, "github.event.comment.in_reply_to_id &&");
+  assertStringIncludes(gate, "github.event.comment.user.type != 'Bot'");
+  for (const association of ["OWNER", "MEMBER", "COLLABORATOR"]) {
+    assertStringIncludes(
+      gate,
+      `github.event.comment.author_association == '${association}'`,
+    );
+  }
+  assertEquals(gate.includes("CONTRIBUTOR"), false);
+  // The push-access check runs before the key is spent, then the review job's
+  // own steps: the base fetch and the review against FETCH_HEAD — no
+  // ZUKE_REVIEW_PR, since the checkout is the pull request itself.
+  const [, replyJob] = yaml.split("  replyReview:");
+  const [reply] = replyJob.split("  commandReview:");
+  assertStringIncludes(reply, "Require push access for the commenter");
+  assertStringIncludes(reply, "Fetch the base branch");
+  assertStringIncludes(reply, "ZUKE_REVIEW_BASE: FETCH_HEAD");
+  assertEquals(reply.includes("ZUKE_REVIEW_PR"), false);
+  assertStringIncludes(
+    reply,
+    'group: "ai-review-${{ github.workflow }}-replyReview-${{ github.event.pull_request.number }}"',
+  );
+  assertStringIncludes(reply, "pull-requests: write");
+  assertStringIncludes(reply, "timeout-minutes: 15");
+});
+
+Deno.test("without threads there is no reply job and no review-comment trigger", () => {
+  const yaml = threadsBuild(false);
+  assertEquals(yaml.includes("pull_request_review_comment"), false);
+  assertEquals(yaml.includes("replyReview"), false);
+});

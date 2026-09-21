@@ -78,6 +78,7 @@ import {
   fixedOf,
   mergeAliases,
   openOf,
+  refutedOf,
   type ReviewState,
   type StoredFinding,
 } from "./state.ts";
@@ -94,7 +95,7 @@ import {
 } from "./dedup.ts";
 import { parseVerdicts, type Verdict } from "./verdicts.ts";
 import { verdictsGeminiSchema, verdictsJsonSchema } from "./schema.ts";
-import { anchorableLines, changedPaths } from "./diff.ts";
+import { anchorableLines, changedPaths, sectionFingerprints } from "./diff.ts";
 import { allReplies, withThreadRebuttals } from "./threads.ts";
 import {
   postThreads,
@@ -184,6 +185,15 @@ export class Reviewer implements Validation {
   /** The configured comment-posting token, if `.commentToken(...)` was called. */
   get commentToken_(): CommentTokenSource | undefined {
     return this.#commentToken;
+  }
+
+  /**
+   * Whether `.discussion((d) => d.threads())` is set — findings are anchored
+   * to review threads, so a maintainer's reply in one is a rebuttal the
+   * generated workflow should run the review for.
+   */
+  get threadsEnabled_(): boolean {
+    return this.#discussion?.threads_() === true;
   }
 
   /** Set the model provider (required). */
@@ -876,13 +886,17 @@ export class Reviewer implements Validation {
       finding.id !== undefined && !ids.has(finding.id)
     );
     const priors = [...priorState.findings];
-    // Fixed first, then dismissed, then the still-open ones. Fixed before
-    // dismissed keeps a candidate matching both reopening (which reports)
-    // rather than inheriting a dismissal (which silences); decided entries
-    // before open ones keeps the newcomers from crowding a sticky dismissal out
-    // of the per-candidate comparison cap.
+    // Fixed first, then dismissed and refuted, then the still-open ones. Fixed
+    // before the decided ones keeps a candidate matching both reopening (which
+    // reports) rather than inheriting a dismissal (which silences); decided
+    // entries before open ones keeps the newcomers from crowding a sticky
+    // decision out of the per-candidate comparison cap.
     const order = (finding: StoredFinding): number =>
-      finding.status === "fixed" ? 0 : finding.status === "dismissed" ? 1 : 2;
+      finding.status === "fixed"
+        ? 0
+        : finding.status === "dismissed" || finding.status === "refuted"
+        ? 1
+        : 2;
     priors.sort((a, b) => order(a) - order(b));
     if (candidates.length === 0 || priors.length === 0) return result;
     const plan = planDedup(candidates, priors);
@@ -1034,20 +1048,23 @@ export class Reviewer implements Validation {
     const dismissedPrior = dismissedOf(discussion?.priorState);
     const openPrior = openOf(discussion?.priorState);
     const fixedPrior = fixedOf(discussion?.priorState);
+    const refutedPrior = refutedOf(discussion?.priorState);
     const dismissedLines = [...dismissedPrior.values()].map((f) =>
-      `${f.id} — ${f.title}${f.file !== undefined ? ` (${f.file})` : ""}${
-        f.rationale !== undefined ? `: ${f.rationale}` : ""
-      }`
+      stateLine(f, true)
+    );
+    // Earlier rounds' refutations ride in with their evidence, so the model is
+    // not left to rediscover a concern already disproved against this code.
+    const refutedLines = [...refutedPrior.values()].map((f) =>
+      stateLine(f, true)
     );
     // The previous round's still-open findings, for the model to re-assess:
     // re-reported → still open; omitted → recorded as fixed below.
-    const priorLines = [...openPrior.values()].map((f) =>
-      `${f.id} — ${f.title}${f.file !== undefined ? ` (${f.file})` : ""}`
-    );
+    const priorLines = [...openPrior.values()].map((f) => stateLine(f, false));
     const extras: PromptExtras = {
       ...(conventions !== undefined ? { conventions } : {}),
       ...(files !== undefined ? { files } : {}),
       ...(dismissedLines.length > 0 ? { dismissed: dismissedLines } : {}),
+      ...(refutedLines.length > 0 ? { refuted: refutedLines } : {}),
       ...(priorLines.length > 0 ? { prior: priorLines } : {}),
     };
 
@@ -1148,6 +1165,38 @@ export class Reviewer implements Validation {
       assessment.findings = kept;
     }
 
+    // Sticky refutations: a finding the verify pass disproved in an earlier
+    // round is dropped deterministically — but only while the file's section of
+    // the diff is byte-identical to the one that verifier read, which is when
+    // the evidence it cited cannot have changed. A changed section sends the
+    // finding back to the verifier below carrying the earlier refutation, so
+    // the model alone never silences a finding for good: the drop is bounded by
+    // evidence, and the question is re-asked as soon as the code moves.
+    const refuted: RefutedFinding[] = [];
+    const runNotes: string[] = [];
+    const hunks = sectionFingerprints(diff);
+    if (refutedPrior.size > 0) {
+      const kept: AssessmentFinding[] = [];
+      for (const finding of assessment.findings) {
+        const prior = finding.id !== undefined
+          ? refutedPrior.get(finding.id)
+          : undefined;
+        const unchanged = prior?.hunk !== undefined &&
+          finding.file !== undefined &&
+          hunks.get(finding.file) === prior.hunk;
+        if (prior !== undefined && unchanged) {
+          refuted.push({
+            finding,
+            earlier: true,
+            ...(prior.rationale !== undefined
+              ? { reason: prior.rationale }
+              : {}),
+          });
+        } else kept.push(finding);
+      }
+      assessment.findings = kept;
+    }
+
     // Verify pass: adversarially re-check each candidate. Only a refutation
     // that states its concrete contrary evidence removes a finding (an
     // evidence-free one demotes to uncertain below — the requirement is
@@ -1156,8 +1205,9 @@ export class Reviewer implements Validation {
     // confirmed or uncertain candidate stays reported and gating, carrying the
     // verdict so the report shows how far verification got. A missing verdict
     // and a failed pass both keep the finding unmarked — fail toward
-    // reporting, never toward silence.
-    const refuted: RefutedFinding[] = [];
+    // reporting, never toward silence. A candidate refuted in an earlier round
+    // (whose diff section has since changed) carries that refutation in, so
+    // the verifier re-checks the evidence instead of starting from nothing.
     if (this.#verify && assessment.findings.length > 0) {
       if (this.#budget?.exhausted_()) {
         if (!this.#quiet) {
@@ -1167,13 +1217,19 @@ export class Reviewer implements Validation {
         }
       } else {
         try {
-          const candidates = assessment.findings.map((f) => ({
-            id: f.id ?? "",
-            title: f.title,
-            ...(f.file !== undefined ? { file: f.file } : {}),
-            ...(f.line !== undefined ? { line: f.line } : {}),
-            ...(f.detail !== undefined ? { detail: f.detail } : {}),
-          }));
+          const candidates = assessment.findings.map((f) => {
+            const earlier = f.id !== undefined
+              ? refutedPrior.get(f.id)?.rationale
+              : undefined;
+            return {
+              id: f.id ?? "",
+              title: f.title,
+              ...(f.file !== undefined ? { file: f.file } : {}),
+              ...(f.line !== undefined ? { line: f.line } : {}),
+              ...(f.detail !== undefined ? { detail: f.detail } : {}),
+              ...(earlier !== undefined ? { refutedBefore: earlier } : {}),
+            };
+          });
           const verdicts = await this.#verdictCall(
             provider,
             key,
@@ -1222,6 +1278,17 @@ export class Reviewer implements Validation {
         }
       }
     }
+    // A finding refuted in an earlier round that stands this round — confirmed
+    // or uncertain against the changed section, or unverified — is reported
+    // again, and the report says why a decided finding is back.
+    for (const finding of assessment.findings) {
+      if (finding.id !== undefined && refutedPrior.has(finding.id)) {
+        runNotes.push(
+          `"${finding.title}" was refuted in an earlier round but stands ` +
+            `against the changed diff — reported again under ${finding.id}`,
+        );
+      }
+    }
 
     // Adjudication: when a trusted maintainer contested a finding by quoting
     // its id, weigh the rebuttal. Both keys are required for a dismissal — a
@@ -1240,9 +1307,18 @@ export class Reviewer implements Validation {
         trustedComments([...discussion.comments, ...replies], this.#discussion),
         this.#discussion,
       );
-      const ids = assessment.findings
+      const reported = assessment.findings
         .map((f) => f.id)
         .filter((id): id is string => id !== undefined);
+      // Contested findings the model did not re-report this round — or that
+      // the verify pass refuted — are adjudicated too, rather than recorded as
+      // fixed by default: a maintainer who argued a finding away is owed the
+      // answer "dismissed", which is sticky and said so in the thread, where a
+      // "fixed" that fixed nothing reopens on the next rewording.
+      const unreported = [...openPrior.values()].filter((prior) =>
+        !reported.includes(prior.id)
+      );
+      const ids = [...reported, ...unreported.map((prior) => prior.id)];
       const quoted = rebuttalsFor(trusted, ids);
       const rebuttals = threadCtx === undefined
         ? quoted
@@ -1252,11 +1328,12 @@ export class Reviewer implements Validation {
           const notes: RebuttalNote[] = [];
           for (const [id, comments] of rebuttals) {
             const finding = assessment.findings.find((f) => f.id === id);
-            if (finding === undefined) continue;
+            const subject = finding ?? openPrior.get(id);
+            if (subject === undefined) continue;
             notes.push({
               id,
-              title: finding.title,
-              ...(finding.detail !== undefined
+              title: subject.title,
+              ...(finding?.detail !== undefined
                 ? { detail: finding.detail }
                 : {}),
               comments: comments.map((c) =>
@@ -1288,24 +1365,28 @@ export class Reviewer implements Validation {
                 `${unanswered.join(", ")} — contested findings stay open`,
             );
           }
+          // A "dismissed" verdict only counts for a finding that actually had
+          // a trusted rebuttal — the model cannot dismiss on its own.
+          const accepted = (id: string, verdict: Verdict | undefined) =>
+            verdict?.verdict === "dismissed" && rebuttals.has(id);
+          const accept = (finding: AssessmentFinding, verdict: Verdict) => {
+            const rebutter = rebuttals.get(verdict.id)?.[0];
+            dismissed.push({
+              finding,
+              author: rebutter?.displayName ?? rebutter?.author,
+              ...(verdict.reason !== undefined
+                ? { reason: verdict.reason }
+                : {}),
+            });
+          };
           const kept: AssessmentFinding[] = [];
           for (const finding of assessment.findings) {
             const id = finding.id;
             const verdict = id !== undefined ? verdicts.get(id) : undefined;
-            // A "dismissed" verdict only counts for a finding that actually
-            // had a trusted rebuttal — the model cannot dismiss on its own.
             if (
-              id !== undefined && verdict?.verdict === "dismissed" &&
-              rebuttals.has(id)
+              id !== undefined && verdict !== undefined && accepted(id, verdict)
             ) {
-              const rebutter = rebuttals.get(id)?.[0];
-              dismissed.push({
-                finding,
-                author: rebutter?.displayName ?? rebutter?.author,
-                ...(verdict.reason !== undefined
-                  ? { reason: verdict.reason }
-                  : {}),
-              });
+              accept(finding, verdict);
             } else {
               if (id !== undefined && verdict?.verdict === "upheld") {
                 upheldReasons.set(id, verdict.reason ?? "");
@@ -1314,6 +1395,39 @@ export class Reviewer implements Validation {
             }
           }
           assessment.findings = kept;
+          // The contested findings that were not re-reported: an accepted
+          // rebuttal dismisses (and outranks this round's refutation of the
+          // same finding — two keys beat one); one that does not hold changes
+          // nothing, since the finding is not reported either way, but the
+          // report says so rather than letting the argument vanish.
+          for (const prior of unreported) {
+            const verdict = verdicts.get(prior.id);
+            if (verdict === undefined || !rebuttals.has(prior.id)) continue;
+            if (accepted(prior.id, verdict)) {
+              accept({
+                id: prior.id,
+                title: prior.title,
+                severity: prior.severity,
+                ...(prior.file !== undefined ? { file: prior.file } : {}),
+              }, verdict);
+              const index = refuted.findIndex((r) => r.finding.id === prior.id);
+              if (index >= 0) refuted.splice(index, 1);
+            } else {
+              const because = verdict.reason !== undefined &&
+                  verdict.reason !== ""
+                ? ` (${verdict.reason})`
+                : "";
+              runNotes.push(
+                `the rebuttal for "${prior.title}" (${prior.id}) did not ` +
+                  `hold on its own${because}, but the finding no longer ` +
+                  `reproduces — recorded as ${
+                    refuted.some((r) => r.finding.id === prior.id)
+                      ? "refuted"
+                      : "fixed"
+                  }`,
+              );
+            }
+          }
         } catch (error) {
           const message = error instanceof Error
             ? error.message
@@ -1341,6 +1455,12 @@ export class Reviewer implements Validation {
       }
       for (const d of dismissed) {
         if (d.finding.id !== undefined) still.add(d.finding.id);
+      }
+      // Refuted is a decision about a live finding, not the absence of one: a
+      // prior open finding the verifier disproved is recorded refuted below,
+      // never as fixed.
+      for (const r of refuted) {
+        if (r.finding.id !== undefined) still.add(r.finding.id);
       }
       for (const prior of fixedPrior.values()) {
         if (!still.has(prior.id)) fixed.push(prior);
@@ -1389,6 +1509,35 @@ export class Reviewer implements Validation {
         stored.set(prior.id, withAliases(prior));
       }
       for (const entry of fixed) stored.set(entry.id, withAliases(entry));
+      // Refutations: earlier rounds' carried forward as they stand, this
+      // round's written with the verifier's evidence and the fingerprint of
+      // the diff section it read — the two things the next round compares. A
+      // finding re-refuted after its section changed refreshes both; one an
+      // accepted rebuttal dismissed was removed from this list above.
+      for (const prior of refutedPrior.values()) {
+        stored.set(prior.id, withAliases(prior));
+      }
+      for (const r of refuted) {
+        const id = r.finding.id ?? "";
+        if (id === "" || r.earlier === true) continue;
+        const prior = refutedPrior.get(id) ?? openPrior.get(id) ??
+          fixedPrior.get(id);
+        const hunk = r.finding.file !== undefined
+          ? hunks.get(r.finding.file)
+          : undefined;
+        stored.set(
+          id,
+          withAliases({
+            id,
+            title: prior?.title ?? r.finding.title,
+            severity: r.finding.severity,
+            status: "refuted",
+            ...(r.finding.file !== undefined ? { file: r.finding.file } : {}),
+            ...(r.reason !== undefined ? { rationale: r.reason } : {}),
+            ...(hunk !== undefined ? { hunk } : {}),
+          }),
+        );
+      }
       for (const d of dismissed) {
         const id = d.finding.id ?? "";
         if (id === "") continue;
@@ -1453,6 +1602,11 @@ export class Reviewer implements Validation {
             ...(d.reason !== undefined ? { reason: d.reason } : {}),
           })),
           dismissedPrior: new Set(dismissedPrior.keys()),
+          refuted: refuted.map((r) => ({
+            id: r.finding.id ?? "",
+            ...(r.reason !== undefined ? { reason: r.reason } : {}),
+          })),
+          refutedPrior: new Set(refutedPrior.keys()),
           fixed: fixed.map((entry) => entry.id),
           fixedPrior: new Set(fixedPrior.keys()),
           upheld: upheldReasons,
@@ -1468,8 +1622,8 @@ export class Reviewer implements Validation {
       ...(refuted.length > 0 ? { refuted } : {}),
       ...(dismissed.length > 0 ? { dismissed } : {}),
       ...(fixed.length > 0 ? { fixed } : {}),
-      ...(reword.notes.length + threadNotes.length > 0
-        ? { notes: [...reword.notes, ...threadNotes] }
+      ...(reword.notes.length + runNotes.length + threadNotes.length > 0
+        ? { notes: [...reword.notes, ...runNotes, ...threadNotes] }
         : {}),
       discussion: discussion !== undefined,
     }, commentExtra);
@@ -1480,6 +1634,19 @@ export class Reviewer implements Validation {
       );
     }
   }
+}
+
+/**
+ * One stored finding as a prompt line: `id — title (file)`, plus `: rationale`
+ * when the block carries the decision's evidence (a dismissal, a refutation)
+ * rather than a still-open finding to re-assess.
+ */
+function stateLine(finding: StoredFinding, withRationale: boolean): string {
+  const file = finding.file !== undefined ? ` (${finding.file})` : "";
+  const why = withRationale && finding.rationale !== undefined
+    ? `: ${finding.rationale}`
+    : "";
+  return `${finding.id} — ${finding.title}${file}${why}`;
 }
 
 /**

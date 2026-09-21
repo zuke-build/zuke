@@ -68,10 +68,16 @@ change under review can't rewrite the rules), `.criteriaFile("NOTES.md")` (the
 base-anchored half of `.criteria(...)`, read the same way — `.criteria` is build
 code and so travels with the change), `.fileContext()` (send the changed files
 whole, not bare hunks), `.verify()` (adversarially re-check every candidate
-finding; refuted ones are reported but never gate), and `.discussion()` (engage
+finding; refuted ones are reported but never gate, and with `.discussion()` a
+refutation is remembered — applied in code while the file's diff is unchanged,
+re-checked with the earlier evidence once it moves), and `.discussion()` (engage
 with maintainer rebuttals on the PR — an accepted refutation stays dismissed
-instead of resurfacing; only comments whose author the host platform attributes
-as a maintainer ever reach the model).
+instead of resurfacing, and is adjudicated even when the next round's model no
+longer reports the finding; only comments whose author the host platform
+attributes as a maintainer ever reach the model). With
+`.discussion((d) => d.threads())`, `aiReviewWorkflow` also emits a job that
+re-runs the review when a maintainer replies in a finding's thread, so a
+rebuttal gets its answer without a push.
 
 `.skipIfKeyMissing()` skips the review instead of failing when the API key is
 absent — handy when the key is a CI-only secret — and announces the skip on the
@@ -642,6 +648,10 @@ class Reviewer implements Validation
     Whether `.comment()` is set — i.e. this reviewer posts to the PR.
   get commentToken_(): CommentTokenSource | undefined
     The configured comment-posting token, if `.commentToken(...)` was called.
+  get threadsEnabled_(): boolean
+    Whether `.discussion((d) => d.threads())` is set — findings are anchored
+    to review threads, so a maintainer's reply in one is a rebuttal the
+    generated workflow should run the review for.
   provider(provider: Provider): this
     Set the model provider (required).
   apiKey(apiKey: AnyParameter | string): this

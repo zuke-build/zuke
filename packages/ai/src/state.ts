@@ -32,8 +32,20 @@ import { dig } from "./json.ts";
  *   current diff: the reviewer re-assessed it and the issue is gone. Kept in
  *   the state (and listed in the report) so the PR's progress is visible; it
  *   flips back to `open` if a later round reports it again.
+ * - `refuted` — the verify pass disproved it against the code, with the
+ *   evidence recorded as the rationale and the file's diff section it reasoned
+ *   about fingerprinted in {@link StoredFinding.hunk}. Remembered so the next
+ *   round neither re-raises it nor judges it afresh: while that diff section is
+ *   unchanged the refutation stands without another call, and once it changes
+ *   the verifier sees the earlier evidence before deciding again. It flips to
+ *   `open` if a later round confirms it against the changed code.
  */
-export type FindingStatus = "open" | "upheld" | "dismissed" | "fixed";
+export type FindingStatus =
+  | "open"
+  | "upheld"
+  | "dismissed"
+  | "fixed"
+  | "refuted";
 
 /** One finding tracked across runs in the review state. */
 export interface StoredFinding {
@@ -51,6 +63,14 @@ export interface StoredFinding {
   rationale?: string;
   /** The login of the maintainer whose rebuttal drove the adjudication. */
   author?: string;
+  /**
+   * For a `refuted` finding: the fingerprint of the file's section of the
+   * reviewed diff at the time of the refutation (see
+   * {@link "./diff.ts".sectionFingerprints}). A later round whose diff section
+   * for that file is identical knows the evidence the verifier cited cannot
+   * have changed, and keeps the refutation without asking again.
+   */
+  hunk?: string;
   /**
    * Fingerprints of earlier **rewordings** of this same finding — the ids it
    * arrived under when the model restated it in different words. Recording one
@@ -173,13 +193,17 @@ function toStoredFinding(item: unknown): StoredFinding | undefined {
   if (typeof id !== "string" || typeof title !== "string") return undefined;
   if (
     status !== "open" && status !== "upheld" && status !== "dismissed" &&
-    status !== "fixed"
+    status !== "fixed" && status !== "refuted"
   ) {
     return undefined;
   }
   const file = dig(item, "file");
   const rationale = dig(item, "rationale");
   const author = dig(item, "author");
+  // A hunk fingerprint is compared for equality only, so a malformed one costs
+  // at most one re-verification; it is still held to the fingerprint alphabet
+  // so the state block can never carry arbitrary text under that key.
+  const hunk = dig(item, "hunk");
   // Best-effort like every other field: a malformed alias list yields no
   // aliases rather than discarding the record, so a bad entry costs at most one
   // dedup call — never the dismissal the finding already earned.
@@ -197,6 +221,7 @@ function toStoredFinding(item: unknown): StoredFinding | undefined {
     ...(typeof file === "string" ? { file } : {}),
     ...(typeof rationale === "string" ? { rationale } : {}),
     ...(typeof author === "string" ? { author } : {}),
+    ...(isFingerprint(hunk) ? { hunk } : {}),
     ...(aliases.length > 0 ? { aliases } : {}),
   };
 }
@@ -275,4 +300,15 @@ export function fixedOf(
   state: ReviewState | undefined,
 ): Map<string, StoredFinding> {
   return byStatus(state, "fixed");
+}
+
+/**
+ * The findings in `state` the verify pass refuted in an earlier round, keyed
+ * by fingerprint — each carrying the evidence it was refuted on and the
+ * fingerprint of the diff section that evidence was read from.
+ */
+export function refutedOf(
+  state: ReviewState | undefined,
+): Map<string, StoredFinding> {
+  return byStatus(state, "refuted");
 }

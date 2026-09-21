@@ -1096,7 +1096,11 @@ Depth and discussion knobs (all optional, per reviewer):
 - `.verify()` — a second, adversarial pass re-checks every candidate finding;
   only a refutation backed by citable contrary evidence removes one (listed in
   the report, never gating), while a candidate the evidence neither confirms nor
-  refutes stays reported as `uncertain`.
+  refutes stays reported as `uncertain`. With `.discussion()`, a refutation is
+  remembered in the state block with its evidence and a fingerprint of the
+  file's diff section: a re-report while that section is unchanged is dropped in
+  code (listed as standing from an earlier round, no verifier call), and one
+  after it changed goes back to the verifier carrying the earlier evidence.
 - `.comment("append")` — post a fresh PR comment per run (history stays on the
   thread) instead of the default single upserted comment per reviewer.
 - `.discussion((d) => d.threads())` — anchor each finding to its line as a PR
@@ -1106,7 +1110,12 @@ Depth and discussion knobs (all optional, per reviewer):
   posted and still lists every finding, so an unanchorable finding (no line, an
   invented line, a line only present as a deletion) loses nothing — it stays in
   the table and the report's Notes say why. Lines are never guessed at. GitHub
-  only; other hosts note it and post the summary alone.
+  only; other hosts note it and post the summary alone. A finding the verifier
+  refutes gets a "refuted" reply with the evidence and its thread resolved. With
+  threads on, `aiReviewWorkflow` emits a third job, `replyReview`, that runs the
+  review when a maintainer (human, `OWNER`/`MEMBER`/`COLLABORATOR`, push access
+  checked) **replies** in a thread on a non-fork PR — so a rebuttal is answered
+  without a push.
 - `.discussion()` — the reviewer engages with the PR thread instead of looping:
   a maintainer contests a finding by replying with its id quoted, an
   adjudication pass weighs the rebuttal on merit, and an accepted dismissal is
@@ -1122,8 +1131,11 @@ Depth and discussion knobs (all optional, per reviewer):
   every failure leaves the finding reported. It also tracks progress: still-open
   findings are re-assessed each round, ones that stop reproducing are marked
   fixed and listed cumulatively ("✅ Fixed since first review"), and a fixed
-  finding that reappears reopens. Trust is decided in code from the host's
-  author metadata (`OWNER`/`MEMBER`/ `COLLABORATOR` by default; tune with
+  finding that reappears reopens. A contested finding the next round does not
+  re-report (or the verifier refutes) is still adjudicated: an accepted rebuttal
+  records it dismissed — sticky, replied in-thread — never "fixed". Trust is
+  decided in code from the host's author metadata (`OWNER`/`MEMBER`/
+  `COLLABORATOR` by default; tune with
   `.discussion((d) => d.trustAuthors(...))`) — untrusted comments never reach
   the model, which blunts comment-based prompt injection. Requires `.comment()`;
   works on every supported host, each mapping its own metadata onto those

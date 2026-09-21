@@ -80,6 +80,8 @@ function inputs(overrides: Partial<ThreadInputs> = {}): ThreadInputs {
     open: [],
     dismissed: [],
     dismissedPrior: new Set(),
+    refuted: [],
+    refutedPrior: new Set(),
     fixed: [],
     fixedPrior: new Set(),
     upheld: new Map(),
@@ -131,6 +133,10 @@ Deno.test("an outcome marker parses its kind, and only a known kind", () => {
   assertEquals(
     parseOutcomeMarker(NAME, `${outcomeMarker(NAME, "aa11", "fixed")}\nx`),
     { id: "aa11", kind: "fixed" },
+  );
+  assertEquals(
+    parseOutcomeMarker(NAME, `${outcomeMarker(NAME, "aa11", "refuted")}\nx`),
+    { id: "aa11", kind: "refuted" },
   );
   assertEquals(
     parseOutcomeMarker(NAME, "<!-- zuke-ai-outcome:abc123:aa11:deleted -->"),
@@ -488,6 +494,56 @@ Deno.test("a fixed → reopened → fixed sequence still posts the third answer"
   assertEquals(plan.actions[0].outcome, "fixed");
 });
 
+Deno.test("a prior open finding refuted this round is answered and its thread resolved", () => {
+  const plan = planThreads(inputs({
+    refuted: [{ id: "aa11", reason: "the guard on line 9 blocks it" }],
+    threads: new Map([["aa11", thread("aa11", 501)]]),
+  }));
+  assertEquals(plan.actions, [{
+    id: "aa11",
+    kind: "reply",
+    outcome: "refuted",
+    rootId: 501,
+    reason: "the guard on line 9 blocks it",
+  }]);
+  assertEquals(plan.resolve, [{ id: "aa11", rootId: 501 }]);
+  assertEquals(plan.unresolve, []);
+});
+
+Deno.test("a finding refuted in an earlier round is left alone", () => {
+  // Sticky, like a dismissal from an earlier round: answered and resolved
+  // when it was decided, so re-answering every push would reopen nothing.
+  const plan = planThreads(inputs({
+    refuted: [{ id: "aa11", reason: "still holds" }],
+    refutedPrior: new Set(["aa11"]),
+    threads: new Map([[
+      "aa11",
+      thread("aa11", 501, {
+        outcomes: ["refuted"],
+      }),
+    ]]),
+  }));
+  assertEquals(plan.actions, []);
+  assertEquals(plan.resolve, []);
+});
+
+Deno.test("a refuted finding that comes back is reopened", () => {
+  // The thread was closed by a refutation; the finding is live again (the
+  // verifier confirmed it against the changed code), so the thread must say
+  // so and reopen rather than hide it behind a resolved thread.
+  const plan = planThreads(inputs({
+    open: [finding("aa11")],
+    threads: new Map([[
+      "aa11",
+      thread("aa11", 501, {
+        outcomes: ["refuted"],
+      }),
+    ]]),
+  }));
+  assertEquals(plan.actions.map((a) => a.outcome), ["reopened"]);
+  assertEquals(plan.unresolve, [{ id: "aa11", rootId: 501 }]);
+});
+
 Deno.test("a finding refuted by verify gets no thread activity", () => {
   // It is in neither `open` nor `dismissed` nor `fixed`, so nothing is
   // asserted about it — the reviewer declines to claim it was fixed.
@@ -550,7 +606,13 @@ Deno.test("a thread body cannot launder a state block past the reviewer's author
 });
 
 Deno.test("every outcome renders a distinct human sentence", () => {
-  const kinds = ["fixed", "dismissed", "upheld", "reopened"] as const;
+  const kinds = [
+    "fixed",
+    "dismissed",
+    "upheld",
+    "reopened",
+    "refuted",
+  ] as const;
   const bodies = kinds.map((kind) => threadOutcomeBody(kind, "because"));
   assertEquals(new Set(bodies).size, kinds.length);
 });

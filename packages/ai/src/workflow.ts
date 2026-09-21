@@ -16,7 +16,10 @@
  *     With a {@link AiReviewWorkflowSpec.command}, a second job runs the same
  *     target on demand when a maintainer comments the command on any pull
  *     request, fork or not — from the default branch's checkout, with the pull
- *     request fetched as data (see {@link ReviewCommandSettings}).
+ *     request fetched as data (see {@link ReviewCommandSettings}). When any
+ *     reviewer anchors findings to review threads, a third job runs the same
+ *     target when a maintainer **replies in a review thread**, so a rebuttal
+ *     gets its answer without a push (see {@link REPLY_JOB}).
  *   - **GitLab CI** — a small merge-request-only job snippet meant to be
  *     `include:`-d from the project's `.gitlab-ci.yml`. Defaults:
  *     `.gitlab/ai-review.gitlab-ci.yml`.
@@ -119,6 +122,24 @@ const PUSH_ACCESS_STEP = [
   "     exit 1 ;;",
   "esac",
 ].join("\n");
+
+/**
+ * The job that answers a rebuttal without a push. It runs on
+ * `pull_request_review_comment`, which — unlike `issue_comment` — checks out the
+ * pull request's merge ref exactly as `pull_request` does, so it is the
+ * `pull_request` job's steps behind a different gate: the comment is a
+ * **reply** in a thread (a fresh line comment starts nothing), by a human
+ * account whose association is one of {@link COMMAND_AUTHORS}, on a pull
+ * request that is not from a fork (the same secrets rule as the review job),
+ * and — before any key is spent — by someone the collaborators API says has
+ * push access, the same step the command job runs. The reviewer's own outcome
+ * replies are bot-authored and so never start a run.
+ *
+ * Emitted only when a reviewer uses `.discussion((d) => d.threads())`: without
+ * threads there is no reply to listen for, and a maintainer contests a finding
+ * by quoting its id, which the next push or the command picks up.
+ */
+const REPLY_JOB = "replyReview";
 
 /** A secret name as GitHub Actions accepts it in `${{ secrets.NAME }}`. */
 const SECRET_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -331,14 +352,24 @@ function envOf(param: AnyParameter): string | undefined {
   return envVarName(param.name_);
 }
 
-/** Each reviewer's effective key env var, plus whether any uses `.comment()`. */
+/**
+ * Each reviewer's effective key env var, plus whether any uses `.comment()`
+ * and whether any anchors findings to review threads.
+ */
 function reviewerEnv(
   reviewers: readonly Reviewer[],
-): { keyEnvs: string[]; commentEnvs: string[]; commentEnabled: boolean } {
+): {
+  keyEnvs: string[];
+  commentEnvs: string[];
+  commentEnabled: boolean;
+  threadsEnabled: boolean;
+} {
   const keyEnvs: string[] = [];
   const commentEnvs: string[] = [];
   let commentEnabled = false;
+  let threadsEnabled = false;
   for (const reviewer of reviewers) {
+    if (reviewer.threadsEnabled_) threadsEnabled = true;
     const key = reviewer.apiKey_;
     if (typeof key === "object") {
       const name = envOf(key);
@@ -355,7 +386,7 @@ function reviewerEnv(
       }
     }
   }
-  return { keyEnvs, commentEnvs, commentEnabled };
+  return { keyEnvs, commentEnvs, commentEnabled, threadsEnabled };
 }
 
 /** GitHub-style secret reference, e.g. `${{ secrets.OPENAI_API_KEY }}`. */
@@ -533,8 +564,41 @@ class AiReviewWorkflow extends CiFile {
   }
 
   /**
+   * The gate of the reply job — see {@link REPLY_JOB}. The fork clause is the
+   * `pull_request` job's, stated the same way: this event checks the pull
+   * request out, so a fork's code must never run with the secrets.
+   */
+  static #replyGate(): string {
+    const author = "github.event.comment.author_association";
+    const trusted = COMMAND_AUTHORS.map((a) => `${author} == '${a}'`).join(
+      " || ",
+    );
+    return [
+      "github.event_name == 'pull_request_review_comment'",
+      "github.event.pull_request.head.repo.fork == false",
+      "github.event.comment.in_reply_to_id",
+      "github.event.comment.user.type != 'Bot'",
+      `(${trusted})`,
+    ].join(" && ");
+  }
+
+  /** The command job's first step: refuse a commenter without push access. */
+  static #pushAccessStep(): NonNullable<CiJob["steps"]>[number] {
+    return {
+      name: "Require push access for the commenter",
+      shell: "bash",
+      run: PUSH_ACCESS_STEP,
+      env: {
+        GH_TOKEN: "${{ github.token }}",
+        ZUKE_REVIEW_ACTOR: "${{ github.event.comment.user.login }}",
+      },
+    };
+  }
+
+  /**
    * GitHub: a fork-gated PR workflow with harden-runner + pinned checkout —
-   * plus, with a command, the on-demand job it starts.
+   * plus, with a command, the on-demand job it starts, and, with review
+   * threads, the job a maintainer's reply starts.
    */
   #github(): CiPipeline {
     const baseBranch = this.#spec.baseBranch ?? DEFAULT_BASE_BRANCH;
@@ -554,27 +618,40 @@ class AiReviewWorkflow extends CiFile {
     // matters once the command job shares the workflow: a comment event has
     // no `pull_request` payload, and a missing field compares as `false`
     // would — so it is stated rather than relied on.
+    const reviewSteps: CiJob["steps"] = [
+      ...(fetchBase
+        ? [{
+          name: "Fetch the base branch",
+          run: `git fetch --no-tags --depth=1 origin ${baseBranch}`,
+        }]
+        : []),
+      {
+        name: "AI review with Zuke",
+        run: `./zuke ${target}`,
+        env: reviewEnv,
+      },
+    ];
     const review = this.#githubJob(
       "review",
       "AI review",
       "github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false",
-      [
-        ...(fetchBase
-          ? [{
-            name: "Fetch the base branch",
-            run: `git fetch --no-tags --depth=1 origin ${baseBranch}`,
-          }]
-          : []),
-        {
-          name: "AI review with Zuke",
-          run: `./zuke ${target}`,
-          env: reviewEnv,
-        },
-      ],
+      reviewSteps,
       reviewers.commentEnabled,
       "github.event.pull_request.number",
     );
     const jobs = [review];
+    if (reviewers.threadsEnabled) {
+      // The same steps as the review job — this event checks the pull request
+      // out too — behind the reply gate and the push-access check.
+      jobs.push(this.#githubJob(
+        REPLY_JOB,
+        "AI review on thread reply",
+        AiReviewWorkflow.#replyGate(),
+        [AiReviewWorkflow.#pushAccessStep(), ...reviewSteps],
+        reviewers.commentEnabled,
+        "github.event.pull_request.number",
+      ));
+    }
     const command = this.#command;
     if (command !== undefined) {
       // No base fetch and no `ZUKE_REVIEW_BASE`: the reviewers fetch the pull
@@ -589,15 +666,7 @@ class AiReviewWorkflow extends CiFile {
         "AI review on command",
         AiReviewWorkflow.#commandGate(command.text),
         [
-          {
-            name: "Require push access for the commenter",
-            shell: "bash",
-            run: PUSH_ACCESS_STEP,
-            env: {
-              GH_TOKEN: "${{ github.token }}",
-              ZUKE_REVIEW_ACTOR: "${{ github.event.comment.user.login }}",
-            },
-          },
+          AiReviewWorkflow.#pushAccessStep(),
           {
             name: "AI review with Zuke",
             run: `./zuke ${target}`,
@@ -612,6 +681,9 @@ class AiReviewWorkflow extends CiFile {
       name: this.#spec.name ?? DEFAULT_NAME,
       triggers: {
         pullRequest: [], // every branch
+        ...(reviewers.threadsEnabled
+          ? { pullRequestReviewComment: ["created"] }
+          : {}),
         ...(command !== undefined ? { issueComment: ["created"] } : {}),
       },
       permissions: { contents: "read" },

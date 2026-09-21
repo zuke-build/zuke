@@ -290,3 +290,42 @@ Deno.test("writeStepSummary is a silent no-op without env access", async () => {
     await Deno.remove(dir, { recursive: true });
   }
 });
+
+Deno.test("an earlier-round refutation is labelled as standing, not fresh", () => {
+  const assessment: Assessment = {
+    score: 0,
+    severity: "none",
+    summary: "",
+    findings: [],
+  };
+  const refuted = [
+    {
+      finding: { title: "Stateful regex", severity: "low" as const },
+      reason: "no g flag",
+      earlier: true,
+    },
+    {
+      finding: { title: "Missing guard", severity: "low" as const },
+      reason: "guarded on line 9",
+    },
+  ];
+  const markdown = toMarkdown("security review", "t", assessment, undefined, {
+    refuted,
+  });
+  assertStringIncludes(
+    markdown,
+    "| Stateful regex | _(earlier round, diff unchanged)_ no g flag |",
+  );
+  assertStringIncludes(markdown, "| Missing guard | guarded on line 9 |");
+  const lines = consoleLines("security review", assessment, undefined, {
+    refuted,
+  });
+  assertStringIncludes(
+    lines.join("\n"),
+    "refuted by verify (earlier round): Stateful regex — no g flag",
+  );
+  assertStringIncludes(
+    lines.join("\n"),
+    "refuted by verify: Missing guard — guarded on line 9",
+  );
+});

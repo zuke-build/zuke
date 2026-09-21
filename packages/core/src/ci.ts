@@ -305,6 +305,15 @@ export interface CiTriggers {
    */
   issueComment?: string[];
   /**
+   * Run when a comment on a pull request's **review thread** (a file/line
+   * comment, or a reply in one) is created, edited, or deleted
+   * (`pull_request_review_comment`), filtered to these activity types — an
+   * empty array means every type. Unlike `issue_comment`, the job runs against
+   * the pull request's merge ref, exactly as `pull_request` does, so the same
+   * fork gate applies. GitHub only.
+   */
+  pullRequestReviewComment?: string[];
+  /**
    * Run when a branch protection rule is created, edited, or deleted
    * (`branch_protection_rule`) — a supply-chain scan wants to re-score when the
    * repository's own protections change. GitHub only.
@@ -746,6 +755,12 @@ function github(pipeline: CiPipeline): YamlValue {
   if (triggers.manual) on.workflow_dispatch = {};
   if (triggers.issueComment) {
     on.issue_comment = githubTrigger([], triggers.issueComment);
+  }
+  if (triggers.pullRequestReviewComment) {
+    on.pull_request_review_comment = githubTrigger(
+      [],
+      triggers.pullRequestReviewComment,
+    );
   }
   if (triggers.branchProtectionRule) on.branch_protection_rule = {};
   // A tz-aware schedule compiles to UTC cron(s); a DST zone adds a guard job.

@@ -213,6 +213,20 @@ A few opt-in passes trade a little cost for findings that hold up:
   pass itself errors, the unverified findings are kept — the reviewer fails
   toward reporting, never toward silence.
 
+  With `.discussion()` on, a refutation is **remembered**. It is written to the
+  state block with the verifier's evidence and a fingerprint of the file's
+  section of the diff it was read from, and the next round's model is shown it
+  (fenced, with the evidence) before it reviews. If the model raises the finding
+  again while that diff section is byte-identical, the refutation is applied in
+  code — no verifier is consulted, since the evidence it cited cannot have
+  changed — and the report lists it as standing from an earlier round. Once the
+  section changes, the finding goes back to the verifier **carrying the earlier
+  refutation**, so the verdict is an informed re-check rather than a fresh coin
+  flip; a confirmation reports the finding again (with a note saying it was
+  refuted before), a re-refutation refreshes the evidence and the fingerprint.
+  That gate is what keeps the memory honest: the model alone never silences a
+  finding for good, only for as long as the code it reasoned about stands.
+
 ## Discussing findings instead of repeating them
 
 `.discussion()` turns the reviewer from a broadcast into a participant. It
@@ -241,6 +255,16 @@ finding lifecycle:
    resolved, what's still open, what was dismissed, what's new — and a fixed
    finding that reappears in a later round **reopens** (and gates again) rather
    than hiding behind its earlier resolution.
+5. A rebuttal is answered **even when the model drops the finding**. A contested
+   finding the next round does not re-report — or that the verify pass refutes —
+   is still adjudicated: an accepted rebuttal records it as **dismissed**
+   (sticky, and said so in its thread), not as "fixed" for a finding nobody
+   fixed, which is the weakest record there is — it is not shown to the model
+   and reopens on the next rewording. A rebuttal that does not hold changes
+   nothing, since the finding is not reported either way, but the report's
+   **Notes** say it was weighed and why it did not carry. Where both happen in
+   one round — the verifier refutes the finding and the maintainer's argument is
+   accepted — the dismissal wins: two keys beat one.
 
 The committed `.suppress(...)` list still works as the hard override, and is
 still the right tool for a false positive you want silenced across branches — a
@@ -320,15 +344,16 @@ GitHub, or left over by the per-run cap stays in the table, and the report's
 
 What each round does to a thread:
 
-| Situation                             | What happens                                             |
-| ------------------------------------- | -------------------------------------------------------- |
-| A new finding with a usable line      | A thread is opened on that line                          |
-| The finding is still open next round  | **Nothing** — silence means "still open"                 |
-| A maintainer's rebuttal is accepted   | The outcome is replied in-thread and the thread resolved |
-| A maintainer's rebuttal does not hold | The outcome is replied; the thread stays open            |
-| The finding stops reproducing         | A "fixed" reply, and the thread resolved                 |
-| A fixed finding comes back            | A "reopened" reply, and the thread **un**resolved        |
-| Dismissed in an earlier round         | Nothing — it was answered and closed then                |
+| Situation                                | What happens                                                 |
+| ---------------------------------------- | ------------------------------------------------------------ |
+| A new finding with a usable line         | A thread is opened on that line                              |
+| The finding is still open next round     | **Nothing** — silence means "still open"                     |
+| A maintainer's rebuttal is accepted      | The outcome is replied in-thread and the thread resolved     |
+| A maintainer's rebuttal does not hold    | The outcome is replied; the thread stays open                |
+| The finding stops reproducing            | A "fixed" reply, and the thread resolved                     |
+| The verifier refutes it                  | A "refuted" reply with the evidence, and the thread resolved |
+| A fixed or refuted finding comes back    | A "reopened" reply, and the thread **un**resolved            |
+| Dismissed or refuted in an earlier round | Nothing — it was answered and closed then                    |
 
 Trust works exactly as it does for the id-quoting channel, and the two share one
 token budget, so turning threads on cannot double the untrusted text the
@@ -573,6 +598,30 @@ in the gate is for.
 The command is GitHub-only; the other hosts render no comment job. Concurrency
 is keyed on the pull request number for both events, since `github.ref` is the
 default branch for every comment-started run.
+
+### Answering a rebuttal without a push
+
+A maintainer who contests a finding in its review thread and pushes nothing has,
+without this, no run to answer them: `pull_request` fires on a push, and the
+command is a step nobody remembers. So when any reviewer uses
+`.discussion((d) => d.threads())`, the generated workflow gains a third job,
+`replyReview`, on `pull_request_review_comment`. It runs the same target when
+the comment is a **reply** in a thread (a fresh line comment starts nothing), by
+a human account whose `author_association` is `OWNER`, `MEMBER` or
+`COLLABORATOR`, on a pull request that is **not from a fork**, and — before any
+key is spent — by someone the collaborators API says has push access, the same
+step the command job runs.
+
+Unlike `issue_comment`, this event checks out the pull request's merge ref
+exactly as `pull_request` does, so the job is the `pull_request` job's steps
+behind a different gate, and it carries the same fork rule for the same reason.
+The reviewer's own outcome replies are bot-authored and never start a run. The
+reply's text is never read by the workflow at all — the reviewer reads it from
+the thread, through the trust gate, and answers there: an accepted rebuttal
+closes the thread as dismissed; one that does not hold gets an "upheld" reply
+naming the gap, and the maintainer can reply again to continue the discussion.
+There is nothing to configure: a build that anchors findings to threads gets the
+job, and one that does not has no reply to listen for.
 
 ## Worked example: Zuke reviews itself
 

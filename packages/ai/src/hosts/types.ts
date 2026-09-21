@@ -91,8 +91,17 @@ export interface HostComment {
   kind?: "review";
 }
 
-/** How a finding's review thread was last answered by the reviewer. */
-export type ThreadOutcome = "fixed" | "dismissed" | "upheld" | "reopened";
+/**
+ * How a finding's review thread was last answered by the reviewer. `fixed`,
+ * `dismissed` and `refuted` close the thread; `upheld` leaves it open;
+ * `reopened` reverses an earlier close.
+ */
+export type ThreadOutcome =
+  | "fixed"
+  | "dismissed"
+  | "upheld"
+  | "reopened"
+  | "refuted";
 
 /** The raw material one review-comment listing yields. */
 export interface ReviewComments {

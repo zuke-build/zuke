@@ -43,6 +43,7 @@ const OUTCOMES: readonly ThreadOutcome[] = [
   "dismissed",
   "upheld",
   "reopened",
+  "refuted",
 ];
 
 /** How deep a reply-to-a-reply chain is walked back to its root. */
@@ -71,7 +72,7 @@ export function outcomeMarker(
 const FINDING_MARKER =
   /^<!-- zuke-ai-finding:([0-9a-z]{1,16}):([0-9a-z]{1,16}) -->/;
 const OUTCOME_MARKER =
-  /^<!-- zuke-ai-outcome:([0-9a-z]{1,16}):([0-9a-z]{1,16}):(fixed|dismissed|upheld|reopened) -->/;
+  /^<!-- zuke-ai-outcome:([0-9a-z]{1,16}):([0-9a-z]{1,16}):(fixed|dismissed|upheld|reopened|refuted) -->/;
 
 /**
  * The finding id a root body declares for this reviewer, or `undefined`. The
@@ -94,7 +95,7 @@ export function parseOutcomeMarker(
 ): { id: string; kind: ThreadOutcome } | undefined {
   const match = body.match(OUTCOME_MARKER);
   if (match === null || match[1] !== nameHash) return undefined;
-  // The pattern's alternation already restricts the kind to the four outcomes,
+  // The pattern's alternation already restricts the kind to the five outcomes,
   // so it needs no second check here — only the narrowing the compiler wants.
   const kind = OUTCOMES.find((known) => known === match[3]);
   return kind === undefined ? undefined : { id: match[2], kind };
@@ -293,6 +294,15 @@ export interface ThreadInputs {
   dismissed: Array<{ id: string; reason?: string }>;
   /** Ids dismissed in an earlier round — already answered and resolved then. */
   dismissedPrior: ReadonlySet<string>;
+  /**
+   * Findings the verify pass refuted this round, with its reason. Only one
+   * that already has a thread — a finding reported open in an earlier round
+   * and disproved now — gets an answer; a candidate refuted before it was ever
+   * posted has no thread to answer in.
+   */
+  refuted: Array<{ id: string; reason?: string }>;
+  /** Ids refuted in an earlier round — answered and resolved then. */
+  refutedPrior: ReadonlySet<string>;
   /** Findings recorded as fixed this round. */
   fixed: string[];
   /** Ids already recorded fixed in an earlier round. */
@@ -332,8 +342,8 @@ function answered(thread: FindingThread, kind: ThreadOutcome): boolean {
  *   every finding every push is noise a maintainer learns to ignore.
  * - **A thread is opened on absence, not on newness**, so a finding that could
  *   not be anchored, was rejected, or hit the cap is picked up next round.
- * - **A sticky dismissal is never re-answered.** It was replied to and resolved
- *   in the round it was decided.
+ * - **A sticky dismissal or refutation is never re-answered.** It was replied
+ *   to and resolved in the round it was decided.
  * - **An outcome is not repeated** when it is already the thread's newest, so a
  *   crashed run does not double-reply — while `fixed → reopened → fixed` still
  *   posts all three.
@@ -413,6 +423,22 @@ export function planThreads(inputs: ThreadInputs): ThreadPlan {
     }
     plan.resolve.push({ id: entry.id, rootId: thread.rootId });
   }
+  for (const entry of inputs.refuted) {
+    // Refuted in an earlier round: answered then, like a sticky dismissal.
+    if (inputs.refutedPrior.has(entry.id)) continue;
+    const thread = inputs.threads.get(entry.id);
+    if (thread === undefined) continue;
+    if (!answered(thread, "refuted")) {
+      plan.actions.push({
+        id: entry.id,
+        kind: "reply",
+        outcome: "refuted",
+        rootId: thread.rootId,
+        ...(entry.reason !== undefined ? { reason: entry.reason } : {}),
+      });
+    }
+    plan.resolve.push({ id: entry.id, rootId: thread.rootId });
+  }
   for (const id of inputs.fixed) {
     if (inputs.fixedPrior.has(id)) continue;
     const thread = inputs.threads.get(id);
@@ -486,5 +512,7 @@ export function threadOutcomeBody(
       return "↩️ **Reopened** — reported again against the current diff.";
     case "upheld":
       return `⚠️ **Upheld** — the rebuttal did not hold${because}`;
+    case "refuted":
+      return `🚫 **Refuted by verification**${because}`;
   }
 }

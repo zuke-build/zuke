@@ -1516,3 +1516,26 @@ Deno.test("a checkout part-way through a job does not strip its prelude", () => 
   // And the job's own second checkout survives untouched.
   assertStringIncludes(yaml, "repository: other/repo");
 });
+
+Deno.test("pullRequestReviewComment renders a pull_request_review_comment trigger", () => {
+  const yaml = generateCi({
+    triggers: { pullRequest: [], pullRequestReviewComment: ["created"] },
+    jobs: [{ steps: [{ run: "x" }] }],
+  }, "github");
+  assertStringIncludes(
+    yaml,
+    "pull_request_review_comment:\n    types:\n      - created",
+  );
+  const every = generateCi({
+    triggers: { pullRequestReviewComment: [] },
+    jobs: [{ steps: [{ run: "x" }] }],
+  }, "github");
+  assertStringIncludes(every, "pull_request_review_comment: {}");
+  for (const provider of ["gitlab", "azure", "bitbucket"] as const) {
+    const other = generateCi({
+      triggers: { pullRequest: [], pullRequestReviewComment: ["created"] },
+      jobs: [{ steps: [{ run: "x" }] }],
+    }, provider);
+    assertEquals(other.includes("pull_request_review_comment"), false);
+  }
+});

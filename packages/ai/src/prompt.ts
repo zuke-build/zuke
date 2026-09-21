@@ -49,7 +49,8 @@ export function buildPrompt(
 
 /**
  * Assemble the verify-pass prompt: adversarially re-check `candidates` against
- * the diff (and the file contents in `extras`, when present).
+ * the diff (and the file contents in `extras`, when present). The earlier-
+ * refutation clause is added only when a candidate actually carries one.
  */
 export function buildVerifyPrompt(
   assessment: AssessmentType,
@@ -58,7 +59,10 @@ export function buildVerifyPrompt(
   extras: PromptExtras = {},
 ): { system: string; user: string } {
   return {
-    system: verifySystemPrompt(SUBJECTS[assessment]),
+    system: verifySystemPrompt(
+      SUBJECTS[assessment],
+      candidates.some((c) => c.refutedBefore !== undefined),
+    ),
     user: verifyUserPrompt(candidates, diff, extras),
   };
 }
