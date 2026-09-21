@@ -27,6 +27,7 @@
  * @module
  */
 
+import { defaultReadEnv } from "@zuke/core";
 import type { Configure } from "@zuke/core/tooling";
 import type { Plugin, RunRecord } from "@zuke/core";
 import { spanIdFor, traceIdFor } from "./ids.ts";
@@ -189,15 +190,6 @@ export interface OtelDeps {
   transport?: OtlpTransport;
   /** The `fetch` seam handed to the default HTTP exporter (tests). */
   fetch?: typeof fetch;
-}
-
-/** Read an environment variable, treating missing env access as unset. */
-function defaultReadEnv(name: string): string | undefined {
-  try {
-    return Deno.env.get(name);
-  } catch {
-    return undefined;
-  }
 }
 
 /**
