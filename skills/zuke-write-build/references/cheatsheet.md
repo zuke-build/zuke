@@ -1309,6 +1309,7 @@ Copy the closest one instead of composing from primitives; each is a full
 ./zuke <target> --affected[=<base>]  # only targets changed since a git base (default HEAD)
 ./zuke <target> --skip <dep>  # run it but skip a named dependency (repeatable)
 ./zuke <target> --no-cache    # ignore the incremental cache
+./zuke <target> --no-banner   # no opening banner (also ZUKE_NO_BANNER)
 ./zuke <target> --state       # persist run state to .zuke/runs (durable state)
 ./zuke <target> --actor <who> # attribute the run in its state record
 ./zuke runs list [--status s] # list persisted runs (also --target, --since, --limit, --counts, --json)

@@ -36,6 +36,27 @@ export function isAbsolutePath(slashed: string): boolean {
   return slashed.startsWith("/") || /^[A-Za-z]:/.test(slashed);
 }
 
+/**
+ * Whether an environment variable is set to an "on" value.
+ *
+ * Unset and empty mean off, as do the conventional negatives — case- and
+ * whitespace-insensitively, so `FALSE` cannot mean the opposite of `false`.
+ * Anything else counts as on: an environment flag someone exported as `yes`,
+ * `on` or `please` means they want it, and refusing to guess would be a
+ * silent no.
+ *
+ * Deliberately not `params.ts`'s `parseBoolean`, which throws on a value it
+ * does not recognise. That is right for a typed build parameter, where a typo
+ * should be reported, and wrong for an environment flag, where an unfamiliar
+ * value still says the variable was set on purpose.
+ */
+export function envFlag(value: string | undefined): boolean {
+  if (value === undefined) return false;
+  const normalised = value.trim().toLowerCase();
+  if (normalised === "") return false;
+  return normalised !== "false" && normalised !== "0" && normalised !== "no";
+}
+
 /** The message of an `Error`, or the `String(...)` form of any other value. */
 export function messageOf(value: unknown): string {
   return value instanceof Error ? value.message : String(value);

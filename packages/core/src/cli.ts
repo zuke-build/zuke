@@ -148,6 +148,8 @@ export interface ParsedArgs {
   parallel?: boolean | number;
   /** Disable the incremental cache (`--no-cache`); undefined leaves it on. */
   cache?: boolean;
+  /** Suppress the opening banner (`--no-banner`); undefined leaves it on. */
+  banner?: boolean;
   /** Disable only the remote cache store (`--no-remote-cache`); undefined leaves it on. */
   remoteCache?: boolean;
   /** Restrict the run to targets affected since a git base (`--affected[=<base>]`). */
@@ -445,6 +447,8 @@ export function parseArgs(
       parsed.open = false;
     } else if (arg === "--no-cache") {
       parsed.cache = false;
+    } else if (arg === "--no-banner") {
+      parsed.banner = false;
     } else if (arg === "--no-remote-cache") {
       parsed.remoteCache = false;
     } else if (arg === "--affected") {
@@ -613,6 +617,10 @@ Options:
   --parallel[=N]    Run independent targets concurrently (N = max in flight,
                     default = CPU count).
   --no-cache        Ignore the incremental cache; re-run every target.
+  --no-banner       Do not print the opening banner (the Zuke wordmark, the
+                    framework/runtime versions and platform, and the run id).
+                    ZUKE_NO_BANNER=1 does the same from the environment; the
+                    wordmark is already omitted on CI.
   --no-remote-cache Use the local cache only; do not restore from or upload to
                     the configured remote cache store.
   --affected[=<base>]
@@ -1004,6 +1012,7 @@ async function runResume(
       actor: parsed.actor,
       forceGraph: parsed.forceGraph,
       resumeDegraded: parsed.resumeDegraded,
+      banner: parsed.banner,
       plugins,
     });
     return result.ok ? 0 : 1;
@@ -1517,6 +1526,7 @@ async function runCommand(
       params: parsed.values,
       parallel: parsed.parallel,
       cache: parsed.cache,
+      banner: parsed.banner,
       remoteCache: parsed.remoteCache === false ? false : undefined,
       affected: parsed.affected ? { base: parsed.affectedBase } : undefined,
       dryRun: parsed.dryRun,

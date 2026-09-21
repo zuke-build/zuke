@@ -133,6 +133,12 @@ export {
   type TestCounts,
 } from "./src/summary_note.ts";
 export type { Style } from "./src/render.ts";
+// The wordmark is exported for `@zuke/console`, which renders the same art and
+// will import it from here once a published core carries it (see logo.ts). The
+// banner's own line builder is not: the executor is its only caller, and
+// `mod.ts` is semver-protected surface.
+export { logoLines, type LogoOptions, ZUKE_LOGO } from "./src/logo.ts";
+export { VERSION } from "./src/version.ts";
 export type { BuildCache, OpenCacheOptions } from "./src/cache.ts";
 export {
   archiveOutputs,

@@ -118,6 +118,10 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
   { name: "--parallel", description: "Run independent targets concurrently" },
   { name: "--no-cache", description: "Ignore the incremental cache" },
   {
+    name: "--no-banner",
+    description: "Do not print the opening banner (also ZUKE_NO_BANNER)",
+  },
+  {
     name: "--no-remote-cache",
     description: "Use the local cache only; skip the remote cache store",
   },

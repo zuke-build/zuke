@@ -100,6 +100,7 @@ below) attach to whichever launcher word you install them for.
 | `./zuke <target> --skip <dep>`                                          | Run the target but skip the named dependency (repeatable).                                                  |
 | `./zuke <target> --parallel`                                            | Run independent targets concurrently (`--parallel=N` caps it).                                              |
 | `./zuke <target> --no-cache`                                            | Ignore the incremental cache; re-run every target.                                                          |
+| `./zuke <target> --no-banner`                                           | Do not print the opening banner (also `ZUKE_NO_BANNER`).                                                    |
 | `./zuke <target> --affected[=<base>]`                                   | Run only targets affected by files changed since a git base.                                                |
 | `./zuke <target> --dry-run`                                             | Print the plan without executing any target body.                                                           |
 | `./zuke <target> --state`                                               | Persist [durable run state](./state.md) under `.zuke/runs`.                                                 |

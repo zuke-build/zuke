@@ -60,6 +60,7 @@ Option flags:
 - `--skip` — Skip the named dependency
 - `--parallel` — Run independent targets concurrently
 - `--no-cache` — Ignore the incremental cache
+- `--no-banner` — Do not print the opening banner (also ZUKE_NO_BANNER)
 - `--no-remote-cache` — Use the local cache only; skip the remote cache store
 - `--affected` — Run only targets affected by changes since a git base
 - `--dry-run` — Print the plan without running targets

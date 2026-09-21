@@ -106,6 +106,8 @@ export interface ResumeOptions {
   data?: JsonValue;
   /** Non-secret parameter overrides; the rest come from the record. */
   params?: Record<string, string>;
+  /** Print the opening banner (see {@link "./executor.ts".ExecuteOptions.banner}). */
+  banner?: boolean;
   /** Reads an environment variable (secrets re-resolve from here). */
   readEnv?: (name: string) => string | undefined;
   /** Who to attribute the resumption to (stamped on the run). */
@@ -279,6 +281,7 @@ export async function resumeRun(
       actor: resumerActor,
       silent: options.silent,
       reporter: options.reporter,
+      banner: options.banner,
       plugins: options.plugins,
       resume: { record, version, done, lease },
     });

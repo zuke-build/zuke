@@ -519,6 +519,12 @@ function lockKey(...parts: Array<string | number>): string
   Each part is sanitised (non-`[A-Za-z0-9._-]` runs become `_`) and empty parts
   are dropped, so `lockKey("deploy", repo)` is stable and injection-free.
 
+function logoLines(color: boolean, options: LogoOptions): string[]
+  The logo as printable lines: the {@link ZUKE_LOGO} art painted two-tone when
+  `color` is on (letters bright, shadow dimmed), plus the optional tagline.
+  Pure — no I/O and no environment reads — so callers that manage their own
+  output (like the `zuke` CLI) can route the lines through any sink.
+
 function metadataDocument(settings: ProtectedResourceSettings): Record<string, unknown>
   The metadata document itself, as the JSON object RFC 9728 §2 defines.
 
@@ -932,9 +938,21 @@ const UNAUTHORIZED: McpAuthReject
   and rejected gets {@link INVALID_TOKEN} instead: the two are different facts
   about the caller, and only the second one is about a credential.
 
+const VERSION: "1.56.0"
+  The `@zuke/core` version. Kept in sync with deno.json by release-please.
+
 const ZUKE_ACTION: "zuke-build/zuke"
   The name a {@link CiPinResolver} is asked for the prelude action, so a
   repository that pins its own actions can pin this one the same way.
+
+const ZUKE_LOGO: `███████╗██╗   ██╗██╗  ██╗███████╗
+╚══███╔╝██║   ██║██║ ██╔╝██╔════╝
+  ███╔╝ ██║   ██║█████╔╝ █████╗
+ ███╔╝  ██║   ██║██╔═██╗ ██╔══╝
+███████╗╚██████╔╝██║  ██╗███████╗
+╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝`
+  The Zuke wordmark in FIGlet's ANSI-shadow style. Solid `█` blocks form the
+  letters; box-drawing characters draw the shadow.
 
 const cliReporter: Reporter
   The sink every command-surface module writes through, neutralised for a
@@ -3310,6 +3328,15 @@ interface ExecuteOptions
 
   silent?: boolean
     Suppress all banner/summary output (used by tests).
+  banner?: boolean
+    Print the opening banner — the wordmark (off CI), the framework, runtime
+    and platform versions, and this run's id and directory. Defaults to on;
+    `false` is the CLI's `--no-banner`, and `ZUKE_NO_BANNER` turns it off from
+    the environment.
+
+    Only ever printed when the run writes to the real console. A `silent` run
+    or one given its own {@link ExecuteOptions.reporter} is embedding the
+    executor, and gets no banner whatever this says.
   reporter?: Reporter
     Custom reporter; overrides `silent`.
   plugins?: Plugin[]
@@ -3728,6 +3755,16 @@ interface LockHolder
   runUrl?: string
     A link to the holding run (e.g. its CI job), when known.
 
+interface LogoOptions
+  Options for {@link logoLines} and `ConsoleTasks.logo`.
+
+  tagline?: string
+    A line printed dimmed under the art (e.g. a version or strapline).
+  letterStyle?: readonly StyleName[]
+    Styles for the solid letter blocks. Defaults to `["cyan", "bold"]`.
+  shadowStyle?: readonly StyleName[]
+    Styles for the shadow characters. Defaults to `["dim"]`.
+
 interface McpAuthReject
   Why a request was refused, and how the transport should say so.
 
@@ -4052,6 +4089,8 @@ interface ResumeOptions
     The signal's JSON payload (defaults to `{}`); ignored without {@link signal}.
   params?: Record<string, string>
     Non-secret parameter overrides; the rest come from the record.
+  banner?: boolean
+    Print the opening banner (see {@link "./executor.ts".ExecuteOptions.banner}).
   readEnv?: (name: string) => string | undefined
     Reads an environment variable (secrets re-resolve from here).
   actor?: string

@@ -686,6 +686,30 @@ Deno.test("defaultRegistryRunner strips server secrets from the spawned env", as
   }
 });
 
+Deno.test("defaultRegistryRunner suppresses the spawned build's banner", async () => {
+  // The child's stdout is returned verbatim as the tool's result, so its
+  // opening banner would prepend six lines of ASCII, the server host's
+  // directory and a run id that resolves to nothing to every answer an agent reads.
+  const prev = Deno.env.get("ZUKE_NO_BANNER");
+  Deno.env.delete("ZUKE_NO_BANNER");
+  try {
+    const result = await defaultRegistryRunner(
+      [
+        Deno.execPath(),
+        "eval",
+        "console.log(Deno.env.get('ZUKE_NO_BANNER') ?? 'UNSET')",
+      ],
+      Deno.cwd(),
+    );
+    assertEquals(result.code, 0);
+    assertStringIncludes(result.stdout, "1");
+    assertEquals(result.stdout.includes("UNSET"), false, result.stdout);
+  } finally {
+    if (prev === undefined) Deno.env.delete("ZUKE_NO_BANNER");
+    else Deno.env.set("ZUKE_NO_BANNER", prev);
+  }
+});
+
 // ---- M12: build parameters --------------------------------------------------
 
 /** A descriptor for build "Deploy" whose "deploy" target declares parameters. */

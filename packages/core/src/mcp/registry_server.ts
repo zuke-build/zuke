@@ -126,6 +126,12 @@ export const defaultRegistryRunner: RegistryRunner = async (
   const env = Deno.env.toObject();
   delete env.ZUKE_OPERATOR_TOKEN;
   delete env.ZUKE_MCP_TOKEN;
+  // The child's stdout and stderr are returned verbatim as the tool's result,
+  // so its opening banner would be six lines of ASCII, the server host's
+  // working directory and a run id the caller cannot look up, prepended to
+  // every answer. An agent reading a tool result is not the reader the banner
+  // is for.
+  env.ZUKE_NO_BANNER = "1";
   // Attribute the child run to the resolved caller (a trusted identity when an
   // authenticator is active), overriding any inherited ZUKE_ACTOR. The three
   // travel together: an inherited kind or role set must not survive beside a
