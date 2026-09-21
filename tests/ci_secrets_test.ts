@@ -23,7 +23,7 @@
  */
 
 import { assertEquals } from "../packages/core/tests/_assert.ts";
-import { isRecord, jobsOf, readWorkflow } from "./_workflow.ts";
+import { isRecord, jobsOf, readWorkflow, stepsOf } from "./_workflow.ts";
 
 const CI = ".github/workflows/ci.yml";
 const AI_REVIEW = ".github/workflows/ai-review.yml";
@@ -126,10 +126,29 @@ Deno.test("the gate and both review jobs block egress", () => {
   // change with it.
   const gate = JSON.stringify(jobs(CI).get("ci") ?? {});
   assertEquals(gate.includes('"egress-policy":"block"'), true);
+  // The launcher's bootstrap and GitHub, then the one provider Zuke's
+  // reviewers call — compared whole, so an endpoint arriving or leaving is a
+  // deliberate edit here too.
+  const expected = [
+    "deno.land:443",
+    "dl.deno.land:443",
+    "jsr.io:443",
+    "github.com:443",
+    "api.github.com:443",
+    "codeload.github.com:443",
+    "objects.githubusercontent.com:443",
+    "release-assets.githubusercontent.com:443",
+    "api.openai.com:443",
+  ];
   for (const id of ["review", "commandReview"]) {
-    const job = JSON.stringify(jobs(AI_REVIEW).get(id) ?? {});
-    assertEquals(job.includes('"egress-policy":"block"'), true, id);
-    assertEquals(job.includes("api.openai.com:443"), true, id);
-    assertEquals(job.includes("dl.deno.land:443"), true, id);
+    const [prelude] = stepsOf(jobs(AI_REVIEW).get(id) ?? {});
+    const inputs = isRecord(prelude.with) ? prelude.with : {};
+    assertEquals(inputs["egress-policy"], "block", id);
+    const allowed = inputs["allowed-endpoints"];
+    assertEquals(
+      typeof allowed === "string" ? allowed.split(" ") : [],
+      expected,
+      id,
+    );
   }
 });
