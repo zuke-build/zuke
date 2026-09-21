@@ -144,6 +144,22 @@ Deno.test("otelWith is inert when no endpoint resolves", () => {
   assertEquals(plugin.onRunStateChange, undefined);
 });
 
+Deno.test("with no reader injected, the endpoint comes from the ambient env", () => {
+  // Every other test hands `otelWith` a reader, so the default one — now
+  // core's rather than a copy declared here — is only reached by omitting it.
+  // Both directions matter: an endpoint present makes the plugin live, and
+  // absent leaves it inert, so a default reader wired to nothing cannot pass.
+  assertEquals(otelWith(undefined, {}).onRunStateChange, undefined);
+  Deno.env.set("OTEL_EXPORTER_OTLP_ENDPOINT", "https://collector.test");
+  try {
+    const plugin = otelWith(undefined, {});
+    assertEquals(plugin.name, "otel");
+    assertEquals(typeof plugin.onRunStateChange, "function");
+  } finally {
+    Deno.env.delete("OTEL_EXPORTER_OTLP_ENDPOINT");
+  }
+});
+
 Deno.test("terminal traces and metrics are exported concurrently", async () => {
   // traces() resolves only once metrics() has been entered. Serial
   // (await traces; await metrics) would deadlock; Promise.all completes.

@@ -20,6 +20,7 @@
  * @module
  */
 
+import { defaultReadEnv } from "@zuke/core";
 import { type AccessTokenProvider, resolveAccessToken } from "./auth.ts";
 import { gcpJson, isRecord, readString } from "./rest.ts";
 
@@ -47,15 +48,6 @@ export interface SecretManagerOptions {
 export interface SecretManagerAccessOptions extends SecretManagerOptions {
   /** The version to access; defaults to `"latest"`. */
   version?: string;
-}
-
-/** Read an environment variable, treating missing env access as unset. */
-function defaultReadEnv(name: string): string | undefined {
-  try {
-    return Deno.env.get(name);
-  } catch {
-    return undefined;
-  }
 }
 
 /** Resolve the target project from the option or the standard gcloud env vars. */

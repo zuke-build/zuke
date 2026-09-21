@@ -1643,7 +1643,7 @@
       },
       "packages/gcloud": {
         "dependencies": [
-          "jsr:@zuke/core@^1.32.0"
+          "jsr:@zuke/core@^1.58.0"
         ]
       },
       "packages/gemini": {
@@ -1738,7 +1738,7 @@
       },
       "packages/otel": {
         "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
+          "jsr:@zuke/core@^1.58.0"
         ]
       },
       "packages/oxlint": {
