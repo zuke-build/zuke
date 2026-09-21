@@ -314,7 +314,7 @@ Deno.test("an earlier-round refutation is labelled as standing, not fresh", () =
   });
   assertStringIncludes(
     markdown,
-    "| Stateful regex | _(earlier round, diff unchanged)_ no g flag |",
+    "| Stateful regex | _(earlier round, input unchanged)_ no g flag |",
   );
   assertStringIncludes(markdown, "| Missing guard | guarded on line 9 |");
   const lines = consoleLines("security review", assessment, undefined, {

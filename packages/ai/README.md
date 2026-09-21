@@ -69,15 +69,15 @@ base-anchored half of `.criteria(...)`, read the same way — `.criteria` is bui
 code and so travels with the change), `.fileContext()` (send the changed files
 whole, not bare hunks), `.verify()` (adversarially re-check every candidate
 finding; refuted ones are reported but never gate, and with `.discussion()` a
-refutation is remembered — applied in code while the file's diff is unchanged,
-re-checked with the earlier evidence once it moves), and `.discussion()` (engage
-with maintainer rebuttals on the PR — an accepted refutation stays dismissed
-instead of resurfacing, and is adjudicated even when the next round's model no
-longer reports the finding; only comments whose author the host platform
-attributes as a maintainer ever reach the model). With
-`.discussion((d) => d.threads())`, `aiReviewWorkflow` also emits a job that
-re-runs the review when a maintainer replies in a finding's thread, so a
-rebuttal gets its answer without a push.
+refutation is remembered — applied in code while everything the verifier saw is
+unchanged and nobody objects, re-checked with the earlier evidence once the code
+moves or a maintainer replies), and `.discussion()` (engage with maintainer
+rebuttals on the PR — an accepted refutation stays dismissed instead of
+resurfacing, and is adjudicated even when the next round's model no longer
+reports the finding; only comments whose author the host platform attributes as
+a maintainer ever reach the model). With `.discussion((d) => d.threads())`,
+`aiReviewWorkflow` also emits a job that re-runs the review when a maintainer
+replies in a finding's thread, so a rebuttal gets its answer without a push.
 
 `.skipIfKeyMissing()` skips the review instead of failing when the API key is
 absent — handy when the key is a CI-only secret — and announces the skip on the

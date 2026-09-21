@@ -62,7 +62,7 @@ Deno.test("the generated YAML carries the right triggers, permissions, concurren
   // Fork gating, on the pull_request event by name.
   assertStringIncludes(
     yaml,
-    "if: \"${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}\"",
+    "if: \"${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}\"",
   );
   // Job-level timeout matches the original hand-written workflow.
   assertStringIncludes(yaml, "timeout-minutes: 15");
@@ -527,7 +527,7 @@ Deno.test("the command job carries the named secrets and no base fetch; the pull
   // The pull_request job now states its event, since the workflow has two.
   assertStringIncludes(
     reviewJob,
-    "if: \"${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}\"",
+    "if: \"${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}\"",
   );
   // Same prelude and timeout on both.
   assertEquals(commandJob.includes("uses: zuke-build/zuke@"), true);
@@ -683,10 +683,11 @@ Deno.test("threads add the pull_request_review_comment trigger and a job gated o
       line.includes("github.event_name == 'pull_request_review_comment'")
     ) ?? "";
   // The event checks the pull request out, so a fork is refused exactly as
-  // the pull_request job refuses it; only a reply, by a human maintainer.
+  // the pull_request job refuses it — by repository name, which a deleted
+  // fork's null repo cannot satisfy; only a reply, by a human maintainer.
   assertStringIncludes(
     gate,
-    "github.event.pull_request.head.repo.fork == false &&",
+    "github.event.pull_request.head.repo.full_name == github.repository &&",
   );
   assertStringIncludes(gate, "github.event.comment.in_reply_to_id &&");
   assertStringIncludes(gate, "github.event.comment.user.type != 'Bot'");

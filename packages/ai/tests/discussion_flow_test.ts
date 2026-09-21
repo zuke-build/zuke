@@ -12,7 +12,7 @@ import {
   outcomeMarker,
 } from "../src/threads.ts";
 import { stableHash } from "../src/hash.ts";
-import { sectionFingerprints } from "../src/diff.ts";
+import { sha256Hex } from "@zuke/core";
 import { withEnv } from "../../core/tests/_env.ts";
 import { captureLines as captured } from "../../core/tests/_console.ts";
 import { maskingContext, noRedactionContext } from "./_context.ts";
@@ -3314,12 +3314,17 @@ function summaryPost(calls: Call[]): string {
   return typeof body === "string" ? body : "";
 }
 
-/** The fingerprint of `src/app.ts`'s section of the anchored diff. */
-const ANCHORED_HUNK = sectionFingerprints(ANCHORED_DIFF).get("src/app.ts") ??
-  "";
+/** The digest of what a verifier sees for the anchored diff with no file context. */
+const ANCHORED_EVIDENCE = await sha256Hex(`${ANCHORED_DIFF}\n`);
 
-/** A prior round's refutation of the anchored finding, read from `hunk`. */
-function refutedPriorState(hunk: string, rationale = "no g flag on the regex") {
+/** A digest of some other input — the code moved since the refutation. */
+const STALE_EVIDENCE = "0".repeat(64);
+
+/** A prior round's refutation of the anchored finding, read from `evidence`. */
+function refutedPriorState(
+  evidence: string,
+  rationale = "no g flag on the regex",
+) {
   return {
     findings: [{
       id: ANCHORED_ID,
@@ -3328,17 +3333,17 @@ function refutedPriorState(hunk: string, rationale = "no g flag on the regex") {
       status: "refuted" as const,
       file: "src/app.ts",
       rationale,
-      hunk,
+      evidence,
     }],
   };
 }
 
-Deno.test("a refutation stands without a verifier while the file's diff is unchanged", async () => {
+Deno.test("a refutation stands without a verifier while the reviewed input is unchanged", async () => {
   // Round n refuted the finding against this exact diff section; round n+1's
   // model raises it again. No verifier is consulted: the evidence cannot have
   // changed, so the refutation is applied in code and the report says so.
   const { fetch, calls } = discussionFetch(
-    [summaryComment(refutedPriorState(ANCHORED_HUNK))],
+    [summaryComment(refutedPriorState(ANCHORED_EVIDENCE))],
     [claude({ score: 9, severity: "high", findings: [ANCHORED] })],
   );
   const lines = await captured(() =>
@@ -3372,16 +3377,18 @@ Deno.test("a refutation stands without a verifier while the file's diff is uncha
   );
   const posted = summaryPost(calls);
   assertEquals(
-    posted.includes("_(earlier round, diff unchanged)_ no g flag on the regex"),
+    posted.includes(
+      "_(earlier round, input unchanged)_ no g flag on the regex",
+    ),
     true,
   );
   const state = decodeState(posted);
-  assertEquals(state?.findings, refutedPriorState(ANCHORED_HUNK).findings);
+  assertEquals(state?.findings, refutedPriorState(ANCHORED_EVIDENCE).findings);
 });
 
 Deno.test("a refuted finding whose file changed is re-verified with the earlier evidence, and a confirmation reports it again", async () => {
   const { fetch, calls } = discussionFetch(
-    [summaryComment(refutedPriorState("0000000000000"))],
+    [summaryComment(refutedPriorState(STALE_EVIDENCE))],
     [
       claude({ score: 9, severity: "high", findings: [ANCHORED] }),
       claude({
@@ -3424,7 +3431,7 @@ Deno.test("a refuted finding whose file changed is re-verified with the earlier 
   assertEquals(
     lines.some((l) =>
       l.includes(
-        "was refuted in an earlier round but stands against the changed diff",
+        "was refuted in an earlier round but stands against the changed code",
       )
     ),
     true,
@@ -3435,7 +3442,7 @@ Deno.test("a refuted finding whose file changed is re-verified with the earlier 
 
 Deno.test("a re-refutation after the file changed refreshes the evidence and the fingerprint", async () => {
   const { fetch, calls } = discussionFetch(
-    [summaryComment(refutedPriorState("0000000000000", "old evidence"))],
+    [summaryComment(refutedPriorState(STALE_EVIDENCE, "old evidence"))],
     [
       claude({ score: 9, severity: "high", findings: [ANCHORED] }),
       claude({
@@ -3461,7 +3468,7 @@ Deno.test("a re-refutation after the file changed refreshes the evidence and the
   const stored = decodeState(posted)?.findings[0];
   assertEquals(stored?.status, "refuted");
   assertEquals(stored?.rationale, "new evidence");
-  assertEquals(stored?.hunk, ANCHORED_HUNK);
+  assertEquals(stored?.evidence, ANCHORED_EVIDENCE);
   // Fresh this round, so not labelled as standing from an earlier one.
   assertEquals(posted.includes("(earlier round"), false);
 });
@@ -3643,7 +3650,7 @@ Deno.test("a prior open finding the verifier refutes is recorded refuted and its
   assertEquals(state?.findings.length, 1);
   assertEquals(state?.findings[0].status, "refuted");
   assertEquals(state?.findings[0].rationale, "the guard on line 9 blocks it");
-  assertEquals(state?.findings[0].hunk, ANCHORED_HUNK);
+  assertEquals(state?.findings[0].evidence, ANCHORED_EVIDENCE);
   const answer = calls.find((c) => c.url.includes("/comments/501/replies"));
   const body = JSON.parse(answer?.body ?? "{}").body;
   assertEquals(
@@ -3720,4 +3727,237 @@ Deno.test("an accepted rebuttal outranks the same round's refutation of the find
   const posted = summaryPost(calls);
   assertEquals(posted.includes("Refuted by verification"), false);
   assertEquals(posted.includes("Dismissed via discussion"), true);
+});
+
+Deno.test("a maintainer's reply in a refuted thread sends the finding back to the verifier", async () => {
+  // The refutation would stand (identical input), but a trusted human
+  // contested it: the finding is re-verified with the earlier evidence, and
+  // the verifier's fresh answer — not an adjudication — is the reply.
+  const reply = {
+    id: 502,
+    body: "This is real: the guard was gutted in the same change.",
+    in_reply_to_id: 501,
+    user: { login: "maintainer", type: "User" },
+    author_association: "MEMBER",
+  };
+  const { fetch, calls } = threadFetch(
+    [summaryComment(refutedPriorState(ANCHORED_EVIDENCE))],
+    [threadRoot(ANCHORED_ID), reply],
+    [
+      claude({ score: 9, severity: "high", findings: [ANCHORED] }),
+      claude({
+        verdicts: [{
+          id: ANCHORED_ID,
+          verdict: "refuted",
+          reason: "the guard is intact",
+        }],
+      }),
+    ],
+  );
+  const lines = await captured(() =>
+    inPr(async () => {
+      await securityReviewer((r) =>
+        r.provider("claude").apiKey("k")
+          .comment().discussion((d) => d.threads()).verify()
+          .diff((d) => d.text(ANCHORED_DIFF))
+          .fetch(fetch)
+      ).validate(noRedactionContext("t"));
+    })
+  );
+  const providerCalls = calls.filter((c) =>
+    !c.url.startsWith(`${GITHUB_API}/`) && !c.url.includes("/graphql")
+  );
+  // Review + verify; no adjudication call for a refuted finding's thread.
+  assertEquals(providerCalls.length, 2);
+  const verify = JSON.parse(providerCalls[1].body);
+  assertEquals(
+    verify.messages[0].content.includes(
+      '"refutedBefore": "no g flag on the regex"',
+    ),
+    true,
+  );
+  assertEquals(
+    lines.some((l) =>
+      l.includes(
+        "a maintainer replied in its thread — sent back to the verifier",
+      )
+    ),
+    true,
+  );
+  // Refuted afresh: the thread hears the new reason and the state is refreshed.
+  const answer = calls.find((c) => c.url.includes("/comments/501/replies"));
+  assertEquals(
+    JSON.parse(answer?.body ?? "{}").body.includes("the guard is intact"),
+    true,
+  );
+  const stored = decodeState(summaryPost(calls))?.findings[0];
+  assertEquals(stored?.status, "refuted");
+  assertEquals(stored?.rationale, "the guard is intact");
+});
+
+Deno.test("a refuted finding that cannot be re-verified is reported, and the note says so", async () => {
+  // Verify is off this run, and the input changed: the earlier decision is
+  // not trusted blind. The finding reports (and gates), the state reopens
+  // it, and the note distinguishes "not re-verified" from "stands".
+  const { fetch, calls } = discussionFetch(
+    [summaryComment(refutedPriorState(STALE_EVIDENCE))],
+    [claude({ score: 9, severity: "high", findings: [ANCHORED] })],
+  );
+  const lines = await captured(() =>
+    inPr(async () => {
+      await assertRejects(
+        () =>
+          securityReviewer((r) =>
+            r.provider("claude").apiKey("k")
+              .comment().discussion()
+              .diff((d) => d.text(ANCHORED_DIFF))
+              .fetch(fetch)
+          ).validate(noRedactionContext("t")),
+        AiReviewError,
+      );
+    })
+  );
+  assertEquals(
+    lines.some((l) =>
+      l.includes("could not be re-verified this round — reported again")
+    ),
+    true,
+  );
+  assertEquals(decodeState(summaryPost(calls))?.findings[0].status, "open");
+});
+
+Deno.test("a fixed finding that comes back and is refuted is recorded refuted under its earlier wording", async () => {
+  const { fetch, calls } = discussionFetch(
+    [summaryComment({
+      findings: [{
+        id: ANCHORED_ID,
+        title: "Eval Of User Input",
+        severity: "high",
+        status: "fixed",
+        file: "src/app.ts",
+      }],
+    })],
+    [
+      claude({ score: 9, severity: "high", findings: [ANCHORED] }),
+      claude({
+        verdicts: [{ id: ANCHORED_ID, verdict: "refuted", reason: "guarded" }],
+      }),
+    ],
+  );
+  await captured(() =>
+    inPr(async () => {
+      await securityReviewer((r) =>
+        r.provider("claude").apiKey("k")
+          .comment().discussion().verify()
+          .diff((d) => d.text(ANCHORED_DIFF))
+          .fetch(fetch)
+      ).validate(noRedactionContext("t"));
+    })
+  );
+  const state = decodeState(summaryPost(calls));
+  assertEquals(state?.findings.length, 1);
+  assertEquals(state?.findings[0].status, "refuted");
+  assertEquals(state?.findings[0].title, "Eval Of User Input");
+  assertEquals(state?.findings[0].evidence, ANCHORED_EVIDENCE);
+});
+
+Deno.test("a contested finding refuted this round whose rebuttal does not hold is recorded refuted, and the note says so", async () => {
+  const reply = {
+    id: 502,
+    body: "Not an issue, trust me.",
+    in_reply_to_id: 501,
+    user: { login: "maintainer", type: "User" },
+    author_association: "MEMBER",
+  };
+  const { fetch, calls } = threadFetch(
+    [summaryComment({
+      findings: [{
+        id: ANCHORED_ID,
+        title: ANCHORED.title,
+        severity: "high",
+        status: "open",
+        file: "src/app.ts",
+      }],
+    })],
+    [threadRoot(ANCHORED_ID), reply],
+    [
+      claude({ score: 9, severity: "high", findings: [ANCHORED] }),
+      claude({
+        verdicts: [{ id: ANCHORED_ID, verdict: "refuted", reason: "guarded" }],
+      }),
+      claude({
+        verdicts: [{
+          id: ANCHORED_ID,
+          verdict: "upheld",
+          reason: "no argument",
+        }],
+      }),
+    ],
+  );
+  const lines = await captured(() =>
+    inPr(async () => {
+      await securityReviewer((r) =>
+        r.provider("claude").apiKey("k")
+          .comment().discussion((d) => d.threads()).verify()
+          .diff((d) => d.text(ANCHORED_DIFF))
+          .fetch(fetch)
+      ).validate(noRedactionContext("t"));
+    })
+  );
+  assertEquals(
+    lines.some((l) =>
+      l.includes("did not hold on its own (no argument)") &&
+      l.includes("recorded as refuted")
+    ),
+    true,
+  );
+  assertEquals(decodeState(summaryPost(calls))?.findings[0].status, "refuted");
+  const answer = calls.find((c) => c.url.includes("/comments/501/replies"));
+  assertEquals(
+    JSON.parse(answer?.body ?? "{}").body.startsWith(
+      outcomeMarker(NAME_HASH, ANCHORED_ID, "refuted"),
+    ),
+    true,
+  );
+});
+
+Deno.test("a contested finding no longer reported that the adjudicator does not answer stays on the progress record", async () => {
+  const reply = {
+    id: 502,
+    body: "The pattern has no g flag.",
+    in_reply_to_id: 501,
+    user: { login: "maintainer", type: "User" },
+    author_association: "MEMBER",
+  };
+  const { fetch, calls } = threadFetch(
+    [summaryComment({
+      findings: [{
+        id: ANCHORED_ID,
+        title: ANCHORED.title,
+        severity: "high",
+        status: "open",
+        file: "src/app.ts",
+      }],
+    })],
+    [threadRoot(ANCHORED_ID), reply],
+    [
+      claude({ score: 0, severity: "none", findings: [] }),
+      claude({ verdicts: [] }),
+    ],
+  );
+  const lines = await captured(() =>
+    inPr(async () => {
+      await securityReviewer((r) =>
+        r.provider("claude").apiKey("k")
+          .comment().discussion((d) => d.threads())
+          .diff((d) => d.text(ANCHORED_DIFF))
+          .fetch(fetch)
+      ).validate(noRedactionContext("t"));
+    })
+  );
+  assertEquals(
+    lines.some((l) => l.includes("adjudication returned no verdict")),
+    true,
+  );
+  assertEquals(decodeState(summaryPost(calls))?.findings[0].status, "fixed");
 });

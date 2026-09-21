@@ -124,16 +124,35 @@ const PUSH_ACCESS_STEP = [
 ].join("\n");
 
 /**
+ * The clause that keeps a fork's code away from the secrets: the head
+ * repository is this repository. Stated as a name comparison rather than
+ * `head.repo.fork == false`, because a fork that was deleted after the pull
+ * request was opened leaves `head.repo` null, and the expression language's
+ * loose comparison reads `null == false` as true — a gate that would open for
+ * exactly the pull request nobody can inspect any more. A null name compares
+ * unequal, so this fails closed.
+ */
+const SAME_REPO =
+  "github.event.pull_request.head.repo.full_name == github.repository";
+
+/**
  * The job that answers a rebuttal without a push. It runs on
  * `pull_request_review_comment`, which — unlike `issue_comment` — checks out the
  * pull request's merge ref exactly as `pull_request` does, so it is the
  * `pull_request` job's steps behind a different gate: the comment is a
  * **reply** in a thread (a fresh line comment starts nothing), by a human
  * account whose association is one of {@link COMMAND_AUTHORS}, on a pull
- * request that is not from a fork (the same secrets rule as the review job),
- * and — before any key is spent — by someone the collaborators API says has
- * push access, the same step the command job runs. The reviewer's own outcome
- * replies are bot-authored and so never start a run.
+ * request from this repository ({@link SAME_REPO} — the review job's rule,
+ * for the same reason), and — before any key is spent — by someone the
+ * collaborators API says has push access, the same step the command job runs.
+ *
+ * Two things the gate cannot see. It cannot tell whose thread the reply is in,
+ * so a maintainer's reply in any review thread on the pull request starts a
+ * run — the reviewer then reads only its own threads, and a run that changes
+ * nothing costs one review. And it tells the reviewer's own outcome replies
+ * apart only by account type: posted with the workflow's token or an App they
+ * are bot-authored and start nothing, while a personal token makes them a
+ * maintainer's comments, and each reply-posting run is followed by one more.
  *
  * Emitted only when a reviewer uses `.discussion((d) => d.threads())`: without
  * threads there is no reply to listen for, and a maintainer contests a finding
@@ -564,9 +583,9 @@ class AiReviewWorkflow extends CiFile {
   }
 
   /**
-   * The gate of the reply job — see {@link REPLY_JOB}. The fork clause is the
-   * `pull_request` job's, stated the same way: this event checks the pull
-   * request out, so a fork's code must never run with the secrets.
+   * The gate of the reply job — see {@link REPLY_JOB}. The repository clause
+   * is the `pull_request` job's: this event checks the pull request out, so a
+   * fork's code must never run with the secrets.
    */
   static #replyGate(): string {
     const author = "github.event.comment.author_association";
@@ -575,7 +594,7 @@ class AiReviewWorkflow extends CiFile {
     );
     return [
       "github.event_name == 'pull_request_review_comment'",
-      "github.event.pull_request.head.repo.fork == false",
+      SAME_REPO,
       "github.event.comment.in_reply_to_id",
       "github.event.comment.user.type != 'Bot'",
       `(${trusted})`,
@@ -634,7 +653,7 @@ class AiReviewWorkflow extends CiFile {
     const review = this.#githubJob(
       "review",
       "AI review",
-      "github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false",
+      `github.event_name == 'pull_request' && ${SAME_REPO}`,
       reviewSteps,
       reviewers.commentEnabled,
       "github.event.pull_request.number",

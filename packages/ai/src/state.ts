@@ -33,12 +33,12 @@ import { dig } from "./json.ts";
  *   the state (and listed in the report) so the PR's progress is visible; it
  *   flips back to `open` if a later round reports it again.
  * - `refuted` — the verify pass disproved it against the code, with the
- *   evidence recorded as the rationale and the file's diff section it reasoned
- *   about fingerprinted in {@link StoredFinding.hunk}. Remembered so the next
- *   round neither re-raises it nor judges it afresh: while that diff section is
- *   unchanged the refutation stands without another call, and once it changes
- *   the verifier sees the earlier evidence before deciding again. It flips to
- *   `open` if a later round confirms it against the changed code.
+ *   evidence recorded as the rationale and everything the verifier saw
+ *   fingerprinted in {@link StoredFinding.evidence}. Remembered so the next
+ *   round neither re-raises it nor judges it afresh: while that input is
+ *   unchanged the refutation stands without another call, and once anything in
+ *   it changes the verifier sees the earlier evidence before deciding again. It
+ *   flips to `open` if a later round confirms it against the changed code.
  */
 export type FindingStatus =
   | "open"
@@ -64,13 +64,14 @@ export interface StoredFinding {
   /** The login of the maintainer whose rebuttal drove the adjudication. */
   author?: string;
   /**
-   * For a `refuted` finding: the fingerprint of the file's section of the
-   * reviewed diff at the time of the refutation (see
-   * {@link "./diff.ts".sectionFingerprints}). A later round whose diff section
-   * for that file is identical knows the evidence the verifier cited cannot
-   * have changed, and keeps the refutation without asking again.
+   * For a `refuted` finding: the SHA-256 digest of everything the verifier
+   * saw when it refuted — the whole reviewed diff and the file context, not
+   * just the finding's own file, because the evidence a refutation cites may
+   * live anywhere in that input. A later round whose input digests the same
+   * knows the evidence cannot have changed, and keeps the refutation without
+   * asking again; any other input sends the finding back to the verifier.
    */
-  hunk?: string;
+  evidence?: string;
   /**
    * Fingerprints of earlier **rewordings** of this same finding — the ids it
    * arrived under when the model restated it in different words. Recording one
@@ -96,6 +97,16 @@ const STATE_PREFIX = "zuke-ai-state:";
  * round is likely to see again.
  */
 export const MAX_ALIASES = 5;
+
+/**
+ * Whether `value` is shaped like an evidence digest — the lowercase hex of a
+ * SHA-256. Compared for equality only, so a malformed one costs at most one
+ * re-verification; it is still held to the digest alphabet so the state block
+ * can never carry arbitrary text under that key.
+ */
+function isDigest(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
+}
 
 /**
  * Whether `value` is shaped like a fingerprint — the lowercase base-36 token
@@ -200,10 +211,7 @@ function toStoredFinding(item: unknown): StoredFinding | undefined {
   const file = dig(item, "file");
   const rationale = dig(item, "rationale");
   const author = dig(item, "author");
-  // A hunk fingerprint is compared for equality only, so a malformed one costs
-  // at most one re-verification; it is still held to the fingerprint alphabet
-  // so the state block can never carry arbitrary text under that key.
-  const hunk = dig(item, "hunk");
+  const evidence = dig(item, "evidence");
   // Best-effort like every other field: a malformed alias list yields no
   // aliases rather than discarding the record, so a bad entry costs at most one
   // dedup call — never the dismissal the finding already earned.
@@ -221,7 +229,7 @@ function toStoredFinding(item: unknown): StoredFinding | undefined {
     ...(typeof file === "string" ? { file } : {}),
     ...(typeof rationale === "string" ? { rationale } : {}),
     ...(typeof author === "string" ? { author } : {}),
-    ...(isFingerprint(hunk) ? { hunk } : {}),
+    ...(isDigest(evidence) ? { evidence } : {}),
     ...(aliases.length > 0 ? { aliases } : {}),
   };
 }
@@ -304,8 +312,8 @@ export function fixedOf(
 
 /**
  * The findings in `state` the verify pass refuted in an earlier round, keyed
- * by fingerprint — each carrying the evidence it was refuted on and the
- * fingerprint of the diff section that evidence was read from.
+ * by fingerprint — each carrying the evidence it was refuted on and the digest
+ * of the input that evidence was read from.
  */
 export function refutedOf(
   state: ReviewState | undefined,

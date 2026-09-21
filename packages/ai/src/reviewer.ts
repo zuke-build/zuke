@@ -9,7 +9,12 @@
  * @module
  */
 
-import type { AnyParameter, Validation, ValidationContext } from "@zuke/core";
+import {
+  type AnyParameter,
+  sha256Hex,
+  type Validation,
+  type ValidationContext,
+} from "@zuke/core";
 import type { Configure } from "@zuke/core/tooling";
 import { Command } from "@zuke/core/shell";
 import type {
@@ -95,11 +100,12 @@ import {
 } from "./dedup.ts";
 import { parseVerdicts, type Verdict } from "./verdicts.ts";
 import { verdictsGeminiSchema, verdictsJsonSchema } from "./schema.ts";
-import { anchorableLines, changedPaths, sectionFingerprints } from "./diff.ts";
+import { anchorableLines, changedPaths } from "./diff.ts";
 import { allReplies, withThreadRebuttals } from "./threads.ts";
 import {
   postThreads,
   prepareThreads,
+  type ThreadContext,
   type ThreadPhaseSettings,
 } from "./threads_phase.ts";
 import { buildFileContext } from "./file_context.ts";
@@ -937,6 +943,33 @@ export class Reviewer implements Validation {
     return result;
   }
 
+  /**
+   * The trusted, budgeted rebuttals for `ids`, keyed by finding id: comments
+   * quoting an id, merged with the replies in the reviewer's own threads.
+   * Thread replies join the same trust gate and the same one token budget as
+   * the id-quoting channel, appended last so the budget's newest-first walk
+   * keeps them — enabling threads cannot double the untrusted text a prompt
+   * sees. A reply's finding comes from its thread's marker, never its text.
+   */
+  #collectRebuttals(
+    comments: HostComment[],
+    threadCtx: ThreadContext | undefined,
+    settings: DiscussionSettings,
+    ids: string[],
+  ): Map<string, HostComment[]> {
+    const replies = threadCtx === undefined
+      ? []
+      : allReplies(threadCtx.threads);
+    const trusted = budgetComments(
+      trustedComments([...comments, ...replies], settings),
+      settings,
+    );
+    const quoted = rebuttalsFor(trusted, ids);
+    return threadCtx === undefined
+      ? quoted
+      : withThreadRebuttals(quoted, trusted, threadCtx.threads, ids);
+  }
+
   /** What the review-thread phase in `threads_phase.ts` needs from this reviewer. */
   #threadSettings(redact: Redact): ThreadPhaseSettings {
     return {
@@ -1165,26 +1198,46 @@ export class Reviewer implements Validation {
       assessment.findings = kept;
     }
 
+    // Rebuttals, gathered once the ids are canonical and before any decision a
+    // trusted reply may change, for every finding of interest: reported this
+    // round, still open from the last one, or refuted before.
+    const rebuttals = discussion === undefined || this.#discussion === undefined
+      ? new Map<string, HostComment[]>()
+      : this.#collectRebuttals(
+        discussion.comments,
+        threadCtx,
+        this.#discussion,
+        [
+          ...assessment.findings
+            .map((f) => f.id)
+            .filter((id): id is string => id !== undefined),
+          ...openPrior.keys(),
+          ...refutedPrior.keys(),
+        ],
+      );
+
     // Sticky refutations: a finding the verify pass disproved in an earlier
-    // round is dropped deterministically — but only while the file's section of
-    // the diff is byte-identical to the one that verifier read, which is when
-    // the evidence it cited cannot have changed. A changed section sends the
-    // finding back to the verifier below carrying the earlier refutation, so
-    // the model alone never silences a finding for good: the drop is bounded by
-    // evidence, and the question is re-asked as soon as the code moves.
+    // round is dropped deterministically — but only while everything that
+    // verifier saw is byte-identical, which is when the evidence it cited
+    // cannot have changed, and only while no maintainer has contested it.
+    // Either sends the finding back to the verifier below carrying the earlier
+    // refutation, so the model alone never silences a finding for good: the
+    // drop is bounded by evidence, re-asked as soon as the code moves, and a
+    // trusted human can always demand the re-check by replying in its thread.
     const refuted: RefutedFinding[] = [];
     const runNotes: string[] = [];
-    const hunks = sectionFingerprints(diff);
+    const evidence = await sha256Hex(`${diff}\n${files ?? ""}`);
     if (refutedPrior.size > 0) {
       const kept: AssessmentFinding[] = [];
       for (const finding of assessment.findings) {
-        const prior = finding.id !== undefined
-          ? refutedPrior.get(finding.id)
-          : undefined;
-        const unchanged = prior?.hunk !== undefined &&
-          finding.file !== undefined &&
-          hunks.get(finding.file) === prior.hunk;
-        if (prior !== undefined && unchanged) {
+        const id = finding.id ?? "";
+        const prior = refutedPrior.get(id);
+        if (prior === undefined) {
+          kept.push(finding);
+          continue;
+        }
+        const contested = rebuttals.has(id);
+        if (prior.evidence === evidence && !contested) {
           refuted.push({
             finding,
             earlier: true,
@@ -1192,7 +1245,15 @@ export class Reviewer implements Validation {
               ? { reason: prior.rationale }
               : {}),
           });
-        } else kept.push(finding);
+          continue;
+        }
+        if (contested) {
+          runNotes.push(
+            `"${finding.title}" was refuted in an earlier round and a ` +
+              `maintainer replied in its thread — sent back to the verifier`,
+          );
+        }
+        kept.push(finding);
       }
       assessment.findings = kept;
     }
@@ -1208,6 +1269,7 @@ export class Reviewer implements Validation {
     // reporting, never toward silence. A candidate refuted in an earlier round
     // (whose diff section has since changed) carries that refutation in, so
     // the verifier re-checks the evidence instead of starting from nothing.
+    const verified = new Set<string>();
     if (this.#verify && assessment.findings.length > 0) {
       if (this.#budget?.exhausted_()) {
         if (!this.#quiet) {
@@ -1243,6 +1305,7 @@ export class Reviewer implements Validation {
             const verdict = finding.id !== undefined
               ? verdicts.get(finding.id)
               : undefined;
+            if (verdict !== undefined) verified.add(finding.id ?? "");
             // The evidence requirement is enforced here, not just asked for in
             // the prompt: a refutation that states no reason cited nothing, so
             // it demotes to uncertain — the finding stays visible — rather
@@ -1278,16 +1341,22 @@ export class Reviewer implements Validation {
         }
       }
     }
-    // A finding refuted in an earlier round that stands this round — confirmed
-    // or uncertain against the changed section, or unverified — is reported
-    // again, and the report says why a decided finding is back.
+    // A finding refuted in an earlier round that is reported this round is
+    // back for one of two reasons, and the report says which: the verifier
+    // re-checked it against the changed code and it stands (confirmed or
+    // uncertain), or no verifier could be consulted — the pass is off, was
+    // skipped for budget, or failed — and the earlier decision is not trusted
+    // blind. Both fail toward reporting.
     for (const finding of assessment.findings) {
-      if (finding.id !== undefined && refutedPrior.has(finding.id)) {
-        runNotes.push(
-          `"${finding.title}" was refuted in an earlier round but stands ` +
-            `against the changed diff — reported again under ${finding.id}`,
-        );
-      }
+      const id = finding.id ?? "";
+      if (!refutedPrior.has(id)) continue;
+      runNotes.push(
+        verified.has(id)
+          ? `"${finding.title}" was refuted in an earlier round but stands ` +
+            `against the changed code — reported again under ${id}`
+          : `"${finding.title}" was refuted in an earlier round and could ` +
+            `not be re-verified this round — reported again under ${id}`,
+      );
     }
 
     // Adjudication: when a trusted maintainer contested a finding by quoting
@@ -1295,18 +1364,7 @@ export class Reviewer implements Validation {
     // trusted rebuttal (checked in code) AND the model accepting it on merit —
     // so neither an insistent comment nor the model alone can mute a finding.
     const upheldReasons = new Map<string, string>();
-    if (discussion !== undefined && this.#discussion !== undefined) {
-      // Thread replies join the same trust gate and the same one token budget
-      // as the id-quoting channel, appended last so the budget's newest-first
-      // walk keeps them. Enabling threads therefore cannot double the untrusted
-      // text the adjudicator sees.
-      const replies = threadCtx === undefined
-        ? []
-        : allReplies(threadCtx.threads);
-      const trusted = budgetComments(
-        trustedComments([...discussion.comments, ...replies], this.#discussion),
-        this.#discussion,
-      );
+    if (discussion !== undefined) {
       const reported = assessment.findings
         .map((f) => f.id)
         .filter((id): id is string => id !== undefined);
@@ -1318,15 +1376,16 @@ export class Reviewer implements Validation {
       const unreported = [...openPrior.values()].filter((prior) =>
         !reported.includes(prior.id)
       );
-      const ids = [...reported, ...unreported.map((prior) => prior.id)];
-      const quoted = rebuttalsFor(trusted, ids);
-      const rebuttals = threadCtx === undefined
-        ? quoted
-        : withThreadRebuttals(quoted, trusted, threadCtx.threads, ids);
-      if (rebuttals.size > 0 && !(this.#budget?.exhausted_() ?? false)) {
+      // A reply on a finding refuted before asks for a re-check, not a
+      // dismissal: it was sent back to the verifier above, whose answer is the
+      // reply. Everything else contested is adjudicated.
+      const contested = new Map(
+        [...rebuttals].filter(([id]) => !refutedPrior.has(id)),
+      );
+      if (contested.size > 0 && !(this.#budget?.exhausted_() ?? false)) {
         try {
           const notes: RebuttalNote[] = [];
-          for (const [id, comments] of rebuttals) {
+          for (const [id, comments] of contested) {
             const finding = assessment.findings.find((f) => f.id === id);
             const subject = finding ?? openPrior.get(id);
             if (subject === undefined) continue;
@@ -1367,10 +1426,10 @@ export class Reviewer implements Validation {
           }
           // A "dismissed" verdict only counts for a finding that actually had
           // a trusted rebuttal — the model cannot dismiss on its own.
-          const accepted = (id: string, verdict: Verdict | undefined) =>
-            verdict?.verdict === "dismissed" && rebuttals.has(id);
+          const accepted = (id: string, verdict: Verdict) =>
+            verdict.verdict === "dismissed" && contested.has(id);
           const accept = (finding: AssessmentFinding, verdict: Verdict) => {
-            const rebutter = rebuttals.get(verdict.id)?.[0];
+            const rebutter = contested.get(verdict.id)?.[0];
             dismissed.push({
               finding,
               author: rebutter?.displayName ?? rebutter?.author,
@@ -1402,7 +1461,7 @@ export class Reviewer implements Validation {
           // report says so rather than letting the argument vanish.
           for (const prior of unreported) {
             const verdict = verdicts.get(prior.id);
-            if (verdict === undefined || !rebuttals.has(prior.id)) continue;
+            if (verdict === undefined || !contested.has(prior.id)) continue;
             if (accepted(prior.id, verdict)) {
               accept({
                 id: prior.id,
@@ -1510,10 +1569,10 @@ export class Reviewer implements Validation {
       }
       for (const entry of fixed) stored.set(entry.id, withAliases(entry));
       // Refutations: earlier rounds' carried forward as they stand, this
-      // round's written with the verifier's evidence and the fingerprint of
-      // the diff section it read — the two things the next round compares. A
-      // finding re-refuted after its section changed refreshes both; one an
-      // accepted rebuttal dismissed was removed from this list above.
+      // round's written with the verifier's reason and the digest of what it
+      // saw — the two things the next round compares. A finding re-refuted
+      // after its input changed refreshes both; one an accepted rebuttal
+      // dismissed was removed from this list above.
       for (const prior of refutedPrior.values()) {
         stored.set(prior.id, withAliases(prior));
       }
@@ -1522,9 +1581,6 @@ export class Reviewer implements Validation {
         if (id === "" || r.earlier === true) continue;
         const prior = refutedPrior.get(id) ?? openPrior.get(id) ??
           fixedPrior.get(id);
-        const hunk = r.finding.file !== undefined
-          ? hunks.get(r.finding.file)
-          : undefined;
         stored.set(
           id,
           withAliases({
@@ -1534,7 +1590,7 @@ export class Reviewer implements Validation {
             status: "refuted",
             ...(r.finding.file !== undefined ? { file: r.finding.file } : {}),
             ...(r.reason !== undefined ? { rationale: r.reason } : {}),
-            ...(hunk !== undefined ? { hunk } : {}),
+            evidence,
           }),
         );
       }
@@ -1605,8 +1661,8 @@ export class Reviewer implements Validation {
           refuted: refuted.map((r) => ({
             id: r.finding.id ?? "",
             ...(r.reason !== undefined ? { reason: r.reason } : {}),
+            ...(r.earlier === true ? { earlier: true } : {}),
           })),
-          refutedPrior: new Set(refutedPrior.keys()),
           fixed: fixed.map((entry) => entry.id),
           fixedPrior: new Set(fixedPrior.keys()),
           upheld: upheldReasons,

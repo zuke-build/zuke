@@ -1097,10 +1097,11 @@ Depth and discussion knobs (all optional, per reviewer):
   only a refutation backed by citable contrary evidence removes one (listed in
   the report, never gating), while a candidate the evidence neither confirms nor
   refutes stays reported as `uncertain`. With `.discussion()`, a refutation is
-  remembered in the state block with its evidence and a fingerprint of the
-  file's diff section: a re-report while that section is unchanged is dropped in
-  code (listed as standing from an earlier round, no verifier call), and one
-  after it changed goes back to the verifier carrying the earlier evidence.
+  remembered in the state block with its evidence and a digest of everything the
+  verifier saw (diff and file context): a re-report while that input is
+  unchanged is dropped in code (listed as standing from an earlier round, no
+  verifier call), and one after it changed — or one a maintainer replied to in
+  its thread — goes back to the verifier carrying the earlier evidence.
 - `.comment("append")` — post a fresh PR comment per run (history stays on the
   thread) instead of the default single upserted comment per reviewer.
 - `.discussion((d) => d.threads())` — anchor each finding to its line as a PR

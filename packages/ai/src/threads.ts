@@ -295,14 +295,15 @@ export interface ThreadInputs {
   /** Ids dismissed in an earlier round — already answered and resolved then. */
   dismissedPrior: ReadonlySet<string>;
   /**
-   * Findings the verify pass refuted this round, with its reason. Only one
-   * that already has a thread — a finding reported open in an earlier round
-   * and disproved now — gets an answer; a candidate refuted before it was ever
-   * posted has no thread to answer in.
+   * Findings the verify pass refuted, with its reason. Only one that already
+   * has a thread — a finding reported open in an earlier round and disproved
+   * now — gets an answer; a candidate refuted before it was ever posted has no
+   * thread to answer in. One marked `earlier` is a refutation standing from an
+   * earlier round, answered and resolved then; a fresh verdict on a finding
+   * refuted before (its input changed and the verifier refuted it again) is
+   * not marked, so the thread hears the new evidence.
    */
-  refuted: Array<{ id: string; reason?: string }>;
-  /** Ids refuted in an earlier round — answered and resolved then. */
-  refutedPrior: ReadonlySet<string>;
+  refuted: Array<{ id: string; reason?: string; earlier?: boolean }>;
   /** Findings recorded as fixed this round. */
   fixed: string[];
   /** Ids already recorded fixed in an earlier round. */
@@ -424,8 +425,8 @@ export function planThreads(inputs: ThreadInputs): ThreadPlan {
     plan.resolve.push({ id: entry.id, rootId: thread.rootId });
   }
   for (const entry of inputs.refuted) {
-    // Refuted in an earlier round: answered then, like a sticky dismissal.
-    if (inputs.refutedPrior.has(entry.id)) continue;
+    // Standing from an earlier round: answered then, like a sticky dismissal.
+    if (entry.earlier === true) continue;
     const thread = inputs.threads.get(entry.id);
     if (thread === undefined) continue;
     if (!answered(thread, "refuted")) {

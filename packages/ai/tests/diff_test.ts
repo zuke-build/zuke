@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import { assertEquals } from "../../core/tests/_assert.ts";
-import { filterDiff, sectionFingerprints } from "../src/diff.ts";
+import { filterDiff } from "../src/diff.ts";
 
 /** A minimal one-file diff section for `path`. */
 function section(path: string): string {
@@ -40,21 +40,4 @@ Deno.test("filterDiff keeps preamble but drops an unparseable file section when 
   assertEquals(out.includes("some git advice"), true); // preamble kept
   assertEquals(out.includes("src/x.ts"), true); // parseable file kept
   assertEquals(out.includes("Binary files differ"), false); // fail-safe: dropped
-});
-
-Deno.test("sectionFingerprints keys each file's section and moves with any byte of it", () => {
-  const diff = section("src/a.ts") + section("src/b.ts");
-  const prints = sectionFingerprints(diff);
-  assertEquals([...prints.keys()], ["src/a.ts", "src/b.ts"]);
-  // Identical sections fingerprint identically across runs; one changed
-  // character in a file's section changes that file's print and no other.
-  const again = sectionFingerprints(diff);
-  assertEquals(again.get("src/a.ts"), prints.get("src/a.ts"));
-  const moved = sectionFingerprints(
-    section("src/a.ts").replace("+b", "+bb") + section("src/b.ts"),
-  );
-  assertEquals(moved.get("src/a.ts") === prints.get("src/a.ts"), false);
-  assertEquals(moved.get("src/b.ts"), prints.get("src/b.ts"));
-  // Non-file preamble and a section with no parsable path contribute nothing.
-  assertEquals(sectionFingerprints("not a diff at all").size, 0);
 });

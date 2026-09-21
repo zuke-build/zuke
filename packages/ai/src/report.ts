@@ -139,7 +139,7 @@ export interface RefutedFinding {
   reason?: string;
   /**
    * Whether the refutation was made in an **earlier** round and is standing
-   * because the file's diff section has not changed since — no verifier was
+   * because nothing the verifier saw has changed since — no verifier was
    * consulted this round. Shown so a reader can tell a standing decision from
    * a fresh one.
    */
@@ -325,7 +325,7 @@ function refutedSection(refuted: RefutedFinding[]): string[] {
     "| --- | --- |",
   ];
   for (const r of refuted) {
-    const standing = r.earlier ? "_(earlier round, diff unchanged)_ " : "";
+    const standing = r.earlier ? "_(earlier round, input unchanged)_ " : "";
     parts.push(
       `| ${cell(r.finding.title)} | ${standing}${cell(r.reason ?? "—")} |`,
     );

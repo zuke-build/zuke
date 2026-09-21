@@ -16,7 +16,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    if: "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}"
+    if: "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}"
     timeout-minutes: 15
     concurrency:
       group: "ai-review-${{ github.workflow }}-review-${{ github.event.pull_request.number }}"
@@ -38,7 +38,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    if: "${{ github.event_name == 'pull_request_review_comment' && github.event.pull_request.head.repo.fork == false && github.event.comment.in_reply_to_id && github.event.comment.user.type != 'Bot' && (github.event.comment.author_association == 'OWNER' || github.event.comment.author_association == 'MEMBER' || github.event.comment.author_association == 'COLLABORATOR') }}"
+    if: "${{ github.event_name == 'pull_request_review_comment' && github.event.pull_request.head.repo.full_name == github.repository && github.event.comment.in_reply_to_id && github.event.comment.user.type != 'Bot' && (github.event.comment.author_association == 'OWNER' || github.event.comment.author_association == 'MEMBER' || github.event.comment.author_association == 'COLLABORATOR') }}"
     timeout-minutes: 15
     concurrency:
       group: "ai-review-${{ github.workflow }}-replyReview-${{ github.event.pull_request.number }}"

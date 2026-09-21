@@ -16,7 +16,7 @@ import { Build, target } from "../../packages/core/mod.ts";
 import { securityReviewer } from "../../packages/ai/mod.ts";
 import { findingFingerprint } from "../../packages/ai/src/suppress.ts";
 import { decodeState, encodeState } from "../../packages/ai/src/state.ts";
-import { sectionFingerprints } from "../../packages/ai/src/diff.ts";
+import { sha256Hex } from "../../packages/core/mod.ts";
 import { SUPPRESS_HINT } from "../../packages/ai/src/report.ts";
 import { commentMarker } from "../../packages/ai/src/hosts/types.ts";
 import { runCli } from "./_harness.ts";
@@ -666,7 +666,7 @@ Deno.test("a refuted finding stays refuted across CLI runs without a second veri
   // model raises it again. Driven through the CLI: the build passes, no
   // verifier is paid for, the report labels the refutation as standing, and
   // the state carries it forward unchanged for the run after this one.
-  const hunk = sectionFingerprints(DIFF.trim()).get("src/app.ts") ?? "";
+  const evidence = await sha256Hex(`${DIFF.trim()}\n`);
   const priorBody = `${MARKER}\nround 1\n${
     encodeState({
       findings: [{
@@ -676,7 +676,7 @@ Deno.test("a refuted finding stays refuted across CLI runs without a second veri
         status: "refuted",
         file: FINDING.file,
         rationale: "eval runs in a sandboxed worker",
-        hunk,
+        evidence,
       }],
     })
   }`;
@@ -725,8 +725,8 @@ Deno.test("a refuted finding stays refuted across CLI runs without a second veri
     c.url.startsWith("https://api.github.com/") && c.method === "POST"
   );
   const posted = JSON.parse(write?.body ?? "{}").body;
-  assertStringIncludes(posted, "_(earlier round, diff unchanged)_");
+  assertStringIncludes(posted, "_(earlier round, input unchanged)_");
   const stored = decodeState(posted)?.findings[0];
   assertEquals(stored?.status, "refuted");
-  assertEquals(stored?.hunk, hunk);
+  assertEquals(stored?.evidence, evidence);
 });

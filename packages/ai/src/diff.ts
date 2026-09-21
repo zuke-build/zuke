@@ -8,7 +8,6 @@
  */
 
 import { globToRegExp } from "@zuke/core";
-import { stableHash } from "./hash.ts";
 
 /** Diff sections matching these globs are dropped from review by default. */
 export const DEFAULT_EXCLUDES = ["**/*.lock"];
@@ -79,26 +78,6 @@ export function changedPaths(diff: string): string[] {
     if (path !== undefined && !paths.includes(path)) paths.push(path);
   }
   return paths;
-}
-
-/**
- * A fingerprint of each file's section of the diff, keyed by post-image path —
- * what a refutation recorded in the review state is compared against on a
- * later round. Two rounds whose section for a file is byte-identical showed the
- * verifier the same code for that file, so evidence it cited there cannot have
- * changed; any difference (a new hunk, a moved context line, a base that moved)
- * reads as changed and sends the finding back to the verifier. Computed from
- * the same filtered, truncated diff the model is shown.
- */
-export function sectionFingerprints(diff: string): Map<string, string> {
-  const fingerprints = new Map<string, string>();
-  for (const section of diff.split(/(?=^diff --git )/m)) {
-    if (!isFileSection(section)) continue;
-    const path = sectionPath(section);
-    if (path === undefined || fingerprints.has(path)) continue;
-    fingerprints.set(path, stableHash(section));
-  }
-  return fingerprints;
 }
 
 /** A hunk header, capturing the post-image start line (`@@ -a,b +c,d @@`). */

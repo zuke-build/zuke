@@ -194,8 +194,9 @@ export interface VerifyCandidate {
   detail?: string;
   /**
    * The evidence an earlier round's verifier refuted this same finding on,
-   * when the file's diff section has changed since. The verifier re-checks
-   * whether that evidence still holds rather than judging afresh.
+   * when what the verifier saw has changed since — or a maintainer contested
+   * the refutation. The verifier re-checks whether that evidence still holds
+   * rather than judging afresh.
    */
   refutedBefore?: string;
 }
@@ -209,7 +210,7 @@ export interface VerifyCandidate {
  * doubts.
  *
  * With `withEarlier`, a candidate may carry `refutedBefore` — the evidence an
- * earlier round refuted it on, while the file's diff has since changed. The
+ * earlier round refuted it on, while the code under review has changed. The
  * verifier is told to re-check that evidence against the current code rather
  * than start from nothing, which is what keeps the verdict from flipping
  * round to round on an unchanged concern.
@@ -229,7 +230,7 @@ export function verifySystemPrompt(
     ``,
     ...(withEarlier
       ? [
-        `A candidate carrying "refutedBefore" was refuted in an earlier round of this same review on the evidence quoted there, and the file's diff has changed since. Re-check that evidence against the current code first: if it still holds, return "refuted" and restate it; confirm only on a concrete failure path the earlier evidence does not block.`,
+        `A candidate carrying "refutedBefore" was refuted in an earlier round of this same review on the evidence quoted there, and the code under review has changed since. Re-check that evidence against the current code first: if it still holds, return "refuted" and restate it; confirm only on a concrete failure path the earlier evidence does not block.`,
         ``,
       ]
       : []),

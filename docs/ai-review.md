@@ -214,18 +214,25 @@ A few opt-in passes trade a little cost for findings that hold up:
   toward reporting, never toward silence.
 
   With `.discussion()` on, a refutation is **remembered**. It is written to the
-  state block with the verifier's evidence and a fingerprint of the file's
-  section of the diff it was read from, and the next round's model is shown it
-  (fenced, with the evidence) before it reviews. If the model raises the finding
-  again while that diff section is byte-identical, the refutation is applied in
-  code — no verifier is consulted, since the evidence it cited cannot have
-  changed — and the report lists it as standing from an earlier round. Once the
-  section changes, the finding goes back to the verifier **carrying the earlier
+  state block with the verifier's evidence and a SHA-256 digest of everything
+  the verifier saw — the whole reviewed diff and the file context, not just the
+  finding's own file, since the evidence a refutation cites may live anywhere in
+  that input — and the next round's model is shown it (fenced, with the
+  evidence) before it reviews. If the model raises the finding again while that
+  input is byte-identical, the refutation is applied in code — no verifier is
+  consulted, since the evidence it cited cannot have changed — and the report
+  lists it as standing from an earlier round. Once anything in the input
+  changes, the finding goes back to the verifier **carrying the earlier
   refutation**, so the verdict is an informed re-check rather than a fresh coin
   flip; a confirmation reports the finding again (with a note saying it was
-  refuted before), a re-refutation refreshes the evidence and the fingerprint.
-  That gate is what keeps the memory honest: the model alone never silences a
-  finding for good, only for as long as the code it reasoned about stands.
+  refuted before), a re-refutation refreshes the evidence and the digest, and a
+  round that cannot consult a verifier at all (the pass off, skipped for budget,
+  or failed) reports the finding rather than trusting the old decision blind,
+  saying so in the notes. A maintainer who disagrees with a refutation replies
+  in its thread: a trusted reply sends the finding back to the verifier instead
+  of letting the refutation stand. Those two gates are what keep the memory
+  honest: the model alone never silences a finding for good, only for as long as
+  the code it reasoned about stands and nobody objects.
 
 ## Discussing findings instead of repeating them
 
@@ -344,16 +351,16 @@ GitHub, or left over by the per-run cap stays in the table, and the report's
 
 What each round does to a thread:
 
-| Situation                                | What happens                                                 |
-| ---------------------------------------- | ------------------------------------------------------------ |
-| A new finding with a usable line         | A thread is opened on that line                              |
-| The finding is still open next round     | **Nothing** — silence means "still open"                     |
-| A maintainer's rebuttal is accepted      | The outcome is replied in-thread and the thread resolved     |
-| A maintainer's rebuttal does not hold    | The outcome is replied; the thread stays open                |
-| The finding stops reproducing            | A "fixed" reply, and the thread resolved                     |
-| The verifier refutes it                  | A "refuted" reply with the evidence, and the thread resolved |
-| A fixed or refuted finding comes back    | A "reopened" reply, and the thread **un**resolved            |
-| Dismissed or refuted in an earlier round | Nothing — it was answered and closed then                    |
+| Situation                                | What happens                                                                                              |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| A new finding with a usable line         | A thread is opened on that line                                                                           |
+| The finding is still open next round     | **Nothing** — silence means "still open"                                                                  |
+| A maintainer's rebuttal is accepted      | The outcome is replied in-thread and the thread resolved                                                  |
+| A maintainer's rebuttal does not hold    | The outcome is replied; the thread stays open                                                             |
+| The finding stops reproducing            | A "fixed" reply, and the thread resolved                                                                  |
+| The verifier refutes it                  | A "refuted" reply with the evidence, and the thread resolved; a reply there sends it back to the verifier |
+| A fixed or refuted finding comes back    | A "reopened" reply, and the thread **un**resolved                                                         |
+| Dismissed or refuted in an earlier round | Nothing — it was answered and closed then                                                                 |
 
 Trust works exactly as it does for the id-quoting channel, and the two share one
 token budget, so turning threads on cannot double the untrusted text the
@@ -608,20 +615,31 @@ command is a step nobody remembers. So when any reviewer uses
 `replyReview`, on `pull_request_review_comment`. It runs the same target when
 the comment is a **reply** in a thread (a fresh line comment starts nothing), by
 a human account whose `author_association` is `OWNER`, `MEMBER` or
-`COLLABORATOR`, on a pull request that is **not from a fork**, and — before any
-key is spent — by someone the collaborators API says has push access, the same
-step the command job runs.
+`COLLABORATOR`, on a pull request **from this repository**, and — before any key
+is spent — by someone the collaborators API says has push access, the same step
+the command job runs.
 
 Unlike `issue_comment`, this event checks out the pull request's merge ref
 exactly as `pull_request` does, so the job is the `pull_request` job's steps
 behind a different gate, and it carries the same fork rule for the same reason.
-The reviewer's own outcome replies are bot-authored and never start a run. The
-reply's text is never read by the workflow at all — the reviewer reads it from
-the thread, through the trust gate, and answers there: an accepted rebuttal
+Both state that rule as a repository-name comparison rather than
+`head.repo.fork == false`: a fork deleted after the pull request was opened
+leaves the head repository null, which the expression language's loose
+comparison would read as "not a fork", and a null name compares unequal instead.
+The reply's text is never read by the workflow at all — the reviewer reads it
+from the thread, through the trust gate, and answers there: an accepted rebuttal
 closes the thread as dismissed; one that does not hold gets an "upheld" reply
 naming the gap, and the maintainer can reply again to continue the discussion.
 There is nothing to configure: a build that anchors findings to threads gets the
 job, and one that does not has no reply to listen for.
+
+Two limits of an expression gate are worth knowing. It cannot tell whose thread
+a reply is in, so a maintainer's reply in any review thread on the pull request
+starts a run (the reviewer then reads only its own threads, and a run that
+changes nothing costs one review). And it tells the reviewer's own outcome
+replies apart only by account type: posted with the workflow's token or a GitHub
+App they are bot-authored and start nothing, while a personal token makes them a
+maintainer's comments, so each reply-posting run is followed by one more.
 
 ## Worked example: Zuke reviews itself
 
