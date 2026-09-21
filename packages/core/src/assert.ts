@@ -6,7 +6,7 @@
  * clear message when an expectation does not hold.
  *
  * ```ts
- * import { assert, assertExists, fail } from "jsr:@zuke/core";
+ * import { assert, assertExists, fail } from "@zuke/core";
  *
  * assert(version !== "", "version must not be empty");
  * const token = assertExists(Deno.env.get("TOKEN"), "TOKEN is required");

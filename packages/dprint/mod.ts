@@ -8,7 +8,7 @@
  * runs it. `fmt` formats files in place; `check` verifies formatting.
  *
  * ```ts
- * import { DprintTasks } from "jsr:@zuke/dprint";
+ * import { DprintTasks } from "@zuke/dprint";
  * await DprintTasks.check((s) => s.config("dprint.json"));
  * ```
  *

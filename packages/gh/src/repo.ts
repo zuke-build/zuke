@@ -7,7 +7,7 @@
  * set-default.
  *
  * ```ts
- * import { GhTasks } from "jsr:@zuke/gh";
+ * import { GhTasks } from "@zuke/gh";
  * await GhTasks.repoClone((s) => s.repository("acme/app").directory("vendor/app"));
  * await GhTasks.repoSync((s) => s.source("upstream/app").branch("master"));
  * const mine = await GhTasks.repoListEntries((s) => s.owner("acme").noArchived());

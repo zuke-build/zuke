@@ -5,7 +5,7 @@ Typed Terraform CLI task wrappers for
 `plan`, `apply`, `destroy`, `fmt`, and `output`.
 
 ```ts
-import { TerraformTasks } from "jsr:@zuke/terraform";
+import { TerraformTasks } from "@zuke/terraform";
 
 await TerraformTasks.init((s) => s.upgrade());
 await TerraformTasks.plan((s) => s.out("plan.tfplan").var("env", "prod"));
@@ -27,7 +27,7 @@ never re-split by a shell.
 for use in Zuke build targets (infrastructure-as-code workflows).
 
 ```ts
-import { TerraformTasks } from "jsr:@zuke/terraform";
+import { TerraformTasks } from "@zuke/terraform";
 
 await TerraformTasks.init((s) => s.upgrade());
 await TerraformTasks.apply((s) => s.autoApprove().var("env", "prod"));

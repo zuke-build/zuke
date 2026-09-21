@@ -28,8 +28,8 @@ const DOCS_PROJECT: ProjectInfo = {
     "in a settings-lambda style — never shell out by hand.",
   install: "deno run -A jsr:@zuke/cli setup",
   example: [
-    'import { Build, run, target } from "jsr:@zuke/core";',
-    'import { DenoTasks } from "jsr:@zuke/deno";',
+    'import { Build, run, target } from "@zuke/core";',
+    'import { DenoTasks } from "@zuke/deno";',
     "",
     "class CI extends Build {",
     "  lint = target().executes(() => DenoTasks.lint());",
@@ -129,7 +129,7 @@ export async function crossPackageTypesOf(dir: string): Promise<string[]> {
     .filter((f) => !f.includes(`packages/${dir}/tests/`));
   const names = new Set<string>();
   // Each `import … from "…"` statement. Anchored at a line start (`m` flag) so
-  // a `* import { … } from "jsr:@zuke/…"` example inside a JSDoc block (prefixed
+  // a `* import { … } from "@zuke/…"` example inside a JSDoc block (prefixed
   // by `* `) is not matched; the specifier is filtered to `@zuke/*` in code.
   const importStmt =
     /^import\b(?:\s+type\b)?([\s\S]*?)\bfrom\s*["']([^"']*)["']/gm;

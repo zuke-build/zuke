@@ -7,7 +7,7 @@
  * {@link "./auth.ts".AccessTokenProvider} (default: `gcloud auth print-access-token`).
  *
  * ```ts
- * import { SecretManagerTasks } from "jsr:@zuke/gcloud";
+ * import { SecretManagerTasks } from "@zuke/gcloud";
  *
  * // Create-if-absent, then add a version (idempotent, write-before-create):
  * await SecretManagerTasks.addVersion("db-password", secret, { project: "p" });

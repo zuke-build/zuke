@@ -6,7 +6,7 @@ submodule:
 <!-- check -->
 
 ```ts
-import { $ } from "jsr:@zuke/core/shell";
+import { $ } from "@zuke/core/shell";
 
 await $`deno test -A`; // throws on non-zero exit
 const sha = await $`git rev-parse HEAD`.text(); // trimmed stdout

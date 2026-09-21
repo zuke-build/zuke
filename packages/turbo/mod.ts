@@ -6,7 +6,7 @@
  * [Turborepo](https://turbo.build) CLI, for use in Zuke builds.
  *
  * ```ts
- * import { TurboTasks } from "jsr:@zuke/turbo";
+ * import { TurboTasks } from "@zuke/turbo";
  *
  * await TurboTasks.run((s) => s.tasks("build", "test").filter("web"));
  * ```

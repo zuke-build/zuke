@@ -6,7 +6,7 @@ settings-lambda API. `husky` manages Git hooks; this wrapper targets husky v9+.
 Arguments stay a discrete argv array, so command construction is injection-free.
 
 ```ts
-import { HuskyTasks } from "jsr:@zuke/husky";
+import { HuskyTasks } from "@zuke/husky";
 
 await HuskyTasks.init();
 await HuskyTasks.install();
@@ -36,7 +36,7 @@ Every path argument accepts either a string or an `AbsolutePath` from
 fluent settings object in a lambda; the task builds the argv and runs it.
 
 ```ts
-import { HuskyTasks } from "jsr:@zuke/husky";
+import { HuskyTasks } from "@zuke/husky";
 await HuskyTasks.init();
 await HuskyTasks.install();
 ```

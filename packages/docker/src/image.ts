@@ -7,7 +7,7 @@
  * `history`, `import`, and `image prune`.
  *
  * ```ts
- * import { DockerTasks } from "jsr:@zuke/docker";
+ * import { DockerTasks } from "@zuke/docker";
  * await DockerTasks.pull((s) => s.image("alpine:3.20").platform("linux/amd64"));
  * await DockerTasks.save((s) => s.images("app:latest").output("app.tar"));
  * const images = await DockerTasks.imageEntries();

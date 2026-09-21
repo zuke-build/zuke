@@ -6,7 +6,7 @@
  * objects a release is cut from.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * if (!await GitTasks.isSignatureValid((s) => s.objects("v1.0.0"))) {
  *   throw new Error("the release tag is not signed by a trusted key");
  * }

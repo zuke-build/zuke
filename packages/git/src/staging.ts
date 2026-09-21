@@ -6,7 +6,7 @@
  * `git add`, `git rm`, `git mv`, `git restore`, and `git clean`.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * await GitTasks.add((s) => s.all());
  * await GitTasks.rm((s) => s.cached().paths("secret.env"));
  * await GitTasks.restore((s) => s.staged().paths("src"));

@@ -6,7 +6,7 @@
  * CLI (lint + format + import organizing in one tool), for use in Zuke builds.
  *
  * ```ts
- * import { BiomeTasks } from "jsr:@zuke/biome";
+ * import { BiomeTasks } from "@zuke/biome";
  *
  * await BiomeTasks.ci((s) => s.paths("src"));
  * await BiomeTasks.check((s) => s.write().paths("src"));

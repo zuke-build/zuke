@@ -7,7 +7,7 @@
  * the task function builds the command line and executes it.
  *
  * ```ts
- * import { TerraformTasks } from "jsr:@zuke/terraform";
+ * import { TerraformTasks } from "@zuke/terraform";
  * await TerraformTasks.init((s) => s.upgrade());
  * await TerraformTasks.apply((s) => s.autoApprove().var("env", "prod"));
  * ```

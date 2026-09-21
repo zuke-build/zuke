@@ -8,7 +8,7 @@ one-parameter body type.
 <!-- check -->
 
 ```ts
-import { Build, target } from "jsr:@zuke/core";
+import { Build, target } from "@zuke/core";
 
 class Deploy extends Build {
   ship = target().executes(async (ctx) => {
@@ -57,7 +57,7 @@ pack        Succeeded        0.3s  // Packages: 1
 <!-- check -->
 
 ```ts
-import { Build, target } from "jsr:@zuke/core";
+import { Build, target } from "@zuke/core";
 
 class CI extends Build {
   pack = target().executes((ctx) => {
@@ -75,8 +75,8 @@ on the row of whichever target ran it:
 <!-- check -->
 
 ```ts
-import { Build, target } from "jsr:@zuke/core";
-import { DenoTasks } from "jsr:@zuke/deno";
+import { Build, target } from "@zuke/core";
+import { DenoTasks } from "@zuke/deno";
 
 class Checks extends Build {
   test = target().executes(async (ctx) => {
@@ -166,7 +166,7 @@ the seam for a body whose work depends on what else was asked for.
 <!-- check -->
 
 ```ts
-import { Build, target } from "jsr:@zuke/core";
+import { Build, target } from "@zuke/core";
 
 class Ci extends Build {
   build = target().executes((ctx) => {
@@ -188,7 +188,7 @@ condition that can never be false:
 <!-- check -->
 
 ```ts
-import { Build, target } from "jsr:@zuke/core";
+import { Build, target } from "@zuke/core";
 
 class Ci extends Build {
   unit = target().executes(() => {});
@@ -270,7 +270,7 @@ target whose body ran and one served from the incremental cache both read
 <!-- check -->
 
 ```ts
-import { Build, target } from "jsr:@zuke/core";
+import { Build, target } from "@zuke/core";
 
 class Ci extends Build {
   unit = target().executes(() => {});
@@ -306,7 +306,7 @@ that the effect was owed, and a resume drives it again.
 <!-- check -->
 
 ```ts
-import { Build, target } from "jsr:@zuke/core";
+import { Build, target } from "@zuke/core";
 
 class Ci extends Build {
   checks = target().proceedAfterFailure().executes(() => {});
@@ -357,7 +357,7 @@ A run can be cancelled by passing an `AbortSignal` to `execute`
 ([programmatic API](./programmatic-api.md)):
 
 ```ts
-import { execute } from "jsr:@zuke/core";
+import { execute } from "@zuke/core";
 
 const controller = new AbortController();
 const result = execute(build, build.deploy, { signal: controller.signal });

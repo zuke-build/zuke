@@ -7,7 +7,7 @@ standard compile or type-check and a `tsc --build` project-references build.
 Arguments stay a discrete argv array, so command construction is injection-free.
 
 ```ts
-import { TscTasks } from "jsr:@zuke/tsc";
+import { TscTasks } from "@zuke/tsc";
 
 await TscTasks.tsc((s) =>
   s.project("tsconfig.json").noEmit().strict().pretty()
@@ -44,7 +44,7 @@ standard {@link TscTasks.tsc} compile/type-check and a
 {@link TscTasks.build} project-references build (`tsc --build`).
 
 ```ts
-import { TscTasks } from "jsr:@zuke/tsc";
+import { TscTasks } from "@zuke/tsc";
 await TscTasks.tsc((s) => s.project("tsconfig.json").noEmit());
 await TscTasks.build((s) => s.projects("packages/a", "packages/b"));
 ```

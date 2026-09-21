@@ -8,7 +8,7 @@ settings-lambda API. Typed tasks cover the common commands; `GitTasks.run` with
 discrete argv array, so command construction is injection-free.
 
 ```ts
-import { GitTasks } from "jsr:@zuke/git";
+import { GitTasks } from "@zuke/git";
 
 await GitTasks.add((s) => s.all());
 await GitTasks.commit((s) => s.message("ci: cut release"));
@@ -64,7 +64,7 @@ flag, and `remoteUrl`. It throws outside a git repository; optional fields are
 `undefined` when absent. Pass `{ cwd }` to inspect another directory.
 
 ```ts
-import { gitInfo } from "jsr:@zuke/git";
+import { gitInfo } from "@zuke/git";
 
 const git = await gitInfo();
 console.log(`${git.branch} @ ${git.shortCommit}${git.dirty ? " (dirty)" : ""}`);
@@ -92,7 +92,7 @@ config, submodules, archives, patches — and `GitTasks.run` with
 `.command(...)` covers the long tail.
 
 ```ts
-import { GitTasks, gitInfo } from "jsr:@zuke/git";
+import { GitTasks, gitInfo } from "@zuke/git";
 await GitTasks.commit((s) => s.all().message("ci: release"));
 const changed = await GitTasks.diffNames((s) => s.mergeBase("origin/main"));
 const { branch, shortCommit } = await gitInfo();

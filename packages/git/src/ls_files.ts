@@ -7,7 +7,7 @@
  * re-implementing `.gitignore`.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * await GitTasks.lsFiles((s) => s.cached().paths("packages"));
  * const untracked = await GitTasks.lsFileNames((s) =>
  *   s.others().excludeStandard()

@@ -8,7 +8,7 @@
  * the tar reader/writer and the zip reader implement the formats directly.
  *
  * ```ts
- * import { createTarGzip, extractTarGzip, extractZip } from "jsr:@zuke/core";
+ * import { createTarGzip, extractTarGzip, extractZip } from "@zuke/core";
  *
  * await createTarGzip(["dist/app.js", "README.md"], "artifact.tar.gz");
  * await extractTarGzip("artifact.tar.gz", "out");

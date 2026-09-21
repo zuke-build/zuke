@@ -5,7 +5,7 @@
  * `git tag` — creating, deleting, and listing tags.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * await GitTasks.tag((s) => s.name("v1.2.3").message("Release 1.2.3"));
  * await GitTasks.tag((s) => s.list("v1.*").sort("-v:refname"));
  * ```

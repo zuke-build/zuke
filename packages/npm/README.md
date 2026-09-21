@@ -6,7 +6,7 @@ settings-lambda API. Typed tasks cover the everyday npm surface; arguments stay
 a discrete argv array, so command construction is injection-free.
 
 ```ts
-import { NpmTasks } from "jsr:@zuke/npm";
+import { NpmTasks } from "@zuke/npm";
 
 await NpmTasks.ci((s) => s.omit("dev"));
 await NpmTasks.run((s) => s.script("build").workspace("app"));
@@ -64,7 +64,7 @@ report" instead of throwing.
 build targets (including builds that drive Node projects).
 
 ```ts
-import { NpmTasks } from "jsr:@zuke/npm";
+import { NpmTasks } from "@zuke/npm";
 
 await NpmTasks.ci();
 await NpmTasks.run((s) => s.script("build"));

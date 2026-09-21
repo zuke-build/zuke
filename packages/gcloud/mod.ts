@@ -7,7 +7,7 @@
  * groups that share `gcloud`-based auth (no Google SDK dependency).
  *
  * ```ts
- * import { GcloudTasks, GcsTasks, SecretManagerTasks } from "jsr:@zuke/gcloud";
+ * import { GcloudTasks, GcsTasks, SecretManagerTasks } from "@zuke/gcloud";
  *
  * await GcloudTasks.run((s) => s.containerImagesAddTag(src, dst)); // CLI
  * await GcsTasks.writeJson("bucket", "state.json", { slot: "sit-7" }); // REST

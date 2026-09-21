@@ -9,7 +9,7 @@
  * and executes it.
  *
  * ```ts
- * import { ShellcheckTasks } from "jsr:@zuke/shellcheck";
+ * import { ShellcheckTasks } from "@zuke/shellcheck";
  * await ShellcheckTasks.lint((s) =>
  *   s.shell("sh").severity("warning").paths("sh/lib.sh", "bin/gate")
  * );

@@ -10,7 +10,7 @@
  * Knip is a single-command tool; {@link KnipTasks.run} maps to `knip <flags>`.
  *
  * ```ts
- * import { KnipTasks } from "jsr:@zuke/knip";
+ * import { KnipTasks } from "@zuke/knip";
  * await KnipTasks.run((s) => s.production().strict());
  * ```
  *

@@ -11,7 +11,7 @@
  * round trip. This asks the local ref first and falls back to the remote.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * const base = await GitTasks.defaultBranch((s) => s.remote("origin"));
  * ```
  *

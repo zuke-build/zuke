@@ -6,7 +6,7 @@
  * Actions workflows of a repository.
  *
  * ```ts
- * import { GhTasks } from "jsr:@zuke/gh";
+ * import { GhTasks } from "@zuke/gh";
  * await GhTasks.workflowRun((s) => s.workflow("e2e.yml").ref("main").field("env", "staging"));
  * await GhTasks.workflowDisable((s) => s.workflow("nightly.yml"));
  * const workflows = await GhTasks.workflowListEntries((s) => s.all());

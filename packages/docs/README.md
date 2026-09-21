@@ -20,8 +20,8 @@ produces your doc text: `@zuke/deno`'s `DenoTasks.doc`, a checked-in file, or
 any other source.
 
 ```ts
-import { DocsTasks, type PackageDoc } from "jsr:@zuke/docs";
-import { DenoTasks } from "jsr:@zuke/deno";
+import { DocsTasks, type PackageDoc } from "@zuke/docs";
+import { DenoTasks } from "@zuke/deno";
 
 // Produce the doc text however you like — here, via @zuke/deno:
 const docs: PackageDoc[] = [];
@@ -59,7 +59,7 @@ It runs no subprocess and depends only on `@zuke/core`, so it works without
 produces your doc text (`@zuke/deno`'s `DenoTasks.doc`, a checked-in file, …).
 
 ```ts
-import { DocsTasks } from "jsr:@zuke/docs";
+import { DocsTasks } from "@zuke/docs";
 
 const docs = [{ name: "@acme/core", dir: "core", doc: denoDocText }];
 await DocsTasks.apiDocs(docs, { project: { title: "Acme", summary: "…" } });

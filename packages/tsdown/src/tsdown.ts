@@ -11,7 +11,7 @@
  * `tsdown migrate <flags>` (which migrates an existing tsup project to tsdown).
  *
  * ```ts
- * import { TsdownTasks } from "jsr:@zuke/tsdown";
+ * import { TsdownTasks } from "@zuke/tsdown";
  * await TsdownTasks.build((s) =>
  *   s.entry("src/index.ts").format("esm", "cjs").dts().minify().clean()
  * );

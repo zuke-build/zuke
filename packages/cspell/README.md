@@ -6,7 +6,7 @@ settings-lambda API. Arguments stay a discrete argv array, so command
 construction is injection-free.
 
 ```ts
-import { CspellTasks } from "jsr:@zuke/cspell";
+import { CspellTasks } from "@zuke/cspell";
 
 await CspellTasks.lint((s) =>
   s.files("**").config("cspell.json").noProgress().showSuggestions()
@@ -32,7 +32,7 @@ Configure a fluent settings object in a lambda; the task builds the argv and
 runs it.
 
 ```ts
-import { CspellTasks } from "jsr:@zuke/cspell";
+import { CspellTasks } from "@zuke/cspell";
 await CspellTasks.lint((s) => s.files("**").noProgress().showSuggestions());
 ```
 @module

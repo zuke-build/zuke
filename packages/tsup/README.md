@@ -5,7 +5,7 @@ Typed [tsup](https://tsup.egoist.dev) CLI task wrapper for
 TypeScript/JavaScript with formats, declarations, minification, and more.
 
 ```ts
-import { TsupTasks } from "jsr:@zuke/tsup";
+import { TsupTasks } from "@zuke/tsup";
 
 await TsupTasks.build((s) =>
   s.entry("src/index.ts").format("esm", "cjs").dts().minify().clean()
@@ -24,7 +24,7 @@ await TsupTasks.build((s) =>
 tsup (https://tsup.egoist.dev) bundler, for use in Zuke builds.
 
 ```ts
-import { TsupTasks } from "jsr:@zuke/tsup";
+import { TsupTasks } from "@zuke/tsup";
 
 await TsupTasks.build((s) =>
   s.entry("src/index.ts").format("esm", "cjs").dts().minify().clean()

@@ -374,7 +374,7 @@ Two dependency-free backends ship, behind one `RemoteCacheStore` interface:
 Declare one in code with a typed `remoteCache()` override:
 
 ```ts
-import { Build, HttpCacheStore, parameter, target } from "jsr:@zuke/core";
+import { Build, HttpCacheStore, parameter, target } from "@zuke/core";
 
 class CI extends Build {
   cacheToken = parameter("Cache auth token").secret().env("CACHE_TOKEN");

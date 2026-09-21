@@ -13,7 +13,7 @@
  * resolves the `tsc` binary.
  *
  * ```ts
- * import { TscTasks } from "jsr:@zuke/tsc";
+ * import { TscTasks } from "@zuke/tsc";
  * await TscTasks.tsc((s) => s.project("tsconfig.json").noEmit().pretty());
  * await TscTasks.build((s) => s.projects("packages/a").verbose());
  * ```

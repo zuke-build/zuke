@@ -5,7 +5,7 @@
  * `git check-ignore` — whether a path is excluded by the ignore rules.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * if (await GitTasks.isIgnored((s) => s.paths("cov_profile"))) {
  *   // the coverage artifacts are excluded, as they should be
  * }

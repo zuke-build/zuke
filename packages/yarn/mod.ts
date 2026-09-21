@@ -7,7 +7,7 @@
  * documented on each method).
  *
  * ```ts
- * import { YarnTasks } from "jsr:@zuke/yarn";
+ * import { YarnTasks } from "@zuke/yarn";
  *
  * await YarnTasks.install((s) => s.immutable());
  * await YarnTasks.run((s) => s.script("build"));

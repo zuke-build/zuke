@@ -7,7 +7,7 @@
  * the task function builds the command line and executes it.
  *
  * ```ts
- * import { NpmTasks } from "jsr:@zuke/npm";
+ * import { NpmTasks } from "@zuke/npm";
  * await NpmTasks.ci((s) => s.omit("dev"));
  * await NpmTasks.run((s) => s.script("build").workspace("app"));
  * const stale = await NpmTasks.outdatedEntries();

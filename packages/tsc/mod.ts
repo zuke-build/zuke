@@ -12,7 +12,7 @@
  * {@link TscTasks.build} project-references build (`tsc --build`).
  *
  * ```ts
- * import { TscTasks } from "jsr:@zuke/tsc";
+ * import { TscTasks } from "@zuke/tsc";
  * await TscTasks.tsc((s) => s.project("tsconfig.json").noEmit());
  * await TscTasks.build((s) => s.projects("packages/a", "packages/b"));
  * ```

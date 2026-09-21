@@ -5,7 +5,7 @@ Typed [Redocly CLI](https://redocly.com/docs/cli) task wrappers for
 `split` for OpenAPI descriptions.
 
 ```ts
-import { RedoclyTasks } from "jsr:@zuke/redocly";
+import { RedoclyTasks } from "@zuke/redocly";
 
 await RedoclyTasks.lint((s) =>
   s.paths("openapi.yaml").skipRule("no-empty-servers").format("summary")
@@ -31,7 +31,7 @@ Configure a fluent settings object in a lambda; the task builds the argv and
 runs it.
 
 ```ts
-import { RedoclyTasks } from "jsr:@zuke/redocly";
+import { RedoclyTasks } from "@zuke/redocly";
 await RedoclyTasks.lint((s) => s.paths("openapi.yaml").format("summary"));
 ```
 @module

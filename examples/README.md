@@ -23,5 +23,15 @@ the examples always match the source you are reading, and `./zuke examplesCheck`
 type-checks every example and lists its targets on every CI run. Copied
 elsewhere, the same imports resolve to the published packages.
 
-To add the `./zuke` launcher and a `deno.json` task to a copy, run `zuke setup`
-in it — the scaffold leaves an existing `zuke.ts` alone.
+These inline `jsr:` specifiers are the one place the docs still use them, and
+deliberately so: an example carries no `deno.json`, and giving it one would cut
+it out of the workspace — Deno then ignores the parent workspace config, and the
+gate above would check the examples against the _published_ packages instead of
+the source in this repository. Everywhere else, `@zuke/*` is imported by bare
+specifier and declared in `deno.json`, because Deno's default lint set rejects
+an inline specifier under `no-import-prefix`.
+
+So when you copy an example, run `zuke setup` in the copy. It adds the `./zuke`
+launcher and a `deno.json` — including the `imports` entries — and leaves the
+existing `zuke.ts` alone; switch its imports to the bare `@zuke/…` form
+afterwards and `deno task lint` stays clean.

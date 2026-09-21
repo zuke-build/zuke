@@ -12,7 +12,7 @@
  * side of a project instead of shelling out to a script.
  *
  * ```ts
- * import { NodeTasks } from "jsr:@zuke/node";
+ * import { NodeTasks } from "@zuke/node";
  * await NodeTasks.run((s) => s.script("server.js").enableSourceMaps());
  * const spec = await NodeTasks.evaluate("tools/openapi.mjs");
  * ```

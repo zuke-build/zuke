@@ -10,7 +10,7 @@
  * argv and runs it.
  *
  * ```ts
- * import { OpenapiTsTasks } from "jsr:@zuke/openapi-ts";
+ * import { OpenapiTsTasks } from "@zuke/openapi-ts";
  * await OpenapiTsTasks.generate((s) =>
  *   s.input("openapi.yaml").output("src/client")
  * );

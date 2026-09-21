@@ -9,7 +9,7 @@ one line are noted in their JSDoc (e.g. `.immutable()` is Berry, `dlx` is
 Berry).
 
 ```ts
-import { YarnTasks } from "jsr:@zuke/yarn";
+import { YarnTasks } from "@zuke/yarn";
 
 await YarnTasks.install((s) => s.immutable());
 await YarnTasks.run((s) => s.script("build"));
@@ -28,7 +28,7 @@ build targets (Yarn Classic v1 and Berry v2+; version-specific options are
 documented on each method).
 
 ```ts
-import { YarnTasks } from "jsr:@zuke/yarn";
+import { YarnTasks } from "@zuke/yarn";
 
 await YarnTasks.install((s) => s.immutable());
 await YarnTasks.run((s) => s.script("build"));

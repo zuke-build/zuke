@@ -6,7 +6,7 @@
  * build targets (including builds that drive Node projects).
  *
  * ```ts
- * import { NpmTasks } from "jsr:@zuke/npm";
+ * import { NpmTasks } from "@zuke/npm";
  *
  * await NpmTasks.ci();
  * await NpmTasks.run((s) => s.script("build"));

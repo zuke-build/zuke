@@ -6,7 +6,7 @@
  * a commit SHA, the repository's root, or the nearest tag.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * const sha = await GitTasks.revision((s) => s.short().rev("HEAD"));
  * await GitTasks.describe((s) => s.tags().abbrev(0));
  * ```

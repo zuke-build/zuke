@@ -6,7 +6,7 @@
  * state: `npm init`, `pkg`, `config`, and `cache`.
  *
  * ```ts
- * import { NpmTasks } from "jsr:@zuke/npm";
+ * import { NpmTasks } from "@zuke/npm";
  * const version = await NpmTasks.pkgGet("version");
  * await NpmTasks.pkg((s) => s.set(`version=${next}`));
  * await NpmTasks.cache((s) => s.verify());

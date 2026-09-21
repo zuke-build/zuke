@@ -8,7 +8,7 @@
  * and executes it.
  *
  * ```ts
- * import { KubectlTasks } from "jsr:@zuke/kubectl";
+ * import { KubectlTasks } from "@zuke/kubectl";
  *
  * await KubectlTasks.apply((s) => s.file("k8s/").namespace("prod"));
  * await KubectlTasks.rollout((s) => s.status().resource("deployment/api"));

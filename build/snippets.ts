@@ -192,3 +192,72 @@ export function formatSnippetFailures(failures: SnippetFailure[]): string {
     "Fix the snippet, or remove its `<!-- check -->` marker if it is " +
     "intentionally partial.";
 }
+
+/**
+ * A documented import that inlines a `jsr:@zuke/…` specifier.
+ *
+ * The published docs import `@zuke/*` by bare specifier and declare it in
+ * `deno.json`, because Deno's default lint set rejects an inline `jsr:`
+ * specifier under `no-import-prefix` — so a snippet written the other way
+ * hands a reader a line that fails their own `deno task lint` the moment they
+ * paste it. Anchored on `from "…"` so a command line (`deno doc
+ * jsr:@zuke/deno`, `deno run -A jsr:@zuke/cli`) is untouched: there the `jsr:`
+ * specifier is correct and the only thing that works.
+ */
+const INLINE_ZUKE_IMPORT = /from\s+"jsr:@zuke\/[^"]*"/;
+
+/** A documented import that inlines a specifier, with where it was found. */
+export interface InlineSpecifier {
+  /** The markdown file it appears in (repo-relative). */
+  file: string;
+  /** The 1-based line number. */
+  line: number;
+  /** The offending line, trimmed. */
+  text: string;
+}
+
+/**
+ * Find every inlined `jsr:@zuke/…` import across `files`.
+ *
+ * This is the guard that keeps the sweep from rotting. {@link
+ * extractCheckedSnippets} normalises a snippet's specifiers before checking
+ * it, so `deno check` alone can never notice the inline form coming back — and
+ * inside this repository it resolves to the workspace and type-checks happily
+ * either way. Only a direct scan catches it.
+ */
+export function findInlineSpecifiers(
+  markdown: string,
+  file: string,
+): InlineSpecifier[] {
+  const found: InlineSpecifier[] = [];
+  const lines = markdown.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    if (INLINE_ZUKE_IMPORT.test(lines[i])) {
+      found.push({ file, line: i + 1, text: lines[i].trim() });
+    }
+  }
+  return found;
+}
+
+/** Scan every file for inlined specifiers, in file then document order. */
+export async function collectInlineSpecifiers(
+  files: string[],
+): Promise<InlineSpecifier[]> {
+  const all: InlineSpecifier[] = [];
+  for (const file of files) {
+    all.push(...findInlineSpecifiers(await FileTasks.readText(file), file));
+  }
+  return all;
+}
+
+/** Render the inlined specifiers as one friendly, actionable error message. */
+export function formatInlineSpecifiers(found: InlineSpecifier[]): string {
+  const lines = found.map((f) => `  ${f.file}:${f.line}  ${f.text}`);
+  return `${found.length} documented import(s) inline a jsr: specifier:\n` +
+    `${lines.join("\n")}\n\n` +
+    'Import `@zuke/*` by bare specifier — `from "@zuke/core"` — and declare ' +
+    'it in `deno.json` ("@zuke/core": "jsr:@zuke/core@^1"), which is what ' +
+    "`deno add` writes. Deno's default lint set rejects an inline specifier " +
+    "under `no-import-prefix`, so a reader who pastes one fails their own " +
+    "`deno task lint`. Command lines keep the `jsr:` specifier.";
+}

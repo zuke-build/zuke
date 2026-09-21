@@ -6,7 +6,7 @@
  * packages land.
  *
  * ```ts
- * import { GcloudTasks } from "jsr:@zuke/gcloud";
+ * import { GcloudTasks } from "@zuke/gcloud";
  * await GcloudTasks.artifactsImagesList((s) =>
  *   s.repository("us-central1-docker.pkg.dev/proj/images").includeTags()
  * );

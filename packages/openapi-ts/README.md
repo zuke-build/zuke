@@ -8,7 +8,7 @@ type-safe client. Arguments stay a discrete argv array, so command construction
 is injection-free.
 
 ```ts
-import { OpenapiTsTasks } from "jsr:@zuke/openapi-ts";
+import { OpenapiTsTasks } from "@zuke/openapi-ts";
 
 await OpenapiTsTasks.generate((s) =>
   s.input("openapi.yaml").output("src/client").client("@hey-api/client-fetch")
@@ -41,7 +41,7 @@ client. Configure a fluent settings object in a lambda; the task builds the
 argv and runs it.
 
 ```ts
-import { OpenapiTsTasks } from "jsr:@zuke/openapi-ts";
+import { OpenapiTsTasks } from "@zuke/openapi-ts";
 await OpenapiTsTasks.generate((s) =>
   s.input("openapi.yaml").output("src/client")
 );

@@ -6,7 +6,7 @@ settings-lambda API. `fmt` formats files in place; `check` verifies formatting.
 Arguments stay a discrete argv array, so command construction is injection-free.
 
 ```ts
-import { DprintTasks } from "jsr:@zuke/dprint";
+import { DprintTasks } from "@zuke/dprint";
 
 await DprintTasks.check((s) => s.config("dprint.json"));
 await DprintTasks.fmt((s) => s.files("src").excludes("**/*.md").incremental());
@@ -31,7 +31,7 @@ Configure a fluent settings object in a lambda; the task builds the argv and
 runs it. `fmt` formats files in place; `check` verifies formatting.
 
 ```ts
-import { DprintTasks } from "jsr:@zuke/dprint";
+import { DprintTasks } from "@zuke/dprint";
 await DprintTasks.check((s) => s.config("dprint.json"));
 ```
 @module

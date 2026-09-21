@@ -10,7 +10,7 @@ external Cloud-Scheduler-plus-webhook dance and keep the schedule in code, under
 review, next to everything else it triggers.
 
 ```ts
-import { Build, cicd, run, target } from "jsr:@zuke/core";
+import { Build, cicd, run, target } from "@zuke/core";
 
 class Nightly extends Build {
   ci = cicd({

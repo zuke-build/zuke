@@ -5,7 +5,7 @@
  * `git blame` — which commit last touched each line of a file.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * const lines = await GitTasks.blameLines((s) =>
  *   s.file("packages/core/mod.ts").lineRange(1, 40)
  * );

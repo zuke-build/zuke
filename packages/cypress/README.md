@@ -5,7 +5,7 @@ Typed [Cypress](https://cypress.io) CLI task wrappers for
 `install`, `verify`, and `info`.
 
 ```ts
-import { CypressTasks } from "jsr:@zuke/cypress";
+import { CypressTasks } from "@zuke/cypress";
 
 await CypressTasks.run((s) => s.e2e().browser("chrome").spec("cypress/e2e/**"));
 ```
@@ -23,7 +23,7 @@ Cypress (https://cypress.io) CLI (end-to-end and component testing), for use
 in Zuke builds.
 
 ```ts
-import { CypressTasks } from "jsr:@zuke/cypress";
+import { CypressTasks } from "@zuke/cypress";
 
 await CypressTasks.run((s) => s.e2e().browser("chrome"));
 ```

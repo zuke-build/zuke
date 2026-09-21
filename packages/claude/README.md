@@ -8,7 +8,7 @@ builders and `update`. Arguments stay a discrete argv array, so command
 construction is injection-free.
 
 ```ts
-import { ClaudeTasks } from "jsr:@zuke/claude";
+import { ClaudeTasks } from "@zuke/claude";
 
 // Headless prompt: capture a structured response.
 const out = await ClaudeTasks.run((s) =>
@@ -52,7 +52,7 @@ with the `mcp`/`config` builders, and self-update with `update` — all in the
 settings-lambda style shared by every Zuke tool wrapper.
 
 ```ts
-import { ClaudeTasks } from "jsr:@zuke/claude";
+import { ClaudeTasks } from "@zuke/claude";
 
 await ClaudeTasks.run((s) =>
   s.prompt("Draft a release note for the staged diff").model("sonnet")

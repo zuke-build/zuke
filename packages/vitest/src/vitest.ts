@@ -12,7 +12,7 @@
  * via {@link VitestSettings.watch}.
  *
  * ```ts
- * import { VitestTasks } from "jsr:@zuke/vitest";
+ * import { VitestTasks } from "@zuke/vitest";
  * await VitestTasks.run((s) => s.coverage().reporter("dot"));
  * ```
  *

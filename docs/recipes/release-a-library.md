@@ -11,10 +11,10 @@ a typed wrapper, and a chain you can stop anywhere.
 <!-- check -->
 
 ```ts
-import { Build, FileTasks, parameter, run, target } from "jsr:@zuke/core";
-import { DenoTasks } from "jsr:@zuke/deno";
-import { GhTasks } from "jsr:@zuke/gh";
-import { GitTasks } from "jsr:@zuke/git";
+import { Build, FileTasks, parameter, run, target } from "@zuke/core";
+import { DenoTasks } from "@zuke/deno";
+import { GhTasks } from "@zuke/gh";
+import { GitTasks } from "@zuke/git";
 
 class Release extends Build {
   // `--version 1.1.0` on the command line, or VERSION in the environment.

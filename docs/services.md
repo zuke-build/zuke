@@ -15,9 +15,9 @@ kill it (which never happens when the tests fail).
 <!-- check -->
 
 ```ts
-import { Build, run, service, target, tcpReachable } from "jsr:@zuke/core";
-import { $ } from "jsr:@zuke/core/shell";
-import { DenoTasks } from "jsr:@zuke/deno";
+import { Build, run, service, target, tcpReachable } from "@zuke/core";
+import { $ } from "@zuke/core/shell";
+import { DenoTasks } from "@zuke/deno";
 
 class E2E extends Build {
   api = service()

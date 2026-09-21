@@ -8,7 +8,7 @@
  * fluent settings object in a lambda; the task builds the argv and runs it.
  *
  * ```ts
- * import { HuskyTasks } from "jsr:@zuke/husky";
+ * import { HuskyTasks } from "@zuke/husky";
  * await HuskyTasks.init();
  * await HuskyTasks.install();
  * ```

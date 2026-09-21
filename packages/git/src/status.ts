@@ -5,7 +5,7 @@
  * `git status` — the state of the working tree, either printed or parsed.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * await GitTasks.status((s) => s.short().branch());
  * const changes = await GitTasks.statusEntries();
  * if (changes.length > 0) throw new Error("the working tree is dirty");

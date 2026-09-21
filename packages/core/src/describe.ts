@@ -148,7 +148,7 @@ export function describeBuildSurface(
  * available to tooling and agents that introspect a build in code.
  *
  * ```ts
- * import { describeCli } from "jsr:@zuke/core";
+ * import { describeCli } from "@zuke/core";
  * const surface = describeCli(new MyBuild());
  * console.log(surface.targets.map((t) => t.name));
  * ```

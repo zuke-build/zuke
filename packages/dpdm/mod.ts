@@ -7,7 +7,7 @@
  * circular-import analysis), for use in Zuke builds.
  *
  * ```ts
- * import { DpdmTasks } from "jsr:@zuke/dpdm";
+ * import { DpdmTasks } from "@zuke/dpdm";
  *
  * await DpdmTasks.analyze((s) =>
  *   s.noTree().noWarning().exitCode("circular:1").entries("src/index.ts")

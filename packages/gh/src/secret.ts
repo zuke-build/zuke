@@ -6,7 +6,7 @@
  * Dependabot and Codespaces read.
  *
  * ```ts
- * import { GhTasks } from "jsr:@zuke/gh";
+ * import { GhTasks } from "@zuke/gh";
  * await GhTasks.secretSet((s) => s.name("NPM_TOKEN").body(token.value));
  * await GhTasks.secretDelete((s) => s.name("OLD_TOKEN"));
  * ```

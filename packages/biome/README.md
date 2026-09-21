@@ -5,7 +5,7 @@ Typed [Biome](https://biomejs.dev) CLI task wrappers for
 `lint`, and `ci`.
 
 ```ts
-import { BiomeTasks } from "jsr:@zuke/biome";
+import { BiomeTasks } from "@zuke/biome";
 
 await BiomeTasks.ci((s) => s.paths("src")); // read-only, CI-tuned
 await BiomeTasks.check((s) => s.write().paths("src")); // apply safe fixes
@@ -23,7 +23,7 @@ await BiomeTasks.check((s) => s.write().paths("src")); // apply safe fixes
 CLI (lint + format + import organizing in one tool), for use in Zuke builds.
 
 ```ts
-import { BiomeTasks } from "jsr:@zuke/biome";
+import { BiomeTasks } from "@zuke/biome";
 
 await BiomeTasks.ci((s) => s.paths("src"));
 await BiomeTasks.check((s) => s.write().paths("src"));

@@ -10,8 +10,8 @@
  * Used inside a `.waitsFor(...)` gate:
  *
  * ```ts
- * import { Build, run, target } from "jsr:@zuke/core";
- * import { githubWorkflow, readWorkflowResult } from "jsr:@zuke/gh";
+ * import { Build, run, target } from "@zuke/core";
+ * import { githubWorkflow, readWorkflowResult } from "@zuke/gh";
  *
  * class Release extends Build {
  *   e2e = target().waitsFor((s) =>

@@ -44,8 +44,8 @@ Both return the installed binary's [`AbsolutePath`](./paths.md); hand it to a
 <!-- check -->
 
 ```ts
-import { ToolTasks } from "jsr:@zuke/core";
-import { CmdTasks } from "jsr:@zuke/cmd";
+import { ToolTasks } from "@zuke/core";
+import { CmdTasks } from "@zuke/cmd";
 
 const bin = await ToolTasks.install((s) =>
   s
@@ -153,8 +153,8 @@ the **entire directory** (symlinks included), and resolves to the extracted
 tree's **root** rather than to a single copied-out binary.
 
 ```ts
-import { ToolTasks } from "jsr:@zuke/core";
-import { CmdTasks } from "jsr:@zuke/cmd";
+import { ToolTasks } from "@zuke/core";
+import { CmdTasks } from "@zuke/cmd";
 
 const node = await ToolTasks.installTree((s) =>
   s
@@ -206,9 +206,9 @@ and returns a `Map<name, AbsolutePath>` (a tree's entry is its extracted root
 directory).
 
 ```ts
-import { Build, target, toolchain } from "jsr:@zuke/core";
-import { HelmTasks } from "jsr:@zuke/helm";
-import { KubectlTasks } from "jsr:@zuke/kubectl";
+import { Build, target, toolchain } from "@zuke/core";
+import { HelmTasks } from "@zuke/helm";
+import { KubectlTasks } from "@zuke/kubectl";
 
 const arches = { x86_64: "amd64", aarch64: "arm64" } as const;
 
@@ -273,8 +273,8 @@ Not every tool ships a release binary — many (`vitest`, `dprint`, `@nestjs/cli
 a version-pinned, cached tool without an ambient `npm ci`:
 
 ```ts
-import { Build, target, toolchain } from "jsr:@zuke/core";
-import { VitestTasks } from "jsr:@zuke/vitest";
+import { Build, target, toolchain } from "@zuke/core";
+import { VitestTasks } from "@zuke/vitest";
 
 class Test extends Build {
   tools = toolchain((t) => t.npm({ name: "vitest", version: "4.1.9" }));
@@ -311,9 +311,9 @@ Both `ToolTasks.install` and `toolchain().install()` hand you an `AbsolutePath`.
 Point a tool at it three ways:
 
 ```ts
-import { HelmTasks } from "jsr:@zuke/helm";
-import { CmdTasks } from "jsr:@zuke/cmd";
-import { defineTool } from "jsr:@zuke/core/tooling";
+import { HelmTasks } from "@zuke/helm";
+import { CmdTasks } from "@zuke/cmd";
+import { defineTool } from "@zuke/core/tooling";
 
 const bin = await ToolTasks.install((s) => s.name("helm").url(helmUrl));
 
@@ -376,7 +376,7 @@ counterparts of `isCI()` for "what am I running on":
 <!-- check -->
 
 ```ts
-import { hostPlatform, operatingSystem } from "jsr:@zuke/core";
+import { hostPlatform, operatingSystem } from "@zuke/core";
 
 if (operatingSystem() === "macos") { /* … */ }
 const cpu = hostPlatform().archLabel({ x86_64: "amd64", aarch64: "arm64" });

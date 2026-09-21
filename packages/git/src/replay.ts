@@ -6,7 +6,7 @@
  * existing commit onto the current branch, forwards and backwards.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * await GitTasks.cherryPick((s) => s.commits(sha));
  * await GitTasks.revert((s) => s.commits(sha).noEdit());
  * await GitTasks.cherryPick((s) => s.abort()); // unwind a conflicted one

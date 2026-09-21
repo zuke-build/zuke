@@ -12,7 +12,7 @@
  * arguments rather than a settings-lambda.
  *
  * ```ts
- * import { FileTasks } from "jsr:@zuke/core";
+ * import { FileTasks } from "@zuke/core";
  *
  * await FileTasks.cleanDirectory("dist");        // empty it if it exists
  * await FileTasks.createDirectory("dist/assets"); // mkdir -p

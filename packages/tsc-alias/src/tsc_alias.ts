@@ -13,7 +13,7 @@
  * resolving `./tsconfig.json`, so no setting is required.
  *
  * ```ts
- * import { TscAliasTasks } from "jsr:@zuke/tsc-alias";
+ * import { TscAliasTasks } from "@zuke/tsc-alias";
  * await TscAliasTasks.run((s) => s.project("tsconfig.json").resolveFullPaths());
  * ```
  *

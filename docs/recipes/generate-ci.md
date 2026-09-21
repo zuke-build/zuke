@@ -11,8 +11,8 @@ moment the committed copy drifts.
 <!-- check -->
 
 ```ts
-import { Build, cicd, run, target } from "jsr:@zuke/core";
-import { DenoTasks } from "jsr:@zuke/deno";
+import { Build, cicd, run, target } from "@zuke/core";
+import { DenoTasks } from "@zuke/deno";
 
 class MyBuild extends Build {
   // one line → .github/workflows/ci.yml, one job per target
@@ -95,8 +95,8 @@ same two targets; the default path follows the provider:
 <!-- check -->
 
 ```ts
-import { Build, cicd, run, target } from "jsr:@zuke/core";
-import { DenoTasks } from "jsr:@zuke/deno";
+import { Build, cicd, run, target } from "@zuke/core";
+import { DenoTasks } from "@zuke/deno";
 
 class Pipeline extends Build {
   ci = cicd({ provider: "github", fanOut: true }); // .github/workflows/ci.yml

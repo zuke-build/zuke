@@ -6,7 +6,7 @@
  * container back into an image: `docker cp`, `commit`, and `export`.
  *
  * ```ts
- * import { DockerTasks } from "jsr:@zuke/docker";
+ * import { DockerTasks } from "@zuke/docker";
  * // Recover a test report from a container that has already exited.
  * await DockerTasks.cp((s) => s.from("tests:/out/report.xml").to("reports/"));
  * ```

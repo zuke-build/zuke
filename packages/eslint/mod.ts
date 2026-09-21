@@ -8,7 +8,7 @@
  * runs it.
  *
  * ```ts
- * import { EslintTasks } from "jsr:@zuke/eslint";
+ * import { EslintTasks } from "@zuke/eslint";
  * await EslintTasks.lint((s) => s.paths("src").ext(".ts", ".tsx").fix());
  * ```
  *

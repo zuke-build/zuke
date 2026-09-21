@@ -5,7 +5,7 @@
  * `git commit` — recording what is staged.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * await GitTasks.commit((s) => s.all().message("ci: refresh generated docs"));
  * ```
  *

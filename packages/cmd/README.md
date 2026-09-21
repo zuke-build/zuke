@@ -5,7 +5,7 @@ task — a generic, injection-safe tool wrapper for tools without a dedicated
 package.
 
 ```ts
-import { CmdTasks } from "jsr:@zuke/cmd";
+import { CmdTasks } from "@zuke/cmd";
 
 await CmdTasks.exec("git", (s) => s.args("rev-parse", "HEAD"));
 ```
@@ -32,7 +32,7 @@ here instead gives up typed flags and the wrapper's tool resolution, so the
 example below deliberately uses a tool Zuke does not wrap.
 
 ```ts
-import { CmdTasks } from "jsr:@zuke/cmd";
+import { CmdTasks } from "@zuke/cmd";
 
 await CmdTasks.exec("shellcheck", (s) => s.args("--severity", "warning"));
 ```

@@ -6,7 +6,7 @@
  * create, edit, delete, list, and clone from another repository.
  *
  * ```ts
- * import { GhTasks } from "jsr:@zuke/gh";
+ * import { GhTasks } from "@zuke/gh";
  * await GhTasks.labelCreate((s) => s.name("flaky").color("d73a4a").force());
  * const labels = await GhTasks.labelListEntries((s) => s.search("bug"));
  * ```

@@ -10,7 +10,7 @@
  * settings-lambda style shared by every Zuke tool wrapper.
  *
  * ```ts
- * import { ClaudeTasks } from "jsr:@zuke/claude";
+ * import { ClaudeTasks } from "@zuke/claude";
  *
  * await ClaudeTasks.run((s) =>
  *   s.prompt("Draft a release note for the staged diff").model("sonnet")

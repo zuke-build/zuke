@@ -7,7 +7,7 @@
  * and `link`.
  *
  * ```ts
- * import { NpmTasks } from "jsr:@zuke/npm";
+ * import { NpmTasks } from "@zuke/npm";
  * await NpmTasks.ci((s) => s.omit("dev"));
  * await NpmTasks.update((s) => s.packages("typescript"));
  * await NpmTasks.prune((s) => s.omit("dev")); // drop devDependencies before packaging

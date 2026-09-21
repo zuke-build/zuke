@@ -10,7 +10,7 @@ and pass anything else with `.flag(...)`. Arguments stay a discrete argv array,
 so command construction is injection-free.
 
 ```ts
-import { GhTasks } from "jsr:@zuke/gh";
+import { GhTasks } from "@zuke/gh";
 
 await GhTasks.releaseCreate((s) =>
   s.repo("acme/app").tag("v1.2.3").title("v1.2.3").generateNotes().latest()
@@ -33,7 +33,7 @@ inherits.
 | `release` | `releaseCreate`, `releaseList`, `releaseListEntries`, `releaseView`, `releaseUpload`, `releaseDownload`, `releaseEdit`, `releaseDelete` |
 
 ```ts
-import { GhTasks } from "jsr:@zuke/gh";
+import { GhTasks } from "@zuke/gh";
 
 await GhTasks.prMerge((s) => s.selector(123).squash().deleteBranch().auto());
 await GhTasks.issueClose((s) => s.selector(42).reason("completed"));
@@ -74,7 +74,7 @@ what conclusion.
 | `cache`    | `cacheList`, `cacheListEntries`, `cacheDelete`                                                            |
 
 ```ts
-import { GhTasks } from "jsr:@zuke/gh";
+import { GhTasks } from "@zuke/gh";
 
 const failed = await GhTasks.runListEntries((s) =>
   s.status("failure").branch("master").limit(20)
@@ -141,8 +141,8 @@ run until it finishes**, and resurfaces its per-job conclusions — replacing
 hand-rolled "dispatch, then poll `gh run list`" glue.
 
 ```ts
-import { Build, run, target } from "jsr:@zuke/core";
-import { githubWorkflow, readWorkflowResult } from "jsr:@zuke/gh";
+import { Build, run, target } from "@zuke/core";
+import { githubWorkflow, readWorkflowResult } from "@zuke/gh";
 
 class Release extends Build {
   e2e = target().waitsFor((s) =>
@@ -190,7 +190,7 @@ and the newest silently wins. That matters when the name is a **required status
 context**.
 
 ```ts
-import { GhTasks } from "jsr:@zuke/gh";
+import { GhTasks } from "@zuke/gh";
 
 // A token scoped to this one job: `checks: write` and nothing else.
 const { token } = await GhTasks.appToken((s) =>
@@ -244,7 +244,7 @@ wrapper plus {@link githubWorkflow}, a wait trigger that dispatches and awaits
 an external GitHub Actions workflow.
 
 ```ts
-import { GhTasks, githubWorkflow } from "jsr:@zuke/gh";
+import { GhTasks, githubWorkflow } from "@zuke/gh";
 
 await GhTasks.run((s) => s.command("pr", "list").flag("state", "open"));
 

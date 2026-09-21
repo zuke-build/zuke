@@ -6,7 +6,7 @@
  * what refs one of them currently has.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * await GitTasks.remote((s) => s.add("upstream", "https://host/up.git"));
  * const remotes = await GitTasks.remoteList(); // { name, fetchUrl, pushUrl }[]
  * await GitTasks.lsRemote((s) => s.heads().remote("origin").patterns("main"));

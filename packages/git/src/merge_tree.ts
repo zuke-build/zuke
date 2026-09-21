@@ -6,7 +6,7 @@
  * or the working tree.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * const clean = await GitTasks.mergesCleanly((s) =>
  *   s.branches("HEAD", "origin/main")
  * );

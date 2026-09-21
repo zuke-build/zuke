@@ -5,7 +5,7 @@ for [Zuke](https://github.com/zuke-build/zuke#readme) builds — run the
 configured linters over the staged files, or over the files a diff touched.
 
 ```ts
-import { LintStagedTasks } from "jsr:@zuke/lint-staged";
+import { LintStagedTasks } from "@zuke/lint-staged";
 
 await LintStagedTasks.run((s) => s.config(".lintstagedrc.json").relative());
 await LintStagedTasks.run((s) => s.diff("main...HEAD").allowEmpty());
@@ -25,7 +25,7 @@ Configure a fluent settings object in a lambda; the task builds the argv and
 runs it.
 
 ```ts
-import { LintStagedTasks } from "jsr:@zuke/lint-staged";
+import { LintStagedTasks } from "@zuke/lint-staged";
 await LintStagedTasks.run((s) => s.config(".lintstagedrc.json").relative());
 ```
 @module

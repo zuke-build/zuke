@@ -8,9 +8,9 @@ construction is injection-free.
 <!-- check -->
 
 ```ts
-import { DenoTasks } from "jsr:@zuke/deno";
-import { NpmTasks } from "jsr:@zuke/npm";
-import { CmdTasks } from "jsr:@zuke/cmd";
+import { DenoTasks } from "@zuke/deno";
+import { NpmTasks } from "@zuke/npm";
+import { CmdTasks } from "@zuke/cmd";
 
 await DenoTasks.test((s) => s.allowAll().coverage("cov_profile"));
 await NpmTasks.run((s) => s.script("build").workspace("app"));
@@ -119,7 +119,7 @@ argv with `arg` / `flag` / `option` (in call order), and the shared chainers
 <!-- check -->
 
 ```ts
-import { defineTool } from "jsr:@zuke/core/tooling";
+import { defineTool } from "@zuke/core/tooling";
 
 const terraform = defineTool("terraform");
 await terraform((s) => s.arg("plan").option("out", "plan.tfplan"));

@@ -5,7 +5,7 @@ Typed `bun` CLI task wrappers for
 `remove`, `run`, `x` (bunx), and `test`.
 
 ```ts
-import { BunTasks } from "jsr:@zuke/bun";
+import { BunTasks } from "@zuke/bun";
 
 await BunTasks.install((s) => s.frozenLockfile());
 await BunTasks.run((s) => s.script("build"));
@@ -24,7 +24,7 @@ await BunTasks.test((s) => s.coverage());
 build targets (package management, scripts, and the built-in test runner).
 
 ```ts
-import { BunTasks } from "jsr:@zuke/bun";
+import { BunTasks } from "@zuke/bun";
 
 await BunTasks.install((s) => s.frozenLockfile());
 await BunTasks.run((s) => s.script("build"));

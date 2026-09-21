@@ -6,7 +6,7 @@
  * build.
  *
  * ```ts
- * import { GcloudTasks } from "jsr:@zuke/gcloud";
+ * import { GcloudTasks } from "@zuke/gcloud";
  * await GcloudTasks.buildsSubmit((s) =>
  *   s.source(".").tag(image).timeout("600s")
  * );

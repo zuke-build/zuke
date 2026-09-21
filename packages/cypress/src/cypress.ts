@@ -7,7 +7,7 @@
  * lambda, and the task function builds the command line and executes it.
  *
  * ```ts
- * import { CypressTasks } from "jsr:@zuke/cypress";
+ * import { CypressTasks } from "@zuke/cypress";
  * await CypressTasks.run((s) => s.e2e().browser("chrome").spec("cypress/e2e/**"));
  * ```
  *

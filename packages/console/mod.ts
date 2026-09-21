@@ -8,7 +8,7 @@
  * (`line`, `rule`, `box`, `table`, target `header`/`summary`).
  *
  * ```ts
- * import { ConsoleTasks as Log } from "jsr:@zuke/console";
+ * import { ConsoleTasks as Log } from "@zuke/console";
  *
  * Log.rule("Deploy");
  * Log.info("pushing [bold]core@1.2.0[/]");
@@ -18,8 +18,8 @@
  * A build can also route the executor's own banners through this package:
  *
  * ```ts
- * import { run } from "jsr:@zuke/core";
- * import { consoleRenderer } from "jsr:@zuke/console";
+ * import { run } from "@zuke/core";
+ * import { consoleRenderer } from "@zuke/console";
  *
  * await run(MyBuild, { renderer: consoleRenderer });
  * ```

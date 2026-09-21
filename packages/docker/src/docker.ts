@@ -8,7 +8,7 @@
  * and executes it.
  *
  * ```ts
- * import { DockerTasks } from "jsr:@zuke/docker";
+ * import { DockerTasks } from "@zuke/docker";
  * await DockerTasks.build((s) => s.tag("app:latest").file("Dockerfile"));
  * await DockerTasks.push((s) => s.image("app:latest"));
  * const running = await DockerTasks.psEntries();

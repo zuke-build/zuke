@@ -8,7 +8,7 @@
  * `gcloud auth print-access-token`).
  *
  * ```ts
- * import { GcsTasks } from "jsr:@zuke/gcloud";
+ * import { GcsTasks } from "@zuke/gcloud";
  *
  * await GcsTasks.writeJson("my-bucket", "state/deploy.json", { slot: "sit-7" });
  * const state = await GcsTasks.readJson<{ slot: string }>(

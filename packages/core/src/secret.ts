@@ -13,7 +13,7 @@
  * so Zuke ships no provider SDKs and no registry to maintain.
  *
  * ```ts
- * import { execSecret, fileSecret, parameter } from "jsr:@zuke/core";
+ * import { execSecret, fileSecret, parameter } from "@zuke/core";
  *
  * // 1Password CLI:
  * const dbPassword = parameter("Database password")

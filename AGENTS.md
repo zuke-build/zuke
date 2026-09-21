@@ -33,8 +33,8 @@ exact signatures are published — read them:
   `deno doc jsr:@zuke/deno`).
 - **On each package's JSR page / README:** a generated `## API` section.
 - **The CLI surface — commands, flags, and a build's actual targets:** run
-  `./zuke --help` (or `deno run -A zuke.ts --help`). It prints the usage grammar,
-  every reserved command (`graph`, `generate-ci`,
+  `./zuke --help` (or `deno run -A zuke.ts --help`). It prints the usage
+  grammar, every reserved command (`graph`, `generate-ci`,
   `completions <print|install> <shell>`, `mcp`, `resume`, `runs`, `cancel`,
   `register`, `doc`) and flag, **plus the current build's targets — with
   descriptions and dependencies — and its parameters.** So an agent asked to set
@@ -56,13 +56,23 @@ The mental model:
   it** (fields initialise top-to-bottom).
 - Make the file runnable with **`await run(MyBuild)`** at the bottom — no
   `if (import.meta.main)` guard; `run` no-ops when the module is imported.
+- **Import `@zuke/*` by bare specifier, declaring it in `deno.json`** —
+  `import { DenoTasks } from "@zuke/deno";` with
+  `"@zuke/deno": "jsr:@zuke/deno@^1"` in the `imports` block, which is what
+  `deno add jsr:@zuke/deno` writes for you. Never inline the `jsr:` specifier in
+  the import statement: Deno's default lint set (the one that applies when
+  `deno.json` configures no `lint.rules`, which is what `zuke setup` scaffolds)
+  rejects it under `no-import-prefix`, so an inlined one fails the project's own
+  `deno task lint`. The caret major is pinned in the map instead, so a future
+  `@zuke` major cannot land unannounced. A subpath such as `@zuke/core/shell`
+  resolves through the same entry.
 - **Every external tool is a namespaced `*Tasks` object** (`DenoTasks`,
   `NpmTasks`, `DockerTasks`, `GitTasks`, …) configured with a **settings
   lambda** that mirrors the real CLI's flags:
 
   ```ts
-  import { Build, run, target } from "jsr:@zuke/core";
-  import { DenoTasks } from "jsr:@zuke/deno";
+  import { Build, run, target } from "@zuke/core";
+  import { DenoTasks } from "@zuke/deno";
 
   class CI extends Build {
     lint = target().executes(async () => {
@@ -392,22 +402,22 @@ can drift from it. `zuke.ts`'s `ci` target depends on: `format`
 (type-check, then the test suite with the 95% coverage gate), `coverageUpload`
 (skips locally without a `CODECOV_TOKEN`), `apiDocsCheck`, `docLint`,
 `snippetsCheck`, `examplesCheck`, `hclSyncCheck`, `pluginSyncCheck`,
-`launcherSyncCheck`, `skillsCheck`,
-`graphDocCheck`, `pluginVersionCheck`, `prBodyLint`, `actionPinCheck`,
-`security`, and `lockCheck`. Read `zuke.ts`'s `ci` target for the current,
-authoritative list — this is a snapshot, not a second source of truth.
+`launcherSyncCheck`, `skillsCheck`, `graphDocCheck`, `pluginVersionCheck`,
+`prBodyLint`, `actionPinCheck`, `security`, and `lockCheck`. Read `zuke.ts`'s
+`ci` target for the current, authoritative list — this is a snapshot, not a
+second source of truth.
 
 **The lock is part of the gate.** Every entrypoint that loads `zuke.ts` — both
 launchers (once a `deno.lock` exists, which in this repository is always) and
 the root tasks — passes `--frozen`, so a run cannot quietly heal a stale
-`deno.lock` by writing the resolutions it is missing. That mattered: a
-green gate used to be able to mean "the lock resolves _now that we fixed it_"
-while CI, whose checkout has the committed lock, failed with "The lockfile is
-out of date". `deno task` resolves the workspace before running its command, so
-it can still rewrite the lock ahead of a frozen run; `lockCheck` closes that
-from the other side by failing if the run left the lock modified. When you
-deliberately change a dependency, run `deno task lock`, review the diff, and
-commit the lock **in the same change**.
+`deno.lock` by writing the resolutions it is missing. That mattered: a green
+gate used to be able to mean "the lock resolves _now that we fixed it_" while
+CI, whose checkout has the committed lock, failed with "The lockfile is out of
+date". `deno task` resolves the workspace before running its command, so it can
+still rewrite the lock ahead of a frozen run; `lockCheck` closes that from the
+other side by failing if the run left the lock modified. When you deliberately
+change a dependency, run `deno task lock`, review the diff, and commit the lock
+**in the same change**.
 
 ## Repository layout
 
@@ -556,10 +566,10 @@ gemini-extension.json     # Gemini CLI extension manifest (serves skills/)
   `tests/plugin_manifest_test.ts` fails when the manifests disagree.
   `pluginVersionCheck` is the one part of the gate that needs history — it
   compares against `origin/<PR base>`, or `ZUKE_PLUGIN_BASE_REF` when you set
-  one — and it reports itself _skipped_, never passed, in a local clone that
-  has no base to compare against. **On CI a skip is fatal**, because a gate
-  that cannot run is not a gate: it went unnoticed for months that the job's
-  shallow checkout left it with no base ref at all.
+  one — and it reports itself _skipped_, never passed, in a local clone that has
+  no base to compare against. **On CI a skip is fatal**, because a gate that
+  cannot run is not a gate: it went unnoticed for months that the job's shallow
+  checkout left it with no base ref at all.
 
   Two things it insists on beyond "the version differs". It must go **up**, so
   that resolving a version conflict by keeping the lower number is refused. And

@@ -7,7 +7,7 @@
  * the task function builds the command line and executes it.
  *
  * ```ts
- * import { TofuTasks } from "jsr:@zuke/tofu";
+ * import { TofuTasks } from "@zuke/tofu";
  * await TofuTasks.init((s) => s.upgrade());
  * await TofuTasks.apply((s) => s.autoApprove().var("env", "prod"));
  * ```

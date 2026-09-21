@@ -7,7 +7,7 @@ TypeScript and JavaScript libraries. Arguments stay a discrete argv array, so
 command construction is injection-free.
 
 ```ts
-import { TsdownTasks } from "jsr:@zuke/tsdown";
+import { TsdownTasks } from "@zuke/tsdown";
 
 await TsdownTasks.build((s) =>
   s.entry("src/index.ts").format("esm", "cjs").dts().minify().clean()
@@ -38,7 +38,7 @@ Every path argument accepts either a string or an `AbsolutePath` from
 tsdown (https://tsdown.dev) bundler, for use in Zuke builds.
 
 ```ts
-import { TsdownTasks } from "jsr:@zuke/tsdown";
+import { TsdownTasks } from "@zuke/tsdown";
 
 await TsdownTasks.build((s) =>
   s.entry("src/index.ts").format("esm", "cjs").dts().minify().clean()

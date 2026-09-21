@@ -6,7 +6,7 @@
  * `docker exec`.
  *
  * ```ts
- * import { DockerTasks } from "jsr:@zuke/docker";
+ * import { DockerTasks } from "@zuke/docker";
  * await DockerTasks.run((s) => s.rm().image("alpine:3.20").commandArgs("echo", "hi"));
  * await DockerTasks.create((s) => s.image("app:latest").name("app"));
  * await DockerTasks.exec((s) => s.container("app").commandArgs("sh", "-c", "ls"));

@@ -4,7 +4,7 @@ Typed [Storybook](https://storybook.js.org) CLI task wrappers for
 [Zuke](https://github.com/zuke-build/zuke#readme) builds — `dev` and `build`.
 
 ```ts
-import { StorybookTasks } from "jsr:@zuke/storybook";
+import { StorybookTasks } from "@zuke/storybook";
 
 await StorybookTasks.dev((s) => s.port(6006).noOpen().ci());
 await StorybookTasks.build((s) =>
@@ -27,7 +27,7 @@ Configure a fluent settings object in a lambda; the task builds the argv and
 runs it.
 
 ```ts
-import { StorybookTasks } from "jsr:@zuke/storybook";
+import { StorybookTasks } from "@zuke/storybook";
 await StorybookTasks.build((s) => s.outputDir("storybook-static"));
 ```
 @module

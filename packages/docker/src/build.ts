@@ -5,7 +5,7 @@
  * `docker build` — turning a build context and a Dockerfile into an image.
  *
  * ```ts
- * import { DockerTasks } from "jsr:@zuke/docker";
+ * import { DockerTasks } from "@zuke/docker";
  * await DockerTasks.build((s) => s.tag("app:latest").platform("linux/amd64"));
  * ```
  *

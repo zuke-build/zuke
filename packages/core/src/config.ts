@@ -11,7 +11,7 @@
  * machine-specific is ever committed.
  *
  * ```ts
- * import { repoRoot } from "jsr:@zuke/core";
+ * import { repoRoot } from "@zuke/core";
  * const main = repoRoot("src", "main.ts"); // <root>/src/main.ts
  * ```
  *

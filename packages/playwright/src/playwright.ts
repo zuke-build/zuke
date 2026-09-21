@@ -7,7 +7,7 @@
  * the task function builds the command line and executes it.
  *
  * ```ts
- * import { PlaywrightTasks } from "jsr:@zuke/playwright";
+ * import { PlaywrightTasks } from "@zuke/playwright";
  * await PlaywrightTasks.install((s) => s.withDeps());
  * await PlaywrightTasks.test((s) => s.project("chromium").grep("@smoke"));
  * ```

@@ -16,7 +16,7 @@ build's own method, in registration order. Plugins **observe** — they report,
 time, or notify — they don't change the plan or a target's result.
 
 ```ts
-import { type Plugin, run } from "jsr:@zuke/core";
+import { type Plugin, run } from "@zuke/core";
 
 const timing: Plugin = {
   name: "timing",
@@ -85,7 +85,7 @@ import {
   type Configure,
   runSettings,
   ToolSettings,
-} from "jsr:@zuke/core/tooling";
+} from "@zuke/core/tooling";
 
 class MyToolSettings extends ToolSettings {
   #args: string[] = [];

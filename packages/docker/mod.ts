@@ -5,7 +5,7 @@
  * `@zuke/docker` — typed `DockerTasks` wrappers for the `docker` CLI.
  *
  * ```ts
- * import { DockerTasks } from "jsr:@zuke/docker";
+ * import { DockerTasks } from "@zuke/docker";
  *
  * await DockerTasks.build((s) => s.tag("app:latest"));
  * await DockerTasks.run((s) => s.rm().image("app:latest"));

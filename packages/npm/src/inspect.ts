@@ -6,7 +6,7 @@
  * `npm ls`, `outdated`, `audit`, and `sbom`.
  *
  * ```ts
- * import { NpmTasks } from "jsr:@zuke/npm";
+ * import { NpmTasks } from "@zuke/npm";
  * await NpmTasks.ls((s) => s.depth(0));
  * const stale = await NpmTasks.outdatedEntries();
  * const audit = await NpmTasks.auditSummary();

@@ -484,7 +484,7 @@ it mints are verified.
 <!-- check -->
 
 ```ts
-import { Build, protectedResource, run, target } from "jsr:@zuke/core";
+import { Build, protectedResource, run, target } from "@zuke/core";
 
 class ControlPlane extends Build {
   deploy = target().executes(() => {});

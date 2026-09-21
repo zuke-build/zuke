@@ -147,7 +147,7 @@ The same scanners are exposed as Zuke tasks via
 own pipeline:
 
 ```ts
-import { SecurityTasks } from "jsr:@zuke/security";
+import { SecurityTasks } from "@zuke/security";
 
 await SecurityTasks.zizmor((s) => s.paths(".github/workflows"));
 await SecurityTasks.osvScanner((s) => s.lockfile("package-lock.json"));

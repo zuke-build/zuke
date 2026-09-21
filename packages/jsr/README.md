@@ -5,7 +5,7 @@ Typed [JSR](https://jsr.io) CLI task wrappers for
 `remove`.
 
 ```ts
-import { JsrTasks } from "jsr:@zuke/jsr";
+import { JsrTasks } from "@zuke/jsr";
 
 await JsrTasks.publish((s) => s.dryRun().allowSlowTypes());
 await JsrTasks.add((s) => s.packages("@std/assert"));
@@ -24,7 +24,7 @@ typed `JsrTasks` wrappers for the `jsr` CLI (publish, add, remove), plus
 read-only registry queries to check which versions are already published.
 
 ```ts
-import { isPublished, JsrTasks } from "jsr:@zuke/jsr";
+import { isPublished, JsrTasks } from "@zuke/jsr";
 
 if (!(await isPublished("@zuke/core", "0.13.0"))) {
   await JsrTasks.publish((s) => s.allowDirty());

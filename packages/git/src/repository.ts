@@ -6,7 +6,7 @@
  * `git clone`.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * await GitTasks.init((s) => s.initialBranch("main"));
  * await GitTasks.clone((s) => s.repository(url).directory("work").depth(1));
  * ```

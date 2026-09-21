@@ -7,7 +7,7 @@
  * lambda, and the task function builds the command line and executes it.
  *
  * ```ts
- * import { TurboTasks } from "jsr:@zuke/turbo";
+ * import { TurboTasks } from "@zuke/turbo";
  * await TurboTasks.run((s) => s.tasks("build", "test").filter("web").parallel());
  * ```
  *

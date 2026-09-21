@@ -5,7 +5,7 @@
  * `git log` and `git show` — reading history, either printed or parsed.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * await GitTasks.log((s) => s.maxCount(20).oneline());
  * const commits = await GitTasks.logEntries((s) => s.range("v1.2.0", "HEAD"));
  * await GitTasks.show((s) => s.object("HEAD:AGENTS.md"));

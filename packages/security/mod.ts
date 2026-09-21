@@ -6,7 +6,7 @@
  * (zizmor, actionlint, gitleaks, osv-scanner, semgrep, trivy) for Zuke builds.
  *
  * ```ts
- * import { SecurityTasks } from "jsr:@zuke/security";
+ * import { SecurityTasks } from "@zuke/security";
  *
  * await SecurityTasks.zizmor((s) => s.paths(".github/workflows"));
  * await SecurityTasks.osvScanner((s) => s.lockfile("package-lock.json"));

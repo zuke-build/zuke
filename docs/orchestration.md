@@ -16,7 +16,7 @@ The lifecycle has two halves: a run **suspends** at a wait, and is later
 past it only once its trigger is satisfied.
 
 ```ts
-import { Build, externalSignal, target } from "jsr:@zuke/core";
+import { Build, externalSignal, target } from "@zuke/core";
 
 class Deploy extends Build {
   deployToSit = target().executes(async (ctx) => {
@@ -71,8 +71,8 @@ GitHub Actions workflow and suspends until it finishes — replacing hand-rolled
 "dispatch, then poll `gh run list`" glue:
 
 ```ts
-import { Build, run, target } from "jsr:@zuke/core";
-import { githubWorkflow, readWorkflowResult } from "jsr:@zuke/gh";
+import { Build, run, target } from "@zuke/core";
+import { githubWorkflow, readWorkflowResult } from "@zuke/gh";
 
 class Release extends Build {
   e2e = target().waitsFor((s) =>

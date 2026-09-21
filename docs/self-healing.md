@@ -18,9 +18,9 @@ an object with a `remediate(ctx)` method that runs **only after the target body
 fails**. It receives the failure and returns whether the body should be re-run.
 
 ```ts
-import { Build, run, target } from "jsr:@zuke/core";
-import { DenoTasks } from "jsr:@zuke/deno";
-import { aiFixer } from "jsr:@zuke/ai";
+import { Build, run, target } from "@zuke/core";
+import { DenoTasks } from "@zuke/deno";
+import { aiFixer } from "@zuke/ai";
 
 class CI extends Build {
   key = parameter("OpenAI API key").secret().required();
@@ -178,8 +178,8 @@ There's one generic fixer, not one per agent: you pick the agent at the call
 site.
 
 ```ts
-import { agentFixer } from "jsr:@zuke/ai";
-import { ClaudeTasks } from "jsr:@zuke/claude";
+import { agentFixer } from "@zuke/ai";
+import { ClaudeTasks } from "@zuke/claude";
 
 test = target()
   .executes(() => DenoTasks.test((s) => s.allowAll()))
@@ -230,7 +230,7 @@ reached, the next AI step is **skipped (not failed)** with a note, rather than
 running up the bill.
 
 ```ts
-import { budget } from "jsr:@zuke/ai";
+import { budget } from "@zuke/ai";
 
 class CI extends Build {
   key = parameter("OpenAI API key").secret();
@@ -273,7 +273,7 @@ same failure recurs across CI re-runs. A cache hit costs nothing and does not
 draw down the budget.
 
 ```ts
-import { aiCache } from "jsr:@zuke/ai";
+import { aiCache } from "@zuke/ai";
 
 const cache = aiCache((c) => c.dir(".zuke/ai-cache").ttl(86_400)); // 1-day TTL
 aiFixer((f) => f.provider("openai").apiKey(this.key).cache(cache));
@@ -291,7 +291,7 @@ PR comment, so silencing a recurring false positive is a copy-paste of that ID
 into the suppress list (`.zuke/ai-suppress.json`, a JSON array of IDs):
 
 ```ts
-import { suppressions } from "jsr:@zuke/ai";
+import { suppressions } from "@zuke/ai";
 
 securityReviewer((r) =>
   r.provider("openai").apiKey(this.key)

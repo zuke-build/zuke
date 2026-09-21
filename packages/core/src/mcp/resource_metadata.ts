@@ -121,7 +121,7 @@ export class ProtectedResourceSettings {
  * this MCP endpoint (`https://build.example.com/mcp`).
  *
  * ```ts
- * import { Build, protectedResource } from "jsr:@zuke/core";
+ * import { Build, protectedResource } from "@zuke/core";
  *
  * class CI extends Build {
  *   override mcpProtectedResource() {

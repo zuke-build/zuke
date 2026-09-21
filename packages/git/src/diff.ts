@@ -5,7 +5,7 @@
  * `git diff` — what changed, either printed or parsed into paths.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * await GitTasks.diff((s) => s.staged().stat());
  * const changed = await GitTasks.diffNames((s) => s.commits("origin/main"));
  * ```

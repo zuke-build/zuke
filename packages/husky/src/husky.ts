@@ -8,7 +8,7 @@
  * function builds the command line and executes it.
  *
  * ```ts
- * import { HuskyTasks } from "jsr:@zuke/husky";
+ * import { HuskyTasks } from "@zuke/husky";
  * await HuskyTasks.init();
  * await HuskyTasks.install();
  * ```

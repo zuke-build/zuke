@@ -7,7 +7,7 @@ type-safe TypeScript API client and optional mocks. Arguments stay a discrete
 argv array, so command construction is injection-free.
 
 ```ts
-import { OrvalTasks } from "jsr:@zuke/orval";
+import { OrvalTasks } from "@zuke/orval";
 
 await OrvalTasks.generate((s) => s.config("orval.config.ts").clean());
 ```
@@ -33,7 +33,7 @@ optional mocks. Configure a fluent settings object in a lambda; the task
 builds the argv and runs it.
 
 ```ts
-import { OrvalTasks } from "jsr:@zuke/orval";
+import { OrvalTasks } from "@zuke/orval";
 await OrvalTasks.generate((s) => s.config("orval.config.ts").clean());
 ```
 @module

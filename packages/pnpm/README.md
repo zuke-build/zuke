@@ -5,7 +5,7 @@ Typed `pnpm` CLI task wrappers for
 `remove`, `run`, `dlx`, and `publish`.
 
 ```ts
-import { PnpmTasks } from "jsr:@zuke/pnpm";
+import { PnpmTasks } from "@zuke/pnpm";
 
 await PnpmTasks.install((s) => s.frozenLockfile());
 await PnpmTasks.run((s) => s.script("build").filter("app"));
@@ -23,7 +23,7 @@ await PnpmTasks.run((s) => s.script("build").filter("app"));
 build targets (including builds that drive Node/workspace projects).
 
 ```ts
-import { PnpmTasks } from "jsr:@zuke/pnpm";
+import { PnpmTasks } from "@zuke/pnpm";
 
 await PnpmTasks.install((s) => s.frozenLockfile());
 await PnpmTasks.run((s) => s.script("build").filter("app"));

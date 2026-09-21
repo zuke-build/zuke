@@ -6,7 +6,7 @@
  * rerun, cancel, delete, download, and watch.
  *
  * ```ts
- * import { GhTasks } from "jsr:@zuke/gh";
+ * import { GhTasks } from "@zuke/gh";
  * const failed = await GhTasks.runListEntries((s) => s.status("failure").limit(20));
  * await GhTasks.runRerun((s) => s.selector(failed[0].databaseId ?? 0).failed());
  * await GhTasks.runDownload((s) => s.selector(123).name("coverage").dir("artifacts"));

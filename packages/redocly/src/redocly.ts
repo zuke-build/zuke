@@ -8,7 +8,7 @@
  * the command line and executes it.
  *
  * ```ts
- * import { RedoclyTasks } from "jsr:@zuke/redocly";
+ * import { RedoclyTasks } from "@zuke/redocly";
  * await RedoclyTasks.lint((s) => s.paths("openapi.yaml").skipRule("no-empty-servers"));
  * await RedoclyTasks.bundle((s) => s.paths("openapi.yaml").output("dist/openapi.yaml"));
  * ```

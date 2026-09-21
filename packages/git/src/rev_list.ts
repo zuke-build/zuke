@@ -5,7 +5,7 @@
  * `git rev-list` — walking history as a list of commits, and counting it.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * const build = await GitTasks.commitCount((s) => s.commits("HEAD"));
  * const ahead = await GitTasks.commitCount((s) => s.commits("origin/main..HEAD"));
  * ```

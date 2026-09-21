@@ -10,7 +10,7 @@
  * builds the argv and runs it.
  *
  * ```ts
- * import { OrvalTasks } from "jsr:@zuke/orval";
+ * import { OrvalTasks } from "@zuke/orval";
  * await OrvalTasks.generate((s) => s.config("orval.config.ts").clean());
  * ```
  *

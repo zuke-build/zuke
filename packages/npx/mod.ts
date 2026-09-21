@@ -6,7 +6,7 @@
  * in Zuke build targets (including builds that drive Node projects).
  *
  * ```ts
- * import { NpxTasks } from "jsr:@zuke/npx";
+ * import { NpxTasks } from "@zuke/npx";
  *
  * await NpxTasks.npx((s) => s.command("cowsay").yes().execArgs("hello"));
  * ```

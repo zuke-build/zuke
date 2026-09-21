@@ -11,7 +11,7 @@ treats a secret as a **parameter with two extra guarantees**:
 <!-- check -->
 
 ```ts
-import { Build, execSecret, parameter, run, target } from "jsr:@zuke/core";
+import { Build, execSecret, parameter, run, target } from "@zuke/core";
 
 class Deploy extends Build {
   token = parameter("Deploy token")
@@ -98,7 +98,7 @@ For any secret manager with a CLI: 1Password (`op`), HashiCorp Vault (`vault`),
 Google Secret Manager (`gcloud`), Doppler, AWS (`aws`), and so on.
 
 ```ts
-import { execSecret } from "jsr:@zuke/core";
+import { execSecret } from "@zuke/core";
 
 // 1Password
 .from(execSecret((s) => s.command("op").arg("read", "op://vault/deploy/token")))
@@ -136,7 +136,7 @@ For a secret mounted into the environment as a file — a Kubernetes/Docker
 secret, or a CI-provided credential file.
 
 ```ts
-import { fileSecret } from "jsr:@zuke/core";
+import { fileSecret } from "@zuke/core";
 
 .from(fileSecret((s) => s.path("/run/secrets/registry_password")))
 ```
@@ -204,7 +204,7 @@ import {
   parameter,
   run,
   target,
-} from "jsr:@zuke/core";
+} from "@zuke/core";
 
 class Release extends Build {
   // From 1Password locally; from the REGISTRY_TOKEN env var in CI.

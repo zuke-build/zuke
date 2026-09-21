@@ -9,7 +9,7 @@
  * runs it.
  *
  * ```ts
- * import { RedoclyTasks } from "jsr:@zuke/redocly";
+ * import { RedoclyTasks } from "@zuke/redocly";
  * await RedoclyTasks.lint((s) => s.paths("openapi.yaml").format("summary"));
  * ```
  *

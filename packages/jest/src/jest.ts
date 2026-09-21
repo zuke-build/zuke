@@ -8,7 +8,7 @@
  * and executes it.
  *
  * ```ts
- * import { JestTasks } from "jsr:@zuke/jest";
+ * import { JestTasks } from "@zuke/jest";
  * await JestTasks.run((s) => s.ci().coverage().maxWorkers(2));
  * ```
  *

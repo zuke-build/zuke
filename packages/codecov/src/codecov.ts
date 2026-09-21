@@ -10,7 +10,7 @@
  * single step. Point it at one or more reports and tag them with flags:
  *
  * ```ts
- * import { CodecovTasks } from "jsr:@zuke/codecov";
+ * import { CodecovTasks } from "@zuke/codecov";
  * await CodecovTasks.upload((s) => s.files("cov.lcov").flags("unit"));
  * ```
  *

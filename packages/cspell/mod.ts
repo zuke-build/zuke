@@ -8,7 +8,7 @@
  * runs it.
  *
  * ```ts
- * import { CspellTasks } from "jsr:@zuke/cspell";
+ * import { CspellTasks } from "@zuke/cspell";
  * await CspellTasks.lint((s) => s.files("**").noProgress().showSuggestions());
  * ```
  *

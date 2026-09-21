@@ -13,7 +13,7 @@
  * `mcp` task is a flexible command builder for the `codex mcp` subcommand group.
  *
  * ```ts
- * import { CodexTasks } from "jsr:@zuke/codex";
+ * import { CodexTasks } from "@zuke/codex";
  *
  * const out = await CodexTasks.exec((s) =>
  *   s.prompt("Summarise the staged diff in one line")

@@ -6,7 +6,7 @@ possible. `absolutePath` gets as close as the language allows: the returned
 appending segments reads almost like a path.
 
 ```ts
-import { absolutePath } from "jsr:@zuke/core";
+import { absolutePath } from "@zuke/core";
 
 const root = absolutePath("/app");
 const main = root("src", "main.ts"); // callable: /app/src/main.ts
@@ -34,7 +34,7 @@ paths relative to the project no matter where the build is invoked from:
 <!-- check -->
 
 ```ts
-import { repoRoot } from "jsr:@zuke/core";
+import { repoRoot } from "@zuke/core";
 
 repoRoot(); // <root>            (an AbsolutePath)
 repoRoot("src", "main.ts"); // <root>/src/main.ts

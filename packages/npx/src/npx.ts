@@ -7,7 +7,7 @@
  * the task function builds the command line and executes it.
  *
  * ```ts
- * import { NpxTasks } from "jsr:@zuke/npx";
+ * import { NpxTasks } from "@zuke/npx";
  * await NpxTasks.npx((s) => s.command("cowsay").yes().execArgs("hello"));
  * ```
  *

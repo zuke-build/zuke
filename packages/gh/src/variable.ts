@@ -6,7 +6,7 @@
  * secrets: set, get, list, and delete.
  *
  * ```ts
- * import { GhTasks } from "jsr:@zuke/gh";
+ * import { GhTasks } from "@zuke/gh";
  * await GhTasks.variableSet((s) => s.name("REGION").body("eu-central-1"));
  * const region = await GhTasks.variableValue((s) => s.name("REGION"));
  * ```

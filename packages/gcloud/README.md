@@ -8,7 +8,7 @@ fluently, and pass anything else with `.flag(...)`. Arguments stay a discrete
 argv array, so command construction is injection-free.
 
 ```ts
-import { GcloudTasks } from "jsr:@zuke/gcloud";
+import { GcloudTasks } from "@zuke/gcloud";
 
 await GcloudTasks.run((s) =>
   s.command("run", "deploy", "api")
@@ -40,7 +40,7 @@ Google SDK** — auth is a bearer token from an injected provider (default:
 so both are testable without network:
 
 ```ts
-import { GcsTasks, SecretManagerTasks } from "jsr:@zuke/gcloud";
+import { GcsTasks, SecretManagerTasks } from "@zuke/gcloud";
 
 // GCS: read/write/list JSON blobs.
 await GcsTasks.writeJson("my-bucket", "state/deploy.json", { slot: "sit-7" });
@@ -73,7 +73,7 @@ the run's redactor; never log it.
 groups that share `gcloud`-based auth (no Google SDK dependency).
 
 ```ts
-import { GcloudTasks, GcsTasks, SecretManagerTasks } from "jsr:@zuke/gcloud";
+import { GcloudTasks, GcsTasks, SecretManagerTasks } from "@zuke/gcloud";
 
 await GcloudTasks.run((s) => s.containerImagesAddTag(src, dst)); // CLI
 await GcsTasks.writeJson("bucket", "state.json", { slot: "sit-7" }); // REST

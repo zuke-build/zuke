@@ -9,7 +9,7 @@
  * settings object in a lambda; the task builds the argv and runs it.
  *
  * ```ts
- * import { NestTasks } from "jsr:@zuke/nest";
+ * import { NestTasks } from "@zuke/nest";
  * await NestTasks.generate((s) => s.schematic("service").name("users"));
  * await NestTasks.build((s) => s.webpack());
  * ```

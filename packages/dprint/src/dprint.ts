@@ -8,7 +8,7 @@
  * line and executes it.
  *
  * ```ts
- * import { DprintTasks } from "jsr:@zuke/dprint";
+ * import { DprintTasks } from "@zuke/dprint";
  * await DprintTasks.fmt((s) => s.config("dprint.json"));
  * await DprintTasks.check((s) => s.files("src/**\/*.ts"));
  * ```

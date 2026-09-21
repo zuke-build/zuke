@@ -8,7 +8,7 @@
  * and executes it.
  *
  * ```ts
- * import { NestTasks } from "jsr:@zuke/nest";
+ * import { NestTasks } from "@zuke/nest";
  * await NestTasks.new((s) => s.name("my-app").skipGit());
  * await NestTasks.generate((s) => s.schematic("service").name("users"));
  * await NestTasks.build((s) => s.webpack());

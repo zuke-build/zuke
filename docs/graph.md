@@ -100,7 +100,7 @@ flowchart TD
 | `apiReference` | Generate the structured API reference (dist/api.json) for the website | — |
 | `syncWebsite` | Open and merge a website PR with refreshed llms.txt + api.json | — |
 | `docLint` | Fail on missing JSDoc or first-party private-type refs (deno doc --lint) | — |
-| `snippetsCheck` | Type-check the marked ts snippets in docs and skills | — |
+| `snippetsCheck` | Type-check marked doc snippets; ban inline jsr: imports | — |
 | `examplesCheck` | Type-check every example, list its targets, verify its CI | — |
 | `hclGen` | Regenerate the Terraform/OpenTofu wrappers from one template | — |
 | `hclSyncCheck` | Verify the Terraform/OpenTofu wrappers match their template | — |

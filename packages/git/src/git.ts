@@ -8,7 +8,7 @@
  * and executes it.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * await GitTasks.add((s) => s.all());
  * await GitTasks.commit((s) => s.message("ci: release"));
  * await GitTasks.push((s) => s.setUpstream().remote("origin").ref("main"));

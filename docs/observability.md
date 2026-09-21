@@ -8,8 +8,8 @@ collector as **OTLP/HTTP JSON**. Core stays OpenTelemetry-free — the package h
 **no runtime dependencies** and hand-rolls the OTLP payloads.
 
 ```ts
-import { run } from "jsr:@zuke/core";
-import { otel } from "jsr:@zuke/otel";
+import { run } from "@zuke/core";
+import { otel } from "@zuke/otel";
 
 await run(MyBuild, {
   plugins: [

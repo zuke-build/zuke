@@ -41,8 +41,8 @@ replaced the scaffolded sample target with real work:
 <!-- check -->
 
 ```ts
-import { Build, cicd, run, target } from "jsr:@zuke/core";
-import { DenoTasks } from "jsr:@zuke/deno";
+import { Build, cicd, run, target } from "@zuke/core";
+import { DenoTasks } from "@zuke/deno";
 
 class MyBuild extends Build {
   ci = cicd({ provider: "github" }); // ← the pipeline, generated and verified

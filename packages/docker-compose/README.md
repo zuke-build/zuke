@@ -24,7 +24,7 @@ same build file works on either host. Pin the form explicitly with
 `.usePlugin()` or `.useStandalone()` to skip detection.
 
 ```ts
-import { DockerComposeTasks } from "jsr:@zuke/docker-compose";
+import { DockerComposeTasks } from "@zuke/docker-compose";
 
 await DockerComposeTasks.up((s) => s.file("compose.yml").detach().build());
 await DockerComposeTasks.logs((s) => s.follow().tail(100));
@@ -52,7 +52,7 @@ runs it. The wrapper detects whether Compose is installed as the v2 plugin
 time, so the same build works on either host.
 
 ```ts
-import { DockerComposeTasks } from "jsr:@zuke/docker-compose";
+import { DockerComposeTasks } from "@zuke/docker-compose";
 
 await DockerComposeTasks.up((s) => s.file("compose.yml").detach().build());
 await DockerComposeTasks.logs((s) => s.follow().tail(100));

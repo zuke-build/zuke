@@ -6,7 +6,7 @@
  * Zuke build targets.
  *
  * ```ts
- * import { DenoTasks } from "jsr:@zuke/deno";
+ * import { DenoTasks } from "@zuke/deno";
  *
  * await DenoTasks.check((s) => s.paths("mod.ts"));
  * await DenoTasks.test((s) => s.allowAll().coverage("cov_profile"));

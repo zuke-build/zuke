@@ -7,7 +7,7 @@
  * read-only registry queries to check which versions are already published.
  *
  * ```ts
- * import { isPublished, JsrTasks } from "jsr:@zuke/jsr";
+ * import { isPublished, JsrTasks } from "@zuke/jsr";
  *
  * if (!(await isPublished("@zuke/core", "0.13.0"))) {
  *   await JsrTasks.publish((s) => s.allowDirty());

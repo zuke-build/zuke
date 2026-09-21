@@ -113,8 +113,8 @@ the first word of the line.
 
 ```ts
 // zuke.ts
-import { Build, run, target } from "jsr:@zuke/core";
-import { DenoTasks } from "jsr:@zuke/deno";
+import { Build, run, target } from "@zuke/core";
+import { DenoTasks } from "@zuke/deno";
 
 class MyBuild extends Build {
   clean = target()

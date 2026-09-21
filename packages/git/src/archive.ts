@@ -6,7 +6,7 @@
  * of what is tracked rather than from whatever the working directory holds.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * await GitTasks.archive((s) =>
  *   s.format("tar.gz").prefix("app-1.2.3/").output("dist/app-1.2.3.tar.gz")
  *     .treeish("v1.2.3")

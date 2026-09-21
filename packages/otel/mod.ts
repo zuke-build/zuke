@@ -10,8 +10,8 @@
  * in another lands its spans under a single trace with no handoff.
  *
  * ```ts
- * import { run } from "jsr:@zuke/core";
- * import { otel } from "jsr:@zuke/otel";
+ * import { run } from "@zuke/core";
+ * import { otel } from "@zuke/otel";
  *
  * await run(MyBuild, {
  *   plugins: [otel((s) => s.endpoint("http://localhost:4318").serviceName("ci"))],

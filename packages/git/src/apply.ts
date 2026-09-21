@@ -5,7 +5,7 @@
  * `git apply` — applying a patch file to the working tree or index.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks } from "@zuke/git";
  * // Would this patch apply cleanly? `--check` changes nothing either way.
  * await GitTasks.apply((s) => s.check().patches("fix.patch"));
  * await GitTasks.apply((s) => s.index().threeWay().patches("fix.patch"));
