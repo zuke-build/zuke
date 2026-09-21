@@ -115,7 +115,12 @@ GitHub Actions, grant `pull-requests: write` in the workflow (or use
 `aiReviewWorkflow` also lets a maintainer start the review by commenting on any
 pull request, a fork's included — the pull request is then fetched as data
 (`ZUKE_REVIEW_PR`) and reviewed from the default branch's checkout, so its code
-never runs with the secrets present.
+never runs with the secrets present. A build whose review resolves the threads
+it answers names the App's credentials in the spec's `secrets`, since GitHub
+allows that mutation only to a token with repository write access, which the
+Actions token is not; such a job should also set `egress` to block, with
+`allowedEndpoints` for the launcher, and the generator adds each reviewer's
+provider host itself.
 
 ## Token usage
 
