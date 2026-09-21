@@ -20,8 +20,8 @@
 </p>
 
 Zuke lets you define a build as a **TypeScript class**. Each target is a class
-field; targets reference each other by `this.x`, not by string, so a rename is
-a refactor and a typo is a compile error. From that one file Zuke resolves the
+field; targets reference each other by `this.x`, not by string, so a rename is a
+refactor and a typo is a compile error. From that one file Zuke resolves the
 dependency graph, runs it in order, **generates your CI YAML**, and exposes the
 whole thing to **AI agents** as typed tools. Inspired by
 [NUKE](https://nuke.build/) for .NET. Zero runtime dependencies.
@@ -72,10 +72,10 @@ Already have `package.json` scripts or a `Makefile`? `zuke import` turns them
 into a `zuke.ts` with a target per script. Details, the launcher, and a longer
 first build: **[Getting started](./docs/getting-started.md)**.
 
-Prefer to poke at something real? [`examples/`](./examples) holds five
-cloneable projects — a Deno library gate, a generated-CI-only project, a Node
-app, a library release routine, and a shell script turned into targets — each
-runnable from its own folder with `deno run -A zuke.ts`.
+Prefer to poke at something real? [`examples/`](./examples) holds five cloneable
+projects — a Deno library gate, a generated-CI-only project, a Node app, a
+library release routine, and a shell script turned into targets — each runnable
+from its own folder with `deno run -A zuke.ts`.
 
 Three short recipes cover what a small project wants first:
 [replace your shell scripts](./docs/recipes/replace-shell-scripts.md),
@@ -88,24 +88,23 @@ Three short recipes cover what a small project wants first:
   `this.clean`, not `"clean"`. Rename a target and every reference moves with
   it; a typo is a compile error, not a runtime surprise.
 - **Never write CI YAML again.** Declare the pipeline in the build with
-  `cicd({ provider: "github" })` — the provider is the only required field —
-  and Zuke generates GitHub Actions, GitLab CI, Azure Pipelines, or Bitbucket
-  YAML. `fanOut: true` turns every target into its own job wired by `needs:`
-  edges that mirror `dependsOn`. It is regenerated on every run, and
+  `cicd({ provider: "github" })` — the provider is the only required field — and
+  Zuke generates GitHub Actions, GitLab CI, Azure Pipelines, or Bitbucket YAML.
+  `fanOut: true` turns every target into its own job wired by `needs:` edges
+  that mirror `dependsOn`. It is regenerated on every run, and
   `generate-ci --check` fails CI when the committed file has drifted. You run
   the exact same targets locally with `./zuke ci` before you push.
 - **Let your agent run the build.** `./zuke mcp` serves the build over the
-  [Model Context Protocol](./docs/mcp.md): an agent lists the targets, reads
-  the graph, and runs one with typed parameters, instead of guessing
-  `npm run what?`. `zuke setup --mcp` writes the client registration on day
-  one. `./zuke --list --json` and the generated
-  [`llms.txt`](./llms.txt) are the static counterparts, and the
-  [agent skills](./docs/agent-skills.md) teach Claude Code, Codex, and Gemini
-  CLI to write a `zuke.ts` the right way.
+  [Model Context Protocol](./docs/mcp.md): an agent lists the targets, reads the
+  graph, and runs one with typed parameters, instead of guessing
+  `npm run what?`. `zuke setup --mcp` writes the client registration on day one.
+  `./zuke --list --json` and the generated [`llms.txt`](./llms.txt) are the
+  static counterparts, and the [agent skills](./docs/agent-skills.md) teach
+  Claude Code, Codex, and Gemini CLI to write a `zuke.ts` the right way.
 - **Just TypeScript.** Build logic is ordinary async functions with full editor
-  support — no bespoke DSL. The `$` tagged template from `@zuke/core/shell`
-  runs processes with sane defaults and is injection-safe, so it also replaces
-  the `scripts/*.sh` nobody dares touch.
+  support — no bespoke DSL. The `$` tagged template from `@zuke/core/shell` runs
+  processes with sane defaults and is injection-safe, so it also replaces the
+  `scripts/*.sh` nobody dares touch.
 - **A typed wrapper for every tool.** 58 packages: a tiny core, the CLI, and a
   `*Tasks` object per tool — Deno, npm, pnpm, Bun, Docker, Kubernetes,
   Terraform, Vite, Playwright, GitHub, Claude Code, and the rest — whose
@@ -180,29 +179,34 @@ jobs:
 ```
 
 Pin the full commit SHA rather than the moving `v1` tag when you commit it, as
-you would any other action. Zuke's own six workflows all open with it,
-generated from the build. Every input, the `egress-policy` default, and why
-`ref` is refused on contributor-controlled events:
+you would any other action. Zuke's own six workflows all open with it, generated
+from the build. Every input, the `egress-policy` default, and why `ref` is
+refused on contributor-controlled events:
 [the action section](./docs/getting-started.md#the-zuke-buildzuke-action).
 
 ## Packages
 
-Zuke ships as a JSR workspace of 58 packages: [`@zuke/core`](https://jsr.io/@zuke/core)
-(the engine, the `$` shell, and the tooling base classes), the
-[`@zuke/cli`](https://jsr.io/@zuke/cli) command, a generic
-[`@zuke/cmd`](https://jsr.io/@zuke/cmd) fallback, plugins such as
-[`@zuke/ai`](https://jsr.io/@zuke/ai), [`@zuke/console`](https://jsr.io/@zuke/console)
-and [`@zuke/otel`](https://jsr.io/@zuke/otel), and a typed wrapper per tool —
-[`@zuke/deno`](https://jsr.io/@zuke/deno), [`@zuke/npm`](https://jsr.io/@zuke/npm),
-[`@zuke/docker`](https://jsr.io/@zuke/docker), [`@zuke/gh`](https://jsr.io/@zuke/gh),
-[`@zuke/git`](https://jsr.io/@zuke/git), [`@zuke/kubectl`](https://jsr.io/@zuke/kubectl),
-[`@zuke/terraform`](https://jsr.io/@zuke/terraform), [`@zuke/vite`](https://jsr.io/@zuke/vite),
+Zuke ships as a JSR workspace of 58 packages:
+[`@zuke/core`](https://jsr.io/@zuke/core) (the engine, the `$` shell, and the
+tooling base classes), the [`@zuke/cli`](https://jsr.io/@zuke/cli) command, a
+generic [`@zuke/cmd`](https://jsr.io/@zuke/cmd) fallback, plugins such as
+[`@zuke/ai`](https://jsr.io/@zuke/ai),
+[`@zuke/console`](https://jsr.io/@zuke/console) and
+[`@zuke/otel`](https://jsr.io/@zuke/otel), and a typed wrapper per tool —
+[`@zuke/deno`](https://jsr.io/@zuke/deno),
+[`@zuke/npm`](https://jsr.io/@zuke/npm),
+[`@zuke/docker`](https://jsr.io/@zuke/docker),
+[`@zuke/gh`](https://jsr.io/@zuke/gh), [`@zuke/git`](https://jsr.io/@zuke/git),
+[`@zuke/kubectl`](https://jsr.io/@zuke/kubectl),
+[`@zuke/terraform`](https://jsr.io/@zuke/terraform),
+[`@zuke/vite`](https://jsr.io/@zuke/vite),
 [`@zuke/playwright`](https://jsr.io/@zuke/playwright), and more.
 
 The full matrix with live JSR badges is in **[Packages](./docs/packages.md)**.
 The complete typed surface of every package is in
 [`llms-full.txt`](./llms-full.txt) (one file), summarised in
-[`llms.txt`](./llms.txt); for a single package run `deno doc jsr:@zuke/<package>`.
+[`llms.txt`](./llms.txt); for a single package run
+`deno doc jsr:@zuke/<package>`.
 
 ## AI in your pipeline
 
@@ -215,15 +219,16 @@ dependencies:
   and Gemini CLI **non-interactively** — a prompt, a model, a constrained tool
   set, JSON out — with the API key riding a `parameter().secret()` that Zuke
   masks in CI output. See [Tools](./docs/tools.md).
-- **AI code review that breaks the build.** [`@zuke/ai`](https://jsr.io/@zuke/ai)
-  reads the diff, returns a _structured_ assessment (score, severity, findings),
-  posts it to the pull request, and fails the run when the risk crosses your
-  threshold. See [AI code review](./docs/ai-review.md).
-- **Self-healing targets.** Attach `.recoverWith(aiFixer(…))` to any target:
-  on failure it diagnoses from the error and the diff and posts a committable
+- **AI code review that breaks the build.**
+  [`@zuke/ai`](https://jsr.io/@zuke/ai) reads the diff, returns a _structured_
+  assessment (score, severity, findings), posts it to the pull request, and
+  fails the run when the risk crosses your threshold. See
+  [AI code review](./docs/ai-review.md).
+- **Self-healing targets.** Attach `.recoverWith(aiFixer(…))` to any target: on
+  failure it diagnoses from the error and the diff and posts a committable
   suggestion — or, opted in, applies the fix, commits, and **re-runs the real
-  command to verify**. `agentFixer` hands the failure to a coding agent
-  instead. A shared `budget(…)` caps spend by token count. See
+  command to verify**. `agentFixer` hands the failure to a coding agent instead.
+  A shared `budget(…)` caps spend by token count. See
   [Self-healing builds](./docs/self-healing.md).
 
 ```ts
@@ -237,8 +242,9 @@ test = target()
 
 Two skills — `zuke-setup` and `zuke-write-build` — teach an AI coding assistant
 to scaffold Zuke and write a `zuke.ts` using the typed wrappers instead of
-guessing the API. Authored once as portable [Agent Skills](https://agentskills.io)
-under [`skills/`](./skills), and installable into every harness:
+guessing the API. Authored once as portable
+[Agent Skills](https://agentskills.io) under [`skills/`](./skills), and
+installable into every harness:
 
 ```text
 /plugin marketplace add zuke-build/zuke && /plugin install zuke@zuke   # Claude Code
@@ -267,14 +273,14 @@ Start here, then browse the full index in [`docs/`](./docs/README.md):
   matrix, and every wrapper's tasks.
 - [Using Zuke in a Node/npm project](./docs/node-projects.md) — drive a Node
   build with Deno.
-- [MCP server](./docs/mcp.md) and [Agent skills](./docs/agent-skills.md) —
-  the build as typed tools for an agent, and the skills that teach one to
-  write it.
+- [MCP server](./docs/mcp.md) and [Agent skills](./docs/agent-skills.md) — the
+  build as typed tools for an agent, and the skills that teach one to write it.
 - [Caching](./docs/caching.md), [Service targets](./docs/services.md),
   [Durable run state](./docs/state.md), [Cross-run locks](./docs/locks.md),
   [Orchestration: waits](./docs/orchestration.md) — the layer for real
   deployments.
-- [CLI reference](./docs/cli.md), [Programmatic API](./docs/programmatic-api.md),
+- [CLI reference](./docs/cli.md),
+  [Programmatic API](./docs/programmatic-api.md),
   [Versioning & compatibility](./docs/versioning.md),
   [How Zuke compares](./docs/comparison.md).
 

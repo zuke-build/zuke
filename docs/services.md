@@ -42,21 +42,21 @@ runs the tests against it, then stops `api` — whether the tests pass or fail.
 `target()` (`dependsOn`, `before`, `after`, `description`) but, instead of
 `.executes(...)`, it takes a lifecycle:
 
-| Method | Purpose |
-| --- | --- |
-| `.start(() => handle)` | Start the process; return a handle to stop later. **Required.** |
-| `.readyWhen(() => boolean)` | Readiness probe, polled until it returns `true`. Optional. |
-| `.readyTimeout(ms)` | How long to wait for readiness before failing (default 30s). |
-| `.stop((handle) => …)` | Custom teardown. Optional — see below. |
+| Method                      | Purpose                                                         |
+| --------------------------- | --------------------------------------------------------------- |
+| `.start(() => handle)`      | Start the process; return a handle to stop later. **Required.** |
+| `.readyWhen(() => boolean)` | Readiness probe, polled until it returns `true`. Optional.      |
+| `.readyTimeout(ms)`         | How long to wait for readiness before failing (default 30s).    |
+| `.stop((handle) => …)`      | Custom teardown. Optional — see below.                          |
 
 ### Starting: `.start()` and `spawn()`
 
 `.start()` returns a **handle** the executor stops on teardown. The shell's
-`Command` gains a `.spawn()` for exactly this — it starts a process *without*
+`Command` gains a `.spawn()` for exactly this — it starts a process _without_
 waiting for it to exit and returns a `SpawnedProcess`, whose `.stop()` sends
 `SIGTERM`, then escalates to `SIGKILL` if the process hasn't exited within a 5s
-grace period. A `SpawnedProcess` is a valid handle, so the common
-case needs no explicit stop:
+grace period. A `SpawnedProcess` is a valid handle, so the common case needs no
+explicit stop:
 
 ```ts
 .start(() => $`docker compose up`.spawn())
@@ -125,8 +125,8 @@ Without a `.readyWhen()`, a service is considered ready the moment it starts.
 ## Notes and limits
 
 - **Whole-build scope.** A service stays up until the build ends, not just until
-  its last dependent finishes. That's the simple, predictable model; fine-grained
-  (stop-when-no-longer-needed) teardown may come later.
+  its last dependent finishes. That's the simple, predictable model;
+  fine-grained (stop-when-no-longer-needed) teardown may come later.
 - **Output.** `spawn()` inherits the process's stdout/stderr so you see the
   server's logs. Under [`zuke mcp`](./mcp.md), stdout is the protocol stream, so
   avoid running a service-starting target through the MCP server.

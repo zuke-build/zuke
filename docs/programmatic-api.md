@@ -19,29 +19,29 @@ import {
 
 ## `execute` options
 
-`execute(build, rootTarget, options?)` resolves parameters and runs the plan. The
-options object mirrors the CLI flags:
+`execute(build, rootTarget, options?)` resolves parameters and runs the plan.
+The options object mirrors the CLI flags:
 
-| Option | Type | Effect |
-| --- | --- | --- |
-| `silent` | `boolean` | Suppress all banner/summary output. |
-| `reporter` | `{ info(line), error(line) }` | Custom output sink; overrides `silent`. |
-| `renderer` | `Renderer` | Restyle the per-target banners and summary (see below). |
-| `plugins` | `Plugin[]` | [Lifecycle observers](./extending.md) invoked alongside the build's hooks. |
-| `skip` | `string[]` | Target names to skip even if planned (`--skip`). |
-| `parallel` | `boolean \| number` | Run independent targets concurrently (`--parallel`). |
-| `cache` | `boolean \| BuildCache` | Incremental [caching](./caching.md); `false` disables it (`--no-cache`). |
-| `dryRun` | `boolean` | Print the plan without running any body (`--dry-run`). |
-| `params` | `Record<string, string>` | Raw [parameter](./parameters.md) values, keyed by property name. |
-| `signal` | `AbortSignal` | Cancel the run — the programmatic equivalent of Ctrl-C, running [compensations](./orchestration.md#cancellation--compensation--oncancel). |
-| `affected` | `boolean \| string` | Limit the run to targets affected since a git base (`--affected`). |
-| `remoteCache` | `RemoteCacheStore` | Share cached outputs across machines ([caching](./caching.md)). |
-| `stateStore` | `StateStore` | Persist [durable run state](./state.md); highest-precedence source. |
-| `state` | `boolean` | Enable the default filesystem store without naming one (`--state`). |
-| `actor` | `string` | Who to attribute the run to in its record (`--actor`). |
+| Option        | Type                          | Effect                                                                                                                                    |
+| ------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `silent`      | `boolean`                     | Suppress all banner/summary output.                                                                                                       |
+| `reporter`    | `{ info(line), error(line) }` | Custom output sink; overrides `silent`.                                                                                                   |
+| `renderer`    | `Renderer`                    | Restyle the per-target banners and summary (see below).                                                                                   |
+| `plugins`     | `Plugin[]`                    | [Lifecycle observers](./extending.md) invoked alongside the build's hooks.                                                                |
+| `skip`        | `string[]`                    | Target names to skip even if planned (`--skip`).                                                                                          |
+| `parallel`    | `boolean \| number`           | Run independent targets concurrently (`--parallel`).                                                                                      |
+| `cache`       | `boolean \| BuildCache`       | Incremental [caching](./caching.md); `false` disables it (`--no-cache`).                                                                  |
+| `dryRun`      | `boolean`                     | Print the plan without running any body (`--dry-run`).                                                                                    |
+| `params`      | `Record<string, string>`      | Raw [parameter](./parameters.md) values, keyed by property name.                                                                          |
+| `signal`      | `AbortSignal`                 | Cancel the run — the programmatic equivalent of Ctrl-C, running [compensations](./orchestration.md#cancellation--compensation--oncancel). |
+| `affected`    | `boolean \| string`           | Limit the run to targets affected since a git base (`--affected`).                                                                        |
+| `remoteCache` | `RemoteCacheStore`            | Share cached outputs across machines ([caching](./caching.md)).                                                                           |
+| `stateStore`  | `StateStore`                  | Persist [durable run state](./state.md); highest-precedence source.                                                                       |
+| `state`       | `boolean`                     | Enable the default filesystem store without naming one (`--state`).                                                                       |
+| `actor`       | `string`                      | Who to attribute the run to in its record (`--actor`).                                                                                    |
 
-`readEnv`, `prompt`, `github`, and `color` are additional test/CI seams — see the
-`ExecuteOptions` JSDoc for the full list.
+`readEnv`, `prompt`, `github`, and `color` are additional test/CI seams — see
+the `ExecuteOptions` JSDoc for the full list.
 
 ```ts
 import { discoverTargets, execute } from "@zuke/core";
@@ -56,16 +56,17 @@ if (target) {
 
 `BuildResult` is
 `{ ok: boolean; executed: string[]; error?: unknown; suspended?: boolean; cancelled?: boolean; runId?: string }`
-— `runId` is what a follow-up `zuke runs show` or [`cancelRun`](./orchestration.md)
-is pointed at, and `suspended` marks a run parked at a gate rather than finished.
+— `runId` is what a follow-up `zuke runs show` or
+[`cancelRun`](./orchestration.md) is pointed at, and `suspended` marks a run
+parked at a gate rather than finished.
 
 ## Inspecting the CLI shape — `describeCli`
 
 `describeCli(build)` returns a structured `CliDescription` of a build's whole
 command surface — its reserved commands, option flags, targets (with
-descriptions and dependencies), and [parameters](./parameters.md) — the same data
-that backs `zuke --help`, `zuke --list`, and `zuke --list --json`. Use it to
-build tooling around a build without shelling out or parsing `--help` text.
+descriptions and dependencies), and [parameters](./parameters.md) — the same
+data that backs `zuke --help`, `zuke --list`, and `zuke --list --json`. Use it
+to build tooling around a build without shelling out or parsing `--help` text.
 
 ```ts
 import { describeCli } from "@zuke/core";
@@ -95,6 +96,6 @@ await execute(build, target, { renderer: quiet });
 ## Injecting a cache — `BuildCache`
 
 The `cache` option normally takes a boolean, but it also accepts a `BuildCache`
-instance directly. This is mainly a test seam: supply an in-memory or
-pre-seeded [cache](./caching.md) so a run's cache behaviour is deterministic
-without touching `.zuke/cache.json`.
+instance directly. This is mainly a test seam: supply an in-memory or pre-seeded
+[cache](./caching.md) so a run's cache behaviour is deterministic without
+touching `.zuke/cache.json`.

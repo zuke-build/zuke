@@ -81,11 +81,7 @@ distributable package extends `ToolSettings` from `@zuke/core/tooling`.
 <!-- check -->
 
 ```ts
-import {
-  type Configure,
-  runSettings,
-  ToolSettings,
-} from "@zuke/core/tooling";
+import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";
 
 class MyToolSettings extends ToolSettings {
   #args: string[] = [];
