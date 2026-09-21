@@ -56,7 +56,7 @@ Deno.test("the generated YAML carries the right triggers, permissions, concurren
     yaml,
     "    permissions:\n      contents: read\n      pull-requests: write",
   );
-  // Concurrency on the job, cancel-in-progress true.
+  // Concurrency on the job; the push-started job cancels a superseded run.
   assertStringIncludes(yaml, "    concurrency:\n      group:");
   assertStringIncludes(yaml, "cancel-in-progress: true");
   // Fork gating, on the pull_request event by name.
@@ -534,7 +534,7 @@ Deno.test("the command job carries the named secrets and no base fetch; the pull
   assertStringIncludes(commandJob, "timeout-minutes: 15");
 });
 
-Deno.test("concurrency is per job and keyed on the pull request, never on the workflow", () => {
+Deno.test("concurrency is one group per pull request, declared on the jobs, never on the workflow", () => {
   // The review's own comment, posted as an app, fires `issue_comment` again.
   // That run is skipped by the bot check — but a workflow-level group would
   // still admit it, and cancel-in-progress would cancel the review mid-post.
@@ -544,21 +544,40 @@ Deno.test("concurrency is per job and keyed on the pull request, never on the wo
   assertEquals(yaml.includes("\nconcurrency:"), false);
   assertEquals(yaml.includes("${{ github.ref }}"), false);
   const [reviewJob, commandJob] = yaml.split("  commandReview:");
+  // The same group on both jobs — the pull request's number, however the
+  // event names it — so a comment-started run never overlaps a push-started
+  // one: both rewrite the reviewer's state block, and the later post would
+  // drop whatever the earlier run recorded. Only the push cancels what is
+  // in flight; the command queues behind it.
   assertStringIncludes(
     reviewJob,
-    '    concurrency:\n      group: "ai-review-${{ github.workflow }}-review-${{ github.event.pull_request.number }}"\n      cancel-in-progress: true',
+    '    concurrency:\n      group: "ai-review-${{ github.workflow }}-${{ github.event.pull_request.number }}"\n      cancel-in-progress: true',
   );
   assertStringIncludes(
     commandJob,
-    '    concurrency:\n      group: "ai-review-${{ github.workflow }}-commandReview-${{ github.event.issue.number }}"\n      cancel-in-progress: true',
+    '    concurrency:\n      group: "ai-review-${{ github.workflow }}-${{ github.event.issue.number }}"\n      cancel-in-progress: false',
   );
-  // The same shape without a command: one job, its own group.
+  // The same shape without a command: one job, the same group.
   const plain = dualBuild().wf.render();
   assertEquals(plain.includes("\nconcurrency:"), false);
   assertStringIncludes(
     plain,
-    "-review-${{ github.event.pull_request.number }}",
+    '"ai-review-${{ github.workflow }}-${{ github.event.pull_request.number }}"',
   );
+});
+
+Deno.test("the reply job shares the pull request's group and queues rather than cancelling", () => {
+  const yaml = threadsBuild(true);
+  const replyJob = yaml.split("  replyReview:")[1];
+  assertStringIncludes(
+    replyJob,
+    '    concurrency:\n      group: "ai-review-${{ github.workflow }}-${{ github.event.pull_request.number }}"\n      cancel-in-progress: false',
+  );
+  // Exactly one group name across the workflow.
+  const groups = new Set(
+    [...yaml.matchAll(/group: "([^"]+)"/g)].map((match) => match[1]),
+  );
+  assertEquals(groups.size, 1);
 });
 
 Deno.test("without a command there is no issue_comment trigger and no second job", () => {
@@ -728,7 +747,7 @@ Deno.test("threads add the pull_request_review_comment trigger and a job gated o
   assertEquals(reply.includes("ZUKE_REVIEW_PR"), false);
   assertStringIncludes(
     reply,
-    'group: "ai-review-${{ github.workflow }}-replyReview-${{ github.event.pull_request.number }}"',
+    'group: "ai-review-${{ github.workflow }}-${{ github.event.pull_request.number }}"',
   );
   assertStringIncludes(reply, "pull-requests: write");
   assertStringIncludes(reply, "timeout-minutes: 15");

@@ -602,9 +602,14 @@ the `pull_request` job is unchanged. Comments an App posts do trigger
 `issue_comment` workflows (unlike `GITHUB_TOKEN`'s), which is what the bot check
 in the gate is for.
 
-The command is GitHub-only; the other hosts render no comment job. Concurrency
-is keyed on the pull request number for both events, since `github.ref` is the
-default branch for every comment-started run.
+The command is GitHub-only; the other hosts render no comment job. Every job of
+the workflow shares one concurrency group keyed on the pull request number,
+since `github.ref` is the default branch for every comment-started run. Sharing
+it is what keeps the state block whole: each run reads the reviewer's state and
+writes it back, so two runs in flight at once would each post the state they
+started from, and the later post would drop what the earlier run recorded. A
+push cancels the run in flight, whose head it superseded; a comment-started run
+queues behind it and starts from the state it posted.
 
 ### Answering a rebuttal without a push
 

@@ -19,7 +19,7 @@ jobs:
     if: "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}"
     timeout-minutes: 15
     concurrency:
-      group: "ai-review-${{ github.workflow }}-review-${{ github.event.pull_request.number }}"
+      group: "ai-review-${{ github.workflow }}-${{ github.event.pull_request.number }}"
       cancel-in-progress: true
     steps:
       - name: Harden and check out with Zuke
@@ -41,8 +41,8 @@ jobs:
     if: "${{ github.event_name == 'pull_request_review_comment' && github.event.pull_request.head.repo.full_name == github.repository && github.event.comment.in_reply_to_id && github.event.comment.user.type != 'Bot' }}"
     timeout-minutes: 15
     concurrency:
-      group: "ai-review-${{ github.workflow }}-replyReview-${{ github.event.pull_request.number }}"
-      cancel-in-progress: true
+      group: "ai-review-${{ github.workflow }}-${{ github.event.pull_request.number }}"
+      cancel-in-progress: false
     steps:
       - name: Harden and check out with Zuke
         uses: zuke-build/zuke@2478fa5a69fb4f16540e54959c98cd976ec3f075 # v1.0.5
@@ -115,8 +115,8 @@ jobs:
     if: "${{ github.event_name == 'issue_comment' && github.event.issue.pull_request && github.event.comment.user.type != 'Bot' && (github.event.comment.author_association == 'OWNER' || github.event.comment.author_association == 'MEMBER' || github.event.comment.author_association == 'COLLABORATOR') && startsWith(github.event.comment.body, '@zuke-build review') }}"
     timeout-minutes: 15
     concurrency:
-      group: "ai-review-${{ github.workflow }}-commandReview-${{ github.event.issue.number }}"
-      cancel-in-progress: true
+      group: "ai-review-${{ github.workflow }}-${{ github.event.issue.number }}"
+      cancel-in-progress: false
     steps:
       - name: Harden and check out with Zuke
         uses: zuke-build/zuke@2478fa5a69fb4f16540e54959c98cd976ec3f075 # v1.0.5

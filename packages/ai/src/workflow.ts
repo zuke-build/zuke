@@ -563,25 +563,36 @@ class AiReviewWorkflow extends CiFile {
     steps: CiJob["steps"],
     comments: boolean,
     pull: string,
+    cancelInProgress: boolean,
   ): CiJob {
     return {
       id,
       name,
       runsOn: "ubuntu-latest",
       if: `\${{ ${gate} }}`,
-      // One run per pull request per job, the newer cancelling the older — on
-      // the job, not the workflow. Keyed on the pull request rather than
-      // `github.ref`, which is the default branch for every comment-started
-      // run. And on the job because a skipped job never enters its group,
-      // whereas a run whose jobs are all skipped still enters a workflow-level
-      // one: the review's own comment, posted as an app, fires `issue_comment`
-      // again, and that run — skipped by the bot check — would otherwise
-      // cancel the review still posting it. A push to the pull request
-      // likewise restarts only the `pull_request` job, never a maintainer's
-      // in-flight command.
+      // One run per pull request, shared by every job of this workflow and
+      // declared on the job, not the workflow. Keyed on the pull request
+      // rather than `github.ref`, which is the default branch for every
+      // comment-started run. On the job because a skipped job never enters
+      // its group, whereas a run whose jobs are all skipped still enters a
+      // workflow-level one: the review's own comment, posted as an app, fires
+      // `issue_comment` again, and that run — skipped by the bot check — would
+      // otherwise cancel the review still posting it.
+      //
+      // Shared across the jobs because every run of the target reads the
+      // state block from the reviewer's comment and writes it back; two runs
+      // in flight at once each write the state they started from, and the
+      // later post silently drops whatever the earlier run recorded. That
+      // happened: a push run and a reply run overlapped, and the findings the
+      // push run had just opened vanished from the state the reply run wrote
+      // back, leaving their threads unanswerable. Only the push run cancels
+      // what is in flight — a superseded head is not worth finishing, and a
+      // reply or command run reads the same threads on the new head — while
+      // a reply or command run queues behind whatever is running and starts
+      // from the state it posted.
       concurrency: {
-        group: `ai-review-\${{ github.workflow }}-${id}-\${{ ${pull} }}`,
-        cancelInProgress: true,
+        group: `ai-review-\${{ github.workflow }}-\${{ ${pull} }}`,
+        cancelInProgress,
       },
       // The write scope sits on the job that posts, not on the workflow: with
       // two jobs, a workflow-level write is broader than either needs, and
@@ -733,6 +744,7 @@ class AiReviewWorkflow extends CiFile {
       reviewSteps,
       reviewers.commentEnabled,
       "github.event.pull_request.number",
+      true,
     );
     const jobs = [review];
     if (reviewers.threadsEnabled) {
@@ -757,6 +769,7 @@ class AiReviewWorkflow extends CiFile {
         ],
         reviewers.commentEnabled,
         "github.event.pull_request.number",
+        false,
       ));
     }
     const command = this.#command;
@@ -782,6 +795,7 @@ class AiReviewWorkflow extends CiFile {
         ],
         reviewers.commentEnabled,
         "github.event.issue.number",
+        false,
       ));
     }
     return {
