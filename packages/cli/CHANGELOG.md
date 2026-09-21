@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.4](https://github.com/zuke-build/zuke/compare/cli-v1.5.3...cli-v1.5.4) (2026-09-21)
+
+
+### Bug Fixes
+
+* **core:** widen the version constant so a bump cannot stale the API docs ([#635](https://github.com/zuke-build/zuke/issues/635)) ([fdefeeb](https://github.com/zuke-build/zuke/commit/fdefeeb2fa3c95a211006be6f6adca9f09303305)), closes [#633](https://github.com/zuke-build/zuke/issues/633)
+
 ## [1.5.3](https://github.com/zuke-build/zuke/compare/cli-v1.5.2...cli-v1.5.3) (2026-09-21)
 
 
