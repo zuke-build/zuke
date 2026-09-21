@@ -9,17 +9,20 @@ check ─▶ test ─▶ bump ─▶ tag ─▶ push ─▶ release ─▶ publi
 ```
 
 ```sh
-deno run -A zuke.ts --version 1.1.0                   # the whole release
-deno run -A zuke.ts tag --version 1.1.0               # stop after the tag
-deno run -A zuke.ts release --version 1.1.0 --dry-run # print the plan, run nothing
+deno run -A zuke.ts --release-version 1.1.0           # the whole release
+deno run -A zuke.ts tag --release-version 1.1.0       # stop after the tag
+deno run -A zuke.ts release --release-version 1.1.0 --dry-run # print the plan, run nothing
 VERSION=1.1.0 deno run -A zuke.ts                     # the parameter from the env
 ```
 
 What to notice in [`zuke.ts`](./zuke.ts):
 
-- `version` is a `parameter(...).required()`: a typed build input read from
-  `--version` or `VERSION`, resolved before anything runs. Its value is used
-  inside the targets as `this.version.value`.
+- `releaseVersion` is a `parameter(...).required()`: a typed build input read
+  from `--release-version` or `RELEASE_VERSION`, resolved before anything runs.
+  Its value is used inside the targets as `this.releaseVersion.value`. It is not
+  called `version`, because that would render as `--version`, which Zuke
+  reserves for reporting its own version — a parameter that collides with a
+  built-in flag is refused at discovery rather than quietly losing to it.
 - Each step is a typed wrapper that mirrors the real CLI: `GitTasks.add`,
   `.commit`, `.tag((s) => s.name("v1.1.0").message(...))`,
   `.push((s) => s.followTags())`, then

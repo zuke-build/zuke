@@ -82,6 +82,7 @@ export {
   type WaitTrigger,
 } from "./src/wait.ts";
 export { run, type RunOptions } from "./src/cli.ts";
+export { resolveDocSpec } from "./src/doc_spec.ts";
 export {
   type CliCommandInfo,
   type CliDescription,

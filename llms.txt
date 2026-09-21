@@ -94,6 +94,7 @@ Option flags:
 - `--max-concurrent-runs` — With mcp --registry, cap concurrent run-tool spawns (default 4)
 - `--http` — With mcp, serve over HTTP on <host:port> instead of stdio
 - `--help` — Show usage
+- `--version` — Print the Zuke version this build runs on
 
 Full reference: [docs/cli.md](./docs/cli.md).
 

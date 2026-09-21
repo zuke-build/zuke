@@ -6,9 +6,9 @@
  * the version, commit, tag, push, cut a GitHub release with generated notes,
  * publish to JSR. Every step is a typed wrapper; nothing is a shell string.
  *
- *   deno run -A zuke.ts --version 1.1.0            # the whole release
- *   deno run -A zuke.ts tag --version 1.1.0        # stop after tagging
- *   deno run -A zuke.ts release --version 1.1.0 --dry-run
+ *   deno run -A zuke.ts --release-version 1.1.0            # the whole release
+ *   deno run -A zuke.ts tag --release-version 1.1.0        # stop after tagging
+ *   deno run -A zuke.ts release --release-version 1.1.0 --dry-run
  */
 import { Build, FileTasks, parameter, run, target } from "jsr:@zuke/core@^1";
 import { DenoTasks } from "jsr:@zuke/deno@^1";
@@ -16,10 +16,14 @@ import { GhTasks } from "jsr:@zuke/gh@^1";
 import { GitTasks } from "jsr:@zuke/git@^1";
 
 class Release extends Build {
-  // A typed build input: `--version 1.1.0` on the command line, or the
-  // VERSION environment variable. Required, so a missing value is an error
-  // before anything runs.
-  version = parameter("The version to release, e.g. 1.1.0").required();
+  // A typed build input: `--release-version 1.1.0` on the command line, or
+  // the RELEASE_VERSION environment variable. Required, so a missing value is
+  // an error before anything runs.
+  //
+  // Not `version`: that would render as `--version`, which Zuke reserves for
+  // reporting its own version, and a parameter that collides with a built-in
+  // flag is refused at discovery rather than silently losing to it.
+  releaseVersion = parameter("The version to release, e.g. 1.1.0").required();
 
   check = target()
     .description("Type-check the public entrypoint")
@@ -37,14 +41,14 @@ class Release extends Build {
       const manifest: Record<string, unknown> = JSON.parse(
         await FileTasks.readText("jsr.json"),
       );
-      const bumped = { ...manifest, version: this.version.value };
+      const bumped = { ...manifest, version: this.releaseVersion.value };
       await FileTasks.writeText(
         "jsr.json",
         `${JSON.stringify(bumped, null, 2)}\n`,
       );
       await GitTasks.add((s) => s.paths("jsr.json"));
       await GitTasks.commit((s) =>
-        s.message(`chore: release ${this.version.value}`)
+        s.message(`chore: release ${this.releaseVersion.value}`)
       );
     });
 
@@ -53,8 +57,8 @@ class Release extends Build {
     .dependsOn(this.bump)
     .executes(() =>
       GitTasks.tag((s) =>
-        s.name(`v${this.version.value}`)
-          .message(`Release ${this.version.value}`)
+        s.name(`v${this.releaseVersion.value}`)
+          .message(`Release ${this.releaseVersion.value}`)
       )
     );
 
@@ -68,7 +72,7 @@ class Release extends Build {
     .dependsOn(this.push)
     .executes(() =>
       GhTasks.releaseCreate((s) =>
-        s.tag(`v${this.version.value}`).generateNotes().latest()
+        s.tag(`v${this.releaseVersion.value}`).generateNotes().latest()
       )
     );
 

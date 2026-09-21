@@ -94,7 +94,9 @@ import { DenoTasks } from "@zuke/deno";
 import { GitTasks } from "@zuke/git";
 
 class Release extends Build {
-  version = parameter("The version to release, e.g. 1.1.0").required();
+  // Not `version`: that renders as `--version`, which Zuke reserves for
+  // reporting its own version.
+  releaseVersion = parameter("The version to release, e.g. 1.1.0").required();
 
   clean = target()
     .description("Refuse to release from a dirty working tree")
@@ -114,8 +116,8 @@ class Release extends Build {
     .dependsOn(this.test)
     .executes(() =>
       GitTasks.tag((s) =>
-        s.name(`v${this.version.value}`)
-          .message(`Release ${this.version.value}`)
+        s.name(`v${this.releaseVersion.value}`)
+          .message(`Release ${this.releaseVersion.value}`)
       )
     );
 
@@ -129,7 +131,7 @@ await run(Release);
 ```
 
 ```sh
-./zuke tag --version 1.1.0   # clean → test → tag, and stop there
+./zuke tag --release-version 1.1.0   # clean → test → tag, and stop there
 ./zuke --list                # every step, with its description
 ```
 

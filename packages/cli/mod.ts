@@ -231,7 +231,7 @@ Zuke commands (available anywhere):
   import [options]        Generate a build from package.json scripts or a Makefile
   doc <package>           Show a @zuke/* package's API docs (isolated resolution)
   --help                  Show this help
-  --version               Show the version
+  --version               Show the CLI's version, and this project's build's
 
 Setup options:
   --dir <path>            Directory to scaffold into (default: .)
@@ -276,6 +276,11 @@ function buildHelpHeading(root: string): string {
 const BUILD_HELP_FAILED =
   "The build was found but could not describe itself, so the section above " +
   "is empty. The CLI's own commands are unaffected.";
+
+/** What to say when the build was found but could not report its version. */
+const BUILD_VERSION_FAILED =
+  "The build was found but could not report its version. The CLI's own " +
+  "version above is unaffected.";
 
 /** What to say where the build's half would be, when there is no project. */
 const NO_BUILD_NOTICE =
@@ -481,17 +486,48 @@ const defaultDocRunner: DocRunner = async (denoArgs) => {
 };
 
 /**
- * Resolve a `zuke doc` argument to a `deno doc` specifier: a bare package name
- * (`core`) becomes `jsr:@zuke/core`, a scoped name (`@scope/pkg`) becomes
- * `jsr:@scope/pkg`, and an explicit `jsr:`/`npm:`/`https:`/`file:`/path
- * specifier is passed through unchanged. Returns `undefined` for no argument.
+ * A URL scheme needs two or more characters before its colon, so a lone
+ * Windows drive letter (`C:`) is not mistaken for one.
  */
-export function resolveDocSpec(pkg: string | undefined): string | undefined {
-  if (pkg === undefined || pkg === "") return undefined;
-  // Pass through anything already a specifier: a URI scheme (`jsr:`, `npm:`,
-  // `https:`, `file:`, and a Windows `C:` drive), or a slash/dot path.
-  if (/^([a-z][a-z0-9+.-]*:|[\\/]|\.)/i.test(pkg)) return pkg;
-  return `jsr:${pkg.startsWith("@") ? pkg : `@zuke/${pkg}`}`;
+const URL_SCHEME = /^[a-z][a-z0-9+.-]+:/i;
+
+/** A Windows drive-absolute path (`C:\x`, `C:/x`), after {@link URL_SCHEME}. */
+const DRIVE_ABSOLUTE = /^[A-Za-z]:/;
+
+/** The source extensions that mark an argument as a file, not a package name. */
+const MODULE_EXTENSION = /\.(?:[cm]?[jt]sx?|json)$/i;
+
+/**
+ * Resolve a `zuke doc` argument to the specifier `deno doc` is given: a bare
+ * name (`core`) becomes `jsr:@zuke/core`, a scoped name (`@scope/pkg`) becomes
+ * `jsr:@scope/pkg`, a path is joined to `cwd`, and a specifier that already
+ * carries a URL scheme or is absolute is returned untouched.
+ *
+ * This is a copy of `resolveDocSpec` in `@zuke/core`, and deliberately a
+ * temporary one. The build's reserved `doc` command and this one answer the
+ * same question, and they used to answer it differently: `zuke doc core` found
+ * the package, while `./zuke doc core` looked for a file of that name and
+ * reported it missing. Core owns the rule now, but this package cannot import
+ * it yet — the floor check type-checks against the exact minimum of the
+ * declared core range, and the export is not in a published core. The drift
+ * test holds the two in step until it is; then this copy goes and core's is
+ * imported, the same two-step the wordmark took.
+ */
+export function resolveDocSpec(spec: string, cwd: string): string {
+  if (URL_SCHEME.test(spec)) return spec;
+  if (spec.startsWith("/") || spec.startsWith("\\")) return spec;
+  if (DRIVE_ABSOLUTE.test(spec)) return spec;
+  // A joined path is normalised rather than concatenated, so a `.` or `..`
+  // segment is resolved instead of being carried into the specifier.
+  if (spec.startsWith(".")) return absolutePath(cwd, spec).path;
+  // A leading `@` makes the following slash a scope separator, not a
+  // directory, so this check has to come before the slash check below.
+  if (spec.startsWith("@")) return `jsr:${spec}`;
+  if (spec.includes("/") || spec.includes("\\")) {
+    return absolutePath(cwd, spec).path;
+  }
+  if (MODULE_EXTENSION.test(spec)) return absolutePath(cwd, spec).path;
+  return `jsr:@zuke/${spec}`;
 }
 
 /** Run the `doc` subcommand: `deno doc <spec>` in an isolated directory. */
@@ -501,20 +537,16 @@ async function commandDoc(
   runner: DocRunner,
 ): Promise<number> {
   const [pkg, ...extra] = args;
-  let spec = pkg === undefined || pkg.startsWith("-")
-    ? undefined
-    : resolveDocSpec(pkg);
-  if (spec === undefined) {
+  if (pkg === undefined || pkg === "" || pkg.startsWith("-")) {
     host.log(
       "zuke doc: name a package, e.g. `zuke doc core` or `zuke doc @scope/pkg`.",
     );
     return 1;
   }
-  // A relative path would resolve against the runner's throwaway cwd — pin it to
-  // the user's directory now, while cwd is still theirs. (Absolute paths and
-  // `jsr:`/`npm:`/`https:` specifiers are already location-independent.)
-  if (spec.startsWith(".")) spec = `${Deno.cwd()}/${spec}`;
-  return await runner(["doc", ...extra, spec]);
+  // A path would resolve against the runner's throwaway cwd — the resolver
+  // pins it to the user's directory now, while cwd is still theirs. (Absolute
+  // paths and `jsr:`/`npm:`/`https:` specifiers are location-independent.)
+  return await runner(["doc", ...extra, resolveDocSpec(pkg, Deno.cwd())]);
 }
 
 /**
@@ -615,6 +647,59 @@ async function commandHelp(
 }
 
 /**
+ * `zuke --version`: this CLI's version, then — inside a project — the build's.
+ *
+ * The first line is the installed CLI's version, bare and unchanged, so
+ * anything already reading `zuke --version` keeps working. What follows is the
+ * build's, which is a different number for a real reason: `@zuke/cli` and
+ * `@zuke/core` are separate packages on separate cadences, and a project pins
+ * core through its own import map and lock. Reporting only one of them made
+ * `zuke --version` and `./zuke --version` disagree with nothing to say which
+ * had answered.
+ *
+ * The build's line comes from running the build's own `--version`, for the
+ * same reason its half of the help does: the CLI links its own core, which is
+ * not necessarily the one the project resolved, so asking is the only way to
+ * be right. A build that cannot answer is reported and does not fail the
+ * command — the CLI's own version is still correct.
+ *
+ * Outside a project there is no second line and no notice. A version query is
+ * not the place to explain what a project is, and `--help` already does.
+ */
+async function commandVersion(
+  host: SetupHost,
+  probe: BuildProbe,
+  runner: BuildRunner,
+): Promise<number> {
+  host.log(VERSION);
+  let location: Awaited<ReturnType<typeof locateBuild>> = null;
+  try {
+    location = await locateBuild(Deno.cwd(), probe);
+  } catch (error) {
+    // A refused build is worth saying out loud even here: silence would read
+    // as "no project", which is a different fact. On stderr, so the version
+    // on stdout stays the one line a script reads.
+    output.error(error instanceof Error ? error.message : String(error));
+    return 0;
+  }
+  if (location === null) return 0;
+  host.log(`\nThis project's build (${location.root}/zuke.ts) runs on Zuke:`);
+  try {
+    const code = await runner(
+      location.root,
+      buildRunArgs(location, [
+        "--version",
+      ]),
+    );
+    if (code !== 0) output.error(BUILD_VERSION_FAILED);
+  } catch (error) {
+    output.error(error instanceof Error ? error.message : String(error));
+    output.error(BUILD_VERSION_FAILED);
+  }
+  return 0;
+}
+
+/**
  * The CLI entry point. Returns a process exit code; `host`, `prompter`,
  * `docRunner`, `starActions`, `buildRunner`, and `buildProbe` are injectable
  * for testing.
@@ -635,8 +720,7 @@ export async function main(
   const rest = args.slice(1);
 
   if (command === "--version" || command === "-V") {
-    host.log(VERSION);
-    return 0;
+    return await commandVersion(host, buildProbe, buildRunner);
   }
   try {
     if (command === "setup") {

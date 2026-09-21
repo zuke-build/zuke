@@ -12,7 +12,7 @@ same `release` routine three times, in the order a project usually adopts it:
 ```sh
 scripts/release.sh 1.1.0 --dry-run
 deno run -A scripts/release.ts 1.1.0 --dry-run
-deno run -A zuke.ts tag --version 1.1.0      # clean → test → tag, no push
+deno run -A zuke.ts tag --release-version 1.1.0  # clean → test → tag, no push
 ```
 
 Why the middle step is worth taking on its own:

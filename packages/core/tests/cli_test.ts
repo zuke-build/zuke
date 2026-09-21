@@ -7,7 +7,14 @@ import {
   assertStringIncludes,
   assertThrows,
 } from "./_assert.ts";
-import { Build, cicd, group, type Plugin, target } from "../mod.ts";
+import {
+  absolutePath,
+  Build,
+  cicd,
+  group,
+  type Plugin,
+  target,
+} from "../mod.ts";
 import {
   formatCommandHelp,
   formatGraph,
@@ -21,7 +28,11 @@ import { discoverGroups, discoverTargets } from "../src/build.ts";
 import { FakeGraphHost } from "./_fakes.ts";
 import { CONFIG_FILE } from "../src/config.ts";
 import { discoverParameters, parameter } from "../src/params.ts";
-import { BUILTIN_FLAGS, RESERVED_COMMANDS } from "../src/cli_spec.ts";
+import {
+  BUILTIN_FLAG_NAMES,
+  BUILTIN_FLAGS,
+  RESERVED_COMMANDS,
+} from "../src/cli_spec.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { defaultStateHost } from "../src/state/store.ts";
 import type { RunRecord } from "../src/state/types.ts";
@@ -79,6 +90,17 @@ Deno.test("parseArgs recognises flags and aliases", () => {
   assertEquals(parseArgs(["-l"]).list, true);
   assertEquals(parseArgs(["--help"]).help, true);
   assertEquals(parseArgs(["-h"]).help, true);
+  assertEquals(parseArgs(["--version"]).version, true);
+  assertEquals(parseArgs(["-V"]).version, true);
+  assertEquals(parseArgs(["build"]).version, false);
+});
+
+Deno.test("--version is a reserved flag, so a parameter may not render as one", () => {
+  // Reserving it is what makes `./zuke --version` answerable at all, and the
+  // cost is real: a build declaring a `version` parameter used to get the
+  // value from this flag. The collision is refused at discovery — loudly, by
+  // name — rather than letting the flag quietly mean something else.
+  assertEquals(BUILTIN_FLAG_NAMES.includes("version"), true);
 });
 
 Deno.test("parseArgs recognises the graph command and its output formats", () => {
@@ -291,8 +313,12 @@ Deno.test("main doc resolves a relative spec to an absolute path before running"
     main(Demo, ["doc", "C:/mods/mod.ts"], { docRunner: runner })
   );
   assertEquals(seen, [
-    `${Deno.cwd()}/./mod.ts`,
-    `${Deno.cwd()}/src/lib.ts`,
+    // Normalised, not concatenated: the `./` is resolved rather than carried
+    // into the specifier, where it would show up in any error echoing it.
+    // Expressed through the same helper the resolver uses, because on Windows
+    // the cwd has backslashes and the normalised result does not.
+    absolutePath(Deno.cwd(), "mod.ts").path,
+    absolutePath(Deno.cwd(), "src/lib.ts").path,
     "npm:cowsay",
     "/abs/mod.ts",
     "C:/mods/mod.ts",

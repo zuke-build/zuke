@@ -6,8 +6,8 @@
  * is now something you can run on its own, see in `--list`, and depend on —
  * and the two git steps use the typed wrapper instead of `$`.
  *
- *   deno run -A zuke.ts --version 1.1.0         # clean → test → tag → push
- *   deno run -A zuke.ts tag --version 1.1.0     # stop after the tag
+ *   deno run -A zuke.ts --release-version 1.1.0   # clean → test → tag → push
+ *   deno run -A zuke.ts tag --release-version 1.1.0  # stop after the tag
  *   deno run -A zuke.ts --list
  */
 import { Build, parameter, run, target } from "jsr:@zuke/core@^1";
@@ -16,7 +16,9 @@ import { DenoTasks } from "jsr:@zuke/deno@^1";
 import { GitTasks } from "jsr:@zuke/git@^1";
 
 class Release extends Build {
-  version = parameter("The version to release, e.g. 1.1.0").required();
+  // Not `version`: that renders as `--version`, which Zuke reserves for
+  // reporting its own version.
+  releaseVersion = parameter("The version to release, e.g. 1.1.0").required();
 
   clean = target()
     .description("Refuse to release from a dirty working tree")
@@ -37,8 +39,8 @@ class Release extends Build {
     .dependsOn(this.test)
     .executes(() =>
       GitTasks.tag((s) =>
-        s.name(`v${this.version.value}`)
-          .message(`Release ${this.version.value}`)
+        s.name(`v${this.releaseVersion.value}`)
+          .message(`Release ${this.releaseVersion.value}`)
       )
     );
 

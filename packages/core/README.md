@@ -750,6 +750,26 @@ function resolveBuildRegistry(option: BuildRegistry | false | undefined, declare
   fallback, then — only when {@link ResolveRegistryOptions.enableDefault} — a
   filesystem registry under `<root>/.zuke/builds`.
 
+function resolveDocSpec(spec: string, cwd: string): string
+  Resolve a `zuke doc` argument to the specifier `deno doc` is given.
+
+  `cwd` is the caller's working directory, taken as an argument rather than
+  read here: `deno doc` is run from an isolated empty directory, so a relative
+  path has to be made absolute while the caller's directory is still known,
+  and passing it keeps this function pure and testable without one.
+
+  Bare names gain the `@zuke` scope (`core` becomes `jsr:@zuke/core`) and a
+  scoped name gains only the scheme (`@scope/pkg` becomes `jsr:@scope/pkg`).
+  Anything that looks like a path — leading `.`, an embedded `/`, or a module
+  file extension — is joined to `cwd` instead, and a specifier that already
+  carries a URL scheme or is absolute is returned untouched.
+
+  A joined path comes back normalised, through {@link absolutePath}: the
+  `.` and `..` segments are resolved rather than carried into the specifier,
+  so `deno doc` is handed a canonical path and an error that echoes it names
+  a path the reader recognises. `cwd` must itself be absolute, which is what
+  makes that possible; {@link absolutePath} throws if it is not.
+
 function resolveRemoteStore(option: RemoteCacheStore | false | undefined, declared: RemoteCacheStore | undefined, readEnv: (name: string) => string | undefined): RemoteCacheStore | undefined
   Pick the remote store for a run by precedence: an explicit `option` wins
   (`false` disables the remote cache entirely), then a `declared` store (a

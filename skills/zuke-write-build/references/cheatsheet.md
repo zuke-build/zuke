@@ -1356,7 +1356,13 @@ Copy the closest one instead of composing from primitives; each is a full
                               # authz tiers: allow-list, operator token, confirm
 ./zuke runs show mcp-audit    # the MCP tool-call audit trail (host only, not served over MCP)
 ./zuke register [--json]      # record this build in the build registry (idempotent)
-./zuke doc jsr:@zuke/deno     # print a package's API (deno doc) from an isolated empty dir
+./zuke doc deno               # print a package's API (deno doc) from an isolated empty dir
+                              # A bare name takes the @zuke scope, @scope/pkg takes
+                              # the scheme, a path (./m.ts, src/m.ts, m.ts) is resolved
+                              # against your cwd, and jsr:/npm:/https: pass through.
+                              # `zuke doc` and `./zuke doc` resolve identically.
+./zuke --version              # the Zuke version this build runs on, bare
+                              # (`zuke --version` prints the CLI's, then this, labelled)
 ./zuke <command> --help        # a command's own usage, detail and flags
                                # (--help alone lists what exists, one line each)
 ./zuke outdated [--exit-code]  # jsr packages the lock resolves behind their latest (network)

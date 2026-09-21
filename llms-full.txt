@@ -696,6 +696,26 @@ function resolveBuildRegistry(option: BuildRegistry | false | undefined, declare
   fallback, then — only when {@link ResolveRegistryOptions.enableDefault} — a
   filesystem registry under `<root>/.zuke/builds`.
 
+function resolveDocSpec(spec: string, cwd: string): string
+  Resolve a `zuke doc` argument to the specifier `deno doc` is given.
+
+  `cwd` is the caller's working directory, taken as an argument rather than
+  read here: `deno doc` is run from an isolated empty directory, so a relative
+  path has to be made absolute while the caller's directory is still known,
+  and passing it keeps this function pure and testable without one.
+
+  Bare names gain the `@zuke` scope (`core` becomes `jsr:@zuke/core`) and a
+  scoped name gains only the scheme (`@scope/pkg` becomes `jsr:@scope/pkg`).
+  Anything that looks like a path — leading `.`, an embedded `/`, or a module
+  file extension — is joined to `cwd` instead, and a specifier that already
+  carries a URL scheme or is absolute is returned untouched.
+
+  A joined path comes back normalised, through {@link absolutePath}: the
+  `.` and `..` segments are resolved rather than carried into the specifier,
+  so `deno doc` is handed a canonical path and an error that echoes it names
+  a path the reader recognises. `cwd` must itself be absolute, which is what
+  makes that possible; {@link absolutePath} throws if it is not.
+
 function resolveRemoteStore(option: RemoteCacheStore | false | undefined, declared: RemoteCacheStore | undefined, readEnv: (name: string) => string | undefined): RemoteCacheStore | undefined
   Pick the remote store for a run by precedence: an explicit `option` wins
   (`false` disables the remote cache entirely), then a `declared` store (a
@@ -8648,11 +8668,21 @@ function parseImportFlags(args: string[]): ImportFlags
 function parseSetupFlags(args: string[]): SetupFlags
   Parse the argument list following `zuke setup`.
 
-function resolveDocSpec(pkg: string | undefined): string | undefined
-  Resolve a `zuke doc` argument to a `deno doc` specifier: a bare package name
-  (`core`) becomes `jsr:@zuke/core`, a scoped name (`@scope/pkg`) becomes
-  `jsr:@scope/pkg`, and an explicit `jsr:`/`npm:`/`https:`/`file:`/path
-  specifier is passed through unchanged. Returns `undefined` for no argument.
+function resolveDocSpec(spec: string, cwd: string): string
+  Resolve a `zuke doc` argument to the specifier `deno doc` is given: a bare
+  name (`core`) becomes `jsr:@zuke/core`, a scoped name (`@scope/pkg`) becomes
+  `jsr:@scope/pkg`, a path is joined to `cwd`, and a specifier that already
+  carries a URL scheme or is absolute is returned untouched.
+
+  This is a copy of `resolveDocSpec` in `@zuke/core`, and deliberately a
+  temporary one. The build's reserved `doc` command and this one answer the
+  same question, and they used to answer it differently: `zuke doc core` found
+  the package, while `./zuke doc core` looked for a file of that name and
+  reported it missing. Core owns the rule now, but this package cannot import
+  it yet — the floor check type-checks against the exact minimum of the
+  declared core range, and the export is not in a published core. The drift
+  test holds the two in step until it is; then this copy goes and core's is
+  imported, the same two-step the wordmark took.
 
 const defaultPrompter: Prompter
   The real {@link Prompter}, backed by Deno's `prompt`/`confirm`.

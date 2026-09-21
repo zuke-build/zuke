@@ -246,14 +246,19 @@ Deno.test("main setup --launcher-name renames the launcher and reports it", asyn
 });
 
 Deno.test("resolveDocSpec resolves bare, scoped, and explicit specifiers", () => {
-  assertEquals(resolveDocSpec("core"), "jsr:@zuke/core");
-  assertEquals(resolveDocSpec("@scope/pkg"), "jsr:@scope/pkg");
-  assertEquals(resolveDocSpec("jsr:@zuke/deno"), "jsr:@zuke/deno");
-  assertEquals(resolveDocSpec("npm:cowsay"), "npm:cowsay");
-  assertEquals(resolveDocSpec("https://x/y.ts"), "https://x/y.ts");
-  assertEquals(resolveDocSpec("./local.ts"), "./local.ts");
-  assertEquals(resolveDocSpec(""), undefined);
-  assertEquals(resolveDocSpec(undefined), undefined);
+  const cwd = "/work";
+  assertEquals(resolveDocSpec("core", cwd), "jsr:@zuke/core");
+  assertEquals(resolveDocSpec("@scope/pkg", cwd), "jsr:@scope/pkg");
+  assertEquals(resolveDocSpec("jsr:@zuke/deno", cwd), "jsr:@zuke/deno");
+  assertEquals(resolveDocSpec("npm:cowsay", cwd), "npm:cowsay");
+  assertEquals(resolveDocSpec("https://x/y.ts", cwd), "https://x/y.ts");
+  // A path is pinned to the caller's directory here, because `deno doc` runs
+  // from an isolated empty one where a relative spec would resolve to nothing.
+  assertEquals(resolveDocSpec("./local.ts", cwd), "/work/local.ts");
+  assertEquals(resolveDocSpec("src/mod.ts", cwd), "/work/src/mod.ts");
+  // A bare name that names a file is a file: `@zuke/mod.ts` is not a package.
+  assertEquals(resolveDocSpec("mod.ts", cwd), "/work/mod.ts");
+  assertEquals(resolveDocSpec("/abs/mod.ts", cwd), "/abs/mod.ts");
 });
 
 Deno.test("main doc runs `deno doc <spec>` in an isolated temp-dir cwd", async () => {
@@ -390,13 +395,29 @@ Deno.test("main setup honours --dir", async () => {
   assertEquals(host.logs.some((l) => l.includes("into sub")), true);
 });
 
-Deno.test("main --version prints the version", async () => {
-  const host = new FakeHost();
-  assertEquals(await main(["--version"], host), 0);
-  assertEquals(host.logs, [VERSION]);
-  const host2 = new FakeHost();
-  assertEquals(await main(["-V"], host2), 0);
-  assertEquals(host2.logs, [VERSION]);
+Deno.test("main --version prints the version, under both spellings", async () => {
+  // The probe finds no project on purpose. `--version` reaches the build now,
+  // so the real one would locate this repository's own zuke.json and spawn
+  // its build — a subprocess in a test that only wants to read a string, and
+  // a second version in the assertion below.
+  const bare = async (args: string[]) => {
+    const host = new FakeHost();
+    assertEquals(
+      await main(
+        args,
+        host,
+        defaultPrompter,
+        undefined,
+        undefined,
+        () => Promise.resolve(0),
+        noProjectProbe,
+      ),
+      0,
+    );
+    return host.logs;
+  };
+  assertEquals(await bare(["--version"]), [VERSION]);
+  assertEquals(await bare(["-V"]), [VERSION]);
 });
 
 Deno.test("main shows help for --help, -h and no args", async () => {
@@ -531,8 +552,22 @@ Deno.test("main setup skips the star prompt under --yes and non-TTY", async () =
 });
 
 Deno.test("main uses default host/prompter when omitted", async () => {
-  // --version touches only host.log; safe to exercise the real defaults.
-  assertEquals(await main(["--version"]), 0);
+  // `undefined` for host and prompter is what exercises their defaults — the
+  // point of this test. The probe is given, though: `--version` reaches the
+  // build now, so the real one would find this repository's own zuke.json and
+  // spawn its build, turning a string assertion into a subprocess.
+  assertEquals(
+    await main(
+      ["--version"],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => Promise.resolve(0),
+      noProjectProbe,
+    ),
+    0,
+  );
 });
 
 Deno.test("defaultPrompter wraps prompt/confirm", () => {
@@ -736,32 +771,137 @@ Deno.test("main propagates the build's exit code and forwards flags verbatim", a
   assertEquals(seen.slice(3), ["graph", "--no-open", "--output=html"]);
 });
 
-Deno.test("main keeps its own commands even inside a project", async () => {
-  // A zuke.json is present, yet doc/--version stay the global CLI's: neither
-  // reaches the build runner. (--help is deliberately different; see below.)
+Deno.test("main keeps doc for itself even inside a project", async () => {
+  // A zuke.json is present, yet `doc` stays the global CLI's and never
+  // reaches the build runner — `zuke doc jsr:@zuke/deno` has to work outside
+  // a project too, so forwarding it would make it depend on one. It resolves
+  // the same specifier the build would either way, which the drift test pins.
+  //
+  // `--help` and `--version` are deliberately different: both now show the
+  // build's surface alongside the CLI's, each covered by its own test.
   const host = new FakeHost();
   const forwarded: string[][] = [];
   const runner = (_root: string, denoArgs: string[]) => {
     forwarded.push(denoArgs);
     return Promise.resolve(0);
   };
-  const docRunner = () => Promise.resolve(0);
-  const probe = probeAt(["zuke.json"]);
-  for (const args of [["--version"], ["doc", "core"]]) {
-    assertEquals(
-      await main(
-        args,
-        host,
-        defaultPrompter,
-        docRunner,
-        undefined,
-        runner,
-        probe,
-      ),
-      0,
-    );
-  }
+  let documented: string[] = [];
+  const docRunner = (args: string[]) => {
+    documented = args;
+    return Promise.resolve(0);
+  };
+  assertEquals(
+    await main(
+      ["doc", "core"],
+      host,
+      defaultPrompter,
+      docRunner,
+      undefined,
+      runner,
+      probeAt(["zuke.json"]),
+    ),
+    0,
+  );
   assertEquals(forwarded, []);
+  assertEquals(documented, ["doc", "jsr:@zuke/core"]);
+});
+
+Deno.test("--version inside a project reports both, the CLI's first", async () => {
+  // The CLI and the build are separate packages on separate cadences, and a
+  // project pins core through its own import map — so one number cannot stand
+  // for both. The CLI's stays the first line, bare, so anything already
+  // reading `zuke --version` keeps working.
+  const host = new FakeHost();
+  const forwarded: string[][] = [];
+  const code = await main(
+    ["--version"],
+    host,
+    defaultPrompter,
+    undefined,
+    undefined,
+    (_root, denoArgs) => {
+      forwarded.push(denoArgs);
+      return Promise.resolve(0);
+    },
+    probeAt(["zuke.json"]),
+  );
+  assertEquals(code, 0);
+  assertEquals(host.logs[0], VERSION);
+  assertStringIncludes(host.logs.join("\n"), "This project's build");
+  // Asked of the build rather than assumed from the CLI's own core.
+  assertEquals(forwarded, [["run", "-A", "zuke.ts", "--version"]]);
+});
+
+Deno.test("--version outside a project is the one line, with no notice", async () => {
+  // A version query is not the place to explain what a project is; --help
+  // already does that, and a script reading this wants one line.
+  const host = new FakeHost();
+  const forwarded: string[][] = [];
+  const code = await main(
+    ["--version"],
+    host,
+    defaultPrompter,
+    undefined,
+    undefined,
+    (_root, denoArgs) => {
+      forwarded.push(denoArgs);
+      return Promise.resolve(0);
+    },
+    noProjectProbe,
+  );
+  assertEquals(code, 0);
+  assertEquals(host.logs.join("\n").trim(), VERSION);
+  assertEquals(forwarded, []);
+});
+
+Deno.test("--version names a build that could not report one", async () => {
+  // The runner returns the build's exit code rather than throwing on one, so
+  // a build that ran and failed would otherwise leave a heading over nothing
+  // while the command still reported success.
+  const host = new FakeHost();
+  let code = 1;
+  const err = await capturingErr(async () => {
+    code = await main(
+      ["--version"],
+      host,
+      defaultPrompter,
+      undefined,
+      undefined,
+      () => Promise.resolve(3),
+      probeAt(["zuke.json"]),
+    );
+  });
+  // Still 0: the CLI's own version is correct and is what was asked for.
+  assertEquals(code, 0);
+  assertEquals(host.logs[0], VERSION);
+  assertStringIncludes(err.join("\n"), "could not report its version");
+});
+
+Deno.test("--version refuses an untrusted build, and says so", async () => {
+  // The trust gate reaches this path too, and a refusal must not be silent:
+  // the version on stdout is still the CLI's and still right, but the reason
+  // the second line is missing belongs on stderr rather than nowhere.
+  const host = new FakeHost();
+  const forwarded: string[][] = [];
+  let code = 1;
+  const err = await capturingErr(async () => {
+    code = await main(
+      ["--version"],
+      host,
+      defaultPrompter,
+      undefined,
+      undefined,
+      (_root, denoArgs) => {
+        forwarded.push(denoArgs);
+        return Promise.resolve(0);
+      },
+      probeAt(["zuke.json"], { uid: 1000, owner: 0 }),
+    );
+  });
+  assertEquals(code, 0);
+  assertEquals(forwarded, []);
+  assertEquals(host.logs[0], VERSION);
+  assertStringIncludes(err.join("\n"), "owned by user 0");
 });
 
 Deno.test("--help inside a project shows both surfaces, each labelled", async () => {
