@@ -58,7 +58,11 @@ import {
   writeStepSummary,
 } from "./report.ts";
 import { detectReviewHost, type EnvReader, readEnv } from "./hosts.ts";
-import { commentMarker, type HostComment } from "./hosts/types.ts";
+import {
+  commentMarker,
+  type HostComment,
+  parseCommentMarker,
+} from "./hosts/types.ts";
 import type { RetryInfo, RetryOptions } from "./retry.ts";
 import type { Budget } from "./budget.ts";
 import type { AiCache } from "./cache.ts";
@@ -66,6 +70,8 @@ import { findingFingerprint, type Suppressions } from "./suppress.ts";
 import { sha256Hex } from "./hash.ts";
 import { rank, severityScore } from "./severity.ts";
 import {
+  type Acceptance,
+  acceptances,
   budgetComments,
   DiscussionSettings,
   rebuttalsFor,
@@ -726,10 +732,14 @@ export class Reviewer implements Validation {
    * host attributes to a bot account — a state block pasted into a human's
    * comment is never trusted (an Actions token's own comments are bot-authored;
    * a PAT-driven local run simply starts fresh).
+   *
+   * `shared` is what the **other** reviewers on the pull request have decided
+   * with the maintainers — their dismissed and accepted findings, read from
+   * their newest state block under the same authorship rule. A concern one
+   * reviewer's thread settled is offered to this one as a prior, so it is not
+   * raised afresh under another reviewer's name.
    */
-  async #prepareDiscussion(): Promise<
-    { comments: HostComment[]; priorState?: ReviewState } | undefined
-  > {
+  async #prepareDiscussion(): Promise<Discussion | undefined> {
     if (this.#discussion === undefined) return undefined;
     const warn = (reason: string) => {
       if (!this.#quiet) {
@@ -760,16 +770,27 @@ export class Reviewer implements Validation {
       // bot that merely quotes another comment (prefixing its own text) can
       // never be adopted as the state carrier.
       let own: HostComment | undefined;
+      const others = new Map<string, HostComment>();
       for (let i = comments.length - 1; i >= 0; i--) {
         const c = comments[i];
-        if (c.bot && c.body.startsWith(marker)) {
+        if (!c.bot) continue;
+        if (own === undefined && c.body.startsWith(marker)) {
           own = c;
-          break;
+          continue;
+        }
+        const name = parseCommentMarker(c.body);
+        if (name !== undefined && name !== this.name && !others.has(name)) {
+          others.set(name, c);
         }
       }
       const priorState = own !== undefined ? decodeState(own.body) : undefined;
+      const shared: StoredFinding[] = [];
+      for (const other of others.values()) {
+        shared.push(...dismissedOf(decodeState(other.body)).values());
+      }
       return {
         comments,
+        shared,
         ...(priorState !== undefined ? { priorState } : {}),
       };
     } catch (error) {
@@ -826,6 +847,8 @@ export class Reviewer implements Validation {
   async #resolveRewordings(
     findings: AssessmentFinding[],
     priorState: ReviewState | undefined,
+    shared: readonly StoredFinding[],
+    contested: ReadonlySet<string>,
     call: {
       provider: Provider;
       key: string;
@@ -838,7 +861,7 @@ export class Reviewer implements Validation {
       newAliases: new Map(),
       notes: [],
     };
-    if (priorState === undefined) return result;
+    if (priorState === undefined && shared.length === 0) return result;
     const record = (adoptions: Adoption[]): void => {
       for (const adoption of adoptions) {
         result.rewordedFrom.set(adoption.prior.id, adoption.prior.title);
@@ -862,7 +885,7 @@ export class Reviewer implements Validation {
         // Through the same gate the paid path uses: a fingerprint does not
         // encode severity, so an alias alone cannot show that this round's
         // finding is no worse than the decision it would inherit.
-        if (prior !== undefined && eligible(finding, prior)) {
+        if (prior !== undefined && eligible(finding, prior, contested)) {
           known.set(finding.id ?? "", prior);
         }
       }
@@ -874,25 +897,37 @@ export class Reviewer implements Validation {
     // recognised too: left unmatched, its old id goes unreported this round and
     // the progress pass records it as fixed, so the report claims a resolution
     // that never happened and lists the same concern twice.
-    const ids = new Set(priorState.findings.map((finding) => finding.id));
+    const own = priorState?.findings ?? [];
+    const ids = new Set(own.map((finding) => finding.id));
+    // The other reviewers' decisions join the priors after this reviewer's
+    // own, and only where this reviewer holds no record of the id itself.
+    const priors = [...own, ...shared.filter((f) => !ids.has(f.id))];
+    for (const prior of shared) ids.add(prior.id);
     const candidates = findings.filter((finding) =>
       finding.id !== undefined && !ids.has(finding.id)
     );
-    const priors = [...priorState.findings];
-    // Fixed first, then dismissed and refuted, then the still-open ones. Fixed
-    // before the decided ones keeps a candidate matching both reopening (which
-    // reports) rather than inheriting a dismissal (which silences); decided
-    // entries before open ones keeps the newcomers from crowding a sticky
-    // decision out of the per-candidate comparison cap.
+    // A maintainer's decisions first — a dismissal, an acceptance, a still-open
+    // finding a maintainer has contested — then fixed, then the model's own
+    // refutations, then the still-open ones. A maintainer's decision ahead of
+    // everything is the point of the pass: it is the identity a restatement
+    // must land on for the loop to end. Fixed ahead of refuted keeps a
+    // candidate matching both reopening (which reports) rather than
+    // inheriting the model's refutation (which silences); decided entries
+    // before open ones keeps the newcomers from crowding a sticky decision out
+    // of the per-candidate comparison cap. The sort is stable, so within a
+    // tier this reviewer's own entries stay ahead of the shared ones.
     const order = (finding: StoredFinding): number =>
-      finding.status === "fixed"
+      finding.status === "dismissed" || finding.status === "accepted" ||
+        contested.has(finding.id)
         ? 0
-        : finding.status === "dismissed" || finding.status === "refuted"
+        : finding.status === "fixed"
         ? 1
-        : 2;
+        : finding.status === "refuted"
+        ? 2
+        : 3;
     priors.sort((a, b) => order(a) - order(b));
     if (candidates.length === 0 || priors.length === 0) return result;
-    const plan = planDedup(candidates, priors);
+    const plan = planDedup(candidates, priors, contested);
     if (plan.pairs.length === 0) return result;
     if (this.#budget?.exhausted_() ?? false) {
       result.notes.push(
@@ -944,11 +979,8 @@ export class Reviewer implements Validation {
     settings: DiscussionSettings,
     ids: string[],
   ): Map<string, HostComment[]> {
-    const replies = threadCtx === undefined
-      ? []
-      : allReplies(threadCtx.threads);
     const trusted = budgetComments(
-      trustedComments([...comments, ...replies], settings),
+      this.#trustedDiscussion(comments, threadCtx, settings),
       settings,
     );
     const quoted = rebuttalsFor(trusted, ids);
@@ -957,10 +989,51 @@ export class Reviewer implements Validation {
       : withThreadRebuttals(quoted, trusted, threadCtx.threads, ids);
   }
 
+  /**
+   * The `accept` commands trusted maintainers gave for `ids`, from the
+   * pull-request comments and the replies in the reviewer's own threads.
+   * Parsed from the trusted comments **before** the token budget: a command
+   * is read by code, not by a prompt, so the budget that bounds what a model
+   * sees has no bearing on it, and an acceptance must not vanish because a
+   * long discussion pushed its comment out of the model's window.
+   */
+  #collectAcceptances(
+    comments: HostComment[],
+    threadCtx: ThreadContext | undefined,
+    settings: DiscussionSettings,
+    mention: string,
+    ids: string[],
+  ): Map<string, Acceptance> {
+    return acceptances(
+      this.#trustedDiscussion(comments, threadCtx, settings),
+      mention,
+      ids,
+      threadCtx?.threads ?? new Map(),
+    );
+  }
+
+  /**
+   * The comments the reviewer listens to — the pull request's plus the
+   * replies in its own threads — after the trust gate, in listing order with
+   * the replies last.
+   */
+  #trustedDiscussion(
+    comments: HostComment[],
+    threadCtx: ThreadContext | undefined,
+    settings: DiscussionSettings,
+  ): HostComment[] {
+    const replies = threadCtx === undefined
+      ? []
+      : allReplies(threadCtx.threads);
+    return trustedComments([...comments, ...replies], settings);
+  }
+
   /** What the review-thread phase in `threads_phase.ts` needs from this reviewer. */
   #threadSettings(redact: Redact): ThreadPhaseSettings {
+    const mention = this.#discussion?.mention_();
     return {
       name: this.name,
+      ...(mention !== undefined ? { mention } : {}),
       quiet: this.#quiet,
       env: this.#env,
       doFetch: this.#fetch ?? fetch,
@@ -1069,9 +1142,37 @@ export class Reviewer implements Validation {
     const openPrior = openOf(discussion?.priorState);
     const fixedPrior = fixedOf(discussion?.priorState);
     const refutedPrior = refutedOf(discussion?.priorState);
-    const dismissedLines = [...dismissedPrior.values()].map((f) =>
+    // Everything a maintainer has decided on this pull request, by any
+    // reviewer: the other reviewers' decisions first, this reviewer's own
+    // written over them, so an id both hold keeps this reviewer's record.
+    // Shown to the model, sticky in code, and offered as priors a restatement
+    // inherits — but persisted into this reviewer's state only once a finding
+    // of its own adopts one, so the blocks do not mirror each other.
+    const dismissedKnown = new Map<string, StoredFinding>();
+    for (const prior of discussion?.shared ?? []) {
+      dismissedKnown.set(prior.id, prior);
+    }
+    for (const [id, prior] of dismissedPrior) dismissedKnown.set(id, prior);
+    const dismissedLines = [...dismissedKnown.values()].map((f) =>
       stateLine(f, true)
     );
+    // The still-open findings a maintainer has contested — gathered before the
+    // identities are resolved, since the reword pass needs to know them: a
+    // restatement of a contested finding must adopt the identity the rebuttal
+    // is attached to, whatever file or severity it comes back under, so the
+    // rebuttal is weighed this round instead of the restatement starting a
+    // fresh id the rebuttal does not name.
+    const contestedPrior: ReadonlySet<string> =
+      discussion === undefined || this.#discussion === undefined
+        ? new Set()
+        : new Set(
+          this.#collectRebuttals(
+            discussion.comments,
+            threadCtx,
+            this.#discussion,
+            [...openPrior.keys()],
+          ).keys(),
+        );
     // Earlier rounds' refutations ride in with their evidence, so the model is
     // not left to rediscover a concern already disproved against this code.
     const refutedLines = [...refutedPrior.values()].map((f) =>
@@ -1154,6 +1255,8 @@ export class Reviewer implements Validation {
       : await this.#resolveRewordings(
         assessment.findings,
         discussion.priorState,
+        discussion.shared,
+        contestedPrior,
         { provider, key, model, retry },
       );
 
@@ -1162,11 +1265,11 @@ export class Reviewer implements Validation {
     // re-report rewordings; this catches an identical resurfacing without
     // spending a model call on it). Recorded in the report, never silent.
     const dismissed: DismissedFinding[] = [];
-    if (dismissedPrior.size > 0) {
+    if (dismissedKnown.size > 0) {
       const kept: AssessmentFinding[] = [];
       for (const finding of assessment.findings) {
         const prior = finding.id !== undefined
-          ? dismissedPrior.get(finding.id)
+          ? dismissedKnown.get(finding.id)
           : undefined;
         if (prior !== undefined) {
           const earlier = finding.id !== undefined
@@ -1179,6 +1282,7 @@ export class Reviewer implements Validation {
               ? { reason: prior.rationale }
               : {}),
             ...(earlier !== undefined ? { rewordedFrom: earlier } : {}),
+            ...(prior.status === "accepted" ? { accepted: true } : {}),
           });
         } else kept.push(finding);
       }
@@ -1188,20 +1292,83 @@ export class Reviewer implements Validation {
     // Rebuttals, gathered once the ids are canonical and before any decision a
     // trusted reply may change, for every finding of interest: reported this
     // round, still open from the last one, or refuted before.
+    // A finding decided above — a sticky dismissal, this reviewer's or one
+    // shared by another — is not of interest any more, even when this
+    // reviewer still holds it open: a rebuttal on it must not send it to the
+    // adjudicator a second time, which would post a second answer for a
+    // finding already answered.
+    const decidedAbove = new Set(dismissed.map((d) => d.finding.id));
+    const ofInterest = [
+      ...assessment.findings
+        .map((f) => f.id)
+        .filter((id): id is string => id !== undefined),
+      ...openPrior.keys(),
+      ...refutedPrior.keys(),
+    ].filter((id) => !decidedAbove.has(id));
     const rebuttals = discussion === undefined || this.#discussion === undefined
       ? new Map<string, HostComment[]>()
       : this.#collectRebuttals(
         discussion.comments,
         threadCtx,
         this.#discussion,
-        [
-          ...assessment.findings
-            .map((f) => f.id)
-            .filter((id): id is string => id !== undefined),
-          ...openPrior.keys(),
-          ...refutedPrior.keys(),
-        ],
+        ofInterest,
       );
+
+    // Acceptances: a maintainer's `accept` command decides a finding outright.
+    // Applied before the verifier and the adjudicator see it — nothing is
+    // weighed, so nothing is spent — and taken off the rebuttal list, so a
+    // reply that both argued and accepted is not adjudicated behind the
+    // maintainer's back. An accepted finding the model did not re-report is
+    // decided all the same, like a contested one the adjudicator dismisses.
+    const mention = this.#discussion?.mention_();
+    const accepted = discussion === undefined ||
+        this.#discussion === undefined || mention === undefined
+      ? new Map<string, Acceptance>()
+      : this.#collectAcceptances(
+        discussion.comments,
+        threadCtx,
+        this.#discussion,
+        mention,
+        ofInterest,
+      );
+    if (accepted.size > 0) {
+      const acceptedFinding = (
+        finding: AssessmentFinding,
+        acceptance: Acceptance,
+      ): DismissedFinding => ({
+        finding,
+        author: acceptance.displayName ?? acceptance.author,
+        reason: acceptance.reason,
+        accepted: true,
+      });
+      const kept: AssessmentFinding[] = [];
+      for (const finding of assessment.findings) {
+        const acceptance = finding.id !== undefined
+          ? accepted.get(finding.id)
+          : undefined;
+        if (acceptance === undefined) kept.push(finding);
+        else dismissed.push(acceptedFinding(finding, acceptance));
+      }
+      assessment.findings = kept;
+      // Not re-reported this round — still open from the last one, or
+      // refuted by the verifier — the maintainer's decision is recorded all
+      // the same, and outranks the verifier's: a maintainer who accepts a
+      // finding the model had already talked itself out of is owed the
+      // acknowledgement, not silence.
+      const decided = new Set(dismissed.map((d) => d.finding.id));
+      for (const prior of [...openPrior.values(), ...refutedPrior.values()]) {
+        const acceptance = accepted.get(prior.id);
+        if (acceptance === undefined || decided.has(prior.id)) continue;
+        decided.add(prior.id);
+        dismissed.push(acceptedFinding({
+          id: prior.id,
+          title: prior.title,
+          severity: prior.severity,
+          ...(prior.file !== undefined ? { file: prior.file } : {}),
+        }, acceptance));
+      }
+      for (const id of accepted.keys()) rebuttals.delete(id);
+    }
 
     // Sticky refutations: a finding the verify pass disproved in an earlier
     // round is dropped deterministically — but only while everything that
@@ -1588,7 +1755,10 @@ export class Reviewer implements Validation {
         // the maintainer actually argued about. Re-stamping it with this
         // round's rewording would churn the state block and, over rounds, bury
         // the real reason under a succession of titles.
-        const prior = dismissedPrior.get(id);
+        // Known to another reviewer: its record — wording, author, reason —
+        // is adopted into this reviewer's state as it stands, so the next
+        // round is free even if the other reviewer's comment is gone.
+        const prior = dismissedKnown.get(id);
         stored.set(
           id,
           withAliases(
@@ -1596,7 +1766,7 @@ export class Reviewer implements Validation {
               id,
               title: d.finding.title,
               severity: d.finding.severity,
-              status: "dismissed",
+              status: d.accepted === true ? "accepted" : "dismissed",
               ...(d.finding.file !== undefined ? { file: d.finding.file } : {}),
               ...(d.reason !== undefined ? { rationale: d.reason } : {}),
               ...(d.author !== undefined ? { author: d.author } : {}),
@@ -1643,6 +1813,7 @@ export class Reviewer implements Validation {
           dismissed: dismissed.map((d) => ({
             id: d.finding.id ?? "",
             ...(d.reason !== undefined ? { reason: d.reason } : {}),
+            ...(d.accepted === true ? { accepted: true } : {}),
           })),
           dismissedPrior: new Set(dismissedPrior.keys()),
           refuted: refuted.map((r) => ({
@@ -1669,6 +1840,9 @@ export class Reviewer implements Validation {
         ? { notes: [...reword.notes, ...runNotes, ...threadNotes] }
         : {}),
       discussion: discussion !== undefined,
+      ...(discussion !== undefined && mention !== undefined
+        ? { commands: mention }
+        : {}),
     }, commentExtra);
     const gate = gateTrips(assessment, this.#gate);
     if (gate.tripped) {
@@ -1677,6 +1851,16 @@ export class Reviewer implements Validation {
       );
     }
   }
+}
+
+/** What one run's discussion round starts from. */
+interface Discussion {
+  /** Every comment on the pull request, in listing order — untrusted. */
+  comments: HostComment[];
+  /** This reviewer's state from its newest own comment, when one exists. */
+  priorState?: ReviewState;
+  /** The other reviewers' dismissed and accepted findings on this pull request. */
+  shared: StoredFinding[];
 }
 
 /**

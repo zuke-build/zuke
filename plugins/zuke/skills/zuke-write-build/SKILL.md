@@ -296,9 +296,15 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   `.verify()` are remembered too, and a rebuttal is adjudicated even when the
   next round's model drops the finding — only platform-verified maintainer
   comments ever reach the model, on GitHub, GitLab, Azure DevOps and Bitbucket
-  alike). A rebuttal needs no push: commenting the workflow's `command` (e.g.
+  alike). A maintainer's decision is inherited by a restatement on any file of
+  the diff and at any severity, and shared with every reviewer on the pull
+  request. A rebuttal needs no push: commenting the workflow's `command` (e.g.
   `@zuke-build review`) starts a run that adjudicates it and answers in the
-  thread. See the cheatsheet's AI section.
+  thread. With `.discussion((d) => d.commands("@zuke-build"))` the comment
+  carries a collapsed Commands panel, and `@zuke-build accept <id> <reason>`
+  records a finding as accepted for the pull request without adjudication;
+  `.also("@zuke-build accept")` on the workflow command makes that comment start
+  the run. See the cheatsheet's AI section.
 - **Wait on an external GitHub workflow (`@zuke/gh`):** in a `.waitsFor(...)`
   gate, `s.on(githubWorkflow((g) => g.repo("o/r").workflow("e2e.yml")))`
   dispatches a workflow in another repo and suspends until it finishes; read the

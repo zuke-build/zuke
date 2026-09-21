@@ -144,11 +144,41 @@ Deno.test("fixed findings round-trip, and the per-status views select correctly"
   assertEquals(openOf(undefined).size, 0);
 });
 
-Deno.test("dismissedOf keys only the dismissed findings", () => {
+Deno.test("dismissedOf keys the dismissed and the accepted findings, nothing else", () => {
   const dismissed = dismissedOf(STATE);
   assertEquals(dismissed.size, 1);
   assertEquals(dismissed.get("abc123")?.author, "maintainer");
   assertEquals(dismissedOf(undefined).size, 0);
+  const state: ReviewState = {
+    findings: [
+      { id: "a", title: "open", severity: "high", status: "open" },
+      {
+        id: "b",
+        title: "accepted",
+        severity: "high",
+        status: "accepted",
+        author: "maintainer",
+        rationale: "by design",
+      },
+      { id: "c", title: "refuted", severity: "low", status: "refuted" },
+    ],
+  };
+  assertEquals([...dismissedOf(state).keys()], ["b"]);
+});
+
+Deno.test("an accepted finding round-trips with its author and reason", () => {
+  const state: ReviewState = {
+    findings: [{
+      id: "b",
+      title: "accepted",
+      severity: "high",
+      status: "accepted",
+      file: "src/app.ts",
+      author: "maintainer",
+      rationale: "by design",
+    }],
+  };
+  assertEquals(decodeState(encodeState(state)), state);
 });
 
 Deno.test("aliases round-trip through the state block", () => {

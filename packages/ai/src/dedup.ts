@@ -15,8 +15,9 @@
  * The pass may only **rename**. It never dismisses, refutes, or suppresses:
  * whatever decision is attached to the adopted identity was earned in an
  * earlier round by the two-key rule (a trusted rebuttal matched in code *and*
- * the adjudicator accepting it). Every restriction on what a rename may do —
- * same file, a severity ceiling, which statuses are eligible, refusing a
+ * the adjudicator accepting it), or spoken by a maintainer outright. Every
+ * restriction on what a rename may do — same file and a severity ceiling for
+ * an identity the model earned, which statuses are eligible, refusing a
  * collision — is enforced here in code, before any pair reaches a prompt.
  *
  * @module
@@ -37,8 +38,15 @@ export const DEDUP_VERDICTS: string[] = ["same", "different"];
  */
 export const MAX_DEDUP_PAIRS = 24;
 
-/** Cap on the earlier findings any one candidate is compared against. */
+/**
+ * Cap on the earlier findings any one candidate is compared against — the
+ * ones the model decided (fixed, refuted, still open). A prior a maintainer
+ * decided is not counted against it: see {@link planDedup}.
+ */
 export const MAX_PRIORS_PER_CANDIDATE = 3;
+
+/** The empty set of contested ids, for callers with no discussion round. */
+const NO_CONTESTED: ReadonlySet<string> = new Set();
 
 /** One candidate × prior comparison the dedup pass asks about. */
 export interface DedupPair {
@@ -85,7 +93,7 @@ export interface RewordResult {
 }
 
 /**
- * Serialise a plan's pairs for the prompt. Only the file and the two findings'
+ * Serialise a plan's pairs for the prompt. Only the files and the two findings'
  * text travel: no ids, no severities, and above all no lifecycle status — the
  * model is never told that the earlier finding was dismissed, which would be a
  * thumb on the scale toward the answer that silences a finding. Text is
@@ -100,6 +108,9 @@ export function dedupNotes(plan: DedupPlan): DedupPairNote[] {
       ? { detail: clip(pair.candidate.detail, DETAIL_LIMIT) }
       : {}),
     priorTitle: clip(pair.prior.title, TITLE_LIMIT),
+    ...(pair.prior.file !== undefined && pair.prior.file !== pair.candidate.file
+      ? { priorFile: pair.prior.file }
+      : {}),
   }));
 }
 
@@ -115,14 +126,42 @@ function clip(text: string, limit: number): string {
 }
 
 /**
- * Whether a candidate may inherit `prior`'s identity at all. Two gates, both in
- * code so no prompt wording can widen them:
+ * Whether `prior` carries a **maintainer's** decision rather than the model's:
+ * a finding dismissed or accepted through the discussion, or one still open
+ * that a maintainer has contested this round. Such an identity may be adopted
+ * across the files of the diff and at any severity — the maintainer decided
+ * the concern, not its label or the line it was pinned to. This is what stops
+ * the loop in which a dismissed concern comes back on another file of the
+ * same change, or one severity up, under a fresh id every round.
+ *
+ * The model's own decisions (`fixed`, `refuted`) and its still-open findings
+ * keep the tighter rules in {@link eligible}.
+ */
+export function decidedByMaintainer(
+  prior: StoredFinding,
+  contested: ReadonlySet<string>,
+): boolean {
+  return prior.status === "dismissed" || prior.status === "accepted" ||
+    contested.has(prior.id);
+}
+
+/**
+ * Whether a candidate may inherit `prior`'s identity at all. Two gates for an
+ * identity the model earned, both in code so no prompt wording can widen
+ * them:
  *
  * - **Same file.** A rewording restates one concern in one place; without this
- *   a dismissal in one file could silence a finding in another.
+ *   a refutation in one file could silence a finding in another.
  * - **Severity ceiling.** The candidate must be no more severe than the entry
- *   whose decision it would inherit, so a dismissed `low` nit cannot launder a
+ *   whose decision it would inherit, so a refuted `low` nit cannot launder a
  *   `critical` into silence.
+ *
+ * Neither gate applies to a prior a maintainer decided
+ * ({@link decidedByMaintainer}): a dismissal already needed a trusted rebuttal
+ * matched in code and the adjudicator's agreement, an acceptance was spoken
+ * by an author the discussion's trust gate admits, and the model's "same"
+ * verdict is still required — so the concern stays decided however the model
+ * reframes it.
  *
  * Both resolution paths run through this, the free one included: a fingerprint
  * pins the kind, title and file but **not the severity**, so the same wording
@@ -133,7 +172,9 @@ function clip(text: string, limit: number): string {
 export function eligible(
   candidate: AssessmentFinding,
   prior: StoredFinding,
+  contested: ReadonlySet<string> = NO_CONTESTED,
 ): boolean {
+  if (decidedByMaintainer(prior, contested)) return true;
   if (candidate.file === undefined || prior.file === undefined) return false;
   if (candidate.file !== prior.file) return false;
   return rank(candidate.severity) <= rank(prior.severity);
@@ -148,10 +189,17 @@ export function eligible(
  * comparison is offered before any candidate's second. The caps therefore drop
  * the least-promising comparisons first and can never starve one candidate by
  * spending the whole budget on another.
+ *
+ * A prior a maintainer decided ({@link decidedByMaintainer}) is offered
+ * **first** for every candidate, and outside the per-candidate cap: those are
+ * the comparisons that end a loop, and the caps exist to bound the model's
+ * own restatements, not to drop a maintainer's decision for budget. Only the
+ * pass-wide cap still bounds them.
  */
 export function planDedup(
   candidates: readonly AssessmentFinding[],
   priors: readonly StoredFinding[],
+  contested: ReadonlySet<string> = NO_CONTESTED,
   maxPairs: number = MAX_DEDUP_PAIRS,
   maxPerCandidate: number = MAX_PRIORS_PER_CANDIDATE,
 ): DedupPlan {
@@ -162,15 +210,22 @@ export function planDedup(
   for (const candidate of candidates) {
     if (candidate.id === undefined || candidate.id === "") continue;
     const matches = priors
-      .filter((prior) => eligible(candidate, prior))
+      .filter((prior) => eligible(candidate, prior, contested))
       .map((prior) => ({ candidate, prior }));
     eligibleCount += matches.length;
-    if (matches.length > 0) byCandidate.push(matches);
+    const decided = matches.filter((m) =>
+      decidedByMaintainer(m.prior, contested)
+    );
+    const earned = matches
+      .filter((m) => !decidedByMaintainer(m.prior, contested))
+      .slice(0, maxPerCandidate);
+    const offered = [...decided, ...earned];
+    if (offered.length > 0) byCandidate.push(offered);
   }
   const pairs: DedupPair[] = [];
-  const depth = Math.min(
-    maxPerCandidate,
-    byCandidate.reduce((most, list) => Math.max(most, list.length), 0),
+  const depth = byCandidate.reduce(
+    (most, list) => Math.max(most, list.length),
+    0,
   );
   for (let level = 0; level < depth && pairs.length < maxPairs; level++) {
     for (const list of byCandidate) {
@@ -223,9 +278,9 @@ export function sameAs(
     if (id === "") continue;
     // The FIRST match decides a candidate, whether or not it can be honoured.
     // Letting a candidate fall through to its next match would quietly demote
-    // it: pairs are offered fixed-entry first precisely so a candidate matching
-    // both reopens rather than inheriting a dismissal, and a second choice
-    // would reverse that whenever the first prior was already taken.
+    // it: pairs are offered in a deliberate order — a maintainer's decision
+    // first, then a fixed entry ahead of the model's own refutations — and a
+    // second choice would reverse that whenever the first prior was taken.
     if (decided.has(id)) {
       if (!ambiguous.includes(id)) ambiguous.push(id);
       continue;

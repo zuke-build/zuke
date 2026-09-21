@@ -359,7 +359,7 @@ export function adjudicateUserPrompt(
 export interface DedupPairNote {
   /** The opaque label the verdict must echo back (`p1`, `p2`, …). */
   label: string;
-  /** The file both findings name — the only place a rewording may be. */
+  /** The file the finding names this round. */
   file: string;
   /** The title the finding carries this round. */
   title: string;
@@ -367,6 +367,12 @@ export interface DedupPairNote {
   detail?: string;
   /** The title the earlier finding was recorded under. */
   priorTitle: string;
+  /**
+   * The file the earlier finding was recorded against, when it differs from
+   * {@link file} — a maintainer-decided concern may be restated on another
+   * file of the same change. Absent when both name the same file.
+   */
+  priorFile?: string;
 }
 
 /**
@@ -381,9 +387,9 @@ export interface DedupPairNote {
  */
 export function dedupSystemPrompt(subject: string): string {
   return [
-    `You are matching code-review findings about ${subject}. For EACH labelled pair below, decide whether the two findings describe the SAME underlying concern in the same place — one restated in different words — or two genuinely different concerns that happen to share a file:`,
+    `You are matching code-review findings about ${subject}. For EACH labelled pair below, decide whether the two findings describe the SAME underlying concern — one restated in different words, or pinned to another file of the same change — or two genuinely different concerns that happen to share a file or a change:`,
     ``,
-    `- "same": the same defect, the same code, the same fix would resolve both. Wording, framing, and level of detail may differ entirely.`,
+    `- "same": the same defect or design decision, the same fix would resolve both. Wording, framing, severity language, level of detail, and the file the concern is pinned to may differ entirely — a concern about one change is often stated once per file it touches.`,
     `- "different": distinct concerns, even if related, adjacent, or in the same function. Two findings about the same file are usually different.`,
     ``,
     `Default to "different" whenever you are not certain: a wrong "same" makes a real finding inherit an unrelated decision and vanish from the report, while a wrong "different" costs nothing but a repeated finding.`,
@@ -404,9 +410,13 @@ export function dedupSystemPrompt(subject: string): string {
 export function dedupUserPrompt(pairs: DedupPairNote[]): string {
   return pairs.map((pair) =>
     [
-      // The titles below are fenced, which defangs them; the path in this
-      // header is not, and it comes from the same model output they do.
-      `Pair ${pair.label} — both findings name ${defangMarkers(pair.file)}:`,
+      // The titles below are fenced, which defangs them; the paths in this
+      // header are not, and they come from the same model output they do.
+      pair.priorFile === undefined
+        ? `Pair ${pair.label} — both findings name ${defangMarkers(pair.file)}:`
+        : `Pair ${pair.label} — the new finding names ${
+          defangMarkers(pair.file)
+        }, the earlier one ${defangMarkers(pair.priorFile)}:`,
       ``,
       `New finding:`,
       fenceUntrusted(

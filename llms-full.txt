@@ -20188,8 +20188,34 @@ class DiscussionSettings
     reviewer replies into the thread with the outcome and resolves it once the
     finding is fixed or dismissed. GitHub only; on other hosts the reviewer
     notes that and posts the summary alone.
+  commands(mention: string): this
+    Take commands from maintainers, addressed to `mention` — e.g.
+    `"@zuke-build"`, the account the workflow's comment command is addressed
+    to, so one handle serves both.
+
+    With it set, every review comment carries a collapsed Commands panel
+    listing what a maintainer can say, and a trusted comment starting with
+    `<mention> accept <id> <reason>` accepts the finding: it is recorded as
+    accepted for this pull request without adjudication, answered in its
+    thread and the thread resolved, and never re-raised on the pull request
+    by any reviewer, however it is reworded, moved or escalated. In a
+    finding's own thread the id may be left out. The trust gate is the one
+    rebuttals pass — {@link trustAssociations} and {@link trustAuthors},
+    decided in code from the host's author metadata — so a stranger's
+    `accept` is dropped before anything reads it. Unlike a rebuttal, an
+    acceptance is one key: no adjudicator weighs it. On a host where the
+    default associations admit accounts that should not decide for the
+    project (GitHub's `MEMBER` and `COLLABORATOR` include read-only ones),
+    narrow the gate with {@link trustAssociations} or {@link trustAuthors}
+    before turning commands on.
+
+    The panel also lists `<mention> review`, the workflow's comment command
+    that runs the review on demand; pair this with `aiReviewWorkflow`'s
+    `command` so that both are true.
   maxTokens_(): number
     INTERNAL: the total comment-token cap.
+  mention_(): string | undefined
+    INTERNAL: the mention commands are addressed to, when set.
   threads_(): boolean
     INTERNAL: whether findings are also anchored to review threads.
 
@@ -20234,6 +20260,8 @@ class ReviewCommandSettings
 
   text_?: string
     The command a comment must start with. Set by {@link text}.
+  also_: string[]
+    Other commands that also start a run. Set by {@link also}.
   secrets_: string[]
     Secrets the command job's review step receives beyond the reviewers' own
     keys and the host token. Set by {@link secrets}.
@@ -20241,6 +20269,12 @@ class ReviewCommandSettings
     The command, e.g. `"@zuke-build review"`. Matched case-insensitively at
     the start of the comment, so a reply that quotes it (`> @zuke-build review`) does not start a run. Letters, digits, `@/_.:-` and single spaces
     only.
+  also(...commands: string[]): this
+    Other comment commands that also start a run, matched like {@link text}
+    — e.g. `"@zuke-build accept"`, so a maintainer's acceptance of a finding
+    (see `DiscussionSettings.commands`) is applied by the run the comment
+    starts, with no second comment to ask for it. Same alphabet as
+    {@link text}.
   secrets(...names: string[]): this
     Pass these repository secrets to the command job's review step as env vars
     of the same name — e.g. the GitHub App credentials the build mints its

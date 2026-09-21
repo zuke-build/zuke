@@ -38,7 +38,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    if: "${{ github.event_name == 'issue_comment' && github.event.issue.pull_request && github.event.comment.user.type != 'Bot' && startsWith(github.event.comment.body, '@zuke-build review') }}"
+    if: "${{ github.event_name == 'issue_comment' && github.event.issue.pull_request && github.event.comment.user.type != 'Bot' && (startsWith(github.event.comment.body, '@zuke-build review') || startsWith(github.event.comment.body, '@zuke-build accept')) }}"
     timeout-minutes: 15
     concurrency:
       group: "ai-review-${{ github.workflow }}-${{ github.event.issue.number }}"

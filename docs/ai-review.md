@@ -243,7 +243,8 @@ finding lifecycle:
 
 1. Every finding's report shows its stable ID. A maintainer who believes a
    finding is wrong **replies on the PR quoting that ID** with the technical
-   rebuttal.
+   rebuttal — or, when the finding is right but the trade is intended, accepts
+   it outright with the [`accept` command](#commands).
 2. On the next run, an **adjudication pass** weighs each rebuttal on its merits
    against the finding and the diff: a sound rebuttal **dismisses** the finding
    (recorded with the author and the decisive argument); an unsound one leaves
@@ -282,27 +283,49 @@ something the reviewer does for you.
 
 ### Reworded findings
 
-A finding's ID is derived from its title, so a model that restates the same
-concern in different words produces a **new ID** — which used to slip past a
-dismissal and gate the build again, round after round, under a fresh name.
+A finding's ID is derived from its title and file, so a model that restates the
+same concern in different words — or pins it to another file of the same change,
+or one severity up — produces a **new ID**, which used to slip past a dismissal
+and gate the build again, round after round, under a fresh name.
 
 When discussion state exists, the reviewer resolves identity before anything
 else reads an ID. A finding whose ID the state doesn't recognise is compared
-against the decided findings **in the same file**, and a match adopts that
-finding's identity: a dismissal is inherited (reported under "Dismissed via
-discussion", showing the earlier title it restates), and a finding recorded as
-fixed **reopens** under the ID the thread already knows. The rewording is
-recorded as an alias in the state, so every later round resolves it for free,
-with no model call.
+against the findings already decided, and a match adopts that finding's
+identity: a dismissal is inherited (reported under "Dismissed via discussion",
+showing the earlier title it restates), and a finding recorded as fixed
+**reopens** under the ID the thread already knows. The rewording is recorded as
+an alias in the state, so every later round resolves it for free, with no model
+call.
 
-The pass can only rename. It never dismisses anything itself — the decision it
-adopts was earned in an earlier round by the two-key rule — and it is fenced in
-by rules enforced in code, not by prompt wording: same file only, never a more
-severe finding inheriting a less severe one's decision, never two findings
-collapsed onto one identity, and a bounded number of comparisons per run. Every
-failure path leaves the finding reported under its own ID: no state, no budget,
-a failed call, an unanswered or fabricated verdict — all of them fail toward
-saying more, and anything skipped or capped is stated in the report's **Notes**.
+Which earlier findings a fresh one may be compared against depends on **who
+decided them**:
+
+- **A maintainer's decision** — a finding dismissed through the discussion,
+  accepted with the [`accept` command](#commands), or still open but contested
+  by a maintainer this round — is offered **across the files of the diff and at
+  any severity**. The maintainer decided the concern, not the file it was pinned
+  to or the label the model put on it. These are offered first, ahead of
+  everything else and outside the per-candidate comparison cap, so a bounded
+  pass never drops the one comparison that ends a loop. And they are offered to
+  **every reviewer on the pull request**: each reviewer reads the others' state
+  blocks (under the same authorship rule as its own) and inherits their
+  dismissals, so a concern the security reviewer's thread settled is not raised
+  afresh by the code-quality reviewer under its own name. The record — wording,
+  author, reason — is adopted into the inheriting reviewer's state as it stands.
+- **The model's own decisions** — a finding the verifier refuted, one recorded
+  as fixed, or one still open and uncontested — are matched only **in the same
+  file** and only by a candidate **no more severe** than the entry it would
+  inherit, so a refuted `low` nit can never launder a `critical` into silence.
+
+The pass can only rename. It never dismisses anything itself — a dismissal was
+earned in an earlier round by the two-key rule, an acceptance was spoken by an
+author the discussion's trust gate admits, and the model's "same" verdict is
+still required for either — and the rules above are enforced in code, not by
+prompt wording, along with: never two findings collapsed onto one identity, and
+a bounded number of comparisons per run. Every failure path leaves the finding
+reported under its own ID: no state, no budget, a failed call, an unanswered or
+fabricated verdict — all of them fail toward saying more, and anything skipped
+or capped is stated in the report's **Notes**.
 
 ### Why comment-driven prompt injection doesn't work here
 
@@ -553,6 +576,9 @@ reviewWorkflow = aiReviewWorkflow({
   reviewers: [this.security],
   command: (c) =>
     c.text("@zuke-build review")
+      // Any of these also starts a run — here the accept command, so a
+      // maintainer's acceptance is applied by the comment that gives it.
+      .also("@zuke-build accept")
       // Only this job receives these — here, the GitHub App credentials the
       // build mints its `.commentToken(...)` from, so the review posts as
       // the app.
@@ -564,20 +590,21 @@ The generated job listens on `issue_comment` (GitHub delivers a pull request's
 conversation comments as issue comments) and runs only when every clause of its
 `if:` holds, all of them metadata GitHub asserts rather than anything in the
 comment's text: the comment is on a pull request; its author is not a bot
-account; and the body starts with the command. Who may start a run is decided by
-the job's first step after the checkout, which asks the collaborators API what
-the commenter may do: `admin` or `write` lets the review run, and anything else
-ends the job succeeded with nothing spent and the reason in the step's log —
-before any key is spent. The event's `author_association` is deliberately not in
-the gate: GitHub reports an organisation member whose membership is private as
-`CONTRIBUTOR` (it turned this repository's own maintainers away), and `MEMBER`
-and `COLLABORATOR` both include read-only accounts, so the field can neither
-admit nor refuse anyone correctly. The step skips rather than fails because,
-with no pre-filter, anyone who can comment can type the command, and a red check
-for each of them would be noise and a lever anyone could pull. `startsWith` is
-case-insensitive, and a reply that quotes the command (`> @zuke-build review`)
-does not start a run. The comment body is matched in the expression and never
-interpolated into a `run:` line.
+account; and the body starts with the command (or one named by `.also(...)`).
+Who may start a run is decided by the job's first step after the checkout, which
+asks the collaborators API what the commenter may do: `admin` or `write` lets
+the review run, and anything else ends the job succeeded with nothing spent and
+the reason in the step's log — before any key is spent. The event's
+`author_association` is deliberately not in the gate: GitHub reports an
+organisation member whose membership is private as `CONTRIBUTOR` (it turned this
+repository's own maintainers away), and `MEMBER` and `COLLABORATOR` both include
+read-only accounts, so the field can neither admit nor refuse anyone correctly.
+The step skips rather than fails because, with no pre-filter, anyone who can
+comment can type the command, and a red check for each of them would be noise
+and a lever anyone could pull. `startsWith` is case-insensitive, and a reply
+that quotes the command (`> @zuke-build review`) does not start a run. The
+comment body is matched in the expression and never interpolated into a `run:`
+line.
 
 What runs is the default branch's build. The job passes `ZUKE_REVIEW_PR`, and
 every reviewer honours it ahead of its configured `git` source: it fetches
@@ -649,6 +676,47 @@ The workflow deliberately does **not** run on every reply in a thread. A busy
 review has many replies, and a run for each would snowball into reviews of the
 replies to the reviews; one run, when the maintainer asks for it, answers them
 all.
+
+### Commands
+
+`.discussion((d) => d.commands("@zuke-build"))` names the mention maintainers
+address the reviewer by — the same string as the workflow's comment command, so
+one handle serves both. With it set, every review comment carries a collapsed
+**Commands** panel listing what a maintainer can say, with one line of help
+each, so the help lives on the pull request rather than here:
+
+| Say                                                         | What happens                                                                                                                                                                                                                                      |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@zuke-build review`                                        | The workflow's [comment command](#on-demand-a-comment-command): runs the review again now, with no push, and answers every rebuttal where it was made.                                                                                            |
+| `@zuke-build accept <id> <reason>`                          | Accepts the finding as intended for this pull request: recorded as **accepted** with the author and reason, listed under "Accepted by a maintainer (not gating)", answered in its thread with ✅ and the thread resolved, and never raised again. |
+| Reply in a finding's thread, or quote its `id` in a comment | Contests it: the next run adjudicates the argument and dismisses the finding when it holds, or replies with what is missing.                                                                                                                      |
+
+`accept` is the honest vehicle for "by design": a trade-off the project makes
+knowingly should not have to be argued into a dismissal, and should not need a
+repo-wide suppression either. It is a **maintainer's** decision, made in code
+and never weighed by a model: the command is read from a comment that passed the
+same trust gate rebuttals pass — `.trustAssociations(...)` and
+`.trustAuthors(...)`, decided from the host's own author metadata, never the
+text — so a stranger's `accept` is dropped before anything reads it. Unlike a
+rebuttal, though, an acceptance is **one key**: nothing weighs it. The default
+associations (`OWNER`, `MEMBER`, `COLLABORATOR`) are what GitHub asserts, and on
+some repositories `MEMBER` and `COLLABORATOR` include read-only accounts, so a
+project whose trusted set is wider than the people who may decide for it should
+narrow the gate — `trustAssociations("OWNER")`, or an explicit
+`trustAuthors(...)` list — before turning commands on. Who may _start_ a run
+with the comment command is a separate check, the workflow's push-access step;
+it does not decide whose `accept` a run applies. The id is the first word after
+`accept` when it names a finding the reviewer is tracking; in a finding's own
+thread it may be left out, and the thread's finding is meant. An unknown id does
+nothing. The reason is the rest of the comment, bounded; the newest command for
+a finding wins, so a reason can be restated. An accepted finding is a
+maintainer's decision for the dedup pass above: any reviewer's restatement of
+it, on any file and at any severity, inherits it.
+
+For the command to be applied by the comment that gives it, the workflow's
+command lists it too: `c.text("@zuke-build review").also("@zuke-build accept")`
+makes either prefix start the on-demand run. Without that, the acceptance is
+applied by the next run, whichever starts it.
 
 ## Worked example: Zuke reviews itself
 

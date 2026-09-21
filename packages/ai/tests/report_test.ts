@@ -18,6 +18,7 @@ import {
   reviewStartLine,
   skipConsoleLine,
   skipMarkdown,
+  SUPPRESS_HINT,
   toMarkdown,
 } from "../src/report.ts";
 import type { Assessment } from "../src/types.ts";
@@ -328,4 +329,79 @@ Deno.test("an earlier-round refutation is labelled as standing, not fresh", () =
     lines.join("\n"),
     "refuted by verify: Missing guard — guarded on line 9",
   );
+});
+
+Deno.test("an accepted finding is listed under its own heading, apart from the argued ones", () => {
+  const md = toMarkdown("sec", "deploy", ASSESSMENT, undefined, {
+    dismissed: [
+      {
+        finding: { title: "argued away", severity: "low", id: "d1" },
+        author: "alice",
+        reason: "intended",
+      },
+      {
+        finding: { title: "accepted outright", severity: "high", id: "a1" },
+        author: "bob",
+        reason: "by design",
+        accepted: true,
+      },
+    ],
+  });
+  assertStringIncludes(md, "**Dismissed via discussion (not gating):**");
+  assertStringIncludes(md, "| argued away | alice | intended | d1 |");
+  assertStringIncludes(md, "**Accepted by a maintainer (not gating):**");
+  assertStringIncludes(md, "| accepted outright | bob | by design | a1 |");
+  // The suppress hint closes the block once, after both tables.
+  assertEquals(md.split(SUPPRESS_HINT).length, 2);
+  // Only accepted findings: no dismissed table at all.
+  const only = toMarkdown("sec", "deploy", ASSESSMENT, undefined, {
+    dismissed: [{
+      finding: { title: "accepted outright", severity: "high", id: "a1" },
+      accepted: true,
+    }],
+  });
+  assertEquals(only.includes("Dismissed via discussion"), false);
+  assertStringIncludes(only, "| accepted outright | — | — | a1 |");
+  // And the console says which it was.
+  const lines = consoleLines("sec", ASSESSMENT, undefined, {
+    dismissed: [{
+      finding: { title: "accepted outright", severity: "high", id: "a1" },
+      author: "bob",
+      reason: "by design",
+      accepted: true,
+    }],
+  });
+  assertEquals(
+    lines.includes("    accepted by bob: accepted outright — by design"),
+    true,
+  );
+});
+
+Deno.test("the Commands panel is collapsed, names the mention, and appears only when asked for", () => {
+  const md = toMarkdown("sec", "deploy", ASSESSMENT, undefined, {
+    discussion: true,
+    commands: "@zuke-build",
+  });
+  assertStringIncludes(md, "<details><summary>Commands</summary>");
+  assertStringIncludes(md, "| `@zuke-build review` |");
+  assertStringIncludes(md, "| `@zuke-build accept <id> <reason>` |");
+  assertStringIncludes(md, "Reply in a finding's thread, or quote its `id`");
+  assertStringIncludes(md, "Only comments from maintainers");
+  // Rendered with no findings too — `review` is useful on a clean round.
+  const clean = toMarkdown(
+    "sec",
+    "deploy",
+    {
+      ...ASSESSMENT,
+      findings: [],
+    },
+    undefined,
+    { discussion: true, commands: "@zuke-build" },
+  );
+  assertStringIncludes(clean, "<details><summary>Commands</summary>");
+  // And absent without the setting.
+  const without = toMarkdown("sec", "deploy", ASSESSMENT, undefined, {
+    discussion: true,
+  });
+  assertEquals(without.includes("<summary>Commands</summary>"), false);
 });

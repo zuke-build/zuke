@@ -106,8 +106,8 @@ export interface ReportExtras {
   refuted?: RefutedFinding[];
   /**
    * Findings dismissed through the PR discussion (a trusted rebuttal the
-   * adjudication accepted), with who refuted them and why. Auditable, not
-   * gating.
+   * adjudication accepted) or accepted outright by a maintainer's `accept`
+   * command, with who decided them and why. Auditable, not gating.
    */
   dismissed?: DismissedFinding[];
   /**
@@ -115,6 +115,11 @@ export interface ReportExtras {
    * from "add to the suppress list" to "reply on the PR quoting the id".
    */
   discussion?: boolean;
+  /**
+   * The mention maintainers address commands to (`@zuke-build`), when the
+   * reviewer takes them — renders the collapsed Commands panel.
+   */
+  commands?: string;
   /**
    * Findings from earlier rounds that no longer reproduce against the current
    * diff — the PR's progress. Cumulative: every fixed finding stays listed, so
@@ -150,10 +155,16 @@ export interface RefutedFinding {
 export interface DismissedFinding {
   /** The dismissed finding. */
   finding: AssessmentFinding;
-  /** The login of the maintainer whose rebuttal was accepted. */
+  /** The login of the maintainer whose rebuttal was accepted, or who accepted. */
   author?: string;
-  /** The adjudicator's one-line reason for accepting the dismissal. */
+  /** The adjudicator's one-line reason for accepting the dismissal, or the maintainer's. */
   reason?: string;
+  /**
+   * Whether a maintainer accepted the finding outright with the `accept`
+   * command, rather than the adjudicator accepting a rebuttal — listed under
+   * its own heading, since no argument was weighed.
+   */
+  accepted?: boolean;
   /**
    * The earlier title this finding restates, when the dedup pass resolved it
    * onto an identity the state already held. Shown so an inherited dismissal
@@ -214,8 +225,9 @@ export function consoleLines(
     const reworded = d.rewordedFrom !== undefined
       ? ` (reworded from "${d.rewordedFrom}")`
       : "";
+    const how = d.accepted === true ? "accepted" : "dismissed via discussion";
     lines.push(
-      `    dismissed via discussion${by}: ${d.finding.title}${reworded}${
+      `    ${how}${by}: ${d.finding.title}${reworded}${
         d.reason !== undefined ? ` — ${d.reason}` : ""
       }`,
     );
@@ -269,6 +281,9 @@ export function toMarkdown(
     }
     parts.push("");
     parts.push(...idHint(assessment.findings, extras.discussion === true));
+  }
+  if (extras.commands !== undefined) {
+    parts.push(...commandsSection(extras.commands));
   }
   parts.push(...fixedSection(extras.fixed ?? []));
   parts.push(...suppressedSection(extras.suppressedFindings ?? []));
@@ -354,25 +369,72 @@ export const SUPPRESS_HINT =
  * closes with {@link SUPPRESS_HINT} pointing at the cross-PR override.
  */
 function dismissedSection(dismissed: DismissedFinding[]): string[] {
-  if (dismissed.length === 0) return [];
-  const parts = [
-    "**Dismissed via discussion (not gating):**",
-    "",
-    "| Finding | Refuted by | Reason | ID |",
-    "| --- | --- | --- | --- |",
-  ];
-  for (const d of dismissed) {
-    const title = d.rewordedFrom === undefined
-      ? cell(d.finding.title)
-      : `${cell(d.finding.title)} _(reworded from "${cell(d.rewordedFrom)}")_`;
+  const argued = dismissed.filter((d) => d.accepted !== true);
+  const accepted = dismissed.filter((d) => d.accepted === true);
+  const parts: string[] = [];
+  if (argued.length > 0) {
     parts.push(
-      `| ${title} | ${cell(d.author ?? "—")} | ${cell(d.reason ?? "—")} | ${
-        d.finding.id ?? "—"
-      } |`,
+      "**Dismissed via discussion (not gating):**",
+      "",
+      "| Finding | Refuted by | Reason | ID |",
+      "| --- | --- | --- | --- |",
+      ...argued.map(decidedRow),
+      "",
     );
   }
-  parts.push("", SUPPRESS_HINT, "");
+  if (accepted.length > 0) {
+    parts.push(
+      "**Accepted by a maintainer (not gating):**",
+      "",
+      "| Finding | Accepted by | Reason | ID |",
+      "| --- | --- | --- | --- |",
+      ...accepted.map(decidedRow),
+      "",
+    );
+  }
+  if (parts.length > 0) parts.push(SUPPRESS_HINT, "");
   return parts;
+}
+
+/** One row of the dismissed or accepted table. */
+function decidedRow(d: DismissedFinding): string {
+  const title = d.rewordedFrom === undefined
+    ? cell(d.finding.title)
+    : `${cell(d.finding.title)} _(reworded from "${cell(d.rewordedFrom)}")_`;
+  return `| ${title} | ${cell(d.author ?? "—")} | ${cell(d.reason ?? "—")} | ${
+    d.finding.id ?? "—"
+  } |`;
+}
+
+/**
+ * The collapsed panel listing what a maintainer can say to the reviewer, with
+ * one line of help each — rendered whenever the reviewer takes commands, so
+ * the help lives on the pull request rather than in the docs. The mention
+ * is build configuration, not model output, so it is rendered as given.
+ */
+function commandsSection(mention: string): string[] {
+  return [
+    "<details><summary>Commands</summary>",
+    "",
+    "Only comments from maintainers the host itself attributes as such are " +
+    "read; anyone else's are ignored before anything sees them.",
+    "",
+    "| Say | What happens |",
+    "| --- | --- |",
+    `| \`${mention} review\` | Runs the review again now, with no push: ` +
+    "every rebuttal is adjudicated and answered where it was made. |",
+    `| \`${mention} accept <id> <reason>\` | Accepts a finding as intended ` +
+    "for this pull request: it is recorded with your reason, its thread is " +
+    "closed, and no reviewer raises it again here — reworded, moved to " +
+    "another file or escalated. In the finding's own thread the id may be " +
+    "left out. |",
+    "| Reply in a finding's thread, or quote its `id` in a comment | " +
+    "Contests it: the next run re-checks the finding against your argument " +
+    "and dismisses it when the argument holds, or says what is missing. |",
+    "",
+    "</details>",
+    "",
+  ];
 }
 
 /**

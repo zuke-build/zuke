@@ -730,3 +730,165 @@ Deno.test("a refuted finding stays refuted across CLI runs without a second veri
   assertEquals(stored?.status, "refuted");
   assertEquals(stored?.evidence, evidence);
 });
+
+Deno.test("one rebuttal answers a cross-file, higher-severity restatement through the CLI", async () => {
+  // Round one left a low finding open on src/app.ts and the maintainer
+  // contested it by quoting its id. This round the model drops that wording
+  // and reports the same concern as critical on another file of the change.
+  // The restatement must land on the contested identity, so the rebuttal is
+  // weighed once and the build passes — the loop #637 describes, closed.
+  const restated = {
+    title: "The loader hands unsanitised input to a dynamic evaluator",
+    severity: "critical",
+    file: "src/load.ts",
+  };
+  const restatedId = findingFingerprint("security", {
+    title: restated.title,
+    severity: "critical",
+    file: restated.file,
+  });
+  const priorBody = `${MARKER}\nround 1\n${
+    encodeState({
+      findings: [{
+        id: ID,
+        title: FINDING.title,
+        severity: "low",
+        status: "open",
+        file: FINDING.file,
+      }],
+    })
+  }`;
+  const comments = [
+    {
+      id: 21,
+      body: priorBody,
+      user: { login: "github-actions[bot]", type: "Bot" },
+      author_association: "NONE",
+    },
+    {
+      id: 22,
+      body: `${ID} — the input is validated in validate() before it gets here.`,
+      user: { login: "maintainer", type: "User" },
+      author_association: "MEMBER",
+    },
+  ];
+  const { fetch, calls } = fakeFetch(comments, [
+    claude({ score: 10, severity: "critical", findings: [restated] }),
+    claude({ verdicts: [{ id: "p1", verdict: "same", reason: "same eval" }] }),
+    claude({
+      verdicts: [{
+        id: ID,
+        verdict: "dismissed",
+        reason: "validated upstream",
+      }],
+    }),
+  ]);
+  const executed: string[] = [];
+  class Pipeline extends Build {
+    review = securityReviewer((r) =>
+      r.provider("claude").apiKey("test-key")
+        .comment().discussion()
+        .diff((d) => d.text(DIFF))
+        .fetch(fetch)
+    );
+    deploy = target()
+      .validateBefore(this.review)
+      .executes(() => {
+        executed.push("deploy");
+        return Promise.resolve();
+      });
+  }
+  await withEnv(
+    {
+      GITHUB_ACTIONS: "true",
+      GITHUB_REPOSITORY: "zuke-build/zuke",
+      GITHUB_REF: "refs/pull/7/merge",
+      GITHUB_TOKEN: "tkn",
+      GITHUB_STEP_SUMMARY: undefined,
+    },
+    async () => {
+      const result = await runCli(Pipeline, ["deploy"]);
+      assertEquals(result.code, 0);
+      assertEquals(executed, ["deploy"]);
+      assertStringIncludes(
+        result.out,
+        "dismissed via discussion by maintainer",
+      );
+      assertStringIncludes(result.out, "validated upstream");
+    },
+  );
+  // The dedup pass was asked across the two files, and the one identity
+  // carries the restatement as its alias, dismissed.
+  const providerCalls = calls.filter((c) =>
+    !c.url.startsWith("https://api.github.com/")
+  );
+  assertEquals(providerCalls.length, 3);
+  assertStringIncludes(
+    JSON.parse(providerCalls[1].body).messages[0].content,
+    "the new finding names src/load.ts, the earlier one src/app.ts",
+  );
+  const write = calls.find((c) =>
+    c.url.startsWith("https://api.github.com/") && c.method !== "GET"
+  );
+  const state = decodeState(JSON.parse(write?.body ?? "{}").body);
+  assertEquals(state?.findings.length, 1);
+  assertEquals(state?.findings[0].id, ID);
+  assertEquals(state?.findings[0].status, "dismissed");
+  assertEquals(state?.findings[0].aliases, [restatedId]);
+});
+
+Deno.test("a maintainer's accept command passes the build through the CLI, with the Commands panel posted", async () => {
+  const comments = [{
+    id: 31,
+    body:
+      `@zuke-build accept ${ID}: by design, eval runs in a sandboxed worker`,
+    user: { login: "maintainer", type: "User" },
+    author_association: "MEMBER",
+  }];
+  const { fetch, calls } = fakeFetch(comments, [
+    claude({ score: 9, severity: "high", findings: [FINDING] }),
+  ]);
+  class Pipeline extends Build {
+    review = securityReviewer((r) =>
+      r.provider("claude").apiKey("test-key")
+        .comment().discussion((d) => d.commands("@zuke-build"))
+        .diff((d) => d.text(DIFF))
+        .fetch(fetch)
+    );
+    deploy = target()
+      .validateBefore(this.review)
+      .executes(() => Promise.resolve());
+  }
+  await withEnv(
+    {
+      GITHUB_ACTIONS: "true",
+      GITHUB_REPOSITORY: "zuke-build/zuke",
+      GITHUB_REF: "refs/pull/7/merge",
+      GITHUB_TOKEN: "tkn",
+      GITHUB_STEP_SUMMARY: undefined,
+    },
+    async () => {
+      const result = await runCli(Pipeline, ["deploy"]);
+      assertEquals(result.code, 0);
+      assertStringIncludes(
+        result.out,
+        "accepted by maintainer: Eval of user input — by design, eval runs " +
+          "in a sandboxed worker",
+      );
+    },
+  );
+  // No adjudication was paid for: the assessment was the only provider call.
+  assertEquals(
+    calls.filter((c) => !c.url.startsWith("https://api.github.com/")).length,
+    1,
+  );
+  const write = calls.find((c) =>
+    c.url.startsWith("https://api.github.com/") && c.method !== "GET"
+  );
+  const posted = JSON.parse(write?.body ?? "{}").body;
+  assertStringIncludes(posted, "**Accepted by a maintainer (not gating):**");
+  assertStringIncludes(posted, "<details><summary>Commands</summary>");
+  assertStringIncludes(posted, "`@zuke-build accept <id> <reason>`");
+  assertEquals(decodeState(posted)?.findings[0].status, "accepted");
+  assertEquals(decodeState(posted)?.findings[0].author, "maintainer");
+});

@@ -184,6 +184,8 @@ const SECRET_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 export class ReviewCommandSettings {
   /** The command a comment must start with. Set by {@link text}. */
   text_?: string;
+  /** Other commands that also start a run. Set by {@link also}. */
+  also_: string[] = [];
   /**
    * Secrets the command job's review step receives beyond the reviewers' own
    * keys and the host token. Set by {@link secrets}.
@@ -198,6 +200,18 @@ export class ReviewCommandSettings {
    */
   text(command: string): this {
     this.text_ = command;
+    return this;
+  }
+
+  /**
+   * Other comment commands that also start a run, matched like {@link text}
+   * — e.g. `"@zuke-build accept"`, so a maintainer's acceptance of a finding
+   * (see `DiscussionSettings.commands`) is applied by the run the comment
+   * starts, with no second comment to ask for it. Same alphabet as
+   * {@link text}.
+   */
+  also(...commands: string[]): this {
+    this.also_.push(...commands);
     return this;
   }
 
@@ -349,10 +363,10 @@ function assertSafeRef(value: string, field: string): void {
   }
 }
 
-/** A resolved {@link ReviewCommandSettings}: the command text, and its secrets. */
+/** A resolved {@link ReviewCommandSettings}: the command texts, and its secrets. */
 interface ReviewCommand {
-  /** The command a comment must start with. */
-  readonly text: string;
+  /** The commands a comment may start with — the primary one first. */
+  readonly texts: readonly string[];
   /** The secrets the command job's review step receives. */
   readonly secrets: readonly string[];
 }
@@ -365,16 +379,21 @@ function resolveCommand(
   configure: Configure<ReviewCommandSettings>,
 ): ReviewCommand {
   const command = configure(new ReviewCommandSettings());
-  const text = command.text_;
-  if (text === undefined || !SAFE_COMMAND.test(text)) {
-    throw new Error(
-      `aiReviewWorkflow: command ${JSON.stringify(text)} is not a valid ` +
-        `comment command — use words of letters, digits and \`@/_.:-\` ` +
-        `separated by single spaces, e.g. "@zuke-build review".`,
-    );
+  const texts = [command.text_, ...command.also_];
+  for (const text of texts) {
+    if (text === undefined || !SAFE_COMMAND.test(text)) {
+      throw new Error(
+        `aiReviewWorkflow: command ${JSON.stringify(text)} is not a valid ` +
+          `comment command — use words of letters, digits and \`@/_.:-\` ` +
+          `separated by single spaces, e.g. "@zuke-build review".`,
+      );
+    }
   }
   assertSecretNames(command.secrets_);
-  return { text, secrets: command.secrets_ };
+  return {
+    texts: texts.filter((text): text is string => text !== undefined),
+    secrets: command.secrets_,
+  };
 }
 
 /** Reject a secret name the host's `secrets.NAME` syntax would not accept. */
@@ -632,12 +651,15 @@ class AiReviewWorkflow extends CiFile {
    * step, not here — see {@link PUSH_ACCESS_STEP} for why the event's
    * association field is not in the gate.
    */
-  static #commandGate(text: string): string {
+  static #commandGate(texts: readonly string[]): string {
+    const starts = texts.map((text) =>
+      `startsWith(github.event.comment.body, '${text}')`
+    );
     return [
       "github.event_name == 'issue_comment'",
       "github.event.issue.pull_request",
       "github.event.comment.user.type != 'Bot'",
-      `startsWith(github.event.comment.body, '${text}')`,
+      starts.length === 1 ? starts[0] : `(${starts.join(" || ")})`,
     ].join(" && ");
   }
 
@@ -715,7 +737,7 @@ class AiReviewWorkflow extends CiFile {
       jobs.push(this.#githubJob(
         "commandReview",
         "AI review on command",
-        AiReviewWorkflow.#commandGate(command.text),
+        AiReviewWorkflow.#commandGate(command.texts),
         [
           AiReviewWorkflow.#pushAccessStep(),
           {

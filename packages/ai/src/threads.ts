@@ -41,6 +41,7 @@ export const MAX_NEW_THREADS = 20;
 const OUTCOMES: readonly ThreadOutcome[] = [
   "fixed",
   "dismissed",
+  "accepted",
   "upheld",
   "reopened",
   "refuted",
@@ -78,7 +79,7 @@ export function outcomeMarker(
 const FINDING_MARKER =
   /^<!-- zuke-ai-finding:([0-9a-z]{1,16}):([0-9a-z]{1,16}) -->/;
 const OUTCOME_MARKER =
-  /^<!-- zuke-ai-outcome:([0-9a-z]{1,16}):([0-9a-z]{1,16}):(fixed|dismissed|upheld|reopened|refuted) -->/;
+  /^<!-- zuke-ai-outcome:([0-9a-z]{1,16}):([0-9a-z]{1,16}):(fixed|dismissed|accepted|upheld|reopened|refuted) -->/;
 
 /**
  * The finding id a root body declares for this reviewer, or `undefined`. The
@@ -101,7 +102,7 @@ export function parseOutcomeMarker(
 ): { id: string; kind: ThreadOutcome } | undefined {
   const match = body.match(OUTCOME_MARKER);
   if (match === null || match[1] !== nameHash) return undefined;
-  // The pattern's alternation already restricts the kind to the five outcomes,
+  // The pattern's alternation already restricts the kind to the six outcomes,
   // so it needs no second check here — only the narrowing the compiler wants.
   const kind = OUTCOMES.find((known) => known === match[3]);
   return kind === undefined ? undefined : { id: match[2], kind };
@@ -296,8 +297,12 @@ export interface ThreadPlan {
 export interface ThreadInputs {
   /** The findings still standing after verify, adjudication and suppression. */
   open: AssessmentFinding[];
-  /** Findings dismissed this round, with the accepted reason. */
-  dismissed: Array<{ id: string; reason?: string }>;
+  /**
+   * Findings dismissed this round, with the accepted reason — or, marked
+   * `accepted`, ones a maintainer accepted outright with the `accept` command,
+   * answered as such rather than as an adjudicated dismissal.
+   */
+  dismissed: Array<{ id: string; reason?: string; accepted?: boolean }>;
   /** Ids dismissed in an earlier round — already answered and resolved then. */
   dismissedPrior: ReadonlySet<string>;
   /**
@@ -419,11 +424,14 @@ export function planThreads(inputs: ThreadInputs): ThreadPlan {
     if (inputs.dismissedPrior.has(entry.id)) continue;
     const thread = inputs.threads.get(entry.id);
     if (thread === undefined) continue;
-    if (!answered(thread, "dismissed")) {
+    const outcome: ThreadOutcome = entry.accepted === true
+      ? "accepted"
+      : "dismissed";
+    if (!answered(thread, outcome)) {
       plan.actions.push({
         id: entry.id,
         kind: "reply",
-        outcome: "dismissed",
+        outcome,
         rootId: thread.rootId,
         ...(entry.reason !== undefined ? { reason: entry.reason } : {}),
       });
@@ -489,17 +497,25 @@ export function listIds(ids: readonly string[]): string {
   return ids.length <= 10 ? shown : `${shown}, +${ids.length - 10} more`;
 }
 
-/** The opening body of a finding's thread: what was found, and its id. */
-export function threadRootBody(action: ThreadAction): string {
+/**
+ * The opening body of a finding's thread: what was found, its id, and — when
+ * the reviewer takes commands — the one that accepts it, so a maintainer
+ * reading the thread need not go looking for the summary's Commands panel.
+ */
+export function threadRootBody(action: ThreadAction, mention?: string): string {
   const finding = action.finding;
   const severity = finding?.severity ?? "low";
   const title = safe(finding?.title ?? "");
   const detail = finding?.detail === undefined
     ? ""
     : `\n\n${safe(finding.detail)}`;
+  const contest = mention === undefined
+    ? "Reply in this thread to contest it."
+    : `Reply in this thread to contest it, or \`${mention} accept <reason>\` ` +
+      `to accept it as intended.`;
   return `🤖 **[Zuke](https://zuke.build) AI review** — **${severity}**\n\n` +
     `${title}${detail}\n\n` +
-    `Reply in this thread to contest it. \`${action.id}\``;
+    `${contest} \`${action.id}\``;
 }
 
 /** The reviewer's reply announcing what became of a finding. */
@@ -515,6 +531,8 @@ export function threadOutcomeBody(
       return "✅ **Fixed** — this no longer reproduces against the current diff.";
     case "dismissed":
       return `🚫 **Dismissed via discussion**${because}`;
+    case "accepted":
+      return `✅ **Accepted by a maintainer**${because}`;
     case "reopened":
       return "↩️ **Reopened** — reported again against the current diff.";
     case "upheld":
