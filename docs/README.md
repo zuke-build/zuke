@@ -54,6 +54,9 @@
   `zuke-write-build` into Claude Code, OpenAI Codex, or Gemini CLI.
 - [AI review](./ai-review.md) — model-assessed review gates as build
   validations.
+- [Running the AI review as your own GitHub App](./ai-review-github-app.md) —
+  create the App, grant it exactly what the review needs, and wire the build so
+  reviews post as `<your-app>[bot]` and close the threads they settle.
 - [Self-healing builds](./self-healing.md) — hand a failure to an AI fixer that
   re-runs the command to verify.
 - [Using Zuke in a Node/npm project](./node-projects.md) — drive a Node build

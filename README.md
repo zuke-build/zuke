@@ -223,7 +223,9 @@ dependencies:
   [`@zuke/ai`](https://jsr.io/@zuke/ai) reads the diff, returns a _structured_
   assessment (score, severity, findings), posts it to the pull request, and
   fails the run when the risk crosses your threshold. See
-  [AI code review](./docs/ai-review.md).
+  [AI code review](./docs/ai-review.md), and
+  [your own GitHub App](./docs/ai-review-github-app.md) for reviews that post
+  under a name of their own and close the threads they settle.
 - **Self-healing targets.** Attach `.recoverWith(aiFixer(…))` to any target: on
   failure it diagnoses from the error and the diff and posts a committable
   suggestion — or, opted in, applies the fix, commits, and **re-runs the real

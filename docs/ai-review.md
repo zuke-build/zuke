@@ -673,7 +673,10 @@ account the reviews come from, so `acme-bot` reads better than
 `acme-ci-helper-2`), with repository permissions Pull requests, Issues and
 Contents set to read and write, no webhooks, and install it on the repository.
 Put its id and private key in two repository secrets, declare them as
-parameters, and hand `GhTasks.appTokenSource` to `.commentToken(...)`:
+parameters, and hand `GhTasks.appTokenSource` to `.commentToken(...)`. The
+step-by-step version — creating the App, granting it exactly what the review
+needs, and the full build file this repository's own setup mirrors — is
+[Running the AI review as your own GitHub App](./ai-review-github-app.md):
 
 ```ts
 import { GhTasks } from "@zuke/gh";
