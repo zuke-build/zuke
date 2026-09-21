@@ -56,13 +56,13 @@ Deno.test("the generated YAML carries the right triggers, permissions, concurren
     yaml,
     "    permissions:\n      contents: read\n      pull-requests: write",
   );
-  // Concurrency on the job, cancel-in-progress true.
+  // Concurrency on the job; the push-started job cancels a superseded run.
   assertStringIncludes(yaml, "    concurrency:\n      group:");
   assertStringIncludes(yaml, "cancel-in-progress: true");
   // Fork gating, on the pull_request event by name.
   assertStringIncludes(
     yaml,
-    "if: \"${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}\"",
+    "if: \"${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}\"",
   );
   // Job-level timeout matches the original hand-written workflow.
   assertStringIncludes(yaml, "timeout-minutes: 15");
@@ -464,7 +464,7 @@ function commandBuild(
   return b.wf.render();
 }
 
-Deno.test("command adds the issue_comment trigger and a job gated on the command, a human maintainer and a pull request", () => {
+Deno.test("command adds the issue_comment trigger and a job gated on the command, a human account and a pull request", () => {
   const yaml = commandBuild();
   assertStringIncludes(yaml, "pull_request: {}");
   assertStringIncludes(yaml, "issue_comment:\n    types:\n      - created");
@@ -478,13 +478,11 @@ Deno.test("command adds the issue_comment trigger and a job gated on the command
     ) ?? "";
   assertStringIncludes(gate, "github.event.issue.pull_request &&");
   assertStringIncludes(gate, "github.event.comment.user.type != 'Bot'");
-  for (const association of ["OWNER", "MEMBER", "COLLABORATOR"]) {
-    assertStringIncludes(
-      gate,
-      `github.event.comment.author_association == '${association}'`,
-    );
-  }
-  assertEquals(gate.includes("CONTRIBUTOR"), false);
+  // No association clause: GitHub reports a private organisation member as
+  // CONTRIBUTOR on this event, so the field turned maintainers away, and
+  // MEMBER/COLLABORATOR admit read-only accounts. The collaborators API
+  // decides, in the job's first step.
+  assertEquals(gate.includes("author_association"), false);
   assertStringIncludes(
     gate,
     "startsWith(github.event.comment.body, '@zuke-build review')",
@@ -527,14 +525,14 @@ Deno.test("the command job carries the named secrets and no base fetch; the pull
   // The pull_request job now states its event, since the workflow has two.
   assertStringIncludes(
     reviewJob,
-    "if: \"${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}\"",
+    "if: \"${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}\"",
   );
   // Same prelude and timeout on both.
   assertEquals(commandJob.includes("uses: zuke-build/zuke@"), true);
   assertStringIncludes(commandJob, "timeout-minutes: 15");
 });
 
-Deno.test("concurrency is per job and keyed on the pull request, never on the workflow", () => {
+Deno.test("concurrency is one group per pull request, declared on the jobs, never on the workflow", () => {
   // The review's own comment, posted as an app, fires `issue_comment` again.
   // That run is skipped by the bot check — but a workflow-level group would
   // still admit it, and cancel-in-progress would cancel the review mid-post.
@@ -544,20 +542,25 @@ Deno.test("concurrency is per job and keyed on the pull request, never on the wo
   assertEquals(yaml.includes("\nconcurrency:"), false);
   assertEquals(yaml.includes("${{ github.ref }}"), false);
   const [reviewJob, commandJob] = yaml.split("  commandReview:");
+  // The same group on both jobs — the pull request's number, however the
+  // event names it — so a comment-started run never overlaps a push-started
+  // one: both rewrite the reviewer's state block, and the later post would
+  // drop whatever the earlier run recorded. Only the push cancels what is
+  // in flight; the command queues behind it.
   assertStringIncludes(
     reviewJob,
-    '    concurrency:\n      group: "ai-review-${{ github.workflow }}-review-${{ github.event.pull_request.number }}"\n      cancel-in-progress: true',
+    '    concurrency:\n      group: "ai-review-${{ github.workflow }}-${{ github.event.pull_request.number }}"\n      cancel-in-progress: true',
   );
   assertStringIncludes(
     commandJob,
-    '    concurrency:\n      group: "ai-review-${{ github.workflow }}-commandReview-${{ github.event.issue.number }}"\n      cancel-in-progress: true',
+    '    concurrency:\n      group: "ai-review-${{ github.workflow }}-${{ github.event.issue.number }}"\n      cancel-in-progress: false',
   );
-  // The same shape without a command: one job, its own group.
+  // The same shape without a command: one job, the same group.
   const plain = dualBuild().wf.render();
   assertEquals(plain.includes("\nconcurrency:"), false);
   assertStringIncludes(
     plain,
-    "-review-${{ github.event.pull_request.number }}",
+    '"ai-review-${{ github.workflow }}-${{ github.event.pull_request.number }}"',
   );
 });
 
@@ -619,8 +622,8 @@ Deno.test("the command is GitHub-only: another host renders no comment job", () 
 });
 
 Deno.test("the command job checks the commenter's push access before the review", () => {
-  // `author_association` admits read-only members and collaborators, so the
-  // job asks the collaborators API first: admin/write pass, read/none fail.
+  // The gate cannot ask anyone, so the job asks the collaborators API first:
+  // admin/write let the review run; read/none end the job with nothing spent.
   const commandJob = commandBuild().split("  commandReview:")[1];
   const check = commandJob.indexOf("Require push access for the commenter");
   const review = commandJob.indexOf("AI review with Zuke");
@@ -633,12 +636,23 @@ Deno.test("the command job checks the commenter's push access before the review"
   );
   assertStringIncludes(step, "collaborators/$ZUKE_REVIEW_ACTOR/permission");
   assertStringIncludes(step, "admin|write)");
-  assertStringIncludes(step, "exit 1");
+  assertStringIncludes(step, 'echo "push=true" >> "$GITHUB_OUTPUT"');
+  // A commenter without push access is skipped, not failed: with no
+  // association pre-filter anyone who can comment can type the command, and
+  // a red check for each would be noise and a lever. The review step waits
+  // for the verdict.
+  assertStringIncludes(step, 'echo "push=false" >> "$GITHUB_OUTPUT"');
+  assertEquals(step.includes("::error::$ZUKE_REVIEW_ACTOR has"), false);
+  assertStringIncludes(
+    commandJob.slice(review),
+    "if: \"steps.push.outputs.push == 'true'\"",
+  );
   // Fails closed, explicitly: its own shell and flags, and an API call that
   // cannot be read refuses the run rather than falling through.
   assertStringIncludes(step, "shell: bash");
   assertStringIncludes(step, "set -euo pipefail");
   assertStringIncludes(step, "refusing to run the review");
+  assertStringIncludes(step, "exit 1");
   // The login is validated before it is put in a URL, and it reaches the
   // script only as env — never interpolated into the script text.
   assertStringIncludes(step, "*[!A-Za-z0-9-]*)");

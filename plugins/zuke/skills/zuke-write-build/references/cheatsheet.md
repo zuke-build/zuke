@@ -1096,7 +1096,12 @@ Depth and discussion knobs (all optional, per reviewer):
 - `.verify()` — a second, adversarial pass re-checks every candidate finding;
   only a refutation backed by citable contrary evidence removes one (listed in
   the report, never gating), while a candidate the evidence neither confirms nor
-  refutes stays reported as `uncertain`.
+  refutes stays reported as `uncertain`. With `.discussion()`, a refutation is
+  remembered in the state block with its evidence and a digest of everything the
+  verifier saw (diff and file context): a re-report while that input is
+  unchanged is dropped in code (listed as standing from an earlier round, no
+  verifier call), and one after it changed — or one a maintainer replied to in
+  its thread — goes back to the verifier carrying the earlier evidence.
 - `.comment("append")` — post a fresh PR comment per run (history stays on the
   thread) instead of the default single upserted comment per reviewer.
 - `.discussion((d) => d.threads())` — anchor each finding to its line as a PR
@@ -1106,7 +1111,11 @@ Depth and discussion knobs (all optional, per reviewer):
   posted and still lists every finding, so an unanchorable finding (no line, an
   invented line, a line only present as a deletion) loses nothing — it stays in
   the table and the report's Notes say why. Lines are never guessed at. GitHub
-  only; other hosts note it and post the summary alone.
+  only; other hosts note it and post the summary alone. A finding the verifier
+  refutes gets a "refuted" reply with the evidence and its thread resolved. A
+  rebuttal is answered without a push by commenting the workflow's `command`
+  (e.g. `@zuke-build review`): that run adjudicates every reply and answers in
+  the thread. The workflow does not run on every reply — that would snowball.
 - `.discussion()` — the reviewer engages with the PR thread instead of looping:
   a maintainer contests a finding by replying with its id quoted, an
   adjudication pass weighs the rebuttal on merit, and an accepted dismissal is
@@ -1122,14 +1131,19 @@ Depth and discussion knobs (all optional, per reviewer):
   every failure leaves the finding reported. It also tracks progress: still-open
   findings are re-assessed each round, ones that stop reproducing are marked
   fixed and listed cumulatively ("✅ Fixed since first review"), and a fixed
-  finding that reappears reopens. Trust is decided in code from the host's
-  author metadata (`OWNER`/`MEMBER`/ `COLLABORATOR` by default; tune with
+  finding that reappears reopens. A contested finding the next round does not
+  re-report (or the verifier refutes) is still adjudicated: an accepted rebuttal
+  records it dismissed — sticky, replied in-thread — never "fixed". Trust is
+  decided in code from the host's author metadata (`OWNER`/`MEMBER`/
+  `COLLABORATOR` by default; tune with
   `.discussion((d) => d.trustAuthors(...))`) — untrusted comments never reach
   the model, which blunts comment-based prompt injection. Requires `.comment()`;
   works on every supported host, each mapping its own metadata onto those
-  association names: GitHub uses `author_association` verbatim, GitLab derives
-  it from project membership (Owner 50 → `OWNER`, Developer/Maintainer 30/40 →
-  `MEMBER`, below that `NONE`), Bitbucket from workspace permissions
+  association names: GitHub uses `author_association` plus a collaborators API
+  lookup that counts push access as `COLLABORATOR` (the Actions token sees a
+  private organisation member as `CONTRIBUTOR`), GitLab derives it from project
+  membership (Owner 50 → `OWNER`, Developer/Maintainer 30/40 → `MEMBER`, below
+  that `NONE`), Bitbucket from workspace permissions
   (`owner`/`collaborator`/`member`). **Azure DevOps reports no such
   relationship**, so nobody is trusted there by association — name the
   maintainers with `.trustAuthors(...)`. The mapping fails closed: if the

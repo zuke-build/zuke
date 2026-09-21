@@ -213,6 +213,27 @@ A few opt-in passes trade a little cost for findings that hold up:
   pass itself errors, the unverified findings are kept — the reviewer fails
   toward reporting, never toward silence.
 
+  With `.discussion()` on, a refutation is **remembered**. It is written to the
+  state block with the verifier's evidence and a SHA-256 digest of everything
+  the verifier saw — the whole reviewed diff and the file context, not just the
+  finding's own file, since the evidence a refutation cites may live anywhere in
+  that input — and the next round's model is shown it (fenced, with the
+  evidence) before it reviews. If the model raises the finding again while that
+  input is byte-identical, the refutation is applied in code — no verifier is
+  consulted, since the evidence it cited cannot have changed — and the report
+  lists it as standing from an earlier round. Once anything in the input
+  changes, the finding goes back to the verifier **carrying the earlier
+  refutation**, so the verdict is an informed re-check rather than a fresh coin
+  flip; a confirmation reports the finding again (with a note saying it was
+  refuted before), a re-refutation refreshes the evidence and the digest, and a
+  round that cannot consult a verifier at all (the pass off, skipped for budget,
+  or failed) reports the finding rather than trusting the old decision blind,
+  saying so in the notes. A maintainer who disagrees with a refutation replies
+  in its thread: a trusted reply sends the finding back to the verifier instead
+  of letting the refutation stand. Those two gates are what keep the memory
+  honest: the model alone never silences a finding for good, only for as long as
+  the code it reasoned about stands and nobody objects.
+
 ## Discussing findings instead of repeating them
 
 `.discussion()` turns the reviewer from a broadcast into a participant. It
@@ -241,6 +262,16 @@ finding lifecycle:
    resolved, what's still open, what was dismissed, what's new — and a fixed
    finding that reappears in a later round **reopens** (and gates again) rather
    than hiding behind its earlier resolution.
+5. A rebuttal is answered **even when the model drops the finding**. A contested
+   finding the next round does not re-report — or that the verify pass refutes —
+   is still adjudicated: an accepted rebuttal records it as **dismissed**
+   (sticky, and said so in its thread), not as "fixed" for a finding nobody
+   fixed, which is the weakest record there is — it is not shown to the model
+   and reopens on the next rewording. A rebuttal that does not hold changes
+   nothing, since the finding is not reported either way, but the report's
+   **Notes** say it was weighed and why it did not carry. Where both happen in
+   one round — the verifier refutes the finding and the maintainer's argument is
+   accepted — the dismissal wins: two keys beat one.
 
 The committed `.suppress(...)` list still works as the hard override, and is
 still the right tool for a false positive you want silenced across branches — a
@@ -320,15 +351,16 @@ GitHub, or left over by the per-run cap stays in the table, and the report's
 
 What each round does to a thread:
 
-| Situation                             | What happens                                             |
-| ------------------------------------- | -------------------------------------------------------- |
-| A new finding with a usable line      | A thread is opened on that line                          |
-| The finding is still open next round  | **Nothing** — silence means "still open"                 |
-| A maintainer's rebuttal is accepted   | The outcome is replied in-thread and the thread resolved |
-| A maintainer's rebuttal does not hold | The outcome is replied; the thread stays open            |
-| The finding stops reproducing         | A "fixed" reply, and the thread resolved                 |
-| A fixed finding comes back            | A "reopened" reply, and the thread **un**resolved        |
-| Dismissed in an earlier round         | Nothing — it was answered and closed then                |
+| Situation                                | What happens                                                                                              |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| A new finding with a usable line         | A thread is opened on that line                                                                           |
+| The finding is still open next round     | **Nothing** — silence means "still open"                                                                  |
+| A maintainer's rebuttal is accepted      | The outcome is replied in-thread and the thread resolved                                                  |
+| A maintainer's rebuttal does not hold    | The outcome is replied; the thread stays open                                                             |
+| The finding stops reproducing            | A "fixed" reply, and the thread resolved                                                                  |
+| The verifier refutes it                  | A "refuted" reply with the evidence, and the thread resolved; a reply there sends it back to the verifier |
+| A fixed or refuted finding comes back    | A "reopened" reply, and the thread **un**resolved                                                         |
+| Dismissed or refuted in an earlier round | Nothing — it was answered and closed then                                                                 |
 
 Trust works exactly as it does for the id-quoting channel, and the two share one
 token budget, so turning threads on cannot double the untrusted text the
@@ -353,12 +385,12 @@ the summary table always carries the current location.
 onto those names in code — never from the comment text — so the same
 `.discussion()` configuration means the same thing everywhere:
 
-| Host                    | Where trust comes from                         | Mapping                                                                                   |
-| ----------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| **GitHub Actions**      | `author_association` on the comment            | used verbatim                                                                             |
-| **GitLab CI**           | project membership (`access_level`)            | Owner (50) → `OWNER`; Developer/Maintainer (30/40) → `MEMBER`; Guest/Reporter → `NONE`    |
-| **Bitbucket Pipelines** | workspace permissions                          | `owner` → `OWNER`; `collaborator` → `COLLABORATOR`; `member` → `MEMBER`                   |
-| **Azure Pipelines**     | — (Azure reports no relationship on a comment) | nobody is trusted by association; name the maintainers with `.trustAuthors(<uniqueName>)` |
+| Host                    | Where trust comes from                           | Mapping                                                                                                                                                                                                                                    |
+| ----------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **GitHub Actions**      | `author_association`, plus the collaborators API | used verbatim, except that an author with push access (`admin`, `maintain`, `write`) counts as `COLLABORATOR` — GitHub reports a private organisation member as `CONTRIBUTOR` to the Actions token, and the lookup restores their standing |
+| **GitLab CI**           | project membership (`access_level`)              | Owner (50) → `OWNER`; Developer/Maintainer (30/40) → `MEMBER`; Guest/Reporter → `NONE`                                                                                                                                                     |
+| **Bitbucket Pipelines** | workspace permissions                            | `owner` → `OWNER`; `collaborator` → `COLLABORATOR`; `member` → `MEMBER`                                                                                                                                                                    |
+| **Azure Pipelines**     | — (Azure reports no relationship on a comment)   | nobody is trusted by association; name the maintainers with `.trustAuthors(<uniqueName>)`                                                                                                                                                  |
 
 `.trustAuthors(...)` names accounts, so it takes each host's **stable**
 identifier — never a display name, which its owner can change to anyone else's:
@@ -526,16 +558,20 @@ The generated job listens on `issue_comment` (GitHub delivers a pull request's
 conversation comments as issue comments) and runs only when every clause of its
 `if:` holds, all of them metadata GitHub asserts rather than anything in the
 comment's text: the comment is on a pull request; its author is not a bot
-account; the author's `author_association` is `OWNER`, `MEMBER` or
-`COLLABORATOR` (never `CONTRIBUTOR`, which anyone with one merged pull request
-carries); and the body starts with the command. An association alone is not push
-access: `MEMBER` is membership of the organisation and `COLLABORATOR` any direct
-collaborator, a read-only one included. So the job's first step after the
-checkout asks the collaborators API what the commenter may do, and stops with
-the reason unless the answer is `admin` or `write` — before any key is spent.
-`startsWith` is case-insensitive, and a reply that quotes the command
-(`> @zuke-build review`) does not start a run. The comment body is matched in
-the expression and never interpolated into a `run:` line.
+account; and the body starts with the command. Who may start a run is decided by
+the job's first step after the checkout, which asks the collaborators API what
+the commenter may do: `admin` or `write` lets the review run, and anything else
+ends the job succeeded with nothing spent and the reason in the step's log —
+before any key is spent. The event's `author_association` is deliberately not in
+the gate: GitHub reports an organisation member whose membership is private as
+`CONTRIBUTOR` (it turned this repository's own maintainers away), and `MEMBER`
+and `COLLABORATOR` both include read-only accounts, so the field can neither
+admit nor refuse anyone correctly. The step skips rather than fails because,
+with no pre-filter, anyone who can comment can type the command, and a red check
+for each of them would be noise and a lever anyone could pull. `startsWith` is
+case-insensitive, and a reply that quotes the command (`> @zuke-build review`)
+does not start a run. The comment body is matched in the expression and never
+interpolated into a `run:` line.
 
 What runs is the default branch's build. The job passes `ZUKE_REVIEW_PR`, and
 every reviewer honours it ahead of its configured `git` source: it fetches
@@ -570,9 +606,32 @@ the `pull_request` job is unchanged. Comments an App posts do trigger
 `issue_comment` workflows (unlike `GITHUB_TOKEN`'s), which is what the bot check
 in the gate is for.
 
-The command is GitHub-only; the other hosts render no comment job. Concurrency
-is keyed on the pull request number for both events, since `github.ref` is the
-default branch for every comment-started run.
+The command is GitHub-only; the other hosts render no comment job. Every job of
+the workflow shares one concurrency group keyed on the pull request number,
+since `github.ref` is the default branch for every comment-started run. Sharing
+it is what keeps the state block whole: each run reads the reviewer's state and
+writes it back, so two runs in flight at once would each post the state they
+started from, and the later post would drop what the earlier run recorded. A
+push cancels the run in flight, whose head it superseded; a comment-started run
+queues behind it and starts from the state it posted.
+
+### Answering a rebuttal without a push
+
+A maintainer who contests a finding — in its review thread, or by quoting its id
+— and pushes nothing gets the answer by commenting the command. The run it
+starts reads every thread and every quoting comment on the pull request,
+adjudicates each rebuttal, and replies where it was made: an accepted rebuttal
+closes the thread as dismissed, and one that does not hold gets an "upheld"
+reply naming the gap, so the maintainer can reply again and comment the command
+again to continue the discussion. The command runs from the default branch with
+the pull request fetched as data, so it works for a same-repository pull request
+exactly as for a fork's, and it reads the same state block and threads the
+push-started run writes, whichever bot account each posts as.
+
+The workflow deliberately does **not** run on every reply in a thread. A busy
+review has many replies, and a run for each would snowball into reviews of the
+replies to the reviews; one run, when the maintainer asks for it, answers them
+all.
 
 ## Worked example: Zuke reviews itself
 

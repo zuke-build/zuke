@@ -91,8 +91,17 @@ export interface HostComment {
   kind?: "review";
 }
 
-/** How a finding's review thread was last answered by the reviewer. */
-export type ThreadOutcome = "fixed" | "dismissed" | "upheld" | "reopened";
+/**
+ * How a finding's review thread was last answered by the reviewer. `fixed`,
+ * `dismissed` and `refuted` close the thread; `upheld` leaves it open;
+ * `reopened` reverses an earlier close.
+ */
+export type ThreadOutcome =
+  | "fixed"
+  | "dismissed"
+  | "upheld"
+  | "reopened"
+  | "refuted";
 
 /** The raw material one review-comment listing yields. */
 export interface ReviewComments {
@@ -149,13 +158,29 @@ export interface ReviewThreads {
   ): Promise<ThreadPost>;
   /**
    * Resolve (or unresolve) threads by root comment id, returning how many
-   * succeeded. Never throws — resolution is the losable half of the feature.
+   * succeeded and, when fewer than asked, the host's reason. Never throws —
+   * resolution is the losable half of the feature.
    */
   setResolved(
     doFetch: typeof fetch,
     rootIds: readonly number[],
     resolved: boolean,
-  ): Promise<number>;
+  ): Promise<ThreadResolution>;
+}
+
+/**
+ * The outcome of a {@link ReviewThreads.setResolved} call: how many threads
+ * changed state, and — when any did not — what the host answered, so a
+ * resolution that keeps failing can be diagnosed from the report instead of
+ * reading as a transient hiccup. The reason is a short host-derived string
+ * (an HTTP status, or the first error the API reported), never the reviewer's
+ * own text.
+ */
+export interface ThreadResolution {
+  /** How many of the requested threads changed state. */
+  done: number;
+  /** Why the rest did not, when the host said; absent when all succeeded. */
+  reason?: string;
 }
 
 /**

@@ -13,10 +13,10 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    if: "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false }}"
+    if: "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}"
     timeout-minutes: 15
     concurrency:
-      group: "ai-review-${{ github.workflow }}-review-${{ github.event.pull_request.number }}"
+      group: "ai-review-${{ github.workflow }}-${{ github.event.pull_request.number }}"
       cancel-in-progress: true
     steps:
       - name: Harden and check out with Zuke
@@ -35,11 +35,11 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    if: "${{ github.event_name == 'issue_comment' && github.event.issue.pull_request && github.event.comment.user.type != 'Bot' && (github.event.comment.author_association == 'OWNER' || github.event.comment.author_association == 'MEMBER' || github.event.comment.author_association == 'COLLABORATOR') && startsWith(github.event.comment.body, '@zuke-build review') }}"
+    if: "${{ github.event_name == 'issue_comment' && github.event.issue.pull_request && github.event.comment.user.type != 'Bot' && startsWith(github.event.comment.body, '@zuke-build review') }}"
     timeout-minutes: 15
     concurrency:
-      group: "ai-review-${{ github.workflow }}-commandReview-${{ github.event.issue.number }}"
-      cancel-in-progress: true
+      group: "ai-review-${{ github.workflow }}-${{ github.event.issue.number }}"
+      cancel-in-progress: false
     steps:
       - name: Harden and check out with Zuke
         uses: zuke-build/zuke@2478fa5a69fb4f16540e54959c98cd976ec3f075 # v1.0.5
@@ -47,6 +47,7 @@ jobs:
           egress-policy: audit
           persist-credentials: "false"
       - name: Require push access for the commenter
+        id: push
         shell: bash
         run: |
           set -euo pipefail
@@ -60,14 +61,18 @@ jobs:
             exit 1
           }
           case "$permission" in
-            admin|write) echo "$ZUKE_REVIEW_ACTOR has $permission access." ;;
-            *) echo "::error::$ZUKE_REVIEW_ACTOR has $permission access to $GITHUB_REPOSITORY; the review command needs push access."
-               exit 1 ;;
+            admin|write)
+              echo "$ZUKE_REVIEW_ACTOR has $permission access."
+              echo "push=true" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "$ZUKE_REVIEW_ACTOR has $permission access to $GITHUB_REPOSITORY; starting a review needs push access."
+              echo "push=false" >> "$GITHUB_OUTPUT" ;;
           esac
         env:
           GH_TOKEN: "${{ github.token }}"
           ZUKE_REVIEW_ACTOR: "${{ github.event.comment.user.login }}"
       - name: AI review with Zuke
+        if: "steps.push.outputs.push == 'true'"
         run: ./zuke review
         env:
           OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}"

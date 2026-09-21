@@ -6,9 +6,11 @@ import { AiReviewError } from "../mod.ts";
 import { detectReviewHost, hostFor } from "../src/hosts.ts";
 import {
   type GithubContext,
+  githubHost,
   listPrComments,
   resolveGithubContext,
   upsertPrComment,
+  withPushAccess,
 } from "../src/hosts/github.ts";
 import {
   type GitlabContext,
@@ -1615,4 +1617,97 @@ Deno.test("resolveGithubContext takes the pull number from ZUKE_REVIEW_PR first"
     resolveGithubContext("tkn", env({ ...VALID, ZUKE_REVIEW_PR: "" })),
     CONTEXT,
   );
+});
+
+Deno.test("githubHost.listComments restores the standing author_association hides", async () => {
+  // The Actions token sees a private organisation member as CONTRIBUTOR. The
+  // collaborators API says who can push, so a hidden maintainer is trusted,
+  // a read-only account is not promoted, an author already listed as the
+  // repository's own is never looked up, and a bot is left alone.
+  const items = [
+    {
+      id: 1,
+      body: "the pattern has no g flag",
+      user: { login: "hidden-maintainer", type: "User" },
+      author_association: "CONTRIBUTOR",
+    },
+    {
+      id: 2,
+      body: "drive-by",
+      user: { login: "passerby", type: "User" },
+      author_association: "NONE",
+    },
+    {
+      id: 3,
+      body: "already standing",
+      user: { login: "member", type: "User" },
+      author_association: "MEMBER",
+    },
+    {
+      id: 4,
+      body: "report",
+      user: { login: "github-actions[bot]", type: "Bot" },
+      author_association: "CONTRIBUTOR",
+    },
+  ];
+  const calls: string[] = [];
+  const fetchImpl = ((input: string | URL | Request) => {
+    const url = String(input);
+    calls.push(url);
+    if (url.includes("/collaborators/hidden-maintainer/permission")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ permission: "write" })),
+      );
+    }
+    if (url.includes("/collaborators/passerby/permission")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ permission: "read" })),
+      );
+    }
+    if (url.includes("/issues/7/comments")) {
+      return Promise.resolve(new Response(JSON.stringify(items)));
+    }
+    return Promise.resolve(new Response("{}", { status: 404 }));
+  }) as typeof fetch;
+  const list = githubHost.listComments?.("tkn", (key) =>
+    ({
+      GITHUB_REPOSITORY: "zuke-build/zuke",
+      GITHUB_REF: "refs/pull/7/merge",
+    } as Record<string, string>)[key]);
+  const comments = await list?.(fetchImpl) ?? [];
+  assertEquals(
+    comments.map((c) => `${c.author}:${c.association}`),
+    [
+      "hidden-maintainer:COLLABORATOR",
+      "passerby:NONE",
+      "member:MEMBER",
+      "github-actions[bot]:CONTRIBUTOR",
+    ],
+  );
+  const lookups = calls.filter((url) => url.includes("/permission"));
+  assertEquals(lookups.length, 2);
+  assertEquals(lookups.some((url) => url.includes("/member/")), false);
+  assertEquals(lookups.some((url) => url.includes("github-actions")), false);
+});
+
+Deno.test("a failed push-access lookup leaves the association as reported", async () => {
+  const items = [{
+    id: 1,
+    body: "hello",
+    user: { login: "hidden-maintainer", type: "User" },
+    author_association: "CONTRIBUTOR",
+  }];
+  const fetchImpl = ((input: string | URL | Request) => {
+    const url = String(input);
+    if (url.includes("/permission")) {
+      return Promise.resolve(new Response("{}", { status: 403 }));
+    }
+    return Promise.resolve(new Response(JSON.stringify(items)));
+  }) as typeof fetch;
+  const comments = await withPushAccess(
+    await listPrComments(CONTEXT, fetchImpl),
+    CONTEXT,
+    fetchImpl,
+  );
+  assertEquals(comments[0].association, "CONTRIBUTOR");
 });

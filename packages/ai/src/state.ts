@@ -32,8 +32,20 @@ import { dig } from "./json.ts";
  *   current diff: the reviewer re-assessed it and the issue is gone. Kept in
  *   the state (and listed in the report) so the PR's progress is visible; it
  *   flips back to `open` if a later round reports it again.
+ * - `refuted` — the verify pass disproved it against the code, with the
+ *   evidence recorded as the rationale and everything the verifier saw
+ *   fingerprinted in {@link StoredFinding.evidence}. Remembered so the next
+ *   round neither re-raises it nor judges it afresh: while that input is
+ *   unchanged the refutation stands without another call, and once anything in
+ *   it changes the verifier sees the earlier evidence before deciding again. It
+ *   flips to `open` if a later round confirms it against the changed code.
  */
-export type FindingStatus = "open" | "upheld" | "dismissed" | "fixed";
+export type FindingStatus =
+  | "open"
+  | "upheld"
+  | "dismissed"
+  | "fixed"
+  | "refuted";
 
 /** One finding tracked across runs in the review state. */
 export interface StoredFinding {
@@ -51,6 +63,15 @@ export interface StoredFinding {
   rationale?: string;
   /** The login of the maintainer whose rebuttal drove the adjudication. */
   author?: string;
+  /**
+   * For a `refuted` finding: the SHA-256 digest of everything the verifier
+   * saw when it refuted — the whole reviewed diff and the file context, not
+   * just the finding's own file, because the evidence a refutation cites may
+   * live anywhere in that input. A later round whose input digests the same
+   * knows the evidence cannot have changed, and keeps the refutation without
+   * asking again; any other input sends the finding back to the verifier.
+   */
+  evidence?: string;
   /**
    * Fingerprints of earlier **rewordings** of this same finding — the ids it
    * arrived under when the model restated it in different words. Recording one
@@ -76,6 +97,16 @@ const STATE_PREFIX = "zuke-ai-state:";
  * round is likely to see again.
  */
 export const MAX_ALIASES = 5;
+
+/**
+ * Whether `value` is shaped like an evidence digest — the lowercase hex of a
+ * SHA-256. Compared for equality only, so a malformed one costs at most one
+ * re-verification; it is still held to the digest alphabet so the state block
+ * can never carry arbitrary text under that key.
+ */
+function isDigest(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
+}
 
 /**
  * Whether `value` is shaped like a fingerprint — the lowercase base-36 token
@@ -173,13 +204,14 @@ function toStoredFinding(item: unknown): StoredFinding | undefined {
   if (typeof id !== "string" || typeof title !== "string") return undefined;
   if (
     status !== "open" && status !== "upheld" && status !== "dismissed" &&
-    status !== "fixed"
+    status !== "fixed" && status !== "refuted"
   ) {
     return undefined;
   }
   const file = dig(item, "file");
   const rationale = dig(item, "rationale");
   const author = dig(item, "author");
+  const evidence = dig(item, "evidence");
   // Best-effort like every other field: a malformed alias list yields no
   // aliases rather than discarding the record, so a bad entry costs at most one
   // dedup call — never the dismissal the finding already earned.
@@ -197,6 +229,7 @@ function toStoredFinding(item: unknown): StoredFinding | undefined {
     ...(typeof file === "string" ? { file } : {}),
     ...(typeof rationale === "string" ? { rationale } : {}),
     ...(typeof author === "string" ? { author } : {}),
+    ...(isDigest(evidence) ? { evidence } : {}),
     ...(aliases.length > 0 ? { aliases } : {}),
   };
 }
@@ -275,4 +308,15 @@ export function fixedOf(
   state: ReviewState | undefined,
 ): Map<string, StoredFinding> {
   return byStatus(state, "fixed");
+}
+
+/**
+ * The findings in `state` the verify pass refuted in an earlier round, keyed
+ * by fingerprint — each carrying the evidence it was refuted on and the digest
+ * of the input that evidence was read from.
+ */
+export function refutedOf(
+  state: ReviewState | undefined,
+): Map<string, StoredFinding> {
+  return byStatus(state, "refuted");
 }

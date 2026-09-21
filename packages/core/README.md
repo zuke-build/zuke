@@ -856,6 +856,14 @@ function service(): ServiceBuilder
   dependents execute. Configure it with {@link ServiceBuilder.start} /
   {@link ServiceBuilder.readyWhen} and depend on it from a {@link target}.
 
+async function sha256Hex(data: string | Uint8Array): Promise<string>
+  The SHA-256 digest of `data` — a UTF-8 string or raw bytes — as a lowercase
+  hex string.
+
+  Bytes are copied into a fresh `ArrayBuffer`-backed view so the digest input
+  type is unambiguous whatever buffer the source view sits on (e.g. a
+  `SharedArrayBuffer`).
+
 async function syncCiFiles(files: readonly CiFile[], options: CiSyncOptions): Promise<CiSyncResult[]>
   Bring each declared {@link CiFile} on disk in line with its definition. By
   default a changed file is rewritten; in `check` mode it is reported `stale`
