@@ -140,6 +140,61 @@ export async function listPrComments(
 }
 
 /**
+ * The `author_association` values GitHub gives an author it already counts as
+ * the repository's own — no lookup is needed to trust these.
+ */
+const STANDING = ["OWNER", "MEMBER", "COLLABORATOR"];
+
+/** The collaborator permissions that amount to push access. */
+const PUSH_PERMISSIONS = ["admin", "maintain", "write"];
+
+/**
+ * Fill in the standing `author_association` hides.
+ *
+ * GitHub reports an organisation member whose membership is private as
+ * `CONTRIBUTOR` to a token that cannot see the membership — the Actions token
+ * in particular — so a trust gate keyed on that field alone dropped this very
+ * repository's maintainers' replies without a trace. The collaborators API
+ * answers the question the gate actually asks, whether the author can push,
+ * and it answers it for the Actions token too. Every distinct human author the
+ * listing does not already count as the repository's own is looked up once;
+ * one with push access is given `COLLABORATOR`, the association GitHub uses
+ * for exactly that standing, and everyone else keeps what the listing said. A
+ * lookup that fails leaves the association as reported: no standing is
+ * invented, and a token that cannot ask reads exactly as before.
+ */
+export async function withPushAccess(
+  comments: HostComment[],
+  context: GithubContext,
+  doFetch: typeof fetch,
+): Promise<HostComment[]> {
+  const logins = new Set<string>();
+  for (const comment of comments) {
+    if (comment.bot || comment.author === "") continue;
+    if (STANDING.includes(comment.association)) continue;
+    logins.add(comment.author);
+  }
+  const push = new Set<string>();
+  for (const login of logins) {
+    const permission = await probeString(
+      `${API}/repos/${context.owner}/${context.repo}/collaborators/` +
+        `${encodeURIComponent(login)}/permission`,
+      githubHeaders(context.token),
+      doFetch,
+      "permission",
+    );
+    if (permission !== undefined && PUSH_PERMISSIONS.includes(permission)) {
+      push.add(login);
+    }
+  }
+  return comments.map((comment) =>
+    push.has(comment.author)
+      ? { ...comment, association: "COLLABORATOR" }
+      : comment
+  );
+}
+
+/**
  * The login the `token` authenticates as (`GET /user`), or `undefined` when the
  * endpoint is unavailable — an Actions installation token cannot call it, but
  * its comments are authored by a bot account, which the caller checks first.
@@ -214,7 +269,8 @@ export const githubHost: ReviewHost = {
   listComments(token, env) {
     const context = resolveGithubContext(token, env);
     if (context === undefined) return undefined;
-    return (doFetch) => listPrComments(context, doFetch);
+    return async (doFetch) =>
+      withPushAccess(await listPrComments(context, doFetch), context, doFetch);
   },
   reviewThreads(token, env) {
     const context = resolveGithubContext(token, env);

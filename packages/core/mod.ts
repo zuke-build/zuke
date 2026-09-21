@@ -408,3 +408,8 @@ export {
 } from "./src/ci.ts";
 export { type ScheduleEntry } from "./src/ci_schedule.ts";
 export { type RunPlan } from "./src/run_plan.ts";
+
+// The SHA-256 digest helper, for a package that needs a collision-resistant
+// fingerprint of untrusted text (the AI reviewer's memory of what a verifier
+// saw) rather than the fast, non-cryptographic hash it keys caches with.
+export { sha256Hex } from "./src/internal.ts";

@@ -137,6 +137,13 @@ export interface RefutedFinding {
   finding: AssessmentFinding;
   /** The verifier's one-line reason. */
   reason?: string;
+  /**
+   * Whether the refutation was made in an **earlier** round and is standing
+   * because nothing the verifier saw has changed since — no verifier was
+   * consulted this round. Shown so a reader can tell a standing decision from
+   * a fresh one.
+   */
+  earlier?: boolean;
 }
 
 /** A finding dismissed through the PR discussion. */
@@ -197,9 +204,9 @@ export function consoleLines(
   }
   for (const r of extras.refuted ?? []) {
     lines.push(
-      `    refuted by verify: ${r.finding.title}${
-        r.reason !== undefined ? ` — ${r.reason}` : ""
-      }`,
+      `    refuted by verify${
+        r.earlier ? " (earlier round)" : ""
+      }: ${r.finding.title}${r.reason !== undefined ? ` — ${r.reason}` : ""}`,
     );
   }
   for (const d of extras.dismissed ?? []) {
@@ -318,7 +325,10 @@ function refutedSection(refuted: RefutedFinding[]): string[] {
     "| --- | --- |",
   ];
   for (const r of refuted) {
-    parts.push(`| ${cell(r.finding.title)} | ${cell(r.reason ?? "—")} |`);
+    const standing = r.earlier ? "_(earlier round, input unchanged)_ " : "";
+    parts.push(
+      `| ${cell(r.finding.title)} | ${standing}${cell(r.reason ?? "—")} |`,
+    );
   }
   parts.push("");
   return parts;

@@ -16,7 +16,9 @@
  *     With a {@link AiReviewWorkflowSpec.command}, a second job runs the same
  *     target on demand when a maintainer comments the command on any pull
  *     request, fork or not — from the default branch's checkout, with the pull
- *     request fetched as data (see {@link ReviewCommandSettings}).
+ *     request fetched as data (see {@link ReviewCommandSettings}). That same
+ *     command is how a rebuttal left in a review thread gets its answer
+ *     without a push: the run it starts reads the threads.
  *   - **GitLab CI** — a small merge-request-only job snippet meant to be
  *     `include:`-d from the project's `.gitlab-ci.yml`. Defaults:
  *     `.gitlab/ai-review.gitlab-ci.yml`.
@@ -89,16 +91,23 @@ const SAFE_COMMAND = /^[A-Za-z0-9@/][A-Za-z0-9@/_.:-]*( [A-Za-z0-9@/_.:-]+)*$/;
 const REVIEW_COMMENT_ENV = "ZUKE_REVIEW_COMMENT";
 
 /**
- * The command job's first step after the checkout: refuse to run the review
- * unless the commenter has push access. `author_association` — all the gate's
- * `if:` can see — says only that someone is an organisation member or a
- * collaborator, and both include read-only accounts. The collaborators API
- * says what they may actually do, so the job asks it before spending a key:
- * `admin` and `write` (which `maintain` reports as) pass; `read` (which
- * `triage` reports as) and `none` fail the job with the reason, and so does
- * an answer that cannot be read at all — the step fails closed. The login
- * reaches the script as env, never interpolated, and is checked against the
- * characters a GitHub login can contain before it is put in a URL.
+ * The command job's first step after the checkout: let the review run only
+ * when the commenter has push access. The job's `if:` cannot ask anyone: it
+ * can see the event's `author_association`, and that field is no use here —
+ * an organisation member whose membership is private is reported as
+ * `CONTRIBUTOR` (observed on this repository's own pull requests, where it
+ * turned the maintainers away), while `MEMBER` and `COLLABORATOR` both include
+ * read-only accounts. The collaborators API says what a commenter may actually
+ * do, so the job asks it before spending a key: `admin` and `write` (which
+ * `maintain` reports as) pass; `read` (which `triage` reports as) and `none`
+ * record `push=false` in the step's outputs, and every later step is skipped,
+ * so the job ends succeeded having spent nothing. Skipping rather than failing
+ * because, with no association pre-filter, anyone who can comment can type
+ * the command, and a red check for each of them would be noise and a lever
+ * anyone could pull; the step's log says why nothing ran. An answer that
+ * cannot be read fails closed. The login reaches the script as env, never
+ * interpolated, and is checked against the characters a GitHub login can
+ * contain before it is put in a URL.
  */
 const PUSH_ACCESS_STEP = [
   // Fail closed, explicitly: a failed API call, an unset variable, or a
@@ -114,22 +123,32 @@ const PUSH_ACCESS_STEP = [
   "  exit 1",
   "}",
   'case "$permission" in',
-  '  admin|write) echo "$ZUKE_REVIEW_ACTOR has $permission access." ;;',
-  '  *) echo "::error::$ZUKE_REVIEW_ACTOR has $permission access to $GITHUB_REPOSITORY; the review command needs push access."',
-  "     exit 1 ;;",
+  "  admin|write)",
+  '    echo "$ZUKE_REVIEW_ACTOR has $permission access."',
+  '    echo "push=true" >> "$GITHUB_OUTPUT" ;;',
+  "  *)",
+  '    echo "$ZUKE_REVIEW_ACTOR has $permission access to $GITHUB_REPOSITORY; starting a review needs push access."',
+  '    echo "push=false" >> "$GITHUB_OUTPUT" ;;',
   "esac",
 ].join("\n");
 
-/** A secret name as GitHub Actions accepts it in `${{ secrets.NAME }}`. */
-const SECRET_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+/** The step id the push-access check publishes its verdict under. */
+const PUSH_STEP_ID = "push";
 
 /**
- * The `author_association` values a comment must carry to start the review:
- * the repository's owner, an organisation member, or a direct collaborator —
- * the same set the discussion feature trusts. `CONTRIBUTOR` is deliberately
- * absent: anyone with one merged pull request has it.
+ * The clause that keeps a fork's code away from the secrets: the head
+ * repository is this repository. Stated as a name comparison rather than
+ * `head.repo.fork == false`, because a fork that was deleted after the pull
+ * request was opened leaves `head.repo` null, and the expression language's
+ * loose comparison reads `null == false` as true — a gate that would open for
+ * exactly the pull request nobody can inspect any more. A null name compares
+ * unequal, so this fails closed.
  */
-const COMMAND_AUTHORS = ["OWNER", "MEMBER", "COLLABORATOR"];
+const SAME_REPO =
+  "github.event.pull_request.head.repo.full_name == github.repository";
+
+/** A secret name as GitHub Actions accepts it in `${{ secrets.NAME }}`. */
+const SECRET_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /**
  * The comment command that runs the review on demand, configured through
@@ -137,14 +156,20 @@ const COMMAND_AUTHORS = ["OWNER", "MEMBER", "COLLABORATOR"];
  *
  * The job it adds runs on `issue_comment`, which GitHub delivers for comments on
  * pull requests too, always from the **default branch** and always with the
- * repository's secrets — so its `if:` is the whole access control. It fires only
- * when the comment is on a pull request, starts with {@link text}, was written
- * by a human (not a bot account), and its author's `author_association` is
- * `OWNER`, `MEMBER` or `COLLABORATOR`. The comment body is matched in the
- * expression and never interpolated into a `run:` line. Then, before the
- * review runs, the job asks the collaborators API whether the commenter has
- * push access, and stops if not — an association alone admits read-only
- * members and collaborators.
+ * repository's secrets. Its `if:` fires only when the comment is on a pull
+ * request, starts with {@link text}, and was written by a human (not a bot
+ * account); the comment body is matched in the expression and never
+ * interpolated into a `run:` line. The access control is the job's first
+ * step: it asks the collaborators API whether the commenter has push access,
+ * and every later step is skipped if not (see {@link PUSH_ACCESS_STEP}). The
+ * event's `author_association` is deliberately not consulted — it reports a
+ * private organisation member as `CONTRIBUTOR`, and `MEMBER` and
+ * `COLLABORATOR` admit read-only accounts, so it can neither admit nor refuse
+ * anyone correctly.
+ *
+ * The command is also how a maintainer who contested a finding in its review
+ * thread, and pushed nothing, gets an answer: the run it starts reads every
+ * thread, adjudicates the rebuttals, and replies in the threads.
  *
  * What runs is the default branch's build, never the pull request's: the job
  * passes `ZUKE_REVIEW_PR`, and the reviewers fetch that pull request's merge
@@ -331,10 +356,16 @@ function envOf(param: AnyParameter): string | undefined {
   return envVarName(param.name_);
 }
 
-/** Each reviewer's effective key env var, plus whether any uses `.comment()`. */
+/**
+ * Each reviewer's effective key env var, plus whether any uses `.comment()`.
+ */
 function reviewerEnv(
   reviewers: readonly Reviewer[],
-): { keyEnvs: string[]; commentEnvs: string[]; commentEnabled: boolean } {
+): {
+  keyEnvs: string[];
+  commentEnvs: string[];
+  commentEnabled: boolean;
+} {
   const keyEnvs: string[] = [];
   const commentEnvs: string[] = [];
   let commentEnabled = false;
@@ -452,25 +483,36 @@ class AiReviewWorkflow extends CiFile {
     steps: CiJob["steps"],
     comments: boolean,
     pull: string,
+    cancelInProgress: boolean,
   ): CiJob {
     return {
       id,
       name,
       runsOn: "ubuntu-latest",
       if: `\${{ ${gate} }}`,
-      // One run per pull request per job, the newer cancelling the older — on
-      // the job, not the workflow. Keyed on the pull request rather than
-      // `github.ref`, which is the default branch for every comment-started
-      // run. And on the job because a skipped job never enters its group,
-      // whereas a run whose jobs are all skipped still enters a workflow-level
-      // one: the review's own comment, posted as an app, fires `issue_comment`
-      // again, and that run — skipped by the bot check — would otherwise
-      // cancel the review still posting it. A push to the pull request
-      // likewise restarts only the `pull_request` job, never a maintainer's
-      // in-flight command.
+      // One run per pull request, shared by every job of this workflow and
+      // declared on the job, not the workflow. Keyed on the pull request
+      // rather than `github.ref`, which is the default branch for every
+      // comment-started run. On the job because a skipped job never enters
+      // its group, whereas a run whose jobs are all skipped still enters a
+      // workflow-level one: the review's own comment, posted as an app, fires
+      // `issue_comment` again, and that run — skipped by the bot check — would
+      // otherwise cancel the review still posting it.
+      //
+      // Shared across the jobs because every run of the target reads the
+      // state block from the reviewer's comment and writes it back; two runs
+      // in flight at once each write the state they started from, and the
+      // later post silently drops whatever the earlier run recorded. That
+      // happened: a push run and a reply run overlapped, and the findings the
+      // push run had just opened vanished from the state the reply run wrote
+      // back, leaving their threads unanswerable. Only the push run cancels
+      // what is in flight — a superseded head is not worth finishing, and a
+      // reply or command run reads the same threads on the new head — while
+      // a reply or command run queues behind whatever is running and starts
+      // from the state it posted.
       concurrency: {
-        group: `ai-review-\${{ github.workflow }}-${id}-\${{ ${pull} }}`,
-        cancelInProgress: true,
+        group: `ai-review-\${{ github.workflow }}-\${{ ${pull} }}`,
+        cancelInProgress,
       },
       // The write scope sits on the job that posts, not on the workflow: with
       // two jobs, a workflow-level write is broader than either needs, and
@@ -509,27 +551,39 @@ class AiReviewWorkflow extends CiFile {
   }
 
   /**
-   * The gate of the command job — the whole access control of a job that runs
-   * on the default branch with the repository's secrets. Every clause reads
-   * metadata GitHub asserts, never the comment's text beyond its prefix: the
-   * comment is on a pull request, its author is a human account whose
-   * association is one of {@link COMMAND_AUTHORS}, and the body starts with
-   * the command. The bot check is what stops the review's own comments,
-   * posted with an app token (which, unlike `GITHUB_TOKEN`, does trigger
-   * workflows), from starting another run.
+   * The gate of the command job. Every clause reads metadata GitHub asserts,
+   * never the comment's text beyond its prefix: the comment is on a pull
+   * request, its author is a human account, and the body starts with the
+   * command. The bot check is what stops the review's own comments, posted
+   * with an app token (which, unlike `GITHUB_TOKEN`, does trigger workflows),
+   * from starting another run. Who may start one is decided by the push-access
+   * step, not here — see {@link PUSH_ACCESS_STEP} for why the event's
+   * association field is not in the gate.
    */
   static #commandGate(text: string): string {
-    const author = "github.event.comment.author_association";
-    const trusted = COMMAND_AUTHORS.map((a) => `${author} == '${a}'`).join(
-      " || ",
-    );
     return [
       "github.event_name == 'issue_comment'",
       "github.event.issue.pull_request",
       "github.event.comment.user.type != 'Bot'",
-      `(${trusted})`,
       `startsWith(github.event.comment.body, '${text}')`,
     ].join(" && ");
+  }
+
+  /**
+   * The push-access check, the command job's first step — see
+   * {@link PUSH_ACCESS_STEP}.
+   */
+  static #pushAccessStep(): NonNullable<CiJob["steps"]>[number] {
+    return {
+      id: PUSH_STEP_ID,
+      name: "Require push access for the commenter",
+      shell: "bash",
+      run: PUSH_ACCESS_STEP,
+      env: {
+        GH_TOKEN: "${{ github.token }}",
+        ZUKE_REVIEW_ACTOR: "${{ github.event.comment.user.login }}",
+      },
+    };
   }
 
   /**
@@ -554,25 +608,27 @@ class AiReviewWorkflow extends CiFile {
     // matters once the command job shares the workflow: a comment event has
     // no `pull_request` payload, and a missing field compares as `false`
     // would — so it is stated rather than relied on.
+    const reviewSteps: CiJob["steps"] = [
+      ...(fetchBase
+        ? [{
+          name: "Fetch the base branch",
+          run: `git fetch --no-tags --depth=1 origin ${baseBranch}`,
+        }]
+        : []),
+      {
+        name: "AI review with Zuke",
+        run: `./zuke ${target}`,
+        env: reviewEnv,
+      },
+    ];
     const review = this.#githubJob(
       "review",
       "AI review",
-      "github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false",
-      [
-        ...(fetchBase
-          ? [{
-            name: "Fetch the base branch",
-            run: `git fetch --no-tags --depth=1 origin ${baseBranch}`,
-          }]
-          : []),
-        {
-          name: "AI review with Zuke",
-          run: `./zuke ${target}`,
-          env: reviewEnv,
-        },
-      ],
+      `github.event_name == 'pull_request' && ${SAME_REPO}`,
+      reviewSteps,
       reviewers.commentEnabled,
       "github.event.pull_request.number",
+      true,
     );
     const jobs = [review];
     const command = this.#command;
@@ -589,23 +645,17 @@ class AiReviewWorkflow extends CiFile {
         "AI review on command",
         AiReviewWorkflow.#commandGate(command.text),
         [
-          {
-            name: "Require push access for the commenter",
-            shell: "bash",
-            run: PUSH_ACCESS_STEP,
-            env: {
-              GH_TOKEN: "${{ github.token }}",
-              ZUKE_REVIEW_ACTOR: "${{ github.event.comment.user.login }}",
-            },
-          },
+          AiReviewWorkflow.#pushAccessStep(),
           {
             name: "AI review with Zuke",
+            if: `steps.${PUSH_STEP_ID}.outputs.push == 'true'`,
             run: `./zuke ${target}`,
             env: commandEnv,
           },
         ],
         reviewers.commentEnabled,
         "github.event.issue.number",
+        false,
       ));
     }
     return {

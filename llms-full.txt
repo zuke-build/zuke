@@ -796,6 +796,14 @@ function service(): ServiceBuilder
   dependents execute. Configure it with {@link ServiceBuilder.start} /
   {@link ServiceBuilder.readyWhen} and depend on it from a {@link target}.
 
+async function sha256Hex(data: string | Uint8Array): Promise<string>
+  The SHA-256 digest of `data` — a UTF-8 string or raw bytes — as a lowercase
+  hex string.
+
+  Bytes are copied into a fresh `ArrayBuffer`-backed view so the digest input
+  type is unambiguous whatever buffer the source view sits on (e.g. a
+  `SharedArrayBuffer`).
+
 async function syncCiFiles(files: readonly CiFile[], options: CiSyncOptions): Promise<CiSyncResult[]>
   Bring each declared {@link CiFile} on disk in line with its definition. By
   default a changed file is rewritten; in `check` mode it is reported `stale`
@@ -20148,14 +20156,20 @@ class ReviewCommandSettings
 
   The job it adds runs on `issue_comment`, which GitHub delivers for comments on
   pull requests too, always from the default branch and always with the
-  repository's secrets — so its `if:` is the whole access control. It fires only
-  when the comment is on a pull request, starts with {@link text}, was written
-  by a human (not a bot account), and its author's `author_association` is
-  `OWNER`, `MEMBER` or `COLLABORATOR`. The comment body is matched in the
-  expression and never interpolated into a `run:` line. Then, before the
-  review runs, the job asks the collaborators API whether the commenter has
-  push access, and stops if not — an association alone admits read-only
-  members and collaborators.
+  repository's secrets. Its `if:` fires only when the comment is on a pull
+  request, starts with {@link text}, and was written by a human (not a bot
+  account); the comment body is matched in the expression and never
+  interpolated into a `run:` line. The access control is the job's first
+  step: it asks the collaborators API whether the commenter has push access,
+  and every later step is skipped if not (see {@link PUSH_ACCESS_STEP}). The
+  event's `author_association` is deliberately not consulted — it reports a
+  private organisation member as `CONTRIBUTOR`, and `MEMBER` and
+  `COLLABORATOR` admit read-only accounts, so it can neither admit nor refuse
+  anyone correctly.
+
+  The command is also how a maintainer who contested a finding in its review
+  thread, and pushed nothing, gets an answer: the run it starts reads every
+  thread, adjudicates the rebuttals, and replies in the threads.
 
   What runs is the default branch's build, never the pull request's: the job
   passes `ZUKE_REVIEW_PR`, and the reviewers fetch that pull request's merge
