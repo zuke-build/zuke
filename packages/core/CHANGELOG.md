@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.59.0](https://github.com/zuke-build/zuke/compare/core-v1.58.0...core-v1.59.0) (2026-09-21)
+
+
+### Features
+
+* **cli:** group the help, move detail behind per-command help, merge both surfaces ([#649](https://github.com/zuke-build/zuke/issues/649)) ([50987ff](https://github.com/zuke-build/zuke/commit/50987ff8b3a64fee4efa576e6f211732e1d917a7))
+* **core:** add `outdated --update` to bump the versions the lock resolves ([#645](https://github.com/zuke-build/zuke/issues/645)) ([56c9d39](https://github.com/zuke-build/zuke/commit/56c9d39a8ff08ace7c8758532c3eda5f251d5516))
+
 ## [1.58.0](https://github.com/zuke-build/zuke/compare/core-v1.57.0...core-v1.58.0) (2026-09-21)
 
 

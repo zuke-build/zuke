@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/zuke-build/zuke/compare/console-v1.3.0...console-v1.4.0) (2026-09-21)
+
+
+### Features
+
+* **core:** add `outdated --update` to bump the versions the lock resolves ([#645](https://github.com/zuke-build/zuke/issues/645)) ([56c9d39](https://github.com/zuke-build/zuke/commit/56c9d39a8ff08ace7c8758532c3eda5f251d5516))
+
 ## [1.3.0](https://github.com/zuke-build/zuke/compare/console-v1.2.0...console-v1.3.0) (2026-09-21)
 
 
