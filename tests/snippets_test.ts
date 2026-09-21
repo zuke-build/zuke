@@ -266,6 +266,21 @@ Deno.test("inline: a subpath import is caught too", () => {
   assertStringIncludes(found[0].text, "@zuke/core/shell");
 });
 
+Deno.test("inline: every matching line is found, not every other one", () => {
+  // The scanner tests one shared regex against line after line. That is only
+  // safe while the pattern has no `g` flag: a global regex carries `lastIndex`
+  // between calls, and `.test()` would start each line where the previous
+  // match ended — reporting every other line and letting the ones in between
+  // slip past the gate. Three consecutive matches prove it does not.
+  const md = [
+    'import { A } from "jsr:@zuke/core";',
+    'import { B } from "jsr:@zuke/deno";',
+    'import { C } from "jsr:@zuke/git";',
+  ].join("\n");
+  const found = findInlineSpecifiers(md, "docs/x.md");
+  assertEquals(found.map((f) => f.line), [1, 2, 3]);
+});
+
 Deno.test("inline: collect aggregates across files in order", async () => {
   await withTemp(async (dir) => {
     const a = `${dir}/a.md`;
