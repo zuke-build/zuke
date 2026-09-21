@@ -1140,9 +1140,11 @@ Depth and discussion knobs (all optional, per reviewer):
   `.discussion((d) => d.trustAuthors(...))`) — untrusted comments never reach
   the model, which blunts comment-based prompt injection. Requires `.comment()`;
   works on every supported host, each mapping its own metadata onto those
-  association names: GitHub uses `author_association` verbatim, GitLab derives
-  it from project membership (Owner 50 → `OWNER`, Developer/Maintainer 30/40 →
-  `MEMBER`, below that `NONE`), Bitbucket from workspace permissions
+  association names: GitHub uses `author_association` plus a collaborators API
+  lookup that counts push access as `COLLABORATOR` (the Actions token sees a
+  private organisation member as `CONTRIBUTOR`), GitLab derives it from project
+  membership (Owner 50 → `OWNER`, Developer/Maintainer 30/40 → `MEMBER`, below
+  that `NONE`), Bitbucket from workspace permissions
   (`owner`/`collaborator`/`member`). **Azure DevOps reports no such
   relationship**, so nobody is trusted there by association — name the
   maintainers with `.trustAuthors(...)`. The mapping fails closed: if the

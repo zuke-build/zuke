@@ -20,7 +20,12 @@
  */
 
 import { dig } from "../json.ts";
-import { type GithubContext, githubHeaders, selfLogin } from "./github.ts";
+import {
+  type GithubContext,
+  githubHeaders,
+  selfLogin,
+  withPushAccess,
+} from "./github.ts";
 import {
   ensureOk,
   type HostComment,
@@ -281,7 +286,16 @@ export async function setThreadsResolved(
 /** The {@link ReviewThreads} implementation for a resolved GitHub context. */
 export function githubReviewThreads(context: GithubContext): ReviewThreads {
   return {
-    list: (doFetch) => listReviewComments(context, doFetch),
+    // Replies get the same standing lookup as the summary comments: the trust
+    // gate reads both streams, and a maintainer hidden behind `CONTRIBUTOR`
+    // in one is hidden in the other.
+    list: async (doFetch) => {
+      const raw = await listReviewComments(context, doFetch);
+      return {
+        ...raw,
+        comments: await withPushAccess(raw.comments, context, doFetch),
+      };
+    },
     headSha: (doFetch) => headSha(context, doFetch),
     open: (doFetch, sha, path, line, body) =>
       openThread(context, doFetch, sha, path, line, body),

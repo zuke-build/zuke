@@ -385,12 +385,12 @@ the summary table always carries the current location.
 onto those names in code — never from the comment text — so the same
 `.discussion()` configuration means the same thing everywhere:
 
-| Host                    | Where trust comes from                         | Mapping                                                                                   |
-| ----------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| **GitHub Actions**      | `author_association` on the comment            | used verbatim                                                                             |
-| **GitLab CI**           | project membership (`access_level`)            | Owner (50) → `OWNER`; Developer/Maintainer (30/40) → `MEMBER`; Guest/Reporter → `NONE`    |
-| **Bitbucket Pipelines** | workspace permissions                          | `owner` → `OWNER`; `collaborator` → `COLLABORATOR`; `member` → `MEMBER`                   |
-| **Azure Pipelines**     | — (Azure reports no relationship on a comment) | nobody is trusted by association; name the maintainers with `.trustAuthors(<uniqueName>)` |
+| Host                    | Where trust comes from                           | Mapping                                                                                                                                                                                                                                    |
+| ----------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **GitHub Actions**      | `author_association`, plus the collaborators API | used verbatim, except that an author with push access (`admin`, `maintain`, `write`) counts as `COLLABORATOR` — GitHub reports a private organisation member as `CONTRIBUTOR` to the Actions token, and the lookup restores their standing |
+| **GitLab CI**           | project membership (`access_level`)              | Owner (50) → `OWNER`; Developer/Maintainer (30/40) → `MEMBER`; Guest/Reporter → `NONE`                                                                                                                                                     |
+| **Bitbucket Pipelines** | workspace permissions                            | `owner` → `OWNER`; `collaborator` → `COLLABORATOR`; `member` → `MEMBER`                                                                                                                                                                    |
+| **Azure Pipelines**     | — (Azure reports no relationship on a comment)   | nobody is trusted by association; name the maintainers with `.trustAuthors(<uniqueName>)`                                                                                                                                                  |
 
 `.trustAuthors(...)` names accounts, so it takes each host's **stable**
 identifier — never a display name, which its owner can change to anyone else's:

@@ -5,6 +5,7 @@ import { assertEquals } from "../../core/tests/_assert.ts";
 import type { GithubContext } from "../src/hosts/github.ts";
 import { githubHost } from "../src/hosts/github.ts";
 import {
+  githubReviewThreads,
   headSha,
   listReviewComments,
   openThread,
@@ -318,4 +319,35 @@ Deno.test("a thread with no known node id is skipped", async () => {
   ]]);
   // Root 42 is not in the join, so there is nothing to resolve.
   assertEquals(await setThreadsResolved(CONTEXT, fetch, [42], true), 0);
+});
+
+Deno.test("a review-comment listing restores a hidden maintainer's standing too", async () => {
+  // Same lookup as the summary comments: a reply in a thread by an
+  // organisation member the token sees as CONTRIBUTOR is trusted once the
+  // collaborators API says they can push.
+  const { fetch } = fake([
+    [
+      "/collaborators/hidden-maintainer/permission",
+      () => json({ permission: "maintain" }),
+    ],
+    ["/pulls/7/comments", () =>
+      json([{
+        id: 501,
+        body: "root",
+        user: { login: "github-actions[bot]", type: "Bot" },
+        author_association: "CONTRIBUTOR",
+      }, {
+        id: 502,
+        body: "reply",
+        in_reply_to_id: 501,
+        user: { login: "hidden-maintainer", type: "User" },
+        author_association: "CONTRIBUTOR",
+      }])],
+  ]);
+  const raw = await githubReviewThreads(CONTEXT).list(fetch);
+  assertEquals(
+    raw.comments.map((c) => `${c.author}:${c.association}`),
+    ["github-actions[bot]:CONTRIBUTOR", "hidden-maintainer:COLLABORATOR"],
+  );
+  assertEquals(raw.parents.get(502), 501);
 });
