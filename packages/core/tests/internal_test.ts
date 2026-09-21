@@ -35,13 +35,22 @@ Deno.test("sha256Hex returns the known lowercase-hex digest", async () => {
     await sha256Hex(""),
     "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   );
+  // …and of "abc", the other vector everyone's test suite carries. A known
+  // answer is what separates "this hashes something" from "this hashes what
+  // SHA-256 says it should".
+  assertEquals(
+    await sha256Hex("abc"),
+    "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+  );
   // Distinct inputs differ; the same input is stable.
   assertEquals(await sha256Hex("a") === await sha256Hex("b"), false);
   assertEquals(await sha256Hex("x"), await sha256Hex("x"));
 });
 
 Deno.test("sha256Hex digests bytes the same as the text they encode", async () => {
-  const text = "zuke";
+  // Multi-byte on purpose: an ASCII string would pass even if the encoding
+  // step were wrong, since one character would be one byte either way.
+  const text = "zuke café";
   assertEquals(
     await sha256Hex(new TextEncoder().encode(text)),
     await sha256Hex(text),

@@ -39,24 +39,3 @@ export function stableHash(input: string): string {
   }
   return hash.toString(36);
 }
-
-/** Shared encoder for {@link sha256Hex} (a `TextEncoder` is stateless and reusable). */
-const encoder = new TextEncoder();
-
-/**
- * The SHA-256 digest of `text` as lowercase hex — the collision-resistant
- * fingerprint the review state keeps of what a verifier saw, where
- * {@link stableHash} would let a crafted diff collide with a stored digest and
- * keep a refutation standing over changed code.
- *
- * Core keeps an equivalent helper unexported, and this package must type-check
- * against the core floor it declares — a symbol new in an unreleased core is
- * exactly what that floor check exists to refuse — so the digest lives here.
- */
-export async function sha256Hex(text: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", encoder.encode(text));
-  return Array.from(
-    new Uint8Array(digest),
-    (b) => b.toString(16).padStart(2, "0"),
-  ).join("");
-}
