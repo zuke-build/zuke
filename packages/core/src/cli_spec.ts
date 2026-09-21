@@ -169,6 +169,10 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
     description: "With resume, continue even if a state write was dropped",
   },
   {
+    name: "--update",
+    description: "With outdated, bump the lock's resolved versions",
+  },
+  {
     name: "--exit-code",
     description:
       "With outdated, exit non-zero when a package is behind or unchecked",

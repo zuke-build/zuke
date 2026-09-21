@@ -124,6 +124,7 @@ word you install them for.
 | `./zuke register [--actor <name>] [--json]`                                      | Register this build in the build registry (`--json` prints the written descriptor).                             |
 | `./zuke doc <spec>`                                                              | Print a package's API docs (`deno doc <spec>`) from an isolated empty directory.                                |
 | `./zuke outdated [--exit-code]`                                                  | Report the JSR packages the lock resolves behind their latest release (needs the network).                      |
+| `./zuke outdated --update [<package>...]`                                        | Move those packages' locked versions up to the latest, or only the ones named.                                  |
 | `./zuke --help` / `-h`                                                           | Usage.                                                                                                          |
 | `./zuke` (no target)                                                             | Run the `default` target if defined, else print `--list`.                                                       |
 
@@ -319,10 +320,40 @@ re-downloads the sources behind the resolution while leaving the resolution
 itself alone. `deno outdated --update` does re-resolve, but it reads manifests,
 so it cannot see a specifier written inline rather than in an imports map.
 
-What works is removing the stale entries from `deno.lock` (or deleting the lock)
-and re-running, which resolves them afresh. One caveat when you delete the whole
-file: in a repo that also has a `package.json`, `deno cache` resolves the whole
-npm tree and writes an `npm` section a jsr-only lock never had.
+What works is removing the stale entries from `deno.lock` and resolving afresh,
+and `--update` does exactly that for you:
+
+```console
+$ ./zuke outdated --update
+@std/encoding  1.0.5  →  1.0.11
+
+1 package updated. Review the lock diff and commit it.
+```
+
+It drops the stale entries, re-resolves, and reports what moved. Name packages
+to narrow it — `./zuke outdated --update @zuke/git @zuke/gh` — and everything
+else is left alone. It touches the lock and nothing else.
+
+Two things about it are worth knowing, because both were surprising enough to be
+measured rather than assumed.
+
+A bump can legitimately fail to move, and is reported rather than claimed. If
+the specifier is `jsr:@std/yaml@1.0.5`, re-resolution returns the same version
+however often you ask — the specifier pins it, not the lock — so the package is
+reported as _held_, naming the specifier responsible. Widening that range is an
+edit to your source, which `--update` does not make for you.
+
+The re-resolution needs both an entrypoint and a registry refresh. A bare
+`deno install` resolves the manifest's dependencies, so it never writes back an
+inline specifier at all; `--entrypoint` is what makes it see the build's module
+graph. And Deno caches the registry's version listing, so without
+`--reload=jsr:` a re-resolution happily picks the newest version it already knew
+about — landing one release behind, silently, which is the failure this command
+exists to prevent.
+
+If you would rather do it by hand, deleting the whole lock also works, with one
+caveat: in a repo that also has a `package.json`, resolving afresh walks the
+whole npm tree and writes an `npm` section a jsr-only lock never had.
 
 ## Parallel execution
 

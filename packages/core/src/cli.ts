@@ -22,11 +22,7 @@ import {
   graphCommand,
   type GraphHost,
 } from "./graph_view.ts";
-import {
-  findOutdated,
-  formatOutdated,
-  type OutdatedOptions,
-} from "./outdated.ts";
+import { findOutdated, formatOutdated } from "./outdated.ts";
 import {
   type AnyParameter,
   discoverParameters,
@@ -74,6 +70,11 @@ import {
   type InstallOptions,
 } from "./completions_install.ts";
 import { describeBuildSurface } from "./describe.ts";
+import {
+  formatUpdate,
+  type UpdateOptions,
+  updateOutdated,
+} from "./outdated_update.ts";
 
 /** `completions` sub-action: print the script to stdout. */
 const PRINT_SUBCOMMAND = "print";
@@ -224,6 +225,16 @@ export interface ParsedArgs {
   outdated: boolean;
   /** Exit non-zero when `outdated` found something (`--exit-code`). */
   exitCode: boolean;
+  /** `outdated --update`: move the lock's resolved versions up, don't just report. */
+  update: boolean;
+  /**
+   * Package names after `outdated`, restricting `--update` to those.
+   *
+   * Collected even without `--update` so `outdated @zuke/git --update` and
+   * `outdated --update @zuke/git` mean the same thing, and so a name given to
+   * a plain report is rejected rather than silently ignored.
+   */
+  updateOnly: string[];
   /** Raw parameter values from declared flags, keyed by property name. */
   values: Record<string, string>;
   help: boolean;
@@ -423,6 +434,8 @@ export function parseArgs(
     doc: false,
     outdated: false,
     exitCode: false,
+    update: false,
+    updateOnly: [],
     confirmDestructive: false,
     mcpRegistry: false,
     help: false,
@@ -470,6 +483,8 @@ export function parseArgs(
       parsed.check = true;
     } else if (arg === "--exit-code") {
       parsed.exitCode = true;
+    } else if (arg === "--update") {
+      parsed.update = true;
     } else if (arg === "--allow-run") {
       parsed.allowRun = true;
     } else if (arg.startsWith("--allow-run=")) {
@@ -562,6 +577,11 @@ export function parseArgs(
     } else if (parsed.doc && parsed.docSpec === undefined) {
       // `doc` takes the spec to document as its positional.
       parsed.docSpec = arg;
+    } else if (parsed.outdated) {
+      // `outdated` takes any number of package names, narrowing --update to
+      // them. Repeatable rather than comma-separated: a scoped name already
+      // contains punctuation, and a shell splits arguments for us.
+      parsed.updateOnly.push(arg);
     } else if (
       parsed.target === undefined && !parsed.graph && !parsed.generateCi &&
       !parsed.completions && !parsed.mcp && !parsed.resume && !parsed.runs &&
@@ -609,7 +629,7 @@ Usage:
   deno run -A zuke.ts force <run-id> <target> --outcome skipped|succeeded [--reason <why>]
   deno run -A zuke.ts register [--actor <name>] [--json]
   deno run -A zuke.ts doc <spec>
-  deno run -A zuke.ts outdated [--exit-code]
+  deno run -A zuke.ts outdated [--update [<package>...]] [--exit-code]
 
 Options:
   <target>          Run the target and its transitive dependencies.
@@ -728,6 +748,11 @@ Options:
                     is why it is a command rather than a line in --list: a
                     build whose specifiers are written inline (jsr:@zuke/x@^1)
                     gets no signal from deno outdated, which reads manifests.
+  --update          With outdated, move the lock's resolved versions up to the
+                    registry's latest instead of only reporting them. Takes
+                    optional package names to narrow it. Touches the lock and
+                    nothing else: a specifier that forbids the newer release is
+                    reported as holding its package back, never rewritten.
   --exit-code       With outdated, exit non-zero when a package is behind or
                     could not be checked, so a gate can fail on either — a run
                     that reached nothing has not answered the question.
@@ -870,10 +895,11 @@ export interface MainOptions {
   /** Runner for the `doc` command's `deno doc` spawn (injected in tests). */
   docRunner?: DocRunner;
   /**
-   * Lock path, registry origin and `fetch` for the `outdated` command
-   * (injected in tests, which have neither a lock nor a network).
+   * Lock path, registry origin and `fetch` for the `outdated` command, plus
+   * the re-resolution seam `--update` drives (injected in tests, which have
+   * neither a lock, a network, nor a `deno` to spawn).
    */
-  outdatedOptions?: OutdatedOptions;
+  outdatedOptions?: UpdateOptions;
   /** Lifecycle observers to run alongside the build's own hooks. */
   plugins?: Plugin[];
   /** Overrides for `completions install` (home/config dir), injected in tests. */
@@ -1244,9 +1270,19 @@ async function runDoc(
  */
 async function runOutdated(
   parsed: ParsedArgs,
-  options: OutdatedOptions = {},
+  options: UpdateOptions = {},
 ): Promise<number> {
   try {
+    if (parsed.update) return await runOutdatedUpdate(parsed, options);
+    if (parsed.updateOnly.length > 0) {
+      // Names only mean something to --update. Accepting them silently on a
+      // plain report would read as a filter that quietly did nothing.
+      cliReporter.error(
+        `outdated: package names only apply with --update ` +
+          `(got ${parsed.updateOnly.join(", ")}).`,
+      );
+      return 1;
+    }
     const report = await findOutdated(options);
     cliReporter.info(formatOutdated(report));
     // A package that could not be checked counts as a failure under
@@ -1259,6 +1295,28 @@ async function runOutdated(
     cliReporter.error(messageOf(error));
     return 1;
   }
+}
+
+/**
+ * Run `outdated --update`: move the lock's resolved versions up, then report
+ * what moved and what its specifier held back.
+ *
+ * `--exit-code` answers a different question here than it does on the report.
+ * There it means "something is behind"; after an update, being behind is the
+ * expected state of anything a specifier pins, and failing on it would make
+ * the flag impossible to use in the scheduled pipeline the command is meant
+ * for. So it fails on what is *still* actionable: a package held back, or one
+ * that could not be checked. A clean update exits 0.
+ */
+async function runOutdatedUpdate(
+  parsed: ParsedArgs,
+  options: UpdateOptions,
+): Promise<number> {
+  const only = parsed.updateOnly.length > 0 ? parsed.updateOnly : undefined;
+  const report = await updateOutdated({ ...options, only });
+  cliReporter.info(formatUpdate(report));
+  const unresolved = report.held.length + report.unchecked.length;
+  return parsed.exitCode && unresolved > 0 ? 1 : 0;
 }
 
 /** Run the `runs` command: build the query (validating `--status`) and dispatch. */
