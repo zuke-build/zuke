@@ -4,7 +4,7 @@
 /** Test doubles for the CLI's injectable seams. */
 
 import type { SetupHost } from "../src/setup.ts";
-import type { Prompter } from "../mod.ts";
+import type { BuildProbe, Prompter } from "../mod.ts";
 
 /** An in-memory {@link SetupHost} that records writes, chmods, and logs. */
 export class FakeHost implements SetupHost {
@@ -143,3 +143,21 @@ export class FakeStarActions {
     return Promise.resolve(this.browserOk);
   }
 }
+
+/**
+ * A {@link BuildProbe} that finds no project, whatever the directory.
+ *
+ * `zuke --help` now shows the build's half too, which means a help test given
+ * the real probe locates the repository's own `zuke.json` and spawns its build
+ * — a real subprocess, in a test that only wanted to read text. That makes the
+ * test no longer hermetic, and it was caught by the coverage gate rather than by a failing
+ * assertion: the spawned build's module body landed in the profile and dragged
+ * `zuke.ts` under the per-file floor.
+ *
+ * A help test that is not about forwarding should use this.
+ */
+export const noProjectProbe: BuildProbe = {
+  exists: () => Promise.resolve(false),
+  ownership: () => Promise.resolve(null),
+  uid: () => null,
+};

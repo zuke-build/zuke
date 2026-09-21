@@ -21,15 +21,22 @@ equivalent — the forwarding runs `deno run -A zuke.ts <command>` from the
 directory holding `zuke.json`, with `--frozen` once a `deno.lock` exists beside
 it (the launchers' rule), stdio inherited so `zuke mcp` and prompts work, and
 exits with the build's code. A bare `zuke` inside a project runs the default
-target, as `./zuke` does; `--help`/`-h` and `--version`/`-V` always answer for
-the global CLI. The build's own usage — the live targets and parameters — is
-`zuke -- --help`: the build's parser skips the `--`, so anything after it, flag
-or target, reaches the build unread by the global CLI. Outside any project the
-bare `zuke` prints the global usage, and any other command reports itself
-unknown along with the missing `zuke.json`. The one name both CLIs claim is
-`doc`, and the global one answers it; the two do the same isolated `deno doc`,
-so nothing is lost. The `./zuke` launcher remains the entry point that needs no
-install — it bootstraps Deno itself — so CI and a fresh clone keep using it.
+target, as `./zuke` does; `--version`/`-V` always answers for the global CLI.
+
+`--help`/`-h` shows **both** surfaces inside a project, under headings that say
+which is which: the global CLI's own commands, which work anywhere, and then the
+build's — its commands, options, live targets and parameters. The build's half
+is produced by running the build's own `--help`, so the two cannot disagree, and
+`zuke --help` and `./zuke --help` no longer describe different things. Outside a
+project the second half is replaced by a line saying there is no `zuke.json`
+here to describe. `zuke -- --help` still reaches the build alone: the build's
+parser skips the `--`, so anything after it, flag or target, reaches the build
+unread by the global CLI. Outside any project the bare `zuke` prints the global
+usage, and any other command reports itself unknown along with the missing
+`zuke.json`. The one name both CLIs claim is `doc`, and the global one answers
+it; the two do the same isolated `deno doc`, so nothing is lost. The `./zuke`
+launcher remains the entry point that needs no install — it bootstraps Deno
+itself — so CI and a fresh clone keep using it.
 
 Discovery has a trust gate, because it runs code you never named: a `zuke.json`
 planted in a shared parent (`/tmp`, a shared checkout tree) would otherwise have
@@ -51,9 +58,9 @@ compare, the gate is inert, so a `zuke.json` in a shared writable location is
 run as found.
 
 The words the global CLI keeps for itself — `setup`, `import`, `doc`,
-`--help`/`-h`, `--version`/`-V` — never reach the build, so a target named
-`setup` or `import` is reached as `zuke -- setup`, the build's `doc` as
-`zuke -- doc <package>`, or any of them through `./zuke`.
+`--version`/`-V` — never reach the build, so a target named `setup` or `import`
+is reached as `zuke -- setup`, the build's `doc` as `zuke -- doc <package>`, or
+any of them through `./zuke`.
 
 ## The global `zuke` CLI (`jsr:@zuke/cli`)
 
@@ -354,6 +361,27 @@ exists to prevent.
 If you would rather do it by hand, deleting the whole lock also works, with one
 caveat: in a repo that also has a `package.json`, resolving afresh walks the
 whole npm tree and writes an `npm` section a jsr-only lock never had.
+
+## Help
+
+`--help` is a map of the surface, not the manual. It lists what exists in
+labelled groups — `Commands:`, `Options:`, `Targets:`, `Parameters:` — with one
+short line each, and ends by pointing at the per-command pages.
+
+`zuke <command> --help` is where a command's detail lives: its usage lines, its
+full explanation, and the flags that qualify only it. `zuke mcp --help` carries
+the authorization tiers, `zuke resume --help` the resume semantics,
+`zuke outdated --help` what `--update` will and will not touch.
+
+The split is why the main help fits on a screen. It used to be one block with
+commands and flags interleaved and every explanation inlined, which made the
+list of what exists hard to find inside the prose about how each thing behaves.
+
+Both halves render from one source — the command and flag tables that also feed
+shell completion and `--list --json` — so a command cannot exist without a help
+entry, and its one-liner cannot drift from its detail. `--list --json` remains
+the machine-readable surface; help text is for people and its layout is not a
+contract.
 
 ## Parallel execution
 

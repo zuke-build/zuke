@@ -39,6 +39,8 @@ import {
 } from "./completions.ts";
 import {
   BUILTIN_FLAG_NAMES,
+  BUILTIN_FLAGS,
+  type BuiltinFlag,
   CANCEL_COMMAND,
   COMPLETIONS_COMMAND,
   DEFAULT_TARGET,
@@ -49,6 +51,7 @@ import {
   MCP_COMMAND,
   OUTDATED_COMMAND,
   REGISTER_COMMAND,
+  RESERVED_COMMANDS,
   RESUME_COMMAND,
   RUNS_COMMAND,
 } from "./cli_spec.ts";
@@ -606,185 +609,150 @@ export function parseArgs(
   return parsed;
 }
 
+/**
+ * The reserved command this invocation named, if any.
+ *
+ * Derived from the parsed flags rather than re-scanning argv, so the two can
+ * never disagree about which command was typed.
+ */
+function namedCommand(parsed: ParsedArgs): string | undefined {
+  if (parsed.graph) return GRAPH_COMMAND;
+  if (parsed.generateCi) return GENERATE_CI_COMMAND;
+  if (parsed.completions) return COMPLETIONS_COMMAND;
+  if (parsed.mcp) return MCP_COMMAND;
+  if (parsed.resume) return RESUME_COMMAND;
+  if (parsed.runs) return RUNS_COMMAND;
+  if (parsed.cancel) return CANCEL_COMMAND;
+  if (parsed.force) return FORCE_COMMAND;
+  if (parsed.register) return REGISTER_COMMAND;
+  if (parsed.doc) return DOC_COMMAND;
+  if (parsed.outdated) return OUTDATED_COMMAND;
+  return undefined;
+}
+
 /** Names of a target's direct dependencies, in declaration order. */
 function depNames(t: TargetBuilder): string[] {
   return t.dependsOn_.map((d) => d.name_ ?? "?");
 }
 
-const USAGE = `zuke — code-first build automation
+/** The program as it is typed, used in the usage lines help prints. */
+const PROGRAM = "zuke";
 
-Usage:
-  deno run -A zuke.ts <target> [--skip <dep>] [--parallel[=N]] [--affected[=<base>]]
-  deno run -A zuke.ts --list [--json]
-  deno run -A zuke.ts graph [--output=html] [--no-open]
-  deno run -A zuke.ts generate-ci [--check]
-  deno run -A zuke.ts completions <install|print> <bash|zsh|fish>
-  deno run -A zuke.ts mcp [--allow-run] [--registry] [--http <host:port>]
-  deno run -A zuke.ts resume <run-id> [--signal <name>] [--data <json>]
-  deno run -A zuke.ts resume --check [<run-id>]
-  deno run -A zuke.ts runs list [--status <s>] [--target <t>] [--since <iso>] [--initiator <n>] [--limit <n>] [--counts] [--json]
-  deno run -A zuke.ts runs show <run-id> [--json]
-  deno run -A zuke.ts runs prune [--keep <age>] [--keep-last <n>] [--dry-run]
-  deno run -A zuke.ts cancel <run-id> [--actor <name>]
-  deno run -A zuke.ts force <run-id> <target> --outcome skipped|succeeded [--reason <why>]
-  deno run -A zuke.ts register [--actor <name>] [--json]
-  deno run -A zuke.ts doc <spec>
-  deno run -A zuke.ts outdated [--update [<package>...]] [--exit-code]
+/** Indent and wrap `text` to the help's column, under a `width`-wide label. */
+function wrapDetail(text: string, indent: number, width = 80): string[] {
+  const pad = " ".repeat(indent);
+  const lines: string[] = [];
+  for (const paragraph of text.split("\n\n")) {
+    if (lines.length > 0) lines.push("");
+    let line = "";
+    for (const word of paragraph.split(/\s+/)) {
+      if (line === "") line = word;
+      else if (`${line} ${word}`.length + indent <= width) line += ` ${word}`;
+      else {
+        lines.push(pad + line);
+        line = word;
+      }
+    }
+    if (line !== "") lines.push(pad + line);
+  }
+  return lines;
+}
 
-Options:
-  <target>          Run the target and its transitive dependencies.
-  --skip <dep>      Skip the named dependency (repeatable).
-  --parallel[=N]    Run independent targets concurrently (N = max in flight,
-                    default = CPU count).
-  --no-cache        Ignore the incremental cache; re-run every target.
-  --no-banner       Do not print the opening banner (the Zuke wordmark, the
-                    framework/runtime versions and platform, and the run id).
-                    ZUKE_NO_BANNER=1 does the same from the environment; the
-                    wordmark is already omitted on CI.
-  --no-remote-cache Use the local cache only; do not restore from or upload to
-                    the configured remote cache store.
-  --affected[=<base>]
-                    Run only targets affected by files changed since <base>
-                    (a git revision; default HEAD). A target is affected when a
-                    changed file is under its declared inputs or a dependency is
-                    affected; targets with no declared inputs always run.
-  --dry-run         Print the execution plan without running target bodies.
-  --state           Persist durable run state under .zuke/runs (a run record
-                    with per-target status and metadata), unless a store is
-                    already configured via ZUKE_STATE_URL/ZUKE_STATE_DIR or the
-                    build's stateStore(). See docs/state.md.
-  --actor <name>    Attribute the run to <name> in its state record (else
-                    ZUKE_ACTOR, the CI actor, or "anonymous"). Every resume
-                    rewrites it with whoever picked the run up.
-  --actor-kind <k>  Whether a person or a machine asked: human (default) or
-                    service (else ZUKE_ACTOR_KIND). Recorded on the run's
-                    initiator, which — unlike --actor — is stamped once at
-                    creation and never rewritten.
-  --list, -l        List all targets with descriptions and dependencies.
-  --json            With --list, print the build surface (commands, flags,
-                    targets, parameters) as JSON for tools and agents.
-  graph             Show the dependency graph. Default output is the terminal
-                    adjacency listing; --output=html writes an interactive
-                    page to .zuke/ and opens it in a browser.
-  generate-ci       Write the CI configuration files declared on the build
-                    (via cicd()). Running any target regenerates them too.
-  completions       Shell completion for bash, zsh, or fish, completing target
-                    names, commands, and flags. 'print <shell>' writes the
-                    script to stdout (source it, e.g.
-                    source <(deno run -A zuke.ts completions print bash));
-                    'install <shell>' writes it and wires it into your shell's
-                    startup automatically.
-  --check           With generate-ci, verify the files are current instead of
-                    writing them, failing if any has drifted (use on CI).
-  --output <fmt>    Graph output format: text (default) or html.
-  --no-open         With --output=html, do not open a browser.
-  mcp               Run an MCP server over the build on stdio, exposing its
-                    targets to AI agents as typed tools. Read-only by default
-                    (inspect the targets, parameters, and graph); add
-                    --allow-run to let agents execute targets too.
-  --allow-run[=<globs>]
-                    With mcp, allow agents to execute targets (not just inspect
-                    them). An optional =<comma,globs> allow-list exposes only the
-                    matching targets as run tools; others are invisible.
-  --protect <globs> With mcp, require an operator token (ZUKE_OPERATOR_TOKEN) as
-                    a tool-call argument to run the matching targets.
-  --confirm-destructive
-                    With mcp, make a destructive run tool return its plan unless
-                    called with confirm:true (a .readOnly() target is exempt).
-  --registry        With mcp, serve the build registry instead of this one build:
-                    expose every registered pipeline's targets as tools, re-read
-                    live so a newly-registered build appears with no restart. A
-                    run tool spawns the registered build's launch command (behind
-                    --allow-run + the same authz). See docs/registry.md.
-  --max-concurrent-runs <n>
-                    With mcp --registry, the most run-tool spawns allowed at
-                    once (default 4). A call past the cap gets an immediate busy
-                    error; read tools are never blocked or counted.
-  --http <host:port>
-                    With mcp, serve the streamable-HTTP transport on the given
-                    address instead of stdio. Just <port> binds 127.0.0.1. A
-                    non-loopback host must authenticate its callers: a bearer
-                    token (ZUKE_MCP_TOKEN) or an mcpAuth() authenticator on the
-                    build. Put real TLS in front for production. See docs/mcp.md.
-  --allowed-origin <origin>
-                    With mcp --http, permit this browser Origin (repeatable). By
-                    default a loopback bind accepts only loopback origins (the
-                    drive-by / DNS-rebinding guard); a request with no Origin (a
-                    CLI client) is always allowed.
-  resume            Continue a suspended run (a .waitsFor() gate). Exactly one
-                    resumer wins; the rest report "already resumed". With
-                    --check [<run-id>] it re-checks suspended runs (predicate
-                    waits, timeouts) — the cron/webhook entry point.
-  --signal <name>   With resume, deliver a named external signal to the run.
-  --data <json>     With resume --signal, the signal's JSON payload (default {}).
-  --force-graph     With resume, continue even if the build graph changed since
-                    the run was suspended.
-  --resume-degraded With resume, continue even though the record is degraded — a
-                    state write was permanently lost while the run executed, so a
-                    target that succeeded may still be recorded running. Such a
-                    target is re-run, so only use this once you know it is safe
-                    to repeat.
-  runs              Inspect persisted run records from the state store. 'list'
-                    prints one row per run (newest first); 'show <run-id>'
-                    reconstructs a run's full per-target status and metadata.
-                    Both accept --json for tools. See docs/state.md.
-  cancel            Cancel a run <run-id>: stop it (a live run aborts), run the
-                    compensations of every target that had succeeded — in
-                    reverse order — and mark the record cancelled. Idempotent:
-                    cancelling a finished run is a no-op. See docs/orchestration.md.
-  register          Record this build in the build registry (its targets,
-                    parameters, and launch location) so a registry-backed MCP
-                    server can discover it. Idempotent; excludes secrets. Writes
-                    to .zuke/builds unless ZUKE_REGISTRY_URL/DIR or the build's
-                    registry() configures a store. See docs/registry.md.
-  doc <spec>        Print a package's API docs by running 'deno doc <spec>' from
-                    an isolated empty directory (e.g. doc jsr:@zuke/deno). Run in
-                    a Node repo, deno doc otherwise resolves node_modules/@types
-                    and buries the API under type-resolution warnings; the empty
-                    cwd has nothing to resolve. A relative path (./mod.ts) is
-                    resolved against the real working directory first.
-  outdated          Report the JSR packages the lock resolves to a version
-                    older than the registry's latest. Needs the network, which
-                    is why it is a command rather than a line in --list: a
-                    build whose specifiers are written inline (jsr:@zuke/x@^1)
-                    gets no signal from deno outdated, which reads manifests.
-  --update          With outdated, move the lock's resolved versions up to the
-                    registry's latest instead of only reporting them. Takes
-                    optional package names to narrow it. Touches the lock and
-                    nothing else: a specifier that forbids the newer release is
-                    reported as holding its package back, never rewritten.
-  --exit-code       With outdated, exit non-zero when a package is behind or
-                    could not be checked, so a gate can fail on either — a run
-                    that reached nothing has not answered the question.
-  --status <s>      With runs list, keep only runs with this status (running,
-                    suspended, succeeded, failed, cancelled).
-  --target <t>      With runs list, keep only runs whose graph contains this
-                    target.
-  --since <iso>     With runs list, keep only runs created at or after this
-                    ISO-8601 timestamp.
-  --initiator <n>   With runs list, keep only runs <n> started. Matches the
-                    recorded initiator, falling back to the actor on a run
-                    recorded before initiators existed.
-  --outcome <o>     With force, what the target settles to without running:
-                    skipped (take the step off the plan) or succeeded (a person
-                    did it by hand — a later cancel compensates it).
-  --reason <why>    With force, why — recorded on the run beside who forced it,
-                    and shown by runs show.
-  --limit <n>       With runs list, return at most this many runs (the newest).
-  --counts          With runs list, print aggregate counts (total + per status).
-  --keep <age>      With runs prune, keep runs newer than this age (e.g. 90d);
-                    older terminal runs become eligible for deletion.
-  --keep-last <n>   With runs prune, always keep the newest N terminal runs.
-                    Non-terminal runs (suspended, running) are never pruned.
-  --<param> <val>   Set a declared build parameter (see Parameters below).
-  --help, -h        Show this help.`;
+/** One `  name   description` row, wrapped under the name column. */
+function row(name: string, description: string, width: number): string[] {
+  const label = `  ${name.padEnd(width)}  `;
+  const wrapped = wrapDetail(description, label.length);
+  if (wrapped.length === 0) return [label.trimEnd()];
+  return [label + wrapped[0].trimStart(), ...wrapped.slice(1)];
+}
+
+/** The flags that apply to any run, rather than qualifying one command. */
+function generalFlags(): BuiltinFlag[] {
+  return BUILTIN_FLAGS.filter((f) => f.command === undefined);
+}
+
+/**
+ * The main `--help`: what exists, one short line each, in labelled groups.
+ *
+ * Commands and options are separate sections rather than one list — they are
+ * different kinds of thing, and interleaving them was what made the old help
+ * hard to scan. The per-entry prose lives in each command's own help, so this
+ * stays a map of the surface rather than the manual.
+ */
+function usageText(): string {
+  const commandWidth = Math.max(
+    ...RESERVED_COMMANDS.map((c) => c.name.length),
+  );
+  const flags = generalFlags();
+  const flagWidth = Math.max(
+    ...flags.map((f) => f.name.length),
+    "<target>".length,
+  );
+  const lines = [
+    `${PROGRAM} — code-first build automation`,
+    "",
+    "Usage:",
+    `  ${PROGRAM} <target> [options]`,
+    `  ${PROGRAM} <command> [options]`,
+    `  ${PROGRAM} --list [--json]`,
+    "",
+    "Commands:",
+  ];
+  for (const command of RESERVED_COMMANDS) {
+    lines.push(...row(command.name, command.description, commandWidth));
+  }
+  lines.push("", "Options:");
+  lines.push(
+    ...row(
+      "<target>",
+      "Run the target and its transitive dependencies.",
+      flagWidth,
+    ),
+  );
+  for (const flag of flags) {
+    lines.push(...row(flag.name, flag.description, flagWidth));
+  }
+  lines.push(
+    "",
+    `Run \`${PROGRAM} <command> --help\` for a command's own options and detail.`,
+  );
+  return lines.join("\n");
+}
+
+/**
+ * A single command's help: its usage, its explanation, and the flags that
+ * qualify it — the detail the main help deliberately leaves out.
+ *
+ * Returns `undefined` for a name that is not a reserved command, so the caller
+ * can fall back to the main help rather than print an empty page.
+ */
+export function formatCommandHelp(name: string): string | undefined {
+  const command = RESERVED_COMMANDS.find((c) => c.name === name);
+  if (command === undefined) return undefined;
+  const lines = [`${PROGRAM} ${command.name} — ${command.description}`, ""];
+  const usage = command.usage ?? [command.name];
+  lines.push("Usage:");
+  for (const line of usage) lines.push(`  ${PROGRAM} ${line}`);
+  if (command.detail !== undefined) {
+    lines.push("", ...wrapDetail(command.detail, 0));
+  }
+  const own = BUILTIN_FLAGS.filter((f) => f.command === command.name);
+  if (own.length > 0) {
+    const width = Math.max(...own.map((f) => f.name.length));
+    lines.push("", "Options:");
+    for (const flag of own) {
+      lines.push(...row(flag.name, flag.detail ?? flag.description, width));
+    }
+  }
+  return lines.join("\n");
+}
 
 /** Render `--help`, including the available targets and parameters. */
 export function formatHelp(
   targets: Map<string, TargetBuilder>,
   params: Map<string, AnyParameter> = new Map(),
 ): string {
-  return `${USAGE}\n\n${formatList(targets, params)}`;
+  return `${usageText()}\n\n${formatList(targets, params)}`;
 }
 
 /** Render `--list`: each target with its description and dependencies, then parameters. */
@@ -1443,7 +1411,14 @@ async function runCommand(
   }
 
   if (parsed.help) {
-    cliReporter.info(formatHelp(targets, params));
+    // `zuke mcp --help` asks about mcp, not about the build. The parser has
+    // already recorded which command was named, so the detail the main help
+    // leaves out is one lookup away.
+    const command = namedCommand(parsed);
+    const detail = command === undefined
+      ? undefined
+      : formatCommandHelp(command);
+    cliReporter.info(detail ?? formatHelp(targets, params));
     return 0;
   }
 

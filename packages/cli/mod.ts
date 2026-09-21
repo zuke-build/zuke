@@ -209,15 +209,29 @@ function printBanner(host: SetupHost): void {
   host.log("");
 }
 
+/**
+ * The CLI's own half of the help: the commands that work anywhere, with no
+ * project needed.
+ *
+ * Headed so a reader can tell it apart from the build's half, which is printed
+ * after it when there is a project here. The two are different surfaces — this
+ * one is the installed `zuke`, that one is whatever `zuke.ts` declares — and
+ * showing them unlabelled under one heading was what made them look like one
+ * inconsistent command.
+ */
 const HELP = `${TAGLINE}
 
 Usage:
-  zuke setup [options]    Scaffold Zuke into a directory
-  zuke import [options]   Generate a build from package.json scripts or a Makefile
-  zuke doc <package>      Show a @zuke/* package's API docs (isolated resolution)
-  zuke [target|command]   Run the project's build (forwarded to its zuke.ts)
-  zuke --help             Show this help
-  zuke --version          Show the version
+  zuke <command> [options]   A zuke command, anywhere (below)
+  zuke <target>              A target of the build in this directory
+  zuke -- <args>             Pass args straight to the build, unread
+
+Zuke commands (available anywhere):
+  setup [options]         Scaffold Zuke into a directory
+  import [options]        Generate a build from package.json scripts or a Makefile
+  doc <package>           Show a @zuke/* package's API docs (isolated resolution)
+  --help                  Show this help
+  --version               Show the version
 
 Setup options:
   --dir <path>            Directory to scaffold into (default: .)
@@ -243,15 +257,19 @@ Import options:
 
 Doc:
   zuke doc core           API of @zuke/core
-  zuke doc @scope/pkg      API of a scoped package (or pass jsr:/npm:/https: as-is)
+  zuke doc @scope/pkg     API of a scoped package (or pass jsr:/npm:/https: as-is)`;
 
-Inside a project (a zuke.json in the current directory or a parent), any other
-command runs the build itself — zuke <target>, zuke --list, zuke graph,
-zuke generate-ci, zuke mcp, and bare zuke for the default target — as
-\`./zuke <command>\` would: deno run -A zuke.ts from the repository root, with
---frozen once a deno.lock exists. Anything after a \`--\` reaches the build
-unread by this CLI: zuke -- --help is the build's own usage, and
-zuke -- <target> reaches a target that shares a name with a command above.`;
+/** The heading that introduces the build's own half of the merged help. */
+function buildHelpHeading(root: string): string {
+  return `\n${"─".repeat(72)}\nThis project's build (${root}/zuke.ts) — ` +
+    `run as \`zuke <target>\` or \`./zuke <target>\`:\n`;
+}
+
+/** What to say where the build's half would be, when there is no project. */
+const NO_BUILD_NOTICE =
+  `\n${"─".repeat(72)}\nNo zuke.json in this directory or any parent, so ` +
+  `there is no build to describe here.\nRun \`zuke setup\` to scaffold one, ` +
+  `then \`zuke --help\` also lists its targets.`;
 
 /** Run the `setup` subcommand. */
 async function commandSetup(
@@ -524,6 +542,51 @@ async function forwardToBuild(
 }
 
 /**
+ * `zuke --help`: this CLI's own commands, then — inside a project — the
+ * build's.
+ *
+ * The two halves were separate programs' help, and from inside a project the
+ * distinction was invisible: `zuke --help` and `./zuke --help` disagreed for
+ * no reason a reader could see, and the build's surface was reachable only by
+ * knowing to type `zuke -- --help`. Both are shown here, under headings that
+ * say which is which.
+ *
+ * The build's half is produced by running the build's own `--help` rather than
+ * rendered here. The CLI has no business knowing how a build describes itself,
+ * and a second renderer is a second thing to drift.
+ *
+ * A build that fails to run is not an error for this command: the CLI's own
+ * help is still correct and still useful, so the failure is reported and the
+ * exit stays 0.
+ */
+async function commandHelp(
+  host: SetupHost,
+  probe: BuildProbe,
+  runner: BuildRunner,
+): Promise<number> {
+  host.log(HELP);
+  let location: Awaited<ReturnType<typeof locateBuild>> = null;
+  try {
+    location = await locateBuild(Deno.cwd(), probe);
+  } catch {
+    // An unreadable or untrusted directory is not a reason to withhold the
+    // half of the help that does not depend on it.
+    location = null;
+  }
+  if (location === null) {
+    host.log(NO_BUILD_NOTICE);
+    return 0;
+  }
+  host.log(buildHelpHeading(location.root));
+  try {
+    await runner(location.root, buildRunArgs(location, ["--help"]));
+  } catch (error) {
+    output.error(error instanceof Error ? error.message : String(error));
+  }
+  return 0;
+}
+
+/**
  * The CLI entry point. Returns a process exit code; `host`, `prompter`,
  * `docRunner`, `starActions`, `buildRunner`, and `buildProbe` are injectable
  * for testing.
@@ -538,8 +601,7 @@ export async function main(
   buildProbe: BuildProbe = defaultBuildProbe,
 ): Promise<number> {
   if (args[0] === "--help" || args[0] === "-h") {
-    host.log(HELP);
-    return 0;
+    return await commandHelp(host, buildProbe, buildRunner);
   }
   const command = args[0];
   const rest = args.slice(1);

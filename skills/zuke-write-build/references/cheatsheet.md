@@ -1343,6 +1343,8 @@ Copy the closest one instead of composing from primitives; each is a full
 ./zuke runs show mcp-audit    # the MCP tool-call audit trail (host only, not served over MCP)
 ./zuke register [--json]      # record this build in the build registry (idempotent)
 ./zuke doc jsr:@zuke/deno     # print a package's API (deno doc) from an isolated empty dir
+./zuke <command> --help        # a command's own usage, detail and flags
+                               # (--help alone lists what exists, one line each)
 ./zuke outdated [--exit-code]  # jsr packages the lock resolves behind their latest (network)
 ./zuke outdated --update       # ...and move them up; name packages to narrow it.
                                # Touches the lock only: a package its specifier

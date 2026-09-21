@@ -144,7 +144,13 @@ Deno.test("outdated is a reserved word, and the help and listing say so", async 
   const help = await runCli(OutdatedBuild, ["--help"]);
   assertEquals(help.code, 0);
   assertEquals(help.out.includes("outdated"), true);
-  assertEquals(help.out.includes("--exit-code"), true);
+
+  // The flag lives in the command's own help, which is where the main help
+  // sends a reader for it.
+  const commandHelp = await runCli(OutdatedBuild, ["outdated", "--help"]);
+  assertEquals(commandHelp.code, 0);
+  assertEquals(commandHelp.out.includes("--exit-code"), true);
+  assertEquals(commandHelp.out.includes("--update"), true);
 
   const surface = await runCli(OutdatedBuild, ["--list", "--json"]);
   assertEquals(surface.code, 0);
