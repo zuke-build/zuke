@@ -793,6 +793,59 @@ Deno.test("--help inside a project shows both surfaces, each labelled", async ()
   assertEquals(forwarded, [["run", "-A", "zuke.ts", "--help"]]);
 });
 
+Deno.test("--help names a build that ran its help and failed", async () => {
+  // The runner returns the build's exit code rather than throwing on one, so
+  // a build whose `--help` runs and fails was the one outcome this command
+  // passed over without a word: the heading was printed, nothing followed it,
+  // and the exit said success. The heading cannot be held back — the build
+  // inherits stdio, so there is nothing to inspect first — so the empty
+  // section is explained instead.
+  const host = new FakeHost();
+  let code = 1;
+  const err = await capturingErr(async () => {
+    code = await main(
+      ["--help"],
+      host,
+      defaultPrompter,
+      undefined,
+      undefined,
+      () => Promise.resolve(2),
+      probeAt(["zuke.json"]),
+    );
+  });
+  // Still 0: help is what you reach for when a project is already broken.
+  assertEquals(code, 0);
+  assertStringIncludes(
+    host.logs.join("\n"),
+    "Zuke commands (available anywhere)",
+  );
+  assertStringIncludes(err.join("\n"), "could not describe itself");
+});
+
+Deno.test("--help names a build that could not be spawned at all", async () => {
+  // The other shape of the same failure: the spawn throws rather than
+  // returning a code. Both get the same explanation, so the reader is not
+  // left to tell a missing section from an empty one.
+  const host = new FakeHost();
+  let code = 1;
+  const err = await capturingErr(async () => {
+    code = await main(
+      ["--help"],
+      host,
+      defaultPrompter,
+      undefined,
+      undefined,
+      () => Promise.reject(new Error("deno could not be started")),
+      probeAt(["zuke.json"]),
+    );
+  });
+  assertEquals(code, 0);
+  const stderr = err.join("\n");
+  // The cause, and what it means for the output.
+  assertStringIncludes(stderr, "deno could not be started");
+  assertStringIncludes(stderr, "could not describe itself");
+});
+
 Deno.test("--help refuses an untrusted build, and says so rather than hiding it", async () => {
   // The help reaches the build now, so the trust gate reaches the help. A
   // refused root must not be reported as an absent one: "there is no build

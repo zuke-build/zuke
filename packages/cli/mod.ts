@@ -265,6 +265,18 @@ function buildHelpHeading(root: string): string {
     `run as \`zuke <target>\` or \`./zuke <target>\`:\n`;
 }
 
+/**
+ * What to say where the build's half should have been, when the build was
+ * found but did not describe itself — it failed to spawn, or its own `--help`
+ * exited non-zero. The heading is already printed by then (the build inherits
+ * stdio, so there is nothing to buffer and inspect first), which would
+ * otherwise leave a heading over an empty section with only Deno's own error
+ * to explain it. Named on stderr so stdout stays the help.
+ */
+const BUILD_HELP_FAILED =
+  "The build was found but could not describe itself, so the section above " +
+  "is empty. The CLI's own commands are unaffected.";
+
 /** What to say where the build's half would be, when there is no project. */
 const NO_BUILD_NOTICE =
   `\n${"─".repeat(72)}\nNo zuke.json in this directory or any parent, so ` +
@@ -555,9 +567,11 @@ async function forwardToBuild(
  * rendered here. The CLI has no business knowing how a build describes itself,
  * and a second renderer is a second thing to drift.
  *
- * A build that fails to run is not an error for this command: the CLI's own
- * help is still correct and still useful, so the failure is reported and the
- * exit stays 0.
+ * A build that fails to describe itself is not an error for this command:
+ * the CLI's own help is still correct and still useful, so both shapes of
+ * failure — a spawn that throws and a `--help` that exits non-zero — are
+ * named on stderr and the exit stays 0. Help is what someone reaches for when
+ * a project is already broken; refusing to print it then would be backwards.
  */
 async function commandHelp(
   host: SetupHost,
@@ -584,9 +598,18 @@ async function commandHelp(
   }
   host.log(buildHelpHeading(location.root));
   try {
-    await runner(location.root, buildRunArgs(location, ["--help"]));
+    // The runner *returns* the build's exit code rather than throwing on one,
+    // so a build whose `--help` runs and fails is reported here too — not
+    // only one that fails to spawn. Left unread, that outcome was the one
+    // path this command passed over without a word of its own.
+    const code = await runner(
+      location.root,
+      buildRunArgs(location, ["--help"]),
+    );
+    if (code !== 0) output.error(BUILD_HELP_FAILED);
   } catch (error) {
     output.error(error instanceof Error ? error.message : String(error));
+    output.error(BUILD_HELP_FAILED);
   }
   return 0;
 }
