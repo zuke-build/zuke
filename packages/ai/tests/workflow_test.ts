@@ -746,8 +746,8 @@ Deno.test("the command job checks the commenter's role before the review", () =>
     'ZUKE_REVIEW_ACTOR: "${{ github.event.comment.user.login }}"',
   );
   assertStringIncludes(step, "collaborators/$ZUKE_REVIEW_ACTOR/permission");
-  assertStringIncludes(step, "--jq .role_name");
-  assertStringIncludes(step, "  write|maintain|admin)");
+  assertStringIncludes(step, "--jq '\"\\(.permission) \\(.role_name)\"'");
+  assertStringIncludes(step, "  (write|maintain|admin)");
   assertStringIncludes(step, 'echo "allowed=true" >> "$GITHUB_OUTPUT"');
   // No allow-list by default: nobody is admitted before the API is asked.
   assertEquals(step.includes("is named as allowed"), false);
@@ -836,7 +836,7 @@ Deno.test("a reviewer that takes commands derives the command job, review and ac
   // The lambda refines rather than declares: no text needed to keep the job.
   const refined = mentionBuild((c) => c.role("triage"));
   assertStringIncludes(refined, "'@acme-bot review'");
-  assertStringIncludes(refined, "  triage|write|maintain|admin)");
+  assertStringIncludes(refined, "  (triage|write|maintain|admin)");
 });
 
 Deno.test("a command text of its own replaces the derived ones; also still adds", () => {
@@ -876,11 +876,11 @@ Deno.test("reviewers taking commands under different mentions are refused", () =
 Deno.test("role and users shape the callers step: named logins first, then the role floor", () => {
   const yaml = mentionBuild((c) => c.role("read").users("alice", "bob-2"));
   const job = yaml.split("  commandReview:")[1];
-  const named = job.indexOf("  alice|bob-2)");
+  const named = job.indexOf("  (alice|bob-2)");
   const api = job.indexOf("collaborators/$ZUKE_REVIEW_ACTOR/permission");
   assertEquals(named > 0 && named < api, true);
   assertStringIncludes(job, "is named as allowed to start a review");
-  assertStringIncludes(job, "  read|triage|write|maintain|admin)");
+  assertStringIncludes(job, "  (read|triage|write|maintain|admin)");
   assertStringIncludes(job, "starting a review needs read or above");
   // A login that is not one never reaches the script.
   assertThrows(
@@ -936,4 +936,32 @@ Deno.test("a parameter with no env name is refused as a secret, by name", () => 
   const b = new B();
   discoverParameters(b);
   assertThrows(() => b.wf.render(), Error, "has no env name");
+});
+
+Deno.test("a login or role that is a shell reserved word stays a case pattern", () => {
+  // `esac` is a valid GitHub login; as the first word after `in` bash would
+  // read it as the end of the statement. The POSIX opening parenthesis keeps
+  // every pattern list a pattern list.
+  const yaml = mentionBuild((c) => c.users("esac", "alice"));
+  const job = yaml.split("  commandReview:")[1];
+  assertStringIncludes(job, "  (esac|alice)");
+  assertStringIncludes(job, "  (write|maintain|admin)");
+  assertEquals(/\n\s+esac\|/.test(job), false);
+});
+
+Deno.test("a custom repository role is admitted by its base level", () => {
+  // GitHub reports a custom role's name as the role and the level it is
+  // built on as the permission; the gate reads both in one call and admits
+  // the base level the floor allows.
+  const job = mentionBuild().split("  commandReview:")[1];
+  assertStringIncludes(job, "--jq '\"\\(.permission) \\(.role_name)\"'");
+  assertStringIncludes(job, 'permission="${answer%% *}"');
+  assertStringIncludes(job, 'role="${answer#* }"');
+  assertStringIncludes(job, "      (admin|write)"); // the write floor's bases
+  const admin =
+    mentionBuild((c) => c.role("admin")).split("  commandReview:")[1];
+  assertStringIncludes(admin, "  (admin)");
+  assertStringIncludes(admin, "      (admin)");
+  const read = mentionBuild((c) => c.role("read")).split("  commandReview:")[1];
+  assertStringIncludes(read, "      (admin|write|read)");
 });

@@ -132,6 +132,18 @@ const CALLERS_STEP_ID = "callers";
  */
 function callersScript(role: CommandRole, users: readonly string[]): string {
   const admitted = ROLES.slice(ROLES.indexOf(role)).join("|");
+  // A custom repository role reports its own name as the role and its base
+  // level as the permission; the base level is admitted when the floor lies
+  // at or below it — `admin` always, `write` unless the floor is above it,
+  // `read` only for a `read` floor. A triage floor cannot recognise a
+  // read-based custom role as triage-like, and refuses it.
+  const bases = role === "read"
+    ? "admin|write|read"
+    : role === "triage" || role === "write"
+    ? "admin|write"
+    : "admin";
+  // Every pattern list opens with the POSIX optional parenthesis, so a login
+  // or role that is also a shell reserved word (`esac`) stays a pattern.
   return [
     // Fail closed, explicitly: a failed API call, an unset variable, or a
     // broken pipe stops the step, whatever shell flags the runner defaults to.
@@ -144,24 +156,34 @@ function callersScript(role: CommandRole, users: readonly string[]): string {
     ...(users.length > 0
       ? [
         'case "$ZUKE_REVIEW_ACTOR" in',
-        `  ${users.join("|")})`,
+        `  (${users.join("|")})`,
         '    echo "$ZUKE_REVIEW_ACTOR is named as allowed to start a review."',
         '    echo "allowed=true" >> "$GITHUB_OUTPUT"',
         "    exit 0 ;;",
         "esac",
       ]
       : []),
-    'role="$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$ZUKE_REVIEW_ACTOR/permission" --jq .role_name)" || {',
+    // One call answers both: the role name, and the base level a custom role
+    // is built on. A role name may contain spaces, so it is the remainder.
+    'answer="$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$ZUKE_REVIEW_ACTOR/permission" --jq \'"\\(.permission) \\(.role_name)"\')" || {',
     '  echo "::error::could not read $ZUKE_REVIEW_ACTOR\'s role on $GITHUB_REPOSITORY; refusing to run the review"',
     "  exit 1",
     "}",
+    'permission="${answer%% *}"',
+    'role="${answer#* }"',
     'case "$role" in',
-    `  ${admitted})`,
+    `  (${admitted})`,
     '    echo "$ZUKE_REVIEW_ACTOR has the $role role."',
     '    echo "allowed=true" >> "$GITHUB_OUTPUT" ;;',
-    "  *)",
-    `    echo "$ZUKE_REVIEW_ACTOR has the $role role on $GITHUB_REPOSITORY; starting a review needs ${role} or above."`,
-    '    echo "allowed=false" >> "$GITHUB_OUTPUT" ;;',
+    "  (*)",
+    '    case "$permission" in',
+    `      (${bases})`,
+    '        echo "$ZUKE_REVIEW_ACTOR has the $role role, with $permission access."',
+    '        echo "allowed=true" >> "$GITHUB_OUTPUT" ;;',
+    "      (*)",
+    `        echo "$ZUKE_REVIEW_ACTOR has the $role role on $GITHUB_REPOSITORY; starting a review needs ${role} or above."`,
+    '        echo "allowed=false" >> "$GITHUB_OUTPUT" ;;',
+    "    esac ;;",
     "esac",
   ].join("\n");
 }

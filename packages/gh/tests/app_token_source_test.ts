@@ -155,3 +155,37 @@ Deno.test("permissions, fetch and baseUrl are handed to the mint", async () => {
   assertEquals(seen[0].fetch_, doFetch);
   assertEquals(seen[0].baseUrl_, "https://ghe.example/api/v3");
 });
+
+Deno.test("a pinned repository refuses to mint on a run elsewhere, and mints on its own", async () => {
+  const { mint, seen } = fakeMint();
+  const lines = await captureLines(async () => {
+    const elsewhere = appTokenSource((s) =>
+      s.app("123", "PEM").repository("zuke-build/zuke")
+        .env(env({ GITHUB_REPOSITORY: "mirror/zuke", GITHUB_TOKEN: "ghs" }))
+        .mint(mint)
+    );
+    assertEquals(await elsewhere(), "ghs");
+  });
+  assertEquals(seen.length, 0);
+  assertEquals(
+    lines.some((l) =>
+      l.includes("this run is on mirror/zuke") &&
+      l.includes("pinned to zuke-build/zuke")
+    ),
+    true,
+  );
+  // On its own repository, and off CI where nothing names one, it mints.
+  const runs: Record<string, string>[] = [
+    { GITHUB_REPOSITORY: "zuke-build/zuke" },
+    {},
+  ];
+  for (const values of runs) {
+    const own = appTokenSource((s) =>
+      s.app("123", "PEM").repository("zuke-build/zuke").env(env(values))
+        .mint(mint)
+    );
+    assertEquals(await own(), "minted");
+  }
+  assertEquals(seen.length, 2);
+  assertEquals(seen[1].owner_, "zuke-build");
+});

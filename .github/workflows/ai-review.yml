@@ -60,17 +60,25 @@ jobs:
               echo "::error::the commenter's login is not a GitHub login"
               exit 1 ;;
           esac
-          role="$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$ZUKE_REVIEW_ACTOR/permission" --jq .role_name)" || {
+          answer="$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$ZUKE_REVIEW_ACTOR/permission" --jq '"\(.permission) \(.role_name)"')" || {
             echo "::error::could not read $ZUKE_REVIEW_ACTOR's role on $GITHUB_REPOSITORY; refusing to run the review"
             exit 1
           }
+          permission="${answer%% *}"
+          role="${answer#* }"
           case "$role" in
-            write|maintain|admin)
+            (write|maintain|admin)
               echo "$ZUKE_REVIEW_ACTOR has the $role role."
               echo "allowed=true" >> "$GITHUB_OUTPUT" ;;
-            *)
-              echo "$ZUKE_REVIEW_ACTOR has the $role role on $GITHUB_REPOSITORY; starting a review needs write or above."
-              echo "allowed=false" >> "$GITHUB_OUTPUT" ;;
+            (*)
+              case "$permission" in
+                (admin|write)
+                  echo "$ZUKE_REVIEW_ACTOR has the $role role, with $permission access."
+                  echo "allowed=true" >> "$GITHUB_OUTPUT" ;;
+                (*)
+                  echo "$ZUKE_REVIEW_ACTOR has the $role role on $GITHUB_REPOSITORY; starting a review needs write or above."
+                  echo "allowed=false" >> "$GITHUB_OUTPUT" ;;
+              esac ;;
           esac
         env:
           GH_TOKEN: "${{ github.token }}"

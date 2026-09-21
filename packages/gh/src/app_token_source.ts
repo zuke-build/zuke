@@ -105,8 +105,9 @@ export class GhAppTokenSourceSettings {
   /**
    * The repository to mint for, as `owner/name`. Defaults to the repository
    * the run is on, `GITHUB_REPOSITORY`. Name it to refuse minting anywhere
-   * else: a run on another repository then gets the fallback rather than a
-   * token for whatever the environment says.
+   * else: a run whose `GITHUB_REPOSITORY` is another repository then gets the
+   * fallback, with a warning, rather than a token for this one minted into a
+   * build running elsewhere.
    */
   repository(slug: string): this {
     this.repository_ = slug;
@@ -117,10 +118,10 @@ export class GhAppTokenSourceSettings {
    * Narrow the token to one permission, e.g. `.permission("contents", "write")`.
    * Repeatable. Without any, the token holds the installation's whole grant,
    * which is the App's configured permissions — the sane default for an App
-   * set up for one job.
+   * set up for one job. A hyphenated name is accepted as the mint accepts it.
    */
   permission(name: string, level: GhPermissionLevel): this {
-    this.permissions_[name.replace(/-/g, "_")] = level;
+    this.permissions_[name] = level;
     return this;
   }
 
@@ -176,7 +177,18 @@ export class GhAppTokenSourceSettings {
     if (appId === undefined || privateKey === undefined) {
       return this.fallbackValue_();
     }
-    const slug = this.repository_ ?? this.env_("GITHUB_REPOSITORY") ?? "";
+    const current = this.env_("GITHUB_REPOSITORY");
+    if (
+      this.repository_ !== undefined && current !== undefined &&
+      current !== "" && current !== this.repository_
+    ) {
+      console.warn(
+        `gh: not minting the app token: this run is on ${current}, and the ` +
+          `source is pinned to ${this.repository_}; using the fallback token.`,
+      );
+      return this.fallbackValue_();
+    }
+    const slug = this.repository_ ?? current ?? "";
     const parts = slug.split("/");
     if (parts.length !== 2 || parts.some((part) => part === "")) {
       console.warn(

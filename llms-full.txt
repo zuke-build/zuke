@@ -16569,13 +16569,14 @@ class GhAppTokenSourceSettings
   repository(slug: string): this
     The repository to mint for, as `owner/name`. Defaults to the repository
     the run is on, `GITHUB_REPOSITORY`. Name it to refuse minting anywhere
-    else: a run on another repository then gets the fallback rather than a
-    token for whatever the environment says.
+    else: a run whose `GITHUB_REPOSITORY` is another repository then gets the
+    fallback, with a warning, rather than a token for this one minted into a
+    build running elsewhere.
   permission(name: string, level: GhPermissionLevel): this
     Narrow the token to one permission, e.g. `.permission("contents", "write")`.
     Repeatable. Without any, the token holds the installation's whole grant,
     which is the App's configured permissions — the sane default for an App
-    set up for one job.
+    set up for one job. A hyphenated name is accepted as the mint accepts it.
   fallback(token: GhCredential): this
     The token yielded when no App is configured or the mint fails. Defaults
     to `GITHUB_TOKEN` from the environment — the workflow's own token, so a
