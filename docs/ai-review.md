@@ -318,14 +318,14 @@ decided them**:
   inherit, so a refuted `low` nit can never launder a `critical` into silence.
 
 The pass can only rename. It never dismisses anything itself — a dismissal was
-earned in an earlier round by the two-key rule, an acceptance was spoken by a
-maintainer with push access, and the model's "same" verdict is still required
-for either — and the rules above are enforced in code, not by prompt wording,
-along with: never two findings collapsed onto one identity, and a bounded number
-of comparisons per run. Every failure path leaves the finding reported under its
-own ID: no state, no budget, a failed call, an unanswered or fabricated verdict
-— all of them fail toward saying more, and anything skipped or capped is stated
-in the report's **Notes**.
+earned in an earlier round by the two-key rule, an acceptance was spoken by an
+author the discussion's trust gate admits, and the model's "same" verdict is
+still required for either — and the rules above are enforced in code, not by
+prompt wording, along with: never two findings collapsed onto one identity, and
+a bounded number of comparisons per run. Every failure path leaves the finding
+reported under its own ID: no state, no budget, a failed call, an unanswered or
+fabricated verdict — all of them fail toward saying more, and anything skipped
+or capped is stated in the report's **Notes**.
 
 ### Why comment-driven prompt injection doesn't work here
 
@@ -695,14 +695,23 @@ each, so the help lives on the pull request rather than here:
 knowingly should not have to be argued into a dismissal, and should not need a
 repo-wide suppression either. It is a **maintainer's** decision, made in code
 and never weighed by a model: the command is read from a comment that passed the
-same trust gate rebuttals pass — the host's own author metadata, never the text
-— so a stranger's `accept` is dropped before anything reads it. The id is the
-first word after `accept` when it names a finding the reviewer is tracking; in a
-finding's own thread it may be left out, and the thread's finding is meant. An
-unknown id does nothing. The reason is the rest of the comment, bounded; the
-newest command for a finding wins, so a reason can be restated. An accepted
-finding is a maintainer's decision for the dedup pass above: any reviewer's
-restatement of it, on any file and at any severity, inherits it.
+same trust gate rebuttals pass — `.trustAssociations(...)` and
+`.trustAuthors(...)`, decided from the host's own author metadata, never the
+text — so a stranger's `accept` is dropped before anything reads it. Unlike a
+rebuttal, though, an acceptance is **one key**: nothing weighs it. The default
+associations (`OWNER`, `MEMBER`, `COLLABORATOR`) are what GitHub asserts, and on
+some repositories `MEMBER` and `COLLABORATOR` include read-only accounts, so a
+project whose trusted set is wider than the people who may decide for it should
+narrow the gate — `trustAssociations("OWNER")`, or an explicit
+`trustAuthors(...)` list — before turning commands on. Who may _start_ a run
+with the comment command is a separate check, the workflow's push-access step;
+it does not decide whose `accept` a run applies. The id is the first word after
+`accept` when it names a finding the reviewer is tracking; in a finding's own
+thread it may be left out, and the thread's finding is meant. An unknown id does
+nothing. The reason is the rest of the comment, bounded; the newest command for
+a finding wins, so a reason can be restated. An accepted finding is a
+maintainer's decision for the dedup pass above: any reviewer's restatement of
+it, on any file and at any severity, inherits it.
 
 For the command to be applied by the comment that gives it, the workflow's
 command lists it too: `c.text("@zuke-build review").also("@zuke-build accept")`

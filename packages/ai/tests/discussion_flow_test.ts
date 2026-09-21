@@ -4261,7 +4261,7 @@ Deno.test("a contested finding no longer reported that the adjudicator does not 
 function postedBody(calls: Call[]): string {
   const write = calls.find((c) =>
     c.url.startsWith(`${GITHUB_API}/`) && c.url.includes("/issues/") &&
-    c.method === "POST"
+    (c.method === "POST" || c.method === "PATCH")
   );
   return JSON.parse(write?.body ?? "{}").body ?? "";
 }
@@ -4515,4 +4515,95 @@ Deno.test("a new thread names the accept command when commands are on", async ()
     JSON.parse(posts[0].body).body,
     "`@zuke-build accept <reason>` to accept it as intended",
   );
+});
+
+Deno.test("a shared dismissal of a finding this reviewer holds open is answered once, never adjudicated", async () => {
+  // Two reviewers of one kind under different names share fingerprints. The
+  // other one's thread settled the finding; this one still holds it open and
+  // a maintainer quoted its id. The sticky drop decides it — the rebuttal must
+  // not send it to the adjudicator as well, which would answer twice.
+  const comments = [
+    ...priorComment(stateWith("open")),
+    {
+      id: 2,
+      body: `${commentMarker("other security review")}\nreport\n${
+        encodeState(stateWith("dismissed"))
+      }`,
+      user: { login: "zuke-build[bot]", type: "Bot" },
+      author_association: "NONE",
+    },
+    {
+      id: 3,
+      body: `${ID} is validated upstream`,
+      user: { login: "maintainer", type: "User" },
+      author_association: "MEMBER",
+    },
+  ];
+  const { fetch, calls } = discussionFetch(comments, [
+    claude({ score: 9, severity: "high", findings: [FINDING] }),
+    claude({ verdicts: [{ id: ID, verdict: "upheld", reason: "no" }] }),
+  ]);
+  const lines = await captured(() =>
+    inPr(async () => {
+      await securityReviewer((r) =>
+        r.provider("claude").apiKey("k")
+          .comment().discussion()
+          .diff((d) => d.text(DIFF))
+          .fetch(fetch)
+      ).validate(noRedactionContext("t"));
+    })
+  );
+  // One provider call: the assessment. No adjudication, no "recorded as fixed".
+  assertEquals(
+    calls.filter((c) => !c.url.startsWith(`${GITHUB_API}/`)).length,
+    1,
+  );
+  assertEquals(lines.some((l) => l.includes("recorded as fixed")), false);
+  assertEquals(
+    lines.filter((l) => l.includes("dismissed via discussion")).length,
+    1,
+  );
+  const state = postedState(calls);
+  assertEquals(state?.findings.length, 1);
+  assertEquals(state?.findings[0].status, "dismissed");
+});
+
+Deno.test("an accept on a finding the verifier refuted is recorded and answered", async () => {
+  // The model talked itself out of the finding in an earlier round, so it is
+  // not re-reported; the maintainer accepts it anyway. The decision is theirs
+  // to make and is acknowledged, not dropped on the floor.
+  const comments = [
+    ...priorComment(stateWith("refuted", { rationale: "guarded" })),
+    {
+      id: 2,
+      body: `@zuke-build accept ${ID}: by design regardless`,
+      user: { login: "maintainer", type: "User" },
+      author_association: "MEMBER",
+    },
+  ];
+  const { fetch, calls } = discussionFetch(comments, [
+    claude({ score: 0, severity: "none", findings: [] }),
+  ]);
+  const lines = await captured(() =>
+    inPr(async () => {
+      await securityReviewer((r) =>
+        r.provider("claude").apiKey("k")
+          .comment().discussion((d) => d.commands("@zuke-build"))
+          .diff((d) => d.text(DIFF))
+          .fetch(fetch)
+      ).validate(noRedactionContext("t"));
+    })
+  );
+  assertEquals(
+    lines.some((l) => l.includes("accepted by maintainer: Eval of user input")),
+    true,
+  );
+  assertStringIncludes(
+    postedBody(calls),
+    "**Accepted by a maintainer (not gating):**",
+  );
+  const state = postedState(calls);
+  assertEquals(state?.findings.length, 1);
+  assertEquals(state?.findings[0].status, "accepted");
+  assertEquals(state?.findings[0].rationale, "by design regardless");
 });

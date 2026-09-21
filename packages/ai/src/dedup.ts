@@ -159,9 +159,9 @@ export function decidedByMaintainer(
  * Neither gate applies to a prior a maintainer decided
  * ({@link decidedByMaintainer}): a dismissal already needed a trusted rebuttal
  * matched in code and the adjudicator's agreement, an acceptance was spoken
- * by a maintainer with push access, and the model's "same" verdict is still
- * required — so the two-key rule holds, and the concern stays decided however
- * the model reframes it.
+ * by an author the discussion's trust gate admits, and the model's "same"
+ * verdict is still required — so the concern stays decided however the model
+ * reframes it.
  *
  * Both resolution paths run through this, the free one included: a fingerprint
  * pins the kind, title and file but **not the severity**, so the same wording

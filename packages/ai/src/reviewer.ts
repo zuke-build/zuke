@@ -1292,13 +1292,19 @@ export class Reviewer implements Validation {
     // Rebuttals, gathered once the ids are canonical and before any decision a
     // trusted reply may change, for every finding of interest: reported this
     // round, still open from the last one, or refuted before.
+    // A finding decided above — a sticky dismissal, this reviewer's or one
+    // shared by another — is not of interest any more, even when this
+    // reviewer still holds it open: a rebuttal on it must not send it to the
+    // adjudicator a second time, which would post a second answer for a
+    // finding already answered.
+    const decidedAbove = new Set(dismissed.map((d) => d.finding.id));
     const ofInterest = [
       ...assessment.findings
         .map((f) => f.id)
         .filter((id): id is string => id !== undefined),
       ...openPrior.keys(),
       ...refutedPrior.keys(),
-    ];
+    ].filter((id) => !decidedAbove.has(id));
     const rebuttals = discussion === undefined || this.#discussion === undefined
       ? new Map<string, HostComment[]>()
       : this.#collectRebuttals(
@@ -1344,10 +1350,16 @@ export class Reviewer implements Validation {
         else dismissed.push(acceptedFinding(finding, acceptance));
       }
       assessment.findings = kept;
+      // Not re-reported this round — still open from the last one, or
+      // refuted by the verifier — the maintainer's decision is recorded all
+      // the same, and outranks the verifier's: a maintainer who accepts a
+      // finding the model had already talked itself out of is owed the
+      // acknowledgement, not silence.
       const decided = new Set(dismissed.map((d) => d.finding.id));
-      for (const prior of openPrior.values()) {
+      for (const prior of [...openPrior.values(), ...refutedPrior.values()]) {
         const acceptance = accepted.get(prior.id);
         if (acceptance === undefined || decided.has(prior.id)) continue;
+        decided.add(prior.id);
         dismissed.push(acceptedFinding({
           id: prior.id,
           title: prior.title,

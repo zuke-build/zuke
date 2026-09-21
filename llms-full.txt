@@ -20195,8 +20195,14 @@ class DiscussionSettings
     thread and the thread resolved, and never re-raised on the pull request
     by any reviewer, however it is reworded, moved or escalated. In a
     finding's own thread the id may be left out. The trust gate is the one
-    rebuttals pass, decided in code from the host's author metadata — a
-    stranger's `accept` is dropped before anything reads it.
+    rebuttals pass — {@link trustAssociations} and {@link trustAuthors},
+    decided in code from the host's author metadata — so a stranger's
+    `accept` is dropped before anything reads it. Unlike a rebuttal, an
+    acceptance is one key: no adjudicator weighs it. On a host where the
+    default associations admit accounts that should not decide for the
+    project (GitHub's `MEMBER` and `COLLABORATOR` include read-only ones),
+    narrow the gate with {@link trustAssociations} or {@link trustAuthors}
+    before turning commands on.
 
     The panel also lists `<mention> review`, the workflow's comment command
     that runs the review on demand; pair this with `aiReviewWorkflow`'s
