@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/zuke-build/zuke/compare/cli-v1.6.0...cli-v1.7.0) (2026-09-21)
+
+
+### Features
+
+* **core:** resolve doc specs by one rule, and answer --version on the build ([#660](https://github.com/zuke-build/zuke/issues/660)) ([de5af3f](https://github.com/zuke-build/zuke/commit/de5af3f7c2204aafd075ce0be63187d439bb2b77))
+
 ## [1.6.0](https://github.com/zuke-build/zuke/compare/cli-v1.5.4...cli-v1.6.0) (2026-09-21)
 
 

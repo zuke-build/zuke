@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.60.0](https://github.com/zuke-build/zuke/compare/core-v1.59.0...core-v1.60.0) (2026-09-21)
+
+
+### Features
+
+* **core:** resolve doc specs by one rule, and answer --version on the build ([#660](https://github.com/zuke-build/zuke/issues/660)) ([de5af3f](https://github.com/zuke-build/zuke/commit/de5af3f7c2204aafd075ce0be63187d439bb2b77))
+
 ## [1.59.0](https://github.com/zuke-build/zuke/compare/core-v1.58.0...core-v1.59.0) (2026-09-21)
 
 
