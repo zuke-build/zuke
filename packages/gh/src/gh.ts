@@ -35,6 +35,11 @@ import {
   mintAppToken,
 } from "./app_token.ts";
 import {
+  appTokenSource,
+  type GhAppTokenSource,
+  type GhAppTokenSourceSettings,
+} from "./app_token_source.ts";
+import {
   type GhCheckRunApi,
   type GhCheckRunResult,
   type GhCheckRunSettings,
@@ -176,6 +181,11 @@ export const GhTasks: GhTasksApi = {
     configure?: Configure<GhAppTokenSettings>,
   ): Promise<GhAppTokenResult> {
     return mintAppToken(configure);
+  },
+  appTokenSource(
+    configure?: Configure<GhAppTokenSourceSettings>,
+  ): GhAppTokenSource {
+    return appTokenSource(configure);
   },
   uploadSarif(
     configure?: Configure<GhSarifSettings>,

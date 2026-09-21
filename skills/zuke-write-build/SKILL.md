@@ -302,9 +302,11 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   `@zuke-build review`) starts a run that adjudicates it and answers in the
   thread. With `.discussion((d) => d.commands("@zuke-build"))` the comment
   carries a collapsed Commands panel, and `@zuke-build accept <id> <reason>`
-  records a finding as accepted for the pull request without adjudication;
-  `.also("@zuke-build accept")` on the workflow command makes that comment start
-  the run. See the cheatsheet's AI section.
+  records a finding as accepted for the pull request without adjudication; the
+  workflow generator derives the on-demand job from that mention, and
+  `command: (c) => c.role(...).users(...)` chooses who may start it. Reviews
+  post as `github-actions[bot]` by default, or as your own GitHub App via
+  `GhTasks.appTokenSource`. See the cheatsheet's AI section.
 - **Wait on an external GitHub workflow (`@zuke/gh`):** in a `.waitsFor(...)`
   gate, `s.on(githubWorkflow((g) => g.repo("o/r").workflow("e2e.yml")))`
   dispatches a workflow in another repo and suspends until it finishes; read the

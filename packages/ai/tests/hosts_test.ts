@@ -39,6 +39,7 @@ import {
   type HostComment,
   parseCommentMarker,
 } from "../src/hosts/types.ts";
+import { acknowledgeGithubCommand } from "../src/hosts/github.ts";
 import { DiscussionSettings, trustedComments } from "../src/discussion.ts";
 
 /** A recorded request. */
@@ -1736,4 +1737,53 @@ Deno.test("parseCommentMarker reads the reviewer name only from an opening marke
     parseCommentMarker("<!-- zuke-ai-review:x --> trailing payload\nmore"),
     undefined,
   );
+});
+
+Deno.test("acknowledgeGithubCommand reacts 👀 only on a comment-started run, and never throws", async () => {
+  const env = (values: Record<string, string>) => (name: string) =>
+    values[name];
+  // Not comment-started: nothing to acknowledge, and no token is asked for.
+  assertEquals(acknowledgeGithubCommand(env({})), undefined);
+  assertEquals(
+    acknowledgeGithubCommand(env({ ZUKE_REVIEW_COMMENT: "" })),
+    undefined,
+  );
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  const ok = ((input: string | URL | Request, init?: RequestInit) => {
+    calls.push({ url: String(input), init });
+    return Promise.resolve(new Response("{}", { status: 201 }));
+  }) as typeof fetch;
+  const started = env({
+    ZUKE_REVIEW_COMMENT: "987654",
+    GITHUB_REPOSITORY: "zuke-build/zuke",
+  });
+  const ack = acknowledgeGithubCommand(started);
+  assertEquals(await ack?.("app-token", ok), true);
+  assertEquals(
+    calls[0].url,
+    "https://api.github.com/repos/zuke-build/zuke/issues/comments/987654/reactions",
+  );
+  assertEquals(calls[0].init?.method, "POST");
+  assertEquals(calls[0].init?.body, JSON.stringify({ content: "eyes" }));
+  assertEquals(
+    new Headers(calls[0].init?.headers).get("authorization"),
+    "Bearer app-token",
+  );
+  // An id that is not a number never reaches the URL; no repository or no
+  // token means nothing to post.
+  const bad = acknowledgeGithubCommand(
+    env({ ZUKE_REVIEW_COMMENT: "../../evil", GITHUB_REPOSITORY: "z/z" }),
+  );
+  assertEquals(await bad?.("t", ok), false);
+  const noRepo = acknowledgeGithubCommand(env({ ZUKE_REVIEW_COMMENT: "1" }));
+  assertEquals(await noRepo?.("t", ok), false);
+  assertEquals(await ack?.("", ok), false);
+  assertEquals(calls.length, 1);
+  // A refusal or a network error is `false`, not a throw.
+  const refused =
+    (() =>
+      Promise.resolve(new Response("{}", { status: 403 }))) as typeof fetch;
+  assertEquals(await ack?.("t", refused), false);
+  const down = (() => Promise.reject(new Error("offline"))) as typeof fetch;
+  assertEquals(await ack?.("t", down), false);
 });

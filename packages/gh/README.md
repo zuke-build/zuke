@@ -255,6 +255,12 @@ e2e = target().waitsFor((s) =>
 ```
 @module
 
+function appTokenSource(configure?: Configure<GhAppTokenSourceSettings>): GhAppTokenSource
+  Build a {@link GhAppTokenSource} from the settings a lambda configures. The
+  first call mints (or falls back); every later call returns the same
+  promise. Nothing runs until the first call, so the source can be a build
+  field that names parameters declared above it.
+
 function assertRefName(name: string, what: string): void
   Reject a branch or tag name that git itself would.
 
@@ -451,6 +457,64 @@ class GhAppTokenSettings
     The path that resolves this app's installation id.
   tokenRequest_(): Record<string, unknown>
     The `access_tokens` request body — only the fields that were narrowed.
+
+class GhAppTokenSourceSettings
+  Settings for {@link GhAppTokenApi.appTokenSource}.
+
+  appId_?: GhCredential
+    The App's id. Set by {@link app}.
+  privateKey_?: GhCredential
+    The App's PEM private key. Set by {@link app}.
+  repository_?: string
+    The `owner/name` to mint for. Set by {@link repository}.
+  permissions_: Record<string, GhPermissionLevel>
+    Permissions to narrow the token to. Set by {@link permission}.
+  fallback_?: GhCredential
+    The token yielded without an App. Set by {@link fallback}.
+  env_: GhEnvReader
+    The env reader for the defaults. Set by {@link env}.
+  fetch_?: typeof fetch
+    The `fetch` implementation the mint uses. Set by {@link fetch}.
+  baseUrl_?: string
+    REST base URL for the mint. Set by {@link baseUrl}.
+  mint_: GhAppTokenMint
+    The mint itself. Set by {@link mint}.
+  app(appId: GhCredential, privateKey: GhCredential): this
+    The App's credentials — its numeric id and the PEM contents of its
+    private key, as the build's parameters (`.secret()` for the key). Either
+    one unset at call time means "no App": the source yields the
+    {@link fallback}. Both are read when the token is first needed, never at
+    construction, so parameters declared on the build resolve first.
+  repository(slug: string): this
+    The repository to mint for, as `owner/name`. Defaults to the repository
+    the run is on, `GITHUB_REPOSITORY`. Name it to refuse minting anywhere
+    else: a run whose `GITHUB_REPOSITORY` is another repository then gets the
+    fallback, with a warning, rather than a token for this one minted into a
+    build running elsewhere.
+  permission(name: string, level: GhPermissionLevel): this
+    Narrow the token to one permission, e.g. `.permission("contents", "write")`.
+    Repeatable. Without any, the token holds the installation's whole grant,
+    which is the App's configured permissions — the sane default for an App
+    set up for one job. A hyphenated name is accepted as the mint accepts it.
+  fallback(token: GhCredential): this
+    The token yielded when no App is configured or the mint fails. Defaults
+    to `GITHUB_TOKEN` from the environment — the workflow's own token, so a
+    build that names an App still posts, as `github-actions[bot]`, wherever
+    the App is absent.
+  env(reader: GhEnvReader): this
+    Override the environment reader (a test seam).
+  fetch(fn: typeof fetch): this
+    Override the `fetch` the mint uses (a test seam).
+  baseUrl(url: string): this
+    Use a different REST base for the mint (GitHub Enterprise Server).
+  mint(fn: GhAppTokenMint): this
+    Override the mint itself (a test seam).
+  fallbackValue_(): string
+    The fallback token: the configured one, else `GITHUB_TOKEN`, else empty.
+  async resolve_(): Promise<string>
+    Mint the token these settings describe, or return the fallback: without
+    both credentials silently, and with a warning when the repository is not
+    an `owner/name` or the mint fails.
 
 abstract class GhBodySettings extends GhCommandSettings
   Base for the commands that take message text: `pr create`, `pr comment`,
@@ -2144,12 +2208,25 @@ class WorkflowCorrelationError extends Error
     The error name, `"WorkflowCorrelationError"`.
 
 interface GhAppTokenApi
-  The shape of the app-token task, mixed into `GhTasks`.
+  The shape of the app-token tasks, mixed into `GhTasks`.
 
   appToken(configure?: Configure<GhAppTokenSettings>): Promise<GhAppTokenResult>
     Mint a GitHub App installation token, scoped to the repositories and
     permissions the settings request. The returned token is registered with the
     Actions log masker, so it is safe to pass onward through `env`.
+  appTokenSource(configure?: Configure<GhAppTokenSourceSettings>): GhAppTokenSource
+    A token source for the App: a function that mints the installation
+    token the first time it is called and returns the same token after, or
+    yields `GITHUB_TOKEN` when the App is not configured — the credential a
+    build hands to an AI reviewer's `.commentToken(...)` so its reviews post
+    as the App where it is installed and as `github-actions[bot]` everywhere
+    else. Nothing runs until the first call.
+
+    ```ts
+    appId = parameter("GitHub App id").env("REVIEW_APP_ID");
+    appKey = parameter("GitHub App key").secret().env("REVIEW_APP_KEY");
+    botToken = GhTasks.appTokenSource((s) => s.app(this.appId, this.appKey));
+    ```
 
 interface GhAppTokenResult
   A minted installation token and when it stops working.
@@ -2739,6 +2816,15 @@ type CorrelateMode = "marker" | "created-window"
     created just after dispatch; best-effort, for workflows that can't echo
     the marker (fails loudly if two candidates are in the window).
 
+type GhAppTokenMint = (configure: Configure<GhAppTokenSettings>) => Promise<GhAppTokenResult>
+  The shape of the mint, replaceable by a test.
+
+type GhAppTokenSource = () => Promise<string>
+  A token provider: resolves to the App's installation token, or to the
+  fallback when the App is not configured or cannot be minted from. The same
+  promise is returned on every call, so the token is minted at most once per
+  run.
+
 type GhCacheSort = "created_at" | "last_accessed_at" | "size_in_bytes"
   What `gh cache list --sort` orders the caches by.
 
@@ -2750,6 +2836,12 @@ type GhCheckConclusion = "success" | "failure" | "neutral" | "cancelled" | "skip
 
 type GhCloseReason = "completed" | "not planned" | "duplicate"
   Why an issue is being closed (`--reason`).
+
+type GhCredential = AnyParameter | string
+  A credential a build passes: a parameter, or a literal for tests.
+
+type GhEnvReader = (name: string) => string | undefined
+  Read an environment variable, tolerating an absent `--allow-env`.
 
 type GhLabelSort = "created" | "name"
   What `gh label list --sort` orders the labels by.

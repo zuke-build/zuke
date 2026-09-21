@@ -4607,3 +4607,37 @@ Deno.test("an accept on a finding the verifier refuted is recorded and answered"
   assertEquals(state?.findings[0].status, "accepted");
   assertEquals(state?.findings[0].rationale, "by design regardless");
 });
+
+Deno.test("a comment-started run acknowledges the command with 👀 before the review", async () => {
+  const { fetch, calls } = discussionFetch([], [
+    claude({ score: 0, severity: "none", findings: [] }),
+  ]);
+  const lines = await captured(() =>
+    withEnv({
+      GITHUB_ACTIONS: "true",
+      GITHUB_REPOSITORY: "zuke-build/zuke",
+      GITHUB_REF: "refs/heads/master",
+      GITHUB_TOKEN: "tkn",
+      GITHUB_STEP_SUMMARY: undefined,
+      ZUKE_REVIEW_PR: "7",
+      ZUKE_REVIEW_COMMENT: "987654",
+    }, async () => {
+      await securityReviewer((r) =>
+        r.provider("claude").apiKey("k")
+          .comment().discussion((d) => d.commands("@zuke-build"))
+          .diff((d) => d.text(DIFF))
+          .fetch(fetch)
+      ).validate(noRedactionContext("t"));
+    })
+  );
+  const reaction = calls.findIndex((c) =>
+    c.url.endsWith("/issues/comments/987654/reactions")
+  );
+  const review = calls.findIndex((c) => !c.url.startsWith(`${GITHUB_API}/`));
+  assertEquals(reaction >= 0 && reaction < review, true);
+  assertEquals(JSON.parse(calls[reaction].body).content, "eyes");
+  assertEquals(
+    lines.some((l) => l.includes("acknowledged the review command (👀)")),
+    true,
+  );
+});

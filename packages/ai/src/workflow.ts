@@ -48,6 +48,7 @@ import {
 } from "@zuke/core";
 import { REVIEW_PR_ENV } from "./diff.ts";
 import { PROVIDER_HOSTS } from "./provider.ts";
+import { REVIEW_COMMENT_ENV } from "./hosts/github.ts";
 import type { Reviewer } from "./reviewer.ts";
 import type { Provider } from "./types.ts";
 
@@ -86,56 +87,106 @@ const DEFAULT_TIMEOUT_MINUTES = 15;
 const SAFE_COMMAND = /^[A-Za-z0-9@/][A-Za-z0-9@/_.:-]*( [A-Za-z0-9@/_.:-]+)*$/;
 
 /**
- * The env var the command job sets to the id of the comment that started it,
- * for a build that wants to acknowledge the command (react on it, say) before
- * the review runs. The pull request itself travels as {@link REVIEW_PR_ENV}.
+ * A repository role a commenter may hold, as GitHub's collaborators API
+ * reports it (`role_name`) — see {@link ReviewCommandSettings.role}.
  */
-const REVIEW_COMMENT_ENV = "ZUKE_REVIEW_COMMENT";
+export type CommandRole = "read" | "triage" | "write" | "maintain" | "admin";
+
+/**
+ * The roles least to most capable. A command's minimum role admits it and
+ * everything after it.
+ */
+const ROLES: readonly CommandRole[] = [
+  "read",
+  "triage",
+  "write",
+  "maintain",
+  "admin",
+];
+
+/** The characters a GitHub login can contain. */
+const LOGIN = /^[A-Za-z0-9-]+$/;
+
+/** The step id the callers check publishes its verdict under. */
+const CALLERS_STEP_ID = "callers";
 
 /**
  * The command job's first step after the checkout: let the review run only
- * when the commenter has push access. The job's `if:` cannot ask anyone: it
- * can see the event's `author_association`, and that field is no use here —
- * an organisation member whose membership is private is reported as
+ * when the commenter may start one. The job's `if:` cannot ask anyone: it can
+ * see the event's `author_association`, and that field is no use here — an
+ * organisation member whose membership is private is reported as
  * `CONTRIBUTOR` (observed on this repository's own pull requests, where it
  * turned the maintainers away), while `MEMBER` and `COLLABORATOR` both include
  * read-only accounts. The collaborators API says what a commenter may actually
- * do, so the job asks it before spending a key: `admin` and `write` (which
- * `maintain` reports as) pass; `read` (which `triage` reports as) and `none`
- * record `push=false` in the step's outputs, and every later step is skipped,
- * so the job ends succeeded having spent nothing. Skipping rather than failing
- * because, with no association pre-filter, anyone who can comment can type
- * the command, and a red check for each of them would be noise and a lever
- * anyone could pull; the step's log says why nothing ran. An answer that
- * cannot be read fails closed. The login reaches the script as env, never
- * interpolated, and is checked against the characters a GitHub login can
- * contain before it is put in a URL.
+ * do, so the job asks it before spending a key: a role at or above the
+ * configured minimum (`write` by default — push access) records
+ * `allowed=true` in the step's outputs, anything below records
+ * `allowed=false`, and every later step is skipped, so the job ends succeeded
+ * having spent nothing. A login the command names outright is admitted before
+ * the API is asked. Skipping rather than failing because, with no association
+ * pre-filter, anyone who can comment can type the command, and a red check for
+ * each of them would be noise and a lever anyone could pull; the step's log
+ * says why nothing ran. An answer that cannot be read fails closed. The login
+ * reaches the script as env, never interpolated, and is checked against the
+ * characters a GitHub login can contain before it is put in a URL.
  */
-const PUSH_ACCESS_STEP = [
-  // Fail closed, explicitly: a failed API call, an unset variable, or a
-  // broken pipe stops the step, whatever shell flags the runner defaults to.
-  "set -euo pipefail",
-  'case "$ZUKE_REVIEW_ACTOR" in',
-  '  ""|*[!A-Za-z0-9-]*)',
-  '    echo "::error::the commenter\'s login is not a GitHub login"',
-  "    exit 1 ;;",
-  "esac",
-  'permission="$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$ZUKE_REVIEW_ACTOR/permission" --jq .permission)" || {',
-  '  echo "::error::could not read $ZUKE_REVIEW_ACTOR\'s permission on $GITHUB_REPOSITORY; refusing to run the review"',
-  "  exit 1",
-  "}",
-  'case "$permission" in',
-  "  admin|write)",
-  '    echo "$ZUKE_REVIEW_ACTOR has $permission access."',
-  '    echo "push=true" >> "$GITHUB_OUTPUT" ;;',
-  "  *)",
-  '    echo "$ZUKE_REVIEW_ACTOR has $permission access to $GITHUB_REPOSITORY; starting a review needs push access."',
-  '    echo "push=false" >> "$GITHUB_OUTPUT" ;;',
-  "esac",
-].join("\n");
-
-/** The step id the push-access check publishes its verdict under. */
-const PUSH_STEP_ID = "push";
+function callersScript(role: CommandRole, users: readonly string[]): string {
+  const admitted = ROLES.slice(ROLES.indexOf(role)).join("|");
+  // A custom repository role reports its own name as the role and its base
+  // level as the permission; the base level is admitted when the floor lies
+  // at or below it — `admin` always, `write` unless the floor is above it,
+  // `read` only for a `read` floor. A triage floor cannot recognise a
+  // read-based custom role as triage-like, and refuses it.
+  const bases = role === "read"
+    ? "admin|write|read"
+    : role === "triage" || role === "write"
+    ? "admin|write"
+    : "admin";
+  // Every pattern list opens with the POSIX optional parenthesis, so a login
+  // or role that is also a shell reserved word (`esac`) stays a pattern.
+  return [
+    // Fail closed, explicitly: a failed API call, an unset variable, or a
+    // broken pipe stops the step, whatever shell flags the runner defaults to.
+    "set -euo pipefail",
+    'case "$ZUKE_REVIEW_ACTOR" in',
+    '  ""|*[!A-Za-z0-9-]*)',
+    '    echo "::error::the commenter\'s login is not a GitHub login"',
+    "    exit 1 ;;",
+    "esac",
+    ...(users.length > 0
+      ? [
+        'case "$ZUKE_REVIEW_ACTOR" in',
+        `  (${users.join("|")})`,
+        '    echo "$ZUKE_REVIEW_ACTOR is named as allowed to start a review."',
+        '    echo "allowed=true" >> "$GITHUB_OUTPUT"',
+        "    exit 0 ;;",
+        "esac",
+      ]
+      : []),
+    // One call answers both: the role name, and the base level a custom role
+    // is built on. A role name may contain spaces, so it is the remainder.
+    'answer="$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$ZUKE_REVIEW_ACTOR/permission" --jq \'"\\(.permission) \\(.role_name)"\')" || {',
+    '  echo "::error::could not read $ZUKE_REVIEW_ACTOR\'s role on $GITHUB_REPOSITORY; refusing to run the review"',
+    "  exit 1",
+    "}",
+    'permission="${answer%% *}"',
+    'role="${answer#* }"',
+    'case "$role" in',
+    `  (${admitted})`,
+    '    echo "$ZUKE_REVIEW_ACTOR has the $role role."',
+    '    echo "allowed=true" >> "$GITHUB_OUTPUT" ;;',
+    "  (*)",
+    '    case "$permission" in',
+    `      (${bases})`,
+    '        echo "$ZUKE_REVIEW_ACTOR has the $role role, with $permission access."',
+    '        echo "allowed=true" >> "$GITHUB_OUTPUT" ;;',
+    "      (*)",
+    `        echo "$ZUKE_REVIEW_ACTOR has the $role role on $GITHUB_REPOSITORY; starting a review needs ${role} or above."`,
+    '        echo "allowed=false" >> "$GITHUB_OUTPUT" ;;',
+    "    esac ;;",
+    "esac",
+  ].join("\n");
+}
 
 /**
  * The clause that keeps a fork's code away from the secrets: the head
@@ -152,22 +203,31 @@ const SAME_REPO =
 /** A secret name as GitHub Actions accepts it in `${{ secrets.NAME }}`. */
 const SECRET_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
+/** A repository secret named to a workflow: the build's parameter, or its name. */
+export type ReviewSecret = AnyParameter | string;
+
 /**
  * The comment command that runs the review on demand, configured through
- * {@link AiReviewWorkflowSpec.command}.
+ * {@link AiReviewWorkflowSpec.command} — and derived from the reviewers
+ * without it: a reviewer that takes commands (`.discussion((d) =>
+ * d.commands("@acme-bot"))`) names the mention, and the job it needs is
+ * generated with `<mention> review` and `<mention> accept`, so the Commands
+ * panel the reviewer posts is true by construction. The lambda refines the
+ * job: who may start a run, which secrets it holds, or a command text of its
+ * own.
  *
  * The job it adds runs on `issue_comment`, which GitHub delivers for comments on
  * pull requests too, always from the **default branch** and always with the
  * repository's secrets. Its `if:` fires only when the comment is on a pull
- * request, starts with {@link text}, and was written by a human (not a bot
- * account); the comment body is matched in the expression and never
+ * request, starts with one of the commands, and was written by a human (not a
+ * bot account); the comment body is matched in the expression and never
  * interpolated into a `run:` line. The access control is the job's first
- * step: it asks the collaborators API whether the commenter has push access,
- * and every later step is skipped if not (see {@link PUSH_ACCESS_STEP}). The
- * event's `author_association` is deliberately not consulted — it reports a
- * private organisation member as `CONTRIBUTOR`, and `MEMBER` and
- * `COLLABORATOR` admit read-only accounts, so it can neither admit nor refuse
- * anyone correctly.
+ * step: it asks the collaborators API what role the commenter holds, and
+ * every later step is skipped unless it is at or above {@link role} or the
+ * login is among {@link users}. The event's `author_association` is
+ * deliberately not consulted — it reports a private organisation member as
+ * `CONTRIBUTOR`, and `MEMBER` and `COLLABORATOR` admit read-only accounts, so
+ * it can neither admit nor refuse anyone correctly.
  *
  * The command is also how a maintainer who contested a finding in its review
  * thread, and pushed nothing, gets an answer: the run it starts reads every
@@ -182,7 +242,7 @@ const SECRET_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
  * is for Dependabot's `@dependabot` commands.
  */
 export class ReviewCommandSettings {
-  /** The command a comment must start with. Set by {@link text}. */
+  /** A command text of its own, replacing the derived ones. Set by {@link text}. */
   text_?: string;
   /** Other commands that also start a run. Set by {@link also}. */
   also_: string[] = [];
@@ -190,13 +250,19 @@ export class ReviewCommandSettings {
    * Secrets the command job's review step receives beyond the reviewers' own
    * keys and the host token. Set by {@link secrets}.
    */
-  secrets_: string[] = [];
+  secrets_: ReviewSecret[] = [];
+  /** The least role that may start a run. Set by {@link role}. */
+  role_: CommandRole = "write";
+  /** Logins admitted whatever their role. Set by {@link users}. */
+  users_: string[] = [];
 
   /**
-   * The command, e.g. `"@zuke-build review"`. Matched case-insensitively at
-   * the start of the comment, so a reply that quotes it (`> @zuke-build
-   * review`) does not start a run. Letters, digits, `@/_.:-` and single spaces
-   * only.
+   * A command text of its own, e.g. `"/review"`, replacing the ones derived
+   * from the reviewers' mention. Matched case-insensitively at the start of
+   * the comment, so a reply that quotes it (`> /review`) does not start a run.
+   * Letters, digits, `@/_.:-` and single spaces only. A reviewer that takes
+   * commands still parses `accept` under its own mention, so name that too
+   * with {@link also} when overriding.
    */
   text(command: string): this {
     this.text_ = command;
@@ -204,11 +270,8 @@ export class ReviewCommandSettings {
   }
 
   /**
-   * Other comment commands that also start a run, matched like {@link text}
-   * — e.g. `"@zuke-build accept"`, so a maintainer's acceptance of a finding
-   * (see `DiscussionSettings.commands`) is applied by the run the comment
-   * starts, with no second comment to ask for it. Same alphabet as
-   * {@link text}.
+   * Other comment commands that also start a run, matched like {@link text}.
+   * Same alphabet.
    */
   also(...commands: string[]): this {
     this.also_.push(...commands);
@@ -217,13 +280,36 @@ export class ReviewCommandSettings {
 
   /**
    * Pass these repository secrets to the command job's review step as env vars
-   * of the same name — e.g. the GitHub App credentials the build mints its
-   * `commentToken` from, so the review posts as the app. Only the command job
-   * receives them; the `pull_request` job is unchanged. Secrets both jobs
-   * should hold go on {@link AiReviewWorkflowSpec.secrets} instead.
+   * — the build's parameters, whose env names the workflow reads off them, or
+   * plain names. Only the command job receives them; the `pull_request` job is
+   * unchanged. Secrets both jobs should hold go on
+   * {@link AiReviewWorkflowSpec.secrets} instead.
    */
-  secrets(...names: string[]): this {
-    this.secrets_.push(...names);
+  secrets(...secrets: ReviewSecret[]): this {
+    this.secrets_.push(...secrets);
+    return this;
+  }
+
+  /**
+   * The least repository role a commenter needs to start a run — `"read"`,
+   * `"triage"`, `"write"` (the default: push access), `"maintain"` or
+   * `"admin"`, as GitHub's collaborators API reports them. Every role above
+   * it is admitted too. `"read"` admits anyone the repository admits, which
+   * on a public repository is everyone: the run spends the reviewers' keys,
+   * so choose that knowingly.
+   */
+  role(role: CommandRole): this {
+    this.role_ = role;
+    return this;
+  }
+
+  /**
+   * Logins admitted to start a run whatever their role — an outside
+   * contributor the project trusts, say. Checked before the collaborators API
+   * is asked.
+   */
+  users(...logins: string[]): this {
+    this.users_.push(...logins);
     return this;
   }
 }
@@ -306,8 +392,11 @@ export interface AiReviewWorkflowSpec {
    * pull request's own build, so everyone who can push a branch can read what
    * it holds. Secrets for the command job alone go on
    * {@link ReviewCommandSettings.secrets}.
+   *
+   * Each is the build's parameter — its env name is read off it, so a rename
+   * follows — or, for a secret the build never reads itself, its plain name.
    */
-  secrets?: readonly string[];
+  secrets?: readonly ReviewSecret[];
   /**
    * The harden-runner egress policy of the GitHub jobs. `"audit"` (the
    * default) records outbound connections; `"block"` drops everything outside
@@ -325,8 +414,11 @@ export interface AiReviewWorkflowSpec {
    */
   allowedEndpoints?: readonly string[];
   /**
-   * Run the review on demand when a maintainer comments a command on a pull
-   * request — any pull request, a fork's included. GitHub only; see
+   * Refine the job that runs the review on demand when a maintainer comments
+   * a command on a pull request — any pull request, a fork's included. The
+   * job is generated whenever a reviewer takes commands, with that reviewer's
+   * mention, so this is only needed to change who may start a run, the
+   * secrets the job holds, or the command text. GitHub only; see
    * {@link ReviewCommandSettings} for the job it adds and the gate it runs
    * behind.
    *
@@ -363,25 +455,70 @@ function assertSafeRef(value: string, field: string): void {
   }
 }
 
-/** A resolved {@link ReviewCommandSettings}: the command texts, and its secrets. */
+/** A resolved {@link ReviewCommandSettings}: the command texts, its secrets, and its callers. */
 interface ReviewCommand {
   /** The commands a comment may start with — the primary one first. */
   readonly texts: readonly string[];
-  /** The secrets the command job's review step receives. */
+  /** The secrets the command job's review step receives, by env name. */
   readonly secrets: readonly string[];
+  /** The least role that may start a run. */
+  readonly role: CommandRole;
+  /** Logins admitted whatever their role. */
+  readonly users: readonly string[];
 }
 
 /**
- * Resolve the command settings, rejecting a command that could break out of
- * the expression it is quoted in, and a secret name Actions would not accept.
+ * The commands the reviewers' mention implies — `<mention> review` and
+ * `<mention> accept` — or none when no reviewer takes commands. Two reviewers
+ * naming different mentions are refused: the panel each posts would promise a
+ * command the job does not honour.
+ */
+function derivedCommands(reviewers: readonly Reviewer[]): string[] {
+  const mentions = [
+    ...new Set(
+      reviewers
+        .map((reviewer) => reviewer.mention_)
+        .filter((mention): mention is string => mention !== undefined),
+    ),
+  ];
+  if (mentions.length > 1) {
+    throw new Error(
+      `aiReviewWorkflow: the reviewers take commands under different ` +
+        `mentions (${mentions.join(", ")}) — use one mention for all of them.`,
+    );
+  }
+  const mention = mentions[0];
+  return mention === undefined
+    ? []
+    : [`${mention} review`, `${mention} accept`];
+}
+
+/**
+ * Resolve the command settings against the reviewers' derived commands,
+ * rejecting a command that could break out of the expression it is quoted in,
+ * a login that is not one, and a secret the host's syntax would not accept.
  */
 function resolveCommand(
-  configure: Configure<ReviewCommandSettings>,
-): ReviewCommand {
-  const command = configure(new ReviewCommandSettings());
-  const texts = [command.text_, ...command.also_];
+  configure: Configure<ReviewCommandSettings> | undefined,
+  derived: readonly string[],
+): ReviewCommand | undefined {
+  const command = configure === undefined
+    ? new ReviewCommandSettings()
+    : configure(new ReviewCommandSettings());
+  const texts = [
+    ...(command.text_ !== undefined ? [command.text_] : derived),
+    ...command.also_,
+  ];
+  if (texts.length === 0) {
+    if (configure === undefined) return undefined;
+    throw new Error(
+      "aiReviewWorkflow: the command has no text — give one with .text(...), " +
+        "or have a reviewer take commands with .discussion((d) => " +
+        'd.commands("@your-bot")), which derives it.',
+    );
+  }
   for (const text of texts) {
-    if (text === undefined || !SAFE_COMMAND.test(text)) {
+    if (!SAFE_COMMAND.test(text)) {
       throw new Error(
         `aiReviewWorkflow: command ${JSON.stringify(text)} is not a valid ` +
           `comment command — use words of letters, digits and \`@/_.:-\` ` +
@@ -389,23 +526,47 @@ function resolveCommand(
       );
     }
   }
-  assertSecretNames(command.secrets_);
+  for (const login of command.users_) {
+    if (!LOGIN.test(login)) {
+      throw new Error(
+        `aiReviewWorkflow: ${JSON.stringify(login)} is not a GitHub login.`,
+      );
+    }
+  }
   return {
-    texts: texts.filter((text): text is string => text !== undefined),
-    secrets: command.secrets_,
+    texts,
+    secrets: secretNames(command.secrets_),
+    role: command.role_,
+    users: command.users_,
   };
 }
 
-/** Reject a secret name the host's `secrets.NAME` syntax would not accept. */
-function assertSecretNames(names: readonly string[]): void {
-  for (const name of names) {
+/**
+ * The env names of the secrets a spec or a command names: a parameter's, read
+ * off the parameter (an explicit `.env(...)`, else the name it was discovered
+ * under), or the plain name. A parameter with neither is refused — it is one
+ * the build never declared as a field, and the workflow cannot guess what the
+ * repository calls it.
+ */
+function secretNames(secrets: readonly ReviewSecret[]): string[] {
+  return secrets.map((secret) => {
+    const name = typeof secret === "string" ? secret : envOf(secret);
+    if (name === undefined) {
+      throw new Error(
+        `aiReviewWorkflow: parameter ${
+          JSON.stringify(typeof secret === "string" ? secret : secret.name_)
+        } has no env name — declare it as a field of the build, or give it ` +
+          "one with .env(...).",
+      );
+    }
     if (!SECRET_NAME.test(name)) {
       throw new Error(
         `aiReviewWorkflow: secret ${JSON.stringify(name)} is not a valid ` +
           `secret name — letters, digits and underscores only.`,
       );
     }
-  }
+    return name;
+  });
 }
 
 /** Resolve the env var name for a parameter — honours `.env(...)` overrides. */
@@ -473,8 +634,6 @@ function azureRef(name: string): string {
  */
 class AiReviewWorkflow extends CiFile {
   readonly #spec: AiReviewWorkflowSpec;
-  /** The resolved comment command, when the spec declares one. */
-  readonly #command?: ReviewCommand;
 
   constructor(spec: AiReviewWorkflowSpec) {
     const host = spec.host ?? "github";
@@ -489,10 +648,6 @@ class AiReviewWorkflow extends CiFile {
       assertSafeRef(spec.baseBranch, "baseBranch");
     }
     if (spec.target !== undefined) assertSafeRef(spec.target, "target");
-    assertSecretNames(spec.secrets ?? []);
-    if (spec.command !== undefined) {
-      this.#command = resolveCommand(spec.command);
-    }
     this.#spec = spec;
   }
 
@@ -536,7 +691,9 @@ class AiReviewWorkflow extends CiFile {
         : [defaultToken];
       for (const name of tokens) env[name] = ref(name);
     }
-    for (const name of this.#spec.secrets ?? []) env[name] = ref(name);
+    for (const name of secretNames(this.#spec.secrets ?? [])) {
+      env[name] = ref(name);
+    }
     return env;
   }
 
@@ -649,7 +806,7 @@ class AiReviewWorkflow extends CiFile {
    * with an app token (which, unlike `GITHUB_TOKEN`, does trigger workflows),
    * from starting another run. Who may start one is decided by the push-access
    * step, not here — see {@link PUSH_ACCESS_STEP} for why the event's
-   * association field is not in the gate.
+   * association field is not in the gate — see {@link callersScript}.
    */
   static #commandGate(texts: readonly string[]): string {
     const starts = texts.map((text) =>
@@ -664,15 +821,17 @@ class AiReviewWorkflow extends CiFile {
   }
 
   /**
-   * The push-access check, the command job's first step — see
-   * {@link PUSH_ACCESS_STEP}.
+   * The callers check, the command job's first step — see
+   * {@link callersScript}.
    */
-  static #pushAccessStep(): NonNullable<CiJob["steps"]>[number] {
+  static #callersStep(
+    command: ReviewCommand,
+  ): NonNullable<CiJob["steps"]>[number] {
     return {
-      id: PUSH_STEP_ID,
-      name: "Require push access for the commenter",
+      id: CALLERS_STEP_ID,
+      name: "Check the commenter may start a review",
       shell: "bash",
-      run: PUSH_ACCESS_STEP,
+      run: callersScript(command.role, command.users),
       env: {
         GH_TOKEN: "${{ github.token }}",
         ZUKE_REVIEW_ACTOR: "${{ github.event.comment.user.login }}",
@@ -725,7 +884,10 @@ class AiReviewWorkflow extends CiFile {
       true,
     );
     const jobs = [review];
-    const command = this.#command;
+    const command = resolveCommand(
+      this.#spec.command,
+      derivedCommands(this.#spec.reviewers),
+    );
     if (command !== undefined) {
       // No base fetch and no `ZUKE_REVIEW_BASE`: the reviewers fetch the pull
       // request `ZUKE_REVIEW_PR` names and diff its merge against the base it
@@ -739,10 +901,10 @@ class AiReviewWorkflow extends CiFile {
         "AI review on command",
         AiReviewWorkflow.#commandGate(command.texts),
         [
-          AiReviewWorkflow.#pushAccessStep(),
+          AiReviewWorkflow.#callersStep(command),
           {
             name: "AI review with Zuke",
-            if: `steps.${PUSH_STEP_ID}.outputs.push == 'true'`,
+            if: `steps.${CALLERS_STEP_ID}.outputs.allowed == 'true'`,
             run: `./zuke ${target}`,
             env: commandEnv,
           },

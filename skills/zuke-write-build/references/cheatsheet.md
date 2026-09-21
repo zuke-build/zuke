@@ -941,7 +941,11 @@ missing, which is the usual case on a fetch-only checkout.
 
 The three groups a build reaches for are typed; everything else goes through
 `GhTasks.run((s) => s.command(...))`, and REST endpoints with no CLI verb
-through `GhTasks.api(...)`.
+through `GhTasks.api(...)`. `GhTasks.appToken` mints a GitHub App installation
+token, and `GhTasks.appTokenSource((s) => s.app(this.appId, this.appKey))` is
+the lazy, memoised form a build hands to whatever posts for it — repository from
+`GITHUB_REPOSITORY`, the App's own grant, `GITHUB_TOKEN` as the fallback when
+the App is not configured.
 
 | Group     | Tasks                                                                                                                                   |
 | --------- | --------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1123,9 +1127,19 @@ Depth and discussion knobs (all optional, per reviewer):
   finding as **accepted** for the pull request — no adjudication, listed under
   its own heading, its thread answered with ✅ and resolved, never raised again
   by any reviewer however it is reworded, moved or escalated. In a finding's
-  thread the id may be left out. Pair it with
-  `c.text("@zuke-build review").also("@zuke-build accept")` on the workflow so
-  the accept comment starts the run that applies it.
+  thread the id may be left out. On GitHub the workflow generator derives the
+  on-demand job from the mention — `@zuke-build review` and `@zuke-build accept`
+  — so nothing is declared twice;
+  `command: (c) =>
+  c.role("triage").users("alice").secrets(this.appKey)`
+  refines who may start a run and what the job holds, and `c.text("/review")`
+  overrides the text. The reviews post as `github-actions[bot]` with nothing set
+  up; to post as a GitHub App of your own (which also lets the reviewer resolve
+  the threads it answers), declare its id and key as parameters and pass
+  `GhTasks.appTokenSource((s) => s.app(this.appId, this.appKey))` to
+  `.commentToken(...)` — it mints once per run and yields `GITHUB_TOKEN`
+  wherever the App is absent. `secrets: [this.appId, this.appKey]` on the
+  workflow spec passes them to both jobs, by the parameters' env names.
 - `.discussion()` — the reviewer engages with the PR thread instead of looping:
   a maintainer contests a finding by replying with its id quoted, an
   adjudication pass weighs the rebuttal on merit, and an accepted dismissal is

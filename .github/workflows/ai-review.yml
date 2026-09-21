@@ -50,8 +50,8 @@ jobs:
           egress-policy: block
           persist-credentials: "false"
           allowed-endpoints: "deno.land:443 dl.deno.land:443 jsr.io:443 github.com:443 api.github.com:443 codeload.github.com:443 objects.githubusercontent.com:443 release-assets.githubusercontent.com:443 api.openai.com:443"
-      - name: Require push access for the commenter
-        id: push
+      - name: Check the commenter may start a review
+        id: callers
         shell: bash
         run: |
           set -euo pipefail
@@ -60,23 +60,31 @@ jobs:
               echo "::error::the commenter's login is not a GitHub login"
               exit 1 ;;
           esac
-          permission="$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$ZUKE_REVIEW_ACTOR/permission" --jq .permission)" || {
-            echo "::error::could not read $ZUKE_REVIEW_ACTOR's permission on $GITHUB_REPOSITORY; refusing to run the review"
+          answer="$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$ZUKE_REVIEW_ACTOR/permission" --jq '"\(.permission) \(.role_name)"')" || {
+            echo "::error::could not read $ZUKE_REVIEW_ACTOR's role on $GITHUB_REPOSITORY; refusing to run the review"
             exit 1
           }
-          case "$permission" in
-            admin|write)
-              echo "$ZUKE_REVIEW_ACTOR has $permission access."
-              echo "push=true" >> "$GITHUB_OUTPUT" ;;
-            *)
-              echo "$ZUKE_REVIEW_ACTOR has $permission access to $GITHUB_REPOSITORY; starting a review needs push access."
-              echo "push=false" >> "$GITHUB_OUTPUT" ;;
+          permission="${answer%% *}"
+          role="${answer#* }"
+          case "$role" in
+            (write|maintain|admin)
+              echo "$ZUKE_REVIEW_ACTOR has the $role role."
+              echo "allowed=true" >> "$GITHUB_OUTPUT" ;;
+            (*)
+              case "$permission" in
+                (admin|write)
+                  echo "$ZUKE_REVIEW_ACTOR has the $role role, with $permission access."
+                  echo "allowed=true" >> "$GITHUB_OUTPUT" ;;
+                (*)
+                  echo "$ZUKE_REVIEW_ACTOR has the $role role on $GITHUB_REPOSITORY; starting a review needs write or above."
+                  echo "allowed=false" >> "$GITHUB_OUTPUT" ;;
+              esac ;;
           esac
         env:
           GH_TOKEN: "${{ github.token }}"
           ZUKE_REVIEW_ACTOR: "${{ github.event.comment.user.login }}"
       - name: AI review with Zuke
-        if: "steps.push.outputs.push == 'true'"
+        if: "steps.callers.outputs.allowed == 'true'"
         run: ./zuke review
         env:
           OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}"

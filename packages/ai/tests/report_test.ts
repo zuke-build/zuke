@@ -380,7 +380,7 @@ Deno.test("an accepted finding is listed under its own heading, apart from the a
 Deno.test("the Commands panel is collapsed, names the mention, and appears only when asked for", () => {
   const md = toMarkdown("sec", "deploy", ASSESSMENT, undefined, {
     discussion: true,
-    commands: "@zuke-build",
+    commands: { mention: "@zuke-build", onDemand: true },
   });
   assertStringIncludes(md, "<details><summary>Commands</summary>");
   assertStringIncludes(md, "| `@zuke-build review` |");
@@ -396,9 +396,17 @@ Deno.test("the Commands panel is collapsed, names the mention, and appears only 
       findings: [],
     },
     undefined,
-    { discussion: true, commands: "@zuke-build" },
+    { discussion: true, commands: { mention: "@zuke-build", onDemand: true } },
   );
   assertStringIncludes(clean, "<details><summary>Commands</summary>");
+  // On a host where no comment can start a run, the `review` row is left out
+  // rather than promising one; `accept` and contesting stay.
+  const elsewhere = toMarkdown("sec", "deploy", ASSESSMENT, undefined, {
+    discussion: true,
+    commands: { mention: "@zuke-build", onDemand: false },
+  });
+  assertEquals(elsewhere.includes("`@zuke-build review`"), false);
+  assertStringIncludes(elsewhere, "| `@zuke-build accept <id> <reason>` |");
   // And absent without the setting.
   const without = toMarkdown("sec", "deploy", ASSESSMENT, undefined, {
     discussion: true,

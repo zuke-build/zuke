@@ -173,6 +173,14 @@ export {
   mintAppToken,
 } from "./src/app_token.ts";
 export {
+  appTokenSource,
+  type GhAppTokenMint,
+  type GhAppTokenSource,
+  GhAppTokenSourceSettings,
+  type GhCredential,
+  type GhEnvReader,
+} from "./src/app_token_source.ts";
+export {
   type GhSarifApi,
   GhSarifSettings,
   type GhSarifUploadResult,

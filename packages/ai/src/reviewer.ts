@@ -195,6 +195,14 @@ export class Reviewer implements Validation {
     return this.#commentToken;
   }
 
+  /**
+   * The mention this reviewer takes commands under, when it takes any — what
+   * the workflow generator derives the command job from.
+   */
+  get mention_(): string | undefined {
+    return this.#discussion?.mention_();
+  }
+
   /** Set the model provider (required). */
   provider(provider: Provider): this {
     this.#provider = provider;
@@ -725,6 +733,33 @@ export class Reviewer implements Validation {
   }
 
   /**
+   * On a comment-started run, react 👀 on the command comment before the
+   * review starts, so the maintainer sees it was picked up without opening
+   * the host's job log. Best-effort and quiet by construction: nothing here
+   * can fail the review, and a run no comment started does nothing.
+   */
+  async #acknowledgeCommand(): Promise<void> {
+    if (!this.#comment) return;
+    const host = detectReviewHost(this.#env);
+    if (host?.acknowledgeCommand === undefined) return;
+    const ack = host.acknowledgeCommand(this.#env);
+    if (ack === undefined) return;
+    try {
+      const token = await this.#resolveCommentToken(host);
+      if (await ack(token, this.#fetch ?? fetch) && !this.#quiet) {
+        console.log(`[${this.name}] acknowledged the review command (👀)`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!this.#quiet) {
+        console.warn(
+          `[${this.name}] could not acknowledge the review command: ${message}`,
+        );
+      }
+    }
+  }
+
+  /**
    * Fetch the PR comments and the reviewer's prior state for the discussion
    * feature. `undefined` disables the discussion for this run: not configured,
    * `.comment()` missing (state lives in the comment), no capable host, no PR
@@ -1070,6 +1105,7 @@ export class Reviewer implements Validation {
       }));
     }
 
+    await this.#acknowledgeCommand();
     const resolved = await this.#resolveDiff();
     let diff = filterDiff(
       resolved.diff,
@@ -1841,7 +1877,13 @@ export class Reviewer implements Validation {
         : {}),
       discussion: discussion !== undefined,
       ...(discussion !== undefined && mention !== undefined
-        ? { commands: mention }
+        ? {
+          commands: {
+            mention,
+            onDemand: detectReviewHost(this.#env)?.acknowledgeCommand !==
+              undefined,
+          },
+        }
         : {}),
     }, commentExtra);
     const gate = gateTrips(assessment, this.#gate);
