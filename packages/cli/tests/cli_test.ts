@@ -793,6 +793,41 @@ Deno.test("--help inside a project shows both surfaces, each labelled", async ()
   assertEquals(forwarded, [["run", "-A", "zuke.ts", "--help"]]);
 });
 
+Deno.test("--help refuses an untrusted build, and says so rather than hiding it", async () => {
+  // The help reaches the build now, so the trust gate reaches the help. A
+  // refused root must not be reported as an absent one: "there is no build
+  // here" would turn a security refusal into a shrug, and the build must not
+  // run either way.
+  const host = new FakeHost();
+  const forwarded: string[][] = [];
+  let code = 0;
+  const err = await capturingErr(async () => {
+    code = await main(
+      ["--help"],
+      host,
+      defaultPrompter,
+      undefined,
+      undefined,
+      (_root, denoArgs) => {
+        forwarded.push(denoArgs);
+        return Promise.resolve(0);
+      },
+      // A zuke.json owned by root while we are uid 1000.
+      probeAt(["zuke.json"], { uid: 1000, owner: 0 }),
+    );
+  });
+  assertEquals(code, 0);
+  // Never executed.
+  assertEquals(forwarded, []);
+  // The CLI's own half still printed — it does not depend on the build.
+  assertStringIncludes(
+    host.logs.join("\n"),
+    "Zuke commands (available anywhere)",
+  );
+  // And the refusal was reported, naming the reason, on stderr.
+  assertStringIncludes(err.join("\n"), "owned by user 0");
+});
+
 Deno.test("--help outside a project says why there is no build section", async () => {
   // Silence would read as "this project has no targets" rather than "you are
   // not in a project", which is a different problem with a different fix.

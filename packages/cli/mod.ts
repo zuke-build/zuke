@@ -568,10 +568,15 @@ async function commandHelp(
   let location: Awaited<ReturnType<typeof locateBuild>> = null;
   try {
     location = await locateBuild(Deno.cwd(), probe);
-  } catch {
-    // An unreadable or untrusted directory is not a reason to withhold the
-    // half of the help that does not depend on it.
-    location = null;
+  } catch (error) {
+    // A refusal is not the same as an absence, and must not be reported as
+    // one: the trust gate rejecting a `zuke.json` is exactly what someone
+    // needs to be told, and "there is no build here" would hide it. Reported
+    // on stderr, as the forwarding path reports it, because stdout is the
+    // help. The CLI's own half is still correct, so this is not an error.
+    output.error(error instanceof Error ? error.message : String(error));
+    host.log(NO_BUILD_NOTICE);
+    return 0;
   }
   if (location === null) {
     host.log(NO_BUILD_NOTICE);
