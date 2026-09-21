@@ -42,7 +42,7 @@ import {
   NO_LOCK_NOTICE,
   runningNotice,
 } from "./src/dispatch.ts";
-import { absolutePath } from "@zuke/core";
+import { absolutePath, resolveDocSpec } from "@zuke/core";
 import { spawnDeno } from "./src/deno_path.ts";
 import { neutralise, output } from "./src/output.ts";
 
@@ -484,51 +484,6 @@ const defaultDocRunner: DocRunner = async (denoArgs) => {
     await Deno.remove(cwd, { recursive: true });
   }
 };
-
-/**
- * A URL scheme needs two or more characters before its colon, so a lone
- * Windows drive letter (`C:`) is not mistaken for one.
- */
-const URL_SCHEME = /^[a-z][a-z0-9+.-]+:/i;
-
-/** A Windows drive-absolute path (`C:\x`, `C:/x`), after {@link URL_SCHEME}. */
-const DRIVE_ABSOLUTE = /^[A-Za-z]:/;
-
-/** The source extensions that mark an argument as a file, not a package name. */
-const MODULE_EXTENSION = /\.(?:[cm]?[jt]sx?|json)$/i;
-
-/**
- * Resolve a `zuke doc` argument to the specifier `deno doc` is given: a bare
- * name (`core`) becomes `jsr:@zuke/core`, a scoped name (`@scope/pkg`) becomes
- * `jsr:@scope/pkg`, a path is joined to `cwd`, and a specifier that already
- * carries a URL scheme or is absolute is returned untouched.
- *
- * This is a copy of `resolveDocSpec` in `@zuke/core`, and deliberately a
- * temporary one. The build's reserved `doc` command and this one answer the
- * same question, and they used to answer it differently: `zuke doc core` found
- * the package, while `./zuke doc core` looked for a file of that name and
- * reported it missing. Core owns the rule now, but this package cannot import
- * it yet — the floor check type-checks against the exact minimum of the
- * declared core range, and the export is not in a published core. The drift
- * test holds the two in step until it is; then this copy goes and core's is
- * imported, the same two-step the wordmark took.
- */
-export function resolveDocSpec(spec: string, cwd: string): string {
-  if (URL_SCHEME.test(spec)) return spec;
-  if (spec.startsWith("/") || spec.startsWith("\\")) return spec;
-  if (DRIVE_ABSOLUTE.test(spec)) return spec;
-  // A joined path is normalised rather than concatenated, so a `.` or `..`
-  // segment is resolved instead of being carried into the specifier.
-  if (spec.startsWith(".")) return absolutePath(cwd, spec).path;
-  // A leading `@` makes the following slash a scope separator, not a
-  // directory, so this check has to come before the slash check below.
-  if (spec.startsWith("@")) return `jsr:${spec}`;
-  if (spec.includes("/") || spec.includes("\\")) {
-    return absolutePath(cwd, spec).path;
-  }
-  if (MODULE_EXTENSION.test(spec)) return absolutePath(cwd, spec).path;
-  return `jsr:@zuke/${spec}`;
-}
 
 /** Run the `doc` subcommand: `deno doc <spec>` in an isolated directory. */
 async function commandDoc(

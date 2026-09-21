@@ -8668,22 +8668,6 @@ function parseImportFlags(args: string[]): ImportFlags
 function parseSetupFlags(args: string[]): SetupFlags
   Parse the argument list following `zuke setup`.
 
-function resolveDocSpec(spec: string, cwd: string): string
-  Resolve a `zuke doc` argument to the specifier `deno doc` is given: a bare
-  name (`core`) becomes `jsr:@zuke/core`, a scoped name (`@scope/pkg`) becomes
-  `jsr:@scope/pkg`, a path is joined to `cwd`, and a specifier that already
-  carries a URL scheme or is absolute is returned untouched.
-
-  This is a copy of `resolveDocSpec` in `@zuke/core`, and deliberately a
-  temporary one. The build's reserved `doc` command and this one answer the
-  same question, and they used to answer it differently: `zuke doc core` found
-  the package, while `./zuke doc core` looked for a file of that name and
-  reported it missing. Core owns the rule now, but this package cannot import
-  it yet — the floor check type-checks against the exact minimum of the
-  declared core range, and the export is not in a published core. The drift
-  test holds the two in step until it is; then this copy goes and core's is
-  imported, the same two-step the wordmark took.
-
 const defaultPrompter: Prompter
   The real {@link Prompter}, backed by Deno's `prompt`/`confirm`.
 
