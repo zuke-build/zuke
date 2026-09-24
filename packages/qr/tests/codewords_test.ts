@@ -29,7 +29,7 @@ Deno.test("choosePlacement boosts the level when the version has room", () => {
   assertEquals(choosePlacement(1, "L", true), { version: 1, level: "H" });
   // 17 bytes at version 1 fit only L: nothing to boost to.
   assertEquals(choosePlacement(17, "L", true), { version: 1, level: "L" });
-  // 15 bytes fit M (16 codewords) but not Q (13): boosted one step.
+  // 14 bytes fit M (16 codewords) but not Q (13): boosted one step.
   assertEquals(choosePlacement(14, "L", true), { version: 1, level: "M" });
 });
 
