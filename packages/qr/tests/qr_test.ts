@@ -60,6 +60,14 @@ Deno.test("QrTasks.encode refuses a hopeless string before encoding it", () => {
   );
   assertEquals(error instanceof QrCapacityError && error.level, "M");
   assertEquals(performance.now() - started < 1000, true, "should fail fast");
+  // The early refusal reports UTF-8 bytes, not string length: two, three and
+  // four-byte characters are counted as such.
+  const multibyte = assertThrows(
+    () => QrTasks.encode("€".repeat(3000) + "🎉" + "\u00e9"),
+    QrCapacityError,
+    "9006 bytes",
+  );
+  assertEquals(multibyte instanceof QrCapacityError && multibyte.bytes, 9006);
   // A string within the length bound but over capacity once encoded still
   // reports the true byte count.
   const wide = assertThrows(

@@ -26,6 +26,22 @@ export interface QrPrintOptions {
   write?: (line: string) => void;
 }
 
+/** The UTF-8 length of `text`, without materialising the encoding. */
+function utf8Length(text: string): number {
+  let length = 0;
+  for (let i = 0; i < text.length; i++) {
+    const unit = text.charCodeAt(i);
+    if (unit < 0x80) length += 1;
+    else if (unit < 0x800) length += 2;
+    else if (unit >= 0xD800 && unit <= 0xDBFF) {
+      // A high surrogate opens a four-byte character; skip its low half.
+      length += 4;
+      i++;
+    } else length += 3;
+  }
+  return length;
+}
+
 /** Encode `text` with already-resolved `settings`. */
 function encodeWith(text: string, settings: QrSettings): QrCode {
   // An optional parameter left unset is `undefined` at runtime, and
@@ -39,8 +55,10 @@ function encodeWith(text: string, settings: QrSettings): QrCode {
   }
   // Refuse a hopeless string before encoding it: a UTF-8 encoding is never
   // shorter than the string, so a very long one would only allocate to fail.
-  if (text.length > maxBytes(settings.errorCorrection_)) {
-    throw new QrCapacityError(text.length, settings.errorCorrection_);
+  // The error still reports the true byte count, counted without allocating.
+  const capacity = maxBytes(settings.errorCorrection_);
+  if (text.length > capacity) {
+    throw new QrCapacityError(utf8Length(text), settings.errorCorrection_);
   }
   const bytes = new TextEncoder().encode(text);
   const placement = choosePlacement(
