@@ -21089,10 +21089,6 @@ class QrCapacityError extends Error
 
   constructor(readonly bytes: number, readonly level: ErrorCorrectionLevel)
     Build the error for a text of `bytes` UTF-8 bytes refused at `level`.
-
-    @param bytes
-        The UTF-8 length of the text that was refused.
-
   override name: string
     The error's class name, for `instanceof`-free identification.
 

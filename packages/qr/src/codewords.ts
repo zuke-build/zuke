@@ -29,12 +29,9 @@ export class QrCapacityError extends Error {
   /** The error's class name, for `instanceof`-free identification. */
   override name = "QrCapacityError";
 
-  /**
-   * Build the error for a text of `bytes` UTF-8 bytes refused at `level`.
-   *
-   * @param bytes The UTF-8 length of the text that was refused.
-   */
+  /** Build the error for a text of `bytes` UTF-8 bytes refused at `level`. */
   constructor(
+    /** The UTF-8 length of the text that was refused. */
     readonly bytes: number,
     /** The error-correction level the text was refused at. */
     readonly level: ErrorCorrectionLevel,
