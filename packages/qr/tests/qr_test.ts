@@ -35,9 +35,37 @@ Deno.test("QrTasks.encode honours the settings lambda", () => {
   assertEquals(code.errorCorrection, "L");
 });
 
-Deno.test("QrTasks.encode encodes text as UTF-8 bytes", () => {
-  // 4 bytes of UTF-8 for one emoji → the same placement as four ASCII bytes.
-  assertEquals(QrTasks.encode("🎉").version, QrTasks.encode("abcd").version);
+Deno.test("QrTasks.encode encodes text as UTF-8 bytes, not code units", () => {
+  // Five emoji are 10 UTF-16 code units but 20 UTF-8 bytes: too many for
+  // version 1 at level L (17 bytes), so the version tells the two apart.
+  const emoji = QrTasks.encode(
+    "🎉".repeat(5),
+    (s) => s.errorCorrection("L").boostErrorCorrection(false),
+  );
+  const ascii = QrTasks.encode(
+    "abcd".repeat(5),
+    (s) => s.errorCorrection("L").boostErrorCorrection(false),
+  );
+  assertEquals(emoji.version, 2);
+  assertEquals(emoji.version, ascii.version);
+  assertEquals(
+    QrTasks.encode("🎉".repeat(4), (s) => s.errorCorrection("L")).version,
+    1,
+  );
+});
+
+Deno.test("QrTasks.encode fills version 40 exactly and refuses one byte more", () => {
+  const exact = QrTasks.encode(
+    "x".repeat(2953),
+    (s) => s.errorCorrection("L").boostErrorCorrection(false),
+  );
+  assertEquals(exact.version, 40);
+  assertEquals(exact.errorCorrection, "L");
+  assertThrows(
+    () => QrTasks.encode("x".repeat(2954), (s) => s.errorCorrection("L")),
+    QrCapacityError,
+    "2954 bytes",
+  );
 });
 
 Deno.test("QrTasks.encode surfaces the capacity error with the level it tried", () => {

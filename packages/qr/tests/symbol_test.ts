@@ -13,13 +13,30 @@ import {
 } from "../src/codewords.ts";
 import { buildSymbol, type QrCode } from "../src/symbol.ts";
 import { type ErrorCorrectionLevel, sizeOf } from "../src/tables.ts";
-import { toRows, ZUKE_BUILD_M, ZUKE_L } from "./_golden.ts";
+import {
+  DARK_RATIO_DECIDES,
+  ONE_PER_MASK,
+  toRows,
+  ZUKE_BUILD_M,
+  ZUKE_L,
+} from "./_golden.ts";
 import { assertEquals } from "../../core/tests/_assert.ts";
 
 /** Encode `text` at `level` with boosting, the way `QrTasks.encode` does. */
 function encode(text: string, level: ErrorCorrectionLevel): QrCode {
   const bytes = new TextEncoder().encode(text);
   const placement = choosePlacement(bytes.length, level, true);
+  return buildSymbol(
+    placement.version,
+    placement.level,
+    interleave(dataCodewords(bytes, placement), placement),
+  );
+}
+
+/** Encode `text` at exactly `level`, no boosting. */
+function encodeAt(text: string, level: ErrorCorrectionLevel): QrCode {
+  const bytes = new TextEncoder().encode(text);
+  const placement = choosePlacement(bytes.length, level, false);
   return buildSymbol(
     placement.version,
     placement.level,
@@ -80,6 +97,23 @@ Deno.test("the timing patterns alternate along row and column 6", () => {
     assertEquals(code.modules[6][i], i % 2 === 0);
     assertEquals(code.modules[i][6], i % 2 === 0);
   }
+});
+
+Deno.test("every mask pattern reproduces its golden symbol", () => {
+  // Boosting off so the level stays L and the penalty score alone picks the
+  // mask; the golden pins both the formula and the choice.
+  for (const golden of ONE_PER_MASK) {
+    const code = encodeAt(golden.text, "L");
+    assertEquals(code.mask, golden.mask, golden.text);
+    assertEquals(toRows(code.modules), golden.rows, golden.text);
+  }
+  assertEquals(ONE_PER_MASK.map((g) => g.mask), [0, 1, 2, 3, 4, 5, 6, 7]);
+});
+
+Deno.test("the dark-ratio penalty decides the mask when the others tie closely", () => {
+  const code = encodeAt("n394", "L");
+  assertEquals(code.mask, 2);
+  assertEquals(toRows(code.modules), DARK_RATIO_DECIDES);
 });
 
 Deno.test("mask selection covers every pattern across a range of inputs", () => {

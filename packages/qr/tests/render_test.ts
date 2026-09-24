@@ -39,12 +39,27 @@ Deno.test("compact rendering with a border pads the last line with light modules
   assertEquals(lines, [" ▄  ", "  ▀ "]);
 });
 
-Deno.test("inverting swaps dark and light, including the border and the missing row", () => {
+Deno.test("inverting swaps dark and light, including the missing row", () => {
   const lines = renderLines(
     diagonal(3),
     new QrSettings().quietZone(0).invert(),
   );
   assertEquals(lines, ["▄▀█", "██▄"]);
+});
+
+Deno.test("inverting draws the quiet zone as blocks in both modes", () => {
+  // Rows: (border, row 0), (row 1, border) with a light diagonal inside.
+  assertEquals(
+    renderLines(diagonal(2), new QrSettings().quietZone(1).invert()),
+    ["█▀██", "██▄█"],
+  );
+  assertEquals(
+    renderLines(
+      diagonal(2),
+      new QrSettings().quietZone(1).invert().compact(false),
+    ),
+    ["████████", "██  ████", "████  ██", "████████"],
+  );
 });
 
 Deno.test("full-block rendering draws one row per line with two-character cells", () => {
