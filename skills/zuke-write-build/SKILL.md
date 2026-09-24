@@ -325,3 +325,9 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   OTLP/HTTP JSON. Needs a state store; the trace id is derived from the run id,
   so a suspend/resume across processes is one trace. Config falls back to the
   standard `OTEL_*` env vars, and it is inert with no endpoint. Dependency-free.
+- **QR codes (`@zuke/qr`):**
+  `QrTasks.print(text, (s) => s.errorCorrection("Q"))` renders any data as a
+  scannable code in the terminal — a URL, a Wi-Fi or login string, a token, JSON
+  — with no `qrencode` or npm package. `QrTasks.render` returns the lines for a
+  log or a file, `QrTasks.encode` the raw module matrix for an SVG, PNG or
+  slide. Dependency-free.

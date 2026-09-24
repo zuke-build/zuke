@@ -1,0 +1,17 @@
+{
+  "name": "@zuke/qr",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "QR codes for Zuke builds — a dependency-free encoder for any text or data (URLs, Wi-Fi and login strings, tokens, JSON), all four error-correction levels and versions 1–40, with a terminal renderer and the raw module matrix for any other output.",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "imports": {
+    "@zuke/core": "jsr:@zuke/core@^1.60.0"
+  },
+  "publish": {
+    "exclude": [
+      "tests/"
+    ]
+  }
+}

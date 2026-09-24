@@ -332,6 +332,11 @@ export const CORE_PACKAGES: CorePackage[] = [
     desc:
       "OpenTelemetry export plugin — run & target spans over OTLP, joined across resume",
   },
+  {
+    name: "@zuke/qr",
+    desc:
+      "QR codes for any data — a dependency-free encoder, terminal renderer & raw matrix",
+  },
 ];
 
 /** Every `@zuke/*` package the catalogue mentions, deduped. */

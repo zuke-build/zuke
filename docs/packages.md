@@ -25,6 +25,7 @@ latest release on JSR. All of them are `1.x` and follow full semver; see
 | [`@zuke/ai`](https://jsr.io/@zuke/ai)             | [![JSR](https://jsr.io/badges/@zuke/ai)](https://jsr.io/@zuke/ai) [![JSR score](https://jsr.io/badges/@zuke/ai/score)](https://jsr.io/@zuke/ai)                         |
 | [`@zuke/console`](https://jsr.io/@zuke/console)   | [![JSR](https://jsr.io/badges/@zuke/console)](https://jsr.io/@zuke/console) [![JSR score](https://jsr.io/badges/@zuke/console/score)](https://jsr.io/@zuke/console)     |
 | [`@zuke/otel`](https://jsr.io/@zuke/otel)         | [![JSR](https://jsr.io/badges/@zuke/otel)](https://jsr.io/@zuke/otel) [![JSR score](https://jsr.io/badges/@zuke/otel/score)](https://jsr.io/@zuke/otel)                 |
+| [`@zuke/qr`](https://jsr.io/@zuke/qr)             | [![JSR](https://jsr.io/badges/@zuke/qr)](https://jsr.io/@zuke/qr) [![JSR score](https://jsr.io/badges/@zuke/qr/score)](https://jsr.io/@zuke/qr)                         |
 
 ## Tool wrappers
 
