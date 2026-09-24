@@ -10,7 +10,13 @@
  * @module
  */
 
-import type { ErrorCorrectionLevel } from "./tables.ts";
+import {
+  ERROR_CORRECTION_LEVELS,
+  type ErrorCorrectionLevel,
+} from "./tables.ts";
+
+/** The widest quiet zone accepted; the specification asks for 4. */
+export const MAX_QUIET_ZONE = 16;
 
 /**
  * Configuration for encoding and rendering a QR code, set through a lambda
@@ -30,6 +36,15 @@ export class QrSettings {
 
   /** Set the error-correction level: `"L"` (~7%), `"M"` (~15%), `"Q"` (~25%) or `"H"` (~30%). */
   errorCorrection(level: ErrorCorrectionLevel): this {
+    // A build often takes the level from a string parameter, and `deno run`
+    // does not type-check, so refuse anything but the four levels here.
+    if (!ERROR_CORRECTION_LEVELS.includes(level)) {
+      throw new RangeError(
+        `errorCorrection must be one of L, M, Q or H, got ${
+          JSON.stringify(level)
+        }`,
+      );
+    }
     this.errorCorrection_ = level;
     return this;
   }
@@ -43,11 +58,11 @@ export class QrSettings {
     return this;
   }
 
-  /** Set the width of the light border around the symbol, in modules. */
+  /** Set the width of the light border around the symbol, in modules (0 to {@link MAX_QUIET_ZONE}). */
   quietZone(modules: number): this {
-    if (!Number.isInteger(modules) || modules < 0) {
+    if (!Number.isInteger(modules) || modules < 0 || modules > MAX_QUIET_ZONE) {
       throw new RangeError(
-        `quietZone must be a non-negative integer, got ${modules}`,
+        `quietZone must be an integer from 0 to ${MAX_QUIET_ZONE}, got ${modules}`,
       );
     }
     this.quietZone_ = modules;

@@ -96,6 +96,9 @@ level when it is free, and selects the mask by the specification's penalty
 score. `QrTasks.encode` returns the `QrCode` matrix for other renderers.
 @module
 
+const MAX_QUIET_ZONE: 16
+  The widest quiet zone accepted; the specification asks for 4.
+
 const QrTasks: QrTasksApi
   Task-shaped QR code operations. Each method takes the text to encode (a URL,
   usually) and an optional settings lambda:
@@ -109,7 +112,7 @@ const QrTasks: QrTasksApi
 class QrCapacityError extends Error
   Thrown when the text does not fit the largest symbol at the requested level.
 
-  constructor(readonly bytes: number, level: ErrorCorrectionLevel)
+  constructor(readonly bytes: number, readonly level: ErrorCorrectionLevel)
     Build the error for a text of `bytes` UTF-8 bytes refused at `level`.
 
     @param bytes
@@ -138,7 +141,7 @@ class QrSettings
     Whether to raise the error-correction level when a higher one fits the
     same version. On by default; turn it off to get exactly the level asked for.
   quietZone(modules: number): this
-    Set the width of the light border around the symbol, in modules.
+    Set the width of the light border around the symbol, in modules (0 to {@link MAX_QUIET_ZONE}).
   invert(enabled: boolean): this
     Swap the colours: light modules become blocks and dark ones spaces. Use it
     on a terminal whose text is light on dark, where the default rendering

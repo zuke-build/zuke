@@ -34,7 +34,11 @@ export class QrCapacityError extends Error {
    *
    * @param bytes The UTF-8 length of the text that was refused.
    */
-  constructor(readonly bytes: number, level: ErrorCorrectionLevel) {
+  constructor(
+    readonly bytes: number,
+    /** The error-correction level the text was refused at. */
+    readonly level: ErrorCorrectionLevel,
+  ) {
     super(
       `${bytes} bytes of text do not fit a QR code at error-correction ` +
         `level ${level} (version ${MAX_VERSION} is the largest symbol); ` +

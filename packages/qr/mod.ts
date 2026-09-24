@@ -32,6 +32,6 @@
 
 export { QrCapacityError } from "./src/codewords.ts";
 export { type QrPrintOptions, QrTasks, type QrTasksApi } from "./src/qr.ts";
-export { QrSettings } from "./src/settings.ts";
+export { MAX_QUIET_ZONE, QrSettings } from "./src/settings.ts";
 export { type QrCode } from "./src/symbol.ts";
 export { type ErrorCorrectionLevel } from "./src/tables.ts";

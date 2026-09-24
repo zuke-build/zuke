@@ -22,6 +22,15 @@ export interface QrPrintOptions {
 
 /** Encode `text` with already-resolved `settings`. */
 function encodeWith(text: string, settings: QrSettings): QrCode {
+  // An optional parameter left unset is `undefined` at runtime, and
+  // `TextEncoder` would quietly encode it as nothing: refuse it instead.
+  if (typeof text !== "string") {
+    throw new TypeError(
+      `QrTasks needs a string to encode, got ${
+        text === undefined ? "undefined" : typeof text
+      }`,
+    );
+  }
   const bytes = new TextEncoder().encode(text);
   const placement = choosePlacement(
     bytes.length,

@@ -37,11 +37,9 @@ export function renderLines(code: QrCode, settings: QrSettings): string[] {
       let line = "";
       for (let x = from; x < to; x++) {
         const top = isBlock(code, x, y, settings) ? 2 : 0;
-        // Past the last row the pair's bottom half is off the symbol: light,
-        // and so a block only when inverted.
-        const bottom = y + 1 < to
-          ? (isBlock(code, x, y + 1, settings) ? 1 : 0)
-          : (settings.invert_ ? 1 : 0);
+        // Past the last row the pair's bottom half is outside the symbol,
+        // which `isBlock` already treats as light (a block only when inverted).
+        const bottom = isBlock(code, x, y + 1, settings) ? 1 : 0;
         line += HALF_BLOCKS[top + bottom];
       }
       lines.push(line);

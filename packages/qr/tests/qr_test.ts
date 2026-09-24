@@ -40,12 +40,20 @@ Deno.test("QrTasks.encode encodes text as UTF-8 bytes", () => {
   assertEquals(QrTasks.encode("🎉").version, QrTasks.encode("abcd").version);
 });
 
-Deno.test("QrTasks.encode surfaces the capacity error", () => {
-  assertThrows(
+Deno.test("QrTasks.encode surfaces the capacity error with the level it tried", () => {
+  const error = assertThrows(
     () => QrTasks.encode("x".repeat(3000)),
     QrCapacityError,
     "do not fit",
   );
+  assertEquals(error instanceof QrCapacityError && error.level, "M");
+});
+
+Deno.test("QrTasks refuses a non-string, such as an unset optional parameter", () => {
+  // @ts-expect-error: deliberately exercising the runtime guard with a value the type forbids.
+  assertThrows(() => QrTasks.encode(undefined), TypeError, "got undefined");
+  // @ts-expect-error: deliberately exercising the runtime guard with a value the type forbids.
+  assertThrows(() => QrTasks.render(42), TypeError, "got number");
 });
 
 Deno.test("QrTasks.renderLines and render agree, with the border applied", () => {
