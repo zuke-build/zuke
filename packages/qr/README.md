@@ -1,25 +1,27 @@
 # @zuke/qr
 
-Render a QR code in the terminal from a
-[Zuke](https://github.com/zuke-build/zuke#readme) build — no runtime dependency,
-no ambient `qrencode`. A build that wants to hand a URL to the people in the
-room prints it as a scannable code:
+QR codes for [Zuke](https://github.com/zuke-build/zuke#readme) builds — a
+dependency-free encoder and a terminal renderer, no `qrencode` or npm package
+needed. Encode whatever a scanner should pick up: a URL, a Wi-Fi or login
+string, a one-time token, a JSON payload, a device-pairing secret. Print it in
+the terminal, keep it as text for a log or a box, or take the raw module matrix
+and draw it any way you like.
 
 ```ts
 import { Build, parameter, run, target } from "@zuke/core";
 import { QrTasks } from "@zuke/qr";
 
-class Demo extends Build {
-  url = parameter("the page to point the room at").required();
+class Release extends Build {
+  url = parameter("the page to encode").required();
 
   qr = target()
-    .description("show the page as a QR code")
+    .description("show the URL as a QR code")
     .executes(() => {
       QrTasks.print(this.url.value, (s) => s.errorCorrection("Q"));
     });
 }
 
-await run(Demo);
+await run(Release);
 ```
 
 ```
@@ -31,9 +33,15 @@ await run(Demo);
 - `QrTasks.print(text, settings?, { write? })` — encode and write each line
   (default `console.log`).
 - `QrTasks.render(text, settings?)` / `QrTasks.renderLines(text, settings?)` —
-  the same as a string / an array of lines, for a log or a box.
+  the same as a string / an array of lines, for a log, a box or a file.
 - `QrTasks.encode(text, settings?)` — the raw `QrCode` (version, level, mask,
-  and the `modules[y][x]` matrix) for any other renderer.
+  and the `modules[y][x]` matrix) for any other renderer: an SVG, a PNG, a
+  slide, a printed label.
+
+Any string works as input; it is encoded as UTF-8 bytes. Formats scanners
+understand are just conventions on the text — `WIFI:T:WPA;S:<ssid>;P:<key>;;`
+joins a network, `otpauth://totp/...` enrols an authenticator, `mailto:`, `tel:`
+and `geo:` open the matching app, and a URL opens the browser.
 
 ## Settings
 
@@ -48,7 +56,7 @@ await run(Demo);
 The encoder covers byte mode (any UTF-8 text), versions 1–40 and all four
 error-correction levels, picks the smallest version that fits, and selects the
 mask by the specification's penalty score. Text beyond version 40's capacity
-throws `QrCapacityError`.
+(2953 bytes at level L) throws `QrCapacityError`.
 
 **Scanning tip.** Most phone cameras read the default rendering on both light
 and dark terminal themes. If a dark theme fails, pass `.invert()` — and keep the
@@ -62,28 +70,30 @@ terminal font's line height at 1 so the half blocks stay contiguous.
 <summary>Full typed API — generated from <code>deno doc</code></summary>
 
 ````text
-`@zuke/qr` — render a QR code in the terminal from a Zuke build, with no
-runtime dependency and no ambient `qrencode`. A build that wants to hand a
-URL to the people in the room prints it as a scannable code:
+`@zuke/qr` — QR codes for Zuke builds, with no runtime dependency and no
+external tool. Encode any text or data a scanner should pick up — a URL, a
+Wi-Fi or login string, a one-time token, a JSON payload — and print it in
+the terminal, keep it as text, or take the raw module matrix and draw it
+yourself (an SVG, a PNG, a slide):
 
 ```ts
 import { Build, parameter, run, target } from "@zuke/core";
 import { QrTasks } from "@zuke/qr";
 
-class Demo extends Build {
-  url = parameter("the page to point the room at").required();
+class Release extends Build {
+  url = parameter("the page to encode").required();
   qr = target().executes(() => {
     QrTasks.print(this.url.value, (s) => s.errorCorrection("Q"));
   });
 }
 
-await run(Demo);
+await run(Release);
 ```
 
 The encoder covers byte mode (any UTF-8 text), versions 1–40 and all four
 error-correction levels, picks the smallest version that fits, boosts the
 level when it is free, and selects the mask by the specification's penalty
-score. `QrTasks.encode` returns the raw module matrix for other renderers.
+score. `QrTasks.encode` returns the `QrCode` matrix for other renderers.
 @module
 
 const QrTasks: QrTasksApi

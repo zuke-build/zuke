@@ -335,7 +335,7 @@ export const CORE_PACKAGES: CorePackage[] = [
   {
     name: "@zuke/qr",
     desc:
-      "render a QR code in the terminal — hand a URL to the room from a build",
+      "QR codes for any data — a dependency-free encoder, terminal renderer & raw matrix",
   },
 ];
 

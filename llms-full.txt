@@ -21044,28 +21044,30 @@ class OtelSettings
 # @zuke/qr
 ========================================================================
 
-`@zuke/qr` — render a QR code in the terminal from a Zuke build, with no
-runtime dependency and no ambient `qrencode`. A build that wants to hand a
-URL to the people in the room prints it as a scannable code:
+`@zuke/qr` — QR codes for Zuke builds, with no runtime dependency and no
+external tool. Encode any text or data a scanner should pick up — a URL, a
+Wi-Fi or login string, a one-time token, a JSON payload — and print it in
+the terminal, keep it as text, or take the raw module matrix and draw it
+yourself (an SVG, a PNG, a slide):
 
 ```ts
 import { Build, parameter, run, target } from "@zuke/core";
 import { QrTasks } from "@zuke/qr";
 
-class Demo extends Build {
-  url = parameter("the page to point the room at").required();
+class Release extends Build {
+  url = parameter("the page to encode").required();
   qr = target().executes(() => {
     QrTasks.print(this.url.value, (s) => s.errorCorrection("Q"));
   });
 }
 
-await run(Demo);
+await run(Release);
 ```
 
 The encoder covers byte mode (any UTF-8 text), versions 1–40 and all four
 error-correction levels, picks the smallest version that fits, boosts the
 level when it is free, and selects the mask by the specification's penalty
-score. `QrTasks.encode` returns the raw module matrix for other renderers.
+score. `QrTasks.encode` returns the `QrCode` matrix for other renderers.
 @module
 
 const QrTasks: QrTasksApi

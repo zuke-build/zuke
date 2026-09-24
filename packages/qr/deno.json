@@ -2,7 +2,7 @@
   "name": "@zuke/qr",
   "version": "1.0.0",
   "license": "MIT",
-  "description": "Render a QR code in the terminal from a Zuke build — a dependency-free encoder (byte mode, versions 1–40, all four error-correction levels) and a half-block renderer, so a build can hand a URL to the room without an ambient qrencode.",
+  "description": "QR codes for Zuke builds — a dependency-free encoder for any text or data (URLs, Wi-Fi and login strings, tokens, JSON), all four error-correction levels and versions 1–40, with a terminal renderer and the raw module matrix for any other output.",
   "exports": {
     ".": "./mod.ts"
   },
