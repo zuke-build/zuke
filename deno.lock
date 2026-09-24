@@ -1756,6 +1756,11 @@
           "jsr:@zuke/core@^1.44.0"
         ]
       },
+      "packages/qr": {
+        "dependencies": [
+          "jsr:@zuke/core@^1.60.0"
+        ]
+      },
       "packages/redocly": {
         "dependencies": [
           "jsr:@zuke/core@^1.25.0"

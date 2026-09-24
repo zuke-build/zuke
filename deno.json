@@ -57,7 +57,8 @@
     "packages/release-please",
     "packages/security",
     "packages/ai",
-    "packages/otel"
+    "packages/otel",
+    "packages/qr"
   ],
   "imports": {
     "@std/yaml": "jsr:@std/yaml@^1.2.0"

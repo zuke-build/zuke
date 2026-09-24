@@ -68,6 +68,7 @@ export const PACKAGES = [
   "security",
   "ai",
   "otel",
+  "qr",
 ];
 
 /** A package's export entrypoints (resolved from its `deno.json` `exports`). */

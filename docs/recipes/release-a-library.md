@@ -125,7 +125,7 @@ RELEASE_VERSION=1.1.0 ./zuke             # the parameter from the environment
 - **Fully automated:** `@zuke/release-please` wraps release-please, which opens
   a release pull request from your conventional commits, keeps the changelog,
   and cuts the GitHub release when the PR merges — the routine Zuke uses for its
-  own 58 packages (see [`RELEASING.md`](../../RELEASING.md)).
+  own 59 packages (see [`RELEASING.md`](../../RELEASING.md)).
 - **Secrets:** a token for `gh` or `npm` is a `parameter("…").secret()`, which
   Zuke masks in every log — see [Secrets](../secrets.md).
 
