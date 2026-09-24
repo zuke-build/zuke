@@ -57,5 +57,5 @@
   "packages/security": "1.0.1",
   "packages/ai": "2.10.0",
   "packages/otel": "1.0.2",
-  "packages/qr": "1.0.0"
+  "packages/qr": "1.1.0"
 }
