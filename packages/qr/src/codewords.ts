@@ -68,6 +68,18 @@ function segmentBits(bytes: number, version: number): number {
   return 4 + charCountBits(version) + bytes * 8;
 }
 
+/**
+ * The most bytes a symbol can hold at `level`: version 40's data capacity
+ * less the mode and 16-bit count fields. Every UTF-8 encoding is at least as
+ * long as its string, so a string longer than this cannot fit either.
+ */
+export function maxBytes(level: ErrorCorrectionLevel): number {
+  return Math.floor(
+    (numDataCodewords(MAX_VERSION, level) * 8 - segmentBits(0, MAX_VERSION)) /
+      8,
+  );
+}
+
 /** The version and level a text is encoded at. */
 export interface Placement {
   /** The chosen symbol version (1–40). */

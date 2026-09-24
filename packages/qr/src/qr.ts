@@ -9,7 +9,13 @@
  */
 
 import type { Configure } from "@zuke/core/tooling";
-import { choosePlacement, dataCodewords, interleave } from "./codewords.ts";
+import {
+  choosePlacement,
+  dataCodewords,
+  interleave,
+  maxBytes,
+  QrCapacityError,
+} from "./codewords.ts";
 import { renderLines } from "./render.ts";
 import { QrSettings } from "./settings.ts";
 import { buildSymbol, type QrCode } from "./symbol.ts";
@@ -30,6 +36,11 @@ function encodeWith(text: string, settings: QrSettings): QrCode {
         text === undefined ? "undefined" : typeof text
       }`,
     );
+  }
+  // Refuse a hopeless string before encoding it: a UTF-8 encoding is never
+  // shorter than the string, so a very long one would only allocate to fail.
+  if (text.length > maxBytes(settings.errorCorrection_)) {
+    throw new QrCapacityError(text.length, settings.errorCorrection_);
   }
   const bytes = new TextEncoder().encode(text);
   const placement = choosePlacement(

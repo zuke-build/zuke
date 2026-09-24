@@ -49,6 +49,27 @@ Deno.test("QrTasks.encode surfaces the capacity error with the level it tried", 
   assertEquals(error instanceof QrCapacityError && error.level, "M");
 });
 
+Deno.test("QrTasks.encode refuses a hopeless string before encoding it", () => {
+  // 10 MB of ASCII is refused by the string-length check, so the call is
+  // quick and never allocates the UTF-8 copy.
+  const started = performance.now();
+  const error = assertThrows(
+    () => QrTasks.encode("x".repeat(10_000_000)),
+    QrCapacityError,
+    "10000000 bytes",
+  );
+  assertEquals(error instanceof QrCapacityError && error.level, "M");
+  assertEquals(performance.now() - started < 1000, true, "should fail fast");
+  // A string within the length bound but over capacity once encoded still
+  // reports the true byte count.
+  const wide = assertThrows(
+    () => QrTasks.encode("€".repeat(1000), (s) => s.errorCorrection("L")),
+    QrCapacityError,
+    "3000 bytes",
+  );
+  assertEquals(wide instanceof QrCapacityError && wide.bytes, 3000);
+});
+
 Deno.test("QrTasks refuses a non-string, such as an unset optional parameter", () => {
   // @ts-expect-error: deliberately exercising the runtime guard with a value the type forbids.
   assertThrows(() => QrTasks.encode(undefined), TypeError, "got undefined");

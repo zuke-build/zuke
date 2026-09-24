@@ -70,11 +70,12 @@ terminal font's line height at 1 so the half blocks stay contiguous.
 <summary>Full typed API — generated from <code>deno doc</code></summary>
 
 ````text
-`@zuke/qr` — QR codes for Zuke builds, with no runtime dependency and no
-external tool. Encode any text or data a scanner should pick up — a URL, a
-Wi-Fi or login string, a one-time token, a JSON payload — and print it in
-the terminal, keep it as text, or take the raw module matrix and draw it
-yourself (an SVG, a PNG, a slide):
+`@zuke/qr` — QR codes for any data, from a Zuke build, with no dependency.
+
+Encode any text a scanner should pick up — a URL, a Wi-Fi or login string, a
+one-time token, a JSON payload — and print it in the terminal, keep it as
+text, or take the raw module matrix and draw it yourself (an SVG, a PNG, a
+slide):
 
 ```ts
 import { Build, parameter, run, target } from "@zuke/core";

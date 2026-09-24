@@ -7,6 +7,7 @@ import {
   choosePlacement,
   dataCodewords,
   interleave,
+  maxBytes,
   QrCapacityError,
 } from "../src/codewords.ts";
 import { numDataCodewords } from "../src/tables.ts";
@@ -41,6 +42,18 @@ Deno.test("choosePlacement refuses text beyond version 40", () => {
   );
   assertEquals(error.name, "QrCapacityError");
   assertEquals(error instanceof QrCapacityError && error.bytes, 2954);
+});
+
+Deno.test("maxBytes is the byte capacity of version 40 at each level", () => {
+  assertEquals(maxBytes("L"), 2953);
+  assertEquals(maxBytes("M"), 2331);
+  assertEquals(maxBytes("Q"), 1663);
+  assertEquals(maxBytes("H"), 1273);
+  assertEquals(choosePlacement(maxBytes("H"), "H", false).version, 40);
+  assertThrows(
+    () => choosePlacement(maxBytes("H") + 1, "H", false),
+    QrCapacityError,
+  );
 });
 
 Deno.test("dataCodewords writes mode, count, data, terminator and pad bytes", () => {
