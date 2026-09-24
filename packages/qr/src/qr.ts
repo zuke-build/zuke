@@ -20,6 +20,18 @@ export interface QrPrintOptions {
   write?: (line: string) => void;
 }
 
+/** Encode `text` with already-resolved `settings`. */
+function encodeWith(text: string, settings: QrSettings): QrCode {
+  const bytes = new TextEncoder().encode(text);
+  const placement = choosePlacement(
+    bytes.length,
+    settings.errorCorrection_,
+    settings.boostErrorCorrection_,
+  );
+  const codewords = interleave(dataCodewords(bytes, placement), placement);
+  return buildSymbol(placement.version, placement.level, codewords);
+}
+
 /** Resolve a settings lambda into a configured {@link QrSettings}. */
 function settingsOf(configure: Configure<QrSettings> | undefined): QrSettings {
   return (configure ?? ((s) => s))(new QrSettings());
@@ -54,20 +66,13 @@ export interface QrTasksApi {
 export const QrTasks: QrTasksApi = {
   /** Encode `text` (as UTF-8, byte mode) into a {@link QrCode} matrix. */
   encode(text, configure) {
-    const settings = settingsOf(configure);
-    const bytes = new TextEncoder().encode(text);
-    const placement = choosePlacement(
-      bytes.length,
-      settings.errorCorrection_,
-      settings.boostErrorCorrection_,
-    );
-    const codewords = interleave(dataCodewords(bytes, placement), placement);
-    return buildSymbol(placement.version, placement.level, codewords);
+    return encodeWith(text, settingsOf(configure));
   },
 
   /** Encode `text` and render it as terminal lines (see {@link QrSettings.compact}). */
   renderLines(text, configure) {
-    return renderLines(QrTasks.encode(text, configure), settingsOf(configure));
+    const settings = settingsOf(configure);
+    return renderLines(encodeWith(text, settings), settings);
   },
 
   /** Encode `text` and render it as one newline-joined string. */
