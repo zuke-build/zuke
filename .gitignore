@@ -35,3 +35,5 @@ plans/
 
 # Redacted gitleaks findings from `./zuke security` (uploaded as a CI artifact)
 /gitleaks-report.json
+
+brag-output/
