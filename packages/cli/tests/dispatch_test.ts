@@ -8,14 +8,18 @@ import {
   buildRunArgs,
   defaultBuildProbe,
   defaultBuildRunner,
+  FORWARDED_ENV,
+  LAUNCHER_FILE,
   locateBuild,
   LOCK_FILE,
   NO_LOCK_NOTICE,
   type Ownership,
+  runBuild,
   runningNotice,
   UntrustedBuildError,
 } from "../src/dispatch.ts";
 import { withTemp } from "../../core/tests/_temp.ts";
+import { withEnv } from "../../core/tests/_env.ts";
 
 /** What a fake filesystem knows: which paths exist, and who owns what. */
 interface Fixture {
@@ -25,6 +29,8 @@ interface Fixture {
   owned?: Record<string, Ownership>;
   /** What `uid()` reports (`null`: a platform without user ids). */
   uid?: number | null;
+  /** Where `realPath` resolves a link; an unlisted path is its own. */
+  links?: Record<string, string>;
 }
 
 /** A directory or file owned by `uid` with ordinary permissions. */
@@ -44,6 +50,7 @@ function probe(fixture: Fixture): BuildProbe & { asked: string[] } {
       asked.push(path);
       return Promise.resolve(owned[path] ?? null);
     },
+    realPath: (path) => Promise.resolve(fixture.links?.[path] ?? path),
     uid: () => fixture.uid ?? null,
   };
 }
@@ -67,7 +74,7 @@ Deno.test("locateBuild finds zuke.json in the cwd itself", async () => {
     "/repo",
     probe({ present: ["/repo/zuke.json"] }),
   );
-  assertEquals(found, { root: "/repo", frozen: false });
+  assertEquals(found, { root: "/repo", frozen: false, launcher: null });
 });
 
 Deno.test("locateBuild walks up to the nearest ancestor holding zuke.json", async () => {
@@ -85,7 +92,7 @@ Deno.test("locateBuild reports a lockfile beside the config as frozen", async ()
     "/repo/src",
     probe({ present: ["/repo/zuke.json", "/repo/deno.lock"] }),
   );
-  assertEquals(found, { root: "/repo", frozen: true });
+  assertEquals(found, { root: "/repo", frozen: true, launcher: null });
   // A lockfile elsewhere on the walk does not count: only the root's does.
   const elsewhere = await locateBuild(
     "/repo/src",
@@ -104,6 +111,7 @@ Deno.test("locateBuild returns null when no ancestor has zuke.json", async () =>
       return Promise.resolve(false);
     },
     ownership: () => Promise.resolve(null),
+    realPath: (path) => Promise.resolve(path),
     uid: () => null,
   });
   assertEquals(found, null);
@@ -128,7 +136,7 @@ Deno.test("the trust gate accepts a root the current user owns", async () => {
       uid: 1000,
     }),
   );
-  assertEquals(found, { root: "/home/me/app", frozen: false });
+  assertEquals(found, { root: "/home/me/app", frozen: false, launcher: null });
 });
 
 Deno.test("the trust gate refuses a root owned by another user", async () => {
@@ -210,11 +218,12 @@ Deno.test("the trust gate accepts ancestor config files the user owns, and asks 
   assertEquals(found?.root, "/home/me/mono/app");
   // The root is judged first, then the files in it that decide what runs,
   // then the config files of every ancestor up to the filesystem root —
-  // never the subdirectories walked through.
+  // never the subdirectories walked through — and last the launcher's mode.
   assertEquals(fake.asked, [
     "/home/me/mono/app",
     "/home/me/mono/app/zuke.json",
     "/home/me/mono/app/zuke.ts",
+    "/home/me/mono/app/zuke",
     "/home/me/mono/app/deno.lock",
     "/home/me/mono/app/deno.json",
     "/home/me/mono/app/deno.jsonc",
@@ -231,13 +240,16 @@ Deno.test("the trust gate accepts ancestor config files the user owns, and asks 
     "/deno.json",
     "/deno.jsonc",
     "/package.json",
+    "/home/me/mono/app/zuke",
   ]);
 });
 
 Deno.test("the trust gate refuses a build file in the root that another user owns", async () => {
   // A `chown` of the directory alone passes the directory check; the files
   // that decide what runs must be the user's too.
-  for (const name of ["zuke.json", "zuke.ts", "deno.lock", "deno.json"]) {
+  for (
+    const name of ["zuke.json", "zuke.ts", "zuke", "deno.lock", "deno.json"]
+  ) {
     const error = await refused("/home/me/app", {
       present: ["/home/me/app/zuke.json"],
       owned: {
@@ -254,7 +266,8 @@ Deno.test("the trust gate refuses a build file in the root that another user own
 });
 
 Deno.test("the trust gate is inert where ownership cannot be compared", async () => {
-  // Windows: no user id at all — nothing is ever asked about ownership.
+  // Windows: no user id at all — nothing is ever asked about ownership, and
+  // there is no launcher to ask about either.
   const noUid = probe({
     present: ["/repo/zuke.json"],
     owned: { "/repo": ownedBy(7) },
@@ -277,19 +290,122 @@ Deno.test("the trust gate is inert where ownership cannot be compared", async ()
 
 Deno.test("buildRunArgs mirrors the launcher: --frozen only with a lockfile", () => {
   assertEquals(
-    buildRunArgs({ root: "/repo", frozen: true }, ["ci", "--parallel"]),
+    buildRunArgs({ root: "/repo", frozen: true, launcher: null }, [
+      "ci",
+      "--parallel",
+    ]),
     ["run", "-A", "--frozen", BUILD_FILE, "ci", "--parallel"],
   );
   assertEquals(
-    buildRunArgs({ root: "/repo", frozen: false }, ["--list", "--json"]),
+    buildRunArgs({ root: "/repo", frozen: false, launcher: null }, [
+      "--list",
+      "--json",
+    ]),
     ["run", "-A", BUILD_FILE, "--list", "--json"],
   );
   // The argument list is forwarded verbatim — nothing is parsed or reordered,
   // so the build's own CLI sees exactly what the user typed.
   assertEquals(
-    buildRunArgs({ root: "/repo", frozen: false }, []),
+    buildRunArgs({ root: "/repo", frozen: false, launcher: null }, []),
     ["run", "-A", BUILD_FILE],
   );
+});
+
+/** A regular file's mode with the given permission bits. */
+function fileMode(permissions: number): number {
+  return 0o100000 | permissions;
+}
+
+Deno.test("locateBuild reports an executable launcher at the root", async () => {
+  const found = await locateBuild(
+    "/repo/src",
+    probe({
+      present: ["/repo/zuke.json"],
+      owned: { "/repo/zuke": ownedBy(1000, fileMode(0o755)) },
+      uid: 1000,
+    }),
+  );
+  assertEquals(found, { root: "/repo", frozen: false, launcher: "/repo/zuke" });
+});
+
+Deno.test("locateBuild resolves a symlinked launcher and judges its directory", async () => {
+  const fixture = (shared: Ownership): Fixture => ({
+    present: ["/w/app/zuke.json"],
+    owned: {
+      "/w/app/zuke": ownedBy(1000, fileMode(0o755)),
+      "/w/shared": shared,
+    },
+    uid: 1000,
+    links: { "/w/app/zuke": "/w/shared/zuke" },
+  });
+  // The resolved path is what runs, so it is the one the gate judged.
+  const found = await locateBuild("/w/app", probe(fixture(ownedBy(1000))));
+  assertEquals(found?.launcher, "/w/shared/zuke");
+  // Whoever can write the target's directory can swap the file under it.
+  const open = await refused("/w/app", fixture(ownedBy(1000, 0o777)));
+  assertEquals(open.reason, "/w/shared is writable by everyone");
+  const theirs = await refused("/w/app", fixture(ownedBy(0)));
+  assertEquals(theirs.reason, "/w/shared is owned by user 0, not you (1000)");
+});
+
+Deno.test("the trust gate refuses a root file writable by everyone", async () => {
+  const error = await refused("/repo", {
+    present: ["/repo/zuke.json"],
+    owned: { "/repo/zuke": ownedBy(1000, fileMode(0o777)) },
+    uid: 1000,
+  });
+  assertEquals(error.reason, "/repo/zuke is writable by everyone");
+});
+
+Deno.test("locateBuild ignores a launcher that is not an executable regular file", async () => {
+  const at = (mode: number | null) =>
+    locateBuild(
+      "/repo",
+      probe({
+        present: ["/repo/zuke.json"],
+        owned: { [`/repo/${LAUNCHER_FILE}`]: { uid: null, mode } },
+        uid: 1000,
+      }),
+    );
+  // Not executable, a directory, and no mode at all (Windows) are all "none",
+  // so the run falls back to the launcher's own `deno run` invocation.
+  assertEquals((await at(fileMode(0o644)))?.launcher, null);
+  assertEquals((await at(0o040755))?.launcher, null);
+  assertEquals((await at(null))?.launcher, null);
+});
+
+Deno.test("runBuild runs the launcher with the bare args, else Deno", async () => {
+  const calls: Array<[string, string[], string | undefined]> = [];
+  const runner = (root: string, args: string[], program?: string) => {
+    calls.push([root, args, program]);
+    return Promise.resolve(3);
+  };
+  assertEquals(
+    await runBuild(
+      runner,
+      { root: "/repo", frozen: true, launcher: "/repo/zuke" },
+      ["ci"],
+    ),
+    3,
+  );
+  await runBuild(
+    runner,
+    { root: "/repo", frozen: true, launcher: null },
+    ["ci"],
+  );
+  // A launcher's own call to the global `zuke` gets Deno, not itself again.
+  await withEnv({ [FORWARDED_ENV]: "1" }, async () => {
+    await runBuild(
+      runner,
+      { root: "/repo", frozen: false, launcher: "/repo/zuke" },
+      ["ci"],
+    );
+  });
+  assertEquals(calls, [
+    ["/repo", ["ci"], "/repo/zuke"],
+    ["/repo", ["run", "-A", "--frozen", BUILD_FILE, "ci"], undefined],
+    ["/repo", ["run", "-A", BUILD_FILE, "ci"], undefined],
+  ]);
 });
 
 Deno.test("the running notice names the build file at the root", () => {
@@ -316,6 +432,10 @@ Deno.test("defaultBuildProbe answers from the real filesystem", async () => {
     assertEquals(own?.mode === null || typeof own?.mode === "number", true);
     // Nothing there: null, not a throw — an absent ancestor config is normal.
     assertEquals(await defaultBuildProbe.ownership(`${dir}/deno.json`), null);
+    assertEquals(
+      await defaultBuildProbe.realPath(dir),
+      await Deno.realPath(dir),
+    );
   }, { prefix: "zuke-dispatch-" });
 });
 
@@ -333,6 +453,33 @@ Deno.test("defaultBuildRunner runs the given deno argv from the root and returns
     const seen = await Deno.readTextFile(`${dir}/probe.txt`);
     assertEquals(await Deno.realPath(seen), await Deno.realPath(dir));
   }, { prefix: "zuke-dispatch-" });
+});
+
+Deno.test({
+  name:
+    "defaultBuildRunner runs a launcher program from the root with the args",
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await Deno.writeTextFile(
+        `${dir}/${LAUNCHER_FILE}`,
+        `#!/bin/sh\npwd > probe.txt\necho "$${FORWARDED_ENV}" >> probe.txt\n` +
+          `printf '%s\\n' "$@" >> probe.txt\nexit 5\n`,
+        { mode: 0o755 },
+      );
+      const code = await defaultBuildRunner(
+        dir,
+        ["ci", "--parallel"],
+        `${dir}/${LAUNCHER_FILE}`,
+      );
+      assertEquals(code, 5);
+      const [cwd, forwarded, ...args] =
+        (await Deno.readTextFile(`${dir}/probe.txt`)).trimEnd().split("\n");
+      assertEquals(await Deno.realPath(cwd), await Deno.realPath(dir));
+      assertEquals(forwarded, "1");
+      assertEquals(args, ["ci", "--parallel"]);
+    }, { prefix: "zuke-dispatch-" });
+  },
 });
 
 Deno.test("defaultBuildRunner gives the child a PATH even when the parent has none", async () => {

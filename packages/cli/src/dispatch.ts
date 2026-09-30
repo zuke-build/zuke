@@ -8,11 +8,15 @@
  * `setup`, `import` and `doc`. Everything else — `zuke ci`, `zuke --list`,
  * `zuke graph`, `zuke mcp` — belongs to the build in the current project, so
  * `main` forwards it: it walks up from the working directory to the nearest
- * `zuke.json` (the repository-root marker `zuke setup` writes), then runs
- * `zuke.ts` beside it exactly as the `./zuke` launcher would — `deno run -A`,
- * with `--frozen` once a `deno.lock` exists, from the root, stdio inherited.
+ * `zuke.json` (the repository-root marker `zuke setup` writes), then runs the
+ * executable `./zuke` launcher beside it, from the root, stdio inherited.
  * That is the delegation a global `gradle` makes to a checkout's wrapper: one
- * global word, the project's own build and lock deciding what actually runs.
+ * global word, the project's own launcher, build and lock deciding what
+ * actually runs — a pinned Deno, an exported environment variable, a lock kept
+ * somewhere other than `./deno.lock` all apply to `zuke` exactly as to
+ * `./zuke`. A root with no executable launcher (and every root on Windows,
+ * whose files report no mode) gets the launcher's own invocation instead:
+ * `deno run -A zuke.ts`, with `--frozen` once a `deno.lock` exists.
  *
  * Discovery has a trust gate, because it runs code the caller never named:
  * a `zuke.json` planted in a shared parent (`/tmp`, a shared checkout tree)
@@ -45,12 +49,27 @@ export const BUILD_FILE = "zuke.ts";
 /** The lockfile whose presence turns on `--frozen`, as in the launchers. */
 export const LOCK_FILE = "deno.lock";
 
+/** The POSIX launcher a forwarded command runs, beside {@link CONFIG_FILE}. */
+export const LAUNCHER_FILE = "zuke";
+
+/**
+ * Set to `1` in a launcher's environment, so a launcher that itself calls the
+ * global `zuke` gets the bare `deno run` instead of itself again, endlessly.
+ */
+export const FORWARDED_ENV = "ZUKE_FORWARDED";
+
 /** Where a forwarded command runs, and how. */
 export interface BuildLocation {
   /** The absolute repository root: the directory holding `zuke.json`. */
   root: string;
   /** Whether a `deno.lock` sits at the root, so the run passes `--frozen`. */
   frozen: boolean;
+  /**
+   * The absolute path of the executable `zuke` launcher at the root, run in
+   * place of `deno run` — or `null` when there is none, or the platform
+   * reports no file mode to tell (Windows).
+   */
+  launcher: string | null;
 }
 
 /** What the trust gate needs to know about a filesystem entry. */
@@ -73,6 +92,8 @@ export interface BuildProbe {
    * there.
    */
   ownership(path: string): Promise<Ownership | null>;
+  /** The path with every link resolved, as the launcher is spawned by it. */
+  realPath(path: string): Promise<string>;
   /** The current user's numeric id, or `null` where the platform has none. */
   uid(): number | null;
 }
@@ -97,6 +118,9 @@ export const defaultBuildProbe: BuildProbe = {
   async ownership(path: string): Promise<Ownership | null> {
     const info = await statOrNull(path);
     return info === null ? null : { uid: info.uid, mode: info.mode };
+  },
+  realPath(path: string): Promise<string> {
+    return Deno.realPath(path);
   },
   uid(): number | null {
     return Deno.uid();
@@ -137,18 +161,83 @@ const ANCESTOR_CONFIG_FILES = ["deno.json", "deno.jsonc", "package.json"];
 
 /**
  * The files in the root itself that decide what runs: the build, its marker,
- * its lockfile, and the root's own config. Owning the directory is not owning
- * these — a `chown` of the directory alone leaves them as they were.
+ * its launcher, its lockfile, and the root's own config. Owning the directory
+ * is not owning these — a `chown` of the directory alone leaves them as they
+ * were. The probe follows links, so a symlinked launcher is judged by the
+ * file it points at.
  */
 const ROOT_FILES = [
   CONFIG_FILE,
   BUILD_FILE,
+  LAUNCHER_FILE,
   LOCK_FILE,
   ...ANCESTOR_CONFIG_FILES,
 ];
 
 /** The world-writable permission bit. */
 const WORLD_WRITABLE = 0o002;
+
+/** The file-type bits of a mode, and the value that marks a regular file. */
+const FILE_TYPE = 0o170000;
+const REGULAR_FILE = 0o100000;
+
+/** Any of the execute permission bits. */
+const EXECUTABLE = 0o111;
+
+/**
+ * The root's launcher, resolved through any link, when it is an executable
+ * regular file, else `null`. Where the gate is inert (no user id: Windows)
+ * there is no launcher either, so nothing runs that the gate did not judge.
+ * The file itself was judged with the root's files; a link's target
+ * directory is judged here, since whoever can write there can swap the file.
+ *
+ * @throws {UntrustedBuildError} when the target's directory fails the gate.
+ */
+async function launcherAt(
+  root: AbsolutePath,
+  probe: BuildProbe,
+): Promise<string | null> {
+  const uid = probe.uid();
+  if (uid === null) return null;
+  const path = root(LAUNCHER_FILE).path;
+  const mode = (await probe.ownership(path))?.mode ?? null;
+  if (mode === null) return null;
+  const runnable = (mode & FILE_TYPE) === REGULAR_FILE &&
+    (mode & EXECUTABLE) !== 0;
+  if (!runnable) return null;
+  // Only the target's own directory, not its ancestors — the root's
+  // ancestors are not judged as directories either.
+  const real = await probe.realPath(path);
+  const home = absolutePath(real).parent();
+  assertEntry(await probe.ownership(home.path), home.path, uid, root);
+  return real;
+}
+
+/**
+ * Refuse an entry owned by someone other than `uid`, or writable by everyone;
+ * an absent entry, or a property the platform does not report, passes.
+ * `subject` names the entry in the refusal.
+ */
+function assertEntry(
+  own: Ownership | null,
+  subject: string,
+  uid: number,
+  root: AbsolutePath,
+): void {
+  if (own === null) return;
+  if (own.uid !== null && own.uid !== uid) {
+    throw new UntrustedBuildError(
+      root.path,
+      `${subject} is owned by user ${own.uid}, not you (${uid})`,
+    );
+  }
+  if (own.mode !== null && (own.mode & WORLD_WRITABLE) !== 0) {
+    throw new UntrustedBuildError(
+      root.path,
+      `${subject} is writable by everyone`,
+    );
+  }
+}
 
 /**
  * Walk up from `cwd` to the nearest directory holding {@link CONFIG_FILE},
@@ -169,6 +258,7 @@ export async function locateBuild(
       return {
         root: dir.path,
         frozen: await probe.exists(dir(LOCK_FILE).path),
+        launcher: await launcherAt(dir, probe),
       };
     }
     if (dir.isRoot) return null;
@@ -189,21 +279,7 @@ async function assertTrusted(
 ): Promise<void> {
   const uid = probe.uid();
   if (uid === null) return;
-  const own = await probe.ownership(root.path);
-  if (own !== null) {
-    if (own.uid !== null && own.uid !== uid) {
-      throw new UntrustedBuildError(
-        root.path,
-        `the directory is owned by user ${own.uid}, not you (${uid})`,
-      );
-    }
-    if (own.mode !== null && (own.mode & WORLD_WRITABLE) !== 0) {
-      throw new UntrustedBuildError(
-        root.path,
-        "the directory is writable by everyone",
-      );
-    }
-  }
+  assertEntry(await probe.ownership(root.path), "the directory", uid, root);
   await assertFilesOwned(root, ROOT_FILES, uid, probe, root);
   for (let dir = root; !dir.isRoot;) {
     dir = dir.parent();
@@ -213,8 +289,7 @@ async function assertTrusted(
 
 /**
  * Refuse when any of `names` in `dir` exists and is owned by someone other
- * than `uid`; an absent file, or one the platform reports without an owner,
- * passes.
+ * than `uid` or writable by everyone — see {@link assertEntry}.
  */
 async function assertFilesOwned(
   dir: AbsolutePath,
@@ -225,13 +300,7 @@ async function assertFilesOwned(
 ): Promise<void> {
   for (const name of names) {
     const file = dir(name).path;
-    const own = await probe.ownership(file);
-    if (own !== null && own.uid !== null && own.uid !== uid) {
-      throw new UntrustedBuildError(
-        root.path,
-        `${file} is owned by user ${own.uid}, not you (${uid})`,
-      );
-    }
+    assertEntry(await probe.ownership(file), file, uid, root);
   }
 }
 
@@ -252,6 +321,21 @@ export function buildRunArgs(
   ];
 }
 
+/**
+ * Run a forwarded command through `runner`: the root's launcher with `args`
+ * when it has one and this is not already a launcher's own `zuke` call (see
+ * {@link FORWARDED_ENV}), else Deno with {@link buildRunArgs}.
+ */
+export function runBuild(
+  runner: BuildRunner,
+  location: BuildLocation,
+  args: string[],
+): Promise<number> {
+  return location.launcher === null || Deno.env.get(FORWARDED_ENV) === "1"
+    ? runner(location.root, buildRunArgs(location, args))
+    : runner(location.root, args, location.launcher);
+}
+
 /** The launchers' notice for a run without a lockfile, verbatim. */
 export const NO_LOCK_NOTICE: string = noLockNotice("—");
 
@@ -265,12 +349,14 @@ export function runningNotice(root: string): string {
 }
 
 /**
- * Runs `deno <denoArgs>` from `root` and resolves to its exit code — the
+ * Runs `program <args>` from `root` — Deno when `program` is omitted, else the
+ * project's launcher at that path — and resolves to its exit code: the
  * injectable subprocess seam, so the forwarding is testable without a build.
  */
 export type BuildRunner = (
   root: string,
-  denoArgs: string[],
+  args: string[],
+  program?: string,
 ) => Promise<number>;
 
 /**
@@ -302,23 +388,32 @@ function signalPlan(
 }
 
 /**
- * The default {@link BuildRunner}: spawn Deno — {@link spawnDeno} finds it, and
- * puts it first on the child's `PATH` as the launchers do — with stdio
- * inherited, because `zuke mcp` speaks JSON-RPC over the same stdin/stdout and
- * a build may prompt. For the build's lifetime the parent handles signals as
+ * The default {@link BuildRunner}: spawn the launcher as-is, since choosing a
+ * Deno is its job, or else Deno — {@link spawnDeno} finds it, and puts it
+ * first on the child's `PATH` as the launchers do. Stdio is inherited, because
+ * `zuke mcp` speaks JSON-RPC over the same stdin/stdout and a build may
+ * prompt. For the build's lifetime the parent handles signals as
  * {@link signalPlan} says, so an interrupted build is never orphaned with its
  * exit code lost.
  */
 export const defaultBuildRunner: BuildRunner = async (
   root,
-  denoArgs,
+  args,
+  program,
 ): Promise<number> => {
-  const child = spawnDeno(denoArgs, {
+  const options: Deno.CommandOptions = {
     cwd: root,
     stdin: "inherit",
     stdout: "inherit",
     stderr: "inherit",
-  });
+  };
+  const child = program === undefined
+    ? spawnDeno(args, options)
+    : new Deno.Command(program, {
+      ...options,
+      args,
+      env: { [FORWARDED_ENV]: "1" },
+    }).spawn();
   const plan = signalPlan(child);
   for (const [signal, handler] of plan) {
     Deno.addSignalListener(signal, handler);

@@ -144,11 +144,13 @@ for the default target — every command that is not the CLI's own (`setup`,
 show both surfaces, the CLI's and then the build's, each labelled;
 `zuke -- --help` is the build's own usage alone, and `zuke -- <target>` reaches
 a target that shares one of those names. It walks up to the `zuke.json` that
-marks the repository root and runs `deno run -A zuke.ts <args>` from there, with
-`--frozen` once a `deno.lock` exists — the launcher's exact behaviour, minus the
-Deno bootstrap. Outside a project, `zuke <target>` reports the unknown command
-and the missing `zuke.json`, and a bare `zuke` prints the usage. The forwarding
-refuses a project whose root directory is owned by another user or is
+marks the repository root and runs the executable `./zuke <args>` launcher
+there, so a project's customised launcher (pinned Deno, exported env, a lock
+outside the repo) applies to `zuke` too. With no executable launcher (and on
+Windows) it runs `deno run -A zuke.ts <args>`, with `--frozen` once a
+`deno.lock` exists. Outside a project, `zuke <target>` reports the unknown
+command and the missing `zuke.json`, and a bare `zuke` prints the usage. The
+forwarding refuses a project whose root directory is owned by another user or is
 world-writable, and one where an ancestor `deno.json`, `deno.jsonc` or
 `package.json` Deno would read is owned by another user (the `safe.directory`
 rule git applies, since discovery runs code the caller never named); the error

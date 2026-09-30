@@ -108,6 +108,38 @@ Deno.test("zuke <target> from a subdirectory runs the build at the project root"
   }, { prefix: "zuke-global-cli-" });
 });
 
+Deno.test({
+  name: "zuke <target> runs the project's own ./zuke launcher when it has one",
+  // POSIX launchers only: Windows reports no file mode, so it keeps `deno run`.
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await Deno.writeTextFile(
+        `${dir}/${CONFIG_FILE}`,
+        '{ "name": "Scratch" }\n',
+      );
+      await Deno.writeTextFile(`${dir}/zuke.ts`, scratchBuild());
+      // A launcher that does something `deno run` alone would not — record
+      // its argv — then runs the build as a real one does.
+      await Deno.writeTextFile(
+        `${dir}/zuke`,
+        `#!/bin/sh\nprintf '%s\\n' "$@" > launched.txt\n` +
+          `exec "${Deno.execPath()}" run -A zuke.ts "$@"\n`,
+        { mode: 0o755 },
+      );
+      await Deno.mkdir(`${dir}/src`);
+      const host = recordingHost();
+      await inDir(`${dir}/src`, async () => {
+        assertEquals(await main(["hello"], host), 0);
+      });
+      assertEquals(await Deno.readTextFile(`${dir}/launched.txt`), "hello\n");
+      const cwd = await Deno.readTextFile(`${dir}/ran.txt`);
+      assertEquals(await Deno.realPath(cwd), await Deno.realPath(dir));
+      assertEquals(host.logs, []);
+    }, { prefix: "zuke-global-cli-" });
+  },
+});
+
 Deno.test("zuke <target> propagates a failing target's exit code", async () => {
   await withTemp(async (dir) => {
     await Deno.writeTextFile(
@@ -139,6 +171,7 @@ function confinedTo(dir: string): BuildProbe {
       inside(path) ? defaultBuildProbe.exists(path) : Promise.resolve(false),
     ownership: (path) =>
       inside(path) ? defaultBuildProbe.ownership(path) : Promise.resolve(null),
+    realPath: (path) => defaultBuildProbe.realPath(path),
     uid: () => defaultBuildProbe.uid(),
   };
 }

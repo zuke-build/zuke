@@ -17,11 +17,15 @@
 If a command isn't in the first table, it belongs to the second one: run it as
 `./zuke <command>` from the repository root, or as `zuke <command>` from
 anywhere inside the project once the global CLI is installed. The two are
-equivalent — the forwarding runs `deno run -A zuke.ts <command>` from the
-directory holding `zuke.json`, with `--frozen` once a `deno.lock` exists beside
-it (the launchers' rule), stdio inherited so `zuke mcp` and prompts work, and
-exits with the build's code. A bare `zuke` inside a project runs the default
-target, as `./zuke` does.
+equivalent — the forwarding runs the project's own executable `./zuke <command>`
+from the directory holding `zuke.json`, so whatever that launcher does (a pinned
+Deno, an exported environment variable, a lockfile kept outside the repository)
+applies to `zuke` as well. A root with no executable `zuke` launcher — and every
+root on Windows, which reports no file mode — gets the launcher's own invocation
+instead: `deno run -A zuke.ts <command>`, with `--frozen` once a `deno.lock`
+exists beside it. Either way stdio is inherited so `zuke mcp` and prompts work,
+and the command exits with the build's code. A bare `zuke` inside a project runs
+the default target, as `./zuke` does.
 
 `--help`/`-h` shows **both** surfaces inside a project, under headings that say
 which is which: the global CLI's own commands, which work anywhere, and then the
@@ -43,19 +47,23 @@ planted in a shared parent (`/tmp`, a shared checkout tree) would otherwise have
 `zuke ci` in any directory below it run a stranger's `zuke.ts` with `-A`. So, as
 git's `safe.directory` does, the forwarding refuses a build whose root directory
 is owned by another user or is world-writable, and one whose `zuke.json`,
-`zuke.ts`, `deno.lock` or config file is owned by another user. Deno then does a
-walk of its own — it discovers `deno.json`, `deno.jsonc` and `package.json` in
-the root's ancestors, and an import map planted there rewrites what `zuke.ts`
-imports — so any such ancestor file owned by another user is refused too. The
-error names what was refused and the two ways forward: run that project's own
-launcher from its directory (`./zuke`, an explicit act on a file you name), or
-fix the ownership. The gate judges ownership, not intent: a tree you extracted
-or cloned yourself is yours, and `zuke` in it runs its build exactly as `./zuke`
-there would. Whenever the build discovery chose is not in the current directory,
-a stderr line names it (`zuke: running <root>/zuke.ts`), so a forwarded run is
-never silent about what it ran. On Windows, which reports no file ownership to
-compare, the gate is inert, so a `zuke.json` in a shared writable location is
-run as found.
+`zuke.ts`, `zuke` launcher, `deno.lock` or config file is owned by another user
+or writable by everyone. A symlinked launcher is judged by its target, and so is
+the directory that holds the target, since whoever can write there can swap the
+file. The launcher runs with `ZUKE_FORWARDED=1` in its environment, so a
+launcher that itself calls the global `zuke` gets the bare `deno run` rather
+than itself again. Deno then does a walk of its own — it discovers `deno.json`,
+`deno.jsonc` and `package.json` in the root's ancestors, and an import map
+planted there rewrites what `zuke.ts` imports — so any such ancestor file owned
+by another user is refused too. The error names what was refused and the two
+ways forward: run that project's own launcher from its directory (`./zuke`, an
+explicit act on a file you name), or fix the ownership. The gate judges
+ownership, not intent: a tree you extracted or cloned yourself is yours, and
+`zuke` in it runs its build exactly as `./zuke` there would. Whenever the build
+discovery chose is not in the current directory, a stderr line names it
+(`zuke: running <root>/zuke.ts`), so a forwarded run is never silent about what
+it ran. On Windows, which reports no file ownership to compare, the gate is
+inert, so a `zuke.json` in a shared writable location is run as found.
 
 The words the global CLI keeps for itself are `setup`, `import` and `doc`.
 `setup` and `import` cannot be the build's, because they exist to create a
