@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.60.1](https://github.com/zuke-build/zuke/compare/core-v1.60.0...core-v1.60.1) (2026-09-30)
+
+
+### Bug Fixes
+
+* **core:** sort targets alphabetically in --help and --list ([#670](https://github.com/zuke-build/zuke/issues/670)) ([4a02089](https://github.com/zuke-build/zuke/commit/4a020891df9fa6030764038b85ad13619fb76fa5))
+
 ## [1.60.0](https://github.com/zuke-build/zuke/compare/core-v1.59.0...core-v1.60.0) (2026-09-21)
 
 
