@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.0](https://github.com/zuke-build/zuke/compare/cli-v1.7.0...cli-v1.8.0) (2026-09-30)
+
+
+### Features
+
+* **cli:** forward the global zuke through the project's ./zuke launcher ([#675](https://github.com/zuke-build/zuke/issues/675)) ([bbb4546](https://github.com/zuke-build/zuke/commit/bbb45464931693c22884c1784e002be58401fc2b)), closes [#674](https://github.com/zuke-build/zuke/issues/674)
+
 ## [1.7.0](https://github.com/zuke-build/zuke/compare/cli-v1.6.0...cli-v1.7.0) (2026-09-21)
 
 
