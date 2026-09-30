@@ -778,11 +778,15 @@ export function formatList(
   return paramText === "" ? targetText : `${targetText}\n\n${paramText}`;
 }
 
-/** Render the target listing (non-empty). */
+/**
+ * Render the target listing (non-empty), sorted by name so a long build is
+ * scannable; dependencies stay in declaration order.
+ */
 function renderTargets(targets: Map<string, TargetBuilder>): string {
   const width = Math.max(...[...targets.keys()].map((n) => n.length));
   const lines = ["Targets:"];
-  for (const [name, t] of targets) {
+  const sorted = [...targets].sort(([a], [b]) => a.localeCompare(b, "en"));
+  for (const [name, t] of sorted) {
     const deps = depNames(t);
     const desc = t.description_ ?? "";
     const fanOut = t.forEach_ !== undefined ? "  [fan-out]" : "";

@@ -375,7 +375,9 @@ whole npm tree and writes an `npm` section a jsr-only lock never had.
 
 `--help` is a map of the surface, not the manual. It lists what exists in
 labelled groups — `Commands:`, `Options:`, `Targets:`, `Parameters:` — with one
-short line each, and ends by pointing at the per-command pages.
+short line each, and ends by pointing at the per-command pages. Targets are
+listed alphabetically (in `--list` too), so a long build stays scannable; each
+target's `depends on:` list keeps its declared order.
 
 `zuke <command> --help` is where a command's detail lives: its usage lines, its
 full explanation, and the flags that qualify only it. `zuke mcp --help` carries
