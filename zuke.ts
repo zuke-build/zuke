@@ -69,6 +69,7 @@ import {
   workflowActionInputs,
 } from "./build/action_release.ts";
 import { mintAppToken } from "./build/app_token.ts";
+import { mintReleaseToken } from "./build/release_token.ts";
 import { localVersion, PACKAGES } from "./build/packages.ts";
 import {
   CODECOV_CLI_VERSION,
@@ -1413,6 +1414,20 @@ class ZukeBuild extends Build {
           "release requires GITHUB_TOKEN and GITHUB_REPOSITORY in the env.",
         );
       }
+      // The releases are cut with the app's token, not GITHUB_TOKEN: a release
+      // creates its tag, and GitHub refuses one whose tree differs from master
+      // in workflow files without `workflows: write`, which GITHUB_TOKEN can
+      // never hold. A workflow change landing between a release PR's merge and
+      // this job is enough to trigger that. The release PRs stay on
+      // GITHUB_TOKEN, so opening one still runs no workflows. Minted first,
+      // then the key leaves the environment: release-please is third-party
+      // code, and Deno hands a child the whole environment.
+      const releaseToken = await mintReleaseToken({
+        appId: Deno.env.get("ZUKE_BUILD_APP_ID"),
+        privateKey: Deno.env.get("ZUKE_BUILD_APP_KEY"),
+        repo,
+      });
+      Deno.env.delete("ZUKE_BUILD_APP_KEY");
       const bin = await installCli(
         "npm:release-please@16.18.0",
         "release-please",
@@ -1436,7 +1451,7 @@ class ZukeBuild extends Build {
       });
       await ReleasePleaseTasks.githubRelease((s) => {
         apply(s);
-        return s;
+        return s.token(releaseToken);
       });
 
       // Keep the repository's "Latest release" pointer on the Marketplace
