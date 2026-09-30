@@ -9,7 +9,7 @@
   "packages/yarn": "1.2.0",
   "packages/cmd": "1.0.1",
   "packages/console": "1.4.0",
-  "packages/cli": "1.7.0",
+  "packages/cli": "1.8.0",
   "packages/docker": "1.1.1",
   "packages/docker-compose": "1.2.0",
   "packages/kubectl": "1.1.0",
