@@ -279,7 +279,15 @@ export function githubWorkflows(
           // Writes contents and PRs, but must NOT hold the JSR OIDC token.
           permissions: { contents: "write", "pull-requests": "write" },
           timeoutMinutes: 15,
-          env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
+          // The app credentials are for the GitHub releases: creating one
+          // creates its tag, which needs `workflows: write` whenever master's
+          // workflow files have moved since the release PR merged, and that is
+          // a permission GITHUB_TOKEN cannot hold.
+          env: {
+            GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+            ZUKE_BUILD_APP_ID: "${{ secrets.ZUKE_BUILD_APP_ID }}",
+            ZUKE_BUILD_APP_KEY: "${{ secrets.ZUKE_BUILD_APP_KEY }}",
+          },
         },
         {
           target: targets.actionRelease,
