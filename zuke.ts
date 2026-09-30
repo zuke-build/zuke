@@ -1421,13 +1421,18 @@ class ZukeBuild extends Build {
       // this job is enough to trigger that. The release PRs stay on
       // GITHUB_TOKEN, so opening one still runs no workflows. Minted first,
       // then the key leaves the environment: release-please is third-party
-      // code, and Deno hands a child the whole environment.
-      const releaseToken = await mintReleaseToken({
-        appId: Deno.env.get("ZUKE_BUILD_APP_ID"),
-        privateKey: Deno.env.get("ZUKE_BUILD_APP_KEY"),
-        repo,
-      });
-      Deno.env.delete("ZUKE_BUILD_APP_KEY");
+      // code, and Deno hands a child the whole environment. The delete is in
+      // a `finally` so a failed mint does not leave the key behind either.
+      let releaseToken: string;
+      try {
+        releaseToken = await mintReleaseToken({
+          appId: Deno.env.get("ZUKE_BUILD_APP_ID"),
+          privateKey: Deno.env.get("ZUKE_BUILD_APP_KEY"),
+          repo,
+        });
+      } finally {
+        Deno.env.delete("ZUKE_BUILD_APP_KEY");
+      }
       const bin = await installCli(
         "npm:release-please@16.18.0",
         "release-please",
