@@ -65,7 +65,10 @@ Deno.test("a dry run renders the rollout's command lines in plan order", async (
   const promote = out.indexOf(
     "kubectl-argo-rollouts promote api --namespace prod --full",
   );
-  assertEquals(setImage >= 0 && status > setImage && promote > status, true);
+  // Each command line is present, and they appear in the plan's order.
+  assertEquals(setImage >= 0, true, "set image was not rendered");
+  assertEquals(status > setImage, true, "status did not follow set image");
+  assertEquals(promote > status, true, "promote did not follow status");
 });
 
 /** The same chain, where the status check cannot reach the plugin. */
