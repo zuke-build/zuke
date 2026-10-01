@@ -34,12 +34,12 @@ import { VERSION } from "./src/version.ts";
 import { DENO_PIN } from "./src/deno_pin.ts";
 import {
   type BuildProbe,
-  buildRunArgs,
   type BuildRunner,
   defaultBuildProbe,
   defaultBuildRunner,
   locateBuild,
   NO_LOCK_NOTICE,
+  runBuild,
   runningNotice,
 } from "./src/dispatch.ts";
 import { absolutePath, resolveDocSpec } from "@zuke/core";
@@ -532,8 +532,12 @@ async function forwardToBuild(
     if (location.root !== absolutePath(cwd).path) {
       output.error(runningNotice(location.root));
     }
-    if (!location.frozen) output.error(NO_LOCK_NOTICE);
-    return await runner(location.root, buildRunArgs(location, args));
+    // A launcher has its own lockfile story to tell; only the bare `deno run`
+    // it stands in for is this notice's to report.
+    if (location.launcher === null && !location.frozen) {
+      output.error(NO_LOCK_NOTICE);
+    }
+    return await runBuild(runner, location, args);
   } catch (error) {
     output.error(error instanceof Error ? error.message : String(error));
     return 1;
@@ -589,10 +593,7 @@ async function commandHelp(
     // so a build whose `--help` runs and fails is reported here too — not
     // only one that fails to spawn. Left unread, that outcome was the one
     // path this command passed over without a word of its own.
-    const code = await runner(
-      location.root,
-      buildRunArgs(location, ["--help"]),
-    );
+    const code = await runBuild(runner, location, ["--help"]);
     if (code !== 0) output.error(BUILD_HELP_FAILED);
   } catch (error) {
     output.error(error instanceof Error ? error.message : String(error));
@@ -640,12 +641,7 @@ async function commandVersion(
   if (location === null) return 0;
   host.log(`\nThis project's build (${location.root}/zuke.ts) runs on Zuke:`);
   try {
-    const code = await runner(
-      location.root,
-      buildRunArgs(location, [
-        "--version",
-      ]),
-    );
+    const code = await runBuild(runner, location, ["--version"]);
     if (code !== 0) output.error(BUILD_VERSION_FAILED);
   } catch (error) {
     output.error(error instanceof Error ? error.message : String(error));

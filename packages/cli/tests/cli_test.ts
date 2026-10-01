@@ -634,6 +634,7 @@ function probeAt(
           ? { uid: owned.owner, mode: 0o755 }
           : null,
       ),
+    realPath: (path) => Promise.resolve(path),
     uid: () => owned.uid,
   };
 }
@@ -1098,6 +1099,7 @@ Deno.test("main names the build it forwards to when it is not in the working dir
   const probe: BuildProbe = {
     exists: (path) => Promise.resolve(present.has(path)),
     ownership: () => Promise.resolve(null),
+    realPath: (path) => Promise.resolve(path),
     uid: () => null,
   };
   const host = new FakeHost();

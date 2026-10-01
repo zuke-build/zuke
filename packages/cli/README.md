@@ -49,6 +49,10 @@ interface BuildLocation
     The absolute repository root: the directory holding `zuke.json`.
   frozen: boolean
     Whether a `deno.lock` sits at the root, so the run passes `--frozen`.
+  launcher: string | null
+    The absolute path of the executable `zuke` launcher at the root, run in
+    place of `deno run` — or `null` when there is none, or the platform
+    reports no file mode to tell (Windows).
 
 interface BuildProbe
   The filesystem questions discovery asks, injectable so the walk and its
@@ -59,6 +63,8 @@ interface BuildProbe
   ownership(path: string): Promise<Ownership | null>
     The owner and mode of what a path resolves to, or `null` when nothing is
     there.
+  realPath(path: string): Promise<string>
+    The path with every link resolved, as the launcher is spawned by it.
   uid(): number | null
     The current user's numeric id, or `null` where the platform has none.
 
@@ -159,8 +165,9 @@ interface StarActions
   openBrowser(url: string): Promise<boolean>
     Open `url` in the default browser; `false` when it could not launch.
 
-type BuildRunner = (root: string, denoArgs: string[]) => Promise<number>
-  Runs `deno <denoArgs>` from `root` and resolves to its exit code — the
+type BuildRunner = (root: string, args: string[], program?: string) => Promise<number>
+  Runs `program <args>` from `root` — Deno when `program` is omitted, else the
+  project's launcher at that path — and resolves to its exit code: the
   injectable subprocess seam, so the forwarding is testable without a build.
 
 type DocRunner = (denoArgs: string[]) => Promise<number>

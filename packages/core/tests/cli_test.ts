@@ -760,6 +760,22 @@ Deno.test("formatGraph annotates group membership", () => {
   assertEquals(formatGraph(targets).includes("lint  [group: checks]"), true);
 });
 
+Deno.test("formatList and formatHelp sort targets by name", () => {
+  class B extends Build {
+    zeta = target().executes(() => {});
+    Beta = target().executes(() => {});
+    alpha = target().dependsOn(this.zeta, this.Beta).executes(() => {});
+  }
+  const targets = discoverTargets(new B());
+  const rows = (text: string) =>
+    text.slice(text.indexOf("Targets:")).split("\n").slice(1, 4)
+      .map((line) => line.trim().split(/\s+/)[0]);
+  assertEquals(rows(formatList(targets)), ["alpha", "Beta", "zeta"]);
+  assertEquals(rows(formatHelp(targets)), ["alpha", "Beta", "zeta"]);
+  // Dependencies keep their declared order.
+  assertStringIncludes(formatList(targets), "(depends on: zeta, Beta)");
+});
+
 Deno.test("formatList hides unlisted targets but keeps the rest", () => {
   class B extends Build {
     visible = target().description("Shown").executes(() => {});
