@@ -1080,13 +1080,19 @@ export function cancelEvent(
   actor: string,
   outcome: CompensationOutcome,
   at: string,
+  failedTarget?: string,
 ): RunEvent {
   const ran = outcome.compensated.length;
   const failed = outcome.failures.length;
-  const detail = ran === 0 && failed === 0
+  const walk = ran === 0 && failed === 0
     ? "no compensations"
     : `ran ${ran} compensation(s)` +
       (failed > 0 ? `, ${failed} failed` : "");
+  // A cancellation a failed target asked for names it, so the trail tells it
+  // apart from an operator's cancel without cross-reading the target rows.
+  const detail = failedTarget === undefined
+    ? walk
+    : `${walk}; cancelled because ${failedTarget} failed`;
   return {
     at,
     tool: "cancel",

@@ -196,8 +196,11 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   `ctx.state` exposes the original target's persisted metadata (so a rollback
   reads what the deploy recorded). Cancel with `zuke cancel <id>` (or Ctrl-C, or
   the MCP `cancel_run` tool). Idempotent; a timed-out wait can route its
-  `onTimeout` here (`"cancel-run"` or a named target). Needs a state store. See
-  `docs/orchestration.md`.
+  `onTimeout` here (`"cancel-run"` or a named target), and so can a failed
+  check: `.onFailure(() => "cancel-run")` turns that target's final failure into
+  a cancellation, so a bad health check unwinds through the same rollback (a
+  named target runs first, with the failed target's state). Needs a state store.
+  See `docs/orchestration.md`.
 - **Durable side effects:** `.effect(name, fn)` records the intent to run `fn`
   before it runs, so a resume re-drives an effect a dead process left owed.
   Effects run after the body, in declaration order; a target may declare effects

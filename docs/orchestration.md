@@ -518,6 +518,95 @@ its inner items' `.onCancel()` run, matched by the same nested
 > and closes that window; an in-process cancel (Ctrl-C) has no such window,
 > since bodies are aborted and settled before the walk runs.
 
+### A failure that rolls back — `.onFailure()`
+
+By default a failed target fails the run and undoes nothing: the targets that
+succeeded before it stay done. When a failure means "this change is bad, take it
+back" — a health check after a deploy, a canary analysis — declare it with
+`.onFailure(...)` and the failure **cancels** the run instead, through the same
+compensation walk as `zuke cancel`:
+
+```ts
+class CD extends Build {
+  deploy = target()
+    .executes((ctx) => ctx.state.set({ revision: "api-00042" }))
+    .onCancel(() => this.rollback);
+  verify = target()
+    .dependsOn(this.deploy)
+    .executes(() => checkHealth())
+    .onFailure(() => "cancel-run"); // a failed check rolls the deploy back
+  rollback = target().executes((ctx) => undo(ctx.state.get().revision));
+}
+```
+
+The disposition is a thunk, like `onTimeout`'s, returning one of:
+
+- **`"fail"`** (the default) — the run fails; nothing is undone.
+- **`"cancel-run"`** — the run is cancelled: every succeeded target's
+  compensation runs in reverse order, and the record settles `cancelled`.
+- **a sibling target** (`.onFailure(() => this.diagnose)`) — that target runs
+  first as a compensation, then the run is cancelled. Its `ctx.state` holds
+  **the failed target's** meta, as under `.onCancel` — so a diagnose or cleanup
+  step reads what the failing target recorded before it threw.
+
+The named target is an **extra** step before the walk, not a replacement for it:
+every succeeded target's own `.onCancel` still runs afterwards. So do not name a
+predecessor's rollback here — it would run twice, the first time with the failed
+target's state instead of the predecessor's. Use `"cancel-run"` for that; name a
+target only for cleanup **of the failed target itself**, which the walk never
+reaches.
+
+That is the other half of the contract: **the failed target is not
+compensated.** The walk undoes targets that _succeeded_, and a target that
+failed partway through may have left partial work behind. Its own `.onCancel`
+does not run. If its failure can leave something to clean up, put that cleanup
+in the named target and record what it needs in `ctx.state` before the failure.
+The same goes for a fan-out: the parent's `.onFailure` rolls back the items that
+succeeded, not the one that failed, and a named target there reads the parent's
+meta, not the failed item's.
+
+What it guarantees:
+
+- **One rollback path.** An operator's cancel, a timed-out gate and a failed
+  check all end in the same compensations, so there is no second rollback to
+  drift from the first.
+- **The final failure only.** `.retry(...)` and `.recoverWith(...)` run first;
+  the disposition applies once they are exhausted.
+- **The reason is kept.** The run's result carries the target's error alongside
+  `cancelled: true`, and the failed target's row in the record keeps its
+  message, so `zuke runs show <id>` says both that the run was rolled back and
+  why. The process exits non-zero.
+- **In-flight siblings stop**, as on any cancellation, and a target that fails
+  _because_ the run was already being cancelled is a symptom, not a second
+  reason: it neither re-cancels nor becomes the run's error.
+- **It works across a resume.** A check that fails after `zuke resume` rolls
+  back targets an earlier process ran, from the state they recorded.
+- **A dry run never cancels.** It has no record, so there is nothing to undo.
+- **The audit trail names the cause.** The run's `cancel` event reads
+  `…; cancelled because verify failed`, so it is never mistaken for an
+  operator's cancel.
+- **Every failure counts.** A `LockConflictError`, an `onlyWhen` or `cacheKey`
+  that throws, and a failed validation are all the target failing. On a
+  cancelling target, losing a lock race therefore rolls back what ran before it.
+  Declare `.onFailure` on the check itself, not on a target that takes a
+  contended lock.
+- **The named compensation runs in this process only.** If another process owns
+  the rollback (a `zuke cancel` that got there first, a sweep), it walks the
+  succeeded targets but cannot know about the named step. The run says so in its
+  output rather than claiming the step ran.
+
+The disposition is evaluated **once, before anything runs**, and a bad one
+refuses the run with a message naming the target: a thunk that throws, one that
+returns something other than `"fail"`, `"cancel-run"` or a target declared on
+the build, one that names its own target, and a cancelling disposition on a
+target that is also `.proceedAfterFailure()`, which asks for the opposite.
+
+Like `.onCancel()`, it needs a state store and turns the `.zuke/runs` store on
+by default; with state explicitly disabled, a cancelling `.onFailure` is refused
+before anything runs. It cannot be declared on a `.forEach()` **stage**, which
+is not part of the run's plan — put it on the fan-out target, which fails when
+any item does.
+
 ## Fan-out over a list — `.forEach()`
 
 `.forEach()` runs the **same pipeline over a runtime list** — deploy N repos,

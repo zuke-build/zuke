@@ -59,6 +59,7 @@ export {
   type JsonValue,
   LockSettings,
   type OnCancel,
+  type OnFailure,
   type OnTimeout,
   type Remediation,
   type RemediationContext,

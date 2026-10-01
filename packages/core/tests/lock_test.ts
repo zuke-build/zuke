@@ -73,6 +73,7 @@ function envWith(store: StateStore, signal?: AbortSignal): RunEnv {
     actor: "bob",
     signals: new Map(),
     statuses: new Map(),
+    onTargetFailed: () => {},
   };
 }
 

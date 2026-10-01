@@ -41,6 +41,7 @@ import { openRunState } from "./execute_state.ts";
 import { paramOverrideEvent, recordedParams } from "./state/record.ts";
 import type { HeldLease } from "./state/run_lease.ts";
 import { settleCancelledRun } from "./execute_cancel.ts";
+import { resolveFailureDispositions } from "./on_failure.ts";
 import { cancelledElsewhere } from "./cancel.ts";
 import { makeLifecycle } from "./lifecycle.ts";
 import type { RunOutcome } from "./run_support.ts";
@@ -422,6 +423,38 @@ export async function execute(
     runController.abort();
   };
 
+  // Every `.onFailure(...)` thunk is evaluated once, here, before anything runs:
+  // a thunk is user code, and the settle path that consults it must not be able
+  // to throw. A bad disposition refuses the run up front, naming the target.
+  const failures = resolveFailureDispositions(order);
+  if (!failures.ok) {
+    messages.error(failures.error.message);
+    return { ok: false, executed: [], error: failures.error };
+  }
+  // A target whose `.onFailure(...)` cancels the run turns its failure into a
+  // cancellation of the run this process owns: the same abort Ctrl-C takes, so
+  // in-flight siblings stop and the settlement below runs the compensation walk.
+  // Only the first such failure counts, and never one that arrives after the run
+  // was already stopping — a target failing *because* the run was cancelled is a
+  // symptom of that cancellation, not a second reason for it. A dry run never
+  // cancels: it has no record, so there is nothing to roll back.
+  let failureCancel:
+    | { target: string; error: unknown; first?: TargetBuilder }
+    | undefined;
+  const onTargetFailed = (name: string, error: unknown): void => {
+    if (dryRun || runController.signal.aborted) return;
+    const disposition = failures.cancelling.get(name);
+    if (disposition === undefined) return;
+    failureCancel = disposition === "cancel-run"
+      ? { target: name, error }
+      : { target: name, error, first: disposition };
+    runController.abort();
+    messages.info(
+      `${name} failed and its .onFailure(...) cancels the run — rolling back ` +
+        `run ${runId}.`,
+    );
+  };
+
   const nowIso = () => new Date().toISOString();
   const opened = await openRunState({
     build,
@@ -437,6 +470,8 @@ export async function execute(
     readEnv,
     nowIso,
     onExternalCancel,
+    cancelsOnFailure: failures.cancelling.size > 0,
+    onTargetFailed,
     stateStore: options.stateStore,
     state: options.state,
     actor: options.actor,
@@ -583,12 +618,17 @@ export async function execute(
     messages.error(lost.message);
     result = { ok: false, executed: run.executed, error: lost, runId };
   } else if (cancelled) {
-    result = {
-      ok: false,
-      executed: run.executed,
-      cancelled: true,
-      runId,
-    };
+    // A cancellation a failure asked for keeps that failure as the run's error,
+    // so the result says both that the run was rolled back and why.
+    result = failureCancel === undefined
+      ? { ok: false, executed: run.executed, cancelled: true, runId }
+      : {
+        ok: false,
+        executed: run.executed,
+        cancelled: true,
+        error: failureCancel.error,
+        runId,
+      };
     if (externallyCancelled) {
       // Another process owns the cancellation: it runs the compensations and
       // settles the record. We stop and leave the run `cancelling`, draining any
@@ -609,6 +649,10 @@ export async function execute(
         nowIso,
         isExternallyCancelled: () => externallyCancelled,
         isLeaseLost: () => leaseLost,
+        failure: failureCancel === undefined ? undefined : {
+          target: failureCancel.target,
+          first: failureCancel.first,
+        },
       });
       // A cancellation only invalidates the cache if something was actually
       // undone. A target records its fingerprint when its body returns, and a
