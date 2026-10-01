@@ -117,6 +117,13 @@ export interface RunEnv {
    * `resume --check` and mean the timeout never fires).
    */
   priorWaits?: ReadonlyMap<string, WaitState>;
+  /**
+   * Told the name of every target that settles `failed` in this process, as it
+   * settles — the executor's hook for a `.onFailure(...)` disposition that
+   * cancels the run. Called for a fan-out's sub-targets too; the executor acts
+   * only on names in the run's own plan.
+   */
+  onTargetFailed?: (name: string) => void;
 }
 
 /** What a target settled to in this process: its status and, if it failed, why. */

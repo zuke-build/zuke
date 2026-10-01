@@ -2179,6 +2179,8 @@ class TargetBuilder
     Fan-out spec, set by {@link forEach}: materialises per-item sub-target pipelines.
   onCancel_?: () => TargetBuilder
     Compensation thunk, set by {@link onCancel}: runs on cancel iff this target succeeded.
+  onFailure_?: OnFailure
+    Failure disposition thunk, set by {@link onFailure}: what this target's failure does to the run.
   description(text: string): this
     Set the human-readable description shown in `zuke --list`.
   dependsOn(...targets: Array<TargetBuilder | Group>): this
@@ -2448,6 +2450,36 @@ class TargetBuilder
       .onCancel(() => this.rollback);
     rollback = target()
       .executes((ctx) => tearDown(ctx.state.get().slot)); // reads deploy's meta
+    ```
+  onFailure(disposition: OnFailure): this
+    Decide what this target's failure does to the run. By default
+    (`"fail"`) a failed target fails the run, and nothing is undone. With
+    `"cancel-run"` the failure cancels the run instead: every target that
+    had succeeded has its {@link onCancel} compensation run, in reverse order —
+    the same walk `zuke cancel`, Ctrl-C and a timed-out wait take. A thunk
+    returning a sibling target runs that target as a compensation first (its
+    `ctx.state` holds this target's persisted metadata), then cancels.
+
+    The disposition applies once retries and remediations are exhausted, to the
+    target's final failure. A run that is already being cancelled is not
+    cancelled twice, and in-flight siblings are stopped as on any cancellation.
+    The run settles `cancelled` with the target's error, so the record says both
+    that it was rolled back and why. Requires a state store, which a build using
+    it enables by default, exactly as for {@link onCancel}.
+
+    It is the counterpart of {@link WaitSettings.onTimeout}: a deploy chain
+    whose health check fails should unwind through the same rollback as an
+    operator's cancel, not through a second copy of it.
+
+    ```ts
+    deploy = target()
+      .executes((ctx) => ctx.state.set({ revision: "api-00042" }))
+      .onCancel(() => this.rollback);
+    verify = target()
+      .dependsOn(this.deploy)
+      .executes(() => checkHealth())
+      .onFailure(() => "cancel-run"); // a failed check rolls the deploy back
+    rollback = target().executes((ctx) => undo(ctx.state.get().revision));
     ```
   forEach(items: () => readonly Item[], factory: ForEachFactory<Item>, configure?: Configure<ForEachSettings>): this
     Fan out over a runtime list: for each item, build an ordered pipeline of
@@ -5074,6 +5106,12 @@ type OnCancel = TargetBuilder | (() => TargetBuilder)
   sibling target directly, or a thunk returning one. The thunk form defers
   evaluation so a compensation declared below the target it cleans up (class
   fields initialise top-to-bottom) can still be referenced.
+
+type OnFailure = () => TargetBuilder | "fail" | "cancel-run"
+  What a target does when it fails — resolved from {@link TargetBuilder.onFailure}.
+  `"fail"` (the default) fails the run as usual; `"cancel-run"` cancels it,
+  running the compensations of every target that succeeded; a thunk returning a
+  sibling target runs that target as a compensation first, then cancels.
 
 type OnTimeout = () => TargetBuilder | "fail" | "cancel-run"
   What a timed-out wait does — resolved from {@link WaitSettings.onTimeout}.

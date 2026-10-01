@@ -61,6 +61,12 @@ export async function settleCancelledRun(opts: {
   isLeaseLost?: () => boolean;
   /** The run's resolved shape, read by a compensation via `ctx.plan()`. */
   plan: RunPlan;
+  /**
+   * A compensation to run **before** the reverse walk, for a failed target
+   * whose `.onFailure(...)` named one. It reads `forTarget`'s persisted meta,
+   * exactly as a timed-out wait's named compensation does.
+   */
+  first?: { compensation: TargetBuilder; forTarget: string };
 }): Promise<CancelSettlement> {
   const { writer, life, order, runId, actor, reporter } = opts;
   // Hold the per-run cancel lock while we compensate, so a concurrent
@@ -99,7 +105,16 @@ export async function settleCancelledRun(opts: {
         // Run the succeeded targets' compensations in reverse order, record
         // the cancellation in the audit trail (as `zuke cancel` does), then
         // settle.
-        const comp = await runCompensations(order, writer.snapshot(), {
+        // The snapshot is read after markRunCancelling drained the queue, so a
+        // named compensation sees the failed target's last recorded meta.
+        const snapshot = writer.snapshot();
+        const first = opts.first;
+        const comp = await runCompensations(order, snapshot, {
+          extra: first === undefined ? [] : [{
+            compensation: first.compensation,
+            forTarget: first.forTarget,
+            meta: snapshot.targets[first.forTarget]?.meta ?? {},
+          }],
           runId,
           plan: opts.plan,
           signals: opts.signals,

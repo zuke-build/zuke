@@ -817,6 +817,7 @@ function settleTarget(
     ...(summary === undefined ? {} : { summary }),
   });
   void env.writer?.markTargetSettled(name, status, error, summary);
+  if (status === "failed") env.onTargetFailed?.(name);
 }
 
 /** Sequentially run the plan, aborting (and skipping the rest) on first failure. */

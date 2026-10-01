@@ -518,6 +518,61 @@ its inner items' `.onCancel()` run, matched by the same nested
 > and closes that window; an in-process cancel (Ctrl-C) has no such window,
 > since bodies are aborted and settled before the walk runs.
 
+### A failure that rolls back — `.onFailure()`
+
+By default a failed target fails the run and undoes nothing: the targets that
+succeeded before it stay done. When a failure means "this change is bad, take it
+back" — a health check after a deploy, a canary analysis — declare it with
+`.onFailure(...)` and the failure **cancels** the run instead, through the same
+compensation walk as `zuke cancel`:
+
+```ts
+class CD extends Build {
+  deploy = target()
+    .executes((ctx) => ctx.state.set({ revision: "api-00042" }))
+    .onCancel(() => this.rollback);
+  verify = target()
+    .dependsOn(this.deploy)
+    .executes(() => checkHealth())
+    .onFailure(() => "cancel-run"); // a failed check rolls the deploy back
+  rollback = target().executes((ctx) => undo(ctx.state.get().revision));
+}
+```
+
+The disposition is a thunk, like `onTimeout`'s, returning one of:
+
+- **`"fail"`** (the default) — the run fails; nothing is undone.
+- **`"cancel-run"`** — the run is cancelled: every succeeded target's
+  compensation runs in reverse order, and the record settles `cancelled`.
+- **a sibling target** (`.onFailure(() => this.diagnose)`) — that target runs
+  first as a compensation, then the run is cancelled. Its `ctx.state` holds
+  **the failed target's** meta, as under `.onCancel` — so a diagnose or cleanup
+  step reads what the failing target recorded before it threw.
+
+What it guarantees:
+
+- **One rollback path.** An operator's cancel, a timed-out gate and a failed
+  check all end in the same compensations, so there is no second rollback to
+  drift from the first.
+- **The final failure only.** `.retry(...)` and `.recoverWith(...)` run first;
+  the disposition applies once they are exhausted.
+- **The reason is kept.** The run's result carries the target's error alongside
+  `cancelled: true`, and the failed target's row in the record keeps its
+  message, so `zuke runs show <id>` says both that the run was rolled back and
+  why. The process exits non-zero.
+- **In-flight siblings stop**, as on any cancellation, and a target that fails
+  _because_ the run was already being cancelled is a symptom, not a second
+  reason: it neither re-cancels nor becomes the run's error.
+- **It works across a resume.** A check that fails after `zuke resume` rolls
+  back targets an earlier process ran, from the state they recorded.
+- **A dry run never cancels.** It has no record, so there is nothing to undo.
+
+Like `.onCancel()`, it needs a state store and turns the `.zuke/runs` store on
+by default; with state explicitly disabled, a cancelling `.onFailure` is refused
+before anything runs. It cannot be declared on a `.forEach()` **stage**, which
+is not part of the run's plan — put it on the fan-out target, which fails when
+any item does.
+
 ## Fan-out over a list — `.forEach()`
 
 `.forEach()` runs the **same pipeline over a runtime list** — deploy N repos,

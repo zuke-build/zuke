@@ -32,6 +32,7 @@ that declares only `.effect(...)` each legitimately have no `.executes(...)`.
 | `.lock((s) => s.lockKey(...).withTtl(...))`                                                              | Hold a cross-run lock while running; a second run wanting the key fails, or queues with `.waitUpTo(...)`. See below.                                       |
 | `.waitsFor((s) => s.on(externalSignal(...)))`                                                            | Gate (no body): suspend the run until an external event; resume later. See below.                                                                          |
 | `.onCancel(() => this.rollback)`                                                                         | Compensation run (reverse order) iff this target succeeded when the run is cancelled. See below.                                                           |
+| `.onFailure(() => "cancel-run")`                                                                         | Make this target's final failure cancel the run, running the compensations; a thunk returning a target runs it first. See below.                           |
 | `.effect(name, fn)`                                                                                      | A side effect whose intent is recorded before it runs, so a resume re-drives it. At-least-once. See below.                                                 |
 | `.forEach(() => items, (item) => ({stage: target()…}), (s) => s.concurrency(3).continueOnItemFailure())` | Fan out a pipeline over a runtime list: items concurrent, stages sequential per item. See below.                                                           |
 | `.proceedAfterFailure()`                                                                                 | Keep the build going if this target fails.                                                                                                                 |
@@ -464,6 +465,13 @@ class CD extends Build {
   tool (all run the same walk). A live run aborts on its next state write.
 - A compensation that throws is recorded but does **not** stop the walk (cleanup
   is maximal). Cancelling a finished run is a friendly no-op.
+- A failed target can route here too: `.onFailure(() => "cancel-run")` makes its
+  **final** failure (after `.retry`/`.recoverWith`) cancel the run, so a failed
+  health check unwinds through the same compensations as `zuke cancel`.
+  `.onFailure(() => this.diagnose)` runs that target first, with the **failed
+  target's** meta in `ctx.state`. The result keeps the error with
+  `cancelled: true`; a dry run never cancels; not allowed on a `.forEach()`
+  stage (put it on the fan-out target).
 - A timed-out `.waitsFor()` can route here: `.onTimeout(() => "cancel-run")`
   cancels the run (running compensations); `.onTimeout(() => this.cleanup)` runs
   that target too. Needs a state store (a build with `.onCancel()` enables

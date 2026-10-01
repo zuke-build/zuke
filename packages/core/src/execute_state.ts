@@ -14,6 +14,7 @@
  * @module
  */
 
+import { cancelsOnFailure } from "./on_failure.ts";
 import type { Build } from "./build.ts";
 import type { TargetBuilder } from "./target.ts";
 import type { RunPlan } from "./run_plan.ts";
@@ -217,7 +218,7 @@ export async function openRunState(opts: {
   // works" without --state. Plain builds still opt in explicitly.
   const usesDurableFeature = order.some((t) =>
     t.lock_ !== undefined || t.waitsFor_ !== undefined ||
-    t.onCancel_ !== undefined || t.effects_.length > 0
+    t.onCancel_ !== undefined || t.effects_.length > 0 || cancelsOnFailure(t)
   );
   const stateStore = dryRun ? undefined : resolveStateStore(
     opts.stateStore,
@@ -243,6 +244,19 @@ export async function openRunState(opts: {
       "A target uses .waitsFor(...), which needs a state store to persist the " +
         "suspended run — but state is disabled. Enable it (drop stateStore: " +
         "false, pass --state, or set ZUKE_STATE_DIR / ZUKE_STATE_URL).",
+    );
+    return { ok: false, error };
+  }
+  // A failure that cancels the run unwinds it through the compensation walk,
+  // and the walk reads what succeeded from the record. With no record there is
+  // nothing to walk, so the failure would quietly degrade to an ordinary one —
+  // the rollback the build declared would simply not happen. Refuse up front.
+  if (!dryRun && stateStore === undefined && order.some(cancelsOnFailure)) {
+    const error = new Error(
+      "A target uses .onFailure(...) to cancel the run, which needs a state " +
+        "store to know what succeeded and must be rolled back — but state is " +
+        "disabled. Enable it (drop stateStore: false, pass --state, or set " +
+        "ZUKE_STATE_DIR / ZUKE_STATE_URL).",
     );
     return { ok: false, error };
   }
