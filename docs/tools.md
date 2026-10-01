@@ -66,6 +66,7 @@ actually spawn (the resolved shim or the bare fallback) for diagnostics.
 | `@zuke/kubectl`        | `apply`, `create`, `delete`, `get`, `getNamespaces` (typed), `describe`, `logs`, `exec`, `rollout`, `scale`, `setImage`, `patch`, `portForward`, `wait`, `top`, `annotate`, `label` |
 | `@zuke/helm`           | `install`, `upgrade`, `uninstall`, `template`, `lint`, `dependencyUpdate`, `repoAdd`, `package`                                                                                     |
 | `@zuke/kustomize`      | `build`, `editSetImage`                                                                                                                                                             |
+| `@zuke/argo-rollouts`  | `setImage`, `promote`, `abort`, `pause`, `status`, `undo`, `restart`, `retryRollout`, `getRollout`, `listRollouts`, `create`, `createAnalysisRun`, `lint`, `version`, and more      |
 | `@zuke/oxlint`         | `lint`                                                                                                                                                                              |
 | `@zuke/eslint`         | `lint`                                                                                                                                                                              |
 | `@zuke/biome`          | `check`, `format`, `lint`, `ci`                                                                                                                                                     |

@@ -256,6 +256,11 @@ export const TOOL_GROUPS: ToolGroup[] = [
         pkg: "@zuke/kustomize",
         desc: "build, editSetImage",
       },
+      {
+        name: "Argo Rollouts",
+        pkg: "@zuke/argo-rollouts",
+        desc: "setImage, promote, abort, status",
+      },
     ],
   },
   {

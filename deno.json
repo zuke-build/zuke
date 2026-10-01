@@ -16,6 +16,7 @@
     "packages/kubectl",
     "packages/helm",
     "packages/kustomize",
+    "packages/argo-rollouts",
     "packages/oxlint",
     "packages/eslint",
     "packages/cspell",

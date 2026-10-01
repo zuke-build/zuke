@@ -1554,6 +1554,11 @@
           "jsr:@zuke/core@^1.58.0"
         ]
       },
+      "packages/argo-rollouts": {
+        "dependencies": [
+          "jsr:@zuke/core@^1.60.0"
+        ]
+      },
       "packages/biome": {
         "dependencies": [
           "jsr:@zuke/core@^1.44.0"

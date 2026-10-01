@@ -26,6 +26,7 @@ export const PACKAGES = [
   "kubectl",
   "helm",
   "kustomize",
+  "argo-rollouts",
   "oxlint",
   "eslint",
   "cspell",

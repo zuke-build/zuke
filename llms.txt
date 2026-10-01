@@ -116,6 +116,7 @@ Full reference: [docs/cli.md](./docs/cli.md).
 - [@zuke/kubectl](https://jsr.io/@zuke/kubectl) — typed `kubectl` CLI task wrappers for Zuke builds, for
 - [@zuke/helm](https://jsr.io/@zuke/helm) — typed `HelmTasks` wrappers for the Helm (https://helm.sh) CLI,
 - [@zuke/kustomize](https://jsr.io/@zuke/kustomize) — typed `KustomizeTasks` wrappers for the
+- [@zuke/argo-rollouts](https://jsr.io/@zuke/argo-rollouts) — typed `ArgoRolloutsTasks` wrappers for the
 - [@zuke/oxlint](https://jsr.io/@zuke/oxlint) — typed `oxlint` task wrappers for Zuke builds
 - [@zuke/eslint](https://jsr.io/@zuke/eslint) — typed `eslint` task wrappers for Zuke builds
 - [@zuke/cspell](https://jsr.io/@zuke/cspell) — typed `cspell` task wrappers for Zuke builds
