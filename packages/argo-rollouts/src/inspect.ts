@@ -9,7 +9,11 @@
  * @module
  */
 
-import { ArgoRolloutsSettings, requireName } from "./settings.ts";
+import {
+  ArgoRolloutsSettings,
+  requireInteger,
+  requireName,
+} from "./settings.ts";
 
 /** Settings for `get rollout` — show a rollout's steps, replica sets and analysis. */
 export class ArgoRolloutsGetRolloutSettings extends ArgoRolloutsSettings {
@@ -53,7 +57,12 @@ export class ArgoRolloutsGetRolloutSettings extends ArgoRolloutsSettings {
     if (this.#watch) argv.push("--watch");
     if (this.#noColor) argv.push("--no-color");
     if (this.#timeoutSeconds !== undefined) {
-      argv.push(`--timeout-seconds=${this.#timeoutSeconds}`);
+      const seconds = requireInteger(
+        this.#timeoutSeconds,
+        "--timeout-seconds",
+        "getRollout",
+      );
+      argv.push(`--timeout-seconds=${seconds}`);
     }
     return argv;
   }
@@ -139,10 +148,13 @@ export class ArgoRolloutsListRolloutsSettings extends ArgoRolloutsSettings {
   }
 }
 
-/** Settings for `list experiments`. */
+/**
+ * Settings for `list experiments`. Unlike `list rollouts` it has no watch or
+ * name filter: the plugin registers only `--all-namespaces` for it, whatever
+ * its help text's examples suggest.
+ */
 export class ArgoRolloutsListExperimentsSettings extends ArgoRolloutsSettings {
   #allNamespaces = false;
-  #watch = false;
 
   /** List across every namespace (`--all-namespaces`). */
   allNamespaces(): this {
@@ -150,17 +162,10 @@ export class ArgoRolloutsListExperimentsSettings extends ArgoRolloutsSettings {
     return this;
   }
 
-  /** Keep printing changes (`--watch`). */
-  watch(): this {
-    this.#watch = true;
-    return this;
-  }
-
   /** Assemble the `list experiments` argv. */
   protected override buildArgs(): string[] {
     const argv = ["list", "experiments", ...this.globalArgs()];
     if (this.#allNamespaces) argv.push("--all-namespaces");
-    if (this.#watch) argv.push("--watch");
     return argv;
   }
 }
@@ -177,6 +182,8 @@ export class ArgoRolloutsVersionSettings extends ArgoRolloutsSettings {
 
   /** Assemble the `version` argv. */
   protected override buildArgs(): string[] {
-    return this.#short ? ["version", "--short"] : ["version"];
+    const argv = ["version", ...this.globalArgs()];
+    if (this.#short) argv.push("--short");
+    return argv;
   }
 }

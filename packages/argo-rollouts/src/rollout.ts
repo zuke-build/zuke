@@ -9,7 +9,11 @@
  * @module
  */
 
-import { ArgoRolloutsSettings, requireName } from "./settings.ts";
+import {
+  ArgoRolloutsSettings,
+  requireInteger,
+  requireName,
+} from "./settings.ts";
 
 /**
  * Settings for `set image` — point a container of the rollout at a new image,
@@ -149,7 +153,12 @@ export class ArgoRolloutsUndoSettings extends ArgoRolloutsSettings {
       ...this.globalArgs(),
     ];
     if (this.#toRevision !== undefined) {
-      argv.push(`--to-revision=${this.#toRevision}`);
+      const revision = requireInteger(
+        this.#toRevision,
+        "--to-revision",
+        "undo",
+      );
+      argv.push(`--to-revision=${revision}`);
     }
     return argv;
   }

@@ -11700,12 +11700,12 @@ class ArgoRolloutsLintSettings extends ArgoRolloutsSettings
     Assemble the `lint` argv.
 
 class ArgoRolloutsListExperimentsSettings extends ArgoRolloutsSettings
-  Settings for `list experiments`.
+  Settings for `list experiments`. Unlike `list rollouts` it has no watch or
+  name filter: the plugin registers only `--all-namespaces` for it, whatever
+  its help text's examples suggest.
 
   allNamespaces(): this
     List across every namespace (`--all-namespaces`).
-  watch(): this
-    Keep printing changes (`--watch`).
   override protected buildArgs(): string[]
     Assemble the `list experiments` argv.
 

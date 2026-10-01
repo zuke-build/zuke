@@ -37,6 +37,13 @@ Deno.test("getRollout: bare and every flag", () => {
     Error,
     "ArgoRolloutsTasks.getRollout: .name() is required.",
   );
+  assertThrows(
+    () =>
+      new ArgoRolloutsGetRolloutSettings().name("api").timeoutSeconds(1.5)
+        .argv(),
+    Error,
+    "ArgoRolloutsTasks.getRollout: --timeout-seconds takes a whole number, got 1.5.",
+  );
 });
 
 Deno.test("getExperiment: bare and every flag", () => {
@@ -84,15 +91,16 @@ Deno.test("listRollouts: bare and every flag", () => {
   );
 });
 
-Deno.test("listExperiments: bare and every flag", () => {
+Deno.test("listExperiments: bare and its only flag", () => {
+  // The plugin registers only --all-namespaces here; its help text's --watch
+  // example is a copy of list rollouts', and the real command rejects it.
   assertEquals(
     new ArgoRolloutsListExperimentsSettings().argv().slice(1),
     ["list", "experiments"],
   );
   assertEquals(
-    new ArgoRolloutsListExperimentsSettings().allNamespaces().watch().argv()
-      .slice(1),
-    ["list", "experiments", "--all-namespaces", "--watch"],
+    new ArgoRolloutsListExperimentsSettings().allNamespaces().argv().slice(1),
+    ["list", "experiments", "--all-namespaces"],
   );
 });
 
@@ -101,5 +109,10 @@ Deno.test("version: full and short", () => {
   assertEquals(
     new ArgoRolloutsVersionSettings().short().argv().slice(1),
     ["version", "--short"],
+  );
+  // The cluster flags are inherited by version too, so they are passed on.
+  assertEquals(
+    new ArgoRolloutsVersionSettings().context("eu").argv().slice(1),
+    ["version", "--context", "eu"],
   );
 });

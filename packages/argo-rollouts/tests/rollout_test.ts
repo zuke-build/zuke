@@ -87,6 +87,13 @@ Deno.test("undo: bare and to a revision", () => {
     Error,
     "ArgoRolloutsTasks.undo: .name() is required.",
   );
+  assertThrows(
+    () =>
+      new ArgoRolloutsUndoSettings().name("api").toRevision(Number.NaN)
+        .argv(),
+    Error,
+    "ArgoRolloutsTasks.undo: --to-revision takes a whole number, got NaN.",
+  );
 });
 
 Deno.test("restart: now and after a delay", () => {

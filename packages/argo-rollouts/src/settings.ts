@@ -24,6 +24,24 @@ export function requireName(name: string | undefined, task: string): string {
 }
 
 /**
+ * An integer flag's value, or a friendly error naming the task: the plugin
+ * parses these flags as integers and would reject `1.5` or `NaN` only once it
+ * runs. Module-internal, like {@link requireName}.
+ */
+export function requireInteger(
+  value: number,
+  flag: string,
+  task: string,
+): number {
+  if (!Number.isInteger(value)) {
+    throw new Error(
+      `ArgoRolloutsTasks.${task}: ${flag} takes a whole number, got ${value}.`,
+    );
+  }
+  return value;
+}
+
+/**
  * Base for all Argo Rollouts subcommand settings. The binary is the plugin
  * itself, `kubectl-argo-rollouts`, which takes the same subcommands as
  * `kubectl argo rollouts`; the cluster-targeting flags (`--namespace`,
