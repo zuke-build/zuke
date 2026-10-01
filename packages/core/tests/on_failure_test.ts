@@ -224,7 +224,11 @@ Deno.test("a failure-cancel never reopens a run another process already cancelle
       verify = target()
         .dependsOn(this.deploy)
         .onFailure(() => this.diagnose)
-        .executes(async () => {
+        .executes(async (ctx) => {
+          // State writes are serialized, so awaiting one guarantees deploy's
+          // own `succeeded` write has landed before the canceller reads the
+          // record; otherwise it may see deploy pending and skip its rollback.
+          await ctx.state.set({ checked: true });
           await cancelRun(this, { runId, stateStore: store, silent: true });
           throw new Error("unhealthy");
         });
