@@ -2463,6 +2463,14 @@ class TargetBuilder
     The disposition applies once retries and remediations are exhausted, to the
     target's final failure. A run that is already being cancelled is not
     cancelled twice, and in-flight siblings are stopped as on any cancellation.
+    A named target is an extra step before the walk, not a replacement: the
+    failed target itself is never compensated, so name a cleanup for its
+    partial work, not a predecessor's rollback (which would then run twice).
+
+    The thunk is evaluated once, before the run starts. One that throws,
+    returns anything but `"fail"`, `"cancel-run"` or a target declared on the
+    build, names this target itself, or cancels on a target that is also
+    {@link proceedAfterFailure} refuses the run with a message naming the target.
     The run settles `cancelled` with the target's error, so the record says both
     that it was rolled back and why. Requires a state store, which a build using
     it enables by default, exactly as for {@link onCancel}.
@@ -2850,14 +2858,17 @@ interface BuildResult
   executed: string[]
     Names of the targets that ran, in execution order.
   error?: unknown
-    The error that aborted the run, if any.
+    The error that aborted the run, if any. On a run a target's
+    `.onFailure(...)` cancelled, it is that target's error, set alongside
+    {@link cancelled}.
   suspended?: boolean
     True when the run suspended at a `.waitsFor(...)` gate rather than
     finishing — its state is saved and it can be resumed later. The process
     still exits 0.
   cancelled?: boolean
-    True when the run was cancelled (via `options.signal` / Ctrl-C, or by
-    another process running `zuke cancel`) rather than failing on its own.
+    True when the run was cancelled — via `options.signal` / Ctrl-C, by
+    another process running `zuke cancel`, or by a failed target whose
+    `.onFailure(...)` cancels the run (then {@link error} holds that failure).
     Its compensations have run and the record is `cancelled`. `ok` is `false`.
   runId?: string
     The run's id, when a run identity was established (always, in practice —
@@ -5107,11 +5118,14 @@ type OnCancel = TargetBuilder | (() => TargetBuilder)
   evaluation so a compensation declared below the target it cleans up (class
   fields initialise top-to-bottom) can still be referenced.
 
-type OnFailure = () => TargetBuilder | "fail" | "cancel-run"
+type OnFailure = OnTimeout
   What a target does when it fails — resolved from {@link TargetBuilder.onFailure}.
   `"fail"` (the default) fails the run as usual; `"cancel-run"` cancels it,
   running the compensations of every target that succeeded; a thunk returning a
   sibling target runs that target as a compensation first, then cancels.
+
+  The same shape as {@link OnTimeout} by design — the two are the failure and
+  deadline halves of one disposition vocabulary — so it is an alias, not a copy.
 
 type OnTimeout = () => TargetBuilder | "fail" | "cancel-run"
   What a timed-out wait does — resolved from {@link WaitSettings.onTimeout}.

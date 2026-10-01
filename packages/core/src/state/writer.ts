@@ -342,6 +342,11 @@ export class RunStateWriter {
   /** Record the run as `cancelling` — asked to stop; compensations are running. */
   markRunCancelling(): Promise<void> {
     return this.#updateVoid((record) => {
+      // Like the other run-level writes: a run another process has already
+      // settled — a `zuke cancel` that finished first, a sweep — keeps the
+      // status it wrote. Overwriting a terminal `cancelled` with `cancelling`
+      // would strand the run in a state nothing finishes.
+      if (this.#settledElsewhere) return;
       record.status = "cancelling";
     });
   }

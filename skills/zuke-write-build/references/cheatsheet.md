@@ -469,9 +469,13 @@ class CD extends Build {
   **final** failure (after `.retry`/`.recoverWith`) cancel the run, so a failed
   health check unwinds through the same compensations as `zuke cancel`.
   `.onFailure(() => this.diagnose)` runs that target first, with the **failed
-  target's** meta in `ctx.state`. The result keeps the error with
+  target's** meta in `ctx.state` — an **extra** step before the walk, so name a
+  cleanup for the failed target itself (which the walk never compensates), never
+  a predecessor's rollback (it would run twice). The result keeps the error with
   `cancelled: true`; a dry run never cancels; not allowed on a `.forEach()`
-  stage (put it on the fan-out target).
+  stage (put it on the fan-out target). Evaluated once up front: a throwing or
+  self-naming thunk, a non-target, or pairing it with `.proceedAfterFailure()`
+  refuses the run.
 - A timed-out `.waitsFor()` can route here: `.onTimeout(() => "cancel-run")`
   cancels the run (running compensations); `.onTimeout(() => this.cleanup)` runs
   that target too. Needs a state store (a build with `.onCancel()` enables

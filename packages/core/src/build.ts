@@ -77,7 +77,11 @@ export interface BuildResult {
   ok: boolean;
   /** Names of the targets that ran, in execution order. */
   executed: string[];
-  /** The error that aborted the run, if any. */
+  /**
+   * The error that aborted the run, if any. On a run a target's
+   * `.onFailure(...)` cancelled, it is that target's error, set alongside
+   * {@link cancelled}.
+   */
   error?: unknown;
   /**
    * True when the run **suspended** at a `.waitsFor(...)` gate rather than
@@ -86,8 +90,9 @@ export interface BuildResult {
    */
   suspended?: boolean;
   /**
-   * True when the run was **cancelled** (via `options.signal` / Ctrl-C, or by
-   * another process running `zuke cancel`) rather than failing on its own.
+   * True when the run was **cancelled** — via `options.signal` / Ctrl-C, by
+   * another process running `zuke cancel`, or by a failed target whose
+   * `.onFailure(...)` cancels the run (then {@link error} holds that failure).
    * Its compensations have run and the record is `cancelled`. `ok` is `false`.
    */
   cancelled?: boolean;

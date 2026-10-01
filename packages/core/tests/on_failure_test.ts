@@ -11,13 +11,14 @@
 
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
-import { target } from "../src/target.ts";
+import { target, type TargetBuilder } from "../src/target.ts";
 import { execute } from "../src/executor.ts";
-import { cancelsOnFailure, failureDisposition } from "../src/on_failure.ts";
+import { resolveFailureDispositions } from "../src/on_failure.ts";
+import { cancelRun } from "../src/cancel.ts";
 import { messageOf } from "../src/internal.ts";
 import { withTempStore } from "./_store.ts";
 
-Deno.test("failureDisposition defaults to fail and resolves each declared form", () => {
+Deno.test("resolveFailureDispositions keeps only the cancelling dispositions", () => {
   class B extends Build {
     plain = target().executes(() => {});
     explicit = target().onFailure(() => "fail").executes(() => {});
@@ -28,14 +29,253 @@ Deno.test("failureDisposition defaults to fail and resolves each declared form",
   }
   const b = new B();
   discoverTargets(b);
-  assertEquals(failureDisposition(b.plain), "fail");
-  assertEquals(failureDisposition(b.explicit), "fail");
-  assertEquals(failureDisposition(b.cancel), "cancel-run");
-  assertEquals(failureDisposition(b.named) === b.rollback, true);
-  assertEquals(cancelsOnFailure(b.plain), false);
-  assertEquals(cancelsOnFailure(b.explicit), false);
-  assertEquals(cancelsOnFailure(b.cancel), true);
-  assertEquals(cancelsOnFailure(b.named), true);
+  const resolved = resolveFailureDispositions([
+    b.plain,
+    b.explicit,
+    b.cancel,
+    b.named,
+  ]);
+  if (!resolved.ok) throw resolved.error;
+  assertEquals([...resolved.cancelling.keys()], ["cancel", "named"]);
+  assertEquals(resolved.cancelling.get("cancel"), "cancel-run");
+  assertEquals(resolved.cancelling.get("named") === b.rollback, true);
+});
+
+/** Resolve one target's disposition and return the refusal message. */
+function refusalOf(t: TargetBuilder): string {
+  const resolved = resolveFailureDispositions([t]);
+  return resolved.ok ? "accepted" : resolved.error.message;
+}
+
+Deno.test("resolveFailureDispositions refuses a thunk that throws, naming the target", () => {
+  class B extends Build {
+    verify = target()
+      .onFailure(() => {
+        throw new Error("lookup failed");
+      })
+      .executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+  assertEquals(
+    refusalOf(b.verify),
+    'Target "verify" .onFailure(...) threw: lookup failed',
+  );
+});
+
+Deno.test("resolveFailureDispositions refuses a disposition that is not a target", () => {
+  class B extends Build {
+    verify = target().executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+  // @ts-expect-error — deliberately type-unsafe: a forward reference or an
+  // untyped caller can hand back anything at run time, and the guard must hold.
+  b.verify.onFailure(() => undefined);
+  assertStringIncludes(refusalOf(b.verify), "returned undefined");
+});
+
+Deno.test("resolveFailureDispositions refuses naming the failing target itself", () => {
+  class B extends Build {
+    verify: TargetBuilder = target().onFailure(() => this.verify)
+      .executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+  assertStringIncludes(refusalOf(b.verify), "names the target itself");
+});
+
+Deno.test("resolveFailureDispositions refuses a target not declared on the build", () => {
+  const stray = target().executes(() => {});
+  class B extends Build {
+    verify = target().onFailure(() => stray).executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+  assertStringIncludes(refusalOf(b.verify), "not declared on this build");
+});
+
+Deno.test("resolveFailureDispositions refuses a cancelling target that also proceeds after failure", () => {
+  class B extends Build {
+    verify = target()
+      .proceedAfterFailure()
+      .onFailure(() => "cancel-run")
+      .executes(() => {});
+    // "fail" stays compatible: it asks for nothing proceedAfterFailure denies.
+    lenient = target()
+      .proceedAfterFailure()
+      .onFailure(() => "fail")
+      .executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+  assertStringIncludes(refusalOf(b.verify), ".proceedAfterFailure()");
+  assertEquals(refusalOf(b.lenient), "accepted");
+});
+
+Deno.test("a refused disposition fails the run up front, before any target runs", async () => {
+  // Before the fix the thunk was called unguarded at setup, so its throw
+  // escaped execute() as a raw exception instead of a failed result.
+  await withTempStore(async (store) => {
+    let ran = false;
+    class B extends Build {
+      verify = target()
+        .onFailure(() => {
+          throw new Error("boom");
+        })
+        .executes(() => void (ran = true));
+    }
+    const b = new B();
+    discoverTargets(b);
+    const lines: string[] = [];
+    const result = await execute(b, b.verify, {
+      stateStore: store,
+      reporter: { info: (l) => lines.push(l), error: (l) => lines.push(l) },
+    });
+    assertEquals(result.ok, false);
+    assertEquals(ran, false);
+    assertStringIncludes(messageOf(result.error), "threw: boom");
+    assertStringIncludes(lines.join("\n"), 'Target "verify" .onFailure(...)');
+    assertEquals((await store.listRuns({})).length, 0);
+  });
+});
+
+for (const parallel of [false, true]) {
+  Deno.test(`a disposition thunk is evaluated once, so a later throw cannot strand the run (parallel: ${parallel})`, async () => {
+    // Before the fix the thunk ran again inside the scheduler's settle path: a
+    // thunk that threw on its second call left the record \`running\` and, in
+    // the parallel scheduler, raised an unhandled rejection.
+    await withTempStore(async (store) => {
+      let calls = 0;
+      const undone: string[] = [];
+      class B extends Build {
+        deploy = target().executes(() => {}).onCancel(() => this.rollback);
+        verify = target()
+          .dependsOn(this.deploy)
+          .onFailure(() => {
+            calls++;
+            if (calls > 1) throw new Error("second call");
+            return "cancel-run";
+          })
+          .executes(() => {
+            throw new Error("unhealthy");
+          });
+        rollback = target().executes(() => void undone.push("rollback"));
+      }
+      const b = new B();
+      discoverTargets(b);
+      const result = await execute(b, b.verify, {
+        silent: true,
+        stateStore: store,
+        parallel,
+      });
+      assertEquals(calls, 1);
+      assertEquals(result.cancelled, true);
+      assertEquals(undone, ["rollback"]);
+      const loaded = result.runId ? await store.getRun(result.runId) : null;
+      assertEquals(loaded?.record.status, "cancelled");
+    });
+  });
+}
+
+Deno.test("the result carries the cancelling target's error, not an earlier failure", async () => {
+  // Before the fix the result reused the run's first failure, so a plain
+  // failure that landed first was reported as the reason for the rollback.
+  await withTempStore(async (store) => {
+    let plainFailed: () => void = () => {};
+    const plainDone = new Promise<void>((r) => (plainFailed = r));
+    class B extends Build {
+      plain = target().executes(() => {
+        plainFailed();
+        throw new Error("plain-error");
+      });
+      check = target()
+        .onFailure(() => "cancel-run")
+        .executes(async () => {
+          await plainDone;
+          throw new Error("check-error");
+        });
+      all = target().dependsOn(this.plain, this.check).executes(() => {});
+    }
+    const b = new B();
+    discoverTargets(b);
+    const result = await execute(b, b.all, {
+      silent: true,
+      stateStore: store,
+      parallel: true,
+    });
+    assertEquals(result.cancelled, true);
+    assertEquals(messageOf(result.error), "check-error");
+  });
+});
+
+Deno.test("a failure-cancel never reopens a run another process already cancelled", async () => {
+  // A \`zuke cancel\` finishes first; the target then fails with cancel-run.
+  // Before the fix the writer's \`cancelling\` landed over the terminal
+  // \`cancelled\` and the run was stranded there. The same race existed for
+  // Ctrl-C; the guard is in the writer, so it covers both.
+  await withTempStore(async (store) => {
+    const undone: string[] = [];
+    let runId = "";
+    class B extends Build {
+      deploy = target()
+        .executes((ctx) => void (runId = ctx.runId))
+        .onCancel(() => this.rollback);
+      verify = target()
+        .dependsOn(this.deploy)
+        .onFailure(() => this.diagnose)
+        .executes(async () => {
+          await cancelRun(this, { runId, stateStore: store, silent: true });
+          throw new Error("unhealthy");
+        });
+      rollback = target().executes(() => void undone.push("rollback"));
+      diagnose = target().executes(() => void undone.push("diagnose"));
+    }
+    const b = new B();
+    discoverTargets(b);
+    const lines: string[] = [];
+    const result = await execute(b, b.verify, {
+      stateStore: store,
+      reporter: { info: (l) => lines.push(l), error: (l) => lines.push(l) },
+    });
+    assertEquals(result.cancelled, true);
+    const loaded = result.runId ? await store.getRun(result.runId) : null;
+    assertEquals(loaded?.record.status, "cancelled");
+    // The external canceller owned the walk: deploy was rolled back once.
+    assertEquals(undone, ["rollback"]);
+    // The named compensation could not run here, and the output says so.
+    assertStringIncludes(
+      lines.join("\n"),
+      "diagnose (named by verify's .onFailure) did not run",
+    );
+  });
+});
+
+Deno.test("the audit trail names the target whose failure cancelled the run", async () => {
+  await withTempStore(async (store) => {
+    class B extends Build {
+      deploy = target().executes(() => {}).onCancel(() => this.rollback);
+      verify = target()
+        .dependsOn(this.deploy)
+        .onFailure(() => "cancel-run")
+        .executes(() => {
+          throw new Error("unhealthy");
+        });
+      rollback = target().executes(() => {});
+    }
+    const b = new B();
+    discoverTargets(b);
+    const result = await execute(b, b.verify, {
+      silent: true,
+      stateStore: store,
+    });
+    const loaded = result.runId ? await store.getRun(result.runId) : null;
+    const cancel = loaded?.record.events.find((e) => e.tool === "cancel");
+    assertEquals(
+      cancel?.detail,
+      "ran 1 compensation(s); cancelled because verify failed",
+    );
+  });
 });
 
 Deno.test("without .onFailure a failure fails the run and undoes nothing", async () => {

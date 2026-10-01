@@ -808,16 +808,17 @@ function settleTarget(
   env: RunEnv,
   name: string,
   status: TargetStatus,
-  error?: string,
+  error?: unknown,
   summary?: SummaryEntry[],
 ): void {
+  const message = errorMessage(error);
   env.statuses.set(name, {
     status: recordStatusOf(status),
-    error,
+    error: message,
     ...(summary === undefined ? {} : { summary }),
   });
-  void env.writer?.markTargetSettled(name, status, error, summary);
-  if (status === "failed") env.onTargetFailed?.(name);
+  void env.writer?.markTargetSettled(name, status, message, summary);
+  if (status === "failed") env.onTargetFailed(name, error);
 }
 
 /** Sequentially run the plan, aborting (and skipping the rest) on first failure. */
@@ -863,7 +864,7 @@ export async function runSequential(
       env,
       name,
       outcome.status,
-      errorMessage(outcome.error),
+      outcome.error,
       outcome.summary,
     );
     if (outcome.status === "passed" || outcome.status === "failed") opened++;
@@ -1022,7 +1023,7 @@ export async function runScheduled(
                   env,
                   t.name_ ?? "<unnamed>",
                   outcome.status,
-                  errorMessage(outcome.error),
+                  outcome.error,
                   outcome.summary,
                 );
               }
@@ -1075,7 +1076,7 @@ export async function runScheduled(
             failure ??= error;
             if (!t.proceedAfterFailure_) halted = true;
             failTarget(reporter, renderer, style, targetName, 0, error);
-            settleTarget(env, targetName, "failed", errorMessage(error));
+            settleTarget(env, targetName, "failed", error);
             pump();
           });
       }

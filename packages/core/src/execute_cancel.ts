@@ -62,11 +62,12 @@ export async function settleCancelledRun(opts: {
   /** The run's resolved shape, read by a compensation via `ctx.plan()`. */
   plan: RunPlan;
   /**
-   * A compensation to run **before** the reverse walk, for a failed target
-   * whose `.onFailure(...)` named one. It reads `forTarget`'s persisted meta,
-   * exactly as a timed-out wait's named compensation does.
+   * Set when the cancellation was asked for by a failed target's
+   * `.onFailure(...)`: which target, and the compensation it named, if any. The
+   * named compensation runs **before** the reverse walk, reading the failed
+   * target's persisted meta; the target is recorded as the cancellation's cause.
    */
-  first?: { compensation: TargetBuilder; forTarget: string };
+  failure?: { target: string; first?: TargetBuilder };
 }): Promise<CancelSettlement> {
   const { writer, life, order, runId, actor, reporter } = opts;
   // Hold the per-run cancel lock while we compensate, so a concurrent
@@ -80,6 +81,16 @@ export async function settleCancelledRun(opts: {
   const stopForOtherProcess = async (): Promise<CancelSettlement> => {
     await writer.drain();
     reporter.info(cancelledElsewhere(runId));
+    // The named compensation lives only in this process's memory, so the
+    // process that owns the walk cannot know to run it. Say so rather than let
+    // the "rolling back" line stand as though it had run.
+    const first = opts.failure?.first;
+    if (first !== undefined) {
+      reporter.error(
+        `${first.name_ ?? "<unnamed>"} (named by ${opts.failure?.target}'s ` +
+          `.onFailure) did not run: another process owns this run's rollback.`,
+      );
+    }
     return { ownedWalk: false, compensated: 0 };
   };
   const cancelLock = await writer.acquireCancelLock(actor);
@@ -108,12 +119,12 @@ export async function settleCancelledRun(opts: {
         // The snapshot is read after markRunCancelling drained the queue, so a
         // named compensation sees the failed target's last recorded meta.
         const snapshot = writer.snapshot();
-        const first = opts.first;
+        const failure = opts.failure;
         const comp = await runCompensations(order, snapshot, {
-          extra: first === undefined ? [] : [{
-            compensation: first.compensation,
-            forTarget: first.forTarget,
-            meta: snapshot.targets[first.forTarget]?.meta ?? {},
+          extra: failure?.first === undefined ? [] : [{
+            compensation: failure.first,
+            forTarget: failure.target,
+            meta: snapshot.targets[failure.target]?.meta ?? {},
           }],
           runId,
           plan: opts.plan,
@@ -129,7 +140,9 @@ export async function settleCancelledRun(opts: {
         for (const event of compensationEvents(comp.attempts, actor, at)) {
           await writer.appendEvent(event);
         }
-        await writer.appendEvent(cancelEvent(actor, comp, at));
+        await writer.appendEvent(
+          cancelEvent(actor, comp, at, failure?.target),
+        );
         // A walk cut short by a lost lease did not settle this run, and saying
         // otherwise would claim an outcome that belongs to the new holder. The
         // terminal write is already a no-op on a disowned writer; not making it

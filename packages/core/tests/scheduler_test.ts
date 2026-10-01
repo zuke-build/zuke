@@ -47,6 +47,7 @@ function contextFor(
     actor: "tester",
     signals: new Map(),
     statuses: new Map(),
+    onTargetFailed: () => {},
     ...(writer === undefined ? {} : { writer }),
   };
   return {
