@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.61.0](https://github.com/zuke-build/zuke/compare/core-v1.60.1...core-v1.61.0) (2026-10-01)
+
+
+### Features
+
+* **core:** add .onFailure() to cancel runs on target failure ([#680](https://github.com/zuke-build/zuke/issues/680)) ([2c0c14d](https://github.com/zuke-build/zuke/commit/2c0c14dd98a825ea0be5545f82d0a7fdbc1525a8))
+
 ## [1.60.1](https://github.com/zuke-build/zuke/compare/core-v1.60.0...core-v1.60.1) (2026-09-30)
 
 
