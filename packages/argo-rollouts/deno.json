@@ -1,6 +1,6 @@
 {
   "name": "@zuke/argo-rollouts",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "license": "MIT",
   "description": "Typed Argo Rollouts (kubectl argo rollouts) task wrappers for Zuke builds — set image, promote, abort, status and more via an injection-free settings-lambda API.",
   "exports": {
