@@ -15,6 +15,7 @@
   "packages/kubectl": "1.1.0",
   "packages/helm": "1.0.1",
   "packages/kustomize": "1.0.1",
+  "packages/argo-rollouts": "1.0.0",
   "packages/oxlint": "1.1.0",
   "packages/eslint": "1.1.0",
   "packages/cspell": "1.2.0",
