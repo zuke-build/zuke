@@ -976,9 +976,11 @@ export async function settleExternally(
       options.expiredWait,
       // A run that was running has a process whose body may still be going: it
       // keeps the run's locks until it stops, and releases them itself. A
-      // parked run, or one whose process is gone, has nobody else to. Decided
-      // on the status the swap replaced: nothing moves a `cancelling` run back.
-      transitioned.from === "suspended" || options.ownerGone === true,
+      // parked run, or one whose process is gone — the caller says so, or the
+      // run's lease is free — has nobody else to. Decided on the status the
+      // swap replaced: nothing moves a `cancelling` run back.
+      transitioned.from === "suspended" || options.ownerGone === true ||
+        await ownerIsGone(store, runId, actor, now),
     );
     reporter.info(`Run ${runId} ${verb} — ${compensationSummary(outcome)}.`);
     return {

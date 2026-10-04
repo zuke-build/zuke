@@ -769,3 +769,24 @@ Deno.test("a run-held claim against a sibling's target-scoped hold names the run
     assertEquals(await isFree(store), true);
   });
 });
+
+Deno.test("cancelling a run left running by a dead process releases its lock", async () => {
+  await withTempStore(async (store) => {
+    const id = await parkRollout(store);
+    // The run looks running, but no process holds its lease: whoever ran it
+    // is gone.
+    const loaded = await store.getRun(id);
+    if (loaded === null) throw new Error("no record");
+    const running = structuredClone(loaded.record);
+    running.status = "running";
+    const put = await store.putRun(running, loaded.version);
+    assertEquals(put.ok, true);
+    await cancelRun(new Rollout(), {
+      runId: id,
+      stateStore: store,
+      silent: true,
+    });
+    assertEquals((await recordOf(store, id)).status, "cancelled");
+    assertEquals(await isFree(store), true);
+  });
+});
