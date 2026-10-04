@@ -4588,8 +4588,9 @@ interface RunRecord
     Recorded so the lock outlives the process that took it: a resumed process
     renews each one with its token, and whatever settles the run — the executor,
     `zuke cancel`, a timed-out wait, a reaping sweep — releases them. The token
-    proves ownership of the lock to the state store; it is not a credential,
-    and anyone who can write the store could release the lock regardless.
+    proves ownership of the lock to the state store, so it is masked wherever a
+    record is shown — `zuke runs show` and the MCP `show_run` tool — as a lock
+    listing never includes it either.
 
 interface RunSummary
   A compact run listing row, returned by {@link "./store.ts".StateStore.listRuns}.

@@ -97,9 +97,10 @@ stage = target()
   means the run no longer has the exclusivity it was promised, so the resume
   refuses with a `LockConflictError` naming the new holder and leaves the run
   suspended, for you to resume once that run finishes or to cancel.
-- **The token is not a secret,** and `zuke runs show` will show it: it proves
-  ownership of the lock to the store, and anyone who can write the store could
-  release the lock anyway.
+- **The token is never shown.** It proves ownership of the lock to the store, so
+  `zuke runs show` (text and `--json`) and the MCP `show_run` tool mask it, as a
+  lock listing never includes it. The record in the store itself carries it:
+  guard the store as you would anything that can release a lock.
 - **Requires a state store,** like any lock, and fails the target rather than
   hold a lock the run record could not carry.
 

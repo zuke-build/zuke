@@ -31,6 +31,7 @@ import {
 import { forceTarget } from "../force.ts";
 import type { JsonValue } from "../target.ts";
 import { AUDIT_RUN_ID } from "./audit.ts";
+import { shownRunRecord } from "../state/record.ts";
 import type { McpTool } from "./protocol.ts";
 
 /** What a run-state tool needs to reach the durable surfaces. */
@@ -375,7 +376,7 @@ async function showRun(
   }
   const loaded = await deps.store.getRun(runId);
   if (loaded === null) return jsonResult({ error: "no_run", runId }, true);
-  return jsonResult(loaded.record);
+  return jsonResult(shownRunRecord(loaded.record));
 }
 
 /** `signal_run`: deliver a signal and resume the run, exactly once. */
