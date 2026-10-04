@@ -19,6 +19,7 @@ import type { SummaryEntry } from "./summary_note.ts";
 import type { RunStateWriter } from "./state/writer.ts";
 import type { RunPlan } from "./run_plan.ts";
 import type { StateStore } from "./state/store.ts";
+import type { RunLockHolder } from "./run_locks.ts";
 import type {
   RunInitiator,
   SignalRecord,
@@ -126,6 +127,13 @@ export interface RunEnv {
    * the run started.
    */
   onTargetFailed: (name: string, error: unknown) => void;
+  /**
+   * The run-held locks this process keeps alive for the run (see
+   * {@link "./target.ts".LockSettings.holdForRun}). Lock acquisition adds to
+   * it; the executor renews it when the run parks and releases it when the run
+   * settles.
+   */
+  runLocks: RunLockHolder;
 }
 
 /** What a target settled to in this process: its status and, if it failed, why. */

@@ -484,6 +484,12 @@ export async function execute(
   }
   const { writer, env } = opened.state;
   const actor = env.actor;
+  // A resumed run's run-held locks were re-claimed by the resume before the
+  // record moved back to `running`, so its record carries their current tokens.
+  // This process keeps them alive from here.
+  for (const lock of options.resume?.record.locks ?? []) {
+    env.runLocks.adopt(lock);
+  }
   // The run's lease: this process's claim that it is the one working on this
   // run. Losing it means another process has taken the run over, so this one
   // stops rather than carrying on in parallel with it — whoever holds the claim
@@ -702,6 +708,20 @@ export async function execute(
       result = { ok: false, executed: run.executed, error: settled, runId };
     }
   }
+
+  // Run-held locks follow the run, not this process. A run another process has
+  // taken over is that process's: it holds the same tokens, so this one only
+  // stops renewing. A run that parked keeps them, renewed for a full TTL so they
+  // outlast the gap until it is resumed. Every other ending gives them back —
+  // including a run cancelled or settled from outside, whose settler leaves a
+  // running run's locks to this process, since only this process knows when its
+  // body has actually stopped. Read last, so a lease lost during the settle
+  // write still counts.
+  if (leaseLost) env.runLocks.stop();
+  else if (
+    run.suspended && !cancelled && writer?.settledElsewhere() !== true
+  ) await env.runLocks.park();
+  else await env.runLocks.release();
 
   // Persist the incremental cache, unless this run's fingerprints have been
   // overtaken by events: a rollback that undid the work they describe, or a new

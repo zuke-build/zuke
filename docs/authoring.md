@@ -77,6 +77,38 @@ deploy = target()
 (`securityReviewer(...)`, …) that implement `Validation` — define one fluently
 and attach it the same way to gate the build on a model-assessed security score.
 
+#### Checks while the body runs — `.validateDuring()`
+
+A long body — a canary bake, a soak test — can be watched while it runs, so a
+check that goes red stops it at once instead of reporting at the end:
+
+```ts
+bake = target()
+  .executes((ctx) => soak(ctx.signal))
+  .validateDuring((s) => s.every("1m").check(errorRate, healthProbe));
+```
+
+- **Rounds.** Every interval the checks run in order, with the context the other
+  validations get — the target's name and the run's redactor — plus a signal.
+  The first round runs one interval after the body starts; a slow round delays
+  the next rather than overlapping it.
+- **A failure stops the body.** The first check to throw fails the target with
+  its error. The body's `ctx.signal` fires and its `$` commands are stopped, and
+  the target does not wait for a body that ignores the signal. The run itself is
+  not cancelled, so `.onFailure(...)` decides what the failure means, and
+  `.retry(...)` does not re-run a body a check stopped.
+- **A verdict at the finish still counts.** Once the body settles no new check
+  starts. If it succeeded, a check still running is awaited, and if it goes red
+  the target fails; if the body failed, the check is abandoned.
+- **Checks get a signal.** The context's `signal` in a `.validateDuring` check
+  aborts when the target ends or the run is cancelled — pass it to `fetch` — and
+  a `$` command the check runs is stopped with it. A check that ignores it never
+  holds a cancelled run.
+- **Scope.** The checks never run under a dry run, and are resolved when the
+  target starts, so the lambda can read `this.<param>.value`. A missing interval
+  or check list, or an interval longer than the longest timer (about 24 days),
+  fails the target with guidance before the body runs.
+
 ### `group()` and `.partOf()`
 
 `group()` creates a parallel **batch**. A target joins it with `.partOf(group)`;

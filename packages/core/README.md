@@ -1815,6 +1815,8 @@ class LockSettings
     How long to wait for a held lock; set by {@link waitUpTo}.
   pollEvery_?: string | number
     How often to retry while waiting; set by {@link pollEvery}.
+  holdForRun_: boolean
+    Hold the lock until the run settles; set by {@link holdForRun}.
   lockKey(...parts: Array<string | number>): this
     Set the lock key from parts, sanitised and joined via
     {@link "./state/lock.ts".lockKey} — e.g. `s.lockKey("deploy", repo)`.
@@ -1845,6 +1847,30 @@ class LockSettings
     Render the guidance shown to a run that loses the lock. Receives the
     current {@link "./state/lock.ts".LockHolder}; the returned string becomes
     the failure message. Defaults to a generic "held by … then retry" line.
+  holdForRun(): this
+    Hold the lock for the rest of the run, not just while this target's
+    body runs: it is released when the run settles — succeeded, failed or
+    cancelled — and kept while the run is parked at a `.waitsFor(...)` gate.
+    Use it for a resource a whole multi-step run must own, such as one rollout
+    of a service at a time, where a target-scoped lock would free itself the
+    moment the first step ends.
+
+    The lock is recorded on the run record, so a resumed process renews it and
+    every path that settles the run releases it. While the run is parked no
+    process heartbeats it, so {@link withTtl} is how long a parked run keeps
+    the lock with no process touching it; each `zuke resume --check` that
+    re-parks the run renews it. A resume that finds the lock lapsed and taken
+    by another run refuses to continue and leaves the run suspended. A
+    `zuke cancel` of a run still working leaves the lock with that run's
+    process until its body stops, rather than freeing it beside a running
+    deploy.
+
+    Any later target in the same run declaring the same key — run-held or
+    not, sequentially or in parallel — reuses the held lock rather than
+    conflicting with the run itself. The lock is taken where a lock is: just
+    before the body, so a target the incremental cache skips, a `.waitsFor`
+    gate or a `.forEach` fan-out takes none — put it on a step that always
+    runs. Requires a state store, like any lock.
 
 class Parameter<K extends ParamValue = ParamValue, T extends K | K[] | undefined = K | undefined> implements AnyParameter
   A typed build parameter. Declare one with {@link parameter} and configure it
@@ -2167,6 +2193,8 @@ class TargetBuilder
     Validations run before the body (set by {@link validateBefore}).
   readonly validateAfter_: Validation[]
     Validations run after the body (set by {@link validateAfter}).
+  validateDuring_?: Configure<ValidateDuringSettings>
+    Validations run on an interval while the body runs (set by {@link validateDuring}).
   readonly recoverWith_: Remediation[]
     Remediations run after the body fails (set by {@link recoverWith}).
   recoverAttempts_: number
@@ -2369,6 +2397,27 @@ class TargetBuilder
     Run one or more {@link Validation}s after the target body completes
     successfully. Each runs in declaration order; the first to throw fails the
     target. Repeatable.
+  validateDuring(configure: Configure<ValidateDuringSettings>): this
+    Run {@link Validation}s on an interval while the body runs, so a long
+    body — a canary bake, a soak test — stops as soon as a check goes red
+    instead of reporting the failure at the end.
+
+    ```ts
+    bake = target()
+      .executes((ctx) => soak(ctx.signal))
+      .validateDuring((s) => s.every("1m").check(errorRate, healthProbe));
+    ```
+
+    Each round runs the checks in order with the context the other
+    validations get, the run's redactor included, plus a `signal` that aborts
+    when the target ends or the run is cancelled. The first check to throw
+    fails the target with its error: the body's `ctx.signal` fires and its
+    shell commands are stopped, and the target does not wait for a body that
+    ignores the signal. That failure is the target's failure like any other, so
+    `.onFailure(...)` sees it and retries do not repeat it. No round starts
+    once the body settles; after a body that succeeded, a round still running
+    is awaited and its verdict counts. The checks never run under a dry run. The lambda runs when
+    the target starts, so it may read `this.<param>.value`.
   recoverWith(...remediations: Remediation[]): this
     Attach one or more {@link Remediation}s that run only if the body fails.
     Each is given the failure; if any returns `{ retry: true }`, the executor
@@ -2628,6 +2677,23 @@ class Toolchain
     release tool's or tree's pinned checksum, or an npm tool's `name@version`
     marker, matches — and return a map of tool name to installed
     {@link AbsolutePath}. A {@link tree}'s entry is its extracted root directory.
+
+class ValidateDuringSettings
+  Fluent configuration for {@link TargetBuilder.validateDuring}: how often to
+  run the checks while the body runs, and which {@link Validation}s they are —
+  `.validateDuring((s) => s.every("1m").check(errorRate, probe))`.
+
+  every_?: string | number
+    The interval between rounds of checks; set by {@link every}.
+  readonly checks_: Validation[]
+    The validations each round runs, in order; set by {@link check}.
+  every(interval: string | number): this
+    Run a round of checks this often while the body runs — a duration string
+    like `"1m"` or raw milliseconds (required). The first round runs one
+    interval after the body starts, and a round still running when the next is
+    due delays it rather than overlapping it.
+  check(...validations: Validation[]): this
+    The validations each round runs, in declaration order; repeatable, at least one.
 
 class WaitSettings
   Fluent configuration for {@link TargetBuilder.waitsFor}:
@@ -4328,6 +4394,19 @@ interface RunInitiator
     when a resume was about to overwrite the evidence — so it dates the
     attribution, not the write that recorded it.
 
+interface RunLock
+  One run-held lock on a {@link RunRecord}: the key, the store's ownership
+  token for it, the TTL it is renewed with, and the target that took it.
+
+  key: string
+    The lock key, as it was acquired.
+  token: string
+    The store's ownership token, which renewal and release present.
+  ttlMs: number
+    The TTL, in milliseconds, the lock is renewed with.
+  target: string
+    The dotted name of the target whose `.lock(...)` took it.
+
 interface RunOptions
   Options for {@link run}.
 
@@ -4501,6 +4580,16 @@ interface RunRecord
     leaves the run `cancelling`, and whoever recovers it has no other way to
     know whether an operator was cancelling the run or a sweep was failing an
     abandoned one.
+  locks?: RunLock[]
+    The run-held locks this run owns (see
+    {@link "../target.ts".LockSettings.holdForRun}), in acquisition order.
+    Absent when it holds none, and removed when the run settles.
+
+    Recorded so the lock outlives the process that took it: a resumed process
+    renews each one with its token, and whatever settles the run — the executor,
+    `zuke cancel`, a timed-out wait, a reaping sweep — releases them. The token
+    proves ownership of the lock to the state store; it is not a credential,
+    and anyone who can write the store could release the lock regardless.
 
 interface RunSummary
   A compact run listing row, returned by {@link "./store.ts".StateStore.listRuns}.
@@ -4938,6 +5027,11 @@ interface ValidationContext
 
   target: string
     The name of the target the validation is attached to.
+  signal?: AbortSignal
+    Set only for a `.validateDuring(...)` check: aborted when the target ends
+    or the run is cancelled, so a check that waits on the network — a metrics
+    query, a health probe — should pass it on (`fetch(url, { signal })`). A
+    `$` command the check runs is bound to it already.
   redact(text: string): string
     Mask every resolved `secret` parameter in `text`.
 

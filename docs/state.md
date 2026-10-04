@@ -70,6 +70,9 @@ Each run is stored as one JSON document:
   "params": { "env": "sit" }, // NON-secret values the run was LAUNCHED with
   "deadlineAt": "2026-07-17T…Z", // optional; from Build.deadline(), enforced by the reaper
   "intendedTerminal": "cancelled", // optional; set when a run enters `cancelling`
+  "locks": [ // optional; run-held locks the run owns (see docs/locks.md), removed when it settles
+    { "key": "deploy-api", "token": "…", "ttlMs": 86400000, "target": "stage" }
+  ],
   "signals": {}, // external signals delivered to a .waitsFor() gate
   "events": [], // the audit trail (MCP tool calls, reap events)
   "targets": {

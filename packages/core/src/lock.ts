@@ -15,8 +15,10 @@
 import { LockSettings, type TargetBuilder } from "./target.ts";
 import { LockConflictError, type LockHolder } from "./state/lock.ts";
 import type { LockResult, StateStore } from "./state/store.ts";
+import type { RunLock } from "./state/types.ts";
 import { parseDuration } from "./duration.ts";
 import type { RunEnv } from "./run_support.ts";
+import { messageOf } from "./internal.ts";
 
 /** How often a wait retries when the target names no interval. */
 const DEFAULT_POLL_MS = 5_000;
@@ -59,6 +61,14 @@ function defaultConflictGuidance(
     : "";
   return `Lock "${key}" is held by ${describeHolder(holder)}. ${waited}` +
     `Wait for that run to finish, or stop it, then retry.`;
+}
+
+/** The guidance when the lock's holder is the very run asking for it. */
+function ownRunGuidance(key: string, name: string): string {
+  return `Target "${name}" cannot take lock "${key}": another target of this ` +
+    `same run holds it right now. Two targets that run at the same time ` +
+    `cannot both lock one key — order them with .dependsOn(...), or declare ` +
+    `the lock once with s.holdForRun() so the whole run shares it.`;
 }
 
 /** The line printed when a target starts waiting, or the holder changes. */
@@ -126,7 +136,11 @@ async function acquireWithin(
     // on an already-aborted signal never fires, so a signal that aborted while
     // the attempt above was in flight would otherwise sleep out the whole poll
     // interval before anyone noticed.
-    if (remaining <= 0 || env.signal.aborted) return result;
+    // Nor is there anything to wait for once the run itself holds the key for
+    // the run: it frees only when the run settles.
+    if (remaining <= 0 || env.signal.aborted || env.runLocks.holds(key)) {
+      return result;
+    }
     if (result.holder.runId !== announced) {
       announced = result.holder.runId;
       notify?.(waitingNotice(key, result.holder, waitMs, pollMs));
@@ -176,29 +190,49 @@ export async function acquireTargetLock(
     );
   }
   const ttlMs = parseDuration(settings.ttl_);
+  // A key this run already holds for the run — taken by an earlier target, or
+  // re-claimed by the resume that picked the run up — is simply still held,
+  // whether this target re-declares it run-held or only for its body: the run
+  // is exclusive already, and acquiring again would conflict with itself.
+  // A run-held declaration skips straight to `claim`, which checks and
+  // registers in one step, so a sibling looking at the same moment sees it.
+  if (!settings.holdForRun_ && await env.runLocks.covers(key)) return null;
   const waitMs = settings.waitUpTo_ === undefined
     ? 0
     : parseDuration(settings.waitUpTo_);
   const pollMs = settings.pollEvery_ === undefined
     ? DEFAULT_POLL_MS
     : parseDuration(settings.pollEvery_);
-
-  const result = await acquireWithin(
-    store,
-    key,
-    env,
-    ttlMs,
-    waitMs,
-    pollMs,
-    notify,
-  );
-  if (!result.ok) {
+  const attempt = () =>
+    acquireWithin(store, key, env, ttlMs, waitMs, pollMs, notify);
+  const conflict = (holder: LockHolder): LockConflictError => {
+    // The holder is this very run: a sibling target running alongside holds the
+    // key. Waiting for "that run" would be waiting for itself.
+    if (holder.runId === env.runId) {
+      return new LockConflictError(holder, ownRunGuidance(key, name));
+    }
     const guidance = settings.onConflict_
-      ? settings.onConflict_(result.holder)
-      : defaultConflictGuidance(key, result.holder, waitMs);
-    throw new LockConflictError(result.holder, guidance);
-  }
+      ? settings.onConflict_(holder)
+      : defaultConflictGuidance(key, holder, waitMs);
+    return new LockConflictError(holder, guidance);
+  };
 
+  if (settings.holdForRun_) {
+    await env.runLocks.claim(key, async () => {
+      const result = await attempt();
+      if (!result.ok) throw conflict(result.holder);
+      const lock = { key, token: result.token, ttlMs, target: name };
+      await recordForRun(store, env, lock);
+      return lock;
+    });
+    // Nothing for the target to release: the run gives it back when it settles.
+    return null;
+  }
+  const result = await attempt();
+  // A run-held sibling claimed the key while this target was asking for it:
+  // the run holds it now, which covers this target as it covers any other.
+  if (!result.ok && env.runLocks.holds(key)) return null;
+  if (!result.ok) throw conflict(result.holder);
   const token = result.token;
   // Renew at half the TTL so a long body keeps its short-TTL lock; cleared on
   // release. The interval is unref'd so it never keeps the process alive.
@@ -218,4 +252,31 @@ export async function acquireTargetLock(
       await store.releaseLock(key, token).catch(() => {});
     },
   };
+}
+
+/**
+ * Record a run-held lock on the run, for the run's holder to keep alive until
+ * the run parks or settles. A lock the record cannot carry is given straight back: a resumed process could not renew it, and nothing
+ * that settles the run could release it.
+ */
+async function recordForRun(
+  store: StateStore,
+  env: RunEnv,
+  lock: RunLock,
+): Promise<void> {
+  const writer = env.writer;
+  try {
+    if (writer === undefined) {
+      throw new Error("the run has no record to carry it");
+    }
+    await writer.recordRunLock(lock);
+  } catch (error) {
+    await store.releaseLock(lock.key, lock.token).catch(() => {});
+    throw new Error(
+      `Target "${lock.target}" took lock "${lock.key}" for the run but could ` +
+        `not record it (${messageOf(error)}), so it gave the lock back. A ` +
+        `run-held lock must be on the run record, or no later process could ` +
+        `renew or release it.`,
+    );
+  }
 }

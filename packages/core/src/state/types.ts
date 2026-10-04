@@ -29,6 +29,9 @@ const { str, optionalStr } = fields("state: run record field");
 /** The field readers for one graph node, which names itself in its errors. */
 const graphNode = fields("state: graph node");
 
+/** The field readers for one run-held lock entry. */
+const runLock = fields("state: run lock");
+
 /**
  * The lifecycle status of a whole run. `cancelling` is the transient state a
  * cancellation moves through — the run has been asked to stop and its
@@ -348,6 +351,33 @@ export interface RunRecord {
    * abandoned one.
    */
   intendedTerminal?: RunStatus;
+  /**
+   * The run-held locks this run owns (see
+   * {@link "../target.ts".LockSettings.holdForRun}), in acquisition order.
+   * Absent when it holds none, and removed when the run settles.
+   *
+   * Recorded so the lock outlives the process that took it: a resumed process
+   * renews each one with its token, and whatever settles the run — the executor,
+   * `zuke cancel`, a timed-out wait, a reaping sweep — releases them. The token
+   * proves ownership of the lock to the state store; it is not a credential,
+   * and anyone who can write the store could release the lock regardless.
+   */
+  locks?: RunLock[];
+}
+
+/**
+ * One run-held lock on a {@link RunRecord}: the key, the store's ownership
+ * token for it, the TTL it is renewed with, and the target that took it.
+ */
+export interface RunLock {
+  /** The lock key, as it was acquired. */
+  key: string;
+  /** The store's ownership token, which renewal and release present. */
+  token: string;
+  /** The TTL, in milliseconds, the lock is renewed with. */
+  ttlMs: number;
+  /** The dotted name of the target whose `.lock(...)` took it. */
+  target: string;
 }
 
 /** A compact run listing row, returned by {@link "./store.ts".StateStore.listRuns}. */
@@ -656,6 +686,37 @@ function parseInitiator(value: unknown): RunInitiator | undefined {
 }
 
 /**
+ * Validate and narrow the optional {@link RunRecord.locks} list, or `undefined`
+ * when the record carries none.
+ *
+ * Strict, like {@link parseOverrides}: a malformed entry read as "no lock held"
+ * would let a resumed run carry on without the exclusivity it was promised, and
+ * would leave the real lock to lapse unreleased.
+ */
+function parseRunLocks(value: unknown): RunLock[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) {
+    throw new Error(`state: run record field "locks" is not an array`);
+  }
+  return value.map((raw, index) => {
+    const entry = asObject(raw);
+    if (entry === null) {
+      throw new Error(`state: run lock ${index} is not an object`);
+    }
+    const ttlMs = entry.ttlMs;
+    if (typeof ttlMs !== "number" || !Number.isFinite(ttlMs) || ttlMs <= 0) {
+      throw new Error(`state: run lock ${index} has no positive "ttlMs"`);
+    }
+    return {
+      key: runLock.str(entry, "key"),
+      token: runLock.str(entry, "token"),
+      ttlMs,
+      target: runLock.str(entry, "target"),
+    };
+  });
+}
+
+/**
  * Validate and narrow the optional {@link RunRecord.overrides} map, or
  * `undefined` when the record carries none.
  *
@@ -839,6 +900,8 @@ export function parseRunRecord(text: string): RunRecord {
   if (initiator !== undefined) record.initiator = initiator;
   const overrides = parseOverrides(object.overrides);
   if (overrides !== undefined) record.overrides = overrides;
+  const locks = parseRunLocks(object.locks);
+  if (locks !== undefined) record.locks = locks;
   const intended = optionalStr(object, "intendedTerminal");
   if (intended !== undefined) {
     const found = RUN_STATUSES.find((s) => s === intended);

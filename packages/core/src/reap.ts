@@ -200,6 +200,8 @@ async function examine(id: string, deps: ReapDeps): Promise<Examined> {
         silent: deps.silent,
         reporter: deps.reporter,
         terminal: "failed",
+        // This pass holds the lease, so nothing else is working on the run.
+        ownerGone: true,
       });
       return "settled";
     }

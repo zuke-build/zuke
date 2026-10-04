@@ -27,6 +27,7 @@ import type { Redactor } from "../redact.ts";
 import type { StateStore } from "./store.ts";
 import type {
   RunEvent,
+  RunLock,
   RunRecord,
   RunStatus,
   SignalRecord,
@@ -306,6 +307,24 @@ export class RunStateWriter {
       // than a refusal.
       if (this.#settledElsewhere) return;
       record.status = ok ? "succeeded" : "failed";
+      // A settled run holds nothing; the executor releases the store's locks.
+      delete record.locks;
+    });
+  }
+
+  /**
+   * Record a run-held lock this run has just taken, replacing any entry for the
+   * same key.
+   *
+   * Strict, like {@link beginEffect}: it resolves only once the record carries
+   * the lock, and throws otherwise. A lock the record does not know about can be
+   * neither renewed by a resumed process nor released by whatever settles the
+   * run, so the caller gives the lock back rather than hold it unrecorded.
+   */
+  recordRunLock(lock: RunLock): Promise<void> {
+    return this.#updateStrict((record) => {
+      const others = (record.locks ?? []).filter((l) => l.key !== lock.key);
+      record.locks = [...others, lock];
     });
   }
 
@@ -356,6 +375,7 @@ export class RunStateWriter {
     const at = this.#now();
     return this.#updateVoid((record) => {
       record.status = "cancelled";
+      delete record.locks;
       // The in-process half of the same sweep `finalizeCancelled` runs for an
       // out-of-process `zuke cancel`: a cancelled run has no live waiter, and
       // its compensation walk has already finished by the time this is called.
@@ -588,6 +608,16 @@ export class RunStateWriter {
    * The executor is still told, via `onExternalCancel`, so it stops rather than
    * carrying on to the next target.
    */
+  /** Put the live record back as `before` was, in place — see {@link "#applyStrict"}. */
+  #restore(before: RunRecord): void {
+    for (const key of Object.keys(this.#record)) {
+      if (!Object.hasOwn(before, key)) {
+        Reflect.deleteProperty(this.#record, key);
+      }
+    }
+    Object.assign(this.#record, before);
+  }
+
   async #applyStrict(mutator: (record: RunRecord) => void): Promise<void> {
     if (this.#disowned) {
       throw new RunNotActiveError(this.#record.id, this.#record.status);
@@ -611,9 +641,9 @@ export class RunStateWriter {
       // Restored *into* the live record rather than by swapping the reference,
       // because `snapshot()` hands that object out and a compensation walk holds
       // it across awaits; replacing it would leave that walk reading a record
-      // nothing writes to any more. (The one thing this cannot undo is a
-      // top-level key a mutator adds where none existed — no current mutator
-      // does, and both write only through `ensureTarget`.)
+      // nothing writes to any more. A top-level key the mutator added where
+      // none existed — `locks` on a run's first run-held lock — is deleted on
+      // the way back, which a plain `Object.assign` would leave behind.
       const before = structuredClone(this.#record);
       mutator(this.#record);
       this.#record.updatedAt = this.#now();
@@ -621,7 +651,7 @@ export class RunStateWriter {
       try {
         result = await this.#store.putRun(this.#record, this.#version);
       } catch (error) {
-        Object.assign(this.#record, before);
+        this.#restore(before);
         throw error;
       }
       if (result.ok) {
@@ -633,12 +663,12 @@ export class RunStateWriter {
       // base, exactly as in the best-effort path.
       const fresh = await this.#store.getRun(this.#record.id).catch(
         (error: unknown) => {
-          Object.assign(this.#record, before);
+          this.#restore(before);
           throw error;
         },
       );
       if (fresh === null) {
-        Object.assign(this.#record, before);
+        this.#restore(before);
         throw new Error(
           `state: run "${this.#record.id}" vanished from the store while ` +
             `recording an effect; refusing to run it without a durable intent`,
