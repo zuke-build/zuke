@@ -623,11 +623,11 @@ async function runTarget(
   }
 
   // In-flight checks (`.validateDuring`) are resolved now, so a malformed one
-  // fails the target before anything runs. Never under a dry run: no check has
-  // a real body to watch there.
+  // fails the target before anything runs. A dry run never gets here, so no
+  // check runs there.
   let during: DuringChecks | undefined;
   try {
-    during = dryRun ? undefined : resolveDuringChecks(t, name);
+    during = resolveDuringChecks(t, name);
   } catch (error) {
     failTarget(reporter, renderer, style, name, 0, error);
     return { status: "failed", ms: 0, error };
