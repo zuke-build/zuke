@@ -1571,7 +1571,7 @@
       },
       "packages/canary": {
         "dependencies": [
-          "jsr:@zuke/core@^1.62.0"
+          "jsr:@zuke/core@^1.63.0"
         ]
       },
       "packages/claude": {
