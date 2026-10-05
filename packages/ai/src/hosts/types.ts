@@ -243,6 +243,37 @@ export interface ReviewHost {
    * (Azure DevOps, Bitbucket Cloud) simply does not signal progress.
    */
   reactions?(token: string, env: EnvReader): ReviewReactions | undefined;
+  /**
+   * Resolve the host context and return the reaction the reviewer puts on a
+   * maintainer's reply — the comments it reads in a discussion — or
+   * `undefined` without a pull-request context. Optional, like
+   * {@link reactions}.
+   */
+  replyReactions?(token: string, env: EnvReader): ReplyReactions | undefined;
+}
+
+/**
+ * What the reviewer signals on a maintainer's reply: `read` (👀) once it has
+ * weighed it, `accepted` (❤️) when the reply decided a finding — a rebuttal
+ * the adjudicator accepted, or an `accept` command.
+ */
+export type ReplySignal = "read" | "accepted";
+
+/**
+ * React on a comment of the pull request. Idempotent and never throws, like
+ * {@link ReviewReactions}.
+ */
+export interface ReplyReactions {
+  /**
+   * React with `signal` on `comment` — addressed by its id and the stream it
+   * was read from, since ids are unique only within one; `true` when the
+   * host now shows it.
+   */
+  react(
+    comment: Pick<HostComment, "id" | "kind">,
+    signal: ReplySignal,
+    doFetch: typeof fetch,
+  ): Promise<boolean>;
 }
 
 /**

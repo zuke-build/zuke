@@ -16,6 +16,8 @@ import { dig } from "../json.ts";
 import { type GitlabContext, paginate, selfUsername } from "./gitlab.ts";
 import {
   jsonHeaders,
+  type ReplyReactions,
+  type ReplySignal,
   type ReviewReactions,
   type ReviewSignal,
 } from "./types.ts";
@@ -33,6 +35,35 @@ const NAME: Record<ReviewSignal, string> = {
 /** What GitLab answers a POST for an award the user has already given. */
 const ALREADY_AWARDED = "has already been taken";
 
+/**
+ * Give award `name` through the award-emoji collection at `url`; `true` when
+ * it is showing — including when GitLab refuses it as already given. Never
+ * throws.
+ */
+async function award(
+  url: string,
+  headers: Record<string, string>,
+  name: string,
+  doFetch: typeof fetch,
+): Promise<boolean> {
+  try {
+    const response = await doFetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ name }),
+    });
+    if (response.ok) {
+      await response.body?.cancel();
+      return true;
+    }
+    // GitLab refuses a second award of a name with "has already been taken":
+    // the emoji is showing, which is what was asked.
+    return (await response.text()).includes(ALREADY_AWARDED);
+  } catch {
+    return false;
+  }
+}
+
 /** The {@link ReviewReactions} on the description of `context`'s merge request. */
 export function gitlabReactions(context: GitlabContext): ReviewReactions {
   const awards = `${context.api}/projects/${context.projectId}` +
@@ -40,23 +71,8 @@ export function gitlabReactions(context: GitlabContext): ReviewReactions {
   const headers = jsonHeaders({ "PRIVATE-TOKEN": context.token });
   return {
     key: `gitlab:${context.api}/projects/${context.projectId}!${context.mrIid}`,
-    async add(signal, doFetch) {
-      try {
-        const response = await doFetch(awards, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ name: NAME[signal] }),
-        });
-        if (response.ok) {
-          await response.body?.cancel();
-          return true;
-        }
-        // GitLab refuses a second award of a name with "has already been
-        // taken": the emoji is showing, which is what was asked.
-        return (await response.text()).includes(ALREADY_AWARDED);
-      } catch {
-        return false;
-      }
+    add(signal, doFetch) {
+      return award(awards, headers, NAME[signal], doFetch);
     },
     async remove(signal, doFetch) {
       const self = await selfUsername(context, doFetch);
@@ -84,6 +100,29 @@ export function gitlabReactions(context: GitlabContext): ReviewReactions {
         // Best-effort: an award left up is cosmetic, never a failed review.
         return false;
       }
+    },
+  };
+}
+
+/** The GitLab award-emoji name for each {@link ReplySignal}. */
+const REPLY_NAME: Record<ReplySignal, string> = {
+  read: "eyes",
+  accepted: "heart",
+};
+
+/** The {@link ReplyReactions} on the notes of `context`'s merge request. */
+export function gitlabReplyReactions(context: GitlabContext): ReplyReactions {
+  const notes = `${context.api}/projects/${context.projectId}` +
+    `/merge_requests/${context.mrIid}/notes`;
+  const headers = jsonHeaders({ "PRIVATE-TOKEN": context.token });
+  return {
+    react(comment, signal, doFetch) {
+      return award(
+        `${notes}/${comment.id}/award_emoji`,
+        headers,
+        REPLY_NAME[signal],
+        doFetch,
+      );
     },
   };
 }

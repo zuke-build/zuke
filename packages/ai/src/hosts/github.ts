@@ -11,7 +11,11 @@
 
 import { parsePullNumber, REVIEW_PR_ENV } from "../diff.ts";
 import { dig } from "../json.ts";
-import { githubReactions, postReaction } from "./github_reactions.ts";
+import {
+  githubReactions,
+  githubReplyReactions,
+  postReaction,
+} from "./github_reactions.ts";
 import { githubReviewThreads } from "./github_threads.ts";
 import {
   commentBody,
@@ -316,5 +320,10 @@ export const githubHost: ReviewHost = {
     const context = resolveGithubContext(token, env);
     if (context === undefined) return undefined;
     return githubReactions(context);
+  },
+  replyReactions(token, env) {
+    const context = resolveGithubContext(token, env);
+    if (context === undefined) return undefined;
+    return githubReplyReactions(context);
   },
 };

@@ -62,6 +62,7 @@ import {
   commentMarker,
   type HostComment,
   parseCommentMarker,
+  type ReplySignal,
 } from "./hosts/types.ts";
 import type { RetryInfo, RetryOptions } from "./retry.ts";
 import type { Budget } from "./budget.ts";
@@ -814,6 +815,40 @@ export class Reviewer implements Validation {
   }
 
   /**
+   * Answer the maintainers' replies with a reaction — 👀 on each one weighed,
+   * ❤️ on each one that decided a finding — so a maintainer sees their reply
+   * was read before the assessment lands. Under the same switches as the
+   * progress reactions, best-effort like them, and once per comment.
+   */
+  async #reactOnReplies(replies: ReplyNotice): Promise<void> {
+    if (!this.#comment || this.#quiet || !this.#reactions) return;
+    if (replies.read.length + replies.accepted.length === 0) return;
+    const host = detectReviewHost(this.#env);
+    if (host?.replyReactions === undefined) return;
+    let token: string;
+    try {
+      token = await this.#resolveCommentToken(host);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[${this.name}] could not react on the replies: ${message}`);
+      return;
+    }
+    const reactions = host.replyReactions(token, this.#env);
+    if (reactions === undefined) return;
+    const doFetch = this.#fetch ?? fetch;
+    const signals: readonly ReplySignal[] = ["read", "accepted"];
+    for (const signal of signals) {
+      const seen = new Set<string>();
+      for (const comment of replies[signal]) {
+        const key = `${comment.kind ?? "issue"}:${comment.id}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        await reactions.react(comment, signal, doFetch);
+      }
+    }
+  }
+
+  /**
    * Fetch the PR comments and the reviewer's prior state for the discussion
    * feature. `undefined` disables the discussion for this run: not configured,
    * `.comment()` missing (state lives in the comment), no capable host, no PR
@@ -1427,6 +1462,12 @@ export class Reviewer implements Validation {
         ofInterest,
       );
 
+    // The maintainers' replies the reviewer answers with a reaction: 👀 on
+    // every rebuttal it weighs this round, ❤️ on the one that decided a
+    // finding. Only comments that passed the trust gate are ever here.
+    const replies: ReplyNotice = { read: [], accepted: [] };
+    for (const comments of rebuttals.values()) replies.read.push(...comments);
+
     // Acceptances: a maintainer's `accept` command decides a finding outright.
     // Applied before the verifier and the adjudicator see it — nothing is
     // weighed, so nothing is spent — and taken off the rebuttal list, so a
@@ -1481,6 +1522,9 @@ export class Reviewer implements Validation {
         }, acceptance));
       }
       for (const id of accepted.keys()) rebuttals.delete(id);
+      for (const acceptance of accepted.values()) {
+        replies.accepted.push(acceptance.comment);
+      }
     }
 
     // Sticky refutations: a finding the verify pass disproved in an earlier
@@ -1696,6 +1740,7 @@ export class Reviewer implements Validation {
           const accepted = (id: string, verdict: Verdict) =>
             verdict.verdict === "dismissed" && contested.has(id);
           const accept = (finding: AssessmentFinding, verdict: Verdict) => {
+            replies.accepted.push(...(contested.get(verdict.id) ?? []));
             const rebutter = contested.get(verdict.id)?.[0];
             dismissed.push({
               finding,
@@ -1941,6 +1986,7 @@ export class Reviewer implements Validation {
           anchors: anchorableLines(diff),
         },
       );
+    await this.#reactOnReplies(replies);
     await this.#report(assessment, context.target, context.redact, usage, {
       suppressed: suppressed.length,
       suppressedFindings: suppressed,
@@ -1982,6 +2028,14 @@ function runOf(context: ValidationContext): string {
   return "runId" in context && typeof context.runId === "string"
     ? context.runId
     : "";
+}
+
+/** The maintainers' replies to react on, by the reaction they get. */
+interface ReplyNotice {
+  /** The rebuttals the reviewer weighed this round — 👀. */
+  read: Array<Pick<HostComment, "id" | "kind">>;
+  /** The replies that decided a finding — ❤️. */
+  accepted: Array<Pick<HostComment, "id" | "kind">>;
 }
 
 /** What one run's discussion round starts from. */

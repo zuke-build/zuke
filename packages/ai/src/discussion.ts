@@ -237,6 +237,8 @@ export interface Acceptance {
   displayName?: string;
   /** The reason given, bounded, or {@link DEFAULT_ACCEPT_REASON}. */
   reason: string;
+  /** The command comment itself — what the reviewer reacts ❤️ on. */
+  comment: Pick<HostComment, "id" | "kind">;
 }
 
 /**
@@ -292,6 +294,10 @@ export function acceptances(
         ? { displayName: comment.displayName }
         : {}),
       reason: acceptReason(reason),
+      comment: {
+        id: comment.id,
+        ...(comment.kind !== undefined ? { kind: comment.kind } : {}),
+      },
     });
   }
   return accepted;

@@ -20,6 +20,8 @@ import { dig } from "../json.ts";
 import { type GithubContext, githubHeaders } from "./github.ts";
 import {
   paginateLinked,
+  type ReplyReactions,
+  type ReplySignal,
   type ReviewReactions,
   type ReviewSignal,
 } from "./types.ts";
@@ -131,6 +133,33 @@ export function githubReactions(context: GithubContext): ReviewReactions {
         // Best-effort: a reaction left up is cosmetic, never a failed review.
         return false;
       }
+    },
+  };
+}
+
+/** The GitHub reaction content for each {@link ReplySignal}. */
+const REPLY_CONTENT: Record<ReplySignal, string> = {
+  read: "eyes",
+  accepted: "heart",
+};
+
+/**
+ * The {@link ReplyReactions} on `context`'s pull request: a conversation
+ * comment's reactions live under `issues/comments/<id>`, a review-thread
+ * reply's under `pulls/comments/<id>`.
+ */
+export function githubReplyReactions(context: GithubContext): ReplyReactions {
+  const repo = `${API}/repos/${context.owner}/${context.repo}`;
+  return {
+    async react(comment, signal, doFetch) {
+      const stream = comment.kind === "review" ? "pulls" : "issues";
+      const posted = await postReaction(
+        `${repo}/${stream}/comments/${comment.id}/reactions`,
+        context.token,
+        REPLY_CONTENT[signal],
+        doFetch,
+      );
+      return posted !== undefined;
     },
   };
 }

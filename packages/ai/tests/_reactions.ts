@@ -2,14 +2,16 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * The progress reactions a reviewer puts on a pull request's description
- * (GitHub reactions, GitLab award emoji), for the fake hosts in tests that are
- * about something else: they answer these with {@link reacted} without
- * recording them, so a test about the comment or the threads sees only the
- * calls it is about. `progress_test.ts` covers the reactions themselves.
+ * The reactions a reviewer puts on a pull request — on its description (the
+ * progress signals) and on comments (a command's acknowledgement, a
+ * maintainer's reply) — as GitHub reactions or GitLab award emoji. The fake
+ * hosts in tests that are about something else answer these with
+ * {@link reacted} without recording them, so a test about the comment or the
+ * threads sees only the calls it is about. The `*reactions*_test.ts` files
+ * cover the reactions themselves.
  */
-export const DESCRIPTION_REACTIONS =
-  /\/issues\/\d+\/reactions|\/merge_requests\/\d+\/award_emoji/;
+export const REACTIONS =
+  /\/reactions(\/\d+)?(\?.*)?$|\/award_emoji(\/\d+)?(\?.*)?$/;
 
 /** A reaction the host accepted. */
 export const reacted = (): Promise<Response> =>

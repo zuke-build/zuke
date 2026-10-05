@@ -25,7 +25,7 @@ import { sha256Hex } from "@zuke/core";
 import { withEnv } from "../../core/tests/_env.ts";
 import { captureLines as captured } from "../../core/tests/_console.ts";
 import { maskingContext, noRedactionContext } from "./_context.ts";
-import { DESCRIPTION_REACTIONS, reacted } from "./_reactions.ts";
+import { reacted, REACTIONS } from "./_reactions.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";
@@ -55,7 +55,7 @@ function discussionFetch(
   let served = 0;
   const impl = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    if (DESCRIPTION_REACTIONS.test(url)) return reacted();
+    if (REACTIONS.test(url)) return reacted();
     const method = init?.method ?? "GET";
     calls.push({
       url,
@@ -630,7 +630,7 @@ Deno.test("a failed comment listing disables the discussion, not the review", as
   const calls: Call[] = [];
   const failing = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    if (DESCRIPTION_REACTIONS.test(url)) return reacted();
+    if (REACTIONS.test(url)) return reacted();
     calls.push({
       url,
       method: init?.method ?? "GET",
@@ -774,7 +774,7 @@ Deno.test("GitLab: project membership decides who can dismiss a finding", async 
   const provider = providerQueue(dismissalRound());
   const doFetch = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    if (DESCRIPTION_REACTIONS.test(url)) return reacted();
+    if (REACTIONS.test(url)) return reacted();
     const method = init?.method ?? "GET";
     calls.push({
       url,
@@ -866,7 +866,7 @@ Deno.test("Azure DevOps: only an explicitly trusted author can dismiss", async (
   const provider = providerQueue(dismissalRound());
   const doFetch = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    if (DESCRIPTION_REACTIONS.test(url)) return reacted();
+    if (REACTIONS.test(url)) return reacted();
     const method = init?.method ?? "GET";
     calls.push({
       url,
@@ -956,7 +956,7 @@ Deno.test("Bitbucket: workspace permission decides who can dismiss a finding", a
   const provider = providerQueue(dismissalRound());
   const doFetch = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    if (DESCRIPTION_REACTIONS.test(url)) return reacted();
+    if (REACTIONS.test(url)) return reacted();
     const method = init?.method ?? "GET";
     calls.push({
       url,
@@ -1032,7 +1032,7 @@ Deno.test("a forged state block in a stranger's comment is never adopted", async
   ]);
   const doFetch = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    if (DESCRIPTION_REACTIONS.test(url)) return reacted();
+    if (REACTIONS.test(url)) return reacted();
     const method = init?.method ?? "GET";
     calls.push({
       url,
@@ -1299,7 +1299,7 @@ Deno.test("a failed dedup call leaves the finding reported, and says so", async 
   let served = 0;
   const failing = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    if (DESCRIPTION_REACTIONS.test(url)) return reacted();
+    if (REACTIONS.test(url)) return reacted();
     const method = init?.method ?? "GET";
     calls.push({
       url,
@@ -1752,7 +1752,7 @@ function threadFetch(
   let served = 0;
   const impl = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    if (DESCRIPTION_REACTIONS.test(url)) return reacted();
+    if (REACTIONS.test(url)) return reacted();
     const method = init?.method ?? "GET";
     calls.push({
       url,
@@ -2148,7 +2148,7 @@ Deno.test("a thread listing failure leaves the review untouched", async () => {
   const calls: Call[] = [];
   const failing = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    if (DESCRIPTION_REACTIONS.test(url)) return reacted();
+    if (REACTIONS.test(url)) return reacted();
     const method = init?.method ?? "GET";
     calls.push({
       url,
@@ -2197,7 +2197,7 @@ Deno.test("threads are declined on a host that cannot do them", async () => {
   const calls: Call[] = [];
   const doFetch = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    if (DESCRIPTION_REACTIONS.test(url)) return reacted();
+    if (REACTIONS.test(url)) return reacted();
     calls.push({
       url,
       method: init?.method ?? "GET",
@@ -2250,7 +2250,7 @@ Deno.test("a rejected anchor keeps the finding in the table and says so", async 
   const calls: Call[] = [];
   const doFetch = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    if (DESCRIPTION_REACTIONS.test(url)) return reacted();
+    if (REACTIONS.test(url)) return reacted();
     const method = init?.method ?? "GET";
     calls.push({
       url,
@@ -2309,7 +2309,7 @@ Deno.test("a rate limit halts the thread phase without failing the build", async
   const calls: Call[] = [];
   const doFetch = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    if (DESCRIPTION_REACTIONS.test(url)) return reacted();
+    if (REACTIONS.test(url)) return reacted();
     const method = init?.method ?? "GET";
     calls.push({
       url,
@@ -2382,7 +2382,7 @@ Deno.test("a failed resolve keeps the outcome reply and reports the gap", async 
   let served = 0;
   const doFetch = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    if (DESCRIPTION_REACTIONS.test(url)) return reacted();
+    if (REACTIONS.test(url)) return reacted();
     const method = init?.method ?? "GET";
     calls.push({
       url,
@@ -2473,7 +2473,7 @@ Deno.test("a finding that regresses is reopened, and a failed reopen is shouted 
   const calls: Call[] = [];
   const doFetch = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    if (DESCRIPTION_REACTIONS.test(url)) return reacted();
+    if (REACTIONS.test(url)) return reacted();
     const method = init?.method ?? "GET";
     calls.push({
       url,
@@ -2554,7 +2554,7 @@ Deno.test("no head commit means no new threads, and the run continues", async ()
   const calls: Call[] = [];
   const doFetch = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    if (DESCRIPTION_REACTIONS.test(url)) return reacted();
+    if (REACTIONS.test(url)) return reacted();
     const method = init?.method ?? "GET";
     calls.push({
       url,
@@ -2619,7 +2619,7 @@ Deno.test("a thread whose outcome reply was refused is not resolved", async () =
   let served = 0;
   const doFetch = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    if (DESCRIPTION_REACTIONS.test(url)) return reacted();
+    if (REACTIONS.test(url)) return reacted();
     const method = init?.method ?? "GET";
     calls.push({
       url,
@@ -2933,7 +2933,7 @@ Deno.test("a failed adjudication keeps contested findings open with a warning", 
   let served = 0;
   const failing = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    if (DESCRIPTION_REACTIONS.test(url)) return reacted();
+    if (REACTIONS.test(url)) return reacted();
     const method = init?.method ?? "GET";
     calls.push({
       url,
@@ -3040,7 +3040,7 @@ Deno.test("a thread phase that throws degrades to a note, never a failure", asyn
   const calls: Call[] = [];
   const doFetch = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    if (DESCRIPTION_REACTIONS.test(url)) return reacted();
+    if (REACTIONS.test(url)) return reacted();
     const method = init?.method ?? "GET";
     calls.push({
       url,
@@ -4632,9 +4632,19 @@ Deno.test("an accept on a finding the verifier refuted is recorded and answered"
 });
 
 Deno.test("a comment-started run acknowledges the command with 👍 before the review", async () => {
-  const { fetch, calls } = discussionFetch([], [
+  const { fetch: inner } = discussionFetch([], [
     claude({ score: 0, severity: "none", findings: [] }),
   ]);
+  // The shared fake answers reactions without recording them; this test is
+  // about one, so it records the order itself.
+  const order: Array<{ url: string; body: string }> = [];
+  const fetch = ((input: string | URL | Request, init?: RequestInit) => {
+    order.push({
+      url: String(input),
+      body: typeof init?.body === "string" ? init.body : "",
+    });
+    return inner(input, init);
+  }) as typeof globalThis.fetch;
   const lines = await captured(() =>
     withEnv({
       GITHUB_ACTIONS: "true",
@@ -4653,12 +4663,12 @@ Deno.test("a comment-started run acknowledges the command with 👍 before the r
       ).validate(noRedactionContext("t"));
     })
   );
-  const reaction = calls.findIndex((c) =>
+  const reaction = order.findIndex((c) =>
     c.url.endsWith("/issues/comments/987654/reactions")
   );
-  const review = calls.findIndex((c) => !c.url.startsWith(`${GITHUB_API}/`));
+  const review = order.findIndex((c) => !c.url.startsWith(`${GITHUB_API}/`));
   assertEquals(reaction >= 0 && reaction < review, true);
-  assertEquals(JSON.parse(calls[reaction].body).content, "+1");
+  assertEquals(JSON.parse(order[reaction].body).content, "+1");
   assertEquals(
     lines.some((l) => l.includes("acknowledged the review command (👍)")),
     true,

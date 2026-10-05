@@ -19,7 +19,7 @@
  */
 
 import { dig } from "../json.ts";
-import { gitlabReactions } from "./gitlab_reactions.ts";
+import { gitlabReactions, gitlabReplyReactions } from "./gitlab_reactions.ts";
 import {
   commentBody,
   commentMarker,
@@ -266,5 +266,10 @@ export const gitlabHost: ReviewHost = {
     const context = resolveGitlabContext(token, env);
     if (context === undefined) return undefined;
     return gitlabReactions(context);
+  },
+  replyReactions(token, env) {
+    const context = resolveGitlabContext(token, env);
+    if (context === undefined) return undefined;
+    return gitlabReplyReactions(context);
   },
 };

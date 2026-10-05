@@ -21,10 +21,7 @@ import { SUPPRESS_HINT } from "../../packages/ai/src/report.ts";
 import { commentMarker } from "../../packages/ai/src/hosts/types.ts";
 import { runCli } from "./_harness.ts";
 import { withEnv } from "../../packages/core/tests/_env.ts";
-import {
-  DESCRIPTION_REACTIONS,
-  reacted,
-} from "../../packages/ai/tests/_reactions.ts";
+import { reacted, REACTIONS } from "../../packages/ai/tests/_reactions.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";
@@ -71,7 +68,7 @@ function fakeFetch(
   let served = 0;
   const impl = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    if (DESCRIPTION_REACTIONS.test(url)) return reacted();
+    if (REACTIONS.test(url)) return reacted();
     const method = init?.method ?? "GET";
     calls.push({
       url,
@@ -418,7 +415,7 @@ Deno.test("the discussion drives a real build on GitLab, not just GitHub", async
   const calls: Call[] = [];
   const doFetch = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    if (DESCRIPTION_REACTIONS.test(url)) return reacted();
+    if (REACTIONS.test(url)) return reacted();
     const method = init?.method ?? "GET";
     calls.push({
       url,

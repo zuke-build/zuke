@@ -21,10 +21,7 @@ import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { Build, parameter, target } from "../../packages/core/mod.ts";
 import { securityReviewer } from "../../packages/ai/mod.ts";
 import { hostOf, runCli } from "./_harness.ts";
-import {
-  DESCRIPTION_REACTIONS,
-  reacted,
-} from "../../packages/ai/tests/_reactions.ts";
+import { reacted, REACTIONS } from "../../packages/ai/tests/_reactions.ts";
 
 /** The value the build declares secret, which comes back in the assessment. */
 const CANARY = "review-value-that-must-not-escape";
@@ -80,7 +77,7 @@ Deno.test("the AI reviewer never puts a declared secret on the pull request", as
 
   const fetchImpl = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    if (DESCRIPTION_REACTIONS.test(url)) return reacted();
+    if (REACTIONS.test(url)) return reacted();
     const method = init?.method ?? "GET";
     if (typeof init?.body === "string") sent.push({ url, body: init.body });
     if (hostOf(url) === "api.anthropic.com") {

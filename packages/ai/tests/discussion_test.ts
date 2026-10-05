@@ -153,6 +153,7 @@ Deno.test("acceptances reads a command naming a tracked finding", () => {
   assertEquals(accepted.get("abc123"), {
     author: "maintainer",
     reason: "by design — the worker is sandboxed",
+    comment: { id: 1 },
   });
   assertEquals(accepted.get("def456")?.reason, "fine");
   // A bare command is a decision too, with the default reason recorded.
