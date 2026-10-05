@@ -14,6 +14,7 @@
  * @module
  */
 
+import { RunLockHolder } from "./run_locks.ts";
 import type { Build } from "./build.ts";
 import type { TargetBuilder } from "./target.ts";
 import type { RunPlan } from "./run_plan.ts";
@@ -379,6 +380,7 @@ export async function openRunState(opts: {
     done: resume?.done,
     priorWaits: resume ? priorWaitsOf(resume.record) : undefined,
     onTargetFailed: opts.onTargetFailed,
+    runLocks: new RunLockHolder(stateStore),
   };
   return {
     ok: true,

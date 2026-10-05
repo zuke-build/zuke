@@ -62,6 +62,8 @@ export class LockSettings {
   waitUpTo_?: string | number;
   /** How often to retry while waiting; set by {@link pollEvery}. */
   pollEvery_?: string | number;
+  /** Hold the lock until the run settles; set by {@link holdForRun}. */
+  holdForRun_ = false;
 
   /**
    * Set the lock key from parts, sanitised and joined via
@@ -124,6 +126,65 @@ export class LockSettings {
    */
   onConflict(render: (holder: LockHolder) => string): this {
     this.onConflict_ = render;
+    return this;
+  }
+
+  /**
+   * Hold the lock for the rest of the **run**, not just while this target's
+   * body runs: it is released when the run settles — succeeded, failed or
+   * cancelled — and kept while the run is parked at a `.waitsFor(...)` gate.
+   * Use it for a resource a whole multi-step run must own, such as one rollout
+   * of a service at a time, where a target-scoped lock would free itself the
+   * moment the first step ends.
+   *
+   * The lock is recorded on the run record, so a resumed process renews it and
+   * every path that settles the run releases it. While the run is parked no
+   * process heartbeats it, so {@link withTtl} is how long a parked run keeps
+   * the lock with no process touching it; each `zuke resume --check` that
+   * re-parks the run renews it. A resume that finds the lock lapsed and taken
+   * by another run refuses to continue and leaves the run suspended. A
+   * `zuke cancel` of a run still working leaves the lock with that run's
+   * process until its body stops, rather than freeing it beside a running
+   * deploy.
+   *
+   * Any later target in the same run declaring the same key — run-held or
+   * not, sequentially or in parallel — reuses the held lock rather than
+   * conflicting with the run itself. The lock is taken where a lock is: just
+   * before the body, so a target the incremental cache skips, a `.waitsFor`
+   * gate or a `.forEach` fan-out takes none — put it on a step that always
+   * runs. Requires a state store, like any lock.
+   */
+  holdForRun(): this {
+    this.holdForRun_ = true;
+    return this;
+  }
+}
+
+/**
+ * Fluent configuration for {@link TargetBuilder.validateDuring}: how often to
+ * run the checks while the body runs, and which {@link Validation}s they are —
+ * `.validateDuring((s) => s.every("1m").check(errorRate, probe))`.
+ */
+export class ValidateDuringSettings {
+  /** The interval between rounds of checks; set by {@link every}. */
+  every_?: string | number;
+  /** The validations each round runs, in order; set by {@link check}. */
+  readonly checks_: Validation[] = [];
+
+  /**
+   * Run a round of checks this often while the body runs — a duration string
+   * like `"1m"` or raw milliseconds (required). The first round runs one
+   * interval after the body starts, and a round still running when the next is
+   * due delays it rather than overlapping it.
+   */
+  every(interval: string | number): this {
+    this.every_ = interval;
+    return this;
+  }
+
+  /** The validations each round runs, in declaration order; repeatable, at least one. */
+  check(...validations: Validation[]): this {
+    this.checks_.push(...validations);
     return this;
   }
 }
@@ -542,6 +603,13 @@ export interface ValidationContext {
    * credential the build never declared is not covered — declare it.
    */
   redact(text: string): string;
+  /**
+   * Set only for a `.validateDuring(...)` check: aborted when the target ends
+   * or the run is cancelled, so a check that waits on the network — a metrics
+   * query, a health probe — should pass it on (`fetch(url, { signal })`). A
+   * `$` command the check runs is bound to it already.
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -693,6 +761,8 @@ export class TargetBuilder {
   readonly validateBefore_: Validation[] = [];
   /** Validations run after the body (set by {@link validateAfter}). */
   readonly validateAfter_: Validation[] = [];
+  /** Validations run on an interval while the body runs (set by {@link validateDuring}). */
+  validateDuring_?: Configure<ValidateDuringSettings>;
   /** Remediations run after the body fails (set by {@link recoverWith}). */
   readonly recoverWith_: Remediation[] = [];
   /** Max fix-then-rerun cycles when the body fails (set by {@link recoverAttempts}). */
@@ -1061,6 +1131,33 @@ export class TargetBuilder {
    */
   validateAfter(...validations: Validation[]): this {
     this.validateAfter_.push(...validations);
+    return this;
+  }
+
+  /**
+   * Run {@link Validation}s on an interval **while the body runs**, so a long
+   * body — a canary bake, a soak test — stops as soon as a check goes red
+   * instead of reporting the failure at the end.
+   *
+   * ```ts
+   * bake = target()
+   *   .executes((ctx) => soak(ctx.signal))
+   *   .validateDuring((s) => s.every("1m").check(errorRate, healthProbe));
+   * ```
+   *
+   * Each round runs the checks in order with the context the other
+   * validations get, the run's redactor included, plus a `signal` that aborts
+   * when the target ends or the run is cancelled. The first check to throw
+   * fails the target with its error: the body's `ctx.signal` fires and its
+   * shell commands are stopped, and the target does not wait for a body that
+   * ignores the signal. That failure is the target's failure like any other, so
+   * `.onFailure(...)` sees it and retries do not repeat it. No round starts
+   * once the body settles; after a body that succeeded, a round still running
+   * is awaited and its verdict counts. The checks never run under a dry run. The lambda runs when
+   * the target starts, so it may read `this.<param>.value`.
+   */
+  validateDuring(configure: Configure<ValidateDuringSettings>): this {
+    this.validateDuring_ = configure;
     return this;
   }
 

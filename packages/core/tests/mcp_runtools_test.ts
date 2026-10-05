@@ -471,3 +471,30 @@ Deno.test("signal_run accepts an explicit null payload and still resumes", async
     assertEquals((await store.getRun(runId))?.record.status, "succeeded");
   });
 });
+
+Deno.test("show_run masks run-held lock tokens", async () => {
+  await withStore(async (store) => {
+    const { build } = makePipeline();
+    const server = new McpServer(build, { allowRun: true, stateStore: store });
+    const record = runRecord({
+      id: "run-l",
+      build: "Pipeline",
+      rootTarget: "promote",
+      status: "suspended",
+      graph: [{ name: "promote", dependsOn: [] }],
+      targets: { promote: { status: "waiting", meta: {} } },
+      locks: [{
+        key: "k",
+        token: "s3cr3t-token",
+        ttlMs: 60_000,
+        target: "promote",
+      }],
+    });
+    const put = await store.putRun(record, null);
+    assertEquals(put.ok, true);
+    const shown = await call(server, "show_run", { runId: "run-l" });
+    assertEquals(shown.isError, false);
+    assertEquals(shown.text.includes("s3cr3t-token"), false);
+    assertEquals(JSON.parse(shown.text).locks[0].key, "k");
+  });
+});

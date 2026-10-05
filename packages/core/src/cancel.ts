@@ -32,6 +32,7 @@
  * @module
  */
 
+import { releaseRunLocks } from "./run_locks.ts";
 import { type Build, discoverTargets, resolveOrderingEdges } from "./build.ts";
 import { buildRunPlan, type RunPlan } from "./run_plan.ts";
 import { defaultReadEnv, messageOf, runWithTimeout } from "./internal.ts";
@@ -58,6 +59,7 @@ import { loadOwnedRun } from "./ownership.ts";
 import type { StateStore } from "./state/store.ts";
 import { resolveRunStore } from "./run_store.ts";
 import { acquireCancelLock } from "./state/cancel_lock.ts";
+import { acquireLease, RUN_LEASE_PREFIX } from "./state/run_lease.ts";
 import { resolveActor } from "./state/record.ts";
 import { settleUnreachedTargets } from "./state/settle.ts";
 import {
@@ -747,6 +749,12 @@ export async function cancelRun(
 export interface SettleOptions extends CancelOptions {
   /** The terminal status to leave the run in. */
   terminal: SettlementTerminal;
+  /**
+   * The caller has established that no process is working on the run — a reap
+   * holding its lease — so a running run's run-held locks are released with
+   * the settlement rather than left to an owner that no longer exists.
+   */
+  ownerGone?: boolean;
 }
 
 /**
@@ -877,6 +885,11 @@ export async function settleExternally(
         EMPTY_OUTCOME,
         now,
         intended,
+        undefined,
+        // A lapsed cancel lock proves only that the canceller died. The run's
+        // own process may still be in a body, so the locks go back only when
+        // nothing holds the run's lease.
+        await ownerIsGone(store, runId, actor, now),
       );
       return {
         runId,
@@ -961,6 +974,13 @@ export async function settleExternally(
       now,
       terminal,
       options.expiredWait,
+      // A run that was running has a process whose body may still be going: it
+      // keeps the run's locks until it stops, and releases them itself. A
+      // parked run, or one whose process is gone — the caller says so, or the
+      // run's lease is free — has nobody else to. Decided on the status the
+      // swap replaced: nothing moves a `cancelling` run back.
+      transitioned.from === "suspended" || options.ownerGone === true ||
+        await ownerIsGone(store, runId, actor, now),
     );
     reporter.info(`Run ${runId} ${verb} — ${compensationSummary(outcome)}.`);
     return {
@@ -973,6 +993,22 @@ export async function settleExternally(
   } finally {
     await cancelLock.release();
   }
+}
+
+/**
+ * Whether no process is working on run `id`: its lease is free. Taken and
+ * given straight back, since this is only the question.
+ */
+async function ownerIsGone(
+  store: StateStore,
+  id: string,
+  actor: string,
+  now: () => string,
+): Promise<boolean> {
+  const lease = await acquireLease(store, RUN_LEASE_PREFIX, id, actor, now);
+  if (lease === null) return false;
+  await lease.release();
+  return true;
 }
 
 /** Resolve `also` target names to compensation steps (timeout `{target}` disposition). */
@@ -995,7 +1031,9 @@ function resolveExtra(
 }
 
 /**
- * Compare-and-swap the run from `running`/`suspended` to `cancelling`. Returns
+ * Compare-and-swap the run from `running`/`suspended` to `cancelling`, and say
+ * which of the two it moved from — the status the swap actually replaced, not
+ * the one first read, which a resume or a park may have changed since. Returns
  * `"noop"` when the run has become terminal, or `"recover"` when it is already
  * `cancelling` — an interrupted cancellation the caller should finalize rather
  * than re-walk.
@@ -1006,7 +1044,9 @@ async function transitionToCancelling(
   initial: { record: RunRecord; version: string },
   now: () => string,
   terminal: SettlementTerminal,
-): Promise<{ record: RunRecord; version: string } | "noop" | "recover"> {
+): Promise<
+  { record: RunRecord; version: string; from: RunStatus } | "noop" | "recover"
+> {
   let record = initial.record;
   let version = initial.version;
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
@@ -1023,7 +1063,9 @@ async function transitionToCancelling(
     if (terminal !== "cancelled") next.intendedTerminal = terminal;
     next.updatedAt = now();
     const result = await store.putRun(next, version);
-    if (result.ok) return { record: next, version: result.version };
+    if (result.ok) {
+      return { record: next, version: result.version, from: record.status };
+    }
     const fresh = await store.getRun(id);
     if (fresh === null) return "noop"; // vanished mid-cancel
     record = fresh.record;
@@ -1046,8 +1088,9 @@ async function finalizeCancelled(
   actor: string,
   outcome: CompensationOutcome,
   now: () => string,
-  terminal: SettlementTerminal = "cancelled",
-  expiredWait?: { target: string; message: string },
+  terminal: SettlementTerminal,
+  expiredWait: { target: string; message: string } | undefined,
+  releaseLocks: boolean,
 ): Promise<void> {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const loaded = await store.getRun(id);
@@ -1067,8 +1110,14 @@ async function finalizeCancelled(
       next.events.push(event);
     }
     next.events.push(cancelEvent(actor, outcome, at));
+    // A settled run holds nothing: the record drops its run-held locks, and
+    // the store gets them back once the settlement has landed.
+    delete next.locks;
     const result = await store.putRun(next, loaded.version);
-    if (result.ok) return;
+    if (result.ok) {
+      if (releaseLocks) await releaseRunLocks(store, loaded.record.locks);
+      return;
+    }
   }
   throw new Error(
     `cancel: gave up finalizing ${id} to cancelled after repeated conflicts.`,

@@ -17,6 +17,7 @@ import type { TargetStatus } from "../build.ts";
 import type { AnyParameter } from "../params.ts";
 import type { TargetBuilder } from "../target.ts";
 import type { RunEvent } from "./types.ts";
+import { REDACTED } from "../redact.ts";
 import {
   ACTOR_KINDS,
   type ActorKind,
@@ -251,5 +252,20 @@ export function paramOverrideEvent(
     // saying only that an override happened, without saying to what, would
     // leave a reader no better off than the misreport this replaces.
     detail: Object.entries(changed).map(([n, v]) => `${n}=${v}`).join(" "),
+  };
+}
+
+/**
+ * A copy of `record` fit to show a reader: each run-held lock's ownership
+ * token is masked. A listing of the store's locks never includes a token, and
+ * neither does a record shown to someone — `zuke runs show`, or an MCP
+ * principal that may only read — since the token is what renews or releases
+ * the lock on the store.
+ */
+export function shownRunRecord(record: RunRecord): RunRecord {
+  if (record.locks === undefined) return record;
+  return {
+    ...record,
+    locks: record.locks.map((lock) => ({ ...lock, token: REDACTED })),
   };
 }

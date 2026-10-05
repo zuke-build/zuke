@@ -180,7 +180,16 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   lambda runs after params resolve, so the key can read `this.<param>.value`.
   The lock releases when the target settles and expires after the TTL if the
   holder is killed. Needs a state store (a build with `.lock()` enables the
-  filesystem store by default). See the cheatsheet.
+  filesystem store by default). Add `s.holdForRun()` to hold the lock until the
+  **run** settles instead — across a suspend at a gate and the resume — e.g. one
+  rollout per service from deploy to promotion. See the cheatsheet.
+- **Checks while the body runs:**
+  `.validateDuring((s) => s.every("30s").check(errorRate))` runs `Validation`s
+  on an interval while the body runs (rounds never overlap); the first throw
+  aborts the body's `ctx.signal` (killing its `$` children) and fails the target
+  — so `.onFailure(() => "cancel-run")` can roll back. Each check gets a
+  `signal` (pass it to `fetch`); a red verdict as the body finishes still
+  counts. Not retried by `.retry`; not run under `--dry-run`.
 - **External-event waits:**
   `.waitsFor((s) => s.on(externalSignal("approved")).timeout("72h"))` makes a
   target a **gate** with no body: the run proceeds past it only when the trigger

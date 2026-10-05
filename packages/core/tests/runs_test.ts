@@ -616,3 +616,39 @@ Deno.test("formatRunDetail trails a target's summary notes after its duration or
   assertStringIncludes(text, "8.0s  // Tests: 4094 · Failed: 0");
   assertStringIncludes(text, "Error: 2 problems  // Problems: 2");
 });
+
+Deno.test("runs show masks run-held lock tokens, in text and in --json", async () => {
+  await withStore(async (store) => {
+    const locks = [
+      {
+        key: "deploy-api",
+        token: "s3cr3t-token",
+        ttlMs: 60_000,
+        target: "stage",
+      },
+    ];
+    const put = await store.putRun(
+      sampleRecord({ id: "run-l", status: "suspended", locks }),
+      null,
+    );
+    assertEquals(put.ok, true);
+    for (const json of [false, true]) {
+      const { code, out } = await capture(() =>
+        runsCommand(new B(), {
+          action: "show",
+          runId: "run-l",
+          json,
+          stateStore: store,
+        })
+      );
+      assertEquals(code, 0);
+      assertStringIncludes(out, "deploy-api");
+      assertEquals(out.includes("s3cr3t-token"), false);
+    }
+    // The stored record keeps it: a resume needs it.
+    assertEquals(
+      (await store.getRun("run-l"))?.record.locks?.[0]?.token,
+      "s3cr3t-token",
+    );
+  });
+});

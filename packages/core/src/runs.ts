@@ -12,6 +12,7 @@
 
 import type { Build } from "./build.ts";
 import { defaultReadEnv } from "./internal.ts";
+import { shownRunRecord } from "./state/record.ts";
 import type { StateStore } from "./state/store.ts";
 import { resolveRunStore } from "./run_store.ts";
 import {
@@ -162,7 +163,7 @@ export async function runsCommand(
       cliReporter.error(`runs: no run "${options.runId}" found in the store.`);
       return 1;
     }
-    if (options.json) printJson(loaded.record);
+    if (options.json) printJson(shownRunRecord(loaded.record));
     else cliReporter.info(formatRunDetail(loaded.record));
     return 0;
   }
@@ -361,6 +362,13 @@ export function formatRunDetail(record: RunRecord): string {
         `  ${STATUS_MARK[state.status]} ${name.padEnd(width)}  ` +
           `${state.status}${targetNote(state)}`,
       );
+    }
+  }
+
+  if (record.locks !== undefined && record.locks.length > 0) {
+    lines.push("", "Locks held for the run:");
+    for (const lock of record.locks) {
+      lines.push(`  ${lock.key}  (taken by ${lock.target})`);
     }
   }
 

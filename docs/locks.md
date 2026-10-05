@@ -50,6 +50,60 @@ parameters resolve, so the key can read `this.<param>.value`.
   failure, or cancellation** — in a `finally`, so the common path never relies
   on the TTL. The TTL is only the backstop for a killed process.
 
+## Holding a lock for the whole run
+
+A target's lock is released when that target settles, which is right for "one
+deploy step at a time" and wrong for "one **rollout** at a time": a rollout that
+stages, parks for an hour at an approval gate and then promotes would free the
+lock the moment staging ends. `s.holdForRun()` keeps it for the rest of the run:
+
+```ts
+stage = target()
+  .lock((s) =>
+    s.lockKey("deploy", this.service.value)
+      .withTtl("24h") // how long a PARKED run keeps it with nobody touching it
+      .holdForRun()
+  )
+  .executes(async (ctx) => {/* … */});
+```
+
+- **Held until the run settles.** It is released when the run ends — succeeded,
+  failed or cancelled — not when its target does, and it stays held while the
+  run is parked at a `.waitsFor(...)` gate. Any later target in the same run
+  declaring the same key — run-held or target-scoped, one after another or in
+  parallel — reuses it rather than conflicting with the run itself.
+- **Taken where any lock is taken:** just before the target's body. A target the
+  incremental cache skips, a `.waitsFor` gate and a `.forEach` fan-out take no
+  lock, so put `holdForRun()` on a step that always runs — the first deploy
+  step.
+- **Recorded on the run.** The key and the store's ownership token go into the
+  run record's `locks` field, so the lock outlives the process that took it.
+  Whatever settles the run gives it back: the executor, `zuke cancel` of a
+  parked run, a timed-out wait, and the reaping sweep. A release that fails
+  leaves the lock to lapse at its TTL.
+- **A cancel never frees it beside a running body.** `zuke cancel` of a run that
+  a process is still working on settles the record, but leaves the lock with
+  that process: it learns of the cancel on its next write and releases the lock
+  once its body has stopped. If that process is dead, the TTL frees it.
+- **The TTL, for a parked run.** While a process works on the run it heartbeats
+  the lock as any lock is. When the run parks, the lock is renewed for a full
+  TTL and then nothing touches it, so `withTtl` is how long a parked run keeps
+  the lock **with no process alive**. Every `zuke resume --check` that re-parks
+  the run renews it again, so a cron sweeping parked runs keeps it held
+  indefinitely; without one, set the TTL to at least the gate's timeout.
+- **A resume re-claims it first.** Before a resumed run goes back to `running`
+  it renews each lock with its recorded token. One that lapsed but is still free
+  is taken again under a new token. One that lapsed and **went to another run**
+  means the run no longer has the exclusivity it was promised, so the resume
+  refuses with a `LockConflictError` naming the new holder and leaves the run
+  suspended, for you to resume once that run finishes or to cancel.
+- **The token is never shown.** It proves ownership of the lock to the store, so
+  `zuke runs show` (text and `--json`) and the MCP `show_run` tool mask it, as a
+  lock listing never includes it. The record in the store itself carries it:
+  guard the store as you would anything that can release a lock.
+- **Requires a state store,** like any lock, and fails the target rather than
+  hold a lock the run record could not carry.
+
 ## Waiting instead of failing
 
 Failing fast is right for a resource where a second run is a mistake worth
