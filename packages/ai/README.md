@@ -637,10 +637,13 @@ class ReviewCommandSettings
   repository's secrets. Its `if:` fires only when the comment is on a pull
   request, starts with one of the commands, and was written by a human (not a
   bot account); the comment body is matched in the expression and never
-  interpolated into a `run:` line. The access control is the job's first
-  step: it asks the collaborators API what role the commenter holds, and
-  every later step is skipped unless it is at or above {@link role} or the
-  login is among {@link users}. The event's `author_association` is
+  interpolated into a `run:` line. The access control runs inside the build,
+  not the workflow file: the job passes the commenter's login, {@link role}
+  and {@link users} as env, and each reviewer asks the collaborators API —
+  through `GhTasks` — what role the commenter holds, starting only when it is
+  at or above {@link role} or the login is among {@link users} (see
+  `callers.ts`). A refused commenter's run ends having spent nothing, with a
+  😕 on their comment. The event's `author_association` is
   deliberately not consulted — it reports a private organisation member as
   `CONTRIBUTOR`, and `MEMBER` and `COLLABORATOR` admit read-only accounts, so
   it can neither admit nor refuse anyone correctly.
@@ -789,6 +792,19 @@ class Reviewer implements Validation
     default token alongside, for the function to fall back to.
   githubToken(token: CommentTokenSource): this
     Backwards-compatible alias for {@link commentToken}.
+  reactions(enabled: boolean): this
+    Whether the reviewer reacts on the pull request to show its progress (on
+    by default, whenever `.comment()` is set). On the description: 👀 while
+    it runs, then 👍 when it passes clean, 🎉 when it passes clean where the
+    previous run failed, 🤏 when it has findings under the failing threshold
+    (😕 on GitHub, whose reaction set has no 🤏), 👎 when it fails. On the
+    comment that started a comment-started run: 👍 as it starts, 😕 when the
+    run could not review. On a trusted maintainer's reply: 👀 once read, ❤️
+    when it decided a finding. The reviewers on one pull request share the
+    reactions, so the verdict shown is the worst of a run's. GitHub and
+    GitLab have the reactions; on Azure DevOps and Bitbucket this is a no-op.
+    `false` turns all of it off, as does `.quiet()`, under which the reviewer
+    does not speak on the pull request.
   quiet(): this
     Suppress the findings printout and the job-summary section.
   fetch(impl: typeof fetch): this
@@ -884,6 +900,10 @@ class Reviewer implements Validation
     Untrusted comments are dropped in code before any prompt is built — the
     model never sees them, so a drive-by "the maintainer approved this"
     comment cannot influence the review.
+  async preflight(context: ValidationContext): Promise<void>
+    The run's preflight: on a comment-started run, refuse a commenter who may
+    not start a review before any target — a dependency included — has
+    started (see {@link Validation.preflight}). A no-op on any other run.
   async validate(context: ValidationContext): Promise<void>
     Run the review and gate the build. Throws an {@link AiReviewError} when the
     gate trips (or on a configuration/API error with `onError: "fail"`).
@@ -1193,7 +1213,7 @@ type AssessmentType = "generic" | "security" | "secrets" | "correctness" | "lice
 
 type CommandRole = "read" | "triage" | "write" | "maintain" | "admin"
   A repository role a commenter may hold, as GitHub's collaborators API
-  reports it (`role_name`) — see {@link ReviewCommandSettings.role}.
+  reports it (`role_name`) — see `ReviewCommandSettings.role`.
 
 type CommentTokenSource = AnyParameter | string | (() => Promise<string>)
   Where a reviewer's comment-posting token comes from: a secret parameter (for

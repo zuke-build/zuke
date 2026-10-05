@@ -610,6 +610,15 @@ export interface ValidationContext {
    * `$` command the check runs is bound to it already.
    */
   signal?: AbortSignal;
+  /**
+   * The identity of the run the validation belongs to — the same id the run
+   * record and `zuke runs` show, kept across a resume. Lets validations that
+   * coordinate with each other (the `@zuke/ai` reviewers sharing their
+   * reactions on a pull request) scope that to one run, even in a process
+   * that executes several, such as `zuke mcp`. Set by the scheduler; absent
+   * when a caller drives `validate(...)` directly.
+   */
+  runId?: string;
 }
 
 /**
@@ -624,6 +633,16 @@ export interface Validation {
   name?: string;
   /** Run the check; throw to fail the target. May be async. */
   validate(context: ValidationContext): void | Promise<void>;
+  /**
+   * Decide whether the run may happen at all — called once per run, for every
+   * validation in the plan, **before any target starts**, its dependencies
+   * included. Throw to refuse the run: nothing executes, and no run record is
+   * opened. Optional; most validations have nothing to decide this early. It
+   * is the seam for a check that must stand in front of everything, such as
+   * who may start a comment-triggered run. `zuke <target> --preflight` runs
+   * only this phase. Skipped by a dry run, which executes nothing to guard.
+   */
+  preflight?(context: ValidationContext): void | Promise<void>;
 }
 
 /** Context passed to a {@link Remediation} after a target body fails. */

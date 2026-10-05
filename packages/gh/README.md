@@ -325,6 +325,11 @@ const CACHE_LIST_FIELDS: readonly string[]
   The `--json` fields {@link readCaches} asks for; gh requires the list by
   name, so the reader pins the set {@link GhCacheEntry} describes.
 
+const GITHUB_LOGIN: RegExp
+  The characters a GitHub login can contain — letters, digits and hyphens.
+  The guard a login passes before it is put in a request path, shared so a
+  caller deciding trust on a login checks it the same way.
+
 const GhTasks: GhTasksApi
   Typed task functions for GitHub: the `gh` CLI and the REST-only operations.
 
@@ -630,6 +635,30 @@ class GhCheckRunSettings
     The effective `owner/repo`, from the setting or the environment.
   authToken_(): string
     The effective token, from the setting or the environment.
+
+class GhCollaboratorSettings
+  Settings for {@link GhCollaboratorApi.collaboratorPermission}.
+
+  login_?: string
+    The account to look up. Set by {@link login}.
+  repo_?: string
+    `owner/repo`. Set by {@link repo}.
+  token_?: string
+    The token. Set by {@link token}.
+  baseUrl_: string
+    The API root. Set by {@link baseUrl}.
+  fetch_: typeof fetch
+    The `fetch` implementation. Set by {@link fetch}.
+  login(value: string): this
+    The account to look up.
+  repo(slug: string): this
+    `owner/repo`. Defaults to `GITHUB_REPOSITORY`.
+  token(value: string): this
+    The token to authenticate with. Defaults to `GITHUB_TOKEN`.
+  baseUrl(url: string): this
+    The API root, for GitHub Enterprise.
+  fetch(fn: typeof fetch): this
+    Override the `fetch` implementation (a test seam).
 
 abstract class GhCommandSettings extends GhSettings
   Base for a typed `gh` subcommand: it contributes the command path (the
@@ -1125,6 +1154,44 @@ class GhPullRequestSettings
     The effective `owner/repo`, from the setting or the environment.
   authToken_(): string
     The effective token, from the setting or the environment.
+
+class GhReactionSettings
+  Settings for the reaction tasks: the subject, the content, and — for a
+  deletion — the reaction's id. `owner/repo` and the token fall back to the
+  Actions environment.
+
+  subject_?: GhReactionSubject
+    What the reaction is on. Set by {@link issue}, {@link issueComment} or {@link reviewComment}.
+  content_?: GhReactionContent
+    The reaction's content. Set by {@link content}.
+  id_?: number
+    The reaction to delete. Set by {@link id}.
+  repo_?: string
+    `owner/repo`. Set by {@link repo}.
+  token_?: string
+    The token. Set by {@link token}.
+  baseUrl_: string
+    The API root. Set by {@link baseUrl}.
+  fetch_: typeof fetch
+    The `fetch` implementation. Set by {@link fetch}.
+  issue(number: number): this
+    An issue — or a pull request, whose description is its issue body.
+  issueComment(id: number): this
+    A conversation comment on an issue or pull request.
+  reviewComment(id: number): this
+    A comment in a pull request's review thread.
+  content(value: GhReactionContent): this
+    The reaction to give, or — when listing — the only one to list.
+  id(value: number): this
+    The id of the reaction to delete.
+  repo(slug: string): this
+    `owner/repo`. Defaults to `GITHUB_REPOSITORY`.
+  token(value: string): this
+    The token to authenticate with. Defaults to `GITHUB_TOKEN`.
+  baseUrl(url: string): this
+    The API root, for GitHub Enterprise.
+  fetch(fn: typeof fetch): this
+    Override the `fetch` implementation (a test seam).
 
 abstract class GhReadSettings extends GhCommandSettings
   Base for the commands that can print JSON: `pr list`, `pr view`,
@@ -2292,6 +2359,24 @@ interface GhCheckRunResult
     updated instead has learned that something else posted first, which is the
     difference between a first attempt and a re-drive.
 
+interface GhCollaboratorApi
+  The collaborator operation {@link GhTasks} exposes.
+
+  collaboratorPermission(configure?: (settings: GhCollaboratorSettings) => GhCollaboratorSettings): Promise<GhCollaboratorPermission>
+    The standing of `.login(...)` on the repository. Throws when GitHub
+    refuses or the account is unknown, so a caller deciding trust on it fails
+    closed.
+
+interface GhCollaboratorPermission
+  A collaborator's standing, as `GET /collaborators/<login>/permission` reports it.
+
+  permission: string
+    The base permission level: `admin`, `write`, `read` or `none`. A custom
+    role reports the level it is built on here.
+  roleName: string
+    The role's name: `admin`, `maintain`, `write`, `triage`, `read` — or a
+    custom role's own name.
+
 interface GhCommitApi
   The commit and tag operations {@link GhTasks} exposes.
 
@@ -2453,6 +2538,29 @@ interface GhPullRequestResult
     Worth reporting rather than hiding: "proposed" and "already proposed" are
     different things to a human reading a build log, even though neither is a
     failure.
+
+interface GhReaction
+  One reaction on a subject.
+
+  id: number
+    Its id — what {@link GhReactionApi.deleteReaction} takes.
+  content: string
+    What it is.
+  login?: string
+    The login of the account that gave it, when GitHub said.
+
+interface GhReactionApi
+  The reaction operations {@link GhTasks} exposes.
+
+  react(configure?: (settings: GhReactionSettings) => GhReactionSettings): Promise<GhReaction>
+    React with `.content(...)` on the subject. GitHub keeps one reaction of
+    each content per account, so reacting twice answers the reaction already
+    there rather than adding another.
+  listReactions(configure?: (settings: GhReactionSettings) => GhReactionSettings): Promise<GhReaction[]>
+    The subject's reactions — only `.content(...)`'s when it is set.
+  deleteReaction(configure?: (settings: GhReactionSettings) => GhReactionSettings): Promise<void>
+    Delete reaction `.id(...)` from the subject. GitHub lets an account
+    delete only its own.
 
 interface GhReleaseApi
   The `gh release` members of {@link "./gh.ts".GhTasks}.
@@ -2710,7 +2818,7 @@ interface GhSecretEntry
   visibility?: string
     The visibility of an organization secret.
 
-interface GhTasksApi extends GhAppTokenApi, GhSarifApi, GhReleaseAssetApi, GhReleaseLatestApi, GhReleaseEnsureApi, GhCommitApi, GhPullRequestApi, GhCheckRunApi, GhPrApi, GhIssueApi, GhReleaseApi, GhRunApi, GhWorkflowApi, GhSecretApi, GhVariableApi, GhCacheApi, GhRepoApi, GhLabelApi
+interface GhTasksApi extends GhAppTokenApi, GhSarifApi, GhReleaseAssetApi, GhReleaseLatestApi, GhReleaseEnsureApi, GhCommitApi, GhPullRequestApi, GhCheckRunApi, GhReactionApi, GhCollaboratorApi, GhPrApi, GhIssueApi, GhReleaseApi, GhRunApi, GhWorkflowApi, GhSecretApi, GhVariableApi, GhCacheApi, GhRepoApi, GhLabelApi
   The shape of {@link GhTasks}: the `gh` CLI plus the GitHub operations that
   have no CLI subcommand (see {@link GhAppTokenApi}, {@link GhSarifApi}) and
   would otherwise force a build back to a marketplace action.
@@ -2851,6 +2959,13 @@ type GhMergeMethod = "merge" | "squash" | "rebase"
 
 type GhPermissionLevel = "read" | "write" | "admin"
   A permission level an installation token can be narrowed to.
+
+type GhReactionContent = "+1" | "-1" | "laugh" | "confused" | "heart" | "hooray" | "rocket" | "eyes"
+  A reaction, as GitHub spells its content: 👍 👎 😄 😕 ❤️ 🎉 🚀 👀.
+
+type GhReactionSubject = { kind: "issue"; id: number; } | { kind: "issueComment"; id: number; } | { kind: "reviewComment"; id: number; }
+  What a reaction is on, as the REST paths address it: an issue (or a pull
+  request's description), a conversation comment, or a review comment.
 
 type GhRepoVisibility = "public" | "private" | "internal"
   How visible a repository is (`--visibility`).

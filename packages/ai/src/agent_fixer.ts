@@ -46,7 +46,12 @@ import { agentPrompt } from "./prompts/agent.ts";
 import { commitChanged, type GitRunner, porcelainPaths } from "./commit.ts";
 import { fenceMarkdown } from "./markdown.ts";
 import { writeStepSummary } from "./report.ts";
-import { postComment, postGithubSuggestions, type Redact } from "./comment.ts";
+import {
+  postComment,
+  postGithubSuggestions,
+  reactFixPushed,
+  type Redact,
+} from "./comment.ts";
 import { type EnvReader, readEnv } from "./hosts.ts";
 import { outOfScope, type RunScope } from "./run_scope.ts";
 import { diffToSuggestions } from "./diff_suggest.ts";
@@ -460,13 +465,20 @@ export class AgentFixer implements Remediation {
         "re-running to verify";
     } else if (this.#commitFixes) {
       try {
-        await commitChanged({
+        const pushed = await commitChanged({
           before: dirtyBefore,
           message: this.#commitMessage ??
             `Apply Zuke agent fix for "${context.target}"`,
           push: this.#push,
           run: this.#git(),
         });
+        if (pushed && this.#comment) {
+          await reactFixPushed({
+            commentToken: this.#commentToken,
+            env: this.#env,
+            fetch: this.#fetch,
+          });
+        }
         action = this.#push
           ? "ran the agent, committed, and pushed; re-running to verify"
           : "ran the agent and committed; re-running to verify";

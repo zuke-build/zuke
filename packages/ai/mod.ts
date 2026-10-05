@@ -68,7 +68,7 @@ export {
 export {
   aiReviewWorkflow,
   type AiReviewWorkflowSpec,
-  type CommandRole,
   ReviewCommandSettings,
   type ReviewSecret,
 } from "./src/workflow.ts";
+export type { CommandRole } from "./src/callers.ts";

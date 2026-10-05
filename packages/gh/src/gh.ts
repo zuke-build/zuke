@@ -40,6 +40,20 @@ import {
   type GhAppTokenSourceSettings,
 } from "./app_token_source.ts";
 import {
+  collaboratorPermission,
+  type GhCollaboratorApi,
+  type GhCollaboratorPermission,
+  type GhCollaboratorSettings,
+} from "./collaborator.ts";
+import {
+  deleteReaction,
+  type GhReaction,
+  type GhReactionApi,
+  type GhReactionSettings,
+  listReactions,
+  react,
+} from "./reaction.ts";
+import {
   type GhCheckRunApi,
   type GhCheckRunResult,
   type GhCheckRunSettings,
@@ -117,6 +131,8 @@ export interface GhTasksApi
     GhCommitApi,
     GhPullRequestApi,
     GhCheckRunApi,
+    GhReactionApi,
+    GhCollaboratorApi,
     GhPrApi,
     GhIssueApi,
     GhReleaseApi,
@@ -176,6 +192,26 @@ export const GhTasks: GhTasksApi = {
     configure?: (s: GhCheckRunSettings) => GhCheckRunSettings,
   ): Promise<GhCheckRunResult> {
     return postCheckRun(configure);
+  },
+  react(
+    configure?: (s: GhReactionSettings) => GhReactionSettings,
+  ): Promise<GhReaction> {
+    return react(configure);
+  },
+  listReactions(
+    configure?: (s: GhReactionSettings) => GhReactionSettings,
+  ): Promise<GhReaction[]> {
+    return listReactions(configure);
+  },
+  deleteReaction(
+    configure?: (s: GhReactionSettings) => GhReactionSettings,
+  ): Promise<void> {
+    return deleteReaction(configure);
+  },
+  collaboratorPermission(
+    configure?: (s: GhCollaboratorSettings) => GhCollaboratorSettings,
+  ): Promise<GhCollaboratorPermission> {
+    return collaboratorPermission(configure);
   },
   appToken(
     configure?: Configure<GhAppTokenSettings>,

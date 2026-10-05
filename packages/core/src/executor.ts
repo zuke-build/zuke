@@ -71,6 +71,7 @@ import type { TargetBuilder } from "./target.ts";
 import type { ActorKind, RunRecord } from "./state/types.ts";
 import { withAmbientSignal } from "./ambient_signal.ts";
 import { withAmbientRedactor } from "./ambient_redactor.ts";
+import { runPreflights } from "./preflight.ts";
 import type { StateStore } from "./state/store.ts";
 import type { Plugin, RunInfo } from "./plugin.ts";
 import type { Renderer } from "./renderer.ts";
@@ -151,6 +152,14 @@ export interface ExecuteOptions {
    * the cache (CLI `--dry-run`).
    */
   dryRun?: boolean;
+  /**
+   * Run only the preflight phase — every planned validation's
+   * {@link Validation.preflight} — and stop, executing no target (CLI
+   * `--preflight`). The result is ok when every preflight passed. Missing or
+   * invalid parameters do not fail it: the step that asks is meant to run
+   * without the secrets they come from.
+   */
+  preflightOnly?: boolean;
   /**
    * Restrict the run to the targets affected by files changed since a base git
    * revision (CLI `--affected[=<base>]`). A target is affected when a changed
@@ -294,7 +303,11 @@ export async function execute(
     }
     emitActionsMasks(secrets, baseReporter);
   }
-  if (paramErrors.length > 0) {
+  // A preflight-only run is how a workflow asks "may this run?" in a step that
+  // deliberately holds no secrets, so the parameters those secrets fill are
+  // missing by design there. Nothing runs that would read them; a preflight
+  // that needs one reads it unresolved and says so itself.
+  if (paramErrors.length > 0 && options.preflightOnly !== true) {
     messages.error("Invalid or missing parameters:");
     for (const message of paramErrors) messages.error(`  ${message}`);
     return {
@@ -430,6 +443,31 @@ export async function execute(
   if (!failures.ok) {
     messages.error(failures.error.message);
     return { ok: false, executed: [], error: failures.error };
+  }
+
+  // Preflight: every validation in the plan may refuse the run before any
+  // target — a dependency included — has started, and before the run record
+  // exists. A dry run executes nothing, so it has nothing to guard.
+  if (!dryRun) {
+    const preflight = await withAmbientRedactor(
+      redactor,
+      () => runPreflights(order, runId),
+    );
+    if (!preflight.ok) {
+      const error = preflight.error instanceof Error
+        ? preflight.error
+        : new Error(String(preflight.error));
+      messages.error(
+        `preflight refused the run (${preflight.target}): ${error.message}`,
+      );
+      return { ok: false, executed: [], error };
+    }
+    if (options.preflightOnly === true) {
+      messages.info(
+        `preflight passed — ${preflight.checked} check(s); no target was run.`,
+      );
+      return { ok: true, executed: [] };
+    }
   }
   // A target whose `.onFailure(...)` cancels the run turns its failure into a
   // cancellation of the run this process owns: the same abort Ctrl-C takes, so

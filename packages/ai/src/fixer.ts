@@ -52,7 +52,12 @@ import {
   readTextOrUndefined,
   resolveConventions,
 } from "./context.ts";
-import { postComment, postGithubSuggestions, type Redact } from "./comment.ts";
+import {
+  postComment,
+  postGithubSuggestions,
+  reactFixPushed,
+  type Redact,
+} from "./comment.ts";
 import type { RetryInfo, RetryOptions } from "./retry.ts";
 import type { Budget } from "./budget.ts";
 import type { AiCache } from "./cache.ts";
@@ -461,6 +466,16 @@ export class AiFixer implements Remediation {
     })) > 0;
   }
 
+  /** React 🚀 on the pull request's description, when the fixer comments. */
+  async #reactFixPushed(): Promise<void> {
+    if (!this.#comment) return;
+    await reactFixPushed({
+      commentToken: this.#commentToken,
+      env: this.#env,
+      fetch: this.#fetch,
+    });
+  }
+
   /** Upsert the single overview comment via the active CI host. */
   #postIssueComment(markdown: string, redact: Redact): Promise<void> {
     return postComment(this.name, markdown, {
@@ -616,12 +631,13 @@ export class AiFixer implements Remediation {
       `applied a fix to ${applied.length} file(s) and re-ran the target`;
     if (this.#commitFixes) {
       try {
-        await commitAndPush({
+        const pushed = await commitAndPush({
           paths: applied,
           message: this.#message(context.target),
           push: this.#push,
           run: this.#git(),
         });
+        if (pushed) await this.#reactFixPushed();
         action = this.#push
           ? `applied, committed, and pushed a fix to ${applied.length} file(s)`
           : `applied and committed a fix to ${applied.length} file(s)`;

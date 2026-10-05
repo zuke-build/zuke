@@ -3603,6 +3603,12 @@ interface ExecuteOptions
     Plan only: resolve and print every target that would run (honouring
     `--skip` and `onlyWhen` conditions) without executing any body or touching
     the cache (CLI `--dry-run`).
+  preflightOnly?: boolean
+    Run only the preflight phase — every planned validation's
+    {@link Validation.preflight} — and stop, executing no target (CLI
+    `--preflight`). The result is ok when every preflight passed. Missing or
+    invalid parameters do not fail it: the step that asks is meant to run
+    without the secrets they come from.
   affected?: AffectedOptions
     Restrict the run to the targets affected by files changed since a base git
     revision (CLI `--affected[=<base>]`). A target is affected when a changed
@@ -5052,6 +5058,14 @@ interface Validation
     A name for diagnostics (optional).
   validate(context: ValidationContext): void | Promise<void>
     Run the check; throw to fail the target. May be async.
+  preflight?(context: ValidationContext): void | Promise<void>
+    Decide whether the run may happen at all — called once per run, for every
+    validation in the plan, before any target starts, its dependencies
+    included. Throw to refuse the run: nothing executes, and no run record is
+    opened. Optional; most validations have nothing to decide this early. It
+    is the seam for a check that must stand in front of everything, such as
+    who may start a comment-triggered run. `zuke <target> --preflight` runs
+    only this phase. Skipped by a dry run, which executes nothing to guard.
 
 interface ValidationContext
   Context passed to a {@link Validation} when it runs.
@@ -5063,6 +5077,13 @@ interface ValidationContext
     or the run is cancelled, so a check that waits on the network — a metrics
     query, a health probe — should pass it on (`fetch(url, { signal })`). A
     `$` command the check runs is bound to it already.
+  runId?: string
+    The identity of the run the validation belongs to — the same id the run
+    record and `zuke runs` show, kept across a resume. Lets validations that
+    coordinate with each other (the `@zuke/ai` reviewers sharing their
+    reactions on a pull request) scope that to one run, even in a process
+    that executes several, such as `zuke mcp`. Set by the scheduler; absent
+    when a caller drives `validate(...)` directly.
   redact(text: string): string
     Mask every resolved `secret` parameter in `text`.
 

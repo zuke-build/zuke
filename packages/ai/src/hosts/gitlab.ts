@@ -19,6 +19,7 @@
  */
 
 import { dig } from "../json.ts";
+import { gitlabReactions, gitlabReplyReactions } from "./gitlab_reactions.ts";
 import {
   commentBody,
   commentMarker,
@@ -94,7 +95,7 @@ function associationFor(accessLevel: number): string {
  * {@link paginateLinked} loop, bound to GitLab's `PRIVATE-TOKEN` header so the
  * two call sites don't each repeat it.
  */
-function paginate(
+export function paginate(
   context: GitlabContext,
   url: string,
   doFetch: typeof fetch,
@@ -111,7 +112,7 @@ function paginate(
  * whose notes GitLab does not otherwise flag as bot-authored, so this is how
  * the reviewer recognises its own notes on GitLab.
  */
-function selfUsername(
+export function selfUsername(
   context: GitlabContext,
   doFetch: typeof fetch,
 ): Promise<string | undefined> {
@@ -260,5 +261,15 @@ export const gitlabHost: ReviewHost = {
     const context = resolveGitlabContext(token, env);
     if (context === undefined) return undefined;
     return (doFetch) => listMergeRequestNotes(context, doFetch);
+  },
+  reactions(token, env) {
+    const context = resolveGitlabContext(token, env);
+    if (context === undefined) return undefined;
+    return gitlabReactions(context);
+  },
+  replyReactions(token, env) {
+    const context = resolveGitlabContext(token, env);
+    if (context === undefined) return undefined;
+    return gitlabReplyReactions(context);
   },
 };

@@ -77,6 +77,16 @@ deploy = target()
 (`securityReviewer(...)`, …) that implement `Validation` — define one fluently
 and attach it the same way to gate the build on a model-assessed security score.
 
+A validation may also have a **`preflight(ctx)`**: the check that decides
+whether the run may happen at all. The executor calls it once per run, for every
+validation in the plan, **before any target starts** — a dependency included —
+and before the run record exists; a throw refuses the run and nothing executes.
+Most validations have nothing to decide that early; it is the seam for gates
+such as who may start a comment-triggered run. `./zuke <target> --preflight`
+runs only this phase and executes no target, so a workflow can ask "may this
+run?" in a step that holds no secrets — missing parameters do not fail it —
+before the step that does. A dry run skips it.
+
 #### Checks while the body runs — `.validateDuring()`
 
 A long body — a canary bake, a soak test — can be watched while it runs, so a

@@ -3549,6 +3549,12 @@ interface ExecuteOptions
     Plan only: resolve and print every target that would run (honouring
     `--skip` and `onlyWhen` conditions) without executing any body or touching
     the cache (CLI `--dry-run`).
+  preflightOnly?: boolean
+    Run only the preflight phase — every planned validation's
+    {@link Validation.preflight} — and stop, executing no target (CLI
+    `--preflight`). The result is ok when every preflight passed. Missing or
+    invalid parameters do not fail it: the step that asks is meant to run
+    without the secrets they come from.
   affected?: AffectedOptions
     Restrict the run to the targets affected by files changed since a base git
     revision (CLI `--affected[=<base>]`). A target is affected when a changed
@@ -4998,6 +5004,14 @@ interface Validation
     A name for diagnostics (optional).
   validate(context: ValidationContext): void | Promise<void>
     Run the check; throw to fail the target. May be async.
+  preflight?(context: ValidationContext): void | Promise<void>
+    Decide whether the run may happen at all — called once per run, for every
+    validation in the plan, before any target starts, its dependencies
+    included. Throw to refuse the run: nothing executes, and no run record is
+    opened. Optional; most validations have nothing to decide this early. It
+    is the seam for a check that must stand in front of everything, such as
+    who may start a comment-triggered run. `zuke <target> --preflight` runs
+    only this phase. Skipped by a dry run, which executes nothing to guard.
 
 interface ValidationContext
   Context passed to a {@link Validation} when it runs.
@@ -5009,6 +5023,13 @@ interface ValidationContext
     or the run is cancelled, so a check that waits on the network — a metrics
     query, a health probe — should pass it on (`fetch(url, { signal })`). A
     `$` command the check runs is bound to it already.
+  runId?: string
+    The identity of the run the validation belongs to — the same id the run
+    record and `zuke runs` show, kept across a resume. Lets validations that
+    coordinate with each other (the `@zuke/ai` reviewers sharing their
+    reactions on a pull request) scope that to one run, even in a process
+    that executes several, such as `zuke mcp`. Set by the scheduler; absent
+    when a caller drives `validate(...)` directly.
   redact(text: string): string
     Mask every resolved `secret` parameter in `text`.
 
@@ -8817,171 +8838,6 @@ interface Theme
 
 type LogLevel = "trace" | "debug" | "info" | "warn" | "error" | "silent"
   A severity threshold. Messages below the active level are suppressed.
-
-========================================================================
-# @zuke/cli
-========================================================================
-
-`@zuke/cli` — the `zuke` command. Install it globally with
-
-```sh
-deno install -A -g -n zuke jsr:@zuke/cli
-```
-
-scaffold Zuke into any project with `zuke setup`, then run its build from
-anywhere inside the project with `zuke <target>`: every command that is not
-the CLI's own (`setup`, `import`, `doc`) is forwarded to the nearest
-`zuke.ts`, exactly as the `./zuke` launcher would run it.
-@module
-
-async function main(args: string[], host: SetupHost, prompter: Prompter, docRunner: DocRunner, starActions: StarActions, buildRunner: BuildRunner, buildProbe: BuildProbe): Promise<number>
-  The CLI entry point. Returns a process exit code; `host`, `prompter`,
-  `docRunner`, `starActions`, `buildRunner`, and `buildProbe` are injectable
-  for testing.
-
-function parseImportFlags(args: string[]): ImportFlags
-  Parse the argument list following `zuke import`.
-
-function parseSetupFlags(args: string[]): SetupFlags
-  Parse the argument list following `zuke setup`.
-
-const defaultPrompter: Prompter
-  The real {@link Prompter}, backed by Deno's `prompt`/`confirm`.
-
-interface BuildLocation
-  Where a forwarded command runs, and how.
-
-  root: string
-    The absolute repository root: the directory holding `zuke.json`.
-  frozen: boolean
-    Whether a `deno.lock` sits at the root, so the run passes `--frozen`.
-  launcher: string | null
-    The absolute path of the executable `zuke` launcher at the root, run in
-    place of `deno run` — or `null` when there is none, or the platform
-    reports no file mode to tell (Windows).
-
-interface BuildProbe
-  The filesystem questions discovery asks, injectable so the walk and its
-  trust gate are testable without a filesystem or a second user.
-
-  exists(path: string): Promise<boolean>
-    Whether a path exists (the link itself, not its target).
-  ownership(path: string): Promise<Ownership | null>
-    The owner and mode of what a path resolves to, or `null` when nothing is
-    there.
-  realPath(path: string): Promise<string>
-    The path with every link resolved, as the launcher is spawned by it.
-  uid(): number | null
-    The current user's numeric id, or `null` where the platform has none.
-
-interface ImportFlags extends SetupFlags
-  Flags accepted by `zuke import` — the setup flags plus `--from`.
-
-  from?: ImportSource
-    Force a source (`package.json` or `makefile`); auto-detected when unset.
-
-interface Ownership
-  What the trust gate needs to know about a filesystem entry.
-
-  uid: number | null
-    The numeric owner, or `null` where the platform reports none (Windows).
-  mode: number | null
-    The permission bits, or `null` where the platform reports none.
-
-interface Prompter
-  The interactive surface, injectable so the wizard is testable without a TTY.
-
-  interactive(): boolean
-    Whether prompts should be shown (i.e. stdin is a terminal).
-  ask(question: string, fallback: string): string
-    Ask a free-text question, returning `fallback` if unanswered.
-  confirm(question: string): boolean
-    Ask a yes/no question.
-
-interface SetupFlags
-  Flags accepted by `zuke setup`.
-
-  force: boolean
-    Overwrite existing files.
-  yes: boolean
-    Skip prompts and accept defaults.
-  name?: string
-    Build class name for the starter `zuke.ts`.
-  dir?: string
-    Directory to scaffold into (defaults to the current directory).
-  launcherName?: string
-    Base name for the launcher scripts, when `zuke` is taken by a directory.
-  mcp: boolean
-    Also write `.mcp.json`, registering the build's MCP server for agent clients.
-  allowRun: boolean
-    Register that server with `--allow-run`, so the agent may execute targets. Implies `mcp`.
-  bootstrapDeno?: boolean
-    Which launchers to scaffold: `true` (`--bootstrap-deno`) for ones that
-    install a pinned, checksum-verified Deno when none is on `PATH`, `false`
-    (`--no-bootstrap-deno`) for ones that require it and fail closed. Unset:
-    ask when interactive, else take the default (bootstrap).
-
-interface SetupHost
-  Injected side effects, so {@link runSetup} is unit-testable.
-
-  exists(path: string): Promise<boolean>
-    Whether a path exists.
-  isDirectory(path: string): Promise<boolean>
-    Whether a path exists and is a directory (a reserved-name collision).
-  isSymlink(path: string): Promise<boolean>
-    Whether a path is a symbolic link, without following it. Scaffolding
-    refuses to write through one: the writes below follow links, so a link
-    planted at a scaffold name by the very repository being set up would
-    redirect them outside the target directory.
-
-    The guard covers the names scaffolding chooses, which is where the hazard
-    is — the caller never asked for `.gitignore` to be written, so a repository
-    redirecting it is a decision nobody made. It reports what is there when it
-    runs, and a link planted after it would escape it; that is why
-    {@link SetupHost.writeText} does not write through a link either, so the
-    refusal is the friendly answer rather than the only defence.
-
-    Two things stay out of scope. The directory the caller names with `--dir`
-    is the caller's to name, symlink or not. And a hard link is
-    indistinguishable from the file it shares, so no probe can see one; git
-    cannot check one out either, which is what keeps it out of the threat this
-    guards.
-  readText(path: string): Promise<string>
-    Read a file as UTF-8 text.
-  writeText(path: string, content: string): Promise<void>
-    Write UTF-8 text to a file, creating or replacing it.
-
-    An implementation must not write through a symbolic link standing at
-    `path`: the scaffolder's confinement to its target directory rests on this,
-    and the pre-write {@link SetupHost.isSymlink} check alone cannot carry it,
-    since a link can appear after the check.
-  chmod(path: string, mode: number): Promise<void>
-    Set a file's permission bits (may be unsupported on some platforms).
-  log(message: string): void
-    Emit a line of progress output.
-
-interface StarActions
-  The side effects behind {@link promptStar}, injectable so tests never spawn
-  `gh` or a browser.
-
-  ghAuthenticated(): Promise<boolean>
-    Whether the `gh` CLI is installed and holds a login.
-  starWithGh(): Promise<void>
-    Star the Zuke repository through `gh api`.
-  openBrowser(url: string): Promise<boolean>
-    Open `url` in the default browser; `false` when it could not launch.
-
-type BuildRunner = (root: string, args: string[], program?: string) => Promise<number>
-  Runs `program <args>` from `root` — Deno when `program` is omitted, else the
-  project's launcher at that path — and resolves to its exit code: the
-  injectable subprocess seam, so the forwarding is testable without a build.
-
-type DocRunner = (denoArgs: string[]) => Promise<number>
-  Runs `deno doc <args>` — the injectable subprocess seam for
-  {@link commandDoc}, so the command is testable without spawning `deno`.
-
-type ImportSource = "package.json" | "Makefile"
-  The kinds of project `zuke import` can read.
 
 ========================================================================
 # @zuke/docker
@@ -16859,6 +16715,11 @@ const CACHE_LIST_FIELDS: readonly string[]
   The `--json` fields {@link readCaches} asks for; gh requires the list by
   name, so the reader pins the set {@link GhCacheEntry} describes.
 
+const GITHUB_LOGIN: RegExp
+  The characters a GitHub login can contain — letters, digits and hyphens.
+  The guard a login passes before it is put in a request path, shared so a
+  caller deciding trust on a login checks it the same way.
+
 const GhTasks: GhTasksApi
   Typed task functions for GitHub: the `gh` CLI and the REST-only operations.
 
@@ -17164,6 +17025,30 @@ class GhCheckRunSettings
     The effective `owner/repo`, from the setting or the environment.
   authToken_(): string
     The effective token, from the setting or the environment.
+
+class GhCollaboratorSettings
+  Settings for {@link GhCollaboratorApi.collaboratorPermission}.
+
+  login_?: string
+    The account to look up. Set by {@link login}.
+  repo_?: string
+    `owner/repo`. Set by {@link repo}.
+  token_?: string
+    The token. Set by {@link token}.
+  baseUrl_: string
+    The API root. Set by {@link baseUrl}.
+  fetch_: typeof fetch
+    The `fetch` implementation. Set by {@link fetch}.
+  login(value: string): this
+    The account to look up.
+  repo(slug: string): this
+    `owner/repo`. Defaults to `GITHUB_REPOSITORY`.
+  token(value: string): this
+    The token to authenticate with. Defaults to `GITHUB_TOKEN`.
+  baseUrl(url: string): this
+    The API root, for GitHub Enterprise.
+  fetch(fn: typeof fetch): this
+    Override the `fetch` implementation (a test seam).
 
 abstract class GhCommandSettings extends GhSettings
   Base for a typed `gh` subcommand: it contributes the command path (the
@@ -17659,6 +17544,44 @@ class GhPullRequestSettings
     The effective `owner/repo`, from the setting or the environment.
   authToken_(): string
     The effective token, from the setting or the environment.
+
+class GhReactionSettings
+  Settings for the reaction tasks: the subject, the content, and — for a
+  deletion — the reaction's id. `owner/repo` and the token fall back to the
+  Actions environment.
+
+  subject_?: GhReactionSubject
+    What the reaction is on. Set by {@link issue}, {@link issueComment} or {@link reviewComment}.
+  content_?: GhReactionContent
+    The reaction's content. Set by {@link content}.
+  id_?: number
+    The reaction to delete. Set by {@link id}.
+  repo_?: string
+    `owner/repo`. Set by {@link repo}.
+  token_?: string
+    The token. Set by {@link token}.
+  baseUrl_: string
+    The API root. Set by {@link baseUrl}.
+  fetch_: typeof fetch
+    The `fetch` implementation. Set by {@link fetch}.
+  issue(number: number): this
+    An issue — or a pull request, whose description is its issue body.
+  issueComment(id: number): this
+    A conversation comment on an issue or pull request.
+  reviewComment(id: number): this
+    A comment in a pull request's review thread.
+  content(value: GhReactionContent): this
+    The reaction to give, or — when listing — the only one to list.
+  id(value: number): this
+    The id of the reaction to delete.
+  repo(slug: string): this
+    `owner/repo`. Defaults to `GITHUB_REPOSITORY`.
+  token(value: string): this
+    The token to authenticate with. Defaults to `GITHUB_TOKEN`.
+  baseUrl(url: string): this
+    The API root, for GitHub Enterprise.
+  fetch(fn: typeof fetch): this
+    Override the `fetch` implementation (a test seam).
 
 abstract class GhReadSettings extends GhCommandSettings
   Base for the commands that can print JSON: `pr list`, `pr view`,
@@ -18826,6 +18749,24 @@ interface GhCheckRunResult
     updated instead has learned that something else posted first, which is the
     difference between a first attempt and a re-drive.
 
+interface GhCollaboratorApi
+  The collaborator operation {@link GhTasks} exposes.
+
+  collaboratorPermission(configure?: (settings: GhCollaboratorSettings) => GhCollaboratorSettings): Promise<GhCollaboratorPermission>
+    The standing of `.login(...)` on the repository. Throws when GitHub
+    refuses or the account is unknown, so a caller deciding trust on it fails
+    closed.
+
+interface GhCollaboratorPermission
+  A collaborator's standing, as `GET /collaborators/<login>/permission` reports it.
+
+  permission: string
+    The base permission level: `admin`, `write`, `read` or `none`. A custom
+    role reports the level it is built on here.
+  roleName: string
+    The role's name: `admin`, `maintain`, `write`, `triage`, `read` — or a
+    custom role's own name.
+
 interface GhCommitApi
   The commit and tag operations {@link GhTasks} exposes.
 
@@ -18987,6 +18928,29 @@ interface GhPullRequestResult
     Worth reporting rather than hiding: "proposed" and "already proposed" are
     different things to a human reading a build log, even though neither is a
     failure.
+
+interface GhReaction
+  One reaction on a subject.
+
+  id: number
+    Its id — what {@link GhReactionApi.deleteReaction} takes.
+  content: string
+    What it is.
+  login?: string
+    The login of the account that gave it, when GitHub said.
+
+interface GhReactionApi
+  The reaction operations {@link GhTasks} exposes.
+
+  react(configure?: (settings: GhReactionSettings) => GhReactionSettings): Promise<GhReaction>
+    React with `.content(...)` on the subject. GitHub keeps one reaction of
+    each content per account, so reacting twice answers the reaction already
+    there rather than adding another.
+  listReactions(configure?: (settings: GhReactionSettings) => GhReactionSettings): Promise<GhReaction[]>
+    The subject's reactions — only `.content(...)`'s when it is set.
+  deleteReaction(configure?: (settings: GhReactionSettings) => GhReactionSettings): Promise<void>
+    Delete reaction `.id(...)` from the subject. GitHub lets an account
+    delete only its own.
 
 interface GhReleaseApi
   The `gh release` members of {@link "./gh.ts".GhTasks}.
@@ -19244,7 +19208,7 @@ interface GhSecretEntry
   visibility?: string
     The visibility of an organization secret.
 
-interface GhTasksApi extends GhAppTokenApi, GhSarifApi, GhReleaseAssetApi, GhReleaseLatestApi, GhReleaseEnsureApi, GhCommitApi, GhPullRequestApi, GhCheckRunApi, GhPrApi, GhIssueApi, GhReleaseApi, GhRunApi, GhWorkflowApi, GhSecretApi, GhVariableApi, GhCacheApi, GhRepoApi, GhLabelApi
+interface GhTasksApi extends GhAppTokenApi, GhSarifApi, GhReleaseAssetApi, GhReleaseLatestApi, GhReleaseEnsureApi, GhCommitApi, GhPullRequestApi, GhCheckRunApi, GhReactionApi, GhCollaboratorApi, GhPrApi, GhIssueApi, GhReleaseApi, GhRunApi, GhWorkflowApi, GhSecretApi, GhVariableApi, GhCacheApi, GhRepoApi, GhLabelApi
   The shape of {@link GhTasks}: the `gh` CLI plus the GitHub operations that
   have no CLI subcommand (see {@link GhAppTokenApi}, {@link GhSarifApi}) and
   would otherwise force a build back to a marketplace action.
@@ -19386,6 +19350,13 @@ type GhMergeMethod = "merge" | "squash" | "rebase"
 type GhPermissionLevel = "read" | "write" | "admin"
   A permission level an installation token can be narrowed to.
 
+type GhReactionContent = "+1" | "-1" | "laugh" | "confused" | "heart" | "hooray" | "rocket" | "eyes"
+  A reaction, as GitHub spells its content: 👍 👎 😄 😕 ❤️ 🎉 🚀 👀.
+
+type GhReactionSubject = { kind: "issue"; id: number; } | { kind: "issueComment"; id: number; } | { kind: "reviewComment"; id: number; }
+  What a reaction is on, as the REST paths address it: an issue (or a pull
+  request's description), a conversation comment, or a review comment.
+
 type GhRepoVisibility = "public" | "private" | "internal"
   How visible a repository is (`--visibility`).
 
@@ -19398,6 +19369,171 @@ type GhScopeVisibility = "all" | "private" | "selected"
 
 type GhSecretApp = "actions" | "agents" | "codespaces" | "dependabot"
   Which application reads the secret (`--app`).
+
+========================================================================
+# @zuke/cli
+========================================================================
+
+`@zuke/cli` — the `zuke` command. Install it globally with
+
+```sh
+deno install -A -g -n zuke jsr:@zuke/cli
+```
+
+scaffold Zuke into any project with `zuke setup`, then run its build from
+anywhere inside the project with `zuke <target>`: every command that is not
+the CLI's own (`setup`, `import`, `doc`) is forwarded to the nearest
+`zuke.ts`, exactly as the `./zuke` launcher would run it.
+@module
+
+async function main(args: string[], host: SetupHost, prompter: Prompter, docRunner: DocRunner, starActions: StarActions, buildRunner: BuildRunner, buildProbe: BuildProbe): Promise<number>
+  The CLI entry point. Returns a process exit code; `host`, `prompter`,
+  `docRunner`, `starActions`, `buildRunner`, and `buildProbe` are injectable
+  for testing.
+
+function parseImportFlags(args: string[]): ImportFlags
+  Parse the argument list following `zuke import`.
+
+function parseSetupFlags(args: string[]): SetupFlags
+  Parse the argument list following `zuke setup`.
+
+const defaultPrompter: Prompter
+  The real {@link Prompter}, backed by Deno's `prompt`/`confirm`.
+
+interface BuildLocation
+  Where a forwarded command runs, and how.
+
+  root: string
+    The absolute repository root: the directory holding `zuke.json`.
+  frozen: boolean
+    Whether a `deno.lock` sits at the root, so the run passes `--frozen`.
+  launcher: string | null
+    The absolute path of the executable `zuke` launcher at the root, run in
+    place of `deno run` — or `null` when there is none, or the platform
+    reports no file mode to tell (Windows).
+
+interface BuildProbe
+  The filesystem questions discovery asks, injectable so the walk and its
+  trust gate are testable without a filesystem or a second user.
+
+  exists(path: string): Promise<boolean>
+    Whether a path exists (the link itself, not its target).
+  ownership(path: string): Promise<Ownership | null>
+    The owner and mode of what a path resolves to, or `null` when nothing is
+    there.
+  realPath(path: string): Promise<string>
+    The path with every link resolved, as the launcher is spawned by it.
+  uid(): number | null
+    The current user's numeric id, or `null` where the platform has none.
+
+interface ImportFlags extends SetupFlags
+  Flags accepted by `zuke import` — the setup flags plus `--from`.
+
+  from?: ImportSource
+    Force a source (`package.json` or `makefile`); auto-detected when unset.
+
+interface Ownership
+  What the trust gate needs to know about a filesystem entry.
+
+  uid: number | null
+    The numeric owner, or `null` where the platform reports none (Windows).
+  mode: number | null
+    The permission bits, or `null` where the platform reports none.
+
+interface Prompter
+  The interactive surface, injectable so the wizard is testable without a TTY.
+
+  interactive(): boolean
+    Whether prompts should be shown (i.e. stdin is a terminal).
+  ask(question: string, fallback: string): string
+    Ask a free-text question, returning `fallback` if unanswered.
+  confirm(question: string): boolean
+    Ask a yes/no question.
+
+interface SetupFlags
+  Flags accepted by `zuke setup`.
+
+  force: boolean
+    Overwrite existing files.
+  yes: boolean
+    Skip prompts and accept defaults.
+  name?: string
+    Build class name for the starter `zuke.ts`.
+  dir?: string
+    Directory to scaffold into (defaults to the current directory).
+  launcherName?: string
+    Base name for the launcher scripts, when `zuke` is taken by a directory.
+  mcp: boolean
+    Also write `.mcp.json`, registering the build's MCP server for agent clients.
+  allowRun: boolean
+    Register that server with `--allow-run`, so the agent may execute targets. Implies `mcp`.
+  bootstrapDeno?: boolean
+    Which launchers to scaffold: `true` (`--bootstrap-deno`) for ones that
+    install a pinned, checksum-verified Deno when none is on `PATH`, `false`
+    (`--no-bootstrap-deno`) for ones that require it and fail closed. Unset:
+    ask when interactive, else take the default (bootstrap).
+
+interface SetupHost
+  Injected side effects, so {@link runSetup} is unit-testable.
+
+  exists(path: string): Promise<boolean>
+    Whether a path exists.
+  isDirectory(path: string): Promise<boolean>
+    Whether a path exists and is a directory (a reserved-name collision).
+  isSymlink(path: string): Promise<boolean>
+    Whether a path is a symbolic link, without following it. Scaffolding
+    refuses to write through one: the writes below follow links, so a link
+    planted at a scaffold name by the very repository being set up would
+    redirect them outside the target directory.
+
+    The guard covers the names scaffolding chooses, which is where the hazard
+    is — the caller never asked for `.gitignore` to be written, so a repository
+    redirecting it is a decision nobody made. It reports what is there when it
+    runs, and a link planted after it would escape it; that is why
+    {@link SetupHost.writeText} does not write through a link either, so the
+    refusal is the friendly answer rather than the only defence.
+
+    Two things stay out of scope. The directory the caller names with `--dir`
+    is the caller's to name, symlink or not. And a hard link is
+    indistinguishable from the file it shares, so no probe can see one; git
+    cannot check one out either, which is what keeps it out of the threat this
+    guards.
+  readText(path: string): Promise<string>
+    Read a file as UTF-8 text.
+  writeText(path: string, content: string): Promise<void>
+    Write UTF-8 text to a file, creating or replacing it.
+
+    An implementation must not write through a symbolic link standing at
+    `path`: the scaffolder's confinement to its target directory rests on this,
+    and the pre-write {@link SetupHost.isSymlink} check alone cannot carry it,
+    since a link can appear after the check.
+  chmod(path: string, mode: number): Promise<void>
+    Set a file's permission bits (may be unsupported on some platforms).
+  log(message: string): void
+    Emit a line of progress output.
+
+interface StarActions
+  The side effects behind {@link promptStar}, injectable so tests never spawn
+  `gh` or a browser.
+
+  ghAuthenticated(): Promise<boolean>
+    Whether the `gh` CLI is installed and holds a login.
+  starWithGh(): Promise<void>
+    Star the Zuke repository through `gh api`.
+  openBrowser(url: string): Promise<boolean>
+    Open `url` in the default browser; `false` when it could not launch.
+
+type BuildRunner = (root: string, args: string[], program?: string) => Promise<number>
+  Runs `program <args>` from `root` — Deno when `program` is omitted, else the
+  project's launcher at that path — and resolves to its exit code: the
+  injectable subprocess seam, so the forwarding is testable without a build.
+
+type DocRunner = (denoArgs: string[]) => Promise<number>
+  Runs `deno doc <args>` — the injectable subprocess seam for
+  {@link commandDoc}, so the command is testable without spawning `deno`.
+
+type ImportSource = "package.json" | "Makefile"
+  The kinds of project `zuke import` can read.
 
 ========================================================================
 # @zuke/codecov
@@ -20788,10 +20924,13 @@ class ReviewCommandSettings
   repository's secrets. Its `if:` fires only when the comment is on a pull
   request, starts with one of the commands, and was written by a human (not a
   bot account); the comment body is matched in the expression and never
-  interpolated into a `run:` line. The access control is the job's first
-  step: it asks the collaborators API what role the commenter holds, and
-  every later step is skipped unless it is at or above {@link role} or the
-  login is among {@link users}. The event's `author_association` is
+  interpolated into a `run:` line. The access control runs inside the build,
+  not the workflow file: the job passes the commenter's login, {@link role}
+  and {@link users} as env, and each reviewer asks the collaborators API —
+  through `GhTasks` — what role the commenter holds, starting only when it is
+  at or above {@link role} or the login is among {@link users} (see
+  `callers.ts`). A refused commenter's run ends having spent nothing, with a
+  😕 on their comment. The event's `author_association` is
   deliberately not consulted — it reports a private organisation member as
   `CONTRIBUTOR`, and `MEMBER` and `COLLABORATOR` admit read-only accounts, so
   it can neither admit nor refuse anyone correctly.
@@ -20940,6 +21079,19 @@ class Reviewer implements Validation
     default token alongside, for the function to fall back to.
   githubToken(token: CommentTokenSource): this
     Backwards-compatible alias for {@link commentToken}.
+  reactions(enabled: boolean): this
+    Whether the reviewer reacts on the pull request to show its progress (on
+    by default, whenever `.comment()` is set). On the description: 👀 while
+    it runs, then 👍 when it passes clean, 🎉 when it passes clean where the
+    previous run failed, 🤏 when it has findings under the failing threshold
+    (😕 on GitHub, whose reaction set has no 🤏), 👎 when it fails. On the
+    comment that started a comment-started run: 👍 as it starts, 😕 when the
+    run could not review. On a trusted maintainer's reply: 👀 once read, ❤️
+    when it decided a finding. The reviewers on one pull request share the
+    reactions, so the verdict shown is the worst of a run's. GitHub and
+    GitLab have the reactions; on Azure DevOps and Bitbucket this is a no-op.
+    `false` turns all of it off, as does `.quiet()`, under which the reviewer
+    does not speak on the pull request.
   quiet(): this
     Suppress the findings printout and the job-summary section.
   fetch(impl: typeof fetch): this
@@ -21035,6 +21187,10 @@ class Reviewer implements Validation
     Untrusted comments are dropped in code before any prompt is built — the
     model never sees them, so a drive-by "the maintainer approved this"
     comment cannot influence the review.
+  async preflight(context: ValidationContext): Promise<void>
+    The run's preflight: on a comment-started run, refuse a commenter who may
+    not start a review before any target — a dependency included — has
+    started (see {@link Validation.preflight}). A no-op on any other run.
   async validate(context: ValidationContext): Promise<void>
     Run the review and gate the build. Throws an {@link AiReviewError} when the
     gate trips (or on a configuration/API error with `onError: "fail"`).
@@ -21344,7 +21500,7 @@ type AssessmentType = "generic" | "security" | "secrets" | "correctness" | "lice
 
 type CommandRole = "read" | "triage" | "write" | "maintain" | "admin"
   A repository role a commenter may hold, as GitHub's collaborators API
-  reports it (`role_name`) — see {@link ReviewCommandSettings.role}.
+  reports it (`role_name`) — see `ReviewCommandSettings.role`.
 
 type CommentTokenSource = AnyParameter | string | (() => Promise<string>)
   Where a reviewer's comment-posting token comes from: a secret parameter (for

@@ -52,39 +52,16 @@ jobs:
           allowed-endpoints: "deno.land:443 dl.deno.land:443 jsr.io:443 github.com:443 api.github.com:443 codeload.github.com:443 objects.githubusercontent.com:443 release-assets.githubusercontent.com:443 api.openai.com:443"
       - name: Check the commenter may start a review
         id: callers
-        shell: bash
-        run: |
-          set -euo pipefail
-          case "$ZUKE_REVIEW_ACTOR" in
-            ""|*[!A-Za-z0-9-]*)
-              echo "::error::the commenter's login is not a GitHub login"
-              exit 1 ;;
-          esac
-          answer="$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$ZUKE_REVIEW_ACTOR/permission" --jq '"\(.permission) \(.role_name)"')" || {
-            echo "::error::could not read $ZUKE_REVIEW_ACTOR's role on $GITHUB_REPOSITORY; refusing to run the review"
-            exit 1
-          }
-          permission="${answer%% *}"
-          role="${answer#* }"
-          case "$role" in
-            (write|maintain|admin)
-              echo "$ZUKE_REVIEW_ACTOR has the $role role."
-              echo "allowed=true" >> "$GITHUB_OUTPUT" ;;
-            (*)
-              case "$permission" in
-                (admin|write)
-                  echo "$ZUKE_REVIEW_ACTOR has the $role role, with $permission access."
-                  echo "allowed=true" >> "$GITHUB_OUTPUT" ;;
-                (*)
-                  echo "$ZUKE_REVIEW_ACTOR has the $role role on $GITHUB_REPOSITORY; starting a review needs write or above."
-                  echo "allowed=false" >> "$GITHUB_OUTPUT" ;;
-              esac ;;
-          esac
+        run: ./zuke review --preflight
         env:
-          GH_TOKEN: "${{ github.token }}"
+          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          ZUKE_REVIEW_PR: "${{ github.event.issue.number }}"
+          ZUKE_REVIEW_COMMENT: "${{ github.event.comment.id }}"
           ZUKE_REVIEW_ACTOR: "${{ github.event.comment.user.login }}"
+          ZUKE_REVIEW_ROLE: write
+        continue-on-error: true
       - name: AI review with Zuke
-        if: "steps.callers.outputs.allowed == 'true'"
+        if: "steps.callers.outcome == 'success'"
         run: ./zuke review
         env:
           OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}"
@@ -93,3 +70,5 @@ jobs:
           ZUKE_BUILD_APP_KEY: "${{ secrets.ZUKE_BUILD_APP_KEY }}"
           ZUKE_REVIEW_PR: "${{ github.event.issue.number }}"
           ZUKE_REVIEW_COMMENT: "${{ github.event.comment.id }}"
+          ZUKE_REVIEW_ACTOR: "${{ github.event.comment.user.login }}"
+          ZUKE_REVIEW_ROLE: write

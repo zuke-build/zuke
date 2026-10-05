@@ -495,6 +495,54 @@ side effect like the summary.
 For GitHub Actions, the generator below also adds `pull-requests: write` to the
 workflow permissions automatically when any reviewer has `.comment()` set.
 
+### Progress reactions
+
+With `.comment()` set, the reviewer also shows where it is with reactions, so a
+reader of the conversation sees it at a glance without opening the job log.
+
+On the pull/merge request **description**:
+
+| Reaction | Meaning                                                                             |
+| -------- | ----------------------------------------------------------------------------------- |
+| 👀       | a review is running                                                                 |
+| 👍       | it passed with no findings                                                          |
+| 🎉       | it passed with no findings, where the previous run had failed                       |
+| 🤏       | it has findings, all under the failing threshold (😕 on GitHub — its set has no 🤏) |
+| 👎       | it failed: the gate tripped, or the review errored under `onError("fail")`          |
+| 🚀       | a fixer (`aiFixer`, `agentFixer`) pushed a fix commit — off with its `.noComment()` |
+
+On a **command comment** — a [comment-started run](#on-demand-a-comment-command)
+— 👍 as the review starts, and 😕 when it will not run: the commenter may not
+start a review (the build's preflight decides, before any secret is in reach),
+or the run could not review (the pull request cannot be fetched, or every
+reviewer was skipped — no key, the budget spent). One reviewer skipping while
+another reviewed is not that: the command was served.
+
+On a **maintainer's reply** in the
+[discussion](#discussing-findings-instead-of-repeating-them) — 👀 on every
+trusted rebuttal the reviewer read that round, ❤️ on the one that decided a
+finding (a rebuttal the adjudicator accepted, or an `accept` command). A comment
+that did not pass the trust gate is never reacted on, so a reaction cannot be
+read as the reviewer agreeing with someone it ignored.
+
+A skipped review (no key, budget exhausted, an error tolerated under
+`onError("warn")`) withdraws 👀 and the previous run's verdict without claiming
+one of its own.
+
+Every reviewer on a pull request usually posts under one identity, and a host
+keeps one reaction of each kind per account, so the reviewers **share** these
+reactions. Within a build run they agree on one verdict — the worst any of them
+reached, so a clean second review cannot hide the first one's findings — and 👀
+is down once the last of them finishes. The first reviewer of a run to start
+clears the verdict the previous run left; only the reviewer's own reactions are
+ever withdrawn, never a person's. 🚀 is not a verdict, and stays.
+
+GitHub (reactions) and GitLab (award emoji) have them; Azure DevOps has no
+reactions on a pull-request description and Bitbucket Cloud no reactions API, so
+there the feature is a no-op. `.quiet()` leaves the pull request alone, as it
+does for the comment, and `.reactions(false)` turns all of it off. Every GitHub
+reaction goes through `GhTasks` from `@zuke/gh`.
+
 ## Token usage
 
 If the provider's response reports token counts, the review prints them as a
@@ -612,24 +660,40 @@ The generated job listens on `issue_comment` (GitHub delivers a pull request's
 conversation comments as issue comments) and runs only when every clause of its
 `if:` holds, all of them metadata GitHub asserts rather than anything in the
 comment's text: the comment is on a pull request; its author is not a bot
-account; and the body starts with one of the commands. Who may start a run is
-decided by the job's first step after the checkout, which asks the collaborators
-API what role the commenter holds: a login named by `.users(...)` is admitted
-outright; otherwise `write` and above (or whatever `.role(...)` lowers that to:
-`triage`, or `read`, which on a public repository is everyone) lets the review
-run, and anything below ends the job succeeded with nothing spent and the reason
-in the step's log — before any key is spent. The event's `author_association` is
+account; and the body starts with one of the commands. The job holds no script
+and no `gh` of its own — two steps, both the build:
+
+1. **Check the commenter may start a review** runs `./zuke review --preflight`
+   with the job's `GITHUB_TOKEN` and nothing else: no provider key, no App key.
+   It runs only the build's preflight phase, executing no target, so each
+   reviewer's `preflight` decides — before any secret is in reach — whether this
+   commenter may start a review. It asks GitHub's collaborators API, through
+   `GhTasks` from `@zuke/gh`, what role the commenter holds: a login named by
+   `.users(...)` is admitted outright; otherwise `write` and above (or whatever
+   `.role(...)` lowers that to: `triage`, or `read`, which on a public
+   repository is everyone) passes. Anything below — or a login that is not one,
+   a role that cannot be read — is refused with a 😕 on the comment and nothing
+   on the pull request. The step is `continue-on-error`, so a stranger's command
+   does not turn the run red: with no pre-filter anyone who can comment can type
+   the command, and a red run for each would be noise and a lever anyone could
+   pull.
+2. **AI review with Zuke** runs only when that step passed, with the keys. Its
+   reviewers check the commenter again — the same answer, looked up once per run
+   — so the gate also holds on a core with no preflight phase.
+
+The job passes the commenter's login, the least role and the admitted logins as
+`ZUKE_REVIEW_ACTOR`, `ZUKE_REVIEW_ROLE` and `ZUKE_REVIEW_USERS`. A workflow
+generated before this flow existed sets none of them, and the reviewers refuse
+every command it starts — regenerate it. The event's `author_association` is
 deliberately not in the gate: GitHub reports an organisation member whose
 membership is private as `CONTRIBUTOR` (it turned this repository's own
 maintainers away), and `MEMBER` and `COLLABORATOR` both include read-only
-accounts, so the field can neither admit nor refuse anyone correctly. The step
-skips rather than fails because, with no pre-filter, anyone who can comment can
-type the command, and a red check for each of them would be noise and a lever
-anyone could pull. `startsWith` is case-insensitive, and a reply that quotes the
-command (`> @acme-bot review`) does not start a run. The comment body is matched
-in the expression and never interpolated into a `run:` line; a login reaches the
-gate script as env and is checked against the characters a login can contain
-before it is put in a URL.
+accounts, so the field can neither admit nor refuse anyone correctly.
+`startsWith` is case-insensitive, and a reply that quotes the command
+(`> @acme-bot review`) does not start a run. The comment body is matched in the
+expression and never interpolated into a `run:` line; the login reaches the
+build as env and is checked against the characters a login can contain before it
+is put in a URL.
 
 What runs is the default branch's build. The job passes `ZUKE_REVIEW_PR`, and
 every reviewer honours it ahead of its configured `git` source: it fetches
@@ -651,8 +715,9 @@ change the rules it is judged by from this flow; the maintainer's comment is the
 human gate, as it is for Dependabot's `@dependabot` commands; and the diff and
 the thread are the same untrusted text the reviewers already read. The job also
 passes `ZUKE_REVIEW_COMMENT`, the command comment's id, and each reviewer reacts
-👀 on that comment before it starts, so the maintainer sees the command was
-picked up without opening the Actions tab.
+👍 on that comment before it starts, so the maintainer sees the command was
+picked up without opening the Actions tab — then the
+[progress reactions](#progress-reactions) on the description take over.
 
 ### Who the reviews post as
 
@@ -873,5 +938,5 @@ maintainer starts it by commenting `@zuke-build review`: the
 `commands("@zuke-build")`, runs the same target from master's checkout with that
 pull request fetched as data, posts as `zuke-build[bot]` (both reviewers share
 one `GhTasks.appTokenSource` pinned to this repository and narrowed to comments,
-reactions and thread resolution), and each reviewer reacts 👀 on the comment
+reactions and thread resolution), and each reviewer reacts 👍 on the comment
 first. Each assessment lands in that run's job summary and as a PR comment.

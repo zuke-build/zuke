@@ -49,6 +49,13 @@ import {
 import { REVIEW_PR_ENV } from "./diff.ts";
 import { PROVIDER_HOSTS } from "./provider.ts";
 import { REVIEW_COMMENT_ENV } from "./hosts/github.ts";
+import { GITHUB_LOGIN } from "@zuke/gh";
+import {
+  type CommandRole,
+  REVIEW_ACTOR_ENV,
+  REVIEW_ROLE_ENV,
+  REVIEW_USERS_ENV,
+} from "./callers.ts";
 import type { Reviewer } from "./reviewer.ts";
 import type { Provider } from "./types.ts";
 
@@ -62,6 +69,9 @@ const DEFAULT_PATHS: Record<CiProvider, string> = {
   // Bitbucket has no `include` mechanism — the file must be at the repo root.
   bitbucket: "bitbucket-pipelines.yml",
 };
+
+/** The id of the command job's step that decides who may start a review. */
+const CALLERS_STEP_ID = "callers";
 
 /** The Docker image used for the GitLab job — the official Deno image. */
 const DENO_IMAGE = "denoland/deno:latest";
@@ -85,108 +95,6 @@ const DEFAULT_TIMEOUT_MINUTES = 15;
  * quote the expression wraps it in.
  */
 const SAFE_COMMAND = /^[A-Za-z0-9@/][A-Za-z0-9@/_.:-]*( [A-Za-z0-9@/_.:-]+)*$/;
-
-/**
- * A repository role a commenter may hold, as GitHub's collaborators API
- * reports it (`role_name`) — see {@link ReviewCommandSettings.role}.
- */
-export type CommandRole = "read" | "triage" | "write" | "maintain" | "admin";
-
-/**
- * The roles least to most capable. A command's minimum role admits it and
- * everything after it.
- */
-const ROLES: readonly CommandRole[] = [
-  "read",
-  "triage",
-  "write",
-  "maintain",
-  "admin",
-];
-
-/** The characters a GitHub login can contain. */
-const LOGIN = /^[A-Za-z0-9-]+$/;
-
-/** The step id the callers check publishes its verdict under. */
-const CALLERS_STEP_ID = "callers";
-
-/**
- * The command job's first step after the checkout: let the review run only
- * when the commenter may start one. The job's `if:` cannot ask anyone: it can
- * see the event's `author_association`, and that field is no use here — an
- * organisation member whose membership is private is reported as
- * `CONTRIBUTOR` (observed on this repository's own pull requests, where it
- * turned the maintainers away), while `MEMBER` and `COLLABORATOR` both include
- * read-only accounts. The collaborators API says what a commenter may actually
- * do, so the job asks it before spending a key: a role at or above the
- * configured minimum (`write` by default — push access) records
- * `allowed=true` in the step's outputs, anything below records
- * `allowed=false`, and every later step is skipped, so the job ends succeeded
- * having spent nothing. A login the command names outright is admitted before
- * the API is asked. Skipping rather than failing because, with no association
- * pre-filter, anyone who can comment can type the command, and a red check for
- * each of them would be noise and a lever anyone could pull; the step's log
- * says why nothing ran. An answer that cannot be read fails closed. The login
- * reaches the script as env, never interpolated, and is checked against the
- * characters a GitHub login can contain before it is put in a URL.
- */
-function callersScript(role: CommandRole, users: readonly string[]): string {
-  const admitted = ROLES.slice(ROLES.indexOf(role)).join("|");
-  // A custom repository role reports its own name as the role and its base
-  // level as the permission; the base level is admitted when the floor lies
-  // at or below it — `admin` always, `write` unless the floor is above it,
-  // `read` only for a `read` floor. A triage floor cannot recognise a
-  // read-based custom role as triage-like, and refuses it.
-  const bases = role === "read"
-    ? "admin|write|read"
-    : role === "triage" || role === "write"
-    ? "admin|write"
-    : "admin";
-  // Every pattern list opens with the POSIX optional parenthesis, so a login
-  // or role that is also a shell reserved word (`esac`) stays a pattern.
-  return [
-    // Fail closed, explicitly: a failed API call, an unset variable, or a
-    // broken pipe stops the step, whatever shell flags the runner defaults to.
-    "set -euo pipefail",
-    'case "$ZUKE_REVIEW_ACTOR" in',
-    '  ""|*[!A-Za-z0-9-]*)',
-    '    echo "::error::the commenter\'s login is not a GitHub login"',
-    "    exit 1 ;;",
-    "esac",
-    ...(users.length > 0
-      ? [
-        'case "$ZUKE_REVIEW_ACTOR" in',
-        `  (${users.join("|")})`,
-        '    echo "$ZUKE_REVIEW_ACTOR is named as allowed to start a review."',
-        '    echo "allowed=true" >> "$GITHUB_OUTPUT"',
-        "    exit 0 ;;",
-        "esac",
-      ]
-      : []),
-    // One call answers both: the role name, and the base level a custom role
-    // is built on. A role name may contain spaces, so it is the remainder.
-    'answer="$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$ZUKE_REVIEW_ACTOR/permission" --jq \'"\\(.permission) \\(.role_name)"\')" || {',
-    '  echo "::error::could not read $ZUKE_REVIEW_ACTOR\'s role on $GITHUB_REPOSITORY; refusing to run the review"',
-    "  exit 1",
-    "}",
-    'permission="${answer%% *}"',
-    'role="${answer#* }"',
-    'case "$role" in',
-    `  (${admitted})`,
-    '    echo "$ZUKE_REVIEW_ACTOR has the $role role."',
-    '    echo "allowed=true" >> "$GITHUB_OUTPUT" ;;',
-    "  (*)",
-    '    case "$permission" in',
-    `      (${bases})`,
-    '        echo "$ZUKE_REVIEW_ACTOR has the $role role, with $permission access."',
-    '        echo "allowed=true" >> "$GITHUB_OUTPUT" ;;',
-    "      (*)",
-    `        echo "$ZUKE_REVIEW_ACTOR has the $role role on $GITHUB_REPOSITORY; starting a review needs ${role} or above."`,
-    '        echo "allowed=false" >> "$GITHUB_OUTPUT" ;;',
-    "    esac ;;",
-    "esac",
-  ].join("\n");
-}
 
 /**
  * The clause that keeps a fork's code away from the secrets: the head
@@ -221,10 +129,13 @@ export type ReviewSecret = AnyParameter | string;
  * repository's secrets. Its `if:` fires only when the comment is on a pull
  * request, starts with one of the commands, and was written by a human (not a
  * bot account); the comment body is matched in the expression and never
- * interpolated into a `run:` line. The access control is the job's first
- * step: it asks the collaborators API what role the commenter holds, and
- * every later step is skipped unless it is at or above {@link role} or the
- * login is among {@link users}. The event's `author_association` is
+ * interpolated into a `run:` line. The access control runs inside the build,
+ * not the workflow file: the job passes the commenter's login, {@link role}
+ * and {@link users} as env, and each reviewer asks the collaborators API —
+ * through `GhTasks` — what role the commenter holds, starting only when it is
+ * at or above {@link role} or the login is among {@link users} (see
+ * `callers.ts`). A refused commenter's run ends having spent nothing, with a
+ * 😕 on their comment. The event's `author_association` is
  * deliberately not consulted — it reports a private organisation member as
  * `CONTRIBUTOR`, and `MEMBER` and `COLLABORATOR` admit read-only accounts, so
  * it can neither admit nor refuse anyone correctly.
@@ -527,7 +438,7 @@ function resolveCommand(
     }
   }
   for (const login of command.users_) {
-    if (!LOGIN.test(login)) {
+    if (!GITHUB_LOGIN.test(login)) {
       throw new Error(
         `aiReviewWorkflow: ${JSON.stringify(login)} is not a GitHub login.`,
       );
@@ -804,9 +715,9 @@ class AiReviewWorkflow extends CiFile {
    * request, its author is a human account, and the body starts with the
    * command. The bot check is what stops the review's own comments, posted
    * with an app token (which, unlike `GITHUB_TOKEN`, does trigger workflows),
-   * from starting another run. Who may start one is decided by the push-access
-   * step, not here — see {@link PUSH_ACCESS_STEP} for why the event's
-   * association field is not in the gate — see {@link callersScript}.
+   * from starting another run. Who may start one is decided by the reviewers
+   * in-process, not here — see `callers.ts` for why the event's association
+   * field is not in the gate.
    */
   static #commandGate(texts: readonly string[]): string {
     const starts = texts.map((text) =>
@@ -818,25 +729,6 @@ class AiReviewWorkflow extends CiFile {
       "github.event.comment.user.type != 'Bot'",
       starts.length === 1 ? starts[0] : `(${starts.join(" || ")})`,
     ].join(" && ");
-  }
-
-  /**
-   * The callers check, the command job's first step — see
-   * {@link callersScript}.
-   */
-  static #callersStep(
-    command: ReviewCommand,
-  ): NonNullable<CiJob["steps"]>[number] {
-    return {
-      id: CALLERS_STEP_ID,
-      name: "Check the commenter may start a review",
-      shell: "bash",
-      run: callersScript(command.role, command.users),
-      env: {
-        GH_TOKEN: "${{ github.token }}",
-        ZUKE_REVIEW_ACTOR: "${{ github.event.comment.user.login }}",
-      },
-    };
   }
 
   /**
@@ -892,19 +784,43 @@ class AiReviewWorkflow extends CiFile {
       // No base fetch and no `ZUKE_REVIEW_BASE`: the reviewers fetch the pull
       // request `ZUKE_REVIEW_PR` names and diff its merge against the base it
       // was merged onto, which needs nothing from the checkout but a remote.
+      // Who asked, and who may: the login reaches the build as env, never
+      // interpolated into a script; the role and the logins are this file's
+      // own constants.
+      const caller: Record<string, string> = {
+        [REVIEW_PR_ENV]: "${{ github.event.issue.number }}",
+        [REVIEW_COMMENT_ENV]: "${{ github.event.comment.id }}",
+        [REVIEW_ACTOR_ENV]: "${{ github.event.comment.user.login }}",
+        [REVIEW_ROLE_ENV]: command.role,
+        ...(command.users.length > 0
+          ? { [REVIEW_USERS_ENV]: command.users.join(",") }
+          : {}),
+      };
       const commandEnv: Record<string, string> = { ...env };
       for (const name of command.secrets) commandEnv[name] = githubRef(name);
-      commandEnv[REVIEW_PR_ENV] = "${{ github.event.issue.number }}";
-      commandEnv[REVIEW_COMMENT_ENV] = "${{ github.event.comment.id }}";
+      Object.assign(commandEnv, caller);
       jobs.push(this.#githubJob(
         "commandReview",
         "AI review on command",
         AiReviewWorkflow.#commandGate(command.texts),
         [
-          AiReviewWorkflow.#callersStep(command),
+          // Who may start a review is decided before anything holds a
+          // secret: the build's own preflight phase (the reviewers'
+          // `preflight`, see `callers.ts`) runs with the job's GITHUB_TOKEN
+          // alone and executes no target. A refusal answers 😕 and fails
+          // this step only — `continue-on-error` keeps a stranger's command
+          // from turning the run red — and the review step, the one with the
+          // keys, never starts.
+          {
+            id: CALLERS_STEP_ID,
+            name: "Check the commenter may start a review",
+            run: `./zuke ${target} --preflight`,
+            continueOnError: true,
+            env: { GITHUB_TOKEN: githubRef("GITHUB_TOKEN"), ...caller },
+          },
           {
             name: "AI review with Zuke",
-            if: `steps.${CALLERS_STEP_ID}.outputs.allowed == 'true'`,
+            if: `steps.${CALLERS_STEP_ID}.outcome == 'success'`,
             run: `./zuke ${target}`,
             env: commandEnv,
           },

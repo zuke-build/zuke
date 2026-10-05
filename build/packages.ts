@@ -20,7 +20,6 @@ export const PACKAGES = [
   "yarn",
   "cmd",
   "console",
-  "cli",
   "docker",
   "docker-compose",
   "kubectl",
@@ -59,6 +58,8 @@ export const PACKAGES = [
   "gcloud",
   "git",
   "gh",
+  // After console and gh, which it depends on (PACKAGE_DEPENDENCIES).
+  "cli",
   "codecov",
   "claude",
   "codex",
@@ -101,6 +102,26 @@ export function readVersion(value: unknown): string {
   }
   return value.version;
 }
+
+/**
+ * The workspace packages a package may depend on **beyond `@zuke/core`** — the
+ * exemptions to the rule that a package depends on core alone (AGENTS.md,
+ * guideline 12). A plain tool wrapper never appears here: it mirrors one CLI
+ * and needs nothing but core. A "rich feature" package does — one that
+ * orchestrates other tools rather than wrapping one, and would otherwise grow
+ * a second, drifting copy of a wrapper it could call. Each entry is a decision,
+ * so adding a dependency means adding it here, where review sees it; the
+ * `package_dependencies_test` fails on any `@zuke/*` import not listed.
+ */
+export const PACKAGE_DEPENDENCIES: Readonly<
+  Record<string, readonly string[]>
+> = {
+  // The `zuke` command: its console output and its GitHub setup steps.
+  cli: ["console", "gh"],
+  // The AI reviewer: its pull-request comments, reactions and the commenter
+  // check go through GhTasks instead of a REST client of its own.
+  ai: ["gh"],
+};
 
 /** The current version declared in `packages/<pkg>/deno.json`. */
 export async function localVersion(pkg: string): Promise<string> {

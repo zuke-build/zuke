@@ -59,9 +59,11 @@ import {
 } from "./report.ts";
 import { detectReviewHost, type EnvReader, readEnv } from "./hosts.ts";
 import {
+  type CommandSignal,
   commentMarker,
   type HostComment,
   parseCommentMarker,
+  type ReplySignal,
 } from "./hosts/types.ts";
 import type { RetryInfo, RetryOptions } from "./retry.ts";
 import type { Budget } from "./budget.ts";
@@ -115,6 +117,23 @@ import { readTextOrUndefined } from "./context.ts";
 import type { PromptExtras, RebuttalNote } from "./prompts/templates.ts";
 import { rebuttalComment } from "./prompts/templates.ts";
 import type { Redact } from "./comment.ts";
+import { type ReviewOutcome, ReviewProgress } from "./progress.ts";
+import type { CallerVerdict } from "./callers.ts";
+import { REVIEW_COMMENT_ENV } from "./hosts/github.ts";
+
+/**
+ * The progress reactions of every reviewer in this process, shared so the
+ * reviewers on one pull request agree on one verdict — see
+ * {@link ReviewProgress}.
+ */
+const PROGRESS = new ReviewProgress();
+
+/**
+ * Who may start this run, looked up once per run and command and shared by
+ * every reviewer in the process — keyed by the run's id and the command
+ * comment's.
+ */
+const CALLER_VERDICTS = new Map<string, Promise<CallerVerdict>>();
 
 /**
  * Where a reviewer's comment-posting token comes from: a secret parameter (for
@@ -154,6 +173,7 @@ export class Reviewer implements Validation {
   #commentToken?: CommentTokenSource;
   #retry?: RetryOptions;
   #quiet = false;
+  #reactions = true;
   #fetch?: typeof fetch;
   #exec?: (argv: string[]) => Promise<string>;
   #env: EnvReader = readEnv;
@@ -352,6 +372,25 @@ export class Reviewer implements Validation {
   /** Backwards-compatible alias for {@link commentToken}. */
   githubToken(token: CommentTokenSource): this {
     return this.commentToken(token);
+  }
+
+  /**
+   * Whether the reviewer reacts on the pull request to show its progress (on
+   * by default, whenever `.comment()` is set). On the description: 👀 while
+   * it runs, then 👍 when it passes clean, 🎉 when it passes clean where the
+   * previous run failed, 🤏 when it has findings under the failing threshold
+   * (😕 on GitHub, whose reaction set has no 🤏), 👎 when it fails. On the
+   * comment that started a comment-started run: 👍 as it starts, 😕 when the
+   * run could not review. On a trusted maintainer's reply: 👀 once read, ❤️
+   * when it decided a finding. The reviewers on one pull request share the
+   * reactions, so the verdict shown is the worst of a run's. GitHub and
+   * GitLab have the reactions; on Azure DevOps and Bitbucket this is a no-op.
+   * `false` turns all of it off, as does `.quiet()`, under which the reviewer
+   * does not speak on the pull request.
+   */
+  reactions(enabled: boolean): this {
+    this.#reactions = enabled;
+    return this;
   }
 
   /** Suppress the findings printout and the job-summary section. */
@@ -733,28 +772,147 @@ export class Reviewer implements Validation {
   }
 
   /**
-   * On a comment-started run, react 👀 on the command comment before the
-   * review starts, so the maintainer sees it was picked up without opening
-   * the host's job log. Best-effort and quiet by construction: nothing here
-   * can fail the review, and a run no comment started does nothing.
+   * On a comment-started run, answer the command comment: 👍 as the review
+   * starts, 😕 when it cannot run — so the maintainer sees what became of the
+   * command without opening the host's job log. Posts with `token` when given,
+   * the comment token otherwise. Best-effort and quiet by construction:
+   * nothing here can fail the review, and a run no comment started does
+   * nothing.
    */
-  async #acknowledgeCommand(): Promise<void> {
-    if (!this.#comment) return;
+  async #answerCommand(signal: CommandSignal, token?: string): Promise<void> {
+    if (!this.#comment || this.#quiet || !this.#reactions) return;
     const host = detectReviewHost(this.#env);
     if (host?.acknowledgeCommand === undefined) return;
-    const ack = host.acknowledgeCommand(this.#env);
-    if (ack === undefined) return;
+    const answer = host.acknowledgeCommand(this.#env);
+    if (answer === undefined) return;
+    const emoji = signal === "started" ? "👍" : "😕";
     try {
-      const token = await this.#resolveCommentToken(host);
-      if (await ack(token, this.#fetch ?? fetch) && !this.#quiet) {
-        console.log(`[${this.name}] acknowledged the review command (👀)`);
+      // A refusal answers with the token the lookup used, never the comment
+      // token: a stranger's comment must not make the build mint the App's.
+      token ??= await this.#resolveCommentToken(host);
+      if (await answer(token, signal, this.#fetch ?? fetch)) {
+        console.log(`[${this.name}] answered the review command (${emoji})`);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (!this.#quiet) {
-        console.warn(
-          `[${this.name}] could not acknowledge the review command: ${message}`,
-        );
+      console.warn(
+        `[${this.name}] could not answer the review command: ${message}`,
+      );
+    }
+  }
+
+  /**
+   * Refuse a run started by a comment from someone who may not start a review
+   * — the command's access control, decided by the default branch's build
+   * (see `callers.ts`). Applies whatever the comment and reaction settings,
+   * since it is authorization, not output. Called from {@link preflight},
+   * before any target runs, and again from {@link validate} for a core that
+   * has no preflight phase; the verdict is looked up once per run and
+   * command, so every reviewer of the run shares it. A refusal is answered 😕
+   * — with the lookup's own token, the job's `GITHUB_TOKEN` — posts nothing on
+   * the pull request, and **throws**: returning would let the run go on,
+   * which the commenter was never allowed to start.
+   */
+  async #refuseUnauthorizedCommand(context: ValidationContext): Promise<void> {
+    const host = detectReviewHost(this.#env);
+    const authorize = host?.authorizeCommand?.(this.#env);
+    if (host === undefined || authorize === undefined) return;
+    let token = this.#env(host.defaultTokenEnv) ?? "";
+    if (token === "") {
+      try {
+        token = await this.#resolveCommentToken(host);
+      } catch {
+        token = "";
+      }
+    }
+    const key = `${runOf(context)}\n${this.#env(REVIEW_COMMENT_ENV) ?? ""}`;
+    let verdict = CALLER_VERDICTS.get(key);
+    if (verdict === undefined) {
+      verdict = authorize(token, this.#fetch ?? fetch);
+      CALLER_VERDICTS.set(key, verdict);
+    }
+    const { allowed, reason } = await verdict;
+    if (allowed) {
+      if (!this.#quiet) console.log(`[${this.name}] ${reason}`);
+      return;
+    }
+    await this.#answerCommand("unable", token);
+    throw new AiReviewError(
+      `${this.name} of "${context.target}" was not started: ${reason}`,
+    );
+  }
+
+  /**
+   * The run's preflight: on a comment-started run, refuse a commenter who may
+   * not start a review before any target — a dependency included — has
+   * started (see {@link Validation.preflight}). A no-op on any other run.
+   */
+  async preflight(context: ValidationContext): Promise<void> {
+    await this.#refuseUnauthorizedCommand(context);
+  }
+
+  /**
+   * React 👀 on the pull-request description — through the process-wide
+   * {@link PROGRESS}, which the other reviewers of run `run` share — and return the
+   * function that replaces it with this review's verdict, answering whether
+   * the run reviewed nothing. A no-op function
+   * when the reviewer does not speak on the pull request (`.comment()` unset,
+   * `.quiet()`, `.reactions(false)`), the host has no reactions, or there is
+   * no pull request. Best-effort like the acknowledgement: a token that cannot
+   * be resolved is a warning, never a failed review.
+   */
+  async #startProgress(
+    run: string,
+  ): Promise<(outcome: ReviewOutcome) => Promise<boolean>> {
+    // Without the shared record a reviewer knows only its own outcome.
+    const none = (outcome: ReviewOutcome) =>
+      Promise.resolve(outcome === "skipped");
+    if (!this.#comment || this.#quiet || !this.#reactions) return none;
+    const host = detectReviewHost(this.#env);
+    if (host?.reactions === undefined) return none;
+    let token: string;
+    try {
+      token = await this.#resolveCommentToken(host);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[${this.name}] could not react on the PR: ${message}`);
+      return none;
+    }
+    const reactions = host.reactions(token, this.#env);
+    if (reactions === undefined) return none;
+    return PROGRESS.start(run, reactions, this.#fetch ?? fetch);
+  }
+
+  /**
+   * Answer the maintainers' replies with a reaction — 👀 on each one read,
+   * ❤️ on each one that decided a finding — so a maintainer sees their reply
+   * was read before the assessment lands. Under the same switches as the
+   * progress reactions, best-effort like them, and once per comment.
+   */
+  async #reactOnReplies(replies: ReplyNotice): Promise<void> {
+    if (!this.#comment || this.#quiet || !this.#reactions) return;
+    if (replies.read.length + replies.accepted.length === 0) return;
+    const host = detectReviewHost(this.#env);
+    if (host?.replyReactions === undefined) return;
+    let token: string;
+    try {
+      token = await this.#resolveCommentToken(host);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[${this.name}] could not react on the replies: ${message}`);
+      return;
+    }
+    const reactions = host.replyReactions(token, this.#env);
+    if (reactions === undefined) return;
+    const doFetch = this.#fetch ?? fetch;
+    const signals: readonly ReplySignal[] = ["read", "accepted"];
+    for (const signal of signals) {
+      const seen = new Set<string>();
+      for (const comment of replies[signal]) {
+        const key = `${comment.kind ?? "issue"}:${comment.id}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        await reactions.react(comment, signal, doFetch);
       }
     }
   }
@@ -1086,11 +1244,42 @@ export class Reviewer implements Validation {
     if (provider === undefined) {
       throw new AiReviewError("a provider is required; call .provider(...)");
     }
+    // A comment command from someone who may not start a review ends here,
+    // before a key is spent or a reaction goes on the pull request.
+    await this.#refuseUnauthorizedCommand(context);
+    // Started before anything can skip, so a skipped review still withdraws
+    // the verdict an earlier run left rather than letting it stand for this
+    // commit.
+    const finish = await this.#startProgress(runOf(context));
+    // Anything that escapes the review — the gate tripping, an error under
+    // `onError("fail")` — is a failed review.
+    let outcome: ReviewOutcome = "failed";
+    let unreviewed = false;
+    try {
+      outcome = await this.#review(context, provider);
+    } finally {
+      unreviewed = await finish(outcome);
+    }
+    // A command whose run then reviewed nothing is owed a 😕, not silence.
+    // Decided for the run, not this reviewer: one reviewer skipping while
+    // another reviewed is not a command that could not run.
+    if (unreviewed) await this.#answerCommand("unable");
+  }
+
+  /**
+   * The review proper, once a provider is set: key, diff, call, the
+   * discussion and thread phases, the report, the gate. Answers how it ended
+   * for the progress reactions, or throws when the gate trips.
+   */
+  async #review(
+    context: ValidationContext,
+    provider: Provider,
+  ): Promise<ReviewOutcome> {
     const key = resolveKey(this.#apiKey);
     if (key === "") {
       if (this.#skipIfKeyMissing) {
         await this.#reportSkip(context.target, "no API key", context.redact);
-        return;
+        return "skipped";
       }
       throw new AiReviewError("an API key is required; call .apiKey(...)");
     }
@@ -1105,7 +1294,7 @@ export class Reviewer implements Validation {
       }));
     }
 
-    await this.#acknowledgeCommand();
+    await this.#answerCommand("started");
     const resolved = await this.#resolveDiff();
     let diff = filterDiff(
       resolved.diff,
@@ -1122,14 +1311,15 @@ export class Reviewer implements Validation {
         const reason = resolved.fetchFailure;
         if (this.#onError === "warn") {
           await this.#reportSkip(context.target, reason, context.redact);
-          return;
+          return "skipped";
         }
+        await this.#answerCommand("unable");
         throw new AiReviewError(
           `${this.name} of "${context.target}" ${reason}; refusing to pass on an empty fallback diff`,
         );
       }
       await this.#report(emptyAssessment(), context.target, context.redact);
-      return;
+      return "passed";
     }
     if (this.#maxDiffTokens !== undefined) {
       diff = truncate(diff, this.#maxDiffTokens);
@@ -1259,7 +1449,7 @@ export class Reviewer implements Validation {
       const message = error instanceof Error ? error.message : String(error);
       if (this.#onError === "warn") {
         console.warn(`[${this.name}] skipped: ${message}`);
-        return;
+        return "skipped";
       }
       throw error instanceof AiReviewError ? error : new AiReviewError(message);
     }
@@ -1269,7 +1459,7 @@ export class Reviewer implements Validation {
         `AI budget exhausted — ${call.exhausted}`,
         context.redact,
       );
-      return;
+      return "skipped";
     }
     const assessment = call.value;
     const usage = call.usage;
@@ -1350,6 +1540,13 @@ export class Reviewer implements Validation {
         ofInterest,
       );
 
+    // The maintainers' replies the reviewer answers with a reaction: 👀 on
+    // every rebuttal it read this round — weighed, or set aside because the
+    // budget is spent or an accept command decided it first — ❤️ on the one
+    // that decided a finding. Only comments that passed the trust gate are ever here.
+    const replies: ReplyNotice = { read: [], accepted: [] };
+    for (const comments of rebuttals.values()) replies.read.push(...comments);
+
     // Acceptances: a maintainer's `accept` command decides a finding outright.
     // Applied before the verifier and the adjudicator see it — nothing is
     // weighed, so nothing is spent — and taken off the rebuttal list, so a
@@ -1404,6 +1601,9 @@ export class Reviewer implements Validation {
         }, acceptance));
       }
       for (const id of accepted.keys()) rebuttals.delete(id);
+      for (const acceptance of accepted.values()) {
+        replies.accepted.push(acceptance.comment);
+      }
     }
 
     // Sticky refutations: a finding the verify pass disproved in an earlier
@@ -1619,6 +1819,7 @@ export class Reviewer implements Validation {
           const accepted = (id: string, verdict: Verdict) =>
             verdict.verdict === "dismissed" && contested.has(id);
           const accept = (finding: AssessmentFinding, verdict: Verdict) => {
+            replies.accepted.push(...(contested.get(verdict.id) ?? []));
             const rebutter = contested.get(verdict.id)?.[0];
             dismissed.push({
               finding,
@@ -1864,6 +2065,7 @@ export class Reviewer implements Validation {
           anchors: anchorableLines(diff),
         },
       );
+    await this.#reactOnReplies(replies);
     await this.#report(assessment, context.target, context.redact, usage, {
       suppressed: suppressed.length,
       suppressedFindings: suppressed,
@@ -1892,7 +2094,27 @@ export class Reviewer implements Validation {
         `${this.name} of "${context.target}" failed: ${gate.reason}. ${assessment.summary}`,
       );
     }
+    return assessment.findings.length === 0 ? "passed" : "minor";
   }
+}
+
+/**
+ * The build run `context` belongs to, or `""` — this process — when the caller
+ * drove `validate(...)` directly. Read through `in` rather than as a field so
+ * this compiles against a `@zuke/core` floor whose context predates `runId`.
+ */
+function runOf(context: ValidationContext): string {
+  return "runId" in context && typeof context.runId === "string"
+    ? context.runId
+    : "";
+}
+
+/** The maintainers' replies to react on, by the reaction they get. */
+interface ReplyNotice {
+  /** The rebuttals the reviewer read this round — 👀. */
+  read: Array<Pick<HostComment, "id" | "kind">>;
+  /** The replies that decided a finding — ❤️. */
+  accepted: Array<Pick<HostComment, "id" | "kind">>;
 }
 
 /** What one run's discussion round starts from. */

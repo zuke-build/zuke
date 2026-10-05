@@ -10,6 +10,7 @@ import {
   formatFloorFailures,
   isAllowedSpecifier,
   readCoreFloor,
+  workspaceSiblings,
 } from "../build/core_floor.ts";
 
 /** A `readText` stand-in serving one package's config from memory. */
@@ -196,6 +197,61 @@ Deno.test("floorConfig: the pinned core always wins over the declared range", ()
   };
   const parsed = JSON.parse(floorConfig(floor, "jsr:@zuke/core@1.31.0"));
   assertEquals(parsed.imports["@zuke/core"], "jsr:@zuke/core@1.31.0");
+});
+
+Deno.test("floorConfig: a workspace sibling resolves to its local source, core never does", () => {
+  const floor: CoreFloor = {
+    package: "ai",
+    specifier: "jsr:@zuke/core@^1.58.0",
+    imports: {
+      "@zuke/core": "jsr:@zuke/core@^1.58.0",
+      "@zuke/gh": "jsr:@zuke/gh@^1.12.0",
+      "@zuke/deno": "jsr:@zuke/deno@^0.4.0",
+    },
+  };
+  const siblings = workspaceSiblings(["core", "gh"], "/work/zuke");
+  const parsed = JSON.parse(
+    floorConfig(floor, "jsr:@zuke/core@1.58.0", siblings),
+  );
+  // The sibling is checked as it ships beside the dependent, from this commit.
+  assertEquals(
+    parsed.imports["@zuke/gh"],
+    "file:///work/zuke/packages/gh/mod.ts",
+  );
+  // Core stays pinned to its published floor, whatever the map holds.
+  assertEquals(parsed.imports["@zuke/core"], "jsr:@zuke/core@1.58.0");
+  // A dependency outside the list given keeps its registry specifier.
+  assertEquals(parsed.imports["@zuke/deno"], "jsr:@zuke/deno@^0.4.0");
+});
+
+Deno.test("floorConfig: a sibling is resolved by name, never by the mapping's target", () => {
+  // The mapping is attacker-controlled on a pull request; only names the
+  // workspace lists are made local, and the target is never read for it.
+  const floor: CoreFloor = {
+    package: "ai",
+    specifier: "jsr:@zuke/core@^1.58.0",
+    imports: {
+      "@zuke/core": "jsr:@zuke/core@^1.58.0",
+      "@zuke/gh": "https://evil.example/gh.ts",
+    },
+  };
+  const siblings = workspaceSiblings(["gh"], "/work/zuke");
+  const parsed = JSON.parse(
+    floorConfig(floor, "jsr:@zuke/core@1.58.0", siblings),
+  );
+  // A disallowed target is dropped before the sibling map is consulted.
+  assertEquals(parsed.imports["@zuke/gh"], undefined);
+});
+
+Deno.test("workspaceSiblings: POSIX and Windows roots become file URLs", () => {
+  assertEquals(
+    workspaceSiblings(["gh"], "/work/zuke/").get("@zuke/gh"),
+    "file:///work/zuke/packages/gh/",
+  );
+  assertEquals(
+    workspaceSiblings(["gh"], "C:\\work\\zuke").get("@zuke/gh"),
+    "file:///C:/work/zuke/packages/gh/",
+  );
 });
 
 Deno.test("formatFloorFailures: silent when every package passes", () => {

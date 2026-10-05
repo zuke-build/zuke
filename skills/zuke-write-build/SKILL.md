@@ -190,6 +190,12 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   — so `.onFailure(() => "cancel-run")` can roll back. Each check gets a
   `signal` (pass it to `fetch`); a red verdict as the body finishes still
   counts. Not retried by `.retry`; not run under `--dry-run`.
+- A `Validation` may carry an optional `preflight(ctx)` — called for every
+  validation in the plan before any target, dependencies included, starts; a
+  throw refuses the whole run. `./zuke <target> --preflight` runs only that
+  phase (no target executes, missing parameters tolerated), which is how the
+  AI-review command job checks who may start a review before any secret is in
+  reach.
 - **External-event waits:**
   `.waitsFor((s) => s.on(externalSignal("approved")).timeout("72h"))` makes a
   target a **gate** with no body: the run proceeds past it only when the trigger

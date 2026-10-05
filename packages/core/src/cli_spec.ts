@@ -221,6 +221,12 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
   },
   { name: "--dry-run", description: "Print the plan without running targets" },
   {
+    name: "--preflight",
+    description: "Run only the validations' preflight checks, then stop",
+    detail:
+      "Run every planned validation's preflight — the checks that decide whether the run may happen at all, such as who may start a comment-triggered review — and stop without running any target. Exits non-zero when a preflight refuses. A normal run performs the same phase before its first target.",
+  },
+  {
     name: "--state",
     description: "Persist durable run state to .zuke/runs",
     detail:

@@ -123,6 +123,7 @@ word you install them for.
 | `./zuke <target> --no-banner`                                                    | Do not print the opening banner (also `ZUKE_NO_BANNER`).                                                        |
 | `./zuke <target> --affected[=<base>]`                                            | Run only targets affected by files changed since a git base.                                                    |
 | `./zuke <target> --dry-run`                                                      | Print the plan without executing any target body.                                                               |
+| `./zuke <target> --preflight`                                                    | Run only the validations' preflight checks (who may start the run) and stop; no target executes.                |
 | `./zuke <target> --state`                                                        | Persist [durable run state](./state.md) under `.zuke/runs`.                                                     |
 | `./zuke <target> --actor <name>`                                                 | Attribute the run to `<name>` in its state record.                                                              |
 | `./zuke --list` / `-l`                                                           | List all targets with descriptions and dependencies.                                                            |

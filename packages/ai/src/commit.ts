@@ -28,10 +28,11 @@ export interface CommitOptions {
 /**
  * Stage the given paths, commit them with `message`, and (unless `push` is
  * false) push to the current branch's upstream. A no-op when `paths` is empty.
- * Errors from any git call propagate to the caller, which reports them.
+ * Answers whether a commit was pushed. Errors from any git call propagate to
+ * the caller, which reports them.
  */
-export async function commitAndPush(options: CommitOptions): Promise<void> {
-  if (options.paths.length === 0) return;
+export async function commitAndPush(options: CommitOptions): Promise<boolean> {
+  if (options.paths.length === 0) return false;
   // `--literal-pathspecs` disables pathspec magic (`:(glob)`, `:/`, …) so a path
   // that slipped a guard can only ever stage that literal file, never sweep the
   // tree. Defence in depth with normalizePath's leading-`:` rejection.
@@ -43,9 +44,9 @@ export async function commitAndPush(options: CommitOptions): Promise<void> {
     ...options.paths,
   ]);
   await options.run(["git", "commit", "-m", options.message]);
-  if (options.push !== false) {
-    await options.run(["git", "push"]);
-  }
+  if (options.push === false) return false;
+  await options.run(["git", "push"]);
+  return true;
 }
 
 /**
@@ -94,7 +95,7 @@ export interface CommitChangedOptions {
  * coding agent edit files autonomously, so this scopes the commit to its work
  * and never sweeps a developer's unrelated working-tree changes into (or pushes
  * them with) the fix. A no-op when nothing new changed, so it never makes an
- * empty commit.
+ * empty commit. Answers whether a commit was pushed.
  *
  * Ceiling: a file already dirty before the agent ran is left to the developer
  * even if the agent edited it further — deliberately, since committing their
@@ -102,11 +103,11 @@ export interface CommitChangedOptions {
  */
 export async function commitChanged(
   options: CommitChangedOptions,
-): Promise<void> {
+): Promise<boolean> {
   const status = await options.run(["git", "status", "--porcelain"]);
   const before = new Set(options.before);
   const paths = porcelainPaths(status).filter((p) => !before.has(p));
-  await commitAndPush({
+  return await commitAndPush({
     paths,
     message: options.message,
     push: options.push,

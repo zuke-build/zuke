@@ -3,9 +3,9 @@
 
 /**
  * Posting to the pull/merge request via the active CI host — the single overview
- * comment ({@link postComment}) and GitHub's inline suggestions
- * ({@link postGithubSuggestions}), both shared by the AI fixer and the agent
- * fixer. The overview comment is keyed by the fixer's name so re-runs update one
+ * comment ({@link postComment}), GitHub's inline suggestions
+ * ({@link postGithubSuggestions}) and the 🚀 on a pushed fix
+ * ({@link reactFixPushed}), all shared by the AI fixer and the agent fixer. The overview comment is keyed by the fixer's name so re-runs update one
  * comment in place. Both are best-effort: a failure to post never breaks the
  * build.
  *
@@ -20,7 +20,7 @@
  */
 
 import { type AnyParameter, detectCiHost } from "@zuke/core";
-import { detectReviewHost, type EnvReader } from "./hosts.ts";
+import { detectReviewHost, type EnvReader, type ReviewHost } from "./hosts.ts";
 import { resolveGithubContext } from "./hosts/github.ts";
 import { postSuggestions, type Suggestion } from "./hosts/github_review.ts";
 import { resolveKey } from "./provider.ts";
@@ -61,6 +61,33 @@ export interface CommentOptions {
 }
 
 /**
+ * The token to post with on `host`: the configured one, or the host's
+ * conventional env var.
+ */
+function tokenFor(
+  host: ReviewHost,
+  options: Pick<CommentOptions, "commentToken" | "env">,
+): string {
+  return options.commentToken !== undefined
+    ? resolveKey(options.commentToken)
+    : options.env(host.defaultTokenEnv) ?? "";
+}
+
+/**
+ * React 🚀 on the pull/merge request description: a fixer pushed a fix. A
+ * no-op off a host with reactions or without a PR context, and never throws —
+ * like every post a fixer makes, a courtesy that must not fail the build.
+ */
+export async function reactFixPushed(
+  options: Omit<CommentOptions, "redact">,
+): Promise<void> {
+  const host = detectReviewHost(options.env);
+  if (host?.reactions === undefined) return;
+  const reactions = host.reactions(tokenFor(host, options), options.env);
+  await reactions?.add("fixed", options.fetch ?? fetch);
+}
+
+/**
  * Upsert a single comment, identified by `name`, on the current PR/MR. A no-op
  * when no CI host or PR context is detected (e.g. local runs).
  */
@@ -71,10 +98,7 @@ export async function postComment(
 ): Promise<void> {
   const host = detectReviewHost(options.env);
   if (host === undefined) return;
-  const token = options.commentToken !== undefined
-    ? resolveKey(options.commentToken)
-    : options.env(host.defaultTokenEnv) ?? "";
-  const upsert = host.prepare(token, options.env);
+  const upsert = host.prepare(tokenFor(host, options), options.env);
   if (upsert === undefined) return;
   try {
     await upsert(name, options.redact(markdown), options.fetch ?? fetch);

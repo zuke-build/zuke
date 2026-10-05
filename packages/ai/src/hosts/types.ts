@@ -9,6 +9,7 @@
  * @module
  */
 
+import type { CallerVerdict } from "../callers.ts";
 import { AiReviewError } from "../errors.ts";
 import { dig } from "../json.ts";
 
@@ -222,19 +223,128 @@ export interface ReviewHost {
    */
   reviewThreads?(token: string, env: EnvReader): ReviewThreads | undefined;
   /**
-   * Acknowledge the comment that started this run — react 👀 on it, the way
-   * Dependabot acknowledges its commands — so the maintainer sees the command
-   * was picked up before the assessment lands. `undefined` means this run was
-   * not started by a comment, decided from the environment alone so the
-   * caller resolves a token only when there is something to acknowledge; the
-   * returned function takes that token, reports whether a reaction was
-   * posted, and never throws. Optional: a host that has it is one whose
-   * comments can start a run, which is also what tells the Commands panel to
-   * list the `review` command.
+   * Answer the comment that started this run — react 👍 on it as the review
+   * starts, the way Dependabot acknowledges its commands, or 😕 when the
+   * review cannot run — so the maintainer sees what became of the command
+   * before (or instead of) the assessment. `undefined` means this run was not
+   * started by a comment, decided from the environment alone so the caller
+   * resolves a token only when there is something to answer; the returned
+   * function takes that token and the {@link CommandSignal}, reports whether
+   * a reaction was posted, and never throws. Optional: a host that has it is
+   * one whose comments can start a run, which is also what tells the Commands
+   * panel to list the `review` command.
    */
   acknowledgeCommand?(
     env: EnvReader,
-  ): ((token: string, doFetch: typeof fetch) => Promise<boolean>) | undefined;
+  ):
+    | ((
+      token: string,
+      signal: CommandSignal,
+      doFetch: typeof fetch,
+    ) => Promise<boolean>)
+    | undefined;
+  /**
+   * Decide whether the commenter who started this run may start a review —
+   * the access control of a comment command, made in-process by the default
+   * branch's own build rather than in the workflow file. `undefined` means
+   * the run was not started by a comment, decided from the environment alone;
+   * the returned function takes a token that can read the repository's
+   * collaborators and never throws: an answer it cannot read refuses.
+   * Optional, like {@link acknowledgeCommand}, and present on the same hosts.
+   */
+  authorizeCommand?(
+    env: EnvReader,
+  ):
+    | ((token: string, doFetch: typeof fetch) => Promise<CallerVerdict>)
+    | undefined;
+  /**
+   * Resolve the host context and return the reactions the reviewer uses to
+   * signal its progress on the pull/merge request **description**, or
+   * `undefined` when the environment has no pull-request context — as in
+   * `prepare`. Optional: a host whose API has no reactions on a description
+   * (Azure DevOps, Bitbucket Cloud) simply does not signal progress.
+   */
+  reactions?(token: string, env: EnvReader): ReviewReactions | undefined;
+  /**
+   * Resolve the host context and return the reaction the reviewer puts on a
+   * maintainer's reply — the comments it reads in a discussion — or
+   * `undefined` without a pull-request context. Optional, like
+   * {@link reactions}.
+   */
+  replyReactions?(token: string, env: EnvReader): ReplyReactions | undefined;
+}
+
+/**
+ * What the reviewer signals on a maintainer's reply: `read` (👀) once it has
+ * read it, `accepted` (❤️) when the reply decided a finding — a rebuttal
+ * the adjudicator accepted, or an `accept` command.
+ */
+export type ReplySignal = "read" | "accepted";
+
+/**
+ * React on a comment of the pull request. Idempotent and never throws, like
+ * {@link ReviewReactions}.
+ */
+export interface ReplyReactions {
+  /**
+   * React with `signal` on `comment` — addressed by its id and the stream it
+   * was read from, since ids are unique only within one; `true` when the
+   * host now shows it.
+   */
+  react(
+    comment: Pick<HostComment, "id" | "kind">,
+    signal: ReplySignal,
+    doFetch: typeof fetch,
+  ): Promise<boolean>;
+}
+
+/**
+ * What the reviewer answers a command comment with: `started` (👍) as the
+ * review starts, `unable` (😕) when the run could not review — the pull
+ * request could not be fetched, or every reviewer was skipped (no key, the
+ * budget spent).
+ */
+export type CommandSignal = "started" | "unable";
+
+/**
+ * A state the reviewer (or a fixer) signals on the pull-request description:
+ * `reviewing` while a review runs, then one verdict — `passed` (no findings),
+ * `minor` (findings under the failing threshold), `failed`, or `recovered`
+ * (passed where the previous run had failed) — and `fixed` once a fixer has
+ * pushed a fix. Host-neutral: each host maps it onto the closest emoji its
+ * reaction set has.
+ */
+export type ReviewSignal =
+  | "reviewing"
+  | "passed"
+  | "minor"
+  | "failed"
+  | "recovered"
+  | "fixed";
+
+/**
+ * Add and withdraw the token's own {@link ReviewSignal} reactions on one pull
+ * request's description. Both operations are idempotent and never throw: a
+ * reaction is a courtesy, and a host that refuses one must not fail a review.
+ */
+export interface ReviewReactions {
+  /**
+   * Identifies the pull request across reviewers (host, project, number), so
+   * reviewers sharing an identity can agree on one verdict for it.
+   */
+  readonly key: string;
+  /**
+   * React with `signal`; `true` when the host now shows it — including when
+   * it already did.
+   */
+  add(signal: ReviewSignal, doFetch: typeof fetch): Promise<boolean>;
+  /**
+   * Withdraw the token's own `signal` reaction, if it has one; `true` when
+   * one was there and is gone. Must never **create** a reaction on the way: a
+   * withdrawal that half-fails would otherwise leave a verdict the review
+   * never reached.
+   */
+  remove(signal: ReviewSignal, doFetch: typeof fetch): Promise<boolean>;
 }
 
 /** The Markdown header that every PR comment opens with, identifying Zuke. */
