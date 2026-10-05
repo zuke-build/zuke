@@ -4670,7 +4670,7 @@ Deno.test("a comment-started run acknowledges the command with 👍 before the r
   assertEquals(reaction >= 0 && reaction < review, true);
   assertEquals(JSON.parse(order[reaction].body).content, "+1");
   assertEquals(
-    lines.some((l) => l.includes("acknowledged the review command (👍)")),
+    lines.some((l) => l.includes("answered the review command (👍)")),
     true,
   );
 });

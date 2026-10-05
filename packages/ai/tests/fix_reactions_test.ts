@@ -84,9 +84,9 @@ Deno.test("the AI fixer reacts 🚀 once it has pushed a fix", async () => {
 });
 
 Deno.test("the AI fixer reacts nothing when it did not push, or does not comment", async () => {
-  const unpushed = fakeGithub(ONE_EDIT);
-  await ai(unpushed.fetch, (f) => f.noPush()).remediate(CTX);
-  assertEquals(unpushed.reactions.on(DESCRIPTION), []);
+  const committedOnly = fakeGithub(ONE_EDIT);
+  await ai(committedOnly.fetch, (f) => f.noPush()).remediate(CTX);
+  assertEquals(committedOnly.reactions.on(DESCRIPTION), []);
   const silent = fakeGithub(ONE_EDIT);
   await ai(silent.fetch, (f) => f.noComment()).remediate(CTX);
   assertEquals(silent.reactions.on(DESCRIPTION), []);
@@ -121,10 +121,10 @@ Deno.test("the agent fixer reacts nothing when it changed nothing, did not push,
   const unchanged = fakeGithub();
   await agent(unchanged.fetch, "", (f) => f).remediate(CTX);
   assertEquals(unchanged.reactions.on(DESCRIPTION), []);
-  const unpushed = fakeGithub();
-  await agent(unpushed.fetch, " M src/app.ts", (f) => f.noPush())
+  const committedOnly = fakeGithub();
+  await agent(committedOnly.fetch, " M src/app.ts", (f) => f.noPush())
     .remediate(CTX);
-  assertEquals(unpushed.reactions.on(DESCRIPTION), []);
+  assertEquals(committedOnly.reactions.on(DESCRIPTION), []);
   const silent = fakeGithub();
   await agent(silent.fetch, " M src/app.ts", (f) => f.noComment())
     .remediate(CTX);

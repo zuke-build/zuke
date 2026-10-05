@@ -200,3 +200,82 @@ Deno.test("a review skipped for want of a key still withdraws the last run's ver
   assertEquals(reactions, ["+eyes", "-confused", "-eyes"]);
   assertEquals(left, []);
 });
+
+/** The command comment's reactions collection. */
+const COMMAND =
+  "https://api.github.com/repos/zuke-build/zuke/issues/comments/4321/reactions";
+
+/**
+ * Run a comment-started review of pull request `pull` whose own diff seam is
+ * configured by `configure`, and answer the command comment's reactions.
+ */
+async function commanded(
+  pull: number,
+  configure: Configure<Reviewer>,
+): Promise<{ command: string[]; description: string[] }> {
+  const github = fakeReactions();
+  const impl = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    const reaction = github.handle(url, init);
+    if (reaction !== undefined) return reaction;
+    const method = init?.method ?? "GET";
+    return Promise.resolve(
+      new Response(method === "GET" ? "[]" : JSON.stringify({ id: 99 })),
+    );
+  }) as typeof fetch;
+  await captureLines(() =>
+    withEnv({
+      GITHUB_ACTIONS: "true",
+      GITHUB_REPOSITORY: "zuke-build/zuke",
+      GITHUB_REF: "refs/heads/master",
+      GITHUB_TOKEN: "tkn",
+      GITHUB_STEP_SUMMARY: undefined,
+      ZUKE_REVIEW_PR: String(pull),
+      ZUKE_REVIEW_COMMENT: "4321",
+    }, async () => {
+      try {
+        await securityReviewer((r) =>
+          configure(r.provider("claude").comment().fetch(impl))
+        ).validate(noRedactionContext("deploy"));
+      } catch {
+        // A pull request that cannot be fetched fails the gate.
+      }
+    })
+  );
+  return {
+    command: github.on(COMMAND),
+    description: github.on(description(pull)),
+  };
+}
+
+/** A git seam on which fetching the pull request fails. */
+const offline = (argv: string[]) =>
+  argv[1] === "fetch"
+    ? Promise.reject(new Error("no merge ref"))
+    : Promise.resolve("");
+
+Deno.test("a commanded review that cannot fetch the pull request answers 👍 then 😕, and 👎", async () => {
+  const { command, description } = await commanded(
+    111,
+    (r) => r.apiKey("k").exec(offline),
+  );
+  assertEquals(command, ["+1", "confused"]);
+  assertEquals(description, ["-1"]);
+});
+
+Deno.test("a commanded review skipped under onError('warn') answers 😕, with no verdict", async () => {
+  const { command, description } = await commanded(
+    112,
+    (r) => r.apiKey("k").exec(offline).onError("warn"),
+  );
+  assertEquals(command, ["+1", "confused"]);
+  assertEquals(description, []);
+});
+
+Deno.test("a commanded review with no key never starts: 😕 alone", async () => {
+  const { command } = await commanded(
+    113,
+    (r) => r.apiKey("").skipIfKeyMissing(),
+  );
+  assertEquals(command, ["confused"]);
+});

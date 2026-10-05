@@ -59,6 +59,7 @@ import {
 } from "./report.ts";
 import { detectReviewHost, type EnvReader, readEnv } from "./hosts.ts";
 import {
+  type CommandSignal,
   commentMarker,
   type HostComment,
   parseCommentMarker,
@@ -198,6 +199,15 @@ export class Reviewer implements Validation {
   /** Whether `.comment()` is set — i.e. this reviewer posts to the PR. */
   get commentEnabled_(): boolean {
     return this.#comment;
+  }
+
+  /**
+   * Whether this reviewer reacts on the pull request — `.comment()` set, and
+   * neither `.reactions(false)` nor `.quiet()` — which is what tells the
+   * workflow generator to answer a refused command with 😕.
+   */
+  get reactionsEnabled_(): boolean {
+    return this.#comment && this.#reactions && !this.#quiet;
   }
 
   /** The configured comment-posting token, if `.commentToken(...)` was called. */
@@ -366,14 +376,17 @@ export class Reviewer implements Validation {
 
   /**
    * Whether the reviewer reacts on the pull request to show its progress (on
-   * by default, whenever `.comment()` is set): 👀 on the description while it
-   * runs, then 👍 when it passes clean, 🤏 when it has findings under the
-   * failing threshold (😕 on GitHub, whose reaction set has no 🤏), 👎 when it
-   * fails — and 👍 on the comment that started a comment-started run. The
-   * reviewers on one pull request share the reactions, so the verdict shown is
-   * the worst of them. GitHub and GitLab have the reactions; on Azure DevOps
-   * and Bitbucket this is a no-op. `false` turns all of it off, as does
-   * `.quiet()`, under which the reviewer does not speak on the pull request.
+   * by default, whenever `.comment()` is set). On the description: 👀 while
+   * it runs, then 👍 when it passes clean, 🎉 when it passes clean where the
+   * previous run failed, 🤏 when it has findings under the failing threshold
+   * (😕 on GitHub, whose reaction set has no 🤏), 👎 when it fails. On the
+   * comment that started a comment-started run: 👍 as it starts, 😕 when it
+   * cannot run. On a trusted maintainer's reply: 👀 once weighed, ❤️ when it
+   * decided a finding. The reviewers on one pull request share the
+   * reactions, so the verdict shown is the worst of a run's. GitHub and
+   * GitLab have the reactions; on Azure DevOps and Bitbucket this is a no-op.
+   * `false` turns all of it off, as does `.quiet()`, under which the reviewer
+   * does not speak on the pull request.
    */
   reactions(enabled: boolean): this {
     this.#reactions = enabled;
@@ -759,29 +772,29 @@ export class Reviewer implements Validation {
   }
 
   /**
-   * On a comment-started run, react 👍 on the command comment before the
-   * review starts, so the maintainer sees it was picked up without opening
-   * the host's job log. Best-effort and quiet by construction: nothing here
-   * can fail the review, and a run no comment started does nothing.
+   * On a comment-started run, answer the command comment: 👍 as the review
+   * starts, 😕 when it cannot run — so the maintainer sees what became of the
+   * command without opening the host's job log. Best-effort and quiet by
+   * construction: nothing here can fail the review, and a run no comment
+   * started does nothing.
    */
-  async #acknowledgeCommand(): Promise<void> {
+  async #answerCommand(signal: CommandSignal): Promise<void> {
     if (!this.#comment || this.#quiet || !this.#reactions) return;
     const host = detectReviewHost(this.#env);
     if (host?.acknowledgeCommand === undefined) return;
-    const ack = host.acknowledgeCommand(this.#env);
-    if (ack === undefined) return;
+    const answer = host.acknowledgeCommand(this.#env);
+    if (answer === undefined) return;
+    const emoji = signal === "started" ? "👍" : "😕";
     try {
       const token = await this.#resolveCommentToken(host);
-      if (await ack(token, this.#fetch ?? fetch) && !this.#quiet) {
-        console.log(`[${this.name}] acknowledged the review command (👍)`);
+      if (await answer(token, signal, this.#fetch ?? fetch)) {
+        console.log(`[${this.name}] answered the review command (${emoji})`);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (!this.#quiet) {
-        console.warn(
-          `[${this.name}] could not acknowledge the review command: ${message}`,
-        );
-      }
+      console.warn(
+        `[${this.name}] could not answer the review command: ${message}`,
+      );
     }
   }
 
@@ -1187,6 +1200,9 @@ export class Reviewer implements Validation {
     } finally {
       await finish(outcome);
     }
+    // A command that started a review which then could not run is owed a 😕,
+    // not silence.
+    if (outcome === "skipped") await this.#answerCommand("unable");
   }
 
   /**
@@ -1217,7 +1233,7 @@ export class Reviewer implements Validation {
       }));
     }
 
-    await this.#acknowledgeCommand();
+    await this.#answerCommand("started");
     const resolved = await this.#resolveDiff();
     let diff = filterDiff(
       resolved.diff,
@@ -1236,6 +1252,7 @@ export class Reviewer implements Validation {
           await this.#reportSkip(context.target, reason, context.redact);
           return "skipped";
         }
+        await this.#answerCommand("unable");
         throw new AiReviewError(
           `${this.name} of "${context.target}" ${reason}; refusing to pass on an empty fallback diff`,
         );

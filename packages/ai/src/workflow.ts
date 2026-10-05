@@ -840,6 +840,28 @@ class AiReviewWorkflow extends CiFile {
   }
 
   /**
+   * React 😕 on the command comment when the review will not run — the
+   * callers check refused the commenter, or could not tell — so they are not
+   * left waiting for a 👍 that never comes. Best-effort: a token that cannot
+   * react changes nothing about the job. The comment id reaches the script as
+   * env, never interpolated.
+   */
+  static #refusedStep(): NonNullable<CiJob["steps"]>[number] {
+    return {
+      name: "Tell the commenter the review will not run",
+      if:
+        `\${{ !cancelled() && steps.${CALLERS_STEP_ID}.outputs.allowed != 'true' }}`,
+      shell: "bash",
+      run: 'gh api --method POST "repos/$GITHUB_REPOSITORY/issues/comments/' +
+        '$ZUKE_REVIEW_COMMENT/reactions" -f content=confused --silent || true',
+      env: {
+        GH_TOKEN: "${{ github.token }}",
+        [REVIEW_COMMENT_ENV]: "${{ github.event.comment.id }}",
+      },
+    };
+  }
+
+  /**
    * GitHub: a fork-gated PR workflow with harden-runner + pinned checkout —
    * plus, with a command, the on-demand job it starts.
    */
@@ -902,6 +924,9 @@ class AiReviewWorkflow extends CiFile {
         AiReviewWorkflow.#commandGate(command.texts),
         [
           AiReviewWorkflow.#callersStep(command),
+          ...(this.#spec.reviewers.some((r) => r.reactionsEnabled_)
+            ? [AiReviewWorkflow.#refusedStep()]
+            : []),
           {
             name: "AI review with Zuke",
             if: `steps.${CALLERS_STEP_ID}.outputs.allowed == 'true'`,

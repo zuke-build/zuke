@@ -83,6 +83,13 @@ jobs:
         env:
           GH_TOKEN: "${{ github.token }}"
           ZUKE_REVIEW_ACTOR: "${{ github.event.comment.user.login }}"
+      - name: Tell the commenter the review will not run
+        if: "${{ !cancelled() && steps.callers.outputs.allowed != 'true' }}"
+        shell: bash
+        run: "gh api --method POST \"repos/$GITHUB_REPOSITORY/issues/comments/$ZUKE_REVIEW_COMMENT/reactions\" -f content=confused --silent || true"
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          ZUKE_REVIEW_COMMENT: "${{ github.event.comment.id }}"
       - name: AI review with Zuke
         if: "steps.callers.outputs.allowed == 'true'"
         run: ./zuke review

@@ -712,6 +712,10 @@ class Reviewer implements Validation
     The configured API key (a parameter — for its env var — or a literal).
   get commentEnabled_(): boolean
     Whether `.comment()` is set — i.e. this reviewer posts to the PR.
+  get reactionsEnabled_(): boolean
+    Whether this reviewer reacts on the pull request — `.comment()` set, and
+    neither `.reactions(false)` nor `.quiet()` — which is what tells the
+    workflow generator to answer a refused command with 😕.
   get commentToken_(): CommentTokenSource | undefined
     The configured comment-posting token, if `.commentToken(...)` was called.
   get mention_(): string | undefined
@@ -791,13 +795,17 @@ class Reviewer implements Validation
     Backwards-compatible alias for {@link commentToken}.
   reactions(enabled: boolean): this
     Whether the reviewer reacts on the pull request to show its progress (on
-    by default, whenever `.comment()` is set): 👀 on the description while it
-    runs, then 👍 when it passes clean, 🤏 when it has findings under the
-    failing threshold (😕 on GitHub, whose reaction set has no 🤏), 👎 when it
-    fails — and 👍 on the comment that started a comment-started run. The
-    reviewers on one pull request share the reactions, so the verdict shown is
-    the worst of them. GitHub and GitLab have the reactions; on Azure DevOps
-    and Bitbucket this is a no-op. `false` turns all of it off.
+    by default, whenever `.comment()` is set). On the description: 👀 while
+    it runs, then 👍 when it passes clean, 🎉 when it passes clean where the
+    previous run failed, 🤏 when it has findings under the failing threshold
+    (😕 on GitHub, whose reaction set has no 🤏), 👎 when it fails. On the
+    comment that started a comment-started run: 👍 as it starts, 😕 when it
+    cannot run. On a trusted maintainer's reply: 👀 once weighed, ❤️ when it
+    decided a finding. The reviewers on one pull request share the
+    reactions, so the verdict shown is the worst of a run's. GitHub and
+    GitLab have the reactions; on Azure DevOps and Bitbucket this is a no-op.
+    `false` turns all of it off, as does `.quiet()`, under which the reviewer
+    does not speak on the pull request.
   quiet(): this
     Suppress the findings printout and the job-summary section.
   fetch(impl: typeof fetch): this

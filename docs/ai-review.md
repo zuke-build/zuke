@@ -497,33 +497,50 @@ workflow permissions automatically when any reviewer has `.comment()` set.
 
 ### Progress reactions
 
-With `.comment()` set, the reviewer also shows where it is on the pull/merge
-request **description**, so a reader of the conversation sees it at a glance
-without opening the job log:
+With `.comment()` set, the reviewer also shows where it is with reactions, so a
+reader of the conversation sees it at a glance without opening the job log.
+
+On the pull/merge request **description**:
 
 | Reaction | Meaning                                                                             |
 | -------- | ----------------------------------------------------------------------------------- |
 | 👀       | a review is running                                                                 |
 | 👍       | it passed with no findings                                                          |
+| 🎉       | it passed with no findings, where the previous run had failed                       |
 | 🤏       | it has findings, all under the failing threshold (😕 on GitHub — its set has no 🤏) |
 | 👎       | it failed: the gate tripped, or the review errored under `onError("fail")`          |
+| 🚀       | a fixer (`aiFixer`, `agentFixer`) pushed a fix commit — off with its `.noComment()` |
+
+On a **command comment** — a [comment-started run](#on-demand-a-comment-command)
+— 👍 as the review starts, and 😕 when it will not run: the commenter may not
+start a review (the generated workflow answers that), or the review cannot run
+(the pull request cannot be fetched, there is no key, the budget is spent).
+
+On a **maintainer's reply** in the
+[discussion](#discussing-findings-instead-of-repeating-them) — 👀 on every
+trusted rebuttal the reviewer weighs, ❤️ on the one that decided a finding (a
+rebuttal the adjudicator accepted, or an `accept` command). A comment that did
+not pass the trust gate is never reacted on, so a reaction cannot be read as the
+reviewer agreeing with someone it ignored.
 
 A skipped review (no key, budget exhausted, an error tolerated under
-`onError("warn")`) withdraws 👀 without claiming a verdict. On a
-[comment-started run](#on-demand-a-comment-command) the command comment itself
-gets 👍 as the review starts.
+`onError("warn")`) withdraws 👀 and the previous run's verdict without claiming
+one of its own.
 
 Every reviewer on a pull request usually posts under one identity, and a host
 keeps one reaction of each kind per account, so the reviewers **share** these
-reactions. Within a run they agree on one verdict — the worst any of them
+reactions. Within a build run they agree on one verdict — the worst any of them
 reached, so a clean second review cannot hide the first one's findings — and 👀
-stays until the last of them finishes. The first reviewer to start clears the
-verdict the previous run left.
+is down once the last of them finishes. The first reviewer of a run to start
+clears the verdict the previous run left; only the reviewer's own reactions are
+ever withdrawn, never a person's. 🚀 is not a verdict, and stays.
 
 GitHub (reactions) and GitLab (award emoji) have them; Azure DevOps has no
 reactions on a pull-request description and Bitbucket Cloud no reactions API, so
 there the feature is a no-op. `.quiet()` leaves the pull request alone, as it
-does for the comment, and `.reactions(false)` turns all of it off.
+does for the comment, and `.reactions(false)` turns all of it off — the
+generated workflow's 😕 for a refused commenter included, when no reviewer
+reacts.
 
 ## Token usage
 

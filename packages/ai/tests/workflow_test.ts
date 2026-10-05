@@ -450,11 +450,12 @@ Deno.test("the prelude pin comes from the resolver, not core's fallback", () => 
 function commandBuild(
   configure = (c: ReviewCommandSettings) =>
     c.text("@zuke-build review").secrets("APP_ID", "APP_KEY"),
+  reviewer = (r: Reviewer) => r,
 ): string {
   class B extends Build {
     key = parameter("Key").secret().env("OPENAI_API_KEY");
     security = securityReviewer((r) =>
-      r.provider("openai").apiKey(this.key).comment()
+      reviewer(r.provider("openai").apiKey(this.key).comment())
     );
     review = target().validateBefore(this.security).executes(() => {});
     wf = aiReviewWorkflow({ reviewers: [this.security], command: configure });
@@ -774,6 +775,47 @@ Deno.test("the command job checks the commenter's role before the review", () =>
     step.split("${{ github.event.comment.user.login }}").length,
     2,
   );
+});
+
+Deno.test("a refused or unreadable commenter gets 😕 on their comment, between the check and the review", () => {
+  const commandJob = commandBuild().split("  commandReview:")[1];
+  const check = commandJob.indexOf("Check the commenter may start a review");
+  const refused = commandJob.indexOf(
+    "Tell the commenter the review will not run",
+  );
+  const review = commandJob.indexOf("AI review with Zuke");
+  assertEquals(check < refused && refused < review, true);
+  const step = commandJob.slice(refused, review);
+  // Runs on a refusal and on a check that failed closed — anything but an
+  // admitted commenter — unless the run was cancelled.
+  assertStringIncludes(
+    step,
+    "${{ !cancelled() && steps.callers.outputs.allowed != 'true' }}",
+  );
+  assertStringIncludes(step, "content=confused");
+  // Best-effort: a token that cannot react does not fail the job.
+  assertStringIncludes(step, "|| true");
+  // The comment id reaches the script only as env.
+  assertStringIncludes(
+    step,
+    'ZUKE_REVIEW_COMMENT: "${{ github.event.comment.id }}"',
+  );
+  assertStringIncludes(step, "comments/$ZUKE_REVIEW_COMMENT/reactions");
+});
+
+Deno.test("reviewers that do not react get no 😕 step", () => {
+  for (
+    const off of [
+      (r: Reviewer) => r.reactions(false),
+      (r: Reviewer) => r.quiet(),
+    ]
+  ) {
+    const yaml = commandBuild(undefined, off);
+    assertEquals(
+      yaml.includes("Tell the commenter the review will not run"),
+      false,
+    );
+  }
 });
 
 Deno.test("also adds commands that start the run too, each matched like the first", () => {

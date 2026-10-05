@@ -18,6 +18,7 @@ import {
 } from "./github_reactions.ts";
 import { githubReviewThreads } from "./github_threads.ts";
 import {
+  type CommandSignal,
   commentBody,
   commentMarker,
   type CommentMode,
@@ -52,27 +53,39 @@ export interface GithubContext {
  */
 export const REVIEW_COMMENT_ENV = "ZUKE_REVIEW_COMMENT";
 
+/** The GitHub reaction content for each {@link CommandSignal}. */
+const COMMAND_CONTENT: Record<CommandSignal, string> = {
+  started: "+1",
+  unable: "confused",
+};
+
 /**
- * React 👍 on the comment {@link REVIEW_COMMENT_ENV} names — the command was
- * accepted and the review is starting. `false` when the run was not
- * comment-started, the id is not a number, the repository is unknown, or
- * GitHub refuses — best-effort, like every post the review makes. The id is
+ * React on the comment {@link REVIEW_COMMENT_ENV} names — 👍 the command was
+ * accepted and the review is starting, 😕 it cannot run. `false` when the run
+ * was not comment-started, the id is not a number, the repository is unknown,
+ * or GitHub refuses — best-effort, like every post the review makes. The id is
  * checked against digits before it is put in a URL.
  */
 export function acknowledgeGithubCommand(
   env: EnvReader,
-): ((token: string, doFetch: typeof fetch) => Promise<boolean>) | undefined {
+):
+  | ((
+    token: string,
+    signal: CommandSignal,
+    doFetch: typeof fetch,
+  ) => Promise<boolean>)
+  | undefined {
   const id = env(REVIEW_COMMENT_ENV);
   if (id === undefined || id === "") return undefined;
   const repo = env("GITHUB_REPOSITORY");
-  return async (token, doFetch) => {
+  return async (token, signal, doFetch) => {
     if (!/^[1-9]\d{0,15}$/.test(id) || repo === undefined || token === "") {
       return false;
     }
     const reaction = await postReaction(
       `${API}/repos/${repo}/issues/comments/${id}/reactions`,
       token,
-      "+1",
+      COMMAND_CONTENT[signal],
       doFetch,
     );
     return reaction !== undefined;

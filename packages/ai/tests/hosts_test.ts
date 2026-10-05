@@ -1739,7 +1739,7 @@ Deno.test("parseCommentMarker reads the reviewer name only from an opening marke
   );
 });
 
-Deno.test("acknowledgeGithubCommand reacts 👍 only on a comment-started run, and never throws", async () => {
+Deno.test("acknowledgeGithubCommand reacts 👍 or 😕 only on a comment-started run, and never throws", async () => {
   const env = (values: Record<string, string>) => (name: string) =>
     values[name];
   // Not comment-started: nothing to acknowledge, and no token is asked for.
@@ -1758,13 +1758,17 @@ Deno.test("acknowledgeGithubCommand reacts 👍 only on a comment-started run, a
     GITHUB_REPOSITORY: "zuke-build/zuke",
   });
   const ack = acknowledgeGithubCommand(started);
-  assertEquals(await ack?.("app-token", ok), true);
+  assertEquals(await ack?.("app-token", "started", ok), true);
   assertEquals(
     calls[0].url,
     "https://api.github.com/repos/zuke-build/zuke/issues/comments/987654/reactions",
   );
   assertEquals(calls[0].init?.method, "POST");
   assertEquals(calls[0].init?.body, JSON.stringify({ content: "+1" }));
+  // A review that cannot run answers 😕 instead.
+  assertEquals(await ack?.("app-token", "unable", ok), true);
+  assertEquals(calls[1].init?.body, JSON.stringify({ content: "confused" }));
+  calls.splice(1);
   assertEquals(
     new Headers(calls[0].init?.headers).get("authorization"),
     "Bearer app-token",
@@ -1774,16 +1778,16 @@ Deno.test("acknowledgeGithubCommand reacts 👍 only on a comment-started run, a
   const bad = acknowledgeGithubCommand(
     env({ ZUKE_REVIEW_COMMENT: "../../evil", GITHUB_REPOSITORY: "z/z" }),
   );
-  assertEquals(await bad?.("t", ok), false);
+  assertEquals(await bad?.("t", "started", ok), false);
   const noRepo = acknowledgeGithubCommand(env({ ZUKE_REVIEW_COMMENT: "1" }));
-  assertEquals(await noRepo?.("t", ok), false);
-  assertEquals(await ack?.("", ok), false);
+  assertEquals(await noRepo?.("t", "started", ok), false);
+  assertEquals(await ack?.("", "started", ok), false);
   assertEquals(calls.length, 1);
   // A refusal or a network error is `false`, not a throw.
   const refused =
     (() =>
       Promise.resolve(new Response("{}", { status: 403 }))) as typeof fetch;
-  assertEquals(await ack?.("t", refused), false);
+  assertEquals(await ack?.("t", "started", refused), false);
   const down = (() => Promise.reject(new Error("offline"))) as typeof fetch;
-  assertEquals(await ack?.("t", down), false);
+  assertEquals(await ack?.("t", "started", down), false);
 });

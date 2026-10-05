@@ -222,19 +222,26 @@ export interface ReviewHost {
    */
   reviewThreads?(token: string, env: EnvReader): ReviewThreads | undefined;
   /**
-   * Acknowledge the comment that started this run — react 👍 on it, the way
-   * Dependabot acknowledges its commands — so the maintainer sees the command
-   * was picked up before the assessment lands. `undefined` means this run was
-   * not started by a comment, decided from the environment alone so the
-   * caller resolves a token only when there is something to acknowledge; the
-   * returned function takes that token, reports whether a reaction was
-   * posted, and never throws. Optional: a host that has it is one whose
-   * comments can start a run, which is also what tells the Commands panel to
-   * list the `review` command.
+   * Answer the comment that started this run — react 👍 on it as the review
+   * starts, the way Dependabot acknowledges its commands, or 😕 when the
+   * review cannot run — so the maintainer sees what became of the command
+   * before (or instead of) the assessment. `undefined` means this run was not
+   * started by a comment, decided from the environment alone so the caller
+   * resolves a token only when there is something to answer; the returned
+   * function takes that token and the {@link CommandSignal}, reports whether
+   * a reaction was posted, and never throws. Optional: a host that has it is
+   * one whose comments can start a run, which is also what tells the Commands
+   * panel to list the `review` command.
    */
   acknowledgeCommand?(
     env: EnvReader,
-  ): ((token: string, doFetch: typeof fetch) => Promise<boolean>) | undefined;
+  ):
+    | ((
+      token: string,
+      signal: CommandSignal,
+      doFetch: typeof fetch,
+    ) => Promise<boolean>)
+    | undefined;
   /**
    * Resolve the host context and return the reactions the reviewer uses to
    * signal its progress on the pull/merge request **description**, or
@@ -275,6 +282,13 @@ export interface ReplyReactions {
     doFetch: typeof fetch,
   ): Promise<boolean>;
 }
+
+/**
+ * What the reviewer answers a command comment with: `started` (👍) as the
+ * review starts, `unable` (😕) when it cannot run — the pull request could not
+ * be fetched, there is no key, the budget is spent.
+ */
+export type CommandSignal = "started" | "unable";
 
 /**
  * A state the reviewer (or a fixer) signals on the pull-request description:
