@@ -2,38 +2,44 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * GitHub reactions: the progress signals on a pull request's description and
- * the acknowledgement on a command comment.
+ * GitHub reactions: the progress signals on a pull request's description, the
+ * answers on a command comment and on maintainers' replies — all through
+ * `GhTasks` from `@zuke/gh`, the one GitHub REST client the workspace keeps.
  *
- * A pull request's description is its issue body, so its reactions live under
- * `issues/<n>/reactions`. GitHub deletes a reaction by id, and the token the
- * reviewer holds (the Actions token, an App installation token) cannot ask
- * `GET /user` who it is. Every reaction GitHub answers a POST with names its
- * author, though, so the login is learned from the reviewer's own first
- * reaction; a withdrawal then lists the reactions of that content and deletes
- * only that login's — never another account's, and never creating one.
+ * A pull request's description is its issue body, so its reactions are the
+ * issue's. GitHub deletes a reaction by id, and the token the reviewer holds
+ * (the Actions token, an App installation token) cannot ask `GET /user` who it
+ * is. Every reaction GitHub answers a POST with names its author, though, so
+ * the login is learned from the reviewer's own first reaction; a withdrawal
+ * then lists the reactions of that content and deletes only that login's —
+ * never another account's, and never creating one.
+ *
+ * Every function here is total: `GhTasks` throws on a refusal, and a reaction
+ * is a courtesy that must never fail a review, so each call is caught and
+ * answered as `undefined` or `false`.
  *
  * @module
  */
 
-import { dig } from "../json.ts";
-import { type GithubContext, githubHeaders } from "./github.ts";
 import {
-  paginateLinked,
-  type ReplyReactions,
-  type ReplySignal,
-  type ReviewReactions,
-  type ReviewSignal,
+  type GhReaction,
+  type GhReactionContent,
+  type GhReactionSettings,
+  GhTasks,
+} from "@zuke/gh";
+import type { GithubContext } from "./github.ts";
+import type {
+  ReplyReactions,
+  ReplySignal,
+  ReviewReactions,
+  ReviewSignal,
 } from "./types.ts";
-
-/** The GitHub REST API origin. */
-const API = "https://api.github.com";
 
 /**
  * The GitHub reaction content for each {@link ReviewSignal}. GitHub's reaction
  * set is fixed at eight, with no 🤏, so `minor` shows as 😕 `confused`.
  */
-const CONTENT: Record<ReviewSignal, string> = {
+const CONTENT: Record<ReviewSignal, GhReactionContent> = {
   reviewing: "eyes",
   passed: "+1",
   minor: "confused",
@@ -42,40 +48,31 @@ const CONTENT: Record<ReviewSignal, string> = {
   fixed: "rocket",
 };
 
-/** The reaction a successful POST answered with: its id and author's login. */
-interface PostedReaction {
-  /** The reaction's id. */
-  id: number;
-  /** The login of the account it belongs to, when GitHub said. */
-  login?: string;
+/** Bind `settings` to `context`'s repository, token and `fetch`. */
+function bound(
+  context: Pick<GithubContext, "owner" | "repo" | "token">,
+  doFetch: typeof fetch,
+): (settings: GhReactionSettings) => GhReactionSettings {
+  return (settings) =>
+    settings.repo(`${context.owner}/${context.repo}`).token(context.token)
+      .fetch(doFetch);
 }
 
 /**
- * POST reaction `content` to the reactions collection at `url`, answering the
- * token's own reaction — the one created (201), or the one already there
- * (200) — or `undefined` when GitHub refuses or the call fails. Never throws.
+ * React `content` on the subject `subject` picks, answering the token's own
+ * reaction — the one created, or the one already there — or `undefined` when
+ * GitHub refuses or the call fails. Never throws.
  */
 export async function postReaction(
-  url: string,
-  token: string,
-  content: string,
+  context: Pick<GithubContext, "owner" | "repo" | "token">,
+  subject: (settings: GhReactionSettings) => GhReactionSettings,
+  content: GhReactionContent,
   doFetch: typeof fetch,
-): Promise<PostedReaction | undefined> {
+): Promise<GhReaction | undefined> {
   try {
-    const response = await doFetch(url, {
-      method: "POST",
-      headers: githubHeaders(token),
-      body: JSON.stringify({ content }),
-    });
-    if (!response.ok) {
-      await response.body?.cancel();
-      return undefined;
-    }
-    const body: unknown = await response.json();
-    const id = dig(body, "id");
-    if (typeof id !== "number") return undefined;
-    const login = dig(body, "user", "login");
-    return typeof login === "string" && login !== "" ? { id, login } : { id };
+    return await GhTasks.react((s) =>
+      subject(bound(context, doFetch)(s)).content(content)
+    );
   } catch {
     return undefined;
   }
@@ -83,50 +80,42 @@ export async function postReaction(
 
 /** The {@link ReviewReactions} on the description of `context`'s pull request. */
 export function githubReactions(context: GithubContext): ReviewReactions {
-  const reactions =
-    `${API}/repos/${context.owner}/${context.repo}/issues/${context.pull}/reactions`;
-  const headers = githubHeaders(context.token);
-  /** The login the token reacts as, once a POST has told us. */
+  const description = (s: GhReactionSettings) => s.issue(context.pull);
+  /** The login the token reacts as, once a reaction has told us. */
   let self: string | undefined;
   return {
     key: `github:${context.owner}/${context.repo}#${context.pull}`,
     async add(signal, doFetch) {
       const posted = await postReaction(
-        reactions,
-        context.token,
+        context,
+        description,
         CONTENT[signal],
         doFetch,
       );
-      if (posted?.login !== undefined) self = posted.login;
+      if (posted?.login !== undefined && posted.login !== "") {
+        self = posted.login;
+      }
       return posted !== undefined;
     },
     async remove(signal, doFetch) {
       const login = self;
       if (login === undefined) return false;
-      const content = CONTENT[signal];
+      const settings = (s: GhReactionSettings) =>
+        description(bound(context, doFetch)(s));
       try {
-        const ids: number[] = [];
-        await paginateLinked(
-          `${reactions}?content=${encodeURIComponent(content)}&per_page=100`,
-          headers,
-          "GitHub",
-          doFetch,
-          (item) => {
-            const id = dig(item, "id");
-            if (
-              typeof id === "number" && dig(item, "content") === content &&
-              dig(item, "user", "login") === login
-            ) ids.push(id);
-          },
+        const own = (await GhTasks.listReactions((s) =>
+          settings(s).content(CONTENT[signal])
+        )).filter((r) =>
+          r.login === login && r.content === CONTENT[signal]
         );
         let removed = false;
-        for (const id of ids) {
-          const response = await doFetch(`${reactions}/${id}`, {
-            method: "DELETE",
-            headers,
-          });
-          await response.body?.cancel();
-          if (response.ok) removed = true;
+        for (const reaction of own) {
+          try {
+            await GhTasks.deleteReaction((s) => settings(s).id(reaction.id));
+            removed = true;
+          } catch {
+            // One refused deletion does not stop the others.
+          }
         }
         return removed;
       } catch {
@@ -138,24 +127,24 @@ export function githubReactions(context: GithubContext): ReviewReactions {
 }
 
 /** The GitHub reaction content for each {@link ReplySignal}. */
-const REPLY_CONTENT: Record<ReplySignal, string> = {
+const REPLY_CONTENT: Record<ReplySignal, GhReactionContent> = {
   read: "eyes",
   accepted: "heart",
 };
 
 /**
  * The {@link ReplyReactions} on `context`'s pull request: a conversation
- * comment's reactions live under `issues/comments/<id>`, a review-thread
- * reply's under `pulls/comments/<id>`.
+ * comment is an issue comment, a review-thread reply a review comment.
  */
 export function githubReplyReactions(context: GithubContext): ReplyReactions {
-  const repo = `${API}/repos/${context.owner}/${context.repo}`;
   return {
     async react(comment, signal, doFetch) {
-      const stream = comment.kind === "review" ? "pulls" : "issues";
       const posted = await postReaction(
-        `${repo}/${stream}/comments/${comment.id}/reactions`,
-        context.token,
+        context,
+        (s) =>
+          comment.kind === "review"
+            ? s.reviewComment(comment.id)
+            : s.issueComment(comment.id),
         REPLY_CONTENT[signal],
         doFetch,
       );

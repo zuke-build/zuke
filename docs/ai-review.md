@@ -513,7 +513,7 @@ On the pull/merge request **description**:
 
 On a **command comment** — a [comment-started run](#on-demand-a-comment-command)
 — 👍 as the review starts, and 😕 when it will not run: the commenter may not
-start a review (the generated workflow answers that), or the run could not
+start a review (the reviewer checks before anything else), or the run could not
 review (the pull request cannot be fetched, or every reviewer was skipped — no
 key, the budget spent). One reviewer skipping while another reviewed is not
 that: the command was served.
@@ -540,9 +540,8 @@ ever withdrawn, never a person's. 🚀 is not a verdict, and stays.
 GitHub (reactions) and GitLab (award emoji) have them; Azure DevOps has no
 reactions on a pull-request description and Bitbucket Cloud no reactions API, so
 there the feature is a no-op. `.quiet()` leaves the pull request alone, as it
-does for the comment, and `.reactions(false)` turns all of it off — the
-generated workflow's 😕 for a refused commenter included, when no reviewer
-reacts.
+does for the comment, and `.reactions(false)` turns all of it off. Every GitHub
+reaction goes through `GhTasks` from `@zuke/gh`.
 
 ## Token usage
 
@@ -661,24 +660,29 @@ The generated job listens on `issue_comment` (GitHub delivers a pull request's
 conversation comments as issue comments) and runs only when every clause of its
 `if:` holds, all of them metadata GitHub asserts rather than anything in the
 comment's text: the comment is on a pull request; its author is not a bot
-account; and the body starts with one of the commands. Who may start a run is
-decided by the job's first step after the checkout, which asks the collaborators
-API what role the commenter holds: a login named by `.users(...)` is admitted
-outright; otherwise `write` and above (or whatever `.role(...)` lowers that to:
-`triage`, or `read`, which on a public repository is everyone) lets the review
-run, and anything below ends the job succeeded with nothing spent and the reason
-in the step's log — before any key is spent. The event's `author_association` is
-deliberately not in the gate: GitHub reports an organisation member whose
-membership is private as `CONTRIBUTOR` (it turned this repository's own
-maintainers away), and `MEMBER` and `COLLABORATOR` both include read-only
-accounts, so the field can neither admit nor refuse anyone correctly. The step
-skips rather than fails because, with no pre-filter, anyone who can comment can
-type the command, and a red check for each of them would be noise and a lever
-anyone could pull. `startsWith` is case-insensitive, and a reply that quotes the
-command (`> @acme-bot review`) does not start a run. The comment body is matched
-in the expression and never interpolated into a `run:` line; a login reaches the
-gate script as env and is checked against the characters a login can contain
-before it is put in a URL.
+account; and the body starts with one of the commands. The job itself holds no
+script and no `gh`: it runs the review target and passes the commenter's login,
+the least role the command admits and the logins it admits outright, as
+`ZUKE_REVIEW_ACTOR`, `ZUKE_REVIEW_ROLE` and `ZUKE_REVIEW_USERS`. Who may start a
+run is decided **inside the build** — the default branch's own code — before any
+key is spent: each reviewer asks GitHub's collaborators API, through `GhTasks`
+from `@zuke/gh`, what role the commenter holds. A login named by `.users(...)`
+is admitted outright; otherwise `write` and above (or whatever `.role(...)`
+lowers that to: `triage`, or `read`, which on a public repository is everyone)
+lets the review run. Anything below — or a login that is not one, a role that
+cannot be read — is refused: 😕 on the comment, nothing posted on the pull
+request, and the run **fails** with the reason. Failing is what keeps the
+target's body from running for someone who was never allowed to start it; it
+shows on the default branch's Actions page, not on the pull request's checks.
+The event's `author_association` is deliberately not in the gate: GitHub reports
+an organisation member whose membership is private as `CONTRIBUTOR` (it turned
+this repository's own maintainers away), and `MEMBER` and `COLLABORATOR` both
+include read-only accounts, so the field can neither admit nor refuse anyone
+correctly. `startsWith` is case-insensitive, and a reply that quotes the command
+(`> @acme-bot review`) does not start a run. The comment body is matched in the
+expression and never interpolated into a `run:` line; the login reaches the
+build as env and is checked against the characters a login can contain before it
+is put in a URL.
 
 What runs is the default branch's build. The job passes `ZUKE_REVIEW_PR`, and
 every reviewer honours it ahead of its configured `git` source: it fetches

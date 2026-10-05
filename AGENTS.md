@@ -282,10 +282,22 @@ can't see Deno's module graph.
 
     Two constraints shape the choice. A wrapper package may depend only on
     `@zuke/core` — never on another wrapper, never on `@std/*` — so "share it
-    between two wrappers" means core or nothing. And `deno doc --lint` reports
-    `private-type-ref` when an **exported** class extends an **unexported** one,
-    so prefer sharing the logic as plain internal functions over introducing a
-    base class an exported settings class would extend.
+    between two wrappers" means core or nothing. The one exception is a **rich
+    feature package**: one that orchestrates other tools rather than wrapping
+    one (`@zuke/cli`, `@zuke/ai`). Such a package should call the wrapper that
+    already exists — `@zuke/ai` posts its reactions through `GhTasks` — rather
+    than grow a second, drifting copy of it. Each exemption is named in
+    `PACKAGE_DEPENDENCIES` (`build/packages.ts`), and
+    `tests/package_dependencies_test.ts` fails on any `@zuke/*` import that is
+    not listed, so adding one is a reviewed decision. Expect the list to grow as
+    more such packages appear; a plain tool wrapper never belongs on it. A
+    dependent must come after its dependencies in `PACKAGES`, the publish order,
+    and the core-floor check resolves a listed sibling from the local workspace
+    (it is released from the same commit) while still pinning core to its
+    published floor. And `deno doc --lint` reports `private-type-ref` when an
+    **exported** class extends an **unexported** one, so prefer sharing the
+    logic as plain internal functions over introducing a base class an exported
+    settings class would extend.
 
     Do not unify what only looks alike. Two wrappers each having a `.cwd()` is
     them mirroring two real CLIs (guideline 7), not duplication. Reject the
@@ -476,7 +488,8 @@ gemini-extension.json     # Gemini CLI extension manifest (serves skills/)
   settings-lambda style. Settings classes extend `ToolSettings` from
   `@zuke/core/tooling`; `buildArgs()` must stay pure (no I/O) so argv
   construction is unit-testable. Execution reuses `Command` from `shell.ts`. New
-  wrapper packages are workspace siblings that depend only on core.
+  wrapper packages are workspace siblings that depend only on core (the rich
+  feature packages listed in `PACKAGE_DEPENDENCIES` aside — see guideline 12).
 
 ## Good open-source practices to follow
 

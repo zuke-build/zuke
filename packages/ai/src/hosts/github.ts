@@ -9,6 +9,12 @@
  * @module
  */
 
+import { type GhReactionContent, GhTasks } from "@zuke/gh";
+import {
+  type CallerVerdict,
+  commandCaller,
+  mayStartReview,
+} from "../callers.ts";
 import { parsePullNumber, REVIEW_PR_ENV } from "../diff.ts";
 import { dig } from "../json.ts";
 import {
@@ -54,7 +60,7 @@ export interface GithubContext {
 export const REVIEW_COMMENT_ENV = "ZUKE_REVIEW_COMMENT";
 
 /** The GitHub reaction content for each {@link CommandSignal}. */
-const COMMAND_CONTENT: Record<CommandSignal, string> = {
+const COMMAND_CONTENT: Record<CommandSignal, GhReactionContent> = {
   started: "+1",
   unable: "confused",
 };
@@ -82,14 +88,39 @@ export function acknowledgeGithubCommand(
     if (!/^[1-9]\d{0,15}$/.test(id) || repo === undefined || token === "") {
       return false;
     }
+    const slash = repo.indexOf("/");
     const reaction = await postReaction(
-      `${API}/repos/${repo}/issues/comments/${id}/reactions`,
-      token,
+      { owner: repo.slice(0, slash), repo: repo.slice(slash + 1), token },
+      (s) => s.issueComment(Number(id)),
       COMMAND_CONTENT[signal],
       doFetch,
     );
     return reaction !== undefined;
   };
+}
+
+/**
+ * Whether the commenter who started this run may start a review — see
+ * `callers.ts`. Asks GitHub's collaborators API through `GhTasks`, with the
+ * token given; `undefined` when the run was not started by a comment.
+ */
+export function authorizeGithubCommand(
+  env: EnvReader,
+):
+  | ((token: string, doFetch: typeof fetch) => Promise<CallerVerdict>)
+  | undefined {
+  const id = env(REVIEW_COMMENT_ENV);
+  if (id === undefined || id === "") return undefined;
+  const caller = commandCaller(env);
+  const repo = env("GITHUB_REPOSITORY") ?? "";
+  return (token, doFetch) =>
+    mayStartReview(
+      caller,
+      (login) =>
+        GhTasks.collaboratorPermission((s) =>
+          s.repo(repo).token(token).fetch(doFetch).login(login)
+        ),
+    );
 }
 
 /** Parse a `refs/pull/<n>/merge` ref into its pull-request number. */
@@ -329,6 +360,7 @@ export const githubHost: ReviewHost = {
     return githubReviewThreads(context);
   },
   acknowledgeCommand: acknowledgeGithubCommand,
+  authorizeCommand: authorizeGithubCommand,
   reactions(token, env) {
     const context = resolveGithubContext(token, env);
     if (context === undefined) return undefined;

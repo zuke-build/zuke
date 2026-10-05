@@ -110,3 +110,18 @@ export function fakeReactions(
     log,
   };
 }
+
+/**
+ * GitHub's answer to the collaborators lookup a comment-started run makes
+ * before it reviews: `login` has the `write` role. Answers that one URL and
+ * returns `undefined` for anything else, so a fake can fall through.
+ */
+export function collaborator(
+  url: string,
+  login = "maintainer",
+): Promise<Response> | undefined {
+  if (!url.endsWith(`/collaborators/${login}/permission`)) return undefined;
+  return Promise.resolve(
+    new Response(JSON.stringify({ permission: "write", role_name: "write" })),
+  );
+}

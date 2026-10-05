@@ -14,7 +14,7 @@ import type { Configure } from "@zuke/core/tooling";
 import { withEnv } from "../../core/tests/_env.ts";
 import { captureLines } from "../../core/tests/_console.ts";
 import { noRedactionContext } from "./_context.ts";
-import { fakeReactions } from "./_reactions.ts";
+import { collaborator, fakeReactions } from "./_reactions.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";
@@ -216,7 +216,7 @@ async function commanded(
   const github = fakeReactions();
   const impl = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    const reaction = github.handle(url, init);
+    const reaction = github.handle(url, init) ?? collaborator(url);
     if (reaction !== undefined) return reaction;
     const method = init?.method ?? "GET";
     return Promise.resolve(
@@ -232,6 +232,7 @@ async function commanded(
       GITHUB_STEP_SUMMARY: undefined,
       ZUKE_REVIEW_PR: String(pull),
       ZUKE_REVIEW_COMMENT: "4321",
+      ZUKE_REVIEW_ACTOR: "maintainer",
     }, async () => {
       try {
         await securityReviewer((r) =>

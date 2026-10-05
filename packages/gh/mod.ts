@@ -159,6 +159,18 @@ export {
   tagCommit,
 } from "./src/commit.ts";
 export {
+  type GhReaction,
+  type GhReactionApi,
+  type GhReactionContent,
+  GhReactionSettings,
+  type GhReactionSubject,
+} from "./src/reaction.ts";
+export {
+  type GhCollaboratorApi,
+  type GhCollaboratorPermission,
+  GhCollaboratorSettings,
+} from "./src/collaborator.ts";
+export {
   type GhCheckConclusion,
   type GhCheckRunApi,
   type GhCheckRunResult,

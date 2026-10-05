@@ -9,6 +9,7 @@
  * @module
  */
 
+import type { CallerVerdict } from "../callers.ts";
 import { AiReviewError } from "../errors.ts";
 import { dig } from "../json.ts";
 
@@ -241,6 +242,20 @@ export interface ReviewHost {
       signal: CommandSignal,
       doFetch: typeof fetch,
     ) => Promise<boolean>)
+    | undefined;
+  /**
+   * Decide whether the commenter who started this run may start a review —
+   * the access control of a comment command, made in-process by the default
+   * branch's own build rather than in the workflow file. `undefined` means
+   * the run was not started by a comment, decided from the environment alone;
+   * the returned function takes a token that can read the repository's
+   * collaborators and never throws: an answer it cannot read refuses.
+   * Optional, like {@link acknowledgeCommand}, and present on the same hosts.
+   */
+  authorizeCommand?(
+    env: EnvReader,
+  ):
+    | ((token: string, doFetch: typeof fetch) => Promise<CallerVerdict>)
     | undefined;
   /**
    * Resolve the host context and return the reactions the reviewer uses to

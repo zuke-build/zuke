@@ -103,7 +103,7 @@ Deno.test("GitHub: a withdrawal deletes only the reviewer's own reaction, and ne
   );
   assertEquals(await reactions?.remove("failed", fetch), true);
   assertEquals(calls.map((c) => [c.method, c.url]), [
-    ["GET", `${GH_REACTIONS}?content=-1&per_page=100`],
+    ["GET", `${GH_REACTIONS}?per_page=100&page=1&content=-1`],
     ["DELETE", `${GH_REACTIONS}/7`],
   ]);
   // None of its own: nothing removed.

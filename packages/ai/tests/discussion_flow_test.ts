@@ -25,7 +25,7 @@ import { sha256Hex } from "@zuke/core";
 import { withEnv } from "../../core/tests/_env.ts";
 import { captureLines as captured } from "../../core/tests/_console.ts";
 import { maskingContext, noRedactionContext } from "./_context.ts";
-import { reacted, REACTIONS } from "./_reactions.ts";
+import { collaborator, reacted, REACTIONS } from "./_reactions.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";
@@ -4643,7 +4643,7 @@ Deno.test("a comment-started run acknowledges the command with 👍 before the r
       url: String(input),
       body: typeof init?.body === "string" ? init.body : "",
     });
-    return inner(input, init);
+    return collaborator(String(input)) ?? inner(input, init);
   }) as typeof globalThis.fetch;
   const lines = await captured(() =>
     withEnv({
@@ -4654,6 +4654,7 @@ Deno.test("a comment-started run acknowledges the command with 👍 before the r
       GITHUB_STEP_SUMMARY: undefined,
       ZUKE_REVIEW_PR: "7",
       ZUKE_REVIEW_COMMENT: "987654",
+      ZUKE_REVIEW_ACTOR: "maintainer",
     }, async () => {
       await securityReviewer((r) =>
         r.provider("claude").apiKey("k")

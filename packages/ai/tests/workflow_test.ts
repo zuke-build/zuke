@@ -450,12 +450,11 @@ Deno.test("the prelude pin comes from the resolver, not core's fallback", () => 
 function commandBuild(
   configure = (c: ReviewCommandSettings) =>
     c.text("@zuke-build review").secrets("APP_ID", "APP_KEY"),
-  reviewer = (r: Reviewer) => r,
 ): string {
   class B extends Build {
     key = parameter("Key").secret().env("OPENAI_API_KEY");
     security = securityReviewer((r) =>
-      reviewer(r.provider("openai").apiKey(this.key).comment())
+      r.provider("openai").apiKey(this.key).comment()
     );
     review = target().validateBefore(this.security).executes(() => {});
     wf = aiReviewWorkflow({ reviewers: [this.security], command: configure });
@@ -732,90 +731,25 @@ Deno.test("the command is GitHub-only: another host renders no comment job", () 
   assertEquals(yaml.includes("commandReview"), false);
 });
 
-Deno.test("the command job checks the commenter's role before the review", () => {
-  // The gate cannot ask anyone, so the job asks the collaborators API first:
-  // write and above let the review run; triage/read end the job with nothing
-  // spent.
+Deno.test("the command job runs the review alone, telling the build who asked and who may", () => {
+  // Who may start a review is decided in-process by the default branch's
+  // build (callers.ts), so the job holds no shell and no `gh` of its own.
   const commandJob = commandBuild().split("  commandReview:")[1];
-  const check = commandJob.indexOf("Check the commenter may start a review");
-  const review = commandJob.indexOf("AI review with Zuke");
-  assertEquals(check > 0 && check < review, true);
-  const step = commandJob.slice(check, review);
-  assertStringIncludes(step, 'GH_TOKEN: "${{ github.token }}"');
+  assertEquals(commandJob.includes("gh api"), false);
+  assertEquals(commandJob.includes("shell: bash"), false);
+  assertEquals(commandJob.includes("steps.callers"), false);
   assertStringIncludes(
-    step,
+    commandJob,
     'ZUKE_REVIEW_ACTOR: "${{ github.event.comment.user.login }}"',
   );
-  assertStringIncludes(step, "collaborators/$ZUKE_REVIEW_ACTOR/permission");
-  assertStringIncludes(step, "--jq '\"\\(.permission) \\(.role_name)\"'");
-  assertStringIncludes(step, "  (write|maintain|admin)");
-  assertStringIncludes(step, 'echo "allowed=true" >> "$GITHUB_OUTPUT"');
-  // No allow-list by default: nobody is admitted before the API is asked.
-  assertEquals(step.includes("is named as allowed"), false);
-  // A commenter without push access is skipped, not failed: with no
-  // association pre-filter anyone who can comment can type the command, and
-  // a red check for each would be noise and a lever. The review step waits
-  // for the verdict.
-  assertStringIncludes(step, 'echo "allowed=false" >> "$GITHUB_OUTPUT"');
-  assertEquals(step.includes("::error::$ZUKE_REVIEW_ACTOR has"), false);
-  assertStringIncludes(
-    commandJob.slice(review),
-    "if: \"steps.callers.outputs.allowed == 'true'\"",
-  );
-  // Fails closed, explicitly: its own shell and flags, and an API call that
-  // cannot be read refuses the run rather than falling through.
-  assertStringIncludes(step, "shell: bash");
-  assertStringIncludes(step, "set -euo pipefail");
-  assertStringIncludes(step, "refusing to run the review");
-  assertStringIncludes(step, "exit 1");
-  // The login is validated before it is put in a URL, and it reaches the
-  // script only as env — never interpolated into the script text.
-  assertStringIncludes(step, "*[!A-Za-z0-9-]*)");
+  assertStringIncludes(commandJob, "ZUKE_REVIEW_ROLE: write");
+  // No allow-list by default.
+  assertEquals(commandJob.includes("ZUKE_REVIEW_USERS"), false);
+  // The login reaches the build only as env, once.
   assertEquals(
-    step.split("${{ github.event.comment.user.login }}").length,
+    commandJob.split("${{ github.event.comment.user.login }}").length,
     2,
   );
-});
-
-Deno.test("a refused or unreadable commenter gets 😕 on their comment, between the check and the review", () => {
-  const commandJob = commandBuild().split("  commandReview:")[1];
-  const check = commandJob.indexOf("Check the commenter may start a review");
-  const refused = commandJob.indexOf(
-    "Tell the commenter the review will not run",
-  );
-  const review = commandJob.indexOf("AI review with Zuke");
-  assertEquals(check < refused && refused < review, true);
-  const step = commandJob.slice(refused, review);
-  // Runs on a refusal and on a check that failed closed — anything but an
-  // admitted commenter — unless the run was cancelled.
-  assertStringIncludes(
-    step,
-    "${{ !cancelled() && steps.callers.outputs.allowed != 'true' }}",
-  );
-  assertStringIncludes(step, "content=confused");
-  // Best-effort: a token that cannot react does not fail the job.
-  assertStringIncludes(step, "|| true");
-  // The comment id reaches the script only as env.
-  assertStringIncludes(
-    step,
-    'ZUKE_REVIEW_COMMENT: "${{ github.event.comment.id }}"',
-  );
-  assertStringIncludes(step, "comments/$ZUKE_REVIEW_COMMENT/reactions");
-});
-
-Deno.test("reviewers that do not react get no 😕 step", () => {
-  for (
-    const off of [
-      (r: Reviewer) => r.reactions(false),
-      (r: Reviewer) => r.quiet(),
-    ]
-  ) {
-    const yaml = commandBuild(undefined, off);
-    assertEquals(
-      yaml.includes("Tell the commenter the review will not run"),
-      false,
-    );
-  }
 });
 
 Deno.test("also adds commands that start the run too, each matched like the first", () => {
@@ -878,7 +812,7 @@ Deno.test("a reviewer that takes commands derives the command job, review and ac
   // The lambda refines rather than declares: no text needed to keep the job.
   const refined = mentionBuild((c) => c.role("triage"));
   assertStringIncludes(refined, "'@acme-bot review'");
-  assertStringIncludes(refined, "  (triage|write|maintain|admin)");
+  assertStringIncludes(refined, "ZUKE_REVIEW_ROLE: triage");
 });
 
 Deno.test("a command text of its own replaces the derived ones; also still adds", () => {
@@ -915,23 +849,19 @@ Deno.test("reviewers taking commands under different mentions are refused", () =
   );
 });
 
-Deno.test("role and users shape the callers step: named logins first, then the role floor", () => {
+Deno.test("role and users reach the build as the command job's env", () => {
   const yaml = mentionBuild((c) => c.role("read").users("alice", "bob-2"));
   const job = yaml.split("  commandReview:")[1];
-  const named = job.indexOf("  (alice|bob-2)");
-  const api = job.indexOf("collaborators/$ZUKE_REVIEW_ACTOR/permission");
-  assertEquals(named > 0 && named < api, true);
-  assertStringIncludes(job, "is named as allowed to start a review");
-  assertStringIncludes(job, "  (read|triage|write|maintain|admin)");
-  assertStringIncludes(job, "starting a review needs read or above");
-  // A login that is not one never reaches the script.
+  assertStringIncludes(job, "ZUKE_REVIEW_ROLE: read");
+  assertStringIncludes(job, 'ZUKE_REVIEW_USERS: "alice,bob-2"');
+  // A login that is not one never reaches the file.
   assertThrows(
     () => mentionBuild((c) => c.users("not a login")),
     Error,
     "is not a GitHub login",
   );
   assertThrows(
-    () => mentionBuild((c) => c.users("x) ;; *) echo pwned")),
+    () => mentionBuild((c) => c.users("x,evil")),
     Error,
     "is not a GitHub login",
   );
@@ -978,32 +908,4 @@ Deno.test("a parameter with no env name is refused as a secret, by name", () => 
   const b = new B();
   discoverParameters(b);
   assertThrows(() => b.wf.render(), Error, "has no env name");
-});
-
-Deno.test("a login or role that is a shell reserved word stays a case pattern", () => {
-  // `esac` is a valid GitHub login; as the first word after `in` bash would
-  // read it as the end of the statement. The POSIX opening parenthesis keeps
-  // every pattern list a pattern list.
-  const yaml = mentionBuild((c) => c.users("esac", "alice"));
-  const job = yaml.split("  commandReview:")[1];
-  assertStringIncludes(job, "  (esac|alice)");
-  assertStringIncludes(job, "  (write|maintain|admin)");
-  assertEquals(/\n\s+esac\|/.test(job), false);
-});
-
-Deno.test("a custom repository role is admitted by its base level", () => {
-  // GitHub reports a custom role's name as the role and the level it is
-  // built on as the permission; the gate reads both in one call and admits
-  // the base level the floor allows.
-  const job = mentionBuild().split("  commandReview:")[1];
-  assertStringIncludes(job, "--jq '\"\\(.permission) \\(.role_name)\"'");
-  assertStringIncludes(job, 'permission="${answer%% *}"');
-  assertStringIncludes(job, 'role="${answer#* }"');
-  assertStringIncludes(job, "      (admin|write)"); // the write floor's bases
-  const admin =
-    mentionBuild((c) => c.role("admin")).split("  commandReview:")[1];
-  assertStringIncludes(admin, "  (admin)");
-  assertStringIncludes(admin, "      (admin)");
-  const read = mentionBuild((c) => c.role("read")).split("  commandReview:")[1];
-  assertStringIncludes(read, "      (admin|write|read)");
 });

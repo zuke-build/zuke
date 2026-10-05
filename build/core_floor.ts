@@ -153,6 +153,17 @@ export function isAllowedSpecifier(specifier: string): boolean {
  * substitute the local `packages/core` member and the check would prove
  * nothing.
  *
+ * A dependency on another workspace package (`@zuke/gh` from `@zuke/ai`, say)
+ * resolves to that package's **local** source when `siblings` names it: the
+ * file URL of its directory. The two are released from the same commit, so
+ * checking a package against the sibling it ships beside is the honest claim —
+ * resolving the sibling from JSR instead would fail every change that uses a
+ * sibling's new task until that sibling had been published, which is a
+ * release-ordering question, not a core floor. Core itself is never resolved
+ * locally: it is what this check exists to pin. The sibling's own `@zuke/core`
+ * import goes through this same map, so it is checked against the dependent's
+ * floor too.
+ *
  * `minimumDependencyAge` is zeroed because Deno otherwise refuses a version
  * published in the last day as a supply-chain precaution. That default is right
  * when installing dependencies to run, and wrong here: this check installs
@@ -160,14 +171,48 @@ export function isAllowedSpecifier(specifier: string): boolean {
  * was *just* released alongside it. Left at the default, every package
  * declaring a fresh core would fail spuriously for a day after each release.
  */
-export function floorConfig(floor: CoreFloor, pinned: string): string {
+export function floorConfig(
+  floor: CoreFloor,
+  pinned: string,
+  siblings: ReadonlyMap<string, string> = new Map(),
+): string {
   const imports: Record<string, string> = {};
   for (const [name, specifier] of Object.entries(floor.imports)) {
-    if (isAllowedSpecifier(specifier)) imports[name] = specifier;
+    if (!isAllowedSpecifier(specifier)) continue;
+    const local = siblings.get(name);
+    imports[name] = local !== undefined && name !== CORE_PACKAGE
+      ? `${local}mod.ts`
+      : specifier;
   }
   imports[CORE_PACKAGE] = pinned;
   const config = { imports, minimumDependencyAge: 0 };
   return `${JSON.stringify(config, null, 2)}\n`;
+}
+
+/**
+ * The workspace packages as {@link floorConfig} resolves them locally: each
+ * `@zuke/<name>` mapped to the file URL of `packages/<name>/` under `root`.
+ * Named from the workspace's own package list, never from a `deno.json`
+ * mapping, so a pull request cannot point a "sibling" anywhere else.
+ */
+export function workspaceSiblings(
+  packages: readonly string[],
+  root: string,
+): Map<string, string> {
+  // A Windows root (`C:\work`) becomes `file:///C:/work`, a POSIX one
+  // (`/work`) `file:///work`.
+  const slashed = root.replaceAll("\\", "/").replace(/\/+$/, "");
+  const base = slashed.startsWith("/")
+    ? `file://${slashed}`
+    : `file:///${slashed}`;
+  const siblings = new Map<string, string>();
+  for (const pkg of packages) {
+    siblings.set(
+      `@zuke/${pkg}`,
+      new URL(`${base}/packages/${pkg}/`).href,
+    );
+  }
+  return siblings;
 }
 
 /**
@@ -197,7 +242,8 @@ export function formatFloorFailures(results: readonly FloorResult[]): string[] {
 }
 
 /**
- * Type-check each package against the published core it declares.
+ * Type-check each package against the published core it declares, and
+ * against the local source of any workspace sibling it depends on.
  *
  * Packages are checked in the given order; each gets a throwaway config in its
  * own temporary directory, removed afterwards. A package declaring no core
@@ -208,6 +254,7 @@ export async function checkCoreFloors(
   readText: (path: string) => string = Deno.readTextFileSync,
 ): Promise<FloorResult[]> {
   const results: FloorResult[] = [];
+  const siblings = workspaceSiblings(packages, Deno.cwd());
   for (const pkg of packages) {
     const floor = readCoreFloor(pkg, readText);
     if (floor === undefined) continue;
@@ -239,7 +286,7 @@ export async function checkCoreFloors(
     const dir = await Deno.makeTempDir({ prefix: `zuke-floor-${pkg}-` });
     try {
       const config = `${dir}/deno.json`;
-      await FileTasks.writeText(config, floorConfig(floor, pinned));
+      await FileTasks.writeText(config, floorConfig(floor, pinned, siblings));
       const output = await DenoTasks.check((s) =>
         s.config(config).noLock().paths(`packages/${pkg}/mod.ts`).noThrow()
       );

@@ -14,7 +14,10 @@ import { Build, target } from "../../packages/core/mod.ts";
 import { genericReviewer, securityReviewer } from "../../packages/ai/mod.ts";
 import { runCli } from "./_harness.ts";
 import { withEnv } from "../../packages/core/tests/_env.ts";
-import { fakeReactions } from "../../packages/ai/tests/_reactions.ts";
+import {
+  collaborator,
+  fakeReactions,
+} from "../../packages/ai/tests/_reactions.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";
@@ -39,7 +42,7 @@ function fakeGithub(responses: string[]) {
   let served = 0;
   const impl = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    const reaction = reactions.handle(url, init);
+    const reaction = reactions.handle(url, init) ?? collaborator(url);
     if (reaction !== undefined) return reaction;
     if (url.startsWith("https://api.github.com/")) {
       const method = init?.method ?? "GET";
@@ -91,6 +94,7 @@ Deno.test("two reviewers in one build show one verdict — the worst — and �
       GITHUB_STEP_SUMMARY: undefined,
       ZUKE_REVIEW_PR: "801",
       ZUKE_REVIEW_COMMENT: "4242",
+      ZUKE_REVIEW_ACTOR: "maintainer",
     },
     async () => {
       const result = await runCli(Pipeline, ["deploy"]);
@@ -199,6 +203,7 @@ Deno.test("a commanded run where one reviewer reviewed and the next was skipped 
       GITHUB_STEP_SUMMARY: undefined,
       ZUKE_REVIEW_PR: "803",
       ZUKE_REVIEW_COMMENT: "5151",
+      ZUKE_REVIEW_ACTOR: "maintainer",
     },
     async () => {
       const result = await runCli(Pipeline, ["deploy"]);
@@ -210,4 +215,59 @@ Deno.test("a commanded run where one reviewer reviewed and the next was skipped 
     "+1",
   ]);
   assertEquals(github.reactions.on(`${ISSUES}/803/reactions`), ["+1"]);
+});
+
+Deno.test("a command from someone who may not start a review runs nothing: the target's body never runs", async () => {
+  const github = fakeGithub([claude({ score: 0, findings: [] })]);
+  const executed: string[] = [];
+  let modelCalls = 0;
+  const counting = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith("/collaborators/drive-by/permission")) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ permission: "read", role_name: "read" }),
+        ),
+      );
+    }
+    if (!url.startsWith("https://api.github.com/")) modelCalls++;
+    return github.fetch(input, init);
+  }) as typeof fetch;
+  class Pipeline extends Build {
+    security = securityReviewer((r) =>
+      r.provider("claude").apiKey("k").comment()
+        .diff((d) => d.text(DIFF)).fetch(counting)
+    );
+    deploy = target()
+      .validateBefore(this.security)
+      .executes(() => {
+        executed.push("deploy");
+        return Promise.resolve();
+      });
+  }
+
+  await withEnv(
+    {
+      GITHUB_ACTIONS: "true",
+      GITHUB_REPOSITORY: "zuke-build/zuke",
+      GITHUB_REF: "refs/heads/master",
+      GITHUB_TOKEN: "tkn",
+      GITHUB_STEP_SUMMARY: undefined,
+      ZUKE_REVIEW_PR: "804",
+      ZUKE_REVIEW_COMMENT: "6262",
+      ZUKE_REVIEW_ACTOR: "drive-by",
+    },
+    async () => {
+      const result = await runCli(Pipeline, ["deploy"]);
+      assertEquals(result.code === 0, false);
+    },
+  );
+
+  assertEquals(executed, []);
+  assertEquals(modelCalls, 0);
+  assertEquals(github.reactions.on(`${ISSUES}/comments/6262/reactions`), [
+    "confused",
+  ]);
+  // Nothing on the pull request itself.
+  assertEquals(github.reactions.on(`${ISSUES}/804/reactions`), []);
 });

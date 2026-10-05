@@ -110,7 +110,6 @@ Full reference: [docs/cli.md](./docs/cli.md).
 - [@zuke/yarn](https://jsr.io/@zuke/yarn) — typed `YarnTasks` wrappers for the `yarn` CLI, for use in Zuke
 - [@zuke/cmd](https://jsr.io/@zuke/cmd) — generic command execution for Zuke builds: the fallback for
 - [@zuke/console](https://jsr.io/@zuke/console) — task-shaped console output for Zuke builds, so a build never
-- [@zuke/cli](https://jsr.io/@zuke/cli) — the `zuke` command. Install it globally with
 - [@zuke/docker](https://jsr.io/@zuke/docker) — typed `DockerTasks` wrappers for the `docker` CLI
 - [@zuke/docker-compose](https://jsr.io/@zuke/docker-compose) — typed Docker Compose task wrappers for Zuke builds
 - [@zuke/kubectl](https://jsr.io/@zuke/kubectl) — typed `kubectl` CLI task wrappers for Zuke builds, for
@@ -149,6 +148,7 @@ Full reference: [docs/cli.md](./docs/cli.md).
 - [@zuke/gcloud](https://jsr.io/@zuke/gcloud) — typed Google Cloud tooling for Zuke builds: the `gcloud`
 - [@zuke/git](https://jsr.io/@zuke/git) — typed `git` task wrappers for Zuke builds
 - [@zuke/gh](https://jsr.io/@zuke/gh) — typed GitHub tooling for Zuke builds: the `gh` (GitHub CLI) task
+- [@zuke/cli](https://jsr.io/@zuke/cli) — the `zuke` command. Install it globally with
 - [@zuke/codecov](https://jsr.io/@zuke/codecov) — a typed Codecov CLI (`codecovcli`) task wrapper for Zuke
 - [@zuke/claude](https://jsr.io/@zuke/claude) — a typed Claude Code (https://docs.claude.com/en/docs/claude-code)
 - [@zuke/codex](https://jsr.io/@zuke/codex) — a typed OpenAI Codex (https://developers.openai.com/codex/cli)

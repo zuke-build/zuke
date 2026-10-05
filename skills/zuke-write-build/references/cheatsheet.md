@@ -967,7 +967,11 @@ through `GhTasks.api(...)`. `GhTasks.appToken` mints a GitHub App installation
 token, and `GhTasks.appTokenSource((s) => s.app(this.appId, this.appKey))` is
 the lazy, memoised form a build hands to whatever posts for it — repository from
 `GITHUB_REPOSITORY`, the App's own grant, `GITHUB_TOKEN` as the fallback when
-the App is not configured.
+the App is not configured. The REST-only operations are typed too:
+`GhTasks.react((s) => s.issue(12).content("eyes"))` (also `.issueComment(id)` /
+`.reviewComment(id)`), `listReactions`, `deleteReaction`, and
+`GhTasks.collaboratorPermission((s) => s.login("mona"))` for a commenter's role
+— reach for these before `GhTasks.api(...)`.
 
 | Group     | Tasks                                                                                                                                   |
 | --------- | --------------------------------------------------------------------------------------------------------------------------------------- |

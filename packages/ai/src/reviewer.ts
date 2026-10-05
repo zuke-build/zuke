@@ -201,15 +201,6 @@ export class Reviewer implements Validation {
     return this.#comment;
   }
 
-  /**
-   * Whether this reviewer reacts on the pull request — `.comment()` set, and
-   * neither `.reactions(false)` nor `.quiet()` — which is what tells the
-   * workflow generator to answer a refused command with 😕.
-   */
-  get reactionsEnabled_(): boolean {
-    return this.#comment && this.#reactions && !this.#quiet;
-  }
-
   /** The configured comment-posting token, if `.commentToken(...)` was called. */
   get commentToken_(): CommentTokenSource | undefined {
     return this.#commentToken;
@@ -799,6 +790,39 @@ export class Reviewer implements Validation {
   }
 
   /**
+   * Refuse a run started by a comment from someone who may not start a review
+   * — the command's access control, decided here by the default branch's
+   * build (see `callers.ts`). Applies whatever the comment and reaction
+   * settings, since it is authorization, not output. A refusal is answered 😕,
+   * posts nothing on the pull request, and **throws**: returning would let the
+   * target's body run, which the commenter was never allowed to start. The
+   * lookup asks with the host's own token (the job's `GITHUB_TOKEN`), falling
+   * back to the comment token.
+   */
+  async #refuseUnauthorizedCommand(target: string): Promise<void> {
+    const host = detectReviewHost(this.#env);
+    const authorize = host?.authorizeCommand?.(this.#env);
+    if (host === undefined || authorize === undefined) return;
+    let token = this.#env(host.defaultTokenEnv) ?? "";
+    if (token === "") {
+      try {
+        token = await this.#resolveCommentToken(host);
+      } catch {
+        token = "";
+      }
+    }
+    const verdict = await authorize(token, this.#fetch ?? fetch);
+    if (verdict.allowed) {
+      if (!this.#quiet) console.log(`[${this.name}] ${verdict.reason}`);
+      return;
+    }
+    await this.#answerCommand("unable");
+    throw new AiReviewError(
+      `${this.name} of "${target}" was not started: ${verdict.reason}`,
+    );
+  }
+
+  /**
    * React 👀 on the pull-request description — through the process-wide
    * {@link PROGRESS}, which the other reviewers of run `run` share — and return the
    * function that replaces it with this review's verdict, answering whether
@@ -1191,6 +1215,9 @@ export class Reviewer implements Validation {
     if (provider === undefined) {
       throw new AiReviewError("a provider is required; call .provider(...)");
     }
+    // A comment command from someone who may not start a review ends here,
+    // before a key is spent or a reaction goes on the pull request.
+    await this.#refuseUnauthorizedCommand(context.target);
     // Started before anything can skip, so a skipped review still withdraws
     // the verdict an earlier run left rather than letting it stand for this
     // commit.

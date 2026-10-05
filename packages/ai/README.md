@@ -637,10 +637,13 @@ class ReviewCommandSettings
   repository's secrets. Its `if:` fires only when the comment is on a pull
   request, starts with one of the commands, and was written by a human (not a
   bot account); the comment body is matched in the expression and never
-  interpolated into a `run:` line. The access control is the job's first
-  step: it asks the collaborators API what role the commenter holds, and
-  every later step is skipped unless it is at or above {@link role} or the
-  login is among {@link users}. The event's `author_association` is
+  interpolated into a `run:` line. The access control runs inside the build,
+  not the workflow file: the job passes the commenter's login, {@link role}
+  and {@link users} as env, and each reviewer asks the collaborators API —
+  through `GhTasks` — what role the commenter holds, starting only when it is
+  at or above {@link role} or the login is among {@link users} (see
+  `callers.ts`). A refused commenter's run ends having spent nothing, with a
+  😕 on their comment. The event's `author_association` is
   deliberately not consulted — it reports a private organisation member as
   `CONTRIBUTOR`, and `MEMBER` and `COLLABORATOR` admit read-only accounts, so
   it can neither admit nor refuse anyone correctly.
@@ -712,10 +715,6 @@ class Reviewer implements Validation
     The configured API key (a parameter — for its env var — or a literal).
   get commentEnabled_(): boolean
     Whether `.comment()` is set — i.e. this reviewer posts to the PR.
-  get reactionsEnabled_(): boolean
-    Whether this reviewer reacts on the pull request — `.comment()` set, and
-    neither `.reactions(false)` nor `.quiet()` — which is what tells the
-    workflow generator to answer a refused command with 😕.
   get commentToken_(): CommentTokenSource | undefined
     The configured comment-posting token, if `.commentToken(...)` was called.
   get mention_(): string | undefined
@@ -1210,7 +1209,7 @@ type AssessmentType = "generic" | "security" | "secrets" | "correctness" | "lice
 
 type CommandRole = "read" | "triage" | "write" | "maintain" | "admin"
   A repository role a commenter may hold, as GitHub's collaborators API
-  reports it (`role_name`) — see {@link ReviewCommandSettings.role}.
+  reports it (`role_name`) — see `ReviewCommandSettings.role`.
 
 type CommentTokenSource = AnyParameter | string | (() => Promise<string>)
   Where a reviewer's comment-posting token comes from: a secret parameter (for
