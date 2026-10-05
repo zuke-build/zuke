@@ -222,7 +222,7 @@ export interface ReviewHost {
    */
   reviewThreads?(token: string, env: EnvReader): ReviewThreads | undefined;
   /**
-   * Acknowledge the comment that started this run — react 👀 on it, the way
+   * Acknowledge the comment that started this run — react 👍 on it, the way
    * Dependabot acknowledges its commands — so the maintainer sees the command
    * was picked up before the assessment lands. `undefined` means this run was
    * not started by a comment, decided from the environment alone so the
@@ -235,6 +235,39 @@ export interface ReviewHost {
   acknowledgeCommand?(
     env: EnvReader,
   ): ((token: string, doFetch: typeof fetch) => Promise<boolean>) | undefined;
+  /**
+   * Resolve the host context and return the reactions the reviewer uses to
+   * signal its progress on the pull/merge request **description**, or
+   * `undefined` when the environment has no pull-request context — as in
+   * `prepare`. Optional: a host whose API has no reactions on a description
+   * (Azure DevOps, Bitbucket Cloud) simply does not signal progress.
+   */
+  reactions?(token: string, env: EnvReader): ReviewReactions | undefined;
+}
+
+/**
+ * A state a review signals on the pull-request description: `reviewing`
+ * while it runs, then one verdict — `passed` (no findings), `minor` (findings
+ * under the failing threshold) or `failed`. Host-neutral: each host maps it
+ * onto the closest emoji its reaction set has.
+ */
+export type ReviewSignal = "reviewing" | "passed" | "minor" | "failed";
+
+/**
+ * Add and withdraw the token's own {@link ReviewSignal} reactions on one pull
+ * request's description. Both operations are idempotent and never throw: a
+ * reaction is a courtesy, and a host that refuses one must not fail a review.
+ */
+export interface ReviewReactions {
+  /**
+   * Identifies the pull request across reviewers (host, project, number), so
+   * reviewers sharing an identity can agree on one verdict for it.
+   */
+  readonly key: string;
+  /** React with `signal`; `true` when the host now shows it. */
+  add(signal: ReviewSignal, doFetch: typeof fetch): Promise<boolean>;
+  /** Withdraw the token's own `signal` reaction; `true` when none is left. */
+  remove(signal: ReviewSignal, doFetch: typeof fetch): Promise<boolean>;
 }
 
 /** The Markdown header that every PR comment opens with, identifying Zuke. */

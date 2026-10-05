@@ -2,7 +2,7 @@
 
 This is the walk-through from an organisation with no App to reviews that post
 as `<your-app>[bot]`, answer maintainers in review threads, close the threads
-they settle, and react 👀 when someone comments a command — the setup this
+they settle, and react 👍 when someone comments a command — the setup this
 repository runs under `zuke-build[bot]`. It assumes you already have an AI
 reviewer gating a target (see [AI code review](./ai-review.md)); everything here
 is about the identity it posts with.
@@ -49,9 +49,10 @@ What each permission is for:
 
 - **Pull requests** — the summary comment, the review threads and the replies in
   them.
-- **Issues** — the 👀 reaction on a command comment. A pull request's
-  conversation comments are issue comments in GitHub's API, so this is where
-  reactions on them live.
+- **Issues** — the 👍 reaction on a command comment and the progress reactions
+  (👀, then the verdict) on the description. A pull request's description and
+  conversation comments are an issue and issue comments in GitHub's API, so this
+  is where reactions on them live.
 - **Contents** — resolving review threads. This is GitHub's rule, not the
   reviewer's preference: the GraphQL mutation that resolves a thread is granted
   to whoever has write access to the repository, and for an installation token
@@ -215,7 +216,7 @@ credentials, so:
 - a maintainer who replies in a thread, or comments
   `@acme-bot accept <id>
   reason`, gets the answer on the next run — a push, or
-  `@acme-bot review`, which the App reacts 👀 to before it starts;
+  `@acme-bot review`, which the App reacts 👍 to before it starts;
 - a finding the reviewer dismisses, accepts or marks fixed gets its thread
   **resolved**, which is the part `GITHUB_TOKEN` cannot do.
 
@@ -250,4 +251,4 @@ To check the identity took, look at the author of the summary comment: it is
 | Reviews post as `github-actions[bot]`                                                  | The credentials did not reach the job or did not mint. Check the job log for `gh: could not mint the app token (…)` — a `401` means the id or key is wrong or the PEM was pasted incompletely; `is the app installed on …` means step 2 was skipped; `pinned to …` means `.repository(...)` names another repository. |
 | Replies land but threads stay open, Notes say `Resource not accessible by integration` | The token lacks `contents: write`: either the App was not granted Contents read and write in step 1, or the build's `.permission(...)` list omits it.                                                                                                                                                                 |
 | `@acme-bot review` does nothing                                                        | The commenter is below the command's role floor (push access by default), the comment does not _start_ with the mention, or the author is a bot account. The gate step's log says which; `command: (c) => c.role(...)` or `.users(...)` widens it.                                                                    |
-| No 👀 on the command comment                                                           | Issues read and write is missing on the App. Harmless — the review still runs — but it is the one visible sign the command was picked up.                                                                                                                                                                             |
+| No 👍 on the command comment                                                           | Issues read and write is missing on the App. Harmless — the review still runs — but it is the one visible sign the command was picked up.                                                                                                                                                                             |

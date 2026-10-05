@@ -1130,6 +1130,11 @@ Depth and discussion knobs (all optional, per reviewer):
   its thread — goes back to the verifier carrying the earlier evidence.
 - `.comment("append")` — post a fresh PR comment per run (history stays on the
   thread) instead of the default single upserted comment per reviewer.
+- `.reactions(false)` — opt out of the progress reactions `.comment()` turns on:
+  👀 on the PR description while reviewing, then 👍 clean / 🤏 findings under
+  the gate (😕 on GitHub) / 👎 failed — the worst verdict across the reviewers
+  on that PR — and 👍 on a `review` command comment. GitHub and GitLab only; a
+  no-op elsewhere.
 - `.discussion((d) => d.threads())` — anchor each finding to its line as a PR
   **review thread**: the maintainer contests it by replying in that thread (no
   id to quote), and the reviewer replies with the outcome and resolves the

@@ -495,6 +495,36 @@ side effect like the summary.
 For GitHub Actions, the generator below also adds `pull-requests: write` to the
 workflow permissions automatically when any reviewer has `.comment()` set.
 
+### Progress reactions
+
+With `.comment()` set, the reviewer also shows where it is on the pull/merge
+request **description**, so a reader of the conversation sees it at a glance
+without opening the job log:
+
+| Reaction | Meaning                                                                             |
+| -------- | ----------------------------------------------------------------------------------- |
+| 👀       | a review is running                                                                 |
+| 👍       | it passed with no findings                                                          |
+| 🤏       | it has findings, all under the failing threshold (😕 on GitHub — its set has no 🤏) |
+| 👎       | it failed: the gate tripped, or the review errored under `onError("fail")`          |
+
+A skipped review (no key, budget exhausted, an error tolerated under
+`onError("warn")`) withdraws 👀 without claiming a verdict. On a
+[comment-started run](#on-demand-a-comment-command) the command comment itself
+gets 👍 as the review starts.
+
+Every reviewer on a pull request usually posts under one identity, and a host
+keeps one reaction of each kind per account, so the reviewers **share** these
+reactions. Within a run they agree on one verdict — the worst any of them
+reached, so a clean second review cannot hide the first one's findings — and 👀
+stays until the last of them finishes. The first reviewer to start clears the
+verdict the previous run left.
+
+GitHub (reactions) and GitLab (award emoji) have them; Azure DevOps has no
+reactions on a pull-request description and Bitbucket Cloud no reactions API, so
+there the feature is a no-op. `.quiet()` leaves the pull request alone, as it
+does for the comment, and `.reactions(false)` turns all of it off.
+
 ## Token usage
 
 If the provider's response reports token counts, the review prints them as a
@@ -651,8 +681,9 @@ change the rules it is judged by from this flow; the maintainer's comment is the
 human gate, as it is for Dependabot's `@dependabot` commands; and the diff and
 the thread are the same untrusted text the reviewers already read. The job also
 passes `ZUKE_REVIEW_COMMENT`, the command comment's id, and each reviewer reacts
-👀 on that comment before it starts, so the maintainer sees the command was
-picked up without opening the Actions tab.
+👍 on that comment before it starts, so the maintainer sees the command was
+picked up without opening the Actions tab — then the
+[progress reactions](#progress-reactions) on the description take over.
 
 ### Who the reviews post as
 
@@ -873,5 +904,5 @@ maintainer starts it by commenting `@zuke-build review`: the
 `commands("@zuke-build")`, runs the same target from master's checkout with that
 pull request fetched as data, posts as `zuke-build[bot]` (both reviewers share
 one `GhTasks.appTokenSource` pinned to this repository and narrowed to comments,
-reactions and thread resolution), and each reviewer reacts 👀 on the comment
+reactions and thread resolution), and each reviewer reacts 👍 on the comment
 first. Each assessment lands in that run's job summary and as a PR comment.

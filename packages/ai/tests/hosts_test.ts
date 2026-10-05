@@ -1739,7 +1739,7 @@ Deno.test("parseCommentMarker reads the reviewer name only from an opening marke
   );
 });
 
-Deno.test("acknowledgeGithubCommand reacts 👀 only on a comment-started run, and never throws", async () => {
+Deno.test("acknowledgeGithubCommand reacts 👍 only on a comment-started run, and never throws", async () => {
   const env = (values: Record<string, string>) => (name: string) =>
     values[name];
   // Not comment-started: nothing to acknowledge, and no token is asked for.
@@ -1751,7 +1751,7 @@ Deno.test("acknowledgeGithubCommand reacts 👀 only on a comment-started run, a
   const calls: Array<{ url: string; init?: RequestInit }> = [];
   const ok = ((input: string | URL | Request, init?: RequestInit) => {
     calls.push({ url: String(input), init });
-    return Promise.resolve(new Response("{}", { status: 201 }));
+    return Promise.resolve(new Response('{"id":1}', { status: 201 }));
   }) as typeof fetch;
   const started = env({
     ZUKE_REVIEW_COMMENT: "987654",
@@ -1764,7 +1764,7 @@ Deno.test("acknowledgeGithubCommand reacts 👀 only on a comment-started run, a
     "https://api.github.com/repos/zuke-build/zuke/issues/comments/987654/reactions",
   );
   assertEquals(calls[0].init?.method, "POST");
-  assertEquals(calls[0].init?.body, JSON.stringify({ content: "eyes" }));
+  assertEquals(calls[0].init?.body, JSON.stringify({ content: "+1" }));
   assertEquals(
     new Headers(calls[0].init?.headers).get("authorization"),
     "Bearer app-token",

@@ -208,6 +208,8 @@
     "textconv",
     "tfplan",
     "tfvars",
+    "thumbsdown",
+    "thumbsup",
     "tmpfs",
     "tmpl",
     "Todor",

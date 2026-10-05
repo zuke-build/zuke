@@ -115,6 +115,14 @@ import { readTextOrUndefined } from "./context.ts";
 import type { PromptExtras, RebuttalNote } from "./prompts/templates.ts";
 import { rebuttalComment } from "./prompts/templates.ts";
 import type { Redact } from "./comment.ts";
+import { type ReviewOutcome, ReviewProgress } from "./progress.ts";
+
+/**
+ * The progress reactions of every reviewer in this process, shared so the
+ * reviewers on one pull request agree on one verdict — see
+ * {@link ReviewProgress}.
+ */
+const PROGRESS = new ReviewProgress();
 
 /**
  * Where a reviewer's comment-posting token comes from: a secret parameter (for
@@ -154,6 +162,7 @@ export class Reviewer implements Validation {
   #commentToken?: CommentTokenSource;
   #retry?: RetryOptions;
   #quiet = false;
+  #reactions = true;
   #fetch?: typeof fetch;
   #exec?: (argv: string[]) => Promise<string>;
   #env: EnvReader = readEnv;
@@ -352,6 +361,21 @@ export class Reviewer implements Validation {
   /** Backwards-compatible alias for {@link commentToken}. */
   githubToken(token: CommentTokenSource): this {
     return this.commentToken(token);
+  }
+
+  /**
+   * Whether the reviewer reacts on the pull request to show its progress (on
+   * by default, whenever `.comment()` is set): 👀 on the description while it
+   * runs, then 👍 when it passes clean, 🤏 when it has findings under the
+   * failing threshold (😕 on GitHub, whose reaction set has no 🤏), 👎 when it
+   * fails — and 👍 on the comment that started a comment-started run. The
+   * reviewers on one pull request share the reactions, so the verdict shown is
+   * the worst of them. GitHub and GitLab have the reactions; on Azure DevOps
+   * and Bitbucket this is a no-op. `false` turns all of it off.
+   */
+  reactions(enabled: boolean): this {
+    this.#reactions = enabled;
+    return this;
   }
 
   /** Suppress the findings printout and the job-summary section. */
@@ -733,13 +757,13 @@ export class Reviewer implements Validation {
   }
 
   /**
-   * On a comment-started run, react 👀 on the command comment before the
+   * On a comment-started run, react 👍 on the command comment before the
    * review starts, so the maintainer sees it was picked up without opening
    * the host's job log. Best-effort and quiet by construction: nothing here
    * can fail the review, and a run no comment started does nothing.
    */
   async #acknowledgeCommand(): Promise<void> {
-    if (!this.#comment) return;
+    if (!this.#comment || !this.#reactions) return;
     const host = detectReviewHost(this.#env);
     if (host?.acknowledgeCommand === undefined) return;
     const ack = host.acknowledgeCommand(this.#env);
@@ -747,7 +771,7 @@ export class Reviewer implements Validation {
     try {
       const token = await this.#resolveCommentToken(host);
       if (await ack(token, this.#fetch ?? fetch) && !this.#quiet) {
-        console.log(`[${this.name}] acknowledged the review command (👀)`);
+        console.log(`[${this.name}] acknowledged the review command (👍)`);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -757,6 +781,33 @@ export class Reviewer implements Validation {
         );
       }
     }
+  }
+
+  /**
+   * React 👀 on the pull-request description — through the process-wide
+   * {@link PROGRESS}, which the other reviewers share — and return the
+   * function that replaces it with this review's verdict. A no-op function
+   * when the reviewer does not speak on the pull request (`.comment()` unset,
+   * `.quiet()`, `.reactions(false)`), the host has no reactions, or there is
+   * no pull request. Best-effort like the acknowledgement: a token that cannot
+   * be resolved is a warning, never a failed review.
+   */
+  async #startProgress(): Promise<(outcome: ReviewOutcome) => Promise<void>> {
+    const none = () => Promise.resolve();
+    if (!this.#comment || this.#quiet || !this.#reactions) return none;
+    const host = detectReviewHost(this.#env);
+    if (host?.reactions === undefined) return none;
+    let token: string;
+    try {
+      token = await this.#resolveCommentToken(host);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[${this.name}] could not react on the PR: ${message}`);
+      return none;
+    }
+    const reactions = host.reactions(token, this.#env);
+    if (reactions === undefined) return none;
+    return PROGRESS.start(reactions, this.#fetch ?? fetch);
   }
 
   /**
@@ -1106,6 +1157,28 @@ export class Reviewer implements Validation {
     }
 
     await this.#acknowledgeCommand();
+    const finish = await this.#startProgress();
+    // Anything that escapes the review — the gate tripping, an error under
+    // `onError("fail")` — is a failed review.
+    let outcome: ReviewOutcome = "failed";
+    try {
+      outcome = await this.#review(context, provider, key, model);
+    } finally {
+      await finish(outcome);
+    }
+  }
+
+  /**
+   * The review proper, once the reviewer is configured: diff, call, the
+   * discussion and thread phases, the report, the gate. Answers how it ended
+   * for the progress reactions, or throws when the gate trips.
+   */
+  async #review(
+    context: ValidationContext,
+    provider: Provider,
+    key: string,
+    model: string,
+  ): Promise<ReviewOutcome> {
     const resolved = await this.#resolveDiff();
     let diff = filterDiff(
       resolved.diff,
@@ -1122,14 +1195,14 @@ export class Reviewer implements Validation {
         const reason = resolved.fetchFailure;
         if (this.#onError === "warn") {
           await this.#reportSkip(context.target, reason, context.redact);
-          return;
+          return "skipped";
         }
         throw new AiReviewError(
           `${this.name} of "${context.target}" ${reason}; refusing to pass on an empty fallback diff`,
         );
       }
       await this.#report(emptyAssessment(), context.target, context.redact);
-      return;
+      return "passed";
     }
     if (this.#maxDiffTokens !== undefined) {
       diff = truncate(diff, this.#maxDiffTokens);
@@ -1259,7 +1332,7 @@ export class Reviewer implements Validation {
       const message = error instanceof Error ? error.message : String(error);
       if (this.#onError === "warn") {
         console.warn(`[${this.name}] skipped: ${message}`);
-        return;
+        return "skipped";
       }
       throw error instanceof AiReviewError ? error : new AiReviewError(message);
     }
@@ -1269,7 +1342,7 @@ export class Reviewer implements Validation {
         `AI budget exhausted — ${call.exhausted}`,
         context.redact,
       );
-      return;
+      return "skipped";
     }
     const assessment = call.value;
     const usage = call.usage;
@@ -1892,6 +1965,7 @@ export class Reviewer implements Validation {
         `${this.name} of "${context.target}" failed: ${gate.reason}. ${assessment.summary}`,
       );
     }
+    return assessment.findings.length === 0 ? "passed" : "minor";
   }
 }
 

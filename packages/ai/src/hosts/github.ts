@@ -11,6 +11,7 @@
 
 import { parsePullNumber, REVIEW_PR_ENV } from "../diff.ts";
 import { dig } from "../json.ts";
+import { githubReactions, postReaction } from "./github_reactions.ts";
 import { githubReviewThreads } from "./github_threads.ts";
 import {
   commentBody,
@@ -48,10 +49,11 @@ export interface GithubContext {
 export const REVIEW_COMMENT_ENV = "ZUKE_REVIEW_COMMENT";
 
 /**
- * React 👀 on the comment {@link REVIEW_COMMENT_ENV} names. `false` when the
- * run was not comment-started, the id is not a number, the repository is
- * unknown, or GitHub refuses — best-effort, like every post the review makes.
- * The id is checked against digits before it is put in a URL.
+ * React 👍 on the comment {@link REVIEW_COMMENT_ENV} names — the command was
+ * accepted and the review is starting. `false` when the run was not
+ * comment-started, the id is not a number, the repository is unknown, or
+ * GitHub refuses — best-effort, like every post the review makes. The id is
+ * checked against digits before it is put in a URL.
  */
 export function acknowledgeGithubCommand(
   env: EnvReader,
@@ -63,20 +65,13 @@ export function acknowledgeGithubCommand(
     if (!/^[1-9]\d{0,15}$/.test(id) || repo === undefined || token === "") {
       return false;
     }
-    try {
-      const response = await doFetch(
-        `${API}/repos/${repo}/issues/comments/${id}/reactions`,
-        {
-          method: "POST",
-          headers: githubHeaders(token),
-          body: JSON.stringify({ content: "eyes" }),
-        },
-      );
-      await response.body?.cancel();
-      return response.ok;
-    } catch {
-      return false;
-    }
+    const reaction = await postReaction(
+      `${API}/repos/${repo}/issues/comments/${id}/reactions`,
+      token,
+      "+1",
+      doFetch,
+    );
+    return reaction !== undefined;
   };
 }
 
@@ -317,4 +312,9 @@ export const githubHost: ReviewHost = {
     return githubReviewThreads(context);
   },
   acknowledgeCommand: acknowledgeGithubCommand,
+  reactions(token, env) {
+    const context = resolveGithubContext(token, env);
+    if (context === undefined) return undefined;
+    return githubReactions(context);
+  },
 };

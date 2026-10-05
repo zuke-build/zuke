@@ -14,6 +14,7 @@ import {
 import { withEnv } from "../../core/tests/_env.ts";
 import { captureLines } from "../../core/tests/_console.ts";
 import { noRedactionContext } from "./_context.ts";
+import { DESCRIPTION_REACTIONS, reacted } from "./_reactions.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";
@@ -88,6 +89,7 @@ function routedFetch(opts: {
   const calls: Call[] = [];
   const impl = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
+    if (DESCRIPTION_REACTIONS.test(url)) return reacted();
     calls.push({
       url,
       init,
@@ -1350,10 +1352,11 @@ Deno.test("commentToken accepts a function whose token every post uses", async (
         assertEquals(headers.get("authorization"), "Bearer app-token");
         assertEquals(call.url.includes("/issues/42/comments"), true);
       }
-      // Resolved once for the discussion listing and once for the post (which
-      // lists, then writes, on one token): called per use, never cached here —
-      // a function that mints remembers its own result.
-      assertEquals(minted, 2);
+      // Resolved once for the progress reactions, once for the discussion
+      // listing and once for the post (which lists, then writes, on one
+      // token): called per use, never cached here — a function that mints
+      // remembers its own result.
+      assertEquals(minted, 3);
     },
   );
 });
