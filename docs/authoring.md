@@ -383,13 +383,29 @@ clean = target().executes(async () => {
 });
 ```
 
-### HTTP — `httpDownload()` / `httpText()` / `httpJson()`
+### HTTP — `httpDownload()` / `httpText()` / `httpJson()` / `redactUrl()` / `redactUrls()`
 
 Fetch over HTTP from a build script, built on the platform `fetch`.
 `httpDownload(url, dest)` streams a URL to a file; `httpText(url)` and
 `httpJson(url)` return the body. All accept `{ headers, fetch }` (the `fetch`
 seam makes them unit-testable) and throw an `HttpError` (carrying `.status`) on
-a non-2xx response.
+a non-2xx response. The `HttpError`'s message and `.url` pass the URL through
+`redactUrl`, which is exported for your own messages too, along with
+`redactUrls` for the URLs inside a whole message, such as a failed request's
+error:
+
+- **What gets removed:** `user:password@` is stripped. Credential-looking
+  parameters (`token`, `key`, `secret`, `pass`, `sig`, `code`, …) are masked in
+  the query and in the fragment. A parameter whose value hides a credential of
+  its own — a `redirect_uri` carrying userinfo or a token, even encoded, or any
+  value with an `@` — is masked whole.
+- **It fails closed:** text the URL parser rejects is scrubbed by the same rules
+  rather than returned as it came. Neither function throws, and both run in time
+  linear in their input.
+- **What it cannot see:** a secret in the URL _path_ looks like any other path
+  segment, so declare such a value as a secret parameter instead.
+- **Order matters:** run the build's secret redactor first. These functions
+  re-serialise the URL, which can change how a secret is spelled.
 
 <!-- check -->
 

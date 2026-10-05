@@ -328,6 +328,7 @@ export {
   type HttpOptions,
   httpText,
 } from "./src/http.ts";
+export { redactUrl, redactUrls } from "./src/redact_url.ts";
 export {
   AnnounceError,
   type Announcement,
