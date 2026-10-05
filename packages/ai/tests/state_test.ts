@@ -12,6 +12,7 @@ import {
   openOf,
   refutedOf,
   type ReviewState,
+  stateNames,
 } from "../src/state.ts";
 
 const STATE: ReviewState = {
@@ -391,4 +392,47 @@ Deno.test("a malformed evidence digest is dropped, never the record", () => {
   assertEquals(decoded?.findings.length, 1);
   assertEquals(decoded?.findings[0].status, "refuted");
   assertEquals("evidence" in (decoded?.findings[0] ?? {}), false);
+});
+
+Deno.test("a block tagged with a reviewer's name is that reviewer's, and only theirs", () => {
+  const mine: ReviewState = {
+    findings: [{ id: "a1", title: "Mine", severity: "high", status: "open" }],
+  };
+  const theirs: ReviewState = {
+    findings: [{ id: "b2", title: "Theirs", severity: "low", status: "open" }],
+  };
+  const body = `report\n${encodeState(mine, "security review")}\n` +
+    encodeState(theirs, "généric review");
+  assertEquals(decodeState(body, "security review"), mine);
+  assertEquals(decodeState(body, "généric review"), theirs);
+  // Neither is an untagged block, nor any other reviewer's.
+  assertEquals(decodeState(body), undefined);
+  assertEquals(decodeState(body, "license review"), undefined);
+  assertEquals(stateNames(body), ["security review", "généric review"]);
+  // An untagged block is never read as a named one.
+  assertEquals(decodeState(encodeState(mine), "security review"), undefined);
+  assertEquals(stateNames(encodeState(mine)), []);
+});
+
+Deno.test("a tag that is not base64 UTF-8 names no reviewer", () => {
+  const block = encodeState({ findings: [] }).replace(
+    "zuke-ai-state:",
+    "zuke-ai-state@/w==:",
+  );
+  assertEquals(stateNames(block), []);
+  assertEquals(decodeState(block), undefined);
+  // The last block tagged with a name wins, as for an untagged one.
+  const first: ReviewState = {
+    findings: [{ id: "a1", title: "Old", severity: "low", status: "open" }],
+  };
+  const last: ReviewState = {
+    findings: [{ id: "a1", title: "New", severity: "low", status: "open" }],
+  };
+  assertEquals(
+    decodeState(
+      `${encodeState(first, "x")}\n${encodeState(last, "x")}`,
+      "x",
+    ),
+    last,
+  );
 });

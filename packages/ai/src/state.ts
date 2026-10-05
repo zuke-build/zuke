@@ -94,8 +94,14 @@ export interface ReviewState {
   findings: StoredFinding[];
 }
 
-/** The hidden-block prefix the encoded state is stored under. */
-const STATE_PREFIX = "zuke-ai-state:";
+/**
+ * A hidden state block: `<!-- zuke-ai-state:<state> -->`, or — in a comment
+ * several reviewers share — `<!-- zuke-ai-state@<name>:<state> -->`, the
+ * reviewer's name tagging its own block. Both halves are base64, so neither
+ * can carry the comment delimiter or the separator.
+ */
+const STATE_BLOCK =
+  /<!-- zuke-ai-state(?:@([A-Za-z0-9+/=]+))?:([A-Za-z0-9+/=]+) -->/g;
 
 /**
  * Cap on the rewording fingerprints kept per finding. The state block rides
@@ -193,13 +199,49 @@ function fromBase64(text: string): Uint8Array | undefined {
   }
 }
 
+/** `text` as base64 of its UTF-8 bytes. */
+function encodeText(text: string): string {
+  return toBase64(new TextEncoder().encode(text));
+}
+
 /**
  * Render `state` as the hidden HTML-comment block appended to the reviewer's
  * PR comment. Base64 keeps the JSON inert in Markdown and breakout-proof.
+ * With `name`, the block is tagged as that reviewer's, for a comment it
+ * shares with the other reviewers of its run.
  */
-export function encodeState(state: ReviewState): string {
-  const json = JSON.stringify(state);
-  return `<!-- ${STATE_PREFIX}${toBase64(new TextEncoder().encode(json))} -->`;
+export function encodeState(state: ReviewState, name?: string): string {
+  const tag = name === undefined ? "" : `@${encodeText(name)}`;
+  return `<!-- zuke-ai-state${tag}:${encodeText(JSON.stringify(state))} -->`;
+}
+
+/**
+ * The reviewer name a block's tag decodes to, `""` for an untagged block, or
+ * `undefined` for a tag that is not base64 UTF-8 — never mistaken for a name.
+ */
+function tagName(tag: string | undefined): string | undefined {
+  if (tag === undefined) return "";
+  const bytes = fromBase64(tag);
+  if (bytes === undefined) return undefined;
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Every name a state block in `body` is tagged with — the reviewers whose
+ * state a shared comment carries, in the order they first appear.
+ */
+export function stateNames(body: string): string[] {
+  const names: string[] = [];
+  for (const match of body.matchAll(STATE_BLOCK)) {
+    const name = tagName(match[1]);
+    if (name === undefined || name === "" || names.includes(name)) continue;
+    names.push(name);
+  }
+  return names;
 }
 
 /** Read one stored finding out of parsed JSON, or `undefined` if malformed. */
@@ -247,22 +289,29 @@ function toStoredFinding(item: unknown): StoredFinding | undefined {
  * yields `undefined` (a fresh start) rather than an error — state is an
  * optimisation, never a point of failure. Malformed entries are skipped
  * individually so one bad record doesn't discard the rest.
+ *
+ * Without `name`, only an untagged block is read — a reviewer's own comment.
+ * With it, only the block tagged with that reviewer's name — its part of a
+ * comment it shares; a block tagged for another reviewer is never read as
+ * this one's.
  */
-export function decodeState(body: string): ReviewState | undefined {
+export function decodeState(
+  body: string,
+  name?: string,
+): ReviewState | undefined {
   // The LAST block wins. The reviewer appends its own block after the report it
   // just rendered, and that report repeats model output — so anything a finding
   // title managed to smuggle in appears earlier in the body. Reading the first
   // match would let such a block outrank the reviewer's own. This is defence in
   // depth: the renderer neutralises those delimiters (see `report.ts`'s `cell`),
   // and neither layer is relied on alone.
-  const matches = [
-    ...body.matchAll(
-      new RegExp(`<!-- ${STATE_PREFIX}([A-Za-z0-9+/=]+) -->`, "g"),
-    ),
-  ];
+  const wanted = name ?? "";
+  const matches = [...body.matchAll(STATE_BLOCK)].filter((match) =>
+    tagName(match[1]) === wanted
+  );
   const match = matches.at(-1);
   if (match === undefined) return undefined;
-  const bytes = fromBase64(match[1]);
+  const bytes = fromBase64(match[2]);
   if (bytes === undefined) return undefined;
   let parsed: unknown;
   try {

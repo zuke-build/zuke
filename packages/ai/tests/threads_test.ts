@@ -625,7 +625,7 @@ Deno.test("a thread body cannot launder a state block past the reviewer's author
     id: "aa11",
     kind: "open",
     finding: finding("aa11", { title: payload, detail: payload }),
-  });
+  }, `🛡️ ${payload}`);
   assertEquals(body.includes("<!-- zuke-ai-state:"), false);
   assertEquals(body.includes("&lt;!--"), true);
   const outcome = threadOutcomeBody("dismissed", payload);
@@ -708,9 +708,12 @@ Deno.test("a thread body renders with or without a detail", () => {
     id: "aa11",
     kind: "open",
     finding: finding("aa11", { detail: "the detail" }),
-  });
+  }, "🛡️ security review");
   assertEquals(withDetail.includes("the detail"), true);
-  const without = threadRootBody({ id: "aa11", kind: "open" });
+  const without = threadRootBody(
+    { id: "aa11", kind: "open" },
+    "🛡️ security review",
+  );
   assertEquals(without.includes("aa11"), true);
   assertEquals(without.includes("undefined"), false);
 });
@@ -870,13 +873,24 @@ Deno.test("a thread root names the accept command only when the reviewer takes c
     kind: "open" as const,
     finding: finding("aa11"),
   };
-  const plain = threadRootBody(action);
+  const plain = threadRootBody(action, "🧹 generic review");
+  assertEquals(
+    plain.startsWith(
+      "🤖 **[Zuke](https://zuke.build) AI review** · 🧹 generic review — " +
+        "**high**",
+    ),
+    true,
+  );
   assertEquals(plain.includes("accept"), false);
   assertEquals(
     plain.endsWith("Reply in this thread to contest it. `aa11`"),
     true,
   );
-  const withCommands = threadRootBody(action, "@zuke-build");
+  const withCommands = threadRootBody(
+    action,
+    "🧹 generic review",
+    "@zuke-build",
+  );
   assertEquals(
     withCommands.endsWith(
       "Reply in this thread to contest it, or `@zuke-build accept <reason>` " +

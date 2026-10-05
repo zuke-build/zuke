@@ -1136,6 +1136,13 @@ Depth and discussion knobs (all optional, per reviewer):
   its thread — goes back to the verifier carrying the earlier evidence.
 - `.comment("append")` — post a fresh PR comment per run (history stays on the
   thread) instead of the default single upserted comment per reviewer.
+- Commenting reviewers side by side in one `.validateBefore(a, b)` share **one**
+  PR comment, automatically: a verdict table (one row per reviewer), the merged
+  findings table with a Reviewer column, and each reviewer's report folded
+  underneath. Every one of them runs even when an earlier one fails; the target
+  then fails with all their reasons. Another validation between two reviewers
+  splits them. `.badge("🔒")` changes the reviewer's marker (defaults: 🛡️
+  security, 🧹 generic, 🔑 secrets, 🐛 correctness, ⚖️ license).
 - `.reactions(false)` — opt out of the reactions `.comment()` turns on: on the
   PR description 👀 while reviewing, then 👍 clean / 🎉 clean after a failed run
   / 🤏 findings under the gate (😕 on GitHub) / 👎 failed — the worst verdict

@@ -5084,6 +5084,16 @@ interface ValidationContext
     reactions on a pull request) scope that to one run, even in a process
     that executes several, such as `zuke mcp`. Set by the scheduler; absent
     when a caller drives `validate(...)` directly.
+  peers?: readonly Validation[]
+    The validations attached beside this one: the whole list it was given in
+    — one `.validateBefore(...)` or `.validateAfter(...)` — in the order they
+    run, itself included. Lets validations that publish together find each
+    other without the build wiring them up: the `@zuke/ai` reviewers of one
+    target post one combined pull-request comment rather than one each, and
+    the last of them is the one that knows it is last. Set by the scheduler
+    for the before and after lists; absent for a `.validateDuring(...)` check
+    and when a caller drives `validate(...)` directly, where a validation
+    acts alone.
   redact(text: string): string
     Mask every resolved `secret` parameter in `text`.
 

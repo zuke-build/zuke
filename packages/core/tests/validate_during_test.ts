@@ -227,6 +227,37 @@ Deno.test("every validation of one run gets that run's id", async () => {
   assertEquals(seen.every((id) => id === seen[0] && id !== first), true);
 });
 
+Deno.test("a before or after validation sees the list it was attached in", async () => {
+  const seen: Array<[string, readonly Validation[] | undefined]> = [];
+  const named = (label: string): Validation => ({
+    validate: ({ peers }) => {
+      seen.push([label, peers]);
+    },
+  });
+  const a = named("a");
+  const b = named("b");
+  const c = named("c");
+  const during = named("during");
+  class B extends Build {
+    bake = target()
+      .validateBefore(a, b)
+      .validateAfter(c)
+      .executes(() => new Promise<void>((r) => setTimeout(r, 30)))
+      .validateDuring((s) => s.every(10).check(during));
+  }
+  const build = new B();
+  discoverTargets(build);
+  await execute(build, build.bake, { silent: true, stateStore: false });
+  const peersOf = (label: string) => seen.find(([l]) => l === label)?.[1];
+  assertEquals(peersOf("a"), [a, b]);
+  assertEquals(peersOf("b"), [a, b]);
+  assertEquals(peersOf("c"), [c]);
+  // A during check runs in rounds beside the body, not beside its list: it
+  // acts alone.
+  assertEquals(seen.some(([l]) => l === "during"), true);
+  assertEquals(peersOf("during"), undefined);
+});
+
 Deno.test("a malformed .validateDuring fails the target before the body runs", async () => {
   const cases: Array<[string, (b: ReturnType<typeof target>) => unknown]> = [
     ["set no interval", (t) => t.validateDuring((s) => s.check(counting()))],

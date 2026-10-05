@@ -619,6 +619,18 @@ export interface ValidationContext {
    * when a caller drives `validate(...)` directly.
    */
   runId?: string;
+  /**
+   * The validations attached beside this one: the whole list it was given in
+   * — one `.validateBefore(...)` or `.validateAfter(...)` — in the order they
+   * run, itself included. Lets validations that publish together find each
+   * other without the build wiring them up: the `@zuke/ai` reviewers of one
+   * target post one combined pull-request comment rather than one each, and
+   * the last of them is the one that knows it is last. Set by the scheduler
+   * for the before and after lists; absent for a `.validateDuring(...)` check
+   * and when a caller drives `validate(...)` directly, where a validation
+   * acts alone.
+   */
+  peers?: readonly Validation[];
 }
 
 /**

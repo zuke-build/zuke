@@ -498,11 +498,17 @@ export function listIds(ids: readonly string[]): string {
 }
 
 /**
- * The opening body of a finding's thread: what was found, its id, and — when
- * the reviewer takes commands — the one that accepts it, so a maintainer
- * reading the thread need not go looking for the summary's Commands panel.
+ * The opening body of a finding's thread: which reviewer found what, its id,
+ * and — when the reviewer takes commands — the one that accepts it, so a
+ * maintainer reading the thread need not go looking for the summary's Commands
+ * panel. `reviewer` is the reviewer's badge and name, the same pair the
+ * combined comment's findings table shows.
  */
-export function threadRootBody(action: ThreadAction, mention?: string): string {
+export function threadRootBody(
+  action: ThreadAction,
+  reviewer: string,
+  mention?: string,
+): string {
   const finding = action.finding;
   const severity = finding?.severity ?? "low";
   const title = safe(finding?.title ?? "");
@@ -513,7 +519,8 @@ export function threadRootBody(action: ThreadAction, mention?: string): string {
     ? "Reply in this thread to contest it."
     : `Reply in this thread to contest it, or \`${mention} accept <reason>\` ` +
       `to accept it as intended.`;
-  return `🤖 **[Zuke](https://zuke.build) AI review** — **${severity}**\n\n` +
+  return `🤖 **[Zuke](https://zuke.build) AI review** · ${safe(reviewer)} — ` +
+    `**${severity}**\n\n` +
     `${title}${detail}\n\n` +
     `${contest} \`${action.id}\``;
 }

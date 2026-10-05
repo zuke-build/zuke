@@ -301,7 +301,10 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   review of the diff (`securityReviewer(...)` etc. via `.validateBefore`), or
   attach `aiFixer(...)` with `.recoverWith(...)` so a failing target is
   diagnosed and (opt-in) auto-fixed, with a committable PR suggestion. Override
-  `recoverWith()` on the build to apply one fixer to every target. A reviewer
+  `recoverWith()` on the build to apply one fixer to every target. Reviewers
+  attached side by side to one target post one combined PR comment (verdict
+  table, merged findings with a reviewer badge, folded reports), and all of
+  them run even after one fails. A reviewer
   can go deeper and hold a discussion: `.conventionsFile("AGENTS.md")` (judged
   against the project's rules, read from the diff base), `.criteriaFile(...)`
   (project-specific notes read from that base too — `.criteria(text)` is build

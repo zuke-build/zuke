@@ -49,9 +49,11 @@ import {
   consoleLines,
   type DismissedFinding,
   type RefutedFinding,
+  reportBody,
   type ReportExtras,
   retryLine,
   reviewStartLine,
+  skipBody,
   skipConsoleLine,
   skipMarkdown,
   toMarkdown,
@@ -89,6 +91,7 @@ import {
   openOf,
   refutedOf,
   type ReviewState,
+  stateNames,
   type StoredFinding,
 } from "./state.ts";
 import {
@@ -120,6 +123,14 @@ import type { Redact } from "./comment.ts";
 import { type ReviewOutcome, ReviewProgress } from "./progress.ts";
 import type { CallerVerdict } from "./callers.ts";
 import { REVIEW_COMMENT_ENV } from "./hosts/github.ts";
+import {
+  BADGES,
+  closePanel,
+  type PanelSeat,
+  type PanelSection,
+  renderPanel,
+  seatOf,
+} from "./panel.ts";
 
 /**
  * The progress reactions of every reviewer in this process, shared so the
@@ -174,6 +185,7 @@ export class Reviewer implements Validation {
   #retry?: RetryOptions;
   #quiet = false;
   #reactions = true;
+  #badge?: string;
   #fetch?: typeof fetch;
   #exec?: (argv: string[]) => Promise<string>;
   #env: EnvReader = readEnv;
@@ -344,6 +356,19 @@ export class Reviewer implements Validation {
    * every run, so earlier assessments — and their finding ids — stay on the
    * thread as history. The discussion feature works with both: its state block
    * rides on every comment, and the newest one is read back.
+   *
+   * Reviewers attached side by side to one target —
+   * `.validateBefore(security, quality)` — post **one** comment between them
+   * rather than one each: a table of every reviewer's verdict, the findings of
+   * all of them in one table with a column naming the reviewer (and its
+   * {@link badge}) that raised each, and each reviewer's full report folded
+   * underneath. Every one of them runs even when an earlier one fails its
+   * gate; the target then fails with all of their reasons. The comment is
+   * posted by the last of them, with its token, and appended when any of
+   * them appends. Each reviewer's discussion state rides in it under the
+   * reviewer's name, and a reviewer that used to post alone still reads its
+   * old comment. Another validation between two reviewers splits them, and a
+   * reviewer alone posts its own comment as before.
    */
   comment(mode: "update" | "append" = "update"): this {
     this.#comment = true;
@@ -391,6 +416,23 @@ export class Reviewer implements Validation {
   reactions(enabled: boolean): this {
     this.#reactions = enabled;
     return this;
+  }
+
+  /**
+   * The emoji that marks this reviewer's findings — in the combined comment
+   * the reviewers of one target share (see {@link comment}), and on the review
+   * threads it opens. Defaults by kind: 🛡️ security, 🧹 code quality
+   * (`genericReviewer`), 🔑 secrets, 🐛 correctness, ⚖️ license. Set one when
+   * two reviewers of a kind review side by side.
+   */
+  badge(emoji: string): this {
+    this.#badge = emoji;
+    return this;
+  }
+
+  /** This reviewer's badge: the one set, or its kind's. */
+  get #shownBadge(): string {
+    return this.#badge ?? BADGES[this.#assessment];
   }
 
   /** Suppress the findings printout and the job-summary section. */
@@ -664,18 +706,52 @@ export class Reviewer implements Validation {
     assessment: Assessment,
     target: string,
     redact: Redact,
+    seat: PanelSeat | undefined,
     usage?: Usage,
     extras: ReportExtras = {},
     commentExtra?: string,
+    tripped = false,
   ): Promise<void> {
     if (this.#quiet) return;
     const lines = consoleLines(this.name, assessment, usage, extras);
     for (const line of lines) console.log(line);
-    await this.#publish(
-      toMarkdown(this.name, target, assessment, usage, extras),
-      redact,
-      commentExtra,
-    );
+    const markdown = toMarkdown(this.name, target, assessment, usage, extras);
+    if (seat === undefined) {
+      await this.#publish(markdown, redact, commentExtra);
+      return;
+    }
+    writeStepSummary(markdown);
+    this.#takeSeat(seat, redact, {
+      verdict: tripped
+        ? "failed"
+        : assessment.findings.length === 0
+        ? "passed"
+        : "minor",
+      score: assessment.score,
+      severity: assessment.severity,
+      findings: assessment.findings,
+      report: reportBody(assessment, usage, extras),
+      ...(commentExtra !== undefined ? { state: commentExtra } : {}),
+    });
+  }
+
+  /**
+   * Hand this reviewer's part to its panel instead of posting it — masked
+   * here, as {@link #publish} masks what it posts, so the panel only ever
+   * holds what may be published.
+   */
+  #takeSeat(
+    seat: PanelSeat,
+    redact: Redact,
+    part: Omit<PanelSection, "name" | "badge">,
+  ): void {
+    seat.panel.sections.set(this.name, {
+      ...part,
+      name: this.name,
+      badge: this.#shownBadge,
+      report: redact(part.report),
+      ...(part.state !== undefined ? { state: redact(part.state) } : {}),
+    });
   }
 
   /**
@@ -709,10 +785,22 @@ export class Reviewer implements Validation {
     target: string,
     reason: string,
     redact: Redact,
+    seat: PanelSeat | undefined,
   ): Promise<void> {
     if (this.#quiet) return;
     console.log(skipConsoleLine(this.name, reason));
-    await this.#publish(skipMarkdown(this.name, target, reason), redact);
+    const markdown = skipMarkdown(this.name, target, reason);
+    if (seat === undefined) {
+      await this.#publish(markdown, redact);
+      return;
+    }
+    writeStepSummary(markdown);
+    this.#takeSeat(seat, redact, {
+      verdict: "skipped",
+      findings: [],
+      skipped: reason,
+      report: skipBody(reason),
+    });
   }
 
   /**
@@ -741,6 +829,28 @@ export class Reviewer implements Validation {
   ): Promise<void> {
     writeStepSummary(markdown);
     if (!this.#comment) return;
+    // Masked here, at the one place this class posts a comment, so a caller
+    // cannot leak by forgetting to. The state block is included: it is built
+    // from the same assessment the markdown is.
+    await this.#post(
+      this.name,
+      redact(
+        commentExtra === undefined ? markdown : `${markdown}\n${commentExtra}`,
+      ),
+      this.#commentMode,
+    );
+  }
+
+  /**
+   * Post `body` as the comment marked `name` — this reviewer's own, or its
+   * panel's — on the active host, best-effort: a missing host, a missing pull
+   * request and a failed post are each a warning, never a failed review.
+   */
+  async #post(
+    name: string,
+    body: string,
+    mode: "update" | "append",
+  ): Promise<void> {
     const host = detectReviewHost(this.#env);
     if (host === undefined) {
       console.warn(
@@ -756,14 +866,8 @@ export class Reviewer implements Validation {
       );
       return;
     }
-    // Masked here, at the one place this class posts a comment, so a caller
-    // cannot leak by forgetting to. The state block is included: it is built
-    // from the same assessment the markdown is.
-    const body = redact(
-      commentExtra === undefined ? markdown : `${markdown}\n${commentExtra}`,
-    );
     try {
-      await upsert(this.name, body, this.#fetch ?? fetch, this.#commentMode);
+      await upsert(name, body, this.#fetch ?? fetch, mode);
     } catch (error) {
       // Best-effort: a failed comment must never break the build.
       const message = error instanceof Error ? error.message : String(error);
@@ -932,7 +1036,9 @@ export class Reviewer implements Validation {
    * reviewer's thread settled is offered to this one as a prior, so it is not
    * raised afresh under another reviewer's name.
    */
-  async #prepareDiscussion(): Promise<Discussion | undefined> {
+  async #prepareDiscussion(
+    seat: PanelSeat | undefined,
+  ): Promise<Discussion | undefined> {
     if (this.#discussion === undefined) return undefined;
     const warn = (reason: string) => {
       if (!this.#quiet) {
@@ -962,24 +1068,52 @@ export class Reviewer implements Validation {
       // OPEN the body — the reviewer's own comments always lead with it, so a
       // bot that merely quotes another comment (prefixing its own text) can
       // never be adopted as the state carrier.
-      let own: HostComment | undefined;
-      const others = new Map<string, HostComment>();
+      //
+      // A panel's comment — the one the reviewers of a target share — carries
+      // each member's state as a block tagged with its name, so the newest
+      // comment holding this reviewer's block is its state whichever kind it
+      // is, and every other name's block is that reviewer's. A reviewer moving
+      // into a panel thereby keeps the state its own old comment holds.
+      let own: { state: ReviewState | undefined } | undefined;
+      const others = new Map<string, ReviewState | undefined>();
       for (let i = comments.length - 1; i >= 0; i--) {
         const c = comments[i];
         if (!c.bot) continue;
         if (own === undefined && c.body.startsWith(marker)) {
-          own = c;
+          own = { state: decodeState(c.body) };
           continue;
         }
         const name = parseCommentMarker(c.body);
-        if (name !== undefined && name !== this.name && !others.has(name)) {
-          others.set(name, c);
+        if (name === undefined) continue;
+        const tagged = stateNames(c.body);
+        if (tagged.length === 0) {
+          if (name !== this.name && !others.has(name)) {
+            others.set(name, decodeState(c.body));
+          }
+          continue;
+        }
+        for (const member of tagged) {
+          if (member !== this.name) {
+            if (!others.has(member)) {
+              others.set(member, decodeState(c.body, member));
+            }
+          } else if (own === undefined) {
+            own = { state: decodeState(c.body, member) };
+          }
         }
       }
-      const priorState = own !== undefined ? decodeState(own.body) : undefined;
+      // A panel posts once, after its last member: what the members before
+      // this one decided this run is in their sections, not yet on the pull
+      // request, and it outranks their state from the run before — as their
+      // own fresh comments did when each reviewer posted alone.
+      for (const [member, section] of seat?.panel.sections ?? []) {
+        if (member === this.name || section.state === undefined) continue;
+        others.set(member, decodeState(section.state, member));
+      }
+      const priorState = own?.state;
       const shared: StoredFinding[] = [];
       for (const other of others.values()) {
-        shared.push(...dismissedOf(decodeState(other.body)).values());
+        shared.push(...dismissedOf(other).values());
       }
       return {
         comments,
@@ -1226,6 +1360,7 @@ export class Reviewer implements Validation {
     const mention = this.#discussion?.mention_();
     return {
       name: this.name,
+      label: `${this.#shownBadge} ${this.name}`,
       ...(mention !== undefined ? { mention } : {}),
       quiet: this.#quiet,
       env: this.#env,
@@ -1240,6 +1375,61 @@ export class Reviewer implements Validation {
    * gate trips (or on a configuration/API error with `onError: "fail"`).
    */
   async validate(context: ValidationContext): Promise<void> {
+    const seat = this.#seatIn(context);
+    if (seat === undefined) return await this.#validate(context, undefined);
+    const { panel } = seat;
+    panel.append ||= this.#commentMode === "append";
+    try {
+      await this.#validate(context, seat);
+    } catch (error) {
+      // Held back for the last member to raise, so the reviewers after this
+      // one still run and the comment carries every verdict.
+      panel.errors.push({ name: this.name, error });
+    }
+    if (!seat.last) return;
+    closePanel(panel);
+    if (panel.sections.size > 0) {
+      await this.#post(
+        panel.name,
+        context.redact(renderPanel(panel, context.target)),
+        panel.append ? "append" : "update",
+      );
+    }
+    const failure = panel.failure();
+    if (failure !== undefined) throw failure;
+  }
+
+  /**
+   * This reviewer's seat in the panel of the reviewers attached beside it
+   * (see {@link comment}), or `undefined` when it posts alone: no comment, a
+   * quiet reviewer, or no peer that posts one either. Read through `in`, like
+   * {@link runOf}, so this compiles against a core whose context predates
+   * `peers` — where every reviewer posts alone.
+   */
+  #seatIn(context: ValidationContext): PanelSeat | undefined {
+    if (!this.#speaks) return undefined;
+    if (!("peers" in context) || !Array.isArray(context.peers)) {
+      return undefined;
+    }
+    return seatOf(
+      this,
+      context.peers,
+      (peer): peer is Reviewer => peer instanceof Reviewer && peer.#speaks,
+      runOf(context),
+      context.target,
+    );
+  }
+
+  /** Whether this reviewer posts a comment: `.comment()` set, not quiet. */
+  get #speaks(): boolean {
+    return this.#comment && !this.#quiet;
+  }
+
+  /** {@link validate}, for a reviewer alone or in its seat. */
+  async #validate(
+    context: ValidationContext,
+    seat: PanelSeat | undefined,
+  ): Promise<void> {
     const provider = this.#provider;
     if (provider === undefined) {
       throw new AiReviewError("a provider is required; call .provider(...)");
@@ -1256,7 +1446,7 @@ export class Reviewer implements Validation {
     let outcome: ReviewOutcome = "failed";
     let unreviewed = false;
     try {
-      outcome = await this.#review(context, provider);
+      outcome = await this.#review(context, provider, seat);
     } finally {
       unreviewed = await finish(outcome);
     }
@@ -1274,11 +1464,17 @@ export class Reviewer implements Validation {
   async #review(
     context: ValidationContext,
     provider: Provider,
+    seat: PanelSeat | undefined,
   ): Promise<ReviewOutcome> {
     const key = resolveKey(this.#apiKey);
     if (key === "") {
       if (this.#skipIfKeyMissing) {
-        await this.#reportSkip(context.target, "no API key", context.redact);
+        await this.#reportSkip(
+          context.target,
+          "no API key",
+          context.redact,
+          seat,
+        );
         return "skipped";
       }
       throw new AiReviewError("an API key is required; call .apiKey(...)");
@@ -1310,7 +1506,7 @@ export class Reviewer implements Validation {
       if (resolved.fetchFailure !== undefined) {
         const reason = resolved.fetchFailure;
         if (this.#onError === "warn") {
-          await this.#reportSkip(context.target, reason, context.redact);
+          await this.#reportSkip(context.target, reason, context.redact, seat);
           return "skipped";
         }
         await this.#answerCommand("unable");
@@ -1318,7 +1514,12 @@ export class Reviewer implements Validation {
           `${this.name} of "${context.target}" ${reason}; refusing to pass on an empty fallback diff`,
         );
       }
-      await this.#report(emptyAssessment(), context.target, context.redact);
+      await this.#report(
+        emptyAssessment(),
+        context.target,
+        context.redact,
+        seat,
+      );
       return "passed";
     }
     if (this.#maxDiffTokens !== undefined) {
@@ -1359,7 +1560,7 @@ export class Reviewer implements Validation {
       );
       files = built === "" ? undefined : built;
     }
-    const discussion = await this.#prepareDiscussion();
+    const discussion = await this.#prepareDiscussion(seat);
     const threadCtx =
       discussion === undefined || this.#discussion?.threads_() !== true
         ? undefined
@@ -1449,6 +1650,16 @@ export class Reviewer implements Validation {
       const message = error instanceof Error ? error.message : String(error);
       if (this.#onError === "warn") {
         console.warn(`[${this.name}] skipped: ${message}`);
+        // Alone, a reviewer that could not review says so on the console;
+        // in a panel its row says so too, rather than going missing.
+        if (seat !== undefined) {
+          this.#takeSeat(seat, context.redact, {
+            verdict: "skipped",
+            findings: [],
+            skipped: `the review failed: ${message}`,
+            report: skipBody(`the review failed: ${message}`),
+          });
+        }
         return "skipped";
       }
       throw error instanceof AiReviewError ? error : new AiReviewError(message);
@@ -1458,6 +1669,7 @@ export class Reviewer implements Validation {
         context.target,
         `AI budget exhausted — ${call.exhausted}`,
         context.redact,
+        seat,
       );
       return "skipped";
     }
@@ -2029,7 +2241,12 @@ export class Reviewer implements Validation {
           }),
         );
       }
-      commentExtra = encodeState({ findings: [...stored.values()] });
+      // Tagged with this reviewer's name in a panel, whose one comment
+      // carries every member's state.
+      commentExtra = encodeState(
+        { findings: [...stored.values()] },
+        seat === undefined ? undefined : this.name,
+      );
     }
 
     // Posted after suppression and after the state block, so no thread is ever
@@ -2066,29 +2283,38 @@ export class Reviewer implements Validation {
         },
       );
     await this.#reactOnReplies(replies);
-    await this.#report(assessment, context.target, context.redact, usage, {
-      suppressed: suppressed.length,
-      suppressedFindings: suppressed,
-      fromCache,
-      budget: this.#budget?.describe_(),
-      ...(refuted.length > 0 ? { refuted } : {}),
-      ...(dismissed.length > 0 ? { dismissed } : {}),
-      ...(fixed.length > 0 ? { fixed } : {}),
-      ...(reword.notes.length + runNotes.length + threadNotes.length > 0
-        ? { notes: [...reword.notes, ...runNotes, ...threadNotes] }
-        : {}),
-      discussion: discussion !== undefined,
-      ...(discussion !== undefined && mention !== undefined
-        ? {
-          commands: {
-            mention,
-            onDemand: detectReviewHost(this.#env)?.acknowledgeCommand !==
-              undefined,
-          },
-        }
-        : {}),
-    }, commentExtra);
     const gate = gateTrips(assessment, this.#gate);
+    await this.#report(
+      assessment,
+      context.target,
+      context.redact,
+      seat,
+      usage,
+      {
+        suppressed: suppressed.length,
+        suppressedFindings: suppressed,
+        fromCache,
+        budget: this.#budget?.describe_(),
+        ...(refuted.length > 0 ? { refuted } : {}),
+        ...(dismissed.length > 0 ? { dismissed } : {}),
+        ...(fixed.length > 0 ? { fixed } : {}),
+        ...(reword.notes.length + runNotes.length + threadNotes.length > 0
+          ? { notes: [...reword.notes, ...runNotes, ...threadNotes] }
+          : {}),
+        discussion: discussion !== undefined,
+        ...(discussion !== undefined && mention !== undefined
+          ? {
+            commands: {
+              mention,
+              onDemand: detectReviewHost(this.#env)?.acknowledgeCommand !==
+                undefined,
+            },
+          }
+          : {}),
+      },
+      commentExtra,
+      gate.tripped,
+    );
     if (gate.tripped) {
       throw new AiReviewError(
         `${this.name} of "${context.target}" failed: ${gate.reason}. ${assessment.summary}`,

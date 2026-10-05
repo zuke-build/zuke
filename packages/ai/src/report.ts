@@ -67,7 +67,7 @@ export function formatUsage(usage?: Usage): string | undefined {
 }
 
 /** A model-supplied `file:line`, neutralised like any other untrusted value. */
-function location(file?: string, line?: number): string {
+export function location(file?: string, line?: number): string {
   if (file === undefined) return "";
   return cell(line !== undefined ? `${file}:${line}` : file);
 }
@@ -77,7 +77,7 @@ function location(file?: string, line?: number): string {
  * answered for the finding (`high · confirmed`), so a report shows which
  * findings survived verification on evidence and which merely went unresolved.
  */
-function severityLabel(f: AssessmentFinding): string {
+export function severityLabel(f: AssessmentFinding): string {
   return f.verification === undefined
     ? f.severity
     : `${f.severity} · ${f.verification}`;
@@ -263,10 +263,21 @@ export function toMarkdown(
   usage?: Usage,
   extras: ReportExtras = {},
 ): string {
+  return `## 🔎 ${name} — \`${target}\`\n\n` +
+    reportBody(assessment, usage, extras);
+}
+
+/**
+ * The report under its heading — the whole of it, as a reviewer's section of
+ * a comment it shares with the other reviewers of its run.
+ */
+export function reportBody(
+  assessment: Assessment,
+  usage?: Usage,
+  extras: ReportExtras = {},
+): string {
   const tokens = formatUsage(usage);
   const parts = [
-    `## 🔎 ${name} — \`${target}\``,
-    "",
     `**Score:** ${assessment.score}/10 · **Severity:** ${assessment.severity} · ${assessment.findings.length} finding(s)`,
     ...(tokens !== undefined ? ["", `**Tokens:** ${tokens}`] : []),
     ...(extras.budget !== undefined
@@ -545,7 +556,12 @@ export function skipMarkdown(
   target: string,
   reason: string,
 ): string {
-  return `## ⏭️ ${name} — \`${target}\`\n\n_Skipped — ${cell(reason)}._\n`;
+  return `## ⏭️ ${name} — \`${target}\`\n\n${skipBody(reason)}`;
+}
+
+/** A skipped review's report under its heading. */
+export function skipBody(reason: string): string {
+  return `_Skipped — ${cell(reason)}._\n`;
 }
 
 /**
