@@ -75,8 +75,9 @@ Every call gets the same `ctx.state`, the rollout's durable platform state, so
 `zuke runs show`. `ctx.signal` aborts when the run is cancelled; pass it to
 network calls.
 
-Adapters for specific platforms belong in their wrapper packages. Until one
-exists for yours, a platform is a plain object in the build:
+Adapters for specific platforms belong in their wrapper packages; see
+[Cloud Run](#cloud-run) below. Until one exists for yours, a platform is a plain
+object in the build:
 
 <!-- check -->
 
@@ -120,6 +121,51 @@ class Deploy extends Build {
 
 await run(Deploy);
 ```
+
+### Cloud Run
+
+`cloudRunCanary` from `@zuke/gcloud` is a Cloud Run service as a platform:
+
+<!-- check -->
+
+```ts
+import { Build, parameter, run, target } from "@zuke/core";
+import { canary, httpProbe } from "@zuke/canary";
+import { cloudRunCanary } from "@zuke/gcloud";
+
+class Deploy extends Build {
+  image = parameter("Container image to roll out").required();
+
+  rollout = canary((c) =>
+    c.platform(
+      cloudRunCanary((r) =>
+        r.service("api").region("europe-west1").image(this.image.value)
+          .gcloud((g) => g.project("my-project"))
+      ),
+    )
+      .steps(10, 25, 50)
+      .bake("10m")
+      .analysis(httpProbe((h) => h.url("https://api.example.com/healthz")))
+  );
+  ship = target().dependsOn(this.rollout.promote).executes(() => {});
+}
+
+await run(Deploy);
+```
+
+Its lambda runs on every call, so it may read resolved parameters. Every traffic
+move goes through the candidate's tag (`canary` unless you set `.tag(...)`):
+
+| Call      | gcloud                                                                                                                                                                          |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stage`   | `run services update <service> --image <image> --tag canary --no-traffic`, then records the new revision. `services update` never creates a service, so the service must exist. |
+| `expose`  | `run services update-traffic <service> --to-tags canary=<n>`. gcloud spreads the rest over the revisions already serving, in proportion. Whole percents only.                   |
+| `promote` | Checks that the latest revision is still the staged candidate, then `update-traffic --to-latest`. A revision someone deployed mid-rollout is refused, which rolls back.         |
+| `abort`   | `update-traffic --to-tags canary=0`. It needs no recorded state, so a hand-run `rollout.abort` works, and after a promote it changes nothing.                                   |
+
+After an abort the candidate revision still exists, with no traffic and still
+carrying the tag, so its tagged URL reaches it until the next rollout moves the
+tag. Global flags such as `--project` and `--account` go in `.gcloud(...)`.
 
 ## Bakes: inline or durable
 
