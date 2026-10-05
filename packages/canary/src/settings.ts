@@ -38,7 +38,7 @@ export class CanarySettings {
   /** How long each step bakes by default (set by {@link bake}). */
   bake_?: string | number;
   /** Per-step bake overrides, by 1-based step (set by {@link bakeStep}). */
-  readonly bakeAt_ = new Map<number, string | number>();
+  readonly bakeAt_: Map<number, string | number> = new Map();
   /** The analyses each step runs (set by {@link analysis}). */
   readonly analyses_: CanaryAnalysis[] = [];
   /** How often a bake runs its analyses in flight (set by {@link analysisInterval}). */
