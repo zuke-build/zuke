@@ -683,6 +683,36 @@ function protectedResource(resource: string): ProtectedResourceSettings
   }
   ```
 
+function redactUrl(raw: string): string
+  Strip userinfo (`user:pass@`) and mask every credential-bearing parameter so
+  a URL is safe to put in an error message or a log:
+
+  ```ts
+  redactUrl("https://ci:hunter2@host.example/x?token=abc&page=2");
+  // "https://host.example/x?token=REDACTED&page=2"
+  ```
+
+  Parameters are masked in the query and in the fragment, including
+  `;`-separated ones. A parameter whose value carries a credential of its own —
+  a `redirect_uri` with userinfo or a token, encoded up to three times, or any
+  value with an `@` in it — is masked whole, since only its whole value is
+  certain to hide it. Input the URL parser rejects is scrubbed by the same rules
+  textually rather than returned as it came: the function fails closed, never
+  throws, and costs time linear in its input.
+
+  A parsed URL is re-serialised, which can change its spelling (a lowercased
+  host, a percent-encoded path). Run a build's secret redactor over text
+  before this, while a declared secret still reads as written. See the
+  module documentation for what it does not recognise.
+
+function redactUrls(text: string): string
+  `text` with every URL in it passed through {@link redactUrl} — for a message
+  that quotes a URL, such as a failed request's error. A URL starts at its
+  scheme — `https://`, `postgres://`, `https:\\`, or a web scheme the URL
+  parser also reads without slashes (`https:host`) — and runs to the next URL
+  or whitespace, less any closing punctuation (`).,"`) the sentence put after
+  it. Everything outside a URL is left as written.
+
 function remoteCacheKey(name: string, fingerprint: string): string
   The store key for a target's outputs: its name and input `fingerprint`. The
   name is sanitised so the key is safe as a filename and a URL path segment.
