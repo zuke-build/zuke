@@ -218,16 +218,25 @@ export function encodeState(state: ReviewState, name?: string): string {
 /**
  * The reviewer name a block's tag decodes to, `""` for an untagged block, or
  * `undefined` for a tag that is not base64 UTF-8 — never mistaken for a name.
+ *
+ * Only the canonical spelling counts: the tag must be exactly what
+ * {@link encodeState} writes for the name it decodes to. `atob` ignores the
+ * unused bits of the last character, so `QQ==` and `QR==` both decode to
+ * `A`; without this check one name would have many tags, and the match
+ * between a block and its reviewer would rest on decoding leniency rather
+ * than on an exact comparison.
  */
 function tagName(tag: string | undefined): string | undefined {
   if (tag === undefined) return "";
   const bytes = fromBase64(tag);
   if (bytes === undefined) return undefined;
+  let name: string;
   try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    name = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch {
     return undefined;
   }
+  return encodeText(name) === tag ? name : undefined;
 }
 
 /**

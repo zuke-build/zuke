@@ -436,3 +436,17 @@ Deno.test("a tag that is not base64 UTF-8 names no reviewer", () => {
     last,
   );
 });
+
+Deno.test("only a tag's canonical spelling names a reviewer", () => {
+  const state: ReviewState = {
+    findings: [{ id: "a1", title: "T", severity: "low", status: "open" }],
+  };
+  const block = encodeState(state, "A");
+  assertEquals(block.includes("zuke-ai-state@QQ==:"), true);
+  // `QR==` decodes to "A" too, through bits base64 leaves unused.
+  const variant = block.replace("@QQ==:", "@QR==:");
+  assertEquals(atob("QR=="), "A");
+  assertEquals(decodeState(variant, "A"), undefined);
+  assertEquals(stateNames(variant), []);
+  assertEquals(decodeState(block, "A"), state);
+});
