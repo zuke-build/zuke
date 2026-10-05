@@ -24,7 +24,7 @@ Deno.test("steps become phases with their bakes, overrides included", () => {
   assertEquals(plan.durable, false);
 });
 
-Deno.test("a stepless canary soaks only when it bakes or analyses", () => {
+Deno.test("a canary with no steps soaks only when it bakes or analyses", () => {
   const platform = new FakePlatform("channel");
   assertEquals(planCanary((c) => c.platform(platform)).phases, []);
   assertEquals(planCanary((c) => c.platform(platform).bake("1m")).phases, [
@@ -98,4 +98,18 @@ Deno.test("a canary that could not roll out is refused with the fix", () => {
     const error = assertThrows(build);
     assertStringIncludes(String(error), message);
   }
+});
+
+Deno.test("only durations that become timers are held under the longest one", () => {
+  const platform = new FakePlatform();
+  const durable = planCanary((c) =>
+    c.platform(platform).steps(10).bake("30d").durable().approval("ok")
+      .approvalTimeout("30d")
+  );
+  assertEquals(durable.phases[0].bakeMs, 30 * 86_400_000);
+  assertThrows(
+    () => planCanary((c) => c.platform(platform).steps(10).bake("30d")),
+    Error,
+    "longer than the longest timer",
+  );
 });

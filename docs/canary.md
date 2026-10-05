@@ -19,7 +19,7 @@ class Deploy extends Build {
       .steps(10, 25, 50) // exposure after each step; promotion is the 100 %
       .bake("10m") // per step; .bakeStep(3, "30m") overrides one
       .analysis(
-        httpProbe((h) => h.url(HEALTHZ).samples(30).maxFailures(0)),
+        httpProbe((h) => h.url(HEALTH_URL).samples(30).maxFailures(0)),
         prometheus((p) => p.url(PROMETHEUS).query(ERROR_RATIO).max(0.01)),
       )
       .approval("canary-approved") // optional gate before promotion
@@ -36,15 +36,15 @@ class Deploy extends Build {
 `canary(...)` is a [component](./authoring.md#reusable-components), so its
 targets are named under the field it is assigned to:
 
-| Target                  | What it does                                                                                                                                |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `rollout.stage`         | Puts the candidate in place at 0 %. Takes the lock for the whole run. A stage that fails part-way runs `abort` for what it left.            |
-| `rollout.stepN.expose`  | Sets the exposure of step N. Exposure is absolute, and the summary shows what the platform achieved: `Exposure: 12.5% (requested 10%)`.     |
-| `rollout.stepN.bake`    | Waits out the step's bake. Inline bakes run the analyses on an interval while they wait; durable ones suspend the run (see below).          |
-| `rollout.stepN.analyze` | Runs every analysis once more at the end of the step.                                                                                       |
-| `rollout.approve`       | Waits for the approval signal (`zuke resume <run-id> --signal canary-approved`). A timeout rolls the canary back.                           |
-| `rollout.promote`       | Sends everything to the candidate. It is an [effect](./orchestration.md), so a resume re-drives one that was interrupted.                   |
-| `rollout.abort`         | The rollback. It runs as `stage`'s compensation whenever the run is cancelled or a step fails with `cancel-run`, and it can be run by hand. |
+| Target                  | What it does                                                                                                                                                                     |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rollout.stage`         | Puts the candidate in place at 0 %. Takes the lock for the whole run. A stage that fails part-way, or is cancelled, rolls back what it left before it fails.                     |
+| `rollout.stepN.expose`  | Sets the exposure of step N. Exposure is absolute, and the summary shows what the platform achieved: `Exposure: 12.5% (requested 10%)`.                                          |
+| `rollout.stepN.bake`    | Waits out the step's bake. Inline bakes run the analyses on an interval while they wait; durable ones suspend the run (see below).                                               |
+| `rollout.stepN.analyze` | Runs every analysis once more at the end of the step.                                                                                                                            |
+| `rollout.approve`       | Waits for the approval signal (`zuke resume <run-id> --signal canary-approved`). A timeout rolls the canary back.                                                                |
+| `rollout.promote`       | Sends everything to the candidate. It is an [effect](./orchestration.md), so a resume re-drives one that was interrupted.                                                        |
+| `rollout.abort`         | The rollback. It runs as `stage`'s compensation whenever the run is cancelled or a step fails with `cancel-run`, unless the release was already promoted. It can be run by hand. |
 
 A target only exists when it has something to do: a step with no bake has no
 `bake`, and a canary with no analyses has no `analyze`. A canary with no steps,
@@ -133,8 +133,9 @@ process is alive during the bake. The gate records when the bake started in its
 durable state, and `zuke resume --check` (from a cron, say) reopens it once the
 time is up. A durable bake runs no in-flight analyses, since nothing is there to
 run them. Each step's final `analyze` still runs, in whichever process resumes
-the run. Use durable bakes when a bake is long, or when the CI job that started
-the rollout should not stay alive for it.
+the run. An inline bake is a timer, so it can be at most about 24 days; a
+durable one has no such limit. Use durable bakes when a bake is long, or when
+the CI job that started the rollout should not stay alive for it.
 
 ## Analyses
 
@@ -153,7 +154,14 @@ The package ships three, all over plain HTTP with no dependencies:
 
 Each analysis's lambda runs on every check, so it may read resolved parameters.
 Failure messages pass through the run's redactor, so a secret parameter in a URL
-or a query is masked before it reaches a log or a pull request.
+or a query is masked before it reaches a log or a pull request. Any URL in a
+failure message is also cut down to its origin and path, because a URL's
+`user:password@` and query string are where hard-coded tokens tend to live.
+
+A ratio query over a window with no traffic is `0/0`, which Prometheus reports
+as `NaN`, and a `NaN` sample fails the analysis. Guard such a query so that
+quiet means healthy, for example `… and on() sum(rate(requests_total[5m])) > 0`
+or `… or vector(0)`.
 
 ## The lock
 
@@ -168,20 +176,31 @@ parked rollout keeps the lock with no process alive.
 
 There is one rollback, `rollout.abort`, and every path reaches it:
 
-| What happened                            | How it reaches `abort`                                |
-| ---------------------------------------- | ----------------------------------------------------- |
-| An analysis or an in-flight check failed | the step's `.onFailure("cancel-run")` cancels the run |
-| `expose` or `promote` failed             | the same                                              |
-| `stage` failed part-way                  | `stage`'s own `.onFailure(...)` runs `abort` first    |
-| The approval timed out                   | the gate's `.onTimeout("cancel-run")`                 |
-| `zuke cancel <run-id>`                   | the cancellation walk runs `stage`'s compensation     |
+| What happened                             | How it reaches `abort`                                      |
+| ----------------------------------------- | ----------------------------------------------------------- |
+| An analysis or an in-flight check failed  | the step's `.onFailure("cancel-run")` cancels the run       |
+| `expose` or `promote` failed              | the same                                                    |
+| `stage` failed part-way, or was cancelled | `stage` calls the platform's `abort` itself before it fails |
+| The approval timed out                    | the gate's `.onTimeout("cancel-run")`                       |
+| `zuke cancel <run-id>`                    | the cancellation walk runs `stage`'s compensation           |
 
 When `abort` runs as a rollback, `ctx.state` holds everything `stage` and the
 later calls recorded.
 
+Two cases deliberately **do not** roll back:
+
+- **Another rollout lost the lock.** A second rollout refused the lock fails
+  before its `stage` body runs, so it touches nothing. The candidate it would
+  have rolled back belongs to the rollout holding the lock.
+- **The release was already promoted.** `promote` records that it finished, so a
+  cancellation later in the same run, such as a downstream target with
+  `.onFailure("cancel-run")`, leaves the promoted release alone instead of
+  returning traffic to a version promotion already retired.
+
 **Running `zuke rollout.abort` by hand is different.** It starts a fresh run,
 which has no recorded state from the rollout, so `ctx.state` is empty. That is
 why the platform contract says `abort` must work from its own configuration
-alone. To stop a rollout that is still running or parked, use
-`zuke cancel <run-id>` instead: it rolls back with the recorded state, and it
-releases the rollout's lock.
+alone. When the rollout declares a lock, a hand-run `abort` takes it too, so it
+is refused while a rollout holds the service. To stop a rollout that is still
+running or parked, use `zuke cancel <run-id>` instead: it rolls back with the
+recorded state, and it releases the rollout's lock.

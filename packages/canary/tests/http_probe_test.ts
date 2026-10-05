@@ -104,3 +104,70 @@ Deno.test("a probe with no URL or no samples is refused", async () => {
     "at least one sample",
   );
 });
+
+Deno.test("credentials in the probe URL never reach the failure message", async () => {
+  const error = await assertRejects(
+    async () =>
+      await httpProbe((h) =>
+        h.url("https://admin:hunter2@api.example/healthz?token=abc").samples(1)
+          .fetch(fakeFetch(() => new Response("", { status: 500 })))
+      ).validate(analysisContext()),
+    Error,
+  );
+  assertStringIncludes(String(error), "https://api.example/healthz failed");
+  for (const secret of ["hunter2", "admin", "token=abc"]) {
+    assertEquals(String(error).includes(secret), false, secret);
+  }
+});
+
+Deno.test("a maxFailures that could never mean anything is refused", async () => {
+  for (const bad of [Number.NaN, -1, 1.5]) {
+    await assertRejects(
+      async () =>
+        await httpProbe((h) =>
+          h.url("https://api.example").maxFailures(bad)
+            .fetch(fakeFetch(() => new Response("ok")))
+        ).validate(analysisContext()),
+      Error,
+      "whole, non-negative maxFailures",
+    );
+  }
+});
+
+Deno.test("an interval or timeout past the longest timer is refused", async () => {
+  await assertRejects(
+    async () =>
+      await httpProbe((h) => h.url("https://api.example").interval("30d"))
+        .validate(analysisContext()),
+    Error,
+    "longest timer",
+  );
+});
+
+Deno.test("cleaning a URL never changes a secret's spelling before the redactor sees it", async () => {
+  const error = await assertRejects(
+    async () =>
+      await httpProbe((h) =>
+        h.url("https://Hooks.example/s3cr3t{x}").samples(1)
+          .fetch(fakeFetch(() => new Response("", { status: 500 })))
+      ).validate(analysisContext()),
+    Error,
+  );
+  assertEquals(String(error).includes("s3cr3t"), false);
+  assertStringIncludes(String(error), "https://Hooks.example/[redacted]{x}");
+});
+
+Deno.test("a password with brackets in it does not slip past the cleaning", async () => {
+  const error = await assertRejects(
+    async () =>
+      await httpProbe((h) =>
+        h.url("https://u:p(a)ss@api.example/x?t=1").samples(1)
+          .fetch(fakeFetch(() => new Response("", { status: 500 })))
+      ).validate(analysisContext()),
+    Error,
+  );
+  for (const secret of ["p(a)ss", "(a)ss", "t=1"]) {
+    assertEquals(String(error).includes(secret), false, secret);
+  }
+  assertStringIncludes(String(error), "https://api.example/x failed");
+});

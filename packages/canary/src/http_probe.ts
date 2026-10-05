@@ -10,8 +10,9 @@
 
 import { parseDuration } from "@zuke/core";
 import type { Configure } from "@zuke/core/tooling";
-import { bakeFor } from "./bake.ts";
-import { requestSignal } from "./request.ts";
+import { bakeFor, MAX_TIMER_MS } from "./bake.ts";
+import { messageOf } from "./message.ts";
+import { requestSignal, withoutCredentials } from "./request.ts";
 import type { CanaryAnalysis } from "./types.ts";
 
 /** How many requests a probe makes when no count is set. */
@@ -119,6 +120,20 @@ export function httpProbe(
           `httpProbe needs at least one sample, got ${settings.samples_}.`,
         );
       }
+      const allowed = settings.maxFailures_;
+      if (!Number.isInteger(allowed) || allowed < 0) {
+        throw new Error(
+          `httpProbe needs a whole, non-negative maxFailures, got ${allowed}.`,
+        );
+      }
+      if (
+        settings.interval_ > MAX_TIMER_MS || settings.timeout_ > MAX_TIMER_MS
+      ) {
+        throw new Error(
+          "httpProbe interval and timeout must each be shorter than the " +
+            "longest timer (about 24 days).",
+        );
+      }
       const healthy = (status: number): boolean =>
         settings.expectStatus_.length === 0
           ? status >= 200 && status < 300
@@ -133,15 +148,15 @@ export function httpProbe(
         }
       }
       const failed = [...failures.values()].reduce((a, b) => a + b, 0);
-      if (failed > settings.maxFailures_) {
+      if (failed > allowed) {
         const reasons = [...failures].map(([reason, count]) =>
           count === 1 ? reason : `${reason} ×${count}`
         ).join(", ");
         throw new Error(
-          context.redact(
+          withoutCredentials(context.redact(
             `httpProbe: ${failed} of ${settings.samples_} requests to ${url} ` +
-              `failed (at most ${settings.maxFailures_} allowed): ${reasons}`,
-          ),
+              `failed (at most ${allowed} allowed): ${reasons}`,
+          )),
         );
       }
     },
@@ -168,6 +183,6 @@ async function probeOnce(
     if (error instanceof DOMException && error.name === "TimeoutError") {
       return "timeout";
     }
-    return error instanceof Error ? error.message : String(error);
+    return messageOf(error);
   }
 }

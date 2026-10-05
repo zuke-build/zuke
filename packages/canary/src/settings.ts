@@ -19,7 +19,7 @@ import type { CanaryAnalysis, CanaryPlatform } from "./types.ts";
  *   c.platform(myPlatform)
  *     .steps(10, 25, 50)
  *     .bake("10m")
- *     .analysis(httpProbe((h) => h.url(HEALTHZ)))
+ *     .analysis(httpProbe((h) => h.url(HEALTH_URL)))
  *     .approval("canary-approved")
  *     .lock((l) => l.lockKey("deploy", "api").withTtl("24h"))
  * );

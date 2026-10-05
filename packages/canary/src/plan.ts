@@ -13,16 +13,15 @@
 
 import { type LockSettings, parseDuration } from "@zuke/core";
 import type { Configure } from "@zuke/core/tooling";
+import { MAX_TIMER_MS } from "./bake.ts";
+import { messageOf } from "./message.ts";
 import { CanarySettings } from "./settings.ts";
 import type { CanaryAnalysis, CanaryPlatform } from "./types.ts";
-
-/** The longest delay `setTimeout` honours: 2^31 - 1 ms. */
-const MAX_TIMER_MS = 2_147_483_647;
 
 /** The in-flight analysis interval when none is set. */
 const DEFAULT_ANALYSIS_INTERVAL = "1m";
 
-/** One phase of a rollout: a step, or the single soak of a stepless canary. */
+/** One phase of a rollout: a step, or the single soak of a canary with no steps. */
 export interface CanaryPhase {
   /** The bundle key the phase's targets live under: `step1`, …, or `soak`. */
   key: string;
@@ -69,9 +68,13 @@ export function planCanary(configure: Configure<CanarySettings>): CanaryPlan {
       );
     }
   }
+  // An inline bake is a timer; a durable one compares recorded times, so only
+  // the inline one is held under the longest timer.
   const bakeOf = (step: number): number => {
     const value = settings.bakeAt_.get(step) ?? settings.bake_;
-    return value === undefined ? 0 : duration("bake", value, true);
+    return value === undefined
+      ? 0
+      : duration("bake", value, true, !settings.durable_);
   };
   const phases: CanaryPhase[] = steps.map((percent, index) => ({
     key: `step${index + 1}`,
@@ -79,7 +82,7 @@ export function planCanary(configure: Configure<CanarySettings>): CanaryPlan {
     percent,
     bakeMs: bakeOf(index + 1),
   }));
-  // A stepless canary still bakes and analyses once, at whatever exposure
+  // A canary with no steps still bakes and analyses once, at whatever exposure
   // staging leaves it — a release channel's pre-release, say.
   const soakMs = bakeOf(0);
   if (
@@ -95,7 +98,7 @@ export function planCanary(configure: Configure<CanarySettings>): CanaryPlan {
           "gate to time out.",
       );
     }
-    duration("approval timeout", settings.approvalTimeout_, false);
+    duration("approval timeout", settings.approvalTimeout_, false, false);
   }
   return {
     platform,
@@ -105,6 +108,7 @@ export function planCanary(configure: Configure<CanarySettings>): CanaryPlan {
       "analysis interval",
       settings.analysisInterval_ ?? DEFAULT_ANALYSIS_INTERVAL,
       false,
+      true,
     ),
     ...(settings.approval_ === undefined ? {} : {
       approval: {
@@ -139,23 +143,26 @@ function checkSteps(steps: number[], platform: CanaryPlatform): void {
   }
 }
 
-/** Parse a duration, naming the setting when it is malformed or out of range. */
+/**
+ * Parse a duration, naming the setting when it is malformed or out of range.
+ * A `timer` duration becomes a `setTimeout`, so it must fit one.
+ */
 function duration(
   label: string,
   value: string | number,
   zeroAllowed: boolean,
+  timer: boolean,
 ): number {
   let ms: number;
   try {
     ms = parseDuration(value);
   } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`canary: ${label} ${String(value)} — ${detail}`);
+    throw new Error(`canary: ${label} ${String(value)} — ${messageOf(error)}`);
   }
   if (!zeroAllowed && ms === 0) {
     throw new Error(`canary: ${label} must be positive, got ${String(value)}.`);
   }
-  if (ms > MAX_TIMER_MS) {
+  if (timer && ms > MAX_TIMER_MS) {
     throw new Error(
       `canary: ${label} ${String(value)} is longer than the longest timer ` +
         `(about 24 days).`,

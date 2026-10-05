@@ -1316,7 +1316,7 @@ class Deploy extends Build {
       .steps(10, 25, 50) // exposure after each step; promote is the 100 %
       .bake("10m") // .bakeStep(3, "30m") overrides one step
       .analysis(
-        httpProbe((h) => h.url(HEALTHZ).samples(30)),
+        httpProbe((h) => h.url(HEALTH_URL).samples(30)),
         prometheus((p) => p.url(PROM).query(ERROR_RATIO).max(0.01)),
       )
       .approval("canary-approved").approvalTimeout("24h") // optional gate
@@ -1328,12 +1328,13 @@ class Deploy extends Build {
 ```
 
 - Targets: `rollout.stage`, `rollout.stepN.expose` / `.bake` / `.analyze`,
-  `rollout.approve`, `rollout.promote` (an effect), `rollout.abort`. A stepless
+  `rollout.approve`, `rollout.promote` (an effect), `rollout.abort`. A step-free
   canary (a `"channel"` platform) gets one `rollout.soak` phase.
 - **One rollback.** A failed analysis, a failed step, an approval timeout, and
-  `zuke cancel` all run `abort`, with the state `stage` recorded. Inline bakes
-  run the analyses every `.analysisInterval(...)` (default `"1m"`) through
-  core's `.validateDuring`.
+  `zuke cancel` all run `abort`, with the state `stage` recorded — except a
+  cancellation after `promote` finished (the release stays), and a rollout that
+  lost the lock (it touches nothing). Inline bakes run the analyses every
+  `.analysisInterval(...)` (default `"1m"`) through core's `.validateDuring`.
 - `CanaryPlatform` contract: `expose` is absolute and returns the exposure
   achieved; `promote` / `abort` are idempotent; `ctx.state` is shared by every
   call (never a secret in it). `zuke rollout.abort` **by hand** is a fresh run

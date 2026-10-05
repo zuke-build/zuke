@@ -22,15 +22,17 @@ import type { Configure } from "@zuke/core/tooling";
 import { bakeElapsed, bakeFor } from "./bake.ts";
 import { type CanaryPhase, planCanary } from "./plan.ts";
 import type { CanarySettings } from "./settings.ts";
+import { messageOf } from "./message.ts";
 import type {
   CanaryAnalysis,
   CanaryAnalysisContext,
   CanaryContext,
+  CanaryPlatform,
 } from "./types.ts";
 
 /** The targets of one phase of a rollout. */
 export interface CanaryPhaseTargets {
-  /** Sets the step's exposure; absent for the soak of a stepless canary. */
+  /** Sets the step's exposure; absent for the soak of a canary with no steps. */
   expose?: TargetBuilder;
   /** Waits out the bake; absent when the phase does not bake. */
   bake?: TargetBuilder;
@@ -53,7 +55,7 @@ export interface Canary {
   promote: TargetBuilder;
   /** The rollback: every failure path runs it, and it can be run by hand. */
   abort: TargetBuilder;
-  /** The single phase of a stepless canary, when it bakes or analyses. */
+  /** The single phase of a canary with no steps, when it bakes or analyses. */
   soak?: CanaryPhaseTargets;
   /** A phase per step: `step1`, `step2`, … */
   [step: `step${number}`]: CanaryPhaseTargets;
@@ -64,6 +66,11 @@ interface PhaseView {
   step: number;
   requested: number;
   exposure: number;
+  /**
+   * The observing target's signal. Core hands a final `validateAfter` check
+   * none, so without this a cancelled run would wait out every probe.
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -88,13 +95,17 @@ export function canary(configure: Configure<CanarySettings>): Canary {
   const plan = planCanary(configure);
   const { platform } = plan;
 
-  // The one rollback, built first so every failure path below can name it.
-  // Run as `stage`'s compensation, `ctx.state` is seeded with the stage's
-  // record — the handles `stage` and every later call wrote. Run by hand, it is
-  // a fresh run with none, which the platform contract covers.
+  // The one rollback, built first so `stage` can name it. Run as `stage`'s
+  // compensation, `ctx.state` is seeded with the stage's record — the handles
+  // `stage` and every later call wrote. Run by hand, it is a fresh run with
+  // none, which the platform contract covers; it takes the rollout's lock (for
+  // its body only), so it is refused while a rollout holds the service.
   const abort = target()
     .description("Canary: roll back to the stable version")
     .executes(async (ctx) => {
+      // A compensation after promotion — a later target cancelling the run —
+      // must not return traffic to a version promotion already retired.
+      if (ctx.state.get()[PROMOTED] === true) return;
       await platform.abort(canaryContext(ctx, ctx.state));
       ctx.reportSummary({ "Rolled back": platform.describe() });
     });
@@ -102,15 +113,24 @@ export function canary(configure: Configure<CanarySettings>): Canary {
   const stage = target()
     .description("Canary: stage the candidate at 0 % exposure")
     .onCancel(abort)
-    // A stage that failed part-way may have left a candidate behind, and a
-    // failed target's own compensation never runs — so roll back explicitly.
-    .onFailure(() => abort)
     .executes(async (ctx) => {
-      await platform.stage(canaryContext(ctx, ctx.state));
+      const canaryCtx = canaryContext(ctx, ctx.state);
+      try {
+        await platform.stage(canaryCtx);
+      } catch (error) {
+        // A stage that failed part-way, or was cut short by a cancellation,
+        // may have left a candidate behind — and a target that did not succeed
+        // is never compensated. Roll back here, while the handles are at hand,
+        // under a signal the cancellation cannot cut short in turn.
+        await rollBackStage(platform, { ...canaryCtx, signal: NEVER }, error);
+      }
       ctx.reportSummary({ Platform: platform.describe() });
     });
   const lock = plan.lock;
-  if (lock !== undefined) stage.lock((s) => lock(s).holdForRun());
+  if (lock !== undefined) {
+    stage.lock((s) => lock(s).holdForRun());
+    abort.lock(lock);
+  }
 
   // Every later target reads and writes the platform's handles where `stage`
   // keeps them, so a rollback finds them on the stage's record.
@@ -155,7 +175,7 @@ export function canary(configure: Configure<CanarySettings>): Canary {
     let view: PhaseView = { step: phase.step, requested: 0, exposure: 0 };
     const exposeTarget = expose;
     const observe = (ctx: TargetContext): void => {
-      view = phaseView(phase, ctx, exposeTarget);
+      view = { ...phaseView(phase, ctx, exposeTarget), signal: ctx.signal };
     };
     const analyses = plan.analyses.map((a) => withPhase(a, () => view));
 
@@ -215,7 +235,9 @@ export function canary(configure: Configure<CanarySettings>): Canary {
     .dependsOn(last)
     .onFailure(() => "cancel-run")
     .effect("promote", async (ctx) => {
-      await platform.promote(canaryContext(ctx, platformState(ctx)));
+      const state = platformState(ctx);
+      await platform.promote(canaryContext(ctx, state));
+      await state.set({ [PROMOTED]: true });
       ctx.reportSummary({ Promoted: platform.describe() });
     });
 
@@ -226,6 +248,33 @@ export function canary(configure: Configure<CanarySettings>): Canary {
     promote,
     abort,
   };
+}
+
+/** The platform-state key `promote` marks a finished promotion with. */
+const PROMOTED = "canaryPromoted";
+
+/** A signal that never aborts, for a rollback nothing may interrupt. */
+const NEVER: AbortSignal = new AbortController().signal;
+
+/**
+ * Roll back what a failed `stage` left, then rethrow its error — with the
+ * rollback's own failure added, so neither is lost.
+ */
+async function rollBackStage(
+  platform: CanaryPlatform,
+  ctx: CanaryContext,
+  cause: unknown,
+): Promise<never> {
+  try {
+    await platform.abort(ctx);
+  } catch (rollback) {
+    throw new Error(
+      `${messageOf(cause)} — and rolling back what stage left also failed: ` +
+        `${messageOf(rollback)}`,
+      { cause },
+    );
+  }
+  throw cause;
 }
 
 /** The {@link CanaryContext} a platform call gets from a target's context. */
@@ -284,7 +333,9 @@ function withPhase(
   view: () => PhaseView,
 ): Validation {
   const validate = (context: ValidationContext) => {
-    const full: CanaryAnalysisContext = { ...context, ...view() };
+    // The check's own context wins: an in-flight round's signal ends with the
+    // round, which is narrower than the target's.
+    const full: CanaryAnalysisContext = { ...view(), ...context };
     return analysis.validate(full);
   };
   return analysis.name === undefined

@@ -11,6 +11,12 @@
 
 import type { WaitTrigger } from "@zuke/core";
 
+/**
+ * The longest delay `setTimeout` honours: 2^31 - 1 ms (about 24.8 days). A
+ * longer one fires at once, so every inline wait is held under it.
+ */
+export const MAX_TIMER_MS = 2_147_483_647;
+
 /** The state key a durable bake records its start under. */
 const STARTED_AT = "bakeStartedAt";
 

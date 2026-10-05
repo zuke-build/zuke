@@ -151,7 +151,7 @@ class CanarySettings
     c.platform(myPlatform)
       .steps(10, 25, 50)
       .bake("10m")
-      .analysis(httpProbe((h) => h.url(HEALTHZ)))
+      .analysis(httpProbe((h) => h.url(HEALTH_URL)))
       .approval("canary-approved")
       .lock((l) => l.lockKey("deploy", "api").withTtl("24h"))
   );
@@ -319,7 +319,7 @@ interface Canary
   abort: TargetBuilder
     The rollback: every failure path runs it, and it can be run by hand.
   soak?: CanaryPhaseTargets
-    The single phase of a stepless canary, when it bakes or analyses.
+    The single phase of a canary with no steps, when it bakes or analyses.
   [step: `step${number}`]: CanaryPhaseTargets
 
 interface CanaryAnalysis
@@ -366,7 +366,7 @@ interface CanaryPhaseTargets
   The targets of one phase of a rollout.
 
   expose?: TargetBuilder
-    Sets the step's exposure; absent for the soak of a stepless canary.
+    Sets the step's exposure; absent for the soak of a canary with no steps.
   bake?: TargetBuilder
     Waits out the bake; absent when the phase does not bake.
   analyze?: TargetBuilder

@@ -12,7 +12,8 @@ import { parseDuration } from "@zuke/core";
 import type { Configure } from "@zuke/core/tooling";
 import { boundsOf, checkThreshold } from "./threshold.ts";
 import type { CanaryAnalysis } from "./types.ts";
-import { requestSignal } from "./request.ts";
+import { messageOf } from "./message.ts";
+import { requestSignal, withoutCredentials } from "./request.ts";
 
 /** How long a query may take when no timeout is set. */
 const DEFAULT_TIMEOUT = 30_000;
@@ -120,32 +121,29 @@ export function prometheus(
         );
       }
       const bounds = boundsOf(settings);
-      const url = `${base.replace(/\/+$/, "")}/api/v1/query?query=${
-        encodeURIComponent(promql)
-      }`;
+      const fail = (detail: string): Error =>
+        new Error(withoutCredentials(context.redact(detail)));
       let samples: number[];
       try {
-        const response = await settings.fetch_(url, {
+        const response = await settings.fetch_(queryUrl(base, promql), {
           headers: settings.headers_,
           signal: requestSignal(settings.timeout_, context.signal),
         });
-        const body: unknown = await response.json();
+        const text = await response.text();
         if (!response.ok) {
-          throw new Error(`HTTP ${response.status}${errorOf(body)}`);
+          throw new Error(`HTTP ${response.status}${errorOf(parsed(text))}`);
         }
-        samples = samplesOf(body);
+        samples = samplesOf(JSON.parse(text));
       } catch (error) {
-        const detail = error instanceof Error ? error.message : String(error);
-        throw new Error(
-          context.redact(`${settings.name_} could not be read: ${detail}`),
-        );
+        // The run's own cancellation is not the candidate's failure.
+        context.signal?.throwIfAborted();
+        throw fail(`${settings.name_} could not be read: ${messageOf(error)}`);
       }
       for (const value of samples) {
         try {
           checkThreshold(settings.name_, value, bounds);
         } catch (error) {
-          const detail = error instanceof Error ? error.message : String(error);
-          throw new Error(context.redact(detail));
+          throw fail(messageOf(error));
         }
       }
     },
@@ -173,12 +171,39 @@ function samplesOf(body: unknown): number[] {
   return result.map((sample) => valueOf(field(sample, "value")));
 }
 
-/** The number in a Prometheus `[timestamp, "value"]` pair. */
+/**
+ * The number in a Prometheus `[timestamp, "value"]` pair. Prometheus writes
+ * infinities as `+Inf`/`-Inf`, which `Number` does not read; `NaN` stays NaN
+ * and fails the check — a ratio over no traffic (0/0) is NaN, so guard such a
+ * query (`… and on() sum(rate(requests[5m])) > 0`, or `or vector(0)`).
+ */
 function valueOf(pair: unknown): number {
   if (!Array.isArray(pair) || typeof pair[1] !== "string") {
     throw new Error("a sample has no [timestamp, value] pair");
   }
+  if (pair[1] === "+Inf") return Number.POSITIVE_INFINITY;
+  if (pair[1] === "-Inf") return Number.NEGATIVE_INFINITY;
   return Number(pair[1]);
+}
+
+/**
+ * The instant-query URL under `base`, keeping any path or query string it
+ * already has (a tenant parameter, a proxy prefix).
+ */
+function queryUrl(base: string, promql: string): string {
+  const url = new URL(base);
+  url.pathname = `${url.pathname.replace(/\/+$/, "")}/api/v1/query`;
+  url.searchParams.set("query", promql);
+  return url.href;
+}
+
+/** `text` parsed as JSON, or `undefined` when it is not JSON (an HTML error page). */
+function parsed(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
 }
 
 /** `": <error>"` from a Prometheus error body, or nothing. */

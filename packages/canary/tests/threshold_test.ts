@@ -6,9 +6,10 @@
 import {
   assertEquals,
   assertRejects,
+  assertStringIncludes,
   assertThrows,
 } from "../../core/tests/_assert.ts";
-import { metricThreshold } from "../mod.ts";
+import { metricThreshold, type MetricThresholdSettings } from "../mod.ts";
 import { checkThreshold } from "../src/threshold.ts";
 import { analysisContext } from "./_context.ts";
 
@@ -65,4 +66,48 @@ Deno.test("a reading that is not a number fails", () => {
     "not a number",
   );
   checkThreshold("x", 1, { max: 1, min: 1 });
+});
+
+Deno.test("a reader's failure has the credentials in its URLs cleaned", async () => {
+  const error = await assertRejects(
+    async () =>
+      await metricThreshold((m) =>
+        m.read(() => {
+          throw new Error(
+            "GET https://u:pw@metrics.example/q?token=abc failed",
+          );
+        }).max(1)
+      ).validate(analysisContext()),
+    Error,
+  );
+  assertStringIncludes(String(error), "GET https://metrics.example/q failed");
+  for (const secret of ["pw@", "token=abc"]) {
+    assertEquals(String(error).includes(secret), false, secret);
+  }
+});
+
+Deno.test("bounds that could never judge anything are refused", async () => {
+  const cases: Array<
+    [(m: MetricThresholdSettings) => MetricThresholdSettings, string]
+  > = [
+    [(m) => m.read(() => 999).max(Number.NaN), "not a number"],
+    [(m) => m.read(() => 5).min(10).max(1), "can never pass"],
+  ];
+  for (const [configure, message] of cases) {
+    await assertRejects(
+      async () => await metricThreshold(configure).validate(analysisContext()),
+      Error,
+      message,
+    );
+  }
+});
+
+Deno.test("a failing metric's message is redacted", async () => {
+  const error = await assertRejects(
+    async () =>
+      await metricThreshold((m) => m.name("s3cr3t ratio").read(() => 2).max(1))
+        .validate(analysisContext()),
+    Error,
+  );
+  assertEquals(String(error).includes("s3cr3t"), false);
 });

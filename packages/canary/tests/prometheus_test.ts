@@ -31,10 +31,14 @@ Deno.test("a vector within bounds passes, and the query is sent encoded with hea
       .max(0.01).header("Authorization", "Bearer t").timeout("10s")
       .fetch(fetcher)
   ).validate(analysisContext());
+  const sent = new URL(fetcher.urls[0]);
   assertEquals(
-    fetcher.urls[0],
-    "https://prom.example/api/v1/query?query=" +
-      encodeURIComponent('rate(errors{rev="canary"}[5m])'),
+    sent.origin + sent.pathname,
+    "https://prom.example/api/v1/query",
+  );
+  assertEquals(
+    sent.searchParams.get("query"),
+    'rate(errors{rev="canary"}[5m])',
   );
   assertEquals(fetcher.headers[0].get("Authorization"), "Bearer t");
 });
@@ -121,4 +125,85 @@ Deno.test("a query with no URL, no query or no bound is refused", async () => {
       message,
     );
   }
+});
+
+Deno.test("a base URL's path and query string are kept", async () => {
+  const fetcher = fakeFetch(() => vector("0"));
+  await prometheus((p) =>
+    p.url("https://proxy.example/prom/?org=7").query("up").max(1).fetch(fetcher)
+  ).validate(analysisContext());
+  const sent = new URL(fetcher.urls[0]);
+  assertEquals(sent.pathname, "/prom/api/v1/query");
+  assertEquals(sent.searchParams.get("org"), "7");
+  assertEquals(sent.searchParams.get("query"), "up");
+});
+
+Deno.test("an HTML error page reports its status, not a JSON parse error", async () => {
+  await assertRejects(
+    async () =>
+      await prometheus((p) =>
+        p.url("https://prom.example").query("q").max(1)
+          .fetch(
+            fakeFetch(() => new Response("<html>bad gateway", { status: 502 })),
+          )
+      ).validate(analysisContext()),
+    Error,
+    "could not be read: HTTP 502",
+  );
+});
+
+Deno.test("infinite samples are judged as infinities, NaN as not a number", async () => {
+  const judge = async (value: string) =>
+    await prometheus((p) =>
+      p.name("ratio").url("https://prom.example").query("q").max(1)
+        .fetch(fakeFetch(() => vector(value)))
+    ).validate(analysisContext());
+  await assertRejects(
+    () => judge("+Inf"),
+    Error,
+    "ratio is Infinity, above the maximum 1",
+  );
+  await assertRejects(() => judge("NaN"), Error, "ratio is not a number");
+  await prometheus((p) =>
+    p.url("https://prom.example").query("q").max(1)
+      .fetch(fakeFetch(() => vector("-Inf")))
+  ).validate(analysisContext());
+});
+
+Deno.test("credentials in a URL never reach the failure message", async () => {
+  const error = await assertRejects(
+    async () =>
+      await prometheus((p) =>
+        p.url("https://admin:hunter2@prom.example/?token=abc").query("q").max(1)
+          .fetch(
+            fakeFetch((url) =>
+              Promise.reject(
+                new TypeError(`error sending request for url (${url})`),
+              )
+            ),
+          )
+      ).validate(analysisContext()),
+    Error,
+  );
+  assertStringIncludes(String(error), "https://prom.example/api/v1/query");
+  for (const secret of ["hunter2", "admin", "token=abc"]) {
+    assertEquals(String(error).includes(secret), false, secret);
+  }
+});
+
+Deno.test("the run's cancellation is not reported as an unreadable query", async () => {
+  const stop = new AbortController();
+  const fetcher = fakeFetch(() => {
+    stop.abort(new Error("run cancelled"));
+    return Promise.reject(new DOMException("aborted", "AbortError"));
+  });
+  await assertRejects(
+    async () =>
+      await prometheus((p) =>
+        p.url("https://prom.example").query("q").max(1).fetch(fetcher)
+      )
+        .validate(analysisContext(stop.signal)),
+    Error,
+    "run cancelled",
+  );
 });

@@ -28,6 +28,7 @@ import {
   canary,
   type CanaryAnalysis,
   type CanaryAnalysisContext,
+  type CanaryPlatform,
   type CanarySettings,
 } from "../mod.ts";
 import type { Configure } from "@zuke/core/tooling";
@@ -357,7 +358,7 @@ Deno.test("a durable bake parks the run until its time is up", async () => {
   });
 });
 
-Deno.test("a stepless canary soaks and analyses once before promoting", async () => {
+Deno.test("a canary with no steps soaks and analyses once before promoting", async () => {
   await withTempStore(async (store) => {
     const platform = new FakePlatform("channel");
     const check = analysis();
@@ -384,5 +385,168 @@ Deno.test("abort run by hand gets no recorded state", async () => {
     });
     assertEquals(result.ok, true);
     assertEquals(platform.calls, ["abort -"]);
+  });
+});
+
+Deno.test("the final analysis gets its target's signal, so a cancel cuts it short", async () => {
+  await withTempStore(async (store) => {
+    const platform = new FakePlatform();
+    const signals: Array<AbortSignal | undefined> = [];
+    const b = built(
+      rolloutOf(
+        platform,
+        (c) =>
+          c.steps(10).analysis({
+            validate: ({ signal }) => void signals.push(signal),
+          }),
+      ),
+    );
+    const result = await execute(b, b.ship, {
+      silent: true,
+      stateStore: store,
+    });
+    assertEquals(result.ok, true);
+    assertEquals(signals.length, 1);
+    assertEquals(signals[0] instanceof AbortSignal, true);
+  });
+});
+
+Deno.test("a second rollout refused the lock leaves the first rollout's candidate alone", async () => {
+  await withTempStore(async (store) => {
+    const platform = new FakePlatform();
+    const Rollout = rolloutOf(
+      platform,
+      (c) =>
+        c.steps(10).approval("ok").lock((l) =>
+          l.key("deploy-api").withTtl("1h")
+        ),
+    );
+    const first = built(Rollout);
+    const parked = await execute(first, first.ship, {
+      silent: true,
+      stateStore: store,
+    });
+    assertEquals(parked.suspended, true);
+    const second = built(Rollout);
+    const refused = await execute(second, second.ship, {
+      silent: true,
+      stateStore: store,
+    });
+    assertEquals(refused.ok, false);
+    assertStringIncludes(String(refused.error), "deploy-api");
+    // Nothing was rolled back: the candidate is the first rollout's.
+    assertEquals(platform.calls, ["stage", "expose 10 rev-2"]);
+  });
+});
+
+Deno.test("a cancel while stage runs rolls back what it had staged", async () => {
+  await withTempStore(async (store) => {
+    const platform = new FakePlatform();
+    let started: () => void = () => {};
+    const staging = new Promise<void>((r) => (started = r));
+    const slow: CanaryPlatform = {
+      exposure: "traffic",
+      describe: () => platform.describe(),
+      async stage(ctx) {
+        await platform.stage(ctx);
+        started();
+        await new Promise<void>((_, reject) =>
+          ctx.signal.addEventListener(
+            "abort",
+            () => reject(ctx.signal.reason),
+            {
+              once: true,
+            },
+          )
+        );
+      },
+      expose: (percent, ctx) => platform.expose(percent, ctx),
+      promote: (ctx) => platform.promote(ctx),
+      abort: (ctx) => platform.abort(ctx),
+    };
+    class B extends Build {
+      rollout = canary((c) => c.platform(slow).steps(10));
+    }
+    const b = built(B);
+    const stop = new AbortController();
+    const running = execute(b, b.rollout.promote, {
+      silent: true,
+      stateStore: store,
+      signal: stop.signal,
+    });
+    await staging;
+    stop.abort();
+    const result = await running;
+    assertEquals(result.ok, false);
+    assertEquals(platform.calls, ["stage", "abort rev-1"]);
+  });
+});
+
+Deno.test("a stage whose rollback also fails reports both", async () => {
+  await withTempStore(async (store) => {
+    const platform = new FakePlatform();
+    platform.failOn = "stage";
+    const failing: CanaryPlatform = {
+      exposure: "traffic",
+      describe: () => platform.describe(),
+      stage: (ctx) => platform.stage(ctx),
+      expose: (percent, ctx) => platform.expose(percent, ctx),
+      promote: (ctx) => platform.promote(ctx),
+      abort: () => Promise.reject(new Error("abort failed")),
+    };
+    class B extends Build {
+      rollout = canary((c) => c.platform(failing).steps(10));
+    }
+    const b = built(B);
+    const result = await execute(b, b.rollout.promote, {
+      silent: true,
+      stateStore: store,
+    });
+    assertStringIncludes(String(result.error), "stage failed");
+    assertStringIncludes(String(result.error), "abort failed");
+  });
+});
+
+Deno.test("a cancellation after promotion does not roll the release back", async () => {
+  await withTempStore(async (store) => {
+    const platform = new FakePlatform();
+    class B extends Build {
+      rollout = canary((c) => c.platform(platform).steps(10));
+      announce = target()
+        .dependsOn(this.rollout.promote)
+        .onFailure(() => "cancel-run")
+        .executes(() => {
+          throw new Error("announcement failed");
+        });
+    }
+    const b = built(B);
+    const result = await execute(b, b.announce, {
+      silent: true,
+      stateStore: store,
+    });
+    assertEquals(result.cancelled, true);
+    assertEquals(platform.calls, ["stage", "expose 10 rev-2", "promote rev-2"]);
+  });
+});
+
+Deno.test("a rollback run by hand is refused while a rollout holds the lock", async () => {
+  await withTempStore(async (store) => {
+    const platform = new FakePlatform();
+    const Rollout = rolloutOf(
+      platform,
+      (c) =>
+        c.steps(10).approval("ok").lock((l) =>
+          l.key("deploy-api").withTtl("1h")
+        ),
+    );
+    const first = built(Rollout);
+    await execute(first, first.ship, { silent: true, stateStore: store });
+    const byHand = built(Rollout);
+    const refused = await execute(byHand, byHand.rollout.abort, {
+      silent: true,
+      stateStore: store,
+    });
+    assertEquals(refused.ok, false);
+    assertEquals(platform.calls.includes("abort -"), false);
   });
 });

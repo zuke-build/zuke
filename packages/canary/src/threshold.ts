@@ -9,6 +9,8 @@
  */
 
 import type { Configure } from "@zuke/core/tooling";
+import { messageOf } from "./message.ts";
+import { withoutCredentials } from "./request.ts";
 import type { CanaryAnalysis, CanaryAnalysisContext } from "./types.ts";
 
 /** Reads the metric a {@link metricThreshold} judges. */
@@ -88,7 +90,11 @@ export function metricThreshold(
           `metricThreshold "${settings.name_}" has no reader — call m.read(...).`,
         );
       }
-      checkThreshold(settings.name_, await read(context), boundsOf(settings));
+      try {
+        checkThreshold(settings.name_, await read(context), boundsOf(settings));
+      } catch (error) {
+        throw new Error(withoutCredentials(context.redact(messageOf(error))));
+      }
     },
   };
 }
@@ -100,6 +106,21 @@ export function boundsOf(
   if (settings.min_ === undefined && settings.max_ === undefined) {
     throw new Error(
       `"${settings.name_}" sets no bound — call .min(...) or .max(...).`,
+    );
+  }
+  // A NaN bound compares false both ways and would pass every reading.
+  for (const bound of [settings.min_, settings.max_]) {
+    if (bound !== undefined && Number.isNaN(bound)) {
+      throw new Error(`"${settings.name_}" has a bound that is not a number.`);
+    }
+  }
+  if (
+    settings.min_ !== undefined && settings.max_ !== undefined &&
+    settings.min_ > settings.max_
+  ) {
+    throw new Error(
+      `"${settings.name_}" can never pass: its minimum ${settings.min_} is ` +
+        `above its maximum ${settings.max_}.`,
     );
   }
   return {
@@ -114,9 +135,7 @@ export function checkThreshold(
   value: number,
   bounds: ThresholdBounds,
 ): void {
-  if (!Number.isFinite(value)) {
-    throw new Error(`${label} is ${value}, not a number.`);
-  }
+  if (Number.isNaN(value)) throw new Error(`${label} is not a number (NaN).`);
   if (bounds.max !== undefined && value > bounds.max) {
     throw new Error(`${label} is ${value}, above the maximum ${bounds.max}.`);
   }
