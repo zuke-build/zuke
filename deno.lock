@@ -1570,6 +1570,11 @@
           "jsr:@zuke/core@^1.45.0"
         ]
       },
+      "packages/canary": {
+        "dependencies": [
+          "jsr:@zuke/core@^1.63.0"
+        ]
+      },
       "packages/claude": {
         "dependencies": [
           "jsr:@zuke/core@^1.31.0"

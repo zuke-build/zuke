@@ -45,6 +45,9 @@
   CLIs from a build with `installRelease()` and `toolchain()`.
 - [Extending Zuke](./extending.md) — the plugin contract: lifecycle plugins,
   tool wrappers, and reusable target bundles.
+- [Canary releases](./canary.md) — `@zuke/canary` stages a candidate, steps its
+  exposure up under analysis, and promotes it, with one rollback on every
+  failure path.
 - [Observability (OpenTelemetry)](./observability.md) — `@zuke/otel` exports run
   and target spans plus counters as OTLP/HTTP JSON, with trace continuity across
   suspend/resume.

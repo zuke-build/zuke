@@ -337,6 +337,15 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   `required: true` inputs via `.inputs(...)` — see the cheatsheet's
   receiving-workflow contract. Triggers are extensible — write your own against
   the exported `WaitTrigger`/`WaitContext`.
+- **Canary releases (`@zuke/canary`):**
+  `rollout = canary((c) =>
+  c.platform(p).steps(10, 50).bake("10m").analysis(...).lock(...))`
+  stamps out `rollout.stage`, `rollout.stepN.expose` / `.bake` / `.analyze`, an
+  optional `rollout.approve`, `rollout.promote` and `rollout.abort`; every
+  failure path — a failed analysis or step, an approval timeout, `zuke cancel` —
+  runs the one `abort`. Needs a state store. `p` is a `CanaryPlatform` (`stage`,
+  `expose`, `promote`, `abort`); a hand-written object is fine. See the
+  cheatsheet.
 - **OpenTelemetry export (`@zuke/otel`):** register `otel((s) => s.endpoint(…))`
   as a plugin (`run(MyBuild, { plugins: [otel(…)] })`) to ship run/target spans
   and `zuke.run.started` / `zuke.run.suspended` / `zuke.runs` counters as

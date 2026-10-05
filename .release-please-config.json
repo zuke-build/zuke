@@ -194,6 +194,17 @@
         }
       ]
     },
+    "packages/canary": {
+      "component": "canary",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
     "packages/oxlint": {
       "component": "oxlint",
       "changelog-path": "CHANGELOG.md",
