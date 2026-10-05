@@ -512,7 +512,10 @@ the first time it joins. That old comment is left where it is.
 The panel is the reviewers of one **unbroken run** of a `.validateBefore(...)`
 or `.validateAfter(...)` list that post a comment: a quiet reviewer, one
 without `.comment()`, or any other validation between two reviewers splits
-them, and a reviewer alone posts its own comment as it always has. (Each member
+them, and a reviewer alone posts its own comment as it always has. Two
+reviewers of one kind keep the same default name (`"generic review"`), which
+the comment tells its members apart by: give one a `name` of its own, or the
+two post alone — under one marker, as two reviewers sharing a name always have. (Each member
 holds its failure back on the promise that a later member raises it, which an
 unrelated validation failing in between would break.) It needs a core that
 hands validations their `peers`; with an older one every reviewer posts alone.

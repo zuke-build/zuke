@@ -55,6 +55,23 @@ export interface PanelSection {
   state?: string;
 }
 
+/** What a panel's comment marker name starts with. */
+const PANEL_PREFIX = "panel:";
+
+/** What separates the members' names in a panel's comment marker name. */
+const MEMBER_SEPARATOR = " + ";
+
+/**
+ * Whether the comment marked `marker` — a reviewer's comment marker name — is
+ * a panel's that `name` belongs to. A panel's comment is its members' own:
+ * one that holds no state block for a member is that member having none, not
+ * a reason to look further back.
+ */
+export function panelHas(marker: string, name: string): boolean {
+  return marker.startsWith(PANEL_PREFIX) &&
+    marker.slice(PANEL_PREFIX.length).split(MEMBER_SEPARATOR).includes(name);
+}
+
 /** The default badge for each kind of reviewer. */
 export const BADGES: Readonly<Record<AssessmentType, string>> = {
   security: "🛡️",
@@ -83,7 +100,7 @@ export class Panel {
   /** A panel of the reviewers named `members`, in the order they run. */
   constructor(members: readonly string[]) {
     this.members = members;
-    this.name = `panel:${members.join(" + ")}`;
+    this.name = `${PANEL_PREFIX}${members.join(MEMBER_SEPARATOR)}`;
   }
 
   /**
@@ -141,8 +158,13 @@ export function seatOf<T extends { name: string }>(
   while (end < peers.length - 1 && member(peers[end + 1])) end++;
   if (end === start) return undefined;
   const group = peers.slice(start, end + 1).filter(member);
-  // A peer named twice inside the run would take two seats.
+  // A peer named twice inside the run would take two seats; two peers that
+  // share a name would share one, each overwriting the other's part. Both act
+  // alone, as two reviewers of one name always have.
   if (new Set(group).size !== group.length) return undefined;
+  if (new Set(group.map((peer) => peer.name)).size !== group.length) {
+    return undefined;
+  }
   const key = `${run}\n${target}\n${start}`;
   let panel = PANELS.get(key);
   if (at === start || panel === undefined) {
@@ -181,10 +203,14 @@ function overall(panel: Panel): string {
   if (verdicts.includes("minor")) {
     return "🤏 **Passed with findings** — none of them trips a gate.";
   }
-  if (verdicts.every((verdict) => verdict === "skipped")) {
+  const skipped = verdicts.filter((verdict) => verdict === "skipped").length;
+  if (skipped === verdicts.length) {
     return "⏭️ **Skipped** — no reviewer ran.";
   }
-  return "✅ **Passed** — no findings.";
+  return skipped === 0
+    ? "✅ **Passed** — no findings."
+    : `✅ **Passed** — no findings; ${skipped} of ${verdicts.length} ` +
+      "reviewers skipped.";
 }
 
 /**

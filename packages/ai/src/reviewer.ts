@@ -126,6 +126,7 @@ import { REVIEW_COMMENT_ENV } from "./hosts/github.ts";
 import {
   BADGES,
   closePanel,
+  panelHas,
   type PanelSeat,
   type PanelSection,
   renderPanel,
@@ -423,7 +424,8 @@ export class Reviewer implements Validation {
    * the reviewers of one target share (see {@link comment}), and on the review
    * threads it opens. Defaults by kind: 🛡️ security, 🧹 code quality
    * (`genericReviewer`), 🔑 secrets, 🐛 correctness, ⚖️ license. Set one when
-   * two reviewers of a kind review side by side.
+   * two reviewers of a kind review side by side — and give one of them a
+   * {@link name} of its own, which is what the comment tells them apart by.
    */
   badge(emoji: string): this {
     this.#badge = emoji;
@@ -858,15 +860,15 @@ export class Reviewer implements Validation {
       );
       return;
     }
-    const token = await this.#resolveCommentToken(host);
-    const upsert = host.prepare(token, this.#env);
-    if (upsert === undefined) {
-      console.warn(
-        `[${this.name}] no ${host.label} PR context — skipping comment`,
-      );
-      return;
-    }
     try {
+      const token = await this.#resolveCommentToken(host);
+      const upsert = host.prepare(token, this.#env);
+      if (upsert === undefined) {
+        console.warn(
+          `[${this.name}] no ${host.label} PR context — skipping comment`,
+        );
+        return;
+      }
       await upsert(name, body, this.#fetch ?? fetch, mode);
     } catch (error) {
       // Best-effort: a failed comment must never break the build.
@@ -1085,6 +1087,13 @@ export class Reviewer implements Validation {
         }
         const name = parseCommentMarker(c.body);
         if (name === undefined) continue;
+        // This reviewer's panel speaks for it: a member that skipped has no
+        // block there, which is no state — as a reviewer alone that skipped
+        // has overwritten its own — not a reason to reach back to an older
+        // comment whose state later runs had moved past.
+        if (own === undefined && panelHas(name, this.name)) {
+          own = { state: decodeState(c.body, this.name) };
+        }
         const tagged = stateNames(c.body);
         if (tagged.length === 0) {
           if (name !== this.name && !others.has(name)) {
@@ -1388,15 +1397,23 @@ export class Reviewer implements Validation {
     }
     if (!seat.last) return;
     closePanel(panel);
-    if (panel.sections.size > 0) {
-      await this.#post(
-        panel.name,
-        context.redact(renderPanel(panel, context.target)),
-        panel.append ? "append" : "update",
-      );
+    let posting: { error: unknown } | undefined;
+    try {
+      if (panel.sections.size > 0) {
+        await this.#post(
+          panel.name,
+          context.redact(renderPanel(panel, context.target)),
+          panel.append ? "append" : "update",
+        );
+      }
+    } catch (error) {
+      posting = { error };
     }
+    // The members' failures outrank anything posting raised: a gate that
+    // tripped fails the target with its own reason.
     const failure = panel.failure();
     if (failure !== undefined) throw failure;
+    if (posting !== undefined) throw posting.error;
   }
 
   /**

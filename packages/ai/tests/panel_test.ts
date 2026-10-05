@@ -476,3 +476,85 @@ Deno.test("a decision one member made this run reaches the next member before an
     ["accepted"],
   );
 });
+
+Deno.test("two reviewers sharing a name act alone rather than overwrite each other", async () => {
+  const github = fakeGithub({ [QUALITY]: FAILING });
+  const base = (r: Reviewer) =>
+    r.provider("claude").apiKey("k").comment().diff((d) => d.text(DIFF))
+      .fetch(github.fetch);
+  const strict = genericReviewer((r) => base(r).criteria("be strict"));
+  const lenient = genericReviewer((r) => base(r).criteria("be lenient"));
+  const threw = await runAll([strict, lenient]);
+  assertEquals(threw instanceof AiReviewError, true);
+  // The first one's failure stopped the list, as it always has for two
+  // reviewers alone; its finding reached its own comment intact.
+  assertEquals(
+    github.comments.map((c) => c.body.split("\n")[0]),
+    ["<!-- zuke-ai-review:generic review -->"],
+  );
+  assertStringIncludes(github.comments[0].body, "Eval of user input");
+});
+
+Deno.test("a comment token that fails costs the comment, never a member's failure", async () => {
+  const github = fakeGithub({ [SECURITY]: FAILING, [QUALITY]: CLEAN });
+  const [security, quality] = pair(github.fetch);
+  quality.commentToken(() => Promise.reject(new Error("token boom")));
+  const threw = await runAll([security, quality]);
+  assertEquals(threw instanceof AiReviewError, true);
+  assertStringIncludes(
+    threw instanceof Error ? threw.message : "",
+    'security review of "review" failed',
+  );
+  assertEquals(github.comments.length, 0);
+});
+
+Deno.test("a member's own panel comment is its state, even holding no block for it", async () => {
+  const id = findingFingerprint("security", EVAL);
+  // Its old comment from before the panel says the finding is open.
+  const github = fakeGithub({ [SECURITY]: CLEAN, [QUALITY]: CLEAN }, [{
+    id: 1,
+    body: "<!-- zuke-ai-review:security review -->\nold report\n" +
+      encodeState({
+        findings: [{ id, title: EVAL.title, severity: "high", status: "open" }],
+      }),
+    user: { login: "github-actions[bot]", type: "Bot" },
+    author_association: "NONE",
+  }]);
+  const discussing = (r: Reviewer) => r.discussion();
+  // Run 1 marks it fixed; run 2 skips the security review (no key), so the
+  // panel comment, updated in place, holds no block for it.
+  await runAll(pair(github.fetch, discussing));
+  const [, quality] = pair(github.fetch, discussing);
+  const keyless = securityReviewer((r) =>
+    discussing(
+      r.provider("claude").apiKey("").skipIfKeyMissing().comment()
+        .diff((d) => d.text(DIFF)).fetch(github.fetch),
+    )
+  );
+  await runAll([keyless, quality]);
+  assertEquals(
+    decodeState(github.comments[1].body, "security review"),
+    undefined,
+  );
+  // Run 3 starts fresh, as a reviewer alone would — it does not reach back
+  // to the old comment's open finding and report it fixed all over again.
+  await runAll(pair(github.fetch, discussing));
+  assertEquals(
+    decodeState(github.comments[1].body, "security review"),
+    { findings: [] },
+  );
+});
+
+Deno.test("a skipped member is counted in the verdict of a panel that passed", async () => {
+  const github = fakeGithub({ [SECURITY]: CLEAN });
+  const [security] = pair(github.fetch);
+  const keyless = genericReviewer((r) =>
+    r.provider("claude").apiKey("").skipIfKeyMissing().comment()
+      .diff((d) => d.text(DIFF)).fetch(github.fetch)
+  );
+  await runAll([security, keyless]);
+  assertStringIncludes(
+    github.comments[0].body,
+    "✅ **Passed** — no findings; 1 of 2 reviewers skipped.",
+  );
+});

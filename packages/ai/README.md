@@ -823,7 +823,8 @@ class Reviewer implements Validation
     the reviewers of one target share (see {@link comment}), and on the review
     threads it opens. Defaults by kind: 🛡️ security, 🧹 code quality
     (`genericReviewer`), 🔑 secrets, 🐛 correctness, ⚖️ license. Set one when
-    two reviewers of a kind review side by side.
+    two reviewers of a kind review side by side — and give one of them a
+    {@link name} of its own, which is what the comment tells them apart by.
   quiet(): this
     Suppress the findings printout and the job-summary section.
   fetch(impl: typeof fetch): this
