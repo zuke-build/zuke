@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.64.0](https://github.com/zuke-build/zuke/compare/core-v1.63.0...core-v1.64.0) (2026-10-05)
+
+
+### Features
+
+* **ai:** add progress reactions on pull requests ([#693](https://github.com/zuke-build/zuke/issues/693)) ([949cb79](https://github.com/zuke-build/zuke/commit/949cb7970a73f56e3d1ba0d30c204ec88c9eddee))
+
 ## [1.63.0](https://github.com/zuke-build/zuke/compare/core-v1.62.0...core-v1.63.0) (2026-10-05)
 
 
