@@ -402,13 +402,13 @@ Deno.test("a block tagged with a reviewer's name is that reviewer's, and only th
     findings: [{ id: "b2", title: "Theirs", severity: "low", status: "open" }],
   };
   const body = `report\n${encodeState(mine, "security review")}\n` +
-    encodeState(theirs, "généric review");
+    encodeState(theirs, "naïve review");
   assertEquals(decodeState(body, "security review"), mine);
-  assertEquals(decodeState(body, "généric review"), theirs);
+  assertEquals(decodeState(body, "naïve review"), theirs);
   // Neither is an untagged block, nor any other reviewer's.
   assertEquals(decodeState(body), undefined);
   assertEquals(decodeState(body, "license review"), undefined);
-  assertEquals(stateNames(body), ["security review", "généric review"]);
+  assertEquals(stateNames(body), ["security review", "naïve review"]);
   // An untagged block is never read as a named one.
   assertEquals(decodeState(encodeState(mine), "security review"), undefined);
   assertEquals(stateNames(encodeState(mine)), []);

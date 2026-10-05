@@ -112,7 +112,7 @@ const MINOR = claude({
 
 /** The prompt text that tells the two reviewers' calls apart. */
 const SECURITY = "security";
-const QUALITY = "maintainab";
+const QUALITY = "maintainability";
 
 /** Run `validations` the way the scheduler does: in order, as peers. */
 async function runAll(

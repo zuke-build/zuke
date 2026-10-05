@@ -465,7 +465,8 @@ under a **"🤖 Zuke AI review"** header linking back to the project. By default
 it **upserts a single comment per reviewer**: the body carries a hidden marker
 (`<!-- zuke-ai-review:<name> -->`), so a re-run finds its previous comment and
 edits it in place. Reviewers attached side by side to one target share **one**
-comment between them — see [One comment for a run's reviewers](#one-comment-for-a-runs-reviewers).
+comment between them — see
+[One comment for a run's reviewers](#one-comment-for-a-runs-reviewers).
 
 Pass `.comment("append")` to post a **fresh comment every run** instead: earlier
 assessments — and their finding ids — stay on the thread as history rather than
@@ -488,13 +489,13 @@ review = target()
 
 The comment opens with the run's verdict — the worst of the reviewers' — and a
 table with one row per reviewer: its badge, verdict, score, severity and number
-of findings. Then every reviewer's findings in one table, the most severe
-first, with a **Reviewer** column naming who raised each and its id to quote;
-then each reviewer's full report, folded under its own summary line. The badge
-tells the reviewers apart at a glance — 🛡️ security, 🧹 code quality
-(`genericReviewer`), 🔑 secrets, 🐛 correctness, ⚖️ license — and marks the
-review threads each one opens; `.badge("🔒")` sets another, which two reviewers
-of one kind side by side will want.
+of findings. Then every reviewer's findings in one table, the most severe first,
+with a **Reviewer** column naming who raised each and its id to quote; then each
+reviewer's full report, folded under its own summary line. The badge tells the
+reviewers apart at a glance — 🛡️ security, 🧹 code quality (`genericReviewer`),
+🔑 secrets, 🐛 correctness, ⚖️ license — and marks the review threads each one
+opens; `.badge("🔒")` sets another, which two reviewers of one kind side by side
+will want.
 
 Every reviewer runs, even after an earlier one fails its gate: the failure is
 held back until the last has reviewed, and the target then fails with every
@@ -502,23 +503,23 @@ failing reviewer's reason. A reviewer that is skipped (no key, an exhausted
 budget, a provider error under `onError("warn")`) keeps its row and says why.
 
 The comment is posted by the last of the reviewers, with its comment token, and
-is appended rather than updated when any of them uses `.comment("append")`.
-Each reviewer's [discussion state](#discussing-findings-instead-of-repeating-them)
+is appended rather than updated when any of them uses `.comment("append")`. Each
+reviewer's [discussion state](#discussing-findings-instead-of-repeating-them)
 rides in it as a block tagged with the reviewer's name, so rebuttals, `accept`
 commands and decisions shared between reviewers work exactly as before — and a
-reviewer that used to post alone picks its state up from its own old comment
-the first time it joins. That old comment is left where it is.
+reviewer that used to post alone picks its state up from its own old comment the
+first time it joins. That old comment is left where it is.
 
 The panel is the reviewers of one **unbroken run** of a `.validateBefore(...)`
-or `.validateAfter(...)` list that post a comment: a quiet reviewer, one
-without `.comment()`, or any other validation between two reviewers splits
-them, and a reviewer alone posts its own comment as it always has. Two
-reviewers of one kind keep the same default name (`"generic review"`), which
-the comment tells its members apart by: give one a `name` of its own, or the
-two post alone — under one marker, as two reviewers sharing a name always have. (Each member
-holds its failure back on the promise that a later member raises it, which an
-unrelated validation failing in between would break.) It needs a core that
-hands validations their `peers`; with an older one every reviewer posts alone.
+or `.validateAfter(...)` list that post a comment: a quiet reviewer, one without
+`.comment()`, or any other validation between two reviewers splits them, and a
+reviewer alone posts its own comment as it always has. Two reviewers of one kind
+keep the same default name (`"generic review"`), which the comment tells its
+members apart by: give one a `name` of its own, or the two post alone — under
+one marker, as two reviewers sharing a name always have. (Each member holds its
+failure back on the promise that a later member raises it, which an unrelated
+validation failing in between would break.) It needs a core that hands
+validations their `peers`; with an older one every reviewer posts alone.
 
 Which API gets called is decided at runtime by [`detectCiHost()`](authoring.md):
 
