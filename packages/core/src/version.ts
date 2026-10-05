@@ -25,4 +25,4 @@
  * `apiDocsCheck` would fail on the release PR itself. Widening keeps a
  * version bump a self-contained edit.
  */
-export const VERSION: string = "1.62.0"; // x-release-please-version
+export const VERSION: string = "1.63.0"; // x-release-please-version

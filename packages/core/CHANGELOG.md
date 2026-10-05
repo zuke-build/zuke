@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.63.0](https://github.com/zuke-build/zuke/compare/core-v1.62.0...core-v1.63.0) (2026-10-05)
+
+
+### Features
+
+* **core:** export one hardened URL redactor every package can share ([#690](https://github.com/zuke-build/zuke/issues/690)) ([549ac27](https://github.com/zuke-build/zuke/commit/549ac272e050e5b5666f68c57a9d9bfb605fcd8f))
+
 ## [1.62.0](https://github.com/zuke-build/zuke/compare/core-v1.61.0...core-v1.62.0) (2026-10-05)
 
 
