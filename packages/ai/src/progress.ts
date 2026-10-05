@@ -4,15 +4,17 @@
 /**
  * Review progress as reactions on the pull-request description: 👀 while a
  * review runs, then one verdict — 👍 passed, 🤏 findings under the failing
- * threshold, 👎 failed.
+ * threshold, 👎 failed, or 🎉 when it passes a pull request the previous run
+ * failed.
  *
  * A host keeps one reaction of each kind per account, and the reviewers on a
  * pull request usually post under one account, so they share these reactions.
  * {@link ReviewProgress} is what keeps them from talking over each other: per
- * pull request it counts the reviewers in flight, so 👀 stays until the last
- * one finishes, and it keeps the **worst** verdict any of them reached, so a
- * clean second review cannot paper over the first one's findings. The first
- * reviewer to start on a pull request clears the verdict a previous run left.
+ * build run and pull request it counts the reviewers in flight, so 👀 stays
+ * until the last one finishes, and it keeps the **worst** verdict any of them
+ * reached, so a clean second review cannot paper over the first one's
+ * findings. The first reviewer of a run to start on a pull request clears the
+ * verdict a previous run left — and notes whether that verdict was 👎.
  *
  * Every step for one pull request runs in order on one promise chain, so two
  * reviewers in flight at once cannot interleave their adds and removes.
@@ -29,11 +31,18 @@ import type { ReviewReactions, ReviewSignal } from "./hosts/types.ts";
  */
 export type ReviewOutcome = Verdict | "skipped";
 
-/** The {@link ReviewSignal}s that are verdicts, in increasing severity. */
-type Verdict = Exclude<ReviewSignal, "reviewing">;
+/** The verdicts a review reaches, in increasing severity. */
+type Verdict = "passed" | "minor" | "failed";
 
 /** Every verdict, least severe first — the order {@link worse} ranks by. */
 const VERDICTS: readonly Verdict[] = ["passed", "minor", "failed"];
+
+/**
+ * Every signal that stands for a finished run on the description — what a new
+ * run clears before it starts. 🚀 (`fixed`) is not one: it records that a fix
+ * was pushed, which stays true.
+ */
+const SHOWN: readonly ReviewSignal[] = [...VERDICTS, "recovered"];
 
 /** The more severe of two verdicts; `current` is absent before the first. */
 function worse(current: Verdict | undefined, next: Verdict): Verdict {
@@ -41,64 +50,79 @@ function worse(current: Verdict | undefined, next: Verdict): Verdict {
   return VERDICTS.indexOf(next) > VERDICTS.indexOf(current) ? next : current;
 }
 
-/** What one pull request's reviewers have signalled so far in this process. */
+/** What one pull request's reviewers have signalled so far in one run. */
 interface PullProgress {
   /** Reviewers that started and have not yet finished. */
   active: number;
-  /** The verdict currently shown — the worst any reviewer reached. */
-  shown?: Verdict;
+  /** Whether the run before this one had left 👎 on the description. */
+  recovering: boolean;
+  /** The worst verdict any of them reached. */
+  worst?: Verdict;
+  /** The signal on the description now — behind `worst` when a post failed. */
+  shown?: ReviewSignal;
   /** The tail of this pull request's serialized reaction steps. */
   chain: Promise<void>;
 }
 
 /**
  * Coordinates the progress reactions of every reviewer in this process, per
- * pull request (keyed by {@link ReviewReactions.key}). A build run is one
- * process, so its lifetime is the run's.
+ * build run and pull request (the run's id and {@link ReviewReactions.key}),
+ * so a process that executes several runs — `zuke mcp` — starts each one
+ * afresh instead of holding the next run to the last one's verdict.
  */
 export class ReviewProgress {
   readonly #pulls = new Map<string, PullProgress>();
 
   /**
-   * Signal that a review is starting — clearing a previous run's verdict when
-   * it is the first on this pull request — and return the function that
-   * signals how it ended. Neither step throws: a reaction is a courtesy.
+   * Signal that a review in run `run` is starting — clearing the verdict an
+   * earlier run left when it is the first on this pull request — and return
+   * the function that signals how it ended. Neither step throws: a reaction
+   * is a courtesy, never a failed review.
    */
   async start(
+    run: string,
     reactions: ReviewReactions,
     doFetch: typeof fetch,
   ): Promise<(outcome: ReviewOutcome) => Promise<void>> {
-    const existing = this.#pulls.get(reactions.key);
+    const key = `${run}\n${reactions.key}`;
+    const existing = this.#pulls.get(key);
     const pull: PullProgress = existing ??
-      { active: 0, chain: Promise.resolve() };
-    if (existing === undefined) this.#pulls.set(reactions.key, pull);
+      { active: 0, recovering: false, chain: Promise.resolve() };
+    if (existing === undefined) this.#pulls.set(key, pull);
     const step = (work: () => Promise<void>): Promise<void> => {
-      pull.chain = pull.chain.then(work);
+      // A step that throws must not poison the ones queued behind it, nor
+      // replace the review's own error in the caller's `finally`.
+      pull.chain = pull.chain.then(work).catch(() => {});
       return pull.chain;
     };
     pull.active++;
     await step(async () => {
-      if (existing === undefined) {
-        for (const verdict of VERDICTS) {
-          await reactions.remove(verdict, doFetch);
-        }
-      }
+      // 👀 first: on GitHub the reviewer's own reaction is how it learns which
+      // account it reacts as, and so which stale verdicts are its to clear.
       await reactions.add("reviewing", doFetch);
+      if (existing !== undefined) return;
+      for (const signal of SHOWN) {
+        const removed = await reactions.remove(signal, doFetch);
+        if (removed && signal === "failed") pull.recovering = true;
+      }
     });
     return (outcome) =>
       step(async () => {
         pull.active--;
-        if (outcome !== "skipped") {
-          const verdict = worse(pull.shown, outcome);
-          if (verdict !== pull.shown) {
-            // The new verdict goes up before the old one comes down, so the
-            // description is never without one once a review has finished.
-            await reactions.add(verdict, doFetch);
-            if (pull.shown !== undefined) {
-              await reactions.remove(pull.shown, doFetch);
-            }
-            pull.shown = verdict;
+        if (outcome !== "skipped") pull.worst = worse(pull.worst, outcome);
+        const worst = pull.worst;
+        const signal: ReviewSignal | undefined =
+          worst === "passed" && pull.recovering ? "recovered" : worst;
+        if (signal !== undefined && signal !== pull.shown) {
+          // The new verdict goes up before the old one comes down, so the
+          // description is never without one once a review has finished. The
+          // old one comes down even when the new one did not go up: no verdict
+          // is better than a wrong one, and the next reviewer retries.
+          const posted = await reactions.add(signal, doFetch);
+          if (pull.shown !== undefined) {
+            await reactions.remove(pull.shown, doFetch);
           }
+          pull.shown = posted ? signal : undefined;
         }
         if (pull.active === 0) await reactions.remove("reviewing", doFetch);
       });

@@ -6,19 +6,23 @@
  * the acknowledgement on a command comment.
  *
  * A pull request's description is its issue body, so its reactions live under
- * `issues/<n>/reactions`. GitHub has no "delete my reaction of this content"
- * call, only a delete by id, and the token the reviewer holds (the Actions
- * token, an App installation token) cannot ask `GET /user` who it is — so a
- * withdrawal first POSTs the same content, which answers with the token's own
- * reaction (created, or the existing one), and then deletes that id. No
- * identity lookup, and another account's reaction is never touched.
+ * `issues/<n>/reactions`. GitHub deletes a reaction by id, and the token the
+ * reviewer holds (the Actions token, an App installation token) cannot ask
+ * `GET /user` who it is. Every reaction GitHub answers a POST with names its
+ * author, though, so the login is learned from the reviewer's own first
+ * reaction; a withdrawal then lists the reactions of that content and deletes
+ * only that login's — never another account's, and never creating one.
  *
  * @module
  */
 
 import { dig } from "../json.ts";
 import { type GithubContext, githubHeaders } from "./github.ts";
-import type { ReviewReactions, ReviewSignal } from "./types.ts";
+import {
+  paginateLinked,
+  type ReviewReactions,
+  type ReviewSignal,
+} from "./types.ts";
 
 /** The GitHub REST API origin. */
 const API = "https://api.github.com";
@@ -32,19 +36,29 @@ const CONTENT: Record<ReviewSignal, string> = {
   passed: "+1",
   minor: "confused",
   failed: "-1",
+  recovered: "hooray",
+  fixed: "rocket",
 };
+
+/** The reaction a successful POST answered with: its id and author's login. */
+interface PostedReaction {
+  /** The reaction's id. */
+  id: number;
+  /** The login of the account it belongs to, when GitHub said. */
+  login?: string;
+}
 
 /**
  * POST reaction `content` to the reactions collection at `url`, answering the
- * id of the token's own reaction — the one created, or the one already there —
- * or `undefined` when GitHub refuses or the call fails. Never throws.
+ * token's own reaction — the one created (201), or the one already there
+ * (200) — or `undefined` when GitHub refuses or the call fails. Never throws.
  */
 export async function postReaction(
   url: string,
   token: string,
   content: string,
   doFetch: typeof fetch,
-): Promise<number | undefined> {
+): Promise<PostedReaction | undefined> {
   try {
     const response = await doFetch(url, {
       method: "POST",
@@ -55,8 +69,11 @@ export async function postReaction(
       await response.body?.cancel();
       return undefined;
     }
-    const id = dig(await response.json(), "id");
-    return typeof id === "number" ? id : undefined;
+    const body: unknown = await response.json();
+    const id = dig(body, "id");
+    if (typeof id !== "number") return undefined;
+    const login = dig(body, "user", "login");
+    return typeof login === "string" && login !== "" ? { id, login } : { id };
   } catch {
     return undefined;
   }
@@ -66,33 +83,52 @@ export async function postReaction(
 export function githubReactions(context: GithubContext): ReviewReactions {
   const reactions =
     `${API}/repos/${context.owner}/${context.repo}/issues/${context.pull}/reactions`;
+  const headers = githubHeaders(context.token);
+  /** The login the token reacts as, once a POST has told us. */
+  let self: string | undefined;
   return {
     key: `github:${context.owner}/${context.repo}#${context.pull}`,
     async add(signal, doFetch) {
-      const id = await postReaction(
+      const posted = await postReaction(
         reactions,
         context.token,
         CONTENT[signal],
         doFetch,
       );
-      return id !== undefined;
+      if (posted?.login !== undefined) self = posted.login;
+      return posted !== undefined;
     },
     async remove(signal, doFetch) {
-      const id = await postReaction(
-        reactions,
-        context.token,
-        CONTENT[signal],
-        doFetch,
-      );
-      if (id === undefined) return false;
+      const login = self;
+      if (login === undefined) return false;
+      const content = CONTENT[signal];
       try {
-        const response = await doFetch(`${reactions}/${id}`, {
-          method: "DELETE",
-          headers: githubHeaders(context.token),
-        });
-        await response.body?.cancel();
-        return response.ok;
+        const ids: number[] = [];
+        await paginateLinked(
+          `${reactions}?content=${encodeURIComponent(content)}&per_page=100`,
+          headers,
+          "GitHub",
+          doFetch,
+          (item) => {
+            const id = dig(item, "id");
+            if (
+              typeof id === "number" && dig(item, "content") === content &&
+              dig(item, "user", "login") === login
+            ) ids.push(id);
+          },
+        );
+        let removed = false;
+        for (const id of ids) {
+          const response = await doFetch(`${reactions}/${id}`, {
+            method: "DELETE",
+            headers,
+          });
+          await response.body?.cancel();
+          if (response.ok) removed = true;
+        }
+        return removed;
       } catch {
+        // Best-effort: a reaction left up is cosmetic, never a failed review.
         return false;
       }
     },

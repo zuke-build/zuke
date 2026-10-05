@@ -371,7 +371,8 @@ export class Reviewer implements Validation {
    * fails — and 👍 on the comment that started a comment-started run. The
    * reviewers on one pull request share the reactions, so the verdict shown is
    * the worst of them. GitHub and GitLab have the reactions; on Azure DevOps
-   * and Bitbucket this is a no-op. `false` turns all of it off.
+   * and Bitbucket this is a no-op. `false` turns all of it off, as does
+   * `.quiet()`, under which the reviewer does not speak on the pull request.
    */
   reactions(enabled: boolean): this {
     this.#reactions = enabled;
@@ -763,7 +764,7 @@ export class Reviewer implements Validation {
    * can fail the review, and a run no comment started does nothing.
    */
   async #acknowledgeCommand(): Promise<void> {
-    if (!this.#comment || !this.#reactions) return;
+    if (!this.#comment || this.#quiet || !this.#reactions) return;
     const host = detectReviewHost(this.#env);
     if (host?.acknowledgeCommand === undefined) return;
     const ack = host.acknowledgeCommand(this.#env);
@@ -785,14 +786,16 @@ export class Reviewer implements Validation {
 
   /**
    * React 👀 on the pull-request description — through the process-wide
-   * {@link PROGRESS}, which the other reviewers share — and return the
+   * {@link PROGRESS}, which the other reviewers of run `run` share — and return the
    * function that replaces it with this review's verdict. A no-op function
    * when the reviewer does not speak on the pull request (`.comment()` unset,
    * `.quiet()`, `.reactions(false)`), the host has no reactions, or there is
    * no pull request. Best-effort like the acknowledgement: a token that cannot
    * be resolved is a warning, never a failed review.
    */
-  async #startProgress(): Promise<(outcome: ReviewOutcome) => Promise<void>> {
+  async #startProgress(
+    run: string,
+  ): Promise<(outcome: ReviewOutcome) => Promise<void>> {
     const none = () => Promise.resolve();
     if (!this.#comment || this.#quiet || !this.#reactions) return none;
     const host = detectReviewHost(this.#env);
@@ -807,7 +810,7 @@ export class Reviewer implements Validation {
     }
     const reactions = host.reactions(token, this.#env);
     if (reactions === undefined) return none;
-    return PROGRESS.start(reactions, this.#fetch ?? fetch);
+    return PROGRESS.start(run, reactions, this.#fetch ?? fetch);
   }
 
   /**
@@ -1137,11 +1140,34 @@ export class Reviewer implements Validation {
     if (provider === undefined) {
       throw new AiReviewError("a provider is required; call .provider(...)");
     }
+    // Started before anything can skip, so a skipped review still withdraws
+    // the verdict an earlier run left rather than letting it stand for this
+    // commit.
+    const finish = await this.#startProgress(runOf(context));
+    // Anything that escapes the review — the gate tripping, an error under
+    // `onError("fail")` — is a failed review.
+    let outcome: ReviewOutcome = "failed";
+    try {
+      outcome = await this.#review(context, provider);
+    } finally {
+      await finish(outcome);
+    }
+  }
+
+  /**
+   * The review proper, once a provider is set: key, diff, call, the
+   * discussion and thread phases, the report, the gate. Answers how it ended
+   * for the progress reactions, or throws when the gate trips.
+   */
+  async #review(
+    context: ValidationContext,
+    provider: Provider,
+  ): Promise<ReviewOutcome> {
     const key = resolveKey(this.#apiKey);
     if (key === "") {
       if (this.#skipIfKeyMissing) {
         await this.#reportSkip(context.target, "no API key", context.redact);
-        return;
+        return "skipped";
       }
       throw new AiReviewError("an API key is required; call .apiKey(...)");
     }
@@ -1157,28 +1183,6 @@ export class Reviewer implements Validation {
     }
 
     await this.#acknowledgeCommand();
-    const finish = await this.#startProgress();
-    // Anything that escapes the review — the gate tripping, an error under
-    // `onError("fail")` — is a failed review.
-    let outcome: ReviewOutcome = "failed";
-    try {
-      outcome = await this.#review(context, provider, key, model);
-    } finally {
-      await finish(outcome);
-    }
-  }
-
-  /**
-   * The review proper, once the reviewer is configured: diff, call, the
-   * discussion and thread phases, the report, the gate. Answers how it ended
-   * for the progress reactions, or throws when the gate trips.
-   */
-  async #review(
-    context: ValidationContext,
-    provider: Provider,
-    key: string,
-    model: string,
-  ): Promise<ReviewOutcome> {
     const resolved = await this.#resolveDiff();
     let diff = filterDiff(
       resolved.diff,
@@ -1967,6 +1971,17 @@ export class Reviewer implements Validation {
     }
     return assessment.findings.length === 0 ? "passed" : "minor";
   }
+}
+
+/**
+ * The build run `context` belongs to, or `""` — this process — when the caller
+ * drove `validate(...)` directly. Read through `in` rather than as a field so
+ * this compiles against a `@zuke/core` floor whose context predates `runId`.
+ */
+function runOf(context: ValidationContext): string {
+  return "runId" in context && typeof context.runId === "string"
+    ? context.runId
+    : "";
 }
 
 /** What one run's discussion round starts from. */

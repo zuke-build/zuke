@@ -610,6 +610,15 @@ export interface ValidationContext {
    * `$` command the check runs is bound to it already.
    */
   signal?: AbortSignal;
+  /**
+   * The identity of the run the validation belongs to — the same id the run
+   * record and `zuke runs` show, kept across a resume. Lets validations that
+   * coordinate with each other (the `@zuke/ai` reviewers sharing their
+   * reactions on a pull request) scope that to one run, even in a process
+   * that executes several, such as `zuke mcp`. Set by the scheduler; absent
+   * when a caller drives `validate(...)` directly.
+   */
+  runId?: string;
 }
 
 /**

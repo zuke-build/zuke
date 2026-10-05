@@ -246,12 +246,20 @@ export interface ReviewHost {
 }
 
 /**
- * A state a review signals on the pull-request description: `reviewing`
- * while it runs, then one verdict — `passed` (no findings), `minor` (findings
- * under the failing threshold) or `failed`. Host-neutral: each host maps it
- * onto the closest emoji its reaction set has.
+ * A state the reviewer (or a fixer) signals on the pull-request description:
+ * `reviewing` while a review runs, then one verdict — `passed` (no findings),
+ * `minor` (findings under the failing threshold), `failed`, or `recovered`
+ * (passed where the previous run had failed) — and `fixed` once a fixer has
+ * pushed a fix. Host-neutral: each host maps it onto the closest emoji its
+ * reaction set has.
  */
-export type ReviewSignal = "reviewing" | "passed" | "minor" | "failed";
+export type ReviewSignal =
+  | "reviewing"
+  | "passed"
+  | "minor"
+  | "failed"
+  | "recovered"
+  | "fixed";
 
 /**
  * Add and withdraw the token's own {@link ReviewSignal} reactions on one pull
@@ -264,9 +272,17 @@ export interface ReviewReactions {
    * reviewers sharing an identity can agree on one verdict for it.
    */
   readonly key: string;
-  /** React with `signal`; `true` when the host now shows it. */
+  /**
+   * React with `signal`; `true` when the host now shows it — including when
+   * it already did.
+   */
   add(signal: ReviewSignal, doFetch: typeof fetch): Promise<boolean>;
-  /** Withdraw the token's own `signal` reaction; `true` when none is left. */
+  /**
+   * Withdraw the token's own `signal` reaction, if it has one; `true` when
+   * one was there and is gone. Must never **create** a reaction on the way: a
+   * withdrawal that half-fails would otherwise leave a verdict the review
+   * never reached.
+   */
   remove(signal: ReviewSignal, doFetch: typeof fetch): Promise<boolean>;
 }
 

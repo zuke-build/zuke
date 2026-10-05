@@ -14,6 +14,7 @@ import { Build, target } from "../../packages/core/mod.ts";
 import { genericReviewer, securityReviewer } from "../../packages/ai/mod.ts";
 import { runCli } from "./_harness.ts";
 import { withEnv } from "../../packages/core/tests/_env.ts";
+import { fakeReactions } from "../../packages/ai/tests/_reactions.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";
@@ -26,48 +27,22 @@ function claude(assessment: unknown): string {
   });
 }
 
+const ISSUES = "https://api.github.com/repos/zuke-build/zuke/issues";
+
 /**
- * A fake GitHub keeping the bot's reactions on pull request `pull`'s
- * description as a set — the way GitHub does, one per content per account —
- * and every reaction on comment `comment`. Provider calls are answered from
- * `responses` in order.
+ * A fake GitHub: reactions are served by the shared {@link fakeReactions},
+ * any other GitHub call answers an empty listing or an id, and provider calls
+ * are answered from `responses` in order.
  */
-function fakeGithub(pull: number, comment: number, responses: string[]) {
-  const description = new Map<number, string>();
-  const onComment: string[] = [];
-  const timeline: string[] = [];
+function fakeGithub(responses: string[]) {
+  const reactions = fakeReactions();
   let served = 0;
-  let nextId = 1;
-  const base = `https://api.github.com/repos/zuke-build/zuke/issues`;
   const impl = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    const method = init?.method ?? "GET";
-    if (url === `${base}/${pull}/reactions` && method === "POST") {
-      const content = JSON.parse(String(init?.body)).content;
-      for (const [id, held] of description) {
-        if (held === content) {
-          return Promise.resolve(new Response(JSON.stringify({ id })));
-        }
-      }
-      const id = nextId++;
-      description.set(id, content);
-      timeline.push([...description.values()].sort().join(" "));
-      return Promise.resolve(
-        new Response(JSON.stringify({ id }), { status: 201 }),
-      );
-    }
-    if (url.startsWith(`${base}/${pull}/reactions/`) && method === "DELETE") {
-      description.delete(Number(url.slice(url.lastIndexOf("/") + 1)));
-      timeline.push([...description.values()].sort().join(" "));
-      return Promise.resolve(new Response(null, { status: 204 }));
-    }
-    if (url === `${base}/comments/${comment}/reactions`) {
-      onComment.push(JSON.parse(String(init?.body)).content);
-      return Promise.resolve(
-        new Response(JSON.stringify({ id: nextId++ }), { status: 201 }),
-      );
-    }
+    const reaction = reactions.handle(url, init);
+    if (reaction !== undefined) return reaction;
     if (url.startsWith("https://api.github.com/")) {
+      const method = init?.method ?? "GET";
       return Promise.resolve(
         new Response(method === "GET" ? "[]" : JSON.stringify({ id: 0 })),
       );
@@ -75,16 +50,11 @@ function fakeGithub(pull: number, comment: number, responses: string[]) {
     const next = responses[Math.min(served++, responses.length - 1)];
     return Promise.resolve(new Response(next));
   }) as typeof fetch;
-  return {
-    fetch: impl,
-    description: () => [...description.values()].sort(),
-    onComment,
-    timeline,
-  };
+  return { fetch: impl, reactions };
 }
 
 Deno.test("two reviewers in one build show one verdict — the worst — and 👀 only while they run", async () => {
-  const github = fakeGithub(801, 4242, [
+  const github = fakeGithub([
     // The security review: one low finding, under the gate.
     claude({
       score: 3,
@@ -129,18 +99,30 @@ Deno.test("two reviewers in one build show one verdict — the worst — and �
   );
 
   assertEquals(executed, ["deploy"]);
-  // The command was acknowledged with 👍, once per reviewer — one reaction on
-  // GitHub, which keeps one per content per account.
-  assertEquals(github.onComment, ["+1", "+1"]);
+  // The command was acknowledged with 👍 — one reaction, though both
+  // reviewers acknowledged it: GitHub keeps one per content per account.
+  assertEquals(github.reactions.on(`${ISSUES}/comments/4242/reactions`), [
+    "+1",
+  ]);
   // The clean generic review did not paper over the security review's
   // finding, and nothing says the run is still going.
-  assertEquals(github.description(), ["confused"]);
-  // 👀 was up while the reviews ran.
-  assertEquals(github.timeline.includes("eyes"), true);
+  assertEquals(github.reactions.on(`${ISSUES}/801/reactions`), ["confused"]);
+  // 👀 was up while each review ran (they run one after the other), and the
+  // second, clean review left the first one's 🤏 standing.
+  const changes = github.reactions.log
+    .filter((entry) => entry.collection === `${ISSUES}/801/reactions`)
+    .map((entry) => entry.change);
+  assertEquals(changes, [
+    "+eyes",
+    "+confused",
+    "-eyes",
+    "+eyes",
+    "-eyes",
+  ]);
 });
 
 Deno.test("a reviewer that fails the build leaves 👎", async () => {
-  const github = fakeGithub(802, 1, [
+  const github = fakeGithub([
     claude({
       score: 9,
       severity: "high",
@@ -178,7 +160,10 @@ Deno.test("a reviewer that fails the build leaves 👎", async () => {
   );
 
   assertEquals(executed, []);
-  assertEquals(github.description(), ["-1"]);
+  assertEquals(github.reactions.on(`${ISSUES}/802/reactions`), ["-1"]);
   // Not comment-started: no command to acknowledge.
-  assertEquals(github.onComment, []);
+  assertEquals(
+    github.reactions.log.every((e) => e.collection.endsWith("/802/reactions")),
+    true,
+  );
 });

@@ -14,6 +14,7 @@ import type { Configure } from "@zuke/core/tooling";
 import { withEnv } from "../../core/tests/_env.ts";
 import { captureLines } from "../../core/tests/_console.ts";
 import { noRedactionContext } from "./_context.ts";
+import { fakeReactions } from "./_reactions.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";
@@ -26,42 +27,36 @@ function claude(assessment: unknown): string {
   });
 }
 
+/** The description's reactions collection for pull request `pull`. */
+const description = (pull: number) =>
+  `https://api.github.com/repos/zuke-build/zuke/issues/${pull}/reactions`;
+
 /**
- * Review pull request `pull` on a fake GitHub with `configure` applied, and
- * answer the reactions it made on the description, as `+content` (posted) and
- * `-content` (deleted), in order. `provider` answers the model call; a
- * `status` other than 200 makes it fail. Resolves to the reactions, what the
- * review threw, and its console lines.
+ * Review pull request `pull` on a fake GitHub with `configure` applied. The
+ * description starts with `seed` (the bot's reactions from an earlier run).
+ * `provider` answers the model call; a `status` other than 200 makes it fail.
+ * Resolves to every change made to the description's reactions
+ * (`+content` / `-content`, in order), what is left on it, what the review
+ * threw, and its console lines.
  */
 async function review(
   pull: number,
   provider: string,
   configure: Configure<Reviewer> = (r) => r,
   status = 200,
-): Promise<{ reactions: string[]; threw: unknown; lines: string[] }> {
-  const reactions: string[] = [];
-  const ids = new Map<number, string>();
+  seed: string[] = [],
+): Promise<
+  { reactions: string[]; left: string[]; threw: unknown; lines: string[] }
+> {
+  const github = fakeReactions(
+    seed.map((content) => ({ collection: description(pull), content })),
+  );
   const impl = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
-    const method = init?.method ?? "GET";
-    const description =
-      `https://api.github.com/repos/zuke-build/zuke/issues/${pull}/reactions`;
-    if (url === description && method === "POST") {
-      const content = JSON.parse(String(init?.body)).content;
-      const id = ids.size + 1;
-      ids.set(id, content);
-      reactions.push(`+${content}`);
-      return Promise.resolve(new Response(JSON.stringify({ id })));
-    }
-    if (url.startsWith(`${description}/`) && method === "DELETE") {
-      // The POST that looked the id up is not a reaction the reviewer meant
-      // to show: fold the `+content -content` pair into one deletion.
-      const content = ids.get(Number(url.slice(description.length + 1)));
-      reactions.pop();
-      reactions.push(`-${content}`);
-      return Promise.resolve(new Response(null, { status: 204 }));
-    }
+    const reaction = github.handle(url, init);
+    if (reaction !== undefined) return reaction;
     if (url.startsWith("https://api.github.com/")) {
+      const method = init?.method ?? "GET";
       return Promise.resolve(
         new Response(method === "GET" ? "[]" : JSON.stringify({ id: 99 })),
       );
@@ -89,11 +84,15 @@ async function review(
       }
     })
   );
-  return { reactions, threw, lines };
+  return {
+    reactions: github.log
+      .filter((entry) => entry.collection === description(pull))
+      .map((entry) => entry.change),
+    left: github.on(description(pull)),
+    threw,
+    lines,
+  };
 }
-
-/** What every first review on a pull request does before its verdict. */
-const START = ["-+1", "-confused", "--1", "+eyes"];
 
 Deno.test("a clean review shows 👀 while it runs, then 👍", async () => {
   const { reactions, threw } = await review(
@@ -101,7 +100,7 @@ Deno.test("a clean review shows 👀 while it runs, then 👍", async () => {
     claude({ score: 0, severity: "none", findings: [] }),
   );
   assertEquals(threw, undefined);
-  assertEquals(reactions, [...START, "++1", "-eyes"]);
+  assertEquals(reactions, ["+eyes", "++1", "-eyes"]);
 });
 
 Deno.test("findings under the failing threshold show 🤏 (😕 on GitHub)", async () => {
@@ -114,7 +113,7 @@ Deno.test("findings under the failing threshold show 🤏 (😕 on GitHub)", asy
     }),
   );
   assertEquals(threw, undefined);
-  assertEquals(reactions, [...START, "+confused", "-eyes"]);
+  assertEquals(reactions, ["+eyes", "+confused", "-eyes"]);
 });
 
 Deno.test("a review that trips the gate shows 👎 and still fails the build", async () => {
@@ -127,13 +126,13 @@ Deno.test("a review that trips the gate shows 👎 and still fails the build", a
     }),
   );
   assertEquals(threw instanceof AiReviewError, true);
-  assertEquals(reactions, [...START, "+-1", "-eyes"]);
+  assertEquals(reactions, ["+eyes", "+-1", "-eyes"]);
 });
 
 Deno.test("an error under onError('fail') is a 👎; under 'warn' it is a skip, 👀 withdrawn", async () => {
   const failed = await review(104, "{}", (r) => r.retry({ attempts: 1 }), 500);
   assertEquals(failed.threw instanceof AiReviewError, true);
-  assertEquals(failed.reactions, [...START, "+-1", "-eyes"]);
+  assertEquals(failed.reactions, ["+eyes", "+-1", "-eyes"]);
   const warned = await review(
     105,
     "{}",
@@ -141,7 +140,7 @@ Deno.test("an error under onError('fail') is a 👎; under 'warn' it is a skip, 
     500,
   );
   assertEquals(warned.threw, undefined);
-  assertEquals(warned.reactions, [...START, "-eyes"]);
+  assertEquals(warned.reactions, ["+eyes", "-eyes"]);
 });
 
 Deno.test("reactions(false) or quiet() leaves the pull request alone", async () => {
@@ -176,4 +175,28 @@ Deno.test("a token that cannot be minted skips the reactions, not the review", a
     ),
     true,
   );
+});
+
+Deno.test("a stale verdict is cleared, and a pass after a 👎 is 🎉", async () => {
+  const { reactions, left } = await review(
+    109,
+    claude({ score: 0, severity: "none", findings: [] }),
+    (r) => r,
+    200,
+    ["-1"],
+  );
+  assertEquals(reactions, ["+eyes", "--1", "+hooray", "-eyes"]);
+  assertEquals(left, ["hooray"]);
+});
+
+Deno.test("a review skipped for want of a key still withdraws the last run's verdict", async () => {
+  const { reactions, left } = await review(
+    110,
+    "{}",
+    (r) => r.apiKey("").skipIfKeyMissing(),
+    200,
+    ["confused"],
+  );
+  assertEquals(reactions, ["+eyes", "-confused", "-eyes"]);
+  assertEquals(left, []);
 });

@@ -6,7 +6,7 @@
  * runs, and stop the body at the first one that fails.
  *
  * The checks get the same {@link ValidationContext} as a `validateBefore` or
- * `validateAfter` — the target's name and the run's redactor — so a check that
+ * `validateAfter` — the target's name, the run's redactor and its id — so a check that
  * publishes what it found, such as a canary analysis posting to a pull request,
  * masks secrets the same way wherever it runs.
  *
@@ -98,6 +98,7 @@ export async function runWhileValidating(
   body: () => Promise<void>,
   during: DuringChecks,
   name: string,
+  runId: string,
   stop: AbortController,
   signal: AbortSignal,
 ): Promise<void> {
@@ -109,7 +110,12 @@ export async function runWhileValidating(
   const failed = new Promise<never>((_, reject) => (fail = reject));
   const rounds = new AbortController();
   const roundSignal = AbortSignal.any([signal, rounds.signal]);
-  const context = { target: name, redact: redactLine, signal: roundSignal };
+  const context = {
+    target: name,
+    redact: redactLine,
+    signal: roundSignal,
+    runId,
+  };
 
   const runRound = async (): Promise<void> => {
     for (const check of during.checks) {

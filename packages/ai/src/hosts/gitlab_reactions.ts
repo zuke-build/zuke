@@ -26,7 +26,12 @@ const NAME: Record<ReviewSignal, string> = {
   passed: "thumbsup",
   minor: "pinching_hand",
   failed: "thumbsdown",
+  recovered: "tada",
+  fixed: "rocket",
 };
+
+/** What GitLab answers a POST for an award the user has already given. */
+const ALREADY_AWARDED = "has already been taken";
 
 /** The {@link ReviewReactions} on the description of `context`'s merge request. */
 export function gitlabReactions(context: GitlabContext): ReviewReactions {
@@ -42,8 +47,13 @@ export function gitlabReactions(context: GitlabContext): ReviewReactions {
           headers,
           body: JSON.stringify({ name: NAME[signal] }),
         });
-        await response.body?.cancel();
-        return response.ok;
+        if (response.ok) {
+          await response.body?.cancel();
+          return true;
+        }
+        // GitLab refuses a second award of a name with "has already been
+        // taken": the emoji is showing, which is what was asked.
+        return (await response.text()).includes(ALREADY_AWARDED);
       } catch {
         return false;
       }
@@ -60,17 +70,18 @@ export function gitlabReactions(context: GitlabContext): ReviewReactions {
             dig(item, "user", "username") === self
           ) ids.push(id);
         });
-        let removed = true;
+        let removed = false;
         for (const id of ids) {
           const response = await doFetch(`${awards}/${id}`, {
             method: "DELETE",
             headers,
           });
           await response.body?.cancel();
-          removed &&= response.ok;
+          if (response.ok) removed = true;
         }
         return removed;
       } catch {
+        // Best-effort: an award left up is cosmetic, never a failed review.
         return false;
       }
     },

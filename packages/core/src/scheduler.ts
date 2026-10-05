@@ -669,15 +669,32 @@ async function runTarget(
       // become less able to publish for running after the body rather than
       // before it.
       for (const v of t.validateBefore_) {
-        await v.validate({ target: name, redact: redactLine });
+        await v.validate({
+          target: name,
+          redact: redactLine,
+          runId: env.runId,
+        });
       }
       const body = () =>
         runBodyWithRecovery(t, name, globalRecovery, targetCtx);
       if (during === undefined) await body();
-      else await runWhileValidating(body, during, name, stop, bodySignal);
+      else {
+        await runWhileValidating(
+          body,
+          during,
+          name,
+          env.runId,
+          stop,
+          bodySignal,
+        );
+      }
       await driveEffects(t, name, targetCtx, env, reporter, style);
       for (const v of t.validateAfter_) {
-        await v.validate({ target: name, redact: redactLine });
+        await v.validate({
+          target: name,
+          redact: redactLine,
+          runId: env.runId,
+        });
       }
     });
     const ms = performance.now() - start;

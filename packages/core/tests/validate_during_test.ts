@@ -198,6 +198,35 @@ Deno.test("each check gets the target name and the run's redactor", async () => 
   assertEquals(seen[0].includes("s3cr3t-value"), false);
 });
 
+Deno.test("every validation of one run gets that run's id", async () => {
+  const seen: Array<string | undefined> = [];
+  const record: Validation = {
+    validate: ({ runId }) => {
+      seen.push(runId);
+    },
+  };
+  class B extends Build {
+    bake = target()
+      .validateBefore(record)
+      .validateAfter(record)
+      .executes(() => new Promise<void>((r) => setTimeout(r, 40)))
+      .validateDuring((s) => s.every(10).check(record));
+  }
+  const b = new B();
+  discoverTargets(b);
+  await execute(b, b.bake, { silent: true, stateStore: false });
+  assertEquals(seen.length >= 3, true);
+  assertEquals(typeof seen[0], "string");
+  assertEquals(seen[0] !== "", true);
+  assertEquals(seen.every((id) => id === seen[0]), true);
+  // A second run is a different run.
+  const first = seen[0];
+  seen.length = 0;
+  await execute(b, b.bake, { silent: true, stateStore: false });
+  assertEquals(seen.length >= 3, true);
+  assertEquals(seen.every((id) => id === seen[0] && id !== first), true);
+});
+
 Deno.test("a malformed .validateDuring fails the target before the body runs", async () => {
   const cases: Array<[string, (b: ReturnType<typeof target>) => unknown]> = [
     ["set no interval", (t) => t.validateDuring((s) => s.check(counting()))],
@@ -265,6 +294,7 @@ Deno.test("a stuck check gets an aborted signal and does not hold a cancelled ru
       }],
     },
     "bake",
+    "run-1",
     new AbortController(),
     run.signal,
   );
@@ -291,6 +321,7 @@ Deno.test("a failed body does not wait for a check still running", async () => {
       }],
     },
     "bake",
+    "run-1",
     new AbortController(),
     new AbortController().signal,
   ).catch((e: unknown) => e);
@@ -317,6 +348,7 @@ Deno.test("a round the body outlives stops before its next check and schedules n
       ],
     },
     "bake",
+    "run-1",
     new AbortController(),
     new AbortController().signal,
   );
@@ -331,6 +363,7 @@ Deno.test("a body that settles after the run was cancelled does not wait on a ro
     () => Promise.resolve(),
     { intervalMs: 1_000, checks: [counting()] },
     "bake",
+    "run-1",
     new AbortController(),
     run.signal,
   );
