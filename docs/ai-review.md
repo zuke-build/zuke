@@ -508,7 +508,9 @@ reviewer's [discussion state](#discussing-findings-instead-of-repeating-them)
 rides in it as a block tagged with the reviewer's name, so rebuttals, `accept`
 commands and decisions shared between reviewers work exactly as before — and a
 reviewer that used to post alone picks its state up from its own old comment the
-first time it joins. That old comment is left where it is.
+first time it joins. That old comment is left where it is. A reviewer that sits
+a run out — skipped, or handed an empty diff — carries its state forward into
+the comment, so the decisions made with it survive the round.
 
 The panel is the reviewers of one **unbroken run** of a `.validateBefore(...)`
 or `.validateAfter(...)` list that post a comment: a quiet reviewer, one without

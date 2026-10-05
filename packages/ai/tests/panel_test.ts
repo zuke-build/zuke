@@ -27,7 +27,7 @@ import {
 import { withEnv } from "../../core/tests/_env.ts";
 import { silence } from "../../core/tests/_console.ts";
 import { reacted, REACTIONS } from "./_reactions.ts";
-import { decodeState, encodeState } from "../src/state.ts";
+import { decodeState, encodeState, stateNames } from "../src/state.ts";
 import { Panel, renderPanel, seatOf } from "../src/panel.ts";
 
 const GITHUB_API = "https://api.github.com";
@@ -521,28 +521,73 @@ Deno.test("a member's own panel comment is its state, even holding no block for 
     author_association: "NONE",
   }]);
   const discussing = (r: Reviewer) => r.discussion();
-  // Run 1 marks it fixed; run 2 skips the security review (no key), so the
-  // panel comment, updated in place, holds no block for it.
+  // Run 1 marks it fixed; in run 2 the security review fails before it
+  // reports, so the panel comment, updated in place, holds no block for it.
   await runAll(pair(github.fetch, discussing));
   const [, quality] = pair(github.fetch, discussing);
-  const keyless = securityReviewer((r) =>
-    discussing(
-      r.provider("claude").apiKey("").skipIfKeyMissing().comment()
-        .diff((d) => d.text(DIFF)).fetch(github.fetch),
-    )
+  const broken = securityReviewer((r) =>
+    discussing(r.apiKey("k").comment().fetch(github.fetch))
   );
-  await runAll([keyless, quality]);
+  assertEquals(await runAll([broken, quality]) instanceof AiReviewError, true);
   assertEquals(
     decodeState(github.comments[1].body, "security review"),
     undefined,
   );
-  // Run 3 starts fresh, as a reviewer alone would — it does not reach back
-  // to the old comment's open finding and report it fixed all over again.
+  // Run 3 starts fresh — it does not reach back to the old comment's open
+  // finding and report it fixed all over again.
   await runAll(pair(github.fetch, discussing));
   assertEquals(
     decodeState(github.comments[1].body, "security review"),
     { findings: [] },
   );
+});
+
+Deno.test("a member that sat a run out carries its state forward", async () => {
+  const id = findingFingerprint("security", EVAL);
+  const accepted = {
+    id,
+    title: EVAL.title,
+    severity: "high" as const,
+    status: "accepted" as const,
+    author: "maintainer",
+  };
+  // Run 1: the security review records a finding a maintainer accepted.
+  const github = fakeGithub({ [SECURITY]: FAILING, [QUALITY]: CLEAN }, [{
+    id: 1,
+    body: `@zuke-build accept ${id}: by design`,
+    user: { login: "maintainer", type: "User" },
+    author_association: "MEMBER",
+  }]);
+  const commands = (r: Reviewer) =>
+    r.discussion((d) => d.commands("@zuke-build"));
+  await runAll(pair(github.fetch, commands));
+  const panel = () => github.comments.at(-1)?.body ?? "";
+  assertEquals(
+    decodeState(panel(), "security review")?.findings.map((f) => f.status),
+    ["accepted"],
+  );
+  // Run 2: no key, so it skips — and its decision stays in the comment.
+  const [, quality] = pair(github.fetch, commands);
+  const keyless = securityReviewer((r) =>
+    commands(
+      r.provider("claude").apiKey("").skipIfKeyMissing().comment()
+        .diff((d) => d.text(DIFF)).fetch(github.fetch),
+    )
+  );
+  assertEquals(await runAll([keyless, quality]), undefined);
+  const carried = decodeState(panel(), "security review");
+  assertEquals(carried?.findings.map((f) => [f.id, f.status, f.author]), [
+    [accepted.id, accepted.status, accepted.author],
+  ]);
+  // Without the discussion there is no state to carry.
+  const plain = fakeGithub({ [QUALITY]: CLEAN });
+  const [, clean] = pair(plain.fetch);
+  const skipped = securityReviewer((r) =>
+    r.provider("claude").apiKey("").skipIfKeyMissing().comment()
+      .diff((d) => d.text(DIFF)).fetch(plain.fetch)
+  );
+  await runAll([skipped, clean]);
+  assertEquals(stateNames(plain.comments[0].body), []);
 });
 
 Deno.test("a skipped member is counted in the verdict of a panel that passed", async () => {
@@ -557,4 +602,17 @@ Deno.test("a skipped member is counted in the verdict of a panel that passed", a
     github.comments[0].body,
     "✅ **Passed** — no findings; 1 of 2 reviewers skipped.",
   );
+});
+
+Deno.test("state that cannot be carried is a fresh start, not a failed run", async () => {
+  const github = fakeGithub({ [QUALITY]: CLEAN });
+  const [, quality] = pair(github.fetch);
+  const keyless = securityReviewer((r) =>
+    r.provider("claude").apiKey("").skipIfKeyMissing().comment().discussion()
+      .commentToken(() => Promise.reject(new Error("token boom")))
+      .diff((d) => d.text(DIFF)).fetch(github.fetch)
+  );
+  assertEquals(await runAll([keyless, quality]), undefined);
+  assertEquals(github.comments.length, 1);
+  assertEquals(stateNames(github.comments[0].body), []);
 });

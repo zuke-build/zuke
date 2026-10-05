@@ -1395,6 +1395,7 @@ export class Reviewer implements Validation {
       // one still run and the comment carries every verdict.
       panel.errors.push({ name: this.name, error });
     }
+    await this.#carryState(seat, context.redact);
     if (!seat.last) return;
     closePanel(panel);
     let posting: { error: unknown } | undefined;
@@ -1414,6 +1415,35 @@ export class Reviewer implements Validation {
     const failure = panel.failure();
     if (failure !== undefined) throw failure;
     if (posting !== undefined) throw posting.error;
+  }
+
+  /**
+   * Carry this reviewer's state forward into its panel's comment when it
+   * reported without reviewing — skipped for a missing key, an exhausted
+   * budget or a provider failure under `onError("warn")`, or handed an empty
+   * diff — so a round it sat out does not cost it the decisions maintainers
+   * made with it. The panel's comment is the one place its state is read
+   * from, and it is rewritten every run.
+   *
+   * Only for a member that reported: one that raised before reporting fails
+   * the run, and is given nothing that would spend its comment token on a
+   * run a stranger's command may have started. Best-effort: state that
+   * cannot be read is a fresh start, never a failed review.
+   */
+  async #carryState(seat: PanelSeat, redact: Redact): Promise<void> {
+    const section = seat.panel.sections.get(this.name);
+    if (this.#discussion === undefined || section === undefined) return;
+    if (section.state !== undefined) return;
+    let prior: ReviewState | undefined;
+    try {
+      prior = (await this.#prepareDiscussion(seat))?.priorState;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[${this.name}] could not carry its state: ${message}`);
+      return;
+    }
+    if (prior === undefined) return;
+    section.state = redact(encodeState(prior, this.name));
   }
 
   /**
