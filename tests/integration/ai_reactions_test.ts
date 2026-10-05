@@ -167,3 +167,47 @@ Deno.test("a reviewer that fails the build leaves 👎", async () => {
     true,
   );
 });
+
+Deno.test("a commanded run where one reviewer reviewed and the next was skipped does not answer 😕", async () => {
+  const github = fakeGithub([
+    claude({ score: 0, severity: "none", findings: [] }),
+    // The second reviewer's model answers nothing usable; under
+    // onError("warn") it is skipped.
+    "not json",
+  ]);
+  class Pipeline extends Build {
+    security = securityReviewer((r) =>
+      r.provider("claude").apiKey("k").comment().retry({ attempts: 1 })
+        .diff((d) => d.text(DIFF)).fetch(github.fetch)
+    );
+    general = genericReviewer((r) =>
+      r.provider("claude").apiKey("k").comment().onError("warn")
+        .retry({ attempts: 1 })
+        .diff((d) => d.text(DIFF)).fetch(github.fetch)
+    );
+    deploy = target()
+      .validateBefore(this.security, this.general)
+      .executes(() => Promise.resolve());
+  }
+
+  await withEnv(
+    {
+      GITHUB_ACTIONS: "true",
+      GITHUB_REPOSITORY: "zuke-build/zuke",
+      GITHUB_REF: "refs/heads/master",
+      GITHUB_TOKEN: "tkn",
+      GITHUB_STEP_SUMMARY: undefined,
+      ZUKE_REVIEW_PR: "803",
+      ZUKE_REVIEW_COMMENT: "5151",
+    },
+    async () => {
+      const result = await runCli(Pipeline, ["deploy"]);
+      assertEquals(result.code, 0);
+    },
+  );
+
+  assertEquals(github.reactions.on(`${ISSUES}/comments/5151/reactions`), [
+    "+1",
+  ]);
+  assertEquals(github.reactions.on(`${ISSUES}/803/reactions`), ["+1"]);
+});

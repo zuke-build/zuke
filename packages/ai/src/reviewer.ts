@@ -380,9 +380,9 @@ export class Reviewer implements Validation {
    * it runs, then 👍 when it passes clean, 🎉 when it passes clean where the
    * previous run failed, 🤏 when it has findings under the failing threshold
    * (😕 on GitHub, whose reaction set has no 🤏), 👎 when it fails. On the
-   * comment that started a comment-started run: 👍 as it starts, 😕 when it
-   * cannot run. On a trusted maintainer's reply: 👀 once weighed, ❤️ when it
-   * decided a finding. The reviewers on one pull request share the
+   * comment that started a comment-started run: 👍 as it starts, 😕 when the
+   * run could not review. On a trusted maintainer's reply: 👀 once read, ❤️
+   * when it decided a finding. The reviewers on one pull request share the
    * reactions, so the verdict shown is the worst of a run's. GitHub and
    * GitLab have the reactions; on Azure DevOps and Bitbucket this is a no-op.
    * `false` turns all of it off, as does `.quiet()`, under which the reviewer
@@ -801,7 +801,8 @@ export class Reviewer implements Validation {
   /**
    * React 👀 on the pull-request description — through the process-wide
    * {@link PROGRESS}, which the other reviewers of run `run` share — and return the
-   * function that replaces it with this review's verdict. A no-op function
+   * function that replaces it with this review's verdict, answering whether
+   * the run reviewed nothing. A no-op function
    * when the reviewer does not speak on the pull request (`.comment()` unset,
    * `.quiet()`, `.reactions(false)`), the host has no reactions, or there is
    * no pull request. Best-effort like the acknowledgement: a token that cannot
@@ -809,8 +810,10 @@ export class Reviewer implements Validation {
    */
   async #startProgress(
     run: string,
-  ): Promise<(outcome: ReviewOutcome) => Promise<void>> {
-    const none = () => Promise.resolve();
+  ): Promise<(outcome: ReviewOutcome) => Promise<boolean>> {
+    // Without the shared record a reviewer knows only its own outcome.
+    const none = (outcome: ReviewOutcome) =>
+      Promise.resolve(outcome === "skipped");
     if (!this.#comment || this.#quiet || !this.#reactions) return none;
     const host = detectReviewHost(this.#env);
     if (host?.reactions === undefined) return none;
@@ -828,7 +831,7 @@ export class Reviewer implements Validation {
   }
 
   /**
-   * Answer the maintainers' replies with a reaction — 👀 on each one weighed,
+   * Answer the maintainers' replies with a reaction — 👀 on each one read,
    * ❤️ on each one that decided a finding — so a maintainer sees their reply
    * was read before the assessment lands. Under the same switches as the
    * progress reactions, best-effort like them, and once per comment.
@@ -1195,14 +1198,16 @@ export class Reviewer implements Validation {
     // Anything that escapes the review — the gate tripping, an error under
     // `onError("fail")` — is a failed review.
     let outcome: ReviewOutcome = "failed";
+    let unreviewed = false;
     try {
       outcome = await this.#review(context, provider);
     } finally {
-      await finish(outcome);
+      unreviewed = await finish(outcome);
     }
-    // A command that started a review which then could not run is owed a 😕,
-    // not silence.
-    if (outcome === "skipped") await this.#answerCommand("unable");
+    // A command whose run then reviewed nothing is owed a 😕, not silence.
+    // Decided for the run, not this reviewer: one reviewer skipping while
+    // another reviewed is not a command that could not run.
+    if (unreviewed) await this.#answerCommand("unable");
   }
 
   /**
@@ -1480,8 +1485,9 @@ export class Reviewer implements Validation {
       );
 
     // The maintainers' replies the reviewer answers with a reaction: 👀 on
-    // every rebuttal it weighs this round, ❤️ on the one that decided a
-    // finding. Only comments that passed the trust gate are ever here.
+    // every rebuttal it read this round — weighed, or set aside because the
+    // budget is spent or an accept command decided it first — ❤️ on the one
+    // that decided a finding. Only comments that passed the trust gate are ever here.
     const replies: ReplyNotice = { read: [], accepted: [] };
     for (const comments of rebuttals.values()) replies.read.push(...comments);
 
@@ -2049,7 +2055,7 @@ function runOf(context: ValidationContext): string {
 
 /** The maintainers' replies to react on, by the reaction they get. */
 interface ReplyNotice {
-  /** The rebuttals the reviewer weighed this round — 👀. */
+  /** The rebuttals the reviewer read this round — 👀. */
   read: Array<Pick<HostComment, "id" | "kind">>;
   /** The replies that decided a finding — ❤️. */
   accepted: Array<Pick<HostComment, "id" | "kind">>;

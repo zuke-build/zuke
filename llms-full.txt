@@ -20927,9 +20927,9 @@ class Reviewer implements Validation
     it runs, then 👍 when it passes clean, 🎉 when it passes clean where the
     previous run failed, 🤏 when it has findings under the failing threshold
     (😕 on GitHub, whose reaction set has no 🤏), 👎 when it fails. On the
-    comment that started a comment-started run: 👍 as it starts, 😕 when it
-    cannot run. On a trusted maintainer's reply: 👀 once weighed, ❤️ when it
-    decided a finding. The reviewers on one pull request share the
+    comment that started a comment-started run: 👍 as it starts, 😕 when the
+    run could not review. On a trusted maintainer's reply: 👀 once read, ❤️
+    when it decided a finding. The reviewers on one pull request share the
     reactions, so the verdict shown is the worst of a run's. GitHub and
     GitLab have the reactions; on Azure DevOps and Bitbucket this is a no-op.
     `false` turns all of it off, as does `.quiet()`, under which the reviewer

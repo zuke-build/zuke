@@ -261,7 +261,7 @@ export interface ReviewHost {
 
 /**
  * What the reviewer signals on a maintainer's reply: `read` (👀) once it has
- * weighed it, `accepted` (❤️) when the reply decided a finding — a rebuttal
+ * read it, `accepted` (❤️) when the reply decided a finding — a rebuttal
  * the adjudicator accepted, or an `accept` command.
  */
 export type ReplySignal = "read" | "accepted";
@@ -285,8 +285,9 @@ export interface ReplyReactions {
 
 /**
  * What the reviewer answers a command comment with: `started` (👍) as the
- * review starts, `unable` (😕) when it cannot run — the pull request could not
- * be fetched, there is no key, the budget is spent.
+ * review starts, `unable` (😕) when the run could not review — the pull
+ * request could not be fetched, or every reviewer was skipped (no key, the
+ * budget spent).
  */
 export type CommandSignal = "started" | "unable";
 

@@ -513,15 +513,17 @@ On the pull/merge request **description**:
 
 On a **command comment** — a [comment-started run](#on-demand-a-comment-command)
 — 👍 as the review starts, and 😕 when it will not run: the commenter may not
-start a review (the generated workflow answers that), or the review cannot run
-(the pull request cannot be fetched, there is no key, the budget is spent).
+start a review (the generated workflow answers that), or the run could not
+review (the pull request cannot be fetched, or every reviewer was skipped — no
+key, the budget spent). One reviewer skipping while another reviewed is not
+that: the command was served.
 
 On a **maintainer's reply** in the
 [discussion](#discussing-findings-instead-of-repeating-them) — 👀 on every
-trusted rebuttal the reviewer weighs, ❤️ on the one that decided a finding (a
-rebuttal the adjudicator accepted, or an `accept` command). A comment that did
-not pass the trust gate is never reacted on, so a reaction cannot be read as the
-reviewer agreeing with someone it ignored.
+trusted rebuttal the reviewer read that round, ❤️ on the one that decided a
+finding (a rebuttal the adjudicator accepted, or an `accept` command). A comment
+that did not pass the trust gate is never reacted on, so a reaction cannot be
+read as the reviewer agreeing with someone it ignored.
 
 A skipped review (no key, budget exhausted, an error tolerated under
 `onError("warn")`) withdraws 👀 and the previous run's verdict without claiming

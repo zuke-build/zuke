@@ -3,7 +3,7 @@
 
 /**
  * The reactions a reviewer puts on maintainers' replies: 👀 on each trusted
- * rebuttal it weighs, ❤️ on the one that decided a finding — a rebuttal the
+ * rebuttal it reads, ❤️ on the one that decided a finding — a rebuttal the
  * adjudicator accepted, or an `accept` command — and nothing at all on a
  * comment that did not pass the trust gate. Driven through `validate(...)`
  * against a fake GitHub; the host adapters are covered as units at the end.

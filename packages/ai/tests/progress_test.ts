@@ -159,3 +159,20 @@ Deno.test("pull requests are tracked apart, by key", async () => {
   // The second pull request is not held to the first one's 👎.
   assertEquals([...two.held], ["passed"]);
 });
+
+Deno.test("the run reviewed nothing only when its last reviewer finishes with no verdict", async () => {
+  const progress = new ReviewProgress();
+  const { reactions } = recorder();
+  const skipped = await progress.start("run", reactions, noFetch);
+  const reviewed = await progress.start("run", reactions, noFetch);
+  // Another reviewer is still in flight: not the run's answer yet.
+  assertEquals(await skipped("skipped"), false);
+  assertEquals(await reviewed("passed"), false);
+  // One reviewer skipping after another reviewed is not a run that did not.
+  assertEquals(
+    await (await progress.start("run", reactions, noFetch))("skipped"),
+    false,
+  );
+  const fresh = await progress.start("other", reactions, noFetch);
+  assertEquals(await fresh("skipped"), true);
+});

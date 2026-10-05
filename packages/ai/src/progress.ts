@@ -56,7 +56,7 @@ interface PullProgress {
   active: number;
   /** Whether the run before this one had left 👎 on the description. */
   recovering: boolean;
-  /** The worst verdict any of them reached. */
+  /** The worst verdict any of them reached — absent while none has. */
   worst?: Verdict;
   /** The signal on the description now — behind `worst` when a post failed. */
   shown?: ReviewSignal;
@@ -76,14 +76,18 @@ export class ReviewProgress {
   /**
    * Signal that a review in run `run` is starting — clearing the verdict an
    * earlier run left when it is the first on this pull request — and return
-   * the function that signals how it ended. Neither step throws: a reaction
-   * is a courtesy, never a failed review.
+   * the function that signals how it ended. That function answers whether
+   * the run, so far, **reviewed nothing**: this was the last reviewer in
+   * flight and none of the run's reached a verdict — what a command that
+   * started the run is owed a 😕 for, rather than one reviewer's skip while
+   * another reviewed. Neither step throws: a reaction is a courtesy, never a
+   * failed review.
    */
   async start(
     run: string,
     reactions: ReviewReactions,
     doFetch: typeof fetch,
-  ): Promise<(outcome: ReviewOutcome) => Promise<void>> {
+  ): Promise<(outcome: ReviewOutcome) => Promise<boolean>> {
     const key = `${run}\n${reactions.key}`;
     const existing = this.#pulls.get(key);
     const pull: PullProgress = existing ??
@@ -106,8 +110,9 @@ export class ReviewProgress {
         if (removed && signal === "failed") pull.recovering = true;
       }
     });
-    return (outcome) =>
-      step(async () => {
+    return async (outcome) => {
+      let unreviewed = false;
+      await step(async () => {
         pull.active--;
         if (outcome !== "skipped") pull.worst = worse(pull.worst, outcome);
         const worst = pull.worst;
@@ -124,7 +129,12 @@ export class ReviewProgress {
           }
           pull.shown = posted ? signal : undefined;
         }
-        if (pull.active === 0) await reactions.remove("reviewing", doFetch);
+        if (pull.active === 0) {
+          unreviewed = pull.worst === undefined;
+          await reactions.remove("reviewing", doFetch);
+        }
       });
+      return unreviewed;
+    };
   }
 }
