@@ -16,6 +16,9 @@ examples/*/.zuke/
 # Doc-snippet type-check scratch dirs (build/snippets.ts; cleaned up per run)
 /.snippets-*/
 
+# Type-check entry module scratch dirs (build/check_entry.ts; cleaned up per run)
+/.check-*/
+
 # HCL wrapper generator scratch dirs (build/hcl_gen.ts; cleaned up per run)
 /.hclgen-*/
 

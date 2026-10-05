@@ -38,6 +38,7 @@ import {
   transformPackage,
 } from "../build/api_reference.ts";
 import { launcherScript, publishOne } from "../build/publish.ts";
+import { checkEntry } from "../build/check_entry.ts";
 import {
   DEFAULT_WEBSITE_REPO,
   mintableFor,
@@ -966,4 +967,24 @@ Deno.test("crossPackageTypesOf: named, type, namespace, and default imports; tes
       new Set(["Configure", "target", "Settings", "shell", "Something"]),
     );
   });
+});
+
+Deno.test("checkEntry imports every file once, from one directory below the root", () => {
+  const text = checkEntry([
+    "zuke.ts",
+    "packages\\core\\mod.ts",
+    "tests/a_test.ts",
+  ]);
+  assertEquals(
+    text.startsWith("// Copyright (c) 2026 the Zuke contributors\n"),
+    true,
+  );
+  assertEquals(
+    text.split("\n").filter((line) => line.startsWith("import ")),
+    [
+      'import "../zuke.ts";',
+      'import "../packages/core/mod.ts";',
+      'import "../tests/a_test.ts";',
+    ],
+  );
 });

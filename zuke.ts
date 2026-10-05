@@ -108,6 +108,7 @@ import {
 } from "./build/graph_doc.ts";
 import { lintPrBody } from "./build/pr_body_lint.ts";
 import { assertLockUnchanged } from "./build/lock_check.ts";
+import { checkAll } from "./build/check_entry.ts";
 import { checkCoreFloors, formatFloorFailures } from "./build/core_floor.ts";
 import {
   checkPluginSkillsSync,
@@ -287,9 +288,11 @@ class ZukeBuild extends Build {
     .executes(async () => {
       // The same files the root `check` task names, run through the wrapper
       // rather than `deno task` so the row can say `// Errors: 0`: the task
-      // runner's shell would expand the globs, so they are expanded here.
+      // runner's shell would expand the globs, so they are expanded here —
+      // and handed over as one generated entry module rather than as
+      // arguments, which on Windows outgrow the command-line limit.
       const files = (await Promise.all(CHECK_GLOBS.map((g) => glob(g)))).flat();
-      await DenoTasks.check((s) => s.frozen().paths(...files));
+      await checkAll(files);
     });
 
   test = target()
