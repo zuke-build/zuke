@@ -73,6 +73,22 @@ export function cell(value: string): string {
     .replaceAll("-->", "--&gt;");
 }
 
+/**
+ * `value` safe as the text of an HTML element in a comment — a `<summary>`
+ * line, where Markdown is not rendered and a name has to be escaped as HTML
+ * instead: the five markup characters become entities, and line breaks a
+ * space, so nothing can close the element or open another.
+ */
+export function html(value: string): string {
+  return value
+    .replaceAll(/[\r\n]+/g, " ")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 /** The length of the longest run of consecutive backticks in `text` (0 if none). */
 function longestBacktickRun(text: string): number {
   let longest = 0;

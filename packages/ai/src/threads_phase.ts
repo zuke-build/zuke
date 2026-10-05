@@ -35,6 +35,12 @@ export interface ThreadPhaseSettings {
   /** The reviewer's diagnostic name — also the seed for its thread markers. */
   readonly name: string;
   /**
+   * The reviewer as a thread root names it — its badge and name, e.g.
+   * `🛡️ security review` — so a reader tells apart the threads several
+   * reviewers opened on one pull request.
+   */
+  readonly label: string;
+  /**
    * The mention maintainers address commands to, when the reviewer takes
    * them — named in each thread root so the `accept` command is one reply
    * away.
@@ -166,7 +172,7 @@ export async function postThreads(
       // publish the same text to the same pull request, so redacting at each
       // call separately would be two places to forget instead of one.
       const body = settings.redact(
-        threadBody(nameHash, action, settings.mention),
+        threadBody(nameHash, action, settings),
       );
       const result = action.kind === "reply"
         ? await context.ops.reply(doFetch, action.rootId ?? 0, body)
@@ -274,11 +280,11 @@ function warnResolution(
 function threadBody(
   nameHash: string,
   action: ThreadAction,
-  mention: string | undefined,
+  settings: Pick<ThreadPhaseSettings, "label" | "mention">,
 ): string {
   if (action.kind === "open") {
     return `${findingMarker(nameHash, action.id)}\n${
-      threadRootBody(action, mention)
+      threadRootBody(action, settings.label, settings.mention)
     }`;
   }
   const outcome = action.outcome ?? "upheld";

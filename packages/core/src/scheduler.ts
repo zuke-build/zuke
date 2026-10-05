@@ -673,6 +673,7 @@ async function runTarget(
           target: name,
           redact: redactLine,
           runId: env.runId,
+          peers: t.validateBefore_,
         });
       }
       const body = () =>
@@ -694,6 +695,7 @@ async function runTarget(
           target: name,
           redact: redactLine,
           runId: env.runId,
+          peers: t.validateAfter_,
         });
       }
     });

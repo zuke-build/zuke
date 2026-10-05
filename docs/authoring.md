@@ -87,6 +87,12 @@ runs only this phase and executes no target, so a workflow can ask "may this
 run?" in a step that holds no secrets — missing parameters do not fail it —
 before the step that does. A dry run skips it.
 
+A before or after validation also gets **`ctx.peers`**: the whole list it was
+attached in, in the order it runs, itself included. Validations that publish
+together use it to find each other without the build wiring them up — the
+`@zuke/ai` reviewers side by side in one list post a single combined comment,
+posted by the last of them. A `.validateDuring(...)` check gets no peers.
+
 #### Checks while the body runs — `.validateDuring()`
 
 A long body — a canary bake, a soak test — can be watched while it runs, so a

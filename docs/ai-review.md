@@ -464,8 +464,9 @@ on a failure). `.quiet()` suppresses both the console output and the summary.
 under a **"🤖 Zuke AI review"** header linking back to the project. By default
 it **upserts a single comment per reviewer**: the body carries a hidden marker
 (`<!-- zuke-ai-review:<name> -->`), so a re-run finds its previous comment and
-edits it in place. Different reviewers (e.g. a security and a secrets review)
-keep separate comments because the marker includes the reviewer name.
+edits it in place. Reviewers attached side by side to one target share **one**
+comment between them — see
+[One comment for a run's reviewers](#one-comment-for-a-runs-reviewers).
 
 Pass `.comment("append")` to post a **fresh comment every run** instead: earlier
 assessments — and their finding ids — stay on the thread as history rather than
@@ -474,6 +475,53 @@ being overwritten, at the cost of a longer thread on a much-pushed PR. The
 both modes — its state block rides on every comment and the newest one is read
 back — and Zuke's own reviewers use append mode so their past findings remain
 auditable.
+
+### One comment for a run's reviewers
+
+Attach several commenting reviewers to one target and they post **one comment**
+between them — nothing to declare, the target's validation list is the panel:
+
+```ts
+review = target()
+  .validateBefore(this.securityReview, this.generalReview)
+  .executes(() => {});
+```
+
+The comment opens with the run's verdict — the worst of the reviewers' — and a
+table with one row per reviewer: its badge, verdict, score, severity and number
+of findings. Then every reviewer's findings in one table, the most severe first,
+with a **Reviewer** column naming who raised each and its id to quote; then each
+reviewer's full report, folded under its own summary line. The badge tells the
+reviewers apart at a glance — 🛡️ security, 🧹 code quality (`genericReviewer`),
+🔑 secrets, 🐛 correctness, ⚖️ license — and marks the review threads each one
+opens; `.badge("🔒")` sets another, which two reviewers of one kind side by side
+will want.
+
+Every reviewer runs, even after an earlier one fails its gate: the failure is
+held back until the last has reviewed, and the target then fails with every
+failing reviewer's reason. A reviewer that is skipped (no key, an exhausted
+budget, a provider error under `onError("warn")`) keeps its row and says why.
+
+The comment is posted by the last of the reviewers, with its comment token, and
+is appended rather than updated when any of them uses `.comment("append")`. Each
+reviewer's [discussion state](#discussing-findings-instead-of-repeating-them)
+rides in it as a block tagged with the reviewer's name, so rebuttals, `accept`
+commands and decisions shared between reviewers work exactly as before — and a
+reviewer that used to post alone picks its state up from its own old comment the
+first time it joins. That old comment is left where it is. A reviewer that sits
+a run out — skipped, or handed an empty diff — carries its state forward into
+the comment, so the decisions made with it survive the round.
+
+The panel is the reviewers of one **unbroken run** of a `.validateBefore(...)`
+or `.validateAfter(...)` list that post a comment: a quiet reviewer, one without
+`.comment()`, or any other validation between two reviewers splits them, and a
+reviewer alone posts its own comment as it always has. Two reviewers of one kind
+keep the same default name (`"generic review"`), which the comment tells its
+members apart by: give one a `name` of its own, or the two post alone — under
+one marker, as two reviewers sharing a name always have. (Each member holds its
+failure back on the promise that a later member raises it, which an unrelated
+validation failing in between would break.) It needs a core that hands
+validations their `peers`; with an older one every reviewer posts alone.
 
 Which API gets called is decided at runtime by [`detectCiHost()`](authoring.md):
 
@@ -911,9 +959,10 @@ review = target()
 ```
 
 `.validateBefore(...)` takes both reviewers, so each runs before the (empty)
-body and gates the target independently. Because the PR comment is keyed by the
-reviewer name, the two land as **separate comments** ("security review" and
-"generic review") rather than overwriting each other.
+body and gates the target independently. Side by side in one list, the two post
+[one combined comment](#one-comment-for-a-runs-reviewers) — the 🛡️ security
+review's and the 🧹 code-quality review's verdicts and findings in one place —
+and both review even when the first fails its gate.
 
 The one `aiBudget` is passed to both reviewers **and** to the `aiFixer` that
 self-heals lint failures, so every pass drawing on that key — review, verify,

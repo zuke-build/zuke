@@ -5,7 +5,7 @@ import {
   assertEquals,
   assertStringIncludes,
 } from "../../core/tests/_assert.ts";
-import { cell, codeSpan, fenceMarkdown } from "../src/markdown.ts";
+import { cell, codeSpan, fenceMarkdown, html } from "../src/markdown.ts";
 import { SUPPRESS_HINT, toMarkdown } from "../src/report.ts";
 import { decodeState, encodeState } from "../src/state.ts";
 
@@ -187,4 +187,11 @@ Deno.test("model text cannot smuggle a state block into the reviewer's comment",
     findings: [{ id: "real1", title: "t", severity: "high", status: "open" }],
   });
   assertEquals(decodeState(`${body}\n${own}`)?.findings[0].id, "real1");
+});
+
+Deno.test("html escapes markup and folds line breaks", () => {
+  assertEquals(
+    html(`a<b>&"c'\n</summary>`),
+    "a&lt;b&gt;&amp;&quot;c&#39; &lt;/summary&gt;",
+  );
 });

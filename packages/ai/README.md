@@ -778,6 +778,19 @@ class Reviewer implements Validation
     every run, so earlier assessments — and their finding ids — stay on the
     thread as history. The discussion feature works with both: its state block
     rides on every comment, and the newest one is read back.
+
+    Reviewers attached side by side to one target —
+    `.validateBefore(security, quality)` — post one comment between them
+    rather than one each: a table of every reviewer's verdict, the findings of
+    all of them in one table with a column naming the reviewer (and its
+    {@link badge}) that raised each, and each reviewer's full report folded
+    underneath. Every one of them runs even when an earlier one fails its
+    gate; the target then fails with all of their reasons. The comment is
+    posted by the last of them, with its token, and appended when any of
+    them appends. Each reviewer's discussion state rides in it under the
+    reviewer's name, and a reviewer that used to post alone still reads its
+    old comment. Another validation between two reviewers splits them, and a
+    reviewer alone posts its own comment as before.
   commentToken(token: CommentTokenSource): this
     The token used to post the PR/MR comment. Defaults to the active host's
     conventional env var: `GITHUB_TOKEN` (GitHub), `GITLAB_TOKEN` (GitLab),
@@ -805,6 +818,13 @@ class Reviewer implements Validation
     GitLab have the reactions; on Azure DevOps and Bitbucket this is a no-op.
     `false` turns all of it off, as does `.quiet()`, under which the reviewer
     does not speak on the pull request.
+  badge(emoji: string): this
+    The emoji that marks this reviewer's findings — in the combined comment
+    the reviewers of one target share (see {@link comment}), and on the review
+    threads it opens. Defaults by kind: 🛡️ security, 🧹 code quality
+    (`genericReviewer`), 🔑 secrets, 🐛 correctness, ⚖️ license. Set one when
+    two reviewers of a kind review side by side — and give one of them a
+    {@link name} of its own, which is what the comment tells them apart by.
   quiet(): this
     Suppress the findings printout and the job-summary section.
   fetch(impl: typeof fetch): this
