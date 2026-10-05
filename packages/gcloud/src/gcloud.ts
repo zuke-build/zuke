@@ -300,7 +300,11 @@ async function scalarFrom<S extends GcloudSettings>(
   subject: string,
 ): Promise<string> {
   const configured = configure ? configure(settings) : settings;
-  return readScalar(await configured.quiet().run(), task, subject);
+  return readScalar(
+    await configured.quiet().run(),
+    `GcloudTasks.${task}`,
+    subject,
+  );
 }
 
 /** Typed task functions for the `gcloud` CLI. */

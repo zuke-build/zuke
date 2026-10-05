@@ -70,6 +70,13 @@ export {
   RUN_SERVICE_URL_FORMAT,
 } from "./src/cloud_run.ts";
 export {
+  CloudRunCanary,
+  cloudRunCanary,
+  type CloudRunCanaryContext,
+  CloudRunCanarySettings,
+  type GcloudSettingsRunner,
+} from "./src/cloud_run_canary.ts";
+export {
   GcloudArtifactsImagesDeleteSettings,
   GcloudArtifactsImagesListSettings,
   GcloudArtifactsRepositoriesDescribeSettings,
