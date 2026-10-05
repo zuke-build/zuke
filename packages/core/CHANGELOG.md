@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.62.0](https://github.com/zuke-build/zuke/compare/core-v1.61.0...core-v1.62.0) (2026-10-05)
+
+
+### Features
+
+* **core:** run-held locks and in-flight validations ([#685](https://github.com/zuke-build/zuke/issues/685)) ([f71f838](https://github.com/zuke-build/zuke/commit/f71f83835940bce6e5ead223c2f9dc3496cde7b4))
+
 ## [1.61.0](https://github.com/zuke-build/zuke/compare/core-v1.60.1...core-v1.61.0) (2026-10-01)
 
 
