@@ -49,9 +49,9 @@ import {
 import { REVIEW_PR_ENV } from "./diff.ts";
 import { PROVIDER_HOSTS } from "./provider.ts";
 import { REVIEW_COMMENT_ENV } from "./hosts/github.ts";
+import { GITHUB_LOGIN } from "@zuke/gh";
 import {
   type CommandRole,
-  LOGIN,
   REVIEW_ACTOR_ENV,
   REVIEW_ROLE_ENV,
   REVIEW_USERS_ENV,
@@ -69,6 +69,9 @@ const DEFAULT_PATHS: Record<CiProvider, string> = {
   // Bitbucket has no `include` mechanism — the file must be at the repo root.
   bitbucket: "bitbucket-pipelines.yml",
 };
+
+/** The id of the command job's step that decides who may start a review. */
+const CALLERS_STEP_ID = "callers";
 
 /** The Docker image used for the GitLab job — the official Deno image. */
 const DENO_IMAGE = "denoland/deno:latest";
@@ -435,7 +438,7 @@ function resolveCommand(
     }
   }
   for (const login of command.users_) {
-    if (!LOGIN.test(login)) {
+    if (!GITHUB_LOGIN.test(login)) {
       throw new Error(
         `aiReviewWorkflow: ${JSON.stringify(login)} is not a GitHub login.`,
       );
@@ -781,28 +784,47 @@ class AiReviewWorkflow extends CiFile {
       // No base fetch and no `ZUKE_REVIEW_BASE`: the reviewers fetch the pull
       // request `ZUKE_REVIEW_PR` names and diff its merge against the base it
       // was merged onto, which needs nothing from the checkout but a remote.
+      // Who asked, and who may: the login reaches the build as env, never
+      // interpolated into a script; the role and the logins are this file's
+      // own constants.
+      const caller: Record<string, string> = {
+        [REVIEW_PR_ENV]: "${{ github.event.issue.number }}",
+        [REVIEW_COMMENT_ENV]: "${{ github.event.comment.id }}",
+        [REVIEW_ACTOR_ENV]: "${{ github.event.comment.user.login }}",
+        [REVIEW_ROLE_ENV]: command.role,
+        ...(command.users.length > 0
+          ? { [REVIEW_USERS_ENV]: command.users.join(",") }
+          : {}),
+      };
       const commandEnv: Record<string, string> = { ...env };
       for (const name of command.secrets) commandEnv[name] = githubRef(name);
-      commandEnv[REVIEW_PR_ENV] = "${{ github.event.issue.number }}";
-      commandEnv[REVIEW_COMMENT_ENV] = "${{ github.event.comment.id }}";
-      // Who asked, and who may: the reviewers decide in-process, before a
-      // key is spent, whether this commenter may start a review (see
-      // `callers.ts`). The login reaches the build as env, never interpolated
-      // into a script; the role and the logins are this file's own constants.
-      commandEnv[REVIEW_ACTOR_ENV] = "${{ github.event.comment.user.login }}";
-      commandEnv[REVIEW_ROLE_ENV] = command.role;
-      if (command.users.length > 0) {
-        commandEnv[REVIEW_USERS_ENV] = command.users.join(",");
-      }
+      Object.assign(commandEnv, caller);
       jobs.push(this.#githubJob(
         "commandReview",
         "AI review on command",
         AiReviewWorkflow.#commandGate(command.texts),
-        [{
-          name: "AI review with Zuke",
-          run: `./zuke ${target}`,
-          env: commandEnv,
-        }],
+        [
+          // Who may start a review is decided before anything holds a
+          // secret: the build's own preflight phase (the reviewers'
+          // `preflight`, see `callers.ts`) runs with the job's GITHUB_TOKEN
+          // alone and executes no target. A refusal answers 😕 and fails
+          // this step only — `continue-on-error` keeps a stranger's command
+          // from turning the run red — and the review step, the one with the
+          // keys, never starts.
+          {
+            id: CALLERS_STEP_ID,
+            name: "Check the commenter may start a review",
+            run: `./zuke ${target} --preflight`,
+            continueOnError: true,
+            env: { GITHUB_TOKEN: githubRef("GITHUB_TOKEN"), ...caller },
+          },
+          {
+            name: "AI review with Zuke",
+            if: `steps.${CALLERS_STEP_ID}.outcome == 'success'`,
+            run: `./zuke ${target}`,
+            env: commandEnv,
+          },
+        ],
         reviewers.commentEnabled,
         "github.event.issue.number",
         false,

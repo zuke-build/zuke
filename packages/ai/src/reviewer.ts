@@ -118,6 +118,8 @@ import type { PromptExtras, RebuttalNote } from "./prompts/templates.ts";
 import { rebuttalComment } from "./prompts/templates.ts";
 import type { Redact } from "./comment.ts";
 import { type ReviewOutcome, ReviewProgress } from "./progress.ts";
+import type { CallerVerdict } from "./callers.ts";
+import { REVIEW_COMMENT_ENV } from "./hosts/github.ts";
 
 /**
  * The progress reactions of every reviewer in this process, shared so the
@@ -125,6 +127,13 @@ import { type ReviewOutcome, ReviewProgress } from "./progress.ts";
  * {@link ReviewProgress}.
  */
 const PROGRESS = new ReviewProgress();
+
+/**
+ * Who may start this run, looked up once per run and command and shared by
+ * every reviewer in the process — keyed by the run's id and the command
+ * comment's.
+ */
+const CALLER_VERDICTS = new Map<string, Promise<CallerVerdict>>();
 
 /**
  * Where a reviewer's comment-posting token comes from: a secret parameter (for
@@ -765,11 +774,12 @@ export class Reviewer implements Validation {
   /**
    * On a comment-started run, answer the command comment: 👍 as the review
    * starts, 😕 when it cannot run — so the maintainer sees what became of the
-   * command without opening the host's job log. Best-effort and quiet by
-   * construction: nothing here can fail the review, and a run no comment
-   * started does nothing.
+   * command without opening the host's job log. Posts with `token` when given,
+   * the comment token otherwise. Best-effort and quiet by construction:
+   * nothing here can fail the review, and a run no comment started does
+   * nothing.
    */
-  async #answerCommand(signal: CommandSignal): Promise<void> {
+  async #answerCommand(signal: CommandSignal, token?: string): Promise<void> {
     if (!this.#comment || this.#quiet || !this.#reactions) return;
     const host = detectReviewHost(this.#env);
     if (host?.acknowledgeCommand === undefined) return;
@@ -777,7 +787,9 @@ export class Reviewer implements Validation {
     if (answer === undefined) return;
     const emoji = signal === "started" ? "👍" : "😕";
     try {
-      const token = await this.#resolveCommentToken(host);
+      // A refusal answers with the token the lookup used, never the comment
+      // token: a stranger's comment must not make the build mint the App's.
+      token ??= await this.#resolveCommentToken(host);
       if (await answer(token, signal, this.#fetch ?? fetch)) {
         console.log(`[${this.name}] answered the review command (${emoji})`);
       }
@@ -791,15 +803,17 @@ export class Reviewer implements Validation {
 
   /**
    * Refuse a run started by a comment from someone who may not start a review
-   * — the command's access control, decided here by the default branch's
-   * build (see `callers.ts`). Applies whatever the comment and reaction
-   * settings, since it is authorization, not output. A refusal is answered 😕,
-   * posts nothing on the pull request, and **throws**: returning would let the
-   * target's body run, which the commenter was never allowed to start. The
-   * lookup asks with the host's own token (the job's `GITHUB_TOKEN`), falling
-   * back to the comment token.
+   * — the command's access control, decided by the default branch's build
+   * (see `callers.ts`). Applies whatever the comment and reaction settings,
+   * since it is authorization, not output. Called from {@link preflight},
+   * before any target runs, and again from {@link validate} for a core that
+   * has no preflight phase; the verdict is looked up once per run and
+   * command, so every reviewer of the run shares it. A refusal is answered 😕
+   * — with the lookup's own token, the job's `GITHUB_TOKEN` — posts nothing on
+   * the pull request, and **throws**: returning would let the run go on,
+   * which the commenter was never allowed to start.
    */
-  async #refuseUnauthorizedCommand(target: string): Promise<void> {
+  async #refuseUnauthorizedCommand(context: ValidationContext): Promise<void> {
     const host = detectReviewHost(this.#env);
     const authorize = host?.authorizeCommand?.(this.#env);
     if (host === undefined || authorize === undefined) return;
@@ -811,15 +825,30 @@ export class Reviewer implements Validation {
         token = "";
       }
     }
-    const verdict = await authorize(token, this.#fetch ?? fetch);
-    if (verdict.allowed) {
-      if (!this.#quiet) console.log(`[${this.name}] ${verdict.reason}`);
+    const key = `${runOf(context)}\n${this.#env(REVIEW_COMMENT_ENV) ?? ""}`;
+    let verdict = CALLER_VERDICTS.get(key);
+    if (verdict === undefined) {
+      verdict = authorize(token, this.#fetch ?? fetch);
+      CALLER_VERDICTS.set(key, verdict);
+    }
+    const { allowed, reason } = await verdict;
+    if (allowed) {
+      if (!this.#quiet) console.log(`[${this.name}] ${reason}`);
       return;
     }
-    await this.#answerCommand("unable");
+    await this.#answerCommand("unable", token);
     throw new AiReviewError(
-      `${this.name} of "${target}" was not started: ${verdict.reason}`,
+      `${this.name} of "${context.target}" was not started: ${reason}`,
     );
+  }
+
+  /**
+   * The run's preflight: on a comment-started run, refuse a commenter who may
+   * not start a review before any target — a dependency included — has
+   * started (see {@link Validation.preflight}). A no-op on any other run.
+   */
+  async preflight(context: ValidationContext): Promise<void> {
+    await this.#refuseUnauthorizedCommand(context);
   }
 
   /**
@@ -1217,7 +1246,7 @@ export class Reviewer implements Validation {
     }
     // A comment command from someone who may not start a review ends here,
     // before a key is spent or a reaction goes on the pull request.
-    await this.#refuseUnauthorizedCommand(context.target);
+    await this.#refuseUnauthorizedCommand(context);
     // Started before anything can skip, so a skipped review still withdraws
     // the verdict an earlier run left rather than letting it stand for this
     // commit.

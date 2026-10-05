@@ -50,7 +50,18 @@ jobs:
           egress-policy: block
           persist-credentials: "false"
           allowed-endpoints: "deno.land:443 dl.deno.land:443 jsr.io:443 github.com:443 api.github.com:443 codeload.github.com:443 objects.githubusercontent.com:443 release-assets.githubusercontent.com:443 api.openai.com:443"
+      - name: Check the commenter may start a review
+        id: callers
+        run: ./zuke review --preflight
+        env:
+          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          ZUKE_REVIEW_PR: "${{ github.event.issue.number }}"
+          ZUKE_REVIEW_COMMENT: "${{ github.event.comment.id }}"
+          ZUKE_REVIEW_ACTOR: "${{ github.event.comment.user.login }}"
+          ZUKE_REVIEW_ROLE: write
+        continue-on-error: true
       - name: AI review with Zuke
+        if: "steps.callers.outcome == 'success'"
         run: ./zuke review
         env:
           OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}"

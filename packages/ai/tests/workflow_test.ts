@@ -731,25 +731,44 @@ Deno.test("the command is GitHub-only: another host renders no comment job", () 
   assertEquals(yaml.includes("commandReview"), false);
 });
 
-Deno.test("the command job runs the review alone, telling the build who asked and who may", () => {
-  // Who may start a review is decided in-process by the default branch's
-  // build (callers.ts), so the job holds no shell and no `gh` of its own.
+Deno.test("the command job decides who asked in a step with no secrets, then reviews", () => {
+  // Who may start a review is decided by the build's own preflight, in a step
+  // that holds the job's token and nothing else; the step with the keys runs
+  // only when it passed. No shell and no `gh` of the job's own.
   const commandJob = commandBuild().split("  commandReview:")[1];
   assertEquals(commandJob.includes("gh api"), false);
   assertEquals(commandJob.includes("shell: bash"), false);
-  assertEquals(commandJob.includes("steps.callers"), false);
+  const check = commandJob.indexOf("Check the commenter may start a review");
+  const review = commandJob.indexOf("AI review with Zuke");
+  assertEquals(check > 0 && check < review, true);
+  const step = commandJob.slice(check, review);
+  assertStringIncludes(step, "id: callers");
+  assertStringIncludes(step, "run: ./zuke review --preflight");
+  // A refusal fails this step only, so a stranger's command does not turn the
+  // run red.
+  assertStringIncludes(step, "continue-on-error: true");
+  assertStringIncludes(step, 'GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"');
   assertStringIncludes(
-    commandJob,
+    step,
     'ZUKE_REVIEW_ACTOR: "${{ github.event.comment.user.login }}"',
   );
-  assertStringIncludes(commandJob, "ZUKE_REVIEW_ROLE: write");
+  assertStringIncludes(step, "ZUKE_REVIEW_ROLE: write");
+  // The secrets stay out of the deciding step.
+  assertEquals(step.includes("OPENAI_API_KEY"), false);
+  assertEquals(step.includes("APP_KEY"), false);
+  const reviewStep = commandJob.slice(review);
+  assertStringIncludes(
+    reviewStep,
+    "if: \"steps.callers.outcome == 'success'\"",
+  );
+  assertStringIncludes(
+    reviewStep,
+    'OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}"',
+  );
+  // The review step keeps the caller too, so the reviewers check again.
+  assertStringIncludes(reviewStep, "ZUKE_REVIEW_ROLE: write");
   // No allow-list by default.
   assertEquals(commandJob.includes("ZUKE_REVIEW_USERS"), false);
-  // The login reaches the build only as env, once.
-  assertEquals(
-    commandJob.split("${{ github.event.comment.user.login }}").length,
-    2,
-  );
 });
 
 Deno.test("also adds commands that start the run too, each matched like the first", () => {

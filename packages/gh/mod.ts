@@ -169,6 +169,7 @@ export {
   type GhCollaboratorApi,
   type GhCollaboratorPermission,
   GhCollaboratorSettings,
+  GITHUB_LOGIN,
 } from "./src/collaborator.ts";
 export {
   type GhCheckConclusion,

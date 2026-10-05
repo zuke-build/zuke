@@ -173,6 +173,7 @@ Deno.test("the GitHub host asks the collaborators API through GhTasks, only on a
  * `roleName`, and answer the reactions, the model calls and the log.
  */
 async function commanded(
+  comment: number,
   roleName: string,
   token: Record<string, string | undefined> = { GITHUB_TOKEN: "tkn" },
 ) {
@@ -205,7 +206,7 @@ async function commanded(
       GITHUB_REF: "refs/heads/master",
       GITHUB_STEP_SUMMARY: undefined,
       ZUKE_REVIEW_PR: "61",
-      ZUKE_REVIEW_COMMENT: "6161",
+      ZUKE_REVIEW_COMMENT: String(comment),
       ZUKE_REVIEW_ACTOR: "stranger",
       GITHUB_TOKEN: undefined,
       ...token,
@@ -224,7 +225,7 @@ async function commanded(
   );
   return {
     command: github.on(
-      "https://api.github.com/repos/zuke-build/zuke/issues/comments/6161/reactions",
+      `https://api.github.com/repos/zuke-build/zuke/issues/comments/${comment}/reactions`,
     ),
     description: github.on(
       "https://api.github.com/repos/zuke-build/zuke/issues/61/reactions",
@@ -238,7 +239,7 @@ async function commanded(
 
 Deno.test("a refused commenter gets 😕 and a failed run: no review, no 👀", async () => {
   const { command, description, modelCalls, authorizations, threw } =
-    await commanded("read");
+    await commanded(6161, "read");
   // Failing is what keeps the target's body from running for them.
   assertEquals(threw instanceof AiReviewError, true);
   assertEquals(
@@ -254,7 +255,7 @@ Deno.test("a refused commenter gets 😕 and a failed run: no review, no 👀", 
 });
 
 Deno.test("without the job's token the lookup falls back to the comment token", async () => {
-  const { authorizations, command } = await commanded("read", {
+  const { authorizations, command } = await commanded(6162, "read", {
     GITHUB_TOKEN: undefined,
   });
   assertEquals(authorizations, ["Bearer app-token"]);
@@ -262,7 +263,7 @@ Deno.test("without the job's token the lookup falls back to the comment token", 
 });
 
 Deno.test("an admitted commenter's review starts as before", async () => {
-  const { command, modelCalls, threw, lines } = await commanded("write");
+  const { command, modelCalls, threw, lines } = await commanded(6163, "write");
   assertEquals(threw, undefined);
   assertEquals(
     lines.some((l) => l.includes("stranger has the write role")),
@@ -270,4 +271,118 @@ Deno.test("an admitted commenter's review starts as before", async () => {
   );
   assertEquals(command.includes("+1"), true);
   assertEquals(modelCalls > 0, true);
+});
+
+/**
+ * A comment-started run's environment for `comment`, with the job's token and
+ * a commenter GitHub reports as `roleName`, through `fetch` — which records
+ * the authorization of every collaborators lookup and every reaction.
+ */
+function strangerRun(comment: number, roleName: string) {
+  const github = fakeReactions();
+  const lookups: Array<string | null> = [];
+  const reactions: Array<string | null> = [];
+  const fetch = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    const authorization = new Headers(init?.headers).get("authorization");
+    if (url.endsWith("/collaborators/stranger/permission")) {
+      lookups.push(authorization);
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ permission: "read", role_name: roleName }),
+        ),
+      );
+    }
+    const reaction = github.handle(url, init);
+    if (reaction !== undefined) {
+      reactions.push(authorization);
+      return reaction;
+    }
+    return Promise.resolve(new Response("[]"));
+  }) as typeof globalThis.fetch;
+  const env = {
+    GITHUB_ACTIONS: "true",
+    GITHUB_REPOSITORY: "zuke-build/zuke",
+    GITHUB_REF: "refs/heads/master",
+    GITHUB_STEP_SUMMARY: undefined,
+    GITHUB_TOKEN: "job-token",
+    ZUKE_REVIEW_PR: "62",
+    ZUKE_REVIEW_COMMENT: String(comment),
+    ZUKE_REVIEW_ACTOR: "stranger",
+  };
+  return { github, lookups, reactions, fetch, env };
+}
+
+Deno.test("a refusal never mints the comment token: 😕 goes out with the job's token", async () => {
+  const run = strangerRun(6201, "read");
+  let minted = 0;
+  await captureLines(() =>
+    withEnv(run.env, async () => {
+      const reviewer = securityReviewer((r) =>
+        r.provider("claude").apiKey("k").comment()
+          .commentToken(() => {
+            minted++;
+            return Promise.resolve("app-token");
+          })
+          .diff((d) => d.text("diff")).fetch(run.fetch)
+      );
+      try {
+        await reviewer.preflight(noRedactionContext("review"));
+      } catch {
+        // Refused, as asserted below.
+      }
+    })
+  );
+  assertEquals(minted, 0);
+  assertEquals(run.lookups, ["Bearer job-token"]);
+  assertEquals(run.reactions, ["Bearer job-token"]);
+  assertEquals(
+    run.github.on(
+      "https://api.github.com/repos/zuke-build/zuke/issues/comments/6201/reactions",
+    ),
+    ["confused"],
+  );
+});
+
+Deno.test("preflight refuses before anything else, and the run's reviewers share one lookup", async () => {
+  const run = strangerRun(6202, "read");
+  const errors: unknown[] = [];
+  await captureLines(() =>
+    withEnv(run.env, async () => {
+      for (const make of [securityReviewer, securityReviewer]) {
+        const reviewer = make((r) =>
+          r.provider("claude").apiKey("k").comment()
+            .diff((d) => d.text("diff")).fetch(run.fetch)
+        );
+        try {
+          await reviewer.preflight({
+            ...noRedactionContext("review"),
+            runId: "r1",
+          });
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+    })
+  );
+  assertEquals(errors.length, 2);
+  assertEquals(errors.every((e) => e instanceof AiReviewError), true);
+  assertEquals(run.lookups.length, 1);
+  // Nothing on the pull request's description.
+  assertEquals(
+    run.github.on(
+      "https://api.github.com/repos/zuke-build/zuke/issues/62/reactions",
+    ),
+    [],
+  );
+});
+
+Deno.test("preflight is a no-op on a run no comment started", async () => {
+  await withEnv(
+    { GITHUB_ACTIONS: "true", ZUKE_REVIEW_COMMENT: undefined },
+    async () => {
+      await securityReviewer((r) => r.provider("claude").apiKey("k"))
+        .preflight(noRedactionContext("review"));
+    },
+  );
 });

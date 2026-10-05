@@ -87,6 +87,13 @@ the packages publish themselves.
 > Until that lands, a consumer whose lockfile already resolves the older core
 > can hit a missing-export error, so treat the follow-up as part of the change,
 > not optional cleanup.
+>
+> The same holds for a **rich feature package**'s workspace sibling (see
+> `PACKAGE_DEPENDENCIES` in `build/packages.ts`): `@zuke/ai` calling a task new
+> in `@zuke/gh` lands against gh's current floor, and the floor is raised in a
+> follow-up once that gh release publishes. `coreFloorCheck` resolves a sibling
+> from the local workspace, so it cannot catch a sibling floor that is too low —
+> the follow-up is the control.
 
 ## Manual trigger
 

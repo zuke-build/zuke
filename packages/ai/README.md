@@ -900,6 +900,10 @@ class Reviewer implements Validation
     Untrusted comments are dropped in code before any prompt is built — the
     model never sees them, so a drive-by "the maintainer approved this"
     comment cannot influence the review.
+  async preflight(context: ValidationContext): Promise<void>
+    The run's preflight: on a comment-started run, refuse a commenter who may
+    not start a review before any target — a dependency included — has
+    started (see {@link Validation.preflight}). A no-op on any other run.
   async validate(context: ValidationContext): Promise<void>
     Run the review and gate the build. Throws an {@link AiReviewError} when the
     gate trips (or on a configuration/API error with `onError: "fail"`).

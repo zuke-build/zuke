@@ -513,10 +513,10 @@ On the pull/merge request **description**:
 
 On a **command comment** — a [comment-started run](#on-demand-a-comment-command)
 — 👍 as the review starts, and 😕 when it will not run: the commenter may not
-start a review (the reviewer checks before anything else), or the run could not
-review (the pull request cannot be fetched, or every reviewer was skipped — no
-key, the budget spent). One reviewer skipping while another reviewed is not
-that: the command was served.
+start a review (the build's preflight decides, before any secret is in reach),
+or the run could not review (the pull request cannot be fetched, or every
+reviewer was skipped — no key, the budget spent). One reviewer skipping while
+another reviewed is not that: the command was served.
 
 On a **maintainer's reply** in the
 [discussion](#discussing-findings-instead-of-repeating-them) — 👀 on every
@@ -660,25 +660,36 @@ The generated job listens on `issue_comment` (GitHub delivers a pull request's
 conversation comments as issue comments) and runs only when every clause of its
 `if:` holds, all of them metadata GitHub asserts rather than anything in the
 comment's text: the comment is on a pull request; its author is not a bot
-account; and the body starts with one of the commands. The job itself holds no
-script and no `gh`: it runs the review target and passes the commenter's login,
-the least role the command admits and the logins it admits outright, as
-`ZUKE_REVIEW_ACTOR`, `ZUKE_REVIEW_ROLE` and `ZUKE_REVIEW_USERS`. Who may start a
-run is decided **inside the build** — the default branch's own code — before any
-key is spent: each reviewer asks GitHub's collaborators API, through `GhTasks`
-from `@zuke/gh`, what role the commenter holds. A login named by `.users(...)`
-is admitted outright; otherwise `write` and above (or whatever `.role(...)`
-lowers that to: `triage`, or `read`, which on a public repository is everyone)
-lets the review run. Anything below — or a login that is not one, a role that
-cannot be read — is refused: 😕 on the comment, nothing posted on the pull
-request, and the run **fails** with the reason. Failing is what keeps the
-target's body from running for someone who was never allowed to start it; it
-shows on the default branch's Actions page, not on the pull request's checks.
-The event's `author_association` is deliberately not in the gate: GitHub reports
-an organisation member whose membership is private as `CONTRIBUTOR` (it turned
-this repository's own maintainers away), and `MEMBER` and `COLLABORATOR` both
-include read-only accounts, so the field can neither admit nor refuse anyone
-correctly. `startsWith` is case-insensitive, and a reply that quotes the command
+account; and the body starts with one of the commands. The job holds no script
+and no `gh` of its own — two steps, both the build:
+
+1. **Check the commenter may start a review** runs `./zuke review --preflight`
+   with the job's `GITHUB_TOKEN` and nothing else: no provider key, no App key.
+   It runs only the build's preflight phase, executing no target, so each
+   reviewer's `preflight` decides — before any secret is in reach — whether this
+   commenter may start a review. It asks GitHub's collaborators API, through
+   `GhTasks` from `@zuke/gh`, what role the commenter holds: a login named by
+   `.users(...)` is admitted outright; otherwise `write` and above (or whatever
+   `.role(...)` lowers that to: `triage`, or `read`, which on a public
+   repository is everyone) passes. Anything below — or a login that is not one,
+   a role that cannot be read — is refused with a 😕 on the comment and nothing
+   on the pull request. The step is `continue-on-error`, so a stranger's command
+   does not turn the run red: with no pre-filter anyone who can comment can type
+   the command, and a red run for each would be noise and a lever anyone could
+   pull.
+2. **AI review with Zuke** runs only when that step passed, with the keys. Its
+   reviewers check the commenter again — the same answer, looked up once per run
+   — so the gate also holds on a core with no preflight phase.
+
+The job passes the commenter's login, the least role and the admitted logins as
+`ZUKE_REVIEW_ACTOR`, `ZUKE_REVIEW_ROLE` and `ZUKE_REVIEW_USERS`. A workflow
+generated before this flow existed sets none of them, and the reviewers refuse
+every command it starts — regenerate it. The event's `author_association` is
+deliberately not in the gate: GitHub reports an organisation member whose
+membership is private as `CONTRIBUTOR` (it turned this repository's own
+maintainers away), and `MEMBER` and `COLLABORATOR` both include read-only
+accounts, so the field can neither admit nor refuse anyone correctly.
+`startsWith` is case-insensitive, and a reply that quotes the command
 (`> @acme-bot review`) does not start a run. The comment body is matched in the
 expression and never interpolated into a `run:` line; the login reaches the
 build as env and is checked against the characters a login can contain before it

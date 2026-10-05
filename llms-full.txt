@@ -3549,6 +3549,12 @@ interface ExecuteOptions
     Plan only: resolve and print every target that would run (honouring
     `--skip` and `onlyWhen` conditions) without executing any body or touching
     the cache (CLI `--dry-run`).
+  preflightOnly?: boolean
+    Run only the preflight phase — every planned validation's
+    {@link Validation.preflight} — and stop, executing no target (CLI
+    `--preflight`). The result is ok when every preflight passed. Missing or
+    invalid parameters do not fail it: the step that asks is meant to run
+    without the secrets they come from.
   affected?: AffectedOptions
     Restrict the run to the targets affected by files changed since a base git
     revision (CLI `--affected[=<base>]`). A target is affected when a changed
@@ -4998,6 +5004,14 @@ interface Validation
     A name for diagnostics (optional).
   validate(context: ValidationContext): void | Promise<void>
     Run the check; throw to fail the target. May be async.
+  preflight?(context: ValidationContext): void | Promise<void>
+    Decide whether the run may happen at all — called once per run, for every
+    validation in the plan, before any target starts, its dependencies
+    included. Throw to refuse the run: nothing executes, and no run record is
+    opened. Optional; most validations have nothing to decide this early. It
+    is the seam for a check that must stand in front of everything, such as
+    who may start a comment-triggered run. `zuke <target> --preflight` runs
+    only this phase. Skipped by a dry run, which executes nothing to guard.
 
 interface ValidationContext
   Context passed to a {@link Validation} when it runs.
@@ -16701,6 +16715,11 @@ const CACHE_LIST_FIELDS: readonly string[]
   The `--json` fields {@link readCaches} asks for; gh requires the list by
   name, so the reader pins the set {@link GhCacheEntry} describes.
 
+const GITHUB_LOGIN: RegExp
+  The characters a GitHub login can contain — letters, digits and hyphens.
+  The guard a login passes before it is put in a request path, shared so a
+  caller deciding trust on a login checks it the same way.
+
 const GhTasks: GhTasksApi
   Typed task functions for GitHub: the `gh` CLI and the REST-only operations.
 
@@ -21168,6 +21187,10 @@ class Reviewer implements Validation
     Untrusted comments are dropped in code before any prompt is built — the
     model never sees them, so a drive-by "the maintainer approved this"
     comment cannot influence the review.
+  async preflight(context: ValidationContext): Promise<void>
+    The run's preflight: on a comment-started run, refuse a commenter who may
+    not start a review before any target — a dependency included — has
+    started (see {@link Validation.preflight}). A no-op on any other run.
   async validate(context: ValidationContext): Promise<void>
     Run the review and gate the build. Throws an {@link AiReviewError} when the
     gate trips (or on a configuration/API error with `onError: "fail"`).

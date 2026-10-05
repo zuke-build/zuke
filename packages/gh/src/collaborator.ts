@@ -15,6 +15,13 @@
 import { caller, DEFAULT_BASE_URL, readString } from "./api.ts";
 import { resolveAuthToken, resolveRepoSlug } from "./credentials.ts";
 
+/**
+ * The characters a GitHub login can contain — letters, digits and hyphens.
+ * The guard a login passes before it is put in a request path, shared so a
+ * caller deciding trust on a login checks it the same way.
+ */
+export const GITHUB_LOGIN: RegExp = /^[A-Za-z0-9-]+$/;
+
 /** A collaborator's standing, as `GET /collaborators/<login>/permission` reports it. */
 export interface GhCollaboratorPermission {
   /**
@@ -98,7 +105,7 @@ export async function collaboratorPermission(
     );
   }
   // Interpolated into the path: only the characters a GitHub login can hold.
-  if (!/^[A-Za-z0-9-]+$/.test(login)) {
+  if (!GITHUB_LOGIN.test(login)) {
     throw new Error(
       `refusing to use ${JSON.stringify(login)} as a login: a GitHub login ` +
         `holds only letters, digits and hyphens.`,

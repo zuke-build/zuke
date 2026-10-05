@@ -22,6 +22,8 @@
  * @module
  */
 
+import { GITHUB_LOGIN } from "@zuke/gh";
+
 /**
  * A repository role a commenter may hold, as GitHub's collaborators API
  * reports it (`role_name`) — see `ReviewCommandSettings.role`.
@@ -32,16 +34,13 @@ export type CommandRole = "read" | "triage" | "write" | "maintain" | "admin";
  * The roles least to most capable. A command's minimum role admits it and
  * everything after it.
  */
-export const ROLES: readonly CommandRole[] = [
+const ROLES: readonly CommandRole[] = [
   "read",
   "triage",
   "write",
   "maintain",
   "admin",
 ];
-
-/** The characters a GitHub login can contain. */
-export const LOGIN = /^[A-Za-z0-9-]+$/;
 
 /** The env var the command job sets to the commenter's login. */
 export const REVIEW_ACTOR_ENV = "ZUKE_REVIEW_ACTOR";
@@ -125,7 +124,7 @@ export async function mayStartReview(
   lookup: (login: string) => Promise<Standing>,
 ): Promise<CallerVerdict> {
   const { actor, role, users } = caller;
-  if (!LOGIN.test(actor)) {
+  if (!GITHUB_LOGIN.test(actor)) {
     return {
       allowed: false,
       reason: "the commenter's login is not a GitHub login",

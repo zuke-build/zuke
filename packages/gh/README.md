@@ -325,6 +325,11 @@ const CACHE_LIST_FIELDS: readonly string[]
   The `--json` fields {@link readCaches} asks for; gh requires the list by
   name, so the reader pins the set {@link GhCacheEntry} describes.
 
+const GITHUB_LOGIN: RegExp
+  The characters a GitHub login can contain — letters, digits and hyphens.
+  The guard a login passes before it is put in a request path, shared so a
+  caller deciding trust on a login checks it the same way.
+
 const GhTasks: GhTasksApi
   Typed task functions for GitHub: the `gh` CLI and the REST-only operations.
 

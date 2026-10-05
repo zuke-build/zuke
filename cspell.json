@@ -159,6 +159,7 @@
     "pipx",
     "pnpm",
     "powershell",
+    "preflights",
     "premajor",
     "preminor",
     "prepatch",

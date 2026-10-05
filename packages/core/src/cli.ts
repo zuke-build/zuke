@@ -164,6 +164,8 @@ export interface ParsedArgs {
   affectedBase?: string;
   /** Print the plan without running any target bodies (`--dry-run`). */
   dryRun: boolean;
+  /** Run only the plan's validation preflights, then stop (`--preflight`). */
+  preflight: boolean;
   /** Persist durable run state to `.zuke/runs` when nothing else configures a store (`--state`). */
   state: boolean;
   /** Attribute the run to this actor in its state record (`--actor <name>`). */
@@ -430,6 +432,7 @@ export function parseArgs(
     values: {},
     affected: false,
     dryRun: false,
+    preflight: false,
     state: false,
     resume: false,
     forceGraph: false,
@@ -479,6 +482,8 @@ export function parseArgs(
       parsed.affectedBase = arg.slice("--affected=".length);
     } else if (arg === "--dry-run") {
       parsed.dryRun = true;
+    } else if (arg === "--preflight") {
+      parsed.preflight = true;
     } else if (arg === "--state") {
       parsed.state = true;
     } else if (arg === "--force-graph") {
@@ -1571,6 +1576,7 @@ async function runCommand(
       remoteCache: parsed.remoteCache === false ? false : undefined,
       affected: parsed.affected ? { base: parsed.affectedBase } : undefined,
       dryRun: parsed.dryRun,
+      preflightOnly: parsed.preflight,
       state: parsed.state,
       actor: parsed.actor,
       actorKind,

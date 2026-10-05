@@ -64,6 +64,7 @@ Option flags:
 - `--no-remote-cache` — Use the local cache only; skip the remote cache store
 - `--affected` — Run only targets affected by changes since a git base
 - `--dry-run` — Print the plan without running targets
+- `--preflight` — Run only the validations' preflight checks, then stop
 - `--state` — Persist durable run state to .zuke/runs
 - `--actor` — Attribute the run to <name> in its state record
 - `--actor-kind` — Who asked for the run: human (default) or service

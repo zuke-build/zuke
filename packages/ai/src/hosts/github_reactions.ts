@@ -48,14 +48,26 @@ const CONTENT: Record<ReviewSignal, GhReactionContent> = {
   fixed: "rocket",
 };
 
-/** Bind `settings` to `context`'s repository, token and `fetch`. */
+/** The repository (`owner/repo`) and token a reaction is posted with. */
+export interface ReactionTarget {
+  /** `owner/repo`. */
+  slug: string;
+  /** The token to post with. */
+  token: string;
+}
+
+/** The {@link ReactionTarget} of a resolved pull-request context. */
+function targetOf(context: GithubContext): ReactionTarget {
+  return { slug: `${context.owner}/${context.repo}`, token: context.token };
+}
+
+/** Bind `settings` to `target`'s repository and token, and to `doFetch`. */
 function bound(
-  context: Pick<GithubContext, "owner" | "repo" | "token">,
+  target: ReactionTarget,
   doFetch: typeof fetch,
 ): (settings: GhReactionSettings) => GhReactionSettings {
   return (settings) =>
-    settings.repo(`${context.owner}/${context.repo}`).token(context.token)
-      .fetch(doFetch);
+    settings.repo(target.slug).token(target.token).fetch(doFetch);
 }
 
 /**
@@ -64,14 +76,14 @@ function bound(
  * GitHub refuses or the call fails. Never throws.
  */
 export async function postReaction(
-  context: Pick<GithubContext, "owner" | "repo" | "token">,
+  target: ReactionTarget,
   subject: (settings: GhReactionSettings) => GhReactionSettings,
   content: GhReactionContent,
   doFetch: typeof fetch,
 ): Promise<GhReaction | undefined> {
   try {
     return await GhTasks.react((s) =>
-      subject(bound(context, doFetch)(s)).content(content)
+      subject(bound(target, doFetch)(s)).content(content)
     );
   } catch {
     return undefined;
@@ -87,7 +99,7 @@ export function githubReactions(context: GithubContext): ReviewReactions {
     key: `github:${context.owner}/${context.repo}#${context.pull}`,
     async add(signal, doFetch) {
       const posted = await postReaction(
-        context,
+        targetOf(context),
         description,
         CONTENT[signal],
         doFetch,
@@ -101,7 +113,7 @@ export function githubReactions(context: GithubContext): ReviewReactions {
       const login = self;
       if (login === undefined) return false;
       const settings = (s: GhReactionSettings) =>
-        description(bound(context, doFetch)(s));
+        description(bound(targetOf(context), doFetch)(s));
       try {
         const own = (await GhTasks.listReactions((s) =>
           settings(s).content(CONTENT[signal])
@@ -140,7 +152,7 @@ export function githubReplyReactions(context: GithubContext): ReplyReactions {
   return {
     async react(comment, signal, doFetch) {
       const posted = await postReaction(
-        context,
+        targetOf(context),
         (s) =>
           comment.kind === "review"
             ? s.reviewComment(comment.id)

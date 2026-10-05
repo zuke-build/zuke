@@ -88,9 +88,8 @@ export function acknowledgeGithubCommand(
     if (!/^[1-9]\d{0,15}$/.test(id) || repo === undefined || token === "") {
       return false;
     }
-    const slash = repo.indexOf("/");
     const reaction = await postReaction(
-      { owner: repo.slice(0, slash), repo: repo.slice(slash + 1), token },
+      { slug: repo, token },
       (s) => s.issueComment(Number(id)),
       COMMAND_CONTENT[signal],
       doFetch,

@@ -633,6 +633,16 @@ export interface Validation {
   name?: string;
   /** Run the check; throw to fail the target. May be async. */
   validate(context: ValidationContext): void | Promise<void>;
+  /**
+   * Decide whether the run may happen at all — called once per run, for every
+   * validation in the plan, **before any target starts**, its dependencies
+   * included. Throw to refuse the run: nothing executes, and no run record is
+   * opened. Optional; most validations have nothing to decide this early. It
+   * is the seam for a check that must stand in front of everything, such as
+   * who may start a comment-triggered run. `zuke <target> --preflight` runs
+   * only this phase. Skipped by a dry run, which executes nothing to guard.
+   */
+  preflight?(context: ValidationContext): void | Promise<void>;
 }
 
 /** Context passed to a {@link Remediation} after a target body fails. */
