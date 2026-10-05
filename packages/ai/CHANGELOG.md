@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.11.0](https://github.com/zuke-build/zuke/compare/ai-v2.10.0...ai-v2.11.0) (2026-10-05)
+
+
+### Features
+
+* **ai:** add progress reactions on pull requests ([#693](https://github.com/zuke-build/zuke/issues/693)) ([949cb79](https://github.com/zuke-build/zuke/commit/949cb7970a73f56e3d1ba0d30c204ec88c9eddee))
+
 ## [2.10.0](https://github.com/zuke-build/zuke/compare/ai-v2.9.0...ai-v2.10.0) (2026-09-21)
 
 
