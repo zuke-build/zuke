@@ -1358,7 +1358,8 @@ class Deploy extends Build {
   .region("europe-west1").image(this.image.value).gcloud((g) => g.project(p))))`
   from `@zuke/gcloud`. It routes traffic through the candidate's tag
   (`.tag(...)`, default `canary`) in whole percents; `promote` refuses a
-  revision deployed mid-rollout; `abort` needs no recorded state.
+  revision deployed mid-rollout; a hand-run `abort` needs
+  `.stable("<revision>")` to know where to send traffic, and refuses without it.
 
 ## Helpers from `@zuke/core`
 

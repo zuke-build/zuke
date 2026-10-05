@@ -156,16 +156,24 @@ await run(Deploy);
 Its lambda runs on every call, so it may read resolved parameters. Every traffic
 move goes through the candidate's tag (`canary` unless you set `.tag(...)`):
 
-| Call      | gcloud                                                                                                                                                                          |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `stage`   | `run services update <service> --image <image> --tag canary --no-traffic`, then records the new revision. `services update` never creates a service, so the service must exist. |
-| `expose`  | `run services update-traffic <service> --to-tags canary=<n>`. gcloud spreads the rest over the revisions already serving, in proportion. Whole percents only.                   |
-| `promote` | Checks that the latest revision is still the staged candidate, then `update-traffic --to-latest`. A revision someone deployed mid-rollout is refused, which rolls back.         |
-| `abort`   | `update-traffic --to-tags canary=0`. It needs no recorded state, so a hand-run `rollout.abort` works, and after a promote it changes nothing.                                   |
+| Call      | gcloud                                                                                                                                                                                                                              |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stage`   | `run services update <service> --image <image> --tag canary --no-traffic`, then records the new revision. `services update` never creates a service, so the service must exist.                                                     |
+| `expose`  | `run services update-traffic <service> --to-tags canary=<n>`. gcloud spreads the rest over the revisions already serving, in proportion and in whole percents, so an earlier split is kept only approximately. Whole percents only. |
+| `promote` | Checks that the latest revision is still the staged candidate, then `update-traffic --to-latest`. A revision someone deployed mid-rollout is refused, which rolls back.                                                             |
+| `abort`   | Mid-rollout: `update-traffic --to-tags canary=0`. Run by hand (no recorded state): `update-traffic --to-revisions <stable>=100`, to the revision set with `.stable(...)`, and it refuses without one.                               |
+
+A hand-run `zuke rollout.abort` is a fresh run with no record of the rollout,
+and the release it undoes has usually been promoted, so the tag's route is
+already at 0 %. Name the revision to go back to with `.stable("api-00041-xyz")`;
+without it the abort refuses instead of reporting a rollback it did not do. For
+a rollout that is still running or parked, use `zuke cancel <run-id>`.
 
 After an abort the candidate revision still exists, with no traffic and still
 carrying the tag, so its tagged URL reaches it until the next rollout moves the
-tag. Global flags such as `--project` and `--account` go in `.gcloud(...)`.
+tag. Promote checks the latest revision and then moves traffic in a second call,
+so a deploy that lands in the seconds between the two is not caught. Global
+flags such as `--project` and `--account` go in `.gcloud(...)`.
 
 ## Bakes: inline or durable
 

@@ -109,7 +109,10 @@ Deno.test("stage deploys the image tagged, with no traffic, and records the revi
       "value(status.latestCreatedRevisionName)",
     ],
   ]);
-  assertEquals(ctx.state.get(), { cloudRunCandidate: "api-00002-abc" });
+  assertEquals(ctx.state.get(), {
+    cloudRunStage: "tagged",
+    cloudRunCandidate: "api-00002-abc",
+  });
   assertEquals(ctx.summary, { Candidate: "api-00002-abc" });
 });
 
@@ -182,14 +185,78 @@ Deno.test("promote with nothing staged refuses rather than guess", async () => {
   assertEquals(calls, []);
 });
 
-Deno.test("abort zeroes the tag and needs no recorded state", async () => {
-  const { runner, calls } = fakeGcloud();
+Deno.test("abort mid-rollout takes the tag back to 0, and repeats harmlessly", async () => {
+  const { runner, calls } = fakeGcloud("api-00002-abc");
+  const ctx = context();
   const p = platform(runner);
-  await p.abort();
-  await p.abort();
-  assertEquals(calls.length, 2);
-  assertEquals(calls[0].slice(-4), ["--to-tags", "canary=0", "--project", "p"]);
-  assertEquals(calls[1], calls[0]);
+  await p.stage(ctx);
+  await p.abort(ctx);
+  await p.abort(ctx);
+  const moves = calls.slice(2);
+  assertEquals(moves.length, 2);
+  assertEquals(moves[0].slice(-4), ["--to-tags", "canary=0", "--project", "p"]);
+  assertEquals(moves[1], moves[0]);
+});
+
+Deno.test("abort after a stage that never tagged anything runs nothing", async () => {
+  // The update failed: no route carries the candidate, so there is nothing to
+  // take back — and on a first rollout the tag does not even exist.
+  const ctx = context();
+  const failing = cloudRunCanary((r) =>
+    r.service("api").image("i").runner(() =>
+      Promise.reject(new Error("image not found"))
+    )
+  );
+  await assertRejects(() => failing.stage(ctx), Error, "image not found");
+  assertEquals(ctx.state.get(), { cloudRunStage: "deploying" });
+  const { runner, calls } = fakeGcloud();
+  await platform(runner).abort(ctx);
+  assertEquals(calls, []);
+});
+
+Deno.test("a stage that cannot record the tag stops before any traffic moves", async () => {
+  const { runner, calls } = fakeGcloud("api-00002-abc");
+  const ctx = context();
+  ctx.state.trySet = () => Promise.resolve(false);
+  await assertRejects(
+    () => platform(runner).stage(ctx),
+    Error,
+    "could not record that the candidate is tagged",
+  );
+  // The update ran; the read-back and everything after it did not.
+  assertEquals(calls.length, 1);
+});
+
+Deno.test("a hand-run abort returns all traffic to the configured stable revision", async () => {
+  const { runner, calls } = fakeGcloud();
+  await platform(runner, (r) => r.stable("api-00001-old")).abort(context());
+  assertEquals(calls[0].slice(1), [
+    "run",
+    "services",
+    "update-traffic",
+    "api",
+    "--region",
+    "europe-west1",
+    "--to-revisions",
+    "api-00001-old=100",
+    "--project",
+    "p",
+  ]);
+});
+
+Deno.test("a hand-run abort with no stable revision refuses rather than claim a rollback", async () => {
+  const { runner, calls } = fakeGcloud();
+  await assertRejects(
+    () => platform(runner).abort(context()),
+    Error,
+    "r.stable('<revision>')",
+  );
+  await assertRejects(
+    () => platform(runner, (r) => r.stable("api=1,b")).abort(context()),
+    Error,
+    "is not a Cloud Run revision name",
+  );
+  assertEquals(calls, []);
 });
 
 Deno.test("the lambda is evaluated on every call, so it sees resolved values", async () => {
@@ -216,7 +283,7 @@ Deno.test("missing service, missing image and a bad tag are named", async () => 
   );
   for (const tag of ["Canary", "can,ary", "c=1", "-x", ""]) {
     await assertRejects(
-      () => platform(runner, (r) => r.tag(tag)).abort(),
+      () => platform(runner, (r) => r.tag(tag)).expose(10),
       Error,
       "is not one Cloud Run accepts",
     );
@@ -238,7 +305,7 @@ Deno.test("a failing gcloud command fails the call", async () => {
   const p = cloudRunCanary((r) =>
     r.service("api").runner(() => Promise.reject(new Error("gcloud exit 1")))
   );
-  await assertRejects(() => p.abort(), Error, "gcloud exit 1");
+  await assertRejects(() => p.expose(10), Error, "gcloud exit 1");
 });
 
 Deno.test("an empty revision read-back is refused, not recorded", async () => {
@@ -250,7 +317,8 @@ Deno.test("an empty revision read-back is refused, not recorded", async () => {
   );
   const error = await assertRejects(() => p.stage(ctx), Error);
   assertStringIncludes(error.message, "latest revision");
-  assertEquals(ctx.state.get(), {});
+  // The tag landed, but no candidate is recorded as one.
+  assertEquals(ctx.state.get(), { cloudRunStage: "tagged" });
 });
 
 Deno.test("the default runner runs gcloud itself", async () => {
@@ -259,5 +327,5 @@ Deno.test("the default runner runs gcloud itself", async () => {
   const p = cloudRunCanary((r) =>
     r.service("api").gcloud((g) => missingTool(g))
   );
-  await assertRejects(() => p.abort(), ToolNotFoundError);
+  await assertRejects(() => p.expose(10), ToolNotFoundError);
 });

@@ -60,6 +60,42 @@ const secret = await SecretManagerTasks.access("db-password", {
 `access` returns the plaintext secret — route it into a `.secret()` parameter or
 the run's redactor; never log it.
 
+## Cloud Run canary platform
+
+`cloudRunCanary` is a Cloud Run service as a platform for
+[`@zuke/canary`](https://jsr.io/@zuke/canary). This package does not depend on
+`@zuke/canary`: the object it returns has the platform's shape, so
+`c.platform(...)` accepts it as it is.
+
+```ts
+import { canary } from "@zuke/canary";
+import { cloudRunCanary } from "@zuke/gcloud";
+
+rollout = canary((c) =>
+  c.platform(
+    cloudRunCanary((r) =>
+      r.service("api").region("europe-west1").image(this.image.value)
+        .stable("api-00041-xyz") // where a hand-run rollout.abort goes back to
+        .gcloud((g) => g.project("my-project"))
+    ),
+  )
+    .steps(10, 25, 50)
+    .bake("10m")
+);
+```
+
+- **`stage`** deploys the image as a tagged revision with no traffic
+  (`run services update … --tag canary --no-traffic`).
+- **`expose`** moves traffic through that tag
+  (`update-traffic --to-tags canary=<n>`).
+- **`promote`** checks that the latest revision is still the candidate, then
+  runs `--to-latest`.
+- **`abort`** sets the tag back to 0 % mid-rollout. Run by hand, it sends all
+  traffic to the `.stable(...)` revision.
+
+See
+[docs/canary.md](https://github.com/zuke-build/zuke/blob/master/docs/canary.md#cloud-run).
+
 <!-- ZUKE:API:START -->
 
 ## API
@@ -101,7 +137,8 @@ function cloudRunCanary(configure: Configure<CloudRunCanarySettings>): CloudRunC
   - expose — `run services update-traffic <service> --to-tags canary=<n>`.
   - promote — checks the latest revision is still the candidate, then
     `update-traffic --to-latest`.
-  - abort — `update-traffic --to-tags canary=0`; needs no recorded state.
+  - abort — `update-traffic --to-tags canary=0` mid-rollout; run by hand,
+    `--to-revisions <stable>=100` to the revision set with `.stable(...)`.
 
 function gcloudAccessToken(run: GcloudRunner): Promise<string>
   The default {@link AccessTokenProvider}: the trimmed stdout of
@@ -145,18 +182,28 @@ class CloudRunCanary
     second service.
   async expose(percent: number): Promise<number>
     Send `percent` of the requests to the candidate, through its tag. gcloud
-    spreads the rest over the revisions already serving, in proportion, so a
-    split the service had before the canary keeps its shape.
+    spreads the rest over the revisions already serving, in proportion and in
+    whole percents, so a split the service had before the canary keeps its
+    shape only approximately — a revision whose share rounds to 0 drops out.
   async promote(ctx: CloudRunCanaryContext): Promise<void>
     Send all traffic to the latest revision — after checking that it is
     still the candidate this rollout staged, so a revision someone deployed in
-    the meantime is never promoted in its place. Idempotent.
-  async abort(): Promise<void>
-    Take every request back from the candidate: its tag goes to 0 % and gcloud
-    returns that share to the revisions already serving. It reads no recorded
-    state, so it also works when run by hand; it is idempotent; and after a
-    promote it changes nothing, because the tag's own route is at 0 % once
-    traffic is on the latest revision.
+    the meantime is not promoted in its place. The check and the traffic move
+    are two gcloud calls, so a deploy landing in the seconds between them is
+    not caught. Idempotent.
+  async abort(ctx: CloudRunCanaryContext): Promise<void>
+    Take the candidate's traffic back. Idempotent. What it does depends on
+    what this rollout recorded:
+
+    - The candidate is tagged (a rollback mid-rollout): the tag goes to
+      0 % and gcloud returns that share to the revisions already serving. The
+      candidate revision stays, with no traffic.
+    - `stage` failed before tagging it: nothing has any traffic to take
+      back, so nothing runs.
+    - Nothing recorded (`rollout.abort` run by hand, a fresh run): all
+      traffic goes to the revision set with
+      {@link CloudRunCanarySettings.stable}. Without one this refuses, since
+      claiming a rollback it cannot do would be worse.
 
 class CloudRunCanarySettings
   How {@link cloudRunCanary} reaches the service, configured through its
@@ -170,6 +217,8 @@ class CloudRunCanarySettings
     The candidate's container image (set by {@link image}).
   tag_: string
     The tag that routes the candidate's traffic (set by {@link tag}).
+  stable_?: string
+    The revision a hand-run rollback returns to (set by {@link stable}).
   gcloud_?: Configure<GcloudSettings>
     Global gcloud flags for every command (set by {@link gcloud}).
   runner_: GcloudSettingsRunner
@@ -184,6 +233,12 @@ class CloudRunCanarySettings
     The tag the candidate revision carries, and that every traffic move routes
     through (default `canary`). Lowercase letters, digits and hyphens,
     starting with a letter.
+  stable(revision: string): this
+    The revision to send all traffic back to when `rollout.abort` is run by
+    hand. Such a run is fresh, with no record of a rollout, so it has nothing
+    else to go on — and the release it is undoing has usually been promoted
+    already. A rollback the engine runs mid-rollout does not use it: that one
+    takes the candidate's tag back to 0 % instead.
   gcloud(configure: Configure<GcloudSettings>): this
     Global flags for every gcloud command the platform runs —
     `(g) => g.project("p").account("deploy@p.iam.gserviceaccount.com")`, or a

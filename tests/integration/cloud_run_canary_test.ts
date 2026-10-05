@@ -35,11 +35,15 @@ let latest = "api-00002-new";
 /** Whether the analysis passes. */
 let healthy = true;
 
+/** The revision a hand-run rollback goes back to, if the build names one. */
+let stable: string | undefined;
+
 class Deploy extends Build {
   rollout = canary((c) =>
     c.platform(
       cloudRunCanary((r) =>
-        r.service("api").region("europe-west1").image("gcr.io/p/api:2")
+        (stable === undefined ? r : r.stable(stable))
+          .service("api").region("europe-west1").image("gcr.io/p/api:2")
           .runner((settings) => {
             const argv = settings.argv().slice(1);
             calls.push(argv);
@@ -65,11 +69,11 @@ class Deploy extends Build {
 
 /** The traffic moves the platform made, as their gcloud flag and value. */
 function trafficMoves(): string[] {
-  return calls.filter((argv) => argv.includes("update-traffic")).map((argv) =>
-    argv.includes("--to-latest")
-      ? "--to-latest"
-      : argv[argv.indexOf("--to-tags") + 1]
-  );
+  return calls.filter((argv) => argv.includes("update-traffic")).map((argv) => {
+    if (argv.includes("--to-latest")) return "--to-latest";
+    const flag = argv.includes("--to-tags") ? "--to-tags" : "--to-revisions";
+    return argv[argv.indexOf(flag) + 1];
+  });
 }
 
 /** The id of the only run under `dir`. */
@@ -85,6 +89,7 @@ function fresh(): void {
   calls = [];
   latest = "api-00002-new";
   healthy = true;
+  stable = undefined;
 }
 
 Deno.test("Cloud Run: staged, stepped, parked, and promoted by a later process", async () => {
@@ -141,11 +146,24 @@ Deno.test("Cloud Run: a revision deployed mid-rollout is never promoted", async 
   });
 });
 
-Deno.test("Cloud Run: a rollback run by hand needs no recorded state", async () => {
+Deno.test("Cloud Run: a rollback run by hand goes to the configured stable revision", async () => {
   fresh();
+  stable = "api-00001-old";
   await withStateDir(async () => {
     const { code, err } = await runCli(Deploy, ["rollout.abort"]);
     assertEquals(code, 0, err);
-    assertEquals(trafficMoves(), ["canary=0"]);
+    assertEquals(trafficMoves(), ["api-00001-old=100"]);
+  });
+});
+
+Deno.test("Cloud Run: a rollback run by hand with no stable revision refuses", async () => {
+  // After a promote the tag's route is already at 0 %, so taking it back
+  // would change nothing while the summary said "Rolled back".
+  fresh();
+  await withStateDir(async () => {
+    const { code, out, err } = await runCli(Deploy, ["rollout.abort"]);
+    assertEquals(code, 1);
+    assertStringIncludes(out + err, "r.stable('<revision>')");
+    assertEquals(trafficMoves(), []);
   });
 });

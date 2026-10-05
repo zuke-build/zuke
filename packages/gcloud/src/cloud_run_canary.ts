@@ -50,11 +50,18 @@ const LATEST_REVISION_FORMAT = "value(status.latestCreatedRevisionName)";
 const CANDIDATE = "cloudRunCandidate";
 
 /**
- * A Cloud Run tag: it becomes part of the tagged revision's URL, so it is held
- * to a DNS label's shape — which also keeps a `,` or `=` from changing what
- * `--to-tags <tag>=<percent>` means.
+ * The state key recording how far `stage` got: `"deploying"` before the
+ * update, `"tagged"` once the candidate carries the tag. It is what tells
+ * `abort` whether there is a tagged route to take traffic back from.
  */
-const TAG_SHAPE = /^[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?$/;
+const STAGE = "cloudRunStage";
+
+/**
+ * A Cloud Run tag or revision name: a tag becomes part of a URL, and both are
+ * DNS labels — which also keeps a `,` or `=` from changing what
+ * `--to-tags <tag>=<percent>` or `--to-revisions <revision>=100` means.
+ */
+const LABEL_SHAPE = /^[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?$/;
 
 /**
  * Runs one prepared `gcloud` command and returns its output. The default runs
@@ -90,6 +97,8 @@ export class CloudRunCanarySettings {
   image_?: string;
   /** The tag that routes the candidate's traffic (set by {@link tag}). */
   tag_ = "canary";
+  /** The revision a hand-run rollback returns to (set by {@link stable}). */
+  stable_?: string;
   /** Global gcloud flags for every command (set by {@link gcloud}). */
   gcloud_?: Configure<GcloudSettings>;
   /** How each command is run (set by {@link runner}). */
@@ -120,6 +129,18 @@ export class CloudRunCanarySettings {
    */
   tag(name: string): this {
     this.tag_ = name;
+    return this;
+  }
+
+  /**
+   * The revision to send all traffic back to when `rollout.abort` is run by
+   * hand. Such a run is fresh, with no record of a rollout, so it has nothing
+   * else to go on — and the release it is undoing has usually been promoted
+   * already. A rollback the engine runs mid-rollout does not use it: that one
+   * takes the candidate's tag back to 0 % instead.
+   */
+  stable(revision: string): this {
+    this.stable_ = revision;
     return this;
   }
 
@@ -183,10 +204,19 @@ export class CloudRunCanary {
           "the canary deploys.",
       );
     }
+    await ctx.state.set({ [STAGE]: "deploying" });
     await settings.runner_(
       this.#scoped(settings, new GcloudRunServicesUpdateSettings())
         .service(service).image(image).tag(settings.tag_).noTraffic(),
     );
+    // A rollback reads this to know there is a tagged route to empty, so it
+    // must be on record before any traffic can reach the candidate.
+    if (!await ctx.state.trySet({ [STAGE]: "tagged" })) {
+      throw new Error(
+        "cloudRunCanary: could not record that the candidate is tagged, so a " +
+          "rollback could not find it. Stopping before it takes any traffic.",
+      );
+    }
     const candidate = await this.#latestRevision(settings, service);
     await ctx.state.set({ [CANDIDATE]: candidate });
     ctx.reportSummary({ Candidate: candidate });
@@ -194,8 +224,9 @@ export class CloudRunCanary {
 
   /**
    * Send `percent` of the requests to the candidate, through its tag. gcloud
-   * spreads the rest over the revisions already serving, in proportion, so a
-   * split the service had before the canary keeps its shape.
+   * spreads the rest over the revisions already serving, in proportion and in
+   * whole percents, so a split the service had before the canary keeps its
+   * shape only approximately — a revision whose share rounds to 0 drops out.
    */
   async expose(percent: number): Promise<number> {
     if (!Number.isInteger(percent) || percent < 0 || percent > 100) {
@@ -215,7 +246,9 @@ export class CloudRunCanary {
   /**
    * Send all traffic to the latest revision — after checking that it is
    * still the candidate this rollout staged, so a revision someone deployed in
-   * the meantime is never promoted in its place. Idempotent.
+   * the meantime is not promoted in its place. The check and the traffic move
+   * are two gcloud calls, so a deploy landing in the seconds between them is
+   * not caught. Idempotent.
    */
   async promote(ctx: CloudRunCanaryContext): Promise<void> {
     const settings = this.#settings();
@@ -244,24 +277,56 @@ export class CloudRunCanary {
   }
 
   /**
-   * Take every request back from the candidate: its tag goes to 0 % and gcloud
-   * returns that share to the revisions already serving. It reads no recorded
-   * state, so it also works when run by hand; it is idempotent; and after a
-   * promote it changes nothing, because the tag's own route is at 0 % once
-   * traffic is on the latest revision.
+   * Take the candidate's traffic back. Idempotent. What it does depends on
+   * what this rollout recorded:
+   *
+   * - **The candidate is tagged** (a rollback mid-rollout): the tag goes to
+   *   0 % and gcloud returns that share to the revisions already serving. The
+   *   candidate revision stays, with no traffic.
+   * - **`stage` failed before tagging it**: nothing has any traffic to take
+   *   back, so nothing runs.
+   * - **Nothing recorded** (`rollout.abort` run by hand, a fresh run): all
+   *   traffic goes to the revision set with
+   *   {@link CloudRunCanarySettings.stable}. Without one this refuses, since
+   *   claiming a rollback it cannot do would be worse.
    */
-  async abort(): Promise<void> {
+  async abort(ctx: CloudRunCanaryContext): Promise<void> {
     const settings = this.#settings();
+    const service = serviceOf(settings);
+    const stage = ctx.state.get()[STAGE];
+    if (stage === "deploying") return;
+    if (stage === "tagged") {
+      await settings.runner_(
+        this.#scoped(settings, new GcloudRunUpdateTrafficSettings())
+          .service(service).toTags(`${settings.tag_}=0`),
+      );
+      return;
+    }
+    const stable = settings.stable_;
+    if (stable === undefined) {
+      throw new Error(
+        `cloudRunCanary: this abort has no record of a rollout of ${service} ` +
+          "— it was run by hand — so it does not know which revision to go " +
+          "back to. Add r.stable('<revision>') to send all traffic there, or " +
+          "use `zuke cancel <run-id>` for a rollout that is still running.",
+      );
+    }
+    if (!LABEL_SHAPE.test(stable)) {
+      throw new Error(
+        `cloudRunCanary: "${stable}" is not a Cloud Run revision name — ` +
+          "lowercase letters, digits and hyphens, starting with a letter.",
+      );
+    }
     await settings.runner_(
       this.#scoped(settings, new GcloudRunUpdateTrafficSettings())
-        .service(serviceOf(settings)).toTags(`${settings.tag_}=0`),
+        .service(service).toRevisions(`${stable}=100`),
     );
   }
 
   /** The settings, evaluated now so the lambda sees resolved parameters. */
   #settings(): CloudRunCanarySettings {
     const settings = this.#configure(new CloudRunCanarySettings());
-    if (!TAG_SHAPE.test(settings.tag_)) {
+    if (!LABEL_SHAPE.test(settings.tag_)) {
       throw new Error(
         `cloudRunCanary: the tag "${settings.tag_}" is not one Cloud Run ` +
           "accepts — use lowercase letters, digits and hyphens, starting with " +
@@ -326,7 +391,8 @@ function serviceOf(settings: CloudRunCanarySettings): string {
  * - **expose** — `run services update-traffic <service> --to-tags canary=<n>`.
  * - **promote** — checks the latest revision is still the candidate, then
  *   `update-traffic --to-latest`.
- * - **abort** — `update-traffic --to-tags canary=0`; needs no recorded state.
+ * - **abort** — `update-traffic --to-tags canary=0` mid-rollout; run by hand,
+ *   `--to-revisions <stable>=100` to the revision set with `.stable(...)`.
  */
 export function cloudRunCanary(
   configure: Configure<CloudRunCanarySettings>,
