@@ -75,6 +75,10 @@ function resolveRegisterRegistry(
  * the descriptor. A plain filesystem path (not a URL) is returned unchanged, and
  * Deno's remote auth uses `DENO_AUTH_TOKENS`, so stripping userinfo does not
  * break a runner relaunch.
+ *
+ * Deliberately narrower than `redactUrl`: the stored URL is what a runner
+ * relaunches the build from, so its query must survive exactly as written —
+ * masking a parameter would launch a different module.
  */
 export function redactModuleUrl(module: string): string {
   try {
