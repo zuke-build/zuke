@@ -105,7 +105,7 @@ Three short recipes cover what a small project wants first:
   support — no bespoke DSL. The `$` tagged template from `@zuke/core/shell` runs
   processes with sane defaults and is injection-safe, so it also replaces the
   `scripts/*.sh` nobody dares touch.
-- **A typed wrapper for every tool.** 60 packages: a tiny core, the CLI, and a
+- **A typed wrapper for every tool.** 61 packages: a tiny core, the CLI, and a
   `*Tasks` object per tool — Deno, npm, pnpm, Bun, Docker, Kubernetes,
   Terraform, Vite, Playwright, GitHub, Claude Code, and the rest — whose
   settings lambdas mirror the real flags. See [Packages](./docs/packages.md).
@@ -151,7 +151,7 @@ zuke ci                                     # any other command runs the project
 ```
 
 > [!NOTE]
-> **Maturity.** Every one of the 60 packages is `1.x` and follows full semver —
+> **Maturity.** Every one of the 61 packages is `1.x` and follows full semver —
 > `@zuke/core`, the `@zuke/cli` command, and all the tool wrappers. A minor or
 > patch release never breaks a public symbol; a breaking change bumps the major.
 > See [Versioning & compatibility](./docs/versioning.md). The npm scope `@zuke`
@@ -186,15 +186,16 @@ refused on contributor-controlled events:
 
 ## Packages
 
-Zuke ships as a JSR workspace of 60 packages:
+Zuke ships as a JSR workspace of 61 packages:
 [`@zuke/core`](https://jsr.io/@zuke/core) (the engine, the `$` shell, and the
 tooling base classes), the [`@zuke/cli`](https://jsr.io/@zuke/cli) command, a
 generic [`@zuke/cmd`](https://jsr.io/@zuke/cmd) fallback, plugins such as
 [`@zuke/ai`](https://jsr.io/@zuke/ai),
 [`@zuke/console`](https://jsr.io/@zuke/console),
 [`@zuke/otel`](https://jsr.io/@zuke/otel) and
-[`@zuke/qr`](https://jsr.io/@zuke/qr), and a typed wrapper per tool —
-[`@zuke/deno`](https://jsr.io/@zuke/deno),
+[`@zuke/qr`](https://jsr.io/@zuke/qr), the
+[`@zuke/canary`](https://jsr.io/@zuke/canary) canary-release engine, and a typed
+wrapper per tool — [`@zuke/deno`](https://jsr.io/@zuke/deno),
 [`@zuke/npm`](https://jsr.io/@zuke/npm),
 [`@zuke/docker`](https://jsr.io/@zuke/docker),
 [`@zuke/gh`](https://jsr.io/@zuke/gh), [`@zuke/git`](https://jsr.io/@zuke/git),

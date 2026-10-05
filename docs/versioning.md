@@ -1,13 +1,13 @@
 # Versioning & compatibility
 
-Zuke publishes 60 independent JSR packages from one workspace. They don't all
+Zuke publishes 61 independent JSR packages from one workspace. They don't all
 move at the same speed, and knowing which promise each package makes — and how
 they interlock — is what keeps an upgrade from surprising you at runtime instead
 of at `deno check` time.
 
 ## One tier: every package follows full semver
 
-**All 60 packages are `1.x`.** `@zuke/core`, the `@zuke/cli` command, and every
+**All 61 packages are `1.x`.** `@zuke/core`, the `@zuke/cli` command, and every
 tool wrapper make the same promise: a `1.x` release never breaks a public
 symbol, so a minor or patch upgrade is safe to take without reading the diff,
 and a breaking change bumps the **major** version. Depend on `jsr:@zuke/core@^1`
