@@ -1307,6 +1307,12 @@ await run(MyBuild, {
   `assertFileExists(path)` — fail a target fast with a clear message.
 - `httpDownload(url, dest)`, `httpText(url)`, `httpJson(url)` — fetch helpers
   that throw `HttpError` on non-2xx.
+- `redactUrl(url)` / `redactUrls(text)` — strip `user:password@` and mask
+  credential parameters (query and fragment; a value hiding one is masked whole)
+  before a URL goes into a message or log; `redactUrls` does every URL in a
+  message. Fails closed on unparseable input; secrets in the path are not
+  recognised. `HttpError` already applies it. Run the build's secret redactor
+  over the text first.
 - `$` from `jsr:@zuke/core/shell` — injection-safe tagged-template shell, only
   when no typed wrapper fits.
 
