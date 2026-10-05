@@ -109,12 +109,18 @@ Deno.test("credentials in the probe URL never reach the failure message", async 
   const error = await assertRejects(
     async () =>
       await httpProbe((h) =>
-        h.url("https://admin:hunter2@api.example/healthz?token=abc").samples(1)
+        h.url("https://admin:hunter2@api.example/healthz?token=abc&region=eu")
+          .samples(1)
           .fetch(fakeFetch(() => new Response("", { status: 500 })))
       ).validate(analysisContext()),
     Error,
   );
-  assertStringIncludes(String(error), "https://api.example/healthz failed");
+  // The shared core redactor masks the credential and keeps the rest of the
+  // query, so the message still says which endpoint failed.
+  assertStringIncludes(
+    String(error),
+    "https://api.example/healthz?token=REDACTED&region=eu failed",
+  );
   for (const secret of ["hunter2", "admin", "token=abc"]) {
     assertEquals(String(error).includes(secret), false, secret);
   }
@@ -144,7 +150,7 @@ Deno.test("an interval or timeout past the longest timer is refused", async () =
   );
 });
 
-Deno.test("cleaning a URL never changes a secret's spelling before the redactor sees it", async () => {
+Deno.test("the run's redactor sees a secret before the URL is re-spelled", async () => {
   const error = await assertRejects(
     async () =>
       await httpProbe((h) =>
@@ -153,21 +159,29 @@ Deno.test("cleaning a URL never changes a secret's spelling before the redactor 
       ).validate(analysisContext()),
     Error,
   );
+  // Core's URL redactor re-serialises the URL (a lowercased host, an encoded
+  // path), so it must run after the run's redactor has masked the secret.
   assertEquals(String(error).includes("s3cr3t"), false);
-  assertStringIncludes(String(error), "https://Hooks.example/[redacted]{x}");
+  assertStringIncludes(
+    String(error),
+    "https://hooks.example/[redacted]%7Bx%7D",
+  );
 });
 
 Deno.test("a password with brackets in it does not slip past the cleaning", async () => {
   const error = await assertRejects(
     async () =>
       await httpProbe((h) =>
-        h.url("https://u:p(a)ss@api.example/x?t=1").samples(1)
+        h.url("https://u:p(a)ss@api.example/x?api_key=1").samples(1)
           .fetch(fakeFetch(() => new Response("", { status: 500 })))
       ).validate(analysisContext()),
     Error,
   );
-  for (const secret of ["p(a)ss", "(a)ss", "t=1"]) {
+  for (const secret of ["p(a)ss", "(a)ss", "api_key=1"]) {
     assertEquals(String(error).includes(secret), false, secret);
   }
-  assertStringIncludes(String(error), "https://api.example/x failed");
+  assertStringIncludes(
+    String(error),
+    "https://api.example/x?api_key=REDACTED failed",
+  );
 });

@@ -80,7 +80,10 @@ Deno.test("a reader's failure has the credentials in its URLs cleaned", async ()
       ).validate(analysisContext()),
     Error,
   );
-  assertStringIncludes(String(error), "GET https://metrics.example/q failed");
+  assertStringIncludes(
+    String(error),
+    "GET https://metrics.example/q?token=REDACTED failed",
+  );
   for (const secret of ["pw@", "token=abc"]) {
     assertEquals(String(error).includes(secret), false, secret);
   }

@@ -155,8 +155,9 @@ The package ships three, all over plain HTTP with no dependencies:
 Each analysis's lambda runs on every check, so it may read resolved parameters.
 Failure messages pass through the run's redactor, so a secret parameter in a URL
 or a query is masked before it reaches a log or a pull request. Any URL in a
-failure message is also cut down to its origin and path, because a URL's
-`user:password@` and query string are where hard-coded tokens tend to live.
+failure message then goes through core's `redactUrls`, which strips its
+`user:password@` and masks credential-bearing parameters such as `token` or
+`api_key`, because that is where hard-coded tokens tend to live.
 
 A ratio query over a window with no traffic is `0/0`, which Prometheus reports
 as `NaN`, and a `NaN` sample fails the analysis. Guard such a query so that

@@ -8,12 +8,12 @@
  * @module
  */
 
-import { parseDuration } from "@zuke/core";
+import { parseDuration, redactUrls } from "@zuke/core";
 import type { Configure } from "@zuke/core/tooling";
 import { boundsOf, checkThreshold } from "./threshold.ts";
 import type { CanaryAnalysis } from "./types.ts";
 import { messageOf } from "./message.ts";
-import { requestSignal, withoutCredentials } from "./request.ts";
+import { requestSignal } from "./request.ts";
 
 /** How long a query may take when no timeout is set. */
 const DEFAULT_TIMEOUT = 30_000;
@@ -122,7 +122,7 @@ export function prometheus(
       }
       const bounds = boundsOf(settings);
       const fail = (detail: string): Error =>
-        new Error(withoutCredentials(context.redact(detail)));
+        new Error(redactUrls(context.redact(detail)));
       let samples: number[];
       try {
         const response = await settings.fetch_(queryUrl(base, promql), {

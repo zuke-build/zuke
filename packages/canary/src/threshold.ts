@@ -8,9 +8,9 @@
  * @module
  */
 
+import { redactUrls } from "@zuke/core";
 import type { Configure } from "@zuke/core/tooling";
 import { messageOf } from "./message.ts";
-import { withoutCredentials } from "./request.ts";
 import type { CanaryAnalysis, CanaryAnalysisContext } from "./types.ts";
 
 /** Reads the metric a {@link metricThreshold} judges. */
@@ -93,7 +93,7 @@ export function metricThreshold(
       try {
         checkThreshold(settings.name_, await read(context), boundsOf(settings));
       } catch (error) {
-        throw new Error(withoutCredentials(context.redact(messageOf(error))));
+        throw new Error(redactUrls(context.redact(messageOf(error))));
       }
     },
   };

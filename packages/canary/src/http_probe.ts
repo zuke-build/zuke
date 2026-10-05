@@ -8,11 +8,11 @@
  * @module
  */
 
-import { parseDuration } from "@zuke/core";
+import { parseDuration, redactUrls } from "@zuke/core";
 import type { Configure } from "@zuke/core/tooling";
 import { bakeFor, MAX_TIMER_MS } from "./bake.ts";
 import { messageOf } from "./message.ts";
-import { requestSignal, withoutCredentials } from "./request.ts";
+import { requestSignal } from "./request.ts";
 import type { CanaryAnalysis } from "./types.ts";
 
 /** How many requests a probe makes when no count is set. */
@@ -153,7 +153,7 @@ export function httpProbe(
           count === 1 ? reason : `${reason} ×${count}`
         ).join(", ");
         throw new Error(
-          withoutCredentials(context.redact(
+          redactUrls(context.redact(
             `httpProbe: ${failed} of ${settings.samples_} requests to ${url} ` +
               `failed (at most ${allowed} allowed): ${reasons}`,
           )),
