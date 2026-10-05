@@ -338,6 +338,11 @@ export const CORE_PACKAGES: CorePackage[] = [
       "OpenTelemetry export plugin — run & target spans over OTLP, joined across resume",
   },
   {
+    name: "@zuke/canary",
+    desc:
+      "canary releases — stage, step up, bake under analysis, promote, one rollback",
+  },
+  {
     name: "@zuke/qr",
     desc:
       "QR codes for any data — a dependency-free encoder, terminal renderer & raw matrix",

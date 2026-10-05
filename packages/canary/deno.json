@@ -1,0 +1,17 @@
+{
+  "name": "@zuke/canary",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "Canary releases for Zuke builds — stage, step up exposure, bake under analysis, approve and promote, with one rollback on every failure path and any platform behind a small seam.",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "imports": {
+    "@zuke/core": "jsr:@zuke/core@^1.63.0"
+  },
+  "publish": {
+    "exclude": [
+      "tests/"
+    ]
+  }
+}

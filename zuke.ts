@@ -151,17 +151,15 @@ const GITLEAKS_REPORT = "gitleaks-report.json";
 const GITLEAKS_CONFIG = ["[extend]", "useDefault = true", ""].join("\n");
 
 /**
- * The files the `check` target type-checks: the globs of the root `check` task
- * in `deno.json`, which stays the entry point for a plain `deno task check`.
+ * What the `check` target type-checks: the roots of the root `check` task in
+ * `deno.json`, which stays the entry point for a plain `deno task check`.
+ *
+ * Directories rather than expanded globs: every `.ts` file under them is one
+ * the globs matched, and handing `deno check` all thousand-odd paths outgrew
+ * Windows' 32 KB command line, which fails the spawn itself ("The filename or
+ * extension is too long").
  */
-const CHECK_GLOBS = [
-  "zuke.ts",
-  "build/*.ts",
-  "tests/**/*.ts",
-  "packages/*/mod.ts",
-  "packages/*/src/**/*.ts",
-  "packages/*/tests/**/*.ts",
-];
+const CHECK_ROOTS = ["zuke.ts", "build", "tests", "packages"];
 class ZukeBuild extends Build {
   clean = target()
     .description("Remove build artifacts")
@@ -285,11 +283,9 @@ class ZukeBuild extends Build {
     .description("Type-check the whole workspace")
     .dependsOn(this.restore)
     .executes(async () => {
-      // The same files the root `check` task names, run through the wrapper
-      // rather than `deno task` so the row can say `// Errors: 0`: the task
-      // runner's shell would expand the globs, so they are expanded here.
-      const files = (await Promise.all(CHECK_GLOBS.map((g) => glob(g)))).flat();
-      await DenoTasks.check((s) => s.frozen().paths(...files));
+      // The same roots the root `check` task names, run through the wrapper
+      // rather than `deno task` so the row can say `// Errors: 0`.
+      await DenoTasks.check((s) => s.frozen().paths(...CHECK_ROOTS));
     });
 
   test = target()
