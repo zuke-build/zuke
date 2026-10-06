@@ -97,6 +97,7 @@ function fakeCompose(fake: Fake = {}): {
   calls: Call[];
   world: World;
   tags: Record<string, string>;
+  serving: number[];
 } {
   const calls: Call[] = [];
   const tags = fake.tags ?? { "app:v1": V1_HEX, "app:v2": V2_HEX };
@@ -105,6 +106,14 @@ function fakeCompose(fake: Fake = {}): {
     "app-canary": [],
   };
   const stopped = new Set(fake.stopped ?? []);
+  const serving: number[] = [];
+  /** How many containers run, across every service. */
+  const running = (): number =>
+    Object.entries(world).reduce(
+      (sum, [each, containers]) =>
+        sum + (stopped.has(each) ? 0 : containers.length),
+      0,
+    );
   /** The containers of `service` that `ps` with `argv` lists. */
   const listed = (argv: string[], service: string): string[] =>
     argv.includes("-a") || !stopped.has(service) ? world[service] ?? [] : [];
@@ -146,15 +155,22 @@ function fakeCompose(fake: Fake = {}): {
       const count = Number(argv[argv.indexOf("--scale") + 1].split("=")[1]);
       const image = fake.hardCoded?.[service] ??
         env[IMAGE_VARIABLE[service]] ?? "";
-      const kept = argv.includes("--no-recreate")
-        ? [...(world[service] ?? [])]
-        : (world[service] ?? []).map(() => image);
+      const before = world[service] ?? [];
+      const keep = argv.includes("--no-recreate");
+      // Compose stops every container it recreates at once: for a moment
+      // only the ones already on the image are left.
+      if (!keep && before.some((each) => each !== image)) {
+        world[service] = before.filter((each) => each === image);
+        serving.push(running());
+      }
+      const kept = keep ? [...before] : before.map(() => image);
       while (kept.length < count) kept.push(image);
       world[service] = kept.slice(0, count);
+      serving.push(running());
     }
     return Promise.resolve(new CommandOutput(0, "", ""));
   };
-  return { runner, calls, world, tags };
+  return { runner, calls, world, tags, serving };
 }
 
 function context() {
@@ -580,6 +596,7 @@ Deno.test("abort after a promotion that failed part-way surges the canary on the
   assertEquals(recorded.calls, [
     { argv: projects(), env: PINNED },
     { argv: images("app"), env: ALL_V1 },
+    { argv: ps("app"), env: ALL_V1 },
     { argv: scale("app-canary", 4), env: ALL_V1 },
     { argv: scale("app", 4), env: ALL_V1 },
     { argv: images("app"), env: ALL_V1 },
@@ -1379,10 +1396,10 @@ Deno.test("a recorded abort restores a project whose containers are all stopped"
   });
 });
 
-Deno.test("a hand-run abort on a stopped project recreates, rather than read no replicas as on the stable image", async () => {
+Deno.test("a hand-run abort on a stopped project brings the stable service up first, rather than read no replicas as on the stable image", async () => {
   // ps lists no running replica; that is not every replica on the stable
-  // image, so the stable service is recreated on it, with the canary
-  // holding the load first, and the canary then emptied.
+  // image, so the stable service is brought up on it — recreated where it
+  // must be — before the canary is emptied.
   const { runner, calls, world } = fakeCompose({
     world: { app: ["app:v2", "app:v2", "app:v2", "app:v2"], "app-canary": [] },
     stopped: ["app"],
@@ -1391,7 +1408,6 @@ Deno.test("a hand-run abort on a stopped project recreates, rather than read no 
   await platform(runner, (d) => d.stable(V1_ID)).abort(ctx);
   assertEquals(calls.map((c) => c.argv), [
     ps("app"),
-    scale("app-canary", 4),
     scale("app", 4),
     ps("app"),
     scale("app-canary", 0),
@@ -1400,6 +1416,72 @@ Deno.test("a hand-run abort on a stopped project recreates, rather than read no 
     app: [V1_ID, V1_ID, V1_ID, V1_ID],
     "app-canary": [],
   });
+});
+
+Deno.test("a hand-run abort with no stable replica brings it up first, while the canary keeps serving", async () => {
+  // The canary serves everything — a crashed stable service, or one removed
+  // after a promotion failed. Recreating the canary first would take every
+  // serving container down at once.
+  const { runner, calls, world, serving } = fakeCompose({
+    world: { app: [], "app-canary": [V2_ID, V2_ID, V2_ID, V2_ID] },
+  });
+  await platform(runner, (d) => d.stable(V1_ID)).abort(context());
+  assertEquals(calls.map((c) => c.argv), [
+    ps("app"),
+    scale("app", 4),
+    ps("app"),
+    scale("app-canary", 0),
+  ]);
+  // Eight while both serve, never fewer than the four stable ones.
+  assertEquals(serving, [8, 4, 4]);
+  assertEquals(world, { app: [V1_ID, V1_ID, V1_ID, V1_ID], "app-canary": [] });
+});
+
+Deno.test("a recorded abort after a step to 100 % brings the stable service up first", async () => {
+  // expose(100) leaves no stable replica at all; images, which counts
+  // stopped ones too, finds none, so nothing needs protecting but the
+  // canary, which is never recreated.
+  const { runner, calls, world, serving } = fakeCompose();
+  const ctx = await staged(runner);
+  const p = platform(runner);
+  await p.expose(100, ctx);
+  assertEquals(world.app, []);
+  calls.length = 0;
+  serving.length = 0;
+  await p.abort(ctx);
+  assertEquals(calls.map((c) => c.argv), [
+    projects(),
+    images("app"),
+    scale("app", 4),
+    images("app"),
+    scale("app-canary", 0),
+  ]);
+  assertEquals(Math.min(...serving) > 0, true);
+  assertEquals(world, { app: [V1_ID, V1_ID, V1_ID, V1_ID], "app-canary": [] });
+});
+
+Deno.test("a recorded abort whose stable replicas are all stopped on another image brings them up first", async () => {
+  // A promotion recreated them on the candidate, then the daemon stopped
+  // them; only the canary serves.
+  const { runner, calls, world, serving } = fakeCompose({
+    world: { app: [V2_ID, V2_ID, V2_ID, V2_ID], "app-canary": [V2_ID] },
+    stopped: ["app"],
+  });
+  const ctx = await recordedAs({
+    composeCanaryStage: "promoting",
+    composeCanaryCandidateId: V2_ID,
+  });
+  await platform(runner).abort(ctx);
+  assertEquals(calls.map((c) => c.argv), [
+    projects(),
+    images("app"),
+    ps("app"),
+    scale("app", 4),
+    images("app"),
+    scale("app-canary", 0),
+  ]);
+  assertEquals(Math.min(...serving) > 0, true);
+  assertEquals(world, { app: [V1_ID, V1_ID, V1_ID, V1_ID], "app-canary": [] });
 });
 
 Deno.test("describe names the stable service", () => {
@@ -1622,6 +1704,7 @@ Deno.test("abort decides by the recorded ID, not by the tag ps shows", async () 
   assertEquals(calls.map((c) => c.argv), [
     projects(),
     images("app"),
+    ps("app"),
     scale("app-canary", 4),
     scale("app", 4),
     images("app"),
@@ -1775,8 +1858,8 @@ Deno.test("a rollback whose recreate changed nothing refuses rather than report 
   // The canary keeps serving the stable image while someone looks.
   assertEquals(calls.at(-1)?.argv, ps("app"));
   assertEquals(world["app-canary"], ["app:v1", "app:v1", "app:v1", "app:v1"]);
-  // From no running stable replicas at all, the recreate path creates them
-  // on the literal: that is checked too.
+  // From no running stable replicas at all, the stable service comes up
+  // first, on the literal: that is checked too.
   const { runner: empty, calls: made } = fakeCompose({
     world: { app: [], "app-canary": [] },
     hardCoded: { app: "app:v0" },
@@ -1788,7 +1871,6 @@ Deno.test("a rollback whose recreate changed nothing refuses rather than report 
   );
   assertEquals(made.map((c) => c.argv), [
     ps("app"),
-    scale("app-canary", 4, false, false),
     scale("app", 4, false, false),
     ps("app"),
   ]);

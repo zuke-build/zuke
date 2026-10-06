@@ -100,6 +100,21 @@ function listed(argv: string[], service: string): string[] {
     : [];
 }
 
+/**
+ * The fewest containers that served across the moves since it was last
+ * reset: Compose stops every container it recreates at once.
+ */
+let lowest = Number.POSITIVE_INFINITY;
+
+/** How many containers run, across every service. */
+function serving(): number {
+  return Object.entries(world).reduce(
+    (sum, [each, containers]) =>
+      sum + (stopped.has(each) ? 0 : containers.length),
+    0,
+  );
+}
+
 /** Whether the failing promotion move also switches the project. */
 let switchProjectOnFailure = false;
 
@@ -124,11 +139,16 @@ function compose(argv: string[], env: Record<string, string>): string {
     stopped.delete(service);
     const count = Number(argv[argv.indexOf("--scale") + 1].split("=")[1]);
     const next = env[IMAGE_VARIABLE[service]] ?? "";
-    const kept = argv.includes("--no-recreate")
-      ? [...(world[service] ?? [])]
-      : (world[service] ?? []).map(() => next);
+    const before = world[service] ?? [];
+    const keep = argv.includes("--no-recreate");
+    if (!keep && before.some((each) => each !== next)) {
+      world[service] = before.filter((each) => each === next);
+      lowest = Math.min(lowest, serving());
+    }
+    const kept = keep ? [...before] : before.map(() => next);
     while (kept.length < count) kept.push(next);
     world[service] = kept.slice(0, count);
+    lowest = Math.min(lowest, serving());
   }
   return "";
 }
@@ -615,10 +635,32 @@ Deno.test("Compose: the hand-run recovery restores a project whose containers al
     assertEquals(parked.code, 0, parked.err);
     stopped = new Set(["app", "app-canary"]);
     await recoverByHand();
-    assertEquals(moves(), [
-      "app-canary=4@v1-id",
-      "app=4@v1-id",
-      "app-canary=0@v1-id",
+    // Nothing runs, so the stable service comes up first.
+    assertEquals(moves(), ["app=4@v1-id", "app-canary=0@v1-id"]);
+  });
+});
+
+Deno.test("Compose: a promotion that failed with the stable replicas gone is recovered by hand without an outage", async () => {
+  fresh();
+  await withStateDir(async (dir) => {
+    const parked = await runCli(Deploy, ["ship"]);
+    assertEquals(parked.code, 0, parked.err);
+    failPromoteTail = true;
+    const resumed = await runCli(Deploy, [
+      "resume",
+      await onlyRun(dir),
+      "--signal",
+      "approved",
     ]);
+    assertEquals(resumed.code, 1);
+    // The run's own rollback restored the stable service; then it is gone —
+    // removed by hand, or crashed — and the canary serves alone, as the
+    // promotion's half-way point left it.
+    failPromoteTail = false;
+    world = { app: [], "app-canary": [V2_ID, V2_ID, V2_ID, V2_ID] };
+    lowest = Number.POSITIVE_INFINITY;
+    await recoverByHand();
+    assertEquals(moves(), ["app=4@v1-id", "app-canary=0@v1-id"]);
+    assertEquals(lowest, 4);
   });
 });

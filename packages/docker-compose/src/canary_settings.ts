@@ -145,7 +145,9 @@ export class DockerComposeCanarySettings {
   /**
    * Global flags for every Compose command the platform runs —
    * `(s) => s.file("compose.yml").projectName("shop")`, or `.usePlugin()` to
-   * skip detection. Compose v2 (`docker compose`) is required: the v1
+   * skip detection. Compose 2.21 or later (`docker compose`) is required:
+   * the project check's `{{.Label ...}}` template is not in earlier
+   * releases, and the v1
    * `docker-compose` binary has no `--wait`, `pull --policy` or
    * `ps --format`. Trailing `.args(...)` are refused, since they would land
    * after the service each command names — a guard against an accident, not
