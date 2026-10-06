@@ -36,6 +36,79 @@ await DockerComposeTasks.down((s) => s.volumes());
 Every path argument accepts either a string or an `AbsolutePath` from
 `@zuke/core`, so a path built with `absolutePath` can be passed in directly.
 
+## Docker Compose canary platform
+
+`dockerComposeCanary` is a Compose project as a platform for
+[`@zuke/canary`](https://jsr.io/@zuke/canary). This package does not depend on
+`@zuke/canary`: the object it returns has the platform's shape, so
+`c.platform(...)` accepts it as it is.
+
+The project runs two services, a stable one and a canary one, behind a proxy
+that balances requests across the containers of both. Exposure is the canary's
+share of a fixed number of replicas, so it comes in whole replicas: with four
+replicas a step reaches 25, 50 or 75 %. Compose has no command that sets an
+image, so each service's `image:` must be a whole variable. The platform sets
+that variable on each command it runs:
+
+```yaml
+services:
+  app: &app
+    image: ${APP_IMAGE}
+    scale: 4 # the platform's .replicas(...)
+    networks:
+      default:
+        aliases: [backend] # the proxy balances over every "backend" container
+  app-canary:
+    <<: *app # the same service in every way but the image and the scale
+    image: ${APP_CANARY_IMAGE:-${APP_IMAGE}}
+    scale: 0
+```
+
+```ts
+import { canary } from "@zuke/canary";
+import { dockerComposeCanary } from "@zuke/docker-compose";
+
+rollout = canary((c) =>
+  c.platform(
+    dockerComposeCanary((d) =>
+      d.service("app").canaryService("app-canary").replicas(4)
+        .image(this.image.value)
+        .stableImageVariable("APP_IMAGE")
+        .canaryImageVariable("APP_CANARY_IMAGE")
+        .stable("registry.example.com/app:1.4.0") // where a hand-run rollout.abort goes back to
+        .compose((s) => s.file("compose.yml").projectName("shop"))
+    ),
+  )
+    .steps(25, 50)
+    .bake("10m")
+    .lock((l) => l.lockKey("deploy", "shop").withTtl("24h"))
+);
+```
+
+Every move is `up -d --no-deps --scale <service>=<n> <service>`, with `--wait`
+when `n` is not 0:
+
+- **`stage`** reads the image the stable replicas run (`ps --format {{.Image}}`)
+  and records it, pulls the candidate if it is not present
+  (`pull --policy missing`), then puts the stable service at every replica and
+  the canary service at none.
+- **`expose`** puts the canary service at its share and the stable service at
+  the rest, scaling whichever grows first. Stable replicas are never recreated
+  (`--no-recreate`).
+- **`promote`** puts the canary service at every replica, recreates the stable
+  service on the candidate, then takes the canary service to none.
+- **`abort`** puts the stable service back on the image `stage` recorded, at
+  every replica, then takes the canary service to none. Run by hand, it uses the
+  `.stable(...)` image instead, and refuses without one.
+
+**A promotion is not durable on its own.** The image variable is set only for
+the commands the platform runs. Until the candidate is written where `APP_IMAGE`
+comes from (the `.env` file, or the environment of whatever runs Compose next),
+a plain `docker compose up` puts the stable service back on the old image. A
+rollback is an override in the same way. See
+[docs/canary.md](https://github.com/zuke-build/zuke/blob/master/docs/canary.md)
+for the details and the other limits.
+
 <!-- ZUKE:API:START -->
 
 ## API
@@ -66,6 +139,35 @@ async function defaultComposeProbe(argv: readonly string[]): Promise<boolean>
   `false` rather than throwing, so detection can fall through to the next
   candidate.
 
+function dockerComposeCanary(configure: Configure<DockerComposeCanarySettings>): DockerComposeCanary
+  A Compose project as a canary platform, for `@zuke/canary`:
+
+  ```ts
+  c.platform(dockerComposeCanary((d) =>
+    d.service("app").canaryService("app-canary").replicas(4)
+      .image(this.image.value)
+      .stableImageVariable("APP_IMAGE")
+      .canaryImageVariable("APP_CANARY_IMAGE")
+      .compose((s) => s.file("compose.yml").projectName("shop"))
+  ))
+  ```
+
+  The lambda runs on every call, so it may read resolved parameters. Every
+  command is `up -d --no-deps --scale <service>=<n> <service>` (with `--wait`
+  when `n` is not 0), run with the image variables set:
+
+  - stage — `ps --format {{.Image}} <stable>` records the stable image,
+    `pull --policy missing <canary>`, then the stable service to every
+    replica (`--no-recreate`) and the canary service to none.
+  - expose — the canary service to its share and the stable service
+    (`--no-recreate`) to the rest, the growing one first.
+  - promote — the canary service to every replica, the stable service
+    recreated on the candidate, the canary service to none. Not durable
+    until the candidate is written where the stable variable comes from.
+  - abort — the stable service to every replica on the recorded stable
+    image; run by hand, on the image set with `.stable(...)`. Then the canary
+    service to none.
+
 function resetComposeInvocationCache_(): void
   Clear the cached Compose invocation so the next
   {@link resolveComposeInvocation} re-detects. Internal test seam — the
@@ -95,6 +197,125 @@ class DockerComposeBuildSettings extends DockerComposeSettings
     Restrict to specific services (positional); optional.
   override protected composeArgs(): string[]
     Assemble the `compose build` argv.
+
+class DockerComposeCanary
+  A Compose project as a canary platform. Create one with
+  {@link dockerComposeCanary}; hand it to `@zuke/canary`'s `c.platform(...)`.
+
+  Exposure is the canary's share of the replicas, so it is quantised.
+
+  constructor(configure: Configure<DockerComposeCanarySettings>)
+    A platform whose settings `configure` produces, afresh on every call.
+  readonly exposure: "replicas"
+    Compose runs replicas, so exposure is a share of instances.
+  describe(): string
+    `"Compose service app"`, for the build summary.
+  async stage(ctx: DockerComposeCanaryContext): Promise<void>
+    Read the image the stable replicas run and record it, make sure the
+    candidate image is available (pulled unless it is already present), and
+    bring the project to exactly 0 % — the stable service at every replica,
+    the canary service at none. The stable replicas are only added or
+    removed, never recreated.
+  async expose(percent: number, ctx: DockerComposeCanaryContext): Promise<number>
+    Run the canary service at `percent` of the replicas and the stable
+    service at the rest, and return the share actually reached. Any share
+    between 0 and 100 exclusive keeps at least one replica on each side, so a
+    step never rounds to an untested 0 % or a premature 100 %. Whichever
+    service grows is scaled first, so the total never dips below the
+    configured replicas. The stable replicas are never recreated.
+  async promote(ctx: DockerComposeCanaryContext): Promise<void>
+    Hand the stable service to the candidate: the canary service goes to
+    every replica, the stable service is recreated on the candidate image
+    with the stable variable set to it, and the canary service goes back to
+    none. The total never dips below the configured replicas; for a moment it
+    is twice that. Idempotent.
+
+    This is not durable on its own. Compose has no state of its own to
+    change: the variable is set for these commands only. Until the
+    candidate is written where the stable variable comes from — the `.env`
+    file, or the environment of whatever runs `docker compose up` next — a
+    plain `docker compose up` puts the stable service back on the image that
+    source still names.
+  async abort(ctx: DockerComposeCanaryContext): Promise<void>
+    Put the stable service back on the stable image at every replica, then
+    take the canary service to none. Idempotent. Which image that is depends
+    on what this rollout recorded:
+
+    - `stage` recorded it (a rollback mid-rollout, or after a promotion
+      that failed part-way): the image the stable replicas ran before the
+      rollout. Mid-rollout they still run it, so nothing is recreated.
+    - `stage` failed before recording it: nothing had changed, so nothing
+      runs.
+    - Nothing recorded (`rollout.abort` run by hand, a fresh run): the
+      image set with {@link DockerComposeCanarySettings.stable}. Without one
+      this refuses, since claiming a rollback it cannot do would be worse.
+
+    Like a promotion, the image is an override for these commands, so it
+    lasts until a plain `docker compose up` reads the variable from wherever
+    the project keeps it.
+
+class DockerComposeCanarySettings
+  How {@link dockerComposeCanary} reaches the project, configured through its
+  lambda.
+
+  service_?: string
+    The service that serves the stable release (set by {@link service}).
+  canaryService_?: string
+    The service that runs the candidate (set by {@link canaryService}).
+  replicas_?: number
+    The replicas the two services share (set by {@link replicas}).
+  image_?: string
+    The candidate's image (set by {@link image}).
+  stableImageVariable_?: string
+    The variable the stable service's image reads (set by {@link stableImageVariable}).
+  canaryImageVariable_?: string
+    The variable the canary service's image reads (set by {@link canaryImageVariable}).
+  stable_?: string
+    The image a hand-run rollback returns to (set by {@link stable}).
+  compose_?: Configure<DockerComposeSettings>
+    Global Compose flags for every command (set by {@link compose}).
+  runner_: DockerComposeSettingsRunner
+    How each command is run (set by {@link runner}).
+  service(name: string): this
+    The service that serves the stable release, e.g. `app`. It must already
+    be running: `stage` reads the image its replicas run, which is what a
+    rollback returns them to.
+  canaryService(name: string): this
+    The service that runs the candidate, e.g. `app-canary` — a second
+    service in the same project, behind the same proxy, whose `image:` is
+    `${<canaryImageVariable>}`. Give it `scale: 0` in the Compose file so a
+    plain `docker compose up` does not start it.
+  replicas(total: number): this
+    How many replicas the stable and canary services share between them. A
+    step sets the canary to its share of this and the stable service to the
+    rest; `stage` and a rollback set the stable service to all of it. At
+    least 2, or there is nothing to split.
+  image(reference: string): this
+    The candidate's image reference, which `stage` puts on the canary service.
+  stableImageVariable(name: string): this
+    The environment variable the stable service's `image:` is — the whole
+    reference, as in `image: ${APP_IMAGE}`, not just a tag. Every command the
+    platform runs sets it, so the project's `.env` need not: to the image the
+    stable replicas ran when `stage` looked, to the candidate on promotion.
+    Not a `DOCKER_*` or `COMPOSE_*` name, which Docker and Compose read as
+    their own settings.
+  canaryImageVariable(name: string): this
+    The environment variable the canary service's `image:` is, as in
+    `image: ${APP_CANARY_IMAGE:-${APP_IMAGE}}`. Every command that brings up
+    the canary sets it to the candidate.
+  stable(image: string): this
+    The image to put the stable service back on when `rollout.abort` is run
+    by hand. Such a run is fresh, with no record of a rollout, so it has
+    nothing else to go on — and the release it is undoing has usually been
+    promoted already. A rollback the engine runs mid-rollout does not use it:
+    that one returns to the image `stage` saw the stable replicas running.
+  compose(configure: Configure<DockerComposeSettings>): this
+    Global flags for every Compose command the platform runs —
+    `(s) => s.file("compose.yml").projectName("shop")`, or `.usePlugin()` to
+    skip detection.
+  runner(run: DockerComposeSettingsRunner): this
+    Replace how each prepared command is run. The default runs it; this is
+    for a test, or for a build that executes Compose through something else.
 
 class DockerComposeCommitSettings extends DockerComposeSettings
   Settings for `compose commit`.
@@ -339,6 +560,9 @@ class DockerComposePsSettings extends DockerComposeSettings
     Only show container IDs (`-q`).
   servicesOnly(): this
     Display services instead of containers (`--services`).
+  format(value: string): this
+    Output format (`--format`): `table`, `json`, or a Go template such as
+    `{{.Image}}`, which prints one line per container.
   services(...names: string[]): this
     Restrict to specific services (positional); optional.
   override protected composeArgs(): string[]
@@ -349,6 +573,10 @@ class DockerComposePullSettings extends DockerComposeSettings
 
   ignorePullFailures(): this
     Continue past services whose pull fails (`--ignore-pull-failures`).
+  policy(value: Exclude<DockerComposePullPolicy, "never">): this
+    Which images to pull (`--policy`): `missing` skips an image already
+    present locally — so a locally built image is not looked up in a
+    registry — and `always` fetches every one.
   quietOutput(): this
     Pull without printing progress (`-q`).
   services(...names: string[]): this
@@ -502,6 +730,10 @@ class DockerComposeUpSettings extends DockerComposeSettings
     Build images before starting (`--build`).
   forceRecreate(): this
     Recreate containers even if unchanged (`--force-recreate`).
+  noRecreate(): this
+    Leave containers that already exist as they are, even when their
+    configuration changed (`--no-recreate`). Scaling a service with it only
+    adds or removes replicas; the ones already running keep their image.
   removeOrphans(): this
     Remove containers for services no longer defined (`--remove-orphans`).
   wait(): this
@@ -598,6 +830,16 @@ class ServiceList
     Whether any service was named.
   render(): string[]
     The names, in the order they were added.
+
+interface DockerComposeCanaryContext
+  The part of the canary engine's context the Compose platform uses: the
+  rollout's durable state, where the images are recorded, and the build
+  summary. The engine hands a richer context; this is the narrow view.
+
+  readonly state: TargetStateHandle
+    The rollout's durable platform state, shared by every call.
+  reportSummary(pairs: SummaryPairs): void
+    Add key/value pairs to the calling target's row in the build summary.
 
 interface DockerComposeTasksApi
   The shape of {@link DockerComposeTasks}.
@@ -696,6 +938,13 @@ type ComposeProbe = (argv: readonly string[]) => Promise<boolean>
 type DockerComposePullPolicy = "always" | "missing" | "never"
   When `compose up` fetches images before starting: `always` on every start,
   `missing` only when the image is absent locally, `never` at all.
+
+type DockerComposeSettingsRunner = (settings: DockerComposeSettings, env: Readonly<Record<string, string>>) => Promise<CommandOutput>
+  Runs one prepared Compose command and returns its output. `env` holds the
+  image variables the platform already applied to `settings` — handed over
+  as well so a runner that executes Compose some other way, or a test, sees
+  them. The default runs the settings; inject another with
+  {@link DockerComposeCanarySettings.runner}.
 ````
 
 </details>

@@ -19,6 +19,7 @@ export class DockerComposeUpSettings extends DockerComposeSettings {
   #detach = false;
   #build = false;
   #forceRecreate = false;
+  #noRecreate = false;
   #removeOrphans = false;
   #wait = false;
   #abortOnContainerExit = false;
@@ -43,6 +44,16 @@ export class DockerComposeUpSettings extends DockerComposeSettings {
   /** Recreate containers even if unchanged (`--force-recreate`). */
   forceRecreate(): this {
     this.#forceRecreate = true;
+    return this;
+  }
+
+  /**
+   * Leave containers that already exist as they are, even when their
+   * configuration changed (`--no-recreate`). Scaling a service with it only
+   * adds or removes replicas; the ones already running keep their image.
+   */
+  noRecreate(): this {
+    this.#noRecreate = true;
     return this;
   }
 
@@ -113,10 +124,18 @@ export class DockerComposeUpSettings extends DockerComposeSettings {
 
   /** Assemble the `compose up` argv. */
   protected override composeArgs(): string[] {
+    if (this.#forceRecreate && this.#noRecreate) {
+      throw new Error(
+        "DockerComposeTasks.up: .forceRecreate() and .noRecreate() are " +
+          "opposite answers to whether existing containers are replaced — " +
+          "pick one.",
+      );
+    }
     const argv = ["up"];
     if (this.#detach) argv.push("-d");
     if (this.#build) argv.push("--build");
     if (this.#forceRecreate) argv.push("--force-recreate");
+    if (this.#noRecreate) argv.push("--no-recreate");
     if (this.#removeOrphans) argv.push("--remove-orphans");
     if (this.#wait) argv.push("--wait");
     if (this.#abortOnContainerExit) argv.push("--abort-on-container-exit");
