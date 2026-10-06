@@ -99,20 +99,32 @@ when `n` is not 0:
   then puts the stable service at every replica and the canary service at none.
 - **`expose`** puts the canary service at its share and the stable service at
   the rest, scaling whichever grows first, and checks with `ps` that the canary
-  runs the candidate. Stable replicas are never recreated (`--no-recreate`).
+  runs the candidate. The first step that runs a canary replica pins the
+  candidate's image ID (`images --quiet`); later steps run the canary by that ID
+  and refuse one that resolves to another, as when the candidate tag moved.
+  Existing replicas are never recreated (`--no-recreate`).
 - **`promote`** puts the canary service at every replica, recreates the stable
-  service on the candidate, checks with `ps` that it runs it, then takes the
-  canary service to none. A stable `image:` that does not read the variable (a
-  literal, or `repo:${TAG}`) is refused rather than reported as promoted.
-- **`abort`** reads what the stable replicas run. If they all run the stable
-  image, by tag or by the recorded ID (mid-rollout they do), it scales the
-  stable service back to every replica without recreating anything. Otherwise
-  (after a promotion, finished or part-way) Compose would recreate every stable
-  replica at once, so it mirrors a promotion: the canary service to every
-  replica on the stable image, the stable service recreated on it, then the
-  canary service to none. Run by hand, the stable image is the `.stable(...)`
-  one, and it refuses without one. After a `stage` that changed nothing, nothing
-  runs.
+  service on the pinned candidate ID, so a candidate tag moved after the
+  analysis cannot promote an image nobody judged, checks with `images --quiet`
+  that every stable replica resolves to it, then takes the canary service to
+  none. A stable `image:` that does not read the variable (a literal, or
+  `repo:${TAG}`) is refused rather than reported as promoted.
+- **`abort`** reads what the stable replicas run, by ID (`images --quiet`): a
+  tag `ps` shows means whatever the tag names now, so it is not evidence. If
+  they all resolve to exactly the recorded ID (mid-rollout they do), it scales
+  the stable service back to every replica without recreating anything.
+  Otherwise (after a promotion, finished or part-way) Compose would recreate
+  every stable replica at once, so it mirrors a promotion: the canary service to
+  every replica on the stable image, the stable service recreated on it, then
+  the canary service to none. Run by hand, the stable image is the
+  `.stable(...)` one, compared by the reference `ps` shows, and it refuses
+  without one. After a `stage` that changed nothing, nothing runs.
+
+Every move that sets a variable to an image ID passes `--pull never`, which
+overrides a service's `pull_policy: always`: an ID cannot be pulled, and a
+container already ran it, so it is local. `images` counts stopped replicas as
+well as running ones, so a stopped replica left on another image makes `stage`
+refuse until it is removed.
 
 A command that exits non-zero fails the call even under `.noThrow()`, and
 trailing `.args(...)` in `.compose(...)` are refused, since they would follow
@@ -135,8 +147,9 @@ the commands the platform runs. Until the candidate is written where `APP_IMAGE`
 comes from (the `.env` file, or the environment of whatever runs Compose next),
 a plain `docker compose up` puts the stable service back on the old image. A
 rollback is an override in the same way. The build summary says so after a
-promotion and after a hand-run rollback:
-`Persist: set APP_IMAGE=<image> and keep scale: <replicas>`. See
+promotion, naming the ID the reference must still resolve to
+(`Persist: set APP_IMAGE=<image> (which must resolve to sha256:<id>) and keep scale: <replicas>`),
+and after a hand-run rollback. See
 [docs/canary.md](https://github.com/zuke-build/zuke/blob/master/docs/canary.md)
 for the details and the other limits.
 
@@ -193,19 +206,22 @@ function dockerComposeCanary(configure: Configure<DockerComposeCanarySettings>):
     the rollout is recorded, then the stable service to every replica
     (`--no-recreate`) and the canary service to none. From here on, the
     stable variable is the recorded `sha256:<id>` on every command that may
-    create a stable replica.
-  - expose — the canary service to its share and the stable service
-    (`--no-recreate`) to the rest, the growing one first; `ps` checks the
-    canary runs the candidate.
+    create a stable replica, and every move that sets an ID adds
+    `--pull never`, since an ID cannot be pulled.
+  - expose — the canary service (`--no-recreate`) to its share and the
+    stable service (`--no-recreate`) to the rest, the growing one first;
+    `ps` checks the canary runs the candidate and `images --quiet` pins its
+    ID on the first step, which later steps and promote then use.
   - promote — the canary service to every replica, the stable service
-    recreated on the candidate and checked with `ps`, the canary service to
-    none. Not durable until the candidate is written where the stable
-    variable comes from.
-  - abort — `ps` reads the stable replicas. If they all run the stable
-    image, the stable service back to every replica (`--no-recreate`);
-    otherwise the canary service to every replica on the stable image, the
-    stable service recreated on it. Then the canary service to none. Run by
-    hand, the stable image is the one set with `.stable(...)`.
+    recreated on the pinned candidate ID and checked with `images --quiet`,
+    the canary service to none. Not durable until the candidate is written
+    where the stable variable comes from.
+  - abort — `images --quiet` reads the stable replicas' IDs (run by
+    hand, `ps` their references). If they are all on the stable image, the
+    stable service back to every replica (`--no-recreate`); otherwise the
+    canary service to every replica on the stable image, the stable service
+    recreated on it. Then the canary service to none. Run by hand, the
+    stable image is the one set with `.stable(...)`.
 
   The stable service's `scale:` in the Compose file must equal
   `.replicas(...)`, and Compose v2 (`docker compose`) is required.
@@ -269,15 +285,21 @@ class DockerComposeCanary
     service grows is scaled first, so the total never dips below the
     replicas. Once the canary service has replicas, `ps` must show every one
     of them on the candidate — a canary whose `image:` does not read its
-    variable is refused rather than analysed. The stable replicas are never
-    recreated. The services and replicas are the ones `stage` recorded.
+    variable is refused rather than analysed — and `images --quiet` must
+    resolve them to one image ID. The first step records that ID, as the
+    image the analysis judges; every later step and promote set the canary
+    variable to it rather than the tag, and refuse a canary that resolves to
+    another. The stable replicas are never recreated. The services and
+    replicas are the ones `stage` recorded.
   async promote(ctx: DockerComposeCanaryContext): Promise<void>
     Hand the stable service to the candidate: the canary service goes to
-    every replica, the stable service is recreated on the candidate image
-    with the stable variable set to it, `ps` must then show every stable
-    replica on the candidate — or the call refuses, before it is recorded as
-    promoted, since a stable `image:` that does not read the variable would
-    have changed nothing — and the canary service goes back to none. The
+    every replica, the stable service is recreated with the stable variable
+    set to the candidate's recorded image ID — the image the analysis judged,
+    whatever the candidate tag names by now — `images --quiet` must then
+    resolve every stable replica to that ID — or the call refuses, before it
+    is recorded as promoted, since a stable `image:` that does not read the
+    variable would have changed nothing — and the canary service goes back
+    to none. The
     total never dips below the replicas; for a moment it is twice that.
     Idempotent.
 
@@ -288,7 +310,7 @@ class DockerComposeCanary
     plain `docker compose up` puts the stable service back on the image that
     source still names, and at the replica count its `scale:` names, which
     is why that must equal {@link DockerComposeCanarySettings.replicas}. The
-    build summary says so: `Persist: set APP_IMAGE=<candidate> and keep scale: <replicas>`.
+    build summary says so: `Persist: set APP_IMAGE=<candidate> (which must resolve to sha256:<id>) and keep scale: <replicas>`.
   async abort(ctx: DockerComposeCanaryContext): Promise<void>
     Put every replica back on the stable image, in the stable service, with
     the canary service at none. Idempotent. Which image, services and
@@ -308,9 +330,11 @@ class DockerComposeCanary
     not to the reference, so a tag moved since cannot bring in an image
     nobody analysed; run by hand, there is only the reference.
 
-    `ps` first reads what the stable replicas run. When every one already
-    runs the stable image — by reference, or by ID, as `ps` reports it once
-    the tag has moved; mid-rollout they do — the stable service is only
+    First it reads what the stable replicas run: on a recorded rollout,
+    `images --quiet` must resolve them to exactly the recorded ID — a tag
+    `ps` shows means whatever the tag names now, so it is not evidence; run
+    by hand, `ps` must show every one on the `.stable(...)` reference. When
+    they do — mid-rollout they do — the stable service is only
     scaled back to every replica (`--no-recreate`). Otherwise — after a
     promotion, run by hand or part-way — the stable replicas must be
     recreated, which Compose does to all of them at once, so the rollback

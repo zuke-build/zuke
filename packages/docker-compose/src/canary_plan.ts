@@ -28,6 +28,13 @@ export const CALLER = "dockerComposeCanary";
  */
 export const STAGE = "composeCanaryStage";
 
+/**
+ * The state key the candidate's image ID is recorded under, by the first call
+ * that runs a canary replica: the image the analysis judges, which promote
+ * installs whatever the candidate tag names by then.
+ */
+export const CANDIDATE_ID = "composeCanaryCandidateId";
+
 /** The state key holding how many canary replicas the last `expose` left. */
 export const CANARY_REPLICAS = "composeCanaryReplicas";
 
@@ -119,6 +126,11 @@ export interface Rollback extends Topology, Variables {
 export interface Rollout extends Rollback {
   /** The candidate image `stage` put on the canary service. */
   readonly candidate: string;
+  /**
+   * The candidate's image ID, once a canary replica has run it; until then
+   * there is none.
+   */
+  readonly candidateId?: string;
 }
 
 /** The configured services and replicas, or a friendly error naming the fix. */
@@ -216,7 +228,12 @@ export function recordedRollout(
   };
   const replicas = state[RECORD.replicas];
   if (typeof replicas !== "number") throw damaged(RECORD.replicas);
+  const pinned = state[CANDIDATE_ID] === undefined ? undefined : imageIdOf(
+    text(CANDIDATE_ID),
+    "the recorded candidate image ID",
+  );
   return {
+    ...(pinned === undefined ? {} : { candidateId: pinned }),
     ...topology(text(RECORD.stable), text(RECORD.canary), replicas),
     ...variables(text(RECORD.stableVariable), text(RECORD.canaryVariable)),
     candidate: imageOf(text(RECORD.candidate), "the recorded candidate"),
@@ -226,6 +243,11 @@ export function recordedRollout(
       "the recorded stable image ID",
     ),
   };
+}
+
+/** Whether `value` is a full image ID in the `sha256:` form. */
+export function isImageId(value: string): boolean {
+  return value.startsWith("sha256:") && IMAGE_ID_SHAPE.test(value);
 }
 
 /**

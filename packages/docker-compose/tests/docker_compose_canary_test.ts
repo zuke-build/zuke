@@ -57,6 +57,9 @@ const V3_HEX = "c3".repeat(32);
 /** The stable image's ID, as the platform sets it and `ps` reports it. */
 const V1_ID = `sha256:${V1_HEX}`;
 
+/** The candidate's ID, which the first step that runs it pins. */
+const V2_ID = `sha256:${V2_HEX}`;
+
 /** Options for {@link fakeCompose}. */
 interface Fake {
   /** The ID each tag resolves to; `app:v1` and `app:v2` by default. */
@@ -160,11 +163,16 @@ function platform(
   );
 }
 
-/** The `up` argv the platform runs to put `service` at `count` replicas. */
+/**
+ * The `up` argv the platform runs to put `service` at `count` replicas —
+ * `pinned` (`--pull never`) whenever a variable it sets is an image ID, which
+ * is every move after stage records the stable ID.
+ */
 function scale(
   service: string,
   count: number,
   keep = false,
+  pinned = true,
 ): string[] {
   return [
     "compose",
@@ -175,6 +183,7 @@ function scale(
     ...(keep ? ["--no-recreate"] : []),
     ...(count > 0 ? ["--wait"] : []),
     "--no-deps",
+    ...(pinned ? ["--pull", "never"] : []),
     "--scale",
     `${service}=${count}`,
     service,
@@ -196,6 +205,10 @@ const ALL_V1 = { APP_CANARY_IMAGE: V1_ID, APP_IMAGE: V1_ID };
 /** A hand-run rollback has only the reference to go on. */
 const ALL_V1_TAG = { APP_CANARY_IMAGE: "app:v1", APP_IMAGE: "app:v1" };
 const ALL_V2 = { APP_CANARY_IMAGE: "app:v2", APP_IMAGE: "app:v2" };
+/** Promote, once the candidate's ID is pinned. */
+const ALL_V2_ID = { APP_CANARY_IMAGE: V2_ID, APP_IMAGE: V2_ID };
+/** A step after the first, with the candidate pinned by ID. */
+const PINNED = { APP_CANARY_IMAGE: V2_ID, APP_IMAGE: V1_ID };
 
 /** What a successful stage of the default platform records. */
 const STAGED = {
@@ -250,21 +263,25 @@ Deno.test("expose scales the canary up first, checks its image, then the stable 
   calls.length = 0;
   assertEquals(await p.expose(25, ctx), 25);
   assertEquals(calls, [
-    { argv: scale("app-canary", 1), env: BOTH_V1 },
+    { argv: scale("app-canary", 1, true), env: BOTH_V1 },
     { argv: ps("app-canary"), env: BOTH_V1 },
+    { argv: images("app-canary"), env: BOTH_V1 },
     { argv: scale("app", 3, true), env: BOTH_V1 },
   ]);
+  // The first step pins the image the analysis judges; the next runs it by ID.
+  assertEquals(ctx.state.get().composeCanaryCandidateId, V2_ID);
   calls.length = 0;
   assertEquals(await p.expose(50, ctx), 50);
-  assertEquals(calls.map((c) => c.argv), [
-    scale("app-canary", 2),
-    ps("app-canary"),
-    scale("app", 2, true),
+  assertEquals(calls, [
+    { argv: scale("app-canary", 2, true), env: PINNED },
+    { argv: ps("app-canary"), env: PINNED },
+    { argv: images("app-canary"), env: PINNED },
+    { argv: scale("app", 2, true), env: PINNED },
   ]);
   assertEquals(ctx.state.get().composeCanaryReplicas, 2);
   assertEquals(world, {
     app: ["app:v1", "app:v1"],
-    "app-canary": ["app:v2", "app:v2"],
+    "app-canary": ["app:v2", V2_ID],
   });
 });
 
@@ -277,14 +294,15 @@ Deno.test("expose to a smaller share grows the stable service first", async () =
   assertEquals(await p.expose(25, ctx), 25);
   assertEquals(calls.map((c) => c.argv), [
     scale("app", 3, true),
-    scale("app-canary", 1),
+    scale("app-canary", 1, true),
     ps("app-canary"),
+    images("app-canary"),
   ]);
   calls.length = 0;
   assertEquals(await p.expose(0, ctx), 0);
   assertEquals(calls.map((c) => c.argv), [
     scale("app", 4, true),
-    scale("app-canary", 0),
+    scale("app-canary", 0, true),
   ]);
 });
 
@@ -302,7 +320,7 @@ Deno.test("expose quantises to whole replicas of the recorded total", async () =
   // 90 % of 3 rounds to all; a step keeps at least one stable replica.
   assertEquals(await p.expose(90, ctx), 66.67);
   assertEquals(await p.expose(100, ctx), 100);
-  assertEquals(calls.at(-3)?.argv, scale("app-canary", 3));
+  assertEquals(calls.at(-4)?.argv, scale("app-canary", 3, true));
   assertEquals(calls.at(-1)?.argv, scale("app", 0, true));
 });
 
@@ -336,9 +354,23 @@ Deno.test("expose refuses a canary whose image does not read its variable", asyn
   );
   // The stable service did not shrink.
   assertEquals(calls.map((c) => c.argv), [
-    scale("app-canary", 1),
+    scale("app-canary", 1, true),
     ps("app-canary"),
   ]);
+  // A canary with no running replica after the move is refused too.
+  const { runner: gone } = fakeCompose();
+  const fresh = await staged(gone);
+  await assertRejects(
+    () =>
+      platform((settings, env) =>
+        settings.argv().includes("ps")
+          ? Promise.resolve(new CommandOutput(0, "", ""))
+          : gone(settings, env)
+      ).expose(25, fresh),
+    Error,
+    "the service app-canary runs nothing after the platform set " +
+      "APP_CANARY_IMAGE to app:v2",
+  );
 });
 
 Deno.test("expose and promote refuse without a stage that succeeded", async () => {
@@ -394,17 +426,18 @@ Deno.test("promote hands the stable service to the candidate without a capacity 
   await p.expose(50, ctx);
   calls.length = 0;
   await p.promote(ctx);
+  // Every move carries the ID the steps pinned, never the tag.
   assertEquals(calls, [
-    { argv: scale("app-canary", 4), env: ALL_V2 },
-    { argv: scale("app", 4), env: ALL_V2 },
-    { argv: ps("app"), env: ALL_V2 },
-    { argv: scale("app-canary", 0), env: ALL_V2 },
+    { argv: scale("app-canary", 4, true), env: PINNED },
+    { argv: scale("app", 4), env: ALL_V2_ID },
+    { argv: images("app"), env: ALL_V2_ID },
+    { argv: scale("app-canary", 0), env: ALL_V2_ID },
   ]);
   assertEquals(ctx.state.get().composeCanaryStage, "promoted");
   // Promote leaves the last expose's record alone: nothing reads it again.
   assertEquals(ctx.state.get().composeCanaryReplicas, 2);
   assertEquals(world, {
-    app: ["app:v2", "app:v2", "app:v2", "app:v2"],
+    app: [V2_ID, V2_ID, V2_ID, V2_ID],
     "app-canary": [],
   });
   // A second promote — a resume re-driving it — changes nothing.
@@ -422,24 +455,32 @@ Deno.test("promote refuses a stable service whose image does not read its variab
   await assertRejects(
     () => platform(runner).promote(ctx),
     Error,
-    "the service app runs app:v1, app:v1, app:v1, app:v1 after the platform " +
-      "set APP_IMAGE to app:v2, so its image: does not read that variable. " +
+    `the replicas of app resolve to ${V1_ID} after the platform set ` +
+      `APP_IMAGE to ${V2_ID}, so its image: does not read that variable. ` +
       "Make it image: ${APP_IMAGE}.",
   );
   assertEquals(ctx.state.get().composeCanaryStage, "promoting");
-  // The canary still holds every replica, so nothing stopped serving.
+  // With no step before it, promote pins the candidate itself; the canary
+  // still holds every replica, so nothing stopped serving.
   assertEquals(calls.map((c) => c.argv), [
-    scale("app-canary", 4),
+    scale("app-canary", 4, true),
+    ps("app-canary"),
+    images("app-canary"),
     scale("app", 4),
-    ps("app"),
+    images("app"),
   ]);
   // No stable replicas at all is refused too.
   const lost = await staged(fakeCompose().runner);
-  const { runner: none } = fakeCompose({ ps: "" });
+  const { runner: none } = fakeCompose({
+    answer: (argv) =>
+      argv.includes("images") && argv.at(-1) === "app"
+        ? new CommandOutput(0, "", "")
+        : undefined,
+  });
   await assertRejects(
     () => platform(none).promote(lost),
     Error,
-    "the service app runs nothing after",
+    "the replicas of app resolve to no image after",
   );
 });
 
@@ -452,7 +493,7 @@ Deno.test("abort mid-rollout scales the stable service back without recreating i
   await p.abort(ctx);
   await p.abort(ctx);
   const once = [
-    { argv: ps("app"), env: ALL_V1 },
+    { argv: images("app"), env: ALL_V1 },
     { argv: scale("app", 4, true), env: ALL_V1 },
     { argv: scale("app-canary", 0), env: ALL_V1 },
   ];
@@ -469,18 +510,18 @@ Deno.test("abort after a promotion that failed part-way surges the canary on the
   // holds the load on the stable image while it does.
   const { runner, world } = fakeCompose();
   const ctx = await staged(runner);
-  let left = 3;
+  let left = 5;
   const flaky = platform((settings, env) => {
     if (left-- === 0) return Promise.reject(new Error("daemon went away"));
     return runner(settings, env);
   });
   await assertRejects(() => flaky.promote(ctx), Error, "daemon went away");
   assertEquals(ctx.state.get().composeCanaryStage, "promoting");
-  assertEquals(world.app, ["app:v2", "app:v2", "app:v2", "app:v2"]);
+  assertEquals(world.app, [V2_ID, V2_ID, V2_ID, V2_ID]);
   const recorded = fakeCompose({ world });
   await platform(recorded.runner).abort(ctx);
   assertEquals(recorded.calls, [
-    { argv: ps("app"), env: ALL_V1 },
+    { argv: images("app"), env: ALL_V1 },
     { argv: scale("app-canary", 4), env: ALL_V1 },
     { argv: scale("app", 4), env: ALL_V1 },
     { argv: scale("app-canary", 0), env: ALL_V1 },
@@ -580,8 +621,8 @@ Deno.test("a hand-run abort on stable replicas already on the image only scales 
   await platform(runner, (d) => d.stable("app:v1")).abort(context());
   assertEquals(calls, [
     { argv: ps("app"), env: ALL_V1_TAG },
-    { argv: scale("app", 4, true), env: ALL_V1_TAG },
-    { argv: scale("app-canary", 0), env: ALL_V1_TAG },
+    { argv: scale("app", 4, true, false), env: ALL_V1_TAG },
+    { argv: scale("app-canary", 0, false, false), env: ALL_V1_TAG },
   ]);
 });
 
@@ -597,9 +638,9 @@ Deno.test("a hand-run abort after a promotion surges the canary on the stable im
   await platform(runner, (d) => d.stable("app:v1")).abort(context());
   assertEquals(calls, [
     { argv: ps("app"), env: ALL_V1_TAG },
-    { argv: scale("app-canary", 4), env: ALL_V1_TAG },
-    { argv: scale("app", 4), env: ALL_V1_TAG },
-    { argv: scale("app-canary", 0), env: ALL_V1_TAG },
+    { argv: scale("app-canary", 4, false, false), env: ALL_V1_TAG },
+    { argv: scale("app", 4, false, false), env: ALL_V1_TAG },
+    { argv: scale("app-canary", 0, false, false), env: ALL_V1_TAG },
   ]);
   assertEquals(world, {
     app: ["app:v1", "app:v1", "app:v1", "app:v1"],
@@ -638,22 +679,23 @@ Deno.test("every call after stage acts on what stage recorded, not on the lambda
   await drifted.expose(25, ctx);
   await drifted.abort(ctx);
   assertEquals(calls, [
-    { argv: scale("app-canary", 1), env: BOTH_V1 },
+    { argv: scale("app-canary", 1, true), env: BOTH_V1 },
     { argv: ps("app-canary"), env: BOTH_V1 },
+    { argv: images("app-canary"), env: BOTH_V1 },
     { argv: scale("app", 3, true), env: BOTH_V1 },
-    { argv: ps("app"), env: ALL_V1 },
+    { argv: images("app"), env: ALL_V1 },
     { argv: scale("app", 4, true), env: ALL_V1 },
     { argv: scale("app-canary", 0), env: ALL_V1 },
   ]);
   calls.length = 0;
   await drifted.promote(ctx);
   assertEquals(calls.map((c) => c.argv), [
-    scale("app-canary", 4),
+    scale("app-canary", 4, true),
     scale("app", 4),
-    ps("app"),
+    images("app"),
     scale("app-canary", 0),
   ]);
-  assertEquals(calls[0].env, ALL_V2);
+  assertEquals(calls[1].env, ALL_V2_ID);
 });
 
 Deno.test("the lambda is evaluated on every call, so it sees resolved values", async () => {
@@ -972,7 +1014,7 @@ Deno.test("promote and a hand-run abort tell the operator what to persist", asyn
   await drifted.promote(ctx);
   assertEquals(
     ctx.summary.Persist,
-    "set APP_IMAGE=app:v2 and keep scale: 4",
+    `set APP_IMAGE=app:v2 (which must resolve to ${V2_ID}) and keep scale: 4`,
   );
   const handRun = context();
   await platform(runner, (d) => d.stable("app:v1")).abort(handRun);
@@ -1000,23 +1042,96 @@ Deno.test("a stable tag moved mid-rollout cannot bring a never-analysed image in
   calls.length = 0;
   await p.abort(ctx);
   assertEquals(calls, [
-    { argv: ps("app"), env: ALL_V1 },
+    { argv: images("app"), env: ALL_V1 },
     { argv: scale("app", 4, true), env: ALL_V1 },
     { argv: scale("app-canary", 0), env: ALL_V1 },
   ]);
   assertEquals(world, { app: [V1_ID, V1_ID, V1_ID, V1_ID], "app-canary": [] });
 });
 
-Deno.test("abort accepts stable replicas shown by reference or by the recorded ID", async () => {
-  const { runner, calls, world } = fakeCompose();
+Deno.test("abort decides by the recorded ID, not by the tag ps shows", async () => {
+  // Replicas shown by tag or by ID that resolve to the recorded ID are left
+  // in place.
+  const { runner, calls, world, tags } = fakeCompose();
   const ctx = await staged(runner);
   world.app = ["app:v1", V1_ID];
   calls.length = 0;
   await platform(runner).abort(ctx);
   assertEquals(calls.map((c) => c.argv), [
-    ps("app"),
+    images("app"),
     scale("app", 4, true),
     scale("app-canary", 0),
+  ]);
+  // A tag ps shows means whatever the tag names now: replicas created from
+  // app:v1 after it moved run another image, and must be recreated on the ID.
+  tags["app:v1"] = V3_HEX;
+  world.app = ["app:v1", "app:v1", "app:v1", "app:v1"];
+  calls.length = 0;
+  await platform(runner).abort(ctx);
+  assertEquals(calls.map((c) => c.argv), [
+    images("app"),
+    scale("app-canary", 4),
+    scale("app", 4),
+    scale("app-canary", 0),
+  ]);
+  assertEquals(world.app, [V1_ID, V1_ID, V1_ID, V1_ID]);
+});
+
+Deno.test("promote installs the candidate the steps ran, even if its tag moved since", async () => {
+  // The analysis judged the canary's image; a pull or build that moves
+  // app:v2 afterwards must not change what promote puts in the stable
+  // service.
+  const { runner, calls, world, tags } = fakeCompose();
+  const ctx = await staged(runner);
+  const p = platform(runner);
+  await p.expose(25, ctx);
+  tags["app:v2"] = V3_HEX;
+  calls.length = 0;
+  await p.promote(ctx);
+  assertEquals(calls[1], { argv: scale("app", 4), env: ALL_V2_ID });
+  assertEquals(world.app, [V2_ID, V2_ID, V2_ID, V2_ID]);
+});
+
+Deno.test("a later step refuses a canary that no longer resolves to the pinned candidate", async () => {
+  const { runner, world, tags } = fakeCompose();
+  const ctx = await staged(runner);
+  const p = platform(runner);
+  await p.expose(25, ctx);
+  // Something recreated the canary from the moved tag behind the rollout.
+  tags["app:v2"] = V3_HEX;
+  world["app-canary"] = ["app:v2"];
+  await assertRejects(
+    () => p.expose(25, ctx),
+    Error,
+    `resolve to sha256:${V3_HEX}, not the ${V2_ID} an earlier step ran — ` +
+      "the candidate tag app:v2 has moved.",
+  );
+  // And one on several images is refused, naming the stopped replicas
+  // images counts.
+  const fresh = await staged(fakeCompose().runner);
+  const { runner: split } = fakeCompose({
+    answer: (argv) =>
+      argv.includes("images") && argv.at(-1) === "app-canary"
+        ? new CommandOutput(0, `${V2_HEX}\n${V3_HEX}\n`, "")
+        : undefined,
+  });
+  await assertRejects(
+    () => platform(split).expose(25, fresh),
+    Error,
+    "images counts stopped replicas too, so remove any left on another " +
+      "image — so there is no one candidate image for the analysis to judge.",
+  );
+});
+
+Deno.test("every move that sets an image ID passes --pull never, so pull_policy: always cannot fail it", async () => {
+  // A hand-run rollback to a tag may still pull; one to an ID may not.
+  const { runner, calls } = fakeCompose({
+    world: { app: [V1_ID, V1_ID, V1_ID, V1_ID], "app-canary": [] },
+  });
+  await platform(runner, (d) => d.stable(V1_ID)).abort(context());
+  assertEquals(calls.slice(1).map((c) => c.argv.includes("never")), [
+    true,
+    true,
   ]);
 });
 
@@ -1077,6 +1192,6 @@ Deno.test("promote reports what to persist before it records the promotion", asy
   await platform(runner).promote(ctx);
   assertEquals(
     reportedWhenRecorded,
-    "set APP_IMAGE=app:v2 and keep scale: 4",
+    `set APP_IMAGE=app:v2 (which must resolve to ${V2_ID}) and keep scale: 4`,
   );
 });

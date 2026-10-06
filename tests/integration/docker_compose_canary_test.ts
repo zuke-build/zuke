@@ -56,6 +56,9 @@ const TAGS: Record<string, string> = {
 /** The stable image's ID, as the platform sets it after stage. */
 const V1_ID = `sha256:${TAGS["app:v1"]}`;
 
+/** The candidate's ID, as the platform sets it once a step ran it. */
+const V2_ID = `sha256:${TAGS["app:v2"]}`;
+
 /** Whether the analysis passes. */
 let healthy = true;
 
@@ -107,7 +110,7 @@ class Deploy extends Build {
             const argv = settings.argv().slice(1);
             calls.push({ argv, stableImage: env.APP_IMAGE });
             if (
-              failPromoteTail && env.APP_IMAGE === "app:v2" &&
+              failPromoteTail && env.APP_IMAGE === V2_ID &&
               argv.includes("app-canary=0")
             ) {
               return Promise.reject(new Error("daemon went away"));
@@ -138,14 +141,18 @@ class Deploy extends Build {
 
 /**
  * The scale moves the platform made, as `<service>=<n>`, with the stable
- * image the command set — `v1-id` for the recorded ID of `app:v1` — and
+ * image the command set — `v1-id` and `v2-id` for the recorded IDs — and
  * `(keep)` when it recreated nothing.
  */
 function moves(): string[] {
   return calls.filter((call) => call.argv.includes("up")).map((call) => {
     const scale = call.argv[call.argv.indexOf("--scale") + 1];
     const keep = call.argv.includes("--no-recreate") ? "(keep)" : "";
-    const image = call.stableImage === V1_ID ? "v1-id" : call.stableImage;
+    const image = call.stableImage === V1_ID
+      ? "v1-id"
+      : call.stableImage === V2_ID
+      ? "v2-id"
+      : call.stableImage;
     return `${scale}@${image}${keep}`;
   });
 }
@@ -161,10 +168,10 @@ function assertBackOnV1(): void {
   assertEquals(world.app.map(idOf), Array(4).fill(TAGS["app:v1"]));
 }
 
-/** The services each `ps` read, in order. */
+/** Each `ps` and `images` read, as `<command> <service>`, in order. */
 function reads(): string[] {
-  return calls.filter((call) => call.argv.includes("ps")).map((call) =>
-    call.argv.at(-1) ?? ""
+  return calls.filter((call) => !call.argv.includes("up")).map((call) =>
+    `${call.argv[3]} ${call.argv.at(-1)}`
   );
 }
 
@@ -203,12 +210,20 @@ Deno.test("Compose: staged, stepped, parked, and promoted by a later process", a
     assertEquals(moves(), [
       "app=4@v1-id(keep)",
       "app-canary=0@v1-id",
-      "app-canary=1@v1-id",
+      "app-canary=1@v1-id(keep)",
       "app=3@v1-id(keep)",
-      "app-canary=2@v1-id",
+      "app-canary=2@v1-id(keep)",
       "app=2@v1-id(keep)",
     ]);
-    assertEquals(reads(), ["app", "app-canary", "app-canary"]);
+    assertEquals(reads(), [
+      "ps app",
+      "images app",
+      "pull app-canary",
+      "ps app-canary",
+      "images app-canary",
+      "ps app-canary",
+      "images app-canary",
+    ]);
     assertStringIncludes(parked.out, "app:v2");
 
     // The resume is a new main(): promote reads the images stage recorded.
@@ -221,13 +236,13 @@ Deno.test("Compose: staged, stepped, parked, and promoted by a later process", a
     ]);
     assertEquals(resumed.code, 0, resumed.err);
     assertEquals(moves(), [
-      "app-canary=4@app:v2",
-      "app=4@app:v2",
-      "app-canary=0@app:v2",
+      "app-canary=4@v1-id(keep)",
+      "app=4@v2-id",
+      "app-canary=0@v2-id",
     ]);
-    assertEquals(reads(), ["app"]);
+    assertEquals(reads(), ["images app"]);
     assertEquals(world, {
-      app: ["app:v2", "app:v2", "app:v2", "app:v2"],
+      app: [V2_ID, V2_ID, V2_ID, V2_ID],
       "app-canary": [],
     });
   });
@@ -243,7 +258,7 @@ Deno.test("Compose: a failed analysis puts every replica back on the stable imag
     // The stable replicas still run the recorded image, so the rollback only
     // scales them back.
     assertEquals(moves().slice(-4), [
-      "app-canary=1@v1-id",
+      "app-canary=1@v1-id(keep)",
       "app=3@v1-id(keep)",
       "app=4@v1-id(keep)",
       "app-canary=0@v1-id",
@@ -298,9 +313,9 @@ Deno.test("Compose: a promotion that fails part-way in a later process is rolled
     assertEquals(resumed.code, 1);
     assertStringIncludes(resumed.out + resumed.err, "daemon went away");
     assertEquals(moves(), [
-      "app-canary=4@app:v2",
-      "app=4@app:v2",
-      "app-canary=0@app:v2",
+      "app-canary=4@v1-id(keep)",
+      "app=4@v2-id",
+      "app-canary=0@v2-id",
       "app-canary=4@v1-id",
       "app=4@v1-id",
       "app-canary=0@v1-id",

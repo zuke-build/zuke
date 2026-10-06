@@ -48,10 +48,12 @@ import {
   CALLER,
   CANARY_REPLICAS,
   canaryReplicas,
+  CANDIDATE_ID,
   candidateOf,
   handRunRollback,
   imageIdOf,
   imageOf,
+  isImageId,
   recordedRollout,
   recordOf,
   type Rollback,
@@ -150,7 +152,13 @@ export class DockerComposeCanary {
     // stable variable to this ID, not the reference: a mutable tag moved by a
     // local pull or build mid-rollout must not put a release nobody analysed
     // into the stable service.
-    const restore = await this.#servingImageId(settings, topology.stable, read);
+    const restore = await this.#oneImageId(
+      settings,
+      topology.stable,
+      read,
+      "so there is no one stable image to roll back to. Bring them onto one " +
+        "first",
+    );
     await this.#run(
       settings,
       new DockerComposePullSettings().policy("missing")
@@ -188,8 +196,12 @@ export class DockerComposeCanary {
    * service grows is scaled first, so the total never dips below the
    * replicas. Once the canary service has replicas, `ps` must show every one
    * of them on the candidate — a canary whose `image:` does not read its
-   * variable is refused rather than analysed. The stable replicas are never
-   * recreated. The services and replicas are the ones `stage` recorded.
+   * variable is refused rather than analysed — and `images --quiet` must
+   * resolve them to one image ID. The first step records that ID, as the
+   * image the analysis judges; every later step and promote set the canary
+   * variable to it rather than the tag, and refuse a canary that resolves to
+   * another. The stable replicas are never recreated. The services and
+   * replicas are the ones `stage` recorded.
    */
   async expose(
     percent: number,
@@ -204,20 +216,19 @@ export class DockerComposeCanary {
     const settings = this.#settings();
     const state = ctx.state.get();
     const rollout = staged(recordedRollout(state));
-    const env = imageEnv(rollout, rollout.restore, rollout.candidate);
+    const env = imageEnv(
+      rollout,
+      rollout.restore,
+      rollout.candidateId ?? rollout.candidate,
+    );
     const canary = canaryReplicas(percent, rollout.replicas);
     const previous = state[CANARY_REPLICAS];
+    // The canary replicas already running are the pinned candidate (checked
+    // below), so a step only adds or removes them: a recreate would restart
+    // what the analysis is watching.
     const grow = async () => {
-      await this.#scale(settings, rollout.canary, canary, env, false);
-      if (canary > 0) {
-        await this.#requireImage(
-          settings,
-          rollout.canary,
-          rollout.candidate,
-          rollout.canaryVariable,
-          env,
-        );
-      }
+      await this.#scale(settings, rollout.canary, canary, env, true);
+      if (canary > 0) await this.#pinCandidate(settings, ctx, rollout, env);
     };
     const shrink = () =>
       this.#scale(
@@ -240,11 +251,13 @@ export class DockerComposeCanary {
 
   /**
    * Hand the stable service to the candidate: the canary service goes to
-   * every replica, the stable service is recreated on the candidate image
-   * with the stable variable set to it, `ps` must then show every stable
-   * replica on the candidate — or the call refuses, before it is recorded as
-   * promoted, since a stable `image:` that does not read the variable would
-   * have changed nothing — and the canary service goes back to none. The
+   * every replica, the stable service is recreated with the stable variable
+   * set to the candidate's recorded image ID — the image the analysis judged,
+   * whatever the candidate tag names by now — `images --quiet` must then
+   * resolve every stable replica to that ID — or the call refuses, before it
+   * is recorded as promoted, since a stable `image:` that does not read the
+   * variable would have changed nothing — and the canary service goes back
+   * to none. The
    * total never dips below the replicas; for a moment it is twice that.
    * Idempotent.
    *
@@ -255,23 +268,32 @@ export class DockerComposeCanary {
    * plain `docker compose up` puts the stable service back on the image that
    * source still names, and at the replica count its `scale:` names, which
    * is why that must equal {@link DockerComposeCanarySettings.replicas}. The
-   * build summary says so: `Persist: set APP_IMAGE=<candidate> and keep
-   * scale: <replicas>`.
+   * build summary says so: `Persist: set APP_IMAGE=<candidate> (which must
+   * resolve to sha256:<id>) and keep scale: <replicas>`.
    */
   async promote(ctx: DockerComposeCanaryContext): Promise<void> {
     const state = ctx.state.get();
     if (state[STAGE] === "promoted") return;
     const settings = this.#settings();
     const rollout = staged(recordedRollout(state));
-    const env = imageEnv(rollout, rollout.candidate, rollout.candidate);
     await ctx.state.set({ [STAGE]: "promoting" });
+    const surge = imageEnv(
+      rollout,
+      rollout.restore,
+      rollout.candidateId ?? rollout.candidate,
+    );
     await this.#scale(
       settings,
       rollout.canary,
       rollout.replicas,
-      env,
-      false,
+      surge,
+      true,
     );
+    // With no step before it, the canary first runs here, so this is where
+    // the candidate's ID is pinned.
+    const id = rollout.candidateId ??
+      await this.#pinCandidate(settings, ctx, rollout, surge);
+    const env = imageEnv(rollout, id, id);
     await this.#scale(
       settings,
       rollout.stable,
@@ -279,18 +301,21 @@ export class DockerComposeCanary {
       env,
       false,
     );
-    await this.#requireImage(
-      settings,
-      rollout.stable,
-      rollout.candidate,
-      rollout.stableVariable,
-      env,
-    );
+    const installed = await this.#imageIds(settings, rollout.stable, env);
+    if (installed.length !== 1 || installed[0] !== id) {
+      throw new Error(
+        `${CALLER}: the replicas of ${rollout.stable} resolve to ` +
+          `${installed.length === 0 ? "no image" : installed.join(", ")} ` +
+          `after the platform set ${rollout.stableVariable} to ${id}, so its ` +
+          "image: does not read that variable. Make it image: " +
+          `\${${rollout.stableVariable}}.`,
+      );
+    }
     await this.#scale(settings, rollout.canary, 0, env, false);
     // Reported before the promotion is recorded: a process that dies between
     // the two re-drives the promotion, which reports it again, rather than
     // finding it recorded and saying nothing.
-    ctx.reportSummary(persist(rollout, rollout.candidate));
+    ctx.reportSummary(persist(rollout, rollout.candidate, id));
     await ctx.state.set({ [STAGE]: "promoted" });
   }
 
@@ -313,9 +338,11 @@ export class DockerComposeCanary {
    * not to the reference, so a tag moved since cannot bring in an image
    * nobody analysed; run by hand, there is only the reference.
    *
-   * `ps` first reads what the stable replicas run. When every one already
-   * runs the stable image — by reference, or by ID, as `ps` reports it once
-   * the tag has moved; mid-rollout they do — the stable service is only
+   * First it reads what the stable replicas run: on a recorded rollout,
+   * `images --quiet` must resolve them to exactly the recorded ID — a tag
+   * `ps` shows means whatever the tag names now, so it is not evidence; run
+   * by hand, `ps` must show every one on the `.stable(...)` reference. When
+   * they do — mid-rollout they do — the stable service is only
    * scaled back to every replica (`--no-recreate`). Otherwise — after a
    * promotion, run by hand or part-way — the stable replicas must be
    * recreated, which Compose does to all of them at once, so the rollback
@@ -339,10 +366,7 @@ export class DockerComposeCanary {
     // The canary service only ever runs the stable image here — a surge while
     // the stable replicas are recreated — so its variable names that too.
     const env = imageEnv(rollback, image, image);
-    const running = await this.#runningImages(settings, rollback.stable, env);
-    if (
-      running.every((each) => each === image || each === rollback.stableImage)
-    ) {
+    if (await this.#onStable(settings, rollback, recorded !== undefined, env)) {
       await this.#scale(
         settings,
         rollback.stable,
@@ -370,6 +394,69 @@ export class DockerComposeCanary {
     if (recorded === undefined) ctx.reportSummary(persist(rollback, image));
   }
 
+  /**
+   * Whether every stable replica already runs the image a rollback restores:
+   * by ID on a recorded rollout, by the configured reference on a hand-run
+   * one, which has no ID to go on.
+   */
+  async #onStable(
+    settings: DockerComposeCanarySettings,
+    rollback: Rollback,
+    recorded: boolean,
+    env: Record<string, string>,
+  ): Promise<boolean> {
+    if (recorded) {
+      const ids = await this.#imageIds(settings, rollback.stable, env);
+      return ids.length === 1 && ids[0] === rollback.restore;
+    }
+    const running = await this.#runningImages(settings, rollback.stable, env);
+    return running.every((each) => each === rollback.restore);
+  }
+
+  /**
+   * Check the canary replicas run the candidate, and pin its image ID: `ps`
+   * must show each on the candidate's reference or its recorded ID, and
+   * `images --quiet` must resolve them to one ID — recorded the first time,
+   * and required to match it after.
+   */
+  async #pinCandidate(
+    settings: DockerComposeCanarySettings,
+    ctx: DockerComposeCanaryContext,
+    rollout: Rollout,
+    env: Record<string, string>,
+  ): Promise<string> {
+    const variable = rollout.canaryVariable;
+    const running = await this.#runningImages(settings, rollout.canary, env);
+    const accepted = [rollout.candidate, rollout.candidateId];
+    if (
+      running.length === 0 || running.some((each) => !accepted.includes(each))
+    ) {
+      throw new Error(
+        `${CALLER}: the service ${rollout.canary} runs ` +
+          `${running.length === 0 ? "nothing" : running.join(", ")} after ` +
+          `the platform set ${variable} to ${env[variable]}, so its image: ` +
+          `does not read that variable. Make it image: \${${variable}}.`,
+      );
+    }
+    const id = await this.#oneImageId(
+      settings,
+      rollout.canary,
+      env,
+      "so there is no one candidate image for the analysis to judge",
+    );
+    if (rollout.candidateId === undefined) {
+      await ctx.state.set({ [CANDIDATE_ID]: id });
+    } else if (id !== rollout.candidateId) {
+      throw new Error(
+        `${CALLER}: the canary replicas of ${rollout.canary} resolve to ${id}, ` +
+          `not the ${rollout.candidateId} an earlier step ran — the ` +
+          `candidate tag ${rollout.candidate} has moved. Start a new rollout ` +
+          "for the image it names now.",
+      );
+    }
+    return id;
+  }
+
   /** The settings, evaluated now so the lambda sees resolved parameters. */
   #settings(): DockerComposeCanarySettings {
     return this.#configure(new DockerComposeCanarySettings());
@@ -378,7 +465,8 @@ export class DockerComposeCanary {
   /**
    * `up -d --no-deps --scale <service>=<count> <service>`, waiting for the
    * replicas when there are any. With `keep`, replicas that already exist
-   * are not recreated (`--no-recreate`), so only the count changes.
+   * are not recreated (`--no-recreate`), so only the count changes. When a
+   * variable is set to an image ID, `--pull never`.
    */
   #scale(
     settings: DockerComposeCanarySettings,
@@ -390,6 +478,9 @@ export class DockerComposeCanary {
     const up = new DockerComposeUpSettings().detach().noDeps();
     if (count > 0) up.wait();
     if (keep) up.noRecreate();
+    // An ID cannot be pulled, and a service's pull_policy: always would try:
+    // whatever an ID names is local already, since a container ran it.
+    if (Object.values(env).some(isImageId)) up.pull("never");
     return this.#run(settings, up.scale(service, count).services(service), env);
   }
 
@@ -420,60 +511,50 @@ export class DockerComposeCanary {
   }
 
   /**
-   * The full ID of the one image the stable service's replicas use, from
-   * `images --quiet`, which prints each distinct ID once.
+   * The distinct image IDs of `service`'s replicas, from `images --quiet`,
+   * which prints each once — and, unlike `ps`, counts stopped replicas too.
    */
-  async #servingImageId(
+  async #imageIds(
     settings: DockerComposeCanarySettings,
     service: string,
     env: Record<string, string>,
-  ): Promise<string> {
-    const ids = await this.#lines(
+  ): Promise<string[]> {
+    const lines = await this.#lines(
       settings,
       new DockerComposeImagesSettings().quietOutput().services(service),
       env,
       `the image IDs of ${service}`,
     );
-    const [id, ...others] = new Set(
-      ids.map((line) =>
-        imageIdOf(line, `an image ID images reported for ${service}`)
+    return [
+      ...new Set(
+        lines.map((line) =>
+          imageIdOf(line, `an image ID images reported for ${service}`)
+        ),
       ),
-    );
+    ];
+  }
+
+  /** The one image ID `service`'s replicas resolve to, or a refusal ending `why`. */
+  async #oneImageId(
+    settings: DockerComposeCanarySettings,
+    service: string,
+    env: Record<string, string>,
+    why: string,
+  ): Promise<string> {
+    const [id, ...others] = await this.#imageIds(settings, service, env);
     if (id === undefined || others.length > 0) {
       throw new Error(
         `${CALLER}: the replicas of ${service} resolve to ` +
           `${
             id === undefined
               ? "no image ID"
-              : `several image IDs (${[id, ...others].join(", ")})`
-          }, ` +
-          "so there is no one stable image to roll back to. Bring them onto " +
-          "one first.",
+              : `several image IDs (${[id, ...others].join(", ")}) — ` +
+                "images counts stopped replicas too, so remove any left on " +
+                "another image —"
+          } ${why}.`,
       );
     }
     return id;
-  }
-
-  /**
-   * Refuse unless `service` has running replicas and every one runs `image`
-   * — what the platform just asked for by setting `variable`.
-   */
-  async #requireImage(
-    settings: DockerComposeCanarySettings,
-    service: string,
-    image: string,
-    variable: string,
-    env: Record<string, string>,
-  ): Promise<void> {
-    const running = await this.#runningImages(settings, service, env);
-    if (running.length === 0 || running.some((each) => each !== image)) {
-      throw new Error(
-        `${CALLER}: the service ${service} runs ` +
-          `${running.length === 0 ? "nothing" : running.join(", ")} after ` +
-          `the platform set ${variable} to ${image}, so its image: does not ` +
-          `read that variable. Make it image: \${${variable}}.`,
-      );
-    }
   }
 
   /**
@@ -571,15 +652,18 @@ function imageEnv(
  * The build-summary pair telling the operator what to write down: the image
  * is an override for the platform's own commands, so it lasts only until a
  * plain `docker compose up` reads the variable — and the `scale:` — from the
- * project.
+ * project. Operators persist the reference; when the platform installed an
+ * ID, the pair names the ID that reference must still resolve to.
  */
 function persist(
   rollback: Rollback,
   image: string,
+  id?: string,
 ): { Persist: string } {
+  const pin = id === undefined ? "" : ` (which must resolve to ${id})`;
   return {
-    Persist: `set ${rollback.stableVariable}=${image} and keep scale: ` +
-      `${rollback.replicas}`,
+    Persist: `set ${rollback.stableVariable}=${image}${pin} and keep ` +
+      `scale: ${rollback.replicas}`,
   };
 }
 
@@ -618,19 +702,22 @@ function staged(rollout: Rollout | undefined): Rollout {
  *   the rollout is recorded, then the stable service to every replica
  *   (`--no-recreate`) and the canary service to none. From here on, the
  *   stable variable is the recorded `sha256:<id>` on every command that may
- *   create a stable replica.
- * - **expose** — the canary service to its share and the stable service
- *   (`--no-recreate`) to the rest, the growing one first; `ps` checks the
- *   canary runs the candidate.
+ *   create a stable replica, and every move that sets an ID adds
+ *   `--pull never`, since an ID cannot be pulled.
+ * - **expose** — the canary service (`--no-recreate`) to its share and the
+ *   stable service (`--no-recreate`) to the rest, the growing one first;
+ *   `ps` checks the canary runs the candidate and `images --quiet` pins its
+ *   ID on the first step, which later steps and promote then use.
  * - **promote** — the canary service to every replica, the stable service
- *   recreated on the candidate and checked with `ps`, the canary service to
- *   none. Not durable until the candidate is written where the stable
- *   variable comes from.
- * - **abort** — `ps` reads the stable replicas. If they all run the stable
- *   image, the stable service back to every replica (`--no-recreate`);
- *   otherwise the canary service to every replica on the stable image, the
- *   stable service recreated on it. Then the canary service to none. Run by
- *   hand, the stable image is the one set with `.stable(...)`.
+ *   recreated on the pinned candidate ID and checked with `images --quiet`,
+ *   the canary service to none. Not durable until the candidate is written
+ *   where the stable variable comes from.
+ * - **abort** — `images --quiet` reads the stable replicas' IDs (run by
+ *   hand, `ps` their references). If they are all on the stable image, the
+ *   stable service back to every replica (`--no-recreate`); otherwise the
+ *   canary service to every replica on the stable image, the stable service
+ *   recreated on it. Then the canary service to none. Run by hand, the
+ *   stable image is the one set with `.stable(...)`.
  *
  * The stable service's `scale:` in the Compose file must equal
  * `.replicas(...)`, and Compose v2 (`docker compose`) is required.
