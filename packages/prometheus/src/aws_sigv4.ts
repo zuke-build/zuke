@@ -6,11 +6,14 @@
  * WebCrypto's HMAC-SHA256 — the signing half of the AWS credential source.
  *
  * Built step by step as the IAM user guide's "Create a signed AWS API
- * request" describes it, and checked against the AWS SigV4 test suite:
+ * request" describes it — the path handled as botocore's `SigV4Auth` does
+ * for a non-S3 service — and checked against the AWS SigV4 test suite:
  *
- * 1. the canonical request — method, canonical URI (each path segment
- *    decoded and re-encoded per RFC 3986), canonical query (each name and
- *    value decoded and re-encoded, sorted by name then value), canonical
+ * 1. the canonical request — method, canonical URI (the path as sent,
+ *    normalised — dot segments and empty segments removed — and then
+ *    percent-encoded again, so `%20` on the wire is `%2520` here, as every
+ *    service but S3 expects), canonical query (each name and value decoded
+ *    and re-encoded, sorted by name then value), canonical
  *    headers (lower-case names, trimmed values, sorted), the signed-header
  *    list, and the hex SHA-256 of the body;
  * 2. the string to sign — `AWS4-HMAC-SHA256`, the `x-amz-date`, the
@@ -41,7 +44,7 @@ export interface AwsCredentials {
 }
 
 /** What signing produced: the intermediate strings and the headers to add. */
-export interface SigV4Signature {
+interface SigV4Signature {
   /** The canonical request (step 1). */
   readonly canonicalRequest: string;
   /** The string to sign (step 2). */
@@ -80,20 +83,28 @@ async function hmac(
   );
 }
 
-/** A percent-encoded URL component, decoded — or an error saying which. */
-function decode(component: string, what: string): string {
+/** A percent-encoded query component, decoded — or an error saying so. */
+function decode(component: string): string {
   try {
     return decodeURIComponent(component);
   } catch {
-    throw new Error(`aws: the URL's ${what} is not valid percent-encoding`);
+    throw new Error("aws: the URL's query is not valid percent-encoding");
   }
 }
 
-/** The canonical URI: each path segment decoded, then RFC 3986 encoded. */
+/**
+ * The canonical URI: the path exactly as sent (already percent-encoded),
+ * normalised, then each segment percent-encoded once more — the double
+ * encoding SigV4 requires of every service except S3. The URL parser has
+ * already resolved dot segments (`.`, `..`, and their `%2E` spellings), so
+ * normalising is dropping empty segments (`//`). A trailing `/` is kept.
+ */
 function canonicalUri(url: URL): string {
-  return url.pathname.split("/").map((segment) =>
-    uriEncode(decode(segment, "path"))
-  ).join("/");
+  const path = url.pathname;
+  const segments = path.split("/").filter((segment) => segment !== "")
+    .map(uriEncode);
+  const last = path.endsWith("/") && segments.length > 0 ? "/" : "";
+  return `/${segments.join("/")}${last}`;
 }
 
 /**
@@ -109,7 +120,7 @@ function canonicalQuery(url: URL): string {
         ? [pair, ""]
         : [pair.slice(0, at), pair.slice(at + 1)];
       const read = (part: string) =>
-        uriEncode(decode(part.replace(/\+/g, " "), "query"));
+        uriEncode(decode(part.replace(/\+/g, " ")));
       return [read(name), read(value)];
     });
   // Code-point order on the encoded strings, as AWS sorts. Two identical

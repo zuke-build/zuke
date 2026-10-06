@@ -28,9 +28,14 @@ Deno.test("a plaintext non-loopback URL carrying credentials is refused before a
   const fetcher = fakeFetch(() => vector());
   const credentialed: Array<(s: PrometheusQuerySettings) => unknown> = [
     (s) => s.url("http://prom.example").bearerToken("test-token"),
-    (s) => s.url("http://prom.example").header("x-scope-orgid", "tenant-1"),
+    (s) => s.url("http://prom.example").secretHeader("x-api-key", "k-123456"),
+    (s) => s.url("http://prom.example").header("Authorization", "Bearer t"),
+    (s) => s.url("http://prom.example").header("proxy-authorization", "x"),
+    (s) => s.url("http://prom.example").header("Cookie", "session=abc"),
     (s) => s.url("http://prom.example").credentials(() => ({})),
     (s) => s.url("http://user:password@prom.example"),
+    (s) => s.url("http://prom.example/?access_token=secret-in-query"),
+    (s) => s.url("http://prom.example/?tenant=a&api_key=secret-in-query"),
   ];
   for (const configure of credentialed) {
     const error = await assertRejects(
@@ -43,8 +48,73 @@ Deno.test("a plaintext non-loopback URL carrying credentials is refused before a
       "the Prometheus URL, when credentials are configured, must use https",
     );
     assertEquals(error.message.includes("password"), false);
+    assertEquals(error.message.includes("secret-in-query"), false);
   }
   assertEquals(fetcher.sent.length, 0);
+});
+
+Deno.test("a plain header — a tenant id — leaves an in-cluster http URL usable", async () => {
+  const fetcher = fakeFetch(() => vector());
+  await PrometheusTasks.query((s) =>
+    s.url("http://mimir.monitoring.svc:8080/prometheus?tenant=a")
+      .header("X-Scope-OrgID", "team-a-tenant").readEnv(env({}))
+      .fetch(fetcher).query("q")
+  );
+  assertEquals(fetcher.sent[0].headers.get("x-scope-orgid"), "team-a-tenant");
+});
+
+Deno.test("a credential source that never settles still times out, or is cancelled", async () => {
+  const fetcher = fakeFetch(() => vector());
+  const hang = () => new Promise<Record<string, string>>(() => {});
+  await assertRejects(
+    () =>
+      PrometheusTasks.query((s) =>
+        s.url(BASE).fetch(fetcher).requestTimeout(20).credentials(hang)
+          .query("q")
+      ),
+    PrometheusRequestError,
+    "timed out after 20 ms",
+  );
+  const stop = new AbortController();
+  setTimeout(() => stop.abort(new Error("run cancelled")), 5);
+  await assertRejects(
+    () =>
+      PrometheusTasks.query((s) =>
+        s.url(BASE).fetch(fetcher).signal(stop.signal).credentials(hang)
+          .query("q")
+      ),
+    Error,
+    "run cancelled",
+  );
+  assertEquals(fetcher.sent.length, 0);
+});
+
+Deno.test("a failure's reason has no runtime error-name prefix", async () => {
+  const error = await assertRejects(
+    () =>
+      PrometheusTasks.query((s) =>
+        s.url(BASE).fetch(fakeFetch(() => {
+          throw new TypeError("connection refused");
+        })).query("q")
+      ),
+    PrometheusRequestError,
+    "/api/v1/query failed: connection refused",
+  );
+  assertEquals(error.message.includes("TypeError"), false);
+  const shape = await assertRejects(
+    () =>
+      PrometheusTasks.query((s) =>
+        s.url(BASE).fetch(fakeFetch(() =>
+          Response.json({
+            status: "success",
+            data: { resultType: "vector", result: "nope" },
+          })
+        )).query("q")
+      ),
+    PrometheusRequestError,
+    "unexpected answer: ",
+  );
+  assertEquals(shape.message.includes("unexpected answer: Error"), false);
 });
 
 Deno.test("an unauthenticated plaintext URL is allowed — an in-cluster Prometheus", async () => {

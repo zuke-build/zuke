@@ -77,7 +77,11 @@ Deno.test("a failed fetch fails every waiter and is not cached", async () => {
   let fetches = 0;
   const failing = () => {
     fetches++;
-    return Promise.reject(new Error("endpoint down"));
+    // Fails a moment later, as a real endpoint does, so both callers are
+    // parked on the one fetch when it fails.
+    return new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("endpoint down")), 10)
+    );
   };
   // Settled together, so the second rejection is handled the moment it lands
   // rather than left unobserved while the first is being asserted on.
@@ -104,20 +108,57 @@ Deno.test("a failed fetch fails every waiter and is not cached", async () => {
   );
 });
 
-Deno.test("a failed refresh of an expired token is retried, not served stale", async () => {
+Deno.test("a failed refresh falls back to the cached token until it expires", async () => {
   const cache = new TokenCache<string>();
   const clock: Clock = { now: T0 };
   const ctx = context({ clock });
   const fresh = (value: string) => () =>
     Promise.resolve({ value, expiresAt: clock.now + 60 * MINUTE });
+  const down = () => Promise.reject(new Error("down"));
   assertEquals(await cache.get(ctx, ["a"], fresh("first")), "first");
+  // Past the refresh point but before expiry: the refresh fails, the still
+  // valid token is used, and the next call tries the refresh again.
   clock.now = T0 + 59 * MINUTE;
-  await assertRejects(
-    () => cache.get(ctx, ["a"], () => Promise.reject(new Error("down"))),
-    Error,
-    "down",
-  );
+  assertEquals(await cache.get(ctx, ["a"], down), "first");
+  // Past expiry: the failure is the answer.
+  clock.now = T0 + 60 * MINUTE;
+  await assertRejects(() => cache.get(ctx, ["a"], down), Error, "down");
   assertEquals(await cache.get(ctx, ["a"], fresh("second")), "second");
+});
+
+Deno.test("a waiter survives the caller that started the fetch giving up", async () => {
+  const cache = new TokenCache<string>();
+  const creator = new AbortController();
+  const waiter = new AbortController();
+  let release = (_: string) => {};
+  let sharedSignal: AbortSignal | undefined;
+  const fresh = (shared: { signal: AbortSignal }) => {
+    sharedSignal = shared.signal;
+    return new Promise<{ value: string; expiresAt: number }>((resolve) => {
+      release = (value) => resolve({ value, expiresAt: T0 + 60 * MINUTE });
+    });
+  };
+  const first = cache.get(context({ signal: creator.signal }), ["a"], fresh);
+  const second = cache.get(context({ signal: waiter.signal }), ["a"], fresh);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  creator.abort(new Error("creator timed out"));
+  await assertRejects(() => first, Error, "creator timed out");
+  // The shared fetch runs under the cache's own signal, not the creator's.
+  assertEquals(sharedSignal === creator.signal, false);
+  assertEquals(sharedSignal?.aborted, false);
+  release("shared");
+  assertEquals(await second, "shared");
+  // A waiter whose own signal fires stops waiting without failing others.
+  const third = new AbortController();
+  third.abort(new Error("third cancelled"));
+  const cancelled = new TokenCache<string>();
+  const hang = () =>
+    new Promise<{ value: string; expiresAt: number }>(() => {});
+  await assertRejects(
+    () => cancelled.get(context({ signal: third.signal }), ["a"], hang),
+    Error,
+    "third cancelled",
+  );
 });
 
 Deno.test("entries are kept apart by identity and by fetch seam", async () => {

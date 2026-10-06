@@ -114,13 +114,18 @@ export function targetsCall(
   };
 }
 
-/** `object[key]` read as a list, an absent key reading as none. */
+/**
+ * `object[key]` read as a list, an absent key or a `null` reading as none.
+ * Prometheus sends the side `state(...)` filtered out as `null` (a nil Go
+ * slice, without `omitempty`), so `state("active")` answers
+ * `"droppedTargets": null`.
+ */
 function listOf(
   object: Record<string, unknown>,
   key: string,
 ): unknown[] {
   const value = own(object, key);
-  return value === undefined ? [] : readArray(value, key);
+  return value === undefined || value === null ? [] : readArray(value, key);
 }
 
 /** One active target. */

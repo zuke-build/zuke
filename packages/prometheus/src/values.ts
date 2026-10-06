@@ -56,7 +56,7 @@ function pairOf(value: unknown, what: string): [number, unknown] {
 }
 
 /** A `[<unix_time>, "<value>"]` pair as a point. */
-export function parsePoint(value: unknown, what: string): PrometheusPoint {
+function parsePoint(value: unknown, what: string): PrometheusPoint {
   const [timestamp, sample] = pairOf(value, what);
   if (typeof sample !== "string") {
     throw new Error(`${what} has no [timestamp, value] pair`);
@@ -91,7 +91,7 @@ function parseBucket(value: unknown, what: string): PrometheusHistogramBucket {
 }
 
 /** A native histogram object. */
-export function parseHistogram(
+function parseHistogram(
   value: unknown,
   what: string,
 ): PrometheusHistogram {

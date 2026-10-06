@@ -37,15 +37,40 @@ Deno.test("targets GETs with its state filter and answers typed targets", async 
     })
   );
   const response = await PrometheusTasks.targets((s) =>
-    s.url(BASE).fetch(fetcher).state("active")
+    s.url(BASE).fetch(fetcher).state("any")
   );
   assertEquals(fetcher.sent[0].method, "GET");
-  assertEquals(fetcher.sent[0].url.href, `${BASE}/api/v1/targets?state=active`);
+  assertEquals(fetcher.sent[0].url.href, `${BASE}/api/v1/targets?state=any`);
   assertEquals(response.data.activeTargets, [ACTIVE]);
   assertEquals(response.data.droppedTargets[0].scrapePool, "node");
   assertEquals(response.data.droppedTargets[0].discoveredLabels, {
     job: "node",
   });
+});
+
+Deno.test("a state filter's other side arrives as null and reads as empty", async () => {
+  // What Prometheus actually sends: the filtered-out list is a nil Go slice,
+  // serialised as null rather than omitted.
+  const active = await PrometheusTasks.targets((s) =>
+    s.url(BASE).fetch(
+      fakeFetch(() =>
+        success({ activeTargets: [ACTIVE], droppedTargets: null })
+      ),
+    ).state("active")
+  );
+  assertEquals(active.data.droppedTargets, []);
+  const dropped = await PrometheusTasks.targets((s) =>
+    s.url(BASE).fetch(
+      fakeFetch(() =>
+        success({
+          activeTargets: null,
+          droppedTargets: [{ discoveredLabels: {}, scrapePool: "p" }],
+        })
+      ),
+    ).state("dropped")
+  );
+  assertEquals(dropped.data.activeTargets, []);
+  assertEquals(dropped.data.droppedTargets.length, 1);
 });
 
 Deno.test("targets tolerates the optional fields and lists being absent", async () => {
@@ -160,6 +185,24 @@ Deno.test("rules GETs every filter it was given and answers typed rules", async 
   assertEquals(alerting.alerts?.[0].labels.alertname, "HighRequestLatency");
   assertEquals(recording.type, "recording");
   assertEquals(recording.labels, {});
+});
+
+Deno.test("excludeAlerts' null alerts read as absent", async () => {
+  // With exclude_alerts=true the server keeps the key and sends null.
+  const response = await PrometheusTasks.rules((s) =>
+    s.url(BASE).fetch(
+      fakeFetch(() =>
+        success({
+          groups: [{
+            ...RULES.groups[0],
+            rules: [{ ...RULES.groups[0].rules[0], alerts: null }],
+          }],
+        })
+      ),
+    ).excludeAlerts()
+  );
+  const [rule] = response.data.groups[0].rules;
+  assertEquals(rule.type === "alerting" ? rule.alerts : "?", undefined);
 });
 
 Deno.test("rules sends nothing it was not given, and refuses odd rules", async () => {

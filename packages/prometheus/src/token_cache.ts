@@ -20,10 +20,18 @@
  */
 
 import { sha256Hex } from "@zuke/core";
+import { raceSignal } from "./abort.ts";
 import type { PrometheusCredentialsContext } from "./credentials.ts";
 
 /** How long before expiry a token is refreshed, at most: five minutes. */
 const REFRESH_MARGIN_MS = 5 * 60 * 1000;
+
+/**
+ * How long a shared token fetch may take. It runs under its own timeout, not
+ * any one caller's, so the caller that happened to start it cannot cancel it
+ * for everyone else waiting on it.
+ */
+const TOKEN_FETCH_TIMEOUT_MS = 30_000;
 
 /** A fetched credential and the epoch-ms instant it stops working. */
 export interface Expiring<T> {
@@ -33,10 +41,20 @@ export interface Expiring<T> {
   readonly expiresAt: number;
 }
 
+/** A cached credential, when to refresh it, and when it stops working. */
+interface Cached<T> {
+  /** The credential. */
+  readonly value: T;
+  /** When to fetch a fresh one, in epoch ms. */
+  readonly refreshAt: number;
+  /** When it stops working, in epoch ms. */
+  readonly expiresAt: number;
+}
+
 /** One key's state: a usable value, a fetch in flight, or both. */
 interface Entry<T> {
-  /** The cached value and when to stop using it. */
-  readonly cached?: { readonly value: T; readonly refreshAt: number };
+  /** The cached value. */
+  readonly cached?: Cached<T>;
   /** The fetch every concurrent caller awaits. */
   readonly pending?: Promise<T>;
 }
@@ -52,13 +70,17 @@ export class TokenCache<T> {
    * for the same identity, so two calls racing at expiry make one request.
    *
    * A value is fresh until `expiresAt` minus five minutes, or minus half its
-   * remaining life when that is shorter. A failed fetch is not cached: the
-   * next call tries again.
+   * remaining life when that is shorter. The shared fetch runs under its own
+   * timeout (it is handed a context whose signal is the cache's, not the
+   * caller's); each caller stops waiting when its own signal fires, without
+   * cancelling the fetch for the others. When a refresh fails while the
+   * cached value has not yet expired, the cached value is used; otherwise the
+   * failure is returned and not cached, so the next call tries again.
    */
   async get(
     context: PrometheusCredentialsContext,
     identity: readonly unknown[],
-    fetchFresh: () => Promise<Expiring<T>>,
+    fetchFresh: (shared: PrometheusCredentialsContext) => Promise<Expiring<T>>,
   ): Promise<T> {
     const key = await sha256Hex(JSON.stringify(identity));
     let entries = this.#entries.get(context.fetch);
@@ -67,25 +89,37 @@ export class TokenCache<T> {
       this.#entries.set(context.fetch, entries);
     }
     const entry = entries.get(key);
-    if (entry?.cached !== undefined && context.now() < entry.cached.refreshAt) {
-      return entry.cached.value;
+    const stale = entry?.cached;
+    if (stale !== undefined && context.now() < stale.refreshAt) {
+      return stale.value;
     }
-    if (entry?.pending !== undefined) return await entry.pending;
+    if (entry?.pending !== undefined) {
+      return await raceSignal(entry.pending, context.signal);
+    }
     const map = entries;
-    const pending = fetchFresh().then((fresh) => {
+    const shared = {
+      ...context,
+      signal: AbortSignal.timeout(TOKEN_FETCH_TIMEOUT_MS),
+    };
+    const pending = fetchFresh(shared).then((fresh) => {
       const now = context.now();
       const margin = Math.min(REFRESH_MARGIN_MS, (fresh.expiresAt - now) / 2);
       map.set(key, {
-        cached: { value: fresh.value, refreshAt: fresh.expiresAt - margin },
+        cached: {
+          value: fresh.value,
+          refreshAt: fresh.expiresAt - margin,
+          expiresAt: fresh.expiresAt,
+        },
       });
       return fresh.value;
-    });
-    map.set(key, { ...entry, pending });
-    try {
-      return await pending;
-    } catch (error) {
-      map.set(key, { cached: entry?.cached });
+    }, (error: unknown) => {
+      map.set(key, { cached: stale });
+      if (stale !== undefined && context.now() < stale.expiresAt) {
+        return stale.value;
+      }
       throw error;
-    }
+    });
+    map.set(key, { cached: stale, pending });
+    return await raceSignal(pending, context.signal);
   }
 }

@@ -15,17 +15,13 @@
  * @module
  */
 
-import { messageOf } from "./message.ts";
-import {
-  assertSecureBackendUrl,
-  readBytesBounded,
-  Redactor,
-  redactUrls,
-} from "@zuke/core";
+import { assertSecureBackendUrl, readBytesBounded, Redactor } from "@zuke/core";
 import {
   type PrometheusCredentialsContext,
   registerSecrets,
 } from "./credentials.ts";
+import { messageOf } from "./message.ts";
+import { refusedRedirect, scrub } from "./scrub.ts";
 import { isRecord, own } from "./shape.ts";
 
 /** The largest token-endpoint answer read: a token response is a few KiB. */
@@ -35,11 +31,13 @@ const MAX_AUTH_RESPONSE_BYTES = 1024 * 1024;
 const MAX_DETAIL = 300;
 
 /**
- * The plaintext endpoints a credential source may reach without
- * `ZUKE_ALLOW_INSECURE_URL`: each cloud's link-local metadata service, which
- * is plaintext by design and reachable only from the machine itself. Matched
- * on the parsed URL's exact hostname, on port 80 — `169.254.169.254.evil.com`
- * or `169.254.169.254@evil.com` parse to other hosts and are not on it.
+ * The plaintext endpoints a built-in metadata request — and only such a
+ * request, never a token exchange whose URL came from configuration — may
+ * reach without `ZUKE_ALLOW_INSECURE_URL`: each cloud's link-local metadata
+ * service, which is plaintext by design and reachable only from the machine
+ * itself. Matched on the parsed URL's exact hostname, on port 80 —
+ * `169.254.169.254.evil.com` or `169.254.169.254@evil.com` parse to other
+ * hosts and are not on it.
  *
  * - `metadata.google.internal` — the GCE / GKE metadata server.
  * - `169.254.169.254` — Azure IMDS and EC2 IMDS.
@@ -66,6 +64,26 @@ export interface AuthRequest {
   readonly body?: string;
 }
 
+/**
+ * Which plaintext endpoints a step may use beyond core's rule (https, or
+ * loopback):
+ *
+ * - `"metadata"` — the link-local metadata hosts above. Set only by the
+ *   built-in metadata requests: the GCE metadata server, Azure IMDS, EC2
+ *   IMDS, the ECS / EKS container endpoints, and a Google federation
+ *   subject-token `url`.
+ * - `"private"` — those, plus any RFC 1918 or link-local IPv4 address. Set
+ *   only by the Azure App Service identity request, whose `IDENTITY_ENDPOINT`
+ *   is an internal plain-http address on Linux, and which carries the
+ *   platform's SSRF header.
+ *
+ * A step without one — every token exchange that sends a client secret,
+ * refresh token, assertion or subject token — gets core's rule unchanged, so
+ * a configured `token_uri` or authority host on a metadata address is still
+ * refused.
+ */
+export type PlaintextAllowance = "metadata" | "private";
+
 /** Who is asking, for the error message, and what it must never contain. */
 export interface AuthStep {
   /** The provider, such as `google` or `aws`. */
@@ -74,16 +92,28 @@ export interface AuthStep {
   readonly step: string;
   /** Every secret the request carries, masked in any error it raises. */
   readonly secrets: readonly string[];
+  /** The plaintext endpoints this step may use; none when absent. */
+  readonly plaintext?: PlaintextAllowance;
+}
+
+/** Whether `host` is an RFC 1918 private or a link-local IPv4 address. */
+function isPrivateIpv4(host: string): boolean {
+  const octets = /^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/.exec(host);
+  if (octets === null) return false;
+  const [a, b] = [Number(octets[1]), Number(octets[2])];
+  return a === 10 || (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) || (a === 169 && b === 254);
 }
 
 /**
  * Refuse a plaintext token endpoint, exactly as the Prometheus URL is refused
- * — except the metadata services in {@link METADATA_HOSTS}.
+ * — except what the step's {@link PlaintextAllowance} admits.
  */
 function assertAuthEndpoint(
   raw: string,
   what: string,
   readEnv: (name: string) => string | undefined,
+  plaintext: PlaintextAllowance | undefined,
 ): void {
   let url: URL;
   try {
@@ -91,11 +121,9 @@ function assertAuthEndpoint(
   } catch {
     throw new Error(`${what} is not a valid URL`);
   }
-  if (
-    url.protocol === "http:" && url.port === "" &&
-    METADATA_HOSTS.has(url.hostname)
-  ) {
-    return;
+  if (url.protocol === "http:" && plaintext !== undefined) {
+    if (url.port === "" && METADATA_HOSTS.has(url.hostname)) return;
+    if (plaintext === "private" && isPrivateIpv4(url.hostname)) return;
   }
   assertSecureBackendUrl(raw, what, readEnv);
 }
@@ -105,12 +133,6 @@ function redactorOf(secrets: readonly string[]): Redactor {
   const redactor = new Redactor();
   for (const secret of secrets) registerSecrets(redactor, secret);
   return redactor;
-}
-
-/** `text` scrubbed of `secrets` and URL credentials, collapsed and capped. */
-function scrub(redactor: Redactor, text: string): string {
-  const clean = redactUrls(redactor.redact(text)).replace(/\s+/g, " ").trim();
-  return clean.length > MAX_DETAIL ? `${clean.slice(0, MAX_DETAIL)}…` : clean;
 }
 
 /**
@@ -157,12 +179,15 @@ export async function authRequest(
   const redactor = redactorOf(step.secrets);
   const fail = (why: string) =>
     new Error(
-      `${step.provider}: ${step.step} failed: ${scrub(redactor, why)}`,
+      `${step.provider}: ${step.step} failed: ${
+        scrub(redactor, why, MAX_DETAIL)
+      }`,
     );
   assertAuthEndpoint(
     request.url,
     `the ${step.provider} credential endpoint for ${step.step}`,
     context.readEnv,
+    step.plaintext,
   );
   let response: Response;
   try {
@@ -176,11 +201,7 @@ export async function authRequest(
   } catch (error) {
     throw fail(messageOf(error));
   }
-  if (
-    response.type === "opaqueredirect" ||
-    (response.status >= 300 && response.status < 400)
-  ) {
-    await response.body?.cancel();
+  if (await refusedRedirect(response)) {
     throw fail(`HTTP ${response.status}, a redirect, which is not followed`);
   }
   const bytes = await readBytesBounded(response.body, MAX_AUTH_RESPONSE_BYTES);

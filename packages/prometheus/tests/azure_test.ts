@@ -227,19 +227,49 @@ Deno.test("App Service's identity endpoint is used when it is configured", async
   assertEquals(system.sent[0].url.searchParams.has("client_id"), false);
 });
 
-Deno.test("an App Service endpoint off loopback must be https, like any token endpoint", async () => {
-  const fetcher = routes({});
-  await assertRejects(
-    () =>
-      headers({
-        env: {
-          IDENTITY_ENDPOINT: "http://10.0.0.5:8081/msi/token",
-          IDENTITY_HEADER: "h-value-123",
-        },
-        fetch: fetcher,
-      }),
-    InsecureBackendUrlError,
+Deno.test("Linux App Service's private plain-http identity endpoint is allowed, nothing broader", async () => {
+  const endpoint = "http://172.16.1.5:8081/msi/token";
+  const fetcher = routes({ [`GET ${endpoint}`]: entra("linux-app-token") });
+  assertEquals(
+    await headers({
+      env: { IDENTITY_ENDPOINT: endpoint, IDENTITY_HEADER: "h-value-123" },
+      fetch: fetcher,
+    }),
+    { authorization: "Bearer linux-app-token" },
   );
+  for (
+    const url of [
+      "http://203.0.113.5:8081/msi/token",
+      "http://appservice.internal:8081/msi/token",
+    ]
+  ) {
+    const refused = routes({});
+    await assertRejects(
+      () =>
+        headers({
+          env: { IDENTITY_ENDPOINT: url, IDENTITY_HEADER: "h-value-123" },
+          fetch: refused,
+        }),
+      InsecureBackendUrlError,
+    );
+    assertEquals(refused.sent.length, 0);
+  }
+});
+
+Deno.test("an authority host on a metadata address is refused, secret unsent", async () => {
+  const fetcher = routes({});
+  for (
+    const host of ["http://169.254.169.254", "http://metadata.google.internal"]
+  ) {
+    await assertRejects(
+      () =>
+        headers(
+          { env: SECRET_ENV, fetch: fetcher },
+          (a) => a.authorityHost(host),
+        ),
+      InsecureBackendUrlError,
+    );
+  }
   assertEquals(fetcher.sent.length, 0);
 });
 
@@ -325,7 +355,7 @@ Deno.test("a missing or malformed setting is named", async () => {
           (a) => a.tenantId(tenant).clientSecret(),
         ),
       Error,
-      tenant === "" ? "needs AZURE_TENANT_ID" : "the tenant id must be a GUID",
+      "the tenant id must be a GUID",
     );
     assertEquals(fetcher.sent.length, 0);
   }

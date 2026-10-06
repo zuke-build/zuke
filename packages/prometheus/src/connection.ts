@@ -33,14 +33,15 @@ import {
   basicCredentials,
   bearerCredentials,
   headerCredentials,
+  plainHeader,
   type PrometheusCredentials,
 } from "./credentials.ts";
 
 /** How long a call may take when no {@link PrometheusConnectionSettings.requestTimeout} is set. */
-export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
 /** The largest response body read when no {@link PrometheusConnectionSettings.maxResponseBytes} is set: 64 MiB. */
-export const DEFAULT_MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
+const DEFAULT_MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
 
 /** The connection half of every Prometheus call's settings. */
 export class PrometheusConnectionSettings {
@@ -93,11 +94,26 @@ export class PrometheusConnectionSettings {
   }
 
   /**
-   * Send a fixed header, such as a tenant id (`X-Scope-OrgID`) or an API key.
-   * Its value is masked in errors like any credential (when eight or more
-   * characters long).
+   * Send a fixed header, such as a tenant id (`X-Scope-OrgID`). A plain
+   * header does not make the call credentialed, so an in-cluster
+   * `http://` Mimir, Cortex or Thanos with a tenant header keeps working —
+   * except `Authorization`, `Proxy-Authorization` and `Cookie`, which are
+   * credentials whatever setter sends them. For an API key in any other
+   * header use {@link secretHeader}. The value is masked in errors either way
+   * (when eight or more characters long).
    */
   header(name: string, value: string): this {
+    this.credentials_.push(plainHeader(name, value));
+    return this;
+  }
+
+  /**
+   * Send a fixed header that carries a credential — an API key such as
+   * `X-API-Key`. Like `bearerToken`, it makes the call credentialed, so the
+   * URL must be `https:` unless it is loopback, and its value is masked in
+   * errors.
+   */
+  secretHeader(name: string, value: string): this {
     this.credentials_.push(headerCredentials(name, value));
     return this;
   }

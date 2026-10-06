@@ -10,8 +10,10 @@
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { Redactor } from "@zuke/core";
 import {
+  PrometheusApiError,
   type PrometheusCredentialsContext,
   type PrometheusOutgoingRequest,
+  type PrometheusQuerySettings,
   PrometheusRequestError,
   PrometheusTasks,
 } from "../mod.ts";
@@ -167,7 +169,7 @@ Deno.test("two sources setting the same header fail the call, naming the header"
           .header("Authorization", "Bearer test-token-two")
       ),
     PrometheusRequestError,
-    "two credential sources set the authorization header",
+    "the authorization header is already set",
   );
   await assertRejects(
     () =>
@@ -178,7 +180,45 @@ Deno.test("two sources setting the same header fail the call, naming the header"
     PrometheusRequestError,
     "content-type header",
   );
+  // A header the request sets itself is named as already set — not blamed on
+  // two credential sources.
+  const error = await assertRejects(
+    () =>
+      PrometheusTasks.query((s) =>
+        s.url(BASE).fetch(fetcher).query("q").header("Accept", "text/plain")
+      ),
+    PrometheusRequestError,
+    "the accept header is already set — by the request itself",
+  );
+  assertEquals(error.message.includes("two credential sources"), false);
   assertEquals(fetcher.sent.length, 0);
+});
+
+Deno.test("a basic-auth password echoed back decoded is masked", async () => {
+  const echo = fakeFetch((request) => {
+    const header = request.headers.get("authorization") ?? "";
+    const decoded = atob(header.replace("Basic ", ""));
+    return Response.json({
+      status: "error",
+      errorType: "unauthorized",
+      error: `bad credentials ${decoded}`,
+    }, { status: 401 });
+  });
+  for (
+    const configure of [
+      (s: PrometheusQuerySettings) =>
+        s.url(BASE).basicAuth("zuke", "pa55word-x"),
+      (s: PrometheusQuerySettings) =>
+        s.url("https://zuke:pa55word-x@prom.example"),
+    ]
+  ) {
+    const error = await assertRejects(
+      () => PrometheusTasks.query((s) => configure(s).fetch(echo).query("q")),
+      PrometheusApiError,
+      "bad credentials zuke:[redacted]",
+    );
+    assertEquals(error.message.includes("pa55word-x"), false);
+  }
 });
 
 Deno.test("a failing source fails the call, with earlier sources' secrets masked", async () => {

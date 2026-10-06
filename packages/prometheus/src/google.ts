@@ -22,6 +22,7 @@
  * @module
  */
 
+import { envValue } from "./env.ts";
 import { messageOf } from "./message.ts";
 import { signJwtRs256 } from "@zuke/core";
 import { authRequestJson, readAuthFile } from "./auth_http.ts";
@@ -162,6 +163,7 @@ async function metadataToken(
     "the metadata server token request (no GOOGLE_APPLICATION_CREDENTIALS " +
       "and no gcloud application-default credentials file were found)",
     [],
+    "metadata",
   );
   const answer = await authRequestJson(context, step, {
     method: "GET",
@@ -182,12 +184,10 @@ function wellKnownFile(
   platform: typeof Deno.build.os,
 ): string | undefined {
   const name = "application_default_credentials.json";
-  const configured = readEnv("CLOUDSDK_CONFIG");
-  if (configured !== undefined && configured !== "") {
-    return joinPath(platform, configured, name);
-  }
-  const base = platform === "windows" ? readEnv("APPDATA") : readEnv("HOME");
-  if (base === undefined || base === "") return undefined;
+  const configured = envValue(readEnv, "CLOUDSDK_CONFIG");
+  if (configured !== undefined) return joinPath(platform, configured, name);
+  const base = envValue(readEnv, platform === "windows" ? "APPDATA" : "HOME");
+  if (base === undefined) return undefined;
   return platform === "windows"
     ? joinPath(platform, base, "gcloud", name)
     : joinPath(platform, base, ".config", "gcloud", name);
@@ -219,8 +219,8 @@ async function locateFile(
   platform: typeof Deno.build.os,
 ): Promise<CredentialsFile | undefined> {
   const named = settings.credentialsFile_ ??
-    context.readEnv("GOOGLE_APPLICATION_CREDENTIALS");
-  if (named !== undefined && named !== "") {
+    envValue(context.readEnv, "GOOGLE_APPLICATION_CREDENTIALS");
+  if (named !== undefined) {
     const text = await readAuthFile(
       context,
       "google",
@@ -289,10 +289,10 @@ export function googleCredentials(
       file === undefined
         ? ["metadata", scopes]
         : ["file", file.path, file.text, scopes],
-      () =>
+      (shared) =>
         file === undefined
-          ? metadataToken(scopes, context)
-          : fileToken(file, scopes, context),
+          ? metadataToken(scopes, shared)
+          : fileToken(file, scopes, shared),
     );
     const project = settings.quotaProject_ ??
       (file === undefined

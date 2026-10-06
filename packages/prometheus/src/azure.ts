@@ -24,11 +24,13 @@
  * @module
  */
 
+import { envValue } from "./env.ts";
 import {
   answerSeconds,
   answerString,
   authRequestJson,
   type AuthStep,
+  type PlaintextAllowance,
   readAuthFile,
 } from "./auth_http.ts";
 import {
@@ -49,18 +51,21 @@ const IMDS_TOKEN_URL = "http://169.254.169.254/metadata/identity/oauth2/token";
 const tokens = new TokenCache<string>();
 
 /** The step descriptor for an Azure request. */
-function azureStep(step: string, secrets: readonly string[]): AuthStep {
-  return { provider: "azure", step, secrets };
+function azureStep(
+  step: string,
+  secrets: readonly string[],
+  plaintext?: PlaintextAllowance,
+): AuthStep {
+  return { provider: "azure", step, secrets, plaintext };
 }
 
-/** A non-empty value: the setting, else the environment variable. */
+/** The setting when one was made, else the environment variable. */
 function setting(
   value: string | undefined,
   env: string,
   context: PrometheusCredentialsContext,
 ): string | undefined {
-  const resolved = value ?? context.readEnv(env);
-  return resolved === "" ? undefined : resolved;
+  return value ?? envValue(context.readEnv, env);
 }
 
 /** A required value, or an error naming the setting and the variable. */
@@ -178,7 +183,12 @@ function resourceOf(scope: string): string {
 function managedIdentityRequest(
   settings: PrometheusAzureSettings,
   context: PrometheusCredentialsContext,
-): { url: string; headers: Record<string, string>; secrets: string[] } {
+): {
+  url: string;
+  headers: Record<string, string>;
+  secrets: string[];
+  plaintext: PlaintextAllowance;
+} {
   const clientId = setting(settings.clientId_, "AZURE_CLIENT_ID", context);
   const resource = resourceOf(settings.scope_);
   const endpoint = setting(undefined, "IDENTITY_ENDPOINT", context);
@@ -187,7 +197,12 @@ function managedIdentityRequest(
     url.searchParams.set("api-version", "2018-02-01");
     url.searchParams.set("resource", resource);
     if (clientId !== undefined) url.searchParams.set("client_id", clientId);
-    return { url: url.href, headers: { metadata: "true" }, secrets: [] };
+    return {
+      url: url.href,
+      headers: { metadata: "true" },
+      secrets: [],
+      plaintext: "metadata",
+    };
   }
   const header = setting(undefined, "IDENTITY_HEADER", context);
   if (
@@ -214,6 +229,10 @@ function managedIdentityRequest(
     url: url.href,
     headers: { "x-identity-header": header },
     secrets: [header],
+    // On Linux App Service the endpoint is an internal plain-http address
+    // (`http://172.x.x.x:8081/msi/token`); the private-network allowance
+    // admits exactly that, and the SSRF header must be present to get here.
+    plaintext: "private",
   };
 }
 
@@ -226,6 +245,7 @@ async function managedIdentityToken(
   const step = azureStep(
     `the managed identity token request to ${request.url}`,
     request.secrets,
+    request.plaintext,
   );
   const answer = await authRequestJson(context, step, {
     method: "GET",
@@ -274,13 +294,13 @@ async function azureToken(
       return await tokens.get(
         context,
         ["secret", app.tokenUrl, app.clientId, secret, scope],
-        () =>
+        (shared) =>
           clientCredentials(
             app,
             { scope, client_secret: secret },
             secret,
             what,
-            context,
+            shared,
           ),
       );
     }
@@ -299,9 +319,9 @@ async function azureToken(
       return await tokens.get(
         context,
         ["workload", app.tokenUrl, app.clientId, file, scope],
-        async () => {
+        async (shared) => {
           const assertion = (await readAuthFile(
-            context,
+            shared,
             "azure",
             "the federated token",
             file,
@@ -316,7 +336,7 @@ async function azureToken(
             },
             assertion,
             what,
-            context,
+            shared,
           );
         },
       );
@@ -326,11 +346,11 @@ async function azureToken(
         context,
         [
           "managed",
-          context.readEnv("IDENTITY_ENDPOINT"),
+          envValue(context.readEnv, "IDENTITY_ENDPOINT"),
           setting(settings.clientId_, "AZURE_CLIENT_ID", context),
           scope,
         ],
-        () => managedIdentityToken(settings, context),
+        (shared) => managedIdentityToken(settings, shared),
       );
   }
 }

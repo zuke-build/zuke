@@ -19,16 +19,19 @@ import {
   readBytesBounded,
   Redactor,
   redactUrl,
-  redactUrls,
 } from "@zuke/core";
+import { raceSignal } from "./abort.ts";
 import type { PrometheusConnectionSettings } from "./connection.ts";
 import {
   authorize,
   basicCredentials,
+  isCredential,
   type PrometheusCredentials,
   type PrometheusCredentialsContext,
 } from "./credentials.ts";
 import { PrometheusApiError, PrometheusRequestError } from "./errors.ts";
+import { messageOf } from "./message.ts";
+import { refusedRedirect, scrub as scrubText } from "./scrub.ts";
 import { isRecord, own, readStringArray } from "./shape.ts";
 import type { PrometheusHttpMethod, PrometheusResponse } from "./types.ts";
 import { uriEncode } from "./uri.ts";
@@ -77,8 +80,9 @@ interface Answer {
 /**
  * Validate the settings into a {@link Connection}: a URL is required, must
  * parse, and must be `http:` or `https:`; and when the call carries any
- * credential — a configured source, or userinfo in the URL — it must pass
- * core's plaintext guard.
+ * credential — a credential source, userinfo in the URL, or a credential in
+ * its query string — it must pass core's plaintext guard. (A secret in a
+ * path segment cannot be told from any other path, so it does not count.)
  */
 function connect(settings: PrometheusConnectionSettings): Connection {
   const raw = settings.url_;
@@ -115,14 +119,18 @@ function connect(settings: PrometheusConnectionSettings): Connection {
   // Plaintext is refused only when a credential would ride on it. An
   // unauthenticated in-cluster Prometheus (`http://prometheus.monitoring.svc`)
   // has nothing to steal, and refusing it broke every canary pointed at one.
-  if (credentials.length > 0) {
+  // A credential in the query (`?access_token=…`) is found by core's one URL
+  // redactor: if redacting the URL changes it, there was something to redact.
+  base.hash = "";
+  if (
+    credentials.some(isCredential) || redactUrl(base.href) !== base.href
+  ) {
     assertSecureBackendUrl(
       raw,
       "the Prometheus URL, when credentials are configured,",
       settings.readEnv_,
     );
   }
-  base.hash = "";
   return {
     base,
     credentials,
@@ -184,10 +192,7 @@ function endpointUrl(base: URL, call: PrometheusCall): URL {
 
 /** `text` scrubbed of registered secrets and URL credentials, then capped. */
 function scrub(redactor: Redactor, text: string): string {
-  // Scrub first, cap second: capping first could cut a secret in half and
-  // leave its prefix where no pattern matches it any more.
-  const clean = redactUrls(redactor.redact(text)).replace(/\s+/g, " ").trim();
-  return clean.length > MAX_DETAIL ? `${clean.slice(0, MAX_DETAIL)}…` : clean;
+  return scrubText(redactor, text, MAX_DETAIL);
 }
 
 /**
@@ -217,11 +222,16 @@ async function send(
     }
     : { accept: "application/json" };
   try {
-    const headers = await authorize(
-      connection.credentials,
-      { method: call.method, url: url.href, headers: baseHeaders, body },
-      { ...connection.seams, signal },
-      redactor,
+    // Raced against the call's signal: a credential source that never
+    // settles must not outlive the timeout that is meant to be end to end.
+    const headers = await raceSignal(
+      authorize(
+        connection.credentials,
+        { method: call.method, url: url.href, headers: baseHeaders, body },
+        { ...connection.seams, signal },
+        redactor,
+      ),
+      signal,
     );
     const response = await connection.fetch(url.href, {
       method: call.method,
@@ -232,11 +242,7 @@ async function send(
       // https guard never saw, with the credential attached.
       redirect: "manual",
     });
-    if (
-      response.type === "opaqueredirect" ||
-      (response.status >= 300 && response.status < 400)
-    ) {
-      await response.body?.cancel();
+    if (await refusedRedirect(response)) {
       throw new PrometheusApiError(
         call.method,
         call.path,
@@ -271,7 +277,7 @@ async function send(
     if (connection.signal?.aborted === true) throw connection.signal.reason;
     const reason = timeout.aborted
       ? `timed out after ${connection.timeoutMs} ms`
-      : scrub(redactor, String(error));
+      : scrub(redactor, messageOf(error));
     throw new PrometheusRequestError(call.method, call.path, undefined, reason);
   }
 }
@@ -351,7 +357,7 @@ export async function callApi<T>(
       infos: infos === undefined ? [] : readStringArray(infos, "infos"),
     };
   } catch (error) {
-    throw fail(`unexpected answer: ${scrub(redactor, String(error))}`);
+    throw fail(`unexpected answer: ${scrub(redactor, messageOf(error))}`);
   }
 }
 

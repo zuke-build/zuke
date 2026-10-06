@@ -84,8 +84,13 @@ export interface PrometheusCredentialsContext {
  * shorter than eight characters excepted — see {@link registerSecrets}). A
  * source that throws fails the call with a
  * {@link "./errors.ts".PrometheusRequestError} whose message is scrubbed the
- * same way. A source that caches (a token until its expiry) keeps that state
- * in its own closure; it is called once per request.
+ * same way. It is called once per request.
+ *
+ * A source that caches — a token until its expiry — must keep that cache
+ * outside the settings lambda: the lambda runs on every call, so a source
+ * created inside it starts empty each time. Define the source once at module
+ * level (or key its cache in module state, as the built-in `google`, `azure`
+ * and `sigv4` sources do) and pass that one function to `credentials(...)`.
  */
 export type PrometheusCredentials = (
   request: PrometheusOutgoingRequest,
@@ -111,12 +116,55 @@ export function registerSecrets(redactor: Redactor, value: string): void {
   }
 }
 
-/** A source that adds one fixed header. */
+/**
+ * Sources that add a plain header — a tenant id, a content negotiation
+ * header — rather than a credential. They do not make a call credentialed for
+ * the plaintext rule. Kept here, beside the constructors that mark them, so
+ * the mark cannot be set from outside the package.
+ */
+const plainSources = new WeakSet<PrometheusCredentials>();
+
+/**
+ * Secrets a source carries beyond the header values it returns — basic
+ * auth's password, which a server echoes back decoded, not base64-encoded.
+ */
+const extraSecrets = new WeakMap<PrometheusCredentials, readonly string[]>();
+
+/**
+ * Header names whose value is a credential however it is configured: the
+ * `Authorization` and `Proxy-Authorization` schemes, and a session cookie.
+ */
+const CREDENTIAL_HEADERS: ReadonlySet<string> = new Set([
+  "authorization",
+  "proxy-authorization",
+  "cookie",
+]);
+
+/** A source that adds one fixed header, as a credential. */
 export function headerCredentials(
   name: string,
   value: string,
 ): PrometheusCredentials {
   return () => ({ [name]: value });
+}
+
+/**
+ * A source that adds one fixed header set by `header(...)`: a credential when
+ * its name is `Authorization`, `Proxy-Authorization` or `Cookie`, a plain
+ * header otherwise. Its value is masked in errors either way.
+ */
+export function plainHeader(
+  name: string,
+  value: string,
+): PrometheusCredentials {
+  const source = headerCredentials(name, value);
+  if (!CREDENTIAL_HEADERS.has(name.toLowerCase())) plainSources.add(source);
+  return source;
+}
+
+/** Whether `source` carries a credential, for the plaintext rule. */
+export function isCredential(source: PrometheusCredentials): boolean {
+  return !plainSources.has(source);
 }
 
 /** `Authorization: Bearer <token>`. */
@@ -143,7 +191,9 @@ export function basicCredentials(
   }
   const bytes = new TextEncoder().encode(`${username}:${password}`);
   const encoded = btoa(String.fromCharCode(...bytes));
-  return headerCredentials("authorization", `Basic ${encoded}`);
+  const source = headerCredentials("authorization", `Basic ${encoded}`);
+  extraSecrets.set(source, [password]);
+  return source;
 }
 
 /**
@@ -161,6 +211,9 @@ export async function authorize(
   // header, not become an assignment to the object's prototype.
   const headers = new Map(Object.entries(request.headers));
   for (const source of sources) {
+    for (const secret of extraSecrets.get(source) ?? []) {
+      registerSecrets(redactor, secret);
+    }
     const added = await source(
       {
         ...request,
@@ -182,8 +235,9 @@ export async function authorize(
       }
       if (headers.has(key)) {
         throw new Error(
-          `two credential sources set the ${key} header — configure one ` +
-            `(bearerToken, basicAuth, header and credentials each add theirs)`,
+          `the ${key} header is already set — by the request itself ` +
+            `(accept, content-type) or by an earlier header or credential ` +
+            `setter; set each header once`,
         );
       }
       headers.set(key, value);

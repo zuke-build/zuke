@@ -16,6 +16,7 @@
  * @module
  */
 
+import { envValue } from "./env.ts";
 import { messageOf } from "./message.ts";
 import type { PrometheusCredentialsContext } from "./credentials.ts";
 import type { AwsCredentials } from "./aws_sigv4.ts";
@@ -75,10 +76,11 @@ function sharedPath(
   variable: string,
   name: string,
 ): string | undefined {
-  const named = context.readEnv(variable);
-  if (named !== undefined && named !== "") return named;
-  const home = context.readEnv("HOME") || context.readEnv("USERPROFILE");
-  return home === undefined || home === "" ? undefined : `${home}/.aws/${name}`;
+  const named = envValue(context.readEnv, variable);
+  if (named !== undefined) return named;
+  const home = envValue(context.readEnv, "HOME") ??
+    envValue(context.readEnv, "USERPROFILE");
+  return home === undefined ? undefined : `${home}/.aws/${name}`;
 }
 
 /**

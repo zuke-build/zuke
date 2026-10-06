@@ -130,6 +130,7 @@ async function subjectToken(
       googleStep(
         `reading the workload identity subject token from ${url}`,
         Object.values(sent),
+        "metadata",
       ),
       { method: "GET", url, headers: sent },
     );

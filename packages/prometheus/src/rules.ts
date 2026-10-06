@@ -146,7 +146,10 @@ export interface PrometheusAlertingRule extends PrometheusRuleFields {
   readonly duration: number;
   /** The rule's annotations. */
   readonly annotations: PrometheusLabels;
-  /** The rule's active alerts; absent when `excludeAlerts` was set. */
+  /**
+   * The rule's active alerts; absent when `excludeAlerts` was set (the server
+   * then sends `"alerts": null`, read as absent).
+   */
   readonly alerts?: readonly PrometheusAlert[];
   /** The rule's state: `firing`, `pending` or `inactive`. */
   readonly state?: string;
@@ -253,7 +256,7 @@ function parseRule(value: unknown): PrometheusRule {
     type,
     duration: readNumber(rule, "duration", what),
     annotations: readOptionalLabels(rule, "annotations", what),
-    alerts: alerts === undefined
+    alerts: alerts === undefined || alerts === null
       ? undefined
       : readArray(alerts, "a rule's alerts").map(parseAlert),
     state: readOptionalString(rule, "state", what),

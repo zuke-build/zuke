@@ -68,12 +68,22 @@ query with `histogram_quantile(...)` or `histogram_count(...)`.
 
 - `url(...)` — the base URL; a path or query string it carries (a proxy prefix,
   a tenant parameter) is kept. Userinfo in it is sent as basic auth. When the
-  call carries any credential — a source below, or that userinfo — the URL must
-  be `https:` unless it is loopback, or `ZUKE_ALLOW_INSECURE_URL` is set. An
+  call carries any credential — a credential setter below, that userinfo, or a
+  credential-bearing query parameter such as `?access_token=…` — the URL must be
+  `https:` unless it is loopback, or `ZUKE_ALLOW_INSECURE_URL` is set. An
   unauthenticated URL may be plaintext: an in-cluster
-  `http://prometheus.monitoring.svc:9090` has no credential to steal.
-- `bearerToken(...)`, `basicAuth(...)`, `header(...)` — the built-in
-  credentials.
+  `http://prometheus.monitoring.svc:9090` has no credential to steal. (A secret
+  in a path segment cannot be told from any other path, so it does not count —
+  pass it with a credential setter instead.)
+- `bearerToken(...)`, `basicAuth(...)`, `secretHeader(...)` — the built-in
+  credentials; `secretHeader` is for an API key in a header of its own.
+- `header(...)` — a plain header, such as a Mimir, Cortex or Thanos tenant's
+  `X-Scope-OrgID`. It does not make the call credentialed, so an in-cluster
+  `http://` URL with a tenant header keeps working — except `Authorization`,
+  `Proxy-Authorization` and `Cookie`, which count as credentials whichever
+  setter sends them. Every header value of eight or more characters is masked in
+  errors either way. Setting a header twice (including the `accept` and
+  `content-type` the request sets itself) fails the call.
 - `google(...)`, `azure(...)`, `sigv4(...)` — the managed services' own
   authentication, with no cloud CLI installed; see below.
 - `credentials(source)` — any function handed the outgoing request (method, full
@@ -172,15 +182,35 @@ The region is not read from the shared config file. The signing is checked
 against the AWS Signature Version 4 test suite.
 
 **Shared rules.** Tokens and temporary credentials are cached in-process until
-five minutes before they expire, and concurrent calls share one fetch. A failed
-token fetch fails the call with a `PrometheusRequestError` naming the provider
-and the step — never the secret, assertion, refresh token or token involved.
-Token endpoints follow the same plaintext rule as the server, with one
-exception: the link-local metadata services that are plaintext by design —
-`metadata.google.internal`, `169.254.169.254`, `169.254.170.2`, `169.254.170.23`
-and `[fd00:ec2::23]`, on port 80 — and nothing else. An App Service
-`IDENTITY_ENDPOINT` must therefore be loopback or `https:` unless
-`ZUKE_ALLOW_INSECURE_URL` is set.
+five minutes before they expire, and concurrent calls share one fetch. That
+fetch runs under its own 30-second timeout, so one caller's cancellation or
+timeout does not fail the others waiting on it; each caller still stops waiting
+when its own signal fires. If a refresh fails while the cached token has not yet
+expired, the cached token is used. Otherwise a failed token fetch fails the call
+with a `PrometheusRequestError` naming the provider and the step — never the
+secret, assertion, refresh token or token involved.
+
+Token endpoints follow the same plaintext rule as the server. The only
+exceptions are the built-in metadata requests — the GCE metadata server, Azure
+IMDS, EC2 IMDS, the ECS / EKS container endpoints and a Google federation
+subject-token `url` — which may use the link-local metadata hosts that are
+plaintext by design: `metadata.google.internal`, `169.254.169.254`,
+`169.254.170.2`, `169.254.170.23` and `[fd00:ec2::23]`, on port 80. A token
+exchange that sends a secret never gets that exception, so a credentials file's
+`token_uri` or an authority host pointing at a metadata address is refused. The
+Azure App Service identity endpoint, which Linux App Service sets to an internal
+plain-http address (`http://172.x.x.x:8081/msi/token`), may also be plaintext
+when its host is loopback, link-local or an RFC 1918 private IPv4 address — and
+only when `IDENTITY_HEADER` is set.
+
+**Proxies.** Deno's `fetch` honours `HTTP_PROXY` / `HTTPS_PROXY`, so on a runner
+with a proxy configured, add the metadata hosts above to `NO_PROXY` — a metadata
+service answers only the machine itself, and a proxy would either fail the
+request or see the token.
+
+**Form POSTs.** `query`, `queryRange`, `series` and `labels` are sent as a form
+`POST`. If a managed endpoint refuses that, `httpMethod("GET")` sends the
+parameters in the URL instead (still signed or authenticated the same way).
 
 ## Errors
 
@@ -367,9 +397,18 @@ class PrometheusConnectionSettings
   basicAuth(username: string, password: string): this
     Authenticate with HTTP basic auth (`Authorization: Basic …`).
   header(name: string, value: string): this
-    Send a fixed header, such as a tenant id (`X-Scope-OrgID`) or an API key.
-    Its value is masked in errors like any credential (when eight or more
-    characters long).
+    Send a fixed header, such as a tenant id (`X-Scope-OrgID`). A plain
+    header does not make the call credentialed, so an in-cluster
+    `http://` Mimir, Cortex or Thanos with a tenant header keeps working —
+    except `Authorization`, `Proxy-Authorization` and `Cookie`, which are
+    credentials whatever setter sends them. For an API key in any other
+    header use {@link secretHeader}. The value is masked in errors either way
+    (when eight or more characters long).
+  secretHeader(name: string, value: string): this
+    Send a fixed header that carries a credential — an API key such as
+    `X-API-Key`. Like `bearerToken`, it makes the call credentialed, so the
+    URL must be `https:` unless it is loopback, and its value is masked in
+    errors.
   credentials(source: PrometheusCredentials): this
     Add a credential source: a function handed the outgoing request — method,
     full URL, headers so far, body bytes — and the connection's seams, that
@@ -691,7 +730,8 @@ interface PrometheusAlertingRule extends PrometheusRuleFields
   readonly annotations: PrometheusLabels
     The rule's annotations.
   readonly alerts?: readonly PrometheusAlert[]
-    The rule's active alerts; absent when `excludeAlerts` was set.
+    The rule's active alerts; absent when `excludeAlerts` was set (the server
+    then sends `"alerts": null`, read as absent).
   readonly state?: string
     The rule's state: `firing`, `pending` or `inactive`.
 
@@ -1022,8 +1062,13 @@ type PrometheusCredentials = (request: PrometheusOutgoingRequest, context: Prome
   shorter than eight characters excepted — see {@link registerSecrets}). A
   source that throws fails the call with a
   {@link "./errors.ts".PrometheusRequestError} whose message is scrubbed the
-  same way. A source that caches (a token until its expiry) keeps that state
-  in its own closure; it is called once per request.
+  same way. It is called once per request.
+
+  A source that caches — a token until its expiry — must keep that cache
+  outside the settings lambda: the lambda runs on every call, so a source
+  created inside it starts empty each time. Define the source once at module
+  level (or key its cache in module state, as the built-in `google`, `azure`
+  and `sigv4` sources do) and pass that one function to `credentials(...)`.
 
 type PrometheusDuration = string | number
   A duration an API parameter accepts: Prometheus duration text such as

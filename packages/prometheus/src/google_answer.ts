@@ -9,13 +9,22 @@
  * @module
  */
 
-import { answerSeconds, answerString, type AuthStep } from "./auth_http.ts";
+import {
+  answerSeconds,
+  answerString,
+  type AuthStep,
+  type PlaintextAllowance,
+} from "./auth_http.ts";
 import { own } from "./shape.ts";
 import type { Expiring } from "./token_cache.ts";
 
 /** The step descriptor for a Google request, with the secrets it carries. */
-export function googleStep(step: string, secrets: readonly string[]): AuthStep {
-  return { provider: "google", step, secrets };
+export function googleStep(
+  step: string,
+  secrets: readonly string[],
+  plaintext?: PlaintextAllowance,
+): AuthStep {
+  return { provider: "google", step, secrets, plaintext };
 }
 
 /**

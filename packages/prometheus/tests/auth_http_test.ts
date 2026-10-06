@@ -37,11 +37,12 @@ function get(
   url: string,
   respond: () => Response | Promise<Response>,
   env: Record<string, string> = {},
+  step: AuthStep = STEP,
 ) {
   const fetcher = fakeFetch(respond);
   return {
     fetcher,
-    result: authRequest(context({ env, fetch: fetcher }), STEP, {
+    result: authRequest(context({ env, fetch: fetcher }), step, {
       method: "GET",
       url,
       headers: {},
@@ -49,7 +50,70 @@ function get(
   };
 }
 
-Deno.test("the link-local metadata endpoints are the only plaintext ones allowed", async () => {
+/** The metadata hosts, each as a built-in metadata request would reach it. */
+const METADATA_URLS = [
+  "http://metadata.google.internal/computeMetadata/v1/x",
+  "http://169.254.169.254/latest/api/token",
+  "http://169.254.170.2/v2/credentials/abc",
+  "http://169.254.170.23/v1/credentials",
+  "http://[fd00:ec2::23]/v1/credentials",
+];
+
+Deno.test("a step that sends a secret gets no metadata exemption", async () => {
+  for (const url of METADATA_URLS) {
+    const { fetcher, result } = get(url, () => new Response("ok"));
+    await assertRejects(
+      () => result,
+      InsecureBackendUrlError,
+      "the test credential endpoint for the token request must use https",
+    );
+    assertEquals(fetcher.sent.length, 0, url);
+  }
+});
+
+Deno.test("the private-network allowance admits RFC 1918 and link-local IPv4 only", async () => {
+  const appService: AuthStep = { ...STEP, plaintext: "private" };
+  for (
+    const url of [
+      "http://10.0.0.5:8081/msi/token",
+      "http://172.16.0.5:8081/msi/token",
+      "http://172.31.255.1:8081/msi/token",
+      "http://192.168.1.1:8081/msi/token",
+      "http://169.254.255.2:8081/msi/token",
+      "http://169.254.169.254/metadata/identity/oauth2/token",
+      "http://127.0.0.1:41056/msi/token",
+    ]
+  ) {
+    const { result } = get(url, () => new Response("ok"), {}, appService);
+    assertEquals(await result, "ok", url);
+  }
+  for (
+    const url of [
+      "http://172.32.0.1:8081/msi/token",
+      "http://172.15.0.1:8081/msi/token",
+      "http://11.0.0.1:8081/msi/token",
+      "http://192.169.0.1:8081/msi/token",
+      "http://203.0.113.5:8081/msi/token",
+      "http://appservice.internal:8081/msi/token",
+      "http://10.0.0.5.evil.example/msi/token",
+    ]
+  ) {
+    const { fetcher, result } = get(url, () => new Response(), {}, appService);
+    await assertRejects(() => result, InsecureBackendUrlError);
+    assertEquals(fetcher.sent.length, 0, url);
+  }
+  const metadataOnly: AuthStep = { ...STEP, plaintext: "metadata" };
+  const { result } = get(
+    "http://10.0.0.5:8081/msi/token",
+    () => new Response(),
+    {},
+    metadataOnly,
+  );
+  await assertRejects(() => result, InsecureBackendUrlError);
+});
+
+Deno.test("the link-local metadata endpoints are the only plaintext ones a metadata request may use", async () => {
+  const metadata: AuthStep = { ...STEP, plaintext: "metadata" };
   for (
     const url of [
       "http://metadata.google.internal/computeMetadata/v1/x",
@@ -61,7 +125,7 @@ Deno.test("the link-local metadata endpoints are the only plaintext ones allowed
       "https://login.example/token",
     ]
   ) {
-    const { result } = get(url, () => new Response("ok"));
+    const { result } = get(url, () => new Response("ok"), {}, metadata);
     assertEquals(await result, "ok");
   }
   for (
@@ -75,9 +139,15 @@ Deno.test("the link-local metadata endpoints are the only plaintext ones allowed
       "http://169.254.169.253/token",
       "http://[fd00:ec2::24]/v1/credentials",
       "http://login.example/token",
+      "http://10.0.0.5/token",
     ]
   ) {
-    const { fetcher, result } = get(url, () => new Response("ok"));
+    const { fetcher, result } = get(
+      url,
+      () => new Response("ok"),
+      {},
+      metadata,
+    );
     await assertRejects(
       () => result,
       InsecureBackendUrlError,

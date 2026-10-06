@@ -14,11 +14,13 @@
  * @module
  */
 
+import { envValue } from "./env.ts";
 import {
   answerString,
   authRequest,
   authRequestJson,
   type AuthStep,
+  type PlaintextAllowance,
   readAuthFile,
 } from "./auth_http.ts";
 import type { AwsCredentials } from "./aws_sigv4.ts";
@@ -36,8 +38,12 @@ const IMDS = "http://169.254.169.254";
 const IMDS_TOKEN_TTL = "21600";
 
 /** The step descriptor for an AWS request. */
-function awsStep(step: string, secrets: readonly string[]): AuthStep {
-  return { provider: "aws", step, secrets };
+function awsStep(
+  step: string,
+  secrets: readonly string[],
+  plaintext?: PlaintextAllowance,
+): AuthStep {
+  return { provider: "aws", step, secrets, plaintext };
 }
 
 /** An ISO-8601 expiration as epoch ms, or an error naming the step. */
@@ -159,21 +165,25 @@ export async function containerCredentials(
   } else {
     url = endpoint.full;
   }
-  const tokenFile = context.readEnv("AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE");
-  const token = tokenFile !== undefined && tokenFile !== ""
+  const tokenFile = envValue(
+    context.readEnv,
+    "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE",
+  );
+  const token = tokenFile !== undefined
     ? (await readAuthFile(
       context,
       "aws",
       "the container authorization token",
       tokenFile,
     )).trim()
-    : context.readEnv("AWS_CONTAINER_AUTHORIZATION_TOKEN");
+    : envValue(context.readEnv, "AWS_CONTAINER_AUTHORIZATION_TOKEN");
   const headers: Record<string, string> = token === undefined || token === ""
     ? {}
     : { authorization: token };
   const step = awsStep(
     `the container credentials request to ${url}`,
     token === undefined ? [] : [token],
+    "metadata",
   );
   const answer = await authRequestJson(context, step, {
     method: "GET",
@@ -194,7 +204,7 @@ export async function instanceCredentials(
 ): Promise<Expiring<AwsCredentials>> {
   const session = await authRequest(
     context,
-    awsStep("the IMDSv2 session token request", []),
+    awsStep("the IMDSv2 session token request", [], "metadata"),
     {
       method: "PUT",
       url: `${IMDS}/latest/api/token`,
@@ -205,7 +215,7 @@ export async function instanceCredentials(
   const listing = `${IMDS}/latest/meta-data/iam/security-credentials/`;
   const roles = await authRequest(
     context,
-    awsStep("reading the instance profile's role name", [session]),
+    awsStep("reading the instance profile's role name", [session], "metadata"),
     { method: "GET", url: listing, headers },
   );
   const role = roles.split("\n")[0].trim();
@@ -217,7 +227,11 @@ export async function instanceCredentials(
         "instance profile attached?",
     );
   }
-  const step = awsStep(`reading the credentials of role ${role}`, [session]);
+  const step = awsStep(
+    `reading the credentials of role ${role}`,
+    [session],
+    "metadata",
+  );
   const answer = await authRequestJson(context, step, {
     method: "GET",
     url: `${listing}${role}`,

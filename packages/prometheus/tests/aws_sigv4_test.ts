@@ -11,6 +11,12 @@
  * with the suite's documented example key (`AKIDEXAMPLE` — AWS's published
  * placeholder, not a credential). The `post-x-www-form-urlencoded` case signs
  * its body hash header, which the suite's `sign_body` option adds.
+ *
+ * The suite's `get-utf8` and `get-space-normalized` cases are left out: their
+ * request lines carry a raw, unencoded path (`/ሴ`, `/example space/`) that no
+ * HTTP client sends, and encode it once. A real request's path is already
+ * percent-encoded, and SigV4 for every service but S3 encodes it again
+ * (botocore's `SigV4Auth`); that rule is tested on its own below.
  */
 
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
@@ -88,36 +94,6 @@ const VECTORS: Vector[] = [
       "AWS4-HMAC-SHA256\n20150830T123600Z\n20150830/us-east-1/service/aws4_request\nc30d4703d9f799439be92736156d47ccfb2d879ddf56f5befa6d1d6aab979177",
     "signature":
       "9c3e54bfcdf0b19771a7f523ee5669cdf59bc7cc0884027167c21bb143a40197",
-  },
-  {
-    "name": "get-utf8",
-    "method": "GET",
-    "target": "/ሴ",
-    "headers": {},
-    "body": "",
-    "signBody": false,
-    "token": null,
-    "canonical":
-      "GET\n/%E1%88%B4\n\nhost:example.amazonaws.com\nx-amz-date:20150830T123600Z\n\nhost;x-amz-date\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "stringToSign":
-      "AWS4-HMAC-SHA256\n20150830T123600Z\n20150830/us-east-1/service/aws4_request\n2a0a97d02205e45ce2e994789806b19270cfbbb0921b278ccf58f5249ac42102",
-    "signature":
-      "8318018e0b0f223aa2bbf98705b62bb787dc9c0e678f255a891fd03141be5d85",
-  },
-  {
-    "name": "get-space-normalized",
-    "method": "GET",
-    "target": "/example space/",
-    "headers": {},
-    "body": "",
-    "signBody": false,
-    "token": null,
-    "canonical":
-      "GET\n/example%20space/\n\nhost:example.amazonaws.com\nx-amz-date:20150830T123600Z\n\nhost;x-amz-date\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "stringToSign":
-      "AWS4-HMAC-SHA256\n20150830T123600Z\n20150830/us-east-1/service/aws4_request\n63ee75631ed7234ae61b5f736dfc7754cdccfedbff4b5128a915706ee9390d86",
-    "signature":
-      "652487583200325589f1fba4c7e578f72c47cb61beeca81406b39ddec1366741",
   },
   {
     "name": "get-vanilla-with-session-token",
@@ -249,24 +225,43 @@ Deno.test("SigV4 trims and collapses header values and signs the port in host", 
   ]);
 });
 
-Deno.test("SigV4 refuses a path or query that is not valid percent-encoding", async () => {
-  for (
-    const [url, part] of [["https://h.example/%zz", "path"], [
-      "https://h.example/?a=%zz",
-      "query",
-    ]]
-  ) {
-    await assertRejects(
-      () =>
-        signSigV4(
-          { method: "GET", url, headers: {}, body: new Uint8Array(0) },
-          KEY,
-          "us-east-1",
-          "aps",
-          NOW,
-        ),
-      Error,
-      `the URL's ${part} is not valid percent-encoding`,
+Deno.test("SigV4 double-encodes the wire path and drops empty and dot segments", async () => {
+  const cases: Array<[string, string]> = [
+    ["https://h.example/example%20space/", "/example%2520space/"],
+    ["https://h.example/\u1234", "/%25E1%2588%25B4"],
+    ["https://h.example/a//b/./c/%2E%2E/d", "/a/b/d"],
+    ["https://h.example/ws-1/api/v1/query", "/ws-1/api/v1/query"],
+    ["https://h.example//", "/"],
+    ["https://h.example/%zz", "/%25zz"],
+  ];
+  for (const [url, canonical] of cases) {
+    const signed = await signSigV4(
+      { method: "GET", url, headers: {}, body: new Uint8Array(0) },
+      KEY,
+      "us-east-1",
+      "aps",
+      NOW,
     );
+    assertEquals(signed.canonicalRequest.split("\n")[1], canonical, url);
   }
+});
+
+Deno.test("SigV4 refuses a query that is not valid percent-encoding", async () => {
+  await assertRejects(
+    () =>
+      signSigV4(
+        {
+          method: "GET",
+          url: "https://h.example/?a=%zz",
+          headers: {},
+          body: new Uint8Array(0),
+        },
+        KEY,
+        "us-east-1",
+        "aps",
+        NOW,
+      ),
+    Error,
+    "the URL's query is not valid percent-encoding",
+  );
 });

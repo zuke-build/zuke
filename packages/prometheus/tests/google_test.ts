@@ -13,6 +13,7 @@ import {
   assertRejects,
   assertStringIncludes,
 } from "../../core/tests/_assert.ts";
+import { InsecureBackendUrlError } from "@zuke/core";
 import { PrometheusGoogleSettings, PrometheusTasks } from "../mod.ts";
 import { googleCredentials } from "../src/google.ts";
 import {
@@ -151,6 +152,49 @@ Deno.test("a key's token_uri, a missing key id and custom scopes are honoured", 
       : undefined,
     "scope-a scope-b",
   );
+});
+
+Deno.test("a token_uri on a metadata address is refused before the assertion is sent", async () => {
+  const { pem } = await rsaKey();
+  for (
+    const tokenUri of [
+      "http://metadata.google.internal/token",
+      "http://169.254.169.254/token",
+    ]
+  ) {
+    const fetcher = routes({});
+    await assertRejects(
+      () =>
+        headers({
+          env: { GOOGLE_APPLICATION_CREDENTIALS: "/k.json" },
+          files: {
+            "/k.json": JSON.stringify({
+              type: "service_account",
+              client_email: "a@b.example",
+              private_key: pem,
+              token_uri: tokenUri,
+            }),
+          },
+          fetch: fetcher,
+        }),
+      InsecureBackendUrlError,
+    );
+    const user = routes({});
+    await assertRejects(
+      () =>
+        headers({
+          files: {
+            "/u.json": JSON.stringify({
+              ...JSON.parse(USER),
+              token_uri: tokenUri,
+            }),
+          },
+          fetch: user,
+        }, (g) => g.credentialsFile("/u.json")),
+      InsecureBackendUrlError,
+    );
+    assertEquals(fetcher.sent.length + user.sent.length, 0);
+  }
 });
 
 Deno.test("an unusable service-account key fails without quoting the key", async () => {

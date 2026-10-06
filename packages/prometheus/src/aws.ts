@@ -24,6 +24,7 @@
  * @module
  */
 
+import { envValue } from "./env.ts";
 import { profileCredentials } from "./aws_profile.ts";
 import {
   containerCredentials,
@@ -49,8 +50,7 @@ function env(
   context: PrometheusCredentialsContext,
   name: string,
 ): string | undefined {
-  const value = context.readEnv(name);
-  return value === "" ? undefined : value;
+  return envValue(context.readEnv, name);
 }
 
 /**
@@ -121,12 +121,12 @@ async function resolveCredentials(
     return await temporary.get(
       context,
       ["web", region, roleArn, sessionName, tokenFile],
-      () =>
+      (shared) =>
         webIdentityCredentials(
-          context,
+          shared,
           region,
           roleArn,
-          sessionName ?? `zuke-${Math.floor(context.now() / 1000)}`,
+          sessionName ?? `zuke-${Math.floor(shared.now() / 1000)}`,
           tokenFile,
         ),
     );
@@ -142,7 +142,7 @@ async function resolveCredentials(
     return await temporary.get(
       context,
       ["container", relative, full],
-      () => containerCredentials(context, endpoint),
+      (shared) => containerCredentials(shared, endpoint),
     );
   }
   if (env(context, "AWS_EC2_METADATA_DISABLED")?.toLowerCase() === "true") {
@@ -156,7 +156,7 @@ async function resolveCredentials(
   return await temporary.get(
     context,
     ["imds"],
-    () => instanceCredentials(context),
+    (shared) => instanceCredentials(shared),
   );
 }
 
