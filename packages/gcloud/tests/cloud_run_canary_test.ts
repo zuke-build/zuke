@@ -323,6 +323,19 @@ Deno.test("a failing gcloud command fails the call", async () => {
   await assertRejects(() => p.expose(10), Error, "gcloud exit 1");
 });
 
+Deno.test("a failed command fails the call even when gcloud is told not to throw", async () => {
+  // .gcloud((g) => g.noThrow()) would otherwise turn a failed rollback into a
+  // reported one.
+  const failing = () => Promise.resolve(new CommandOutput(1, "", "denied"));
+  const ctx = context();
+  await ctx.state.set({ cloudRunStage: "tagged" });
+  const p = cloudRunCanary((r) =>
+    r.service("api").gcloud((g) => g.noThrow()).runner(failing)
+  );
+  await assertRejects(() => p.abort(ctx), Error, "exited 1");
+  await assertRejects(() => p.expose(10), Error, "exited 1");
+});
+
 Deno.test("an empty revision read-back is refused, not recorded", async () => {
   const ctx = context();
   const p = cloudRunCanary((r) =>

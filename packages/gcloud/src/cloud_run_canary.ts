@@ -208,7 +208,8 @@ export class CloudRunCanary {
           "the canary deploys.",
       );
     }
-    await settings.runner_(
+    await runChecked(
+      settings,
       this.#scoped(settings, new GcloudRunServicesUpdateSettings())
         .service(service).image(image).tag(settings.tag_).noTraffic(),
     );
@@ -239,7 +240,8 @@ export class CloudRunCanary {
       );
     }
     const settings = this.#settings();
-    await settings.runner_(
+    await runChecked(
+      settings,
       this.#scoped(settings, new GcloudRunUpdateTrafficSettings())
         .service(serviceOf(settings)).toTags(`${settings.tag_}=${percent}`),
     );
@@ -273,7 +275,8 @@ export class CloudRunCanary {
           "analysed.",
       );
     }
-    await settings.runner_(
+    await runChecked(
+      settings,
       this.#scoped(settings, new GcloudRunUpdateTrafficSettings())
         .service(service).toLatest(),
     );
@@ -299,7 +302,8 @@ export class CloudRunCanary {
     const stage = ctx.state.get()[STAGE];
     if (stage === "deploying") return;
     if (stage === "tagged") {
-      await settings.runner_(
+      await runChecked(
+        settings,
         this.#scoped(settings, new GcloudRunUpdateTrafficSettings())
           .service(service).toTags(`${settings.tag_}=0`),
       );
@@ -320,7 +324,8 @@ export class CloudRunCanary {
           "lowercase letters, digits and hyphens, starting with a letter.",
       );
     }
-    await settings.runner_(
+    await runChecked(
+      settings,
       this.#scoped(settings, new GcloudRunUpdateTrafficSettings())
         .service(service).toRevisions(`${stable}=100`),
     );
@@ -359,11 +364,31 @@ export class CloudRunCanary {
       new GcloudRunServicesDescribeSettings(),
     ).service(service).format(LATEST_REVISION_FORMAT).quiet();
     return readScalar(
-      await settings.runner_(describe),
+      await runChecked(settings, describe),
       "cloudRunCanary",
       "latest revision",
     );
   }
+}
+
+/**
+ * Run one prepared command and fail on a non-zero exit — whatever the
+ * `.gcloud(...)` lambda says. With `noThrow()` set there, a failed rollback
+ * would otherwise return normally and be reported as done.
+ */
+async function runChecked(
+  settings: CloudRunCanarySettings,
+  command: GcloudSettings,
+): Promise<CommandOutput> {
+  const output = await settings.runner_(command);
+  if (output.code !== 0) {
+    const detail = output.stderr.trim();
+    throw new Error(
+      `cloudRunCanary: gcloud ${command.argv().slice(1, 4).join(" ")} ` +
+        `exited ${output.code}${detail === "" ? "." : `: ${detail}`}`,
+    );
+  }
+  return output;
 }
 
 /** The configured service, or a friendly error naming the fix. */
