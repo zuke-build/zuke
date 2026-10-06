@@ -117,7 +117,7 @@ class Release extends Build {
         .query('sum(rate(http_requests_total{code=~"5.."}[5m])) or vector(0)')
     );
     const errors = PrometheusTasks.value(result);
-    if (errors > 0.01) throw new Error(`error rate ${errors} is too high`);
+    if (!(errors <= 0.01)) throw new Error(`error rate ${errors} is too high`);
   });
 }
 
@@ -583,7 +583,7 @@ interface PrometheusOutgoingRequest
   The outgoing request a {@link PrometheusCredentials} source authenticates —
   exactly what will be sent, so a signature computed over it verifies.
 
-  readonly method: "GET" | "POST"
+  readonly method: PrometheusHttpMethod
     The HTTP method: `GET`, or `POST` for a form-encoded call.
   readonly url: string
     The absolute URL, including the query string: the base URL's own path and
@@ -746,7 +746,8 @@ interface PrometheusTasksApi
   value(response: PrometheusResponse<PrometheusQueryData>): number
     The single number an instant query returned — a scalar, or a vector of
     exactly one float sample — failing clearly on an empty or multi-sample
-    vector, a matrix, a string or a native histogram.
+    vector, a matrix, a string or a native histogram. `NaN` is returned as
+    `NaN`, which compares false both ways — gate with `!(v <= max)`.
 
     ```ts
     const ratio = PrometheusTasks.value(await PrometheusTasks.query((s) => …));

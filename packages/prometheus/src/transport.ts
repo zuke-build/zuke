@@ -102,8 +102,8 @@ function connect(settings: PrometheusConnectionSettings): Connection {
   if (base.username !== "" || base.password !== "") {
     credentials.push(
       basicCredentials(
-        decodeURIComponent(base.username),
-        decodeURIComponent(base.password),
+        decodeUserinfo(base.username),
+        decodeUserinfo(base.password),
       ),
     );
     base.username = "";
@@ -126,14 +126,39 @@ function connect(settings: PrometheusConnectionSettings): Connection {
   };
 }
 
-/** The URL a call goes to: the base's path with the endpoint appended. */
+/**
+ * A percent-encoded userinfo part, decoded. A malformed escape is reported as
+ * what it is rather than as a bare `URIError` — and without the value.
+ */
+function decodeUserinfo(part: string): string {
+  try {
+    return decodeURIComponent(part);
+  } catch {
+    throw new Error(
+      "the Prometheus URL's user or password is not valid percent-encoding — " +
+        "pass them with basicAuth(...) instead.",
+    );
+  }
+}
+
+/**
+ * The URL a call goes to: the base's path with the endpoint appended.
+ *
+ * A base URL parameter the call also sets is refused rather than sent twice:
+ * Prometheus reads the first value of a repeated parameter, so a stray
+ * `?query=…` on the base would silently replace the call's own expression.
+ */
 function endpointUrl(base: URL, call: PrometheusCall): URL {
   const url = new URL(base.href);
   url.pathname = `${url.pathname.replace(/\/+$/, "")}${call.path}`;
-  if (call.method === "GET") {
-    for (const [name, value] of call.params) {
-      url.searchParams.append(name, value);
+  for (const [name, value] of call.params) {
+    if (base.searchParams.has(name)) {
+      throw new Error(
+        `the Prometheus URL already carries a "${name}" parameter, which ` +
+          `would collide with the call's own — remove it from url(...).`,
+      );
     }
+    if (call.method === "GET") url.searchParams.append(name, value);
   }
   return url;
 }
@@ -188,6 +213,20 @@ async function send(
       // https guard never saw, with the credential attached.
       redirect: "manual",
     });
+    if (
+      response.type === "opaqueredirect" ||
+      (response.status >= 300 && response.status < 400)
+    ) {
+      await response.body?.cancel();
+      throw new PrometheusApiError(
+        call.method,
+        call.path,
+        response.status,
+        undefined,
+        "the server answered with a redirect, which is not followed — point " +
+          "url(...) at the address it redirects to",
+      );
+    }
     const bytes = await readBytesBounded(response.body, connection.maxBytes);
     if (bytes === null) {
       throw new PrometheusRequestError(
@@ -204,7 +243,12 @@ async function send(
       text: new TextDecoder().decode(bytes),
     };
   } catch (error) {
-    if (error instanceof PrometheusRequestError) throw error;
+    if (
+      error instanceof PrometheusRequestError ||
+      error instanceof PrometheusApiError
+    ) {
+      throw error;
+    }
     if (connection.signal?.aborted === true) throw connection.signal.reason;
     const reason = timeout.aborted
       ? `timed out after ${connection.timeoutMs} ms`

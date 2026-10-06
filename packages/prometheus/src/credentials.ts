@@ -22,6 +22,7 @@
  */
 
 import type { Redactor } from "@zuke/core";
+import type { PrometheusHttpMethod } from "./types.ts";
 
 /** Header names to values, as a credential source returns them. */
 export type PrometheusHeaders = Readonly<Record<string, string>>;
@@ -32,7 +33,7 @@ export type PrometheusHeaders = Readonly<Record<string, string>>;
  */
 export interface PrometheusOutgoingRequest {
   /** The HTTP method: `GET`, or `POST` for a form-encoded call. */
-  readonly method: "GET" | "POST";
+  readonly method: PrometheusHttpMethod;
   /**
    * The absolute URL, including the query string: the base URL's own path and
    * parameters, the endpoint path, and — on a `GET` — the call's parameters,
@@ -171,6 +172,14 @@ export async function authorize(
     for (const [name, value] of Object.entries(added)) {
       registerSecrets(redactor, value);
       const key = name.toLowerCase();
+      // Checked here rather than left to `Headers`, whose own error quotes the
+      // offending value — which is the credential.
+      if (/[\r\n\0]/.test(value)) {
+        throw new Error(
+          `the ${key} header's value contains a line break or NUL — a token ` +
+            `read from a file usually needs .trim()`,
+        );
+      }
       if (headers.has(key)) {
         throw new Error(
           `two credential sources set the ${key} header — configure one ` +

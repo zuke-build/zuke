@@ -128,7 +128,8 @@ export interface PrometheusTasksApi {
   /**
    * The single number an instant query returned — a scalar, or a vector of
    * exactly one float sample — failing clearly on an empty or multi-sample
-   * vector, a matrix, a string or a native histogram.
+   * vector, a matrix, a string or a native histogram. `NaN` is returned as
+   * `NaN`, which compares false both ways — gate with `!(v <= max)`.
    *
    * ```ts
    * const ratio = PrometheusTasks.value(await PrometheusTasks.query((s) => …));

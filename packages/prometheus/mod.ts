@@ -20,7 +20,7 @@
  *         .query('sum(rate(http_requests_total{code=~"5.."}[5m])) or vector(0)')
  *     );
  *     const errors = PrometheusTasks.value(result);
- *     if (errors > 0.01) throw new Error(`error rate ${errors} is too high`);
+ *     if (!(errors <= 0.01)) throw new Error(`error rate ${errors} is too high`);
  *   });
  * }
  *

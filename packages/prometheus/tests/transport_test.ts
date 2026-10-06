@@ -313,3 +313,75 @@ Deno.test("userinfo in the URL is sent as basic auth, never in the URL", async (
   );
   assertEquals(error.message.includes("hunter2"), false);
 });
+
+// Regressions from the adversarial pass.
+
+Deno.test("malformed percent-encoding in the userinfo is named, without the value", async () => {
+  const error = await assertRejects(
+    () =>
+      PrometheusTasks.query((s) =>
+        s.url("https://admin:pass%ZZword@prom.example").query("q")
+      ),
+    Error,
+    "not valid percent-encoding",
+  );
+  assertEquals(error.message.includes("pass"), true); // "pass them with …"
+  assertEquals(error.message.includes("%ZZword"), false);
+});
+
+Deno.test("a base URL parameter that collides with the call's own is refused", async () => {
+  const fetcher = fakeFetch(() => vector());
+  for (const method of ["GET", "POST"] as const) {
+    await assertRejects(
+      () =>
+        PrometheusTasks.query((s) =>
+          s.url(`${BASE}/?query=up`).fetch(fetcher).httpMethod(method)
+            .query("sum(errors)")
+        ),
+      Error,
+      'already carries a "query" parameter',
+    );
+  }
+  assertEquals(fetcher.sent.length, 0);
+});
+
+Deno.test("a redirect is not followed, and says so", async () => {
+  const opaque = Object.defineProperty(new Response(null), "type", {
+    value: "opaqueredirect",
+  });
+  const answers = [
+    Response.redirect("http://prom.example/login", 302),
+    new Response("moved", {
+      status: 301,
+      headers: { location: "http://prom.example/" },
+    }),
+    opaque,
+  ];
+  for (const answer of answers) {
+    const error = await assertRejects(
+      () =>
+        PrometheusTasks.query((s) =>
+          s.url(BASE).query("q").fetch(fakeFetch(() => answer))
+        ),
+      PrometheusApiError,
+      "redirect, which is not followed",
+    );
+    if (!(error instanceof PrometheusApiError)) throw error;
+    assertEquals(error.status, answer.status);
+  }
+});
+
+Deno.test("a header value with a line break is refused without quoting it", async () => {
+  const fetcher = fakeFetch(() => vector());
+  const error = await assertRejects(
+    () =>
+      PrometheusTasks.query((s) =>
+        s.url(BASE).fetch(fetcher).query("q")
+          .bearerToken("test-token-from-file\n")
+      ),
+    PrometheusRequestError,
+    "authorization header's value contains a line break",
+  );
+  assertEquals(error.message.includes("test-token-from-file"), false);
+  assertEquals(fetcher.sent.length, 0);
+});

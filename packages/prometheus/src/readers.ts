@@ -56,6 +56,9 @@ export function readSamples(
  * The single number an instant query returns: a scalar, or a vector of
  * exactly one float sample. `NaN` and the infinities come back as such — they
  * are values Prometheus computed, and a bound check decides what they mean.
+ * Mind that `NaN` compares false both ways: a gate written `if (v > max)
+ * fail()` passes a `NaN` (a ratio over no traffic is 0/0), so write
+ * `if (!(v <= max)) fail()`, or guard the query.
  *
  * @throws when the vector is empty or holds more than one sample, or the
  *   result is a matrix, a string, or a native histogram.
