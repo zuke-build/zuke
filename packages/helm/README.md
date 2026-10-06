@@ -75,11 +75,14 @@ at all.
 
 `stage` also records the stable release, the canary release and the namespace. A
 later `expose`, `promote` or rollback configured with any other value refuses,
-naming both, rather than act on either set: the kube context and kubeconfig in
-`.helm(...)` cannot be recorded, so **do not change them, the release names or
-the namespace mid-rollout** — finish or cancel the rollout with the
-configuration it started with. A rollback run by hand with no record
-(`rollout.abort`) uses the configuration as it is.
+naming both, and changes nothing rather than act on either set: the kube context
+and kubeconfig in `.helm(...)` cannot be recorded, so **do not change them, the
+release names or the namespace mid-rollout**. If they did change, the run is
+left cancelled with the canary release in place and the stable release scaled
+down. To recover, set the configuration back to what the rollout started with,
+then run the rollout's `<field>.abort` target by hand (`zuke rollout.abort`)
+with `.stableRevision(n)` — the refusal names the revision `stage` recorded. A
+rollback run by hand with no record uses the configuration as it is.
 
 What it relies on, and cannot check:
 

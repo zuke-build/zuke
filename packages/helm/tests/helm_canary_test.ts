@@ -950,7 +950,7 @@ Deno.test("expose, promote and abort refuse a release identity that changed sinc
     ) {
       const error = await assertRejects(call, Error, recorded);
       assertEquals(
-        error.message.includes("with the configuration it started with"),
+        error.message.includes("set the configuration back"),
         true,
       );
     }
@@ -1074,4 +1074,44 @@ Deno.test("a rollout started in helm's default namespace refuses a namespace add
     Error,
     "no chart is set",
   );
+});
+
+Deno.test("a changed identity is refused with the hand-run recovery spelled out", async () => {
+  const { runner, calls } = fakeHelm();
+  const moved = platform(runner, (h) => h.canaryRelease("api-next"));
+  const error = await assertRejects(
+    async () => moved.abort(await stagedContext()),
+    Error,
+    "set the configuration back",
+  );
+  assertEquals(error.message.includes("zuke rollout.abort"), true);
+  assertEquals(error.message.includes("h.stableRevision(7)"), true);
+  // Without a usable recorded revision, the message says where to find one.
+  const unknown = await assertRejects(
+    async () => moved.promote(await stagedContext({ helmStableRevision: "7" })),
+    Error,
+    "h.stableRevision(<n>)",
+  );
+  assertEquals(unknown.message.includes("helm history api"), true);
+  assertEquals(calls, []);
+});
+
+Deno.test("a recorded identity of the wrong type is a damaged record, not a configuration change", async () => {
+  const { runner, calls } = fakeHelm();
+  const patches: Array<Record<string, JsonValue>> = [
+    { helmStableRelease: 1 },
+    { helmStableRelease: null },
+    { helmCanaryRelease: null },
+    { helmCanaryRelease: ["api-canary"] },
+    { helmNamespace: 5 },
+  ];
+  for (const patch of patches) {
+    const error = await assertRejects(
+      async () => platform(runner).abort(await stagedContext(patch)),
+      Error,
+      "the rollout's record is damaged",
+    );
+    assertEquals(error.message.includes("now configured"), false);
+  }
+  assertEquals(calls, []);
 });

@@ -48,20 +48,30 @@ let chart = "./charts/api";
 /** The revision a hand-run rollback goes back to, if the build names one. */
 let stableRevision: number | undefined;
 
+/** The stable release the build names. */
+let stable = "api";
+
+/** The canary release the build names, if not the default. */
+let canaryRelease: string | undefined;
+
+/** The namespace the build names, if any. */
+let namespace: string | undefined = "prod";
+
 class Deploy extends Build {
   rollout = canary((c) =>
     c.platform(
-      helmCanary((h) =>
-        (stableRevision === undefined ? h : h.stableRevision(stableRevision))
-          .chart(chart).stableRelease("api").namespace("prod")
-          .image(image).replicas(4)
+      helmCanary((h) => {
+        if (stableRevision !== undefined) h.stableRevision(stableRevision);
+        if (canaryRelease !== undefined) h.canaryRelease(canaryRelease);
+        if (namespace !== undefined) h.namespace(namespace);
+        return h.chart(chart).stableRelease(stable).image(image).replicas(4)
           .runner((settings) => {
             const argv = settings.argv().slice(1);
             calls.push(argv);
             if (argv[0] !== "get") {
               return Promise.resolve(new CommandOutput(0, "", ""));
             }
-            if (argv[2] === "api") {
+            if (argv[2] === stable) {
               return Promise.resolve(
                 new CommandOutput(0, `${revision} deployed\n`, ""),
               );
@@ -71,8 +81,8 @@ class Deploy extends Build {
                 ? new CommandOutput(0, "3", "")
                 : new CommandOutput(1, "", "Error: release: not found\n"),
             );
-          })
-      ),
+          });
+      }),
     )
       .steps(25, 50)
       .analysis({
@@ -120,6 +130,9 @@ function fresh(): void {
   image = "1.5.0";
   chart = "./charts/api";
   stableRevision = undefined;
+  stable = "api";
+  canaryRelease = undefined;
+  namespace = "prod";
 }
 
 Deno.test("Helm: staged, stepped, parked, and promoted by a later process", async () => {
@@ -231,4 +244,52 @@ Deno.test("Helm: a rollback run by hand with no revision refuses", async () => {
     assertStringIncludes(out + err, "h.stableRevision(<n>)");
     assertEquals(calls, []);
   });
+});
+
+/** Configuration changes made between a parked rollout and its next step. */
+const MOVES: Array<[string, () => void]> = [
+  ["stable release", () => stable = "web"],
+  ["canary release", () => canaryRelease = "api-next"],
+  ["namespace", () => namespace = undefined],
+];
+
+/** The commands that change something — everything but the reads. */
+function mutations(): string[] {
+  return steps().filter((step) => !step.startsWith("get "));
+}
+
+Deno.test("Helm: a resume or cancel with other releases changes nothing, and says how to recover", async () => {
+  for (const [label, move] of MOVES) {
+    for (const command of ["resume", "cancel"]) {
+      fresh();
+      await withStateDir(async (dir) => {
+        const parked = await runCli(Deploy, ["ship"]);
+        assertEquals(parked.code, 0, parked.err);
+        calls = [];
+        move();
+        const id = await onlyRun(dir);
+        const args = command === "resume"
+          ? ["resume", id, "--signal", "approved"]
+          : ["cancel", id];
+        const { code, out, err } = await runCli(Deploy, args);
+        assertEquals(code, 1, `${label} ${command}`);
+        assertEquals(mutations(), [], `${label} ${command}`);
+        assertEquals((out + err).includes("Rolled back"), false);
+        assertStringIncludes(
+          out + err,
+          `this rollout started with the ${label}`,
+        );
+        assertStringIncludes(out + err, "zuke rollout.abort");
+        assertStringIncludes(out + err, "h.stableRevision(12)");
+
+        // The recovery the message names: the configuration set back, and
+        // the rollback run by hand to the recorded revision.
+        fresh();
+        stableRevision = 12;
+        const recovered = await runCli(Deploy, ["rollout.abort"]);
+        assertEquals(recovered.code, 0, recovered.err);
+        assertEquals(steps(), ["rollback api 12", "uninstall api-canary"]);
+      });
+    }
+  }
 });
