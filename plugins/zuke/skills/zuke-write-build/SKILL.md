@@ -349,7 +349,10 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   runs the one `abort`. Needs a state store. `p` is a `CanaryPlatform` (`stage`,
   `expose`, `promote`, `abort`); a hand-written object is fine, and Cloud Run
   has one ready: `cloudRunCanary((r) => r.service("api").region(…).image(…))`
-  from `@zuke/gcloud`. See the cheatsheet.
+  from `@zuke/gcloud`, and Kubernetes too:
+  `kubectlCanary((k) => k.stable(…)
+  .canary(…).container(…).image(…).replicas(…))`
+  from `@zuke/kubectl`. See the cheatsheet.
 - **OpenTelemetry export (`@zuke/otel`):** register `otel((s) => s.endpoint(…))`
   as a plugin (`run(MyBuild, { plugins: [otel(…)] })`) to ship run/target spans
   and `zuke.run.started` / `zuke.run.suspended` / `zuke.runs` counters as

@@ -30,3 +30,4 @@ export * from "./src/diagnostics.ts";
 export * from "./src/resource_json.ts";
 export * from "./src/cluster.ts";
 export * from "./src/nodes.ts";
+export * from "./src/kubectl_canary.ts";
