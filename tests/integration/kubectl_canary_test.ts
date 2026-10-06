@@ -237,7 +237,7 @@ Deno.test("Kubernetes: a rollout resumed with other Deployments configured refus
     );
     assertStringIncludes(
       resumed.out + resumed.err,
-      '`zuke rollout.abort` and k.stableImage("reg/api:1")',
+      'by hand (e.g. `zuke rollout.abort`) with k.stableImage("reg/api:1")',
     );
     assertEquals(moves(), []);
 

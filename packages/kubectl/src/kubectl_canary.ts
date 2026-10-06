@@ -412,9 +412,9 @@ export class KubectlCanary {
    * 0 and 100 always leaves at least one replica on each side, and a step that
    * asks for less than half a replica is refused rather than rounded up to a
    * far larger share. The total is the one `stage` recorded, so a resumed
-   * process sizes the step the same way, and it refuses when the lambda now
-   * names other Deployments than `stage` changed. Returns the share reached,
-   * `canary / total × 100`.
+   * process sizes the step the same way. It refuses a rollout `stage` did not
+   * record, and one whose lambda now names other Deployments than `stage`
+   * changed. Returns the share reached, `canary / total × 100`.
    */
   async expose(percent: number, ctx: KubectlCanaryContext): Promise<number> {
     if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
@@ -423,8 +423,9 @@ export class KubectlCanary {
           `be ${percent}.`,
       );
     }
-    const r = this.#resolve();
     const state = ctx.state.get();
+    if (state[STAGE] !== "staged") throw notStaged("expose");
+    const r = this.#resolve();
     stagedAs(state, r);
     const total = recordedTotal(state, r.settings, r.stable);
     if (percent === 0) {
@@ -465,13 +466,7 @@ export class KubectlCanary {
    */
   async promote(ctx: KubectlCanaryContext): Promise<void> {
     const state = ctx.state.get();
-    if (state[STAGE] !== "staged") {
-      throw new Error(
-        `${CALLER}: no staged candidate is recorded for this rollout, so ` +
-          "there is nothing to promote. Promote runs after stage, in the same " +
-          "run.",
-      );
-    }
+    if (state[STAGE] !== "staged") throw notStaged("promote");
     const r = this.#resolve();
     stagedAs(state, r);
     const recorded = state[CANDIDATE_IMAGE];
@@ -825,9 +820,9 @@ function stagedAs(
       `${CALLER}: this rollout was staged with other settings than the ones ` +
         `configured now — ${changed.join("; ")}. Nothing was changed: a ` +
         "rollout must be finished or cancelled with the configuration it " +
-        "started with, the kube context in k.kubectl(...) included. Set " +
-        "these back; if the run has been cancelled meanwhile, roll it back " +
-        `by hand with \`zuke rollout.abort\` and ${restore}.`,
+        "started with, the kube context in k.kubectl(...) included. Set the " +
+        "configuration back, then run the rollout's `<field>.abort` target " +
+        `by hand (e.g. \`zuke rollout.abort\`) with ${restore}.`,
     );
   }
   return true;
@@ -853,19 +848,30 @@ function shown(name: string | null): string {
 }
 
 /**
- * The total `stage` recorded, else the configured one — validated either
- * way. A staged rollout always recorded one, so a missing or mistyped value
- * there means the record was damaged, and guessing would resize production.
+ * The total `stage` recorded for a staged rollout, else — run by hand, with
+ * no record — the configured one; validated either way. Only a staged record
+ * is read. It always holds a total, so a missing or mistyped one means the
+ * record was damaged, and guessing would resize production.
  */
 function recordedTotal(
   state: Readonly<Record<string, unknown>>,
   settings: KubectlCanarySettings,
   deployment: string,
 ): number {
+  if (state[STAGE] !== "staged") return totalOf(settings.replicas_);
   const recorded = state[REPLICAS];
-  if (typeof recorded === "number") return totalOf(recorded);
-  if (state[STAGE] === "staged") throw incomplete(`how big ${deployment} was`);
-  return totalOf(settings.replicas_);
+  if (typeof recorded !== "number") {
+    throw incomplete(`how big ${deployment} was`);
+  }
+  return totalOf(recorded);
+}
+
+/** The error for an `expose` or `promote` of a rollout `stage` did not record. */
+function notStaged(call: string): Error {
+  return new Error(
+    `${CALLER}: no staged candidate is recorded for this rollout, so there ` +
+      `is nothing to ${call}. It runs after stage, in the same run.`,
+  );
 }
 
 /**
