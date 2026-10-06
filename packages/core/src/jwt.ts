@@ -14,6 +14,8 @@
  * @module
  */
 
+import { messageOf } from "./internal.ts";
+
 /** Base64url without padding, as JWT requires (RFC 7515 §2). */
 function base64Url(bytes: Uint8Array): string {
   let binary = "";
@@ -108,9 +110,7 @@ async function importSigningKey(pem: string): Promise<CryptoKey> {
     // a path instead of contents), so name it rather than surface a DataError.
     // WebCrypto's own message never quotes the key material.
     throw new Error(
-      `the private key could not be read as RSA PEM: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `the private key could not be read as RSA PEM: ${messageOf(error)}`,
     );
   }
 }
