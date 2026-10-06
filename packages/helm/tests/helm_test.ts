@@ -340,6 +340,44 @@ Deno.test("getAll: requires release; --revision, --template", () => {
   );
 });
 
+Deno.test("upgrade: --reset-then-reuse-values and --history-max", () => {
+  assertEquals(
+    new HelmUpgradeSettings().release("api").chart("c").resetThenReuseValues()
+      .historyMax(0).argv().slice(1),
+    [
+      "upgrade",
+      "api",
+      "c",
+      "--reset-then-reuse-values",
+      "--history-max",
+      "0",
+    ],
+  );
+});
+
+Deno.test("rollback: --history-max", () => {
+  assertEquals(
+    new HelmRollbackSettings().release("api").revision(3).historyMax(0)
+      .argv().slice(1),
+    ["rollback", "api", "3", "--history-max", "0"],
+  );
+});
+
+Deno.test("rollback and getAll refuse a revision helm could not have", () => {
+  for (const bad of [0, -1, 1.5, Number.NaN]) {
+    assertThrows(
+      () => new HelmRollbackSettings().release("api").revision(bad),
+      Error,
+      "HelmTasks.rollback: .revision() takes a whole number from 1 up",
+    );
+    assertThrows(
+      () => new HelmGetAllSettings().release("api").revision(bad),
+      Error,
+      "HelmTasks.getAll: .revision() takes a whole number from 1 up",
+    );
+  }
+});
+
 Deno.test("helm: conforms to the wrapper contract", async () => {
   await assertWrapperConformance(
     () => new HelmLintSettings().chart("./charts/api"),

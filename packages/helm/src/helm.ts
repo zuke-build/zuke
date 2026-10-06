@@ -30,6 +30,18 @@ import {
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
+import { isWholeNumber } from "./whole_number.ts";
+
+/** `number` if it is a revision helm could have, else a friendly error. */
+function checkedRevision(task: string, number: number): number {
+  if (!isWholeNumber(number)) {
+    throw new Error(
+      `HelmTasks.${task}: .revision() takes a whole number from 1 up, not ` +
+        `${number}.`,
+    );
+  }
+  return number;
+}
 
 /**
  * Base for all `helm` subcommand settings: the binary is `helm`, and the
@@ -206,6 +218,8 @@ export class HelmUpgradeSettings extends HelmValuesSettings {
   #chart?: string;
   #install = false;
   #reuseValues = false;
+  #resetThenReuseValues = false;
+  #historyMax?: number;
   #createNamespace = false;
   #wait = false;
   #atomic = false;
@@ -235,6 +249,26 @@ export class HelmUpgradeSettings extends HelmValuesSettings {
    */
   reuseValues(): this {
     this.#reuseValues = true;
+    return this;
+  }
+
+  /**
+   * Reset to the new chart's default values, apply the last release's values
+   * over them, then the command line's (`--reset-then-reuse-values`, Helm
+   * 3.14 and later). Unlike {@link reuseValues}, a default the new chart
+   * changed is picked up.
+   */
+  resetThenReuseValues(): this {
+    this.#resetThenReuseValues = true;
+    return this;
+  }
+
+  /**
+   * Keep at most `count` revisions of the release; `0` keeps them all
+   * (`--history-max`).
+   */
+  historyMax(count: number): this {
+    this.#historyMax = count;
     return this;
   }
 
@@ -273,6 +307,10 @@ export class HelmUpgradeSettings extends HelmValuesSettings {
     argv.push(...this.valueArgs());
     if (this.#install) argv.push("--install");
     if (this.#reuseValues) argv.push("--reuse-values");
+    if (this.#resetThenReuseValues) argv.push("--reset-then-reuse-values");
+    if (this.#historyMax !== undefined) {
+      argv.push("--history-max", String(this.#historyMax));
+    }
     if (this.#createNamespace) argv.push("--create-namespace");
     if (this.#wait) argv.push("--wait");
     if (this.#atomic) argv.push("--atomic");
@@ -334,6 +372,7 @@ export class HelmRollbackSettings extends HelmSettings {
   #revision?: number;
   #wait = false;
   #timeout?: string;
+  #historyMax?: number;
 
   /** The release to roll back (required). */
   release(name: string): this {
@@ -343,10 +382,10 @@ export class HelmRollbackSettings extends HelmSettings {
 
   /**
    * The revision to roll back to. Without one, helm rolls back to the
-   * previous revision.
+   * previous revision. A whole number from 1 up.
    */
   revision(number: number): this {
-    this.#revision = number;
+    this.#revision = checkedRevision("rollback", number);
     return this;
   }
 
@@ -362,6 +401,15 @@ export class HelmRollbackSettings extends HelmSettings {
     return this;
   }
 
+  /**
+   * Keep at most `count` revisions of the release; `0` keeps them all
+   * (`--history-max`).
+   */
+  historyMax(count: number): this {
+    this.#historyMax = count;
+    return this;
+  }
+
   /** Assemble the `helm rollback` argv. */
   protected override buildArgs(): string[] {
     if (this.#release === undefined) {
@@ -372,6 +420,9 @@ export class HelmRollbackSettings extends HelmSettings {
     argv.push(...this.globalArgs());
     if (this.#wait) argv.push("--wait");
     if (this.#timeout !== undefined) argv.push("--timeout", this.#timeout);
+    if (this.#historyMax !== undefined) {
+      argv.push("--history-max", String(this.#historyMax));
+    }
     return argv;
   }
 }
@@ -388,9 +439,12 @@ export class HelmGetAllSettings extends HelmSettings {
     return this;
   }
 
-  /** Read a specific revision instead of the latest (`--revision`). */
+  /**
+   * Read a specific revision instead of the latest (`--revision`). A whole
+   * number from 1 up.
+   */
   revision(number: number): this {
-    this.#revision = number;
+    this.#revision = checkedRevision("getAll", number);
     return this;
   }
 

@@ -21,10 +21,10 @@ injection-free.
 
 ## Helm canary platform
 
-`helmCanary` makes a pair of releases of one chart a platform for a
+`helmCanary` makes a pair of releases a platform for a
 [`@zuke/canary`](https://jsr.io/@zuke/canary) rollout. The candidate runs as a
-second release (`<stable>-canary` unless you name it), and exposure is the share
-of the replicas it holds:
+second release (`<stable>-canary` unless you name it with
+`.canaryRelease(...)`), and exposure is the share of the replicas it holds:
 
 ```ts
 import { Build, parameter, run, target } from "@zuke/core";
@@ -38,7 +38,7 @@ class Deploy extends Build {
     c.platform(
       helmCanary((h) =>
         h.chart("./charts/api").stableRelease("api").namespace("prod")
-          .image(this.tag.value).replicas(10)
+          .image(this.tag.value).replicas(10).values("values-prod.yaml")
           .helm((s) => s.kubeContext("prod"))
       ),
     )
@@ -52,12 +52,22 @@ class Deploy extends Build {
 await run(Deploy);
 ```
 
-| Call      | helm                                                                                                                                                                           |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `stage`   | `get all <stable> --template {{.Release.Version}}` (recorded), then `upgrade --install <canary> <chart> --set replicaCount=0 --set-string image.tag=<image> --wait`.           |
-| `expose`  | `upgrade <canary> --reuse-values --set replicaCount=<n> --wait`, then `upgrade <stable> --reuse-values --set replicaCount=<total-n>`. Returns the share achieved.              |
-| `promote` | `upgrade <stable> --reuse-values --set replicaCount=<total> --set-string image.tag=<image> --wait`, then `uninstall <canary> --ignore-not-found`.                              |
-| `abort`   | `rollback <stable> <recorded revision> --wait`, then `uninstall <canary> --ignore-not-found`. Run by hand, the revision set with `.stableRevision(n)`; without one it refuses. |
+Every upgrade passes `--reset-then-reuse-values`, and every command on the
+stable release `--history-max 0`:
+
+| Call      | helm                                                                                                                                                                                                                                                                                               |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stage`   | `get all <stable> --template '{{.Release.Version}} {{.Release.Info.Status}}'` — refused unless `deployed`, else recorded; `get all <canary>` — refused if the canary release already exists; then `upgrade <canary> <chart> --set replicaCount=0 --set-string image.tag=<image> --install --wait`. |
+| `expose`  | `upgrade <canary> <chart> --set replicaCount=<n> --wait`, then `upgrade <stable> <stable chart> --set replicaCount=<total-n>`. `n` is rounded, at least 1 above 0 %; returns `n / total`.                                                                                                          |
+| `promote` | `upgrade <stable> <chart> --set replicaCount=<total> --set-string image.tag=<image> --wait`, then `uninstall <canary> --ignore-not-found`.                                                                                                                                                         |
+| `abort`   | `rollback <stable> <recorded revision> --wait`, then `uninstall <canary> --ignore-not-found`. Run by hand, the revision set with `.stableRevision(n)`; without one it refuses.                                                                                                                     |
+
+`stage` records the image and the total replica count, and `expose` and
+`promote` use what it recorded — so a resumed process configured with another
+image still promotes the one that was analysed. A rollback is `helm rollback` to
+the exact revision `stage` read, so it restores the stable image, values and
+replica count even after a promotion that failed half-way; a stage that failed
+before installing anything runs no rollback at all.
 
 What it relies on, and cannot check:
 
@@ -66,19 +76,34 @@ What it relies on, and cannot check:
   `app.kubernetes.io/instance: <release>`, so its canary pods would take no
   requests at all and every analysis would pass on the stable version alone. Use
   a chart whose selector spans both releases.
+- **The canary release inherits nothing from the stable one.** It is the chart's
+  defaults plus `.values(...)`, so those files must reproduce the stable
+  release's whole configuration — values only ever set by hand on the stable
+  release are not in what the canary ran.
+- **A second release of the chart must coexist with the first.** Names that are
+  hard-coded or set by `fullnameOverride`, a duplicated Ingress host,
+  cluster-scoped objects, and hooks that run again on install all collide or
+  misbehave.
 - **The chart must honour the replica key** (`replicaCount` by default, set with
   `.replicasKey(...)`): an enabled autoscaler ignores it.
-- **The image key defaults to `image.tag`**, so `.image(...)` is the tag alone;
-  point `.imageKey(...)` at a key that takes a full reference to pass one.
-- **Every step re-renders the stable release from `.chart(...)`.** A candidate
-  that changes the chart changes the stable release's templates at the first
-  step; pin a repository chart with `.version(...)`.
+- **The image key defaults to `image.tag`**, so `.image(...)` is the tag alone
+  (a `@sha256:` digest after it is fine); point `.imageKey(...)` at a key that
+  takes a full reference to pass one.
+- **Every replica move re-renders the stable release.** Without
+  `.stableChart(...)` it renders `.chart(...)`, so a candidate that changes the
+  chart changes every stable pod's templates at the first step. Name the chart
+  the stable release runs with `.stableChart(...)` / `.stableVersion(...)`, or
+  keep the chart and version identical for both.
+- **Capacity can dip briefly.** The canary release scales up first, but `--wait`
+  counts a Deployment ready at `replicas - maxUnavailable`, and the stable
+  release scales down without waiting.
 - **A rollback returns the stable release to the revision `stage` recorded**, so
-  a deploy someone else made to it mid-rollout is rolled back too.
-- Requires Helm 3.13 or later (`uninstall --ignore-not-found`). The stable
-  release gains a revision per step, and helm keeps 10 by default
-  (`--history-max`), so a rollout of more than eight steps can prune the
-  revision a rollback returns to — the rollback then fails rather than guess.
+  a deploy someone else made to it mid-rollout is rolled back too. The adapter's
+  own commands keep every revision (`--history-max 0`), but another upgrade of
+  the stable release mid-rollout (default `HELM_MAX_HISTORY`, 10) can still
+  prune it; the rollback then fails rather than guess.
+- Requires Helm 3.14 or later in the 3.x line (`--reset-then-reuse-values`,
+  `uninstall --ignore-not-found`).
 
 <!-- ZUKE:API:START -->
 
@@ -109,19 +134,21 @@ function helmCanary(configure: Configure<HelmCanarySettings>): HelmCanary
   ```ts
   c.platform(helmCanary((h) =>
     h.chart("./charts/api").stableRelease("api").namespace("prod")
-      .image(this.tag.value).replicas(10)
+      .image(this.tag.value).replicas(10).values("values-prod.yaml")
       .helm((s) => s.kubeContext("prod"))
   ))
   ```
 
-  The lambda runs on every call, so it may read resolved parameters.
+  The lambda runs on every call, so it may read resolved parameters; the
+  image and replica count are fixed by `stage`. Every upgrade passes
+  `--reset-then-reuse-values`, and every command on the stable release
+  `--history-max 0`.
 
-  - stage — reads the stable revision with `get all --template`, then
-    `upgrade --install <stable>-canary <chart> --set-string image.tag=<image> --set replicaCount=0 --wait`.
-  - expose — `upgrade --reuse-values --set replicaCount=<n>` on the canary
-    release (waiting), then on the stable release with the remainder.
-  - promote — `upgrade <stable> --reuse-values` to the candidate image at
-    the full count (waiting), then `uninstall <canary> --ignore-not-found`.
+  - stage — reads the stable release's revision and status, checks no
+    canary release exists, then `upgrade <stable>-canary <chart> --set replicaCount=0 --set-string image.tag=<image> --install --wait`.
+  - expose — `upgrade --set replicaCount=<n>` on the canary release
+    (waiting), then on the stable release with the remainder.
+  - promote — `upgrade <stable> --set replicaCount=<total> --set-string image.tag=<image> --wait`, then `uninstall <canary> --ignore-not-found`.
   - abort — `rollback <stable> <recorded revision> --wait`, then the same
     uninstall; run by hand, the revision set with `.stableRevision(...)`.
 
@@ -141,14 +168,17 @@ class HelmCanary
   describe(): string
     `"Helm release api in prod"`, for the build summary.
   async stage(ctx: HelmCanaryContext): Promise<void>
-    Record the stable release's current revision, then install the candidate
-    as the canary release with no replicas: `upgrade --install <canary> <chart> --set-string <imageKey>=<image> --set <replicasKey>=0 --wait`.
-  async expose(percent: number): Promise<number>
-    Give the canary release `percent` of the replicas — rounded, and at
-    least one for any share above 0 — scaling it up first and the stable
-    release down second, so capacity never dips. Returns the share achieved.
-  async promote(): Promise<void>
-    Upgrade the stable release to the candidate image at the full replica
+    Check the stable release is deployed and record its revision, check no
+    canary release is left over, then install the candidate as the canary
+    release with no replicas: `upgrade <canary> <chart> --set <replicasKey>=0 --set-string <imageKey>=<image> --install --wait`. The
+    image and the total replica count are recorded, and every later call
+    uses those, not a configuration that may have changed since.
+  async expose(percent: number, ctx: HelmCanaryContext): Promise<number>
+    Give the canary release `percent` of the staged replica count — rounded,
+    and at least one for any share above 0 — scaling it up (waiting) before
+    the stable release down (not waiting). Returns the share achieved.
+  async promote(ctx: HelmCanaryContext): Promise<void>
+    Upgrade the stable release to the staged image at the staged replica
     count, waiting for it, then uninstall the canary release. Idempotent.
   async abort(ctx: HelmCanaryContext): Promise<void>
     Return the stable release to where it was and remove the canary release.
@@ -159,18 +189,24 @@ class HelmCanary
       recorded, then `helm uninstall <canary> --ignore-not-found`.
     - The canary install was under way: the stable release was never
       touched, so only the canary release is uninstalled.
-    - Stage failed reading the revision: nothing changed; nothing runs.
+    - Stage failed before the canary install: nothing changed; nothing
+      runs.
     - Nothing recorded (`rollout.abort` run by hand, a fresh run): the
       rollback goes to {@link HelmCanarySettings.stableRevision}. Without one
       this refuses, since claiming a rollback it cannot do would be worse.
+    - A record it does not recognise: refuses.
 
 class HelmCanarySettings
-  How {@link helmCanary} reaches the releases, configured through its lambda.
+  How `helmCanary` reaches the releases, configured through its lambda.
 
   chart_?: string
-    The chart both releases are rendered from (set by {@link chart}).
+    The chart the candidate is rendered from (set by {@link chart}).
   version_?: string
-    The chart version (set by {@link version}).
+    The candidate chart's version (set by {@link version}).
+  stableChart_?: string
+    The chart the stable release runs (set by {@link stableChart}).
+  stableVersion_?: string
+    The stable chart's version (set by {@link stableVersion}).
   stableRelease_?: string
     The release serving today (set by {@link stableRelease}).
   canaryRelease_?: string
@@ -196,11 +232,21 @@ class HelmCanarySettings
   runner_: HelmSettingsRunner
     How each command is run (set by {@link runner}).
   chart(ref: string): this
-    The chart both releases are rendered from — a path, `repo/name` or an
-    `oci://` reference. Every upgrade renders it, the stable release's
-    replica moves included, so pin a repository chart with {@link version}.
+    The chart the candidate is rendered from — a path, `repo/name` or an
+    `oci://` reference. The canary release and the promotion use it; the
+    stable release's replica moves use it too unless {@link stableChart}
+    names the chart the stable release runs. Pin a repository chart with
+    {@link version}.
   version(value: string): this
-    The chart version every upgrade uses (`--version`).
+    The candidate chart's version (`--version`).
+  stableChart(ref: string): this
+    The chart the stable release runs today, for the replica moves on it
+    while the canary runs. Without it they render {@link chart}, so a
+    candidate that changes the chart changes every stable pod's templates at
+    the first step.
+  stableVersion(value: string): this
+    The stable chart's version (`--version` on the stable release's replica
+    moves). Defaults to {@link version} when {@link stableChart} is not set.
   stableRelease(name: string): this
     The release serving today. It must already exist; the canary amends it.
   canaryRelease(name: string): this
@@ -209,10 +255,10 @@ class HelmCanarySettings
     The namespace both releases live in (`--namespace`).
   image(value: string): this
     The candidate's image, as the chart reads it at {@link imageKey}. With
-    the default key, `image.tag`, that is the tag alone (`1.4.2`), as the
-    chart `helm create` scaffolds expects; point {@link imageKey} at a key
-    that takes a full reference to pass one. Set with `--set-string`, so a
-    tag like `1.10` is not turned into a number.
+    the default key, `image.tag`, that is the tag alone (`1.4.2`, or
+    `1.4.2@sha256:…`), as the chart `helm create` scaffolds expects; point
+    {@link imageKey} at a key that takes a full reference to pass one. Set
+    with `--set-string`, so a tag like `1.10` is not turned into a number.
   imageKey(path: string): this
     The values path the image is set on (default `image.tag`).
   replicasKey(path: string): this
@@ -221,10 +267,12 @@ class HelmCanarySettings
     autoscaler that ignores it makes the exposure meaningless.
   replicas(total: number): this
     The total replica count, split between the two releases while the
-    canary runs and given back to the stable release when it ends.
+    canary runs and given to the stable release by the promotion.
   values(...files: PathLike[]): this
     Values files (`--values`) the canary release is installed with, and that
-    the promotion merges into the stable release's reused values.
+    the promotion merges into the stable release's values. The canary
+    release inherits nothing from the stable one, so these must carry its
+    whole configuration.
   timeout(duration: string): this
     How long each command that waits may take, e.g. `10m` (`--timeout`).
   stableRevision(revision: number): this
@@ -255,7 +303,8 @@ class HelmGetAllSettings extends HelmSettings
   release(name: string): this
     The release to read (required).
   revision(number: number): this
-    Read a specific revision instead of the latest (`--revision`).
+    Read a specific revision instead of the latest (`--revision`). A whole
+    number from 1 up.
   template(value: string): this
     Format the output with a Go template over `.Release` (`--template`) —
     e.g. `{{.Release.Version}}` prints just the current revision.
@@ -325,11 +374,14 @@ class HelmRollbackSettings extends HelmSettings
     The release to roll back (required).
   revision(number: number): this
     The revision to roll back to. Without one, helm rolls back to the
-    previous revision.
+    previous revision. A whole number from 1 up.
   wait(): this
     Wait until resources are ready (`--wait`).
   timeout(duration: string): this
     Operation timeout, e.g. `5m` (`--timeout`).
+  historyMax(count: number): this
+    Keep at most `count` revisions of the release; `0` keeps them all
+    (`--history-max`).
   override protected buildArgs(): string[]
     Assemble the `helm rollback` argv.
 
@@ -388,6 +440,14 @@ class HelmUpgradeSettings extends HelmValuesSettings
   reuseValues(): this
     Reuse the last release's values and merge the command line's `--set` and
     `--values` over them (`--reuse-values`).
+  resetThenReuseValues(): this
+    Reset to the new chart's default values, apply the last release's values
+    over them, then the command line's (`--reset-then-reuse-values`, Helm
+    3.14 and later). Unlike {@link reuseValues}, a default the new chart
+    changed is picked up.
+  historyMax(count: number): this
+    Keep at most `count` revisions of the release; `0` keeps them all
+    (`--history-max`).
   createNamespace(): this
     Create the release namespace if absent (`--create-namespace`).
   wait(): this
@@ -417,9 +477,9 @@ abstract class HelmValuesSettings extends HelmSettings
 
 interface HelmCanaryContext
   The part of the canary engine's context the Helm platform uses: the
-  rollout's durable state, where the stable release's revision is recorded,
-  and the build summary. The engine hands a richer context; this is the
-  narrow view.
+  rollout's durable state, where the stable release's revision and the staged
+  candidate are recorded, and the build summary. The engine hands a richer
+  context; this is the narrow view.
 
   readonly state: TargetStateHandle
     The rollout's durable platform state, shared by every call.

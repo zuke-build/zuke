@@ -8,7 +8,8 @@
  * `c.platform(helmCanary(...))` type-checks and runs end to end.
  *
  * A recording runner stands in for helm: it keeps every command line and
- * answers the revision read-back with `revision`.
+ * answers the stable release's revision read with `revision`, and the canary
+ * release's existence check with "not found" unless `leftover` is set.
  */
 
 import {
@@ -32,8 +33,14 @@ let calls: string[][] = [];
 /** The stable release's revision before the rollout. */
 let revision = "12";
 
+/** Whether a canary release is left over from an earlier rollout. */
+let leftover = false;
+
 /** Whether the analysis passes. */
 let healthy = true;
+
+/** The image the build configures. */
+let image = "1.5.0";
 
 /** The revision a hand-run rollback goes back to, if the build names one. */
 let stableRevision: number | undefined;
@@ -44,12 +51,23 @@ class Deploy extends Build {
       helmCanary((h) =>
         (stableRevision === undefined ? h : h.stableRevision(stableRevision))
           .chart("./charts/api").stableRelease("api").namespace("prod")
-          .image("1.5.0").replicas(4)
+          .image(image).replicas(4)
           .runner((settings) => {
             const argv = settings.argv().slice(1);
             calls.push(argv);
-            const stdout = argv[0] === "get" ? revision : "";
-            return Promise.resolve(new CommandOutput(0, stdout, ""));
+            if (argv[0] !== "get") {
+              return Promise.resolve(new CommandOutput(0, "", ""));
+            }
+            if (argv[2] === "api") {
+              return Promise.resolve(
+                new CommandOutput(0, `${revision} deployed\n`, ""),
+              );
+            }
+            return Promise.resolve(
+              leftover
+                ? new CommandOutput(0, "3", "")
+                : new CommandOutput(1, "", "Error: release: not found\n"),
+            );
           })
       ),
     )
@@ -94,7 +112,9 @@ async function onlyRun(dir: string): Promise<string> {
 function fresh(): void {
   calls = [];
   revision = "12";
+  leftover = false;
   healthy = true;
+  image = "1.5.0";
   stableRevision = undefined;
 }
 
@@ -105,6 +125,7 @@ Deno.test("Helm: staged, stepped, parked, and promoted by a later process", asyn
     assertEquals(parked.code, 0, parked.err);
     assertEquals(steps(), [
       "get api",
+      "get api-canary",
       "upgrade api-canary replicaCount=0",
       "upgrade api-canary replicaCount=1",
       "upgrade api replicaCount=3",
@@ -113,7 +134,10 @@ Deno.test("Helm: staged, stepped, parked, and promoted by a later process", asyn
     ]);
     assertStringIncludes(parked.out, "Stable revision");
 
+    // The resumed process is configured with another image; the one staged
+    // and analysed is what is promoted.
     calls = [];
+    image = "9.9.9";
     const resumed = await runCli(Deploy, [
       "resume",
       await onlyRun(dir),
@@ -154,6 +178,32 @@ Deno.test("Helm: a rollback after resume, in another process, uses the recorded 
     const cancelled = await runCli(Deploy, ["cancel", id]);
     assertEquals(cancelled.code, 0, cancelled.err);
     assertEquals(steps(), ["rollback api 12", "uninstall api-canary"]);
+  });
+});
+
+Deno.test("Helm: a stage with a bad image runs no helm command, even with a hand-run revision set", async () => {
+  // The engine rolls a failed stage back inline. A stage that failed on its
+  // configuration changed nothing, so that rollback must not downgrade the
+  // stable release to the hand-run revision.
+  fresh();
+  image = "1.5.0,x=1";
+  stableRevision = 3;
+  await withStateDir(async () => {
+    const { code, out, err } = await runCli(Deploy, ["ship"]);
+    assertEquals(code, 1);
+    assertStringIncludes(out + err, "is not an image reference or tag");
+    assertEquals(calls, []);
+  });
+});
+
+Deno.test("Helm: a canary release left by an earlier rollout is refused, not taken over", async () => {
+  fresh();
+  leftover = true;
+  await withStateDir(async () => {
+    const { code, out, err } = await runCli(Deploy, ["ship"]);
+    assertEquals(code, 1);
+    assertStringIncludes(out + err, "already exists, left by an earlier");
+    assertEquals(steps(), ["get api", "get api-canary"]);
   });
 });
 

@@ -39,6 +39,8 @@ export {
   HelmCanary,
   helmCanary,
   type HelmCanaryContext,
+} from "./src/helm_canary.ts";
+export {
   HelmCanarySettings,
   type HelmSettingsRunner,
-} from "./src/helm_canary.ts";
+} from "./src/helm_canary_settings.ts";
