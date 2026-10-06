@@ -157,12 +157,17 @@ await run(Deploy);
 Its lambda runs on every call, so it may read resolved parameters. Every traffic
 move goes through the candidate's tag (`canary` unless you set `.tag(...)`):
 
-| Call      | gcloud                                                                                                                                                                                                                              |
-| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `stage`   | `run services update <service> --image <image> --tag canary --no-traffic`, then records the new revision. `services update` never creates a service, so the service must exist.                                                     |
-| `expose`  | `run services update-traffic <service> --to-tags canary=<n>`. gcloud spreads the rest over the revisions already serving, in proportion and in whole percents, so an earlier split is kept only approximately. Whole percents only. |
-| `promote` | Checks that the latest revision is still the staged candidate, then `update-traffic --to-latest`. A revision someone deployed mid-rollout is refused, which rolls back.                                                             |
-| `abort`   | Mid-rollout: `update-traffic --to-tags canary=0`. Run by hand (no recorded state): `update-traffic --to-revisions <stable>=100`, to the revision set with `.stable(...)`, and it refuses without one.                               |
+| Call      | gcloud                                                                                                                                                                                                                                                                                                     |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stage`   | `run services describe <service> --format 'value(metadata.uid)'`, then `run services update <service> --image <image> --tag canary --no-traffic`, then records the service, region, tag, gcloud flags and uid, and the new revision. `services update` never creates a service, so the service must exist. |
+| `expose`  | The record check, then `run services update-traffic <service> --to-tags canary=<n>`. gcloud spreads the rest over the revisions already serving, in proportion and in whole percents, so an earlier split is kept only approximately. Whole percents only.                                                 |
+| `promote` | The record check, then checks that the latest revision is still the staged candidate, then `update-traffic --to-latest`. A revision someone deployed mid-rollout is refused, which rolls back.                                                                                                             |
+| `abort`   | Mid-rollout: the record check, then `update-traffic --to-tags canary=0`. Run by hand (no recorded state): no check, `update-traffic --to-revisions <stable>=100`, to the revision set with `.stable(...)`, and it refuses without one.                                                                     |
+
+The record check compares the service, region, tag and gcloud flags this call is
+configured with to the ones `stage` recorded, before any command, then reads the
+service's `metadata.uid` again and compares it to the recorded one, before
+anything changes.
 
 A hand-run `zuke rollout.abort` is a fresh run with no record of the rollout,
 and the release it undoes has usually been promoted, so the tag's route is
@@ -175,6 +180,40 @@ carrying the tag, so its tagged URL reaches it until the next rollout moves the
 tag. Promote checks the latest revision and then moves traffic in a second call,
 so a deploy that lands in the seconds between the two is not caught. Global
 flags such as `--project` and `--account` go in `.gcloud(...)`.
+
+`stage` records the service, the region (or that none was set), the tag and the
+global flags `.gcloud(...)` gives every command — as argv only: what it passes
+with `.env(...)` may be a secret and is not recorded, and neither is which
+gcloud binary runs. A later `expose`, `promote` or rollback — in a resumed
+process, or a `zuke cancel` — configured with any other value refuses, naming
+both, and changes nothing rather than move traffic on, or promote, a service the
+rollout never staged. The flags are compared as written, in order, so two
+spellings of one project are refused too, as is a changed `--verbosity`. A
+record with a part missing is refused as damaged, before any command — and so is
+a rollout parked by an earlier `@zuke/gcloud`, which recorded none of this: take
+its traffic back by hand with `update-traffic --to-tags canary=0`.
+
+The flags cannot see everything that chooses the service: gcloud's active
+project also comes from `CLOUDSDK_CORE_PROJECT`, `gcloud config set project` and
+the active configuration, and its default region from `run/region`. So `stage`
+also records the service's `metadata.uid`, which Cloud Run sets when the service
+is created and keeps until it is deleted, and every later call reads it again
+before changing anything. A service of the same name in another project or
+region, or one deleted and created again, has another uid and is refused. The
+uid read and the traffic move are two gcloud calls, so a change landing in the
+seconds between them is not caught.
+
+A refusal changes nothing, but the engine then settles the run as cancelled, and
+its rollback refuses the same way — so the candidate keeps the share it had, and
+a resume or `zuke cancel` will not roll it back. To recover, set the
+configuration and gcloud's active project back to what the rollout started with,
+and run the uid check the refusal gives — a `run services describe` of the
+recorded service — to see that it prints the recorded uid (a rollback run by
+hand has no record to check it against). Then run the
+`run services update-traffic … --to-tags canary=0` command it gives, built from
+the recorded service, region, tag and flags, or run `zuke rollout.abort` by hand
+with `.stable(...)` set to the revision that served before the rollout. A
+rollback run by hand with no record uses the configuration as it is.
 
 ### Kubernetes
 

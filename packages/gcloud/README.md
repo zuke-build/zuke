@@ -93,6 +93,15 @@ rollout = canary((c) =>
 - **`abort`** sets the tag back to 0 % mid-rollout. Run by hand, it sends all
   traffic to the `.stable(...)` revision.
 
+`stage` records the service, region, tag and `.gcloud(...)` flags, and the
+service's `metadata.uid`. Every later call — in a resumed process or a
+`zuke cancel` too — compares its configuration with that record before any
+command, and the live uid with the recorded one before changing anything, so a
+configuration that now reaches another service (another name, region or project,
+or one deleted and created again) is refused rather than acted on. The refusal
+leaves the run cancelled and gives the gcloud commands, built from the record,
+that check the service and take the candidate's traffic back.
+
 See
 [docs/canary.md](https://github.com/zuke-build/zuke/blob/master/docs/canary.md#cloud-run).
 
@@ -133,12 +142,19 @@ function cloudRunCanary(configure: Configure<CloudRunCanarySettings>): CloudRunC
 
   The lambda runs on every call, so it may read resolved parameters.
 
-  - stage — `run services update <service> --image <image> --tag canary --no-traffic`, then records the new revision.
+  - stage — reads the service's `metadata.uid`, runs `run services update <service> --image <image> --tag canary --no-traffic`, then records the
+    service, region, tag, gcloud flags and uid, and the new revision.
   - expose — `run services update-traffic <service> --to-tags canary=<n>`.
   - promote — checks the latest revision is still the candidate, then
     `update-traffic --to-latest`.
   - abort — `update-traffic --to-tags canary=0` mid-rollout; run by hand,
     `--to-revisions <stable>=100` to the revision set with `.stable(...)`.
+
+  Every call after `stage` that has its record — expose, promote, and abort
+  mid-rollout — first compares the configured service, region, tag and
+  gcloud flags with the record, then reads the service's uid again, and
+  refuses on any difference before changing anything. A hand-run abort has no
+  record and uses the configuration as it is.
 
 function gcloudAccessToken(run: GcloudRunner): Promise<string>
   The default {@link AccessTokenProvider}: the trimmed stdout of
@@ -176,11 +192,14 @@ class CloudRunCanary
   describe(): string
     `"Cloud Run service api"`, for the build summary.
   async stage(ctx: CloudRunCanaryContext): Promise<void>
-    Deploy the candidate image as a new revision carrying the tag and no
-    traffic, then record which revision that is. `services update` never
-    creates a service, so a misspelt name fails here rather than standing up a
-    second service.
-  async expose(percent: number): Promise<number>
+    Read the service's uid, deploy the candidate image as a new revision
+    carrying the tag and no traffic, then record the service, region, tag,
+    gcloud flags and uid every later call is checked against, and which
+    revision the candidate is. `services update` never creates a service, so a
+    misspelt name fails here rather than standing up a second service. A stage
+    run again over a record that shows the candidate tagged is checked against
+    that record first, as every later call is.
+  async expose(percent: number, ctx: CloudRunCanaryContext): Promise<number>
     Send `percent` of the requests to the candidate, through its tag. gcloud
     spreads the rest over the revisions already serving, in proportion and in
     whole percents, so a split the service had before the canary keeps its
@@ -195,11 +214,14 @@ class CloudRunCanary
     Take the candidate's traffic back. Idempotent. What it does depends on
     what this rollout recorded:
 
-    - The candidate is tagged (a rollback mid-rollout): the tag goes to
-      0 % and gcloud returns that share to the revisions already serving. The
-      candidate revision stays, with no traffic.
+    - The candidate is tagged (a rollback mid-rollout): once the
+      configuration and the service's uid match what `stage` recorded, the
+      tag goes to 0 % and gcloud returns that share to the revisions already
+      serving. The candidate revision stays, with no traffic. On a mismatch
+      this refuses, changing nothing.
     - `stage` failed before tagging it: nothing has any traffic to take
       back, so nothing runs.
+    - Any other stage marker: the record is damaged, and this refuses.
     - Nothing recorded (`rollout.abort` run by hand, a fresh run): all
       traffic goes to the revision set with
       {@link CloudRunCanarySettings.stable}. Without one this refuses, since
