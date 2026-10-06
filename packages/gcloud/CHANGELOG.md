@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/zuke-build/zuke/compare/gcloud-v1.2.0...gcloud-v1.3.0) (2026-10-06)
+
+
+### Features
+
+* **gcloud:** Cloud Run platform for @zuke/canary ([#701](https://github.com/zuke-build/zuke/issues/701)) ([a7bb884](https://github.com/zuke-build/zuke/commit/a7bb88482e64d42199b27731dec1abffcfa5237d))
+
 ## [1.2.0](https://github.com/zuke-build/zuke/compare/gcloud-v1.1.0...gcloud-v1.2.0) (2026-09-01)
 
 
