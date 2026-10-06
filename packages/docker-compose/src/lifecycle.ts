@@ -19,6 +19,7 @@ export class DockerComposeUpSettings extends DockerComposeSettings {
   #detach = false;
   #build = false;
   #forceRecreate = false;
+  #noRecreate = false;
   #removeOrphans = false;
   #wait = false;
   #abortOnContainerExit = false;
@@ -43,6 +44,16 @@ export class DockerComposeUpSettings extends DockerComposeSettings {
   /** Recreate containers even if unchanged (`--force-recreate`). */
   forceRecreate(): this {
     this.#forceRecreate = true;
+    return this;
+  }
+
+  /**
+   * Leave containers that already exist as they are, even when their
+   * configuration changed (`--no-recreate`). Scaling a service with it only
+   * adds or removes replicas; the ones already running keep their image.
+   */
+  noRecreate(): this {
+    this.#noRecreate = true;
     return this;
   }
 
@@ -116,7 +127,7 @@ export class DockerComposeUpSettings extends DockerComposeSettings {
     const argv = ["up"];
     if (this.#detach) argv.push("-d");
     if (this.#build) argv.push("--build");
-    if (this.#forceRecreate) argv.push("--force-recreate");
+    argv.push(...recreateFlags("up", this.#forceRecreate, this.#noRecreate));
     if (this.#removeOrphans) argv.push("--remove-orphans");
     if (this.#wait) argv.push("--wait");
     if (this.#abortOnContainerExit) argv.push("--abort-on-container-exit");
@@ -363,18 +374,12 @@ export class DockerComposeCreateSettings extends DockerComposeSettings {
           "answers to whether images are built — pick one.",
       );
     }
-    if (this.#forceRecreate && this.#noRecreate) {
-      throw new Error(
-        "DockerComposeTasks.create: .forceRecreate() and .noRecreate() are " +
-          "opposite answers to whether existing containers are replaced — " +
-          "pick one.",
-      );
-    }
     const argv = ["create"];
     if (this.#build) argv.push("--build");
     if (this.#noBuild) argv.push("--no-build");
-    if (this.#forceRecreate) argv.push("--force-recreate");
-    if (this.#noRecreate) argv.push("--no-recreate");
+    argv.push(
+      ...recreateFlags("create", this.#forceRecreate, this.#noRecreate),
+    );
     if (this.#removeOrphans) argv.push("--remove-orphans");
     if (this.#quietPull) argv.push("--quiet-pull");
     if (this.#pull !== undefined) argv.push("--pull", this.#pull);
@@ -537,4 +542,25 @@ export class DockerComposeWaitSettings extends DockerComposeSettings {
     argv.push(...this.#services.render());
     return argv;
   }
+}
+
+/**
+ * The `--force-recreate` / `--no-recreate` flags `up` and `create` share, or
+ * an error naming `task` when both are set: they are opposite answers to
+ * whether existing containers are replaced.
+ */
+function recreateFlags(
+  task: string,
+  force: boolean,
+  keep: boolean,
+): string[] {
+  if (force && keep) {
+    throw new Error(
+      `DockerComposeTasks.${task}: .forceRecreate() and .noRecreate() are ` +
+        "opposite answers to whether existing containers are replaced — " +
+        "pick one.",
+    );
+  }
+  if (force) return ["--force-recreate"];
+  return keep ? ["--no-recreate"] : [];
 }

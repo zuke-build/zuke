@@ -7,6 +7,7 @@
  */
 
 import { DockerComposeSettings } from "./settings.ts";
+import type { DockerComposePullPolicy } from "./lifecycle.ts";
 
 /** Settings for `compose build`. */
 export class DockerComposeBuildSettings extends DockerComposeSettings {
@@ -53,11 +54,22 @@ export class DockerComposeBuildSettings extends DockerComposeSettings {
 export class DockerComposePullSettings extends DockerComposeSettings {
   #ignorePullFailures = false;
   #quiet = false;
+  #policy?: Exclude<DockerComposePullPolicy, "never">;
   #services: string[] = [];
 
   /** Continue past services whose pull fails (`--ignore-pull-failures`). */
   ignorePullFailures(): this {
     this.#ignorePullFailures = true;
+    return this;
+  }
+
+  /**
+   * Which images to pull (`--policy`): `missing` skips an image already
+   * present locally — so a locally built image is not looked up in a
+   * registry — and `always` fetches every one.
+   */
+  policy(value: Exclude<DockerComposePullPolicy, "never">): this {
+    this.#policy = value;
     return this;
   }
 
@@ -78,6 +90,7 @@ export class DockerComposePullSettings extends DockerComposeSettings {
     const argv = ["pull"];
     if (this.#ignorePullFailures) argv.push("--ignore-pull-failures");
     if (this.#quiet) argv.push("-q");
+    if (this.#policy !== undefined) argv.push("--policy", this.#policy);
     argv.push(...this.#services);
     return argv;
   }

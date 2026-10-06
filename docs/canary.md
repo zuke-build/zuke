@@ -76,8 +76,9 @@ Every call gets the same `ctx.state`, the rollout's durable platform state, so
 network calls.
 
 Adapters for specific platforms belong in their wrapper packages; see
-[Cloud Run](#cloud-run), [Kubernetes](#kubernetes) and [Helm](#helm) below.
-Until one exists for yours, a platform is a plain object in the build:
+[Cloud Run](#cloud-run), [Kubernetes](#kubernetes), [Helm](#helm) and
+[Docker Compose](#docker-compose) below. Until one exists for yours, a platform
+is a plain object in the build:
 
 <!-- check -->
 
@@ -392,6 +393,213 @@ What it relies on, and cannot check:
   prune it; the rollback then fails rather than guess.
 - Requires Helm 3.14 or later in the 3.x line (`--reset-then-reuse-values`,
   `uninstall --ignore-not-found`).
+
+### Docker Compose
+
+`dockerComposeCanary` from `@zuke/docker-compose` is a Compose project as a
+platform. The project runs the release as two services, a stable one and a
+canary one, behind a proxy that balances requests across the containers of both:
+Traefik's Docker provider, or nginx/HAProxy over a shared network alias
+(re-resolving it, since Docker's DNS hands out one address per container).
+Exposure is `"replicas"`: the canary's share of a fixed total, so it comes in
+whole replicas and the achieved share is what `expose` reports.
+
+Compose has no command that sets a service's image, so each service's `image:`
+must be a whole variable, and the platform sets it on every command it runs:
+
+```yaml
+services:
+  app: &app
+    image: ${APP_IMAGE}
+    scale: 4 # the platform's .replicas(...)
+    networks:
+      default:
+        aliases: [backend] # the proxy balances over every "backend" container
+  app-canary:
+    <<: *app # identical but for the image and the scale
+    image: ${APP_CANARY_IMAGE:-${APP_IMAGE}}
+    scale: 0
+```
+
+<!-- check -->
+
+```ts
+import { Build, parameter, run, target } from "@zuke/core";
+import { canary, httpProbe } from "@zuke/canary";
+import { dockerComposeCanary } from "@zuke/docker-compose";
+
+class Deploy extends Build {
+  image = parameter("Container image to roll out").required();
+
+  rollout = canary((c) =>
+    c.platform(
+      dockerComposeCanary((d) =>
+        d.service("app").canaryService("app-canary").replicas(4)
+          .image(this.image.value)
+          .stableImageVariable("APP_IMAGE")
+          .canaryImageVariable("APP_CANARY_IMAGE")
+          .compose((s) => s.file("compose.yml").projectName("shop"))
+      ),
+    )
+      .steps(25, 50)
+      .bake("10m")
+      .analysis(httpProbe((h) => h.url("https://shop.example.com/healthz")))
+      .lock((l) => l.lockKey("deploy", "shop").withTtl("24h"))
+  );
+  ship = target().dependsOn(this.rollout.promote).executes(() => {});
+}
+
+await run(Deploy);
+```
+
+Its lambda runs on every call, so it may read resolved parameters. Every call
+after `stage` checks the project first (see below). Every move is
+`up -d --no-deps --scale <service>=<n> <service>`, with `--wait` when `n` is not
+0, run with the image variables set:
+
+| Call      | Compose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stage`   | Records the marker first, so a stage its own settings refuse is rolled back as a no-op. `ps --format {{.Image}} <stable>` reads the image the stable replicas run (it refuses no replicas, replicas on different images, a truncated capture, or a line that is not an image reference), `images --quiet <stable>` their one image ID, and `ps --format {{.Project}} <stable>` the one project they are in; `pull --policy missing <canary>`; then records the rollout — both services, the replicas, both variables, both images, the stable ID, which every later stable move uses as `sha256:<id>`, the global flags `.compose(...)` gives and that project — which every later call acts on whatever the lambda resolves to then. Then the stable service to every replica (`--no-recreate`) and the canary service to none.                                                                                                                                                                                                                                                              |
+| `expose`  | Refuses before any command unless `.compose(...)` gives the recorded global flags, then reads `ps --format {{.Project}} <stable> <canary>` and refuses, before any other command, unless it reports exactly the recorded project. The canary service to its share of the recorded replicas (the nearest whole replica, but at least one on each side for any share strictly between 0 and 100) and the stable service, `--no-recreate`, to the rest. Whichever grows goes first, so the total never dips. Once the canary has replicas, `ps` must show every one on the candidate (by reference or by ID) and `images --quiet` must resolve them to one ID: the first step records it, later ones refuse another. Returns the share reached.                                                                                                                                                                                                                                                                                                                                                  |
+| `promote` | Refuses before any command unless `.compose(...)` gives the recorded global flags, then reads `ps --format {{.Project}} <stable> <canary>` and refuses, before any other command, unless it reports exactly the recorded project. The canary service to every replica; the stable service recreated with the stable variable set to the candidate's pinned image ID (pinned here, with `ps` and `images --quiet` on the canary, if no step ran); `images --quiet` must then resolve every stable replica to that ID (a stable `image:` that does not read the variable is refused before the promotion is recorded); the canary service to none. The total briefly doubles and never dips. Idempotent.                                                                                                                                                                                                                                                                                                                                                                                        |
+| `abort`   | With a record, refuses before any command unless `.compose(...)` gives the recorded global flags, then reads `ps --format {{.Project}} <stable> <canary>` and refuses, before any other command, unless it reports exactly the recorded project. `images --quiet` reads the stable replicas' IDs (run by hand, `ps` their references). If they resolve to exactly the recorded ID (run by hand, every one shows the `.stable(...)` reference; mid-rollout they do), the stable service back to every replica with `--no-recreate`. Otherwise (after a promotion, finished or part-way) Compose would recreate every stable replica at once, so the canary service first goes to every replica on the stable image, then the stable service is recreated on it. The stable replicas are then read again the same way and must be on the stable image, or it refuses with the canary still serving. Then the canary service to none. Run by hand (no record): the `.stable(...)` image and the configured services; it refuses without one. After a `stage` that changed nothing, nothing runs. |
+
+**A promotion is an override, not a deployment record.** Compose keeps no state
+of its own: the stable service's image is whatever `${APP_IMAGE}` resolves to
+when Compose next runs. The platform sets it for its own commands only, so until
+the candidate is written where the variable comes from (the `.env` file, or the
+environment of whatever runs `docker compose up` next), a plain
+`docker compose up` puts the stable service back on the old image. The build
+summary says so after a promotion and after a hand-run rollback, as
+`Persist: set APP_IMAGE=<image> and keep scale: <replicas>`. Persist the image
+after `rollout.promote` (a target that depends on it can write the `.env` file),
+or always run Compose with the variable set. The platform itself does not depend
+on that: the next rollout's `stage` records what the stable replicas actually
+run, so its rollback returns to the image that was serving, whatever the `.env`
+file says.
+
+A hand-run `zuke rollout.abort` is a fresh run with no record of the rollout,
+and the release it undoes has usually been promoted, so re-scaling the stable
+service would change nothing. Name the image to go back to with
+`.stable("registry.example.com/app:1.4.0")`. Without it the abort refuses
+instead of reporting a rollback it did not do. That rollback is an override too,
+in the same way as a promotion. For a rollout that is still running or parked,
+use `zuke cancel <run-id>`.
+
+**The project is part of the record.** The services are named inside a Compose
+project, so `stage` records the global flags `.compose(...)` gives (`-f`, `-p`,
+`--profile`, `--project-directory`, `--env-file`) as argv, never what its
+`.env(...)` passes, which may be a secret. `expose`, `promote` and a recorded
+`abort` compare the flags the lambda gives now with the recorded ones before
+running any command, reads included, since a read of another project would
+inform the next move, and refuse on any difference: as written, in order, so
+`-f a.yml -f b.yml` and `-f b.yml -f a.yml` differ too. A record with no usable
+flags is refused as damaged. Without this, a resumed or cancelling process whose
+`.projectName(this.env.value)` resolves to another value would scale and
+recreate same-named services in a project the rollout never staged. The lambda
+also runs once per command, and a command it gives other flags than the call
+resolved at its start (a lambda reading a clock or a counter) is refused before
+it runs.
+
+Flags are not all that selects a project: `COMPOSE_PROJECT_NAME` in the
+environment, a `.env` or `--env-file` that sets it, the lambda's `.env(...)` and
+`.cwd(...)`, and the working directory a default name comes from do too. So
+`stage` also records the project Compose reports the stable replicas in
+(`ps --format {{.Project}} <stable>`, which prints each container's project
+label), and after the flag check every later call reads
+`ps --format {{.Project}} <stable> <canary>` before any other command. Compose
+resolves the project from all of those and lists only that project's containers,
+so the call refuses unless the output is exactly the recorded project, and
+refuses as well when it lists no container at all: a live rollout always runs
+some, since the total never dips. A record without the project is refused as
+damaged.
+
+Either refusal says the call changed nothing and names both projects, or both
+sets of flags; the project refusal also names what can change the project. Since
+`expose` and `promote` cancel the run on failure, and the rollback that
+cancellation runs refuses for the same reason, the run is left cancelled with
+the rollout's services as they are: a resume answers that the run is not
+suspended, and `zuke cancel` that it is already cancelled. The recovery the
+message names is the one that works: set the configuration and environment back
+to what the rollout started with, check with `docker compose ps` that it reaches
+the project that was staged (a rollback run by hand has no record to check
+against), then run the rollout's abort target by hand (`zuke rollout.abort`)
+with `.stable("sha256:<id>")` set to the stable image ID the message names, the
+one the rollout recorded. The message names the tag as well, but a tag can move,
+so use it only if it still resolves to that ID. A rollback by ID passes
+`--pull never`, and it also undoes a promotion that failed part-way. A hand-run
+abort has no record, so it acts on whatever project the lambda selects.
+
+Limits worth knowing:
+
+- The project check compares the project Compose itself reports, so it covers
+  whatever selects the project: the flags, `COMPOSE_PROJECT_NAME`, a `.env` or
+  `--env-file`, the lambda's `.env(...)` and `.cwd(...)`, the working directory.
+  It does not cover another daemon: a Docker context, `DOCKER_HOST` or
+  `.toolPath(...)` that reaches a daemon running the same project name with the
+  same services on the same images is not told apart. Nor does it compare the
+  services' definitions, so a `COMPOSE_FILE` or env-file change that keeps the
+  project but changes them goes unnoticed. The recorded image IDs are a partial
+  guard against another daemon: after `stage` every move passes `--pull never`,
+  so one that creates a container fails on a daemon that lacks its image (the
+  recorded stable ID, or the candidate), while one that only removes containers
+  needs no image and goes ahead; and the reads compare IDs, so a rollback finds
+  stable replicas on another image and a later step a canary on another
+  candidate.
+- Exposure is a share of **containers**. It is a share of requests only if the
+  proxy balances evenly, so sticky sessions or uneven connection reuse skew it.
+- The two services must be identical except for the image and the scale (a YAML
+  anchor, as above). The analysis judged the candidate under the canary
+  service's configuration, and promote runs it under the stable service's.
+- Do not run `docker compose up` on the project by hand during a rollout, and
+  take a `.lock(...)`. A plain `up` applies the `scale:` values and the `.env`
+  images: it takes the canary service back to none and the stable service to the
+  file's image, behind the rollout's back.
+- Give the stable service `scale:` equal to `.replicas(...)` and the canary
+  service `scale: 0` in the file: a plain `docker compose up` sets every service
+  back to its `scale:`, replica count included.
+- `pull --policy missing` does not refresh a mutable tag that is already present
+  locally. Roll out immutable tags or digests.
+- The first step that runs a canary replica pins the candidate's image ID
+  (`images --quiet`); later steps run the canary by that ID and refuse one that
+  resolves to another, and promote installs that ID on the stable service and
+  checks it there by ID. A candidate tag moved after the analysis therefore
+  cannot promote an image nobody judged. The Persist summary names the reference
+  and the ID it must still resolve to.
+- Abort decides whether the stable replicas need recreating by ID: only when
+  `images --quiet <stable>` resolves to exactly the recorded ID does it keep
+  them; a tag `ps` shows is not evidence of the image.
+- Every move that sets a variable to an image ID passes `--pull never`, which
+  overrides a service's `pull_policy: always` (an ID cannot be pulled).
+- `images` counts stopped replicas and one-off `docker compose run` containers
+  as well as running ones, so one left on another image makes `stage` refuse
+  until it is removed (`docker compose rm`; use `run --rm`).
+- After moving the stable service, abort reads it again (by ID, or by reference
+  when run by hand) and refuses, leaving the canary serving, if a literal stable
+  `image:` kept it off the stable image.
+- `stage` records the stable replicas' image ID (`images --quiet`), and every
+  later command that may create a stable replica sets the stable variable to
+  `sha256:<id>` rather than the tag. A tag moved by a local pull or build
+  mid-rollout therefore cannot bring a never-analysed image into the stable
+  service; a rollback accepts replicas shown by tag or by that ID.
+- Image variables may not be names Docker, Compose or the process read as
+  settings (`DOCKER_*`, `COMPOSE_*`, `BUILDKIT_*`, `BUILDX_*`, `XDG_*`, `LD_*`,
+  `DYLD_*`, `*_PROXY`, `PATH`, `PATHEXT`, `HOME`, `USERPROFILE`, `SystemRoot`,
+  `TMPDIR`, `TEMP`, `TMP`, `SSH_AUTH_SOCK`, `SSL_CERT_FILE`, `SSL_CERT_DIR`, in
+  any case), and the two must differ in more than case.
+- Promote recreates the stable replicas. That is not a rolling update, but the
+  canary service holds every replica's worth of the candidate while it happens.
+- Requires Compose v2 (`docker compose`). `--wait`, `pull --policy` and
+  `ps --format` with a Go template are not in the v1 `docker-compose` binary.
+- `--wait` has no timeout. Bound each command with
+  `.compose((s) => s.killAfter(600_000))` if a replica that never becomes
+  healthy must not hold the rollout indefinitely.
+
+Global flags such as `-f`, `-p` and `--env-file` go in `.compose(...)`. The
+image variables are applied after it, so an `.env(...)` there cannot override
+them. A command that exits non-zero fails the call even under `.noThrow()`, and
+trailing `.args(...)` there are refused, since they would follow the service
+operand of every command — a guard against accidents, not a security boundary.
 
 ## Bakes: inline or durable
 

@@ -20,9 +20,12 @@ import {
   DockerComposeLsSettings,
   DockerComposePauseSettings,
   DockerComposePortSettings,
+  DockerComposePsSettings,
+  DockerComposePullSettings,
   DockerComposeScaleSettings,
   DockerComposeTopSettings,
   DockerComposeUnpauseSettings,
+  DockerComposeUpSettings,
   DockerComposeVersionSettings,
   DockerComposeVolumesSettings,
   DockerComposeWaitSettings,
@@ -80,6 +83,71 @@ Deno.test("create: the two recreate answers, and the two build answers", () => {
     Error,
   );
   assertEquals(recreate.message.includes("pick one"), true);
+});
+
+Deno.test("up: no-recreate only changes the replica count", () => {
+  assertEquals(
+    args(
+      new DockerComposeUpSettings()
+        .usePlugin()
+        .detach()
+        .wait()
+        .noDeps()
+        .noRecreate()
+        .scale("app", 3)
+        .services("app"),
+    ),
+    [
+      "up",
+      "-d",
+      "--no-recreate",
+      "--wait",
+      "--no-deps",
+      "--scale",
+      "app=3",
+      "app",
+    ],
+  );
+  const both = assertThrows(
+    () =>
+      new DockerComposeUpSettings()
+        .usePlugin()
+        .forceRecreate()
+        .noRecreate()
+        .argv(),
+    Error,
+  );
+  assertEquals(both.message.includes("pick one"), true);
+});
+
+Deno.test("pull: a policy precedes the services", () => {
+  assertEquals(
+    args(
+      new DockerComposePullSettings()
+        .usePlugin()
+        .quietOutput()
+        .policy("missing")
+        .services("app"),
+    ),
+    ["pull", "-q", "--policy", "missing", "app"],
+  );
+  assertEquals(
+    args(new DockerComposePullSettings().usePlugin().policy("always")),
+    ["pull", "--policy", "always"],
+  );
+});
+
+Deno.test("ps: a Go template format precedes the services", () => {
+  assertEquals(
+    args(
+      new DockerComposePsSettings()
+        .usePlugin()
+        .all()
+        .format("{{.Image}}")
+        .services("app"),
+    ),
+    ["ps", "-a", "--format", "{{.Image}}", "app"],
+  );
 });
 
 Deno.test("kill: signal and orphan removal precede the services", () => {

@@ -186,6 +186,7 @@ export class DockerComposePsSettings extends DockerComposeSettings {
   #all = false;
   #quiet = false;
   #services = false;
+  #format?: string;
   #serviceNames: string[] = [];
 
   /** Show stopped containers too (`-a`). */
@@ -206,6 +207,15 @@ export class DockerComposePsSettings extends DockerComposeSettings {
     return this;
   }
 
+  /**
+   * Output format (`--format`): `table`, `json`, or a Go template such as
+   * `{{.Image}}`, which prints one line per container.
+   */
+  format(value: string): this {
+    this.#format = value;
+    return this;
+  }
+
   /** Restrict to specific services (positional); optional. */
   services(...names: string[]): this {
     this.#serviceNames.push(...names);
@@ -218,6 +228,7 @@ export class DockerComposePsSettings extends DockerComposeSettings {
     if (this.#all) argv.push("-a");
     if (this.#quiet) argv.push("-q");
     if (this.#services) argv.push("--services");
+    if (this.#format !== undefined) argv.push("--format", this.#format);
     argv.push(...this.#serviceNames);
     return argv;
   }

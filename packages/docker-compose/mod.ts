@@ -77,3 +77,12 @@ export {
   DockerComposeVolumesSettings,
 } from "./src/inventory.ts";
 export { type DockerComposeVersion } from "./src/reports.ts";
+export {
+  DockerComposeCanary,
+  dockerComposeCanary,
+} from "./src/docker_compose_canary.ts";
+export {
+  type DockerComposeCanaryContext,
+  DockerComposeCanarySettings,
+  type DockerComposeSettingsRunner,
+} from "./src/canary_settings.ts";
