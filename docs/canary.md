@@ -76,8 +76,8 @@ Every call gets the same `ctx.state`, the rollout's durable platform state, so
 network calls.
 
 Adapters for specific platforms belong in their wrapper packages; see
-[Cloud Run](#cloud-run) below. Until one exists for yours, a platform is a plain
-object in the build:
+[Cloud Run](#cloud-run) and [Kubernetes](#kubernetes) below. Until one exists
+for yours, a platform is a plain object in the build:
 
 <!-- check -->
 
@@ -174,6 +174,95 @@ carrying the tag, so its tagged URL reaches it until the next rollout moves the
 tag. Promote checks the latest revision and then moves traffic in a second call,
 so a deploy that lands in the seconds between the two is not caught. Global
 flags such as `--project` and `--account` go in `.gcloud(...)`.
+
+### Kubernetes
+
+`kubectlCanary` from `@zuke/kubectl` is a pair of Deployments as a platform: the
+stable one, and a canary Deployment that sits at 0 replicas between rollouts.
+
+<!-- check -->
+
+```ts
+import { Build, parameter, run, target } from "@zuke/core";
+import { canary, httpProbe } from "@zuke/canary";
+import { kubectlCanary } from "@zuke/kubectl";
+
+class Deploy extends Build {
+  image = parameter("Container image to roll out").required();
+
+  rollout = canary((c) =>
+    c.platform(
+      kubectlCanary((k) =>
+        k.stable("api").canary("api-canary").container("api")
+          .image(this.image.value).replicas(10).namespace("prod")
+          .kubectl((s) => s.context("prod"))
+      ),
+    )
+      .steps(10, 30, 50)
+      .bake("10m")
+      .analysis(httpProbe((h) => h.url("https://api.example.com/healthz")))
+  );
+  ship = target().dependsOn(this.rollout.promote).executes(() => {});
+}
+
+await run(Deploy);
+```
+
+It assumes **one Service selects the pods of both Deployments** (give them a
+shared label the Service selects, and each Deployment a label of its own for its
+selector). The Service spreads connections over every ready pod, so the
+candidate's share of traffic follows its share of replicas. Exposure is
+`"replicas"`: quantised, and `expose` returns the share it reached. Its lambda
+runs on every call, so it may read resolved parameters.
+
+| Call      | kubectl                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stage`   | Records that it started, then reads single values with `get deployment/<d> -o jsonpath={…}`: the stable image for the container, both Deployments' `.spec.paused`, and the canary's `.spec.replicas`. It refuses a paused Deployment and a canary not at 0 replicas, then runs `set image deployment/<canary> <container>=<image>` and records the stable image, the candidate image, `replicas`, and the Deployments, container and namespace it changed. |
+| `expose`  | canary = `round(replicas × n / 100)`, at most `replicas − 1` for a step; a step asking for less than half a replica is refused, naming the `replicas` it needs. `scale deployment/<canary>`, `rollout status deployment/<canary> --timeout=<timeout>`, then `scale deployment/<stable>` to the rest. The canary grows and is ready before stable shrinks, so a step never drops capacity.                                                                  |
+| `promote` | `set image deployment/<stable> <container>=<staged image>`, `scale deployment/<stable>` to the recorded `replicas`, `rollout status deployment/<stable>`, then `scale deployment/<canary> --replicas=0`. It promotes the image `stage` recorded, whatever the lambda says now; the canary is emptied only once stable is ready.                                                                                                                            |
+| `abort`   | Mid-rollout: `set image` the recorded stable image back on stable (a no-op unless a promote got part of the way), scale it to the recorded `replicas`, `rollout status`, then scale the canary to 0 — even if that wait fails. Run by hand: the same with the image from `.stableImage(...)`, and it refuses without one.                                                                                                                                  |
+
+A hand-run `zuke rollout.abort` is a fresh run with no record of the rollout,
+and the release it undoes has usually been promoted, so the stable Deployment
+already runs the candidate: moving replicas alone would change nothing. Name the
+image to go back to with `.stableImage("reg/api@sha256:…")`; without it the
+abort refuses instead of reporting a rollback it did not do. A rollback after a
+`stage` that failed before recording the candidate runs nothing — the canary had
+no replicas and stable was never touched.
+
+Limits worth knowing:
+
+- A Service balances **connections**, not requests: with keep-alive or HTTP/2
+  clients the candidate's real share can differ a lot from its replica share.
+  For an exact request split use a traffic platform (a mesh or Cloud Run).
+- `.replicas(n)` is the stable Deployment's size at rest; `stage` records it,
+  and promote and abort restore the recorded value. Nothing else may own either
+  Deployment during a rollout: suspend a HorizontalPodAutoscaler, and the sync
+  and self-heal of a GitOps controller that manages their replicas or image. A
+  step needs at least half a replica and `replicas` of at least 2.
+- Only `expose` guarantees capacity. Promote and abort `set image` on the stable
+  Deployment, which rolls out by its own strategy — give it `maxUnavailable: 0`.
+- `stage` refuses a canary Deployment that is not at 0 replicas: it is left from
+  an earlier rollout. Roll that back with `zuke cancel <run-id>`, or scale the
+  canary to 0 by hand once stable is back at full size. It also refuses a paused
+  Deployment, which would not roll out the new image.
+- Growing before shrinking means up to `replicas` + canary pods run at once; a
+  namespace near its quota can stall the canary's `rollout status`, which times
+  out (`.timeout(...)`, from `1ms` to `24h`, default `5m`) and rolls back.
+- Prefer a digest for `.image(...)`: promote sets the same reference on the
+  stable Deployment, and a mutable tag can move in between.
+- Global flags (`--context`, `--kubeconfig`, a `.toolPath(...)`) go in
+  `.kubectl(...)`.
+- A rollout must be finished or cancelled with the configuration it started
+  with. `stage` records the Deployments, container and namespace, and `expose`,
+  `promote` and `abort` refuse — changing nothing — when the lambda names
+  others. The kube context and kubeconfig cannot be recorded, so they must not
+  change mid-rollout either: a resume or `zuke cancel` pointed at another
+  cluster would act on the same-named Deployments there. A refusal leaves the
+  run cancelled with its rollback failed, so roll back by hand: set the
+  configuration back, then run the rollout's `<field>.abort` target (e.g.
+  `zuke rollout.abort`) with `.stableImage(...)` set to the image the refusal
+  names. `expose` and `promote` also refuse a rollout `stage` did not record.
 
 ## Bakes: inline or durable
 
