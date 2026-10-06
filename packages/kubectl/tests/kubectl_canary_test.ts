@@ -156,7 +156,7 @@ Deno.test("stage reads the stable image, checks both Deployments, and sets the c
 
 Deno.test("expose grows the canary, waits for it, then shrinks stable, and reports the share reached", async () => {
   const { runner, calls } = fakeKubectl();
-  assertEquals(await platform(runner).expose(30), 30);
+  assertEquals(await platform(runner).expose(30, context()), 30);
   assertEquals(calls, [
     scale("api-canary", 3),
     status("api-canary"),
@@ -175,7 +175,10 @@ Deno.test("expose quantises to whole replicas and keeps one on each side", async
   for (const [total, requested, achieved] of cases) {
     const { runner, calls } = fakeKubectl();
     assertEquals(
-      await platform(runner, (k) => k.replicas(total)).expose(requested),
+      await platform(runner, (k) => k.replicas(total)).expose(
+        requested,
+        context(),
+      ),
       achieved,
     );
     const canary = Math.round((achieved * total) / 100);
@@ -185,7 +188,7 @@ Deno.test("expose quantises to whole replicas and keeps one on each side", async
 
 Deno.test("expose 0 returns every replica to stable before emptying the canary", async () => {
   const { runner, calls } = fakeKubectl();
-  assertEquals(await platform(runner).expose(0), 0);
+  assertEquals(await platform(runner).expose(0, context()), 0);
   assertEquals(calls, [
     scale("api", 10),
     status("api"),
@@ -197,30 +200,30 @@ Deno.test("expose refuses a share outside 0 to 100, and a split of one replica",
   const { runner, calls } = fakeKubectl();
   for (const bad of [-1, 101, Number.NaN, Number.POSITIVE_INFINITY]) {
     await assertRejects(
-      () => platform(runner).expose(bad),
+      () => platform(runner).expose(bad, context()),
       Error,
       "kubectlCanary: exposure is a percentage from 0 to 100",
     );
   }
   await assertRejects(
-    () => platform(runner, (k) => k.replicas(1)).expose(50),
+    () => platform(runner, (k) => k.replicas(1)).expose(50, context()),
     Error,
     "Raise k.replicas(...) to at least 2",
   );
   assertEquals(calls, []);
 });
 
-Deno.test("expose refuses a step that asks for less than one replica", async () => {
+Deno.test("expose refuses a step that asks for less than half a replica", async () => {
   // 4 replicas at 10 % is 0.4 of one: exposing one would be 25 %, two and a
   // half times what the step asked for.
   const { runner, calls } = fakeKubectl();
   await assertRejects(
-    () => platform(runner, (k) => k.replicas(4)).expose(10),
+    () => platform(runner, (k) => k.replicas(4)).expose(10, context()),
     Error,
     "a 10 % step needs k.replicas(5) or more",
   );
   await assertRejects(
-    () => platform(runner, (k) => k.replicas(1)).expose(30),
+    () => platform(runner, (k) => k.replicas(1)).expose(30, context()),
     Error,
     "a 30 % step needs k.replicas(2) or more",
   );
@@ -232,7 +235,7 @@ Deno.test("an expose whose canary never becomes ready leaves stable at full size
     fails: (argv) => argv[0] === "rollout",
   });
   await assertRejects(
-    () => platform(runner).expose(30),
+    () => platform(runner).expose(30, context()),
     Error,
     "kubectl failed: rollout status",
   );
@@ -272,7 +275,7 @@ Deno.test("abort mid-rollout restores the stable image and size, then empties th
   const ctx = context();
   const p = platform(runner);
   await p.stage(ctx);
-  await p.expose(30);
+  await p.expose(30, ctx);
   await p.abort(ctx);
   await p.abort(ctx);
   const rollback = [
@@ -418,13 +421,16 @@ Deno.test("a non-zero exit fails the call even when kubectl was told not to thro
     () => Promise.resolve(new CommandOutput(1, "", "error: forbidden\n")),
   );
   await assertRejects(
-    () => p.expose(30),
+    () => p.expose(30, context()),
     Error,
     "kubectlCanary: kubectl exited 1 running kubectl scale",
   );
   await assertRejects(
     () =>
-      platform(() => Promise.resolve(new CommandOutput(2, "", ""))).expose(30),
+      platform(() => Promise.resolve(new CommandOutput(2, "", ""))).expose(
+        30,
+        context(),
+      ),
     Error,
     "--replicas=3 deployment/api-canary.",
   );
@@ -491,7 +497,7 @@ Deno.test("missing and malformed settings are named before anything runs", async
   }
   for (const replicas of [0, 2.5]) {
     await assertRejects(
-      () => platform(runner, (k) => k.replicas(replicas)).expose(50),
+      () => platform(runner, (k) => k.replicas(replicas)).expose(50, context()),
       Error,
       "must be a whole number from 1 to 2147483647",
     );
@@ -500,7 +506,7 @@ Deno.test("missing and malformed settings are named before anything runs", async
     () =>
       kubectlCanary((k) =>
         k.stable("api").canary("c").container("api").runner(runner)
-      ).expose(50),
+      ).expose(50, context()),
     Error,
     "add k.replicas(n)",
   );
@@ -512,7 +518,7 @@ Deno.test("timeout and the absence of a namespace reach the command line", async
   await kubectlCanary((k) =>
     k.stable("api").canary("api-canary").container("api").replicas(2)
       .timeout("1h30m").runner(runner)
-  ).expose(50);
+  ).expose(50, context());
   assertEquals(calls, [
     ["scale", "--replicas=1", "deployment/api-canary"],
     ["rollout", "status", "deployment/api-canary", "--timeout=1h30m"],
@@ -541,7 +547,7 @@ Deno.test("the default runner runs kubectl itself", async () => {
     k.stable("api").canary("api-canary").container("api").replicas(2)
       .kubectl((s) => missingTool(s))
   );
-  await assertRejects(() => p.expose(50), ToolNotFoundError);
+  await assertRejects(() => p.expose(50, context()), ToolNotFoundError);
 });
 
 Deno.test("a stage refused by its own settings leaves a rollback with nothing to do", async () => {
@@ -594,6 +600,48 @@ Deno.test("stage refuses a paused Deployment", async () => {
     );
     assertEquals(calls.some((argv) => argv[0] !== "get"), false);
   }
+});
+
+Deno.test("expose sizes the step from the replica total stage recorded", async () => {
+  // A resumed process whose parameter now resolves to 4 must not shrink stable
+  // below the 10 replicas it had when the rollout started.
+  const { runner, calls } = fakeKubectl();
+  const ctx = context();
+  await platform(runner).stage(ctx);
+  const resumed = platform(runner, (k) => k.replicas(4));
+  assertEquals(await resumed.expose(50, ctx), 50);
+  assertEquals(await resumed.expose(0, ctx), 0);
+  const sizes = calls.filter((argv) => argv[0] === "scale");
+  assertEquals(sizes, [
+    scale("api-canary", 5),
+    scale("api", 5),
+    scale("api", 10),
+    scale("api-canary", 0),
+  ]);
+});
+
+Deno.test("a staged rollout with a damaged record refuses rather than guess", async () => {
+  // Reachable only through edited state; it must not read as a hand-run abort
+  // or quietly fall back to the configured total.
+  const { runner } = fakeKubectl();
+  const badImage = context();
+  await badImage.state.set({
+    kubectlCanaryStage: "staged",
+    kubectlCanaryReplicas: 10,
+  });
+  await assertRejects(
+    () => platform(runner).abort(badImage),
+    Error,
+    "record of this rollout is incomplete",
+  );
+  const badTotal = context();
+  await platform(runner).stage(badTotal);
+  await badTotal.state.set({ kubectlCanaryReplicas: "4" });
+  await assertRejects(
+    () => platform(runner).abort(badTotal),
+    Error,
+    "record of this rollout is incomplete",
+  );
 });
 
 Deno.test("promote and abort restore the replica total stage recorded", async () => {

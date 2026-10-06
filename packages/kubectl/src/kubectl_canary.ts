@@ -352,9 +352,11 @@ export class KubectlCanary {
    * does the stable Deployment shrink, so capacity never dips. A step between
    * 0 and 100 always leaves at least one replica on each side, and a step that
    * asks for less than half a replica is refused rather than rounded up to a
-   * far larger share. Returns the share reached, `canary / total × 100`.
+   * far larger share. The total is the one `stage` recorded, so a resumed
+   * process sizes the step the same way. Returns the share reached,
+   * `canary / total × 100`.
    */
-  async expose(percent: number): Promise<number> {
+  async expose(percent: number, ctx: KubectlCanaryContext): Promise<number> {
     if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
       throw new Error(
         `${CALLER}: exposure is a percentage from 0 to 100, so it cannot ` +
@@ -362,7 +364,7 @@ export class KubectlCanary {
       );
     }
     const r = this.#resolve();
-    const total = totalOf(r.settings.replicas_);
+    const total = recordedTotal(ctx.state.get(), r.settings, r.stable);
     if (percent === 0) {
       await this.#restoreStable(r, total);
       return 0;
@@ -413,7 +415,7 @@ export class KubectlCanary {
       );
     }
     const r = this.#resolve();
-    const total = recordedTotal(state, r.settings);
+    const total = recordedTotal(state, r.settings, r.stable);
     await this.#setStableImage(r, staged);
     await this.#scale(r, r.stable, total);
     // Unlike a rollback, the canary keeps serving until the stable Deployment
@@ -448,6 +450,9 @@ export class KubectlCanary {
     // Written in the same write as the "staged" marker, so present exactly
     // when the rollout got that far.
     const recorded = state[STABLE_IMAGE];
+    if (state[STAGE] === "staged" && typeof recorded !== "string") {
+      throw incomplete(r.stable);
+    }
     const image = typeof recorded === "string"
       ? imageOf(recorded, "the recorded stable image")
       : imageOf(r.settings.stableImage_, "k.stableImage(...)");
@@ -460,7 +465,7 @@ export class KubectlCanary {
           "`zuke cancel <run-id>` for a rollout that is still running.",
       );
     }
-    const total = recordedTotal(state, r.settings);
+    const total = recordedTotal(state, r.settings, r.stable);
     await this.#setStableImage(r, image);
     await this.#restoreStable(r, total);
   }
@@ -709,13 +714,29 @@ function totalOf(total: number | undefined): number {
   return total;
 }
 
-/** The total `stage` recorded, else the configured one — validated either way. */
+/**
+ * The total `stage` recorded, else the configured one — validated either
+ * way. A staged rollout always recorded one, so a missing or mistyped value
+ * there means the record was damaged, and guessing would resize production.
+ */
 function recordedTotal(
   state: Readonly<Record<string, unknown>>,
   settings: KubectlCanarySettings,
+  deployment: string,
 ): number {
   const recorded = state[REPLICAS];
-  return totalOf(typeof recorded === "number" ? recorded : settings.replicas_);
+  if (typeof recorded === "number") return totalOf(recorded);
+  if (state[STAGE] === "staged") throw incomplete(deployment);
+  return totalOf(settings.replicas_);
+}
+
+/** The error for a staged rollout whose record is missing a value. */
+function incomplete(deployment: string): Error {
+  return new Error(
+    `${CALLER}: the record of this rollout is incomplete — it is staged ` +
+      `but does not say what ${deployment} ran or how big it was — so it ` +
+      "cannot roll back safely. Check the stable Deployment by hand.",
+  );
 }
 
 /** A Go duration already matching {@link DURATION_SHAPE}, in milliseconds. */

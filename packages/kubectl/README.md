@@ -349,13 +349,15 @@ class KubectlCanary
     check that neither Deployment is paused and that the canary has no
     replicas; then set the candidate image on the canary. With no replicas,
     nothing runs the candidate yet.
-  async expose(percent: number): Promise<number>
+  async expose(percent: number, ctx: KubectlCanaryContext): Promise<number>
     Move replicas so the canary Deployment holds about `percent` of the total.
     The canary grows first and is waited for with `rollout status`; only then
     does the stable Deployment shrink, so capacity never dips. A step between
     0 and 100 always leaves at least one replica on each side, and a step that
     asks for less than half a replica is refused rather than rounded up to a
-    far larger share. Returns the share reached, `canary / total × 100`.
+    far larger share. The total is the one `stage` recorded, so a resumed
+    process sizes the step the same way. Returns the share reached,
+    `canary / total × 100`.
   async promote(ctx: KubectlCanaryContext): Promise<void>
     Set the staged candidate image on the stable Deployment, scale it to the
     total and wait for it, then empty the canary Deployment — only once the
