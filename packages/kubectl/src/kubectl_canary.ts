@@ -33,6 +33,14 @@
  * a rollback puts back), whether either Deployment is paused, and the canary's
  * replica count, which must be 0. No JSON document is parsed.
  *
+ * `stage` also records which Deployments, container and namespace it changed,
+ * and `expose`, `promote` and `abort` refuse to act when the lambda now names
+ * others: a rollout must be finished or cancelled — by `zuke resume` or
+ * `zuke cancel` — with the configuration it started with. The kube context and
+ * kubeconfig in `.kubectl(...)` cannot be recorded, so they must not change
+ * mid-rollout either: pointed at another cluster, a resume or cancel would act
+ * on the Deployments of the same name there.
+ *
  * Nothing else may own the two Deployments during a rollout: a
  * HorizontalPodAutoscaler, or a GitOps controller that syncs their replicas or
  * their image, undoes these changes — suspend its sync and self-heal first.
@@ -74,6 +82,18 @@ const CANDIDATE_IMAGE = "kubectlCanaryCandidateImage";
 
 /** The state key for the replica total the stable Deployment is restored to. */
 const REPLICAS = "kubectlCanaryReplicas";
+
+/** The state key for the stable Deployment's name when staged. */
+const STABLE = "kubectlCanaryStable";
+
+/** The state key for the canary Deployment's name when staged. */
+const CANARY = "kubectlCanaryCanary";
+
+/** The state key for the container name when staged. */
+const CONTAINER = "kubectlCanaryContainer";
+
+/** The state key for the namespace when staged — `null` for none. */
+const NAMESPACE = "kubectlCanaryNamespace";
 
 /** The largest replica count kubectl accepts; it holds one in an int32. */
 const MAX_REPLICAS = 2147483647;
@@ -270,7 +290,45 @@ interface Resolved {
   readonly stable: string;
   readonly canary: string;
   readonly container: string;
+  /** The namespace, or `null` for kubectl's default. */
+  readonly namespace: string | null;
 }
+
+/**
+ * What says which Deployments a rollout changes: the state key `stage` records
+ * each under, how it reads in a refusal, and the shape a valid one has.
+ */
+const IDENTITY: readonly {
+  readonly key: string;
+  readonly field: "stable" | "canary" | "container" | "namespace";
+  readonly label: string;
+  readonly shape: RegExp;
+}[] = [
+  {
+    key: STABLE,
+    field: "stable",
+    label: "the stable Deployment",
+    shape: DEPLOYMENT_SHAPE,
+  },
+  {
+    key: CANARY,
+    field: "canary",
+    label: "the canary Deployment",
+    shape: DEPLOYMENT_SHAPE,
+  },
+  {
+    key: CONTAINER,
+    field: "container",
+    label: "the container",
+    shape: LABEL_SHAPE,
+  },
+  {
+    key: NAMESPACE,
+    field: "namespace",
+    label: "the namespace",
+    shape: LABEL_SHAPE,
+  },
+];
 
 /**
  * Two Kubernetes Deployments behind one Service as a canary platform. Create
@@ -335,6 +393,7 @@ export class KubectlCanary {
       [STABLE_IMAGE]: stableImage,
       [CANDIDATE_IMAGE]: image,
       [REPLICAS]: total,
+      ...Object.fromEntries(IDENTITY.map(({ key, field }) => [key, r[field]])),
     });
     if (!recorded) {
       throw new Error(
@@ -353,7 +412,8 @@ export class KubectlCanary {
    * 0 and 100 always leaves at least one replica on each side, and a step that
    * asks for less than half a replica is refused rather than rounded up to a
    * far larger share. The total is the one `stage` recorded, so a resumed
-   * process sizes the step the same way. Returns the share reached,
+   * process sizes the step the same way, and it refuses when the lambda now
+   * names other Deployments than `stage` changed. Returns the share reached,
    * `canary / total × 100`.
    */
   async expose(percent: number, ctx: KubectlCanaryContext): Promise<number> {
@@ -364,7 +424,9 @@ export class KubectlCanary {
       );
     }
     const r = this.#resolve();
-    const total = recordedTotal(ctx.state.get(), r.settings, r.stable);
+    const state = ctx.state.get();
+    stagedAs(state, r);
+    const total = recordedTotal(state, r.settings, r.stable);
     if (percent === 0) {
       await this.#restoreStable(r, total);
       return 0;
@@ -397,17 +459,13 @@ export class KubectlCanary {
   /**
    * Set the staged candidate image on the stable Deployment, scale it to the
    * total and wait for it, then empty the canary Deployment — only once the
-   * wait succeeded. It promotes the
-   * image `stage` recorded — the one analysed — whatever the lambda says now.
-   * Idempotent.
+   * wait succeeded. It promotes the image `stage` recorded — the one
+   * analysed — whatever the lambda says now, and refuses when the lambda
+   * names other Deployments than `stage` changed. Idempotent.
    */
   async promote(ctx: KubectlCanaryContext): Promise<void> {
     const state = ctx.state.get();
-    const recorded = state[CANDIDATE_IMAGE];
-    const staged = typeof recorded === "string"
-      ? imageOf(recorded, "the recorded candidate image")
-      : undefined;
-    if (staged === undefined) {
+    if (state[STAGE] !== "staged") {
       throw new Error(
         `${CALLER}: no staged candidate is recorded for this rollout, so ` +
           "there is nothing to promote. Promote runs after stage, in the same " +
@@ -415,6 +473,12 @@ export class KubectlCanary {
       );
     }
     const r = this.#resolve();
+    stagedAs(state, r);
+    const recorded = state[CANDIDATE_IMAGE];
+    const staged = typeof recorded === "string"
+      ? imageOf(recorded, "the recorded candidate image")
+      : undefined;
+    if (staged === undefined) throw incomplete("which candidate it staged");
     const total = recordedTotal(state, r.settings, r.stable);
     await this.#setStableImage(r, staged);
     await this.#scale(r, r.stable, total);
@@ -434,7 +498,8 @@ export class KubectlCanary {
    *   the way — the stable Deployment is scaled to the total `stage` recorded
    *   and waited for, and the canary is emptied, even when that wait fails.
    *   What `stage` recorded wins over the lambda's `stableImage` and
-   *   `replicas`.
+   *   `replicas`; a lambda naming other Deployments, container or namespace
+   *   than `stage` recorded is refused.
    * - **`stage` failed before the candidate was on record**: the canary had
    *   no replicas and the stable Deployment was not touched, so nothing runs.
    * - **Nothing recorded** (`rollout.abort` run by hand, a fresh run): the
@@ -447,24 +512,7 @@ export class KubectlCanary {
     const state = ctx.state.get();
     if (state[STAGE] === "deploying") return;
     const r = this.#resolve();
-    // Written in the same write as the "staged" marker, so present exactly
-    // when the rollout got that far.
-    const recorded = state[STABLE_IMAGE];
-    if (state[STAGE] === "staged" && typeof recorded !== "string") {
-      throw incomplete(r.stable);
-    }
-    const image = typeof recorded === "string"
-      ? imageOf(recorded, "the recorded stable image")
-      : imageOf(r.settings.stableImage_, "k.stableImage(...)");
-    if (image === undefined) {
-      throw new Error(
-        `${CALLER}: this abort has no record of a rollout of ${r.stable} — ` +
-          "it was run by hand — so it does not know which image to go back " +
-          "to; after a promote the stable Deployment already runs the " +
-          "candidate. Add k.stableImage('<image>') to restore it, or use " +
-          "`zuke cancel <run-id>` for a rollout that is still running.",
-      );
-    }
+    const image = rollbackImage(state, r);
     const total = recordedTotal(state, r.settings, r.stable);
     await this.#setStableImage(r, image);
     await this.#restoreStable(r, total);
@@ -519,14 +567,18 @@ export class KubectlCanary {
           "and 24h — kubectl reads 0 as waiting forever.",
       );
     }
-    return { settings, stable, canary, container };
+    return {
+      settings,
+      stable,
+      canary,
+      container,
+      namespace: namespace ?? null,
+    };
   }
 
   /** `command` with the namespace and the caller's global flags applied. */
   #scoped<S extends KubectlSettings>(r: Resolved, command: S): S {
-    if (r.settings.namespace_ !== undefined) {
-      command.namespace(r.settings.namespace_);
-    }
+    if (r.namespace !== null) command.namespace(r.namespace);
     r.settings.kubectl_?.(command);
     return command;
   }
@@ -715,6 +767,92 @@ function totalOf(total: number | undefined): number {
 }
 
 /**
+ * The image a rollback puts back on the stable Deployment: the one `stage`
+ * read off it, or — with no record of a rollout, so run by hand — the one
+ * {@link KubectlCanarySettings.stableImage} names, refusing without one.
+ */
+function rollbackImage(
+  state: Readonly<Record<string, unknown>>,
+  r: Resolved,
+): string {
+  if (stagedAs(state, r)) {
+    // Written in the same write as the "staged" marker.
+    const recorded = state[STABLE_IMAGE];
+    const image = typeof recorded === "string"
+      ? imageOf(recorded, "the recorded stable image")
+      : undefined;
+    if (image === undefined) throw incomplete(`what ${r.stable} ran`);
+    return image;
+  }
+  const image = imageOf(r.settings.stableImage_, "k.stableImage(...)");
+  if (image === undefined) {
+    throw new Error(
+      `${CALLER}: this abort has no record of a rollout of ${r.stable} — ` +
+        "it was run by hand — so it does not know which image to go back " +
+        "to; after a promote the stable Deployment already runs the " +
+        "candidate. Add k.stableImage('<image>') to restore it, or use " +
+        "`zuke cancel <run-id>` for a rollout that is still running.",
+    );
+  }
+  return image;
+}
+
+/**
+ * Whether `stage` recorded this rollout. When it did, the Deployments,
+ * container and namespace it recorded must be the ones configured now: the
+ * call refuses rather than act on Deployments the rollout never touched — or
+ * act on a guess, since the kube context cannot be recorded. A record that
+ * does not say which ones it changed is refused too.
+ */
+function stagedAs(
+  state: Readonly<Record<string, unknown>>,
+  r: Resolved,
+): boolean {
+  if (state[STAGE] !== "staged") return false;
+  const changed: string[] = [];
+  for (const { key, field, label, shape } of IDENTITY) {
+    const recorded = recordedName(state[key], shape, field === "namespace");
+    if (recorded !== r[field]) {
+      changed.push(`${label} was ${shown(recorded)}, now ${shown(r[field])}`);
+    }
+  }
+  if (changed.length > 0) {
+    const ran = state[STABLE_IMAGE];
+    const restore = typeof ran === "string" && IMAGE_SHAPE.test(ran)
+      ? `k.stableImage("${ran}")`
+      : "k.stableImage(...)";
+    throw new Error(
+      `${CALLER}: this rollout was staged with other settings than the ones ` +
+        `configured now — ${changed.join("; ")}. Nothing was changed: a ` +
+        "rollout must be finished or cancelled with the configuration it " +
+        "started with, the kube context in k.kubectl(...) included. Set " +
+        "these back; if the run has been cancelled meanwhile, roll it back " +
+        `by hand with \`zuke rollout.abort\` and ${restore}.`,
+    );
+  }
+  return true;
+}
+
+/**
+ * A name `stage` recorded, checked against `shape` — `null` only where it may
+ * be, for no namespace — or the error for a damaged record.
+ */
+function recordedName(
+  value: unknown,
+  shape: RegExp,
+  nullable: boolean,
+): string | null {
+  if (value === null && nullable) return null;
+  if (typeof value === "string" && shape.test(value)) return value;
+  throw incomplete("which Deployments it changed");
+}
+
+/** A name for a refusal: quoted, or `none` for an unset namespace. */
+function shown(name: string | null): string {
+  return name === null ? "none" : `"${name}"`;
+}
+
+/**
  * The total `stage` recorded, else the configured one — validated either
  * way. A staged rollout always recorded one, so a missing or mistyped value
  * there means the record was damaged, and guessing would resize production.
@@ -726,16 +864,19 @@ function recordedTotal(
 ): number {
   const recorded = state[REPLICAS];
   if (typeof recorded === "number") return totalOf(recorded);
-  if (state[STAGE] === "staged") throw incomplete(deployment);
+  if (state[STAGE] === "staged") throw incomplete(`how big ${deployment} was`);
   return totalOf(settings.replicas_);
 }
 
-/** The error for a staged rollout whose record is missing a value. */
-function incomplete(deployment: string): Error {
+/**
+ * The error for a staged rollout whose record does not say `missing` — a
+ * value `stage` always writes, so the record was damaged.
+ */
+function incomplete(missing: string): Error {
   return new Error(
     `${CALLER}: the record of this rollout is incomplete — it is staged ` +
-      `but does not say what ${deployment} ran or how big it was — so it ` +
-      "cannot roll back safely. Check the stable Deployment by hand.",
+      `but does not say ${missing} — so it cannot go on or roll back ` +
+      "safely. Check both Deployments by hand.",
   );
 }
 
@@ -772,6 +913,11 @@ function durationMs(text: string): number {
  *   it to the total, `rollout status` it, then `scale` the canary to 0.
  * - **abort** — the same with the stable image: the one `stage` read, or, run
  *   by hand, the one set with `.stableImage(...)`.
+ *
+ * `stage` records the Deployments, container and namespace it changed, and
+ * the later calls refuse a lambda that names others. Keep them — and the kube
+ * context or kubeconfig in `.kubectl(...)`, which cannot be recorded —
+ * unchanged until the rollout is finished or cancelled.
  */
 export function kubectlCanary(
   configure: Configure<KubectlCanarySettings>,

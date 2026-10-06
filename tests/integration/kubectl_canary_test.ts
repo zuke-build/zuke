@@ -42,6 +42,9 @@ let handRunImage: string | undefined;
 /** The candidate image the image parameter resolved to. */
 let candidate = "reg/api:2";
 
+/** The stable Deployment the build names. */
+let stableName = "api";
+
 /** What the fake cluster prints for a `get -o jsonpath=…` read. */
 function answer(argv: string[]): string {
   if (argv[0] !== "get") return "";
@@ -55,7 +58,7 @@ class Deploy extends Build {
     c.platform(
       kubectlCanary((k) =>
         (handRunImage === undefined ? k : k.stableImage(handRunImage))
-          .stable("api").canary("api-canary").container("api")
+          .stable(stableName).canary("api-canary").container("api")
           .image(candidate).replicas(4).namespace("prod")
           .runner((settings) => {
             const argv = settings.argv().slice(1);
@@ -111,6 +114,7 @@ function fresh(): void {
   healthy = true;
   handRunImage = undefined;
   candidate = "reg/api:2";
+  stableName = "api";
 }
 
 Deno.test("Kubernetes: staged, stepped, parked, and promoted by a later process", async () => {
@@ -206,5 +210,65 @@ Deno.test("Kubernetes: a rollback run by hand with no stable image refuses", asy
     assertEquals(code, 1);
     assertStringIncludes(out + err, "k.stableImage('<image>')");
     assertEquals(calls, []);
+  });
+});
+
+Deno.test("Kubernetes: a rollout resumed with other Deployments configured refuses", async () => {
+  // The rollout was staged on deployment/api; the build now names another.
+  // Neither the resume nor the rollback it triggers may set the recorded
+  // image on, or scale, a Deployment the rollout never touched.
+  fresh();
+  await withStateDir(async (dir) => {
+    const parked = await runCli(Deploy, ["ship"]);
+    assertEquals(parked.code, 0, parked.err);
+
+    stableName = "web";
+    calls = [];
+    const resumed = await runCli(Deploy, [
+      "resume",
+      await onlyRun(dir),
+      "--signal",
+      "approved",
+    ]);
+    assertEquals(resumed.code, 1);
+    assertStringIncludes(
+      resumed.out + resumed.err,
+      'the stable Deployment was "api", now "web"',
+    );
+    assertStringIncludes(
+      resumed.out + resumed.err,
+      '`zuke rollout.abort` and k.stableImage("reg/api:1")',
+    );
+    assertEquals(moves(), []);
+
+    // The run is cancelled now; the refusal's way out is a hand-run rollback
+    // with the configuration the rollout started with.
+    stableName = "api";
+    handRunImage = "reg/api:1";
+    const rolledBack = await runCli(Deploy, ["rollout.abort"]);
+    assertEquals(rolledBack.code, 0, rolledBack.err);
+    assertEquals(moves(), [
+      "image api api=reg/api:1",
+      "scale api=4",
+      "wait api",
+      "scale api-canary=0",
+    ]);
+  });
+});
+
+Deno.test("Kubernetes: a cancel evaluated with other Deployments configured refuses", async () => {
+  fresh();
+  await withStateDir(async (dir) => {
+    const parked = await runCli(Deploy, ["ship"]);
+    assertEquals(parked.code, 0, parked.err);
+
+    stableName = "web";
+    calls = [];
+    const cancelled = await runCli(Deploy, ["cancel", await onlyRun(dir)]);
+    assertStringIncludes(
+      cancelled.out + cancelled.err,
+      "finished or cancelled with the configuration it started with",
+    );
+    assertEquals(moves(), []);
   });
 });

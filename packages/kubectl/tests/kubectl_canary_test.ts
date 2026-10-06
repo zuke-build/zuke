@@ -150,6 +150,10 @@ Deno.test("stage reads the stable image, checks both Deployments, and sets the c
     kubectlCanaryStableImage: "reg/api:1",
     kubectlCanaryCandidateImage: "reg/api:2",
     kubectlCanaryReplicas: 10,
+    kubectlCanaryStable: "api",
+    kubectlCanaryCanary: "api-canary",
+    kubectlCanaryContainer: "api",
+    kubectlCanaryNamespace: "prod",
   });
   assertEquals(ctx.summary, { Candidate: "reg/api:2", Stable: "reg/api:1" });
 });
@@ -673,6 +677,7 @@ Deno.test("images and totals read back from state are validated before use", asy
   const { runner, calls } = fakeKubectl();
   const tampered = context();
   await tampered.state.set({
+    ...IDENTITY,
     kubectlCanaryStage: "staged",
     kubectlCanaryStableImage: "x,api=evil",
     kubectlCanaryCandidateImage: "-evil",
@@ -698,4 +703,176 @@ Deno.test("images and totals read back from state are validated before use", asy
     "a whole number from 1 to 2147483647",
   );
   assertEquals(calls, []);
+});
+
+/** What a stage of {@link platform}'s defaults records about the Deployments. */
+const IDENTITY = {
+  kubectlCanaryStable: "api",
+  kubectlCanaryCanary: "api-canary",
+  kubectlCanaryContainer: "api",
+  kubectlCanaryNamespace: "prod",
+};
+
+Deno.test("a stage without a namespace records that it had none, and a rollback matches it", async () => {
+  const { runner, calls } = fakeKubectl();
+  const ctx = context();
+  const p = kubectlCanary((k) =>
+    k.stable("api").canary("api-canary").container("api").image("reg/api:2")
+      .replicas(2).runner(runner)
+  );
+  await p.stage(ctx);
+  assertEquals(ctx.state.get().kubectlCanaryNamespace, null);
+  await p.abort(ctx);
+  assertEquals(calls.at(-1), [
+    "scale",
+    "--replicas=0",
+    "deployment/api-canary",
+  ]);
+});
+
+Deno.test("a rollout configured for other Deployments than it was staged on refuses to act", async () => {
+  // A resumed process, or a `zuke cancel`, whose configuration changed must
+  // not set images on or scale a Deployment the rollout never touched — nor
+  // restore the recorded stable image onto one.
+  const changes: [
+    (k: KubectlCanarySettings) => KubectlCanarySettings,
+    string,
+  ][] = [
+    [(k) => k.stable("web"), 'the stable Deployment was "api", now "web"'],
+    [
+      (k) => k.canary("web-canary"),
+      'the canary Deployment was "api-canary", now "web-canary"',
+    ],
+    [(k) => k.container("web"), 'the container was "api", now "web"'],
+    [(k) => k.namespace("staging"), 'the namespace was "prod", now "staging"'],
+  ];
+  for (const [change, message] of changes) {
+    const { runner, calls } = fakeKubectl();
+    const ctx = context();
+    await platform(runner).stage(ctx);
+    const changed = platform(runner, change);
+    await assertRejects(() => changed.expose(30, ctx), Error, message);
+    await assertRejects(() => changed.promote(ctx), Error, message);
+    await assertRejects(() => changed.abort(ctx), Error, message);
+    await assertRejects(
+      () => changed.abort(ctx),
+      Error,
+      "finished or cancelled with the configuration it started with",
+    );
+    await assertRejects(
+      () => changed.abort(ctx),
+      Error,
+      '`zuke rollout.abort` and k.stableImage("reg/api:1")',
+    );
+    assertEquals(calls.length, STAGED);
+  }
+  const { runner, calls } = fakeKubectl();
+  const ctx = context();
+  await platform(runner).stage(ctx);
+  const unscoped = kubectlCanary((k) =>
+    k.stable("web").canary("api-canary").container("api").replicas(10)
+      .runner(runner)
+  );
+  await assertRejects(
+    () => unscoped.abort(ctx),
+    Error,
+    'the stable Deployment was "api", now "web"; the namespace was "prod", now none',
+  );
+  // A damaged stable image is not offered as the one to restore.
+  await ctx.state.set({ kubectlCanaryStableImage: "x,api=evil" });
+  await assertRejects(
+    () => unscoped.abort(ctx),
+    Error,
+    "`zuke rollout.abort` and k.stableImage(...).",
+  );
+  assertEquals(calls.length, STAGED);
+});
+
+Deno.test("a staged record that does not say which Deployments it changed refuses", async () => {
+  const damaged: Record<string, JsonValue>[] = [
+    { kubectlCanaryStable: null },
+    { kubectlCanaryCanary: "api/x" },
+    { kubectlCanaryContainer: 7 },
+    { kubectlCanaryNamespace: "Prod" },
+    { kubectlCanaryNamespace: [] },
+  ];
+  const { runner, calls } = fakeKubectl();
+  for (const patch of damaged) {
+    const ctx = context();
+    await platform(runner).stage(ctx);
+    await ctx.state.set(patch);
+    const p = platform(runner);
+    for (const call of [() => p.expose(30, ctx), () => p.promote(ctx)]) {
+      await assertRejects(call, Error, "record of this rollout is incomplete");
+    }
+    await assertRejects(
+      () => p.abort(ctx),
+      Error,
+      "does not say which Deployments it changed",
+    );
+  }
+  // A record that lost its namespace key is damaged, not "no namespace".
+  const lost = context();
+  await lost.state.set({
+    kubectlCanaryStage: "staged",
+    kubectlCanaryStable: "api",
+    kubectlCanaryCanary: "api-canary",
+    kubectlCanaryContainer: "api",
+    kubectlCanaryStableImage: "reg/api:1",
+    kubectlCanaryReplicas: 10,
+  });
+  await assertRejects(
+    () =>
+      kubectlCanary((k) =>
+        k.stable("api").canary("api-canary").container("api").runner(runner)
+      ).abort(lost),
+    Error,
+    "record of this rollout is incomplete",
+  );
+  assertEquals(calls.length, STAGED * damaged.length);
+});
+
+Deno.test("only a staged record is trusted: a stray image without the marker is ignored", async () => {
+  // Promote needs the staged marker, and a rollback without one is the
+  // hand-run kind, which uses the configured stable image.
+  const { runner, calls } = fakeKubectl();
+  const stray = context();
+  await stray.state.set({
+    kubectlCanaryCandidateImage: "reg/api:2",
+    kubectlCanaryStableImage: "reg/api:7",
+  });
+  await assertRejects(
+    () => platform(runner).promote(stray),
+    Error,
+    "no staged candidate",
+  );
+  await platform(runner, (k) => k.stableImage("reg/api:1")).abort(stray);
+  assertEquals(calls[0], setImage("api", "reg/api:1"));
+});
+
+Deno.test("a staged record without a stable or candidate image refuses", async () => {
+  const { runner, calls } = fakeKubectl();
+  const ctx = context();
+  await platform(runner).stage(ctx);
+  await ctx.state.set({
+    kubectlCanaryStableImage: "",
+    kubectlCanaryCandidateImage: null,
+  });
+  await assertRejects(
+    () => platform(runner).abort(ctx),
+    Error,
+    "does not say what api ran",
+  );
+  await ctx.state.set({ kubectlCanaryStableImage: null });
+  await assertRejects(
+    () => platform(runner).abort(ctx),
+    Error,
+    "does not say what api ran",
+  );
+  await assertRejects(
+    () => platform(runner).promote(ctx),
+    Error,
+    "does not say which candidate it staged",
+  );
+  assertEquals(calls.length, STAGED);
 });

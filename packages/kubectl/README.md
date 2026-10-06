@@ -150,6 +150,16 @@ side, and a step that asks for less than half a replica is refused.
 - **`abort`** does the same with the stable image `stage` read. Run by hand, it
   restores the `.stableImage(...)` image, and refuses without one.
 
+`stage` records the Deployments, container and namespace it changed, and
+`expose`, `promote` and `abort` refuse when the lambda now names others: a
+rollout must be finished or cancelled — resumed, or `zuke cancel`ed — with the
+configuration it started with. The kube context and kubeconfig in
+`.kubectl(...)` cannot be recorded, so do not change them mid-rollout either:
+pointed at another cluster, a resume or cancellation would act on the
+Deployments of the same name there. If a refusal leaves the run cancelled, roll
+back by hand with the original configuration: `zuke rollout.abort` with
+`.stableImage(...)` set to the image the refusal names.
+
 The namespace needs room for `replicas` plus the canary's pods at once. Promote
 and abort `set image` on the stable Deployment, which rolls out by its own
 strategy — give it `maxUnavailable: 0` to keep capacity there too. A Service
@@ -209,6 +219,11 @@ function kubectlCanary(configure: Configure<KubectlCanarySettings>): KubectlCana
     it to the total, `rollout status` it, then `scale` the canary to 0.
   - abort — the same with the stable image: the one `stage` read, or, run
     by hand, the one set with `.stableImage(...)`.
+
+  `stage` records the Deployments, container and namespace it changed, and
+  the later calls refuse a lambda that names others. Keep them — and the kube
+  context or kubeconfig in `.kubectl(...)`, which cannot be recorded —
+  unchanged until the rollout is finished or cancelled.
 
 function parseEvents(json: string): KubernetesEvent[]
   Parse the JSON text of `kubectl events -o json` into
@@ -356,14 +371,15 @@ class KubectlCanary
     0 and 100 always leaves at least one replica on each side, and a step that
     asks for less than half a replica is refused rather than rounded up to a
     far larger share. The total is the one `stage` recorded, so a resumed
-    process sizes the step the same way. Returns the share reached,
+    process sizes the step the same way, and it refuses when the lambda now
+    names other Deployments than `stage` changed. Returns the share reached,
     `canary / total × 100`.
   async promote(ctx: KubectlCanaryContext): Promise<void>
     Set the staged candidate image on the stable Deployment, scale it to the
     total and wait for it, then empty the canary Deployment — only once the
-    wait succeeded. It promotes the
-    image `stage` recorded — the one analysed — whatever the lambda says now.
-    Idempotent.
+    wait succeeded. It promotes the image `stage` recorded — the one
+    analysed — whatever the lambda says now, and refuses when the lambda
+    names other Deployments than `stage` changed. Idempotent.
   async abort(ctx: KubectlCanaryContext): Promise<void>
     Return every replica to the stable Deployment, running the stable image.
     Idempotent. What it does depends on what this rollout recorded:
@@ -373,7 +389,8 @@ class KubectlCanary
       the way — the stable Deployment is scaled to the total `stage` recorded
       and waited for, and the canary is emptied, even when that wait fails.
       What `stage` recorded wins over the lambda's `stableImage` and
-      `replicas`.
+      `replicas`; a lambda naming other Deployments, container or namespace
+      than `stage` recorded is refused.
     - `stage` failed before the candidate was on record: the canary had
       no replicas and the stable Deployment was not touched, so nothing runs.
     - Nothing recorded (`rollout.abort` run by hand, a fresh run): the
