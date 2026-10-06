@@ -1361,6 +1361,15 @@ const ready = await PrometheusTasks.ready(prod); // true / false (503)
   `basicAuth`, `header`, or `credentials(fn)` — `fn` gets the exact outgoing
   request (method, URL, headers, body bytes) and the
   `readEnv`/`readTextFile`/`now`/`fetch` seams, and returns headers to add.
+- Managed services, no cloud CLI: `.google((g) => …)` (Application Default
+  Credentials — service-account key, gcloud login, workload identity federation,
+  or the metadata server; `scopes`, `credentialsFile`, `quotaProject`),
+  `.azure((a) => …)` (Entra ID — client secret, workload identity or managed
+  identity from the `AZURE_*` env, or chosen with
+  `clientSecret()`/`workloadIdentity()`/`managedIdentity()`), and
+  `.sigv4((a) => a.region(…))` (AWS SigV4 for `aps` — env keys, profile, web
+  identity, ECS/EKS container endpoint, IMDSv2; put it last). Tokens are cached
+  until shortly before expiry; errors never carry the secret.
 
 ## Canary releases — `@zuke/canary`
 

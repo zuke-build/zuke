@@ -33,12 +33,23 @@
  * and `errorType`; no answer at all is a {@link PrometheusRequestError}; and
  * neither ever carries a credential. Authentication is pluggable through
  * {@link PrometheusCredentials}: bearer, basic, a header, or any function of
- * the outgoing request.
+ * the outgoing request — and built in for the managed services, with no
+ * cloud CLI: `google()` (Application Default Credentials), `azure()`
+ * (Microsoft Entra ID) and `sigv4()` (AWS Signature Version 4).
  *
  * @module
  */
 
+export {
+  type PrometheusAwsAccessKey,
+  PrometheusAwsSettings,
+} from "./src/aws_settings.ts";
+export {
+  type PrometheusAzureCredentialKind,
+  PrometheusAzureSettings,
+} from "./src/azure_settings.ts";
 export { PrometheusConnectionSettings } from "./src/connection.ts";
+export { PrometheusGoogleSettings } from "./src/google_settings.ts";
 export type {
   PrometheusCredentials,
   PrometheusCredentialsContext,

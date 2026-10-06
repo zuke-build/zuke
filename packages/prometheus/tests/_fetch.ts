@@ -30,7 +30,11 @@ export function fakeFetch(
       method: init?.method ?? "GET",
       url: new URL(input instanceof Request ? input.url : String(input)),
       headers: new Headers(init?.headers),
-      body: body instanceof Uint8Array ? new TextDecoder().decode(body) : "",
+      body: body instanceof Uint8Array
+        ? new TextDecoder().decode(body)
+        : typeof body === "string"
+        ? body
+        : "",
       redirect: init?.redirect,
       signal: init?.signal,
     };

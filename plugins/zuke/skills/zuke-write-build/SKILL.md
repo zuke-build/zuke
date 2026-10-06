@@ -368,8 +368,9 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   `labelValues`, `metadata`, `targets`, `rules`, `alerts`, `buildInfo`,
   `healthy`, `ready`); refusals are `PrometheusApiError` (status, `errorType`).
   A credentialed URL must be `https:` unless loopback (an unauthenticated
-  in-cluster `http://` one is fine); custom auth via `.credentials(fn)`.
-  Canary's `prometheus(...)` analysis runs on it.
+  in-cluster `http://` one is fine); custom auth via `.credentials(fn)`, and the
+  managed services built in with no cloud CLI: `.google()`, `.azure()`,
+  `.sigv4((a) => a.region(…))`. Canary's `prometheus(...)` analysis runs on it.
 - **OpenTelemetry export (`@zuke/otel`):** register `otel((s) => s.endpoint(…))`
   as a plugin (`run(MyBuild, { plugins: [otel(…)] })`) to ship run/target spans
   and `zuke.run.started` / `zuke.run.suspended` / `zuke.runs` counters as

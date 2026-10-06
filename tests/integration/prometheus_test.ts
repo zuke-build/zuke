@@ -110,6 +110,38 @@ Deno.test("canary's prometheus analysis promotes a healthy candidate", async () 
   });
 });
 
+class InCluster extends Build {
+  rollout = canary((c) =>
+    c.platform({
+      exposure: "traffic",
+      describe: () => platform.describe(),
+      stage: (ctx) => platform.stage(ctx),
+      expose: (percent, ctx) => platform.expose(percent, ctx),
+      promote: (ctx) => platform.promote(ctx),
+      abort: (ctx) => platform.abort(ctx),
+    })
+      .steps(10)
+      .analysis(prometheus((p) =>
+        p.name("error ratio").url("http://prometheus.monitoring.svc:9090")
+          .query("sum(rate(errors[5m])) or vector(0)").max(0.01).fetch(prom)
+      ))
+  );
+}
+
+Deno.test("canary queries an unauthenticated in-cluster http Prometheus", async () => {
+  platform = new FakePlatform();
+  prom = fakeFetch(() => answer());
+  answer = () => vector([{}, "0"]);
+  await withStateDir(async () => {
+    const { code, err } = await runCli(InCluster, ["rollout.promote"]);
+    assertEquals(code, 0, err);
+    assertEquals(
+      prom.sent[0].url.origin,
+      "http://prometheus.monitoring.svc:9090",
+    );
+  });
+});
+
 Deno.test("canary's prometheus analysis rolls an unhealthy candidate back", async () => {
   platform = new FakePlatform();
   prom = fakeFetch(() => answer());

@@ -98,6 +98,22 @@ Deno.test("a URL that is missing, malformed or not http(s) is refused", async ()
   assertEquals(fetcher.sent.length, 0);
 });
 
+Deno.test("a GET's parameters are RFC 3986 encoded — %20, never + — so a signature matches", async () => {
+  const fetcher = fakeFetch(() => vector());
+  await PrometheusTasks.query((s) =>
+    s.url(BASE).fetch(fetcher).httpMethod("GET")
+      .query("sum(rate(x{a='b c+d*'}[5m])) \ud800!")
+  );
+  assertEquals(
+    fetcher.sent[0].url.search,
+    "?query=sum%28rate%28x%7Ba%3D%27b%20c%2Bd%2A%27%7D%5B5m%5D%29%29%20%EF%BF%BD%21",
+  );
+  assertEquals(
+    fetcher.sent[0].url.searchParams.get("query"),
+    "sum(rate(x{a='b c+d*'}[5m])) �!",
+  );
+});
+
 Deno.test("the base URL's path and query are kept and its fragment dropped", async () => {
   const fetcher = fakeFetch(() => vector());
   await PrometheusTasks.query((s) =>

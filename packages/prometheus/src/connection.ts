@@ -22,6 +22,13 @@
  */
 
 import { defaultReadEnv, parseDuration } from "@zuke/core";
+import type { Configure } from "@zuke/core/tooling";
+import { sigv4Credentials } from "./aws.ts";
+import { PrometheusAwsSettings } from "./aws_settings.ts";
+import { azureCredentials } from "./azure.ts";
+import { PrometheusAzureSettings } from "./azure_settings.ts";
+import { googleCredentials } from "./google.ts";
+import { PrometheusGoogleSettings } from "./google_settings.ts";
 import {
   basicCredentials,
   bearerCredentials,
@@ -109,6 +116,78 @@ export class PrometheusConnectionSettings {
    */
   credentials(source: PrometheusCredentials): this {
     this.credentials_.push(source);
+    return this;
+  }
+
+  /**
+   * Authenticate to Google Cloud Managed Service for Prometheus with an
+   * OAuth access token from Application Default Credentials — no `gcloud`
+   * needed. The search order is `credentialsFile(...)`, else the file
+   * `GOOGLE_APPLICATION_CREDENTIALS` names; then gcloud's
+   * `application_default_credentials.json`; then the GCE / GKE metadata
+   * server. A file may be a `service_account` key, an `authorized_user`
+   * gcloud login, or an `external_account` workload identity federation
+   * configuration with a `file` or `url` subject-token source. The scope
+   * defaults to `monitoring.read`; the token is cached until shortly before
+   * it expires.
+   *
+   * ```ts
+   * s.url("https://monitoring.googleapis.com/v1/projects/my-project/location/global/prometheus")
+   *   .google()
+   * ```
+   */
+  google(configure: Configure<PrometheusGoogleSettings> = (g) => g): this {
+    this.credentials_.push(
+      googleCredentials(
+        configure(new PrometheusGoogleSettings()),
+        Deno.build.os,
+      ),
+    );
+    return this;
+  }
+
+  /**
+   * Authenticate to Azure Monitor managed service for Prometheus with a
+   * Microsoft Entra ID token for
+   * `https://prometheus.monitor.azure.com/.default` — no `az` needed. Unless
+   * a credential is chosen, the first the environment configures is used:
+   * client secret (`AZURE_TENANT_ID`, `AZURE_CLIENT_ID`,
+   * `AZURE_CLIENT_SECRET`), then workload identity (`AZURE_TENANT_ID`,
+   * `AZURE_CLIENT_ID`, `AZURE_FEDERATED_TOKEN_FILE`), then managed identity
+   * (App Service's `IDENTITY_ENDPOINT`, else the VM's IMDS). The token is
+   * cached until shortly before it expires.
+   *
+   * ```ts
+   * s.url("https://my-amw.eastus.prometheus.monitor.azure.com")
+   *   .azure((a) => a.managedIdentity(clientId))
+   * ```
+   */
+  azure(configure: Configure<PrometheusAzureSettings> = (a) => a): this {
+    this.credentials_.push(
+      azureCredentials(configure(new PrometheusAzureSettings())),
+    );
+    return this;
+  }
+
+  /**
+   * Sign every request with AWS Signature Version 4 for Amazon Managed
+   * Service for Prometheus (service `aps`) — no `aws` CLI needed. The region
+   * is `region(...)`, else `AWS_REGION` / `AWS_DEFAULT_REGION`. Credentials
+   * come from `accessKey(...)` or `profile(...)` when set, else the chain:
+   * the `AWS_ACCESS_KEY_ID` environment, the shared files' profile, web
+   * identity (`AWS_WEB_IDENTITY_TOKEN_FILE` + `AWS_ROLE_ARN`), the ECS / EKS
+   * Pod Identity container endpoint, then EC2 IMDSv2. Configure it after any
+   * other source, so it signs the headers they add.
+   *
+   * ```ts
+   * s.url("https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-1234")
+   *   .sigv4((a) => a.region("us-east-1"))
+   * ```
+   */
+  sigv4(configure: Configure<PrometheusAwsSettings> = (a) => a): this {
+    this.credentials_.push(
+      sigv4Credentials(configure(new PrometheusAwsSettings())),
+    );
     return this;
   }
 

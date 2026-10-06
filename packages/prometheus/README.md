@@ -74,6 +74,8 @@ query with `histogram_quantile(...)` or `histogram_count(...)`.
   `http://prometheus.monitoring.svc:9090` has no credential to steal.
 - `bearerToken(...)`, `basicAuth(...)`, `header(...)` — the built-in
   credentials.
+- `google(...)`, `azure(...)`, `sigv4(...)` — the managed services' own
+  authentication, with no cloud CLI installed; see below.
 - `credentials(source)` — any function handed the outgoing request (method, full
   URL, headers so far, exact body bytes) and the connection's seams (`readEnv`,
   `readTextFile`, `now`, `fetch`, `signal`), returning the headers to add. This
@@ -83,6 +85,102 @@ query with `histogram_quantile(...)` or `histogram_count(...)`.
 
 Redirects are not followed: one could lead to a plaintext URL the `https:` rule
 never saw, with the credential attached.
+
+## Managed Prometheus services
+
+Each cloud's managed Prometheus authenticates the way the cloud's own SDKs do,
+implemented here over `fetch` and WebCrypto — no `gcloud`, `az` or `aws` binary,
+and no SDK dependency.
+
+```ts
+// Google Cloud Managed Service for Prometheus
+await PrometheusTasks.query((s) =>
+  s.url(
+    "https://monitoring.googleapis.com/v1/projects/my-project/location/global/prometheus",
+  ).google().query("up")
+);
+
+// Azure Monitor managed service for Prometheus
+await PrometheusTasks.query((s) =>
+  s.url("https://my-amw.eastus.prometheus.monitor.azure.com")
+    .azure((a) => a.managedIdentity()).query("up")
+);
+
+// Amazon Managed Service for Prometheus
+await PrometheusTasks.query((s) =>
+  s.url("https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-1234")
+    .sigv4((a) => a.region("us-east-1")).query("up")
+);
+```
+
+**Google — `google((g) => …)`.** An OAuth access token from Application Default
+Credentials, found in Google's order: the file `g.credentialsFile(...)` or
+`GOOGLE_APPLICATION_CREDENTIALS` names; then gcloud's
+`application_default_credentials.json` (in `$CLOUDSDK_CONFIG`,
+`~/.config/gcloud`, or `%APPDATA%\gcloud` on Windows); then the GCE / GKE
+metadata server. A credentials file may be a `service_account` key (an RS256 JWT
+assertion signed with the key and exchanged at `oauth2.googleapis.com`), an
+`authorized_user` gcloud login (its refresh token exchanged), or an
+`external_account` workload identity federation configuration — the subject
+token read from a `file` or a `url` (`text` or `json` format), exchanged at
+`sts.googleapis.com`, then for a service account's token when the file names a
+`service_account_impersonation_url`. The `aws1` and `executable` subject-token
+sources are refused by name. `g.scopes(...)` replaces the default
+`https://www.googleapis.com/auth/monitoring.read`; `g.quotaProject(...)` (or the
+file's `quota_project_id`) is sent as `x-goog-user-project`.
+
+**Azure — `azure((a) => …)`.** A Microsoft Entra ID token for
+`https://prometheus.monitor.azure.com/.default` (`a.scope(...)` to change it).
+With no credential chosen, the first the environment configures, in
+`DefaultAzureCredential`'s order:
+
+1. client secret — `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`;
+2. workload identity — `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`,
+   `AZURE_FEDERATED_TOKEN_FILE` (the AKS webhook sets all three);
+3. managed identity — App Service / Functions (`IDENTITY_ENDPOINT` +
+   `IDENTITY_HEADER`), else the VM's IMDS at `169.254.169.254`; a user-assigned
+   identity by `AZURE_CLIENT_ID`.
+
+`a.clientSecret(secret?)`, `a.workloadIdentity(tokenFile?)` and
+`a.managedIdentity(clientId?)` choose one explicitly; `a.tenantId(...)`,
+`a.clientId(...)` and `a.authorityHost(...)` (or `AZURE_AUTHORITY_HOST`, for a
+sovereign cloud) override the environment. Service Fabric and Azure Arc managed
+identity and certificate credentials are not supported.
+
+**AWS — `sigv4((a) => …)`.** Every request signed with Signature Version 4 for
+the service `aps`, over the method, URL, every header already set, and the
+body's SHA-256 — configure it after any other source so it signs what they add.
+The region is `a.region(...)`, else `AWS_REGION`, else `AWS_DEFAULT_REGION`.
+Credentials are `a.accessKey(...)` or `a.profile(...)` when set; otherwise the
+SDKs' chain:
+
+1. `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (+ `AWS_SESSION_TOKEN`);
+2. the `AWS_PROFILE` (else `default`) profile's static keys in
+   `~/.aws/credentials` / `~/.aws/config` (`AWS_SHARED_CREDENTIALS_FILE`,
+   `AWS_CONFIG_FILE`); a profile using `role_arn`, `credential_process` or SSO
+   is refused by name;
+3. web identity — `AWS_WEB_IDENTITY_TOKEN_FILE` + `AWS_ROLE_ARN` (+
+   `AWS_ROLE_SESSION_NAME`) through STS `AssumeRoleWithWebIdentity` at the
+   regional endpoint (EKS IRSA, GitHub Actions OIDC);
+4. the container endpoint — `AWS_CONTAINER_CREDENTIALS_RELATIVE_URI` (ECS) or
+   `AWS_CONTAINER_CREDENTIALS_FULL_URI` (EKS Pod Identity), with
+   `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE` /
+   `AWS_CONTAINER_AUTHORIZATION_TOKEN`;
+5. EC2 IMDSv2, unless `AWS_EC2_METADATA_DISABLED=true`.
+
+The region is not read from the shared config file. The signing is checked
+against the AWS Signature Version 4 test suite.
+
+**Shared rules.** Tokens and temporary credentials are cached in-process until
+five minutes before they expire, and concurrent calls share one fetch. A failed
+token fetch fails the call with a `PrometheusRequestError` naming the provider
+and the step — never the secret, assertion, refresh token or token involved.
+Token endpoints follow the same plaintext rule as the server, with one
+exception: the link-local metadata services that are plaintext by design —
+`metadata.google.internal`, `169.254.169.254`, `169.254.170.2`, `169.254.170.23`
+and `[fd00:ec2::23]`, on port 80 — and nothing else. An App Service
+`IDENTITY_ENDPOINT` must therefore be loopback or `https:` unless
+`ZUKE_ALLOW_INSECURE_URL` is set.
 
 ## Errors
 
@@ -133,7 +231,9 @@ every result. A refusal is a {@link PrometheusApiError} carrying the status
 and `errorType`; no answer at all is a {@link PrometheusRequestError}; and
 neither ever carries a credential. Authentication is pluggable through
 {@link PrometheusCredentials}: bearer, basic, a header, or any function of
-the outgoing request.
+the outgoing request — and built in for the managed services, with no
+cloud CLI: `google()` (Application Default Credentials), `azure()`
+(Microsoft Entra ID) and `sigv4()` (AWS Signature Version 4).
 @module
 
 const PrometheusTasks: PrometheusTasksApi
@@ -170,6 +270,66 @@ class PrometheusApiError extends Error
     What went wrong: the envelope's `error` text, or — for an answer that was
     not a Prometheus envelope, such as a gateway's error page — the start of
     the body. Scrubbed of credentials and capped in length.
+
+class PrometheusAwsSettings
+  Settings for `PrometheusConnectionSettings.sigv4(...)`.
+
+  region_?: string
+    The signing region (set by {@link region}).
+  profile_?: string
+    The shared-config profile (set by {@link profile}).
+  accessKey_?: PrometheusAwsAccessKey
+    An explicit access key (set by {@link accessKey}).
+  region(region: string): this
+    The workspace's region, such as `us-east-1`; defaults to `AWS_REGION`,
+    then `AWS_DEFAULT_REGION`.
+  profile(name: string): this
+    Read static keys from this profile of the shared credentials and config
+    files (`~/.aws/credentials`, `~/.aws/config`) instead of searching the
+    default chain.
+  accessKey(accessKeyId: string, secretAccessKey: string, sessionToken?: string): this
+    Sign with this access key instead of searching the default chain.
+
+class PrometheusAzureSettings
+  Settings for `PrometheusConnectionSettings.azure(...)`.
+
+  credential_: PrometheusAzureCredentialKind
+    The credential to use (set by the credential methods).
+  scope_: string
+    The scope requested (set by {@link scope}).
+  tenantId_?: string
+    The tenant (set by {@link tenantId}); else `AZURE_TENANT_ID`.
+  clientId_?: string
+    The application or identity (set by {@link clientId}); else `AZURE_CLIENT_ID`.
+  authorityHost_?: string
+    The authority (set by {@link authorityHost}); else `AZURE_AUTHORITY_HOST`.
+  clientSecret_?: string
+    The client secret (set by {@link clientSecret}); else `AZURE_CLIENT_SECRET`.
+  federatedTokenFile_?: string
+    The federated token file (set by {@link workloadIdentity}); else `AZURE_FEDERATED_TOKEN_FILE`.
+  scope(scope: string): this
+    The scope to request, replacing `https://prometheus.monitor.azure.com/.default`.
+  tenantId(id: string): this
+    The Microsoft Entra tenant (directory) id; defaults to `AZURE_TENANT_ID`.
+  clientId(id: string): this
+    The application's client id — or, for a user-assigned managed identity,
+    the identity's; defaults to `AZURE_CLIENT_ID`.
+  authorityHost(url: string): this
+    The Microsoft Entra authority, such as `https://login.microsoftonline.us`
+    for Azure Government; defaults to `AZURE_AUTHORITY_HOST`, then
+    `https://login.microsoftonline.com`.
+  clientSecret(secret?: string): this
+    Use a service principal's client secret (the client-credentials grant).
+    The secret defaults to `AZURE_CLIENT_SECRET`.
+  workloadIdentity(tokenFile?: string): this
+    Use workload identity federation: the Kubernetes service-account token
+    in `tokenFile` (default `AZURE_FEDERATED_TOKEN_FILE`) is the client
+    assertion, read afresh on every token request since it is rotated.
+  managedIdentity(clientId?: string): this
+    Use the managed identity of the VM, App Service or Functions app the
+    build runs on. Pass a user-assigned identity's client id, or leave it
+    out for `clientId(...)` / `AZURE_CLIENT_ID`, and failing those the
+    system-assigned identity.
 
 class PrometheusConnectionSettings
   The connection half of every Prometheus call's settings.
@@ -221,6 +381,51 @@ class PrometheusConnectionSettings
       authorization: `Bearer ${(await readTextFile("/run/secrets/prom")).trim()}`,
     }))
     ```
+  google(configure: Configure<PrometheusGoogleSettings>): this
+    Authenticate to Google Cloud Managed Service for Prometheus with an
+    OAuth access token from Application Default Credentials — no `gcloud`
+    needed. The search order is `credentialsFile(...)`, else the file
+    `GOOGLE_APPLICATION_CREDENTIALS` names; then gcloud's
+    `application_default_credentials.json`; then the GCE / GKE metadata
+    server. A file may be a `service_account` key, an `authorized_user`
+    gcloud login, or an `external_account` workload identity federation
+    configuration with a `file` or `url` subject-token source. The scope
+    defaults to `monitoring.read`; the token is cached until shortly before
+    it expires.
+
+    ```ts
+    s.url("https://monitoring.googleapis.com/v1/projects/my-project/location/global/prometheus")
+      .google()
+    ```
+  azure(configure: Configure<PrometheusAzureSettings>): this
+    Authenticate to Azure Monitor managed service for Prometheus with a
+    Microsoft Entra ID token for
+    `https://prometheus.monitor.azure.com/.default` — no `az` needed. Unless
+    a credential is chosen, the first the environment configures is used:
+    client secret (`AZURE_TENANT_ID`, `AZURE_CLIENT_ID`,
+    `AZURE_CLIENT_SECRET`), then workload identity (`AZURE_TENANT_ID`,
+    `AZURE_CLIENT_ID`, `AZURE_FEDERATED_TOKEN_FILE`), then managed identity
+    (App Service's `IDENTITY_ENDPOINT`, else the VM's IMDS). The token is
+    cached until shortly before it expires.
+
+    ```ts
+    s.url("https://my-amw.eastus.prometheus.monitor.azure.com")
+      .azure((a) => a.managedIdentity(clientId))
+    ```
+  sigv4(configure: Configure<PrometheusAwsSettings>): this
+    Sign every request with AWS Signature Version 4 for Amazon Managed
+    Service for Prometheus (service `aps`) — no `aws` CLI needed. The region
+    is `region(...)`, else `AWS_REGION` / `AWS_DEFAULT_REGION`. Credentials
+    come from `accessKey(...)` or `profile(...)` when set, else the chain:
+    the `AWS_ACCESS_KEY_ID` environment, the shared files' profile, web
+    identity (`AWS_WEB_IDENTITY_TOKEN_FILE` + `AWS_ROLE_ARN`), the ECS / EKS
+    Pod Identity container endpoint, then EC2 IMDSv2. Configure it after any
+    other source, so it signs the headers they add.
+
+    ```ts
+    s.url("https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-1234")
+      .sigv4((a) => a.region("us-east-1"))
+    ```
   requestTimeout(duration: string | number): this
     How long the call may take, end to end (`"10s"`, or ms; default 30 s).
     Client-side: the query's own `timeout` parameter is separate.
@@ -263,6 +468,29 @@ class PrometheusExpressionSettings extends PrometheusConnectionSettings
     Override the lookback period for this query (`lookback_delta`).
   httpMethod(method: PrometheusHttpMethod): this
     Send the parameters as a `POST` form (the default) or in a `GET` URL.
+
+class PrometheusGoogleSettings
+  Settings for `PrometheusConnectionSettings.google(...)`.
+
+  scopes_: readonly string[]
+    The OAuth scopes requested (set by {@link scopes}).
+  credentialsFile_?: string
+    An explicit credentials file (set by {@link credentialsFile}).
+  quotaProject_?: string
+    The project billed for quota (set by {@link quotaProject}).
+  scopes(...scopes: string[]): this
+    The OAuth scopes to request, replacing the default
+    `https://www.googleapis.com/auth/monitoring.read`. A gcloud user
+    credential (`authorized_user`) carries the scopes it was granted at
+    `gcloud auth application-default login` and ignores these.
+  credentialsFile(path: string): this
+    Read this credentials file — a service-account key, a gcloud user
+    credential, or a workload identity federation configuration — instead of
+    searching Application Default Credentials.
+  quotaProject(project: string): this
+    The project charged for the request's quota, sent as
+    `x-goog-user-project`. Defaults to the credentials file's
+    `quota_project_id`, which `gcloud auth application-default set-quota-project` writes.
 
 class PrometheusLabelValuesSettings extends PrometheusSelectionSettings
   Settings for one label's values (`/api/v1/label/<label_name>/values`).
@@ -472,6 +700,16 @@ interface PrometheusAlerts
 
   readonly alerts: readonly PrometheusAlert[]
     Every active alert.
+
+interface PrometheusAwsAccessKey
+  An explicit access key (set by {@link PrometheusAwsSettings.accessKey}).
+
+  readonly accessKeyId: string
+    The access key id.
+  readonly secretAccessKey: string
+    The secret access key.
+  readonly sessionToken?: string
+    The session token of temporary credentials.
 
 interface PrometheusBuildInfo
   The server's build information. `version` is always present; the API notes
@@ -769,6 +1007,10 @@ interface PrometheusVector
     The result type.
   readonly result: readonly PrometheusVectorSample[]
     One element per series.
+
+type PrometheusAzureCredentialKind = "default" | "clientSecret" | "workloadIdentity" | "managedIdentity"
+  Which credential to use: `"default"` picks one from the environment (see
+  `PrometheusConnectionSettings.azure`); the others are explicit.
 
 type PrometheusCredentials = (request: PrometheusOutgoingRequest, context: PrometheusCredentialsContext) => PrometheusHeaders | Promise<PrometheusHeaders>
   A credential source: given the outgoing request and the context's seams,

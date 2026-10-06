@@ -31,6 +31,7 @@ import {
 import { PrometheusApiError, PrometheusRequestError } from "./errors.ts";
 import { isRecord, own, readStringArray } from "./shape.ts";
 import type { PrometheusHttpMethod, PrometheusResponse } from "./types.ts";
+import { uriEncode } from "./uri.ts";
 
 /** One call: the method, the endpoint path, and its parameters in order. */
 export interface PrometheusCall {
@@ -163,6 +164,7 @@ function decodeUserinfo(part: string): string {
 function endpointUrl(base: URL, call: PrometheusCall): URL {
   const url = new URL(base.href);
   url.pathname = `${url.pathname.replace(/\/+$/, "")}${call.path}`;
+  const query = url.search === "" ? [] : [url.search.slice(1)];
   for (const [name, value] of call.params) {
     if (base.searchParams.has(name)) {
       throw new Error(
@@ -170,8 +172,13 @@ function endpointUrl(base: URL, call: PrometheusCall): URL {
           `would collide with the call's own — remove it from url(...).`,
       );
     }
-    if (call.method === "GET") url.searchParams.append(name, value);
+    // RFC 3986 encoding (`%20`, not `+`), shared with the SigV4 signer, so the
+    // query that is sent is byte-for-byte the query that was signed.
+    if (call.method === "GET") {
+      query.push(`${uriEncode(name)}=${uriEncode(value)}`);
+    }
   }
+  url.search = query.join("&");
   return url;
 }
 
