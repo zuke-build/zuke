@@ -4,7 +4,9 @@
 /**
  * Integration: Prometheus through the real CLI. A build gates on a metric read
  * with `PrometheusTasks`, authenticated by a secret parameter that never
- * reaches the output.
+ * reaches the output; and a canary rollout's `prometheus(...)` analysis — now
+ * built on the same client — promotes a healthy candidate and rolls back an
+ * unhealthy one.
  */
 
 import {
@@ -13,8 +15,10 @@ import {
 } from "../../packages/core/tests/_assert.ts";
 import { Build, parameter, target } from "../../packages/core/mod.ts";
 import { PrometheusTasks } from "../../packages/prometheus/mod.ts";
+import { canary, prometheus } from "../../packages/canary/mod.ts";
+import { FakePlatform } from "../../packages/canary/tests/_platform.ts";
 import { fakeFetch, vector } from "../../packages/prometheus/tests/_fetch.ts";
-import { runCli } from "./_harness.ts";
+import { runCli, withStateDir } from "./_harness.ts";
 
 /** What the fake Prometheus answers; set per test. */
 let answer: () => Response = () => vector([{}, "0"]);
@@ -35,7 +39,7 @@ class Gate extends Build {
           .fetch(prom).query("sum(rate(errors[5m])) or vector(0)")
       );
       const ratio = PrometheusTasks.value(result);
-      if (ratio > 0.01) throw new Error(`error ratio ${ratio} above 0.01`);
+      if (!(ratio <= 0.01)) throw new Error(`error ratio ${ratio} above 0.01`);
     });
 }
 
@@ -65,4 +69,58 @@ Deno.test("a Prometheus refusal echoing the token never prints it", async () => 
   assertEquals(code, 1);
   assertStringIncludes(out + err, "HTTP 401 (bad_data)");
   assertEquals((out + err).includes(TOKEN), false);
+});
+
+/** The platform the canary below drives; reset per test. */
+let platform = new FakePlatform();
+
+class Deploy extends Build {
+  rollout = canary((c) =>
+    c.platform({
+      exposure: "traffic",
+      describe: () => platform.describe(),
+      stage: (ctx) => platform.stage(ctx),
+      expose: (percent, ctx) => platform.expose(percent, ctx),
+      promote: (ctx) => platform.promote(ctx),
+      abort: (ctx) => platform.abort(ctx),
+    })
+      .steps(10)
+      .analysis(prometheus((p) =>
+        p.name("error ratio").url("https://prom.example")
+          .query('sum(rate(errors{rev="canary"}[5m])) or vector(0)')
+          .header("Authorization", `Bearer ${TOKEN}`).max(0.01).fetch(prom)
+      ))
+  );
+}
+
+Deno.test("canary's prometheus analysis promotes a healthy candidate", async () => {
+  platform = new FakePlatform();
+  prom = fakeFetch(() => answer());
+  answer = () => vector([{ rev: "canary" }, "0.001"]);
+  await withStateDir(async () => {
+    const { code, err } = await runCli(Deploy, ["rollout.promote"]);
+    assertEquals(code, 0, err);
+    assertEquals(platform.calls, ["stage", "expose 10 rev-2", "promote rev-2"]);
+    const [sent] = prom.sent;
+    assertEquals(sent.method, "GET");
+    assertEquals(
+      sent.url.searchParams.get("query"),
+      'sum(rate(errors{rev="canary"}[5m])) or vector(0)',
+    );
+  });
+});
+
+Deno.test("canary's prometheus analysis rolls an unhealthy candidate back", async () => {
+  platform = new FakePlatform();
+  prom = fakeFetch(() => answer());
+  answer = () => vector([{ rev: "canary" }, "0.3"]);
+  await withStateDir(async () => {
+    const { code, out, err } = await runCli(Deploy, ["rollout.promote"]);
+    assertEquals(code, 1);
+    assertStringIncludes(
+      out + err,
+      "error ratio is 0.3, above the maximum 0.01",
+    );
+    assertEquals(platform.calls, ["stage", "expose 10 rev-2", "abort rev-1"]);
+  });
 });
