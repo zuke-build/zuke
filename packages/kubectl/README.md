@@ -106,6 +106,52 @@ suppresses Zuke's own echo of the command, so kubectl's `--quiet` on
 `auth can-i` is `.quietAnswer()`. `ToolSettings.env(...)` sets the environment
 `kubectl` itself runs in, so `kubectl run --env` is `.envVar(key, value)`.
 
+## Kubernetes canary platform
+
+`kubectlCanary` is a pair of Deployments as a platform for
+[`@zuke/canary`](https://jsr.io/@zuke/canary). This package does not depend on
+`@zuke/canary`: the object it returns has the platform's shape, so
+`c.platform(...)` accepts it as it is.
+
+```ts
+import { canary } from "@zuke/canary";
+import { kubectlCanary } from "@zuke/kubectl";
+
+rollout = canary((c) =>
+  c.platform(
+    kubectlCanary((k) =>
+      k.stable("api").canary("api-canary").container("api")
+        .image(this.image.value).replicas(10).namespace("prod")
+        .stableImage("reg/api@sha256:…") // what a hand-run rollout.abort restores
+        .kubectl((s) => s.context("prod"))
+    ),
+  )
+    .steps(10, 30, 50)
+    .bake("10m")
+);
+```
+
+It assumes **one Service selects the pods of both Deployments**, so requests
+spread over every ready pod and the candidate's share of traffic follows its
+share of replicas. Exposure is therefore quantised: `expose` returns the share
+it reached, and a step between 0 and 100 always leaves at least one replica on
+each side.
+
+- **`stage`** reads the stable image (`get -o jsonpath=…`), scales the canary
+  Deployment to 0 and sets the candidate image on it.
+- **`expose`** scales the canary up, waits with `rollout status`, then scales
+  the stable Deployment down — capacity never drops below `replicas`.
+- **`promote`** sets the staged image on the stable Deployment, scales it to
+  `replicas`, waits, then scales the canary to 0.
+- **`abort`** does the same with the stable image `stage` read. Run by hand, it
+  restores the `.stableImage(...)` image, and refuses without one.
+
+A Service balances connections, not requests, so with long-lived or HTTP/2
+connections the candidate's real share can differ from its replica share. A
+HorizontalPodAutoscaler, or a GitOps controller that owns `spec.replicas`, on
+either Deployment fights these scales — suspend it for the rollout. See
+[docs/canary.md](https://github.com/zuke-build/zuke/blob/master/docs/canary.md#kubernetes).
+
 <!-- ZUKE:API:START -->
 
 ## API
@@ -129,6 +175,30 @@ await KubectlTasks.rollout((s) =>
 );
 ```
 @module
+
+function kubectlCanary(configure: Configure<KubectlCanarySettings>): KubectlCanary
+  Two Kubernetes Deployments behind one Service as a canary platform, for
+  `@zuke/canary`:
+
+  ```ts
+  c.platform(kubectlCanary((k) =>
+    k.stable("api").canary("api-canary").container("api")
+      .image(this.image.value).replicas(10).namespace("prod")
+      .kubectl((s) => s.context("prod"))
+  ))
+  ```
+
+  The lambda runs on every call, so it may read resolved parameters.
+
+  - stage — reads the stable image (`get -o jsonpath=…`), then
+    `scale deployment/<canary> --replicas=0` and
+    `set image deployment/<canary> <container>=<image>`.
+  - expose — `scale` the canary up, `rollout status` it, then `scale` the
+    stable Deployment down.
+  - promote — `set image` the candidate on the stable Deployment, `scale`
+    it to the total, `rollout status` it, then `scale` the canary to 0.
+  - abort — the same with the stable image: the one `stage` read, or, run
+    by hand, the one set with `.stableImage(...)`.
 
 function parseEvents(json: string): KubernetesEvent[]
   Parse the JSON text of `kubectl events -o json` into
@@ -249,6 +319,114 @@ class KubectlAuthCanISettings extends KubectlSettings
     Zuke's own echo of the command rather than kubectl's output.
   override protected buildArgs(): string[]
     Assemble the `kubectl auth can-i` argv.
+
+class KubectlCanary
+  Two Kubernetes Deployments behind one Service as a canary platform. Create
+  one with {@link kubectlCanary}; hand it to `@zuke/canary`'s
+  `c.platform(...)`.
+
+  Exposure is a share of replicas, so it is quantised: `expose` returns the
+  share it actually reached.
+
+  constructor(configure: Configure<KubectlCanarySettings>)
+    A platform whose settings `configure` produces, afresh on every call.
+  readonly exposure: "replicas"
+    Traffic follows ready pods, so exposure is a share of replicas.
+  describe(): string
+    `"Kubernetes deployment api (canary api-canary)"`, for the summary.
+  async stage(ctx: KubectlCanaryContext): Promise<void>
+    Read the image the stable Deployment runs, so a rollback can put it back;
+    then empty the canary Deployment and set the candidate image on it. With
+    no replicas, nothing runs the candidate yet.
+  async expose(percent: number): Promise<number>
+    Move replicas so the canary Deployment holds about `percent` of the total.
+    The canary grows first and is waited for with `rollout status`; only then
+    does the stable Deployment shrink, so capacity never dips. A step between
+    0 and 100 always leaves at least one replica on each side. Returns the
+    share reached, `canary / total × 100`.
+  async promote(ctx: KubectlCanaryContext): Promise<void>
+    Set the staged candidate image on the stable Deployment, scale it to the
+    total and wait for it, then empty the canary Deployment — only once the
+    wait succeeded. It promotes the
+    image `stage` recorded — the one analysed — whatever the lambda says now.
+    Idempotent.
+  async abort(ctx: KubectlCanaryContext): Promise<void>
+    Return every replica to the stable Deployment, running the stable image.
+    Idempotent. What it does depends on what this rollout recorded:
+
+    - Staged (a rollback mid-rollout): the image `stage` read off the
+      stable Deployment goes back on it — a no-op unless a promote got part of
+      the way — the stable Deployment is scaled to the total and waited for,
+      and the canary is emptied, even when that wait fails.
+    - `stage` failed before the candidate was on record: the canary had
+      no replicas and the stable Deployment was not touched, so nothing runs.
+    - Nothing recorded (`rollout.abort` run by hand, a fresh run): the
+      same, with the image set by {@link KubectlCanarySettings.stableImage}.
+      Without one this refuses: after a promote the stable Deployment runs the
+      candidate, and moving replicas alone would report a rollback that
+      changed nothing.
+
+class KubectlCanarySettings
+  How {@link kubectlCanary} reaches the two Deployments, configured through
+  its lambda.
+
+  stable_?: string
+    The Deployment that serves the current release (set by {@link stable}).
+  canary_?: string
+    The Deployment that runs the candidate (set by {@link canary}).
+  container_?: string
+    The container whose image is rolled out (set by {@link container}).
+  image_?: string
+    The candidate's container image (set by {@link image}).
+  stableImage_?: string
+    The image a hand-run rollback restores (set by {@link stableImage}).
+  replicas_?: number
+    Replicas across both Deployments (set by {@link replicas}).
+  namespace_?: string
+    The namespace of both Deployments (set by {@link namespace}).
+  timeout_: string
+    How long each `rollout status` waits (set by {@link timeout}).
+  kubectl_?: Configure<KubectlSettings>
+    Global kubectl flags for every command (set by {@link kubectl}).
+  runner_: KubectlSettingsRunner
+    How each command is run (set by {@link runner}).
+  stable(deployment: string): this
+    The Deployment serving the current release. It must already exist, and
+    its pods and the canary's must be selected by the same Service.
+  canary(deployment: string): this
+    The Deployment the candidate runs in — a second Deployment with the same
+    pod labels the Service selects (plus one of its own, so its selector does
+    not match the stable pods). It must already exist; at rest it has 0
+    replicas.
+  container(name: string): this
+    The container, in both Deployments, whose image is rolled out.
+  image(reference: string): this
+    The candidate's container image, set on the canary Deployment by `stage`.
+    Prefer a digest (`repo@sha256:…`) — a mutable tag can point at something
+    else by the time `promote` sets it on the stable Deployment.
+  stableImage(reference: string): this
+    The image a `rollout.abort` run by hand puts back on the stable
+    Deployment. Such a run is fresh, with no record of a rollout, and the
+    release it undoes has usually been promoted — so the stable Deployment
+    already runs the candidate, and moving replicas alone would change
+    nothing. A rollback the engine runs mid-rollout does not use it: that one
+    restores the image `stage` read off the stable Deployment.
+  replicas(total: number): this
+    The replicas the two Deployments run between them — the stable
+    Deployment's size at rest. A whole number of at least 1; a canary with
+    steps needs at least 2, so a step can leave a replica on each side.
+  namespace(name: string): this
+    The namespace both Deployments live in (`--namespace`).
+  timeout(duration: string): this
+    How long each `kubectl rollout status` waits for a Deployment to become
+    ready, as a Go duration (default `5m`).
+  kubectl(configure: Configure<KubectlSettings>): this
+    Global flags for every kubectl command the platform runs —
+    `(s) => s.context("prod").kubeconfig("~/.kube/prod")`, or a
+    `.toolPath(...)` to a specific kubectl.
+  runner(run: KubectlSettingsRunner): this
+    Replace how each prepared command is run. The default runs it; this is
+    for a test, or for a build that executes kubectl through something else.
 
 class KubectlClusterInfoSettings extends KubectlSettings
   Settings for `kubectl cluster-info`.
@@ -919,6 +1097,17 @@ class KubectlWaitSettings extends KubectlSettings
   override protected buildArgs(): string[]
     Assemble the `kubectl wait` argv.
 
+interface KubectlCanaryContext
+  The part of the canary engine's context the Kubernetes platform uses: the
+  rollout's durable state, where `stage` records what a rollback needs, and
+  the build summary. The engine hands a richer context; this is the narrow
+  view.
+
+  readonly state: TargetStateHandle
+    The rollout's durable platform state, shared by every call.
+  reportSummary(pairs: SummaryPairs): void
+    Add key/value pairs to the calling target's row in the build summary.
+
 interface KubectlTasksApi
   The shape of {@link KubectlTasks}.
 
@@ -1081,6 +1270,11 @@ interface KubernetesVersion
 
 type DryRunMode = "none" | "client" | "server"
   The `--dry-run` strategies kubectl accepts.
+
+type KubectlSettingsRunner = (settings: KubectlSettings) => Promise<CommandOutput>
+  Runs one prepared `kubectl` command and returns its output. The default runs
+  it; a test or a build that executes kubectl some other way injects its own
+  with {@link KubectlCanarySettings.runner}.
 
 type PatchType = "strategic" | "merge" | "json"
   A patch strategy accepted by `kubectl patch --type`.
