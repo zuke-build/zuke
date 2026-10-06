@@ -13,15 +13,20 @@
  * );
  * ```
  *
+ * `helmCanary` makes a pair of releases a platform for a `@zuke/canary`
+ * rollout.
+ *
  * @module
  */
 
 export {
   HelmDependencyUpdateSettings,
+  HelmGetAllSettings,
   HelmInstallSettings,
   HelmLintSettings,
   HelmPackageSettings,
   HelmRepoAddSettings,
+  HelmRollbackSettings,
   HelmSettings,
   HelmTasks,
   type HelmTasksApi,
@@ -30,3 +35,12 @@ export {
   HelmUpgradeSettings,
   HelmValuesSettings,
 } from "./src/helm.ts";
+export {
+  HelmCanary,
+  helmCanary,
+  type HelmCanaryContext,
+} from "./src/helm_canary.ts";
+export {
+  HelmCanarySettings,
+  type HelmSettingsRunner,
+} from "./src/helm_canary_settings.ts";

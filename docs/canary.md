@@ -76,8 +76,8 @@ Every call gets the same `ctx.state`, the rollout's durable platform state, so
 network calls.
 
 Adapters for specific platforms belong in their wrapper packages; see
-[Cloud Run](#cloud-run) and [Kubernetes](#kubernetes) below. Until one exists
-for yours, a platform is a plain object in the build:
+[Cloud Run](#cloud-run), [Kubernetes](#kubernetes) and [Helm](#helm) below.
+Until one exists for yours, a platform is a plain object in the build:
 
 <!-- check -->
 
@@ -263,6 +263,135 @@ Limits worth knowing:
   configuration back, then run the rollout's `<field>.abort` target (e.g.
   `zuke rollout.abort`) with `.stableImage(...)` set to the image the refusal
   names. `expose` and `promote` also refuse a rollout `stage` did not record.
+
+### Helm
+
+`helmCanary` makes a pair of releases a platform for a
+[`@zuke/canary`](https://jsr.io/@zuke/canary) rollout. The candidate runs as a
+second release (`<stable>-canary` unless you name it with
+`.canaryRelease(...)`), and exposure is the share of the replicas it holds:
+
+```ts
+import { Build, parameter, run, target } from "@zuke/core";
+import { canary, httpProbe } from "@zuke/canary";
+import { helmCanary } from "@zuke/helm";
+
+class Deploy extends Build {
+  tag = parameter("Image tag to roll out").required();
+
+  rollout = canary((c) =>
+    c.platform(
+      helmCanary((h) =>
+        h.chart("./charts/api").stableRelease("api").namespace("prod")
+          .image(this.tag.value).replicas(10).values("values-prod.yaml")
+          .helm((s) => s.kubeContext("prod"))
+      ),
+    )
+      .steps(10, 50)
+      .bake("10m")
+      .analysis(httpProbe((p) => p.url("https://api.example.com/healthz")))
+  );
+  ship = target().dependsOn(this.rollout.promote).executes(() => {});
+}
+
+await run(Deploy);
+```
+
+Every upgrade passes `--reset-then-reuse-values`, and every command on the
+stable release `--history-max 0`:
+
+| Call      | helm                                                                                                                                                                                                                                                                                                                                                                                 |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `stage`   | `get all <stable> --template '{{.Release.Version}} {{.Release.Info.Status}} {{.Release.Info.FirstDeployed.UnixNano}}'` — refused unless `deployed`, else the revision and first-deployed time are recorded; `get all <canary>` — refused if the canary release already exists; then `upgrade <canary> <chart> --set replicaCount=0 --set-string image.tag=<image> --install --wait`. |
+| `expose`  | `get all <stable> --template '{{.Release.Info.FirstDeployed.UnixNano}}'` — refused unless it is the recorded time; then `upgrade <canary> <chart> --set replicaCount=<n> --wait`, then `upgrade <stable> <stable chart> --set replicaCount=<total-n>`. `n` is rounded, at least 1 above 0 %; returns `n / total`.                                                                    |
+| `promote` | The same first-deployed check, then `upgrade <stable> <chart> --set replicaCount=<total> --set-string image.tag=<image> --wait`, then `uninstall <canary> --ignore-not-found`.                                                                                                                                                                                                       |
+| `abort`   | The same first-deployed check, then `rollback <stable> <recorded revision> --wait`, then `uninstall <canary> --ignore-not-found` (only the check and the uninstall when the canary install was under way). Run by hand there is no record, so no check: the revision is set with `.stableRevision(n)`; without one it refuses.                                                       |
+
+`stage` records the image, the total replica count, the charts and their
+versions, the values files and the image and replica keys, and `expose` and
+`promote` use what it recorded — so a resumed process configured with another
+image or chart still promotes the one that was analysed. Every command's exit
+code is checked, so a `.helm((s) => s.noThrow())` or a runner that returns a
+failed output cannot make a failed install look staged or a failed rollback look
+done. A rollback is `helm rollback` to the exact revision `stage` read, so it
+restores the stable image, values and replica count even after a promotion that
+failed half-way; a stage that failed before installing anything runs no rollback
+at all.
+
+`stage` also records the stable release, the canary release and the namespace. A
+later `expose`, `promote` or rollback configured with any other value refuses,
+naming both, and changes nothing rather than act on either set: the kube context
+and kubeconfig in `.helm(...)` cannot be recorded, so **do not change them, the
+release names or the namespace mid-rollout**. If they did change, the run is
+left cancelled with the canary release in place and the stable release scaled
+down. To recover, set the configuration back to what the rollout started with,
+then run the rollout's `<field>.abort` target by hand (`zuke rollout.abort`)
+with `.stableRevision(n)` — the refusal names the revision `stage` recorded. A
+rollback run by hand with no record uses the configuration as it is.
+
+`stage` also records when the stable release was first deployed — a time helm
+sets once, at install, and carries through every upgrade and rollback — and
+every later `expose`, `promote` and rollback, and a resumed `stage`, reads it
+again before changing anything. A stable release uninstalled and installed again
+under the same name has a new one, so it is refused rather than rolled back to a
+revision its history does not hold. The kube context still cannot be recorded,
+but one that now points at another cluster refuses rather than act, because that
+cluster's release will not have been first deployed at the same nanosecond — a
+strong check, not a proof. The refusal names both times and changes nothing, but
+the run is left cancelled with the canary release in place, so a resume or
+`zuke cancel` will not roll it back. To recover, point the kube context back at
+the cluster the rollout started on, check with `helm status <stable>` that it
+reaches the release that was staged (a rollback run by hand has no record to
+check it against), then run the rollout's `<field>.abort` target by hand with
+`.stableRevision(n)` — the refusal names the revision `stage` recorded. If the
+release really was reinstalled, that revision is not in its history: check
+`helm history <stable>` and clean up by hand, uninstalling the canary release
+once the stable one is as it should be.
+
+What it relies on, and cannot check:
+
+- **The stable release's Service must select the canary release's pods too.** A
+  chart scaffolded by `helm create` selects on
+  `app.kubernetes.io/instance: <release>`, so its canary pods would take no
+  requests at all and every analysis would pass on the stable version alone. Use
+  a chart whose selector spans both releases.
+- **The canary release inherits nothing from the stable one.** It is the chart's
+  defaults plus `.values(...)`, so those files must reproduce the stable
+  release's whole configuration — values only ever set by hand on the stable
+  release are not in what the canary ran.
+- **A second release of the chart must coexist with the first.** Names that are
+  hard-coded or set by `fullnameOverride`, a duplicated Ingress host,
+  cluster-scoped objects, and hooks that run again on install all collide or
+  misbehave.
+- **The chart must honour the replica key** (`replicaCount` by default, set with
+  `.replicasKey(...)`): an enabled autoscaler ignores it.
+- **The image key defaults to `image.tag`**, so `.image(...)` is the tag alone
+  (a `@sha256:` digest after it is fine); point `.imageKey(...)` at a key that
+  takes a full reference to pass one.
+- **Every replica move re-renders the stable release.** Without
+  `.stableChart(...)` it renders `.chart(...)`, so a candidate that changes the
+  chart changes every stable pod's templates at the first step. Name the chart
+  the stable release runs with `.stableChart(...)` / `.stableVersion(...)`, or
+  keep the chart and version identical for both. A chart that is not a local
+  path (`./…`, `../…`, `/…` or a Windows `C:\…`) must be pinned — `.chart(...)`
+  with `.version(...)`, and `.stableChart(...)` with `.stableVersion(...)` — and
+  `stage` refuses it otherwise, since an unpinned repository or `oci://` chart
+  would render its latest version at every step and the promotion could install
+  a chart that was never analysed.
+- **A local chart is recorded by its path, not its content.** Editing the chart
+  directory mid-rollout means the later steps and the promotion render a chart
+  that was not the one analysed; leave it alone until the rollout finishes, or
+  roll out a packaged, versioned chart instead.
+- **Capacity can dip briefly.** The canary release scales up first, but `--wait`
+  counts a Deployment ready at `replicas - maxUnavailable`, and the stable
+  release scales down without waiting.
+- **A rollback returns the stable release to the revision `stage` recorded**, so
+  a deploy someone else made to it mid-rollout is rolled back too. The adapter's
+  own commands keep every revision (`--history-max 0`), but another upgrade of
+  the stable release mid-rollout (default `HELM_MAX_HISTORY`, 10) can still
+  prune it; the rollback then fails rather than guess.
+- Requires Helm 3.14 or later in the 3.x line (`--reset-then-reuse-values`,
+  `uninstall --ignore-not-found`).
 
 ## Bakes: inline or durable
 

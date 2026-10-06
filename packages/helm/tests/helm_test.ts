@@ -13,10 +13,12 @@ import {
 } from "@zuke/core/tooling/conformance";
 import {
   HelmDependencyUpdateSettings,
+  HelmGetAllSettings,
   HelmInstallSettings,
   HelmLintSettings,
   HelmPackageSettings,
   HelmRepoAddSettings,
+  HelmRollbackSettings,
   HelmTasks,
   HelmTemplateSettings,
   HelmUninstallSettings,
@@ -229,6 +231,14 @@ Deno.test("every HelmTasks function reaches execution", async () => {
     ToolNotFoundError,
   );
   await assertRejects(
+    () => HelmTasks.rollback((s) => missingTool(s).release("a")),
+    ToolNotFoundError,
+  );
+  await assertRejects(
+    () => HelmTasks.getAll((s) => missingTool(s).release("a")),
+    ToolNotFoundError,
+  );
+  await assertRejects(
     () => HelmTasks.template((s) => missingTool(s).release("a").chart("c")),
     ToolNotFoundError,
   );
@@ -250,6 +260,124 @@ Deno.test("every HelmTasks function reaches execution", async () => {
   );
 });
 
+Deno.test("set-string follows --set, and upgrade can --reuse-values", () => {
+  assertEquals(
+    new HelmUpgradeSettings()
+      .release("api")
+      .chart("./charts/api")
+      .setString("image.tag", "1.10")
+      .set("replicaCount", "3")
+      .reuseValues()
+      .install()
+      .argv()
+      .slice(1),
+    [
+      "upgrade",
+      "api",
+      "./charts/api",
+      "--set",
+      "replicaCount=3",
+      "--set-string",
+      "image.tag=1.10",
+      "--install",
+      "--reuse-values",
+    ],
+  );
+});
+
+Deno.test("uninstall: --ignore-not-found", () => {
+  assertEquals(
+    new HelmUninstallSettings().release("api").ignoreNotFound().wait().argv()
+      .slice(1),
+    ["uninstall", "api", "--ignore-not-found", "--wait"],
+  );
+});
+
+Deno.test("rollback: requires release; revision, --wait, --timeout", () => {
+  assertThrows(
+    () => new HelmRollbackSettings().argv(),
+    Error,
+    "HelmTasks.rollback: .release() is required",
+  );
+  assertEquals(
+    new HelmRollbackSettings().release("api").argv().slice(1),
+    ["rollback", "api"],
+  );
+  assertEquals(
+    new HelmRollbackSettings().release("api").revision(4).namespace("prod")
+      .wait().timeout("5m").argv().slice(1),
+    [
+      "rollback",
+      "api",
+      "4",
+      "--namespace",
+      "prod",
+      "--wait",
+      "--timeout",
+      "5m",
+    ],
+  );
+});
+
+Deno.test("getAll: requires release; --revision, --template", () => {
+  assertThrows(
+    () => new HelmGetAllSettings().argv(),
+    Error,
+    "HelmTasks.getAll: .release() is required",
+  );
+  assertEquals(
+    new HelmGetAllSettings().release("api").revision(2)
+      .template("{{.Release.Version}}").argv().slice(1),
+    [
+      "get",
+      "all",
+      "api",
+      "--revision",
+      "2",
+      "--template",
+      "{{.Release.Version}}",
+    ],
+  );
+});
+
+Deno.test("upgrade: --reset-then-reuse-values and --history-max", () => {
+  assertEquals(
+    new HelmUpgradeSettings().release("api").chart("c").resetThenReuseValues()
+      .historyMax(0).argv().slice(1),
+    [
+      "upgrade",
+      "api",
+      "c",
+      "--reset-then-reuse-values",
+      "--history-max",
+      "0",
+    ],
+  );
+});
+
+Deno.test("rollback: --history-max", () => {
+  assertEquals(
+    new HelmRollbackSettings().release("api").revision(3).historyMax(0)
+      .argv().slice(1),
+    ["rollback", "api", "3", "--history-max", "0"],
+  );
+});
+
+Deno.test("rollback and getAll refuse a revision helm could not have", () => {
+  for (const bad of [0, -1, 1.5, Number.NaN]) {
+    assertThrows(
+      () => new HelmRollbackSettings().release("api").revision(bad),
+      Error,
+      "HelmTasks.rollback: .revision() takes a whole number from 1 up",
+    );
+    assertThrows(
+      () => new HelmGetAllSettings().release("api").revision(bad),
+      Error,
+      "HelmTasks.getAll: .revision() takes a whole number from 1 up",
+    );
+  }
+});
+
 Deno.test("helm: conforms to the wrapper contract", async () => {
   await assertWrapperConformance(
     () => new HelmLintSettings().chart("./charts/api"),
@@ -257,5 +385,24 @@ Deno.test("helm: conforms to the wrapper contract", async () => {
     {
       resolution: "path",
     },
+  );
+});
+
+Deno.test("upgrade and rollback refuse a --history-max helm could not take", () => {
+  for (const bad of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assertThrows(
+      () => new HelmUpgradeSettings().historyMax(bad),
+      Error,
+      `HelmTasks.upgrade: .historyMax() takes a whole number from 0 up, not ${bad}.`,
+    );
+    assertThrows(
+      () => new HelmRollbackSettings().historyMax(bad),
+      Error,
+      `HelmTasks.rollback: .historyMax() takes a whole number from 0 up, not ${bad}.`,
+    );
+  }
+  assertEquals(
+    new HelmRollbackSettings().release("api").historyMax(5).argv().slice(1),
+    ["rollback", "api", "--history-max", "5"],
   );
 });
