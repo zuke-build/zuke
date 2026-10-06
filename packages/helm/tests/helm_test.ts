@@ -13,10 +13,12 @@ import {
 } from "@zuke/core/tooling/conformance";
 import {
   HelmDependencyUpdateSettings,
+  HelmGetAllSettings,
   HelmInstallSettings,
   HelmLintSettings,
   HelmPackageSettings,
   HelmRepoAddSettings,
+  HelmRollbackSettings,
   HelmTasks,
   HelmTemplateSettings,
   HelmUninstallSettings,
@@ -229,6 +231,14 @@ Deno.test("every HelmTasks function reaches execution", async () => {
     ToolNotFoundError,
   );
   await assertRejects(
+    () => HelmTasks.rollback((s) => missingTool(s).release("a")),
+    ToolNotFoundError,
+  );
+  await assertRejects(
+    () => HelmTasks.getAll((s) => missingTool(s).release("a")),
+    ToolNotFoundError,
+  );
+  await assertRejects(
     () => HelmTasks.template((s) => missingTool(s).release("a").chart("c")),
     ToolNotFoundError,
   );
@@ -247,6 +257,86 @@ Deno.test("every HelmTasks function reaches execution", async () => {
   await assertRejects(
     () => HelmTasks.package((s) => missingTool(s).chart("c")),
     ToolNotFoundError,
+  );
+});
+
+Deno.test("set-string follows --set, and upgrade can --reuse-values", () => {
+  assertEquals(
+    new HelmUpgradeSettings()
+      .release("api")
+      .chart("./charts/api")
+      .setString("image.tag", "1.10")
+      .set("replicaCount", "3")
+      .reuseValues()
+      .install()
+      .argv()
+      .slice(1),
+    [
+      "upgrade",
+      "api",
+      "./charts/api",
+      "--set",
+      "replicaCount=3",
+      "--set-string",
+      "image.tag=1.10",
+      "--install",
+      "--reuse-values",
+    ],
+  );
+});
+
+Deno.test("uninstall: --ignore-not-found", () => {
+  assertEquals(
+    new HelmUninstallSettings().release("api").ignoreNotFound().wait().argv()
+      .slice(1),
+    ["uninstall", "api", "--ignore-not-found", "--wait"],
+  );
+});
+
+Deno.test("rollback: requires release; revision, --wait, --timeout", () => {
+  assertThrows(
+    () => new HelmRollbackSettings().argv(),
+    Error,
+    "HelmTasks.rollback: .release() is required",
+  );
+  assertEquals(
+    new HelmRollbackSettings().release("api").argv().slice(1),
+    ["rollback", "api"],
+  );
+  assertEquals(
+    new HelmRollbackSettings().release("api").revision(4).namespace("prod")
+      .wait().timeout("5m").argv().slice(1),
+    [
+      "rollback",
+      "api",
+      "4",
+      "--namespace",
+      "prod",
+      "--wait",
+      "--timeout",
+      "5m",
+    ],
+  );
+});
+
+Deno.test("getAll: requires release; --revision, --template", () => {
+  assertThrows(
+    () => new HelmGetAllSettings().argv(),
+    Error,
+    "HelmTasks.getAll: .release() is required",
+  );
+  assertEquals(
+    new HelmGetAllSettings().release("api").revision(2)
+      .template("{{.Release.Version}}").argv().slice(1),
+    [
+      "get",
+      "all",
+      "api",
+      "--revision",
+      "2",
+      "--template",
+      "{{.Release.Version}}",
+    ],
   );
 });
 
