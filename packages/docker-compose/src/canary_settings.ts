@@ -109,8 +109,10 @@ export class DockerComposeCanarySettings {
    * stable replicas ran when `stage` looked, to the candidate on promotion.
    * Not a name Docker, Compose or the process reads as a setting —
    * `DOCKER_*`, `COMPOSE_*`, `BUILDKIT_*`, `BUILDX_*`, `XDG_*`, `LD_*`,
-   * `DYLD_*`, `*_PROXY`, `PATH`, `HOME`, `USERPROFILE`, `TMPDIR`, `TEMP` or
-   * `TMP`, in any case — and not the canary's variable in another case.
+   * `DYLD_*`, `*_PROXY`, `PATH`, `PATHEXT`, `HOME`, `USERPROFILE`,
+   * `SystemRoot`, `TMPDIR`, `TEMP`, `TMP`, `SSH_AUTH_SOCK`, `SSL_CERT_FILE`
+   * or `SSL_CERT_DIR`, in any case — and not the canary's variable in
+   * another case.
    */
   stableImageVariable(name: string): this {
     this.stableImageVariable_ = name;
@@ -129,10 +131,11 @@ export class DockerComposeCanarySettings {
 
   /**
    * The image to put the stable service back on when `rollout.abort` is run
-   * by hand — a reference with no whitespace or control characters. Such a run is fresh, with no record of a rollout, so it has
-   * nothing else to go on — and the release it is undoing has usually been
-   * promoted already. A rollback the engine runs mid-rollout does not use it:
-   * that one returns to the image `stage` saw the stable replicas running.
+   * by hand — a reference with no whitespace or control characters. Such a
+   * run is fresh, with no record of a rollout, so it has nothing else to go
+   * on — and the release it is undoing has usually been promoted already. A
+   * rollback the engine runs mid-rollout does not use it: that one returns to
+   * the image ID `stage` saw the stable replicas running.
    */
   stable(image: string): this {
     this.stable_ = image;
@@ -145,8 +148,10 @@ export class DockerComposeCanarySettings {
    * skip detection. Compose v2 (`docker compose`) is required: the v1
    * `docker-compose` binary has no `--wait`, `pull --policy` or
    * `ps --format`. Trailing `.args(...)` are refused, since they would land
-   * after the service each command names. A non-zero exit fails the call
-   * even with `.noThrow()`.
+   * after the service each command names — a guard against an accident, not
+   * a security boundary: this lambda is the build's own code and can run
+   * Compose however it likes. A non-zero exit fails the call even with
+   * `.noThrow()`.
    */
   compose(configure: Configure<DockerComposeSettings>): this {
     this.compose_ = configure;

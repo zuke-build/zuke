@@ -40,6 +40,7 @@ const RECORD = {
   canaryVariable: "composeCanaryCanaryVariable",
   candidate: "composeCanaryImage",
   stableImage: "composeCanaryStableImage",
+  stableImageId: "composeCanaryStableImageId",
 } as const;
 
 /** The most replicas the two services may share. */
@@ -58,13 +59,24 @@ const VARIABLE_SHAPE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /**
  * Variables Docker, Compose, BuildKit or the process itself read as settings
- * (`DOCKER_HOST`, `COMPOSE_FILE`, `PATH`, `HTTPS_PROXY`, `LD_PRELOAD`, …): an
+ * (`DOCKER_HOST`, `COMPOSE_FILE`, `PATH`, `HTTPS_PROXY`, `LD_PRELOAD`,
+ * `SystemRoot`, `SSH_AUTH_SOCK`, …): an
  * image variable named one of them would redirect the command, or break it,
  * rather than name an image. Matched without regard to case, as Windows reads
  * them.
  */
-const RESERVED_VARIABLE =
-  /^(?:(?:DOCKER|COMPOSE|BUILDKIT|BUILDX|XDG|LD|DYLD)_.*|.*_PROXY|PATH|HOME|USERPROFILE|TMPDIR|TEMP|TMP)$/i;
+const RESERVED_VARIABLE = new RegExp(
+  "^(?:(?:DOCKER|COMPOSE|BUILDKIT|BUILDX|XDG|LD|DYLD)_.*|.*_PROXY|PATH|" +
+    "PATHEXT|HOME|USERPROFILE|SystemRoot|TMPDIR|TEMP|TMP|SSH_AUTH_SOCK|" +
+    "SSL_CERT_FILE|SSL_CERT_DIR)$",
+  "i",
+);
+
+/**
+ * A full image ID, as `images --quiet` prints it (bare hex) or `ps` reports
+ * it (`sha256:` first).
+ */
+const IMAGE_ID_SHAPE = /^(?:sha256:)?([0-9a-f]{64})$/;
 
 /**
  * An image reference as an environment value: something, with no whitespace
@@ -91,10 +103,16 @@ export interface Variables {
   readonly canaryVariable: string;
 }
 
-/** What a rollback acts on: the services, the variables, the image to restore. */
+/** What a rollback acts on: the services, the variables, the images. */
 export interface Rollback extends Topology, Variables {
-  /** The image the stable service goes back to. */
+  /** The reference of the image the stable service goes back to. */
   readonly stableImage: string;
+  /**
+   * What the stable variable is set to on every command that may create a
+   * stable replica: the recorded image ID, so a tag moved since cannot put a
+   * release nobody analysed in; for a hand-run rollback, the reference.
+   */
+  readonly restore: string;
 }
 
 /** Everything `stage` recorded, which every later call acts on. */
@@ -164,11 +182,8 @@ export function handRunRollback(
       "d.stable('<image>') to put the stable service back on it, or use " +
       "`zuke cancel <run-id>` for a rollout that is still running.",
   );
-  return {
-    ...topology,
-    ...vars,
-    stableImage: imageOf(stableImage, "the d.stable(...) image"),
-  };
+  const image = imageOf(stableImage, "the d.stable(...) image");
+  return { ...topology, ...vars, stableImage: image, restore: image };
 }
 
 /** The state patch that records `rollout`, for `stage`'s one write. */
@@ -181,6 +196,7 @@ export function recordOf(rollout: Rollout): Record<string, JsonValue> {
     [RECORD.canaryVariable]: rollout.canaryVariable,
     [RECORD.candidate]: rollout.candidate,
     [RECORD.stableImage]: rollout.stableImage,
+    [RECORD.stableImageId]: rollout.restore,
   };
 }
 
@@ -205,7 +221,26 @@ export function recordedRollout(
     ...variables(text(RECORD.stableVariable), text(RECORD.canaryVariable)),
     candidate: imageOf(text(RECORD.candidate), "the recorded candidate"),
     stableImage: imageOf(text(RECORD.stableImage), "the recorded stable image"),
+    restore: imageIdOf(
+      text(RECORD.stableImageId),
+      "the recorded stable image ID",
+    ),
   };
+}
+
+/**
+ * `value` as a full image ID with its `sha256:` prefix — the form an `image:`
+ * accepts — or an error naming `what`.
+ */
+export function imageIdOf(value: string, what: string): string {
+  const hex = IMAGE_ID_SHAPE.exec(value)?.[1];
+  if (hex === undefined) {
+    throw new Error(
+      `${CALLER}: ${JSON.stringify(value)} (${what}) is not a full image ID ` +
+        "— 64 hexadecimal digits, optionally after sha256:.",
+    );
+  }
+  return `sha256:${hex}`;
 }
 
 /** `reference` if it is an image reference, or an error naming `what`. */

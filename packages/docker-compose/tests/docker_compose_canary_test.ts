@@ -49,14 +49,26 @@ const IMAGE_VARIABLE: Record<string, string> = {
   "app-next": "APP_CANARY_IMAGE",
 };
 
+/** The ID each tag resolves to, as `images --quiet` prints it. */
+const V1_HEX = "a1".repeat(32);
+const V2_HEX = "b2".repeat(32);
+const V3_HEX = "c3".repeat(32);
+
+/** The stable image's ID, as the platform sets it and `ps` reports it. */
+const V1_ID = `sha256:${V1_HEX}`;
+
 /** Options for {@link fakeCompose}. */
 interface Fake {
+  /** The ID each tag resolves to; `app:v1` and `app:v2` by default. */
+  tags?: Record<string, string>;
   /** The containers before the first command; four `app:v1` stable ones by default. */
   world?: World;
   /** Services whose `image:` is a literal, not their variable. */
   hardCoded?: Record<string, string>;
   /** What `ps` prints, overriding the world. */
   ps?: string;
+  /** What `images --quiet` prints, overriding the world. */
+  images?: string;
   /** The output to answer a command with instead of running it. */
   answer?: (argv: string[]) => CommandOutput | undefined;
 }
@@ -64,14 +76,18 @@ interface Fake {
 /**
  * A Compose that records every command and keeps a world of containers: `up`
  * scales a service, recreating its containers on the image its variable names
- * unless `--no-recreate` keeps them, and `ps` prints each container's image.
+ * unless `--no-recreate` keeps them, `ps` prints each container's image, and
+ * `images --quiet` each distinct ID they run — `sha256:` stripped, as Compose
+ * prints it. A container created from an ID shows that ID in `ps`.
  */
 function fakeCompose(fake: Fake = {}): {
   runner: DockerComposeSettingsRunner;
   calls: Call[];
   world: World;
+  tags: Record<string, string>;
 } {
   const calls: Call[] = [];
+  const tags = fake.tags ?? { "app:v1": V1_HEX, "app:v2": V2_HEX };
   const world: World = fake.world ?? {
     app: ["app:v1", "app:v1", "app:v1", "app:v1"],
     "app-canary": [],
@@ -85,6 +101,15 @@ function fakeCompose(fake: Fake = {}): {
     const answer = fake.answer?.(argv);
     if (answer !== undefined) return Promise.resolve(answer);
     const service = argv.at(-1) ?? "";
+    if (argv.includes("images")) {
+      const ids = new Set(
+        (world[service] ?? []).map((image) =>
+          image.startsWith("sha256:") ? image.slice(7) : tags[image]
+        ),
+      );
+      const lines = [...ids].map((id) => `${id}\n`).join("");
+      return Promise.resolve(new CommandOutput(0, fake.images ?? lines, ""));
+    }
     if (argv.includes("ps")) {
       const lines = (world[service] ?? []).map((image) => `${image}\n`);
       return Promise.resolve(
@@ -103,7 +128,7 @@ function fakeCompose(fake: Fake = {}): {
     }
     return Promise.resolve(new CommandOutput(0, "", ""));
   };
-  return { runner, calls, world };
+  return { runner, calls, world, tags };
 }
 
 function context() {
@@ -156,13 +181,20 @@ function scale(
   ];
 }
 
+/** The `images` argv the platform runs to read the ID `service` runs. */
+function images(service: string): string[] {
+  return ["compose", "-p", "shop", "images", "--quiet", service];
+}
+
 /** The `ps` argv the platform runs to read the images `service` runs. */
 function ps(service: string): string[] {
   return ["compose", "-p", "shop", "ps", "--format", "{{.Image}}", service];
 }
 
-const BOTH_V1 = { APP_CANARY_IMAGE: "app:v2", APP_IMAGE: "app:v1" };
-const ALL_V1 = { APP_CANARY_IMAGE: "app:v1", APP_IMAGE: "app:v1" };
+const BOTH_V1 = { APP_CANARY_IMAGE: "app:v2", APP_IMAGE: V1_ID };
+const ALL_V1 = { APP_CANARY_IMAGE: V1_ID, APP_IMAGE: V1_ID };
+/** A hand-run rollback has only the reference to go on. */
+const ALL_V1_TAG = { APP_CANARY_IMAGE: "app:v1", APP_IMAGE: "app:v1" };
 const ALL_V2 = { APP_CANARY_IMAGE: "app:v2", APP_IMAGE: "app:v2" };
 
 /** What a successful stage of the default platform records. */
@@ -175,6 +207,7 @@ const STAGED = {
   composeCanaryCanaryVariable: "APP_CANARY_IMAGE",
   composeCanaryImage: "app:v2",
   composeCanaryStableImage: "app:v1",
+  composeCanaryStableImageId: V1_ID,
 };
 
 /** A context whose state is the one a successful stage leaves. */
@@ -190,6 +223,7 @@ Deno.test("stage records the rollout, pulls the candidate, and settles at 0 %", 
   await platform(runner).stage(ctx);
   assertEquals(calls, [
     { argv: ps("app"), env: ALL_V2 },
+    { argv: images("app"), env: ALL_V2 },
     {
       argv: [
         "compose",
@@ -424,7 +458,7 @@ Deno.test("abort mid-rollout scales the stable service back without recreating i
   ];
   assertEquals(calls, [...once, ...once]);
   assertEquals(world, {
-    app: ["app:v1", "app:v1", "app:v1", "app:v1"],
+    app: ["app:v1", "app:v1", "app:v1", V1_ID],
     "app-canary": [],
   });
 });
@@ -452,7 +486,7 @@ Deno.test("abort after a promotion that failed part-way surges the canary on the
     { argv: scale("app-canary", 0), env: ALL_V1 },
   ]);
   assertEquals(world, {
-    app: ["app:v1", "app:v1", "app:v1", "app:v1"],
+    app: [V1_ID, V1_ID, V1_ID, V1_ID],
     "app-canary": [],
   });
 });
@@ -502,7 +536,7 @@ Deno.test("a stage that cannot record the stable image stops before anything sca
     "could not record the stable image",
   );
   // The read and the pull ran; no scaling did.
-  assertEquals(calls.map((c) => c.argv[3]), ["ps", "pull"]);
+  assertEquals(calls.map((c) => c.argv[3]), ["ps", "images", "pull"]);
 });
 
 Deno.test("stage refuses a stable service with no single running image", async () => {
@@ -545,9 +579,9 @@ Deno.test("a hand-run abort on stable replicas already on the image only scales 
   });
   await platform(runner, (d) => d.stable("app:v1")).abort(context());
   assertEquals(calls, [
-    { argv: ps("app"), env: ALL_V1 },
-    { argv: scale("app", 4, true), env: ALL_V1 },
-    { argv: scale("app-canary", 0), env: ALL_V1 },
+    { argv: ps("app"), env: ALL_V1_TAG },
+    { argv: scale("app", 4, true), env: ALL_V1_TAG },
+    { argv: scale("app-canary", 0), env: ALL_V1_TAG },
   ]);
 });
 
@@ -562,10 +596,10 @@ Deno.test("a hand-run abort after a promotion surges the canary on the stable im
   });
   await platform(runner, (d) => d.stable("app:v1")).abort(context());
   assertEquals(calls, [
-    { argv: ps("app"), env: ALL_V1 },
-    { argv: scale("app-canary", 4), env: ALL_V1 },
-    { argv: scale("app", 4), env: ALL_V1 },
-    { argv: scale("app-canary", 0), env: ALL_V1 },
+    { argv: ps("app"), env: ALL_V1_TAG },
+    { argv: scale("app-canary", 4), env: ALL_V1_TAG },
+    { argv: scale("app", 4), env: ALL_V1_TAG },
+    { argv: scale("app-canary", 0), env: ALL_V1_TAG },
   ]);
   assertEquals(world, {
     app: ["app:v1", "app:v1", "app:v1", "app:v1"],
@@ -730,6 +764,11 @@ Deno.test("missing and malformed settings are named before anything runs", async
       "BUILDKIT_HOST",
       "BUILDX_CONFIG",
       "XDG_CONFIG_HOME",
+      "SystemRoot",
+      "PATHEXT",
+      "ssh_auth_sock",
+      "SSL_CERT_FILE",
+      "SSL_CERT_DIR",
     ]
   ) {
     await assertRejects(
@@ -866,6 +905,7 @@ async function fakeDocker(failUp: boolean): Promise<string> {
       "#!/bin/sh",
       'case " $* " in',
       '  *" ps "*) echo "$APP_IMAGE" ;;',
+      `  *" images "*) echo ${V1_HEX} ;;`,
       `  *" up "*) ${failUp ? "echo up failed >&2; exit 1" : "exit 0"} ;;`,
       "esac",
       "",
@@ -945,4 +985,98 @@ Deno.test("promote and a hand-run abort tell the operator what to persist", asyn
   const before = { ...mid.summary };
   await platform(runner).abort(mid);
   assertEquals(mid.summary, before);
+});
+
+Deno.test("a stable tag moved mid-rollout cannot bring a never-analysed image into the stable service", async () => {
+  // A local pull or build moves app:v1 to another image. ps now reports the
+  // stable replicas by ID, and a rollback that recreated them from the tag
+  // would install a release nobody analysed — while reporting success.
+  const { runner, calls, world, tags } = fakeCompose();
+  const ctx = await staged(runner);
+  const p = platform(runner);
+  await p.expose(50, ctx);
+  tags["app:v1"] = V3_HEX;
+  world.app = [V1_ID, V1_ID];
+  calls.length = 0;
+  await p.abort(ctx);
+  assertEquals(calls, [
+    { argv: ps("app"), env: ALL_V1 },
+    { argv: scale("app", 4, true), env: ALL_V1 },
+    { argv: scale("app-canary", 0), env: ALL_V1 },
+  ]);
+  assertEquals(world, { app: [V1_ID, V1_ID, V1_ID, V1_ID], "app-canary": [] });
+});
+
+Deno.test("abort accepts stable replicas shown by reference or by the recorded ID", async () => {
+  const { runner, calls, world } = fakeCompose();
+  const ctx = await staged(runner);
+  world.app = ["app:v1", V1_ID];
+  calls.length = 0;
+  await platform(runner).abort(ctx);
+  assertEquals(calls.map((c) => c.argv), [
+    ps("app"),
+    scale("app", 4, true),
+    scale("app-canary", 0),
+  ]);
+});
+
+Deno.test("stage refuses stable replicas that do not resolve to one full image ID", async () => {
+  for (
+    const [listed, message] of [
+      ["", "resolve to no image ID"],
+      [
+        `${V1_HEX}\n${V2_HEX}\n`,
+        `several image IDs (${V1_ID}, sha256:${V2_HEX})`,
+      ],
+      [
+        "a1a1a1\n",
+        `"a1a1a1" (an image ID images reported for app) is not a full image ID`,
+      ],
+    ]
+  ) {
+    const { runner, calls } = fakeCompose({ images: listed });
+    await assertRejects(
+      () => platform(runner).stage(context()),
+      Error,
+      message,
+    );
+    assertEquals(calls.map((c) => c.argv[3]), ["ps", "images"]);
+  }
+  // The sha256: form is read as the same ID.
+  const { runner } = fakeCompose({ images: `${V1_ID}\n` });
+  const ctx = context();
+  await platform(runner).stage(ctx);
+  assertEquals(ctx.state.get().composeCanaryStableImageId, V1_ID);
+});
+
+Deno.test("a recorded stable image ID that is not one is refused", async () => {
+  const { runner, calls } = fakeCompose();
+  const ctx = context();
+  await ctx.state.set({ ...STAGED, composeCanaryStableImageId: "app:v1" });
+  await assertRejects(
+    () => platform(runner).abort(ctx),
+    Error,
+    "(the recorded stable image ID) is not a full image ID",
+  );
+  assertEquals(calls, []);
+});
+
+Deno.test("promote reports what to persist before it records the promotion", async () => {
+  // A process that dies between the two re-drives the promotion and reports
+  // again; the other order would leave it recorded and never reported.
+  const { runner } = fakeCompose();
+  const ctx = await staged(runner);
+  const set = ctx.state.set;
+  let reportedWhenRecorded: unknown;
+  ctx.state.set = (patch) => {
+    if (patch.composeCanaryStage === "promoted") {
+      reportedWhenRecorded = ctx.summary.Persist;
+    }
+    return set(patch);
+  };
+  await platform(runner).promote(ctx);
+  assertEquals(
+    reportedWhenRecorded,
+    "set APP_IMAGE=app:v2 and keep scale: 4",
+  );
 });

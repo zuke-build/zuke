@@ -47,6 +47,15 @@ const IMAGE_VARIABLE: Record<string, string> = {
   "app-next": "APP_CANARY_IMAGE",
 };
 
+/** The ID each tag resolves to, as `images --quiet` prints it. */
+const TAGS: Record<string, string> = {
+  "app:v1": "a1".repeat(32),
+  "app:v2": "b2".repeat(32),
+};
+
+/** The stable image's ID, as the platform sets it after stage. */
+const V1_ID = `sha256:${TAGS["app:v1"]}`;
+
 /** Whether the analysis passes. */
 let healthy = true;
 
@@ -65,6 +74,12 @@ let canaryService = "app-canary";
 /** Apply one command to the world, as Compose would. */
 function compose(argv: string[], env: Record<string, string>): string {
   const service = argv.at(-1) ?? "";
+  if (argv.includes("images")) {
+    const ids = new Set(
+      (world[service] ?? []).map(idOf),
+    );
+    return [...ids].map((id) => `${id}\n`).join("");
+  }
   if (argv.includes("ps")) {
     return (world[service] ?? []).map((each) => `${each}\n`).join("");
   }
@@ -123,14 +138,27 @@ class Deploy extends Build {
 
 /**
  * The scale moves the platform made, as `<service>=<n>`, with the stable
- * image the command set — and `(keep)` when it recreated nothing.
+ * image the command set — `v1-id` for the recorded ID of `app:v1` — and
+ * `(keep)` when it recreated nothing.
  */
 function moves(): string[] {
   return calls.filter((call) => call.argv.includes("up")).map((call) => {
     const scale = call.argv[call.argv.indexOf("--scale") + 1];
     const keep = call.argv.includes("--no-recreate") ? "(keep)" : "";
-    return `${scale}@${call.stableImage}${keep}`;
+    const image = call.stableImage === V1_ID ? "v1-id" : call.stableImage;
+    return `${scale}@${image}${keep}`;
   });
+}
+
+/** The image ID a container shown as `image` runs. */
+function idOf(image: string): string {
+  return image.startsWith("sha256:") ? image.slice(7) : TAGS[image];
+}
+
+/** Assert every replica is back in the stable service, on app:v1's ID. */
+function assertBackOnV1(): void {
+  assertEquals(world["app-canary"], []);
+  assertEquals(world.app.map(idOf), Array(4).fill(TAGS["app:v1"]));
 }
 
 /** The services each `ps` read, in order. */
@@ -173,12 +201,12 @@ Deno.test("Compose: staged, stepped, parked, and promoted by a later process", a
       "app",
     ]);
     assertEquals(moves(), [
-      "app=4@app:v1(keep)",
-      "app-canary=0@app:v1",
-      "app-canary=1@app:v1",
-      "app=3@app:v1(keep)",
-      "app-canary=2@app:v1",
-      "app=2@app:v1(keep)",
+      "app=4@v1-id(keep)",
+      "app-canary=0@v1-id",
+      "app-canary=1@v1-id",
+      "app=3@v1-id(keep)",
+      "app-canary=2@v1-id",
+      "app=2@v1-id(keep)",
     ]);
     assertEquals(reads(), ["app", "app-canary", "app-canary"]);
     assertStringIncludes(parked.out, "app:v2");
@@ -215,12 +243,12 @@ Deno.test("Compose: a failed analysis puts every replica back on the stable imag
     // The stable replicas still run the recorded image, so the rollback only
     // scales them back.
     assertEquals(moves().slice(-4), [
-      "app-canary=1@app:v1",
-      "app=3@app:v1(keep)",
-      "app=4@app:v1(keep)",
-      "app-canary=0@app:v1",
+      "app-canary=1@v1-id",
+      "app=3@v1-id(keep)",
+      "app=4@v1-id(keep)",
+      "app-canary=0@v1-id",
     ]);
-    assertEquals(world, { app: ALL_V1, "app-canary": [] });
+    assertBackOnV1();
   });
 });
 
@@ -247,8 +275,8 @@ Deno.test("Compose: a cancel from a process whose services resolve differently r
     calls = [];
     const cancelled = await runCli(Deploy, ["cancel", await onlyRun(dir)]);
     assertEquals(cancelled.code, 0, cancelled.err);
-    assertEquals(moves(), ["app=4@app:v1(keep)", "app-canary=0@app:v1"]);
-    assertEquals(world, { app: ALL_V1, "app-canary": [] });
+    assertEquals(moves(), ["app=4@v1-id(keep)", "app-canary=0@v1-id"]);
+    assertBackOnV1();
   });
 });
 
@@ -273,11 +301,11 @@ Deno.test("Compose: a promotion that fails part-way in a later process is rolled
       "app-canary=4@app:v2",
       "app=4@app:v2",
       "app-canary=0@app:v2",
-      "app-canary=4@app:v1",
-      "app=4@app:v1",
-      "app-canary=0@app:v1",
+      "app-canary=4@v1-id",
+      "app=4@v1-id",
+      "app-canary=0@v1-id",
     ]);
-    assertEquals(world, { app: ALL_V1, "app-canary": [] });
+    assertBackOnV1();
   });
 });
 
