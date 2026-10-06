@@ -30,6 +30,7 @@
     "chmods",
     "cicd",
     "cloudbuild",
+    "CLOUDSDK",
     "cmdline",
     "codecov",
     "codecovcli",

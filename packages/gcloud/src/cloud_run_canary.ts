@@ -32,7 +32,7 @@
  * @module
  */
 
-import type { SummaryPairs, TargetStateHandle } from "@zuke/core";
+import type { JsonValue, SummaryPairs, TargetStateHandle } from "@zuke/core";
 import type { CommandOutput } from "@zuke/core/shell";
 import type { Configure } from "@zuke/core/tooling";
 import {
@@ -40,6 +40,17 @@ import {
   GcloudRunServicesUpdateSettings,
   GcloudRunUpdateTrafficSettings,
 } from "./cloud_run.ts";
+import {
+  checkApplied,
+  checkIdentity,
+  checkUid,
+  type CloudRunIdentity,
+  damagedRecord,
+  gcloudFlags,
+  identityRecord,
+  recordedIdentity,
+  UID_FORMAT,
+} from "./cloud_run_canary_record.ts";
 import { readScalar } from "./scalar_output.ts";
 import type { GcloudSettings } from "./settings.ts";
 
@@ -52,7 +63,9 @@ const CANDIDATE = "cloudRunCandidate";
 /**
  * The state key recording how far `stage` got: `"deploying"` before the
  * update, `"tagged"` once the candidate carries the tag. It is what tells
- * `abort` whether there is a tagged route to take traffic back from.
+ * `abort` whether there is a tagged route to take traffic back from. The
+ * `"tagged"` write also records the service, region, tag, gcloud flags and
+ * service uid every later call is checked against.
  */
 const STAGE = "cloudRunStage";
 
@@ -189,16 +202,27 @@ export class CloudRunCanary {
   }
 
   /**
-   * Deploy the candidate image as a new revision carrying the tag and no
-   * traffic, then record which revision that is. `services update` never
-   * creates a service, so a misspelt name fails here rather than standing up a
-   * second service.
+   * Read the service's uid, deploy the candidate image as a new revision
+   * carrying the tag and no traffic, then record the service, region, tag,
+   * gcloud flags and uid every later call is checked against, and which
+   * revision the candidate is. `services update` never creates a service, so a
+   * misspelt name fails here rather than standing up a second service. A stage
+   * run again over a record that shows the candidate tagged is checked against
+   * that record first, as every later call is.
    */
   async stage(ctx: CloudRunCanaryContext): Promise<void> {
-    // First, before anything can throw: a rollback reads this to tell a stage
-    // that failed on its own settings (nothing to undo) from a hand-run abort
-    // (which goes to the stable revision).
-    await ctx.state.set({ [STAGE]: "deploying" });
+    const prior = ctx.state.get()[STAGE];
+    // A marker this does not know cannot say whether a tagged route exists,
+    // so it is neither overwritten nor acted on.
+    if (prior !== undefined && prior !== "deploying" && prior !== "tagged") {
+      throw damagedStage(prior);
+    }
+    // Then, before anything else can throw: a rollback reads this to tell a
+    // stage that failed on its own settings (nothing to undo) from a hand-run
+    // abort (which goes to the stable revision). An earlier attempt that
+    // tagged the candidate keeps its marker, so its tagged route is not
+    // forgotten.
+    if (prior !== "tagged") await ctx.state.set({ [STAGE]: "deploying" });
     const settings = this.#settings();
     const service = serviceOf(settings);
     const image = settings.image_;
@@ -208,20 +232,30 @@ export class CloudRunCanary {
           "the canary deploys.",
       );
     }
+    const identity = identityOf(settings, service);
+    const uid = prior === "tagged"
+      ? await this.#verified(ctx, settings, identity)
+      : await this.#uid(settings, identity);
     await runChecked(
       settings,
-      this.#scoped(settings, new GcloudRunServicesUpdateSettings())
-        .service(service).image(image).tag(settings.tag_).noTraffic(),
+      this.#scoped(
+        settings,
+        identity,
+        new GcloudRunServicesUpdateSettings().service(service).image(image)
+          .tag(settings.tag_).noTraffic(),
+      ),
     );
-    // A rollback reads this to know there is a tagged route to empty, so it
-    // must be on record before any traffic can reach the candidate.
-    if (!await ctx.state.trySet({ [STAGE]: "tagged" })) {
+    // A rollback reads this to know there is a tagged route to empty, and
+    // which service it is on, so it must be on record before any traffic can
+    // reach the candidate.
+    const tagged = { [STAGE]: "tagged", ...identityRecord(identity, uid) };
+    if (!await ctx.state.trySet(tagged)) {
       throw new Error(
         "cloudRunCanary: could not record that the candidate is tagged, so a " +
           "rollback could not find it. Stopping before it takes any traffic.",
       );
     }
-    const candidate = await this.#latestRevision(settings, service);
+    const candidate = await this.#latestRevision(settings, identity);
     await ctx.state.set({ [CANDIDATE]: candidate });
     ctx.reportSummary({ Candidate: candidate });
   }
@@ -231,8 +265,14 @@ export class CloudRunCanary {
    * spreads the rest over the revisions already serving, in proportion and in
    * whole percents, so a split the service had before the canary keeps its
    * shape only approximately — a revision whose share rounds to 0 drops out.
+   * First the configuration is compared with what `stage` recorded, then the
+   * service's uid is read again; on any difference this refuses, changing
+   * nothing.
    */
-  async expose(percent: number): Promise<number> {
+  async expose(
+    percent: number,
+    ctx: CloudRunCanaryContext,
+  ): Promise<number> {
     if (!Number.isInteger(percent) || percent < 0 || percent > 100) {
       throw new Error(
         `cloudRunCanary: Cloud Run splits traffic in whole percents from 0 ` +
@@ -240,10 +280,19 @@ export class CloudRunCanary {
       );
     }
     const settings = this.#settings();
+    const service = serviceOf(settings);
+    const stage = ctx.state.get()[STAGE];
+    if (stage !== "tagged") throw damagedStage(stage);
+    const identity = identityOf(settings, service);
+    await this.#verified(ctx, settings, identity);
     await runChecked(
       settings,
-      this.#scoped(settings, new GcloudRunUpdateTrafficSettings())
-        .service(serviceOf(settings)).toTags(`${settings.tag_}=${percent}`),
+      this.#scoped(
+        settings,
+        identity,
+        new GcloudRunUpdateTrafficSettings().service(service)
+          .toTags(`${settings.tag_}=${percent}`),
+      ),
     );
     return percent;
   }
@@ -253,7 +302,9 @@ export class CloudRunCanary {
    * still the candidate this rollout staged, so a revision someone deployed in
    * the meantime is not promoted in its place. The check and the traffic move
    * are two gcloud calls, so a deploy landing in the seconds between them is
-   * not caught. Idempotent.
+   * not caught. Before either, the configuration is compared with what
+   * `stage` recorded and the service's uid is read again; on any difference
+   * this refuses, changing nothing. Idempotent.
    */
   async promote(ctx: CloudRunCanaryContext): Promise<void> {
     const settings = this.#settings();
@@ -266,7 +317,9 @@ export class CloudRunCanary {
           "run.",
       );
     }
-    const latest = await this.#latestRevision(settings, service);
+    const identity = identityOf(settings, service);
+    await this.#verified(ctx, settings, identity);
+    const latest = await this.#latestRevision(settings, identity);
     if (latest !== staged) {
       throw new Error(
         `cloudRunCanary: the latest revision of ${service} is ${latest}, not ` +
@@ -277,8 +330,11 @@ export class CloudRunCanary {
     }
     await runChecked(
       settings,
-      this.#scoped(settings, new GcloudRunUpdateTrafficSettings())
-        .service(service).toLatest(),
+      this.#scoped(
+        settings,
+        identity,
+        new GcloudRunUpdateTrafficSettings().service(service).toLatest(),
+      ),
     );
   }
 
@@ -286,11 +342,14 @@ export class CloudRunCanary {
    * Take the candidate's traffic back. Idempotent. What it does depends on
    * what this rollout recorded:
    *
-   * - **The candidate is tagged** (a rollback mid-rollout): the tag goes to
-   *   0 % and gcloud returns that share to the revisions already serving. The
-   *   candidate revision stays, with no traffic.
+   * - **The candidate is tagged** (a rollback mid-rollout): once the
+   *   configuration and the service's uid match what `stage` recorded, the
+   *   tag goes to 0 % and gcloud returns that share to the revisions already
+   *   serving. The candidate revision stays, with no traffic. On a mismatch
+   *   this refuses, changing nothing.
    * - **`stage` failed before tagging it**: nothing has any traffic to take
    *   back, so nothing runs.
+   * - **Any other stage marker**: the record is damaged, and this refuses.
    * - **Nothing recorded** (`rollout.abort` run by hand, a fresh run): all
    *   traffic goes to the revision set with
    *   {@link CloudRunCanarySettings.stable}. Without one this refuses, since
@@ -301,14 +360,21 @@ export class CloudRunCanary {
     const service = serviceOf(settings);
     const stage = ctx.state.get()[STAGE];
     if (stage === "deploying") return;
+    const identity = identityOf(settings, service);
     if (stage === "tagged") {
+      await this.#verified(ctx, settings, identity);
       await runChecked(
         settings,
-        this.#scoped(settings, new GcloudRunUpdateTrafficSettings())
-          .service(service).toTags(`${settings.tag_}=0`),
+        this.#scoped(
+          settings,
+          identity,
+          new GcloudRunUpdateTrafficSettings().service(service)
+            .toTags(`${settings.tag_}=0`),
+        ),
       );
       return;
     }
+    if (stage !== undefined) throw damagedStage(stage);
     const stable = settings.stable_;
     if (stable === undefined) {
       throw new Error(
@@ -326,8 +392,12 @@ export class CloudRunCanary {
     }
     await runChecked(
       settings,
-      this.#scoped(settings, new GcloudRunUpdateTrafficSettings())
-        .service(service).toRevisions(`${stable}=100`),
+      this.#scoped(
+        settings,
+        identity,
+        new GcloudRunUpdateTrafficSettings().service(service)
+          .toRevisions(`${stable}=100`),
+      ),
     );
   }
 
@@ -344,29 +414,84 @@ export class CloudRunCanary {
     return settings;
   }
 
-  /** `command` with the region and the caller's global flags applied. */
+  /**
+   * `command` with the region and the caller's global flags applied — and
+   * refused, before it runs, unless the lambda gave it exactly the flags this
+   * call resolved, which every check was made with. The lambda runs once per
+   * command, so one that resolves differently between two runs of itself
+   * cannot send one command to another project.
+   */
   #scoped<S extends GcloudSettings & { region(value: string): S }>(
     settings: CloudRunCanarySettings,
+    identity: CloudRunIdentity,
     command: S,
   ): S {
-    if (settings.region_ !== undefined) command.region(settings.region_);
+    if (identity.region !== null) command.region(identity.region);
+    const own = command.argv().length;
     settings.gcloud_?.(command);
+    checkApplied(command.argv(), own, identity.flags);
     return command;
   }
 
-  /** The revision a `services update` on `service` last created. */
-  async #latestRevision(
+  /**
+   * Refuse unless this call reaches the service `stage` recorded: first the
+   * configured service, region, tag and gcloud flags against the record —
+   * before any command — then the live service's uid, read before anything
+   * changes. Returns the uid.
+   */
+  async #verified(
+    ctx: CloudRunCanaryContext,
     settings: CloudRunCanarySettings,
-    service: string,
+    identity: CloudRunIdentity,
+  ): Promise<string> {
+    const recorded = recordedIdentity(ctx.state.get());
+    checkIdentity(recorded, identity);
+    const live = await this.#uid(settings, identity);
+    checkUid(recorded, live);
+    return live;
+  }
+
+  /** The revision a `services update` on the service last created. */
+  #latestRevision(
+    settings: CloudRunCanarySettings,
+    identity: CloudRunIdentity,
+  ): Promise<string> {
+    return this.#read(
+      settings,
+      identity,
+      LATEST_REVISION_FORMAT,
+      "latest revision",
+    );
+  }
+
+  /**
+   * The `metadata.uid` of the service gcloud reaches: set when the service is
+   * created and kept until it is deleted, so it tells this service from one
+   * created again under its name, or one of the same name in another project.
+   */
+  #uid(
+    settings: CloudRunCanarySettings,
+    identity: CloudRunIdentity,
+  ): Promise<string> {
+    return this.#read(settings, identity, UID_FORMAT, "service uid");
+  }
+
+  /** One field of the service, through gcloud's `value(...)` projection. */
+  async #read(
+    settings: CloudRunCanarySettings,
+    identity: CloudRunIdentity,
+    format: string,
+    subject: string,
   ): Promise<string> {
     const describe = this.#scoped(
       settings,
-      new GcloudRunServicesDescribeSettings(),
-    ).service(service).format(LATEST_REVISION_FORMAT).quiet();
+      identity,
+      new GcloudRunServicesDescribeSettings().service(identity.service),
+    ).format(format).quiet();
     return readScalar(
       await runChecked(settings, describe),
       "cloudRunCanary",
-      "latest revision",
+      subject,
     );
   }
 }
@@ -389,6 +514,24 @@ async function runChecked(
     );
   }
   return output;
+}
+
+/** What this call is configured to act through, for the record checks. */
+function identityOf(
+  settings: CloudRunCanarySettings,
+  service: string,
+): CloudRunIdentity {
+  return {
+    service,
+    region: settings.region_ ?? null,
+    tag: settings.tag_,
+    flags: gcloudFlags(settings.gcloud_),
+  };
+}
+
+/** The refusal for a stage marker this call cannot act on. */
+function damagedStage(stage: JsonValue | undefined): Error {
+  return damagedRecord("a stage marker this call can act on", stage);
 }
 
 /** The configured service, or a friendly error naming the fix. */
@@ -414,13 +557,20 @@ function serviceOf(settings: CloudRunCanarySettings): string {
  *
  * The lambda runs on every call, so it may read resolved parameters.
  *
- * - **stage** — `run services update <service> --image <image> --tag canary
- *   --no-traffic`, then records the new revision.
+ * - **stage** — reads the service's `metadata.uid`, runs `run services update
+ *   <service> --image <image> --tag canary --no-traffic`, then records the
+ *   service, region, tag, gcloud flags and uid, and the new revision.
  * - **expose** — `run services update-traffic <service> --to-tags canary=<n>`.
  * - **promote** — checks the latest revision is still the candidate, then
  *   `update-traffic --to-latest`.
  * - **abort** — `update-traffic --to-tags canary=0` mid-rollout; run by hand,
  *   `--to-revisions <stable>=100` to the revision set with `.stable(...)`.
+ *
+ * Every call after `stage` that has its record — expose, promote, and abort
+ * mid-rollout — first compares the configured service, region, tag and
+ * gcloud flags with the record, then reads the service's uid again, and
+ * refuses on any difference before changing anything. A hand-run abort has no
+ * record and uses the configuration as it is.
  */
 export function cloudRunCanary(
   configure: Configure<CloudRunCanarySettings>,
