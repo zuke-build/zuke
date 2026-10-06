@@ -145,7 +145,9 @@ export class DockerComposeCanarySettings {
   /**
    * Global flags for every Compose command the platform runs —
    * `(s) => s.file("compose.yml").projectName("shop")`, or `.usePlugin()` to
-   * skip detection. Compose v2 (`docker compose`) is required: the v1
+   * skip detection. Compose 2.21 or later (`docker compose`) is required:
+   * the project check's `{{.Label ...}}` template is not in earlier
+   * releases, and the v1
    * `docker-compose` binary has no `--wait`, `pull --policy` or
    * `ps --format`. Trailing `.args(...)` are refused, since they would land
    * after the service each command names — a guard against an accident, not
@@ -162,8 +164,13 @@ export class DockerComposeCanarySettings {
    * environment, a `.env` or `--env-file`, `.env(...)` and `.cwd(...)` here,
    * the working directory. Not covered: a Docker context, `DOCKER_HOST` or
    * `.toolPath(...)` that reaches another daemon running the same project
-   * with the same services on the same images, and a `COMPOSE_FILE` or env
-   * file that keeps the project but changes the services' definitions.
+   * with the same services on the same images; a `COMPOSE_FILE` or env file
+   * that keeps the project but changes the services' definitions, or — with
+   * an explicit `-p` and no `-f` — a working directory or `.cwd(...)` that
+   * loads another `compose.yml` under the same name. And `.env(...)` and
+   * `.cwd(...)` are checked only at each call's project read, while later
+   * commands re-check only the flags, so this lambda must give the same ones
+   * every time it runs.
    */
   compose(configure: Configure<DockerComposeSettings>): this {
     this.compose_ = configure;

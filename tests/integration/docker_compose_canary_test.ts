@@ -78,11 +78,42 @@ let canaryService = "app-canary";
 let project = "shop";
 
 /**
- * The project the fake Compose reports each container in, as
- * `ps --format {{.Project}}` prints it — what COMPOSE_PROJECT_NAME, a `.env`
- * file or the working directory resolve the same flags to.
+ * The project the fake Compose reports each container in, as the project
+ * read prints its label — what COMPOSE_PROJECT_NAME, a `.env` file or the
+ * working directory resolve the same flags to.
  */
 let reportedProject = "shop";
+
+/** The template the project read prints each container's project label with. */
+const PROJECT_TEMPLATE = '{{.Label "com.docker.compose.project"}}';
+
+/**
+ * Services whose containers are stopped, as after a daemon restart: `ps`
+ * lists them only with `-a`, and an `up` of the service starts them.
+ */
+let stopped = new Set<string>();
+
+/** The containers of `service` that `ps` with `argv` lists. */
+function listed(argv: string[], service: string): string[] {
+  return argv.includes("-a") || !stopped.has(service)
+    ? world[service] ?? []
+    : [];
+}
+
+/**
+ * The fewest containers that served across the moves since it was last
+ * reset: Compose stops every container it recreates at once.
+ */
+let lowest = Number.POSITIVE_INFINITY;
+
+/** How many containers run, across every service. */
+function serving(): number {
+  return Object.entries(world).reduce(
+    (sum, [each, containers]) =>
+      sum + (stopped.has(each) ? 0 : containers.length),
+    0,
+  );
+}
 
 /** Whether the failing promotion move also switches the project. */
 let switchProjectOnFailure = false;
@@ -90,9 +121,9 @@ let switchProjectOnFailure = false;
 /** Apply one command to the world, as Compose would. */
 function compose(argv: string[], env: Record<string, string>): string {
   const service = argv.at(-1) ?? "";
-  if (argv.includes("{{.Project}}")) {
+  if (argv.includes(PROJECT_TEMPLATE)) {
     return argv.slice(argv.indexOf("--format") + 2).flatMap((each) =>
-      (world[each] ?? []).map(() => `${reportedProject}\n`)
+      listed(argv, each).map(() => `${reportedProject}\n`)
     ).join("");
   }
   if (argv.includes("images")) {
@@ -102,16 +133,22 @@ function compose(argv: string[], env: Record<string, string>): string {
     return [...ids].map((id) => `${id}\n`).join("");
   }
   if (argv.includes("ps")) {
-    return (world[service] ?? []).map((each) => `${each}\n`).join("");
+    return listed(argv, service).map((each) => `${each}\n`).join("");
   }
   if (argv.includes("up")) {
+    stopped.delete(service);
     const count = Number(argv[argv.indexOf("--scale") + 1].split("=")[1]);
     const next = env[IMAGE_VARIABLE[service]] ?? "";
-    const kept = argv.includes("--no-recreate")
-      ? [...(world[service] ?? [])]
-      : (world[service] ?? []).map(() => next);
+    const before = world[service] ?? [];
+    const keep = argv.includes("--no-recreate");
+    if (!keep && before.some((each) => each !== next)) {
+      world[service] = before.filter((each) => each === next);
+      lowest = Math.min(lowest, serving());
+    }
+    const kept = keep ? [...before] : before.map(() => next);
     while (kept.length < count) kept.push(next);
     world[service] = kept.slice(0, count);
+    lowest = Math.min(lowest, serving());
   }
   return "";
 }
@@ -193,8 +230,8 @@ function assertBackOnV1(): void {
  */
 function reads(): string[] {
   return calls.filter((call) => !call.argv.includes("up")).map((call) =>
-    call.argv.includes("{{.Project}}")
-      ? `project ${call.argv.slice(6).join(" ")}`
+    call.argv.includes(PROJECT_TEMPLATE)
+      ? `project ${call.argv.slice(7).join(" ")}`
       : `${call.argv[3]} ${call.argv.at(-1)}`
   );
 }
@@ -218,6 +255,7 @@ function fresh(): void {
   canaryService = "app-canary";
   project = "shop";
   reportedProject = "shop";
+  stopped = new Set();
   switchProjectOnFailure = false;
 }
 
@@ -565,5 +603,64 @@ Deno.test("Compose: a promotion that failed half-way, then a project switch, is 
     failPromoteTail = false;
     switchProjectOnFailure = false;
     await recoverByHand();
+  });
+});
+
+Deno.test("Compose: a cancel rolls back a parked rollout whose containers all stopped", async () => {
+  // A host restart during the parked approval, with restart: no: nothing
+  // runs, but every container is still the project's, so the project check
+  // passes and the rollback starts the stable replicas again.
+  fresh();
+  await withStateDir(async (dir) => {
+    const parked = await runCli(Deploy, ["ship"]);
+    assertEquals(parked.code, 0, parked.err);
+    stopped = new Set(["app", "app-canary"]);
+    calls = [];
+    const cancelled = await runCli(Deploy, ["cancel", await onlyRun(dir)]);
+    assertEquals(cancelled.code, 0, cancelled.out + cancelled.err);
+    assertEquals(reads(), [
+      "project app app-canary",
+      "images app",
+      "images app",
+    ]);
+    assertEquals(moves(), ["app=4@v1-id(keep)", "app-canary=0@v1-id"]);
+    assertBackOnV1();
+  });
+});
+
+Deno.test("Compose: the hand-run recovery restores a project whose containers all stopped", async () => {
+  fresh();
+  await withStateDir(async () => {
+    const parked = await runCli(Deploy, ["ship"]);
+    assertEquals(parked.code, 0, parked.err);
+    stopped = new Set(["app", "app-canary"]);
+    await recoverByHand();
+    // Nothing runs, so the stable service comes up first.
+    assertEquals(moves(), ["app=4@v1-id", "app-canary=0@v1-id"]);
+  });
+});
+
+Deno.test("Compose: a promotion that failed with the stable replicas gone is recovered by hand without an outage", async () => {
+  fresh();
+  await withStateDir(async (dir) => {
+    const parked = await runCli(Deploy, ["ship"]);
+    assertEquals(parked.code, 0, parked.err);
+    failPromoteTail = true;
+    const resumed = await runCli(Deploy, [
+      "resume",
+      await onlyRun(dir),
+      "--signal",
+      "approved",
+    ]);
+    assertEquals(resumed.code, 1);
+    // The run's own rollback restored the stable service; then it is gone —
+    // removed by hand, or crashed — and the canary serves alone, as the
+    // promotion's half-way point left it.
+    failPromoteTail = false;
+    world = { app: [], "app-canary": [V2_ID, V2_ID, V2_ID, V2_ID] };
+    lowest = Number.POSITIVE_INFINITY;
+    await recoverByHand();
+    assertEquals(moves(), ["app=4@v1-id", "app-canary=0@v1-id"]);
+    assertEquals(lowest, 4);
   });
 });

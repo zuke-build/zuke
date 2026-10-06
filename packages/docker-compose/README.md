@@ -93,12 +93,12 @@ when `n` is not 0:
   (`pull --policy missing`), and records the rollout: the two services, the
   replicas, the two variables, the two images, the stable image's ID, the
   project's global flags and the project Compose reports the stable replicas in
-  (`ps --format {{.Project}}`; below). Every later call acts on that record,
-  whatever the lambda resolves to then, and every command that may create a
-  stable replica sets the stable variable to `sha256:<id>`, not the tag, so a
-  tag moved by a local pull or build mid-rollout cannot bring a release nobody
-  analysed into the stable service. It then puts the stable service at every
-  replica and the canary service at none.
+  (its containers' `com.docker.compose.project` label; below). Every later call
+  acts on that record, whatever the lambda resolves to then, and every command
+  that may create a stable replica sets the stable variable to `sha256:<id>`,
+  not the tag, so a tag moved by a local pull or build mid-rollout cannot bring
+  a release nobody analysed into the stable service. It then puts the stable
+  service at every replica and the canary service at none.
 - **`expose`** puts the canary service at its share and the stable service at
   the rest, scaling whichever grows first, and checks with `ps` that the canary
   runs the candidate. The first step that runs a canary replica pins the
@@ -111,20 +111,28 @@ when `n` is not 0:
   that every stable replica resolves to it, then takes the canary service to
   none. A stable `image:` that does not read the variable (a literal, or
   `repo:${TAG}`) is refused rather than reported as promoted.
-- **`abort`** reads what the stable replicas run, by ID (`images --quiet`): a
-  tag `ps` shows means whatever the tag names now, so it is not evidence. If
-  they all resolve to exactly the recorded ID (mid-rollout they do), it scales
-  the stable service back to every replica without recreating anything.
-  Otherwise (after a promotion, finished or part-way) Compose would recreate
-  every stable replica at once, so it mirrors a promotion: the canary service to
-  every replica on the stable image, the stable service recreated on it, then
-  the canary service to none. Either way it then reads the stable replicas again
-  (by ID, or by reference when run by hand) and refuses, leaving the canary
-  serving, if they are not on the stable image, as with a literal stable
-  `image:`; it does not report a rollback that changed nothing. Run by hand, the
-  stable image is the `.stable(...)` one, compared by the reference `ps` shows,
-  and it refuses without one. After a `stage` that changed nothing, nothing
-  runs.
+- **`abort`** reads what the stable replicas run, by ID (`images --quiet`, which
+  counts stopped replicas too): a tag `ps` shows means whatever the tag names
+  now, so it is not evidence. Then one of three courses. If they all resolve to
+  exactly the recorded ID (mid-rollout they do), it scales the stable service
+  back to every replica without recreating anything. If none is running (no
+  stable replica at all after a step to 100 %, or, off the ID, none that `ps`
+  shows running), it brings the stable service up first, recreated onto the
+  stable image, while the canary keeps serving untouched: recreating the canary
+  first would take every serving container down at once. Otherwise (some running
+  on another image, after a promotion, finished or part-way) Compose would
+  recreate every stable replica at once, so it mirrors a promotion: the canary
+  service to every replica on the stable image, the stable service recreated on
+  it. Then it reads the stable replicas again (by ID, or by reference when run
+  by hand) and refuses, leaving the canary serving, if they are not on the
+  stable image, as with a literal stable `image:`; it does not report a rollback
+  that changed nothing; and only then takes the canary service to none. Run by
+  hand, the stable image is the `.stable(...)` one, compared by the reference
+  `ps` shows: at least one running and every container on it, stopped and
+  created ones included (`ps -a`), keeps them; none running brings the stable
+  service up first; and anything else surges, since a scale that keeps them
+  would start a stopped one on another image as stable. It refuses without one.
+  After a `stage` that changed nothing, nothing runs.
 
 **The project is part of the record.** Service names mean something only inside
 a Compose project, so `stage` records the global flags `.compose(...)` gives
@@ -135,34 +143,40 @@ those flags again, in the same order: a resumed or cancelling process whose
 `.projectName(this.env.value)` resolves to another value would otherwise move
 same-named services in a project the rollout never staged. Flags are not all
 that selects a project, so after that check each of those calls reads
-`ps --format {{.Project}} <stable> <canary>`, before any other command, and
-refuses unless Compose reports the services in exactly the project `stage` saw;
-it refuses too when Compose reports no running container of either (a live
-rollout always runs some). A record without the flags or the project is refused
-as damaged. The engine then leaves the run cancelled, so a resume or
-`zuke cancel` will not roll it back; the refusal names the recovery that does.
-Set the configuration and environment back to what the rollout started with,
-check with `docker compose ps` that it reaches the staged project, then run
-`zuke rollout.abort` by hand with `.stable("sha256:<id>")` set to the stable
-image ID the message names (or its tag, only if that still resolves to the ID).
-A hand-run abort has no record, so it acts on whatever project the lambda
-selects. The lambda runs once per command as well, and a command it gives other
-flags than the call resolved at its start is refused before it runs.
+`ps -a --format '{{.Label "com.docker.compose.project"}}' <stable> <canary>`,
+before any other command, and refuses unless Compose reports the services in
+exactly the project `stage` saw; it refuses too when Compose reports no
+container of either, running or stopped (a live rollout always has some). A
+record without the flags or the project is refused as damaged. The engine then
+leaves the run cancelled, so a resume or `zuke cancel` will not roll it back;
+the refusal names the recovery that does. Set the configuration and environment
+back to what the rollout started with, check with `docker compose ps` that it
+reaches the staged project, then run `zuke rollout.abort` by hand with
+`.stable("sha256:<id>")` set to the stable image ID the message names (or its
+tag, only if that still resolves to the ID). A hand-run abort has no record, so
+it acts on whatever project the lambda selects. The lambda runs once per command
+as well, and a command it gives other flags than the call resolved at its start
+is refused before it runs.
 
 The check compares the project Compose itself reports, so it covers whatever
 selects the project: the flags, `COMPOSE_PROJECT_NAME` in the environment, a
 `.env` or `--env-file` that sets it, the lambda's `.env(...)` and `.cwd(...)`,
-and the working directory a default name comes from. What it does not cover:
-another daemon or Docker context (`DOCKER_HOST`, `DOCKER_CONTEXT`, a
-`.toolPath(...)`) running the same project name with the same services on the
-same images is not told apart, and a `COMPOSE_FILE` or env-file change that
-keeps the project but changes the services' definitions is not compared. The
-recorded image IDs are a partial guard against another daemon: after `stage`
-every move passes `--pull never`, so one that creates a container fails on a
-daemon that lacks its image (the recorded stable ID, or the candidate), while
-one that only removes containers needs no image and goes ahead; and the reads
-compare IDs, so a rollback finds stable replicas on another image and a later
-step a canary on another candidate.
+and the working directory a default name comes from. `-a` counts stopped
+containers, so a daemon restart that stopped them does not block the rollback.
+What it does not cover: another daemon or Docker context (`DOCKER_HOST`,
+`DOCKER_CONTEXT`, a `.toolPath(...)`) running the same project name with the
+same services on the same images is not told apart; a change that keeps the
+project but changes the services' definitions is not compared — another
+`COMPOSE_FILE`, an env file, or, with an explicit `-p` and no `-f`, a working
+directory or `.cwd(...)` that loads another `compose.yml`; and the lambda's
+`.env(...)` and `.cwd(...)` are checked only at each call's project read, while
+later commands re-check only its flags, so it must give the same ones every time
+it runs. The recorded image IDs are a partial guard against another daemon:
+after `stage` every move passes `--pull never`, so one that creates a container
+fails on a daemon that lacks its image (the recorded stable ID, or the
+candidate), while one that only removes containers needs no image and goes
+ahead; and the reads compare IDs, so a rollback finds stable replicas on another
+image and a later step a canary on another candidate.
 
 Every move that sets a variable to an image ID passes `--pull never`, which
 overrides a service's `pull_policy: always`: an ID cannot be pulled, and a
@@ -183,9 +197,10 @@ differ in more than case.
 
 **Give the stable service `scale:` equal to `.replicas(...)`.** A plain
 `docker compose up` sets every service back to its `scale:`, so any other value
-changes the replica count behind the platform. Compose v2 (`docker compose`) is
-required: the v1 `docker-compose` binary has no `--wait`, `pull --policy` or
-`ps --format`.
+changes the replica count behind the platform. Compose 2.21 or later
+(`docker compose`) is required: the project check's `{{.Label ...}}` template is
+not in earlier releases, and the v1 `docker-compose` binary has no `--wait`,
+`pull --policy` or `ps --format`.
 
 **A promotion is not durable on its own.** The image variable is set only for
 the commands the platform runs. Until the candidate is written where `APP_IMAGE`
@@ -249,16 +264,16 @@ function dockerComposeCanary(configure: Configure<DockerComposeCanarySettings>):
   `--wait` when `n` is not 0), run with the image variables set:
 
   - stage — `ps --format {{.Image}} <stable>` reads the stable image,
-    `images --quiet <stable>` its ID and `ps --format {{.Project}} <stable>`
-    its one project, `pull --policy missing <canary>`,
+    `images --quiet <stable>` its ID and
+    `ps -a --format '{{.Label "com.docker.compose.project"}}' <stable>` its
+    one project, `pull --policy missing <canary>`,
     the rollout is recorded, then the stable service to every replica
     (`--no-recreate`) and the canary service to none. From here on, the
     stable variable is the recorded `sha256:<id>` on every command that may
     create a stable replica, and every move that sets an ID adds
     `--pull never`, since an ID cannot be pulled.
   - expose, promote, abort with a record — first
-    `ps --format {{.Project}} <stable> <canary>`, which must report exactly
-    the recorded project.
+    `ps -a --format '{{.Label "com.docker.compose.project"}}' <stable> <canary>`, which must report exactly the recorded project.
   - expose — the canary service (`--no-recreate`) to its share and the
     stable service (`--no-recreate`) to the rest, the growing one first;
     `ps` checks the canary runs the candidate and `images --quiet` pins its
@@ -268,15 +283,19 @@ function dockerComposeCanary(configure: Configure<DockerComposeCanarySettings>):
     the canary service to none. Not durable until the candidate is written
     where the stable variable comes from.
   - abort — `images --quiet` reads the stable replicas' IDs (run by
-    hand, `ps` their references). If they are all on the stable image, the
-    stable service back to every replica (`--no-recreate`); otherwise the
-    canary service to every replica on the stable image, the stable service
-    recreated on it. The stable replicas are then read again and must be
-    on the stable image, before the canary service goes to none. Run by
-    hand, the stable image is the one set with `.stable(...)`.
+    hand, `ps` the running ones' references and `ps -a` every one's; on a
+    recorded rollout off the ID, `ps` then counts the running ones). All on the stable image: the stable
+    service back to every replica (`--no-recreate`). None running: the
+    stable service first, recreated onto the stable image, the canary
+    untouched. Some running on another image: the canary service to every
+    replica on the stable image, then the stable service recreated on it.
+    The stable replicas are then read again and must be on the stable
+    image, before the canary service goes to none. Run by hand, the stable
+    image is the one set with `.stable(...)`.
 
   The stable service's `scale:` in the Compose file must equal
-  `.replicas(...)`, and Compose v2 (`docker compose`) is required.
+  `.replicas(...)`, and Compose 2.21 or later (`docker compose`) is
+  required.
 
 function resetComposeInvocationCache_(): void
   Clear the cached Compose invocation so the next
@@ -338,18 +357,23 @@ class DockerComposeCanary
     A stage always starts afresh, so a re-run one records the flags it runs
     with.
 
-    The Docker daemon the commands reach is not recorded. The recorded image
-    IDs are only a partial guard against another one: after `stage` every
-    move passes `--pull never`, so one that creates a container fails on a
-    daemon that lacks its image — the recorded stable ID, or the candidate —
-    while one that only removes containers needs no image and goes ahead;
-    and the reads compare IDs, so a rollback finds stable replicas on
-    another image and a later step a canary on another candidate. A daemon
-    or context that runs the same project name, with the same services on
-    the same images, is not told apart. Nor is a change that keeps the
-    project but changes the services' definitions — another `COMPOSE_FILE`,
-    or an env file that changes what they interpolate — since only the
-    project is compared.
+    What the project check does not cover: the Docker daemon is not recorded,
+    and the recorded image IDs are only a partial guard against another one.
+    After `stage` every move passes `--pull never`, so one that creates a
+    container fails on a daemon that lacks its image — the recorded stable ID,
+    or the candidate — while one that only removes containers needs no image
+    and goes ahead; and the reads compare IDs, so a rollback finds stable
+    replicas on another image and a later step a canary on another candidate. A
+    daemon or context (`DOCKER_HOST`, `DOCKER_CONTEXT`, a `.toolPath(...)`)
+    that runs the same project name, with the same services on the same images,
+    is not told apart. Nor is a change that keeps the project but changes the
+    services' definitions: another `COMPOSE_FILE`, an env file that changes
+    what they interpolate, or — with an explicit `-p` and no `-f` — a working
+    directory or `.cwd(...)` that loads another `compose.yml` under the same
+    project name. And the lambda's `.env(...)` and `.cwd(...)` are checked only
+    through the project read at the start of each call; every later command
+    re-checks only its flags, so the lambda must give the same `.env(...)` and
+    `.cwd(...)` every time it runs.
   async expose(percent: number, ctx: DockerComposeCanaryContext): Promise<number>
     Run the canary service at `percent` of the replicas and the stable
     service at the rest, and return the share actually reached. Any share
@@ -365,8 +389,8 @@ class DockerComposeCanary
     another. The stable replicas are never recreated. The services and
     replicas are the ones `stage` recorded, and the call refuses before any
     command unless `d.compose(...)` still gives the global flags `stage`
-    recorded, and before any other unless `ps --format {{.Project}}` reports
-    the two services in the project `stage` saw.
+    recorded, and before any other unless the project read (`ps -a` with
+    the project label) reports the two services in the project `stage` saw.
   async promote(ctx: DockerComposeCanaryContext): Promise<void>
     Hand the stable service to the candidate: the canary service goes to
     every replica, the stable service is recreated with the stable variable
@@ -379,8 +403,8 @@ class DockerComposeCanary
     total never dips below the replicas; for a moment it is twice that.
     Idempotent. Like every call after `stage`, it refuses before any command
     unless `d.compose(...)` still gives the global flags `stage` recorded,
-    and before any other unless `ps --format {{.Project}}` reports the two
-    services in the project `stage` saw.
+    and before any other unless the project read (`ps -a` with the project
+    label) reports the two services in the project `stage` saw.
 
     This is not durable on its own. Compose has no state of its own to
     change: the variable is set for these commands only. Until the
@@ -399,9 +423,9 @@ class DockerComposeCanary
       promotion that failed part-way): the ones `stage` saw, whatever the
       lambda says now — in the project `stage` saw, too: unless
       `d.compose(...)` still gives the global flags `stage` recorded, this
-      refuses before any command, and unless `ps --format {{.Project}}`
-      then reports the two services in the project `stage` saw, before any
-      other. Since the engine then leaves the run cancelled, the refusal
+      refuses before any command, and unless the project read (`ps -a`
+      with the project label) then reports the two services in the
+      project `stage` saw, before any other. Since the engine then leaves the run cancelled, the refusal
       names the recovery: the configuration and environment set back, and
       `rollout.abort` run by hand with
       `d.stable('sha256:<the recorded stable image ID>')`.
@@ -416,21 +440,41 @@ class DockerComposeCanary
     not to the reference, so a tag moved since cannot bring in an image
     nobody analysed; run by hand, there is only the reference.
 
-    First it reads what the stable replicas run: on a recorded rollout,
-    `images --quiet` must resolve them to exactly the recorded ID — a tag
-    `ps` shows means whatever the tag names now, so it is not evidence; run
-    by hand, `ps` must show every one on the `.stable(...)` reference. When
-    they do — mid-rollout they do — the stable service is only
-    scaled back to every replica (`--no-recreate`). Otherwise — after a
-    promotion, run by hand or part-way — the stable replicas must be
-    recreated, which Compose does to all of them at once, so the rollback
-    mirrors a promotion: the canary service first goes to every replica on
-    the stable image, then the stable service is recreated on it, then the
-    canary service goes to none. Capacity never dips. Either way, before
-    the canary goes to none, the stable replicas are read again — by ID on a
-    recorded rollout, by reference run by hand — and a stable `image:` that
-    does not read its variable is refused, leaving the canary serving,
-    rather than reported as rolled back.
+    First it reads what the stable replicas run, and takes one of three
+    courses:
+
+    - All on the stable image — on a recorded rollout, `images --quiet`
+      resolves them, stopped ones included, to exactly the recorded ID (a
+      tag `ps` shows means whatever the tag names now, so it is not
+      evidence); run by hand, `ps` shows at least one running and `ps -a`
+      every container, stopped and created ones included, on the
+      `.stable(...)` reference — a scale that keeps them starts the stopped
+      ones, so one on another image would serve as stable. Mid-rollout they
+      are. The
+      stable service is only scaled back to every replica (`--no-recreate`).
+    - None running — on a recorded rollout, `images --quiet` finds no
+      stable replica at all (after a step to 100 %), or `ps` finds none
+      running; run by hand, `ps` finds none running (a crashed or removed
+      stable service, or a stopped project). The stable service comes up
+      first, recreated onto the stable image where it must be, while the
+      canary keeps serving untouched: recreating the canary first would take
+      every serving container down at once.
+    - Some running on another image — after a promotion, run by hand or
+      part-way. Compose recreates them all at once, so the rollback mirrors
+      a promotion: the canary service first goes to every replica on the
+      stable image, then the stable service is recreated on it.
+
+    Serving never drops to zero while anything serves: each service is
+    recreated only while the other one serves. It can dip, though, on the
+    surge course: Compose stops every container it recreates at once, so
+    while the canary is recreated onto the stable image only the stable
+    replicas serve, and while they are recreated only the canary does —
+    fewer than `.replicas(...)` when the one left serving was only partly
+    scaled. Whichever the course, the stable replicas are then
+    read again — by ID on a recorded rollout, by reference run by hand — and
+    a stable `image:` that does not read its variable is refused, leaving
+    the canary serving, rather than reported as rolled back; only then does
+    the canary service go to none.
 
     Like a promotion, the image is an override for these commands, so it
     lasts until a plain `docker compose up` reads the variable from wherever
@@ -502,7 +546,9 @@ class DockerComposeCanarySettings
   compose(configure: Configure<DockerComposeSettings>): this
     Global flags for every Compose command the platform runs —
     `(s) => s.file("compose.yml").projectName("shop")`, or `.usePlugin()` to
-    skip detection. Compose v2 (`docker compose`) is required: the v1
+    skip detection. Compose 2.21 or later (`docker compose`) is required:
+    the project check's `{{.Label ...}}` template is not in earlier
+    releases, and the v1
     `docker-compose` binary has no `--wait`, `pull --policy` or
     `ps --format`. Trailing `.args(...)` are refused, since they would land
     after the service each command names — a guard against an accident, not
@@ -519,8 +565,13 @@ class DockerComposeCanarySettings
     environment, a `.env` or `--env-file`, `.env(...)` and `.cwd(...)` here,
     the working directory. Not covered: a Docker context, `DOCKER_HOST` or
     `.toolPath(...)` that reaches another daemon running the same project
-    with the same services on the same images, and a `COMPOSE_FILE` or env
-    file that keeps the project but changes the services' definitions.
+    with the same services on the same images; a `COMPOSE_FILE` or env file
+    that keeps the project but changes the services' definitions, or — with
+    an explicit `-p` and no `-f` — a working directory or `.cwd(...)` that
+    loads another `compose.yml` under the same name. And `.env(...)` and
+    `.cwd(...)` are checked only at each call's project read, while later
+    commands re-check only the flags, so this lambda must give the same ones
+    every time it runs.
   runner(run: DockerComposeSettingsRunner): this
     Replace how each prepared command is run. The default runs it; this is
     for a test, or for a build that executes Compose through something else.

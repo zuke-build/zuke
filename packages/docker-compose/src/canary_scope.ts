@@ -124,13 +124,13 @@ export function checkScope(rollout: Rollout, now: readonly string[]): void {
 }
 
 /**
- * Refuse unless `reported` — the project of each running container of the
- * two services, as `ps --format {{.Project}}` prints it with the recorded
+ * Refuse unless `reported` — the project label of each container of the
+ * two services, running or stopped, as `ps -a` prints it with the recorded
  * flags — is exactly the project `stage` saw. Compose lists only the
  * containers of the project it resolves now, from the flags but also from
  * `COMPOSE_PROJECT_NAME`, a `.env` or `--env-file` and the working
  * directory, so this catches what the flags alone cannot. A live rollout
- * always runs some of them, since the total never dips, so none is refused
+ * always has some of them, since the total never dips, so none is refused
  * as well.
  */
 export function checkProject(
@@ -138,12 +138,15 @@ export function checkProject(
   reported: readonly string[],
 ): void {
   const projects = [...new Set(reported)];
+  // Compose lists one project's containers, so several cannot happen; the
+  // output is still compared whole, as untrusted, the way imageOf checks an
+  // image.
   if (projects.length === 1 && projects[0] === rollout.projectName) return;
   const services = `${rollout.stable} and ${rollout.canary}`;
   const found = projects.length === 0
-    ? `Compose now reports no running container of ${services} in the ` +
-      "project it resolves — a live rollout always runs some, since the " +
-      "total never dips —"
+    ? `Compose now reports no container of ${services}, running or ` +
+      "stopped, in the project it resolves — a live rollout always has " +
+      "some, since the total never dips —"
     : `with the same global flags Compose now reports ${services} in ` +
       `${projects.join(", ")}, so`;
   throw new Error(
