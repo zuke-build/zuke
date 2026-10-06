@@ -1699,7 +1699,7 @@
       },
       "packages/kubectl": {
         "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
+          "jsr:@zuke/core@^1.49.0"
         ]
       },
       "packages/kustomize": {
