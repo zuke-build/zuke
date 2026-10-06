@@ -77,6 +77,9 @@ let canaryService = "app-canary";
 /** The Compose project the global lambda names. */
 let project = "shop";
 
+/** Whether the failing promotion move also switches the project. */
+let switchProjectOnFailure = false;
+
 /** Apply one command to the world, as Compose would. */
 function compose(argv: string[], env: Record<string, string>): string {
   const service = argv.at(-1) ?? "";
@@ -116,6 +119,7 @@ class Deploy extends Build {
               failPromoteTail && env.APP_IMAGE === V2_ID &&
               argv.includes("app-canary=0")
             ) {
+              if (switchProjectOnFailure) project = "shop-staging";
               return Promise.reject(new Error("daemon went away"));
             }
             return Promise.resolve(
@@ -196,6 +200,7 @@ function fresh(): void {
   image = "app:v2";
   canaryService = "app-canary";
   project = "shop";
+  switchProjectOnFailure = false;
 }
 
 const ALL_V1 = ["app:v1", "app:v1", "app:v1", "app:v1"];
@@ -382,7 +387,10 @@ async function refusedThenRecovered(
         "but d.compose(...) now gives `-p shop-staging`, so this call " +
         "changed nothing",
     );
-    assertStringIncludes(said, "with d.stable('app:v1')");
+    assertStringIncludes(
+      said,
+      `with d.stable('${V1_ID}') — the stable image ID the rollout recorded`,
+    );
     assertEquals(calls, []);
     assertEquals(world, before);
 
@@ -404,17 +412,34 @@ async function refusedThenRecovered(
     assertEquals(world, before);
 
     // What it says will: the configuration set back, then the rollback run
-    // by hand with the stable image it names.
-    project = "shop";
-    stable = "app:v1";
-    const recovered = await runCli(Deploy, ["rollout.abort"]);
-    assertEquals(recovered.code, 0, recovered.err);
-    assertEquals(
-      calls.map((call) => call.argv.slice(0, 3).join(" ")),
-      Array(calls.length).fill("compose -p shop"),
-    );
-    assertEquals(world, { app: ALL_V1, "app-canary": [] });
+    // by hand with the stable image ID it names.
+    await recoverByHand();
   });
+}
+
+/**
+ * The recovery a project refusal names: the project set back, then
+ * `rollout.abort` run by hand with `.stable(...)` set to the recorded stable
+ * image ID. It must act only on the staged project and end on app:v1's ID.
+ */
+async function recoverByHand(): Promise<void> {
+  project = "shop";
+  stable = V1_ID;
+  calls = [];
+  const recovered = await runCli(Deploy, ["rollout.abort"]);
+  assertEquals(recovered.code, 0, recovered.err);
+  assertEquals(
+    calls.map((call) => call.argv.slice(0, 3).join(" ")),
+    Array(calls.length).fill("compose -p shop"),
+  );
+  // Every move sets an image ID, so none may pull.
+  assertEquals(
+    calls.filter((call) => call.argv.includes("up")).every((call) =>
+      call.argv.includes("never")
+    ),
+    true,
+  );
+  assertBackOnV1();
 }
 
 Deno.test("Compose: a resume whose lambda selects another project refuses, and the hand-run recovery it names rolls back", async () => {
@@ -428,4 +453,44 @@ Deno.test("Compose: a resume whose lambda selects another project refuses, and t
 
 Deno.test("Compose: a cancel whose lambda selects another project refuses, and the hand-run recovery it names rolls back", async () => {
   await refusedThenRecovered((runId) => ["cancel", runId]);
+});
+
+Deno.test("Compose: a promotion that failed half-way, then a project switch, is recovered by hand on the recorded ID", async () => {
+  fresh();
+  await withStateDir(async (dir) => {
+    const parked = await runCli(Deploy, ["ship"]);
+    assertEquals(parked.code, 0, parked.err);
+    const runId = await onlyRun(dir);
+    // The stable service is recreated on the candidate, then the last move
+    // fails, and by then the lambda names another project, so the rollback
+    // the failure triggers refuses rather than act there.
+    failPromoteTail = true;
+    switchProjectOnFailure = true;
+    calls = [];
+    const resumed = await runCli(Deploy, [
+      "resume",
+      runId,
+      "--signal",
+      "approved",
+    ]);
+    assertEquals(resumed.code, 1);
+    assertStringIncludes(
+      resumed.out + resumed.err,
+      "but d.compose(...) now gives `-p shop-staging`, so this call changed " +
+        "nothing",
+    );
+    assertEquals(moves(), [
+      "app-canary=4@v1-id(keep)",
+      "app=4@v2-id",
+      "app-canary=0@v2-id",
+    ]);
+    const halfway = {
+      app: [V2_ID, V2_ID, V2_ID, V2_ID],
+      "app-canary": ["app:v2", V2_ID, V2_ID, V2_ID],
+    };
+    assertEquals(world, halfway);
+    failPromoteTail = false;
+    switchProjectOnFailure = false;
+    await recoverByHand();
+  });
 });

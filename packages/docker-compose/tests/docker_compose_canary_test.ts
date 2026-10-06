@@ -983,6 +983,30 @@ Deno.test("a call whose lambda selects another project refuses before any comman
   }
 });
 
+Deno.test("abort refuses another project whatever stage the record says it reached", async () => {
+  // A record past promotion, or with a stage this version does not know, is
+  // still a record of the project the rollout ran in.
+  for (const stage of ["promoted", "mystery"]) {
+    const { runner, calls, world } = fakeCompose();
+    const before = structuredClone(world);
+    const ctx = await recordedAs({
+      composeCanaryStage: stage,
+      composeCanaryCandidateId: V2_ID,
+    });
+    await assertRejects(
+      () =>
+        platform(
+          runner,
+          (d) => d.compose((s) => s.usePlugin().projectName("other")),
+        ).abort(ctx),
+      Error,
+      "selected by `-p shop`, but d.compose(...) now gives `-p other`",
+    );
+    assertEquals(calls, []);
+    assertEquals(world, before);
+  }
+});
+
 Deno.test("flags are compared as written, so a reordering is refused too", async () => {
   const { runner, calls } = fakeCompose();
   const ctx = context();
@@ -1021,8 +1045,9 @@ Deno.test("the project refusal gives a hand-run recovery naming the recorded sta
       "set the configuration back to what the rollout started with",
       "check with `docker compose ps`",
       "run the rollout's <field>.abort target by hand (for example " +
-      "`zuke rollout.abort`) with d.stable('app:v1')",
-      `which was ${V1_ID} when it started`,
+      `\`zuke rollout.abort\`) with d.stable('${V1_ID}') — the stable ` +
+      "image ID the rollout recorded, which a tag that moved cannot change " +
+      "— or d.stable('app:v1') if that tag still resolves to it",
     ]
   ) {
     assertStringIncludes(error.message, part);
@@ -1099,6 +1124,27 @@ Deno.test("a lambda that gives different flags from one command to the next is r
     "d.compose(...) gave this command",
   );
   assertEquals(calls, []);
+});
+
+Deno.test("a trailing argument spelled like the probe's placeholder is still a trailing argument", async () => {
+  const { runner, calls } = fakeCompose();
+  await assertRejects(
+    () =>
+      platform(
+        runner,
+        (d) => d.compose((s) => s.projectName("shop").args("<subcommand>")),
+      ).stage(context()),
+    Error,
+    "d.compose(...) adds trailing arguments (<subcommand>)",
+  );
+  assertEquals(calls, []);
+  // As a flag's value it is only an unusual project name.
+  const ctx = context();
+  await platform(
+    runner,
+    (d) => d.compose((s) => s.projectName("<subcommand>")),
+  ).stage(ctx);
+  assertEquals(ctx.state.get().composeCanaryProject, ["-p", "<subcommand>"]);
 });
 
 Deno.test("describe names the stable service", () => {

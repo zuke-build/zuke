@@ -42,12 +42,16 @@
  * lambda gives exactly those flags again: a resumed or cancelling process
  * whose `.projectName(...)` resolves to another value would otherwise move
  * same-named services in a project the rollout never staged. Flags are
- * compared as written, in order. What the record cannot hold must not change
- * mid-rollout: the Docker context or `DOCKER_HOST` the commands reach, the
- * working directory a relative path or the default project name resolves
- * against, and what the lambda's `.cwd(...)` and `.env(...)` set (such as
- * `COMPOSE_PROJECT_NAME` or `COMPOSE_FILE`). The recorded image IDs are only a
- * partial guard there — see {@link DockerComposeCanary.stage}.
+ * compared as written, in order. What else selects the project or the daemon
+ * cannot be seen in the flags, so it must not change mid-rollout: Compose and
+ * Docker variables in the environment of the process that resumes or cancels
+ * (`COMPOSE_PROJECT_NAME`, `COMPOSE_FILE`, `COMPOSE_PROFILES`,
+ * `DOCKER_CONTEXT`, `DOCKER_HOST`), the contents of an `--env-file` and of the
+ * project's `.env` file (which can set `COMPOSE_PROJECT_NAME`), what the
+ * lambda's `.env(...)` and `.cwd(...)` set, the process's working directory
+ * (which a relative path and the default project name resolve against), and
+ * the binary `.toolPath(...)` names. The recorded image IDs are only a partial
+ * guard there — see {@link DockerComposeCanary.stage}.
  *
  * The canary engine's platform interface lives in `@zuke/canary`, and a wrapper
  * depends only on `@zuke/core`, so this module does not import it: the object
@@ -355,7 +359,7 @@ export class DockerComposeCanary {
    *   refuses before any command, and since the engine then leaves the run
    *   cancelled, the refusal names the recovery: the configuration set
    *   back, and `rollout.abort` run by hand with
-   *   `d.stable(<the recorded stable image>)`.
+   *   `d.stable('sha256:<the recorded stable image ID>')`.
    * - **`stage` failed before recording them**: nothing had changed, so
    *   nothing runs — and the settings are not even read.
    * - **Nothing recorded** (`rollout.abort` run by hand, a fresh run): the

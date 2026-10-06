@@ -22,9 +22,10 @@ import { DockerComposeSettings } from "./settings.ts";
 
 /**
  * The subcommand a {@link TrailingArgsProbe} renders: anything the global
- * lambda appends lands after it.
+ * lambda appends lands after it. Unique to this process, so no token the
+ * lambda appends — `.args("<subcommand>")` included — can pass for it.
  */
-const PROBE_TAIL = "<subcommand>";
+const PROBE_TAIL = `<subcommand-${crypto.randomUUID()}>`;
 
 /**
  * The token the Compose v2 plugin form renders before the global flags
@@ -124,9 +125,10 @@ export function checkScope(rollout: Rollout, now: readonly string[]): void {
       "`docker compose ps` that it reaches the project that was staged (a " +
       "rollback run by hand has no record to check it against), then run " +
       "the rollout's <field>.abort target by hand (for example `zuke " +
-      `rollout.abort\`) with d.stable('${rollout.stableImage}') — the ` +
-      `stable image the rollout recorded, which was ${rollout.restore} ` +
-      "when it started.",
+      `rollout.abort\`) with d.stable('${rollout.restore}') — the stable ` +
+      "image ID the rollout recorded, which a tag that moved cannot change " +
+      `— or d.stable('${rollout.stableImage}') if that tag still resolves ` +
+      "to it.",
   );
 }
 

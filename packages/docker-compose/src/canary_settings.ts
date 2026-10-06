@@ -155,10 +155,14 @@ export class DockerComposeCanarySettings {
    *
    * The flags it gives select the project, so `stage` records them (as argv:
    * what `.env(...)` passes is never recorded) and every later call refuses
-   * unless they are the same, in the same order. Nor may the rest of what it
-   * reaches change mid-rollout — the Docker context or `DOCKER_HOST`, the
-   * working directory a relative path resolves against, its `.cwd(...)` and
-   * `.env(...)` — since none of that can be recorded or checked.
+   * unless they are the same, in the same order. Nothing else that selects
+   * the project or the daemon can be recorded or checked, so none of it may
+   * change mid-rollout: `COMPOSE_PROJECT_NAME`, `COMPOSE_FILE`,
+   * `COMPOSE_PROFILES`, `DOCKER_CONTEXT` and `DOCKER_HOST` in the
+   * environment of the process that resumes or cancels, the contents of an
+   * `--env-file` and of the project's `.env` file (which can set
+   * `COMPOSE_PROJECT_NAME`), what `.env(...)` and `.cwd(...)` set here, the
+   * process's working directory, and the binary `.toolPath(...)` names.
    */
   compose(configure: Configure<DockerComposeSettings>): this {
     this.compose_ = configure;

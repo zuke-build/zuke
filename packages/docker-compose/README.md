@@ -137,20 +137,25 @@ is refused as damaged. The engine then leaves the run cancelled, so a resume or
 `zuke cancel` will not roll it back; the refusal names the recovery that does.
 Set the configuration back to what the rollout started with, check with
 `docker compose ps` that it reaches the staged project, then run
-`zuke rollout.abort` by hand with `.stable(...)` set to the stable image the
-message names. A hand-run abort has no record, so it acts on whatever project
-the lambda selects. The lambda runs once per command as well, and a command it
-gives other flags than the call resolved at its start is refused before it runs.
+`zuke rollout.abort` by hand with `.stable("sha256:<id>")` set to the stable
+image ID the message names (or its tag, only if that still resolves to the ID).
+A hand-run abort has no record, so it acts on whatever project the lambda
+selects. The lambda runs once per command as well, and a command it gives other
+flags than the call resolved at its start is refused before it runs.
 
-What the record cannot hold must not change mid-rollout: the Docker context or
-`DOCKER_HOST`, the working directory a relative path or the default project name
-resolves against, and what the lambda's `.cwd(...)` and `.env(...)` set (such as
-`COMPOSE_PROJECT_NAME`). The recorded image IDs are a partial guard against
-another daemon: a move that must create a stable replica sets the recorded ID
-with `--pull never` and fails on a daemon that lacks it, and a rollback compares
-the stable replicas' IDs with it. A move that only removes replicas needs no
-image, though, and the first step creates the canary from the candidate
-reference.
+What else selects the project or the daemon cannot be seen in the flags, so none
+of it may change mid-rollout: Compose and Docker variables in the environment of
+the process that resumes or cancels (`COMPOSE_PROJECT_NAME`, `COMPOSE_FILE`,
+`COMPOSE_PROFILES`, `DOCKER_CONTEXT`, `DOCKER_HOST`), the contents of an
+`--env-file` and of the project's `.env` file (which can set
+`COMPOSE_PROJECT_NAME`), what the lambda's `.env(...)` and `.cwd(...)` set, the
+process's working directory (which a relative path and the default project name
+resolve against), and the binary `.toolPath(...)` names. The recorded image IDs
+are a partial guard against another daemon: a move that must create a stable
+replica sets the recorded ID with `--pull never` and fails on a daemon that
+lacks it, and a rollback compares the stable replicas' IDs with it. A move that
+only removes replicas needs no image, though, and the first step creates the
+canary from the candidate reference.
 
 Every move that sets a variable to an image ID passes `--pull never`, which
 overrides a service's `pull_policy: always`: an ID cannot be pulled, and a
@@ -379,7 +384,7 @@ class DockerComposeCanary
       refuses before any command, and since the engine then leaves the run
       cancelled, the refusal names the recovery: the configuration set
       back, and `rollout.abort` run by hand with
-      `d.stable(<the recorded stable image>)`.
+      `d.stable('sha256:<the recorded stable image ID>')`.
     - `stage` failed before recording them: nothing had changed, so
       nothing runs — and the settings are not even read.
     - Nothing recorded (`rollout.abort` run by hand, a fresh run): the
@@ -487,10 +492,14 @@ class DockerComposeCanarySettings
 
     The flags it gives select the project, so `stage` records them (as argv:
     what `.env(...)` passes is never recorded) and every later call refuses
-    unless they are the same, in the same order. Nor may the rest of what it
-    reaches change mid-rollout — the Docker context or `DOCKER_HOST`, the
-    working directory a relative path resolves against, its `.cwd(...)` and
-    `.env(...)` — since none of that can be recorded or checked.
+    unless they are the same, in the same order. Nothing else that selects
+    the project or the daemon can be recorded or checked, so none of it may
+    change mid-rollout: `COMPOSE_PROJECT_NAME`, `COMPOSE_FILE`,
+    `COMPOSE_PROFILES`, `DOCKER_CONTEXT` and `DOCKER_HOST` in the
+    environment of the process that resumes or cancels, the contents of an
+    `--env-file` and of the project's `.env` file (which can set
+    `COMPOSE_PROJECT_NAME`), what `.env(...)` and `.cwd(...)` set here, the
+    process's working directory, and the binary `.toolPath(...)` names.
   runner(run: DockerComposeSettingsRunner): this
     Replace how each prepared command is run. The default runs it; this is
     for a test, or for a build that executes Compose through something else.
