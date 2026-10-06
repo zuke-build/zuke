@@ -8,8 +8,9 @@
  * `c.platform(helmCanary(...))` type-checks and runs end to end.
  *
  * A recording runner stands in for helm: it keeps every command line and
- * answers the stable release's revision read with `revision`, and the canary
- * release's existence check with "not found" unless `leftover` is set.
+ * answers the stable release's reads with `revision` and `firstDeployed`, and
+ * the canary release's existence check with "not found" unless `leftover` is
+ * set.
  */
 
 import {
@@ -32,6 +33,12 @@ let calls: string[][] = [];
 
 /** The stable release's revision before the rollout. */
 let revision = "12";
+
+/** When the stable release was first deployed, nanoseconds since 1970. */
+let firstDeployed = "1759740000000000000";
+
+/** The template every call after stage reads the stable release's identity with. */
+const FIRST_TEMPLATE = "{{.Release.Info.FirstDeployed.UnixNano}}";
 
 /** Whether a canary release is left over from an earlier rollout. */
 let leftover = false;
@@ -71,9 +78,18 @@ class Deploy extends Build {
             if (argv[0] !== "get") {
               return Promise.resolve(new CommandOutput(0, "", ""));
             }
+            if (argv.includes(FIRST_TEMPLATE)) {
+              return Promise.resolve(
+                new CommandOutput(0, `${firstDeployed}\n`, ""),
+              );
+            }
             if (argv[2] === stable) {
               return Promise.resolve(
-                new CommandOutput(0, `${revision} deployed\n`, ""),
+                new CommandOutput(
+                  0,
+                  `${revision} deployed ${firstDeployed}\n`,
+                  "",
+                ),
               );
             }
             return Promise.resolve(
@@ -125,6 +141,7 @@ async function onlyRun(dir: string): Promise<string> {
 function fresh(): void {
   calls = [];
   revision = "12";
+  firstDeployed = "1759740000000000000";
   leftover = false;
   healthy = true;
   image = "1.5.0";
@@ -144,8 +161,10 @@ Deno.test("Helm: staged, stepped, parked, and promoted by a later process", asyn
       "get api",
       "get api-canary",
       "upgrade api-canary replicaCount=0",
+      "get api",
       "upgrade api-canary replicaCount=1",
       "upgrade api replicaCount=3",
+      "get api",
       "upgrade api-canary replicaCount=2",
       "upgrade api replicaCount=2",
     ]);
@@ -164,11 +183,12 @@ Deno.test("Helm: staged, stepped, parked, and promoted by a later process", asyn
     ]);
     assertEquals(resumed.code, 0, resumed.err);
     assertEquals(steps(), [
+      "get api",
       "upgrade api replicaCount=4",
       "uninstall api-canary",
     ]);
-    assertEquals(calls[0].includes("image.tag=1.5.0"), true);
-    assertEquals(calls[0][2], "./charts/api");
+    assertEquals(calls[1].includes("image.tag=1.5.0"), true);
+    assertEquals(calls[1][2], "./charts/api");
   });
 });
 
@@ -196,7 +216,11 @@ Deno.test("Helm: a rollback after resume, in another process, uses the recorded 
     const id = await onlyRun(dir);
     const cancelled = await runCli(Deploy, ["cancel", id]);
     assertEquals(cancelled.code, 0, cancelled.err);
-    assertEquals(steps(), ["rollback api 12", "uninstall api-canary"]);
+    assertEquals(steps(), [
+      "get api",
+      "rollback api 12",
+      "uninstall api-canary",
+    ]);
   });
 });
 
@@ -291,5 +315,35 @@ Deno.test("Helm: a resume or cancel with other releases changes nothing, and say
         assertEquals(steps(), ["rollback api 12", "uninstall api-canary"]);
       });
     }
+  }
+});
+
+Deno.test("Helm: a stable release reinstalled while the rollout was parked is neither promoted nor rolled back", async () => {
+  for (const command of ["resume", "cancel"]) {
+    fresh();
+    await withStateDir(async (dir) => {
+      const parked = await runCli(Deploy, ["ship"]);
+      assertEquals(parked.code, 0, parked.err);
+      // Same names, same configuration — but the release helm reaches now is
+      // another incarnation (or another cluster's), first deployed later.
+      calls = [];
+      firstDeployed = "1759750000000000000";
+      const id = await onlyRun(dir);
+      const args = command === "resume"
+        ? ["resume", id, "--signal", "approved"]
+        : ["cancel", id];
+      const { code, out, err } = await runCli(Deploy, args);
+      assertEquals(code, 1, command);
+      assertStringIncludes(
+        out + err,
+        "the stable release api was first deployed at " +
+          "2025-10-06T08:40:00.000Z when this rollout started, but the " +
+          "release helm reaches now was first deployed at " +
+          "2025-10-06T11:26:40.000Z",
+      );
+      assertStringIncludes(out + err, "This call changed nothing.");
+      assertEquals(mutations(), [], command);
+      assertEquals(calls.length > 0, true, command);
+    });
   }
 });

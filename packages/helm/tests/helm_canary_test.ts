@@ -29,10 +29,25 @@ function memoryState(): TargetStateHandle {
   };
 }
 
+/** When the stable release was first deployed, as helm prints it. */
+const FIRST = "1759740000000000000";
+
+/** The same release name, installed again later: another incarnation. */
+const REINSTALLED = "1759750000000000000";
+
+/** The template `stage` reads the stable release with. */
+const STABLE_TEMPLATE =
+  "{{.Release.Version}} {{.Release.Info.Status}} {{.Release.Info.FirstDeployed.UnixNano}}";
+
+/** The template every later call reads the stable release's identity with. */
+const FIRST_TEMPLATE = "{{.Release.Info.FirstDeployed.UnixNano}}";
+
 /** What the fake helm knows about: each release's `get all` answer. */
 interface Cluster {
-  /** The stable release's `{{.Release.Version}} {{.Release.Info.Status}}`. */
+  /** The stable release's revision, status and first-deployed time. */
   stable?: string;
+  /** The stable release's first-deployed time, read on its own. */
+  firstDeployed?: string;
   /** Whether the canary release exists. */
   canary?: boolean;
   /** Stderr for a failed canary read, when it is not "not found". */
@@ -41,7 +56,8 @@ interface Cluster {
 
 /**
  * A runner that records every command line (without the binary) and answers
- * the `get all` reads from `cluster`.
+ * the `get all` reads from `cluster`, read afresh on every call so a test can
+ * change it between calls.
  */
 function fakeHelm(cluster: Cluster = {}): {
   runner: HelmSettingsRunner;
@@ -54,9 +70,14 @@ function fakeHelm(cluster: Cluster = {}): {
     if (argv[0] !== "get") {
       return Promise.resolve(new CommandOutput(0, "", ""));
     }
+    if (argv.includes(FIRST_TEMPLATE)) {
+      return Promise.resolve(
+        new CommandOutput(0, `${cluster.firstDeployed ?? FIRST}\n`, ""),
+      );
+    }
     if (argv[2] === "api") {
       return Promise.resolve(
-        new CommandOutput(0, cluster.stable ?? "7 deployed\n", ""),
+        new CommandOutput(0, cluster.stable ?? `7 deployed ${FIRST}\n`, ""),
       );
     }
     if (cluster.canary === true) {
@@ -108,6 +129,7 @@ const IDENTITY: Record<string, JsonValue> = {
 const DEPLOYING: Record<string, JsonValue> = {
   helmStage: "deploying",
   helmStableRevision: 7,
+  helmStableFirstDeployed: FIRST,
   ...IDENTITY,
 };
 
@@ -140,7 +162,15 @@ const STABLE_READ = [
   "api",
   ...SCOPE,
   "--template",
-  "{{.Release.Version}} {{.Release.Info.Status}}",
+  STABLE_TEMPLATE,
+];
+const FIRST_READ = [
+  "get",
+  "all",
+  "api",
+  ...SCOPE,
+  "--template",
+  FIRST_TEMPLATE,
 ];
 const CANARY_READ = [
   "get",
@@ -193,13 +223,14 @@ Deno.test("stage uses a custom canary release name throughout", async () => {
     "api-next",
     "api-next",
     "api",
+    "api",
     "api-next",
   ]);
 });
 
 Deno.test("stage refuses a stable release that is not deployed", async () => {
   for (const status of ["failed", "pending-upgrade", "uninstalled"]) {
-    const { runner, calls } = fakeHelm({ stable: `7 ${status}` });
+    const { runner, calls } = fakeHelm({ stable: `7 ${status} ${FIRST}` });
     const ctx = context();
     await assertRejects(
       () => platform(runner).stage(ctx),
@@ -250,6 +281,7 @@ Deno.test("expose scales the canary up first, then the stable release down", asy
   calls.length = 0;
   assertEquals(await p.expose(50, ctx), 50);
   assertEquals(calls, [
+    FIRST_READ,
     [
       "upgrade",
       "api-canary",
@@ -292,7 +324,7 @@ Deno.test("expose renders the stable release from its own chart when named", asy
     const ctx = context();
     await p.stage(ctx);
     await p.expose(25, ctx);
-    const stable = calls[4];
+    const stable = calls[5];
     assertEquals(stable[1], "api");
     assertEquals(stable[stable.indexOf("--version") + 1], "1.9.0");
   }
@@ -307,7 +339,8 @@ Deno.test("expose quantises the staged count and reports the share achieved", as
   assertEquals(await p.expose(10, ctx), 33.33);
   assertEquals(await p.expose(0, ctx), 0);
   assertEquals(await p.expose(100, ctx), 100);
-  const counts = calls.map((argv) => argv[argv.indexOf("--set") + 1]);
+  const counts = calls.filter((argv) => argv[0] === "upgrade")
+    .map((argv) => argv[argv.indexOf("--set") + 1]);
   assertEquals(counts, [
     "replicaCount=1",
     "replicaCount=2",
@@ -392,7 +425,8 @@ Deno.test("promote moves the stable release to the staged image, then uninstalls
   const ctx = await stagedContext({ helmValues: ["values-prod.yaml"] });
   await p.promote(ctx);
   await p.promote(ctx);
-  assertEquals(calls.slice(0, 2), [
+  assertEquals(calls.slice(0, 3), [
+    FIRST_READ,
     [
       "upgrade",
       "api",
@@ -411,8 +445,8 @@ Deno.test("promote moves the stable release to the staged image, then uninstalls
     ],
     UNINSTALL,
   ]);
-  // Idempotent: the second promote repeats the same two commands.
-  assertEquals(calls.slice(2), calls.slice(0, 2));
+  // Idempotent: the second promote repeats the same read and two commands.
+  assertEquals(calls.slice(3), calls.slice(0, 3));
 });
 
 Deno.test("abort mid-rollout rolls the stable release back to the recorded revision", async () => {
@@ -423,7 +457,8 @@ Deno.test("abort mid-rollout rolls the stable release back to the recorded revis
   await p.abort(ctx);
   await p.abort(ctx);
   const undo = calls.slice(3);
-  assertEquals(undo.slice(0, 2), [
+  assertEquals(undo.slice(0, 3), [
+    FIRST_READ,
     [
       "rollback",
       "api",
@@ -438,7 +473,7 @@ Deno.test("abort mid-rollout rolls the stable release back to the recorded revis
     UNINSTALL,
   ]);
   // Idempotent, and the recorded revision wins over the hand-run one.
-  assertEquals(undo.slice(2), undo.slice(0, 2));
+  assertEquals(undo.slice(3), undo.slice(0, 3));
 });
 
 Deno.test("abort while the canary install was under way only uninstalls it", async () => {
@@ -453,7 +488,7 @@ Deno.test("abort while the canary install was under way only uninstalls it", asy
   assertEquals(ctx.state.get(), DEPLOYING);
   const { runner, calls } = fakeHelm();
   await platform(runner).abort(ctx);
-  assertEquals(calls, [UNINSTALL]);
+  assertEquals(calls, [FIRST_READ, UNINSTALL]);
 });
 
 Deno.test("a retried stage keeps the earlier attempt's record and its canary release", async () => {
@@ -474,7 +509,7 @@ Deno.test("a retried stage keeps the earlier attempt's record and its canary rel
   assertEquals(again.state.get().helmStage, "deploying");
   const { runner: after, calls: undo } = fakeHelm();
   await platform(after).abort(again);
-  assertEquals(undo, [UNINSTALL]);
+  assertEquals(undo, [FIRST_READ, UNINSTALL]);
 });
 
 Deno.test("a stage that fails before the canary install leaves a rollback nothing to do", async () => {
@@ -507,26 +542,43 @@ Deno.test("a stage that fails before the canary install leaves a rollback nothin
 
 Deno.test("a revision read-back that is not a revision is refused before anything changes", async () => {
   for (
-    const printed of ["", "0 deployed", "seven deployed", "7", "7\n8", "-1"]
+    const printed of [
+      "",
+      `0 deployed ${FIRST}`,
+      `seven deployed ${FIRST}`,
+      "7",
+      "7\n8",
+      "-1",
+      // Helm older than the first-deployed template, or a template it could
+      // not render: two fields, or a third that is not a time.
+      "7 deployed",
+      "7 deployed <no value>",
+      "7 deployed -1",
+      "7 deployed 1.5",
+      `7 deployed ${FIRST} 1`,
+      "7 deployed 12345678901234567890",
+    ]
   ) {
     const { runner, calls } = fakeHelm({ stable: printed });
     const ctx = context();
     await assertRejects(
       () => platform(runner).stage(ctx),
       Error,
-      "not a revision and a status",
+      "not a revision, a status and a first-deployed time",
     );
     assertEquals(calls.length, 1);
     assertEquals(ctx.state.get(), { helmStage: "reading" });
   }
   const truncated = platform(() =>
-    Promise.resolve(new CommandOutput(0, "7 deployed", "", true))
+    Promise.resolve(new CommandOutput(0, `7 deployed ${FIRST}`, "", true))
   );
+  const ctx = context();
   await assertRejects(
-    () => truncated.stage(context()),
+    () => truncated.stage(ctx),
     Error,
-    "not a revision and a status",
+    "not a revision, a status and a first-deployed time",
   );
+  assertEquals(ctx.state.get(), { helmStage: "reading" });
 });
 
 Deno.test("a stage that cannot record itself staged stops before any exposure", async () => {
@@ -582,7 +634,11 @@ Deno.test("abort refuses a record it does not recognise or that lacks the revisi
     'unrecognised stage "bogus"',
   );
   const partial = context();
-  await partial.state.set({ helmStage: "staged", ...IDENTITY });
+  await partial.state.set({
+    helmStage: "staged",
+    helmStableFirstDeployed: FIRST,
+    ...IDENTITY,
+  });
   await assertRejects(
     () => platform(runner, (h) => h.stableRevision(3)).abort(partial),
     Error,
@@ -593,6 +649,7 @@ Deno.test("abort refuses a record it does not recognise or that lacks the revisi
     ...IDENTITY,
     helmStage: "staged",
     helmStableRevision: "7",
+    helmStableFirstDeployed: FIRST,
   });
   await assertRejects(
     () => platform(runner).abort(tampered),
@@ -767,7 +824,7 @@ Deno.test("expose, promote and abort fail on a command that exited non-zero", as
     "helmCanary: helm rollback exited 1: Error: boom",
   );
   // The canary release is left for the retry; nothing claims a rollback.
-  assertEquals(calls.map((argv) => argv[0]), ["rollback"]);
+  assertEquals(calls.map((argv) => argv[0]), ["get", "rollback"]);
   const { runner: uninstall } = failingHelm("uninstall");
   const deploying = context();
   await deploying.state.set(DEPLOYING);
@@ -784,16 +841,23 @@ Deno.test("expose, promote and abort fail on a command that exited non-zero", as
   );
 });
 
-Deno.test("a .noThrow() in the helm lambda does not hide a failed rollback", async () => {
-  // The running deno stands in for helm: `deno rollback …` exits 1, and the
-  // lambda asks run() not to throw on it.
+Deno.test("a .noThrow() in the helm lambda does not hide a failed read or rollback", async () => {
+  // The running deno stands in for helm: `deno get …` and `deno rollback …`
+  // exit 1, and the lambda asks run() not to throw on them.
   const p = helmCanary((h) =>
-    h.stableRelease("api").namespace("prod").helm((s) =>
+    h.stableRelease("api").namespace("prod").stableRevision(3).helm((s) =>
       s.noThrow().quiet().toolPath(Deno.execPath())
     )
   );
+  // With a record, the first-deployed check cannot be skipped this way.
   await assertRejects(
     async () => p.abort(await stagedContext()),
+    Error,
+    "helmCanary: helm get all exited 1",
+  );
+  // Run by hand, there is nothing to check; the rollback itself fails.
+  await assertRejects(
+    () => p.abort(context()),
     Error,
     "helmCanary: helm rollback exited 1",
   );
@@ -823,6 +887,7 @@ Deno.test("expose and promote use the chart, values and keys stage recorded, not
   await p.expose(50, ctx);
   await p.promote(ctx);
   assertEquals(calls, [
+    FIRST_READ,
     [
       "upgrade",
       "api-canary",
@@ -848,6 +913,7 @@ Deno.test("expose and promote use the chart, values and keys stage recorded, not
       "--history-max",
       "0",
     ],
+    FIRST_READ,
     [
       "upgrade",
       "api",
@@ -886,8 +952,8 @@ Deno.test("a stable chart from a repository must be pinned with stableVersion", 
     const ctx = context();
     await p.stage(ctx);
     await p.expose(25, ctx);
-    assertEquals(calls[4].slice(0, 3), ["upgrade", "api", ref]);
-    assertEquals(calls[4].includes("--version"), false);
+    assertEquals(calls[5].slice(0, 3), ["upgrade", "api", ref]);
+    assertEquals(calls[5].includes("--version"), false);
   }
 });
 
@@ -1114,4 +1180,211 @@ Deno.test("a recorded identity of the wrong type is a damaged record, not a conf
     assertEquals(error.message.includes("now configured"), false);
   }
   assertEquals(calls, []);
+});
+
+/** The commands that change something — everything but the reads. */
+function mutations(calls: string[][]): string[][] {
+  return calls.filter((argv) => argv[0] !== "get");
+}
+
+/** A context whose state records a canary install under way. */
+async function deployingContext(patch: Record<string, JsonValue> = {}) {
+  const ctx = context();
+  await ctx.state.set({ ...DEPLOYING, ...patch });
+  return ctx;
+}
+
+/** Every call that acts on a record, against a fresh context per call. */
+function recordedCalls(
+  patch: Record<string, JsonValue> = {},
+): Array<[string, (runner: HelmSettingsRunner) => Promise<unknown>]> {
+  return [
+    [
+      "abort, staged",
+      async (r) => platform(r).abort(await stagedContext(patch)),
+    ],
+    [
+      "abort, deploying",
+      async (r) => platform(r).abort(await deployingContext(patch)),
+    ],
+    ["expose", async (r) => platform(r).expose(50, await stagedContext(patch))],
+    ["promote", async (r) => platform(r).promote(await stagedContext(patch))],
+  ];
+}
+
+Deno.test("a stable release reinstalled since stage is refused before any change", async () => {
+  // The same name, first deployed later: another incarnation, whose history
+  // does not hold the recorded revision.
+  for (const [label, call] of recordedCalls()) {
+    const { runner, calls } = fakeHelm({ firstDeployed: REINSTALLED });
+    const error = await assertRejects(
+      () => call(runner),
+      Error,
+      "helmCanary: the stable release api was first deployed at " +
+        "2025-10-06T08:40:00.000Z when this rollout started, but the " +
+        "release helm reaches now was first deployed at " +
+        "2025-10-06T11:26:40.000Z",
+    );
+    for (
+      const part of [
+        "reinstalled, or the kube context in h.helm(...) points at another",
+        "This call changed nothing.",
+        "point the kube context back at the cluster the rollout started on",
+        "`zuke cancel <run-id>`",
+        "the recorded revision no longer exists in its history",
+        "`helm history api`",
+        "uninstalling the canary release",
+      ]
+    ) {
+      assertEquals(error.message.includes(part), true, `${label}: ${part}`);
+    }
+    // Only the read ran: no upgrade, rollback or uninstall.
+    assertEquals(calls, [FIRST_READ], label);
+  }
+});
+
+Deno.test("a resumed stage refuses a stable release reinstalled since the earlier attempt", async () => {
+  for (const prior of [DEPLOYING, STAGED]) {
+    const { runner, calls } = fakeHelm({
+      stable: `7 deployed ${REINSTALLED}`,
+    });
+    const ctx = context();
+    await ctx.state.set(prior);
+    await assertRejects(
+      () => platform(runner).stage(ctx),
+      Error,
+      "the release helm reaches now was first deployed at",
+    );
+    // Only the stable read ran, and the earlier record is untouched.
+    assertEquals(calls, [STABLE_READ]);
+    assertEquals(ctx.state.get(), prior);
+  }
+});
+
+Deno.test("a record without a usable first-deployed time is damaged, and refused", async () => {
+  const damaged: JsonValue[] = [
+    // A number cannot hold every such value exactly, so none is accepted.
+    1759740000000000000,
+    "",
+    "abc",
+    "-1",
+    "1.5",
+    ` ${FIRST}`,
+    "12345678901234567890",
+    null,
+  ];
+  for (const value of damaged) {
+    const patch = { helmStableFirstDeployed: value };
+    for (const [label, call] of recordedCalls(patch)) {
+      const { runner, calls } = fakeHelm();
+      await assertRejects(
+        () => call(runner),
+        Error,
+        "helmCanary: the rollout's record is damaged: it does not hold " +
+          `when the stable release api was first deployed (it holds ` +
+          `${JSON.stringify(value)})`,
+      );
+      // Refused before helm is asked anything.
+      assertEquals(calls, [], label);
+    }
+    for (const prior of [DEPLOYING, STAGED]) {
+      const { runner, calls } = fakeHelm();
+      const ctx = context();
+      await ctx.state.set({ ...prior, ...patch });
+      await assertRejects(
+        () => platform(runner).stage(ctx),
+        Error,
+        "the rollout's record is damaged",
+      );
+      assertEquals(calls, []);
+    }
+  }
+  // Missing altogether.
+  const { runner, calls } = fakeHelm();
+  const state = { ...STAGED };
+  delete state.helmStableFirstDeployed;
+  const ctx = context();
+  await ctx.state.set(state);
+  await assertRejects(
+    () => platform(runner).abort(ctx),
+    Error,
+    "(it holds undefined)",
+  );
+  assertEquals(calls, []);
+});
+
+Deno.test("a first-deployed read that is not a time is refused before any change", async () => {
+  for (
+    const printed of ["", "abc", "-1", "1.5", `${FIRST} 1`, "<no value>"]
+  ) {
+    for (const [label, call] of recordedCalls()) {
+      const { runner, calls } = fakeHelm({ firstDeployed: printed });
+      await assertRejects(
+        () => call(runner),
+        Error,
+        `helmCanary: reading when api was first deployed printed ` +
+          `${JSON.stringify(printed)}, not a time`,
+      );
+      assertEquals(calls, [FIRST_READ], label);
+    }
+  }
+  // Output cut short is not trusted, even when what arrived looks right.
+  for (const [label, call] of recordedCalls()) {
+    const calls: string[][] = [];
+    const truncated = (settings: HelmSettings) => {
+      calls.push(settings.argv().slice(1));
+      return Promise.resolve(new CommandOutput(0, FIRST, "", true));
+    };
+    await assertRejects(() => call(truncated), Error, "not a time");
+    assertEquals(calls, [FIRST_READ], label);
+  }
+});
+
+Deno.test("a failed first-deployed read fails the call with nothing changed", async () => {
+  for (const [label, call] of recordedCalls()) {
+    const { runner, calls } = failingHelm("get");
+    await assertRejects(
+      () => call(runner),
+      Error,
+      "helmCanary: helm get all exited 1: Error: boom",
+    );
+    assertEquals(calls, [FIRST_READ], label);
+  }
+});
+
+Deno.test("a first-deployed time beyond a safe integer round-trips exactly", async () => {
+  // Nanoseconds since 1970 are beyond Number.MAX_SAFE_INTEGER: two times one
+  // nanosecond apart are the same number, so the record must keep digits.
+  const exact = "9007199254740993123";
+  const nextDoor = "9007199254740993124";
+  assertEquals(Number(exact) > Number.MAX_SAFE_INTEGER, true);
+  assertEquals(Number(exact) === Number(nextDoor), true);
+  const cluster: Cluster = {
+    stable: `7 deployed ${exact}`,
+    firstDeployed: exact,
+  };
+  const { runner, calls } = fakeHelm(cluster);
+  const p = platform(runner);
+  const ctx = context();
+  await p.stage(ctx);
+  assertEquals(ctx.state.get().helmStableFirstDeployed, exact);
+  // The record survives a JSON round trip, as the durable store makes one.
+  const stored = JSON.parse(JSON.stringify(ctx.state.get()));
+  assertEquals(stored.helmStableFirstDeployed, exact);
+  assertEquals(await p.expose(50, ctx), 50);
+  cluster.firstDeployed = nextDoor;
+  calls.length = 0;
+  await assertRejects(
+    () => p.promote(ctx),
+    Error,
+    "the release helm reaches now was first deployed at",
+  );
+  await assertRejects(() => p.abort(ctx), Error, "This call changed nothing.");
+  assertEquals(mutations(calls), []);
+});
+
+Deno.test("a hand-run abort has no first-deployed time to check, and reads nothing", async () => {
+  const { runner, calls } = fakeHelm({ firstDeployed: REINSTALLED });
+  await platform(runner, (h) => h.stableRevision(41)).abort(context());
+  assertEquals(calls.map((argv) => argv[0]), ["rollback", "uninstall"]);
 });

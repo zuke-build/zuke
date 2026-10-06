@@ -189,8 +189,10 @@ export class HelmCanarySettings {
    * `(s) => s.kubeContext("prod").kubeconfig("~/.kube/prod")`, or a
    * `.toolPath(...)` to a specific helm. The kube context and kubeconfig must
    * not change mid-rollout: the rollout records its release names and
-   * namespace and refuses a change to those, but cannot record or check
-   * these.
+   * namespace and refuses a change to those, but cannot record these. A
+   * context that now points at another cluster is refused all the same, since
+   * that cluster's stable release was not first deployed at the time `stage`
+   * recorded — a strong check, not a proof.
    */
   helm(configure: Configure<HelmSettings>): this {
     this.helm_ = configure;

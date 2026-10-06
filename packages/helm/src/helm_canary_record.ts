@@ -4,9 +4,11 @@
 /**
  * What `helmCanary` records in the rollout's durable state: how far `stage`
  * got, the releases and namespace it acts on, the stable release's revision
- * before the rollout, and the candidate `stage` installed — so every later call, in this process or a resumed one,
- * renders what was analysed rather than a configuration that may have changed
- * since. Internal to the package: not exported from `mod.ts`.
+ * before the rollout and when that release was first deployed, and the
+ * candidate `stage` installed — so every later call, in this process or a
+ * resumed one, renders what was analysed rather than a configuration that may
+ * have changed since, and acts only on the stable release the rollout started
+ * with. Internal to the package: not exported from `mod.ts`.
  *
  * @module
  */
@@ -21,6 +23,19 @@ export const STAGE = "helmStage";
 
 /** The state key the stable release's pre-rollout revision is recorded under. */
 export const STABLE_REVISION = "helmStableRevision";
+
+/**
+ * The state key the stable release's first-deployed time is recorded under:
+ * nanoseconds since 1970 as a string of digits. A string, because the value
+ * (about 1.8e18) is beyond what a JSON number holds exactly.
+ */
+export const STABLE_FIRST_DEPLOYED = "helmStableFirstDeployed";
+
+/**
+ * A first-deployed time as helm's `UnixNano` prints it: digits, at most 19 of
+ * them (an int64), so it is always a time a `Date` can show.
+ */
+export const FIRST_DEPLOYED_SHAPE = /^[0-9]{1,19}$/;
 
 /**
  * The state keys the rollout's identity is recorded under — its releases
@@ -87,6 +102,63 @@ export function checkIdentity(
       );
     }
   });
+}
+
+/**
+ * The stable release's first-deployed time this rollout recorded, refused as
+ * a damaged record unless it is a string of digits — never converted to a
+ * number, which would round it.
+ */
+export function recordedFirstDeployed(
+  recorded: Record<string, JsonValue>,
+  stable: string,
+): string {
+  const value = recorded[STABLE_FIRST_DEPLOYED];
+  if (typeof value === "string" && FIRST_DEPLOYED_SHAPE.test(value)) {
+    return value;
+  }
+  throw new Error(
+    `helmCanary: the rollout's record is damaged: it does not hold when the ` +
+      `stable release ${stable} was first deployed (it holds ` +
+      `${JSON.stringify(value)}), so this call cannot tell that ${stable} is ` +
+      "still the release the rollout started with. Check `helm history " +
+      `${stable}\` and \`helm list\` and clean up by hand.`,
+  );
+}
+
+/**
+ * Refuse unless the stable release was first deployed at `recorded`, the time
+ * `stage` read. Helm sets a release's first-deployed time once, at install,
+ * and every upgrade and rollback carries it forward, so a different one means
+ * another incarnation of the release — uninstalled and installed again — or
+ * another cluster's release of the same name, reached through a kube context
+ * that changed. Rolling either back to the recorded revision, or upgrading
+ * it, would act on a deployment this rollout never staged.
+ */
+export function checkFirstDeployed(
+  stable: string,
+  recorded: string,
+  live: string,
+): void {
+  if (recorded === live) return;
+  throw new Error(
+    `helmCanary: the stable release ${stable} was first deployed at ` +
+      `${isoTime(recorded)} when this rollout started, but the release helm ` +
+      `reaches now was first deployed at ${isoTime(live)}: it was ` +
+      "reinstalled, or the kube context in h.helm(...) points at another " +
+      "cluster. This call changed nothing. To recover, point the kube " +
+      "context back at the cluster the rollout started on and run it again " +
+      "(a resume, or `zuke cancel <run-id>` to roll it back). If the release " +
+      "really was reinstalled, the recorded revision no longer exists in its " +
+      `history: check \`helm history ${stable}\` and clean up by hand, ` +
+      "uninstalling the canary release once the stable one is as it should " +
+      "be.",
+  );
+}
+
+/** A first-deployed time in nanoseconds since 1970, as ISO 8601. */
+function isoTime(nanos: string): string {
+  return new Date(Number(BigInt(nanos) / 1_000_000n)).toISOString();
 }
 
 /** The `h.stableRevision(...)` a hand-run rollback needs, as advice. */

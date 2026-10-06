@@ -43,9 +43,15 @@
  *   `replicas - maxUnavailable`), so capacity can dip briefly.
  *
  * `stage` records the release names and namespace, and every later call
- * refuses a configuration that names others — so the kube context in
- * {@link HelmCanarySettings.helm}, which cannot be recorded, must not change
- * mid-rollout either.
+ * refuses a configuration that names others. It also records when the stable
+ * release was first deployed — a time helm sets once, at install, and carries
+ * through every upgrade and rollback — and every later call reads it again
+ * before it changes anything, refusing a stable release reinstalled under the
+ * same name. The kube context in {@link HelmCanarySettings.helm} cannot be
+ * recorded, but one that now points at another cluster is refused the same
+ * way, since that cluster's release was not first deployed at the same
+ * nanosecond: a strong check, not a proof, so the context still must not
+ * change mid-rollout.
  *
  * A rollback never re-derives the old state: `stage` reads the stable
  * release's current revision (through helm's own `--template` projection, the
@@ -84,18 +90,47 @@ import {
 } from "./helm_canary_checks.ts";
 import {
   candidateRecord,
+  checkFirstDeployed,
   checkIdentity,
+  FIRST_DEPLOYED_SHAPE,
   identityRecord,
   recordedCandidate,
+  recordedFirstDeployed,
+  STABLE_FIRST_DEPLOYED,
   STABLE_REVISION,
   STAGE,
 } from "./helm_canary_record.ts";
 import { HelmCanarySettings } from "./helm_canary_settings.ts";
 import { isWholeNumber } from "./whole_number.ts";
 
-/** Prints a release's revision and status on one line. */
-const REVISION_STATUS_TEMPLATE =
-  "{{.Release.Version}} {{.Release.Info.Status}}";
+/**
+ * Prints a release's revision, status and first-deployed time (nanoseconds
+ * since 1970) on one line.
+ */
+const STABLE_TEMPLATE =
+  "{{.Release.Version}} {{.Release.Info.Status}} {{.Release.Info.FirstDeployed.UnixNano}}";
+
+/**
+ * {@link STABLE_TEMPLATE}'s output: revision, status, first-deployed time —
+ * the last held to `FIRST_DEPLOYED_SHAPE` as well.
+ */
+const STABLE_SHAPE = /^([0-9]+) ([a-z-]+) ([^ ]+)$/;
+
+/**
+ * Prints when a release was first deployed, in nanoseconds since 1970. Helm
+ * sets it at install and carries it through every upgrade and rollback, so it
+ * tells one incarnation of a release — and, in practice, one cluster's — from
+ * another of the same name.
+ */
+const FIRST_DEPLOYED_TEMPLATE = "{{.Release.Info.FirstDeployed.UnixNano}}";
+
+/** What `stage` reads of the stable release. */
+interface StableRead {
+  /** Its current revision, which a rollback returns to. */
+  readonly revision: number;
+  /** When it was first deployed, nanoseconds since 1970, as digits. */
+  readonly firstDeployed: string;
+}
 
 /** Prints a release's revision — only read to learn whether it exists. */
 const REVISION_TEMPLATE = "{{.Release.Version}}";
@@ -145,13 +180,15 @@ export class HelmCanary {
   }
 
   /**
-   * Check the stable release is deployed and record its revision, check no
-   * canary release is left over, then install the candidate as the canary
-   * release with no replicas: `upgrade <canary> <chart> --set
-   * <replicasKey>=0 --set-string <imageKey>=<image> --install --wait`. The
-   * image, replica count, charts, versions, values files and keys are
-   * recorded, and every later call uses those, not a configuration that may
-   * have changed since.
+   * Check the stable release is deployed and record its revision and
+   * first-deployed time, check no canary release is left over, then install
+   * the candidate as the canary release with no replicas: `upgrade <canary>
+   * <chart> --set <replicasKey>=0 --set-string <imageKey>=<image> --install
+   * --wait`. The image, replica count, charts, versions, values files and
+   * keys are recorded, and every later call uses those, not a configuration
+   * that may have changed since. A stage resumed after an earlier attempt
+   * recorded the stable release refuses, before writing anything, unless the
+   * release it reads now was first deployed at the recorded time.
    */
   async stage(ctx: HelmCanaryContext): Promise<void> {
     // First, before anything can throw: a stage that fails from here until
@@ -164,15 +201,27 @@ export class HelmCanary {
     const names = checkedReleases(settings);
     const { stable, canary } = names;
     const resumed = prior === "deploying" || prior === "staged";
-    if (resumed) checkIdentity(ctx.state.get(), names);
+    // A resumed stage must find the stable release the earlier attempt
+    // recorded, before it writes anything over that record.
+    const recordedFirst = resumed
+      ? this.#recordedStable(ctx.state.get(), names)
+      : undefined;
     const candidate = configuredCandidate(settings);
-    const revision = await this.#deployedRevision(settings, stable);
-    if (!resumed) await this.#refuseLeftover(settings, canary);
+    const { revision, firstDeployed } = await this.#deployedRevision(
+      settings,
+      stable,
+    );
+    if (recordedFirst === undefined) {
+      await this.#refuseLeftover(settings, canary);
+    } else {
+      checkFirstDeployed(stable, recordedFirst, firstDeployed);
+    }
     // A rollback reads this to know the canary release may exist, and which
     // one, so it must be on record before the install can create it.
     const deploying = {
       [STAGE]: "deploying",
       [STABLE_REVISION]: revision,
+      [STABLE_FIRST_DEPLOYED]: firstDeployed,
       ...identityRecord(names),
     };
     if (!await ctx.state.trySet(deploying)) {
@@ -207,6 +256,8 @@ export class HelmCanary {
    * Give the canary release `percent` of the staged replica count — rounded,
    * and at least one for any share above 0 — scaling it up (waiting) before
    * the stable release down (not waiting). Returns the share achieved.
+   * Refuses, changing nothing, unless the stable release was first deployed
+   * at the time `stage` recorded.
    */
   async expose(percent: number, ctx: HelmCanaryContext): Promise<number> {
     if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
@@ -218,7 +269,7 @@ export class HelmCanary {
     const settings = this.#configure(new HelmCanarySettings());
     const names = checkedReleases(settings);
     const { stable, canary } = names;
-    const staged = this.#staged(ctx, names);
+    const staged = await this.#staged(settings, ctx, names);
     const { total, replicasKey } = staged;
     const rounded = Math.round(total * percent / 100);
     const share = percent > 0 && rounded === 0 ? 1 : rounded;
@@ -245,13 +296,14 @@ export class HelmCanary {
   /**
    * Upgrade the stable release to the staged chart and image at the staged
    * replica count, waiting for it, then uninstall the canary release.
-   * Idempotent.
+   * Idempotent. Refuses, changing nothing, unless the stable release was
+   * first deployed at the time `stage` recorded.
    */
   async promote(ctx: HelmCanaryContext): Promise<void> {
     const settings = this.#configure(new HelmCanarySettings());
     const names = checkedReleases(settings);
     const { stable, canary } = names;
-    const staged = this.#staged(ctx, names);
+    const staged = await this.#staged(settings, ctx, names);
     const upgrade = this.#upgrade(
       settings,
       stable,
@@ -280,6 +332,12 @@ export class HelmCanary {
    *   rollback goes to {@link HelmCanarySettings.stableRevision}. Without one
    *   this refuses, since claiming a rollback it cannot do would be worse.
    * - **A record it does not recognise**: refuses.
+   *
+   * Staged, or with the install under way, it first reads when the stable
+   * release was first deployed and refuses, changing nothing, unless that is
+   * the time `stage` recorded — a release reinstalled under the same name, or
+   * another cluster's through a changed kube context, is not this rollout's to
+   * roll back. A hand-run abort has no recorded time to compare with.
    */
   async abort(ctx: HelmCanaryContext): Promise<void> {
     const recorded = ctx.state.get();
@@ -288,16 +346,20 @@ export class HelmCanary {
     const settings = this.#configure(new HelmCanarySettings());
     const names = checkedReleases(settings);
     const { stable, canary } = names;
-    if (stage === "deploying" || stage === "staged") {
-      checkIdentity(recorded, names);
-    }
     if (stage === "deploying") {
+      const first = this.#recordedStable(recorded, names);
+      await this.#verifyStable(settings, stable, first);
       await this.#run(settings, "uninstall", this.#uninstall(settings, canary));
       return;
     }
+    const first = stage === "staged"
+      ? this.#recordedStable(recorded, names)
+      : undefined;
     const revision = checkedRevision(
       this.#revisionToRestore(settings, stable, recorded),
     );
+    // Nothing recorded — a hand-run abort — leaves nothing to compare with.
+    if (first !== undefined) await this.#verifyStable(settings, stable, first);
     const rollback = this.#scoped(settings, new HelmRollbackSettings())
       .release(stable).revision(revision).wait().historyMax(0);
     if (settings.timeout_ !== undefined) rollback.timeout(settings.timeout_);
@@ -344,8 +406,15 @@ export class HelmCanary {
     return configured;
   }
 
-  /** The candidate `stage` recorded for these releases, re-checked. */
-  #staged(ctx: HelmCanaryContext, names: ReleaseNames): Candidate {
+  /**
+   * The candidate `stage` recorded for these releases, re-checked, once the
+   * stable release helm reaches now is shown to be the one `stage` read.
+   */
+  async #staged(
+    settings: HelmCanarySettings,
+    ctx: HelmCanaryContext,
+    names: ReleaseNames,
+  ): Promise<Candidate> {
     const recorded = ctx.state.get();
     if (recorded[STAGE] !== "staged") {
       throw new Error(
@@ -354,8 +423,49 @@ export class HelmCanary {
           "same rollout.",
       );
     }
+    const first = this.#recordedStable(recorded, names);
+    const candidate = recordedCandidate(recorded);
+    await this.#verifyStable(settings, names.stable, first);
+    return candidate;
+  }
+
+  /**
+   * The stable release's first-deployed time this rollout recorded, once the
+   * record is shown to name these releases and namespace.
+   */
+  #recordedStable(
+    recorded: Record<string, JsonValue>,
+    names: ReleaseNames,
+  ): string {
     checkIdentity(recorded, names);
-    return recordedCandidate(recorded);
+    return recordedFirstDeployed(recorded, names.stable);
+  }
+
+  /**
+   * Refuse unless the stable release helm reaches now was first deployed at
+   * `recorded` — the release `stage` read, not one reinstalled under its name
+   * or another cluster's. Run before anything is changed.
+   */
+  async #verifyStable(
+    settings: HelmCanarySettings,
+    stable: string,
+    recorded: string,
+  ): Promise<void> {
+    const output = await this.#run(
+      settings,
+      "get all",
+      this.#getAll(settings, stable, FIRST_DEPLOYED_TEMPLATE),
+    );
+    const text = output.stdout.trim();
+    if (output.truncated || !FIRST_DEPLOYED_SHAPE.test(text)) {
+      throw new Error(
+        `helmCanary: reading when ${stable} was first deployed printed ` +
+          `${JSON.stringify(text)}, not a time, so this call cannot tell it ` +
+          "is the release the rollout started with, and changed nothing. " +
+          `Check that the release exists with \`helm status ${stable}\`.`,
+      );
+    }
+    checkFirstDeployed(stable, recorded, text);
   }
 
   /**
@@ -427,23 +537,30 @@ export class HelmCanary {
       .template(template).quiet();
   }
 
-  /** The stable release's current revision, refused unless it is deployed. */
+  /**
+   * The stable release's current revision and first-deployed time, refused
+   * unless it is deployed.
+   */
   async #deployedRevision(
     settings: HelmCanarySettings,
     stable: string,
-  ): Promise<number> {
+  ): Promise<StableRead> {
     const output = await this.#run(
       settings,
       "get all",
-      this.#getAll(settings, stable, REVISION_STATUS_TEMPLATE),
+      this.#getAll(settings, stable, STABLE_TEMPLATE),
     );
     const text = output.stdout.trim();
-    const match = output.truncated ? null : /^([0-9]+) ([a-z-]+)$/.exec(text);
+    const match = output.truncated ? null : STABLE_SHAPE.exec(text);
     const revision = match === null ? Number.NaN : Number(match[1]);
-    if (match === null || !isWholeNumber(revision)) {
+    if (
+      match === null || !isWholeNumber(revision) ||
+      !FIRST_DEPLOYED_SHAPE.test(match[3])
+    ) {
       throw new Error(
         `helmCanary: reading the current revision of ${stable} printed ` +
-          `${JSON.stringify(text)}, not a revision and a status, so a ` +
+          `${JSON.stringify(text)}, not a revision, a status and a ` +
+          "first-deployed time, so a " +
           "rollback would have nothing to return to. Check that the release " +
           "exists with `helm status`.",
       );
@@ -456,7 +573,7 @@ export class HelmCanary {
           "`helm rollback`), then run the canary.",
       );
     }
-    return revision;
+    return { revision, firstDeployed: match[3] };
   }
 
   /**
@@ -507,15 +624,22 @@ export class HelmCanary {
  * `--reset-then-reuse-values`, and every command on the stable release
  * `--history-max 0`.
  *
- * - **stage** — reads the stable release's revision and status, checks no
- *   canary release exists, then `upgrade <stable>-canary <chart> --set
- *   replicaCount=0 --set-string image.tag=<image> --install --wait`.
+ * - **stage** — reads the stable release's revision, status and
+ *   first-deployed time, checks no canary release exists, then `upgrade
+ *   <stable>-canary <chart> --set replicaCount=0 --set-string
+ *   image.tag=<image> --install --wait`.
  * - **expose** — `upgrade --set replicaCount=<n>` on the canary release
  *   (waiting), then on the stable release with the remainder.
  * - **promote** — `upgrade <stable> --set replicaCount=<total> --set-string
  *   image.tag=<image> --wait`, then `uninstall <canary> --ignore-not-found`.
  * - **abort** — `rollback <stable> <recorded revision> --wait`, then the same
  *   uninstall; run by hand, the revision set with `.stableRevision(...)`.
+ *
+ * Every call after `stage` that has its record first reads the stable
+ * release's first-deployed time again and refuses, changing nothing, unless
+ * it is the one `stage` recorded — so a release reinstalled under the same
+ * name, or another cluster's reached through a changed kube context, is never
+ * upgraded or rolled back.
  */
 export function helmCanary(
   configure: Configure<HelmCanarySettings>,

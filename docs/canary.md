@@ -300,12 +300,12 @@ await run(Deploy);
 Every upgrade passes `--reset-then-reuse-values`, and every command on the
 stable release `--history-max 0`:
 
-| Call      | helm                                                                                                                                                                                                                                                                                               |
-| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `stage`   | `get all <stable> --template '{{.Release.Version}} {{.Release.Info.Status}}'` — refused unless `deployed`, else recorded; `get all <canary>` — refused if the canary release already exists; then `upgrade <canary> <chart> --set replicaCount=0 --set-string image.tag=<image> --install --wait`. |
-| `expose`  | `upgrade <canary> <chart> --set replicaCount=<n> --wait`, then `upgrade <stable> <stable chart> --set replicaCount=<total-n>`. `n` is rounded, at least 1 above 0 %; returns `n / total`.                                                                                                          |
-| `promote` | `upgrade <stable> <chart> --set replicaCount=<total> --set-string image.tag=<image> --wait`, then `uninstall <canary> --ignore-not-found`.                                                                                                                                                         |
-| `abort`   | `rollback <stable> <recorded revision> --wait`, then `uninstall <canary> --ignore-not-found`. Run by hand, the revision set with `.stableRevision(n)`; without one it refuses.                                                                                                                     |
+| Call      | helm                                                                                                                                                                                                                                                                                                                                                                                 |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `stage`   | `get all <stable> --template '{{.Release.Version}} {{.Release.Info.Status}} {{.Release.Info.FirstDeployed.UnixNano}}'` — refused unless `deployed`, else the revision and first-deployed time are recorded; `get all <canary>` — refused if the canary release already exists; then `upgrade <canary> <chart> --set replicaCount=0 --set-string image.tag=<image> --install --wait`. |
+| `expose`  | `get all <stable> --template '{{.Release.Info.FirstDeployed.UnixNano}}'` — refused unless it is the recorded time; then `upgrade <canary> <chart> --set replicaCount=<n> --wait`, then `upgrade <stable> <stable chart> --set replicaCount=<total-n>`. `n` is rounded, at least 1 above 0 %; returns `n / total`.                                                                    |
+| `promote` | The same first-deployed check, then `upgrade <stable> <chart> --set replicaCount=<total> --set-string image.tag=<image> --wait`, then `uninstall <canary> --ignore-not-found`.                                                                                                                                                                                                       |
+| `abort`   | The same first-deployed check, then `rollback <stable> <recorded revision> --wait`, then `uninstall <canary> --ignore-not-found` (only the check and the uninstall when the canary install was under way). Run by hand there is no record, so no check: the revision is set with `.stableRevision(n)`; without one it refuses.                                                       |
 
 `stage` records the image, the total replica count, the charts and their
 versions, the values files and the image and replica keys, and `expose` and
@@ -328,6 +328,20 @@ down. To recover, set the configuration back to what the rollout started with,
 then run the rollout's `<field>.abort` target by hand (`zuke rollout.abort`)
 with `.stableRevision(n)` — the refusal names the revision `stage` recorded. A
 rollback run by hand with no record uses the configuration as it is.
+
+`stage` also records when the stable release was first deployed — a time helm
+sets once, at install, and carries through every upgrade and rollback — and
+every later `expose`, `promote` and rollback, and a resumed `stage`, reads it
+again before changing anything. A stable release uninstalled and installed again
+under the same name has a new one, so it is refused rather than rolled back to a
+revision its history does not hold. The kube context still cannot be recorded,
+but one that now points at another cluster refuses rather than act, because that
+cluster's release will not have been first deployed at the same nanosecond — a
+strong check, not a proof. The refusal names both times and changes nothing:
+point the kube context back at the cluster the rollout started on and run it
+again (a resume, or `zuke cancel <run-id>`); if the release really was
+reinstalled, check `helm history <stable>` and clean up by hand, uninstalling
+the canary release once the stable one is as it should be.
 
 What it relies on, and cannot check:
 

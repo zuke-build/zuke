@@ -55,12 +55,12 @@ await run(Deploy);
 Every upgrade passes `--reset-then-reuse-values`, and every command on the
 stable release `--history-max 0`:
 
-| Call      | helm                                                                                                                                                                                                                                                                                               |
-| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `stage`   | `get all <stable> --template '{{.Release.Version}} {{.Release.Info.Status}}'` — refused unless `deployed`, else recorded; `get all <canary>` — refused if the canary release already exists; then `upgrade <canary> <chart> --set replicaCount=0 --set-string image.tag=<image> --install --wait`. |
-| `expose`  | `upgrade <canary> <chart> --set replicaCount=<n> --wait`, then `upgrade <stable> <stable chart> --set replicaCount=<total-n>`. `n` is rounded, at least 1 above 0 %; returns `n / total`.                                                                                                          |
-| `promote` | `upgrade <stable> <chart> --set replicaCount=<total> --set-string image.tag=<image> --wait`, then `uninstall <canary> --ignore-not-found`.                                                                                                                                                         |
-| `abort`   | `rollback <stable> <recorded revision> --wait`, then `uninstall <canary> --ignore-not-found`. Run by hand, the revision set with `.stableRevision(n)`; without one it refuses.                                                                                                                     |
+| Call      | helm                                                                                                                                                                                                                                                                                                                                                                                 |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `stage`   | `get all <stable> --template '{{.Release.Version}} {{.Release.Info.Status}} {{.Release.Info.FirstDeployed.UnixNano}}'` — refused unless `deployed`, else the revision and first-deployed time are recorded; `get all <canary>` — refused if the canary release already exists; then `upgrade <canary> <chart> --set replicaCount=0 --set-string image.tag=<image> --install --wait`. |
+| `expose`  | `get all <stable> --template '{{.Release.Info.FirstDeployed.UnixNano}}'` — refused unless it is the recorded time; then `upgrade <canary> <chart> --set replicaCount=<n> --wait`, then `upgrade <stable> <stable chart> --set replicaCount=<total-n>`. `n` is rounded, at least 1 above 0 %; returns `n / total`.                                                                    |
+| `promote` | The same first-deployed check, then `upgrade <stable> <chart> --set replicaCount=<total> --set-string image.tag=<image> --wait`, then `uninstall <canary> --ignore-not-found`.                                                                                                                                                                                                       |
+| `abort`   | The same first-deployed check, then `rollback <stable> <recorded revision> --wait`, then `uninstall <canary> --ignore-not-found` (only the check and the uninstall when the canary install was under way). Run by hand there is no record, so no check: the revision is set with `.stableRevision(n)`; without one it refuses.                                                       |
 
 `stage` records the image, the total replica count, the charts and their
 versions, the values files and the image and replica keys, and `expose` and
@@ -83,6 +83,20 @@ down. To recover, set the configuration back to what the rollout started with,
 then run the rollout's `<field>.abort` target by hand (`zuke rollout.abort`)
 with `.stableRevision(n)` — the refusal names the revision `stage` recorded. A
 rollback run by hand with no record uses the configuration as it is.
+
+`stage` also records when the stable release was first deployed — a time helm
+sets once, at install, and carries through every upgrade and rollback — and
+every later `expose`, `promote` and rollback, and a resumed `stage`, reads it
+again before changing anything. A stable release uninstalled and installed again
+under the same name has a new one, so it is refused rather than rolled back to a
+revision its history does not hold. The kube context still cannot be recorded,
+but one that now points at another cluster refuses rather than act, because that
+cluster's release will not have been first deployed at the same nanosecond — a
+strong check, not a proof. The refusal names both times and changes nothing:
+point the kube context back at the cluster the rollout started on and run it
+again (a resume, or `zuke cancel <run-id>`); if the release really was
+reinstalled, check `helm history <stable>` and clean up by hand, uninstalling
+the canary release once the stable one is as it should be.
 
 What it relies on, and cannot check:
 
@@ -169,13 +183,19 @@ function helmCanary(configure: Configure<HelmCanarySettings>): HelmCanary
   `--reset-then-reuse-values`, and every command on the stable release
   `--history-max 0`.
 
-  - stage — reads the stable release's revision and status, checks no
-    canary release exists, then `upgrade <stable>-canary <chart> --set replicaCount=0 --set-string image.tag=<image> --install --wait`.
+  - stage — reads the stable release's revision, status and
+    first-deployed time, checks no canary release exists, then `upgrade <stable>-canary <chart> --set replicaCount=0 --set-string image.tag=<image> --install --wait`.
   - expose — `upgrade --set replicaCount=<n>` on the canary release
     (waiting), then on the stable release with the remainder.
   - promote — `upgrade <stable> --set replicaCount=<total> --set-string image.tag=<image> --wait`, then `uninstall <canary> --ignore-not-found`.
   - abort — `rollback <stable> <recorded revision> --wait`, then the same
     uninstall; run by hand, the revision set with `.stableRevision(...)`.
+
+  Every call after `stage` that has its record first reads the stable
+  release's first-deployed time again and refuses, changing nothing, unless
+  it is the one `stage` recorded — so a release reinstalled under the same
+  name, or another cluster's reached through a changed kube context, is never
+  upgraded or rolled back.
 
 const HelmTasks: HelmTasksApi
   Typed task functions for the `helm` CLI.
@@ -193,20 +213,24 @@ class HelmCanary
   describe(): string
     `"Helm release api in prod"`, for the build summary.
   async stage(ctx: HelmCanaryContext): Promise<void>
-    Check the stable release is deployed and record its revision, check no
-    canary release is left over, then install the candidate as the canary
-    release with no replicas: `upgrade <canary> <chart> --set <replicasKey>=0 --set-string <imageKey>=<image> --install --wait`. The
-    image, replica count, charts, versions, values files and keys are
-    recorded, and every later call uses those, not a configuration that may
-    have changed since.
+    Check the stable release is deployed and record its revision and
+    first-deployed time, check no canary release is left over, then install
+    the candidate as the canary release with no replicas: `upgrade <canary> <chart> --set <replicasKey>=0 --set-string <imageKey>=<image> --install --wait`. The image, replica count, charts, versions, values files and
+    keys are recorded, and every later call uses those, not a configuration
+    that may have changed since. A stage resumed after an earlier attempt
+    recorded the stable release refuses, before writing anything, unless the
+    release it reads now was first deployed at the recorded time.
   async expose(percent: number, ctx: HelmCanaryContext): Promise<number>
     Give the canary release `percent` of the staged replica count — rounded,
     and at least one for any share above 0 — scaling it up (waiting) before
     the stable release down (not waiting). Returns the share achieved.
+    Refuses, changing nothing, unless the stable release was first deployed
+    at the time `stage` recorded.
   async promote(ctx: HelmCanaryContext): Promise<void>
     Upgrade the stable release to the staged chart and image at the staged
     replica count, waiting for it, then uninstall the canary release.
-    Idempotent.
+    Idempotent. Refuses, changing nothing, unless the stable release was
+    first deployed at the time `stage` recorded.
   async abort(ctx: HelmCanaryContext): Promise<void>
     Return the stable release to where it was and remove the canary release.
     Idempotent. What it does depends on what this rollout recorded:
@@ -222,6 +246,12 @@ class HelmCanary
       rollback goes to {@link HelmCanarySettings.stableRevision}. Without one
       this refuses, since claiming a rollback it cannot do would be worse.
     - A record it does not recognise: refuses.
+
+    Staged, or with the install under way, it first reads when the stable
+    release was first deployed and refuses, changing nothing, unless that is
+    the time `stage` recorded — a release reinstalled under the same name, or
+    another cluster's through a changed kube context, is not this rollout's to
+    roll back. A hand-run abort has no recorded time to compare with.
 
 class HelmCanarySettings
   How `helmCanary` reaches the releases, configured through its lambda.
@@ -319,8 +349,10 @@ class HelmCanarySettings
     `(s) => s.kubeContext("prod").kubeconfig("~/.kube/prod")`, or a
     `.toolPath(...)` to a specific helm. The kube context and kubeconfig must
     not change mid-rollout: the rollout records its release names and
-    namespace and refuses a change to those, but cannot record or check
-    these.
+    namespace and refuses a change to those, but cannot record these. A
+    context that now points at another cluster is refused all the same, since
+    that cluster's stable release was not first deployed at the time `stage`
+    recorded — a strong check, not a proof.
   runner(run: HelmSettingsRunner): this
     Replace how each prepared command is run. The default runs it; this is
     for a test, or for a build that executes helm through something else.
