@@ -73,6 +73,14 @@ restores the stable image, values and replica count even after a promotion that
 failed half-way; a stage that failed before installing anything runs no rollback
 at all.
 
+`stage` also records the stable release, the canary release and the namespace. A
+later `expose`, `promote` or rollback configured with any other value refuses,
+naming both, rather than act on either set: the kube context and kubeconfig in
+`.helm(...)` cannot be recorded, so **do not change them, the release names or
+the namespace mid-rollout** — finish or cancel the rollout with the
+configuration it started with. A rollback run by hand with no record
+(`rollout.abort`) uses the configuration as it is.
+
 What it relies on, and cannot check:
 
 - **The stable release's Service must select the canary release's pods too.** A
@@ -98,11 +106,15 @@ What it relies on, and cannot check:
   chart changes every stable pod's templates at the first step. Name the chart
   the stable release runs with `.stableChart(...)` / `.stableVersion(...)`, or
   keep the chart and version identical for both. A chart that is not a local
-  path (`./…` or `/…`) must be pinned — `.chart(...)` with `.version(...)`, and
-  `.stableChart(...)` with `.stableVersion(...)` — and `stage` refuses it
-  otherwise, since an unpinned repository or `oci://` chart would render its
-  latest version at every step and the promotion could install a chart that was
-  never analysed.
+  path (`./…`, `../…`, `/…` or a Windows `C:\…`) must be pinned — `.chart(...)`
+  with `.version(...)`, and `.stableChart(...)` with `.stableVersion(...)` — and
+  `stage` refuses it otherwise, since an unpinned repository or `oci://` chart
+  would render its latest version at every step and the promotion could install
+  a chart that was never analysed.
+- **A local chart is recorded by its path, not its content.** Editing the chart
+  directory mid-rollout means the later steps and the promotion render a chart
+  that was not the one analysed; leave it alone until the rollout finishes, or
+  roll out a packaged, versioned chart instead.
 - **Capacity can dip briefly.** The canary release scales up first, but `--wait`
   counts a Deployment ready at `replicas - maxUnavailable`, and the stable
   release scales down without waiting.
@@ -249,7 +261,9 @@ class HelmCanarySettings
     stable release's replica moves use it too unless {@link stableChart}
     names the chart the stable release runs. Pin a repository chart with
     {@link version}: a chart that is not a local path (one starting with
-    `.` or `/`) is refused without one.
+    `.` or `/`, or a Windows drive path) is refused without one. A local
+    chart is recorded by its path, not its content, so leave it unchanged
+    until the rollout finishes.
   version(value: string): this
     The candidate chart's version (`--version`).
   stableChart(ref: string): this
@@ -257,7 +271,7 @@ class HelmCanarySettings
     while the canary runs. Without it they render {@link chart}, so a
     candidate that changes the chart changes every stable pod's templates at
     the first step. A chart that is not a local path (one starting with `.`
-    or `/`) must be pinned with {@link stableVersion}, or each move would
+    or `/`, or a Windows drive path) must be pinned with {@link stableVersion}, or each move would
     render whatever the repository serves as latest.
   stableVersion(value: string): this
     The stable chart's version (`--version` on the stable release's replica
@@ -300,7 +314,10 @@ class HelmCanarySettings
   helm(configure: Configure<HelmSettings>): this
     Global flags for every helm command the platform runs —
     `(s) => s.kubeContext("prod").kubeconfig("~/.kube/prod")`, or a
-    `.toolPath(...)` to a specific helm.
+    `.toolPath(...)` to a specific helm. The kube context and kubeconfig must
+    not change mid-rollout: the rollout records its release names and
+    namespace and refuses a change to those, but cannot record or check
+    these.
   runner(run: HelmSettingsRunner): this
     Replace how each prepared command is run. The default runs it; this is
     for a test, or for a build that executes helm through something else.

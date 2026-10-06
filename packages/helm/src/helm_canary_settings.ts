@@ -62,7 +62,9 @@ export class HelmCanarySettings {
    * stable release's replica moves use it too unless {@link stableChart}
    * names the chart the stable release runs. Pin a repository chart with
    * {@link version}: a chart that is not a local path (one starting with
-   * `.` or `/`) is refused without one.
+   * `.` or `/`, or a Windows drive path) is refused without one. A local
+   * chart is recorded by its path, not its content, so leave it unchanged
+   * until the rollout finishes.
    */
   chart(ref: string): this {
     this.chart_ = ref;
@@ -80,7 +82,7 @@ export class HelmCanarySettings {
    * while the canary runs. Without it they render {@link chart}, so a
    * candidate that changes the chart changes every stable pod's templates at
    * the first step. A chart that is not a local path (one starting with `.`
-   * or `/`) must be pinned with {@link stableVersion}, or each move would
+   * or `/`, or a Windows drive path) must be pinned with {@link stableVersion}, or each move would
    * render whatever the repository serves as latest.
    */
   stableChart(ref: string): this {
@@ -185,7 +187,10 @@ export class HelmCanarySettings {
   /**
    * Global flags for every helm command the platform runs —
    * `(s) => s.kubeContext("prod").kubeconfig("~/.kube/prod")`, or a
-   * `.toolPath(...)` to a specific helm.
+   * `.toolPath(...)` to a specific helm. The kube context and kubeconfig must
+   * not change mid-rollout: the rollout records its release names and
+   * namespace and refuses a change to those, but cannot record or check
+   * these.
    */
   helm(configure: Configure<HelmSettings>): this {
     this.helm_ = configure;

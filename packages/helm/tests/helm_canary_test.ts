@@ -97,10 +97,24 @@ function platform(
   );
 }
 
+/** The releases and namespace `stage` records for the default platform. */
+const IDENTITY: Record<string, JsonValue> = {
+  helmStableRelease: "api",
+  helmCanaryRelease: "api-canary",
+  helmNamespace: "prod",
+};
+
+/** What `stage` records before the canary install, for the default platform. */
+const DEPLOYING: Record<string, JsonValue> = {
+  helmStage: "deploying",
+  helmStableRevision: 7,
+  ...IDENTITY,
+};
+
 /** The record `stage` writes for the default platform. */
 const STAGED: Record<string, JsonValue> = {
+  ...DEPLOYING,
   helmStage: "staged",
-  helmStableRevision: 7,
   helmImage: "1.5.0",
   helmReplicas: 4,
   helmChart: "./charts/api",
@@ -350,12 +364,12 @@ Deno.test("expose and promote refuse without a staged record, or with a broken o
   // A record of the right shape is checked again as the configuration is.
   const tampered: Array<[Record<string, JsonValue>, string]> = [
     [{ helmImage: "1.5,x=1" }, "is not an image reference or tag"],
-    [{ helmReplicas: 0 }, "h.replicas(10)"],
-    [{ helmChart: "-x" }, "no usable chart"],
-    [{ helmStableChart: "" }, "add h.stableChart("],
-    [{ helmVersion: "" }, 'h.version("")'],
+    [{ helmReplicas: 0 }, "a whole number from 1 up (got 0)"],
+    [{ helmChart: "-x" }, 'the chart "-x" is not a usable chart'],
+    [{ helmStableChart: "" }, 'the stable chart "" is not a usable chart'],
+    [{ helmVersion: "" }, "the chart's version is empty"],
     [{ helmValues: ["a,b.yaml"] }, "cannot be passed to helm"],
-    [{ helmImageKey: "a[0]" }, "h.imageKey(...)"],
+    [{ helmImageKey: "a[0]" }, '"a[0]" is not a values path'],
   ];
   for (const [patch, message] of tampered) {
     await assertRejects(
@@ -436,10 +450,7 @@ Deno.test("abort while the canary install was under way only uninstalls it", asy
       : reads(settings)
   );
   await assertRejects(() => failing.stage(ctx), Error, "timed out: upgrade");
-  assertEquals(ctx.state.get(), {
-    helmStage: "deploying",
-    helmStableRevision: 7,
-  });
+  assertEquals(ctx.state.get(), DEPLOYING);
   const { runner, calls } = fakeHelm();
   await platform(runner).abort(ctx);
   assertEquals(calls, [UNINSTALL]);
@@ -451,13 +462,13 @@ Deno.test("a retried stage keeps the earlier attempt's record and its canary rel
   // leftover, and a retry that fails reading still has it cleaned up.
   const { runner, calls } = fakeHelm({ canary: true });
   const ctx = context();
-  await ctx.state.set({ helmStage: "deploying", helmStableRevision: 7 });
+  await ctx.state.set(DEPLOYING);
   await platform(runner).stage(ctx);
   assertEquals(calls.some((argv) => argv[2] === "api-canary"), false);
   assertEquals(ctx.state.get().helmStage, "staged");
 
   const again = context();
-  await again.state.set({ helmStage: "deploying", helmStableRevision: 7 });
+  await again.state.set(DEPLOYING);
   const failing = platform(() => Promise.reject(new Error("unreachable")));
   await assertRejects(() => failing.stage(again), Error, "unreachable");
   assertEquals(again.state.get().helmStage, "deploying");
@@ -571,14 +582,18 @@ Deno.test("abort refuses a record it does not recognise or that lacks the revisi
     'unrecognised stage "bogus"',
   );
   const partial = context();
-  await partial.state.set({ helmStage: "staged" });
+  await partial.state.set({ helmStage: "staged", ...IDENTITY });
   await assertRejects(
     () => platform(runner, (h) => h.stableRevision(3)).abort(partial),
     Error,
     "no stable revision is recorded",
   );
   const tampered = context();
-  await tampered.state.set({ helmStage: "staged", helmStableRevision: "7" });
+  await tampered.state.set({
+    ...IDENTITY,
+    helmStage: "staged",
+    helmStableRevision: "7",
+  });
   await assertRejects(
     () => platform(runner).abort(tampered),
     Error,
@@ -611,7 +626,7 @@ Deno.test("names, keys, files, versions, chart and image that would change argv 
       [(h) => h.namespace(""), "is not a Kubernetes namespace"],
       [(h) => h.namespace("Prod"), "is not a Kubernetes namespace"],
       [(h) => h.namespace("a".repeat(64)), "is not a Kubernetes namespace"],
-      [(h) => h.version(""), 'h.version("") names no chart version'],
+      [(h) => h.version(""), 'drop h.version("")'],
       [(h) => h.stableVersion(""), 'h.stableVersion("")'],
       [(h) => h.imageKey("image.tag,x=1"), "h.imageKey(...)"],
       [(h) => h.replicasKey("a[0]"), "h.replicasKey(...)"],
@@ -621,7 +636,7 @@ Deno.test("names, keys, files, versions, chart and image that would change argv 
       [(h) => h.values("a\rb.yaml"), "cannot be passed to helm"],
       [(h) => h.values(""), "cannot be passed to helm"],
       [(h) => h.chart("--post-renderer=x"), "add h.chart("],
-      [(h) => h.chart(""), "no usable chart"],
+      [(h) => h.chart(""), 'the chart "" is not a usable chart'],
       [(h) => h.stableChart("-x"), "add h.stableChart("],
       [(h) => h.image("1.5,x=1"), "is not an image reference or tag"],
       [(h) => h.image("-1"), "is not an image reference or tag"],
@@ -697,7 +712,8 @@ Deno.test("the default runner runs helm itself", async () => {
   // The default is the settings' own run(), so a helm that is not installed
   // surfaces as the wrapper's usual tool-not-found error.
   const p = helmCanary((h) =>
-    h.chart("c").stableRelease("api").replicas(2).helm((s) => missingTool(s))
+    h.chart("c").stableRelease("api").namespace("prod").replicas(2)
+      .helm((s) => missingTool(s))
   );
   const staged = await stagedContext();
   await assertRejects(
@@ -754,7 +770,7 @@ Deno.test("expose, promote and abort fail on a command that exited non-zero", as
   assertEquals(calls.map((argv) => argv[0]), ["rollback"]);
   const { runner: uninstall } = failingHelm("uninstall");
   const deploying = context();
-  await deploying.state.set({ helmStage: "deploying", helmStableRevision: 7 });
+  await deploying.state.set(DEPLOYING);
   await assertRejects(
     () => platform(uninstall).abort(deploying),
     Error,
@@ -772,7 +788,7 @@ Deno.test("a .noThrow() in the helm lambda does not hide a failed rollback", asy
   // The running deno stands in for helm: `deno rollback …` exits 1, and the
   // lambda asks run() not to throw on it.
   const p = helmCanary((h) =>
-    h.stableRelease("api").helm((s) =>
+    h.stableRelease("api").namespace("prod").helm((s) =>
       s.noThrow().quiet().toolPath(Deno.execPath())
     )
   );
@@ -908,4 +924,154 @@ Deno.test("a candidate chart from a repository must be pinned with version", asy
     "api-canary",
     "oci://ghcr.io/o/api",
   ]);
+});
+
+/** Configuration changes a resumed process could carry, and what they move. */
+const MOVED: Array<[(h: HelmCanarySettings) => HelmCanarySettings, string]> = [
+  [(h) => h.stableRelease("web"), 'stable release "api"'],
+  [(h) => h.canaryRelease("api-next"), 'canary release "api-canary"'],
+  [(h) => h.namespace("staging"), 'namespace "prod"'],
+];
+
+Deno.test("expose, promote and abort refuse a release identity that changed since stage", async () => {
+  for (const [moved, recorded] of MOVED) {
+    const { runner, calls } = fakeHelm();
+    const ctx = context();
+    await platform(runner).stage(ctx);
+    calls.length = 0;
+    const changed = platform(runner, moved);
+    for (
+      const call of [
+        () => changed.expose(50, ctx),
+        () => changed.promote(ctx),
+        () => changed.abort(ctx),
+        () => changed.stage(ctx),
+      ]
+    ) {
+      const error = await assertRejects(call, Error, recorded);
+      assertEquals(
+        error.message.includes("with the configuration it started with"),
+        true,
+      );
+    }
+    assertEquals(calls, []);
+  }
+});
+
+Deno.test("a rollback of a canary install under way refuses a changed identity", async () => {
+  for (const [moved, recorded] of MOVED) {
+    const ctx = context();
+    const { runner: reads } = fakeHelm();
+    const failing = platform((settings) =>
+      settings.argv()[1] === "upgrade"
+        ? Promise.reject(new Error("timed out: upgrade"))
+        : reads(settings)
+    );
+    await assertRejects(() => failing.stage(ctx), Error, "timed out");
+    const { runner, calls } = fakeHelm();
+    await assertRejects(
+      () => platform(runner, moved).abort(ctx),
+      Error,
+      recorded,
+    );
+    assertEquals(calls, []);
+  }
+});
+
+Deno.test("a record without the release identity is damaged, and refused", async () => {
+  const { runner, calls } = fakeHelm();
+  for (
+    const key of ["helmStableRelease", "helmCanaryRelease", "helmNamespace"]
+  ) {
+    const ctx = context();
+    await platform(runner).stage(ctx);
+    const state = ctx.state.get();
+    delete state[key];
+    const damaged = context();
+    await damaged.state.set(state);
+    calls.length = 0;
+    await assertRejects(
+      () => platform(runner).abort(damaged),
+      Error,
+      "the rollout's record",
+    );
+    assertEquals(calls, []);
+  }
+});
+
+Deno.test("a recorded chart with no version that is not a local path is refused as damaged", async () => {
+  const { runner, calls } = fakeHelm();
+  const unpinned: Array<Record<string, JsonValue>> = [
+    { helmChart: "repo/api", helmVersion: null },
+    { helmStableChart: "oci://ghcr.io/o/api", helmStableVersion: null },
+  ];
+  for (const patch of unpinned) {
+    await assertRejects(
+      async () => platform(runner).promote(await stagedContext(patch)),
+      Error,
+      "the rollout's record of the staged candidate is damaged:",
+    );
+  }
+  assertEquals(calls, []);
+});
+
+Deno.test("a damaged record is reported as damaged, not as a setting to change", async () => {
+  const { runner } = fakeHelm();
+  const tampered: Array<Record<string, JsonValue>> = [
+    { helmImage: "1.5,x=1" },
+    { helmImage: "ghcr.io/o/api:1.5" },
+    { helmReplicas: 0 },
+    { helmChart: "-x" },
+    { helmStableChart: "" },
+    { helmVersion: "" },
+    { helmValues: ["a,b.yaml"] },
+    { helmImageKey: "a[0]" },
+  ];
+  for (const patch of tampered) {
+    const error = await assertRejects(
+      async () => platform(runner).expose(10, await stagedContext(patch)),
+      Error,
+      "the rollout's record of the staged candidate is damaged:",
+    );
+    assertEquals(error.message.includes("h."), false, error.message);
+  }
+});
+
+Deno.test("Windows drive paths count as local charts", async () => {
+  for (const ref of ["C:\\charts\\api", "d:/charts/api", ".\\charts\\api"]) {
+    const { runner, calls } = fakeHelm();
+    await platform(runner, (h) => h.chart(ref)).stage(context());
+    assertEquals(calls[2][2], ref);
+  }
+  const { runner } = fakeHelm();
+  await assertRejects(
+    () => platform(runner, (h) => h.chart("C:charts")).stage(context()),
+    Error,
+    "h.version(...)",
+  );
+});
+
+Deno.test("a rollout started in helm's default namespace refuses a namespace added later", async () => {
+  const { runner, calls } = fakeHelm();
+  const unscoped = (h: HelmCanarySettings) =>
+    h.chart("./charts/api").stableRelease("api").image("1.5.0").replicas(4)
+      .runner(runner);
+  const ctx = context();
+  await helmCanary(unscoped).stage(ctx);
+  assertEquals(ctx.state.get().helmNamespace, null);
+  calls.length = 0;
+  await assertRejects(
+    () => helmCanary((h) => unscoped(h).namespace("prod")).expose(50, ctx),
+    Error,
+    `the namespace helm's default, but it is now configured with "prod"`,
+  );
+  assertEquals(calls, []);
+  await assertRejects(
+    () =>
+      helmCanary((h) => h.stableRelease("api").image("1").replicas(1)).stage(
+        context(),
+      ),
+    Error,
+    "no chart is set",
+  );
 });

@@ -42,6 +42,11 @@
  *   is ready by `--wait`'s measure (which counts a Deployment ready at
  *   `replicas - maxUnavailable`), so capacity can dip briefly.
  *
+ * `stage` records the release names and namespace, and every later call
+ * refuses a configuration that names others — so the kube context in
+ * {@link HelmCanarySettings.helm}, which cannot be recorded, must not change
+ * mid-rollout either.
+ *
  * A rollback never re-derives the old state: `stage` reads the stable
  * release's current revision (through helm's own `--template` projection, the
  * one kind of value read back) and a rollback is `helm rollback` to exactly
@@ -70,12 +75,17 @@ import {
 import type { CommandOutput } from "@zuke/core/shell";
 import {
   type Candidate,
+  configuredCandidate,
+} from "./helm_canary_candidate.ts";
+import {
   checkedReleases,
   checkedRevision,
-  configuredCandidate,
+  type ReleaseNames,
 } from "./helm_canary_checks.ts";
 import {
   candidateRecord,
+  checkIdentity,
+  identityRecord,
   recordedCandidate,
   STABLE_REVISION,
   STAGE,
@@ -151,15 +161,20 @@ export class HelmCanary {
     const prior = ctx.state.get()[STAGE];
     if (prior === undefined) await ctx.state.set({ [STAGE]: "reading" });
     const settings = this.#configure(new HelmCanarySettings());
-    const { stable, canary } = checkedReleases(settings);
+    const names = checkedReleases(settings);
+    const { stable, canary } = names;
+    const resumed = prior === "deploying" || prior === "staged";
+    if (resumed) checkIdentity(ctx.state.get(), names);
     const candidate = configuredCandidate(settings);
     const revision = await this.#deployedRevision(settings, stable);
-    if (prior !== "deploying" && prior !== "staged") {
-      await this.#refuseLeftover(settings, canary);
-    }
-    // A rollback reads this to know the canary release may exist, so it must
-    // be on record before the install can create it.
-    const deploying = { [STAGE]: "deploying", [STABLE_REVISION]: revision };
+    if (!resumed) await this.#refuseLeftover(settings, canary);
+    // A rollback reads this to know the canary release may exist, and which
+    // one, so it must be on record before the install can create it.
+    const deploying = {
+      [STAGE]: "deploying",
+      [STABLE_REVISION]: revision,
+      ...identityRecord(names),
+    };
     if (!await ctx.state.trySet(deploying)) {
       throw new Error(
         "helmCanary: could not record that the canary install is starting, " +
@@ -201,8 +216,9 @@ export class HelmCanary {
       );
     }
     const settings = this.#configure(new HelmCanarySettings());
-    const { stable, canary } = checkedReleases(settings);
-    const staged = this.#staged(ctx);
+    const names = checkedReleases(settings);
+    const { stable, canary } = names;
+    const staged = this.#staged(ctx, names);
     const { total, replicasKey } = staged;
     const rounded = Math.round(total * percent / 100);
     const share = percent > 0 && rounded === 0 ? 1 : rounded;
@@ -233,8 +249,9 @@ export class HelmCanary {
    */
   async promote(ctx: HelmCanaryContext): Promise<void> {
     const settings = this.#configure(new HelmCanarySettings());
-    const { stable, canary } = checkedReleases(settings);
-    const staged = this.#staged(ctx);
+    const names = checkedReleases(settings);
+    const { stable, canary } = names;
+    const staged = this.#staged(ctx, names);
     const upgrade = this.#upgrade(
       settings,
       stable,
@@ -269,7 +286,11 @@ export class HelmCanary {
     const stage = recorded[STAGE];
     if (stage === "reading") return;
     const settings = this.#configure(new HelmCanarySettings());
-    const { stable, canary } = checkedReleases(settings);
+    const names = checkedReleases(settings);
+    const { stable, canary } = names;
+    if (stage === "deploying" || stage === "staged") {
+      checkIdentity(recorded, names);
+    }
     if (stage === "deploying") {
       await this.#run(settings, "uninstall", this.#uninstall(settings, canary));
       return;
@@ -323,8 +344,8 @@ export class HelmCanary {
     return configured;
   }
 
-  /** The candidate `stage` recorded, re-checked. */
-  #staged(ctx: HelmCanaryContext): Candidate {
+  /** The candidate `stage` recorded for these releases, re-checked. */
+  #staged(ctx: HelmCanaryContext, names: ReleaseNames): Candidate {
     const recorded = ctx.state.get();
     if (recorded[STAGE] !== "staged") {
       throw new Error(
@@ -333,6 +354,7 @@ export class HelmCanary {
           "same rollout.",
       );
     }
+    checkIdentity(recorded, names);
     return recordedCandidate(recorded);
   }
 
