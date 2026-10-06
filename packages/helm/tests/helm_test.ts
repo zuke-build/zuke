@@ -387,3 +387,22 @@ Deno.test("helm: conforms to the wrapper contract", async () => {
     },
   );
 });
+
+Deno.test("upgrade and rollback refuse a --history-max helm could not take", () => {
+  for (const bad of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assertThrows(
+      () => new HelmUpgradeSettings().historyMax(bad),
+      Error,
+      `HelmTasks.upgrade: .historyMax() takes a whole number from 0 up, not ${bad}.`,
+    );
+    assertThrows(
+      () => new HelmRollbackSettings().historyMax(bad),
+      Error,
+      `HelmTasks.rollback: .historyMax() takes a whole number from 0 up, not ${bad}.`,
+    );
+  }
+  assertEquals(
+    new HelmRollbackSettings().release("api").historyMax(5).argv().slice(1),
+    ["rollback", "api", "--history-max", "5"],
+  );
+});

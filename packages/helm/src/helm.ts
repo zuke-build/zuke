@@ -43,6 +43,17 @@ function checkedRevision(task: string, number: number): number {
   return number;
 }
 
+/** `count` if helm takes it as `--history-max`, else a friendly error. */
+function checkedHistoryMax(task: string, count: number): number {
+  if (!Number.isSafeInteger(count) || count < 0) {
+    throw new Error(
+      `HelmTasks.${task}: .historyMax() takes a whole number from 0 up, not ` +
+        `${count}.`,
+    );
+  }
+  return count;
+}
+
 /**
  * Base for all `helm` subcommand settings: the binary is `helm`, and the
  * cluster-targeting flags (`--namespace`, `--kube-context`, `--kubeconfig`) are
@@ -265,10 +276,10 @@ export class HelmUpgradeSettings extends HelmValuesSettings {
 
   /**
    * Keep at most `count` revisions of the release; `0` keeps them all
-   * (`--history-max`).
+   * (`--history-max`). A whole number from 0 up.
    */
   historyMax(count: number): this {
-    this.#historyMax = count;
+    this.#historyMax = checkedHistoryMax("upgrade", count);
     return this;
   }
 
@@ -403,10 +414,10 @@ export class HelmRollbackSettings extends HelmSettings {
 
   /**
    * Keep at most `count` revisions of the release; `0` keeps them all
-   * (`--history-max`).
+   * (`--history-max`). A whole number from 0 up.
    */
   historyMax(count: number): this {
-    this.#historyMax = count;
+    this.#historyMax = checkedHistoryMax("rollback", count);
     return this;
   }
 

@@ -62,12 +62,16 @@ stable release `--history-max 0`:
 | `promote` | `upgrade <stable> <chart> --set replicaCount=<total> --set-string image.tag=<image> --wait`, then `uninstall <canary> --ignore-not-found`.                                                                                                                                                         |
 | `abort`   | `rollback <stable> <recorded revision> --wait`, then `uninstall <canary> --ignore-not-found`. Run by hand, the revision set with `.stableRevision(n)`; without one it refuses.                                                                                                                     |
 
-`stage` records the image and the total replica count, and `expose` and
+`stage` records the image, the total replica count, the charts and their
+versions, the values files and the image and replica keys, and `expose` and
 `promote` use what it recorded — so a resumed process configured with another
-image still promotes the one that was analysed. A rollback is `helm rollback` to
-the exact revision `stage` read, so it restores the stable image, values and
-replica count even after a promotion that failed half-way; a stage that failed
-before installing anything runs no rollback at all.
+image or chart still promotes the one that was analysed. Every command's exit
+code is checked, so a `.helm((s) => s.noThrow())` or a runner that returns a
+failed output cannot make a failed install look staged or a failed rollback look
+done. A rollback is `helm rollback` to the exact revision `stage` read, so it
+restores the stable image, values and replica count even after a promotion that
+failed half-way; a stage that failed before installing anything runs no rollback
+at all.
 
 What it relies on, and cannot check:
 
@@ -93,7 +97,11 @@ What it relies on, and cannot check:
   `.stableChart(...)` it renders `.chart(...)`, so a candidate that changes the
   chart changes every stable pod's templates at the first step. Name the chart
   the stable release runs with `.stableChart(...)` / `.stableVersion(...)`, or
-  keep the chart and version identical for both.
+  keep the chart and version identical for both. A `.stableChart(...)` that is
+  not a local path (`./…` or `/…`) must be pinned with `.stableVersion(...)`;
+  `stage` refuses it otherwise. A candidate `.chart(...)` from a repository
+  should be pinned with `.version(...)` too, or a later step can render a newer
+  chart than the one analysed.
 - **Capacity can dip briefly.** The canary release scales up first, but `--wait`
   counts a Deployment ready at `replicas - maxUnavailable`, and the stable
   release scales down without waiting.
@@ -140,7 +148,8 @@ function helmCanary(configure: Configure<HelmCanarySettings>): HelmCanary
   ```
 
   The lambda runs on every call, so it may read resolved parameters; the
-  image and replica count are fixed by `stage`. Every upgrade passes
+  image, replica count, charts, versions, values files and keys are fixed by
+  `stage`. Every upgrade passes
   `--reset-then-reuse-values`, and every command on the stable release
   `--history-max 0`.
 
@@ -171,15 +180,17 @@ class HelmCanary
     Check the stable release is deployed and record its revision, check no
     canary release is left over, then install the candidate as the canary
     release with no replicas: `upgrade <canary> <chart> --set <replicasKey>=0 --set-string <imageKey>=<image> --install --wait`. The
-    image and the total replica count are recorded, and every later call
-    uses those, not a configuration that may have changed since.
+    image, replica count, charts, versions, values files and keys are
+    recorded, and every later call uses those, not a configuration that may
+    have changed since.
   async expose(percent: number, ctx: HelmCanaryContext): Promise<number>
     Give the canary release `percent` of the staged replica count — rounded,
     and at least one for any share above 0 — scaling it up (waiting) before
     the stable release down (not waiting). Returns the share achieved.
   async promote(ctx: HelmCanaryContext): Promise<void>
-    Upgrade the stable release to the staged image at the staged replica
-    count, waiting for it, then uninstall the canary release. Idempotent.
+    Upgrade the stable release to the staged chart and image at the staged
+    replica count, waiting for it, then uninstall the canary release.
+    Idempotent.
   async abort(ctx: HelmCanaryContext): Promise<void>
     Return the stable release to where it was and remove the canary release.
     Idempotent. What it does depends on what this rollout recorded:
@@ -243,10 +254,13 @@ class HelmCanarySettings
     The chart the stable release runs today, for the replica moves on it
     while the canary runs. Without it they render {@link chart}, so a
     candidate that changes the chart changes every stable pod's templates at
-    the first step.
+    the first step. A chart that is not a local path (one starting with `.`
+    or `/`) must be pinned with {@link stableVersion}, or each move would
+    render whatever the repository serves as latest.
   stableVersion(value: string): this
     The stable chart's version (`--version` on the stable release's replica
-    moves). Defaults to {@link version} when {@link stableChart} is not set.
+    moves). Defaults to {@link version} when {@link stableChart} is not set,
+    and is required when it names a repository or `oci://` chart.
   stableRelease(name: string): this
     The release serving today. It must already exist; the canary amends it.
   canaryRelease(name: string): this
@@ -381,7 +395,7 @@ class HelmRollbackSettings extends HelmSettings
     Operation timeout, e.g. `5m` (`--timeout`).
   historyMax(count: number): this
     Keep at most `count` revisions of the release; `0` keeps them all
-    (`--history-max`).
+    (`--history-max`). A whole number from 0 up.
   override protected buildArgs(): string[]
     Assemble the `helm rollback` argv.
 
@@ -447,7 +461,7 @@ class HelmUpgradeSettings extends HelmValuesSettings
     changed is picked up.
   historyMax(count: number): this
     Keep at most `count` revisions of the release; `0` keeps them all
-    (`--history-max`).
+    (`--history-max`). A whole number from 0 up.
   createNamespace(): this
     Create the release namespace if absent (`--create-namespace`).
   wait(): this

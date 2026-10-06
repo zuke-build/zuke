@@ -59,7 +59,7 @@ export interface ReleaseNames {
   readonly canary: string;
 }
 
-/** The release names and every configured value, checked. */
+/** The release names and the namespace, checked. */
 export function checkedReleases(settings: HelmCanarySettings): ReleaseNames {
   const stable = settings.stableRelease_;
   if (stable === undefined) {
@@ -92,33 +92,100 @@ export function checkedReleases(settings: HelmCanarySettings): ReleaseNames {
         "h.namespace(...).",
     );
   }
-  for (
-    const [setter, value] of [
-      ["version", settings.version_],
-      ["stableVersion", settings.stableVersion_],
-    ]
+  return { stable, canary };
+}
+
+/** What `stage` installs and every later call renders, before any check. */
+export interface UncheckedCandidate {
+  /** The candidate's chart. */
+  readonly chart: string | undefined;
+  /** The candidate chart's version, if pinned. */
+  readonly version: string | undefined;
+  /** The chart the stable release's replica moves render. */
+  readonly stableChart: string | undefined;
+  /** That chart's version, if pinned. */
+  readonly stableVersion: string | undefined;
+  /** The values files for the canary release and the promotion. */
+  readonly values: readonly string[];
+  /** The values path the image is set on. */
+  readonly imageKey: string;
+  /** The values path the replica count is set on. */
+  readonly replicasKey: string;
+  /** The candidate image. */
+  readonly image: string | undefined;
+  /** The total replica count across both releases. */
+  readonly total: number | undefined;
+}
+
+/** What `stage` installs and every later call renders, checked. */
+export interface Candidate {
+  /** The candidate's chart. */
+  readonly chart: string;
+  /** The candidate chart's version, if pinned. */
+  readonly version: string | undefined;
+  /** The chart the stable release's replica moves render. */
+  readonly stableChart: string;
+  /** That chart's version, if pinned. */
+  readonly stableVersion: string | undefined;
+  /** The values files for the canary release and the promotion. */
+  readonly values: readonly string[];
+  /** The values path the image is set on. */
+  readonly imageKey: string;
+  /** The values path the replica count is set on. */
+  readonly replicasKey: string;
+  /** The candidate image. */
+  readonly image: string;
+  /** The total replica count across both releases. */
+  readonly total: number;
+}
+
+/**
+ * The candidate as configured: the stable release renders the candidate's
+ * chart and version unless {@link HelmCanarySettings.stableChart} names its
+ * own, and a stable chart that is not a local path must be pinned, or each
+ * replica move would render whatever the repository serves as latest.
+ */
+export function configuredCandidate(settings: HelmCanarySettings): Candidate {
+  const named = settings.stableChart_;
+  const candidate = checkedCandidate({
+    chart: settings.chart_,
+    version: settings.version_,
+    stableChart: named ?? settings.chart_,
+    stableVersion: settings.stableVersion_ ??
+      (named === undefined ? settings.version_ : undefined),
+    values: settings.values_,
+    imageKey: settings.imageKey_,
+    replicasKey: settings.replicasKey_,
+    image: settings.image_,
+    total: settings.replicas_,
+  });
+  if (
+    named !== undefined && candidate.stableVersion === undefined &&
+    !/^[./]/.test(named)
   ) {
-    if (value === "") {
-      throw new Error(
-        `helmCanary: h.${setter}("") names no chart version — drop it, or ` +
-          "give the version.",
-      );
-    }
+    throw new Error(
+      `helmCanary: the stable chart ${JSON.stringify(named)} is not a local ` +
+        "path, so without a version every replica move on the stable " +
+        "release would render the repository's latest chart — add " +
+        "h.stableVersion(...), the version the stable release runs, or name " +
+        "a local chart starting with ./ or /.",
+    );
   }
-  for (
-    const [setter, key] of [
-      ["imageKey", settings.imageKey_],
-      ["replicasKey", settings.replicasKey_],
-    ]
-  ) {
-    if (!KEY_SHAPE.test(key)) {
-      throw new Error(
-        `helmCanary: "${key}" is not a values path this platform sets — ` +
-          `use dotted plain names like image.tag in h.${setter}(...).`,
-      );
-    }
-  }
-  for (const file of settings.values_) {
+  return candidate;
+}
+
+/**
+ * Every part of a candidate, checked — the one check for a configured
+ * candidate and for one read back from the rollout's record.
+ */
+export function checkedCandidate(parts: UncheckedCandidate): Candidate {
+  const chart = checkedChart(parts.chart, "chart");
+  const stableChart = checkedChart(parts.stableChart, "stableChart");
+  const version = checkedVersion(parts.version, "version");
+  const stableVersion = checkedVersion(parts.stableVersion, "stableVersion");
+  const imageKey = checkedKey(parts.imageKey, "imageKey");
+  const replicasKey = checkedKey(parts.replicasKey, "replicasKey");
+  for (const file of parts.values) {
     if (file === "" || VALUES_FILE_SYNTAX.test(file)) {
       throw new Error(
         `helmCanary: the values file ${JSON.stringify(file)} cannot be ` +
@@ -127,7 +194,42 @@ export function checkedReleases(settings: HelmCanarySettings): ReleaseNames {
       );
     }
   }
-  return { stable, canary };
+  return {
+    chart,
+    version,
+    stableChart,
+    stableVersion,
+    values: [...parts.values],
+    imageKey,
+    replicasKey,
+    image: checkedImage(imageKey, parts.image),
+    total: checkedTotal(parts.total),
+  };
+}
+
+/** A chart version, unless it is empty. */
+function checkedVersion(
+  value: string | undefined,
+  setter: string,
+): string | undefined {
+  if (value === "") {
+    throw new Error(
+      `helmCanary: h.${setter}("") names no chart version — drop it, or ` +
+        "give the version.",
+    );
+  }
+  return value;
+}
+
+/** A values path `--set` reads as a plain dotted path. */
+function checkedKey(key: string, setter: string): string {
+  if (!KEY_SHAPE.test(key)) {
+    throw new Error(
+      `helmCanary: "${key}" is not a values path this platform sets — ` +
+        `use dotted plain names like image.tag in h.${setter}(...).`,
+    );
+  }
+  return key;
 }
 
 /** `name` if it is a release name helm accepts, else an error naming `where`. */
@@ -142,7 +244,7 @@ function checkReleaseName(name: string, where: string): void {
 }
 
 /** A chart reference, or a friendly error naming the setter. */
-export function checkedChart(ref: string | undefined, setter: string): string {
+function checkedChart(ref: string | undefined, setter: string): string {
   if (ref === undefined || ref === "" || ref.startsWith("-")) {
     throw new Error(
       `helmCanary: no usable chart — add h.${setter}('./charts/api'), the ` +
@@ -153,7 +255,7 @@ export function checkedChart(ref: string | undefined, setter: string): string {
 }
 
 /** A candidate image, checked against `--set-string` syntax and its key. */
-export function checkedImage(key: string, image: string | undefined): string {
+function checkedImage(key: string, image: string | undefined): string {
   if (image === undefined) {
     throw new Error(
       `helmCanary: no candidate image — add h.image(...), the value set at ` +
@@ -180,7 +282,7 @@ export function checkedImage(key: string, image: string | undefined): string {
 }
 
 /** A total replica count, or a friendly error naming the fix. */
-export function checkedTotal(total: number | undefined): number {
+function checkedTotal(total: number | undefined): number {
   if (total === undefined || !isWholeNumber(total)) {
     throw new Error(
       `helmCanary: the total replica count must be a whole number from 1 up ` +

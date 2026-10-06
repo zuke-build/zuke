@@ -78,7 +78,9 @@ export class HelmCanarySettings {
    * The chart the stable release runs today, for the replica moves on it
    * while the canary runs. Without it they render {@link chart}, so a
    * candidate that changes the chart changes every stable pod's templates at
-   * the first step.
+   * the first step. A chart that is not a local path (one starting with `.`
+   * or `/`) must be pinned with {@link stableVersion}, or each move would
+   * render whatever the repository serves as latest.
    */
   stableChart(ref: string): this {
     this.stableChart_ = ref;
@@ -87,7 +89,8 @@ export class HelmCanarySettings {
 
   /**
    * The stable chart's version (`--version` on the stable release's replica
-   * moves). Defaults to {@link version} when {@link stableChart} is not set.
+   * moves). Defaults to {@link version} when {@link stableChart} is not set,
+   * and is required when it names a repository or `oci://` chart.
    */
   stableVersion(value: string): this {
     this.stableVersion_ = value;

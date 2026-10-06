@@ -97,15 +97,25 @@ function platform(
   );
 }
 
-/** A context whose state records a finished stage, as `stage` writes it. */
-async function stagedContext(image = "1.5.0", total = 4) {
+/** The record `stage` writes for the default platform. */
+const STAGED: Record<string, JsonValue> = {
+  helmStage: "staged",
+  helmStableRevision: 7,
+  helmImage: "1.5.0",
+  helmReplicas: 4,
+  helmChart: "./charts/api",
+  helmVersion: null,
+  helmStableChart: "./charts/api",
+  helmStableVersion: null,
+  helmValues: [],
+  helmImageKey: "image.tag",
+  helmReplicasKey: "replicaCount",
+};
+
+/** A context whose state records a finished stage, with `patch` over it. */
+async function stagedContext(patch: Record<string, JsonValue> = {}) {
   const ctx = context();
-  await ctx.state.set({
-    helmStage: "staged",
-    helmStableRevision: 7,
-    helmImage: image,
-    helmReplicas: total,
-  });
+  await ctx.state.set({ ...STAGED, ...patch });
   return ctx;
 }
 
@@ -152,10 +162,8 @@ Deno.test("stage checks both releases, installs the canary at 0 replicas, and re
     ],
   ]);
   assertEquals(ctx.state.get(), {
-    helmStage: "staged",
-    helmStableRevision: 7,
-    helmImage: "1.5.0",
-    helmReplicas: 4,
+    ...STAGED,
+    helmValues: ["values-prod.yaml"],
   });
   assertEquals(ctx.summary, { "Stable revision": 7 });
 });
@@ -223,7 +231,10 @@ Deno.test("expose scales the canary up first, then the stable release down", asy
     runner,
     (h) => h.version("1.2.3").timeout("10m").replicasKey("deploy.replicas"),
   );
-  assertEquals(await p.expose(50, await stagedContext()), 50);
+  const ctx = context();
+  await p.stage(ctx);
+  calls.length = 0;
+  assertEquals(await p.expose(50, ctx), 50);
   assertEquals(calls, [
     [
       "upgrade",
@@ -256,32 +267,28 @@ Deno.test("expose scales the canary up first, then the stable release down", asy
 });
 
 Deno.test("expose renders the stable release from its own chart when named", async () => {
-  const { runner, calls } = fakeHelm();
-  const ctx = await stagedContext();
-  await platform(
-    runner,
+  const configs: Array<(h: HelmCanarySettings) => HelmCanarySettings> = [
     (h) => h.version("2.0.0").stableChart("repo/api").stableVersion("1.9.0"),
-  ).expose(25, ctx);
-  assertEquals(calls[1].slice(0, 3), ["upgrade", "api", "repo/api"]);
-  assertEquals(calls[1][calls[1].indexOf("--version") + 1], "1.9.0");
-  // A stable chart without a version takes none — not the candidate's.
-  await platform(
-    runner,
-    (h) => h.version("2.0.0").stableChart("./charts/api-v1"),
-  ).expose(25, ctx);
-  assertEquals(calls[3].includes("--version"), false);
-  // The same chart at another version.
-  await platform(runner, (h) => h.version("2.0.0").stableVersion("1.9.0"))
-    .expose(25, ctx);
-  assertEquals(calls[5].slice(0, 3), ["upgrade", "api", "./charts/api"]);
-  assertEquals(calls[5][calls[5].indexOf("--version") + 1], "1.9.0");
+    // The same chart at another version.
+    (h) => h.version("2.0.0").stableVersion("1.9.0"),
+  ];
+  for (const config of configs) {
+    const { runner, calls } = fakeHelm();
+    const p = platform(runner, config);
+    const ctx = context();
+    await p.stage(ctx);
+    await p.expose(25, ctx);
+    const stable = calls[4];
+    assertEquals(stable[1], "api");
+    assertEquals(stable[stable.indexOf("--version") + 1], "1.9.0");
+  }
 });
 
 Deno.test("expose quantises the staged count and reports the share achieved", async () => {
   const { runner, calls } = fakeHelm();
   // The configured count changed since stage; the staged one is used.
   const p = platform(runner, (h) => h.replicas(100));
-  const ctx = await stagedContext("1.5.0", 3);
+  const ctx = await stagedContext({ helmReplicas: 3 });
   // 10 % of 3 rounds to 0, but a step above 0 always gets one pod.
   assertEquals(await p.expose(10, ctx), 33.33);
   assertEquals(await p.expose(0, ctx), 0);
@@ -321,35 +328,54 @@ Deno.test("expose and promote refuse without a staged record, or with a broken o
     Error,
     "no staged canary is recorded",
   );
-  const patches: Array<Record<string, JsonValue>> = [
+  const incomplete: Array<Record<string, JsonValue>> = [
     { helmImage: 1 },
     { helmReplicas: "4" },
-    { helmReplicas: 0 },
+    { helmChart: null },
+    { helmVersion: 1 },
+    { helmStableChart: 1 },
+    { helmStableVersion: false },
+    { helmValues: "values.yaml" },
+    { helmValues: [1] },
+    { helmImageKey: null },
+    { helmReplicasKey: 4 },
   ];
-  for (const patch of patches) {
-    const ctx = await stagedContext();
-    await ctx.state.set(patch);
+  for (const patch of incomplete) {
     await assertRejects(
-      () => platform(runner).promote(ctx),
+      async () => platform(runner).promote(await stagedContext(patch)),
       Error,
-      "record of the staged image and replica count is incomplete",
+      "record of the staged candidate is incomplete",
     );
   }
-  const tampered = await stagedContext("1.5,x=1");
-  await assertRejects(
-    () => platform(runner).promote(tampered),
-    Error,
-    "is not an image reference or tag",
-  );
+  // A record of the right shape is checked again as the configuration is.
+  const tampered: Array<[Record<string, JsonValue>, string]> = [
+    [{ helmImage: "1.5,x=1" }, "is not an image reference or tag"],
+    [{ helmReplicas: 0 }, "h.replicas(10)"],
+    [{ helmChart: "-x" }, "no usable chart"],
+    [{ helmStableChart: "" }, "add h.stableChart("],
+    [{ helmVersion: "" }, 'h.version("")'],
+    [{ helmValues: ["a,b.yaml"] }, "cannot be passed to helm"],
+    [{ helmImageKey: "a[0]" }, "h.imageKey(...)"],
+  ];
+  for (const [patch, message] of tampered) {
+    await assertRejects(
+      async () => platform(runner).expose(10, await stagedContext(patch)),
+      Error,
+      message,
+    );
+  }
   assertEquals(calls, []);
 });
 
 Deno.test("promote moves the stable release to the staged image, then uninstalls the canary", async () => {
   const { runner, calls } = fakeHelm();
-  // The configured image changed since stage — a resumed process with a new
-  // parameter. The staged one, the one analysed, is promoted.
-  const p = platform(runner, (h) => h.values("values-prod.yaml").image("9.9"));
-  const ctx = await stagedContext("1.5.0", 4);
+  // The configured image, chart and values changed since stage — a resumed
+  // process with new parameters. The staged ones, analysed, are promoted.
+  const p = platform(
+    runner,
+    (h) => h.values("values-other.yaml").image("9.9").chart("./charts/v2"),
+  );
+  const ctx = await stagedContext({ helmValues: ["values-prod.yaml"] });
   await p.promote(ctx);
   await p.promote(ctx);
   assertEquals(calls.slice(0, 2), [
@@ -495,7 +521,10 @@ Deno.test("a revision read-back that is not a revision is refused before anythin
 Deno.test("a stage that cannot record itself staged stops before any exposure", async () => {
   const { runner, calls } = fakeHelm();
   const ctx = context();
-  ctx.state.trySet = () => Promise.resolve(false);
+  const record = ctx.state.trySet;
+  // The "deploying" marker lands; the "staged" one does not.
+  ctx.state.trySet = (patch) =>
+    patch.helmStage === "staged" ? Promise.resolve(false) : record(patch);
   await assertRejects(
     () => platform(runner).stage(ctx),
     Error,
@@ -593,6 +622,7 @@ Deno.test("names, keys, files, versions, chart and image that would change argv 
       [(h) => h.values(""), "cannot be passed to helm"],
       [(h) => h.chart("--post-renderer=x"), "add h.chart("],
       [(h) => h.chart(""), "no usable chart"],
+      [(h) => h.stableChart("-x"), "add h.stableChart("],
       [(h) => h.image("1.5,x=1"), "is not an image reference or tag"],
       [(h) => h.image("-1"), "is not an image reference or tag"],
       [(h) => h.image("ghcr.io/o/api:1.5"), "looks like a full image"],
@@ -608,12 +638,6 @@ Deno.test("names, keys, files, versions, chart and image that would change argv 
       message,
     );
   }
-  const staged = await stagedContext();
-  await assertRejects(
-    () => platform(runner, (h) => h.stableChart("-x")).expose(10, staged),
-    Error,
-    "add h.stableChart(",
-  );
   await assertRejects(
     () =>
       helmCanary((h) => h.chart("c").image("1").runner(runner)).stage(
@@ -680,4 +704,186 @@ Deno.test("the default runner runs helm itself", async () => {
     () => p.expose(50, staged),
     ToolNotFoundError,
   );
+});
+
+/** `fakeHelm`, but every `verb` command exits 1 without throwing. */
+function failingHelm(verb: string, cluster: Cluster = {}) {
+  const { runner: reads, calls } = fakeHelm(cluster);
+  const runner = (settings: HelmSettings): Promise<CommandOutput> =>
+    settings.argv()[1] === verb
+      ? (calls.push(settings.argv().slice(1)),
+        Promise.resolve(new CommandOutput(1, "", "Error: boom\n")))
+      : reads(settings);
+  return { runner, calls };
+}
+
+Deno.test("a failed canary install is never recorded as staged, even when the runner does not throw", async () => {
+  const { runner } = failingHelm("upgrade");
+  const ctx = context();
+  await assertRejects(
+    () => platform(runner).stage(ctx),
+    Error,
+    "helmCanary: helm upgrade exited 1: Error: boom",
+  );
+  assertEquals(ctx.state.get().helmStage, "deploying");
+  assertEquals(ctx.summary, {});
+});
+
+Deno.test("expose, promote and abort fail on a command that exited non-zero", async () => {
+  for (const verb of ["upgrade", "uninstall"]) {
+    const { runner } = failingHelm(verb);
+    await assertRejects(
+      async () => platform(runner).promote(await stagedContext()),
+      Error,
+      `helmCanary: helm ${verb} exited 1: Error: boom`,
+    );
+  }
+  const { runner: upgrade } = failingHelm("upgrade");
+  await assertRejects(
+    async () => platform(upgrade).expose(50, await stagedContext()),
+    Error,
+    "helmCanary: helm upgrade exited 1: Error: boom",
+  );
+  const { runner: rollback, calls } = failingHelm("rollback");
+  await assertRejects(
+    async () => platform(rollback).abort(await stagedContext()),
+    Error,
+    "helmCanary: helm rollback exited 1: Error: boom",
+  );
+  // The canary release is left for the retry; nothing claims a rollback.
+  assertEquals(calls.map((argv) => argv[0]), ["rollback"]);
+  const { runner: uninstall } = failingHelm("uninstall");
+  const deploying = context();
+  await deploying.state.set({ helmStage: "deploying", helmStableRevision: 7 });
+  await assertRejects(
+    () => platform(uninstall).abort(deploying),
+    Error,
+    "helmCanary: helm uninstall exited 1: Error: boom",
+  );
+  const { runner: read } = failingHelm("get");
+  await assertRejects(
+    () => platform(read).stage(context()),
+    Error,
+    "helmCanary: helm get all exited 1: Error: boom",
+  );
+});
+
+Deno.test("a .noThrow() in the helm lambda does not hide a failed rollback", async () => {
+  // The running deno stands in for helm: `deno rollback …` exits 1, and the
+  // lambda asks run() not to throw on it.
+  const p = helmCanary((h) =>
+    h.stableRelease("api").helm((s) =>
+      s.noThrow().quiet().toolPath(Deno.execPath())
+    )
+  );
+  await assertRejects(
+    async () => p.abort(await stagedContext()),
+    Error,
+    "helmCanary: helm rollback exited 1",
+  );
+});
+
+Deno.test("expose and promote use the chart, values and keys stage recorded, not the current configuration", async () => {
+  const { runner, calls } = fakeHelm();
+  let chart = "./charts/v1";
+  let key = "image.tag";
+  let file = "values-v1.yaml";
+  let replicas = "replicaCount";
+  let version = "1.0.0";
+  const p = platform(
+    runner,
+    (h) =>
+      h.chart(chart).version(version).values(file).imageKey(key)
+        .replicasKey(replicas),
+  );
+  const ctx = context();
+  await p.stage(ctx);
+  chart = "./charts/v2";
+  key = "app.tag";
+  file = "values-v2.yaml";
+  replicas = "app.replicas";
+  version = "2.0.0";
+  calls.length = 0;
+  await p.expose(50, ctx);
+  await p.promote(ctx);
+  assertEquals(calls, [
+    [
+      "upgrade",
+      "api-canary",
+      "./charts/v1",
+      ...SCOPE,
+      "--set",
+      "replicaCount=2",
+      "--version",
+      "1.0.0",
+      "--reset-then-reuse-values",
+      "--wait",
+    ],
+    [
+      "upgrade",
+      "api",
+      "./charts/v1",
+      ...SCOPE,
+      "--set",
+      "replicaCount=2",
+      "--version",
+      "1.0.0",
+      "--reset-then-reuse-values",
+      "--history-max",
+      "0",
+    ],
+    [
+      "upgrade",
+      "api",
+      "./charts/v1",
+      ...SCOPE,
+      "--values",
+      "values-v1.yaml",
+      "--set",
+      "replicaCount=4",
+      "--set-string",
+      "image.tag=1.5.0",
+      "--version",
+      "1.0.0",
+      "--reset-then-reuse-values",
+      "--history-max",
+      "0",
+      "--wait",
+    ],
+    UNINSTALL,
+  ]);
+});
+
+Deno.test("a stable chart from a repository must be pinned with stableVersion", async () => {
+  for (const ref of ["repo/api", "oci://ghcr.io/o/api", "charts/api"]) {
+    const { runner, calls } = fakeHelm();
+    await assertRejects(
+      () => platform(runner, (h) => h.stableChart(ref)).stage(context()),
+      Error,
+      "h.stableVersion(...)",
+    );
+    assertEquals(calls, []);
+  }
+  for (const ref of ["./charts/api-v1", "../api-v1", "/srv/charts/api-v1"]) {
+    const { runner, calls } = fakeHelm();
+    const p = platform(runner, (h) => h.version("2.0.0").stableChart(ref));
+    const ctx = context();
+    await p.stage(ctx);
+    await p.expose(25, ctx);
+    assertEquals(calls[4].slice(0, 3), ["upgrade", "api", ref]);
+    assertEquals(calls[4].includes("--version"), false);
+  }
+});
+
+Deno.test("a stage that cannot record the canary install starting runs no install", async () => {
+  const { runner, calls } = fakeHelm();
+  const ctx = context();
+  ctx.state.trySet = () => Promise.resolve(false);
+  await assertRejects(
+    () => platform(runner).stage(ctx),
+    Error,
+    "could not record that the canary install is starting",
+  );
+  assertEquals(calls, [STABLE_READ, CANARY_READ]);
+  assertEquals(ctx.state.get(), { helmStage: "reading" });
 });

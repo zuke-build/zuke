@@ -67,27 +67,21 @@ import {
   HelmUninstallSettings,
   HelmUpgradeSettings,
 } from "./helm.ts";
+import type { CommandOutput } from "@zuke/core/shell";
 import {
-  checkedChart,
-  checkedImage,
+  type Candidate,
   checkedReleases,
   checkedRevision,
-  checkedTotal,
+  configuredCandidate,
 } from "./helm_canary_checks.ts";
+import {
+  candidateRecord,
+  recordedCandidate,
+  STABLE_REVISION,
+  STAGE,
+} from "./helm_canary_record.ts";
 import { HelmCanarySettings } from "./helm_canary_settings.ts";
 import { isWholeNumber } from "./whole_number.ts";
-
-/** The state key recording how far `stage` got. */
-const STAGE = "helmStage";
-
-/** The state key the stable release's pre-rollout revision is recorded under. */
-const STABLE_REVISION = "helmStableRevision";
-
-/** The state key the staged candidate image is recorded under. */
-const IMAGE = "helmImage";
-
-/** The state key the staged total replica count is recorded under. */
-const REPLICAS = "helmReplicas";
 
 /** Prints a release's revision and status on one line. */
 const REVISION_STATUS_TEMPLATE =
@@ -110,12 +104,6 @@ export interface HelmCanaryContext {
   readonly state: TargetStateHandle;
   /** Add key/value pairs to the calling target's row in the build summary. */
   reportSummary(pairs: SummaryPairs): void;
-}
-
-/** What `stage` recorded for the calls after it. */
-interface Staged {
-  readonly image: string;
-  readonly total: number;
 }
 
 /**
@@ -151,8 +139,9 @@ export class HelmCanary {
    * canary release is left over, then install the candidate as the canary
    * release with no replicas: `upgrade <canary> <chart> --set
    * <replicasKey>=0 --set-string <imageKey>=<image> --install --wait`. The
-   * image and the total replica count are recorded, and every later call
-   * uses those, not a configuration that may have changed since.
+   * image, replica count, charts, versions, values files and keys are
+   * recorded, and every later call uses those, not a configuration that may
+   * have changed since.
    */
   async stage(ctx: HelmCanaryContext): Promise<void> {
     // First, before anything can throw: a stage that fails from here until
@@ -163,22 +152,33 @@ export class HelmCanary {
     if (prior === undefined) await ctx.state.set({ [STAGE]: "reading" });
     const settings = this.#configure(new HelmCanarySettings());
     const { stable, canary } = checkedReleases(settings);
-    const chart = checkedChart(settings.chart_, "chart");
-    const image = checkedImage(settings.imageKey_, settings.image_);
-    const total = checkedTotal(settings.replicas_);
+    const candidate = configuredCandidate(settings);
     const revision = await this.#deployedRevision(settings, stable);
     if (prior !== "deploying" && prior !== "staged") {
       await this.#refuseLeftover(settings, canary);
     }
-    await ctx.state.set({ [STAGE]: "deploying", [STABLE_REVISION]: revision });
-    const install = this.#upgrade(settings, canary, chart, settings.version_)
-      .install().setString(settings.imageKey_, image)
-      .set(settings.replicasKey_, "0");
-    for (const file of settings.values_) install.values(file);
-    await settings.runner_(install);
+    // A rollback reads this to know the canary release may exist, so it must
+    // be on record before the install can create it.
+    const deploying = { [STAGE]: "deploying", [STABLE_REVISION]: revision };
+    if (!await ctx.state.trySet(deploying)) {
+      throw new Error(
+        "helmCanary: could not record that the canary install is starting, " +
+          "so a rollback could not find its release. Stopping before " +
+          "installing it.",
+      );
+    }
+    const install = this.#upgrade(
+      settings,
+      canary,
+      candidate.chart,
+      candidate.version,
+    ).install().setString(candidate.imageKey, candidate.image)
+      .set(candidate.replicasKey, "0");
+    for (const file of candidate.values) install.values(file);
+    await this.#run(settings, "upgrade", install);
     // A rollback reads this to know the stable release may have moved, so it
     // must be on record before any exposure can happen.
-    const staged = { [STAGE]: "staged", [IMAGE]: image, [REPLICAS]: total };
+    const staged = { [STAGE]: "staged", ...candidateRecord(candidate) };
     if (!await ctx.state.trySet(staged)) {
       throw new Error(
         "helmCanary: could not record that the canary release is staged, so " +
@@ -202,41 +202,50 @@ export class HelmCanary {
     }
     const settings = this.#configure(new HelmCanarySettings());
     const { stable, canary } = checkedReleases(settings);
-    const { total } = this.#staged(settings, ctx);
-    const chart = checkedChart(settings.chart_, "chart");
-    const stableChart = settings.stableChart_ === undefined
-      ? chart
-      : checkedChart(settings.stableChart_, "stableChart");
-    const stableVersion = settings.stableVersion_ ??
-      (settings.stableChart_ === undefined ? settings.version_ : undefined);
+    const staged = this.#staged(ctx);
+    const { total, replicasKey } = staged;
     const rounded = Math.round(total * percent / 100);
     const share = percent > 0 && rounded === 0 ? 1 : rounded;
-    await settings.runner_(
-      this.#upgrade(settings, canary, chart, settings.version_)
-        .set(settings.replicasKey_, String(share)),
+    await this.#run(
+      settings,
+      "upgrade",
+      this.#upgrade(settings, canary, staged.chart, staged.version)
+        .set(replicasKey, String(share)),
     );
-    await settings.runner_(
-      this.#upgrade(settings, stable, stableChart, stableVersion, false)
-        .historyMax(0).set(settings.replicasKey_, String(total - share)),
+    await this.#run(
+      settings,
+      "upgrade",
+      this.#upgrade(
+        settings,
+        stable,
+        staged.stableChart,
+        staged.stableVersion,
+        false,
+      ).historyMax(0).set(replicasKey, String(total - share)),
     );
     return Math.round(share * 10000 / total) / 100;
   }
 
   /**
-   * Upgrade the stable release to the staged image at the staged replica
-   * count, waiting for it, then uninstall the canary release. Idempotent.
+   * Upgrade the stable release to the staged chart and image at the staged
+   * replica count, waiting for it, then uninstall the canary release.
+   * Idempotent.
    */
   async promote(ctx: HelmCanaryContext): Promise<void> {
     const settings = this.#configure(new HelmCanarySettings());
     const { stable, canary } = checkedReleases(settings);
-    const { image, total } = this.#staged(settings, ctx);
-    const chart = checkedChart(settings.chart_, "chart");
-    const upgrade = this.#upgrade(settings, stable, chart, settings.version_)
-      .historyMax(0).setString(settings.imageKey_, image)
-      .set(settings.replicasKey_, String(total));
-    for (const file of settings.values_) upgrade.values(file);
-    await settings.runner_(upgrade);
-    await settings.runner_(this.#uninstall(settings, canary));
+    const staged = this.#staged(ctx);
+    const upgrade = this.#upgrade(
+      settings,
+      stable,
+      staged.chart,
+      staged.version,
+    )
+      .historyMax(0).setString(staged.imageKey, staged.image)
+      .set(staged.replicasKey, String(staged.total));
+    for (const file of staged.values) upgrade.values(file);
+    await this.#run(settings, "upgrade", upgrade);
+    await this.#run(settings, "uninstall", this.#uninstall(settings, canary));
   }
 
   /**
@@ -262,7 +271,7 @@ export class HelmCanary {
     const settings = this.#configure(new HelmCanarySettings());
     const { stable, canary } = checkedReleases(settings);
     if (stage === "deploying") {
-      await settings.runner_(this.#uninstall(settings, canary));
+      await this.#run(settings, "uninstall", this.#uninstall(settings, canary));
       return;
     }
     const revision = checkedRevision(
@@ -271,8 +280,8 @@ export class HelmCanary {
     const rollback = this.#scoped(settings, new HelmRollbackSettings())
       .release(stable).revision(revision).wait().historyMax(0);
     if (settings.timeout_ !== undefined) rollback.timeout(settings.timeout_);
-    await settings.runner_(rollback);
-    await settings.runner_(this.#uninstall(settings, canary));
+    await this.#run(settings, "rollback", rollback);
+    await this.#run(settings, "uninstall", this.#uninstall(settings, canary));
   }
 
   /** The revision a rollback returns to, from the record or configuration. */
@@ -314,8 +323,8 @@ export class HelmCanary {
     return configured;
   }
 
-  /** The image and replica count `stage` recorded, re-checked. */
-  #staged(settings: HelmCanarySettings, ctx: HelmCanaryContext): Staged {
+  /** The candidate `stage` recorded, re-checked. */
+  #staged(ctx: HelmCanaryContext): Candidate {
     const recorded = ctx.state.get();
     if (recorded[STAGE] !== "staged") {
       throw new Error(
@@ -324,19 +333,27 @@ export class HelmCanary {
           "same rollout.",
       );
     }
-    const image = recorded[IMAGE];
-    const total = recorded[REPLICAS];
-    if (
-      typeof image !== "string" || typeof total !== "number" ||
-      !isWholeNumber(total)
-    ) {
+    return recordedCandidate(recorded);
+  }
+
+  /**
+   * Run `command` and return its output, failing on a non-zero exit whatever
+   * the runner or a `.noThrow()` in {@link HelmCanarySettings.helm} let
+   * through — a command that failed must never be reported as done.
+   */
+  async #run(
+    settings: HelmCanarySettings,
+    subcommand: string,
+    command: HelmSettings,
+  ): Promise<CommandOutput> {
+    const output = await settings.runner_(command);
+    if (output.code !== 0) {
       throw new Error(
-        "helmCanary: the rollout's record of the staged image and replica " +
-          "count is incomplete, so this call cannot know what was analysed. " +
-          "Roll the rollout back and stage it again.",
+        `helmCanary: helm ${subcommand} exited ${output.code}: ` +
+          output.stderr.trim(),
       );
     }
-    return { image: checkedImage(settings.imageKey_, image), total };
+    return output;
   }
 
   /** `command` with the namespace and the caller's global flags applied. */
@@ -393,7 +410,9 @@ export class HelmCanary {
     settings: HelmCanarySettings,
     stable: string,
   ): Promise<number> {
-    const output = await settings.runner_(
+    const output = await this.#run(
+      settings,
+      "get all",
       this.#getAll(settings, stable, REVISION_STATUS_TEMPLATE),
     );
     const text = output.stdout.trim();
@@ -461,7 +480,8 @@ export class HelmCanary {
  * ```
  *
  * The lambda runs on every call, so it may read resolved parameters; the
- * image and replica count are fixed by `stage`. Every upgrade passes
+ * image, replica count, charts, versions, values files and keys are fixed by
+ * `stage`. Every upgrade passes
  * `--reset-then-reuse-values`, and every command on the stable release
  * `--history-max 0`.
  *

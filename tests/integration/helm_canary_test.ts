@@ -42,6 +42,9 @@ let healthy = true;
 /** The image the build configures. */
 let image = "1.5.0";
 
+/** The chart the build configures. */
+let chart = "./charts/api";
+
 /** The revision a hand-run rollback goes back to, if the build names one. */
 let stableRevision: number | undefined;
 
@@ -50,7 +53,7 @@ class Deploy extends Build {
     c.platform(
       helmCanary((h) =>
         (stableRevision === undefined ? h : h.stableRevision(stableRevision))
-          .chart("./charts/api").stableRelease("api").namespace("prod")
+          .chart(chart).stableRelease("api").namespace("prod")
           .image(image).replicas(4)
           .runner((settings) => {
             const argv = settings.argv().slice(1);
@@ -115,6 +118,7 @@ function fresh(): void {
   leftover = false;
   healthy = true;
   image = "1.5.0";
+  chart = "./charts/api";
   stableRevision = undefined;
 }
 
@@ -134,10 +138,11 @@ Deno.test("Helm: staged, stepped, parked, and promoted by a later process", asyn
     ]);
     assertStringIncludes(parked.out, "Stable revision");
 
-    // The resumed process is configured with another image; the one staged
-    // and analysed is what is promoted.
+    // The resumed process is configured with another image and chart; the
+    // ones staged and analysed are what is promoted.
     calls = [];
     image = "9.9.9";
+    chart = "./charts/v2";
     const resumed = await runCli(Deploy, [
       "resume",
       await onlyRun(dir),
@@ -150,6 +155,7 @@ Deno.test("Helm: staged, stepped, parked, and promoted by a later process", asyn
       "uninstall api-canary",
     ]);
     assertEquals(calls[0].includes("image.tag=1.5.0"), true);
+    assertEquals(calls[0][2], "./charts/api");
   });
 });
 
