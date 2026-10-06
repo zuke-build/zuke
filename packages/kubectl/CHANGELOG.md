@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/zuke-build/zuke/compare/kubectl-v1.1.0...kubectl-v1.2.0) (2026-10-06)
+
+
+### Features
+
+* **kubectl:** Kubernetes Deployment pair platform for @zuke/canary ([#716](https://github.com/zuke-build/zuke/issues/716)) ([1b183a9](https://github.com/zuke-build/zuke/commit/1b183a9aca513e4c48481ade3cf568d1f33b094f))
+
 ## [1.1.0](https://github.com/zuke-build/zuke/compare/kubectl-v1.0.1...kubectl-v1.1.0) (2026-08-29)
 
 

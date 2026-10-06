@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/zuke-build/zuke/compare/helm-v1.0.1...helm-v1.1.0) (2026-10-06)
+
+
+### Features
+
+* **helm:** Helm release pair platform for @zuke/canary ([#719](https://github.com/zuke-build/zuke/issues/719)) ([7def6ea](https://github.com/zuke-build/zuke/commit/7def6ea87ef23c6aebceb2dc06bc40e1322500e9))
+
 ## [1.0.1](https://github.com/zuke-build/zuke/compare/helm-v1.0.0...helm-v1.0.1) (2026-08-13)
 
 
