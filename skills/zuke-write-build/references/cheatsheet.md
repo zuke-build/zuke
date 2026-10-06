@@ -1357,8 +1357,10 @@ const ready = await PrometheusTasks.ready(prod); // true / false (503)
   answer is `PrometheusRequestError`. Neither carries a credential.
 - A URL sent any credential must be `https:` unless loopback
   (`ZUKE_ALLOW_INSECURE_URL` opts out); an unauthenticated in-cluster
-  `http://prometheus.monitoring.svc:9090` is fine. Auth: `bearerToken`,
-  `basicAuth`, `header`, or `credentials(fn)` — `fn` gets the exact outgoing
+  `http://prometheus.monitoring.svc:9090` is fine, and so is a plain
+  `header("X-Scope-OrgID", …)` (only `Authorization`/`Proxy-Authorization`/
+  `Cookie` headers count as credentials). Auth: `bearerToken`, `basicAuth`,
+  `secretHeader` (API keys), or `credentials(fn)` — `fn` gets the exact outgoing
   request (method, URL, headers, body bytes) and the
   `readEnv`/`readTextFile`/`now`/`fetch` seams, and returns headers to add.
 - Managed services, no cloud CLI: `.google((g) => …)` (Application Default
@@ -1412,6 +1414,11 @@ class Deploy extends Build {
   `zuke cancel <run-id>` for a rollout still running or parked.
 - Analyses are any `Validation`; a canary-aware one reads `ctx.step`,
   `ctx.requested`, `ctx.exposure`. See `docs/canary.md`.
+- A managed Prometheus:
+  `prometheus((p) => p.url(AMP).query(Q).max(0.01)
+  .connection((c) => c.sigv4((a) => a.region("us-east-1"))))`
+  — `connection` takes `@zuke/prometheus`'s settings (`google()`, `azure()`,
+  `sigv4()`, …).
 - **Cloud Run:**
   `c.platform(cloudRunCanary((r) => r.service("api")
   .region("europe-west1").image(this.image.value).gcloud((g) => g.project(p))))`

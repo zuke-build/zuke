@@ -18,6 +18,7 @@ import { parseDuration, redactUrls } from "@zuke/core";
 import type { Configure } from "@zuke/core/tooling";
 import {
   PrometheusApiError,
+  type PrometheusConnectionSettings,
   type PrometheusQuerySettings,
   PrometheusTasks,
 } from "@zuke/prometheus";
@@ -46,6 +47,8 @@ export class PrometheusSettings {
   timeout_: number = DEFAULT_TIMEOUT;
   /** The `fetch` to use (set by {@link fetch}); the global one by default. */
   fetch_: typeof fetch = fetch;
+  /** Further connection settings (set by {@link connection}). */
+  connection_: Configure<PrometheusConnectionSettings> = (s) => s;
 
   /** What to call the query when it fails. */
   name(name: string): this {
@@ -80,7 +83,14 @@ export class PrometheusSettings {
     return this;
   }
 
-  /** Add a request header — `header("Authorization", `Bearer ${token}`)`. */
+  /**
+   * Add a request header — `header("X-Scope-OrgID", tenant)`, or
+   * `header("Authorization", `Bearer ${token}`)`. As in `@zuke/prometheus`,
+   * a plain header such as a tenant id leaves an in-cluster `http://` URL
+   * usable, while `Authorization`, `Proxy-Authorization` and `Cookie` are
+   * credentials and need `https:` (unless loopback, or
+   * `ZUKE_ALLOW_INSECURE_URL` is set).
+   */
   header(name: string, value: string): this {
     this.headers_[name] = value;
     return this;
@@ -95,6 +105,27 @@ export class PrometheusSettings {
   /** The `fetch` to use — the seam a test answers queries through. */
   fetch(fetcher: typeof fetch): this {
     this.fetch_ = fetcher;
+    return this;
+  }
+
+  /**
+   * Configure the rest of the connection with `@zuke/prometheus`'s own
+   * settings — the managed services' credentials, an API-key header, a
+   * response cap:
+   *
+   * ```ts
+   * prometheus((p) =>
+   *   p.url("https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-1")
+   *     .query(ERROR_RATIO).max(0.01)
+   *     .connection((c) => c.sigv4((a) => a.region("us-east-1")))
+   * )
+   * ```
+   *
+   * Applied after `url`, `header`, `timeout` and `fetch`, so a request
+   * signer configured here signs the headers set above.
+   */
+  connection(configure: Configure<PrometheusConnectionSettings>): this {
+    this.connection_ = configure;
     return this;
   }
 }
@@ -184,6 +215,7 @@ function connect(
   for (const [name, value] of Object.entries(settings.headers_)) {
     query.header(name, value);
   }
+  settings.connection_(query);
   return signal === undefined ? query : query.signal(signal);
 }
 

@@ -293,6 +293,8 @@ class PrometheusSettings
     The request timeout in ms (set by {@link timeout}).
   fetch_: typeof fetch
     The `fetch` to use (set by {@link fetch}); the global one by default.
+  connection_: Configure<PrometheusConnectionSettings>
+    Further connection settings (set by {@link connection}).
   name(name: string): this
     What to call the query when it fails.
   url(url: string): this
@@ -305,11 +307,31 @@ class PrometheusSettings
   max(value: number): this
     Fail when any sample is above `value`.
   header(name: string, value: string): this
-    Add a request header — `header("Authorization", `Bearer ${token}`)`.
+    Add a request header — `header("X-Scope-OrgID", tenant)`, or
+    `header("Authorization", `Bearer ${token}`)`. As in `@zuke/prometheus`,
+    a plain header such as a tenant id leaves an in-cluster `http://` URL
+    usable, while `Authorization`, `Proxy-Authorization` and `Cookie` are
+    credentials and need `https:` (unless loopback, or
+    `ZUKE_ALLOW_INSECURE_URL` is set).
   timeout(duration: string | number): this
     How long the query may take (`"10s"`, or ms; default 30 s).
   fetch(fetcher: typeof fetch): this
     The `fetch` to use — the seam a test answers queries through.
+  connection(configure: Configure<PrometheusConnectionSettings>): this
+    Configure the rest of the connection with `@zuke/prometheus`'s own
+    settings — the managed services' credentials, an API-key header, a
+    response cap:
+
+    ```ts
+    prometheus((p) =>
+      p.url("https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-1")
+        .query(ERROR_RATIO).max(0.01)
+        .connection((c) => c.sigv4((a) => a.region("us-east-1")))
+    )
+    ```
+
+    Applied after `url`, `header`, `timeout` and `fetch`, so a request
+    signer configured here signs the headers set above.
 
 interface Canary
   The targets `canary(...)` creates. Assigned to a build field — `rollout = canary(…)` — they are named under it: `rollout.stage`, `rollout.step1.expose`,

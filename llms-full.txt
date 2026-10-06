@@ -22923,9 +22923,18 @@ class PrometheusConnectionSettings
   basicAuth(username: string, password: string): this
     Authenticate with HTTP basic auth (`Authorization: Basic …`).
   header(name: string, value: string): this
-    Send a fixed header, such as a tenant id (`X-Scope-OrgID`) or an API key.
-    Its value is masked in errors like any credential (when eight or more
-    characters long).
+    Send a fixed header, such as a tenant id (`X-Scope-OrgID`). A plain
+    header does not make the call credentialed, so an in-cluster
+    `http://` Mimir, Cortex or Thanos with a tenant header keeps working —
+    except `Authorization`, `Proxy-Authorization` and `Cookie`, which are
+    credentials whatever setter sends them. For an API key in any other
+    header use {@link secretHeader}. The value is masked in errors either way
+    (when eight or more characters long).
+  secretHeader(name: string, value: string): this
+    Send a fixed header that carries a credential — an API key such as
+    `X-API-Key`. Like `bearerToken`, it makes the call credentialed, so the
+    URL must be `https:` unless it is loopback, and its value is masked in
+    errors.
   credentials(source: PrometheusCredentials): this
     Add a credential source: a function handed the outgoing request — method,
     full URL, headers so far, body bytes — and the connection's seams, that
@@ -23247,7 +23256,8 @@ interface PrometheusAlertingRule extends PrometheusRuleFields
   readonly annotations: PrometheusLabels
     The rule's annotations.
   readonly alerts?: readonly PrometheusAlert[]
-    The rule's active alerts; absent when `excludeAlerts` was set.
+    The rule's active alerts; absent when `excludeAlerts` was set (the server
+    then sends `"alerts": null`, read as absent).
   readonly state?: string
     The rule's state: `firing`, `pending` or `inactive`.
 
@@ -23578,8 +23588,13 @@ type PrometheusCredentials = (request: PrometheusOutgoingRequest, context: Prome
   shorter than eight characters excepted — see {@link registerSecrets}). A
   source that throws fails the call with a
   {@link "./errors.ts".PrometheusRequestError} whose message is scrubbed the
-  same way. A source that caches (a token until its expiry) keeps that state
-  in its own closure; it is called once per request.
+  same way. It is called once per request.
+
+  A source that caches — a token until its expiry — must keep that cache
+  outside the settings lambda: the lambda runs on every call, so a source
+  created inside it starts empty each time. Define the source once at module
+  level (or key its cache in module state, as the built-in `google`, `azure`
+  and `sigv4` sources do) and pass that one function to `credentials(...)`.
 
 type PrometheusDuration = string | number
   A duration an API parameter accepts: Prometheus duration text such as
@@ -23852,6 +23867,8 @@ class PrometheusSettings
     The request timeout in ms (set by {@link timeout}).
   fetch_: typeof fetch
     The `fetch` to use (set by {@link fetch}); the global one by default.
+  connection_: Configure<PrometheusConnectionSettings>
+    Further connection settings (set by {@link connection}).
   name(name: string): this
     What to call the query when it fails.
   url(url: string): this
@@ -23864,11 +23881,31 @@ class PrometheusSettings
   max(value: number): this
     Fail when any sample is above `value`.
   header(name: string, value: string): this
-    Add a request header — `header("Authorization", `Bearer ${token}`)`.
+    Add a request header — `header("X-Scope-OrgID", tenant)`, or
+    `header("Authorization", `Bearer ${token}`)`. As in `@zuke/prometheus`,
+    a plain header such as a tenant id leaves an in-cluster `http://` URL
+    usable, while `Authorization`, `Proxy-Authorization` and `Cookie` are
+    credentials and need `https:` (unless loopback, or
+    `ZUKE_ALLOW_INSECURE_URL` is set).
   timeout(duration: string | number): this
     How long the query may take (`"10s"`, or ms; default 30 s).
   fetch(fetcher: typeof fetch): this
     The `fetch` to use — the seam a test answers queries through.
+  connection(configure: Configure<PrometheusConnectionSettings>): this
+    Configure the rest of the connection with `@zuke/prometheus`'s own
+    settings — the managed services' credentials, an API-key header, a
+    response cap:
+
+    ```ts
+    prometheus((p) =>
+      p.url("https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-1")
+        .query(ERROR_RATIO).max(0.01)
+        .connection((c) => c.sigv4((a) => a.region("us-east-1")))
+    )
+    ```
+
+    Applied after `url`, `header`, `timeout` and `fetch`, so a request
+    signer configured here signs the headers set above.
 
 interface Canary
   The targets `canary(...)` creates. Assigned to a build field — `rollout = canary(…)` — they are named under it: `rollout.stage`, `rollout.step1.expose`,

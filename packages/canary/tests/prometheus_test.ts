@@ -182,6 +182,49 @@ Deno.test("an unauthenticated in-cluster http URL is queried, as it always was",
   );
 });
 
+Deno.test("a tenant header over in-cluster http works; an Authorization header is refused", async () => {
+  const fetcher = fakeFetch(() => vector("0.001"));
+  await prometheus((p) =>
+    p.url("http://mimir.monitoring.svc:8080/prometheus").query("q")
+      .max(0.01).header("X-Scope-OrgID", "team-a").fetch(fetcher)
+      .connection((c) => c.readEnv(() => undefined))
+  ).validate(analysisContext());
+  assertEquals(fetcher.headers[0].get("x-scope-orgid"), "team-a");
+  await assertRejects(
+    async () =>
+      await prometheus((p) =>
+        p.url("http://mimir.monitoring.svc:8080/prometheus").query("q")
+          .max(0.01).header("Authorization", "Bearer team-a-token")
+          .fetch(fetcher).connection((c) => c.readEnv(() => undefined))
+      ).validate(analysisContext()),
+    Error,
+    "must use https",
+  );
+  assertEquals(fetcher.urls.length, 1);
+});
+
+Deno.test("connection(...) reaches the client's own settings — a SigV4 signer", async () => {
+  const fetcher = fakeFetch(() => vector("0.001"));
+  const env = new Map([
+    ["AWS_ACCESS_KEY_ID", "AKIDEXAMPLE"],
+    ["AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY"],
+  ]);
+  await prometheus((p) =>
+    p.url("https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-1")
+      .query("q").max(0.01).header("X-Team", "a").fetch(fetcher)
+      .connection((c) =>
+        c.readEnv((name) => env.get(name)).sigv4((a) => a.region("us-east-1"))
+      )
+  ).validate(analysisContext());
+  const authorization = fetcher.headers[0].get("authorization") ?? "";
+  assertStringIncludes(
+    authorization,
+    "AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/",
+  );
+  // Applied after header(...), so the signer signs the analysis's headers.
+  assertStringIncludes(authorization, "x-team");
+});
+
 Deno.test("credentials in a URL never reach the failure message", async () => {
   const error = await assertRejects(
     async () =>
