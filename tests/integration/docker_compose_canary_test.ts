@@ -74,6 +74,9 @@ let image: string | undefined;
 /** The canary service the lambda names. */
 let canaryService = "app-canary";
 
+/** The Compose project the global lambda names. */
+let project = "shop";
+
 /** Apply one command to the world, as Compose would. */
 function compose(argv: string[], env: Record<string, string>): string {
   const service = argv.at(-1) ?? "";
@@ -105,7 +108,7 @@ class Deploy extends Build {
         d.service("app").canaryService(canaryService).replicas(4)
           .stableImageVariable("APP_IMAGE")
           .canaryImageVariable("APP_CANARY_IMAGE")
-          .compose((s) => s.usePlugin().projectName("shop"))
+          .compose((s) => s.usePlugin().projectName(project))
           .runner((settings, env) => {
             const argv = settings.argv().slice(1);
             calls.push({ argv, stableImage: env.APP_IMAGE });
@@ -192,6 +195,7 @@ function fresh(): void {
   stable = undefined;
   image = "app:v2";
   canaryService = "app-canary";
+  project = "shop";
 }
 
 const ALL_V1 = ["app:v1", "app:v1", "app:v1", "app:v1"];
@@ -350,4 +354,78 @@ Deno.test("Compose: a rollback run by hand with no stable image refuses", async 
     assertStringIncludes(out + err, "d.stable('<image>')");
     assertEquals(calls, []);
   });
+});
+
+/**
+ * Park a rollout at its approval, then point the lambda at another project
+ * and drive the run with `drive`: the call refuses, naming both projects, and
+ * runs nothing. The message's own recovery — the configuration set back, the
+ * rollback run by hand with the recorded stable image — then rolls back.
+ */
+async function refusedThenRecovered(
+  drive: (runId: string) => string[],
+): Promise<void> {
+  fresh();
+  await withStateDir(async (dir) => {
+    const parked = await runCli(Deploy, ["ship"]);
+    assertEquals(parked.code, 0, parked.err);
+    const runId = await onlyRun(dir);
+    const before = structuredClone(world);
+    project = "shop-staging";
+    calls = [];
+    const refused = await runCli(Deploy, drive(runId));
+    assertEquals(refused.code, 1);
+    const said = refused.out + refused.err;
+    assertStringIncludes(
+      said,
+      "this rollout started on the Compose project selected by `-p shop`, " +
+        "but d.compose(...) now gives `-p shop-staging`, so this call " +
+        "changed nothing",
+    );
+    assertStringIncludes(said, "with d.stable('app:v1')");
+    assertEquals(calls, []);
+    assertEquals(world, before);
+
+    // What the message says will not help, does not: the run is settled, so
+    // neither a resume nor a cancel reaches the platform again.
+    const resumed = await runCli(Deploy, [
+      "resume",
+      runId,
+      "--signal",
+      "approved",
+    ]);
+    assertStringIncludes(resumed.out + resumed.err, "not suspended");
+    const cancelled = await runCli(Deploy, ["cancel", runId]);
+    assertStringIncludes(
+      cancelled.out + cancelled.err,
+      "already cancelled; nothing to cancel",
+    );
+    assertEquals(calls, []);
+    assertEquals(world, before);
+
+    // What it says will: the configuration set back, then the rollback run
+    // by hand with the stable image it names.
+    project = "shop";
+    stable = "app:v1";
+    const recovered = await runCli(Deploy, ["rollout.abort"]);
+    assertEquals(recovered.code, 0, recovered.err);
+    assertEquals(
+      calls.map((call) => call.argv.slice(0, 3).join(" ")),
+      Array(calls.length).fill("compose -p shop"),
+    );
+    assertEquals(world, { app: ALL_V1, "app-canary": [] });
+  });
+}
+
+Deno.test("Compose: a resume whose lambda selects another project refuses, and the hand-run recovery it names rolls back", async () => {
+  await refusedThenRecovered((runId) => [
+    "resume",
+    runId,
+    "--signal",
+    "approved",
+  ]);
+});
+
+Deno.test("Compose: a cancel whose lambda selects another project refuses, and the hand-run recovery it names rolls back", async () => {
+  await refusedThenRecovered((runId) => ["cancel", runId]);
 });

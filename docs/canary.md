@@ -452,16 +452,17 @@ class Deploy extends Build {
 await run(Deploy);
 ```
 
-Its lambda runs on every call, so it may read resolved parameters. Every move is
+Its lambda runs on every call, so it may read resolved parameters. Every call
+after `stage` checks the project first (see below). Every move is
 `up -d --no-deps --scale <service>=<n> <service>`, with `--wait` when `n` is not
 0, run with the image variables set:
 
-| Call      | Compose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `stage`   | Records the marker first, so a stage its own settings refuse is rolled back as a no-op. `ps --format {{.Image}} <stable>` reads the image the stable replicas run (it refuses no replicas, replicas on different images, a truncated capture, or a line that is not an image reference), and `images --quiet <stable>` their one image ID; `pull --policy missing <canary>`; then records the rollout — both services, the replicas, both variables, both images and the stable ID, which every later stable move uses as `sha256:<id>` — which every later call acts on whatever the lambda resolves to then. Then the stable service to every replica (`--no-recreate`) and the canary service to none. |
-| `expose`  | The canary service to its share of the recorded replicas (the nearest whole replica, but at least one on each side for any share strictly between 0 and 100) and the stable service, `--no-recreate`, to the rest. Whichever grows goes first, so the total never dips. Once the canary has replicas, `ps` must show every one on the candidate, or the step is refused. Returns the share reached.                                                                                                                                                                                                                                                                                                       |
-| `promote` | The canary service to every replica; the stable service recreated with the stable variable set to the candidate; `ps` must then show every stable replica on the candidate (a stable `image:` that does not read the variable is refused before the promotion is recorded); the canary service to none. The total briefly doubles and never dips. Idempotent.                                                                                                                                                                                                                                                                                                                                             |
-| `abort`   | `ps` reads the stable replicas. If every one runs the stable image (mid-rollout they do), the stable service back to every replica with `--no-recreate`. Otherwise (after a promotion, finished or part-way) Compose would recreate every stable replica at once, so the canary service first goes to every replica on the stable image, then the stable service is recreated on it. Then the canary service to none. Run by hand (no record): the `.stable(...)` image and the configured services; it refuses without one. After a `stage` that changed nothing, nothing runs.                                                                                                                          |
+| Call      | Compose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stage`   | Records the marker first, so a stage its own settings refuse is rolled back as a no-op. `ps --format {{.Image}} <stable>` reads the image the stable replicas run (it refuses no replicas, replicas on different images, a truncated capture, or a line that is not an image reference), and `images --quiet <stable>` their one image ID; `pull --policy missing <canary>`; then records the rollout — both services, the replicas, both variables, both images, the stable ID, which every later stable move uses as `sha256:<id>`, and the global flags `.compose(...)` gives — which every later call acts on whatever the lambda resolves to then. Then the stable service to every replica (`--no-recreate`) and the canary service to none. |
+| `expose`  | Refuses before any command unless `.compose(...)` gives the recorded global flags. The canary service to its share of the recorded replicas (the nearest whole replica, but at least one on each side for any share strictly between 0 and 100) and the stable service, `--no-recreate`, to the rest. Whichever grows goes first, so the total never dips. Once the canary has replicas, `ps` must show every one on the candidate, or the step is refused. Returns the share reached.                                                                                                                                                                                                                                                             |
+| `promote` | Refuses before any command unless `.compose(...)` gives the recorded global flags. The canary service to every replica; the stable service recreated with the stable variable set to the candidate; `ps` must then show every stable replica on the candidate (a stable `image:` that does not read the variable is refused before the promotion is recorded); the canary service to none. The total briefly doubles and never dips. Idempotent.                                                                                                                                                                                                                                                                                                   |
+| `abort`   | With a record, refuses before any command unless `.compose(...)` gives the recorded global flags. `ps` reads the stable replicas. If every one runs the stable image (mid-rollout they do), the stable service back to every replica with `--no-recreate`. Otherwise (after a promotion, finished or part-way) Compose would recreate every stable replica at once, so the canary service first goes to every replica on the stable image, then the stable service is recreated on it. Then the canary service to none. Run by hand (no record): the `.stable(...)` image and the configured services; it refuses without one. After a `stage` that changed nothing, nothing runs.                                                                 |
 
 **A promotion is an override, not a deployment record.** Compose keeps no state
 of its own: the stable service's image is whatever `${APP_IMAGE}` resolves to
@@ -485,8 +486,47 @@ instead of reporting a rollback it did not do. That rollback is an override too,
 in the same way as a promotion. For a rollout that is still running or parked,
 use `zuke cancel <run-id>`.
 
+**The project is part of the record.** The services are named inside a Compose
+project, so `stage` records the global flags `.compose(...)` gives (`-f`, `-p`,
+`--profile`, `--project-directory`, `--env-file`) as argv, never what its
+`.env(...)` passes, which may be a secret. `expose`, `promote` and a recorded
+`abort` compare the flags the lambda gives now with the recorded ones before
+running any command, reads included, since a read of another project would
+inform the next move, and refuse on any difference: as written, in order, so
+`-f a.yml -f b.yml` and `-f b.yml -f a.yml` differ too. A record with no usable
+flags is refused as damaged. Without this, a resumed or cancelling process whose
+`.projectName(this.env.value)` resolves to another value would scale and
+recreate same-named services in a project the rollout never staged. The lambda
+also runs once per command, and a command it gives other flags than the call
+resolved at its start (a lambda reading a clock or a counter) is refused before
+it runs.
+
+The refusal says the call changed nothing and names both sets of flags. Since
+`expose` and `promote` cancel the run on failure, and the rollback that
+cancellation runs refuses for the same reason, the run is left cancelled with
+the rollout's services as they are: a resume answers that the run is not
+suspended, and `zuke cancel` that it is already cancelled. The recovery the
+message names is the one that works: set the configuration back to what the
+rollout started with, check with `docker compose ps` that it reaches the project
+that was staged (a rollback run by hand has no record to check against), then
+run the rollout's abort target by hand (`zuke rollout.abort`) with
+`.stable(...)` set to the stable image the message names, the one the rollout
+recorded. A hand-run abort has no record, so it acts on whatever project the
+lambda selects.
+
 Limits worth knowing:
 
+- What the record cannot hold must not change mid-rollout: the Docker context or
+  `DOCKER_HOST` the commands reach, the working directory a relative `-f` path
+  or the default project name resolves against, and what the lambda's
+  `.cwd(...)` and `.env(...)` set (such as `COMPOSE_PROJECT_NAME` or
+  `COMPOSE_FILE`). The recorded image IDs are only a partial guard against
+  another daemon: a move that must create a stable replica sets the recorded ID
+  with `--pull never` and fails on a daemon that lacks that image, and a
+  rollback compares the stable replicas' IDs with it, but a move that only
+  removes replicas needs no image, and the first step creates the canary from
+  the candidate reference, so a daemon that has the same project and images is
+  not told apart.
 - Exposure is a share of **containers**. It is a share of requests only if the
   proxy balances evenly, so sticky sessions or uneven connection reuse skew it.
 - The two services must be identical except for the image and the scale (a YAML

@@ -152,6 +152,13 @@ export class DockerComposeCanarySettings {
    * a security boundary: this lambda is the build's own code and can run
    * Compose however it likes. A non-zero exit fails the call even with
    * `.noThrow()`.
+   *
+   * The flags it gives select the project, so `stage` records them (as argv:
+   * what `.env(...)` passes is never recorded) and every later call refuses
+   * unless they are the same, in the same order. Nor may the rest of what it
+   * reaches change mid-rollout — the Docker context or `DOCKER_HOST`, the
+   * working directory a relative path resolves against, its `.cwd(...)` and
+   * `.env(...)` — since none of that can be recorded or checked.
    */
   compose(configure: Configure<DockerComposeSettings>): this {
     this.compose_ = configure;

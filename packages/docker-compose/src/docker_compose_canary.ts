@@ -34,6 +34,21 @@
  * command, not a change to the project: see
  * {@link DockerComposeCanary.promote} for what that means for a promotion.
  *
+ * The services a rollout moves are named inside a Compose project, so `stage`
+ * also records the project: the global flags `d.compose(...)` gives
+ * (`-f`, `-p`, `--profile`, `--project-directory`, `--env-file`), as argv —
+ * never what its `.env(...)` passes, which may be a secret. Every later call
+ * with a record refuses, before any command, reads included, unless the
+ * lambda gives exactly those flags again: a resumed or cancelling process
+ * whose `.projectName(...)` resolves to another value would otherwise move
+ * same-named services in a project the rollout never staged. Flags are
+ * compared as written, in order. What the record cannot hold must not change
+ * mid-rollout: the Docker context or `DOCKER_HOST` the commands reach, the
+ * working directory a relative path or the default project name resolves
+ * against, and what the lambda's `.cwd(...)` and `.env(...)` set (such as
+ * `COMPOSE_PROJECT_NAME` or `COMPOSE_FILE`). The recorded image IDs are only a
+ * partial guard there — see {@link DockerComposeCanary.stage}.
+ *
  * The canary engine's platform interface lives in `@zuke/canary`, and a wrapper
  * depends only on `@zuke/core`, so this module does not import it: the object
  * {@link dockerComposeCanary} returns has the same shape and is accepted by
@@ -63,6 +78,7 @@ import {
   type Variables,
   variablesOf,
 } from "./canary_plan.ts";
+import { applyScope, checkScope, composeScope } from "./canary_scope.ts";
 import {
   type DockerComposeCanaryContext,
   DockerComposeCanarySettings,
@@ -71,27 +87,20 @@ import { DockerComposePsSettings } from "./containers.ts";
 import { DockerComposePullSettings } from "./images.ts";
 import { DockerComposeImagesSettings } from "./inventory.ts";
 import { DockerComposeUpSettings } from "./lifecycle.ts";
-import { DockerComposeSettings } from "./settings.ts";
+import type { DockerComposeSettings } from "./settings.ts";
 
 /** The Go template `compose ps` renders one container's image with. */
 const IMAGE_TEMPLATE = "{{.Image}}";
 
 /**
- * The subcommand a {@link TrailingArgsProbe} renders: anything the global
- * lambda appends lands after it.
+ * A call's view of the project: the settings, and the global flags it
+ * resolved once at its start, which every command it runs must carry.
  */
-const PROBE_TAIL = "<subcommand>";
-
-/**
- * A command with only {@link PROBE_TAIL} for a subcommand, which the global
- * lambda is applied to so trailing `.args(...)` — which would follow the
- * service operand of every real command — can be told from global flags.
- */
-class TrailingArgsProbe extends DockerComposeSettings {
-  /** The placeholder subcommand. */
-  protected override composeArgs(): string[] {
-    return [PROBE_TAIL];
-  }
+interface Project {
+  /** The settings the lambda produced for this call. */
+  readonly settings: DockerComposeCanarySettings;
+  /** The global flags of every command this call runs. */
+  readonly scope: readonly string[];
 }
 
 /**
@@ -123,10 +132,27 @@ export class DockerComposeCanary {
    * available (pulled unless it is already present), record the rollout — the
    * two services, the replicas, the two variables, the two images and the
    * stable replicas' image ID (`images --quiet`), which every later call acts
-   * on whatever the lambda says then — and bring the
+   * on whatever the lambda says then, and the project's global flags, which
+   * every later call refuses to run without — and bring the
    * project to exactly 0 %: the stable service at every replica, the canary
    * service at none. The stable replicas are only added or removed, never
    * recreated.
+   *
+   * Each call runs `d.compose(...)` once to resolve the global flags, and
+   * then once per command; a command it gives any other flags (a lambda that
+   * reads a clock, or changes what it closes over) is refused before it runs.
+   * A stage always starts afresh, so a re-run one records the flags it runs
+   * with.
+   *
+   * The Docker daemon the commands reach is not recorded. The recorded image
+   * IDs are a partial guard against a context or `DOCKER_HOST` that changed
+   * mid-rollout: every later move sets the stable variable to the recorded
+   * ID with `--pull never`, so one that must create a stable replica fails on
+   * a daemon that lacks that image, and a rollback compares the stable
+   * replicas' IDs with it. A move that only removes replicas needs no image,
+   * though, and the first step creates the canary from the candidate
+   * reference, so a daemon with the same project and images is not told
+   * apart.
    */
   async stage(ctx: DockerComposeCanaryContext): Promise<void> {
     // First, before anything can throw: a stage that fails from here on is
@@ -138,13 +164,16 @@ export class DockerComposeCanary {
     const topology = topologyOf(settings);
     const candidate = candidateOf(settings);
     const vars = variablesOf(settings);
+    // Resolved once: every command below carries exactly these flags, and
+    // the record holds them for every later call to check.
+    const project = { settings, scope: composeScope(settings.compose_) };
     // Compose loads the whole file for any command, so the stable variable
     // must resolve too. Neither the read nor the pull touches the stable
     // containers, and `ps` reports the image they actually run, so the
     // candidate stands in until the stable image is known.
     const read = imageEnv(vars, candidate, candidate);
     const stableImage = await this.#servingImage(
-      settings,
+      project,
       topology.stable,
       read,
     );
@@ -153,14 +182,14 @@ export class DockerComposeCanary {
     // local pull or build mid-rollout must not put a release nobody analysed
     // into the stable service.
     const restore = await this.#oneImageId(
-      settings,
+      project,
       topology.stable,
       read,
       "so there is no one stable image to roll back to. Bring them onto one " +
         "first",
     );
     await this.#run(
-      settings,
+      project,
       new DockerComposePullSettings().policy("missing")
         .services(topology.canary),
       read,
@@ -171,6 +200,7 @@ export class DockerComposeCanary {
       candidate,
       stableImage,
       restore,
+      scope: project.scope,
     };
     // A rollback reads this to know what to return the stable service to, so
     // it must be on record before anything changes.
@@ -183,8 +213,8 @@ export class DockerComposeCanary {
       );
     }
     const env = imageEnv(vars, restore, candidate);
-    await this.#scale(settings, topology.stable, topology.replicas, env, true);
-    await this.#scale(settings, topology.canary, 0, env, false);
+    await this.#scale(project, topology.stable, topology.replicas, env, true);
+    await this.#scale(project, topology.canary, 0, env, false);
     ctx.reportSummary({ Candidate: candidate, Stable: stableImage });
   }
 
@@ -201,7 +231,9 @@ export class DockerComposeCanary {
    * image the analysis judges; every later step and promote set the canary
    * variable to it rather than the tag, and refuse a canary that resolves to
    * another. The stable replicas are never recreated. The services and
-   * replicas are the ones `stage` recorded.
+   * replicas are the ones `stage` recorded, and the call refuses before any
+   * command unless `d.compose(...)` still gives the global flags `stage`
+   * recorded.
    */
   async expose(
     percent: number,
@@ -213,9 +245,9 @@ export class DockerComposeCanary {
           `${percent} %.`,
       );
     }
-    const settings = this.#settings();
     const state = ctx.state.get();
     const rollout = staged(recordedRollout(state));
+    const project = this.#recorded(rollout);
     const env = imageEnv(
       rollout,
       rollout.restore,
@@ -227,12 +259,12 @@ export class DockerComposeCanary {
     // below), so a step only adds or removes them: a recreate would restart
     // what the analysis is watching.
     const grow = async () => {
-      await this.#scale(settings, rollout.canary, canary, env, true);
-      if (canary > 0) await this.#pinCandidate(settings, ctx, rollout, env);
+      await this.#scale(project, rollout.canary, canary, env, true);
+      if (canary > 0) await this.#pinCandidate(project, ctx, rollout, env);
     };
     const shrink = () =>
       this.#scale(
-        settings,
+        project,
         rollout.stable,
         rollout.replicas - canary,
         env,
@@ -259,7 +291,8 @@ export class DockerComposeCanary {
    * variable would have changed nothing — and the canary service goes back
    * to none. The
    * total never dips below the replicas; for a moment it is twice that.
-   * Idempotent.
+   * Idempotent. Like every call after `stage`, it refuses before any command
+   * unless `d.compose(...)` still gives the global flags `stage` recorded.
    *
    * **This is not durable on its own.** Compose has no state of its own to
    * change: the variable is set for these commands only. Until the
@@ -274,8 +307,8 @@ export class DockerComposeCanary {
   async promote(ctx: DockerComposeCanaryContext): Promise<void> {
     const state = ctx.state.get();
     if (state[STAGE] === "promoted") return;
-    const settings = this.#settings();
     const rollout = staged(recordedRollout(state));
+    const project = this.#recorded(rollout);
     await ctx.state.set({ [STAGE]: "promoting" });
     const surge = imageEnv(
       rollout,
@@ -283,7 +316,7 @@ export class DockerComposeCanary {
       rollout.candidateId ?? rollout.candidate,
     );
     await this.#scale(
-      settings,
+      project,
       rollout.canary,
       rollout.replicas,
       surge,
@@ -292,17 +325,17 @@ export class DockerComposeCanary {
     // With no step before it, the canary first runs here, so this is where
     // the candidate's ID is pinned.
     const id = rollout.candidateId ??
-      await this.#pinCandidate(settings, ctx, rollout, surge);
+      await this.#pinCandidate(project, ctx, rollout, surge);
     const env = imageEnv(rollout, id, id);
     await this.#scale(
-      settings,
+      project,
       rollout.stable,
       rollout.replicas,
       env,
       false,
     );
-    await this.#requireStable(settings, rollout, id, true, env);
-    await this.#scale(settings, rollout.canary, 0, env, false);
+    await this.#requireStable(project, rollout, id, true, env);
+    await this.#scale(project, rollout.canary, 0, env, false);
     // Reported before the promotion is recorded: a process that dies between
     // the two re-drives the promotion, which reports it again, rather than
     // finding it recorded and saying nothing.
@@ -317,7 +350,12 @@ export class DockerComposeCanary {
    *
    * - **`stage` recorded them** (a rollback mid-rollout, or after a
    *   promotion that failed part-way): the ones `stage` saw, whatever the
-   *   lambda says now.
+   *   lambda says now — in the project `stage` saw, too: unless
+   *   `d.compose(...)` still gives the global flags `stage` recorded, this
+   *   refuses before any command, and since the engine then leaves the run
+   *   cancelled, the refusal names the recovery: the configuration set
+   *   back, and `rollout.abort` run by hand with
+   *   `d.stable(<the recorded stable image>)`.
    * - **`stage` failed before recording them**: nothing had changed, so
    *   nothing runs — and the settings are not even read.
    * - **Nothing recorded** (`rollout.abort` run by hand, a fresh run): the
@@ -354,16 +392,17 @@ export class DockerComposeCanary {
   async abort(ctx: DockerComposeCanaryContext): Promise<void> {
     const state = ctx.state.get();
     if (state[STAGE] === "deploying") return;
-    const settings = this.#settings();
     const recorded = recordedRollout(state);
-    const rollback: Rollback = recorded ?? handRunRollback(settings);
+    const { project, rollback } = recorded === undefined
+      ? this.#handRun()
+      : { project: this.#recorded(recorded), rollback: recorded };
     const image = rollback.restore;
     // The canary service only ever runs the stable image here — a surge while
     // the stable replicas are recreated — so its variable names that too.
     const env = imageEnv(rollback, image, image);
-    if (await this.#onStable(settings, rollback, recorded !== undefined, env)) {
+    if (await this.#onStable(project, rollback, recorded !== undefined, env)) {
       await this.#scale(
-        settings,
+        project,
         rollback.stable,
         rollback.replicas,
         env,
@@ -371,14 +410,14 @@ export class DockerComposeCanary {
       );
     } else {
       await this.#scale(
-        settings,
+        project,
         rollback.canary,
         rollback.replicas,
         env,
         false,
       );
       await this.#scale(
-        settings,
+        project,
         rollback.stable,
         rollback.replicas,
         env,
@@ -390,13 +429,13 @@ export class DockerComposeCanary {
     // a rollback then would be a lie. The canary keeps serving while someone
     // looks.
     await this.#requireStable(
-      settings,
+      project,
       rollback,
       image,
       recorded !== undefined,
       env,
     );
-    await this.#scale(settings, rollback.canary, 0, env, false);
+    await this.#scale(project, rollback.canary, 0, env, false);
     if (recorded === undefined) ctx.reportSummary(persist(rollback, image));
   }
 
@@ -406,16 +445,16 @@ export class DockerComposeCanary {
    * one, which has no ID to go on.
    */
   async #onStable(
-    settings: DockerComposeCanarySettings,
+    project: Project,
     rollback: Rollback,
     recorded: boolean,
     env: Record<string, string>,
   ): Promise<boolean> {
     if (recorded) {
-      const ids = await this.#imageIds(settings, rollback.stable, env);
+      const ids = await this.#imageIds(project, rollback.stable, env);
       return ids.length === 1 && ids[0] === rollback.restore;
     }
-    const running = await this.#runningImages(settings, rollback.stable, env);
+    const running = await this.#runningImages(project, rollback.stable, env);
     return running.every((each) => each === rollback.restore);
   }
 
@@ -425,15 +464,15 @@ export class DockerComposeCanary {
    * or by the reference `ps` shows — all a hand-run rollback has.
    */
   async #requireStable(
-    settings: DockerComposeCanarySettings,
+    project: Project,
     rollback: Rollback,
     image: string,
     byId: boolean,
     env: Record<string, string>,
   ): Promise<void> {
     const shown = byId
-      ? await this.#imageIds(settings, rollback.stable, env)
-      : await this.#runningImages(settings, rollback.stable, env);
+      ? await this.#imageIds(project, rollback.stable, env)
+      : await this.#runningImages(project, rollback.stable, env);
     if (shown.length === 0 || shown.some((each) => each !== image)) {
       throw unread(rollback.stable, shown, rollback.stableVariable, image);
     }
@@ -447,18 +486,18 @@ export class DockerComposeCanary {
    * the ID once the tag has moved).
    */
   async #pinCandidate(
-    settings: DockerComposeCanarySettings,
+    project: Project,
     ctx: DockerComposeCanaryContext,
     rollout: Rollout,
     env: Record<string, string>,
   ): Promise<string> {
     const variable = rollout.canaryVariable;
-    const running = await this.#runningImages(settings, rollout.canary, env);
+    const running = await this.#runningImages(project, rollout.canary, env);
     if (running.length === 0) {
       throw unread(rollout.canary, running, variable, env[variable]);
     }
     const id = await this.#oneImageId(
-      settings,
+      project,
       rollout.canary,
       env,
       "so there is no one candidate image for the analysis to judge",
@@ -485,13 +524,39 @@ export class DockerComposeCanary {
   }
 
   /**
+   * The project for a call with a record: the settings, refused — before any
+   * command, reads included — unless their global flags are the ones `stage`
+   * recorded, since the recorded services mean something only in that
+   * project.
+   */
+  #recorded(rollout: Rollout): Project {
+    const settings = this.#settings();
+    const scope = composeScope(settings.compose_);
+    checkScope(rollout, scope);
+    return { settings, scope };
+  }
+
+  /**
+   * The project and rollback for `rollout.abort` run by hand: the settings,
+   * with no record to check them against.
+   */
+  #handRun(): { project: Project; rollback: Rollback } {
+    const settings = this.#settings();
+    const rollback = handRunRollback(settings);
+    return {
+      project: { settings, scope: composeScope(settings.compose_) },
+      rollback,
+    };
+  }
+
+  /**
    * `up -d --no-deps --scale <service>=<count> <service>`, waiting for the
    * replicas when there are any. With `keep`, replicas that already exist
    * are not recreated (`--no-recreate`), so only the count changes. When a
    * variable is set to an image ID, `--pull never`.
    */
   #scale(
-    settings: DockerComposeCanarySettings,
+    project: Project,
     service: string,
     count: number,
     env: Record<string, string>,
@@ -503,17 +568,17 @@ export class DockerComposeCanary {
     // An ID cannot be pulled, and a service's pull_policy: always would try:
     // whatever an ID names is local already, since a container ran it.
     if (Object.values(env).some(isImageId)) up.pull("never");
-    return this.#run(settings, up.scale(service, count).services(service), env);
+    return this.#run(project, up.scale(service, count).services(service), env);
   }
 
   /** The one image the stable service's running replicas use. */
   async #servingImage(
-    settings: DockerComposeCanarySettings,
+    project: Project,
     service: string,
     env: Record<string, string>,
   ): Promise<string> {
     const [image, ...others] = new Set(
-      await this.#runningImages(settings, service, env),
+      await this.#runningImages(project, service, env),
     );
     if (image === undefined) {
       throw new Error(
@@ -537,12 +602,12 @@ export class DockerComposeCanary {
    * which prints each once — and, unlike `ps`, counts stopped replicas too.
    */
   async #imageIds(
-    settings: DockerComposeCanarySettings,
+    project: Project,
     service: string,
     env: Record<string, string>,
   ): Promise<string[]> {
     const lines = await this.#lines(
-      settings,
+      project,
       new DockerComposeImagesSettings().quietOutput().services(service),
       env,
       `the image IDs of ${service}`,
@@ -558,12 +623,12 @@ export class DockerComposeCanary {
 
   /** The one image ID `service`'s replicas resolve to, or a refusal ending `why`. */
   async #oneImageId(
-    settings: DockerComposeCanarySettings,
+    project: Project,
     service: string,
     env: Record<string, string>,
     why: string,
   ): Promise<string> {
-    const [id, ...others] = await this.#imageIds(settings, service, env);
+    const [id, ...others] = await this.#imageIds(project, service, env);
     if (id === undefined || others.length > 0) {
       throw new Error(
         `${CALLER}: the replicas of ${service} resolve to ` +
@@ -585,12 +650,12 @@ export class DockerComposeCanary {
    * `ps --format {{.Image}}` prints them.
    */
   async #runningImages(
-    settings: DockerComposeCanarySettings,
+    project: Project,
     service: string,
     env: Record<string, string>,
   ): Promise<string[]> {
     const lines = await this.#lines(
-      settings,
+      project,
       new DockerComposePsSettings().format(IMAGE_TEMPLATE).services(service),
       env,
       `the images of ${service}`,
@@ -606,12 +671,12 @@ export class DockerComposeCanary {
    * mid-value.
    */
   async #lines(
-    settings: DockerComposeCanarySettings,
+    project: Project,
     command: DockerComposeSettings,
     env: Record<string, string>,
     what: string,
   ): Promise<string[]> {
-    const output = await this.#run(settings, command.quiet(), env);
+    const output = await this.#run(project, command.quiet(), env);
     if (output.truncated) {
       throw new Error(
         `${CALLER}: compose printed more than the ` +
@@ -630,25 +695,12 @@ export class DockerComposeCanary {
    * non-zero exit even when the global flags said not to throw.
    */
   async #run(
-    settings: DockerComposeCanarySettings,
+    project: Project,
     command: DockerComposeSettings,
     env: Record<string, string>,
   ): Promise<CommandOutput> {
-    const global = settings.compose_;
-    if (global !== undefined) {
-      const probe = global(new TrailingArgsProbe()).argv();
-      if (probe.at(-1) !== PROBE_TAIL) {
-        throw new Error(
-          `${CALLER}: d.compose(...) adds trailing arguments ` +
-            `(${
-              probe.slice(probe.indexOf(PROBE_TAIL) + 1).join(" ")
-            }), which ` +
-            "would follow the service every command names. Use the typed " +
-            "global flags instead.",
-        );
-      }
-      global(command);
-    }
+    const settings = project.settings;
+    applyScope(settings.compose_, project.scope, command);
     command.env(env);
     const output = await settings.runner_(command, env);
     if (output.code !== 0) {
@@ -735,7 +787,9 @@ function staged(rollout: Rollout | undefined): Rollout {
  * ```
  *
  * The lambda runs on every call, so it may read resolved parameters; after
- * `stage`, the services, replicas and variables are the ones it recorded.
+ * `stage`, the services, replicas and variables are the ones it recorded, and
+ * every call refuses before any command unless `d.compose(...)` gives the
+ * global flags — the Compose project — `stage` recorded.
  * Every move is `up -d --no-deps --scale <service>=<n> <service>` (with
  * `--wait` when `n` is not 0), run with the image variables set:
  *

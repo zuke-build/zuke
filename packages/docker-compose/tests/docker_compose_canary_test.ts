@@ -221,6 +221,7 @@ const STAGED = {
   composeCanaryImage: "app:v2",
   composeCanaryStableImage: "app:v1",
   composeCanaryStableImageId: V1_ID,
+  composeCanaryProject: ["-p", "shop"],
 };
 
 /** A context whose state is the one a successful stage leaves. */
@@ -859,6 +860,243 @@ Deno.test("trailing arguments from the global lambda are refused", async () => {
         .stage(context()),
     Error,
     "d.compose(...) adds trailing arguments (other)",
+  );
+  assertEquals(calls, []);
+});
+
+/** A context whose record is the default stage's, moved on to `extra`. */
+async function recordedAs(extra: Record<string, JsonValue> = {}) {
+  const ctx = context();
+  await ctx.state.set({ ...STAGED, ...extra });
+  return ctx;
+}
+
+/** The recorded states in which each call runs a command. */
+const RECORDED_STATES: Record<string, JsonValue>[] = [
+  {},
+  { composeCanaryCandidateId: V2_ID, composeCanaryReplicas: 2 },
+  { composeCanaryStage: "promoting", composeCanaryCandidateId: V2_ID },
+];
+
+/** Global lambdas that select some other project than `-p shop`. */
+const OTHER_PROJECTS: [
+  string,
+  (s: DockerComposeSettings) => DockerComposeSettings,
+][] = [
+  ["`-p other`", (s) => s.usePlugin().projectName("other")],
+  [
+    "`-f compose.yml -p shop`",
+    (s) => s.file("compose.yml").projectName("shop"),
+  ],
+  [
+    "`-p shop --project-directory /srv/other`",
+    (s) => s.projectName("shop").projectDirectory("/srv/other"),
+  ],
+  ["no global flags", (s) => s.usePlugin()],
+];
+
+Deno.test("stage records the project scope the global lambda gives, and no .env values", async () => {
+  // Without a lambda there are no global flags to record.
+  const bare = fakeCompose();
+  const none = context();
+  await platform(bare.runner, (d) => {
+    d.compose_ = undefined;
+    return d;
+  }).stage(none);
+  assertEquals(none.state.get().composeCanaryProject, []);
+  assertEquals(bare.calls[0].argv, [
+    "compose",
+    "ps",
+    "--format",
+    "{{.Image}}",
+    "app",
+  ]);
+  // Every global flag, in the order Compose gets it; neither the invocation
+  // form nor what .env(...) passes, which may be a secret.
+  const { runner, calls } = fakeCompose();
+  const ctx = context();
+  await platform(
+    runner,
+    (d) =>
+      d.compose((s) =>
+        s.useStandalone().file("a.yml").file("b.yml").projectName("shop")
+          .profile("web").projectDirectory("/srv/shop").envFile("prod.env")
+          .env({ REGISTRY_TOKEN: "hunter2" }).cwd("/srv")
+      ),
+  ).stage(ctx);
+  const flags = [
+    "-f",
+    "a.yml",
+    "-f",
+    "b.yml",
+    "-p",
+    "shop",
+    "--profile",
+    "web",
+    "--project-directory",
+    "/srv/shop",
+    "--env-file",
+    "prod.env",
+  ];
+  assertEquals(ctx.state.get().composeCanaryProject, flags);
+  assertEquals(JSON.stringify(ctx.state.get()).includes("hunter2"), false);
+  assertEquals(calls[0].argv.slice(0, flags.length), flags);
+  // The invocation form is how Compose is run, not which project: a later
+  // call through the plugin form is the same project.
+  const plugin = platform(
+    runner,
+    (d) =>
+      d.compose((s) =>
+        s.usePlugin().file("a.yml").file("b.yml").projectName("shop")
+          .profile("web").projectDirectory("/srv/shop").envFile("prod.env")
+      ),
+  );
+  assertEquals(await plugin.expose(25, ctx), 25);
+});
+
+Deno.test("a call whose lambda selects another project refuses before any command", async () => {
+  for (const [shown, other] of OTHER_PROJECTS) {
+    for (const extra of RECORDED_STATES) {
+      const { runner, calls, world } = fakeCompose();
+      const before = structuredClone(world);
+      const moved = platform(runner, (d) => d.compose(other));
+      const calls_ = [
+        (ctx: ReturnType<typeof context>) => moved.expose(25, ctx),
+        (ctx: ReturnType<typeof context>) => moved.promote(ctx),
+        (ctx: ReturnType<typeof context>) => moved.abort(ctx),
+      ];
+      for (const call of calls_) {
+        const ctx = await recordedAs(extra);
+        const state = ctx.state.get();
+        const error = await assertRejects(() => call(ctx), Error);
+        assertStringIncludes(
+          error.message,
+          "dockerComposeCanary: this rollout started on the Compose project " +
+            `selected by \`-p shop\`, but d.compose(...) now gives ${shown}, ` +
+            "so this call changed nothing",
+        );
+        assertEquals(ctx.state.get(), state);
+      }
+      assertEquals(calls, []);
+      assertEquals(world, before);
+    }
+  }
+});
+
+Deno.test("flags are compared as written, so a reordering is refused too", async () => {
+  const { runner, calls } = fakeCompose();
+  const ctx = context();
+  await platform(
+    runner,
+    (d) => d.compose((s) => s.file("a.yml").file("b.yml").projectName("shop")),
+  ).stage(ctx);
+  calls.length = 0;
+  await assertRejects(
+    () =>
+      platform(
+        runner,
+        (d) =>
+          d.compose((s) => s.file("b.yml").file("a.yml").projectName("shop")),
+      ).expose(25, ctx),
+    Error,
+    "now gives `-f b.yml -f a.yml -p shop`",
+  );
+  assertEquals(calls, []);
+});
+
+Deno.test("the project refusal gives a hand-run recovery naming the recorded stable image", async () => {
+  const { runner } = fakeCompose();
+  const ctx = await recordedAs({ composeCanaryProject: [] });
+  const error = await assertRejects(
+    () => platform(runner).abort(ctx),
+    Error,
+  );
+  for (
+    const part of [
+      "selected by no global flags, but d.compose(...) now gives `-p shop`",
+      "rather than move app and app-canary in a project the rollout never " +
+      "staged",
+      "compared as written, in order",
+      "a resume or `zuke cancel` will not roll it back",
+      "set the configuration back to what the rollout started with",
+      "check with `docker compose ps`",
+      "run the rollout's <field>.abort target by hand (for example " +
+      "`zuke rollout.abort`) with d.stable('app:v1')",
+      `which was ${V1_ID} when it started`,
+    ]
+  ) {
+    assertStringIncludes(error.message, part);
+  }
+});
+
+Deno.test("a record with no usable project scope is refused before any command", async () => {
+  const { runner, calls } = fakeCompose();
+  const p = platform(runner);
+  for (
+    const scope of [undefined, "-p shop", null, [1], ["-p", 2], { p: "shop" }]
+  ) {
+    for (
+      const call of [
+        (ctx: ReturnType<typeof context>) => p.expose(25, ctx),
+        (ctx: ReturnType<typeof context>) => p.promote(ctx),
+        (ctx: ReturnType<typeof context>) => p.abort(ctx),
+      ]
+    ) {
+      const ctx = context();
+      const record: Record<string, JsonValue> = { ...STAGED };
+      if (scope === undefined) delete record.composeCanaryProject;
+      else record.composeCanaryProject = scope;
+      await ctx.state.set(record);
+      await assertRejects(
+        () => call(ctx),
+        Error,
+        "this rollout's record has no usable composeCanaryProject, so it " +
+          "cannot tell which project, services and images it acts on",
+      );
+    }
+  }
+  assertEquals(calls, []);
+});
+
+Deno.test("a hand-run abort has no record, so it acts on whatever project the lambda selects", async () => {
+  const { runner, calls } = fakeCompose({
+    world: { app: ["app:v1", "app:v1"], "app-canary": ["app:v2", "app:v2"] },
+  });
+  await platform(
+    runner,
+    (d) => d.stable("app:v1").compose((s) => s.projectName("other")),
+  ).abort(context());
+  assertEquals(calls.length, 4);
+  for (const call of calls) {
+    assertEquals(call.argv.slice(0, 3), ["compose", "-p", "other"]);
+  }
+});
+
+Deno.test("a lambda that gives different flags from one command to the next is refused before that command runs", async () => {
+  // The probe and each command run the lambda separately: one that reads a
+  // clock or a counter must not send a single command to another project.
+  let runs = 0;
+  const drifting = (s: DockerComposeSettings) =>
+    s.projectName(runs++ === 0 ? "shop" : "other");
+  const { runner, calls } = fakeCompose();
+  const ctx = context();
+  await assertRejects(
+    () => platform(runner, (d) => d.compose(drifting)).stage(ctx),
+    Error,
+    "d.compose(...) gave this command `compose -p other ps --format " +
+      "{{.Image}} app` where this call resolved the global flags `-p shop`, " +
+      "so it does not run",
+  );
+  assertEquals(calls, []);
+  // Trailing arguments that appear only after the probe are caught the same
+  // way: the command's own operands must end it.
+  let tailRuns = 0;
+  const late = (s: DockerComposeSettings) =>
+    tailRuns++ === 0 ? s.projectName("shop") : s.projectName("shop").args("x");
+  await assertRejects(
+    () => platform(runner, (d) => d.compose(late)).stage(context()),
+    Error,
+    "d.compose(...) gave this command",
   );
   assertEquals(calls, []);
 });

@@ -8,8 +8,10 @@
  *
  * Internal to the package: not exported from `mod.ts`. Every call after
  * `stage` acts on the record, so a resumed or cancelling process whose lambda
- * resolves differently still moves the services the rollout started with; only
- * a hand-run rollback, which has no record, reads the settings.
+ * resolves differently still moves the services the rollout started with —
+ * and refuses outright when the lambda now selects another Compose project
+ * (see `canary_scope.ts`); only a hand-run rollback, which has no record,
+ * reads the settings.
  *
  * @module
  */
@@ -48,6 +50,7 @@ const RECORD = {
   candidate: "composeCanaryImage",
   stableImage: "composeCanaryStableImage",
   stableImageId: "composeCanaryStableImageId",
+  scope: "composeCanaryProject",
 } as const;
 
 /** The most replicas the two services may share. */
@@ -131,6 +134,12 @@ export interface Rollout extends Rollback {
    * there is none.
    */
   readonly candidateId?: string;
+  /**
+   * The global flags `d.compose(...)` gave when `stage` ran — which project
+   * the services are in. Every later call refuses unless the lambda still
+   * gives exactly these.
+   */
+  readonly scope: readonly string[];
 }
 
 /** The configured services and replicas, or a friendly error naming the fix. */
@@ -209,6 +218,7 @@ export function recordOf(rollout: Rollout): Record<string, JsonValue> {
     [RECORD.candidate]: rollout.candidate,
     [RECORD.stableImage]: rollout.stableImage,
     [RECORD.stableImageId]: rollout.restore,
+    [RECORD.scope]: [...rollout.scope],
   };
 }
 
@@ -228,6 +238,13 @@ export function recordedRollout(
   };
   const replicas = state[RECORD.replicas];
   if (typeof replicas !== "number") throw damaged(RECORD.replicas);
+  const scope = state[RECORD.scope];
+  if (
+    !Array.isArray(scope) ||
+    !scope.every((flag): flag is string => typeof flag === "string")
+  ) {
+    throw damaged(RECORD.scope);
+  }
   const pinned = state[CANDIDATE_ID] === undefined ? undefined : imageIdOf(
     text(CANDIDATE_ID),
     "the recorded candidate image ID",
@@ -242,6 +259,7 @@ export function recordedRollout(
       text(RECORD.stableImageId),
       "the recorded stable image ID",
     ),
+    scope,
   };
 }
 
@@ -364,7 +382,7 @@ function named(value: string | undefined, fix: string): string {
 function damaged(key: string): Error {
   return new Error(
     `${CALLER}: this rollout's record has no usable ${key}, so it cannot ` +
-      "tell which services and images it acts on. Roll back by hand with " +
+      "tell which project, services and images it acts on. Roll back by hand with " +
       "d.stable('<image>').",
   );
 }
