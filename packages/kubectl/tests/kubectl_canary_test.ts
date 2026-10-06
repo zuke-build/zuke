@@ -29,22 +29,47 @@ function memoryState(): TargetStateHandle {
   };
 }
 
+/** What the fake cluster answers, and which commands fail. */
+interface Cluster {
+  /** The stable Deployment's image for the container. */
+  stableImage?: string;
+  /** The canary Deployment's `.spec.replicas`. */
+  canaryReplicas?: string;
+  /** The Deployments whose `.spec.paused` is true. */
+  paused?: string[];
+  /** Commands that fail. */
+  fails?: (argv: string[]) => boolean;
+}
+
 /**
  * A runner that records every command line (without the binary), answers the
- * stable-image read with `stableImage`, and fails any command `fails` picks.
+ * jsonpath reads from `cluster`, and fails any command `cluster.fails` picks.
  */
 function fakeKubectl(
-  stableImage = "reg/api:1",
-  fails: (argv: string[]) => boolean = () => false,
+  cluster: Cluster = {},
 ): { runner: KubectlSettingsRunner; calls: string[][] } {
   const calls: string[][] = [];
   const runner = (settings: KubectlSettings): Promise<CommandOutput> => {
     const argv = settings.argv().slice(1);
     calls.push(argv);
-    if (fails(argv)) {
+    if (cluster.fails?.(argv)) {
       return Promise.reject(new Error(`kubectl failed: ${argv.join(" ")}`));
     }
-    const stdout = argv[0] === "get" ? stableImage : "";
+    let stdout = "";
+    if (argv[0] === "get") {
+      const path = argv.at(-1) ?? "";
+      const deployment = argv.find((a) => a.startsWith("deployment/")) ?? "";
+      if (path.endsWith(".image}")) stdout = cluster.stableImage ?? "reg/api:1";
+      if (path === "jsonpath={.spec.replicas}") {
+        stdout = cluster.canaryReplicas ?? "0";
+      }
+      if (
+        path === "jsonpath={.spec.paused}" &&
+        (cluster.paused ?? []).includes(deployment.slice("deployment/".length))
+      ) {
+        stdout = "true";
+      }
+    }
     return Promise.resolve(new CommandOutput(0, stdout, ""));
   };
   return { runner, calls };
@@ -90,6 +115,23 @@ const status = (deployment: string, timeout = "5m") => [
   `deployment/${deployment}`,
   `--timeout=${timeout}`,
 ];
+const read = (deployment: string, path: string) => [
+  "get",
+  ...SCOPE,
+  `deployment/${deployment}`,
+  "-o",
+  `jsonpath={${path}}`,
+];
+const IMAGE_PATH = '.spec.template.spec.containers[?(@.name=="api")].image';
+/** The reads every stage makes before it changes anything. */
+const STAGE_READS = [
+  read("api", IMAGE_PATH),
+  read("api", ".spec.paused"),
+  read("api-canary", ".spec.paused"),
+  read("api-canary", ".spec.replicas"),
+];
+/** How many commands a successful stage runs. */
+const STAGED = STAGE_READS.length + 1;
 const setImage = (deployment: string, image: string) => [
   "set",
   "image",
@@ -98,25 +140,16 @@ const setImage = (deployment: string, image: string) => [
   `api=${image}`,
 ];
 
-Deno.test("stage reads the stable image, empties the canary and sets the candidate on it", async () => {
-  const { runner, calls } = fakeKubectl("reg/api:1\n");
+Deno.test("stage reads the stable image, checks both Deployments, and sets the candidate on the empty canary", async () => {
+  const { runner, calls } = fakeKubectl({ stableImage: "reg/api:1\n" });
   const ctx = context();
   await platform(runner).stage(ctx);
-  assertEquals(calls, [
-    [
-      "get",
-      ...SCOPE,
-      "deployment/api",
-      "-o",
-      'jsonpath={.spec.template.spec.containers[?(@.name=="api")].image}',
-    ],
-    scale("api-canary", 0),
-    setImage("api-canary", "reg/api:2"),
-  ]);
+  assertEquals(calls, [...STAGE_READS, setImage("api-canary", "reg/api:2")]);
   assertEquals(ctx.state.get(), {
     kubectlCanaryStage: "staged",
     kubectlCanaryStableImage: "reg/api:1",
     kubectlCanaryCandidateImage: "reg/api:2",
+    kubectlCanaryReplicas: 10,
   });
   assertEquals(ctx.summary, { Candidate: "reg/api:2", Stable: "reg/api:1" });
 });
@@ -134,7 +167,7 @@ Deno.test("expose grows the canary, waits for it, then shrinks stable, and repor
 Deno.test("expose quantises to whole replicas and keeps one on each side", async () => {
   const cases: [number, number, number][] = [
     // [total, requested, achieved]
-    [4, 10, 25], // 0.4 replicas rounds to 0; a step still exposes one
+    [5, 10, 20], // 0.5 replicas rounds up to one
     [3, 50, 66.66666666666666], // 1.5 rounds to 2
     [4, 95, 75], // 3.8 rounds to 4, which would retire stable mid-rollout
     [10, 100, 100],
@@ -177,12 +210,32 @@ Deno.test("expose refuses a share outside 0 to 100, and a split of one replica",
   assertEquals(calls, []);
 });
 
-Deno.test("an expose whose canary never becomes ready leaves stable at full size", async () => {
-  const { runner, calls } = fakeKubectl(
-    "reg/api:1",
-    (argv) => argv[0] === "rollout",
+Deno.test("expose refuses a step that asks for less than one replica", async () => {
+  // 4 replicas at 10 % is 0.4 of one: exposing one would be 25 %, two and a
+  // half times what the step asked for.
+  const { runner, calls } = fakeKubectl();
+  await assertRejects(
+    () => platform(runner, (k) => k.replicas(4)).expose(10),
+    Error,
+    "a 10 % step needs k.replicas(5) or more",
   );
-  await assertRejects(() => platform(runner).expose(30), Error, "kubectl");
+  await assertRejects(
+    () => platform(runner, (k) => k.replicas(1)).expose(30),
+    Error,
+    "a 30 % step needs k.replicas(2) or more",
+  );
+  assertEquals(calls, []);
+});
+
+Deno.test("an expose whose canary never becomes ready leaves stable at full size", async () => {
+  const { runner, calls } = fakeKubectl({
+    fails: (argv) => argv[0] === "rollout",
+  });
+  await assertRejects(
+    () => platform(runner).expose(30),
+    Error,
+    "kubectl failed: rollout status",
+  );
   assertEquals(calls.length, 2);
   assertEquals(calls.some((argv) => argv.includes("deployment/api")), false);
 });
@@ -193,7 +246,7 @@ Deno.test("promote puts the staged image on stable, grows it, waits, then emptie
   await platform(runner).stage(ctx);
   // The lambda now names another image; the one analysed is promoted.
   await platform(runner, (k) => k.image("reg/api:9")).promote(ctx);
-  assertEquals(calls.slice(3), [
+  assertEquals(calls.slice(STAGED), [
     setImage("api", "reg/api:2"),
     scale("api", 10),
     status("api"),
@@ -201,7 +254,7 @@ Deno.test("promote puts the staged image on stable, grows it, waits, then emptie
   ]);
   // Idempotent: the same commands again.
   await platform(runner).promote(ctx);
-  assertEquals(calls.slice(7), calls.slice(3, 7));
+  assertEquals(calls.slice(STAGED + 4), calls.slice(STAGED, STAGED + 4));
 });
 
 Deno.test("promote with nothing staged refuses rather than guess", async () => {
@@ -228,7 +281,7 @@ Deno.test("abort mid-rollout restores the stable image and size, then empties th
     status("api"),
     scale("api-canary", 0),
   ];
-  assertEquals(calls.slice(6), [...rollback, ...rollback]);
+  assertEquals(calls.slice(STAGED + 3), [...rollback, ...rollback]);
 });
 
 Deno.test("abort after a promote that failed part-way puts the stable image back", async () => {
@@ -236,10 +289,9 @@ Deno.test("abort after a promote that failed part-way puts the stable image back
   // engine rolls back with the stage's record — which must not leave stable
   // running the candidate while the summary says "Rolled back".
   let failStatus = true;
-  const { runner, calls } = fakeKubectl(
-    "reg/api:1",
-    (argv) => failStatus && argv[0] === "rollout",
-  );
+  const { runner, calls } = fakeKubectl({
+    fails: (argv) => failStatus && argv[0] === "rollout",
+  });
   const ctx = context();
   const p = platform(runner);
   await p.stage(ctx);
@@ -255,10 +307,9 @@ Deno.test("abort after a promote that failed part-way puts the stable image back
 });
 
 Deno.test("a promote whose stable never becomes ready keeps the canary serving", async () => {
-  const { runner, calls } = fakeKubectl(
-    "reg/api:1",
-    (argv) => argv[0] === "rollout",
-  );
+  const { runner, calls } = fakeKubectl({
+    fails: (argv) => argv[0] === "rollout",
+  });
   const ctx = context();
   const p = platform(runner);
   await p.stage(ctx);
@@ -267,7 +318,9 @@ Deno.test("a promote whose stable never becomes ready keeps the canary serving",
 });
 
 Deno.test("a stable image read that is not one image is refused", async () => {
-  const { runner, calls } = fakeKubectl("reg/api:1 reg/api:2");
+  const { runner, calls } = fakeKubectl({
+    stableImage: "reg/api:1 reg/api:2",
+  });
   await assertRejects(
     () => platform(runner).stage(context()),
     Error,
@@ -277,10 +330,9 @@ Deno.test("a stable image read that is not one image is refused", async () => {
 });
 
 Deno.test("a rollback empties the canary even when stable does not become ready", async () => {
-  const { runner, calls } = fakeKubectl(
-    "reg/api:1",
-    (argv) => argv[0] === "rollout",
-  );
+  const { runner, calls } = fakeKubectl({
+    fails: (argv) => argv[0] === "rollout",
+  });
   const ctx = context();
   const p = platform(runner);
   await p.stage(ctx);
@@ -308,7 +360,7 @@ Deno.test("a stage that cannot record the candidate stops before the canary runs
     Error,
     "could not record the staged candidate",
   );
-  assertEquals(calls.length, 3);
+  assertEquals(calls.length, STAGED);
   assertEquals(ctx.state.get(), { kubectlCanaryStage: "deploying" });
 });
 
@@ -339,7 +391,7 @@ Deno.test("a hand-run abort with no stable image refuses rather than claim a rol
 });
 
 Deno.test("a stable Deployment without the container is named at stage", async () => {
-  const { runner, calls } = fakeKubectl("");
+  const { runner, calls } = fakeKubectl({ stableImage: "" });
   const ctx = context();
   await assertRejects(
     () => platform(runner).stage(ctx),
@@ -354,7 +406,11 @@ Deno.test("a stable image read that came back truncated is refused", async () =>
   const p = platform(() =>
     Promise.resolve(new CommandOutput(0, "reg/api:1", "", true, 8))
   );
-  await assertRejects(() => p.stage(context()), Error, "capture cap");
+  await assertRejects(
+    () => p.stage(context()),
+    Error,
+    "raise it with k.kubectl((s) => s.maxCapturedBytes(bytes))",
+  );
 });
 
 Deno.test("a non-zero exit fails the call even when kubectl was told not to throw", async () => {
@@ -380,7 +436,7 @@ Deno.test("the lambda is evaluated on every call, so it sees resolved values", a
   const p = platform(runner, (k) => k.image(image));
   image = "reg/api:3";
   await p.stage(context());
-  assertEquals(calls[2].at(-1), "api=reg/api:3");
+  assertEquals(calls[STAGED - 1].at(-1), "api=reg/api:3");
 });
 
 Deno.test("missing and malformed settings are named before anything runs", async () => {
@@ -394,6 +450,15 @@ Deno.test("missing and malformed settings are named before anything runs", async
     [(k) => k.canary("api"), 'both "api"'],
     [(k) => k.canary("api/x"), "must both be Deployment names"],
     [(k) => k.stable("-api"), "must both be Deployment names"],
+    [(k) => k.stable("a..b"), "must both be Deployment names"],
+    [(k) => k.stable("a.-b"), "must both be Deployment names"],
+    [(k) => k.canary("a-.b"), "must both be Deployment names"],
+    [(k) => k.image("reg/api:2\u0007"), "is not an image reference"],
+    [(k) => k.image("reg/api\u0085:2"), "is not an image reference"],
+    [(k) => k.timeout("0s"), "between 1ms and 24h"],
+    [(k) => k.timeout("25h"), "between 1ms and 24h"],
+    [(k) => k.timeout("99999999999999999999h"), "between 1ms and 24h"],
+    [(k) => k.replicas(2147483648), "a whole number from 1 to 2147483647"],
     [(k) => k.container("*"), "is not a container name"],
     [(k) => k.container("a=b"), "is not a container name"],
     [(k) => k.namespace("Prod"), "is not a namespace name"],
@@ -428,7 +493,7 @@ Deno.test("missing and malformed settings are named before anything runs", async
     await assertRejects(
       () => platform(runner, (k) => k.replicas(replicas)).expose(50),
       Error,
-      "must be a whole number of at least 1",
+      "must be a whole number from 1 to 2147483647",
     );
   }
   await assertRejects(
@@ -477,4 +542,112 @@ Deno.test("the default runner runs kubectl itself", async () => {
       .kubectl((s) => missingTool(s))
   );
   await assertRejects(() => p.expose(50), ToolNotFoundError);
+});
+
+Deno.test("a stage refused by its own settings leaves a rollback with nothing to do", async () => {
+  // The image parameter resolved empty. Stage changed nothing, so the inline
+  // rollback must not take the hand-run path and roll production back to
+  // stableImage.
+  const { runner, calls } = fakeKubectl();
+  const ctx = context();
+  const p = platform(runner, (k) => k.image("").stableImage("reg/api:0"));
+  await assertRejects(() => p.stage(ctx), Error, "no candidate image");
+  assertEquals(ctx.state.get(), { kubectlCanaryStage: "deploying" });
+  await p.abort(ctx);
+  assertEquals(calls, []);
+});
+
+Deno.test("stage refuses a canary Deployment that still has replicas", async () => {
+  // A leftover from an earlier rollout: scaling it away would drop serving
+  // capacity while stable is below its total, and its image is not the
+  // stable one.
+  const { runner, calls } = fakeKubectl({ canaryReplicas: "3" });
+  const ctx = context();
+  const p = platform(runner);
+  await assertRejects(
+    () => p.stage(ctx),
+    Error,
+    "deployment/api-canary has 3 replicas",
+  );
+  await assertRejects(() => p.stage(ctx), Error, "zuke cancel <run-id>");
+  assertEquals(calls, [...STAGE_READS, ...STAGE_READS]);
+  await p.abort(ctx);
+  assertEquals(calls.length, STAGE_READS.length * 2);
+});
+
+Deno.test("stage refuses a replica count it cannot read as a number", async () => {
+  const { runner } = fakeKubectl({ canaryReplicas: "" });
+  await assertRejects(
+    () => platform(runner).stage(context()),
+    Error,
+    'not a replica count: ""',
+  );
+});
+
+Deno.test("stage refuses a paused Deployment", async () => {
+  for (const paused of ["api", "api-canary"]) {
+    const { runner, calls } = fakeKubectl({ paused: [paused] });
+    await assertRejects(
+      () => platform(runner).stage(context()),
+      Error,
+      `deployment/${paused} is paused`,
+    );
+    assertEquals(calls.some((argv) => argv[0] !== "get"), false);
+  }
+});
+
+Deno.test("promote and abort restore the replica total stage recorded", async () => {
+  // A resumed or cancelling process whose parameter resolved differently, or
+  // not at all, must still put stable back to the size it had.
+  const { runner, calls } = fakeKubectl();
+  const ctx = context();
+  await platform(runner).stage(ctx);
+  const later = kubectlCanary((k) =>
+    k.stable("api").canary("api-canary").container("api").namespace("prod")
+      .kubectl((s) => s.context("prod-ctx")).runner(runner)
+  );
+  await later.abort(ctx);
+  await platform(runner, (k) => k.replicas(3)).promote(ctx);
+  const sizes = calls.filter((argv) => argv.includes("deployment/api"))
+    .filter((argv) => argv[0] === "scale");
+  assertEquals(sizes, [scale("api", 10), scale("api", 10)]);
+});
+
+Deno.test("the recorded stable image wins over stableImage in a rollback", async () => {
+  const { runner, calls } = fakeKubectl();
+  const ctx = context();
+  await platform(runner).stage(ctx);
+  await platform(runner, (k) => k.stableImage("reg/api:0")).abort(ctx);
+  assertEquals(calls[STAGED], setImage("api", "reg/api:1"));
+});
+
+Deno.test("images and totals read back from state are validated before use", async () => {
+  const { runner, calls } = fakeKubectl();
+  const tampered = context();
+  await tampered.state.set({
+    kubectlCanaryStage: "staged",
+    kubectlCanaryStableImage: "x,api=evil",
+    kubectlCanaryCandidateImage: "-evil",
+    kubectlCanaryReplicas: 10,
+  });
+  await assertRejects(
+    () => platform(runner).abort(tampered),
+    Error,
+    '"x,api=evil" (the recorded stable image) is not an image reference',
+  );
+  await assertRejects(
+    () => platform(runner).promote(tampered),
+    Error,
+    '"-evil" (the recorded candidate image) is not an image reference',
+  );
+  await tampered.state.set({
+    kubectlCanaryStableImage: "reg/api:1",
+    kubectlCanaryReplicas: 0,
+  });
+  await assertRejects(
+    () => platform(runner).abort(tampered),
+    Error,
+    "a whole number from 1 to 2147483647",
+  );
+  assertEquals(calls, []);
 });

@@ -22,13 +22,20 @@
  * The model is the classic replica canary: two Deployments whose pods carry a
  * label one Service selects, so the Service spreads requests over every ready
  * pod of both and the candidate's share of traffic follows its share of
- * replicas. The platform moves replicas between the two — always growing one
- * side and waiting for it before it shrinks the other, so serving capacity
- * never drops below the total.
+ * replicas. Each step grows the canary and waits for it before it shrinks the
+ * stable Deployment, so a step never drops serving capacity below the total —
+ * which needs room in the namespace for the total plus the canary's pods.
+ * Promotion and rollback `set image` on the stable Deployment, which rolls out
+ * by its own strategy: give it `maxUnavailable: 0` to keep capacity there too.
  *
- * The one value read back from the cluster is the stable Deployment's current
- * image for the container, through kubectl's own `jsonpath` projection — the
- * image a rollback puts back. No JSON document is parsed.
+ * Before it changes anything, `stage` reads single values through kubectl's own
+ * `jsonpath` projection: the stable Deployment's image for the container (what
+ * a rollback puts back), whether either Deployment is paused, and the canary's
+ * replica count, which must be 0. No JSON document is parsed.
+ *
+ * Nothing else may own the two Deployments during a rollout: a
+ * HorizontalPodAutoscaler, or a GitOps controller that syncs their replicas or
+ * their image, undoes these changes — suspend its sync and self-heal first.
  *
  * The canary engine's platform interface lives in `@zuke/canary`, and a wrapper
  * depends only on `@zuke/core`, so this module does not import it: the object
@@ -65,11 +72,22 @@ const STABLE_IMAGE = "kubectlCanaryStableImage";
 /** The state key for the candidate image staged — the one analysed. */
 const CANDIDATE_IMAGE = "kubectlCanaryCandidateImage";
 
+/** The state key for the replica total the stable Deployment is restored to. */
+const REPLICAS = "kubectlCanaryReplicas";
+
+/** The largest replica count kubectl accepts; it holds one in an int32. */
+const MAX_REPLICAS = 2147483647;
+
+/** The longest `rollout status` wait accepted: 24 hours, in milliseconds. */
+const MAX_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+
 /**
- * A Deployment name: a DNS subdomain. It is interpolated into the single token
- * `deployment/<name>`, so a `/` or a leading `-` must not get through.
+ * A Deployment name: a DNS-1123 subdomain — dot-separated parts that each
+ * start and end with a letter or digit. It is interpolated into the single
+ * token `deployment/<name>`, so a `/` or a leading `-` must not get through.
  */
-const DEPLOYMENT_SHAPE = /^[a-z0-9](?:[-a-z0-9.]{0,251}[a-z0-9])?$/;
+const DEPLOYMENT_SHAPE =
+  /^(?=.{1,253}$)[a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:\.[a-z0-9](?:[-a-z0-9]*[a-z0-9])?)*$/;
 
 /**
  * A container or namespace name: a DNS label. A container name goes into the
@@ -79,13 +97,27 @@ const DEPLOYMENT_SHAPE = /^[a-z0-9](?:[-a-z0-9.]{0,251}[a-z0-9])?$/;
 const LABEL_SHAPE = /^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$/;
 
 /**
- * An image reference, loosely: no whitespace, no `=` or `,` (which would split
- * the `<container>=<image>` token), and no leading `-`.
+ * An image reference, loosely: no whitespace or control characters, no `=` or
+ * `,` (which would split the `<container>=<image>` token), and no leading `-`.
  */
-const IMAGE_SHAPE = /^[^\s=,-][^\s=,]*$/;
+const IMAGE_SHAPE = /^[^\s\p{Cc}=,-][^\s\p{Cc}=,]*$/u;
 
 /** A Go duration, as `kubectl rollout status --timeout` parses one. */
 const DURATION_SHAPE = /^(?:\d+(?:\.\d+)?(?:ns|us|µs|ms|s|m|h))+$/;
+
+/** One `<number><unit>` part of a Go duration. */
+const DURATION_PART = /(\d+(?:\.\d+)?)(ns|us|µs|ms|s|m|h)/g;
+
+/** Milliseconds per Go duration unit. */
+const UNIT_MS: Readonly<Record<string, number>> = {
+  ns: 1e-6,
+  us: 1e-3,
+  "µs": 1e-3,
+  ms: 1,
+  s: 1000,
+  m: 60_000,
+  h: 3_600_000,
+};
 
 /**
  * Runs one prepared `kubectl` command and returns its output. The default runs
@@ -186,8 +218,10 @@ export class KubectlCanarySettings {
 
   /**
    * The replicas the two Deployments run between them — the stable
-   * Deployment's size at rest. A whole number of at least 1; a canary with
-   * steps needs at least 2, so a step can leave a replica on each side.
+   * Deployment's size at rest. A whole number from 1 to 2147483647; a step
+   * needs enough that it asks for at least half a replica, and at least 2, so
+   * it can leave a replica on each side. `stage` records it, so a resumed or
+   * rolled-back rollout restores the size it started from.
    */
   replicas(total: number): this {
     this.replicas_ = total;
@@ -202,7 +236,8 @@ export class KubectlCanarySettings {
 
   /**
    * How long each `kubectl rollout status` waits for a Deployment to become
-   * ready, as a Go duration (default `5m`).
+   * ready, as a Go duration from `1ms` to `24h` (default `5m`). kubectl reads
+   * 0 as "wait forever", so it is refused.
    */
   timeout(duration: string): this {
     this.timeout_ = duration;
@@ -266,10 +301,15 @@ export class KubectlCanary {
 
   /**
    * Read the image the stable Deployment runs, so a rollback can put it back;
-   * then empty the canary Deployment and set the candidate image on it. With
-   * no replicas, nothing runs the candidate yet.
+   * check that neither Deployment is paused and that the canary has no
+   * replicas; then set the candidate image on the canary. With no replicas,
+   * nothing runs the candidate yet.
    */
   async stage(ctx: KubectlCanaryContext): Promise<void> {
+    // First, before anything can throw: a stage that fails from here on is
+    // rolled back with this record, which says nothing has changed yet. With
+    // none, the rollback would take the hand-run path and restore stableImage.
+    await ctx.state.set({ [STAGE]: "deploying" });
     const r = this.#resolve();
     const image = imageOf(r.settings.image_, "the candidate image");
     if (image === undefined) {
@@ -278,9 +318,11 @@ export class KubectlCanary {
           "canary Deployment runs.",
       );
     }
-    await ctx.state.set({ [STAGE]: "deploying" });
+    const total = totalOf(r.settings.replicas_);
     const stableImage = await this.#stableImage(r);
-    await this.#scale(r, r.canary, 0);
+    await this.#refusePaused(r, r.stable);
+    await this.#refusePaused(r, r.canary);
+    await this.#refuseLeftover(r);
     await this.#run(
       r,
       this.#scoped(r, new KubectlSetImageSettings())
@@ -292,6 +334,7 @@ export class KubectlCanary {
       [STAGE]: "staged",
       [STABLE_IMAGE]: stableImage,
       [CANDIDATE_IMAGE]: image,
+      [REPLICAS]: total,
     });
     if (!recorded) {
       throw new Error(
@@ -307,8 +350,9 @@ export class KubectlCanary {
    * Move replicas so the canary Deployment holds about `percent` of the total.
    * The canary grows first and is waited for with `rollout status`; only then
    * does the stable Deployment shrink, so capacity never dips. A step between
-   * 0 and 100 always leaves at least one replica on each side. Returns the
-   * share reached, `canary / total × 100`.
+   * 0 and 100 always leaves at least one replica on each side, and a step that
+   * asks for less than half a replica is refused rather than rounded up to a
+   * far larger share. Returns the share reached, `canary / total × 100`.
    */
   async expose(percent: number): Promise<number> {
     if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
@@ -318,10 +362,17 @@ export class KubectlCanary {
       );
     }
     const r = this.#resolve();
-    const total = totalOf(r.settings);
+    const total = totalOf(r.settings.replicas_);
     if (percent === 0) {
       await this.#restoreStable(r, total);
       return 0;
+    }
+    if ((total * percent) / 100 < 0.5) {
+      throw new Error(
+        `${CALLER}: ${total} replicas at ${percent} % is less than half a ` +
+          `replica, so a ${percent} % step needs ` +
+          `k.replicas(${Math.ceil(50 / percent)}) or more.`,
+      );
     }
     let canary = total;
     if (percent < 100) {
@@ -332,8 +383,8 @@ export class KubectlCanary {
             "k.replicas(...) to at least 2.",
         );
       }
-      const rounded = Math.round((total * percent) / 100);
-      canary = Math.min(Math.max(rounded, 1), total - 1);
+      // At least half a replica rounds to at least one.
+      canary = Math.min(Math.round((total * percent) / 100), total - 1);
     }
     await this.#scale(r, r.canary, canary);
     await this.#waitFor(r, r.canary);
@@ -349,8 +400,12 @@ export class KubectlCanary {
    * Idempotent.
    */
   async promote(ctx: KubectlCanaryContext): Promise<void> {
-    const staged = ctx.state.get()[CANDIDATE_IMAGE];
-    if (typeof staged !== "string") {
+    const state = ctx.state.get();
+    const recorded = state[CANDIDATE_IMAGE];
+    const staged = typeof recorded === "string"
+      ? imageOf(recorded, "the recorded candidate image")
+      : undefined;
+    if (staged === undefined) {
       throw new Error(
         `${CALLER}: no staged candidate is recorded for this rollout, so ` +
           "there is nothing to promote. Promote runs after stage, in the same " +
@@ -358,7 +413,7 @@ export class KubectlCanary {
       );
     }
     const r = this.#resolve();
-    const total = totalOf(r.settings);
+    const total = recordedTotal(state, r.settings);
     await this.#setStableImage(r, staged);
     await this.#scale(r, r.stable, total);
     // Unlike a rollback, the canary keeps serving until the stable Deployment
@@ -374,8 +429,10 @@ export class KubectlCanary {
    *
    * - **Staged** (a rollback mid-rollout): the image `stage` read off the
    *   stable Deployment goes back on it — a no-op unless a promote got part of
-   *   the way — the stable Deployment is scaled to the total and waited for,
-   *   and the canary is emptied, even when that wait fails.
+   *   the way — the stable Deployment is scaled to the total `stage` recorded
+   *   and waited for, and the canary is emptied, even when that wait fails.
+   *   What `stage` recorded wins over the lambda's `stableImage` and
+   *   `replicas`.
    * - **`stage` failed before the candidate was on record**: the canary had
    *   no replicas and the stable Deployment was not touched, so nothing runs.
    * - **Nothing recorded** (`rollout.abort` run by hand, a fresh run): the
@@ -385,14 +442,14 @@ export class KubectlCanary {
    *   changed nothing.
    */
   async abort(ctx: KubectlCanaryContext): Promise<void> {
-    const r = this.#resolve();
     const state = ctx.state.get();
     if (state[STAGE] === "deploying") return;
+    const r = this.#resolve();
     // Written in the same write as the "staged" marker, so present exactly
     // when the rollout got that far.
     const recorded = state[STABLE_IMAGE];
     const image = typeof recorded === "string"
-      ? recorded
+      ? imageOf(recorded, "the recorded stable image")
       : imageOf(r.settings.stableImage_, "k.stableImage(...)");
     if (image === undefined) {
       throw new Error(
@@ -403,7 +460,7 @@ export class KubectlCanary {
           "`zuke cancel <run-id>` for a rollout that is still running.",
       );
     }
-    const total = totalOf(r.settings);
+    const total = recordedTotal(state, r.settings);
     await this.#setStableImage(r, image);
     await this.#restoreStable(r, total);
   }
@@ -448,6 +505,13 @@ export class KubectlCanary {
       throw new Error(
         `${CALLER}: the timeout "${settings.timeout_}" is not a duration ` +
           "kubectl reads — use one like 90s, 5m or 1h30m.",
+      );
+    }
+    const timeoutMs = durationMs(settings.timeout_);
+    if (timeoutMs < 1 || timeoutMs > MAX_TIMEOUT_MS) {
+      throw new Error(
+        `${CALLER}: the timeout "${settings.timeout_}" must be between 1ms ` +
+          "and 24h — kubectl reads 0 as waiting forever.",
       );
     }
     return { settings, stable, canary, container };
@@ -516,23 +580,76 @@ export class KubectlCanary {
     }
   }
 
-  /** The image the stable Deployment's container runs now. */
-  async #stableImage(r: Resolved): Promise<string> {
+  /**
+   * One value of `deployment`, through `kubectl get -o jsonpath={<path>}`,
+   * trimmed. A truncated capture is refused: capture keeps the newest bytes,
+   * so what survives begins mid-value.
+   */
+  async #read(r: Resolved, deployment: string, path: string): Promise<string> {
     const output = await this.#run(
       r,
       this.#scoped(r, new KubectlGetSettings())
-        .resource(`deployment/${r.stable}`)
-        .output(
-          `jsonpath={.spec.template.spec.containers[?(@.name=="${r.container}")].image}`,
-        ),
+        .resource(`deployment/${deployment}`).output(`jsonpath={${path}}`),
     );
     if (output.truncated) {
       throw new Error(
-        `${CALLER}: kubectl produced more output than the capture cap kept, ` +
-          `so the image of ${r.stable} cannot be trusted.`,
+        `${CALLER}: kubectl printed more than the ` +
+          `${output.maxCapturedBytes}-byte capture cap kept reading ${path} ` +
+          `of deployment/${deployment}, and capture drops the oldest bytes — ` +
+          "raise it with k.kubectl((s) => s.maxCapturedBytes(bytes)).",
       );
     }
-    const image = imageOf(output.stdout.trim(), "the stable image");
+    return output.stdout.trim();
+  }
+
+  /**
+   * Refuse a paused Deployment: it does not roll out a new image, so scaling
+   * it up would serve the image it had until the wait timed out.
+   */
+  async #refusePaused(r: Resolved, deployment: string): Promise<void> {
+    const paused = await this.#read(r, deployment, ".spec.paused");
+    if (paused !== "" && paused !== "false") {
+      throw new Error(
+        `${CALLER}: deployment/${deployment} is paused (.spec.paused is ` +
+          `"${paused}"), so it would not roll out what the canary sets. ` +
+          `Resume it with kubectl rollout resume deployment/${deployment} ` +
+          "first.",
+      );
+    }
+  }
+
+  /**
+   * Refuse a canary Deployment that still has replicas: it is left from an
+   * earlier rollout that did not finish, and the stable Deployment is likely
+   * below its total. Scaling it away here would drop serving capacity.
+   */
+  async #refuseLeftover(r: Resolved): Promise<void> {
+    const replicas = await this.#read(r, r.canary, ".spec.replicas");
+    if (!/^\d+$/.test(replicas)) {
+      throw new Error(
+        `${CALLER}: kubectl printed something that is not a replica count: ` +
+          `"${replicas}", reading deployment/${r.canary}.`,
+      );
+    }
+    if (Number(replicas) !== 0) {
+      throw new Error(
+        `${CALLER}: deployment/${r.canary} has ${replicas} replicas, and a ` +
+          "canary starts from none — it is left from an earlier rollout. " +
+          "Roll that one back with `zuke cancel <run-id>`, or scale the " +
+          "canary to 0 by hand once the stable Deployment is back at its " +
+          "full size.",
+      );
+    }
+  }
+
+  /** The image the stable Deployment's container runs now. */
+  async #stableImage(r: Resolved): Promise<string> {
+    const value = await this.#read(
+      r,
+      r.stable,
+      `.spec.template.spec.containers[?(@.name=="${r.container}")].image`,
+    );
+    const image = imageOf(value, "the stable image");
     if (image === undefined) {
       throw new Error(
         `${CALLER}: deployment/${r.stable} has no container named ` +
@@ -568,27 +685,46 @@ function imageOf(
   if (!IMAGE_SHAPE.test(reference)) {
     throw new Error(
       `${CALLER}: "${reference}" (${what}) is not an image reference — it ` +
-        "must not contain whitespace, '=' or ',', or start with '-'.",
+        "must not contain whitespace, control characters, '=' or ',', or " +
+        "start with '-'.",
     );
   }
   return reference;
 }
 
-/** The configured total replicas, or a friendly error naming the fix. */
-function totalOf(settings: KubectlCanarySettings): number {
-  const total = settings.replicas_;
+/** A replica total, or a friendly error naming the fix. */
+function totalOf(total: number | undefined): number {
   if (total === undefined) {
     throw new Error(
       `${CALLER}: no replica count — add k.replicas(n), the replicas the ` +
         "stable Deployment runs at rest.",
     );
   }
-  if (!Number.isInteger(total) || total < 1) {
+  if (!Number.isInteger(total) || total < 1 || total > MAX_REPLICAS) {
     throw new Error(
-      `${CALLER}: k.replicas(${total}) must be a whole number of at least 1.`,
+      `${CALLER}: the replica total ${total} must be a whole number from 1 ` +
+        `to ${MAX_REPLICAS}.`,
     );
   }
   return total;
+}
+
+/** The total `stage` recorded, else the configured one — validated either way. */
+function recordedTotal(
+  state: Readonly<Record<string, unknown>>,
+  settings: KubectlCanarySettings,
+): number {
+  const recorded = state[REPLICAS];
+  return totalOf(typeof recorded === "number" ? recorded : settings.replicas_);
+}
+
+/** A Go duration already matching {@link DURATION_SHAPE}, in milliseconds. */
+function durationMs(text: string): number {
+  let ms = 0;
+  for (const [, amount, unit] of text.matchAll(DURATION_PART)) {
+    ms += Number(amount) * UNIT_MS[unit];
+  }
+  return ms;
 }
 
 /**
@@ -605,8 +741,9 @@ function totalOf(settings: KubectlCanarySettings): number {
  *
  * The lambda runs on every call, so it may read resolved parameters.
  *
- * - **stage** — reads the stable image (`get -o jsonpath=…`), then
- *   `scale deployment/<canary> --replicas=0` and
+ * - **stage** — reads the stable image, both Deployments' `.spec.paused` and
+ *   the canary's `.spec.replicas` (`get -o jsonpath=…`), refusing a paused
+ *   Deployment or a canary that is not at 0, then
  *   `set image deployment/<canary> <container>=<image>`.
  * - **expose** — `scale` the canary up, `rollout status` it, then `scale` the
  *   stable Deployment down.

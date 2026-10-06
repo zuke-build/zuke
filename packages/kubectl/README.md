@@ -134,22 +134,31 @@ rollout = canary((c) =>
 It assumes **one Service selects the pods of both Deployments**, so requests
 spread over every ready pod and the candidate's share of traffic follows its
 share of replicas. Exposure is therefore quantised: `expose` returns the share
-it reached, and a step between 0 and 100 always leaves at least one replica on
-each side.
+it reached, a step between 0 and 100 always leaves at least one replica on each
+side, and a step that asks for less than half a replica is refused.
 
-- **`stage`** reads the stable image (`get -o jsonpath=…`), scales the canary
-  Deployment to 0 and sets the candidate image on it.
+- **`stage`** reads the stable image, both Deployments' `.spec.paused` and the
+  canary's `.spec.replicas` (`get -o jsonpath=…`). It refuses a paused
+  Deployment, and a canary that is not at 0 replicas — a leftover from an
+  earlier rollout, to roll back with `zuke cancel <run-id>` or scale to 0 by
+  hand. Then it sets the candidate image on the canary and records the stable
+  image and `replicas`.
 - **`expose`** scales the canary up, waits with `rollout status`, then scales
-  the stable Deployment down — capacity never drops below `replicas`.
-- **`promote`** sets the staged image on the stable Deployment, scales it to
-  `replicas`, waits, then scales the canary to 0.
+  the stable Deployment down, so a step never drops capacity below `replicas`.
+- **`promote`** sets the staged image on the stable Deployment, scales it to the
+  recorded `replicas`, waits, then scales the canary to 0.
 - **`abort`** does the same with the stable image `stage` read. Run by hand, it
   restores the `.stableImage(...)` image, and refuses without one.
 
-A Service balances connections, not requests, so with long-lived or HTTP/2
-connections the candidate's real share can differ from its replica share. A
-HorizontalPodAutoscaler, or a GitOps controller that owns `spec.replicas`, on
-either Deployment fights these scales — suspend it for the rollout. See
+The namespace needs room for `replicas` plus the canary's pods at once. Promote
+and abort `set image` on the stable Deployment, which rolls out by its own
+strategy — give it `maxUnavailable: 0` to keep capacity there too. A Service
+balances connections, not requests, so with long-lived or HTTP/2 connections the
+candidate's real share can differ from its replica share. Nothing else may own
+either Deployment during a rollout: suspend a HorizontalPodAutoscaler, and the
+sync and self-heal of a GitOps controller that manages their replicas or image.
+
+See
 [docs/canary.md](https://github.com/zuke-build/zuke/blob/master/docs/canary.md#kubernetes).
 
 <!-- ZUKE:API:START -->
@@ -190,8 +199,9 @@ function kubectlCanary(configure: Configure<KubectlCanarySettings>): KubectlCana
 
   The lambda runs on every call, so it may read resolved parameters.
 
-  - stage — reads the stable image (`get -o jsonpath=…`), then
-    `scale deployment/<canary> --replicas=0` and
+  - stage — reads the stable image, both Deployments' `.spec.paused` and
+    the canary's `.spec.replicas` (`get -o jsonpath=…`), refusing a paused
+    Deployment or a canary that is not at 0, then
     `set image deployment/<canary> <container>=<image>`.
   - expose — `scale` the canary up, `rollout status` it, then `scale` the
     stable Deployment down.
@@ -336,14 +346,16 @@ class KubectlCanary
     `"Kubernetes deployment api (canary api-canary)"`, for the summary.
   async stage(ctx: KubectlCanaryContext): Promise<void>
     Read the image the stable Deployment runs, so a rollback can put it back;
-    then empty the canary Deployment and set the candidate image on it. With
-    no replicas, nothing runs the candidate yet.
+    check that neither Deployment is paused and that the canary has no
+    replicas; then set the candidate image on the canary. With no replicas,
+    nothing runs the candidate yet.
   async expose(percent: number): Promise<number>
     Move replicas so the canary Deployment holds about `percent` of the total.
     The canary grows first and is waited for with `rollout status`; only then
     does the stable Deployment shrink, so capacity never dips. A step between
-    0 and 100 always leaves at least one replica on each side. Returns the
-    share reached, `canary / total × 100`.
+    0 and 100 always leaves at least one replica on each side, and a step that
+    asks for less than half a replica is refused rather than rounded up to a
+    far larger share. Returns the share reached, `canary / total × 100`.
   async promote(ctx: KubectlCanaryContext): Promise<void>
     Set the staged candidate image on the stable Deployment, scale it to the
     total and wait for it, then empty the canary Deployment — only once the
@@ -356,8 +368,10 @@ class KubectlCanary
 
     - Staged (a rollback mid-rollout): the image `stage` read off the
       stable Deployment goes back on it — a no-op unless a promote got part of
-      the way — the stable Deployment is scaled to the total and waited for,
-      and the canary is emptied, even when that wait fails.
+      the way — the stable Deployment is scaled to the total `stage` recorded
+      and waited for, and the canary is emptied, even when that wait fails.
+      What `stage` recorded wins over the lambda's `stableImage` and
+      `replicas`.
     - `stage` failed before the candidate was on record: the canary had
       no replicas and the stable Deployment was not touched, so nothing runs.
     - Nothing recorded (`rollout.abort` run by hand, a fresh run): the
@@ -413,13 +427,16 @@ class KubectlCanarySettings
     restores the image `stage` read off the stable Deployment.
   replicas(total: number): this
     The replicas the two Deployments run between them — the stable
-    Deployment's size at rest. A whole number of at least 1; a canary with
-    steps needs at least 2, so a step can leave a replica on each side.
+    Deployment's size at rest. A whole number from 1 to 2147483647; a step
+    needs enough that it asks for at least half a replica, and at least 2, so
+    it can leave a replica on each side. `stage` records it, so a resumed or
+    rolled-back rollout restores the size it started from.
   namespace(name: string): this
     The namespace both Deployments live in (`--namespace`).
   timeout(duration: string): this
     How long each `kubectl rollout status` waits for a Deployment to become
-    ready, as a Go duration (default `5m`).
+    ready, as a Go duration from `1ms` to `24h` (default `5m`). kubectl reads
+    0 as "wait forever", so it is refused.
   kubectl(configure: Configure<KubectlSettings>): this
     Global flags for every kubectl command the platform runs —
     `(s) => s.context("prod").kubeconfig("~/.kube/prod")`, or a
