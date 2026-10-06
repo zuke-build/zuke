@@ -116,15 +116,20 @@ when `n` is not 0:
   Otherwise (after a promotion, finished or part-way) Compose would recreate
   every stable replica at once, so it mirrors a promotion: the canary service to
   every replica on the stable image, the stable service recreated on it, then
-  the canary service to none. Run by hand, the stable image is the
-  `.stable(...)` one, compared by the reference `ps` shows, and it refuses
-  without one. After a `stage` that changed nothing, nothing runs.
+  the canary service to none. Either way it then reads the stable replicas again
+  (by ID, or by reference when run by hand) and refuses, leaving the canary
+  serving, if they are not on the stable image, as with a literal stable
+  `image:`; it does not report a rollback that changed nothing. Run by hand, the
+  stable image is the `.stable(...)` one, compared by the reference `ps` shows,
+  and it refuses without one. After a `stage` that changed nothing, nothing
+  runs.
 
 Every move that sets a variable to an image ID passes `--pull never`, which
 overrides a service's `pull_policy: always`: an ID cannot be pulled, and a
-container already ran it, so it is local. `images` counts stopped replicas as
-well as running ones, so a stopped replica left on another image makes `stage`
-refuse until it is removed.
+container already ran it, so it is local. `images` counts stopped replicas and
+one-off `docker compose run` containers as well as running ones, so one left on
+another image makes `stage` refuse until it is removed (`docker compose rm`; use
+`run --rm`).
 
 A command that exits non-zero fails the call even under `.noThrow()`, and
 trailing `.args(...)` in `.compose(...)` are refused, since they would follow
@@ -220,8 +225,9 @@ function dockerComposeCanary(configure: Configure<DockerComposeCanarySettings>):
     hand, `ps` their references). If they are all on the stable image, the
     stable service back to every replica (`--no-recreate`); otherwise the
     canary service to every replica on the stable image, the stable service
-    recreated on it. Then the canary service to none. Run by hand, the
-    stable image is the one set with `.stable(...)`.
+    recreated on it. The stable replicas are then read again and must be
+    on the stable image, before the canary service goes to none. Run by
+    hand, the stable image is the one set with `.stable(...)`.
 
   The stable service's `scale:` in the Compose file must equal
   `.replicas(...)`, and Compose v2 (`docker compose`) is required.
@@ -340,7 +346,11 @@ class DockerComposeCanary
     recreated, which Compose does to all of them at once, so the rollback
     mirrors a promotion: the canary service first goes to every replica on
     the stable image, then the stable service is recreated on it, then the
-    canary service goes to none. Capacity never dips.
+    canary service goes to none. Capacity never dips. Either way, before
+    the canary goes to none, the stable replicas are read again — by ID on a
+    recorded rollout, by reference run by hand — and a stable `image:` that
+    does not read its variable is refused, leaving the canary serving,
+    rather than reported as rolled back.
 
     Like a promotion, the image is an override for these commands, so it
     lasts until a plain `docker compose up` reads the variable from wherever

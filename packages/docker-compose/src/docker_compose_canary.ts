@@ -301,16 +301,7 @@ export class DockerComposeCanary {
       env,
       false,
     );
-    const installed = await this.#imageIds(settings, rollout.stable, env);
-    if (installed.length !== 1 || installed[0] !== id) {
-      throw new Error(
-        `${CALLER}: the replicas of ${rollout.stable} resolve to ` +
-          `${installed.length === 0 ? "no image" : installed.join(", ")} ` +
-          `after the platform set ${rollout.stableVariable} to ${id}, so its ` +
-          "image: does not read that variable. Make it image: " +
-          `\${${rollout.stableVariable}}.`,
-      );
-    }
+    await this.#requireStable(settings, rollout, id, true, env);
     await this.#scale(settings, rollout.canary, 0, env, false);
     // Reported before the promotion is recorded: a process that dies between
     // the two re-drives the promotion, which reports it again, rather than
@@ -348,7 +339,11 @@ export class DockerComposeCanary {
    * recreated, which Compose does to all of them at once, so the rollback
    * mirrors a promotion: the canary service first goes to every replica on
    * the stable image, then the stable service is recreated on it, then the
-   * canary service goes to none. Capacity never dips.
+   * canary service goes to none. Capacity never dips. Either way, before
+   * the canary goes to none, the stable replicas are read again — by ID on a
+   * recorded rollout, by reference run by hand — and a stable `image:` that
+   * does not read its variable is refused, leaving the canary serving,
+   * rather than reported as rolled back.
    *
    * Like a promotion, the image is an override for these commands, so it
    * lasts until a plain `docker compose up` reads the variable from wherever
@@ -390,6 +385,17 @@ export class DockerComposeCanary {
         false,
       );
     }
+    // A stable image: that does not read the variable makes the move a no-op
+    // — or, from no replicas, creates them on the wrong image — and reporting
+    // a rollback then would be a lie. The canary keeps serving while someone
+    // looks.
+    await this.#requireStable(
+      settings,
+      rollback,
+      image,
+      recorded !== undefined,
+      env,
+    );
     await this.#scale(settings, rollback.canary, 0, env, false);
     if (recorded === undefined) ctx.reportSummary(persist(rollback, image));
   }
@@ -414,10 +420,31 @@ export class DockerComposeCanary {
   }
 
   /**
-   * Check the canary replicas run the candidate, and pin its image ID: `ps`
-   * must show each on the candidate's reference or its recorded ID, and
+   * Refuse unless every stable replica runs `image`, which the platform just
+   * set the stable variable to: by ID through `images --quiet` when `byId`,
+   * or by the reference `ps` shows — all a hand-run rollback has.
+   */
+  async #requireStable(
+    settings: DockerComposeCanarySettings,
+    rollback: Rollback,
+    image: string,
+    byId: boolean,
+    env: Record<string, string>,
+  ): Promise<void> {
+    const shown = byId
+      ? await this.#imageIds(settings, rollback.stable, env)
+      : await this.#runningImages(settings, rollback.stable, env);
+    if (shown.length === 0 || shown.some((each) => each !== image)) {
+      throw unread(rollback.stable, shown, rollback.stableVariable, image);
+    }
+  }
+
+  /**
+   * Check the canary replicas run the candidate, and pin its image ID:
    * `images --quiet` must resolve them to one ID — recorded the first time,
-   * and required to match it after.
+   * and required to match it after — and `ps` must show each on the
+   * candidate's reference or that ID (a replica created from the tag shows
+   * the ID once the tag has moved).
    */
   async #pinCandidate(
     settings: DockerComposeCanarySettings,
@@ -427,16 +454,8 @@ export class DockerComposeCanary {
   ): Promise<string> {
     const variable = rollout.canaryVariable;
     const running = await this.#runningImages(settings, rollout.canary, env);
-    const accepted = [rollout.candidate, rollout.candidateId];
-    if (
-      running.length === 0 || running.some((each) => !accepted.includes(each))
-    ) {
-      throw new Error(
-        `${CALLER}: the service ${rollout.canary} runs ` +
-          `${running.length === 0 ? "nothing" : running.join(", ")} after ` +
-          `the platform set ${variable} to ${env[variable]}, so its image: ` +
-          `does not read that variable. Make it image: \${${variable}}.`,
-      );
+    if (running.length === 0) {
+      throw unread(rollout.canary, running, variable, env[variable]);
     }
     const id = await this.#oneImageId(
       settings,
@@ -444,6 +463,9 @@ export class DockerComposeCanary {
       env,
       "so there is no one candidate image for the analysis to judge",
     );
+    if (running.some((each) => each !== rollout.candidate && each !== id)) {
+      throw unread(rollout.canary, running, variable, env[variable]);
+    }
     if (rollout.candidateId === undefined) {
       await ctx.state.set({ [CANDIDATE_ID]: id });
     } else if (id !== rollout.candidateId) {
@@ -549,8 +571,9 @@ export class DockerComposeCanary {
             id === undefined
               ? "no image ID"
               : `several image IDs (${[id, ...others].join(", ")}) — ` +
-                "images counts stopped replicas too, so remove any left on " +
-                "another image —"
+                "images counts stopped replicas and one-off `docker compose " +
+                "run` containers too, so remove any left on another image " +
+                "with `docker compose rm` (and use `run --rm`) —"
           } ${why}.`,
       );
     }
@@ -667,6 +690,25 @@ function persist(
   };
 }
 
+/**
+ * The refusal for a service that does not run what the platform just set its
+ * variable to: its `image:` does not read the variable, so the move changed
+ * nothing.
+ */
+function unread(
+  service: string,
+  shown: readonly string[],
+  variable: string,
+  value: string,
+): Error {
+  return new Error(
+    `${CALLER}: the service ${service} runs ` +
+      `${shown.length === 0 ? "nothing" : shown.join(", ")} after the ` +
+      `platform set ${variable} to ${value}, so its image: does not read ` +
+      `that variable. Make it image: \${${variable}}.`,
+  );
+}
+
 /** The recorded rollout, or a refusal: expose and promote need a stage. */
 function staged(rollout: Rollout | undefined): Rollout {
   if (rollout === undefined) {
@@ -716,8 +758,9 @@ function staged(rollout: Rollout | undefined): Rollout {
  *   hand, `ps` their references). If they are all on the stable image, the
  *   stable service back to every replica (`--no-recreate`); otherwise the
  *   canary service to every replica on the stable image, the stable service
- *   recreated on it. Then the canary service to none. Run by hand, the
- *   stable image is the one set with `.stable(...)`.
+ *   recreated on it. The stable replicas are then read again and must be
+ *   on the stable image, before the canary service goes to none. Run by
+ *   hand, the stable image is the one set with `.stable(...)`.
  *
  * The stable service's `scale:` in the Compose file must equal
  * `.replicas(...)`, and Compose v2 (`docker compose`) is required.
