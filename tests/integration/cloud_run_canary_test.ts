@@ -38,12 +38,15 @@ let healthy = true;
 /** The revision a hand-run rollback goes back to, if the build names one. */
 let stable: string | undefined;
 
+/** The candidate image the build resolves; empty when a parameter is unset. */
+let image = "gcr.io/p/api:2";
+
 class Deploy extends Build {
   rollout = canary((c) =>
     c.platform(
       cloudRunCanary((r) =>
         (stable === undefined ? r : r.stable(stable))
-          .service("api").region("europe-west1").image("gcr.io/p/api:2")
+          .service("api").region("europe-west1").image(image)
           .runner((settings) => {
             const argv = settings.argv().slice(1);
             calls.push(argv);
@@ -90,6 +93,7 @@ function fresh(): void {
   latest = "api-00002-new";
   healthy = true;
   stable = undefined;
+  image = "gcr.io/p/api:2";
 }
 
 Deno.test("Cloud Run: staged, stepped, parked, and promoted by a later process", async () => {
@@ -165,5 +169,18 @@ Deno.test("Cloud Run: a rollback run by hand with no stable revision refuses", a
     assertEquals(code, 1);
     assertStringIncludes(out + err, "r.stable('<revision>')");
     assertEquals(trafficMoves(), []);
+  });
+});
+
+Deno.test("Cloud Run: a stage that fails on its own settings rolls nothing back", async () => {
+  // A bad setting fails stage before it touches the service; the engine's
+  // inline rollback must not then send production to the stable revision.
+  fresh();
+  stable = "api-00001-old";
+  image = "";
+  await withStateDir(async () => {
+    const { code } = await runCli(Deploy, ["rollout.stage"]);
+    assertEquals(code, 1);
+    assertEquals(calls, []);
   });
 });

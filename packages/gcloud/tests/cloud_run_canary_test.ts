@@ -214,6 +214,21 @@ Deno.test("abort after a stage that never tagged anything runs nothing", async (
   assertEquals(calls, []);
 });
 
+Deno.test("a stage that fails on its own settings leaves a rollback nothing to do", async () => {
+  // Stage refuses before touching the service. The engine then runs abort
+  // inline; with no record of how far stage got, abort would read like a
+  // hand-run one and send all traffic to the stable revision.
+  const ctx = context();
+  const { runner, calls } = fakeGcloud();
+  const p = cloudRunCanary((r) =>
+    r.service("api").image("").stable("api-00001-old").runner(runner)
+  );
+  await assertRejects(() => p.stage(ctx), Error, "no candidate image");
+  assertEquals(ctx.state.get(), { cloudRunStage: "deploying" });
+  await p.abort(ctx);
+  assertEquals(calls, []);
+});
+
 Deno.test("a stage that cannot record the tag stops before any traffic moves", async () => {
   const { runner, calls } = fakeGcloud("api-00002-abc");
   const ctx = context();

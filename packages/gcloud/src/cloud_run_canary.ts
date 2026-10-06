@@ -195,16 +195,19 @@ export class CloudRunCanary {
    * second service.
    */
   async stage(ctx: CloudRunCanaryContext): Promise<void> {
+    // First, before anything can throw: a rollback reads this to tell a stage
+    // that failed on its own settings (nothing to undo) from a hand-run abort
+    // (which goes to the stable revision).
+    await ctx.state.set({ [STAGE]: "deploying" });
     const settings = this.#settings();
     const service = serviceOf(settings);
     const image = settings.image_;
-    if (image === undefined) {
+    if (image === undefined || image === "") {
       throw new Error(
         "cloudRunCanary: no candidate image — add r.image(...), the image " +
           "the canary deploys.",
       );
     }
-    await ctx.state.set({ [STAGE]: "deploying" });
     await settings.runner_(
       this.#scoped(settings, new GcloudRunServicesUpdateSettings())
         .service(service).image(image).tag(settings.tag_).noTraffic(),
