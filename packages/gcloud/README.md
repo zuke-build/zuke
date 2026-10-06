@@ -99,8 +99,9 @@ service's `metadata.uid`. Every later call — in a resumed process or a
 command, and the live uid with the recorded one before changing anything, so a
 configuration that now reaches another service (another name, region or project,
 or one deleted and created again) is refused rather than acted on. The refusal
-leaves the run cancelled and gives the gcloud commands, built from the record,
-that check the service and take the candidate's traffic back.
+stops the run, its rollback refuses the same way, and it gives the gcloud
+commands, built from the record, that check the service and take the candidate's
+traffic back.
 
 See
 [docs/canary.md](https://github.com/zuke-build/zuke/blob/master/docs/canary.md#cloud-run).
