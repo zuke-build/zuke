@@ -21,7 +21,7 @@
  * @module
  */
 
-import type { Redactor } from "@zuke/core";
+import { type Redactor, redactUrl } from "@zuke/core";
 import type { PrometheusHttpMethod } from "./types.ts";
 
 /** Header names to values, as a credential source returns them. */
@@ -140,6 +140,19 @@ const CREDENTIAL_HEADERS: ReadonlySet<string> = new Set([
   "cookie",
 ]);
 
+/**
+ * Whether a header name looks like a credential's — `X-API-Key`,
+ * `X-Auth-Token`, `X-Vault-Token` — by core's one rule for credential-bearing
+ * names (`key`, `token`, `secret`, `auth`, `pass`, … as substrings). That rule
+ * is not exported on its own, so it is asked the only way it answers: as a URL
+ * parameter, which `redactUrl` masks exactly when the name matches. A tenant
+ * header such as `X-Scope-OrgID` does not, and stays plain.
+ */
+function credentialNamed(name: string): boolean {
+  const probe = `https://h.invalid/?${encodeURIComponent(name)}=x`;
+  return redactUrl(probe) !== probe;
+}
+
 /** A source that adds one fixed header, as a credential. */
 export function headerCredentials(
   name: string,
@@ -150,15 +163,18 @@ export function headerCredentials(
 
 /**
  * A source that adds one fixed header set by `header(...)`: a credential when
- * its name is `Authorization`, `Proxy-Authorization` or `Cookie`, a plain
- * header otherwise. Its value is masked in errors either way.
+ * its name is `Authorization`, `Proxy-Authorization` or `Cookie`, or looks
+ * like a credential's (see {@link credentialNamed}); a plain header
+ * otherwise. Its value is masked in errors either way.
  */
 export function plainHeader(
   name: string,
   value: string,
 ): PrometheusCredentials {
   const source = headerCredentials(name, value);
-  if (!CREDENTIAL_HEADERS.has(name.toLowerCase())) plainSources.add(source);
+  if (!CREDENTIAL_HEADERS.has(name.toLowerCase()) && !credentialNamed(name)) {
+    plainSources.add(source);
+  }
   return source;
 }
 

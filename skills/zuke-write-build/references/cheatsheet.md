@@ -1359,10 +1359,11 @@ const ready = await PrometheusTasks.ready(prod); // true / false (503)
   (`ZUKE_ALLOW_INSECURE_URL` opts out); an unauthenticated in-cluster
   `http://prometheus.monitoring.svc:9090` is fine, and so is a plain
   `header("X-Scope-OrgID", …)` (only `Authorization`/`Proxy-Authorization`/
-  `Cookie` headers count as credentials). Auth: `bearerToken`, `basicAuth`,
-  `secretHeader` (API keys), or `credentials(fn)` — `fn` gets the exact outgoing
-  request (method, URL, headers, body bytes) and the
-  `readEnv`/`readTextFile`/`now`/`fetch` seams, and returns headers to add.
+  `Cookie` and credential-looking names like `X-API-Key` count as credentials).
+  Auth: `bearerToken`, `basicAuth`, `secretHeader` (API keys), or
+  `credentials(fn)` — `fn` gets the exact outgoing request (method, URL,
+  headers, body bytes) and the `readEnv`/`readTextFile`/`now`/`fetch` seams, and
+  returns headers to add.
 - Managed services, no cloud CLI: `.google((g) => …)` (Application Default
   Credentials — service-account key, gcloud login, workload identity federation,
   or the metadata server; `scopes`, `credentialsFile`, `quotaProject`),

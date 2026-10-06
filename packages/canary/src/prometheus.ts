@@ -87,9 +87,9 @@ export class PrometheusSettings {
    * Add a request header — `header("X-Scope-OrgID", tenant)`, or
    * `header("Authorization", `Bearer ${token}`)`. As in `@zuke/prometheus`,
    * a plain header such as a tenant id leaves an in-cluster `http://` URL
-   * usable, while `Authorization`, `Proxy-Authorization` and `Cookie` are
-   * credentials and need `https:` (unless loopback, or
-   * `ZUKE_ALLOW_INSECURE_URL` is set).
+   * usable, while `Authorization`, `Proxy-Authorization`, `Cookie` and a
+   * credential-looking name (`X-API-Key`, `X-Auth-Token`) are credentials and
+   * need `https:` (unless loopback, or `ZUKE_ALLOW_INSECURE_URL` is set).
    */
   header(name: string, value: string): this {
     this.headers_[name] = value;
@@ -145,9 +145,14 @@ export class PrometheusSettings {
  * The lambda runs on each check, so it may read resolved parameters. The query
  * is sent by `PrometheusTasks.query` from `@zuke/prometheus`, as a `GET` with
  * the expression in the URL — as this analysis always has. A URL sent a
- * `header(...)` (or `user:password@`) must be `https:` unless it is loopback
- * (or `ZUKE_ALLOW_INSECURE_URL` is set); an unauthenticated one, such as an
- * in-cluster `http://prometheus.monitoring.svc:9090`, may be plaintext. Failure
+ * credential must be `https:` unless it is loopback (or
+ * `ZUKE_ALLOW_INSECURE_URL` is set). A credential is an `Authorization`,
+ * `Proxy-Authorization` or `Cookie` header, a header whose name looks like a
+ * credential's (`X-API-Key`, `X-Auth-Token`), `user:password@` or a credential
+ * parameter in the URL, or anything set through `connection(...)` — a
+ * `secretHeader(...)`, `sigv4()`, `google()`, `azure()`. Any other header,
+ * such as an `X-Scope-OrgID` tenant id, leaves an in-cluster
+ * `http://prometheus.monitoring.svc:9090` usable. Failure
  * messages pass through the run's redactor, so a secret parameter in the URL
  * or the query is masked, and a header value (eight or more characters) never
  * appears in them.

@@ -32,6 +32,10 @@ Deno.test("a plaintext non-loopback URL carrying credentials is refused before a
     (s) => s.url("http://prom.example").header("Authorization", "Bearer t"),
     (s) => s.url("http://prom.example").header("proxy-authorization", "x"),
     (s) => s.url("http://prom.example").header("Cookie", "session=abc"),
+    // Credential-shaped names, by core's URL-parameter rule.
+    (s) => s.url("http://prom.example").header("X-API-Key", "k-123456"),
+    (s) => s.url("http://prom.example").header("X-Auth-Token", "t-123456"),
+    (s) => s.url("http://prom.example").header("X-Vault-Token", "t-123456"),
     (s) => s.url("http://prom.example").credentials(() => ({})),
     (s) => s.url("http://user:password@prom.example"),
     (s) => s.url("http://prom.example/?access_token=secret-in-query"),

@@ -97,10 +97,12 @@ export class PrometheusConnectionSettings {
    * Send a fixed header, such as a tenant id (`X-Scope-OrgID`). A plain
    * header does not make the call credentialed, so an in-cluster
    * `http://` Mimir, Cortex or Thanos with a tenant header keeps working —
-   * except `Authorization`, `Proxy-Authorization` and `Cookie`, which are
-   * credentials whatever setter sends them. For an API key in any other
-   * header use {@link secretHeader}. The value is masked in errors either way
-   * (when eight or more characters long).
+   * except `Authorization`, `Proxy-Authorization`, `Cookie`, and a name core's
+   * URL redactor treats as credential-bearing (`X-API-Key`, `X-Auth-Token`:
+   * names containing `key`, `token`, `secret`, `auth`, `pass` and the like),
+   * which count as credentials. For an API key under any other name use
+   * {@link secretHeader}. The value is masked in errors either way (when eight
+   * or more characters long).
    */
   header(name: string, value: string): this {
     this.credentials_.push(plainHeader(name, value));

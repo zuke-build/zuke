@@ -190,16 +190,18 @@ Deno.test("a tenant header over in-cluster http works; an Authorization header i
       .connection((c) => c.readEnv(() => undefined))
   ).validate(analysisContext());
   assertEquals(fetcher.headers[0].get("x-scope-orgid"), "team-a");
-  await assertRejects(
-    async () =>
-      await prometheus((p) =>
-        p.url("http://mimir.monitoring.svc:8080/prometheus").query("q")
-          .max(0.01).header("Authorization", "Bearer team-a-token")
-          .fetch(fetcher).connection((c) => c.readEnv(() => undefined))
-      ).validate(analysisContext()),
-    Error,
-    "must use https",
-  );
+  for (const name of ["Authorization", "X-API-Key"]) {
+    await assertRejects(
+      async () =>
+        await prometheus((p) =>
+          p.url("http://mimir.monitoring.svc:8080/prometheus").query("q")
+            .max(0.01).header(name, "team-a-credential")
+            .fetch(fetcher).connection((c) => c.readEnv(() => undefined))
+        ).validate(analysisContext()),
+      Error,
+      "must use https",
+    );
+  }
   assertEquals(fetcher.urls.length, 1);
 });
 

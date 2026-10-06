@@ -10,6 +10,7 @@
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { TokenCache } from "../src/token_cache.ts";
 import { type Clock, context, T0 } from "./_auth.ts";
+import { fakeFetch } from "./_fetch.ts";
 
 const MINUTE = 60_000;
 
@@ -130,16 +131,33 @@ Deno.test("a waiter survives the caller that started the fetch giving up", async
   const cache = new TokenCache<string>();
   const creator = new AbortController();
   const waiter = new AbortController();
+  // One fetch seam for both callers: the cache keys entries by it, so two
+  // seams would be two entries and nothing would be shared.
+  const fetcher = fakeFetch(() => new Response());
+  let fetches = 0;
   let release = (_: string) => {};
   let sharedSignal: AbortSignal | undefined;
+  const started = Promise.withResolvers<void>();
   const fresh = (shared: { signal: AbortSignal }) => {
+    fetches++;
     sharedSignal = shared.signal;
+    started.resolve();
     return new Promise<{ value: string; expiresAt: number }>((resolve) => {
       release = (value) => resolve({ value, expiresAt: T0 + 60 * MINUTE });
     });
   };
-  const first = cache.get(context({ signal: creator.signal }), ["a"], fresh);
-  const second = cache.get(context({ signal: waiter.signal }), ["a"], fresh);
+  const first = cache.get(
+    context({ signal: creator.signal, fetch: fetcher }),
+    ["a"],
+    fresh,
+  );
+  await started.promise;
+  const second = cache.get(
+    context({ signal: waiter.signal, fetch: fetcher }),
+    ["a"],
+    fresh,
+  );
+  // Let the second caller finish its digest and park on the shared fetch.
   await new Promise((resolve) => setTimeout(resolve, 10));
   creator.abort(new Error("creator timed out"));
   await assertRejects(() => first, Error, "creator timed out");
@@ -148,6 +166,7 @@ Deno.test("a waiter survives the caller that started the fetch giving up", async
   assertEquals(sharedSignal?.aborted, false);
   release("shared");
   assertEquals(await second, "shared");
+  assertEquals(fetches, 1);
   // A waiter whose own signal fires stops waiting without failing others.
   const third = new AbortController();
   third.abort(new Error("third cancelled"));
@@ -158,6 +177,23 @@ Deno.test("a waiter survives the caller that started the fetch giving up", async
     () => cancelled.get(context({ signal: third.signal }), ["a"], hang),
     Error,
     "third cancelled",
+  );
+});
+
+Deno.test("a shared fetch cut off by the cache's limit says so", async () => {
+  const cache = new TokenCache<string>(20);
+  const slow = (shared: { signal: AbortSignal }) =>
+    new Promise<{ value: string; expiresAt: number }>((_, reject) => {
+      shared.signal.addEventListener("abort", () =>
+        reject(
+          new Error("test: the token request failed: Signal timed out."),
+        ));
+    });
+  await assertRejects(
+    () => cache.get(context(), ["a"], slow),
+    Error,
+    "test: the token request failed: Signal timed out. — the token request " +
+      "exceeded the 0.02 s limit for a shared token fetch",
   );
 });
 

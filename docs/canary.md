@@ -702,16 +702,62 @@ or `… or vector(0)`.
 
 `prometheus(...)` queries through
 [`@zuke/prometheus`](../packages/prometheus/README.md), the same client a build
-uses for its own metrics, so it shares that client's rules: a URL the query
-sends a credential to — a `header(...)`, or `user:password@` in the URL — must
-be `https:` unless it is loopback (set `ZUKE_ALLOW_INSECURE_URL` for a plaintext
-endpoint on a network you trust), while an unauthenticated in-cluster URL such
-as `http://prometheus.monitoring.svc:9090` is queried as it is; redirects are
-not followed, an answer larger than 64 MiB fails, and a header value of eight or
-more characters never appears in a failure message. The query is still sent as a
-`GET`, so a proxy that only passes `GET` keeps working. For anything beyond
-bounds on one instant query — a range, a rule's state, the firing alerts — read
-it with `PrometheusTasks` and judge it in a `metricThreshold(...)` reader.
+uses for its own metrics, so it shares that client's rules. A URL the query
+sends a credential to must be `https:` unless it is loopback (set
+`ZUKE_ALLOW_INSECURE_URL` for a plaintext endpoint on a network you trust). A
+credential is any of:
+
+- an `Authorization`, `Proxy-Authorization` or `Cookie` header;
+- a header whose name looks like a credential's — `X-API-Key`, `X-Auth-Token`,
+  any name core's URL redactor treats as credential-bearing (containing `key`,
+  `token`, `secret`, `auth`, `pass` and the like);
+- `user:password@`, or a credential parameter such as `?access_token=`, in the
+  URL;
+- anything configured through `connection(...)`: a `secretHeader(...)`, or the
+  managed services' `google()`, `azure()` and `sigv4()`.
+
+An unauthenticated in-cluster URL such as
+`http://prometheus.monitoring.svc:9090` is queried as it is, and so is one sent
+only a plain header like a Mimir or Cortex tenant's `X-Scope-OrgID`. Redirects
+are not followed, an answer larger than 64 MiB fails, and a header value of
+eight or more characters never appears in a failure message. The query is still
+sent as a `GET`, so a proxy that only passes `GET` keeps working. For anything
+beyond bounds on one instant query — a range, a rule's state, the firing alerts
+— read it with `PrometheusTasks` and judge it in a `metricThreshold(...)`
+reader.
+
+`connection(...)` hands the rest of the connection to `@zuke/prometheus`'s own
+settings — applied after `url`, `header`, `timeout` and `fetch`, so a request
+signer set there signs the headers set before it. It is how a canary reads a
+managed Prometheus with the cloud's own credentials, with no `gcloud`, `az` or
+`aws` CLI on the runner:
+
+```ts
+import { prometheus } from "@zuke/canary";
+
+const ERROR_RATIO =
+  'sum(rate(http_requests_total{rev="canary",code=~"5.."}[5m])) / ' +
+  'sum(rate(http_requests_total{rev="canary"}[5m]))';
+
+// Amazon Managed Service for Prometheus, signed with SigV4.
+export const amp = prometheus((p) =>
+  p.name("error ratio")
+    .url("https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-1234")
+    .query(ERROR_RATIO).max(0.01)
+    .connection((c) => c.sigv4((a) => a.region("us-east-1")))
+);
+
+// Google Cloud Managed Service for Prometheus, through Application Default
+// Credentials; `c.azure()` does the same for Azure Monitor.
+export const gmp = prometheus((p) =>
+  p.name("error ratio")
+    .url(
+      "https://monitoring.googleapis.com/v1/projects/my-project/location/global/prometheus",
+    )
+    .query(ERROR_RATIO).max(0.01)
+    .connection((c) => c.google())
+);
+```
 
 ## The lock
 

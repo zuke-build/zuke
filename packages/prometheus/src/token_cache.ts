@@ -21,6 +21,7 @@
 
 import { sha256Hex } from "@zuke/core";
 import { raceSignal } from "./abort.ts";
+import { messageOf } from "./message.ts";
 import type { PrometheusCredentialsContext } from "./credentials.ts";
 
 /** How long before expiry a token is refreshed, at most: five minutes. */
@@ -63,6 +64,16 @@ interface Entry<T> {
 export class TokenCache<T> {
   /** The entries, per `fetch` seam, by key digest. */
   readonly #entries = new WeakMap<typeof fetch, Map<string, Entry<T>>>();
+  /** The shared fetch's time limit, in ms. */
+  readonly #limitMs: number;
+
+  /**
+   * A cache whose shared fetches may take `limitMs` (30 s by default — the
+   * providers use the default; a test shortens it).
+   */
+  constructor(limitMs: number = TOKEN_FETCH_TIMEOUT_MS) {
+    this.#limitMs = limitMs;
+  }
 
   /**
    * The credential for `identity`: the cached one while it is fresh, else
@@ -97,10 +108,9 @@ export class TokenCache<T> {
       return await raceSignal(entry.pending, context.signal);
     }
     const map = entries;
-    const shared = {
-      ...context,
-      signal: AbortSignal.timeout(TOKEN_FETCH_TIMEOUT_MS),
-    };
+    const limit = AbortSignal.timeout(this.#limitMs);
+    const shared = { ...context, signal: limit };
+    const seconds = this.#limitMs / 1000;
     const pending = fetchFresh(shared).then((fresh) => {
       const now = context.now();
       const margin = Math.min(REFRESH_MARGIN_MS, (fresh.expiresAt - now) / 2);
@@ -116,6 +126,14 @@ export class TokenCache<T> {
       map.set(key, { cached: stale });
       if (stale !== undefined && context.now() < stale.expiresAt) {
         return stale.value;
+      }
+      // Say why a fetch was cut off: the provider's own message is already
+      // scrubbed, and this adds only the limit.
+      if (limit.aborted) {
+        throw new Error(
+          `${messageOf(error)} — the token request exceeded the ${seconds} s ` +
+            `limit for a shared token fetch`,
+        );
       }
       throw error;
     });

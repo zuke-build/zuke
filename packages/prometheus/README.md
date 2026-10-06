@@ -80,10 +80,12 @@ query with `histogram_quantile(...)` or `histogram_count(...)`.
 - `header(...)` — a plain header, such as a Mimir, Cortex or Thanos tenant's
   `X-Scope-OrgID`. It does not make the call credentialed, so an in-cluster
   `http://` URL with a tenant header keeps working — except `Authorization`,
-  `Proxy-Authorization` and `Cookie`, which count as credentials whichever
-  setter sends them. Every header value of eight or more characters is masked in
-  errors either way. Setting a header twice (including the `accept` and
-  `content-type` the request sets itself) fails the call.
+  `Proxy-Authorization`, `Cookie`, and any name core's URL redactor treats as
+  credential-bearing (`X-API-Key`, `X-Auth-Token`: names containing `key`,
+  `token`, `secret`, `auth`, `pass` and the like), which count as credentials
+  whichever setter sends them. Every header value of eight or more characters is
+  masked in errors either way. Setting a header twice (including the `accept`
+  and `content-type` the request sets itself) fails the call.
 - `google(...)`, `azure(...)`, `sigv4(...)` — the managed services' own
   authentication, with no cloud CLI installed; see below.
 - `credentials(source)` — any function handed the outgoing request (method, full
@@ -400,10 +402,12 @@ class PrometheusConnectionSettings
     Send a fixed header, such as a tenant id (`X-Scope-OrgID`). A plain
     header does not make the call credentialed, so an in-cluster
     `http://` Mimir, Cortex or Thanos with a tenant header keeps working —
-    except `Authorization`, `Proxy-Authorization` and `Cookie`, which are
-    credentials whatever setter sends them. For an API key in any other
-    header use {@link secretHeader}. The value is masked in errors either way
-    (when eight or more characters long).
+    except `Authorization`, `Proxy-Authorization`, `Cookie`, and a name core's
+    URL redactor treats as credential-bearing (`X-API-Key`, `X-Auth-Token`:
+    names containing `key`, `token`, `secret`, `auth`, `pass` and the like),
+    which count as credentials. For an API key under any other name use
+    {@link secretHeader}. The value is masked in errors either way (when eight
+    or more characters long).
   secretHeader(name: string, value: string): this
     Send a fixed header that carries a credential — an API key such as
     `X-API-Key`. Like `bearerToken`, it makes the call credentialed, so the
