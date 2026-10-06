@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.12.0](https://github.com/zuke-build/zuke/compare/ai-v2.11.0...ai-v2.12.0) (2026-10-06)
+
+
+### Features
+
+* **ai:** one combined pull-request comment for a target's reviewers ([#702](https://github.com/zuke-build/zuke/issues/702)) ([adcfeb8](https://github.com/zuke-build/zuke/commit/adcfeb846c9e5f095b00124abaead2308e1093c8))
+
 ## [2.11.0](https://github.com/zuke-build/zuke/compare/ai-v2.10.0...ai-v2.11.0) (2026-10-05)
 
 

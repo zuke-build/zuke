@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.65.0](https://github.com/zuke-build/zuke/compare/core-v1.64.0...core-v1.65.0) (2026-10-06)
+
+
+### Features
+
+* **ai:** one combined pull-request comment for a target's reviewers ([#702](https://github.com/zuke-build/zuke/issues/702)) ([adcfeb8](https://github.com/zuke-build/zuke/commit/adcfeb846c9e5f095b00124abaead2308e1093c8))
+
 ## [1.64.0](https://github.com/zuke-build/zuke/compare/core-v1.63.0...core-v1.64.0) (2026-10-05)
 
 
