@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.1](https://github.com/zuke-build/zuke/compare/gcloud-v1.3.0...gcloud-v1.3.1) (2026-10-06)
+
+
+### Bug Fixes
+
+* **gcloud:** refuse a Cloud Run canary call when the service is not the one staged ([#723](https://github.com/zuke-build/zuke/issues/723)) ([2d7c999](https://github.com/zuke-build/zuke/commit/2d7c999a757764a5731fe993a0dedda514fb080d))
+* **gcloud:** roll nothing back when the Cloud Run stage fails on its own settings ([#713](https://github.com/zuke-build/zuke/issues/713)) ([9cfaf14](https://github.com/zuke-build/zuke/commit/9cfaf148741b2805edd7e65ac2f25e1506bf3e8a))
+
 ## [1.3.0](https://github.com/zuke-build/zuke/compare/gcloud-v1.2.0...gcloud-v1.3.0) (2026-10-06)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.12.1](https://github.com/zuke-build/zuke/compare/ai-v2.12.0...ai-v2.12.1) (2026-10-06)
+
+
+### Bug Fixes
+
+* **ai:** raise the @zuke/gh floor to 1.13.0, the release with the tasks it calls ([#718](https://github.com/zuke-build/zuke/issues/718)) ([e97e9ab](https://github.com/zuke-build/zuke/commit/e97e9abd8dfa0327514d749dac2494bd2870af11))
+
 ## [2.12.0](https://github.com/zuke-build/zuke/compare/ai-v2.11.0...ai-v2.12.0) (2026-10-06)
 
 
