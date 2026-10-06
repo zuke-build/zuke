@@ -355,8 +355,9 @@ Deno.test("a refusal gives the recovery built from the recorded values", async (
   );
   assertStringIncludes(
     error.message,
-    "The run is left cancelled with the candidate's tagged route as it is, " +
-      "so a resume or `zuke cancel` will not roll it back.",
+    "The run stops, and its rollback refuses the same way, so a resume or " +
+      "`zuke cancel` will not roll it back: the candidate's tagged route " +
+      "stays as it is.",
   );
   assertStringIncludes(
     error.message,
@@ -369,7 +370,18 @@ Deno.test("a refusal gives the recovery built from the recorded values", async (
       "update-traffic api --region europe-west1 --to-tags canary=0 " +
       "--project p`",
   );
-  assertStringIncludes(error.message, "r.stable('<revision>')");
+  assertStringIncludes(
+    error.message,
+    "Prefer that: it returns the tag's share to the revisions already " +
+      "serving, keeping their split.",
+  );
+  assertStringIncludes(
+    error.message,
+    "with r.stable('<revision>') instead sends all traffic to that one " +
+      "revision, collapsing any earlier split; `gcloud run revisions list " +
+      "--service api --region europe-west1 --project p` lists the revisions " +
+      "to choose from.",
+  );
 });
 
 Deno.test("the recovery leaves out a region never set and quotes what a shell would split", async () => {
@@ -477,7 +489,11 @@ Deno.test("a record from before the identity was recorded is refused, with the w
       "A rollout staged before @zuke/gcloud recorded its service has no " +
         "such record.",
     );
-    assertStringIncludes(error.message, "--to-tags <tag>=0");
+    assertStringIncludes(
+      error.message,
+      "--to-tags <tag>=0`, plus the --project and --account flags the " +
+        "rollout used.",
+    );
     assertEquals(calls, [], call);
   }
 });
@@ -780,4 +796,87 @@ Deno.test("the recovery's uid check keeps its projection over a recorded --forma
     "`gcloud run services describe api --format json --format " +
       "'value(metadata.uid)'` prints " + UID,
   );
+});
+
+/**
+ * A `.gcloud` lambda that gives `--project q` on every third run once armed —
+ * so the flags a call resolves, its uid read and its traffic move would each
+ * see a different run of it.
+ */
+function flipping(runner: GcloudSettingsRunner) {
+  const lambda = { runs: 0, armed: false };
+  const p = cloudRunCanary((r) =>
+    r.service("api").region("europe-west1").image("gcr.io/p/api:2")
+      .runner(runner).gcloud((g) => {
+        lambda.runs++;
+        return g.project(lambda.armed && lambda.runs % 3 === 0 ? "q" : "p");
+      })
+  );
+  return { p, lambda };
+}
+
+Deno.test("a gcloud lambda that resolves differently between commands is refused before the command runs", async () => {
+  for (const call of ["expose", "promote", "abort"] as const) {
+    const { runner, calls } = fakeGcloud("api-00002-abc", "api-00002-abc");
+    const { p, lambda } = flipping(runner);
+    const ctx = context();
+    await p.stage(ctx);
+    calls.length = 0;
+    lambda.runs = 0;
+    lambda.armed = true;
+    await assertRejects(
+      () =>
+        call === "expose"
+          ? p.expose(50, ctx)
+          : call === "promote"
+          ? p.promote(ctx)
+          : p.abort(ctx),
+      Error,
+      "where the gcloud flags this call resolved are `--project p`, so it " +
+        "does not run",
+    );
+    assertEquals(
+      calls.some((argv) => argv.includes("q")),
+      false,
+      `${call} ran a command on q`,
+    );
+    assertEquals(
+      calls.some((argv) => !argv.includes("describe")),
+      false,
+      `${call} changed something`,
+    );
+  }
+});
+
+Deno.test("a stage whose gcloud lambda flips does not deploy", async () => {
+  const { runner, calls } = fakeGcloud("api-00002-abc");
+  const { p, lambda } = flipping(runner);
+  lambda.armed = true;
+  lambda.runs = 1;
+  const ctx = context();
+  await assertRejects(
+    () => p.stage(ctx),
+    Error,
+    "gave this command `gcloud run services describe api --region " +
+      "europe-west1 --project q`",
+  );
+  assertEquals(calls, []);
+  assertEquals(ctx.state.get(), { cloudRunStage: "deploying" });
+});
+
+Deno.test("a gcloud lambda that adds a command token on a later run is refused", async () => {
+  const { runner, calls } = fakeGcloud();
+  let runs = 0;
+  const p = cloudRunCanary((r) =>
+    r.service("api").stable("api-00001-old").runner(runner).gcloud((g) =>
+      ++runs === 2 ? g.command("x") : g
+    )
+  );
+  // The flag probe is the first run; the command gets a second, different one.
+  await assertRejects(
+    () => p.abort(context()),
+    Error,
+    "where the gcloud flags this call resolved are no gcloud flags",
+  );
+  assertEquals(calls, []);
 });

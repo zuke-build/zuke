@@ -15043,12 +15043,17 @@ class CloudRunCanary
     spreads the rest over the revisions already serving, in proportion and in
     whole percents, so a split the service had before the canary keeps its
     shape only approximately — a revision whose share rounds to 0 drops out.
+    First the configuration is compared with what `stage` recorded, then the
+    service's uid is read again; on any difference this refuses, changing
+    nothing.
   async promote(ctx: CloudRunCanaryContext): Promise<void>
     Send all traffic to the latest revision — after checking that it is
     still the candidate this rollout staged, so a revision someone deployed in
     the meantime is not promoted in its place. The check and the traffic move
     are two gcloud calls, so a deploy landing in the seconds between them is
-    not caught. Idempotent.
+    not caught. Before either, the configuration is compared with what
+    `stage` recorded and the service's uid is read again; on any difference
+    this refuses, changing nothing. Idempotent.
   async abort(ctx: CloudRunCanaryContext): Promise<void>
     Take the candidate's traffic back. Idempotent. What it does depends on
     what this rollout recorded:

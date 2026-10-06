@@ -199,18 +199,54 @@ function recovery(recorded: RecordedIdentity): string {
     new GcloudRunUpdateTrafficSettings().service(recorded.service)
       .toTags(`${recorded.tag}=0`),
   );
-  return "The run is left cancelled with the candidate's tagged route as " +
-    "it is, so a resume or `zuke cancel` will not roll it back. To recover, " +
-    "set the configuration and gcloud's active project back to what the " +
-    `rollout started with, check that \`${shell(describe.argv())}\` prints ` +
-    `${recorded.uid} — the service that was staged (a rollback run by hand ` +
-    "has no record to check it against) — then take the candidate's " +
-    `traffic back with \`${shell(undo.argv())}\`, or run the rollout's ` +
-    "<field>.abort target by hand (for example `zuke rollout.abort`) with " +
-    "r.stable('<revision>') set to the revision that served before the " +
-    "rollout. If it prints another uid, the service the rollout staged was " +
-    "deleted or is out of reach: check `gcloud run services list` and clean " +
-    "up by hand.";
+  const revisions = new GcloudSettings().command(
+    "run",
+    "revisions",
+    "list",
+    "--service",
+    recorded.service,
+  );
+  if (recorded.region !== null) revisions.flag("region", recorded.region);
+  revisions.args(...recorded.flags);
+  return "The run stops, and its rollback refuses the same way, so a " +
+    "resume or `zuke cancel` will not roll it back: the candidate's tagged " +
+    "route stays as it is. To recover, set the configuration and gcloud's " +
+    "active project back to what the rollout started with, check that " +
+    `\`${shell(describe.argv())}\` prints ${recorded.uid} — the service ` +
+    "that was staged (a rollback run by hand has no record to check it " +
+    "against) — then take the candidate's traffic back with " +
+    `\`${shell(undo.argv())}\`. Prefer that: it returns the tag's share to ` +
+    "the revisions already serving, keeping their split. Running the " +
+    "rollout's <field>.abort target by hand (for example `zuke " +
+    "rollout.abort`) with r.stable('<revision>') instead sends all traffic " +
+    "to that one revision, collapsing any earlier split; " +
+    `\`${shell(revisions.argv())}\` lists the revisions to choose from. If ` +
+    "it prints another uid, the service the rollout staged was deleted or " +
+    "is out of reach: check `gcloud run services list` and clean up by hand.";
+}
+
+/**
+ * Refuse, before it runs, unless the tokens the `.gcloud(...)` lambda added
+ * to `argv` — everything after its first `own` tokens, the binary and the
+ * command's own — are exactly `flags`, the ones this call resolved and
+ * checked. The lambda runs once per command, so one that resolves
+ * differently between two runs of itself (it reads a clock, or changes what
+ * it closes over) is caught here rather than sending one command to another
+ * project.
+ */
+export function checkApplied(
+  argv: readonly string[],
+  own: number,
+  flags: readonly string[],
+): void {
+  if (sameArgv(argv.slice(own), flags)) return;
+  throw new Error(
+    `cloudRunCanary: r.gcloud(...) gave this command \`${shell(argv)}\` ` +
+      `where the gcloud flags this call resolved are ${shownFlags(flags)}, ` +
+      "so it does not run: the lambda must give the same flags every time " +
+      "it runs. " +
+      "Make it depend only on the build's resolved parameters.",
+  );
 }
 
 /**
@@ -248,12 +284,13 @@ export function damagedRecord(
         value === undefined ? "nothing" : JSON.stringify(value)
       }), so this call cannot tell which service is the rollout's and ` +
       "changed nothing. A rollout staged before @zuke/gcloud recorded its " +
-      "service has no such record. Its rollback needs the record too, so a " +
+      "service has no such record. The run stops, and its rollback needs " +
+      "the record too, so a " +
       "resume or `zuke cancel` will not roll it back: check with `gcloud run " +
       "services describe` that gcloud reaches the service that was staged, " +
       "then take the candidate's traffic back by hand with `gcloud run " +
       "services update-traffic <service> --region <region> --to-tags " +
-      "<tag>=0`.",
+      "<tag>=0`, plus the --project and --account flags the rollout used.",
   );
 }
 

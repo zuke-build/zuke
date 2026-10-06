@@ -191,7 +191,14 @@ rollout never staged. The flags are compared as written, in order, so two
 spellings of one project are refused too, as is a changed `--verbosity`. A
 record with a part missing is refused as damaged, before any command — and so is
 a rollout parked by an earlier `@zuke/gcloud`, which recorded none of this: take
-its traffic back by hand with `update-traffic --to-tags canary=0`.
+its traffic back by hand with `update-traffic --to-tags canary=0`, plus the
+`--project` and `--account` flags the rollout used.
+
+The `.gcloud(...)` lambda runs once for each command, and every command is
+refused before it runs unless the lambda gave it exactly the flags the call
+resolved and checked, so a lambda that resolves differently between two runs —
+it reads a clock, or something it closes over changes — cannot send one command
+to another project.
 
 The flags cannot see everything that chooses the service: gcloud's active
 project also comes from `CLOUDSDK_CORE_PROJECT`, `gcloud config set project` and
@@ -203,17 +210,19 @@ region, or one deleted and created again, has another uid and is refused. The
 uid read and the traffic move are two gcloud calls, so a change landing in the
 seconds between them is not caught.
 
-A refusal changes nothing, but the engine then settles the run as cancelled, and
-its rollback refuses the same way — so the candidate keeps the share it had, and
-a resume or `zuke cancel` will not roll it back. To recover, set the
-configuration and gcloud's active project back to what the rollout started with,
-and run the uid check the refusal gives — a `run services describe` of the
-recorded service — to see that it prints the recorded uid (a rollback run by
-hand has no record to check it against). Then run the
-`run services update-traffic … --to-tags canary=0` command it gives, built from
-the recorded service, region, tag and flags, or run `zuke rollout.abort` by hand
-with `.stable(...)` set to the revision that served before the rollout. A
-rollback run by hand with no record uses the configuration as it is.
+A refusal changes nothing, but the run stops, and its rollback refuses the same
+way — so the candidate keeps the share it had, and a resume or `zuke cancel`
+will not roll it back. To recover, set the configuration and gcloud's active
+project back to what the rollout started with, and run the uid check the refusal
+gives — a `run services describe` of the recorded service — to see that it
+prints the recorded uid (a rollback run by hand has no record to check it
+against). Then run the `run services update-traffic … --to-tags canary=0`
+command it gives, built from the recorded service, region, tag and flags. Prefer
+it: it returns the tag's share to the revisions already serving, keeping their
+split. Running `zuke rollout.abort` by hand with `.stable(...)` instead sends
+all traffic to that one revision, collapsing any earlier split; the
+`run revisions list` command the refusal gives lists the revisions to choose
+from. A rollback run by hand with no record uses the configuration as it is.
 
 ### Kubernetes
 
