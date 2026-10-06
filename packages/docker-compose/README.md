@@ -88,18 +88,40 @@ rollout = canary((c) =>
 Every move is `up -d --no-deps --scale <service>=<n> <service>`, with `--wait`
 when `n` is not 0:
 
-- **`stage`** reads the image the stable replicas run (`ps --format {{.Image}}`)
-  and records it, pulls the candidate if it is not present
-  (`pull --policy missing`), then puts the stable service at every replica and
-  the canary service at none.
+- **`stage`** reads the image the stable replicas run
+  (`ps --format {{.Image}}`), pulls the candidate if it is not present
+  (`pull --policy missing`), and records the rollout: the two services, the
+  replicas, the two variables and the two images. Every later call acts on that
+  record, whatever the lambda resolves to then. It then puts the stable service
+  at every replica and the canary service at none.
 - **`expose`** puts the canary service at its share and the stable service at
-  the rest, scaling whichever grows first. Stable replicas are never recreated
-  (`--no-recreate`).
+  the rest, scaling whichever grows first, and checks with `ps` that the canary
+  runs the candidate. Stable replicas are never recreated (`--no-recreate`).
 - **`promote`** puts the canary service at every replica, recreates the stable
-  service on the candidate, then takes the canary service to none.
-- **`abort`** puts the stable service back on the image `stage` recorded, at
-  every replica, then takes the canary service to none. Run by hand, it uses the
-  `.stable(...)` image instead, and refuses without one.
+  service on the candidate, checks with `ps` that it runs it, then takes the
+  canary service to none. A stable `image:` that does not read the variable (a
+  literal, or `repo:${TAG}`) is refused rather than reported as promoted.
+- **`abort`** reads what the stable replicas run. If they all run the stable
+  image (mid-rollout they do), it scales the stable service back to every
+  replica without recreating anything. Otherwise (after a promotion, finished or
+  part-way) Compose would recreate every stable replica at once, so it mirrors a
+  promotion: the canary service to every replica on the stable image, the stable
+  service recreated on it, then the canary service to none. Run by hand, the
+  stable image is the `.stable(...)` one, and it refuses without one. After a
+  `stage` that changed nothing, nothing runs.
+
+A command that exits non-zero fails the call even under `.noThrow()`, and
+trailing `.args(...)` in `.compose(...)` are refused, since they would follow
+the service operand. Image variables may not be names Docker, Compose or the
+process read as settings (`DOCKER_*`, `COMPOSE_*`, `BUILDKIT_*`, `BUILDX_*`,
+`XDG_*`, `LD_*`, `DYLD_*`, `*_PROXY`, `PATH`, `HOME`, `USERPROFILE`, `TMPDIR`,
+`TEMP`, `TMP`, in any case), and the two must differ in more than case.
+
+**Give the stable service `scale:` equal to `.replicas(...)`.** A plain
+`docker compose up` sets every service back to its `scale:`, so any other value
+changes the replica count behind the platform. Compose v2 (`docker compose`) is
+required: the v1 `docker-compose` binary has no `--wait`, `pull --policy` or
+`ps --format`.
 
 **A promotion is not durable on its own.** The image variable is set only for
 the commands the platform runs. Until the candidate is written where `APP_IMAGE`
@@ -152,21 +174,30 @@ function dockerComposeCanary(configure: Configure<DockerComposeCanarySettings>):
   ))
   ```
 
-  The lambda runs on every call, so it may read resolved parameters. Every
-  command is `up -d --no-deps --scale <service>=<n> <service>` (with `--wait`
-  when `n` is not 0), run with the image variables set:
+  The lambda runs on every call, so it may read resolved parameters; after
+  `stage`, the services, replicas and variables are the ones it recorded.
+  Every move is `up -d --no-deps --scale <service>=<n> <service>` (with
+  `--wait` when `n` is not 0), run with the image variables set:
 
-  - stage — `ps --format {{.Image}} <stable>` records the stable image,
-    `pull --policy missing <canary>`, then the stable service to every
-    replica (`--no-recreate`) and the canary service to none.
+  - stage — `ps --format {{.Image}} <stable>` reads the stable image,
+    `pull --policy missing <canary>`, the rollout is recorded, then the
+    stable service to every replica (`--no-recreate`) and the canary service
+    to none.
   - expose — the canary service to its share and the stable service
-    (`--no-recreate`) to the rest, the growing one first.
+    (`--no-recreate`) to the rest, the growing one first; `ps` checks the
+    canary runs the candidate.
   - promote — the canary service to every replica, the stable service
-    recreated on the candidate, the canary service to none. Not durable
-    until the candidate is written where the stable variable comes from.
-  - abort — the stable service to every replica on the recorded stable
-    image; run by hand, on the image set with `.stable(...)`. Then the canary
-    service to none.
+    recreated on the candidate and checked with `ps`, the canary service to
+    none. Not durable until the candidate is written where the stable
+    variable comes from.
+  - abort — `ps` reads the stable replicas. If they all run the stable
+    image, the stable service back to every replica (`--no-recreate`);
+    otherwise the canary service to every replica on the stable image, the
+    stable service recreated on it. Then the canary service to none. Run by
+    hand, the stable image is the one set with `.stable(...)`.
+
+  The stable service's `scale:` in the Compose file must equal
+  `.replicas(...)`, and Compose v2 (`docker compose`) is required.
 
 function resetComposeInvocationCache_(): void
   Clear the cached Compose invocation so the next
@@ -211,44 +242,63 @@ class DockerComposeCanary
   describe(): string
     `"Compose service app"`, for the build summary.
   async stage(ctx: DockerComposeCanaryContext): Promise<void>
-    Read the image the stable replicas run and record it, make sure the
-    candidate image is available (pulled unless it is already present), and
-    bring the project to exactly 0 % — the stable service at every replica,
-    the canary service at none. The stable replicas are only added or
-    removed, never recreated.
+    Read the image the stable replicas run, make sure the candidate image is
+    available (pulled unless it is already present), record the rollout — the
+    two services, the replicas, the two variables and the two images, which
+    every later call acts on whatever the lambda says then — and bring the
+    project to exactly 0 %: the stable service at every replica, the canary
+    service at none. The stable replicas are only added or removed, never
+    recreated.
   async expose(percent: number, ctx: DockerComposeCanaryContext): Promise<number>
     Run the canary service at `percent` of the replicas and the stable
     service at the rest, and return the share actually reached. Any share
     between 0 and 100 exclusive keeps at least one replica on each side, so a
     step never rounds to an untested 0 % or a premature 100 %. Whichever
     service grows is scaled first, so the total never dips below the
-    configured replicas. The stable replicas are never recreated.
+    replicas. Once the canary service has replicas, `ps` must show every one
+    of them on the candidate — a canary whose `image:` does not read its
+    variable is refused rather than analysed. The stable replicas are never
+    recreated. The services and replicas are the ones `stage` recorded.
   async promote(ctx: DockerComposeCanaryContext): Promise<void>
     Hand the stable service to the candidate: the canary service goes to
     every replica, the stable service is recreated on the candidate image
-    with the stable variable set to it, and the canary service goes back to
-    none. The total never dips below the configured replicas; for a moment it
-    is twice that. Idempotent.
+    with the stable variable set to it, `ps` must then show every stable
+    replica on the candidate — or the call refuses, before it is recorded as
+    promoted, since a stable `image:` that does not read the variable would
+    have changed nothing — and the canary service goes back to none. The
+    total never dips below the replicas; for a moment it is twice that.
+    Idempotent.
 
     This is not durable on its own. Compose has no state of its own to
     change: the variable is set for these commands only. Until the
     candidate is written where the stable variable comes from — the `.env`
     file, or the environment of whatever runs `docker compose up` next — a
     plain `docker compose up` puts the stable service back on the image that
-    source still names.
+    source still names, and at the replica count its `scale:` names, which
+    is why that must equal {@link DockerComposeCanarySettings.replicas}.
   async abort(ctx: DockerComposeCanaryContext): Promise<void>
-    Put the stable service back on the stable image at every replica, then
-    take the canary service to none. Idempotent. Which image that is depends
-    on what this rollout recorded:
+    Put every replica back on the stable image, in the stable service, with
+    the canary service at none. Idempotent. Which image, services and
+    replicas depends on what this rollout recorded:
 
-    - `stage` recorded it (a rollback mid-rollout, or after a promotion
-      that failed part-way): the image the stable replicas ran before the
-      rollout. Mid-rollout they still run it, so nothing is recreated.
-    - `stage` failed before recording it: nothing had changed, so nothing
-      runs.
+    - `stage` recorded them (a rollback mid-rollout, or after a
+      promotion that failed part-way): the ones `stage` saw, whatever the
+      lambda says now.
+    - `stage` failed before recording them: nothing had changed, so
+      nothing runs — and the settings are not even read.
     - Nothing recorded (`rollout.abort` run by hand, a fresh run): the
-      image set with {@link DockerComposeCanarySettings.stable}. Without one
-      this refuses, since claiming a rollback it cannot do would be worse.
+      settings, with the image set by
+      {@link DockerComposeCanarySettings.stable}. Without one this refuses,
+      since claiming a rollback it cannot do would be worse.
+
+    `ps` first reads what the stable replicas run. When every one already
+    runs the stable image — mid-rollout, they do — the stable service is only
+    scaled back to every replica (`--no-recreate`). Otherwise — after a
+    promotion, run by hand or part-way — the stable replicas must be
+    recreated, which Compose does to all of them at once, so the rollback
+    mirrors a promotion: the canary service first goes to every replica on
+    the stable image, then the stable service is recreated on it, then the
+    canary service goes to none. Capacity never dips.
 
     Like a promotion, the image is an override for these commands, so it
     lasts until a plain `docker compose up` reads the variable from wherever
@@ -288,8 +338,9 @@ class DockerComposeCanarySettings
   replicas(total: number): this
     How many replicas the stable and canary services share between them. A
     step sets the canary to its share of this and the stable service to the
-    rest; `stage` and a rollback set the stable service to all of it. At
-    least 2, or there is nothing to split.
+    rest; `stage` and a rollback set the stable service to all of it. From 2
+    to 10000. Give the stable service the same `scale:` in the Compose file:
+    a plain `docker compose up` sets every service back to its `scale:`.
   image(reference: string): this
     The candidate's image reference, which `stage` puts on the canary service.
   stableImageVariable(name: string): this
@@ -297,22 +348,28 @@ class DockerComposeCanarySettings
     reference, as in `image: ${APP_IMAGE}`, not just a tag. Every command the
     platform runs sets it, so the project's `.env` need not: to the image the
     stable replicas ran when `stage` looked, to the candidate on promotion.
-    Not a `DOCKER_*` or `COMPOSE_*` name, which Docker and Compose read as
-    their own settings.
+    Not a name Docker, Compose or the process reads as a setting —
+    `DOCKER_*`, `COMPOSE_*`, `BUILDKIT_*`, `BUILDX_*`, `XDG_*`, `LD_*`,
+    `DYLD_*`, `*_PROXY`, `PATH`, `HOME`, `USERPROFILE`, `TMPDIR`, `TEMP` or
+    `TMP`, in any case — and not the canary's variable in another case.
   canaryImageVariable(name: string): this
     The environment variable the canary service's `image:` is, as in
     `image: ${APP_CANARY_IMAGE:-${APP_IMAGE}}`. Every command that brings up
     the canary sets it to the candidate.
   stable(image: string): this
     The image to put the stable service back on when `rollout.abort` is run
-    by hand. Such a run is fresh, with no record of a rollout, so it has
+    by hand — a reference with no whitespace or control characters. Such a run is fresh, with no record of a rollout, so it has
     nothing else to go on — and the release it is undoing has usually been
     promoted already. A rollback the engine runs mid-rollout does not use it:
     that one returns to the image `stage` saw the stable replicas running.
   compose(configure: Configure<DockerComposeSettings>): this
     Global flags for every Compose command the platform runs —
     `(s) => s.file("compose.yml").projectName("shop")`, or `.usePlugin()` to
-    skip detection.
+    skip detection. Compose v2 (`docker compose`) is required: the v1
+    `docker-compose` binary has no `--wait`, `pull --policy` or
+    `ps --format`. Trailing `.args(...)` are refused, since they would land
+    after the service each command names. A non-zero exit fails the call
+    even with `.noThrow()`.
   runner(run: DockerComposeSettingsRunner): this
     Replace how each prepared command is run. The default runs it; this is
     for a test, or for a build that executes Compose through something else.
@@ -944,7 +1001,8 @@ type DockerComposeSettingsRunner = (settings: DockerComposeSettings, env: Readon
   image variables the platform already applied to `settings` — handed over
   as well so a runner that executes Compose some other way, or a test, sees
   them. The default runs the settings; inject another with
-  {@link DockerComposeCanarySettings.runner}.
+  {@link DockerComposeCanarySettings.runner}. An output with a non-zero exit
+  code fails the call, as a rejection does.
 ````
 
 </details>

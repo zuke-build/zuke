@@ -7,9 +7,10 @@
  * never import each other, so this is also where they are proven to fit:
  * `c.platform(dockerComposeCanary(...))` type-checks and runs end to end.
  *
- * A recording runner stands in for Compose: it keeps every command line with
- * the image variables it was run with, and answers the stable-image read with
- * whatever `serving` is.
+ * A fake Compose stands in for the daemon: it keeps the containers of each
+ * service by the image each runs, applies every `up` to them the way Compose
+ * does — recreating on the image the service's variable names unless
+ * `--no-recreate` keeps them — and answers `ps` from them.
  */
 
 import {
@@ -36,8 +37,15 @@ interface Call {
 /** Every Compose command the platform ran. */
 let calls: Call[] = [];
 
-/** The image `ps` reports the stable replicas running. */
-let serving = "app:v1";
+/** The containers of each service, by the image each runs. */
+let world: Record<string, string[]> = {};
+
+/** Which variable each service's `image:` reads. */
+const IMAGE_VARIABLE: Record<string, string> = {
+  app: "APP_IMAGE",
+  "app-canary": "APP_CANARY_IMAGE",
+  "app-next": "APP_CANARY_IMAGE",
+};
 
 /** Whether the analysis passes. */
 let healthy = true;
@@ -48,13 +56,35 @@ let failPromoteTail = false;
 /** The image a hand-run rollback goes back to, if the build names one. */
 let stable: string | undefined;
 
+/** The candidate image, if the build names one. */
+let image: string | undefined;
+
+/** The canary service the lambda names. */
+let canaryService = "app-canary";
+
+/** Apply one command to the world, as Compose would. */
+function compose(argv: string[], env: Record<string, string>): string {
+  const service = argv.at(-1) ?? "";
+  if (argv.includes("ps")) {
+    return (world[service] ?? []).map((each) => `${each}\n`).join("");
+  }
+  if (argv.includes("up")) {
+    const count = Number(argv[argv.indexOf("--scale") + 1].split("=")[1]);
+    const next = env[IMAGE_VARIABLE[service]] ?? "";
+    const kept = argv.includes("--no-recreate")
+      ? [...(world[service] ?? [])]
+      : (world[service] ?? []).map(() => next);
+    while (kept.length < count) kept.push(next);
+    world[service] = kept.slice(0, count);
+  }
+  return "";
+}
+
 class Deploy extends Build {
   rollout = canary((c) =>
     c.platform(
-      dockerComposeCanary((d) =>
-        (stable === undefined ? d : d.stable(stable))
-          .service("app").canaryService("app-canary").replicas(4)
-          .image("app:v2")
+      dockerComposeCanary((d) => {
+        d.service("app").canaryService(canaryService).replicas(4)
           .stableImageVariable("APP_IMAGE")
           .canaryImageVariable("APP_CANARY_IMAGE")
           .compose((s) => s.usePlugin().projectName("shop"))
@@ -67,12 +97,14 @@ class Deploy extends Build {
             ) {
               return Promise.reject(new Error("daemon went away"));
             }
-            const stdout = argv.includes("ps")
-              ? `${serving}\n${serving}\n`
-              : "";
-            return Promise.resolve(new CommandOutput(0, stdout, ""));
-          })
-      ),
+            return Promise.resolve(
+              new CommandOutput(0, compose(argv, { ...env }), ""),
+            );
+          });
+        if (image !== undefined) d.image(image);
+        if (stable !== undefined) d.stable(stable);
+        return d;
+      }),
     )
       .steps(25, 50)
       .analysis({
@@ -91,15 +123,21 @@ class Deploy extends Build {
 
 /**
  * The scale moves the platform made, as `<service>=<n>`, with the stable
- * service's image when the command set one.
+ * image the command set — and `(keep)` when it recreated nothing.
  */
 function moves(): string[] {
   return calls.filter((call) => call.argv.includes("up")).map((call) => {
     const scale = call.argv[call.argv.indexOf("--scale") + 1];
-    return scale.startsWith("app=") && call.stableImage !== undefined
-      ? `${scale}@${call.stableImage}`
-      : scale;
+    const keep = call.argv.includes("--no-recreate") ? "(keep)" : "";
+    return `${scale}@${call.stableImage}${keep}`;
   });
+}
+
+/** The services each `ps` read, in order. */
+function reads(): string[] {
+  return calls.filter((call) => call.argv.includes("ps")).map((call) =>
+    call.argv.at(-1) ?? ""
+  );
 }
 
 /** The id of the only run under `dir`. */
@@ -113,11 +151,15 @@ async function onlyRun(dir: string): Promise<string> {
 
 function fresh(): void {
   calls = [];
-  serving = "app:v1";
+  world = { app: ["app:v1", "app:v1", "app:v1", "app:v1"], "app-canary": [] };
   healthy = true;
   failPromoteTail = false;
   stable = undefined;
+  image = "app:v2";
+  canaryService = "app-canary";
 }
+
+const ALL_V1 = ["app:v1", "app:v1", "app:v1", "app:v1"];
 
 Deno.test("Compose: staged, stepped, parked, and promoted by a later process", async () => {
   fresh();
@@ -131,13 +173,14 @@ Deno.test("Compose: staged, stepped, parked, and promoted by a later process", a
       "app",
     ]);
     assertEquals(moves(), [
-      "app=4@app:v1",
-      "app-canary=0",
-      "app-canary=1",
-      "app=3@app:v1",
-      "app-canary=2",
-      "app=2@app:v1",
+      "app=4@app:v1(keep)",
+      "app-canary=0@app:v1",
+      "app-canary=1@app:v1",
+      "app=3@app:v1(keep)",
+      "app-canary=2@app:v1",
+      "app=2@app:v1(keep)",
     ]);
+    assertEquals(reads(), ["app", "app-canary", "app-canary"]);
     assertStringIncludes(parked.out, "app:v2");
 
     // The resume is a new main(): promote reads the images stage recorded.
@@ -149,7 +192,16 @@ Deno.test("Compose: staged, stepped, parked, and promoted by a later process", a
       "approved",
     ]);
     assertEquals(resumed.code, 0, resumed.err);
-    assertEquals(moves(), ["app-canary=4", "app=4@app:v2", "app-canary=0"]);
+    assertEquals(moves(), [
+      "app-canary=4@app:v2",
+      "app=4@app:v2",
+      "app-canary=0@app:v2",
+    ]);
+    assertEquals(reads(), ["app"]);
+    assertEquals(world, {
+      app: ["app:v2", "app:v2", "app:v2", "app:v2"],
+      "app-canary": [],
+    });
   });
 });
 
@@ -160,24 +212,54 @@ Deno.test("Compose: a failed analysis puts every replica back on the stable imag
     const { code, out, err } = await runCli(Deploy, ["ship"]);
     assertEquals(code, 1);
     assertStringIncludes(out + err, "error ratio 0.3 above 0.01");
-    // The stable image is read once, by stage; the rollback uses that record.
-    assertEquals(calls.filter((call) => call.argv.includes("ps")).length, 1);
+    // The stable replicas still run the recorded image, so the rollback only
+    // scales them back.
     assertEquals(moves().slice(-4), [
-      "app-canary=1",
-      "app=3@app:v1",
-      "app=4@app:v1",
-      "app-canary=0",
+      "app-canary=1@app:v1",
+      "app=3@app:v1(keep)",
+      "app=4@app:v1(keep)",
+      "app-canary=0@app:v1",
     ]);
+    assertEquals(world, { app: ALL_V1, "app-canary": [] });
   });
 });
 
-Deno.test("Compose: a promotion that fails part-way in a later process is rolled back to the stable image", async () => {
+Deno.test("Compose: a stage its own settings refuse leaves production alone, even with a stable image", async () => {
+  // No candidate: stage refuses. Its inline rollback must not take the
+  // hand-run path and recreate production on d.stable(...).
+  fresh();
+  image = undefined;
+  stable = "app:v0";
+  await withStateDir(async () => {
+    const { code, out, err } = await runCli(Deploy, ["ship"]);
+    assertEquals(code, 1);
+    assertStringIncludes(out + err, "no candidate image");
+    assertEquals(calls, []);
+    assertEquals(world, { app: ALL_V1, "app-canary": [] });
+  });
+});
+
+Deno.test("Compose: a cancel from a process whose services resolve differently rolls back the recorded ones", async () => {
+  fresh();
+  await withStateDir(async (dir) => {
+    await runCli(Deploy, ["ship"]);
+    canaryService = "app-next";
+    calls = [];
+    const cancelled = await runCli(Deploy, ["cancel", await onlyRun(dir)]);
+    assertEquals(cancelled.code, 0, cancelled.err);
+    assertEquals(moves(), ["app=4@app:v1(keep)", "app-canary=0@app:v1"]);
+    assertEquals(world, { app: ALL_V1, "app-canary": [] });
+  });
+});
+
+Deno.test("Compose: a promotion that fails part-way in a later process is rolled back without a capacity dip", async () => {
   fresh();
   await withStateDir(async (dir) => {
     await runCli(Deploy, ["ship"]);
     calls = [];
     // The stable service is recreated on the candidate, then the last move
-    // fails — the stable replicas now run an image the rollback must undo.
+    // fails — the stable replicas now run an image the rollback must undo,
+    // and Compose recreates them all at once, so the canary holds the load.
     failPromoteTail = true;
     const resumed = await runCli(Deploy, [
       "resume",
@@ -188,22 +270,30 @@ Deno.test("Compose: a promotion that fails part-way in a later process is rolled
     assertEquals(resumed.code, 1);
     assertStringIncludes(resumed.out + resumed.err, "daemon went away");
     assertEquals(moves(), [
-      "app-canary=4",
+      "app-canary=4@app:v2",
       "app=4@app:v2",
-      "app-canary=0",
+      "app-canary=0@app:v2",
+      "app-canary=4@app:v1",
       "app=4@app:v1",
-      "app-canary=0",
+      "app-canary=0@app:v1",
     ]);
+    assertEquals(world, { app: ALL_V1, "app-canary": [] });
   });
 });
 
-Deno.test("Compose: a rollback run by hand goes to the configured stable image", async () => {
+Deno.test("Compose: a rollback run by hand after a promotion goes to the configured stable image", async () => {
   fresh();
+  world = { app: ["app:v2", "app:v2", "app:v2", "app:v2"], "app-canary": [] };
   stable = "app:v1";
   await withStateDir(async () => {
     const { code, err } = await runCli(Deploy, ["rollout.abort"]);
     assertEquals(code, 0, err);
-    assertEquals(moves(), ["app=4@app:v1", "app-canary=0"]);
+    assertEquals(moves(), [
+      "app-canary=4@app:v1",
+      "app=4@app:v1",
+      "app-canary=0@app:v1",
+    ]);
+    assertEquals(world, { app: ALL_V1, "app-canary": [] });
   });
 });
 
