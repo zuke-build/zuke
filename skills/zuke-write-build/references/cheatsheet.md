@@ -1355,9 +1355,11 @@ const ready = await PrometheusTasks.ready(prod); // true / false (503)
   (`.httpMethod("GET")` for a GET-only proxy).
 - A refusal is `PrometheusApiError` (`status`, `errorType`, `detail`); no usable
   answer is `PrometheusRequestError`. Neither carries a credential.
-- The URL must be `https:` unless loopback (`ZUKE_ALLOW_INSECURE_URL` opts out).
-  Auth: `bearerToken`, `basicAuth`, `header`, or `credentials(fn)` — `fn` gets
-  the exact outgoing request (method, URL, headers, body bytes) and the
+- A URL sent any credential must be `https:` unless loopback
+  (`ZUKE_ALLOW_INSECURE_URL` opts out); an unauthenticated in-cluster
+  `http://prometheus.monitoring.svc:9090` is fine. Auth: `bearerToken`,
+  `basicAuth`, `header`, or `credentials(fn)` — `fn` gets the exact outgoing
+  request (method, URL, headers, body bytes) and the
   `readEnv`/`readTextFile`/`now`/`fetch` seams, and returns headers to add.
 
 ## Canary releases — `@zuke/canary`

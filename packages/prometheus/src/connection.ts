@@ -60,11 +60,13 @@ export class PrometheusConnectionSettings {
   /**
    * The Prometheus base URL, such as `https://prometheus.internal`. A path or
    * query string it carries — a proxy prefix, a tenant parameter — is kept,
-   * and the endpoint path is appended. It must be `https:` unless it is
-   * loopback, or `ZUKE_ALLOW_INSECURE_URL` is set: the answers decide whether
-   * a release proceeds, and a plaintext request lets anyone on the path both
-   * read the credential and choose the answer. Userinfo in the URL
+   * and the endpoint path is appended. Userinfo in the URL
    * (`https://user:pass@host`) is taken off the URL and sent as basic auth.
+   * When the call carries any credential — a configured source, or that
+   * userinfo — the URL must be `https:` unless it is loopback, or
+   * `ZUKE_ALLOW_INSECURE_URL` is set, since a plaintext request hands the
+   * credential to anyone on the path. An unauthenticated URL may be plaintext,
+   * as an in-cluster `http://prometheus.monitoring.svc:9090` usually is.
    */
   url(url: string): this {
     this.url_ = url;

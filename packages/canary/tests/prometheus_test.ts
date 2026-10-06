@@ -170,6 +170,18 @@ Deno.test("infinite samples are judged as infinities, NaN as not a number", asyn
   ).validate(analysisContext());
 });
 
+Deno.test("an unauthenticated in-cluster http URL is queried, as it always was", async () => {
+  const fetcher = fakeFetch(() => vector("0.001"));
+  await prometheus((p) =>
+    p.url("http://prometheus.monitoring.svc:9090").query("q").max(0.01)
+      .fetch(fetcher)
+  ).validate(analysisContext());
+  assertEquals(
+    new URL(fetcher.urls[0]).origin,
+    "http://prometheus.monitoring.svc:9090",
+  );
+});
+
 Deno.test("credentials in a URL never reach the failure message", async () => {
   const error = await assertRejects(
     async () =>

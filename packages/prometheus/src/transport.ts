@@ -75,7 +75,9 @@ interface Answer {
 
 /**
  * Validate the settings into a {@link Connection}: a URL is required, must
- * parse, must be `http:` or `https:`, and must pass core's plaintext guard.
+ * parse, and must be `http:` or `https:`; and when the call carries any
+ * credential — a configured source, or userinfo in the URL — it must pass
+ * core's plaintext guard.
  */
 function connect(settings: PrometheusConnectionSettings): Connection {
   const raw = settings.url_;
@@ -97,7 +99,6 @@ function connect(settings: PrometheusConnectionSettings): Connection {
       } is ${base.protocol}`,
     );
   }
-  assertSecureBackendUrl(raw, "the Prometheus URL", settings.readEnv_);
   const credentials: PrometheusCredentials[] = [];
   if (base.username !== "" || base.password !== "") {
     credentials.push(
@@ -109,10 +110,21 @@ function connect(settings: PrometheusConnectionSettings): Connection {
     base.username = "";
     base.password = "";
   }
+  credentials.push(...settings.credentials_);
+  // Plaintext is refused only when a credential would ride on it. An
+  // unauthenticated in-cluster Prometheus (`http://prometheus.monitoring.svc`)
+  // has nothing to steal, and refusing it broke every canary pointed at one.
+  if (credentials.length > 0) {
+    assertSecureBackendUrl(
+      raw,
+      "the Prometheus URL, when credentials are configured,",
+      settings.readEnv_,
+    );
+  }
   base.hash = "";
   return {
     base,
-    credentials: [...credentials, ...settings.credentials_],
+    credentials,
     timeoutMs: settings.requestTimeout_,
     maxBytes: settings.maxResponseBytes_,
     signal: settings.signal_,

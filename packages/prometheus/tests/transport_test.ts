@@ -24,26 +24,50 @@ import { BASE, fakeFetch, vector } from "./_fetch.ts";
 /** An env reader over a record. */
 const env = (vars: Record<string, string>) => (name: string) => vars[name];
 
-Deno.test("a plaintext non-loopback URL is refused before anything is sent", async () => {
+Deno.test("a plaintext non-loopback URL carrying credentials is refused before anything is sent", async () => {
   const fetcher = fakeFetch(() => vector());
-  await assertRejects(
-    () =>
-      PrometheusTasks.query((s) =>
-        s.url("http://prom.example").readEnv(env({})).fetch(fetcher).query("q")
-      ),
-    InsecureBackendUrlError,
-    "the Prometheus URL must use https",
-  );
+  const credentialed: Array<(s: PrometheusQuerySettings) => unknown> = [
+    (s) => s.url("http://prom.example").bearerToken("test-token"),
+    (s) => s.url("http://prom.example").header("x-scope-orgid", "tenant-1"),
+    (s) => s.url("http://prom.example").credentials(() => ({})),
+    (s) => s.url("http://user:password@prom.example"),
+  ];
+  for (const configure of credentialed) {
+    const error = await assertRejects(
+      () =>
+        PrometheusTasks.query((s) => {
+          configure(s);
+          return s.readEnv(env({})).fetch(fetcher).query("q");
+        }),
+      InsecureBackendUrlError,
+      "the Prometheus URL, when credentials are configured, must use https",
+    );
+    assertEquals(error.message.includes("password"), false);
+  }
   assertEquals(fetcher.sent.length, 0);
 });
 
-Deno.test("loopback plaintext is allowed, and the opt-out allows any plaintext", async () => {
+Deno.test("an unauthenticated plaintext URL is allowed — an in-cluster Prometheus", async () => {
+  const fetcher = fakeFetch(() => vector());
+  await PrometheusTasks.query((s) =>
+    s.url("http://prometheus.monitoring.svc:9090").readEnv(env({}))
+      .fetch(fetcher).query("q")
+  );
+  assertEquals(
+    fetcher.sent[0].url.href,
+    "http://prometheus.monitoring.svc:9090/api/v1/query",
+  );
+  assertEquals(fetcher.sent[0].headers.get("authorization"), null);
+});
+
+Deno.test("loopback plaintext with credentials is allowed, and the opt-out allows any plaintext", async () => {
   const fetcher = fakeFetch(() => vector());
   await PrometheusTasks.query((s) =>
     s.url("http://localhost:9090").readEnv(env({})).fetch(fetcher).query("q")
+      .bearerToken("test-token")
   );
   await PrometheusTasks.query((s) =>
-    s.url("http://prom.internal:9090")
+    s.url("http://prom.internal:9090").bearerToken("test-token")
       .readEnv(env({ ZUKE_ALLOW_INSECURE_URL: "1" })).fetch(fetcher).query("q")
   );
   assertEquals(fetcher.sent.map((r) => r.url.origin), [

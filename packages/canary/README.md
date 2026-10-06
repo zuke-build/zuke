@@ -141,8 +141,10 @@ function prometheus(configure: Configure<PrometheusSettings>): CanaryAnalysis
 
   The lambda runs on each check, so it may read resolved parameters. The query
   is sent by `PrometheusTasks.query` from `@zuke/prometheus`, as a `GET` with
-  the expression in the URL — as this analysis always has — so the URL must be
-  `https:` unless it is loopback (or `ZUKE_ALLOW_INSECURE_URL` is set). Failure
+  the expression in the URL — as this analysis always has. A URL sent a
+  `header(...)` (or `user:password@`) must be `https:` unless it is loopback
+  (or `ZUKE_ALLOW_INSECURE_URL` is set); an unauthenticated one, such as an
+  in-cluster `http://prometheus.monitoring.svc:9090`, may be plaintext. Failure
   messages pass through the run's redactor, so a secret parameter in the URL
   or the query is masked, and a header value (eight or more characters) never
   appears in them.

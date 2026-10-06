@@ -702,14 +702,16 @@ or `… or vector(0)`.
 
 `prometheus(...)` queries through
 [`@zuke/prometheus`](../packages/prometheus/README.md), the same client a build
-uses for its own metrics, so it shares that client's rules: the URL must be
-`https:` unless it is loopback (set `ZUKE_ALLOW_INSECURE_URL` for a plaintext
-endpoint on a network you trust), redirects are not followed, an answer larger
-than 64 MiB fails, and a header value of eight or more characters never appears
-in a failure message. The query is still sent as a `GET`, so a proxy that only
-passes `GET` keeps working. For anything beyond bounds on one instant query — a
-range, a rule's state, the firing alerts — read it with `PrometheusTasks` and
-judge it in a `metricThreshold(...)` reader.
+uses for its own metrics, so it shares that client's rules: a URL the query
+sends a credential to — a `header(...)`, or `user:password@` in the URL — must
+be `https:` unless it is loopback (set `ZUKE_ALLOW_INSECURE_URL` for a plaintext
+endpoint on a network you trust), while an unauthenticated in-cluster URL such
+as `http://prometheus.monitoring.svc:9090` is queried as it is; redirects are
+not followed, an answer larger than 64 MiB fails, and a header value of eight or
+more characters never appears in a failure message. The query is still sent as a
+`GET`, so a proxy that only passes `GET` keeps working. For anything beyond
+bounds on one instant query — a range, a rule's state, the firing alerts — read
+it with `PrometheusTasks` and judge it in a `metricThreshold(...)` reader.
 
 ## The lock
 
