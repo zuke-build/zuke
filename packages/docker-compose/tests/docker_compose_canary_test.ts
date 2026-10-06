@@ -70,12 +70,17 @@ interface Fake {
   hardCoded?: Record<string, string>;
   /** What `ps --format {{.Image}}` prints, overriding the world. */
   ps?: string;
-  /** The project `ps --format {{.Project}}` names each container in; `shop` by default. */
+  /** The project the project read names each container in; `shop` by default. */
   project?: string;
-  /** What `ps --format {{.Project}}` prints, overriding the world. */
+  /** What the project read prints, overriding the world. */
   projects?: string;
   /** What `images --quiet` prints, overriding the world. */
   images?: string;
+  /**
+   * Services whose containers are stopped, as after a daemon restart: `ps`
+   * lists them only with `-a`, and an `up` of the service starts them.
+   */
+  stopped?: string[];
   /** The output to answer a command with instead of running it. */
   answer?: (argv: string[]) => CommandOutput | undefined;
 }
@@ -99,6 +104,10 @@ function fakeCompose(fake: Fake = {}): {
     app: ["app:v1", "app:v1", "app:v1", "app:v1"],
     "app-canary": [],
   };
+  const stopped = new Set(fake.stopped ?? []);
+  /** The containers of `service` that `ps` with `argv` lists. */
+  const listed = (argv: string[], service: string): string[] =>
+    argv.includes("-a") || !stopped.has(service) ? world[service] ?? [] : [];
   const runner = (
     settings: DockerComposeSettings,
     env: Readonly<Record<string, string>>,
@@ -117,22 +126,23 @@ function fakeCompose(fake: Fake = {}): {
       const lines = [...ids].map((id) => `${id}\n`).join("");
       return Promise.resolve(new CommandOutput(0, fake.images ?? lines, ""));
     }
-    if (argv.includes("{{.Project}}")) {
+    if (argv.includes(PROJECT_TEMPLATE)) {
       const services = argv.slice(argv.indexOf("--format") + 2);
       const lines = services.flatMap((each) =>
-        (world[each] ?? []).map(() => `${fake.project ?? "shop"}\n`)
+        listed(argv, each).map(() => `${fake.project ?? "shop"}\n`)
       );
       return Promise.resolve(
         new CommandOutput(0, fake.projects ?? lines.join(""), ""),
       );
     }
     if (argv.includes("ps")) {
-      const lines = (world[service] ?? []).map((image) => `${image}\n`);
+      const lines = listed(argv, service).map((image) => `${image}\n`);
       return Promise.resolve(
         new CommandOutput(0, fake.ps ?? lines.join(""), ""),
       );
     }
     if (argv.includes("up")) {
+      stopped.delete(service);
       const count = Number(argv[argv.indexOf("--scale") + 1].split("=")[1]);
       const image = fake.hardCoded?.[service] ??
         env[IMAGE_VARIABLE[service]] ?? "";
@@ -208,9 +218,13 @@ function images(service: string): string[] {
   return ["compose", "-p", "shop", "images", "--quiet", service];
 }
 
+/** The template the project read prints each container's project label with. */
+const PROJECT_TEMPLATE = '{{.Label "com.docker.compose.project"}}';
+
 /**
- * The `ps` argv the platform runs to read the project `services` are in: the
- * stable one at stage, both before anything else on every later call.
+ * The `ps` argv the platform runs to read the project `services` are in —
+ * stopped containers included: the stable one at stage, both before
+ * anything else on every later call.
  */
 function projects(...services: string[]): string[] {
   return [
@@ -218,8 +232,9 @@ function projects(...services: string[]): string[] {
     "-p",
     "shop",
     "ps",
+    "-a",
     "--format",
-    "{{.Project}}",
+    PROJECT_TEMPLATE,
     ...(services.length === 0 ? ["app", "app-canary"] : services),
   ];
 }
@@ -624,7 +639,7 @@ Deno.test("a stage that cannot record the stable image stops before anything sca
   assertEquals(calls.map((c) => c.argv.slice(3, 6).join(" ")), [
     "ps --format {{.Image}}",
     "images --quiet app",
-    "ps --format {{.Project}}",
+    "ps -a --format",
     "pull --policy missing",
   ]);
 });
@@ -1006,8 +1021,9 @@ Deno.test("stage records the project scope the global lambda gives, and no .env 
     "compose",
     ...flags,
     "ps",
+    "-a",
     "--format",
-    "{{.Project}}",
+    PROJECT_TEMPLATE,
     "app",
     "app-canary",
   ]);
@@ -1247,8 +1263,8 @@ Deno.test("a call refuses, after only the project read, when Compose reports the
     ],
     [
       { world: { app: [], "app-canary": [] } },
-      "Compose now reports no running container of app and app-canary in " +
-      "the project it resolves — a live rollout always runs some, since " +
+      "Compose now reports no container of app and app-canary, running or " +
+      "stopped, in the project it resolves — a live rollout always has some, since " +
       "the total never dips —",
     ],
   ];
@@ -1336,6 +1352,56 @@ Deno.test("a record with no usable project name is refused before any command", 
   assertEquals(calls, []);
 });
 
+Deno.test("a recorded abort restores a project whose containers are all stopped", async () => {
+  // A daemon restart during a parked approval, with restart: no. The project
+  // read counts stopped containers, so the rollback is not refused, and
+  // images, which counts them too, finds the stable ID: the keep path starts
+  // them.
+  const { runner, calls, world } = fakeCompose({
+    world: { app: ["app:v1", "app:v1", "app:v1"], "app-canary": [V2_ID] },
+    stopped: ["app", "app-canary"],
+  });
+  const ctx = await recordedAs({
+    composeCanaryCandidateId: V2_ID,
+    composeCanaryReplicas: 1,
+  });
+  await platform(runner).abort(ctx);
+  assertEquals(calls.map((c) => c.argv), [
+    projects(),
+    images("app"),
+    scale("app", 4, true),
+    images("app"),
+    scale("app-canary", 0),
+  ]);
+  assertEquals(world, {
+    app: ["app:v1", "app:v1", "app:v1", V1_ID],
+    "app-canary": [],
+  });
+});
+
+Deno.test("a hand-run abort on a stopped project recreates, rather than read no replicas as on the stable image", async () => {
+  // ps lists no running replica; that is not every replica on the stable
+  // image, so the stable service is recreated on it, with the canary
+  // holding the load first, and the canary then emptied.
+  const { runner, calls, world } = fakeCompose({
+    world: { app: ["app:v2", "app:v2", "app:v2", "app:v2"], "app-canary": [] },
+    stopped: ["app"],
+  });
+  const ctx = context();
+  await platform(runner, (d) => d.stable(V1_ID)).abort(ctx);
+  assertEquals(calls.map((c) => c.argv), [
+    ps("app"),
+    scale("app-canary", 4),
+    scale("app", 4),
+    ps("app"),
+    scale("app-canary", 0),
+  ]);
+  assertEquals(world, {
+    app: [V1_ID, V1_ID, V1_ID, V1_ID],
+    "app-canary": [],
+  });
+});
+
 Deno.test("describe names the stable service", () => {
   const { runner } = fakeCompose();
   assertEquals(platform(runner).describe(), "Compose service app");
@@ -1413,7 +1479,7 @@ Deno.test("the default runner runs compose itself", async () => {
 
 /**
  * A stand-in `docker` for the default runner: a shell script that prints the
- * project `shop` for `ps --format {{.Project}}`, the stable variable it was
+ * project `shop` for the project read, the stable variable it was
  * run with for any other `ps`, and exits 1 for `up` when
  * `failUp` is set. Shell scripts do not run on Windows, so the tests that use
  * one skip there.
@@ -1426,7 +1492,7 @@ async function fakeDocker(failUp: boolean): Promise<string> {
     [
       "#!/bin/sh",
       'case " $* " in',
-      '  *"{{.Project}}"*) echo shop ;;',
+      '  *"com.docker.compose.project"*) echo shop ;;',
       '  *" ps "*) echo "$APP_IMAGE" ;;',
       `  *" images "*) echo ${V1_HEX} ;;`,
       `  *" up "*) ${failUp ? "echo up failed >&2; exit 1" : "exit 0"} ;;`,
@@ -1709,8 +1775,8 @@ Deno.test("a rollback whose recreate changed nothing refuses rather than report 
   // The canary keeps serving the stable image while someone looks.
   assertEquals(calls.at(-1)?.argv, ps("app"));
   assertEquals(world["app-canary"], ["app:v1", "app:v1", "app:v1", "app:v1"]);
-  // From no stable replicas at all, the no-recreate path creates them on the
-  // literal: that is checked too.
+  // From no running stable replicas at all, the recreate path creates them
+  // on the literal: that is checked too.
   const { runner: empty, calls: made } = fakeCompose({
     world: { app: [], "app-canary": [] },
     hardCoded: { app: "app:v0" },
@@ -1722,7 +1788,8 @@ Deno.test("a rollback whose recreate changed nothing refuses rather than report 
   );
   assertEquals(made.map((c) => c.argv), [
     ps("app"),
-    scale("app", 4, true, false),
+    scale("app-canary", 4, false, false),
+    scale("app", 4, false, false),
     ps("app"),
   ]);
   // On a recorded rollout the check is by ID.

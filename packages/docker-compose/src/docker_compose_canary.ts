@@ -45,29 +45,36 @@
  * compared as written, in order.
  *
  * Flags are not all that selects the project: `COMPOSE_PROJECT_NAME` in the
- * environment, a `.env` or `--env-file` that sets it, and the working
- * directory a default name comes from do too. So `stage` also records the
- * project Compose itself reports the stable replicas in
- * (`ps --format {{.Project}}`, the containers' project label), and every
- * later call with a record reads `ps --format {{.Project}} <stable> <canary>`
- * — after the flag check, before any other command — and refuses unless it
- * reports exactly that project. Compose lists only the containers of the
- * project it resolves, so this covers whatever resolves it, and a call that
- * finds no running container of either service refuses too: a live rollout
- * always runs some, since the total never dips.
+ * environment, a `.env` or `--env-file` that sets it, and the working directory
+ * a default name comes from do too. So `stage` also records the project Compose
+ * itself reports the stable replicas in (the containers'
+ * `com.docker.compose.project` label, stopped ones included), and every later
+ * call with a record reads that label for every container of both services
+ * with `ps -a <stable> <canary>` — after the flag check, before any other
+ * command — and refuses unless it reports exactly that project. Compose
+ * lists only the containers of the project it resolves, so this covers
+ * whatever resolves it. `-a` counts stopped containers, so a daemon
+ * restart that stopped them does not block the rollback, and a call that finds
+ * no container of either service, running or stopped, refuses: a live rollout
+ * always has some, since the total never dips.
  *
- * The Docker daemon is not recorded, and the recorded image IDs are only a
- * partial guard against another one: after `stage` every move passes
- * `--pull never`, so one that creates a container fails on a daemon that
- * lacks its image — the recorded stable ID, or the candidate — while one that
- * only removes containers needs no image and goes ahead; and the reads
- * compare IDs, so a rollback finds stable replicas on another image and a
- * later step a canary on another candidate. A daemon or context
- * (`DOCKER_HOST`, `DOCKER_CONTEXT`, a `.toolPath(...)`) that runs the same
- * project name, with the same services on the same images, is not told
+ * What the project check does not cover: the Docker daemon is not recorded, and
+ * the recorded image IDs are only a partial guard against another one. After
+ * `stage` every move passes `--pull never`, so one that creates a container
+ * fails on a daemon that lacks its image — the recorded stable ID, or the
+ * candidate — while one that only removes containers needs no image and goes
+ * ahead; and the reads compare IDs, so a rollback finds stable replicas on
+ * another image and a later step a canary on another candidate. A daemon or
+ * context (`DOCKER_HOST`, `DOCKER_CONTEXT`, a `.toolPath(...)`) that runs the
+ * same project name, with the same services on the same images, is not told
  * apart. Nor is a change that keeps the project but changes the services'
- * definitions — another `COMPOSE_FILE`, or an env file that changes what they
- * interpolate — since only the project is compared.
+ * definitions: another `COMPOSE_FILE`, an env file that changes what they
+ * interpolate, or — with an explicit `-p` and no `-f` — a working directory or
+ * `.cwd(...)` that loads another `compose.yml` under the same project name. And
+ * the lambda's `.env(...)` and `.cwd(...)` are checked only through the project
+ * read at the start of each call; every later command re-checks only its flags,
+ * so the lambda must give the same `.env(...)` and `.cwd(...)` every time it
+ * runs.
  *
  * The canary engine's platform interface lives in `@zuke/canary`, and a wrapper
  * depends only on `@zuke/core`, so this module does not import it: the object
@@ -121,9 +128,10 @@ const IMAGE_TEMPLATE = "{{.Image}}";
 /**
  * The Go template `compose ps` renders one container's project with: the
  * `com.docker.compose.project` label of a container Compose listed because
- * it is in the project Compose resolved.
+ * it is in the project Compose resolved. `.Label` exists from Compose 2.21;
+ * the shorter `{{.Project}}` only from 2.24.
  */
-const PROJECT_TEMPLATE = "{{.Project}}";
+const PROJECT_TEMPLATE = '{{.Label "com.docker.compose.project"}}';
 
 /**
  * A call's view of the project: the settings, and the global flags it
@@ -178,18 +186,23 @@ export class DockerComposeCanary {
    * A stage always starts afresh, so a re-run one records the flags it runs
    * with.
    *
-   * The Docker daemon the commands reach is not recorded. The recorded image
-   * IDs are only a partial guard against another one: after `stage` every
-   * move passes `--pull never`, so one that creates a container fails on a
-   * daemon that lacks its image — the recorded stable ID, or the candidate —
-   * while one that only removes containers needs no image and goes ahead;
-   * and the reads compare IDs, so a rollback finds stable replicas on
-   * another image and a later step a canary on another candidate. A daemon
-   * or context that runs the same project name, with the same services on
-   * the same images, is not told apart. Nor is a change that keeps the
-   * project but changes the services' definitions — another `COMPOSE_FILE`,
-   * or an env file that changes what they interpolate — since only the
-   * project is compared.
+   * What the project check does not cover: the Docker daemon is not recorded,
+   * and the recorded image IDs are only a partial guard against another one.
+   * After `stage` every move passes `--pull never`, so one that creates a
+   * container fails on a daemon that lacks its image — the recorded stable ID,
+   * or the candidate — while one that only removes containers needs no image
+   * and goes ahead; and the reads compare IDs, so a rollback finds stable
+   * replicas on another image and a later step a canary on another candidate. A
+   * daemon or context (`DOCKER_HOST`, `DOCKER_CONTEXT`, a `.toolPath(...)`)
+   * that runs the same project name, with the same services on the same images,
+   * is not told apart. Nor is a change that keeps the project but changes the
+   * services' definitions: another `COMPOSE_FILE`, an env file that changes
+   * what they interpolate, or — with an explicit `-p` and no `-f` — a working
+   * directory or `.cwd(...)` that loads another `compose.yml` under the same
+   * project name. And the lambda's `.env(...)` and `.cwd(...)` are checked only
+   * through the project read at the start of each call; every later command
+   * re-checks only its flags, so the lambda must give the same `.env(...)` and
+   * `.cwd(...)` every time it runs.
    */
   async stage(ctx: DockerComposeCanaryContext): Promise<void> {
     // First, before anything can throw: a stage that fails from here on is
@@ -279,8 +292,8 @@ export class DockerComposeCanary {
    * another. The stable replicas are never recreated. The services and
    * replicas are the ones `stage` recorded, and the call refuses before any
    * command unless `d.compose(...)` still gives the global flags `stage`
-   * recorded, and before any other unless `ps --format {{.Project}}` reports
-   * the two services in the project `stage` saw.
+   * recorded, and before any other unless the project read (`ps -a` with
+   * the project label) reports the two services in the project `stage` saw.
    */
   async expose(
     percent: number,
@@ -340,8 +353,8 @@ export class DockerComposeCanary {
    * total never dips below the replicas; for a moment it is twice that.
    * Idempotent. Like every call after `stage`, it refuses before any command
    * unless `d.compose(...)` still gives the global flags `stage` recorded,
-   * and before any other unless `ps --format {{.Project}}` reports the two
-   * services in the project `stage` saw.
+   * and before any other unless the project read (`ps -a` with the project
+   * label) reports the two services in the project `stage` saw.
    *
    * **This is not durable on its own.** Compose has no state of its own to
    * change: the variable is set for these commands only. Until the
@@ -401,9 +414,9 @@ export class DockerComposeCanary {
    *   promotion that failed part-way): the ones `stage` saw, whatever the
    *   lambda says now — in the project `stage` saw, too: unless
    *   `d.compose(...)` still gives the global flags `stage` recorded, this
-   *   refuses before any command, and unless `ps --format {{.Project}}`
-   *   then reports the two services in the project `stage` saw, before any
-   *   other. Since the engine then leaves the run cancelled, the refusal
+   *   refuses before any command, and unless the project read (`ps -a`
+   *   with the project label) then reports the two services in the
+   *   project `stage` saw, before any other. Since the engine then leaves the run cancelled, the refusal
    *   names the recovery: the configuration and environment set back, and
    *   `rollout.abort` run by hand with
    *   `d.stable('sha256:<the recorded stable image ID>')`.
@@ -505,8 +518,11 @@ export class DockerComposeCanary {
       const ids = await this.#imageIds(project, rollback.stable, env);
       return ids.length === 1 && ids[0] === rollback.restore;
     }
+    // No running replica is not "on the stable image": stopped ones are
+    // started as they were by a scale that keeps them, so they are recreated.
     const running = await this.#runningImages(project, rollback.stable, env);
-    return running.every((each) => each === rollback.restore);
+    return running.length > 0 &&
+      running.every((each) => each === rollback.restore);
   }
 
   /**
@@ -577,9 +593,9 @@ export class DockerComposeCanary {
   /**
    * The project for a call with a record: the settings, refused — before any
    * command — unless their global flags are the ones `stage` recorded, and
-   * then, before any other command, unless `ps --format {{.Project}}` with
-   * those flags reports the two services in exactly the project `stage`
-   * saw. The recorded services mean something only in that project, and
+   * then, before any other command, unless the project read (`ps -a` with
+   * the project label) with those flags reports the two services in
+   * exactly the project `stage` saw. The recorded services mean something only in that project, and
    * Compose resolves it from more than the flags.
    */
   async #recorded(rollout: Rollout): Promise<Project> {
@@ -600,7 +616,7 @@ export class DockerComposeCanary {
   }
 
   /**
-   * The one project the running replicas of `service` are in, as Compose
+   * The one project the replicas of `service` are in, as Compose
    * reports it, or a refusal.
    */
   async #stableProject(
@@ -611,9 +627,11 @@ export class DockerComposeCanary {
     const [name, ...others] = new Set(
       await this.#projects(project, [service], env),
     );
+    // Compose lists one project's containers, so several cannot happen; the
+    // output is still checked, as untrusted, the way imageOf checks an image.
     if (name === undefined || others.length > 0) {
       throw new Error(
-        `${CALLER}: Compose reports the running replicas of ${service} in ` +
+        `${CALLER}: Compose reports the replicas of ${service} in ` +
           `${
             name === undefined
               ? "no project"
@@ -625,8 +643,9 @@ export class DockerComposeCanary {
   }
 
   /**
-   * The project of each running container of `services`, as
-   * `ps --format {{.Project}}` prints them.
+   * The project label of each container of `services`, running or stopped,
+   * as `ps -a --format '{{.Label "com.docker.compose.project"}}'` prints
+   * them.
    */
   #projects(
     project: Project,
@@ -635,7 +654,7 @@ export class DockerComposeCanary {
   ): Promise<string[]> {
     return this.#lines(
       project,
-      new DockerComposePsSettings().format(PROJECT_TEMPLATE)
+      new DockerComposePsSettings().all().format(PROJECT_TEMPLATE)
         .services(...services),
       env,
       `the projects of ${services.join(" and ")}`,
@@ -900,16 +919,17 @@ function staged(rollout: Rollout | undefined): Rollout {
  * `--wait` when `n` is not 0), run with the image variables set:
  *
  * - **stage** — `ps --format {{.Image}} <stable>` reads the stable image,
- *   `images --quiet <stable>` its ID and `ps --format {{.Project}} <stable>`
- *   its one project, `pull --policy missing <canary>`,
+ *   `images --quiet <stable>` its ID and
+ *   `ps -a --format '{{.Label "com.docker.compose.project"}}' <stable>` its
+ *   one project, `pull --policy missing <canary>`,
  *   the rollout is recorded, then the stable service to every replica
  *   (`--no-recreate`) and the canary service to none. From here on, the
  *   stable variable is the recorded `sha256:<id>` on every command that may
  *   create a stable replica, and every move that sets an ID adds
  *   `--pull never`, since an ID cannot be pulled.
  * - **expose, promote, abort with a record** — first
- *   `ps --format {{.Project}} <stable> <canary>`, which must report exactly
- *   the recorded project.
+ *   `ps -a --format '{{.Label "com.docker.compose.project"}}' <stable>
+ *   <canary>`, which must report exactly the recorded project.
  * - **expose** — the canary service (`--no-recreate`) to its share and the
  *   stable service (`--no-recreate`) to the rest, the growing one first;
  *   `ps` checks the canary runs the candidate and `images --quiet` pins its

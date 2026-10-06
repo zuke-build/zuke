@@ -149,9 +149,9 @@ export interface Rollout extends Rollback {
    */
   readonly scope: readonly string[];
   /**
-   * The project the stable replicas belonged to when `stage` ran, as
-   * `ps --format {{.Project}}` reported it. Every later call refuses unless
-   * Compose still reports the two services in it.
+   * The project the stable replicas belonged to when `stage` ran, as their
+   * `com.docker.compose.project` label reported it. Every later call refuses
+   * unless Compose still reports the two services in it.
    */
   readonly projectName: string;
 }
