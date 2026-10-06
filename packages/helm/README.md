@@ -97,11 +97,12 @@ What it relies on, and cannot check:
   `.stableChart(...)` it renders `.chart(...)`, so a candidate that changes the
   chart changes every stable pod's templates at the first step. Name the chart
   the stable release runs with `.stableChart(...)` / `.stableVersion(...)`, or
-  keep the chart and version identical for both. A `.stableChart(...)` that is
-  not a local path (`./…` or `/…`) must be pinned with `.stableVersion(...)`;
-  `stage` refuses it otherwise. A candidate `.chart(...)` from a repository
-  should be pinned with `.version(...)` too, or a later step can render a newer
-  chart than the one analysed.
+  keep the chart and version identical for both. A chart that is not a local
+  path (`./…` or `/…`) must be pinned — `.chart(...)` with `.version(...)`, and
+  `.stableChart(...)` with `.stableVersion(...)` — and `stage` refuses it
+  otherwise, since an unpinned repository or `oci://` chart would render its
+  latest version at every step and the promotion could install a chart that was
+  never analysed.
 - **Capacity can dip briefly.** The canary release scales up first, but `--wait`
   counts a Deployment ready at `replicas - maxUnavailable`, and the stable
   release scales down without waiting.
@@ -247,7 +248,8 @@ class HelmCanarySettings
     `oci://` reference. The canary release and the promotion use it; the
     stable release's replica moves use it too unless {@link stableChart}
     names the chart the stable release runs. Pin a repository chart with
-    {@link version}.
+    {@link version}: a chart that is not a local path (one starting with
+    `.` or `/`) is refused without one.
   version(value: string): this
     The candidate chart's version (`--version`).
   stableChart(ref: string): this

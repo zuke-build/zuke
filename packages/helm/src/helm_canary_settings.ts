@@ -61,7 +61,8 @@ export class HelmCanarySettings {
    * `oci://` reference. The canary release and the promotion use it; the
    * stable release's replica moves use it too unless {@link stableChart}
    * names the chart the stable release runs. Pin a repository chart with
-   * {@link version}.
+   * {@link version}: a chart that is not a local path (one starting with
+   * `.` or `/`) is refused without one.
    */
   chart(ref: string): this {
     this.chart_ = ref;

@@ -142,8 +142,9 @@ export interface Candidate {
 /**
  * The candidate as configured: the stable release renders the candidate's
  * chart and version unless {@link HelmCanarySettings.stableChart} names its
- * own, and a stable chart that is not a local path must be pinned, or each
- * replica move would render whatever the repository serves as latest.
+ * own. A chart that is not a local path must be pinned with a version, or
+ * each step would render whatever the repository serves as latest — and the
+ * promotion could install a chart that was never analysed.
  */
 export function configuredCandidate(settings: HelmCanarySettings): Candidate {
   const named = settings.stableChart_;
@@ -159,19 +160,28 @@ export function configuredCandidate(settings: HelmCanarySettings): Candidate {
     image: settings.image_,
     total: settings.replicas_,
   });
-  if (
-    named !== undefined && candidate.stableVersion === undefined &&
-    !/^[./]/.test(named)
-  ) {
-    throw new Error(
-      `helmCanary: the stable chart ${JSON.stringify(named)} is not a local ` +
-        "path, so without a version every replica move on the stable " +
-        "release would render the repository's latest chart — add " +
-        "h.stableVersion(...), the version the stable release runs, or name " +
-        "a local chart starting with ./ or /.",
-    );
+  checkPinned(candidate.chart, candidate.version, "version", "candidate");
+  if (named !== undefined) {
+    checkPinned(named, candidate.stableVersion, "stableVersion", "stable");
   }
   return candidate;
+}
+
+/** Refuse a chart that is neither a local path nor pinned to a version. */
+function checkPinned(
+  chart: string,
+  version: string | undefined,
+  setter: string,
+  role: string,
+): void {
+  if (version === undefined && !/^[./]/.test(chart)) {
+    throw new Error(
+      `helmCanary: the ${role} chart ${JSON.stringify(chart)} is not a local ` +
+        "path, so without a version every step would render the " +
+        `repository's latest chart — add h.${setter}(...) with the chart's ` +
+        "version, or name a local chart starting with ./ or /.",
+    );
+  }
 }
 
 /**

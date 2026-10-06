@@ -887,3 +887,25 @@ Deno.test("a stage that cannot record the canary install starting runs no instal
   assertEquals(calls, [STABLE_READ, CANARY_READ]);
   assertEquals(ctx.state.get(), { helmStage: "reading" });
 });
+
+Deno.test("a candidate chart from a repository must be pinned with version", async () => {
+  for (const ref of ["repo/api", "oci://ghcr.io/o/api", "charts/api"]) {
+    const { runner, calls } = fakeHelm();
+    const ctx = context();
+    await assertRejects(
+      () => platform(runner, (h) => h.chart(ref)).stage(ctx),
+      Error,
+      "h.version(...)",
+    );
+    assertEquals(calls, []);
+    assertEquals(ctx.state.get(), { helmStage: "reading" });
+  }
+  const { runner, calls } = fakeHelm();
+  await platform(runner, (h) => h.chart("oci://ghcr.io/o/api").version("2.0.0"))
+    .stage(context());
+  assertEquals(calls[2].slice(0, 3), [
+    "upgrade",
+    "api-canary",
+    "oci://ghcr.io/o/api",
+  ]);
+});
