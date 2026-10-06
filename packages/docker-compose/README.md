@@ -128,9 +128,11 @@ when `n` is not 0:
   stable image, as with a literal stable `image:`; it does not report a rollback
   that changed nothing; and only then takes the canary service to none. Run by
   hand, the stable image is the `.stable(...)` one, compared by the reference
-  `ps` shows: at least one running and every running one on it keeps them, none
-  running brings the stable service up first, and any other image surges. It
-  refuses without one. After a `stage` that changed nothing, nothing runs.
+  `ps` shows: at least one running and every container on it, stopped and
+  created ones included (`ps -a`), keeps them; none running brings the stable
+  service up first; and anything else surges, since a scale that keeps them
+  would start a stopped one on another image as stable. It refuses without one.
+  After a `stage` that changed nothing, nothing runs.
 
 **The project is part of the record.** Service names mean something only inside
 a Compose project, so `stage` records the global flags `.compose(...)` gives
@@ -281,8 +283,8 @@ function dockerComposeCanary(configure: Configure<DockerComposeCanarySettings>):
     the canary service to none. Not durable until the candidate is written
     where the stable variable comes from.
   - abort — `images --quiet` reads the stable replicas' IDs (run by
-    hand, `ps` their references; on a recorded rollout off the ID, `ps`
-    then counts the running ones). All on the stable image: the stable
+    hand, `ps` the running ones' references and `ps -a` every one's; on a
+    recorded rollout off the ID, `ps` then counts the running ones). All on the stable image: the stable
     service back to every replica (`--no-recreate`). None running: the
     stable service first, recreated onto the stable image, the canary
     untouched. Some running on another image: the canary service to every
@@ -444,8 +446,11 @@ class DockerComposeCanary
     - All on the stable image — on a recorded rollout, `images --quiet`
       resolves them, stopped ones included, to exactly the recorded ID (a
       tag `ps` shows means whatever the tag names now, so it is not
-      evidence); run by hand, `ps` shows at least one running and every
-      running one on the `.stable(...)` reference. Mid-rollout they are. The
+      evidence); run by hand, `ps` shows at least one running and `ps -a`
+      every container, stopped and created ones included, on the
+      `.stable(...)` reference — a scale that keeps them starts the stopped
+      ones, so one on another image would serve as stable. Mid-rollout they
+      are. The
       stable service is only scaled back to every replica (`--no-recreate`).
     - None running — on a recorded rollout, `images --quiet` finds no
       stable replica at all (after a step to 100 %), or `ps` finds none
@@ -459,7 +464,13 @@ class DockerComposeCanary
       a promotion: the canary service first goes to every replica on the
       stable image, then the stable service is recreated on it.
 
-    Capacity never dips. Whichever the course, the stable replicas are then
+    Serving never drops to zero while anything serves: each service is
+    recreated only while the other one serves. It can dip, though, on the
+    surge course: Compose stops every container it recreates at once, so
+    while the canary is recreated onto the stable image only the stable
+    replicas serve, and while they are recreated only the canary does —
+    fewer than `.replicas(...)` when the one left serving was only partly
+    scaled. Whichever the course, the stable replicas are then
     read again — by ID on a recorded rollout, by reference run by hand — and
     a stable `image:` that does not read its variable is refused, leaving
     the canary serving, rather than reported as rolled back; only then does

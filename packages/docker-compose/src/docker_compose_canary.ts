@@ -437,8 +437,11 @@ export class DockerComposeCanary {
    * - **All on the stable image** — on a recorded rollout, `images --quiet`
    *   resolves them, stopped ones included, to exactly the recorded ID (a
    *   tag `ps` shows means whatever the tag names now, so it is not
-   *   evidence); run by hand, `ps` shows at least one running and every
-   *   running one on the `.stable(...)` reference. Mid-rollout they are. The
+   *   evidence); run by hand, `ps` shows at least one running and `ps -a`
+   *   every container, stopped and created ones included, on the
+   *   `.stable(...)` reference — a scale that keeps them starts the stopped
+   *   ones, so one on another image would serve as stable. Mid-rollout they
+   *   are. The
    *   stable service is only scaled back to every replica (`--no-recreate`).
    * - **None running** — on a recorded rollout, `images --quiet` finds no
    *   stable replica at all (after a step to 100 %), or `ps` finds none
@@ -452,7 +455,13 @@ export class DockerComposeCanary {
    *   a promotion: the canary service first goes to every replica on the
    *   stable image, then the stable service is recreated on it.
    *
-   * Capacity never dips. Whichever the course, the stable replicas are then
+   * Serving never drops to zero while anything serves: each service is
+   * recreated only while the other one serves. It can dip, though, on the
+   * surge course: Compose stops every container it recreates at once, so
+   * while the canary is recreated onto the stable image only the stable
+   * replicas serve, and while they are recreated only the canary does —
+   * fewer than `.replicas(...)` when the one left serving was only partly
+   * scaled. Whichever the course, the stable replicas are then
    * read again — by ID on a recorded rollout, by reference run by hand — and
    * a stable `image:` that does not read its variable is refused, leaving
    * the canary serving, rather than reported as rolled back; only then does
@@ -528,9 +537,11 @@ export class DockerComposeCanary {
    * run — by ID on a recorded rollout, by the configured reference on a
    * hand-run one, which has no ID to go on:
    *
-   * - `"keep"` — every one is on the image a rollback restores (by ID,
-   *   stopped ones included; run by hand, at least one is running and every
-   *   running one is): scale it without recreating anything.
+   * - `"keep"` — every one, stopped and created ones included, is on the
+   *   image a rollback restores (by ID; run by hand, by reference, with at
+   *   least one running): scale it without recreating anything. A scale
+   *   that keeps them starts the stopped ones, so one on another image
+   *   would serve as stable.
    * - `"first"` — none of it is running: bring it up first, recreated onto
    *   the image, while the canary keeps serving. Recreating the canary first
    *   would take down every container that serves.
@@ -549,12 +560,16 @@ export class DockerComposeCanary {
       // images counts stopped replicas: with none at all, none can be running.
       if (ids.length === 0) return "first";
     }
-    const running = await this.#runningImages(project, rollback.stable, env);
+    const running = await this.#shownImages(
+      project,
+      rollback.stable,
+      env,
+      false,
+    );
     if (running.length === 0) return "first";
     if (recorded) return "surge";
-    return running.every((each) => each === rollback.restore)
-      ? "keep"
-      : "surge";
+    const every = await this.#shownImages(project, rollback.stable, env, true);
+    return every.every((each) => each === rollback.restore) ? "keep" : "surge";
   }
 
   /**
@@ -571,7 +586,7 @@ export class DockerComposeCanary {
   ): Promise<void> {
     const shown = byId
       ? await this.#imageIds(project, rollback.stable, env)
-      : await this.#runningImages(project, rollback.stable, env);
+      : await this.#shownImages(project, rollback.stable, env, false);
     if (shown.length === 0 || shown.some((each) => each !== image)) {
       throw unread(rollback.stable, shown, rollback.stableVariable, image);
     }
@@ -591,7 +606,12 @@ export class DockerComposeCanary {
     env: Record<string, string>,
   ): Promise<string> {
     const variable = rollout.canaryVariable;
-    const running = await this.#runningImages(project, rollout.canary, env);
+    const running = await this.#shownImages(
+      project,
+      rollout.canary,
+      env,
+      false,
+    );
     if (running.length === 0) {
       throw unread(rollout.canary, running, variable, env[variable]);
     }
@@ -735,7 +755,7 @@ export class DockerComposeCanary {
     env: Record<string, string>,
   ): Promise<string> {
     const [image, ...others] = new Set(
-      await this.#runningImages(project, service, env),
+      await this.#shownImages(project, service, env, false),
     );
     if (image === undefined) {
       throw new Error(
@@ -803,17 +823,21 @@ export class DockerComposeCanary {
   }
 
   /**
-   * The image of each running replica of `service`, as
-   * `ps --format {{.Image}}` prints them.
+   * The image of each running replica of `service` — of every container,
+   * stopped and created ones too, when `all` — as `ps --format {{.Image}}`
+   * prints them.
    */
-  async #runningImages(
+  async #shownImages(
     project: Project,
     service: string,
     env: Record<string, string>,
+    all: boolean,
   ): Promise<string[]> {
+    const ps = new DockerComposePsSettings();
+    if (all) ps.all();
     const lines = await this.#lines(
       project,
-      new DockerComposePsSettings().format(IMAGE_TEMPLATE).services(service),
+      ps.format(IMAGE_TEMPLATE).services(service),
       env,
       `the images of ${service}`,
     );
@@ -971,8 +995,8 @@ function staged(rollout: Rollout | undefined): Rollout {
  *   the canary service to none. Not durable until the candidate is written
  *   where the stable variable comes from.
  * - **abort** — `images --quiet` reads the stable replicas' IDs (run by
- *   hand, `ps` their references; on a recorded rollout off the ID, `ps`
- *   then counts the running ones). All on the stable image: the stable
+ *   hand, `ps` the running ones' references and `ps -a` every one's; on a
+ *   recorded rollout off the ID, `ps` then counts the running ones). All on the stable image: the stable
  *   service back to every replica (`--no-recreate`). None running: the
  *   stable service first, recreated onto the stable image, the canary
  *   untouched. Some running on another image: the canary service to every
