@@ -434,3 +434,8 @@ export { type RunPlan } from "./src/run_plan.ts";
 // buffering whatever a server or proxy chooses to send, and it is the same
 // reader the remote cache and the MCP transport already use.
 export { defaultReadEnv, readBytesBounded, sha256Hex } from "./src/internal.ts";
+
+// The one RS256 JWT signer, for a wrapper package that signs a JWT — a GitHub
+// App JWT, a Google service-account assertion — so the PEM parsing and
+// base64url framing exist once rather than once per wrapper.
+export { signJwtRs256 } from "./src/jwt.ts";

@@ -909,6 +909,22 @@ async function sha256Hex(data: string | Uint8Array): Promise<string>
   type is unambiguous whatever buffer the source view sits on (e.g. a
   `SharedArrayBuffer`).
 
+async function signJwtRs256(privateKeyPem: string, claims: Readonly<Record<string, unknown>>, keyId?: string): Promise<string>
+  Sign `claims` as a compact RS256 JWT with a PEM RSA private key —
+  `BEGIN RSA PRIVATE KEY` (PKCS#1) or `BEGIN PRIVATE KEY` (PKCS#8).
+
+  The header is `{"alg":"RS256","typ":"JWT"}`, plus `"kid"` when `keyId` is
+  given (a Google service-account key's `private_key_id`). The claims are
+  serialised as given: the caller sets `iat`, `exp` and the rest.
+
+  ```ts
+  const jwt = await signJwtRs256(pem, { iss: "1234", iat, exp: iat + 540 });
+  ```
+
+  @throws {Error}
+      naming the problem — an empty key, a body that is not
+      base64, or one that is not an RSA key — and never quoting the key.
+
 async function syncCiFiles(files: readonly CiFile[], options: CiSyncOptions): Promise<CiSyncResult[]>
   Bring each declared {@link CiFile} on disk in line with its definition. By
   default a changed file is rewritten; in `check` mode it is reported `stale`
