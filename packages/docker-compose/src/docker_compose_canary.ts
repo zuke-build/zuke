@@ -240,7 +240,9 @@ export class DockerComposeCanary {
    * file, or the environment of whatever runs `docker compose up` next — a
    * plain `docker compose up` puts the stable service back on the image that
    * source still names, and at the replica count its `scale:` names, which
-   * is why that must equal {@link DockerComposeCanarySettings.replicas}.
+   * is why that must equal {@link DockerComposeCanarySettings.replicas}. The
+   * build summary says so: `Persist: set APP_IMAGE=<candidate> and keep
+   * scale: <replicas>`.
    */
   async promote(ctx: DockerComposeCanaryContext): Promise<void> {
     const state = ctx.state.get();
@@ -272,6 +274,7 @@ export class DockerComposeCanary {
     );
     await this.#scale(settings, rollout.canary, 0, env, false);
     await ctx.state.set({ [STAGE]: "promoted" });
+    ctx.reportSummary(persist(rollout, rollout.candidate));
   }
 
   /**
@@ -300,14 +303,16 @@ export class DockerComposeCanary {
    *
    * Like a promotion, the image is an override for these commands, so it
    * lasts until a plain `docker compose up` reads the variable from wherever
-   * the project keeps it.
+   * the project keeps it. A hand-run rollback — the one that undoes a
+   * promotion someone persisted — says so in the build summary, as promote
+   * does: `Persist: set APP_IMAGE=<stable> and keep scale: <replicas>`.
    */
   async abort(ctx: DockerComposeCanaryContext): Promise<void> {
     const state = ctx.state.get();
     if (state[STAGE] === "deploying") return;
     const settings = this.#settings();
-    const rollback: Rollback = recordedRollout(state) ??
-      handRunRollback(settings);
+    const recorded = recordedRollout(state);
+    const rollback: Rollback = recorded ?? handRunRollback(settings);
     const image = rollback.stableImage;
     // The canary service only ever runs the stable image here — a surge while
     // the stable replicas are recreated — so its variable names that too.
@@ -338,6 +343,7 @@ export class DockerComposeCanary {
       );
     }
     await this.#scale(settings, rollback.canary, 0, env, false);
+    if (recorded === undefined) ctx.reportSummary(persist(rollback, image));
   }
 
   /** The settings, evaluated now so the lambda sees resolved parameters. */
@@ -482,6 +488,22 @@ function imageEnv(
   canary: string,
 ): Record<string, string> {
   return { [vars.canaryVariable]: canary, [vars.stableVariable]: stable };
+}
+
+/**
+ * The build-summary pair telling the operator what to write down: the image
+ * is an override for the platform's own commands, so it lasts only until a
+ * plain `docker compose up` reads the variable — and the `scale:` — from the
+ * project.
+ */
+function persist(
+  rollback: Rollback,
+  image: string,
+): { Persist: string } {
+  return {
+    Persist: `set ${rollback.stableVariable}=${image} and keep scale: ` +
+      `${rollback.replicas}`,
+  };
 }
 
 /** The recorded rollout, or a refusal: expose and promote need a stage. */

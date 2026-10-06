@@ -918,3 +918,31 @@ Deno.test({
     );
   },
 });
+
+Deno.test("promote and a hand-run abort tell the operator what to persist", async () => {
+  // Both are overrides for the platform's own commands: a plain
+  // `docker compose up` reverts them unless the variable and scale are kept.
+  const { runner } = fakeCompose();
+  const ctx = await staged(runner);
+  // A resumed process whose lambda drifted still names what stage recorded.
+  const drifted = platform(
+    runner,
+    (d) => d.replicas(2).stableImageVariable("WEB_IMAGE"),
+  );
+  await drifted.promote(ctx);
+  assertEquals(
+    ctx.summary.Persist,
+    "set APP_IMAGE=app:v2 and keep scale: 4",
+  );
+  const handRun = context();
+  await platform(runner, (d) => d.stable("app:v1")).abort(handRun);
+  assertEquals(handRun.summary, {
+    Persist: "set APP_IMAGE=app:v1 and keep scale: 4",
+  });
+  // A rollback the engine runs mid-rollout restores what was serving, which
+  // the project already names: nothing to persist.
+  const mid = await staged(runner);
+  const before = { ...mid.summary };
+  await platform(runner).abort(mid);
+  assertEquals(mid.summary, before);
+});

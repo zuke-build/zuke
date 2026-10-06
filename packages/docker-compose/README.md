@@ -127,7 +127,9 @@ required: the v1 `docker-compose` binary has no `--wait`, `pull --policy` or
 the commands the platform runs. Until the candidate is written where `APP_IMAGE`
 comes from (the `.env` file, or the environment of whatever runs Compose next),
 a plain `docker compose up` puts the stable service back on the old image. A
-rollback is an override in the same way. See
+rollback is an override in the same way. The build summary says so after a
+promotion and after a hand-run rollback:
+`Persist: set APP_IMAGE=<image> and keep scale: <replicas>`. See
 [docs/canary.md](https://github.com/zuke-build/zuke/blob/master/docs/canary.md)
 for the details and the other limits.
 
@@ -275,7 +277,8 @@ class DockerComposeCanary
     file, or the environment of whatever runs `docker compose up` next — a
     plain `docker compose up` puts the stable service back on the image that
     source still names, and at the replica count its `scale:` names, which
-    is why that must equal {@link DockerComposeCanarySettings.replicas}.
+    is why that must equal {@link DockerComposeCanarySettings.replicas}. The
+    build summary says so: `Persist: set APP_IMAGE=<candidate> and keep scale: <replicas>`.
   async abort(ctx: DockerComposeCanaryContext): Promise<void>
     Put every replica back on the stable image, in the stable service, with
     the canary service at none. Idempotent. Which image, services and
@@ -302,7 +305,9 @@ class DockerComposeCanary
 
     Like a promotion, the image is an override for these commands, so it
     lasts until a plain `docker compose up` reads the variable from wherever
-    the project keeps it.
+    the project keeps it. A hand-run rollback — the one that undoes a
+    promotion someone persisted — says so in the build summary, as promote
+    does: `Persist: set APP_IMAGE=<stable> and keep scale: <replicas>`.
 
 class DockerComposeCanarySettings
   How {@link dockerComposeCanary} reaches the project, configured through its
