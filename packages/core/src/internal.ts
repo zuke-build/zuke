@@ -3,8 +3,9 @@
 
 /**
  * Small utilities shared across core modules. This module is **internal**: it is
- * not re-exported from `mod.ts` (or any entrypoint), so nothing here is public
- * API. It exists to consolidate helpers that were previously copy-pasted per
+ * not an entrypoint, and only the few helpers `mod.ts` names one by one
+ * (`defaultReadEnv`, `sha256Hex`, `readBytesBounded`) are public API — each
+ * because a wrapper package needed it and may depend on core alone. It exists to consolidate helpers that were previously copy-pasted per
  * module (env reads, error-message extraction, a delay, a SHA-256 hex digest,
  * the `NotFound → null` filesystem readers, the mkdir-parent writers, and a
  * timeout wrapper) so the copies can't drift out of sync.

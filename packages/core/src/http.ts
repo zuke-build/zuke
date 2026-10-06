@@ -82,6 +82,10 @@ export class InsecureBackendUrlError extends Error {
  * itself the trust decision, and a build author who means to talk plaintext to a
  * service on their own network should not have to also set an env var.
  *
+ * Exported so a package that sends a credential to a service it reads answers
+ * from applies this same rule rather than a second loopback check of its own:
+ * `@zuke/prometheus` runs every URL that will carry a credential through it.
+ *
  * @throws {InsecureBackendUrlError} naming the variable that relaxes it, when
  *   `raw` is neither `https:` nor loopback and the opt-out is unset.
  */

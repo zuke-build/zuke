@@ -322,11 +322,14 @@ export {
   fail,
 } from "./src/assert.ts";
 export {
+  ALLOW_INSECURE_ENV,
+  assertSecureBackendUrl,
   httpDownload,
   HttpError,
   httpJson,
   type HttpOptions,
   httpText,
+  InsecureBackendUrlError,
 } from "./src/http.ts";
 export { redactUrl, redactUrls } from "./src/redact_url.ts";
 export {
@@ -425,4 +428,9 @@ export { type RunPlan } from "./src/run_plan.ts";
 // A wrapper package may depend only on core, so a helper two of them need is
 // exported here or retyped in each. `defaultReadEnv` was the latter, in
 // `@zuke/otel` and `@zuke/gcloud`, which is how env readers drift apart.
-export { defaultReadEnv, sha256Hex } from "./src/internal.ts";
+//
+// `readBytesBounded` is the one capped body reader: an API client in a wrapper
+// package (`@zuke/prometheus`) reads a response through it rather than
+// buffering whatever a server or proxy chooses to send, and it is the same
+// reader the remote cache and the MCP transport already use.
+export { defaultReadEnv, readBytesBounded, sha256Hex } from "./src/internal.ts";
