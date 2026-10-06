@@ -133,12 +133,15 @@ export function recordedFirstDeployed(
  * another incarnation of the release — uninstalled and installed again — or
  * another cluster's release of the same name, reached through a kube context
  * that changed. Rolling either back to the recorded revision, or upgrading
- * it, would act on a deployment this rollout never staged.
+ * it, would act on a deployment this rollout never staged. `state` is the
+ * rollout's record, which the refusal reads for the revision a hand-run
+ * recovery needs.
  */
 export function checkFirstDeployed(
   stable: string,
   recorded: string,
   live: string,
+  state: Record<string, JsonValue>,
 ): void {
   if (recorded === live) return;
   throw new Error(
@@ -146,13 +149,17 @@ export function checkFirstDeployed(
       `${isoTime(recorded)} when this rollout started, but the release helm ` +
       `reaches now was first deployed at ${isoTime(live)}: it was ` +
       "reinstalled, or the kube context in h.helm(...) points at another " +
-      "cluster. This call changed nothing. To recover, point the kube " +
-      "context back at the cluster the rollout started on and run it again " +
-      "(a resume, or `zuke cancel <run-id>` to roll it back). If the release " +
-      "really was reinstalled, the recorded revision no longer exists in its " +
-      `history: check \`helm history ${stable}\` and clean up by hand, ` +
-      "uninstalling the canary release once the stable one is as it should " +
-      "be.",
+      "cluster. This call changed nothing, and the run is left cancelled " +
+      "with the canary release in place, so a resume or `zuke cancel` will " +
+      "not roll it back. To recover, point the kube context back at the " +
+      `cluster the rollout started on, check with \`helm status ${stable}\` ` +
+      "that it reaches the release that was staged (a rollback run by hand " +
+      "has no record to check it against), then run the rollout's " +
+      "<field>.abort target by hand (for example `zuke rollout.abort`) with " +
+      `${recovery(state, stable)}. If the release really was reinstalled, ` +
+      "the recorded revision is not in its history: check `helm history " +
+      `${stable}\` and clean up by hand, uninstalling the canary release ` +
+      "once the stable one is as it should be.",
   );
 }
 

@@ -1228,10 +1228,13 @@ Deno.test("a stable release reinstalled since stage is refused before any change
     for (
       const part of [
         "reinstalled, or the kube context in h.helm(...) points at another",
-        "This call changed nothing.",
+        "This call changed nothing",
+        "a resume or `zuke cancel` will not roll it back",
         "point the kube context back at the cluster the rollout started on",
-        "`zuke cancel <run-id>`",
-        "the recorded revision no longer exists in its history",
+        "`helm status api`",
+        "`zuke rollout.abort`",
+        "h.stableRevision(7), the revision it recorded",
+        "the recorded revision is not in its history",
         "`helm history api`",
         "uninstalling the canary release",
       ]
@@ -1379,7 +1382,7 @@ Deno.test("a first-deployed time beyond a safe integer round-trips exactly", asy
     Error,
     "the release helm reaches now was first deployed at",
   );
-  await assertRejects(() => p.abort(ctx), Error, "This call changed nothing.");
+  await assertRejects(() => p.abort(ctx), Error, "This call changed nothing");
   assertEquals(mutations(calls), []);
 });
 
@@ -1387,4 +1390,17 @@ Deno.test("a hand-run abort has no first-deployed time to check, and reads nothi
   const { runner, calls } = fakeHelm({ firstDeployed: REINSTALLED });
   await platform(runner, (h) => h.stableRevision(41)).abort(context());
   assertEquals(calls.map((argv) => argv[0]), ["rollback", "uninstall"]);
+});
+
+Deno.test("a reinstall refusal names the hand-run recovery, not a resume or cancel", async () => {
+  // The refusal ends the run cancelled, so a resume or `zuke cancel` cannot
+  // roll it back; the message must give the revision a hand-run abort needs.
+  const { runner } = fakeHelm({ firstDeployed: REINSTALLED });
+  const recorded = await platform(runner).abort(await stagedContext()).then(
+    () => "",
+    (error: unknown) => error instanceof Error ? error.message : String(error),
+  );
+  assertEquals(recorded.includes("h.stableRevision(7), the revision"), true);
+  assertEquals(recorded.includes("zuke rollout.abort"), true);
+  assertEquals(recorded.includes("will not roll it back"), true);
 });

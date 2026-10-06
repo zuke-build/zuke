@@ -214,7 +214,12 @@ export class HelmCanary {
     if (recordedFirst === undefined) {
       await this.#refuseLeftover(settings, canary);
     } else {
-      checkFirstDeployed(stable, recordedFirst, firstDeployed);
+      checkFirstDeployed(
+        stable,
+        recordedFirst,
+        firstDeployed,
+        ctx.state.get(),
+      );
     }
     // A rollback reads this to know the canary release may exist, and which
     // one, so it must be on record before the install can create it.
@@ -348,7 +353,7 @@ export class HelmCanary {
     const { stable, canary } = names;
     if (stage === "deploying") {
       const first = this.#recordedStable(recorded, names);
-      await this.#verifyStable(settings, stable, first);
+      await this.#verifyStable(settings, stable, first, recorded);
       await this.#run(settings, "uninstall", this.#uninstall(settings, canary));
       return;
     }
@@ -359,7 +364,9 @@ export class HelmCanary {
       this.#revisionToRestore(settings, stable, recorded),
     );
     // Nothing recorded — a hand-run abort — leaves nothing to compare with.
-    if (first !== undefined) await this.#verifyStable(settings, stable, first);
+    if (first !== undefined) {
+      await this.#verifyStable(settings, stable, first, recorded);
+    }
     const rollback = this.#scoped(settings, new HelmRollbackSettings())
       .release(stable).revision(revision).wait().historyMax(0);
     if (settings.timeout_ !== undefined) rollback.timeout(settings.timeout_);
@@ -425,7 +432,7 @@ export class HelmCanary {
     }
     const first = this.#recordedStable(recorded, names);
     const candidate = recordedCandidate(recorded);
-    await this.#verifyStable(settings, names.stable, first);
+    await this.#verifyStable(settings, names.stable, first, recorded);
     return candidate;
   }
 
@@ -444,12 +451,14 @@ export class HelmCanary {
   /**
    * Refuse unless the stable release helm reaches now was first deployed at
    * `recorded` — the release `stage` read, not one reinstalled under its name
-   * or another cluster's. Run before anything is changed.
+   * or another cluster's. Run before anything is changed; `state` is the
+   * rollout's record, for the recovery a refusal spells out.
    */
   async #verifyStable(
     settings: HelmCanarySettings,
     stable: string,
     recorded: string,
+    state: Record<string, JsonValue>,
   ): Promise<void> {
     const output = await this.#run(
       settings,
@@ -465,7 +474,7 @@ export class HelmCanary {
           `Check that the release exists with \`helm status ${stable}\`.`,
       );
     }
-    checkFirstDeployed(stable, recorded, text);
+    checkFirstDeployed(stable, recorded, text, state);
   }
 
   /**

@@ -337,11 +337,16 @@ under the same name has a new one, so it is refused rather than rolled back to a
 revision its history does not hold. The kube context still cannot be recorded,
 but one that now points at another cluster refuses rather than act, because that
 cluster's release will not have been first deployed at the same nanosecond — a
-strong check, not a proof. The refusal names both times and changes nothing:
-point the kube context back at the cluster the rollout started on and run it
-again (a resume, or `zuke cancel <run-id>`); if the release really was
-reinstalled, check `helm history <stable>` and clean up by hand, uninstalling
-the canary release once the stable one is as it should be.
+strong check, not a proof. The refusal names both times and changes nothing, but
+the run is left cancelled with the canary release in place, so a resume or
+`zuke cancel` will not roll it back. To recover, point the kube context back at
+the cluster the rollout started on, check with `helm status <stable>` that it
+reaches the release that was staged (a rollback run by hand has no record to
+check it against), then run the rollout's `<field>.abort` target by hand with
+`.stableRevision(n)` — the refusal names the revision `stage` recorded. If the
+release really was reinstalled, that revision is not in its history: check
+`helm history <stable>` and clean up by hand, uninstalling the canary release
+once the stable one is as it should be.
 
 What it relies on, and cannot check:
 

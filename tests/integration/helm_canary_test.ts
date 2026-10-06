@@ -341,9 +341,23 @@ Deno.test("Helm: a stable release reinstalled while the rollout was parked is ne
           "release helm reaches now was first deployed at " +
           "2025-10-06T11:26:40.000Z",
       );
-      assertStringIncludes(out + err, "This call changed nothing.");
+      assertStringIncludes(out + err, "This call changed nothing");
       assertEquals(mutations(), [], command);
       assertEquals(calls.length > 0, true, command);
+      assertStringIncludes(out + err, "zuke rollout.abort");
+      assertStringIncludes(out + err, "h.stableRevision(12)");
+
+      // The run is cancelled now, so neither a resume nor a cancel can roll
+      // it back: the recovery the message names is the kube context pointed
+      // back, and the rollback run by hand to the recorded revision.
+      const again = await runCli(Deploy, ["cancel", id]);
+      assertEquals(mutations(), [], `${command} then cancel`);
+      assertEquals((again.out + again.err).includes("Rolled back"), false);
+      fresh();
+      stableRevision = 12;
+      const recovered = await runCli(Deploy, ["rollout.abort"]);
+      assertEquals(recovered.code, 0, recovered.err);
+      assertEquals(steps(), ["rollback api 12", "uninstall api-canary"]);
     });
   }
 });
