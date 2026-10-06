@@ -355,7 +355,10 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   from `@zuke/kubectl`, and Helm:
   `helmCanary((h) => h.chart(…).version(…).stableRelease(…).image(…)
   .replicas(…))`
-  from `@zuke/helm`. See the cheatsheet.
+  from `@zuke/helm`, and Docker Compose:
+  `dockerComposeCanary((d) => d.service(…).canaryService(…).replicas(…)
+  .image(…))`
+  from `@zuke/docker-compose`. See the cheatsheet.
 - **OpenTelemetry export (`@zuke/otel`):** register `otel((s) => s.endpoint(…))`
   as a plugin (`run(MyBuild, { plugins: [otel(…)] })`) to ship run/target spans
   and `zuke.run.started` / `zuke.run.suspended` / `zuke.runs` counters as
