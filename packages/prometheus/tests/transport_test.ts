@@ -320,13 +320,13 @@ Deno.test("malformed percent-encoding in the userinfo is named, without the valu
   const error = await assertRejects(
     () =>
       PrometheusTasks.query((s) =>
-        s.url("https://admin:pass%ZZword@prom.example").query("q")
+        s.url("https://admin:pass%ZZ-x@prom.example").query("q")
       ),
     Error,
     "not valid percent-encoding",
   );
   assertEquals(error.message.includes("pass"), true); // "pass them with …"
-  assertEquals(error.message.includes("%ZZword"), false);
+  assertEquals(error.message.includes("%ZZ-x"), false);
 });
 
 Deno.test("a base URL parameter that collides with the call's own is refused", async () => {

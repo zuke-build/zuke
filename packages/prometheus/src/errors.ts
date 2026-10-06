@@ -16,7 +16,7 @@
  * userinfo and credential-bearing parameters — before constructing one, and
  * neither keeps the underlying error as a `cause`, because a runtime's own
  * message (a failed `fetch` naming the URL it was handed) is exactly where a
- * secret would ride along unscrubbed.
+ * secret would ride along with nothing to scrub it.
  *
  * @module
  */

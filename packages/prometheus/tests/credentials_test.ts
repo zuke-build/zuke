@@ -25,7 +25,7 @@ Deno.test("bearerToken, basicAuth and header each add their header", async () =>
       .header("X-Scope-OrgID", "tenant-1")
   );
   await PrometheusTasks.query((s) =>
-    s.url(BASE).fetch(fetcher).query("q").basicAuth("zuke", "pässword")
+    s.url(BASE).fetch(fetcher).query("q").basicAuth("zuke", "p€ss")
   );
   assertEquals(
     fetcher.sent[0].headers.get("authorization"),
@@ -34,7 +34,7 @@ Deno.test("bearerToken, basicAuth and header each add their header", async () =>
   assertEquals(fetcher.sent[0].headers.get("x-scope-orgid"), "tenant-1");
   // UTF-8, per RFC 7617, rather than btoa's Latin-1-only input.
   const utf8 = String.fromCharCode(
-    ...new TextEncoder().encode("zuke:pässword"),
+    ...new TextEncoder().encode("zuke:p€ss"),
   );
   assertEquals(
     fetcher.sent[1].headers.get("authorization"),
