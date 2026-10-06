@@ -51,6 +51,7 @@ const RECORD = {
   stableImage: "composeCanaryStableImage",
   stableImageId: "composeCanaryStableImageId",
   scope: "composeCanaryProject",
+  projectName: "composeCanaryProjectName",
 } as const;
 
 /** The most replicas the two services may share. */
@@ -94,6 +95,13 @@ const IMAGE_ID_SHAPE = /^(?:sha256:)?([0-9a-f]{64})$/;
  * than the one recorded or reported.
  */
 const IMAGE_SHAPE = /^[^\s\p{Cc}]+$/u;
+
+/**
+ * A Compose project name as Compose normalises it and labels containers
+ * with: lowercase letters, digits, `_` and `-`, starting with a letter or
+ * digit.
+ */
+const PROJECT_SHAPE = /^[a-z0-9][a-z0-9_-]*$/;
 
 /** The two services and the replicas they share. */
 export interface Topology {
@@ -140,6 +148,12 @@ export interface Rollout extends Rollback {
    * gives exactly these.
    */
   readonly scope: readonly string[];
+  /**
+   * The project the stable replicas belonged to when `stage` ran, as
+   * `ps --format {{.Project}}` reported it. Every later call refuses unless
+   * Compose still reports the two services in it.
+   */
+  readonly projectName: string;
 }
 
 /** The configured services and replicas, or a friendly error naming the fix. */
@@ -219,6 +233,7 @@ export function recordOf(rollout: Rollout): Record<string, JsonValue> {
     [RECORD.stableImage]: rollout.stableImage,
     [RECORD.stableImageId]: rollout.restore,
     [RECORD.scope]: [...rollout.scope],
+    [RECORD.projectName]: rollout.projectName,
   };
 }
 
@@ -260,7 +275,23 @@ export function recordedRollout(
       "the recorded stable image ID",
     ),
     scope,
+    projectName: projectNameOf(
+      text(RECORD.projectName),
+      "the recorded project",
+    ),
   };
+}
+
+/** `name` if it is a Compose project name, or an error naming `what`. */
+export function projectNameOf(name: string, what: string): string {
+  if (!PROJECT_SHAPE.test(name)) {
+    throw new Error(
+      `${CALLER}: ${JSON.stringify(name)} (${what}) is not a Compose ` +
+        "project name — lowercase letters, digits, '_' and '-', starting " +
+        "with a letter or digit.",
+    );
+  }
+  return name;
 }
 
 /** Whether `value` is a full image ID in the `sha256:` form. */

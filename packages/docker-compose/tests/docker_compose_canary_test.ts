@@ -68,8 +68,12 @@ interface Fake {
   world?: World;
   /** Services whose `image:` is a literal, not their variable. */
   hardCoded?: Record<string, string>;
-  /** What `ps` prints, overriding the world. */
+  /** What `ps --format {{.Image}}` prints, overriding the world. */
   ps?: string;
+  /** The project `ps --format {{.Project}}` names each container in; `shop` by default. */
+  project?: string;
+  /** What `ps --format {{.Project}}` prints, overriding the world. */
+  projects?: string;
   /** What `images --quiet` prints, overriding the world. */
   images?: string;
   /** The output to answer a command with instead of running it. */
@@ -112,6 +116,15 @@ function fakeCompose(fake: Fake = {}): {
       );
       const lines = [...ids].map((id) => `${id}\n`).join("");
       return Promise.resolve(new CommandOutput(0, fake.images ?? lines, ""));
+    }
+    if (argv.includes("{{.Project}}")) {
+      const services = argv.slice(argv.indexOf("--format") + 2);
+      const lines = services.flatMap((each) =>
+        (world[each] ?? []).map(() => `${fake.project ?? "shop"}\n`)
+      );
+      return Promise.resolve(
+        new CommandOutput(0, fake.projects ?? lines.join(""), ""),
+      );
     }
     if (argv.includes("ps")) {
       const lines = (world[service] ?? []).map((image) => `${image}\n`);
@@ -195,6 +208,22 @@ function images(service: string): string[] {
   return ["compose", "-p", "shop", "images", "--quiet", service];
 }
 
+/**
+ * The `ps` argv the platform runs to read the project `services` are in: the
+ * stable one at stage, both before anything else on every later call.
+ */
+function projects(...services: string[]): string[] {
+  return [
+    "compose",
+    "-p",
+    "shop",
+    "ps",
+    "--format",
+    "{{.Project}}",
+    ...(services.length === 0 ? ["app", "app-canary"] : services),
+  ];
+}
+
 /** The `ps` argv the platform runs to read the images `service` runs. */
 function ps(service: string): string[] {
   return ["compose", "-p", "shop", "ps", "--format", "{{.Image}}", service];
@@ -222,6 +251,7 @@ const STAGED = {
   composeCanaryStableImage: "app:v1",
   composeCanaryStableImageId: V1_ID,
   composeCanaryProject: ["-p", "shop"],
+  composeCanaryProjectName: "shop",
 };
 
 /** A context whose state is the one a successful stage leaves. */
@@ -238,6 +268,7 @@ Deno.test("stage records the rollout, pulls the candidate, and settles at 0 %", 
   assertEquals(calls, [
     { argv: ps("app"), env: ALL_V2 },
     { argv: images("app"), env: ALL_V2 },
+    { argv: projects("app"), env: ALL_V2 },
     {
       argv: [
         "compose",
@@ -264,6 +295,7 @@ Deno.test("expose scales the canary up first, checks its image, then the stable 
   calls.length = 0;
   assertEquals(await p.expose(25, ctx), 25);
   assertEquals(calls, [
+    { argv: projects(), env: BOTH_V1 },
     { argv: scale("app-canary", 1, true), env: BOTH_V1 },
     { argv: ps("app-canary"), env: BOTH_V1 },
     { argv: images("app-canary"), env: BOTH_V1 },
@@ -274,6 +306,7 @@ Deno.test("expose scales the canary up first, checks its image, then the stable 
   calls.length = 0;
   assertEquals(await p.expose(50, ctx), 50);
   assertEquals(calls, [
+    { argv: projects(), env: PINNED },
     { argv: scale("app-canary", 2, true), env: PINNED },
     { argv: ps("app-canary"), env: PINNED },
     { argv: images("app-canary"), env: PINNED },
@@ -294,6 +327,7 @@ Deno.test("expose to a smaller share grows the stable service first", async () =
   calls.length = 0;
   assertEquals(await p.expose(25, ctx), 25);
   assertEquals(calls.map((c) => c.argv), [
+    projects(),
     scale("app", 3, true),
     scale("app-canary", 1, true),
     ps("app-canary"),
@@ -302,6 +336,7 @@ Deno.test("expose to a smaller share grows the stable service first", async () =
   calls.length = 0;
   assertEquals(await p.expose(0, ctx), 0);
   assertEquals(calls.map((c) => c.argv), [
+    projects(),
     scale("app", 4, true),
     scale("app-canary", 0, true),
   ]);
@@ -355,6 +390,7 @@ Deno.test("expose refuses a canary whose image does not read its variable", asyn
   );
   // The stable service did not shrink.
   assertEquals(calls.map((c) => c.argv), [
+    projects(),
     scale("app-canary", 1, true),
     ps("app-canary"),
     images("app-canary"),
@@ -365,7 +401,7 @@ Deno.test("expose refuses a canary whose image does not read its variable", asyn
   await assertRejects(
     () =>
       platform((settings, env) =>
-        settings.argv().includes("ps")
+        settings.argv().includes("{{.Image}}")
           ? Promise.resolve(new CommandOutput(0, "", ""))
           : gone(settings, env)
       ).expose(25, fresh),
@@ -430,6 +466,7 @@ Deno.test("promote hands the stable service to the candidate without a capacity 
   await p.promote(ctx);
   // Every move carries the ID the steps pinned, never the tag.
   assertEquals(calls, [
+    { argv: projects(), env: PINNED },
     { argv: scale("app-canary", 4, true), env: PINNED },
     { argv: scale("app", 4), env: ALL_V2_ID },
     { argv: images("app"), env: ALL_V2_ID },
@@ -465,6 +502,7 @@ Deno.test("promote refuses a stable service whose image does not read its variab
   // With no step before it, promote pins the candidate itself; the canary
   // still holds every replica, so nothing stopped serving.
   assertEquals(calls.map((c) => c.argv), [
+    projects(),
     scale("app-canary", 4, true),
     ps("app-canary"),
     images("app-canary"),
@@ -495,6 +533,7 @@ Deno.test("abort mid-rollout scales the stable service back without recreating i
   await p.abort(ctx);
   await p.abort(ctx);
   const once = [
+    { argv: projects(), env: PINNED },
     { argv: images("app"), env: ALL_V1 },
     { argv: scale("app", 4, true), env: ALL_V1 },
     { argv: images("app"), env: ALL_V1 },
@@ -524,6 +563,7 @@ Deno.test("abort after a promotion that failed part-way surges the canary on the
   const recorded = fakeCompose({ world });
   await platform(recorded.runner).abort(ctx);
   assertEquals(recorded.calls, [
+    { argv: projects(), env: PINNED },
     { argv: images("app"), env: ALL_V1 },
     { argv: scale("app-canary", 4), env: ALL_V1 },
     { argv: scale("app", 4), env: ALL_V1 },
@@ -581,7 +621,12 @@ Deno.test("a stage that cannot record the stable image stops before anything sca
     "could not record the stable image",
   );
   // The read and the pull ran; no scaling did.
-  assertEquals(calls.map((c) => c.argv[3]), ["ps", "images", "pull"]);
+  assertEquals(calls.map((c) => c.argv.slice(3, 6).join(" ")), [
+    "ps --format {{.Image}}",
+    "images --quiet app",
+    "ps --format {{.Project}}",
+    "pull --policy missing",
+  ]);
 });
 
 Deno.test("stage refuses a stable service with no single running image", async () => {
@@ -685,10 +730,12 @@ Deno.test("every call after stage acts on what stage recorded, not on the lambda
   await drifted.expose(25, ctx);
   await drifted.abort(ctx);
   assertEquals(calls, [
+    { argv: projects(), env: BOTH_V1 },
     { argv: scale("app-canary", 1, true), env: BOTH_V1 },
     { argv: ps("app-canary"), env: BOTH_V1 },
     { argv: images("app-canary"), env: BOTH_V1 },
     { argv: scale("app", 3, true), env: BOTH_V1 },
+    { argv: projects(), env: PINNED },
     { argv: images("app"), env: ALL_V1 },
     { argv: scale("app", 4, true), env: ALL_V1 },
     { argv: images("app"), env: ALL_V1 },
@@ -697,12 +744,13 @@ Deno.test("every call after stage acts on what stage recorded, not on the lambda
   calls.length = 0;
   await drifted.promote(ctx);
   assertEquals(calls.map((c) => c.argv), [
+    projects(),
     scale("app-canary", 4, true),
     scale("app", 4),
     images("app"),
     scale("app-canary", 0),
   ]);
-  assertEquals(calls[1].env, ALL_V2_ID);
+  assertEquals(calls[2].env, ALL_V2_ID);
 });
 
 Deno.test("the lambda is evaluated on every call, so it sees resolved values", async () => {
@@ -951,7 +999,18 @@ Deno.test("stage records the project scope the global lambda gives, and no .env 
           .profile("web").projectDirectory("/srv/shop").envFile("prod.env")
       ),
   );
+  calls.length = 0;
   assertEquals(await plugin.expose(25, ctx), 25);
+  // The project read runs with the recorded flags.
+  assertEquals(calls[0].argv, [
+    "compose",
+    ...flags,
+    "ps",
+    "--format",
+    "{{.Project}}",
+    "app",
+    "app-canary",
+  ]);
 });
 
 Deno.test("a call whose lambda selects another project refuses before any command", async () => {
@@ -1042,7 +1101,8 @@ Deno.test("the project refusal gives a hand-run recovery naming the recorded sta
       "staged",
       "compared as written, in order",
       "a resume or `zuke cancel` will not roll it back",
-      "set the configuration back to what the rollout started with",
+      "set the configuration and environment back to what the rollout " +
+      "started with",
       "check with `docker compose ps`",
       "run the rollout's <field>.abort target by hand (for example " +
       `\`zuke rollout.abort\`) with d.stable('${V1_ID}') — the stable ` +
@@ -1147,6 +1207,135 @@ Deno.test("a trailing argument spelled like the probe's placeholder is still a t
   assertEquals(ctx.state.get().composeCanaryProject, ["-p", "<subcommand>"]);
 });
 
+Deno.test("stage refuses stable replicas that are not in one Compose project", async () => {
+  for (
+    const [reported, message] of [
+      ["", "replicas of app in no project"],
+      ["shop\nother\n", "replicas of app in several projects (shop, other)"],
+      ["Shop!\n", '"Shop!" (the project ps reported for app) is not a Compose'],
+    ]
+  ) {
+    const { runner, calls } = fakeCompose({ projects: reported });
+    const ctx = context();
+    await assertRejects(() => platform(runner).stage(ctx), Error, message);
+    // Read, and refused before the pull or any move.
+    assertEquals(calls.map((c) => c.argv[3]), ["ps", "images", "ps"]);
+    assertEquals(ctx.state.get(), { composeCanaryStage: "deploying" });
+  }
+});
+
+/** Every call with a record, as the refusal matrix drives them. */
+function recordedCalls(p: ReturnType<typeof platform>) {
+  return [
+    (ctx: ReturnType<typeof context>) => p.expose(25, ctx),
+    (ctx: ReturnType<typeof context>) => p.promote(ctx),
+    (ctx: ReturnType<typeof context>) => p.abort(ctx),
+  ];
+}
+
+Deno.test("a call refuses, after only the project read, when Compose reports the services in another project", async () => {
+  // The flags are the same; COMPOSE_PROJECT_NAME, a .env file or the working
+  // directory changed what they resolve to.
+  const cases: [Fake, string][] = [
+    [
+      { project: "shop-staging" },
+      "Compose now reports app and app-canary in shop-staging",
+    ],
+    [
+      { projects: "shop\nother\n" },
+      "Compose now reports app and app-canary in shop, other",
+    ],
+    [
+      { world: { app: [], "app-canary": [] } },
+      "Compose now reports no running container of app and app-canary in " +
+      "the project it resolves — a live rollout always runs some, since " +
+      "the total never dips —",
+    ],
+  ];
+  for (const [fake, found] of cases) {
+    const extras: Record<string, JsonValue>[] = [
+      ...RECORDED_STATES,
+      { composeCanaryStage: "promoted", composeCanaryCandidateId: V2_ID },
+      { composeCanaryStage: "mystery" },
+    ];
+    for (const extra of extras) {
+      const { runner, calls, world } = fakeCompose({ ...fake });
+      const before = structuredClone(world);
+      const p = platform(runner);
+      // A promoted record makes promote a no-op, which reads nothing.
+      const each = extra.composeCanaryStage === "promoted" ||
+          extra.composeCanaryStage === "mystery"
+        ? recordedCalls(p).slice(2)
+        : recordedCalls(p);
+      for (const call of each) {
+        calls.length = 0;
+        const ctx = await recordedAs(extra);
+        const state = ctx.state.get();
+        const error = await assertRejects(() => call(ctx), Error);
+        assertStringIncludes(
+          error.message,
+          "dockerComposeCanary: this rollout started in the Compose project " +
+            `shop, but `,
+        );
+        assertStringIncludes(error.message, found);
+        assertStringIncludes(
+          error.message,
+          "this call changed nothing rather than act on a project the " +
+            "rollout never staged",
+        );
+        assertEquals(calls.map((c) => c.argv), [projects()]);
+        assertEquals(ctx.state.get(), state);
+      }
+      assertEquals(world, before);
+    }
+  }
+});
+
+Deno.test("the reported-project refusal says what changes the project and how to recover", async () => {
+  const { runner } = fakeCompose({ project: "shop-staging" });
+  const ctx = await recordedAs();
+  const error = await assertRejects(
+    () => platform(runner).abort(ctx),
+    Error,
+  );
+  for (
+    const part of [
+      "with the same global flags Compose now reports app and app-canary in " +
+      "shop-staging, so this call changed nothing",
+      "COMPOSE_PROJECT_NAME or COMPOSE_FILE in the environment, a .env or " +
+      "--env-file that sets them, the working directory, or a Docker " +
+      "context or DOCKER_HOST that reaches another daemon",
+      "set the configuration and environment back to what the rollout " +
+      "started with",
+      `with d.stable('${V1_ID}')`,
+    ]
+  ) {
+    assertStringIncludes(error.message, part);
+  }
+});
+
+Deno.test("a record with no usable project name is refused before any command", async () => {
+  const { runner, calls } = fakeCompose();
+  for (
+    const [name, message] of [
+      [undefined, "has no usable composeCanaryProjectName"],
+      [7, "has no usable composeCanaryProjectName"],
+      [null, "has no usable composeCanaryProjectName"],
+      ["Shop", '"Shop" (the recorded project) is not a Compose project name'],
+    ] as const
+  ) {
+    for (const call of recordedCalls(platform(runner))) {
+      const record: Record<string, JsonValue> = { ...STAGED };
+      if (name === undefined) delete record.composeCanaryProjectName;
+      else record.composeCanaryProjectName = name;
+      const ctx = context();
+      await ctx.state.set(record);
+      await assertRejects(() => call(ctx), Error, message);
+    }
+  }
+  assertEquals(calls, []);
+});
+
 Deno.test("describe names the stable service", () => {
   const { runner } = fakeCompose();
   assertEquals(platform(runner).describe(), "Compose service app");
@@ -1224,7 +1413,8 @@ Deno.test("the default runner runs compose itself", async () => {
 
 /**
  * A stand-in `docker` for the default runner: a shell script that prints the
- * stable variable it was run with for `ps`, and exits 1 for `up` when
+ * project `shop` for `ps --format {{.Project}}`, the stable variable it was
+ * run with for any other `ps`, and exits 1 for `up` when
  * `failUp` is set. Shell scripts do not run on Windows, so the tests that use
  * one skip there.
  */
@@ -1236,6 +1426,7 @@ async function fakeDocker(failUp: boolean): Promise<string> {
     [
       "#!/bin/sh",
       'case " $* " in',
+      '  *"{{.Project}}"*) echo shop ;;',
       '  *" ps "*) echo "$APP_IMAGE" ;;',
       `  *" images "*) echo ${V1_HEX} ;;`,
       `  *" up "*) ${failUp ? "echo up failed >&2; exit 1" : "exit 0"} ;;`,
@@ -1332,6 +1523,7 @@ Deno.test("a stable tag moved mid-rollout cannot bring a never-analysed image in
   calls.length = 0;
   await p.abort(ctx);
   assertEquals(calls, [
+    { argv: projects(), env: PINNED },
     { argv: images("app"), env: ALL_V1 },
     { argv: scale("app", 4, true), env: ALL_V1 },
     { argv: images("app"), env: ALL_V1 },
@@ -1349,6 +1541,7 @@ Deno.test("abort decides by the recorded ID, not by the tag ps shows", async () 
   calls.length = 0;
   await platform(runner).abort(ctx);
   assertEquals(calls.map((c) => c.argv), [
+    projects(),
     images("app"),
     scale("app", 4, true),
     images("app"),
@@ -1361,6 +1554,7 @@ Deno.test("abort decides by the recorded ID, not by the tag ps shows", async () 
   calls.length = 0;
   await platform(runner).abort(ctx);
   assertEquals(calls.map((c) => c.argv), [
+    projects(),
     images("app"),
     scale("app-canary", 4),
     scale("app", 4),
@@ -1381,7 +1575,7 @@ Deno.test("promote installs the candidate the steps ran, even if its tag moved s
   tags["app:v2"] = V3_HEX;
   calls.length = 0;
   await p.promote(ctx);
-  assertEquals(calls[1], { argv: scale("app", 4), env: ALL_V2_ID });
+  assertEquals(calls[2], { argv: scale("app", 4), env: ALL_V2_ID });
   assertEquals(world.app, [V2_ID, V2_ID, V2_ID, V2_ID]);
 });
 

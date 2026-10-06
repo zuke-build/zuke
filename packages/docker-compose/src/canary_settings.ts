@@ -155,14 +155,15 @@ export class DockerComposeCanarySettings {
    *
    * The flags it gives select the project, so `stage` records them (as argv:
    * what `.env(...)` passes is never recorded) and every later call refuses
-   * unless they are the same, in the same order. Nothing else that selects
-   * the project or the daemon can be recorded or checked, so none of it may
-   * change mid-rollout: `COMPOSE_PROJECT_NAME`, `COMPOSE_FILE`,
-   * `COMPOSE_PROFILES`, `DOCKER_CONTEXT` and `DOCKER_HOST` in the
-   * environment of the process that resumes or cancels, the contents of an
-   * `--env-file` and of the project's `.env` file (which can set
-   * `COMPOSE_PROJECT_NAME`), what `.env(...)` and `.cwd(...)` set here, the
-   * process's working directory, and the binary `.toolPath(...)` names.
+   * unless they are the same, in the same order. It also records the
+   * project Compose reports the stable replicas in, and every later call
+   * refuses unless Compose still reports the services there — which covers
+   * whatever else resolves the project: `COMPOSE_PROJECT_NAME` in the
+   * environment, a `.env` or `--env-file`, `.env(...)` and `.cwd(...)` here,
+   * the working directory. Not covered: a Docker context, `DOCKER_HOST` or
+   * `.toolPath(...)` that reaches another daemon running the same project
+   * with the same services on the same images, and a `COMPOSE_FILE` or env
+   * file that keeps the project but changes the services' definitions.
    */
   compose(configure: Configure<DockerComposeSettings>): this {
     this.compose_ = configure;

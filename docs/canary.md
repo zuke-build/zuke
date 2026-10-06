@@ -457,12 +457,12 @@ after `stage` checks the project first (see below). Every move is
 `up -d --no-deps --scale <service>=<n> <service>`, with `--wait` when `n` is not
 0, run with the image variables set:
 
-| Call      | Compose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `stage`   | Records the marker first, so a stage its own settings refuse is rolled back as a no-op. `ps --format {{.Image}} <stable>` reads the image the stable replicas run (it refuses no replicas, replicas on different images, a truncated capture, or a line that is not an image reference), and `images --quiet <stable>` their one image ID; `pull --policy missing <canary>`; then records the rollout — both services, the replicas, both variables, both images, the stable ID, which every later stable move uses as `sha256:<id>`, and the global flags `.compose(...)` gives — which every later call acts on whatever the lambda resolves to then. Then the stable service to every replica (`--no-recreate`) and the canary service to none.                                                                                                                                                                                             |
-| `expose`  | Refuses before any command unless `.compose(...)` gives the recorded global flags. The canary service to its share of the recorded replicas (the nearest whole replica, but at least one on each side for any share strictly between 0 and 100) and the stable service, `--no-recreate`, to the rest. Whichever grows goes first, so the total never dips. Once the canary has replicas, `ps` must show every one on the candidate (by reference or by ID) and `images --quiet` must resolve them to one ID: the first step records it, later ones refuse another. Returns the share reached.                                                                                                                                                                                                                                                                                                                                                  |
-| `promote` | Refuses before any command unless `.compose(...)` gives the recorded global flags. The canary service to every replica; the stable service recreated with the stable variable set to the candidate's pinned image ID (pinned here, with `ps` and `images --quiet` on the canary, if no step ran); `images --quiet` must then resolve every stable replica to that ID (a stable `image:` that does not read the variable is refused before the promotion is recorded); the canary service to none. The total briefly doubles and never dips. Idempotent.                                                                                                                                                                                                                                                                                                                                                                                        |
-| `abort`   | With a record, refuses before any command unless `.compose(...)` gives the recorded global flags. `images --quiet` reads the stable replicas' IDs (run by hand, `ps` their references). If they resolve to exactly the recorded ID (run by hand, every one shows the `.stable(...)` reference; mid-rollout they do), the stable service back to every replica with `--no-recreate`. Otherwise (after a promotion, finished or part-way) Compose would recreate every stable replica at once, so the canary service first goes to every replica on the stable image, then the stable service is recreated on it. The stable replicas are then read again the same way and must be on the stable image, or it refuses with the canary still serving. Then the canary service to none. Run by hand (no record): the `.stable(...)` image and the configured services; it refuses without one. After a `stage` that changed nothing, nothing runs. |
+| Call      | Compose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stage`   | Records the marker first, so a stage its own settings refuse is rolled back as a no-op. `ps --format {{.Image}} <stable>` reads the image the stable replicas run (it refuses no replicas, replicas on different images, a truncated capture, or a line that is not an image reference), `images --quiet <stable>` their one image ID, and `ps --format {{.Project}} <stable>` the one project they are in; `pull --policy missing <canary>`; then records the rollout — both services, the replicas, both variables, both images, the stable ID, which every later stable move uses as `sha256:<id>`, the global flags `.compose(...)` gives and that project — which every later call acts on whatever the lambda resolves to then. Then the stable service to every replica (`--no-recreate`) and the canary service to none.                                                                                                                                                                                                                                                              |
+| `expose`  | Refuses before any command unless `.compose(...)` gives the recorded global flags, then reads `ps --format {{.Project}} <stable> <canary>` and refuses, before any other command, unless it reports exactly the recorded project. The canary service to its share of the recorded replicas (the nearest whole replica, but at least one on each side for any share strictly between 0 and 100) and the stable service, `--no-recreate`, to the rest. Whichever grows goes first, so the total never dips. Once the canary has replicas, `ps` must show every one on the candidate (by reference or by ID) and `images --quiet` must resolve them to one ID: the first step records it, later ones refuse another. Returns the share reached.                                                                                                                                                                                                                                                                                                                                                  |
+| `promote` | Refuses before any command unless `.compose(...)` gives the recorded global flags, then reads `ps --format {{.Project}} <stable> <canary>` and refuses, before any other command, unless it reports exactly the recorded project. The canary service to every replica; the stable service recreated with the stable variable set to the candidate's pinned image ID (pinned here, with `ps` and `images --quiet` on the canary, if no step ran); `images --quiet` must then resolve every stable replica to that ID (a stable `image:` that does not read the variable is refused before the promotion is recorded); the canary service to none. The total briefly doubles and never dips. Idempotent.                                                                                                                                                                                                                                                                                                                                                                                        |
+| `abort`   | With a record, refuses before any command unless `.compose(...)` gives the recorded global flags, then reads `ps --format {{.Project}} <stable> <canary>` and refuses, before any other command, unless it reports exactly the recorded project. `images --quiet` reads the stable replicas' IDs (run by hand, `ps` their references). If they resolve to exactly the recorded ID (run by hand, every one shows the `.stable(...)` reference; mid-rollout they do), the stable service back to every replica with `--no-recreate`. Otherwise (after a promotion, finished or part-way) Compose would recreate every stable replica at once, so the canary service first goes to every replica on the stable image, then the stable service is recreated on it. The stable replicas are then read again the same way and must be on the stable image, or it refuses with the canary still serving. Then the canary service to none. Run by hand (no record): the `.stable(...)` image and the configured services; it refuses without one. After a `stage` that changed nothing, nothing runs. |
 
 **A promotion is an override, not a deployment record.** Compose keeps no state
 of its own: the stable service's image is whatever `${APP_IMAGE}` resolves to
@@ -501,37 +501,51 @@ also runs once per command, and a command it gives other flags than the call
 resolved at its start (a lambda reading a clock or a counter) is refused before
 it runs.
 
-The refusal says the call changed nothing and names both sets of flags. Since
+Flags are not all that selects a project: `COMPOSE_PROJECT_NAME` in the
+environment, a `.env` or `--env-file` that sets it, the lambda's `.env(...)` and
+`.cwd(...)`, and the working directory a default name comes from do too. So
+`stage` also records the project Compose reports the stable replicas in
+(`ps --format {{.Project}} <stable>`, which prints each container's project
+label), and after the flag check every later call reads
+`ps --format {{.Project}} <stable> <canary>` before any other command. Compose
+resolves the project from all of those and lists only that project's containers,
+so the call refuses unless the output is exactly the recorded project, and
+refuses as well when it lists no container at all: a live rollout always runs
+some, since the total never dips. A record without the project is refused as
+damaged.
+
+Either refusal says the call changed nothing and names both projects, or both
+sets of flags; the project refusal also names what can change the project. Since
 `expose` and `promote` cancel the run on failure, and the rollback that
 cancellation runs refuses for the same reason, the run is left cancelled with
 the rollout's services as they are: a resume answers that the run is not
 suspended, and `zuke cancel` that it is already cancelled. The recovery the
-message names is the one that works: set the configuration back to what the
-rollout started with, check with `docker compose ps` that it reaches the project
-that was staged (a rollback run by hand has no record to check against), then
-run the rollout's abort target by hand (`zuke rollout.abort`) with
-`.stable("sha256:<id>")` set to the stable image ID the message names, the one
-the rollout recorded. The message names the tag as well, but a tag can move, so
-use it only if it still resolves to that ID. A rollback by ID passes
+message names is the one that works: set the configuration and environment back
+to what the rollout started with, check with `docker compose ps` that it reaches
+the project that was staged (a rollback run by hand has no record to check
+against), then run the rollout's abort target by hand (`zuke rollout.abort`)
+with `.stable("sha256:<id>")` set to the stable image ID the message names, the
+one the rollout recorded. The message names the tag as well, but a tag can move,
+so use it only if it still resolves to that ID. A rollback by ID passes
 `--pull never`, and it also undoes a promotion that failed part-way. A hand-run
 abort has no record, so it acts on whatever project the lambda selects.
 
 Limits worth knowing:
 
-- What else selects the project or the daemon cannot be seen in the flags, so
-  none of it may change mid-rollout: Compose and Docker variables in the
-  environment of the process that resumes or cancels (`COMPOSE_PROJECT_NAME`,
-  `COMPOSE_FILE`, `COMPOSE_PROFILES`, `DOCKER_CONTEXT`, `DOCKER_HOST`), the
-  contents of an `--env-file` and of the project's `.env` file (which can set
-  `COMPOSE_PROJECT_NAME`), what the lambda's `.env(...)` and `.cwd(...)` set,
-  the process's working directory (which a relative path and the default project
-  name resolve against), and the binary `.toolPath(...)` names. The recorded
-  image IDs are only a partial guard against another daemon: a move that must
-  create a stable replica sets the recorded ID with `--pull never` and fails on
-  a daemon that lacks that image, and a rollback compares the stable replicas'
-  IDs with it, but a move that only removes replicas needs no image, and the
-  first step creates the canary from the candidate reference, so a daemon that
-  has the same project and images is not told apart.
+- The project check compares the project Compose itself reports, so it covers
+  whatever selects the project: the flags, `COMPOSE_PROJECT_NAME`, a `.env` or
+  `--env-file`, the lambda's `.env(...)` and `.cwd(...)`, the working directory.
+  It does not cover another daemon: a Docker context, `DOCKER_HOST` or
+  `.toolPath(...)` that reaches a daemon running the same project name with the
+  same services on the same images is not told apart. Nor does it compare the
+  services' definitions, so a `COMPOSE_FILE` or env-file change that keeps the
+  project but changes them goes unnoticed. The recorded image IDs are a partial
+  guard against another daemon: after `stage` every move passes `--pull never`,
+  so one that creates a container fails on a daemon that lacks its image (the
+  recorded stable ID, or the candidate), while one that only removes containers
+  needs no image and goes ahead; and the reads compare IDs, so a rollback finds
+  stable replicas on another image and a later step a canary on another
+  candidate.
 - Exposure is a share of **containers**. It is a share of requests only if the
   proxy balances evenly, so sticky sessions or uneven connection reuse skew it.
 - The two services must be identical except for the image and the scale (a YAML

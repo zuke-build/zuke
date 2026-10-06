@@ -77,12 +77,24 @@ let canaryService = "app-canary";
 /** The Compose project the global lambda names. */
 let project = "shop";
 
+/**
+ * The project the fake Compose reports each container in, as
+ * `ps --format {{.Project}}` prints it — what COMPOSE_PROJECT_NAME, a `.env`
+ * file or the working directory resolve the same flags to.
+ */
+let reportedProject = "shop";
+
 /** Whether the failing promotion move also switches the project. */
 let switchProjectOnFailure = false;
 
 /** Apply one command to the world, as Compose would. */
 function compose(argv: string[], env: Record<string, string>): string {
   const service = argv.at(-1) ?? "";
+  if (argv.includes("{{.Project}}")) {
+    return argv.slice(argv.indexOf("--format") + 2).flatMap((each) =>
+      (world[each] ?? []).map(() => `${reportedProject}\n`)
+    ).join("");
+  }
   if (argv.includes("images")) {
     const ids = new Set(
       (world[service] ?? []).map(idOf),
@@ -175,10 +187,15 @@ function assertBackOnV1(): void {
   assertEquals(world.app.map(idOf), Array(4).fill(TAGS["app:v1"]));
 }
 
-/** Each `ps` and `images` read, as `<command> <service>`, in order. */
+/**
+ * Each `ps` and `images` read, as `<command> <service>` — or
+ * `project <services>` for a project read — in order.
+ */
 function reads(): string[] {
   return calls.filter((call) => !call.argv.includes("up")).map((call) =>
-    `${call.argv[3]} ${call.argv.at(-1)}`
+    call.argv.includes("{{.Project}}")
+      ? `project ${call.argv.slice(6).join(" ")}`
+      : `${call.argv[3]} ${call.argv.at(-1)}`
   );
 }
 
@@ -200,6 +217,7 @@ function fresh(): void {
   image = "app:v2";
   canaryService = "app-canary";
   project = "shop";
+  reportedProject = "shop";
   switchProjectOnFailure = false;
 }
 
@@ -227,9 +245,12 @@ Deno.test("Compose: staged, stepped, parked, and promoted by a later process", a
     assertEquals(reads(), [
       "ps app",
       "images app",
+      "project app",
       "pull app-canary",
+      "project app app-canary",
       "ps app-canary",
       "images app-canary",
+      "project app app-canary",
       "ps app-canary",
       "images app-canary",
     ]);
@@ -249,7 +270,7 @@ Deno.test("Compose: staged, stepped, parked, and promoted by a later process", a
       "app=4@v2-id",
       "app-canary=0@v2-id",
     ]);
-    assertEquals(reads(), ["images app"]);
+    assertEquals(reads(), ["project app app-canary", "images app"]);
     assertEquals(world, {
       app: [V2_ID, V2_ID, V2_ID, V2_ID],
       "app-canary": [],
@@ -361,14 +382,53 @@ Deno.test("Compose: a rollback run by hand with no stable image refuses", async 
   });
 });
 
+/** How a refusal case moves the project away from the staged one. */
+interface Drift {
+  /** Change what selects the project. */
+  apply(): void;
+  /** What the refusal must say about it. */
+  says: string;
+  /** How many project reads may run before each refusal — and nothing else. */
+  reads: number;
+}
+
+/** The lambda now gives other flags: refused before any command. */
+const OTHER_FLAGS: Drift = {
+  apply: () => {
+    project = "shop-staging";
+  },
+  says: "this rollout started on the Compose project selected by `-p shop`, " +
+    "but d.compose(...) now gives `-p shop-staging`, so this call changed " +
+    "nothing",
+  reads: 0,
+};
+
 /**
- * Park a rollout at its approval, then point the lambda at another project
- * and drive the run with `drive`: the call refuses, naming both projects, and
- * runs nothing. The message's own recovery — the configuration set back, the
- * rollback run by hand with the recorded stable image — then rolls back.
+ * The flags are the same, but Compose resolves them to another project, as
+ * COMPOSE_PROJECT_NAME or a `.env` file would: refused after the project
+ * read.
+ */
+const OTHER_REPORTED: Drift = {
+  apply: () => {
+    reportedProject = "shop-staging";
+  },
+  says: "this rollout started in the Compose project shop, but with the " +
+    "same global flags Compose now reports app and app-canary in " +
+    "shop-staging, so this call changed nothing",
+  reads: 1,
+};
+
+/**
+ * Park a rollout at its approval, then `drift` the project and drive the run
+ * with `drive`: every call refuses, naming both projects, having run at most
+ * the project read. The message's own recovery — the configuration and
+ * environment set back, the rollback run by hand with the recorded stable
+ * image ID — then rolls back.
  */
 async function refusedThenRecovered(
+  drift: Drift,
   drive: (runId: string) => string[],
+  calls_: number,
 ): Promise<void> {
   fresh();
   await withStateDir(async (dir) => {
@@ -376,17 +436,20 @@ async function refusedThenRecovered(
     assertEquals(parked.code, 0, parked.err);
     const runId = await onlyRun(dir);
     const before = structuredClone(world);
-    project = "shop-staging";
+    drift.apply();
     calls = [];
     const refused = await runCli(Deploy, drive(runId));
     assertEquals(refused.code, 1);
     const said = refused.out + refused.err;
-    assertStringIncludes(
-      said,
-      "this rollout started on the Compose project selected by `-p shop`, " +
-        "but d.compose(...) now gives `-p shop-staging`, so this call " +
-        "changed nothing",
+    assertStringIncludes(said, drift.says);
+    // Each refusing call — the step, and the rollback its failure runs —
+    // read at most the project, and changed nothing.
+    assertEquals(
+      reads(),
+      Array(drift.reads * calls_).fill("project app app-canary"),
     );
+    assertEquals(moves(), []);
+    calls = [];
     assertStringIncludes(
       said,
       `with d.stable('${V1_ID}') — the stable image ID the rollout recorded`,
@@ -424,6 +487,7 @@ async function refusedThenRecovered(
  */
 async function recoverByHand(): Promise<void> {
   project = "shop";
+  reportedProject = "shop";
   stable = V1_ID;
   calls = [];
   const recovered = await runCli(Deploy, ["rollout.abort"]);
@@ -442,17 +506,26 @@ async function recoverByHand(): Promise<void> {
   assertBackOnV1();
 }
 
+/** A resume that approves the parked rollout: promote, then its rollback. */
+const RESUME = (runId: string) => ["resume", runId, "--signal", "approved"];
+
+/** A cancel of the parked rollout: its rollback. */
+const CANCEL = (runId: string) => ["cancel", runId];
+
 Deno.test("Compose: a resume whose lambda selects another project refuses, and the hand-run recovery it names rolls back", async () => {
-  await refusedThenRecovered((runId) => [
-    "resume",
-    runId,
-    "--signal",
-    "approved",
-  ]);
+  await refusedThenRecovered(OTHER_FLAGS, RESUME, 2);
 });
 
 Deno.test("Compose: a cancel whose lambda selects another project refuses, and the hand-run recovery it names rolls back", async () => {
-  await refusedThenRecovered((runId) => ["cancel", runId]);
+  await refusedThenRecovered(OTHER_FLAGS, CANCEL, 1);
+});
+
+Deno.test("Compose: a resume that Compose resolves to another project with the same flags refuses, and the recovery rolls back", async () => {
+  await refusedThenRecovered(OTHER_REPORTED, RESUME, 2);
+});
+
+Deno.test("Compose: a cancel that Compose resolves to another project with the same flags refuses, and the recovery rolls back", async () => {
+  await refusedThenRecovered(OTHER_REPORTED, CANCEL, 1);
 });
 
 Deno.test("Compose: a promotion that failed half-way, then a project switch, is recovered by hand on the recorded ID", async () => {

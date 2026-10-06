@@ -119,17 +119,60 @@ export function checkScope(rollout: Rollout, now: readonly string[]): void {
       `${shown(now)}, so this call changed nothing rather than move ` +
       `${rollout.stable} and ${rollout.canary} in a project the rollout ` +
       "never staged — the global flags are compared as written, in order. " +
-      "The run is left cancelled with the rollout's services as they are, " +
-      "so a resume or `zuke cancel` will not roll it back. To recover, set " +
-      "the configuration back to what the rollout started with, check with " +
-      "`docker compose ps` that it reaches the project that was staged (a " +
-      "rollback run by hand has no record to check it against), then run " +
-      "the rollout's <field>.abort target by hand (for example `zuke " +
-      `rollout.abort\`) with d.stable('${rollout.restore}') — the stable ` +
-      "image ID the rollout recorded, which a tag that moved cannot change " +
-      `— or d.stable('${rollout.stableImage}') if that tag still resolves ` +
-      "to it.",
+      recovery(rollout),
   );
+}
+
+/**
+ * Refuse unless `reported` — the project of each running container of the
+ * two services, as `ps --format {{.Project}}` prints it with the recorded
+ * flags — is exactly the project `stage` saw. Compose lists only the
+ * containers of the project it resolves now, from the flags but also from
+ * `COMPOSE_PROJECT_NAME`, a `.env` or `--env-file` and the working
+ * directory, so this catches what the flags alone cannot. A live rollout
+ * always runs some of them, since the total never dips, so none is refused
+ * as well.
+ */
+export function checkProject(
+  rollout: Rollout,
+  reported: readonly string[],
+): void {
+  const projects = [...new Set(reported)];
+  if (projects.length === 1 && projects[0] === rollout.projectName) return;
+  const services = `${rollout.stable} and ${rollout.canary}`;
+  const found = projects.length === 0
+    ? `Compose now reports no running container of ${services} in the ` +
+      "project it resolves — a live rollout always runs some, since the " +
+      "total never dips —"
+    : `with the same global flags Compose now reports ${services} in ` +
+      `${projects.join(", ")}, so`;
+  throw new Error(
+    `${CALLER}: this rollout started in the Compose project ` +
+      `${rollout.projectName}, but ${found} this call changed nothing ` +
+      "rather than act on a project the rollout never staged. The project " +
+      "Compose resolves can change without the flags: COMPOSE_PROJECT_NAME " +
+      "or COMPOSE_FILE in the environment, a .env or --env-file that sets " +
+      "them, the working directory, or a Docker context or DOCKER_HOST that " +
+      `reaches another daemon. ${recovery(rollout)}`,
+  );
+}
+
+/**
+ * How to recover from a refusal that leaves the run cancelled: the one
+ * course that works once the engine has settled it, with the stable image
+ * ID the rollout recorded.
+ */
+function recovery(rollout: Rollout): string {
+  return "The run is left cancelled with the rollout's services as they " +
+    "are, so a resume or `zuke cancel` will not roll it back. To recover, " +
+    "set the configuration and environment back to what the rollout " +
+    "started with, check with `docker compose ps` that it reaches the " +
+    "project that was staged (a rollback run by hand has no record to " +
+    "check it against), then run the rollout's <field>.abort target by " +
+    "hand (for example `zuke rollout.abort`) with " +
+    `d.stable('${rollout.restore}') — the stable image ID the rollout ` +
+    "recorded, which a tag that moved cannot change — or " +
+    `d.stable('${rollout.stableImage}') if that tag still resolves to it.`;
 }
 
 /**
