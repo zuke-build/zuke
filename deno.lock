@@ -1767,6 +1767,11 @@
           "jsr:@zuke/core@^1.44.0"
         ]
       },
+      "packages/prometheus": {
+        "dependencies": [
+          "jsr:@zuke/core@^1.65.0"
+        ]
+      },
       "packages/qr": {
         "dependencies": [
           "jsr:@zuke/core@^1.60.0"

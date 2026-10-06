@@ -71,6 +71,7 @@ export const PACKAGES = [
   "ai",
   "otel",
   "qr",
+  "prometheus",
   "canary",
 ];
 
