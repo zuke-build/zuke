@@ -32,6 +32,8 @@ import { withTemp } from "../../packages/core/tests/_temp.ts";
 import { withEnv } from "../../packages/core/tests/_env.ts";
 import { capture } from "../../packages/core/tests/_console.ts";
 import { ENC } from "../../packages/core/tests/_escaping.ts";
+import { stripAnsi } from "../../packages/core/src/render.ts";
+import { ZUKE_LOGO } from "../../packages/core/src/logo.ts";
 
 /**
  * The real, filesystem-probing host — the walk up to `zuke.json` must see the
@@ -482,5 +484,36 @@ Deno.test("zuke --version reads the lockfile a real project's deno.json names", 
     assertEquals(host.logs.includes("1.42.0"), true, host.logs.join("\n"));
     assertEquals(host.logs.includes("1.1.0"), false);
     assertEquals(await exists(`${dir}/ran.txt`), false);
+  }, { prefix: "zuke-global-cli-" });
+});
+
+Deno.test("zuke --help on a terminal opens with the logo and paints the build's heading", async () => {
+  await withTemp(async (dir) => {
+    await Deno.writeTextFile(
+      `${dir}/${CONFIG_FILE}`,
+      '{ "name": "Scratch" }\n',
+    );
+    await Deno.writeTextFile(`${dir}/zuke.ts`, scratchBuild());
+    const host = { ...recordingHost(), isTerminal: () => true };
+    await withEnv(
+      {
+        ZUKE_PLAIN: undefined,
+        ZUKE_NO_BANNER: undefined,
+        CI: undefined,
+        GITHUB_ACTIONS: undefined,
+        NO_COLOR: undefined,
+      },
+      async () => {
+        await inDir(dir, async () => {
+          // The build's half goes to the inherited stdout; the CLI's own
+          // lines are the ones recorded here.
+          assertEquals(await main(["--help"], host), 0);
+        });
+      },
+    );
+    const logs = host.logs.map(stripAnsi);
+    assertEquals(logs[0].startsWith(ZUKE_LOGO.split("\n")[0]), true);
+    const heading = logs.find((l) => l.includes("This project's build"));
+    assertEquals(heading?.includes("◆ This project's build"), true);
   }, { prefix: "zuke-global-cli-" });
 });

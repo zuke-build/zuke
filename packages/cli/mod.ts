@@ -44,7 +44,7 @@ import {
   runBuild,
   runningNotice,
 } from "./src/dispatch.ts";
-import { absolutePath, resolveDocSpec } from "@zuke/core";
+import { absolutePath, logoLines, resolveDocSpec } from "@zuke/core";
 import { runDenoIsolated } from "./src/deno_isolated.ts";
 import { defaultDenoHost, firstSet } from "./src/deno_path.ts";
 import {
@@ -303,10 +303,15 @@ function helpText(paint: CliPaint): string {
   }).join("\n");
 }
 
-/** The heading that introduces the build's own half of the merged help. */
-function buildHelpHeading(root: string): string {
-  return `\n${"─".repeat(72)}\nThis project's build (${root}/zuke.ts) — ` +
-    `run as \`zuke <target>\` or \`./zuke <target>\`:\n`;
+/**
+ * The heading that introduces the build's own half of the merged help: a rule,
+ * then a line naming the build. Painted as a section heading when output is
+ * rich; plain output is the text it always was.
+ */
+function buildHelpHeading(root: string, paint: CliPaint): string {
+  const title = `This project's build (${root}/zuke.ts) — ` +
+    `run as \`zuke <target>\` or \`./zuke <target>\`:`;
+  return `\n${paint.muted("─".repeat(72))}\n${paint.heading(title)}\n`;
 }
 
 /**
@@ -593,6 +598,11 @@ async function commandHelp(
   paint: CliPaint,
   childEnv: Readonly<Record<string, string>> | undefined,
 ): Promise<number> {
+  // The wordmark opens the help only where the rest of it is rich: a pipe, CI
+  // or plain output reads help as text, where six lines of art are noise.
+  if (paint.rich && paint.banner) {
+    host.log(`${logoLines(paint.color).join("\n")}\n`);
+  }
   host.log(helpText(paint));
   let location: Awaited<ReturnType<typeof locateBuild>> = null;
   try {
@@ -611,7 +621,7 @@ async function commandHelp(
     host.log(NO_BUILD_NOTICE);
     return 0;
   }
-  host.log(buildHelpHeading(location.root));
+  host.log(buildHelpHeading(location.root, paint));
   try {
     // The runner *returns* the build's exit code rather than throwing on one,
     // so a build whose `--help` runs and fails is reported here too — not
