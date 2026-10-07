@@ -223,6 +223,26 @@ const REACH: Array<[string, () => Promise<unknown>]> = [
     "secretValue",
     () => GcloudTasks.secretValue((s) => missingTool(s).secret("k")),
   ],
+  ["loggingRead", () => GcloudTasks.loggingRead((s) => missingTool(s))],
+  ["logEntryCount", () => GcloudTasks.logEntryCount((s) => missingTool(s))],
+  ["loggingLogsList", () => GcloudTasks.loggingLogsList((s) => missingTool(s))],
+  [
+    "monitoringPoliciesList",
+    () => GcloudTasks.monitoringPoliciesList((s) => missingTool(s)),
+  ],
+  [
+    "monitoringPoliciesDescribe",
+    () =>
+      GcloudTasks.monitoringPoliciesDescribe((s) => missingTool(s).policy("1")),
+  ],
+  [
+    "monitoringDashboardsList",
+    () => GcloudTasks.monitoringDashboardsList((s) => missingTool(s)),
+  ],
+  [
+    "monitoringUptimeListConfigs",
+    () => GcloudTasks.monitoringUptimeListConfigs((s) => missingTool(s)),
+  ],
 ];
 
 for (const [name, invoke] of REACH) {

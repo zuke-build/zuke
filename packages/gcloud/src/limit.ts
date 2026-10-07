@@ -13,17 +13,23 @@
  */
 
 /**
- * Reject a limit gcloud would, which reports
- * "argument --limit: Value must be greater than or equal to 1".
+ * Reject a count gcloud would, which reports
+ * "argument --limit: Value must be greater than or equal to 1" — for
+ * `--limit`, or for the `--page-size` a listing also takes, named by
+ * `setter`.
  *
  * `undefined` passes: the flag is optional, and its absence is not a bad value.
  */
-export function checkLimit(limit: number | undefined, task: string): void {
+export function checkLimit(
+  limit: number | undefined,
+  task: string,
+  setter: "limit" | "pageSize" = "limit",
+): void {
   if (limit === undefined) return;
   if (!Number.isInteger(limit) || limit < 1) {
     throw new Error(
-      `GcloudTasks.${task}: .limit(${limit}) is not a count — gcloud requires ` +
-        "a whole number of at least 1.",
+      `GcloudTasks.${task}: .${setter}(${limit}) is not a count — gcloud ` +
+        "requires a whole number of at least 1.",
     );
   }
 }

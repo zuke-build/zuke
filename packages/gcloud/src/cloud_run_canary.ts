@@ -52,10 +52,10 @@ import {
   UID_FORMAT,
 } from "./cloud_run_canary_record.ts";
 import { readScalar } from "./scalar_output.ts";
-import type { GcloudSettings } from "./settings.ts";
+import type { GcloudSettings, GcloudSettingsRunner } from "./settings.ts";
 
 /** The projection that reads back the revision a `services update` created. */
-const LATEST_REVISION_FORMAT = "value(status.latestCreatedRevisionName)";
+export const LATEST_REVISION_FORMAT = "value(status.latestCreatedRevisionName)";
 
 /** The state key the staged candidate's revision name is recorded under. */
 const CANDIDATE = "cloudRunCandidate";
@@ -75,15 +75,6 @@ const STAGE = "cloudRunStage";
  * `--to-tags <tag>=<percent>` or `--to-revisions <revision>=100` means.
  */
 const LABEL_SHAPE = /^[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?$/;
-
-/**
- * Runs one prepared `gcloud` command and returns its output. The default runs
- * it; a test or a build that executes gcloud some other way injects its own
- * with {@link CloudRunCanarySettings.runner}.
- */
-export type GcloudSettingsRunner = (
-  settings: GcloudSettings,
-) => Promise<CommandOutput>;
 
 /**
  * The part of the canary engine's context the Cloud Run platform uses: the

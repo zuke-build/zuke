@@ -16,6 +16,7 @@
 
 import type { Configure } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
+import { hasControl } from "./control.ts";
 import { type GcloudSettings, GcloudTasks } from "./gcloud.ts";
 
 /** Supplies a Google Cloud OAuth access token for a REST call. */
@@ -47,10 +48,25 @@ export function gcloudAccessToken(
  * Resolve a bearer token from an explicit `token` or, when it is omitted, the
  * `tokenProvider` (defaulting to {@link gcloudAccessToken}). Shared by the REST
  * task groups so every call resolves auth the same way.
+ *
+ * A token holding a line break or another control character inside it is
+ * refused here, without quoting it: it cannot be an OAuth token — it is what
+ * a provider that printed something else as well looks like — and the
+ * runtime's own refusal of such a header value would quote the whole value,
+ * token and all, into the error.
  */
-export function resolveAccessToken(
+export async function resolveAccessToken(
   options: { token?: string; tokenProvider?: AccessTokenProvider },
 ): Promise<string> {
-  if (options.token !== undefined) return Promise.resolve(options.token);
-  return (options.tokenProvider ?? gcloudAccessToken)();
+  const token = options.token !== undefined
+    ? options.token
+    : await (options.tokenProvider ?? gcloudAccessToken)();
+  if (hasControl(token.trim())) {
+    throw new Error(
+      "Google Cloud auth: the access token holds a line break or another " +
+        "control character, so it cannot be sent as a bearer header. It is " +
+        "not quoted here. Check what the token provider printed.",
+    );
+  }
+  return token;
 }

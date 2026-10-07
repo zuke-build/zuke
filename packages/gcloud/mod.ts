@@ -3,15 +3,25 @@
 
 /**
  * `@zuke/gcloud` — typed Google Cloud tooling for Zuke builds: the `gcloud`
- * (Google Cloud SDK) CLI wrapper, plus **GCS** and **Secret Manager** REST task
- * groups that share `gcloud`-based auth (no Google SDK dependency).
+ * (Google Cloud SDK) CLI wrapper, plus **GCS**, **Secret Manager** and **Cloud
+ * Monitoring** REST task groups that share `gcloud`-based auth (no Google SDK
+ * dependency), and canary support for Cloud Run rollouts gated on Cloud
+ * Monitoring.
  *
  * ```ts
- * import { GcloudTasks, GcsTasks, SecretManagerTasks } from "@zuke/gcloud";
+ * import {
+ *   CloudMonitoringTasks,
+ *   GcloudTasks,
+ *   GcsTasks,
+ *   SecretManagerTasks,
+ * } from "@zuke/gcloud";
  *
  * await GcloudTasks.run((s) => s.containerImagesAddTag(src, dst)); // CLI
  * await GcsTasks.writeJson("bucket", "state.json", { slot: "sit-7" }); // REST
  * const pw = await SecretManagerTasks.access("db-password", { project }); // REST
+ * const errors = await CloudMonitoringTasks.metricValue((s) =>
+ *   s.metricType("run.googleapis.com/request_count").window("15m")
+ * ); // REST
  * ```
  *
  * The CLI wrapper builds a discrete argv array (never a shell string), and the
@@ -74,8 +84,8 @@ export {
   cloudRunCanary,
   type CloudRunCanaryContext,
   CloudRunCanarySettings,
-  type GcloudSettingsRunner,
 } from "./src/cloud_run_canary.ts";
+export { type GcloudSettingsRunner } from "./src/settings.ts";
 export {
   GcloudArtifactsImagesDeleteSettings,
   GcloudArtifactsImagesListSettings,
@@ -98,3 +108,47 @@ export {
   GcloudFunctionsDescribeSettings,
   GcloudSecretsVersionsAccessSettings,
 } from "./src/functions.ts";
+export {
+  GcloudLoggingLogsListSettings,
+  GcloudLoggingReadSettings,
+  type GcloudLogSeverity,
+  type GcloudLogTime,
+} from "./src/logging.ts";
+export {
+  DEFAULT_COUNT_LIMIT,
+  GcloudLoggingEntryCountSettings,
+} from "./src/log_entry_count.ts";
+export {
+  GcloudMonitoringDashboardsListSettings,
+  GcloudMonitoringListSettings,
+  GcloudMonitoringPoliciesDescribeSettings,
+  GcloudMonitoringPoliciesListSettings,
+  GcloudMonitoringUptimeListConfigsSettings,
+} from "./src/monitoring.ts";
+export {
+  CloudMonitoringTasks,
+  type CloudMonitoringTasksApi,
+} from "./src/cloud_monitoring.ts";
+export {
+  type CloudMonitoringAligner,
+  type CloudMonitoringReducer,
+  CloudMonitoringTimeSeriesSettings,
+  type CloudMonitoringView,
+} from "./src/time_series_settings.ts";
+export {
+  type CloudMonitoringLabelled,
+  type CloudMonitoringPoint,
+  type CloudMonitoringTimeSeries,
+  type CloudMonitoringValue,
+} from "./src/time_series.ts";
+export {
+  type CloudMonitoringAggregate,
+  CloudMonitoringMetricValueSettings,
+} from "./src/metric_value.ts";
+export {
+  cloudMonitoring,
+  type CloudMonitoringAnalysis,
+  type CloudMonitoringAnalysisContext,
+  CloudMonitoringAnalysisSettings,
+} from "./src/cloud_monitoring_canary.ts";
+export { type CloudRunService } from "./src/cloud_run_candidate.ts";

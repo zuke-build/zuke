@@ -60,6 +60,111 @@ const secret = await SecretManagerTasks.access("db-password", {
 `access` returns the plaintext secret — route it into a `.secret()` parameter or
 the run's redactor; never log it.
 
+## Cloud Logging and Cloud Monitoring
+
+Typed tasks cover the GA `gcloud logging` and `gcloud monitoring` commands:
+`loggingRead`, `loggingLogsList`, `monitoringPoliciesList`,
+`monitoringPoliciesDescribe`, `monitoringDashboardsList` and
+`monitoringUptimeListConfigs`. A log filter is built from typed parts — each
+value quoted and escaped as the Logging query language says, so a value cannot
+end its string and widen the filter — plus any raw `.filter(...)` text, joined
+with `AND`:
+
+```ts
+import { GcloudTasks } from "@zuke/gcloud";
+
+await GcloudTasks.loggingRead((s) =>
+  s.resourceType("cloud_run_revision").resourceLabel("service_name", "api")
+    .minSeverity("ERROR").freshness("1h").limit(20).format("json")
+    .project("my-proj").quiet() // log entries can carry secrets
+);
+
+// How many entries match — reading only each entry's id, so no payload
+// reaches the build. Counts at most .limit(n) (default 1000) and fails when
+// more match, rather than return a truncated count as exact.
+const errors = await GcloudTasks.logEntryCount((s) =>
+  s.resourceType("cloud_run_revision").minSeverity("ERROR").freshness("15m")
+    .limit(500).project("my-proj")
+);
+```
+
+gcloud has no command that reads a metric's time series, on any release track,
+so `CloudMonitoringTasks` reads them over the Cloud Monitoring REST API
+(`projects.timeSeries.list`) with the same gcloud-based auth as the GCS and
+Secret Manager groups. The filter is built from typed parts too; a value holding
+a `"` or `\` is refused, since the Monitoring filter language documents no
+escape for one. Every page is read, up to `.maxPages(n)` (default 100); a read
+with pages left over fails rather than return part of the answer. The deprecated
+MQL method, `projects.timeSeries.query`, is not wrapped.
+
+```ts
+import { CloudMonitoringTasks } from "@zuke/gcloud";
+
+const series = await CloudMonitoringTasks.timeSeriesList((s) =>
+  s.project("my-proj").metricType("run.googleapis.com/request_count")
+    .resourceType("cloud_run_revision")
+    .metricLabel("response_code_class", "5xx")
+    .alignmentPeriod("60s").perSeriesAligner("ALIGN_SUM")
+    .crossSeriesReducer("REDUCE_SUM").groupByFields(
+      "resource.labels.revision_name",
+    )
+    .window("15m")
+);
+
+// One number: the latest value (summed across series), or the sum, average,
+// maximum or minimum of every point in the window.
+const total5xx = await CloudMonitoringTasks.metricValue((s) =>
+  s.project("my-proj").metricType("run.googleapis.com/request_count")
+    .metricLabel("response_code_class", "5xx")
+    .alignmentPeriod("60s").perSeriesAligner("ALIGN_SUM")
+    .crossSeriesReducer("REDUCE_SUM")
+    .window("15m").aggregate("sum").missingDataAs(0)
+);
+```
+
+Points are typed: an `INT64` (which the API sends as a string) becomes a
+`number` with the exact string beside it, a `DISTRIBUTION` carries its count and
+mean, and a non-finite `DOUBLE` arrives as `NaN` or `±Infinity`. A window with
+an alignment period ends at the last period boundary, so the period still being
+written is not read.
+
+### `cloudMonitoring(...)` canary analysis
+
+`cloudMonitoring` judges a Cloud Monitoring metric — or, with
+`.logEntries(...)`, a log-entry count — over a recent window, for
+[`@zuke/canary`](https://jsr.io/@zuke/canary), and fails with the same words as
+`prometheus(...)`. `.cloudRunCandidate(service, region)` narrows it to the
+revision a `cloudRunCanary` rollout staged:
+
+```ts
+import { canary } from "@zuke/canary";
+import { cloudMonitoring, cloudRunCanary } from "@zuke/gcloud";
+
+rollout = canary((c) =>
+  c.platform(
+    cloudRunCanary((r) =>
+      r.service("api").region("europe-west1").image(this.image.value)
+        .gcloud((g) => g.project("my-proj"))
+    ),
+  )
+    .steps(10, 50)
+    .analysis(cloudMonitoring((m) =>
+      m.name("canary 5xx").project("my-proj")
+        .metricType("run.googleapis.com/request_count")
+        .resourceType("cloud_run_revision")
+        .cloudRunCandidate("api", "europe-west1")
+        .metricLabel("response_code_class", "5xx")
+        .alignmentPeriod("60s").perSeriesAligner("ALIGN_SUM")
+        .crossSeriesReducer("REDUCE_SUM")
+        .window("5m").max(5).missingDataAs(0)
+        .gcloud((g) => g.project("my-proj"))
+    ))
+);
+```
+
+See
+[docs/canary.md](https://github.com/zuke-build/zuke/blob/master/docs/canary.md#cloud-monitoring).
+
 ## Cloud Run canary platform
 
 `cloudRunCanary` is a Cloud Run service as a platform for
@@ -115,21 +220,42 @@ See
 
 ````text
 `@zuke/gcloud` — typed Google Cloud tooling for Zuke builds: the `gcloud`
-(Google Cloud SDK) CLI wrapper, plus GCS and Secret Manager REST task
-groups that share `gcloud`-based auth (no Google SDK dependency).
+(Google Cloud SDK) CLI wrapper, plus GCS, Secret Manager and Cloud
+Monitoring REST task groups that share `gcloud`-based auth (no Google SDK
+dependency), and canary support for Cloud Run rollouts gated on Cloud
+Monitoring.
 
 ```ts
-import { GcloudTasks, GcsTasks, SecretManagerTasks } from "@zuke/gcloud";
+import {
+  CloudMonitoringTasks,
+  GcloudTasks,
+  GcsTasks,
+  SecretManagerTasks,
+} from "@zuke/gcloud";
 
 await GcloudTasks.run((s) => s.containerImagesAddTag(src, dst)); // CLI
 await GcsTasks.writeJson("bucket", "state.json", { slot: "sit-7" }); // REST
 const pw = await SecretManagerTasks.access("db-password", { project }); // REST
+const errors = await CloudMonitoringTasks.metricValue((s) =>
+  s.metricType("run.googleapis.com/request_count").window("15m")
+); // REST
 ```
 
 The CLI wrapper builds a discrete argv array (never a shell string), and the
 REST groups take an injectable `fetch`, so both are testable without network
 or a real cluster.
 @module
+
+function cloudMonitoring(configure: Configure<CloudMonitoringAnalysisSettings>): CloudMonitoringAnalysis
+  An analysis that reads a Cloud Monitoring metric — or counts log entries
+  — over a recent window and fails the canary when any point is out of
+  bounds, or when there is no data, unless
+  {@link CloudMonitoringAnalysisSettings.missingDataAs} says what no data
+  means.
+
+  The lambda runs on each check, so it may read resolved parameters, and
+  every failure message — one from the lambda included — passes through the
+  run's redactor.
 
 function cloudRunCanary(configure: Configure<CloudRunCanarySettings>): CloudRunCanary
   A Cloud Run service as a canary platform, for `@zuke/canary`:
@@ -163,10 +289,22 @@ function gcloudAccessToken(run: GcloudRunner): Promise<string>
   streams to the build log. `run` defaults to {@link "./gcloud.ts".GcloudTasks}
   `.run` and is injectable for tests.
 
-function resolveAccessToken(options: { token?: string; tokenProvider?: AccessTokenProvider; }): Promise<string>
+async function resolveAccessToken(options: { token?: string; tokenProvider?: AccessTokenProvider; }): Promise<string>
   Resolve a bearer token from an explicit `token` or, when it is omitted, the
   `tokenProvider` (defaulting to {@link gcloudAccessToken}). Shared by the REST
   task groups so every call resolves auth the same way.
+
+  A token holding a line break or another control character inside it is
+  refused here, without quoting it: it cannot be an OAuth token — it is what
+  a provider that printed something else as well looks like — and the
+  runtime's own refusal of such a header value would quote the whole value,
+  token and all, into the error.
+
+const CloudMonitoringTasks: CloudMonitoringTasksApi
+  Typed Cloud Monitoring reads.
+
+const DEFAULT_COUNT_LIMIT: 1000
+  The most entries the count reader reads when no `.limit(...)` is set.
 
 const GcloudTasks: GcloudTasksApi
   Typed task functions for the `gcloud` CLI.
@@ -179,6 +317,189 @@ const RUN_SERVICE_URL_FORMAT: "value(status.url)"
 
 const SecretManagerTasks: SecretManagerTasksApi
   Typed Google Secret Manager operations.
+
+class CloudMonitoringAnalysisSettings extends CloudMonitoringTimeSeriesSettings
+  Settings for {@link cloudMonitoring}: the metric — with the same setters
+  as a `CloudMonitoringTasks.timeSeriesList` read, which these extend — or a
+  log filter, and the bounds.
+
+  name_?: string
+    What the metric is called in a failure (set by {@link name}).
+  min_?: number
+    The lowest acceptable value (set by {@link min}).
+  max_?: number
+    The highest acceptable value (set by {@link max}).
+  missingData_?: number
+    The value to judge when there is no data (set by {@link missingDataAs}).
+  logEntries_?: Configure<GcloudLoggingReadSettings>
+    The log filter of the log-count mode (set by {@link logEntries}).
+  cloudRunCandidate_?: CloudRunService
+    The service whose candidate revision is judged (set by {@link cloudRunCandidate}).
+  cloudRunCandidate(service: string, region?: string): this
+    Judge only the canary revision of a Cloud Run service: before each
+    check, read the service's latest created revision — the one
+    `cloudRunCanary(...)` staged — with the `.gcloud(...)` flags, and narrow
+    the metric (or the log filter) to `resource.labels.service_name` and
+    `resource.labels.revision_name`. Pair it with
+    `.resourceType("cloud_run_revision")`. A revision deployed by someone
+    else mid-rollout would be read instead; `cloudRunCanary`'s promote
+    refuses that case before moving traffic.
+  name(name: string): this
+    What to call the metric when it is out of bounds.
+  min(value: number): this
+    Fail when any point is below `value`, a finite number.
+  max(value: number): this
+    Fail when any point is above `value`, a finite number.
+  missingDataAs(value: number): this
+    Judge `value` when the window has no points, instead of failing. Cloud
+    Monitoring writes no point for a period with no events, so for a count
+    of errors no data means `0`; for a latency it usually means the metric,
+    resource or labels are wrong, which is why that is a failure by default.
+  logEntries(configure: Configure<GcloudLoggingReadSettings>): this
+    Judge the number of log entries a Cloud Logging filter matches over the
+    window, instead of a metric — `(l) => l.resourceType("cloud_run_revision") .resourceLabel("revision_name", rev).minSeverity("ERROR")`. The window is
+    added to the filter as `timestamp` bounds, and the read runs with the
+    `.gcloud(...)` flags. It counts at most `.limit(n)` entries (default
+    1000) and fails when more match, since the exact count is then unknown.
+    Only each entry's id is read: no payload reaches the build. A
+    {@link project} set on the analysis is the read's `--project` too.
+
+class CloudMonitoringMetricValueSettings extends CloudMonitoringTimeSeriesSettings
+  Settings for `CloudMonitoringTasks.metricValue`: a time-series read, and
+  how to turn it into one number. The view is always `FULL` — the reader
+  needs the points.
+
+  aggregate_: CloudMonitoringAggregate
+    How to turn the points into one number (set by {@link aggregate}).
+  missingData_?: number
+    The value to return when there are no points (set by {@link missingDataAs}).
+  aggregate(how: CloudMonitoringAggregate): this
+    How to turn the points into one number, across every series the answer
+    holds. `"latest"` (the default) is the newest point — the sum of the
+    series' values at the newest end time any of them has, so a metric
+    split by a label reads as its total. The others combine every point in
+    the window: a `"sum"` of per-minute `ALIGN_SUM` points is the window's
+    total.
+  missingDataAs(value: number): this
+    Return `value` when there are no points, instead of failing. Cloud
+    Monitoring writes no point for a period with no events, so for a count
+    of errors no data does mean `0`; for a latency it usually means the
+    filter is looking in the wrong place.
+
+class CloudMonitoringTimeSeriesSettings
+  Settings for a Cloud Monitoring time-series read, configured through
+  `CloudMonitoringTasks.timeSeriesList((s) => …)`.
+
+  ```ts
+  s.project("my-proj")
+    .metricType("run.googleapis.com/request_count")
+    .resourceType("cloud_run_revision")
+    .resourceLabel("service_name", "api")
+    .metricLabel("response_code_class", "5xx")
+    .alignmentPeriod("60s").perSeriesAligner("ALIGN_SUM")
+    .crossSeriesReducer("REDUCE_SUM")
+    .window("15m")
+  ```
+
+  project_?: string
+    The project read from (set by {@link project}).
+  metricType_?: string
+    The metric type (set by {@link metricType}).
+  resourceType_?: string
+    The monitored-resource type (set by {@link resourceType}).
+  readonly resourceLabels_: Array<[string, string]>
+    Resource labels the series must carry (set by {@link resourceLabel}).
+  readonly metricLabels_: Array<[string, string]>
+    Metric labels the series must carry (set by {@link metricLabel}).
+  readonly filters_: string[]
+    Raw filter parts (set by {@link filter}).
+  window_: number
+    How far back to read, in ms (set by {@link window}).
+  interval_?: { start: Date; end: Date; }
+    An explicit interval, instead of the window (set by {@link interval}).
+  alignmentPeriod_?: number
+    The alignment period, in ms (set by {@link alignmentPeriod}).
+  perSeriesAligner_?: CloudMonitoringAligner
+    The per-series aligner (set by {@link perSeriesAligner}).
+  crossSeriesReducer_?: CloudMonitoringReducer
+    The cross-series reducer (set by {@link crossSeriesReducer}).
+  readonly groupByFields_: string[]
+    The labels the reducer keeps series apart by (set by {@link groupByFields}).
+  view_: CloudMonitoringView
+    How much of each series to return (set by {@link view}).
+  pageSize_?: number
+    The page size to ask for (set by {@link pageSize}).
+  maxPages_: number
+    The most pages to read before failing (set by {@link maxPages}).
+  token_?: string
+    A pre-resolved OAuth token (set by {@link token}).
+  tokenProvider_?: AccessTokenProvider
+    Resolves the token (set by {@link tokenProvider}).
+  gcloud_: Configure<GcloudSettings>
+    Global gcloud flags for the default token read (set by {@link gcloud}).
+  fetch_?: typeof fetch
+    The `fetch` the API is called through (set by {@link fetch}).
+  readEnv_?: (name: string) => string | undefined
+    Reads an environment variable for the project (set by {@link readEnv}).
+  now_: () => Date
+    The clock the window is read against (set by {@link now}).
+  project(id: string): this
+    The project to read from; when omitted, `GOOGLE_CLOUD_PROJECT` (then
+    `GCLOUD_PROJECT`).
+  metricType(type: string): this
+    The metric to read: `metric.type = "<type>"`, e.g.
+    `"run.googleapis.com/request_count"`. The API reads exactly one metric
+    type per call.
+  resourceType(type: string): this
+    Only series on this monitored-resource type: `resource.type = "<type>"`.
+  resourceLabel(key: string, value: string): this
+    Only series whose resource label `key` is `value`; repeatable.
+  metricLabel(key: string, value: string): this
+    Only series whose metric label `key` is `value`; repeatable.
+  filter(expression: string): this
+    Raw text in the Monitoring filter language, joined with the typed parts
+    by `AND`; repeatable. It is the caller's own text and is not escaped —
+    never build it from an untrusted value. With no {@link metricType}, it
+    must name the metric itself.
+  window(duration: string | number): this
+    How far back to read (`"15m"`, or ms; default five minutes), ending now
+    — or, with an {@link alignmentPeriod}, at the last period boundary, so
+    the period still being written is not read. The window must be at least
+    one period long.
+  interval(start: Date, end: Date): this
+    Read exactly this interval instead of a window ending now.
+  now(clock: () => Date): this
+    The clock the window is read against — the seam a test pins it with.
+  alignmentPeriod(duration: string | number): this
+    What each aligned point covers (`aggregation.alignmentPeriod`) —
+    `"60s"`, `"5m"`, or ms; whole seconds, at least 60, as the API requires.
+  perSeriesAligner(aligner: CloudMonitoringAligner): this
+    How each series is aligned (`aggregation.perSeriesAligner`).
+  crossSeriesReducer(reducer: CloudMonitoringReducer): this
+    How aligned series are combined (`aggregation.crossSeriesReducer`).
+  groupByFields(...fields: string[]): this
+    The labels the reducer keeps series apart by
+    (`aggregation.groupByFields`), e.g. `"resource.labels.revision_name"`.
+  view(view: CloudMonitoringView): this
+    `FULL` (the default) returns points; `HEADERS` only each series' labels.
+  pageSize(count: number): this
+    The most results per page (`pageSize`; the API's default is 100,000).
+  maxPages(count: number): this
+    The most pages to read (default 100). A read that still has a next page
+    after that many fails — a partial answer is never returned as a whole.
+  token(value: string): this
+    A pre-resolved OAuth access token.
+  tokenProvider(provider: AccessTokenProvider): this
+    Resolves the access token, when no {@link token} is set.
+  gcloud(configure: Configure<GcloudSettings>): this
+    Global gcloud flags for the default token read,
+    `gcloud auth print-access-token` — `(g) => g.account("ci@p.iam…")`, or a
+    `.runner(...)`, the seam a test answers through. Unused when a
+    {@link token} or {@link tokenProvider} is set.
+  fetch(implementation: typeof fetch): this
+    The `fetch` the API is called through; the global by default.
+  readEnv(reader: (name: string) => string | undefined): this
+    Reads an environment variable for the project; `Deno.env.get` by default.
 
 class CloudRunCanary
   A Cloud Run service as a canary platform. Create one with
@@ -572,6 +893,135 @@ class GcloudFunctionsDescribeSettings extends GcloudSettings
   override protected leadingTokens(): string[]
     Emit `functions describe` with its operand.
 
+class GcloudLoggingEntryCountSettings extends GcloudLoggingReadSettings
+  Settings for `GcloudTasks.logEntryCount`: a `gcloud logging read` whose
+  matches are counted. `.limit(n)` is the most entries counted; a count
+  above it fails as "more than n".
+
+  override protected taskName(): string
+    The task name used in this reader's error messages.
+
+class GcloudLoggingLogsListSettings extends GcloudSettings
+  Settings for `gcloud logging logs list`: the logs that hold entries.
+
+  logView(bucket: string, location: string, view: string): this
+    List the logs of a log view (`--bucket`, `--location`, `--view`).
+  filter(expression: string): this
+    Keep only matching logs (`--filter`), gcloud's own list filter.
+  limit(count: number): this
+    List at most this many logs (`--limit`).
+  sortBy(...fields: string[]): this
+    Sort by these fields (`--sort-by`); prefix one with `~` to descend.
+  override protected leadingTokens(): string[]
+    Emit `logging logs list` with its flags.
+
+class GcloudLoggingReadSettings extends GcloudSettings
+  Settings for `gcloud logging read`: which entries (the filter), from where
+  (project, folder, organization, billing account, or a log view), and how
+  many.
+
+  limit_?: number
+    The most entries to read (set by {@link limit}).
+  protected taskName(): string
+    The task name used in this command's error messages.
+  filter(expression: string): this
+    Raw filter text in the Logging query language, joined with every other
+    part by `AND`; repeatable. It is the caller's own text and is not
+    escaped — never build it from an untrusted value; use the typed setters
+    for those.
+  resourceType(type: string): this
+    Only entries from this monitored-resource type: `resource.type="…"`.
+  resourceLabel(key: string, value: string): this
+    Only entries whose resource label `key` is `value`; repeatable.
+  label(key: string, value: string): this
+    Only entries whose own label `key` is `value`; repeatable.
+  minSeverity(severity: GcloudLogSeverity): this
+    Only entries at `severity` or above: `severity>=ERROR`.
+  since(time: GcloudLogTime): this
+    Only entries at or after `time`: `timestamp>="…"`. With a timestamp in
+    the filter, gcloud ignores `--freshness`.
+  until(time: GcloudLogTime): this
+    Only entries before `time`: `timestamp<"…"`.
+  freshness(duration: string | number): this
+    Only entries newer than this (`--freshness`; gcloud's default is one
+    day) — `"1h"`, `"90s"`, or ms. gcloud applies it only to a descending
+    read with no timestamp in the filter.
+  order(order: "asc" | "desc"): this
+    Newest first (`desc`, gcloud's default) or oldest first (`--order`).
+  limit(count: number): this
+    Read at most this many entries (`--limit`; gcloud's default is unlimited).
+  organization(id: string): this
+    Read from an organization's logs (`--organization`). gcloud takes one of
+    `--organization`, `--folder`, `--billing-account` and `--project`.
+  folder(id: string): this
+    Read from a folder's logs (`--folder`).
+  billingAccount(id: string): this
+    Read from a billing account's logs (`--billing-account`).
+  logView(bucket: string, location: string, view: string): this
+    Read through a log view (`--bucket`, `--location`, `--view`).
+  resourceNames(...names: string[]): this
+    Read from these resources instead (`--resource-names`): a project,
+    folder or organization name, or a full log-view path. gcloud takes these
+    or a log view, not both.
+  override protected leadingTokens(): string[]
+    Emit `logging read` with its filter and flags.
+
+class GcloudMonitoringDashboardsListSettings extends GcloudMonitoringListSettings
+  Settings for `gcloud monitoring dashboards list`.
+
+  override protected listCommand(): string[]
+    `monitoring dashboards list`.
+  override protected taskName(): string
+    The task name used in this listing's error messages.
+
+abstract class GcloudMonitoringListSettings extends GcloudSettings
+  The list flags every `gcloud monitoring … list` command takes: `--filter`,
+  `--limit`, `--page-size`, `--sort-by` and `--uri`. Each listing extends it
+  and names its own command path.
+
+  abstract protected listCommand(): string[]
+    The command path, e.g. `["monitoring", "policies", "list"]`.
+  abstract protected taskName(): string
+    The task name used in this listing's error messages.
+  filter(expression: string): this
+    Keep only matching items (`--filter`), gcloud's own list filter.
+  limit(count: number): this
+    List at most this many items (`--limit`).
+  pageSize(count: number): this
+    How many items to request per page (`--page-size`).
+  sortBy(...fields: string[]): this
+    Sort by these fields (`--sort-by`); prefix one with `~` to descend.
+  uri(): this
+    Print each item's resource URI instead (`--uri`).
+  override protected leadingTokens(): string[]
+    Emit the listing's command path with its flags.
+
+class GcloudMonitoringPoliciesDescribeSettings extends GcloudSettings
+  Settings for `gcloud monitoring policies describe`.
+
+  policy(idOrName: string): this
+    The policy to describe (positional): its id, or its full name
+    `projects/<project>/alertPolicies/<id>`.
+  override protected leadingTokens(): string[]
+    Emit `monitoring policies describe` with its operand.
+
+class GcloudMonitoringPoliciesListSettings extends GcloudMonitoringListSettings
+  Settings for `gcloud monitoring policies list`: the alerting policies.
+
+  override protected listCommand(): string[]
+    `monitoring policies list`.
+  override protected taskName(): string
+    The task name used in this listing's error messages.
+
+class GcloudMonitoringUptimeListConfigsSettings extends GcloudMonitoringListSettings
+  Settings for `gcloud monitoring uptime list-configs`: the uptime checks and
+  synthetic monitors.
+
+  override protected listCommand(): string[]
+    `monitoring uptime list-configs`.
+  override protected taskName(): string
+    The task name used in this listing's error messages.
+
 class GcloudRunDeploySettings extends GcloudSettings
   Settings for `gcloud run deploy`.
 
@@ -746,6 +1196,16 @@ class GcloudSettings extends SubcommandSettings
     Disable interactive prompts, accepting defaults (gcloud's `--quiet`). Named
     `noPrompt` to avoid clashing with the base `.quiet()`, which suppresses
     Zuke's own output streaming.
+  runner(run: GcloudSettingsRunner): this
+    Replace how this command is run. The default spawns gcloud; this is the
+    seam a test answers commands through, and the way a build executes gcloud
+    through something else. The runner reads the argv from the settings it is
+    handed and must not call their `run()` — that is the call it replaces.
+  override async run(): Promise<CommandOutput>
+    Run the command — through the {@link runner} when one is set, otherwise
+    by spawning gcloud. Either way the output is reported to the settings'
+    output hook and a non-zero exit throws a `CommandError` unless
+    `.noThrow()` was called.
   override protected middleTokens(): string[]
     Emit gcloud's common global flags between the command path and the flags.
 
@@ -807,6 +1267,69 @@ class GcloudStorageRsyncSettings extends GcloudSettings
   override protected leadingTokens(): string[]
     Emit `storage rsync` with its operands and flags.
 
+interface CloudMonitoringAnalysis
+  A health check run against a canary, in the shape `@zuke/canary`'s
+  `c.analysis(...)` accepts: throw to fail it, which rolls the rollout back.
+
+  readonly name: string
+    `"cloudMonitoring"`, for diagnostics.
+  validate(context: CloudMonitoringAnalysisContext): Promise<void>
+    Read the metric and throw when a point is out of bounds.
+
+interface CloudMonitoringAnalysisContext
+  The part of the canary engine's context the analysis uses: the run's
+  redactor, applied to every failure message. The engine hands a richer
+  context; this is the narrow view.
+
+  redact(text: string): string
+    Mask every resolved `secret` parameter in `text`.
+
+interface CloudMonitoringLabelled
+  A type and its labels: a metric, or a monitored resource.
+
+  type: string
+    The metric type or resource type.
+  labels: Record<string, string>
+    Its labels.
+
+interface CloudMonitoringPoint
+  One point of a time series: the interval it covers, and its value.
+
+  start?: Date
+    The start of the interval; absent for a `GAUGE` point.
+  end: Date
+    The end of the interval — the time the point is for.
+  value: CloudMonitoringValue
+    The value.
+
+interface CloudMonitoringTasksApi
+  The shape of {@link CloudMonitoringTasks}.
+
+  timeSeriesList(configure?: Configure<CloudMonitoringTimeSeriesSettings>): Promise<CloudMonitoringTimeSeries[]>
+    Read the time series the settings describe, every page of them. A
+    series can arrive split across two pages; each part is returned as the
+    API sent it. Fails when the read still has a next page after
+    `.maxPages(n)` pages, rather than return part of the answer.
+  metricValue(configure?: Configure<CloudMonitoringMetricValueSettings>): Promise<number>
+    One number from the time series the settings describe: the latest
+    value, or an aggregate of every point in the window.
+
+interface CloudMonitoringTimeSeries
+  One time series: what it measures, on what, and its points, newest first.
+
+  metric: CloudMonitoringLabelled
+    The metric and its labels.
+  resource: CloudMonitoringLabelled
+    The monitored resource and its labels.
+  metricKind?: string
+    `GAUGE`, `DELTA` or `CUMULATIVE`, as the API reports it.
+  valueType?: string
+    `BOOL`, `INT64`, `DOUBLE`, `STRING` or `DISTRIBUTION`.
+  unit?: string
+    The unit of the points, when the API reports one.
+  points: CloudMonitoringPoint[]
+    The points, newest first. Empty for a `HEADERS` view.
+
 interface CloudRunCanaryContext
   The part of the canary engine's context the Cloud Run platform uses: the
   rollout's durable state, where the staged revision is recorded, and the
@@ -816,6 +1339,14 @@ interface CloudRunCanaryContext
     The rollout's durable platform state, shared by every call.
   reportSummary(pairs: SummaryPairs): void
     Add key/value pairs to the calling target's row in the build summary.
+
+interface CloudRunService
+  A Cloud Run service, and the region it runs in when one is named.
+
+  service: string
+    The service's name.
+  region?: string
+    Its region (`--region`); gcloud's `run/region` when omitted.
 
 interface GcloudTasksApi
   The shape of {@link GcloudTasks}.
@@ -902,6 +1433,25 @@ interface GcloudTasksApi
     Read a secret version: `gcloud secrets versions access`.
   secretValue(configure?: Configure<GcloudSecretsVersionsAccessSettings>): Promise<string>
     A secret version's payload, read back as a string.
+  loggingRead(configure?: Configure<GcloudLoggingReadSettings>): Promise<CommandOutput>
+    Read log entries: `gcloud logging read`. What it reads is printed, as
+    gcloud prints it — into the build log unless `.quiet()` is set, and log
+    entries can carry secrets.
+  logEntryCount(configure?: Configure<GcloudLoggingEntryCountSettings>): Promise<number>
+    How many log entries a `gcloud logging read` filter matches, counting at
+    most `.limit(n)` (default 1000) and failing when more match. Reads only
+    each entry's id, quietly, so no payload reaches the build.
+  loggingLogsList(configure?: Configure<GcloudLoggingLogsListSettings>): Promise<CommandOutput>
+    List the logs that hold entries: `gcloud logging logs list`.
+  monitoringPoliciesList(configure?: Configure<GcloudMonitoringPoliciesListSettings>): Promise<CommandOutput>
+    List alerting policies: `gcloud monitoring policies list`.
+  monitoringPoliciesDescribe(configure?: Configure<GcloudMonitoringPoliciesDescribeSettings>): Promise<CommandOutput>
+    Describe an alerting policy: `gcloud monitoring policies describe`.
+  monitoringDashboardsList(configure?: Configure<GcloudMonitoringDashboardsListSettings>): Promise<CommandOutput>
+    List dashboards: `gcloud monitoring dashboards list`.
+  monitoringUptimeListConfigs(configure?: Configure<GcloudMonitoringUptimeListConfigsSettings>): Promise<CommandOutput>
+    List uptime checks and synthetic monitors:
+    `gcloud monitoring uptime list-configs`.
 
 interface GcpRestOptions
   Common options for a Google REST call: the bearer token and an injectable `fetch`.
@@ -971,15 +1521,43 @@ interface SecretManagerTasksApi
 type AccessTokenProvider = () => Promise<string>
   Supplies a Google Cloud OAuth access token for a REST call.
 
+type CloudMonitoringAggregate = "latest" | "sum" | "average" | "maximum" | "minimum"
+  How {@link CloudMonitoringMetricValueSettings} turns the points into one
+  number: the newest, or the sum, average, maximum or minimum of all of them.
+
+type CloudMonitoringAligner = "ALIGN_NONE" | "ALIGN_DELTA" | "ALIGN_RATE" | "ALIGN_INTERPOLATE" | "ALIGN_NEXT_OLDER" | "ALIGN_MIN" | "ALIGN_MAX" | "ALIGN_MEAN" | "ALIGN_COUNT" | "ALIGN_SUM" | "ALIGN_STDDEV" | "ALIGN_COUNT_TRUE" | "ALIGN_COUNT_FALSE" | "ALIGN_FRACTION_TRUE" | "ALIGN_PERCENTILE_99" | "ALIGN_PERCENTILE_95" | "ALIGN_PERCENTILE_50" | "ALIGN_PERCENTILE_05" | "ALIGN_PERCENT_CHANGE"
+  How each series' points are aligned into one value per alignment period
+  (`aggregation.perSeriesAligner`).
+
+type CloudMonitoringReducer = "REDUCE_NONE" | "REDUCE_MEAN" | "REDUCE_MIN" | "REDUCE_MAX" | "REDUCE_SUM" | "REDUCE_STDDEV" | "REDUCE_COUNT" | "REDUCE_COUNT_TRUE" | "REDUCE_COUNT_FALSE" | "REDUCE_FRACTION_TRUE" | "REDUCE_PERCENTILE_99" | "REDUCE_PERCENTILE_95" | "REDUCE_PERCENTILE_50" | "REDUCE_PERCENTILE_05"
+  How aligned series are combined into fewer (`aggregation.crossSeriesReducer`).
+
+type CloudMonitoringValue = { kind: "double"; value: number; } | { kind: "int64"; value: number; raw: string; } | { kind: "bool"; value: boolean; } | { kind: "string"; value: string; } | { kind: "distribution"; count: number; mean: number; }
+  One point's value, by the metric's value type. A 64-bit integer is
+  returned as a `number` — exact up to 2^53, beyond which it rounds — with
+  the decimal string it arrived as beside it.
+
+type CloudMonitoringView = "FULL" | "HEADERS"
+  How much of each series the API returns: its points, or only its labels.
+
+type GcloudLogSeverity = "DEFAULT" | "DEBUG" | "INFO" | "NOTICE" | "WARNING" | "ERROR" | "CRITICAL" | "ALERT" | "EMERGENCY"
+  A Cloud Logging severity, lowest to highest.
+
+type GcloudLogTime = Date | string
+  A time a log filter compares `timestamp` with.
+
 type GcloudRunner = (configure?: Configure<GcloudSettings>) => Promise<CommandOutput>
   Runs a `gcloud` command — the seam {@link gcloudAccessToken} resolves the
   token through. Defaults to {@link "./gcloud.ts".GcloudTasks} `.run`; injectable
   so the default provider is unit-testable without invoking `gcloud`.
 
 type GcloudSettingsRunner = (settings: GcloudSettings) => Promise<CommandOutput>
-  Runs one prepared `gcloud` command and returns its output. The default runs
-  it; a test or a build that executes gcloud some other way injects its own
-  with {@link CloudRunCanarySettings.runner}.
+  Runs one prepared `gcloud` command and returns what the process produced.
+  The default spawns gcloud; a test, or a build that executes gcloud some
+  other way, injects its own with {@link GcloudSettings.runner}. The runner
+  only produces the output: the exit code is judged afterwards exactly as for
+  a spawned process, so a non-zero `code` still raises a `CommandError`
+  unless the settings say `.noThrow()`.
 ````
 
 </details>
