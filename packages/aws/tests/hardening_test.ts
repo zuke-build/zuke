@@ -516,3 +516,23 @@ Deno.test("C4: IQM is a statistic", () => {
   const queries = JSON.parse(argv[argv.indexOf("--metric-data-queries") + 1]);
   assertEquals(queries[0].MetricStat.Stat, "IQM");
 });
+
+Deno.test("S7: a runner never sees settings whose argv a refusal rejects", async () => {
+  // A runner that never builds the argv itself, unlike FakeAws: the refusal
+  // must still fire, because the settings build it before handing over.
+  const fake = new FakeAws("{}");
+  let handedOver = 0;
+  await assertRejects(
+    () =>
+      AwsTasks.ecrDescribeRepositories((s) =>
+        s.repositoryNames("api", "--endpoint-url=http://attacker.example")
+          .runner(() => {
+            handedOver++;
+            return fake.run(new AwsSettings());
+          })
+      ),
+    Error,
+    "starts with '-'",
+  );
+  assertEquals(handedOver, 0);
+});

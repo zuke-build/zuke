@@ -235,6 +235,9 @@ export class AwsSettings extends SubcommandSettings {
   override async run(): Promise<CommandOutput> {
     const runner = this.#runner;
     if (runner === undefined) return await super.run();
+    // Build the argv first, as a real spawn does, so every refusal a setter's
+    // value triggers fires before a runner sees the settings.
+    this.argv();
     // Core's ToolSettings has no hook to swap the spawn while keeping its
     // output hook and exit judgement, so the two are repeated here.
     const output = await runner(this);
