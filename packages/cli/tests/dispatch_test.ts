@@ -18,6 +18,7 @@ import {
   runningNotice,
   UntrustedBuildError,
 } from "../src/dispatch.ts";
+import { CONFIG_FILE } from "@zuke/core";
 import { withTemp } from "../../core/tests/_temp.ts";
 import { withEnv } from "../../core/tests/_env.ts";
 
@@ -338,9 +339,11 @@ Deno.test("locateBuild resolves a symlinked launcher and judges its directory", 
     uid: 1000,
     links: { "/w/app/zuke": "/w/shared/zuke" },
   });
-  // The resolved path is what runs, so it is the one the gate judged.
+  // It runs by its path under the root, so a launcher that finds its project
+  // from the path it was called by builds this one; the gate still judges the
+  // directory the link resolves into.
   const found = await locateBuild("/w/app", probe(fixture(ownedBy(1000))));
-  assertEquals(found?.launcher, "/w/shared/zuke");
+  assertEquals(found?.launcher, "/w/app/zuke");
   // Whoever can write the target's directory can swap the file under it.
   const open = await refused("/w/app", fixture(ownedBy(1000, 0o777)));
   assertEquals(open.reason, "/w/shared is writable by everyone");
@@ -522,4 +525,44 @@ Deno.test("defaultBuildRunner puts the running Deno first on the child's PATH", 
     const inherited = Deno.env.get("PATH") ?? "";
     assertEquals(rest.join(separator), inherited);
   }, { prefix: "zuke-dispatch-" });
+});
+
+Deno.test({
+  name:
+    "a symlinked shared launcher runs by its path under the root, building this repo",
+  // POSIX launchers only: Windows reports no file mode, so it keeps `deno run`.
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      // repo/zuke -> ../shared/zuke, the launcher several repos share. Like
+      // the real launchers it finds the project from the path it was called
+      // by, so it records that directory.
+      await Deno.mkdir(`${dir}/shared`);
+      await Deno.mkdir(`${dir}/repo`);
+      await Deno.writeTextFile(
+        `${dir}/shared/${LAUNCHER_FILE}`,
+        `#!/bin/sh\ncd "$(dirname "$0")" && pwd > "$ZUKE_PROBE_OUT"\n`,
+        { mode: 0o755 },
+      );
+      await Deno.symlink(
+        `../shared/${LAUNCHER_FILE}`,
+        `${dir}/repo/${LAUNCHER_FILE}`,
+      );
+      await Deno.writeTextFile(`${dir}/repo/${CONFIG_FILE}`, "{}\n");
+
+      const found = await locateBuild(`${dir}/repo`, defaultBuildProbe);
+      const root = await Deno.realPath(`${dir}/repo`);
+      assertEquals(found?.launcher, `${found?.root}/${LAUNCHER_FILE}`);
+      assertEquals(await Deno.realPath(found?.root ?? ""), root);
+
+      const out = `${dir}/probe.txt`;
+      await withEnv({ ZUKE_PROBE_OUT: out }, async () => {
+        if (found === null) throw new Error("no build found");
+        assertEquals(await runBuild(defaultBuildRunner, found, ["ci"]), 0);
+      });
+      // The launcher saw the repo, not the shared directory it lives in.
+      const seen = (await Deno.readTextFile(out)).trim();
+      assertEquals(await Deno.realPath(seen), root);
+    }, { prefix: "zuke-dispatch-" });
+  },
 });

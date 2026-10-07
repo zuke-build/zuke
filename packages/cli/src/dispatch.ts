@@ -210,7 +210,14 @@ async function launcherAt(
   const real = await probe.realPath(path);
   const home = absolutePath(real).parent();
   assertEntry(await probe.ownership(home.path), home.path, uid, root);
-  return real;
+  // Run it by its path under the root, not the resolved one. A launcher finds
+  // the project it builds from the path it was called by (`dirname "$0"`), so
+  // a `zuke` symlinked to a launcher shared across repos, called by its
+  // resolved path, would build the shared launcher's own directory instead.
+  // That keeps what was judged and what runs the same file: re-pointing the
+  // link in between needs write access to the root, which the gate refuses
+  // to anyone but you.
+  return path;
 }
 
 /**
