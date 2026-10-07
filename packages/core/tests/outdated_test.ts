@@ -166,6 +166,40 @@ Deno.test("findOutdated asks the registry once per package name", async () => {
   });
 });
 
+Deno.test("findOutdated lists a package once however many ranges resolve it to one version", async () => {
+  await withTemp(async (dir) => {
+    // Every wrapper depends on its own range of core; all of them resolving
+    // 1.66.0 is one package to move, reported once and counted once.
+    const lockPath = await lockWith(dir, {
+      "jsr:@zuke/console@^1": "1.4.0",
+      "jsr:@zuke/core@^1.31.0": "1.66.0",
+      "jsr:@zuke/core@^1.40.0": "1.66.0",
+      "jsr:@zuke/core@^1.60.0": "1.66.0",
+    });
+    const report = await findOutdated({
+      lockPath,
+      registry: "https://registry.test",
+      fetch: registryFetch({
+        "@zuke/console": "1.5.0",
+        "@zuke/core": "1.67.0",
+      }),
+    });
+    assertEquals(
+      report.behind.map((p) => [p.name, p.specifier, p.resolved]),
+      [
+        ["@zuke/console", "jsr:@zuke/console@^1", "1.4.0"],
+        ["@zuke/core", "jsr:@zuke/core@^1.31.0", "1.66.0"],
+      ],
+    );
+    const text = formatOutdated(report);
+    assertEquals(
+      text.split("\n").filter((l) => l.startsWith("@zuke/core")).length,
+      1,
+    );
+    assertEquals(text.includes("2 packages are behind"), true);
+  });
+});
+
 Deno.test("findOutdated reports a package it could not check, and still checks the rest", async () => {
   await withTemp(async (dir) => {
     // A private scope, a rename, or an offline runner. The report still speaks
