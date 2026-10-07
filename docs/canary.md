@@ -793,10 +793,10 @@ class Deploy extends Build {
       .analysis(httpProbe((h) => h.url("https://api.example.com/health")))
       .analysis(cloudwatch((m) =>
         m.name("canary 5xx").namespace("AWS/ApplicationELB")
-          .metric("HTTPCode_Target_5XX_Count")
+          .metricName("HTTPCode_Target_5XX_Count")
           .dimension("TargetGroup", this.targetGroup.value)
           .stat("Sum").window("10m").max(5).missingDataAs(0)
-          .region("eu-west-1")
+          .aws((a) => a.region("eu-west-1"))
       ))
   );
 
@@ -808,13 +808,18 @@ await run(Deploy);
 
 | Setting                                        | Meaning                                                                                                                                     |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `namespace`, `metric`, `dimension`, `stat`     | The metric, queried as `m1`. `stat` is `Sum`, `Average`, `Maximum`, `Minimum`, `SampleCount`, or a percentile such as `p99`.                |
+| `namespace`, `metricName`, `dimension`, `stat` | The metric, queried as `m1`. `stat` is `Sum`, `Average`, `Maximum`, `Minimum`, `SampleCount`, `IQM`, or a percentile such as `p99`.         |
 | `period(seconds)`                              | What each datapoint covers (default 60). Every datapoint is judged, so `.max(5)` on a per-minute `Sum` means no minute with more than five. |
-| `window(duration)`                             | How far back to read (default `5m`). It ends at the start of the current minute, so the minute still being written is not judged.           |
+| `window(duration)`                             | How far back to read (default `5m`). It ends at the last period boundary, so the period still being written is not judged.                  |
 | `metricStat(id, (m) => …)`, `expression(text)` | Judge metric math instead: add the inputs by id, and `expression("100 * errors / requests")` is what is judged; the inputs are not.         |
 | `min(value)`, `max(value)`                     | The bounds, inclusive. At least one is required.                                                                                            |
 | `missingDataAs(value)`                         | What no datapoints means. CloudWatch publishes nothing for a minute with no events, so for an error count, `0`; by default no data fails.   |
-| `profile`, `region`, `aws((a) => …)`, `runner` | The CLI's global options, and the seam a test answers `get-metric-data` through instead of spawning `aws`.                                  |
+| `aws((a) => …)`, `now(clock)`                  | The CLI's global options — `profile`, `region`, a `runner` a test answers through — and the clock the window is read against.               |
+
+CloudWatch publishes a datapoint a little after its period ends, so the newest
+period in the window can still be short of data. That only lowers a `Sum` or a
+`SampleCount` — harmless for a `max`, but a `min` on such a statistic can fail
+on the lag rather than on the candidate; widen the period or judge an `Average`.
 
 The `aws` CLI must be installed and authenticated on the runner — the analysis
 runs it like any other `AwsTasks` call. Failure messages pass through the run's
