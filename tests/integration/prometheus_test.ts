@@ -18,7 +18,7 @@ import { PrometheusTasks } from "../../packages/prometheus/mod.ts";
 import { canary, prometheus } from "../../packages/canary/mod.ts";
 import { FakePlatform } from "../../packages/canary/tests/_platform.ts";
 import { fakeFetch, vector } from "../../packages/prometheus/tests/_fetch.ts";
-import { runCli, withStateDir } from "./_harness.ts";
+import { runCli, withoutMaskDirectives, withStateDir } from "./_harness.ts";
 
 /** What the fake Prometheus answers; set per test. */
 let answer: () => Response = () => vector([{}, "0"]);
@@ -68,7 +68,9 @@ Deno.test("a Prometheus refusal echoing the token never prints it", async () => 
   const { code, out, err } = await runCli(Gate, ["gate", "--token", TOKEN]);
   assertEquals(code, 1);
   assertStringIncludes(out + err, "HTTP 401 (bad_data)");
-  assertEquals((out + err).includes(TOKEN), false);
+  // Under Actions the executor prints the raw token in `::add-mask::` on
+  // purpose, so the runner censors it; everything else must not carry it.
+  assertEquals(withoutMaskDirectives(out + err).includes(TOKEN), false);
 });
 
 /** The platform the canary below drives; reset per test. */
