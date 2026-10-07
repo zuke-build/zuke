@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.0](https://github.com/zuke-build/zuke/compare/gh-v1.13.0...gh-v1.14.0) (2026-10-07)
+
+
+### Features
+
+* **prometheus:** typed Prometheus HTTP API client with built-in cloud auth ([#731](https://github.com/zuke-build/zuke/issues/731)) ([bb7fafb](https://github.com/zuke-build/zuke/commit/bb7fafba3b40f058ca9b26098663d5ce93a7b953))
+
 ## [1.13.0](https://github.com/zuke-build/zuke/compare/gh-v1.12.0...gh-v1.13.0) (2026-10-05)
 
 

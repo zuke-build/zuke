@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.0](https://github.com/zuke-build/zuke/compare/cli-v1.9.0...cli-v1.10.0) (2026-10-07)
+
+
+### Features
+
+* **core:** rich build-CLI output with a ZUKE_PLAIN / --plain switch ([#735](https://github.com/zuke-build/zuke/issues/735)) ([e345b58](https://github.com/zuke-build/zuke/commit/e345b5844ecb9fee40cc9843b7f3bf23d2d781bb))
+
 ## [1.9.0](https://github.com/zuke-build/zuke/compare/cli-v1.8.0...cli-v1.9.0) (2026-10-07)
 
 
