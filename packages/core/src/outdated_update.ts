@@ -90,6 +90,17 @@ export interface UpdateOptions extends OutdatedOptions {
 }
 
 /**
+ * Whether a lock `dependencies` entry points at package `name`. Deno writes
+ * it as `jsr:@scope/name@<range>` when several ranges of one package are
+ * locked, and as a bare `jsr:@scope/name` when there is only one, so an
+ * exact match on the specifier key misses the second form.
+ */
+function namesPackage(dependency: unknown, name: string): boolean {
+  return typeof dependency === "string" &&
+    (dependency === `jsr:${name}` || dependency.startsWith(`jsr:${name}@`));
+}
+
+/**
  * The lock text with every `jsr:` entry for `names` removed — both the
  * `specifiers` mapping and the `jsr` integrity records that back it.
  *
@@ -130,12 +141,29 @@ export function dropLockEntries(
   // the ones being moved so their integrity is recorded afresh for whatever
   // version resolves next; anything still referenced is rewritten by the
   // resolver, and anything no longer referenced belongs gone anyway.
+  //
+  // A package that stays also lists, in its `dependencies`, the specifiers it
+  // resolves through — and Deno refuses to load a lock where one of those has
+  // no `specifiers` entry ("Invalid jsr dependency … Lockfile may be
+  // corrupt"). So the dropped specifiers come out of those lists too; the
+  // resolver writes them back alongside the entries they point at.
   const jsr: unknown = Reflect.get(parsed, "jsr");
   if (jsr !== null && typeof jsr === "object" && !Array.isArray(jsr)) {
     for (const key of Object.keys(jsr)) {
       const at = key.lastIndexOf("@");
       if (at > 0 && wanted.has(key.slice(0, at))) {
         Reflect.deleteProperty(jsr, key);
+        continue;
+      }
+      const record: unknown = Reflect.get(jsr, key);
+      if (record === null || typeof record !== "object") continue;
+      const deps: unknown = Reflect.get(record, "dependencies");
+      if (Array.isArray(deps)) {
+        Reflect.set(
+          record,
+          "dependencies",
+          deps.filter((d) => !names.some((name) => namesPackage(d, name))),
+        );
       }
     }
   }
@@ -186,6 +214,36 @@ const denoResolve: ResolveLock = async (lockPath) => {
     );
   }
 };
+
+/**
+ * Each `jsr` record of the lock that depends on one of `names`, as
+ * `record → name` edges. Only records not themselves named: those are dropped
+ * and resolved afresh, so their own dependencies are the resolver's to write.
+ */
+function dependencyEdges(lockText: string, names: readonly string[]): string[] {
+  const edges: string[] = [];
+  let jsr: unknown;
+  try {
+    jsr = Reflect.get(JSON.parse(lockText), "jsr");
+  } catch {
+    return edges;
+  }
+  if (jsr === null || typeof jsr !== "object") return edges;
+  for (const [key, record] of Object.entries(jsr)) {
+    if (names.some((name) => key.startsWith(`${name}@`))) continue;
+    if (record === null || typeof record !== "object") continue;
+    const deps: unknown = Reflect.get(record, "dependencies");
+    if (!Array.isArray(deps)) continue;
+    for (const name of names) {
+      if (
+        deps.some((d) => namesPackage(d, name))
+      ) {
+        edges.push(`${key} → ${name}`);
+      }
+    }
+  }
+  return edges;
+}
 
 /** The version each `jsr:` package name resolves to, by name. */
 function resolvedByName(lockText: string): Map<string, string> {
@@ -263,11 +321,21 @@ export async function updateOutdated(
   // back as `jsr:@std/encoding@1`), and demanding the old key would fail on a
   // lock that is perfectly correct.
   const lost = names.filter((name) => !nowResolved.has(name));
+  // And every package that depended on a dropped one must depend on it again.
+  // A lock can serve more entrypoints than the one re-resolved — a workspace
+  // member's own build — and a record only those reach is never rewritten, so
+  // it would keep the shortened dependency list and fail that build's
+  // `--frozen` run.
+  const afterEdges = new Set(dependencyEdges(after, names));
+  lost.push(
+    ...dependencyEdges(before, names).filter((edge) => !afterEdges.has(edge)),
+  );
   if (lost.length > 0) {
     await writeTextEnsuringDir(lockPath, before);
     throw new Error(
       `outdated: re-resolving left no entry for ${lost.join(", ")}; the lock ` +
-        "was restored unchanged.",
+        "was restored unchanged. A record re-resolution cannot reach belongs to " +
+        "another module graph sharing this lock, or is stale and can be deleted.",
     );
   }
 

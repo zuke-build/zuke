@@ -40,7 +40,7 @@ export interface OutdatedPackage {
   specifier: string;
   /** The version the lock resolves that specifier to. */
   resolved: string;
-  /** The latest version the registry publishes. */
+  /** The newest version the registry publishes that Deno would install. */
   latest: string;
 }
 
@@ -147,11 +147,52 @@ export function isBehind(resolved: string, latest: string): boolean {
   return resolved !== latest && resolved.includes("-") && !latest.includes("-");
 }
 
-/** The `latest` field of a JSR package's `meta.json`, or `undefined`. */
-function latestOf(meta: unknown): string | undefined {
+/**
+ * How old a release must be before Deno will install it: Deno 2.9 refuses
+ * anything younger by default (`minimumDependencyAge`, 24 hours) as a
+ * supply-chain guard. A version Deno will not resolve is not one a lock can
+ * move to, so it must not count as the latest either.
+ *
+ * Only Deno's default is applied: a project that sets a longer
+ * `minimumDependencyAge` can still be shown a version Deno will refuse, and
+ * `--update` then fails and restores the lock rather than corrupting it.
+ */
+const MINIMUM_RELEASE_AGE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The newest version Deno would install from a JSR package's `meta.json`:
+ * the highest non-yanked version published at least
+ * {@link MINIMUM_RELEASE_AGE_MS} before `now`. `null` when every release is
+ * still too young, `undefined` when the document has no usable version.
+ *
+ * Without a `versions` map, the document's `latest` is the answer.
+ */
+function installableLatest(
+  meta: unknown,
+  now: number,
+): string | null | undefined {
   if (meta === null || typeof meta !== "object") return undefined;
   const latest: unknown = Reflect.get(meta, "latest");
-  return typeof latest === "string" ? latest : undefined;
+  const versions: unknown = Reflect.get(meta, "versions");
+  if (versions === null || typeof versions !== "object") {
+    return typeof latest === "string" ? latest : undefined;
+  }
+  // A package that has only ever published prereleases has one as its
+  // `latest`; only then do prereleases count.
+  const prereleases = typeof latest === "string" && latest.includes("-");
+  let best: string | null = null;
+  for (const [version, info] of Object.entries(versions)) {
+    if (!VERSION_CORE.test(version)) continue;
+    if (!prereleases && version.includes("-")) continue;
+    if (info === null || typeof info !== "object") continue;
+    if (Reflect.get(info, "yanked") === true) continue;
+    // A missing or unparsable date is NaN, which fails the comparison: a
+    // release whose age is unknown is not assumed old enough.
+    const created = Date.parse(String(Reflect.get(info, "createdAt")));
+    if (!(now - created >= MINIMUM_RELEASE_AGE_MS)) continue;
+    if (best === null || isBehind(best, version)) best = version;
+  }
+  return best;
 }
 
 /**
@@ -180,7 +221,7 @@ export async function findOutdated(
   const registry = options.registry ?? JSR_REGISTRY;
   const behind: OutdatedPackage[] = [];
   const unchecked: UncheckedPackage[] = [];
-  const answers = new Map<string, string | Error>();
+  const answers = new Map<string, string | null | Error>();
   for (const entry of lockedJsrSpecifiers(lockText)) {
     let answer = answers.get(entry.name);
     if (answer === undefined) {
@@ -198,7 +239,8 @@ export async function findOutdated(
       }
       continue;
     }
-    if (!isBehind(entry.resolved, answer)) continue;
+    // `null`: every newer release is still too young for Deno to install.
+    if (answer === null || !isBehind(entry.resolved, answer)) continue;
     // Once per package and resolved version: every wrapper depends on its
     // own range of core, and a dozen ranges resolving one version are one
     // package to move, not twelve. Ranges resolving different versions stay
@@ -217,7 +259,8 @@ export async function findOutdated(
 }
 
 /**
- * The registry's latest version for `name`, or the reason there is none.
+ * The newest version of `name` Deno would install, `null` when every release
+ * is still too young, or the reason there is no answer.
  *
  * An `Error` rather than `undefined`: a transport failure and a 404 are both
  * "no answer", and the difference between them is exactly what the caller has
@@ -228,14 +271,14 @@ async function readLatest(
   registry: string,
   name: string,
   fetchImpl?: typeof fetch,
-): Promise<string | Error> {
+): Promise<string | null | Error> {
   try {
     const meta = await httpJson<unknown>(
       `${registry}/${name}/meta.json`,
       fetchImpl === undefined ? {} : { fetch: fetchImpl },
     );
-    const latest = latestOf(meta);
-    return latest ?? new Error(
+    const latest = installableLatest(meta, Date.now());
+    return latest !== undefined ? latest : new Error(
       "the registry's meta.json carries no latest version",
     );
   } catch (error) {

@@ -399,3 +399,76 @@ Deno.test("formatOutdated names what it could not check, however the run went", 
   });
   assertEquals(many.includes("2 packages could not be checked:"), true);
 });
+
+/** A `fetch` answering every `meta.json` with `meta`. */
+function metaFetch(meta: unknown): typeof fetch {
+  return () => Promise.resolve(new Response(JSON.stringify(meta)));
+}
+
+/** An ISO timestamp `hours` before now. */
+function hoursAgo(hours: number): string {
+  return new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+}
+
+Deno.test("findOutdated targets the newest release Deno would install", async () => {
+  await withTemp(async (dir) => {
+    const lockPath = await lockWith(dir, { "jsr:@zuke/core@^1": "1.1.0" });
+    // Deno refuses releases younger than 24h by default, so the registry's
+    // `latest` (1.3.0, an hour old) is not one a lock can move to — and
+    // neither is a yanked release, a prerelease, or one of unknown age.
+    const { behind, unchecked } = await findOutdated({
+      lockPath,
+      registry: "https://registry.test",
+      fetch: metaFetch({
+        latest: "1.3.0",
+        versions: {
+          "1.1.0": { createdAt: hoursAgo(100) },
+          "1.2.0": { createdAt: hoursAgo(48) },
+          "1.3.0": { createdAt: hoursAgo(1) },
+          "1.4.0": { createdAt: hoursAgo(72), yanked: true },
+          "1.5.0-rc.1": { createdAt: hoursAgo(72) },
+          "1.6.0": {},
+          "1.7.0": null,
+        },
+      }),
+    });
+    assertEquals(unchecked, []);
+    assertEquals(behind.map((p) => p.latest), ["1.2.0"]);
+  });
+});
+
+Deno.test("findOutdated is silent when every newer release is too young", async () => {
+  await withTemp(async (dir) => {
+    const lockPath = await lockWith(dir, { "jsr:@zuke/core@1.66.0": "1.66.0" });
+    const report = await findOutdated({
+      lockPath,
+      registry: "https://registry.test",
+      fetch: metaFetch({
+        latest: "1.67.0",
+        versions: {
+          "1.66.0": { createdAt: hoursAgo(10) },
+          "1.67.0": { createdAt: hoursAgo(7) },
+        },
+      }),
+    });
+    assertEquals(report, { behind: [], unchecked: [] });
+  });
+});
+
+Deno.test("findOutdated still compares a prerelease-only package", async () => {
+  await withTemp(async (dir) => {
+    const lockPath = await lockWith(dir, { "jsr:@x/alpha@*": "0.1.0-alpha.1" });
+    const { behind } = await findOutdated({
+      lockPath,
+      registry: "https://registry.test",
+      fetch: metaFetch({
+        latest: "0.2.0-alpha.1",
+        versions: {
+          "0.1.0-alpha.1": { createdAt: hoursAgo(100) },
+          "0.2.0-alpha.1": { createdAt: hoursAgo(48) },
+        },
+      }),
+    });
+    assertEquals(behind.map((p) => p.latest), ["0.2.0-alpha.1"]);
+  });
+});

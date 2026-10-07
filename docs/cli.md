@@ -384,6 +384,19 @@ graph. And Deno caches the registry's version listing, so without
 about — landing one release behind, silently, which is the failure this command
 exists to prevent.
 
+"Latest" means the newest release Deno would actually install. Deno refuses
+releases younger than 24 hours by default (`minimumDependencyAge`), so a version
+published this morning is not reported, and is not a target for `--update`,
+until it is a day old. Yanked releases never are, and prereleases only for a
+package that has published nothing else.
+
+The lock is only re-resolved from this build's entrypoint. If the same
+`deno.lock` also serves another module graph — a workspace member's own build,
+say — packages only that graph reaches are never rewritten. `--update` checks
+that every package which depended on a dropped one depends on it again, and
+restores the lock and names the missing link if one does not, rather than
+leaving a lock that build's `--frozen` run would reject.
+
 If you would rather do it by hand, deleting the whole lock also works, with one
 caveat: in a repo that also has a `package.json`, resolving afresh walks the
 whole npm tree and writes an `npm` section a jsr-only lock never had.

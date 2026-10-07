@@ -310,3 +310,41 @@ Deno.test("outdated lists a package once, however many wrappers pin it", async (
   assertEquals(coreLines.length, 1, out);
   assertEquals(out.includes("2 packages are behind"), true, out);
 });
+
+Deno.test("outdated does not offer a release Deno is still too young to install", async () => {
+  // Deno refuses releases under 24h old by default; offering one sends
+  // `--update` into a resolution that cannot succeed.
+  const dir = await Deno.makeTempDir();
+  try {
+    const lockPath = `${dir}/deno.lock`;
+    await Deno.writeTextFile(
+      lockPath,
+      JSON.stringify({
+        version: "5",
+        specifiers: { "jsr:@zuke/core@^1": "1.66.0" },
+      }),
+    );
+    const hour = 60 * 60 * 1000;
+    const meta = {
+      latest: "1.67.0",
+      versions: {
+        "1.66.0": { createdAt: new Date(Date.now() - 48 * hour).toISOString() },
+        "1.67.0": { createdAt: new Date(Date.now() - hour).toISOString() },
+      },
+    };
+    const { code, out } = await runCli(OutdatedBuild, [
+      "outdated",
+      "--exit-code",
+    ], {
+      outdatedOptions: {
+        lockPath,
+        registry: "https://registry.test",
+        fetch: () => Promise.resolve(new Response(JSON.stringify(meta))),
+      },
+    });
+    assertEquals(code, 0);
+    assertEquals(out.includes("at its latest release"), true);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
