@@ -231,7 +231,15 @@ async function launcherAt(
   // through another directory could be re-pointed by whoever writes there,
   // after the check. Rather than judge every hop, a chain gets the launcher's
   // own `deno run` — the right project, and only files the gate judged.
-  const target = link.startsWith("/") ? absolutePath(link) : root(link);
+  //
+  // A relative link is read against the root's real path, not the root as
+  // written: the root's own ancestors are not judged (macOS's `/var` is a link
+  // to `/private/var`, so every temp directory is reached through one), while
+  // any link inside the target — the hops that matter — still leaves the
+  // lexical path short of the real one, and falls back.
+  const target = link.startsWith("/")
+    ? absolutePath(link)
+    : absolutePath(await probe.realPath(root.path))(link);
   return target.path === real ? path : null;
 }
 

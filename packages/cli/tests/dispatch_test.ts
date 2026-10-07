@@ -378,6 +378,24 @@ Deno.test("a symlinked launcher runs by its root path only as one hop to the jud
     probe(fixture("../shared/zuke")),
   );
   assertEquals(relative?.launcher, "/w/app/zuke");
+  // Reached through a linked ancestor (macOS's /var -> /private/var), a
+  // relative link is read against the root's real path, so it still counts
+  // as one hop.
+  const linkedRoot: Fixture = {
+    present: ["/var/w/app/zuke.json"],
+    owned: {
+      "/var/w/app/zuke": ownedBy(1000, fileMode(0o755)),
+      "/private/var/w/shared": ownedBy(1000),
+    },
+    uid: 1000,
+    links: {
+      "/var/w/app": "/private/var/w/app",
+      "/var/w/app/zuke": "/private/var/w/shared/zuke",
+    },
+    written: { "/var/w/app/zuke": "../shared/zuke" },
+  };
+  const viaLinkedRoot = await locateBuild("/var/w/app", probe(linkedRoot));
+  assertEquals(viaLinkedRoot?.launcher, "/var/w/app/zuke");
   // A chain through another directory: whoever writes that directory could
   // re-point its hop after the check, so the run falls back to `deno run`.
   const chain = await locateBuild("/w/app", probe(fixture("/hop/link")));
