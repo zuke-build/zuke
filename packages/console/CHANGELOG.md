@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/zuke-build/zuke/compare/console-v1.4.0...console-v1.5.0) (2026-10-07)
+
+
+### Features
+
+* **cli:** rich global-CLI output and a lock-based zuke --version ([#741](https://github.com/zuke-build/zuke/issues/741)) ([91f6916](https://github.com/zuke-build/zuke/commit/91f6916fcd5d2729723527a68b7143de441f641d))
+
 ## [1.4.0](https://github.com/zuke-build/zuke/compare/console-v1.3.0...console-v1.4.0) (2026-09-21)
 
 
