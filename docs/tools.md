@@ -95,7 +95,7 @@ actually spawn (the resolved shim or the bare fallback) for diagnostics.
 | `@zuke/husky`          | `init`, `install`                                                                                                                                                                   |
 | `@zuke/node`           | `run`, `eval`, `test`, `evaluate`                                                                                                                                                   |
 | `@zuke/dprint`         | `fmt`, `check`                                                                                                                                                                      |
-| `@zuke/gcloud`         | `run` (any command; typed `containerImagesAddTag` / `sqlInstancesDescribe` / `sqlOperationsWait`), plus `GcsTasks` and `SecretManagerTasks` REST groups                             |
+| `@zuke/gcloud`         | typed `run`/`logging`/`monitoring` tasks, value readers, `GcsTasks`/`SecretManagerTasks`/`CloudMonitoringTasks` REST groups, `cloudMonitoring(...)` canary analysis                 |
 | `@zuke/aws`            | typed `s3`/`ecr`/`ecs`/`lambda`/`cloudformation`/`ssm`/`eks`/`cloudwatch`/`logs` tasks, value readers, `cloudwatch(...)` canary analysis                                            |
 | `@zuke/az`             | typed `acr`/`aks`/`containerapp`/`webapp`/`keyvault`/`deployment`/`storage`/`monitor` tasks, value readers, `azureMonitor(...)` canary analysis                                     |
 | `@zuke/git`            | `init`, `clone`, `add`, `commit`, `status`, `checkout`, `branch`, `tag`, `push`, `pull`, `fetch`, `run` (+ `gitInfo()` helper)                                                      |

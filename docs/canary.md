@@ -934,8 +934,7 @@ class Deploy extends Build {
           .metricLabel("response_code_class", "5xx")
           .alignmentPeriod("60s").perSeriesAligner("ALIGN_SUM")
           .crossSeriesReducer("REDUCE_SUM")
-          .window("10m").max(5).missingDataAs(0)
-          .gcloud((g) => g.project("my-project"))
+          .window("5m").max(5).missingDataAs(0)
       ))
   );
 
@@ -945,25 +944,39 @@ class Deploy extends Build {
 await run(Deploy);
 ```
 
-| Setting                                                        | Meaning                                                                                                                                                                                                  |
-| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `metricType`, `resourceType`, `resourceLabel`, `metricLabel`   | The metric, built into a Monitoring filter: each value quoted, and refused when it holds a `"` or `\`, which the filter language documents no escape for. `filter(text)` adds raw text, joined by `AND`. |
-| `cloudRunCandidate(service, region)`                           | Before each check, read the service's latest created revision — the one `cloudRunCanary` staged — and narrow the read to it by `service_name` and `revision_name`.                                       |
-| `alignmentPeriod`, `perSeriesAligner`, `crossSeriesReducer`    | The aggregation. Every aligned point is judged, so `.max(5)` on a per-minute `ALIGN_SUM` means no minute with more than five. A reducer needs an aligner, and an aligner needs a period (60 s or more).  |
-| `window(duration)`                                             | How far back to read (default `5m`), no shorter than the alignment period. It ends at the last period boundary, so the period still being written is not judged.                                         |
-| `maxPages(n)`                                                  | The most pages to read (default 100). A read with pages left over fails rather than be judged in part.                                                                                                   |
-| `logEntries((l) => …)`                                         | Judge the number of log entries a Cloud Logging filter matches over the window instead, read with `gcloud logging read` — ids only, no payloads — counting at most `.limit(n)` (default 1000).           |
-| `min(value)`, `max(value)`                                     | The bounds, inclusive. At least one is required.                                                                                                                                                         |
-| `missingDataAs(value)`                                         | What no data means. Cloud Monitoring writes no point for a minute with no requests, so for an error count, `0`; by default no data fails.                                                                |
-| `project`, `token`, `tokenProvider`, `gcloud((g) => …)`, `now` | Where and as whom: the project, the bearer token (by default `gcloud auth print-access-token`, run with the `.gcloud(...)` flags, which also run the revision and log reads), and the clock.             |
+| Setting                                                        | Meaning                                                                                                                                                                                                                                                                                                                |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `metricType`, `resourceType`, `resourceLabel`, `metricLabel`   | The metric, built into a Monitoring filter: each value quoted, and refused when it holds a `"` or `\`, which the filter language documents no escape for. `filter(text)` adds raw text, joined by `AND`.                                                                                                               |
+| `cloudRunCandidate(service, region)`                           | Before each check, read the service's latest created revision — the one `cloudRunCanary` staged — in the analysis's `project`, and narrow the read to it by `service_name`, `revision_name` and, with a region, `location`.                                                                                            |
+| `alignmentPeriod`, `perSeriesAligner`, `crossSeriesReducer`    | The aggregation. Every aligned point is judged, so `.max(5)` on a per-minute `ALIGN_SUM` means no minute with more than five. A reducer needs an aligner, and an aligner needs a period (60 s or more). A `CUMULATIVE` metric is refused unless `ALIGN_DELTA` or `ALIGN_RATE` turns its running totals into increases. |
+| `window(duration)`, `delay(duration)`                          | How far back to read (default `5m`, no shorter than the alignment period), ending `delay` before now (default `2m`) and then at the last period boundary.                                                                                                                                                              |
+| `maxPages(n)`                                                  | The most pages to read (default 100). A read with pages left over fails rather than be judged in part.                                                                                                                                                                                                                 |
+| `logEntries((l) => …)`                                         | Judge the number of log entries a Cloud Logging filter matches over the window instead, read with `gcloud logging read` — ids only, no payloads — counting at most `.limit(n)` (default 1000). The metric-only settings are refused beside it.                                                                         |
+| `min(value)`, `max(value)`                                     | The bounds, inclusive. At least one is required.                                                                                                                                                                                                                                                                       |
+| `missingDataAs(value)`                                         | What no data means. By default no data fails. See below before setting `0`.                                                                                                                                                                                                                                            |
+| `project`, `token`, `tokenProvider`, `gcloud((g) => …)`, `now` | Where and as whom: the project, the bearer token (by default `gcloud auth print-access-token`, run with the `.gcloud(...)` flags, which also run the revision and log reads), and the clock.                                                                                                                           |
 
-Cloud Run samples its request count every 60 seconds and the point can take a
-couple of minutes to become visible, so the newest minute in the window can
-still be short of data — harmless for a `max`, but a `min` on a count can fail
-on the lag rather than on the candidate. `.cloudRunCandidate(...)` reads the
-latest created revision, which is the candidate while the rollout runs; a
-revision someone else deploys mid-rollout would be read instead, and
-`cloudRunCanary`'s promote refuses that case before moving any traffic.
+Google's metrics list says Cloud Run's request metrics are sampled every 60
+seconds and "not visible for up to 120 seconds" after that, so the window ends
+two minutes back by default (`.delay(...)` changes it): judging the minutes that
+have not arrived yet would judge nothing, and the newest one could hold only
+part of its requests.
+
+**No data passes with `.missingDataAs(0)`.** Cloud Monitoring writes no point
+for a minute with no 5xx responses, so an error count needs it — but a candidate
+that served no traffic in the window, or a filter that matches nothing, has no
+points either, and passes the same way. Keep the window inside the time the
+candidate has had traffic: bake for at least the window plus the delay before
+each analysis, and pair the check with one that fails on no traffic — an
+`httpProbe`, or a second `cloudMonitoring` on the candidate's total
+`request_count` with a `.min(...)` and no `missingDataAs`.
+
+`.cloudRunCandidate(...)` reads the latest created revision, which is the
+candidate while the rollout runs; a revision someone else deploys mid-rollout
+would be read instead, and `cloudRunCanary`'s promote refuses that case before
+moving any traffic. In log mode the read runs in the analysis's `project` when
+one is set, and otherwise in gcloud's configured project; a metric read falls
+back to `GOOGLE_CLOUD_PROJECT` instead.
 
 The default token comes from `gcloud`, which must be installed and authenticated
 on the runner. Failure messages pass through the run's redactor, and none
