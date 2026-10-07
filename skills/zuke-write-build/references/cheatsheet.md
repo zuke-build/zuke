@@ -745,6 +745,7 @@ the full task list and settings methods of each):
 | `@zuke/ai`                                                                                                                                          | `securityReviewer`, ..., `aiFixer`, `agentFixer`                     | AI review gates + self-healing (see below)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `@zuke/otel`                                                                                                                                        | `otel` (a plugin)                                                    | export runs and targets as OpenTelemetry traces (see below)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `@zuke/canary`                                                                                                                                      | `canary` (a component), `httpProbe`, `prometheus`, `metricThreshold` | canary releases — stage, step exposure up under analysis, approve, promote, with one `abort` on every failure path (see below)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `@zuke/prometheus`                                                                                                                                  | `PrometheusTasks`                                                    | the Prometheus HTTP API — `query`/`queryRange` with typed vector/matrix/scalar/string results (NaN and infinities parsed, native histograms typed, `warnings`/`infos` kept), `series`, `labels`, `labelValues`, `metadata`, `targets`, `rules`, `alerts`, `buildInfo`, the `healthy`/`ready` probes, and the `value`/`samples` readers a gate needs (see below)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 The catalog keeps growing — the package list in `llms.txt`'s `## Packages`
 catalogue (or the table above) is the source of truth for **whether a wrapper
@@ -1319,6 +1320,60 @@ await run(MyBuild, {
   collector never fails the build); the record is **secret-free**. No runtime
   deps. See `docs/observability.md`.
 
+## Prometheus — `@zuke/prometheus`
+
+`PrometheusTasks` is the Prometheus HTTP API, one task per endpoint, each
+configured by a lambda that sets the connection and the call's parameters (the
+API's own names: `time`, `timeout`, `limit`, `lookbackDelta`, `start`, `end`,
+`step`, `match`, …).
+
+```ts
+import {
+  type PrometheusConnectionSettings,
+  PrometheusTasks,
+} from "@zuke/prometheus";
+
+// Share the connection half across calls as a generic function.
+const prod = <S extends PrometheusConnectionSettings>(s: S) =>
+  s.url("https://prometheus.internal").bearerToken(token);
+
+const ratio = PrometheusTasks.value(
+  await PrometheusTasks.query((s) =>
+    prod(s).query("sum(rate(errors[5m])) / sum(rate(requests[5m]))")
+  ),
+); // one number: a scalar, or a vector of exactly one float sample
+const perJob = PrometheusTasks.samples(
+  await PrometheusTasks.query((s) => prod(s).query("up")),
+); // [{ metric, timestamp, value }, …]
+const ready = await PrometheusTasks.ready(prod); // true / false (503)
+```
+
+- Results are typed unions on `resultType`; sample values are numbers (`NaN`,
+  `±Infinity` kept); native histograms are typed; `warnings`/`infos` always
+  present.
+- `query`/`queryRange`/`series`/`labels` send a `POST` form by default
+  (`.httpMethod("GET")` for a GET-only proxy).
+- A refusal is `PrometheusApiError` (`status`, `errorType`, `detail`); no usable
+  answer is `PrometheusRequestError`. Neither carries a credential.
+- A URL sent any credential must be `https:` unless loopback
+  (`ZUKE_ALLOW_INSECURE_URL` opts out); an unauthenticated in-cluster
+  `http://prometheus.monitoring.svc:9090` is fine, and so is a plain
+  `header("X-Scope-OrgID", …)` (only `Authorization`/`Proxy-Authorization`/
+  `Cookie` and credential-looking names like `X-API-Key` count as credentials).
+  Auth: `bearerToken`, `basicAuth`, `secretHeader` (API keys), or
+  `credentials(fn)` — `fn` gets the exact outgoing request (method, URL,
+  headers, body bytes) and the `readEnv`/`readTextFile`/`now`/`fetch` seams, and
+  returns headers to add.
+- Managed services, no cloud CLI: `.google((g) => …)` (Application Default
+  Credentials — service-account key, gcloud login, workload identity federation,
+  or the metadata server; `scopes`, `credentialsFile`, `quotaProject`),
+  `.azure((a) => …)` (Entra ID — client secret, workload identity or managed
+  identity from the `AZURE_*` env, or chosen with
+  `clientSecret()`/`workloadIdentity()`/`managedIdentity()`), and
+  `.sigv4((a) => a.region(…))` (AWS SigV4 for `aps` — env keys, profile, web
+  identity, ECS/EKS container endpoint, IMDSv2; put it last). Tokens are cached
+  until shortly before expiry; errors never carry the secret.
+
 ## Canary releases — `@zuke/canary`
 
 A component: `canary((c) => …)` assigned to a field stamps out the rollout's
@@ -1360,6 +1415,11 @@ class Deploy extends Build {
   `zuke cancel <run-id>` for a rollout still running or parked.
 - Analyses are any `Validation`; a canary-aware one reads `ctx.step`,
   `ctx.requested`, `ctx.exposure`. See `docs/canary.md`.
+- A managed Prometheus:
+  `prometheus((p) => p.url(AMP).query(Q).max(0.01)
+  .connection((c) => c.sigv4((a) => a.region("us-east-1"))))`
+  — `connection` takes `@zuke/prometheus`'s settings (`google()`, `azure()`,
+  `sigv4()`, …).
 - **Cloud Run:**
   `c.platform(cloudRunCanary((r) => r.service("api")
   .region("europe-west1").image(this.image.value).gcloud((g) => g.project(p))))`

@@ -5,15 +5,26 @@
  * `prometheus(...)`: run an instant PromQL query and fail the canary when any
  * sample is out of bounds.
  *
+ * The query goes through `@zuke/prometheus`, so there is one Prometheus
+ * transport: its URL guard, credential redaction, response cap and result
+ * parsing apply here exactly as they do to any build's own query. What stays
+ * in this module is the analysis — the settings a rollout names, the bounds,
+ * and the failure messages a canary has always reported.
+ *
  * @module
  */
 
 import { parseDuration, redactUrls } from "@zuke/core";
 import type { Configure } from "@zuke/core/tooling";
+import {
+  PrometheusApiError,
+  type PrometheusConnectionSettings,
+  type PrometheusQuerySettings,
+  PrometheusTasks,
+} from "@zuke/prometheus";
 import { boundsOf, checkThreshold } from "./threshold.ts";
 import type { CanaryAnalysis } from "./types.ts";
 import { messageOf } from "./message.ts";
-import { requestSignal } from "./request.ts";
 
 /** How long a query may take when no timeout is set. */
 const DEFAULT_TIMEOUT = 30_000;
@@ -36,6 +47,8 @@ export class PrometheusSettings {
   timeout_: number = DEFAULT_TIMEOUT;
   /** The `fetch` to use (set by {@link fetch}); the global one by default. */
   fetch_: typeof fetch = fetch;
+  /** Further connection settings (set by {@link connection}). */
+  connection_: Configure<PrometheusConnectionSettings> = (s) => s;
 
   /** What to call the query when it fails. */
   name(name: string): this {
@@ -70,7 +83,14 @@ export class PrometheusSettings {
     return this;
   }
 
-  /** Add a request header — `header("Authorization", `Bearer ${token}`)`. */
+  /**
+   * Add a request header — `header("X-Scope-OrgID", tenant)`, or
+   * `header("Authorization", `Bearer ${token}`)`. As in `@zuke/prometheus`,
+   * a plain header such as a tenant id leaves an in-cluster `http://` URL
+   * usable, while `Authorization`, `Proxy-Authorization`, `Cookie` and a
+   * credential-looking name (`X-API-Key`, `X-Auth-Token`) are credentials and
+   * need `https:` (unless loopback, or `ZUKE_ALLOW_INSECURE_URL` is set).
+   */
   header(name: string, value: string): this {
     this.headers_[name] = value;
     return this;
@@ -87,6 +107,27 @@ export class PrometheusSettings {
     this.fetch_ = fetcher;
     return this;
   }
+
+  /**
+   * Configure the rest of the connection with `@zuke/prometheus`'s own
+   * settings — the managed services' credentials, an API-key header, a
+   * response cap:
+   *
+   * ```ts
+   * prometheus((p) =>
+   *   p.url("https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-1")
+   *     .query(ERROR_RATIO).max(0.01)
+   *     .connection((c) => c.sigv4((a) => a.region("us-east-1")))
+   * )
+   * ```
+   *
+   * Applied after `url`, `header`, `timeout` and `fetch`, so a request
+   * signer configured here signs the headers set above.
+   */
+  connection(configure: Configure<PrometheusConnectionSettings>): this {
+    this.connection_ = configure;
+    return this;
+  }
 }
 
 /**
@@ -101,9 +142,20 @@ export class PrometheusSettings {
  * )
  * ```
  *
- * The lambda runs on each check, so it may read resolved parameters. Failure
+ * The lambda runs on each check, so it may read resolved parameters. The query
+ * is sent by `PrometheusTasks.query` from `@zuke/prometheus`, as a `GET` with
+ * the expression in the URL — as this analysis always has. A URL sent a
+ * credential must be `https:` unless it is loopback (or
+ * `ZUKE_ALLOW_INSECURE_URL` is set). A credential is an `Authorization`,
+ * `Proxy-Authorization` or `Cookie` header, a header whose name looks like a
+ * credential's (`X-API-Key`, `X-Auth-Token`), `user:password@` or a credential
+ * parameter in the URL, or anything set through `connection(...)` — a
+ * `secretHeader(...)`, `sigv4()`, `google()`, `azure()`. Any other header,
+ * such as an `X-Scope-OrgID` tenant id, leaves an in-cluster
+ * `http://prometheus.monitoring.svc:9090` usable. Failure
  * messages pass through the run's redactor, so a secret parameter in the URL
- * or the query is masked.
+ * or the query is masked, and a header value (eight or more characters) never
+ * appears in them.
  */
 export function prometheus(
   configure: Configure<PrometheusSettings>,
@@ -125,19 +177,20 @@ export function prometheus(
         new Error(redactUrls(context.redact(detail)));
       let samples: number[];
       try {
-        const response = await settings.fetch_(queryUrl(base, promql), {
-          headers: settings.headers_,
-          signal: requestSignal(settings.timeout_, context.signal),
-        });
-        const text = await response.text();
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}${errorOf(parsed(text))}`);
+        const response = await PrometheusTasks.query((q) =>
+          connect(q, base, settings, context.signal).query(promql)
+        );
+        samples = PrometheusTasks.samples(response).map((s) => s.value);
+        if (samples.length === 0) {
+          throw new Error(
+            "the query returned no samples — append `or vector(0)` if no " +
+              "data means healthy",
+          );
         }
-        samples = samplesOf(JSON.parse(text));
       } catch (error) {
         // The run's own cancellation is not the candidate's failure.
         context.signal?.throwIfAborted();
-        throw fail(`${settings.name_} could not be read: ${messageOf(error)}`);
+        throw fail(`${settings.name_} could not be read: ${reasonOf(error)}`);
       }
       for (const value of samples) {
         try {
@@ -150,70 +203,36 @@ export function prometheus(
   };
 }
 
-/** The numeric samples of a successful instant-query response. */
-function samplesOf(body: unknown): number[] {
-  const data = field(body, "data");
-  const kind = field(data, "resultType");
-  const result = field(data, "result");
-  if (field(body, "status") !== "success") {
-    throw new Error(`query failed${errorOf(body)}`);
+/**
+ * The query's connection, from the analysis settings: the URL, the headers,
+ * the timeout, the `fetch` seam, and the run's signal. Sent as `GET`, which is
+ * what this analysis has always sent — a proxy in front of Prometheus that
+ * only passes `GET` keeps working.
+ */
+function connect(
+  query: PrometheusQuerySettings,
+  base: string,
+  settings: PrometheusSettings,
+  signal: AbortSignal | undefined,
+): PrometheusQuerySettings {
+  query.url(base).httpMethod("GET")
+    .requestTimeout(settings.timeout_).fetch(settings.fetch_);
+  for (const [name, value] of Object.entries(settings.headers_)) {
+    query.header(name, value);
   }
-  if (kind === "scalar") return [valueOf(result)];
-  if (kind !== "vector" || !Array.isArray(result)) {
-    throw new Error(`expected a vector or scalar result, got ${String(kind)}`);
-  }
-  if (result.length === 0) {
-    throw new Error(
-      "the query returned no samples — append `or vector(0)` if no data " +
-        "means healthy",
-    );
-  }
-  return result.map((sample) => valueOf(field(sample, "value")));
+  settings.connection_(query);
+  return signal === undefined ? query : query.signal(signal);
 }
 
 /**
- * The number in a Prometheus `[timestamp, "value"]` pair. Prometheus writes
- * infinities as `+Inf`/`-Inf`, which `Number` does not read; `NaN` stays NaN
- * and fails the check — a ratio over no traffic (0/0) is NaN, so guard such a
- * query (`… and on() sum(rate(requests[5m])) > 0`, or `or vector(0)`).
+ * Why the query could not be read, in the words this analysis has always
+ * used: `HTTP <status>: <error>` for a refusal, `query failed: <error>` for an
+ * error envelope that came with a 2xx, and the message for anything else.
  */
-function valueOf(pair: unknown): number {
-  if (!Array.isArray(pair) || typeof pair[1] !== "string") {
-    throw new Error("a sample has no [timestamp, value] pair");
-  }
-  if (pair[1] === "+Inf") return Number.POSITIVE_INFINITY;
-  if (pair[1] === "-Inf") return Number.NEGATIVE_INFINITY;
-  return Number(pair[1]);
-}
-
-/**
- * The instant-query URL under `base`, keeping any path or query string it
- * already has (a tenant parameter, a proxy prefix).
- */
-function queryUrl(base: string, promql: string): string {
-  const url = new URL(base);
-  url.pathname = `${url.pathname.replace(/\/+$/, "")}/api/v1/query`;
-  url.searchParams.set("query", promql);
-  return url.href;
-}
-
-/** `text` parsed as JSON, or `undefined` when it is not JSON (an HTML error page). */
-function parsed(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return undefined;
-  }
-}
-
-/** `": <error>"` from a Prometheus error body, or nothing. */
-function errorOf(body: unknown): string {
-  const error = field(body, "error");
-  return typeof error === "string" ? `: ${error}` : "";
-}
-
-/** `value[key]` when `value` is an object, else `undefined`. */
-function field(value: unknown, key: string): unknown {
-  if (typeof value !== "object" || value === null) return undefined;
-  return Object.getOwnPropertyDescriptor(value, key)?.value;
+function reasonOf(error: unknown): string {
+  if (!(error instanceof PrometheusApiError)) return messageOf(error);
+  const detail = error.detail === undefined ? "" : `: ${error.detail}`;
+  return error.status >= 200 && error.status < 300
+    ? `query failed${detail}`
+    : `HTTP ${error.status}${detail}`;
 }

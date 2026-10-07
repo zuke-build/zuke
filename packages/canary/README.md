@@ -139,9 +139,20 @@ function prometheus(configure: Configure<PrometheusSettings>): CanaryAnalysis
   )
   ```
 
-  The lambda runs on each check, so it may read resolved parameters. Failure
+  The lambda runs on each check, so it may read resolved parameters. The query
+  is sent by `PrometheusTasks.query` from `@zuke/prometheus`, as a `GET` with
+  the expression in the URL — as this analysis always has. A URL sent a
+  credential must be `https:` unless it is loopback (or
+  `ZUKE_ALLOW_INSECURE_URL` is set). A credential is an `Authorization`,
+  `Proxy-Authorization` or `Cookie` header, a header whose name looks like a
+  credential's (`X-API-Key`, `X-Auth-Token`), `user:password@` or a credential
+  parameter in the URL, or anything set through `connection(...)` — a
+  `secretHeader(...)`, `sigv4()`, `google()`, `azure()`. Any other header,
+  such as an `X-Scope-OrgID` tenant id, leaves an in-cluster
+  `http://prometheus.monitoring.svc:9090` usable. Failure
   messages pass through the run's redactor, so a secret parameter in the URL
-  or the query is masked.
+  or the query is masked, and a header value (eight or more characters) never
+  appears in them.
 
 class CanarySettings
   How a canary rolls out, configured through `canary((c) => …)`:
@@ -287,6 +298,8 @@ class PrometheusSettings
     The request timeout in ms (set by {@link timeout}).
   fetch_: typeof fetch
     The `fetch` to use (set by {@link fetch}); the global one by default.
+  connection_: Configure<PrometheusConnectionSettings>
+    Further connection settings (set by {@link connection}).
   name(name: string): this
     What to call the query when it fails.
   url(url: string): this
@@ -299,11 +312,31 @@ class PrometheusSettings
   max(value: number): this
     Fail when any sample is above `value`.
   header(name: string, value: string): this
-    Add a request header — `header("Authorization", `Bearer ${token}`)`.
+    Add a request header — `header("X-Scope-OrgID", tenant)`, or
+    `header("Authorization", `Bearer ${token}`)`. As in `@zuke/prometheus`,
+    a plain header such as a tenant id leaves an in-cluster `http://` URL
+    usable, while `Authorization`, `Proxy-Authorization`, `Cookie` and a
+    credential-looking name (`X-API-Key`, `X-Auth-Token`) are credentials and
+    need `https:` (unless loopback, or `ZUKE_ALLOW_INSECURE_URL` is set).
   timeout(duration: string | number): this
     How long the query may take (`"10s"`, or ms; default 30 s).
   fetch(fetcher: typeof fetch): this
     The `fetch` to use — the seam a test answers queries through.
+  connection(configure: Configure<PrometheusConnectionSettings>): this
+    Configure the rest of the connection with `@zuke/prometheus`'s own
+    settings — the managed services' credentials, an API-key header, a
+    response cap:
+
+    ```ts
+    prometheus((p) =>
+      p.url("https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-1")
+        .query(ERROR_RATIO).max(0.01)
+        .connection((c) => c.sigv4((a) => a.region("us-east-1")))
+    )
+    ```
+
+    Applied after `url`, `header`, `timeout` and `fetch`, so a request
+    signer configured here signs the headers set above.
 
 interface Canary
   The targets `canary(...)` creates. Assigned to a build field — `rollout = canary(…)` — they are named under it: `rollout.stage`, `rollout.step1.expose`,

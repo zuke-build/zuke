@@ -1,0 +1,300 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
+/**
+ * The one way a built-in credential source talks to a token endpoint — an
+ * OAuth server, a cloud metadata service, STS — and the one rule for which
+ * plaintext endpoints it may use.
+ *
+ * Every token request the Google, Azure and AWS sources make goes through
+ * {@link authRequest}, so each guard is applied to all of them: the endpoint
+ * check, redirects never followed, the response size cap, the caller's
+ * timeout and cancellation, and an error that names the provider and the step
+ * but never the secret, assertion or token involved.
+ *
+ * @module
+ */
+
+import { assertSecureBackendUrl, readBytesBounded, Redactor } from "@zuke/core";
+import {
+  type PrometheusCredentialsContext,
+  registerSecrets,
+} from "./credentials.ts";
+import { messageOf } from "./message.ts";
+import { refusedRedirect, scrub } from "./scrub.ts";
+import { isRecord, own } from "./shape.ts";
+
+/** The largest token-endpoint answer read: a token response is a few KiB. */
+const MAX_AUTH_RESPONSE_BYTES = 1024 * 1024;
+
+/** The longest server-supplied text an error carries. */
+const MAX_DETAIL = 300;
+
+/**
+ * The plaintext endpoints a built-in metadata request — and only such a
+ * request, never a token exchange whose URL came from configuration — may
+ * reach without `ZUKE_ALLOW_INSECURE_URL`: each cloud's link-local metadata
+ * service, which is plaintext by design and reachable only from the machine
+ * itself. Matched on the parsed URL's exact hostname, on port 80 —
+ * `169.254.169.254.evil.com` or `169.254.169.254@evil.com` parse to other
+ * hosts and are not on it.
+ *
+ * - `metadata.google.internal` — the GCE / GKE metadata server.
+ * - `169.254.169.254` — Azure IMDS and EC2 IMDS.
+ * - `169.254.170.2` — the ECS task credentials endpoint.
+ * - `169.254.170.23` and `[fd00:ec2::23]` — the EKS Pod Identity agent.
+ */
+const METADATA_HOSTS: ReadonlySet<string> = new Set([
+  "metadata.google.internal",
+  "169.254.169.254",
+  "169.254.170.2",
+  "169.254.170.23",
+  "[fd00:ec2::23]",
+]);
+
+/** One request to a token endpoint. */
+export interface AuthRequest {
+  /** The HTTP method. */
+  readonly method: "GET" | "POST" | "PUT";
+  /** The absolute URL. */
+  readonly url: string;
+  /** The request headers. */
+  readonly headers: Readonly<Record<string, string>>;
+  /** The body: a form or a JSON document. Absent on a `GET`. */
+  readonly body?: string;
+}
+
+/**
+ * Which plaintext endpoints a step may use beyond core's rule (https, or
+ * loopback):
+ *
+ * - `"metadata"` — the link-local metadata hosts above. Set only by the
+ *   built-in metadata requests: the GCE metadata server, Azure IMDS, EC2
+ *   IMDS, the ECS / EKS container endpoints, and a Google federation
+ *   subject-token `url`.
+ * - `"private"` — those, plus any RFC 1918 or link-local IPv4 address. Set
+ *   only by the Azure App Service identity request, whose `IDENTITY_ENDPOINT`
+ *   is an internal plain-http address on Linux, and which carries the
+ *   platform's SSRF header.
+ *
+ * A step without one — every token exchange that sends a client secret,
+ * refresh token, assertion or subject token — gets core's rule unchanged, so
+ * a configured `token_uri` or authority host on a metadata address is still
+ * refused.
+ */
+export type PlaintextAllowance = "metadata" | "private";
+
+/** Who is asking, for the error message, and what it must never contain. */
+export interface AuthStep {
+  /** The provider, such as `google` or `aws`. */
+  readonly provider: string;
+  /** The step, such as `the token exchange at https://…`. */
+  readonly step: string;
+  /** Every secret the request carries, masked in any error it raises. */
+  readonly secrets: readonly string[];
+  /** The plaintext endpoints this step may use; none when absent. */
+  readonly plaintext?: PlaintextAllowance;
+}
+
+/** Whether `host` is an RFC 1918 private or a link-local IPv4 address. */
+function isPrivateIpv4(host: string): boolean {
+  const octets = /^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/.exec(host);
+  if (octets === null) return false;
+  const [a, b] = [Number(octets[1]), Number(octets[2])];
+  return a === 10 || (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) || (a === 169 && b === 254);
+}
+
+/**
+ * Refuse a plaintext token endpoint, exactly as the Prometheus URL is refused
+ * — except what the step's {@link PlaintextAllowance} admits.
+ */
+function assertAuthEndpoint(
+  raw: string,
+  what: string,
+  readEnv: (name: string) => string | undefined,
+  plaintext: PlaintextAllowance | undefined,
+): void {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error(`${what} is not a valid URL`);
+  }
+  if (url.protocol === "http:" && plaintext !== undefined) {
+    if (url.port === "" && METADATA_HOSTS.has(url.hostname)) return;
+    if (plaintext === "private" && isPrivateIpv4(url.hostname)) return;
+  }
+  assertSecureBackendUrl(raw, what, readEnv);
+}
+
+/** A redactor over `secrets`, registered as any credential header value is. */
+function redactorOf(secrets: readonly string[]): Redactor {
+  const redactor = new Redactor();
+  for (const secret of secrets) registerSecrets(redactor, secret);
+  return redactor;
+}
+
+/**
+ * The part of an error answer worth reporting: OAuth's `error` and
+ * `error_description`, a Google API's `error.message`, an AWS `<Code>` and
+ * `<Message>`, or else the start of the body.
+ */
+function errorDetail(text: string): string {
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    const code = /<Code>([^<]*)<\/Code>/.exec(text);
+    const message = /<Message>([^<]*)<\/Message>/.exec(text);
+    if (code !== null || message !== null) {
+      return [code?.[1], message?.[1]].filter((part) => part !== undefined)
+        .join(": ");
+    }
+    return text;
+  }
+  if (!isRecord(json)) return text;
+  const error = own(json, "error");
+  const description = own(json, "error_description");
+  if (typeof error === "string") {
+    return typeof description === "string" ? `${error}: ${description}` : error;
+  }
+  if (isRecord(error) && typeof own(error, "message") === "string") {
+    return String(own(error, "message"));
+  }
+  return text;
+}
+
+/**
+ * Send one token-endpoint request and return the answer's text when it is a
+ * 2xx. Anything else — a refused endpoint, a network failure, a redirect, a
+ * non-2xx, an answer over the cap — throws an `Error` reading
+ * `<provider>: <step> failed: <why>`, with every secret masked.
+ */
+export async function authRequest(
+  context: PrometheusCredentialsContext,
+  step: AuthStep,
+  request: AuthRequest,
+): Promise<string> {
+  const redactor = redactorOf(step.secrets);
+  const fail = (why: string) =>
+    new Error(
+      `${step.provider}: ${step.step} failed: ${
+        scrub(redactor, why, MAX_DETAIL)
+      }`,
+    );
+  assertAuthEndpoint(
+    request.url,
+    `the ${step.provider} credential endpoint for ${step.step}`,
+    context.readEnv,
+    step.plaintext,
+  );
+  let response: Response;
+  try {
+    response = await context.fetch(request.url, {
+      method: request.method,
+      headers: request.headers,
+      ...(request.body === undefined ? {} : { body: request.body }),
+      signal: context.signal,
+      redirect: "manual",
+    });
+  } catch (error) {
+    throw fail(messageOf(error));
+  }
+  if (await refusedRedirect(response)) {
+    throw fail(`HTTP ${response.status}, a redirect, which is not followed`);
+  }
+  const bytes = await readBytesBounded(response.body, MAX_AUTH_RESPONSE_BYTES);
+  if (bytes === null) {
+    throw fail(`the answer is larger than ${MAX_AUTH_RESPONSE_BYTES} bytes`);
+  }
+  const text = new TextDecoder().decode(bytes);
+  if (!response.ok) {
+    const detail = errorDetail(text);
+    throw fail(`HTTP ${response.status}${detail === "" ? "" : `: ${detail}`}`);
+  }
+  return text;
+}
+
+/**
+ * {@link authRequest}, with the answer parsed as a JSON object. An answer
+ * that is not one fails naming the step (and never quoting the body, which
+ * on a 2xx is where a token would be).
+ */
+export async function authRequestJson(
+  context: PrometheusCredentialsContext,
+  step: AuthStep,
+  request: AuthRequest,
+): Promise<Record<string, unknown>> {
+  const text = await authRequest(context, step, request);
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = undefined;
+  }
+  if (!isRecord(json)) {
+    throw new Error(
+      `${step.provider}: ${step.step} failed: the answer is not a JSON object`,
+    );
+  }
+  return json;
+}
+
+/**
+ * A required string field of a token answer — `access_token`,
+ * `AccessKeyId` — or an error naming the field and the step, never the value
+ * of any other field.
+ */
+export function answerString(
+  answer: Record<string, unknown>,
+  key: string,
+  step: AuthStep,
+): string {
+  const value = own(answer, key);
+  if (typeof value !== "string" || value === "") {
+    throw new Error(
+      `${step.provider}: ${step.step} failed: the answer has no ${key}`,
+    );
+  }
+  return value;
+}
+
+/**
+ * A token answer's lifetime field as seconds — a number, or a numeric string
+ * as Azure's managed-identity endpoints send it — or `undefined` when absent.
+ */
+export function answerSeconds(
+  answer: Record<string, unknown>,
+  key: string,
+  step: AuthStep,
+): number | undefined {
+  const value = own(answer, key);
+  if (value === undefined) return undefined;
+  const seconds = typeof value === "string" && /^\d+$/.test(value)
+    ? Number(value)
+    : value;
+  if (typeof seconds !== "number" || !Number.isFinite(seconds)) {
+    throw new Error(
+      `${step.provider}: ${step.step} failed: the answer's ${key} is not a ` +
+        `number of seconds`,
+    );
+  }
+  return seconds;
+}
+
+/** Read a file through the context, failing with the provider and the path. */
+export async function readAuthFile(
+  context: PrometheusCredentialsContext,
+  provider: string,
+  what: string,
+  path: string,
+): Promise<string> {
+  try {
+    return await context.readTextFile(path);
+  } catch (error) {
+    throw new Error(
+      `${provider}: could not read ${what} at ${path}: ${messageOf(error)}`,
+    );
+  }
+}
