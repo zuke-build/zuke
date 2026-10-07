@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.0](https://github.com/zuke-build/zuke/compare/cli-v1.8.0...cli-v1.9.0) (2026-10-07)
+
+
+### Features
+
+* **cli:** add `zuke upgrade` command to update the installed CLI ([#729](https://github.com/zuke-build/zuke/issues/729)) ([09801ce](https://github.com/zuke-build/zuke/commit/09801ce74bf2a1272179e0798d73d38ceb817f85))
+
 ## [1.8.0](https://github.com/zuke-build/zuke/compare/cli-v1.7.0...cli-v1.8.0) (2026-09-30)
 
 
