@@ -23,6 +23,7 @@
  */
 
 import { denoExecutable } from "./host.ts";
+import { resolveDir } from "./path.ts";
 import { messageOf, readTextOrNull, writeTextEnsuringDir } from "./internal.ts";
 import {
   DEFAULT_LOCK_PATH,
@@ -71,13 +72,21 @@ export interface UpdateReport {
   unchecked: { name: string; resolved: string; reason: string }[];
 }
 
-/**
- * Re-resolve the lock at `lockPath` after entries were dropped from it,
- * passing `minDepAge` on to Deno when one was given.
- */
+/** What a {@link ResolveLock} is asked to resolve, beyond the lock itself. */
+export interface ResolveRequest {
+  /** The release age to pass on to Deno, when one was given. */
+  minDepAge: string | undefined;
+  /**
+   * Further entrypoints whose module graphs share the lock, as absolute paths,
+   * re-resolved alongside the build's own.
+   */
+  entrypoints: readonly string[];
+}
+
+/** Re-resolve the lock at `lockPath` after entries were dropped from it. */
 export type ResolveLock = (
   lockPath: string,
-  minDepAge: string | undefined,
+  request: ResolveRequest,
 ) => Promise<void>;
 
 /** Options for {@link updateOutdated}. */
@@ -88,6 +97,14 @@ export interface UpdateOptions extends OutdatedOptions {
    * silent no-op, because a typo would otherwise read as "nothing to do".
    */
   only?: readonly string[];
+  /**
+   * Further entrypoints that share the lock — another build, a workspace
+   * member's own `zuke.ts` — resolved against the working directory. A lock
+   * serving several module graphs is only fully rewritten when every graph is
+   * re-resolved; one left out keeps the dependency lists the update shortened,
+   * and the update is refused rather than leave them so.
+   */
+  entrypoints?: readonly string[];
   /**
    * How to re-resolve after the entries are dropped. Injected so the whole
    * command is testable without a network or a `deno` subprocess.
@@ -188,6 +205,8 @@ export function dropLockEntries(
  *   dropped entries are simply never written back, and the lock is left short.
  *   {@link Deno.mainModule} is the module graph the lock describes, and a
  *   `file://` URL is accepted as-is, which avoids converting one to a path.
+ *   Any further entrypoints the caller named follow it, since one install
+ *   takes several, and a lock serving several graphs needs them all.
  * - `--reload=jsr:` is what makes it reach the *latest*. Deno caches the
  *   registry's version listing, so a plain re-resolution happily picks the
  *   newest version it already knew about — one release behind, silently, which
@@ -201,7 +220,10 @@ export function dropLockEntries(
  *   match the age the report was computed with, or Deno refuses the very
  *   version the report offered.
  */
-const denoResolve: ResolveLock = async (lockPath, minDepAge) => {
+const denoResolve: ResolveLock = async (
+  lockPath,
+  { minDepAge, entrypoints },
+) => {
   const slash = lockPath.lastIndexOf("/");
   const cwd = slash > 0 ? lockPath.slice(0, slash) : ".";
   const command = new Deno.Command(denoExecutable(), {
@@ -209,6 +231,7 @@ const denoResolve: ResolveLock = async (lockPath, minDepAge) => {
       "install",
       "--entrypoint",
       Deno.mainModule,
+      ...entrypoints,
       "--reload=jsr:",
       "--frozen=false",
       ...(minDepAge === undefined ? [] : [`--min-dep-age=${minDepAge}`]),
@@ -256,6 +279,22 @@ function dependencyEdges(lockText: string, names: readonly string[]): string[] {
   return edges;
 }
 
+/**
+ * An `--entrypoint` as `deno install` should receive it: a URL such as
+ * `file:///repo/zuke.ts` untouched, anything else resolved against the working
+ * directory. A drive letter is one character, so `C:/x` is not a URL scheme.
+ *
+ * @throws For an empty value, which would otherwise resolve to the directory.
+ */
+function entrypointPath(entrypoint: string): string {
+  if (entrypoint === "") {
+    throw new Error("outdated: --entrypoint needs a file.");
+  }
+  return /^[a-z][a-z0-9+.-]+:/i.test(entrypoint)
+    ? entrypoint
+    : resolveDir(entrypoint).path;
+}
+
 /** The version each `jsr:` package name resolves to, by name. */
 function resolvedByName(lockText: string): Map<string, string> {
   const byName = new Map<string, string>();
@@ -286,6 +325,8 @@ export async function updateOutdated(
   options: UpdateOptions = {},
 ): Promise<UpdateReport> {
   const lockPath = options.lockPath ?? DEFAULT_LOCK_PATH;
+  // Before anything is read or written, so a bad value changes nothing.
+  const entrypoints = (options.entrypoints ?? []).map(entrypointPath);
   const report = await findOutdated(options);
   const before = await readTextOrNull(lockPath);
   if (before === null) {
@@ -311,7 +352,10 @@ export async function updateOutdated(
   const wasResolved = resolvedByName(before);
   await writeTextEnsuringDir(lockPath, dropLockEntries(before, names));
   try {
-    await (options.resolve ?? denoResolve)(lockPath, options.minDepAge);
+    await (options.resolve ?? denoResolve)(lockPath, {
+      minDepAge: options.minDepAge,
+      entrypoints,
+    });
   } catch (error) {
     // Put the lock back exactly as it was. A half-dropped lock fails every
     // `--frozen` run, which is every launcher and task in a Zuke project, so
@@ -346,7 +390,8 @@ export async function updateOutdated(
     throw new Error(
       `outdated: re-resolving left no entry for ${lost.join(", ")}; the lock ` +
         "was restored unchanged. A record re-resolution cannot reach belongs to " +
-        "another module graph sharing this lock, or is stale and can be deleted.",
+        "another module graph sharing this lock — name its entrypoint with " +
+        "--entrypoint — or is stale and can be deleted.",
     );
   }
 

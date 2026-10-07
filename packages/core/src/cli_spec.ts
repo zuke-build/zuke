@@ -374,6 +374,15 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
       "How old a release must be to count as the latest, in any form Deno's own --min-dep-age takes: minutes (120, or 0 to ignore release age), an ISO-8601 duration (P2D, PT12H) or a date (2025-09-16). Defaults to Deno's 24 hours. With --update it is passed on to deno install, so the lock can move to a release younger than Deno would otherwise accept.",
   },
   {
+    name: "--entrypoint",
+    value: " <file>",
+    description:
+      "With outdated --update, another module graph sharing the lock",
+    command: "outdated",
+    detail:
+      "Re-resolve this file's module graph too, alongside the build's own; repeat it for each. A lock that also serves other entrypoints (a workspace member's own zuke.ts, say) is only fully rewritten when every graph is re-resolved, so name them all. Without it, an update that would leave another graph's records short is refused and the lock restored.",
+  },
+  {
     name: "--exit-code",
     description:
       "With outdated, exit non-zero when a package is behind or unchecked",

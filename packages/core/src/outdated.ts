@@ -170,6 +170,10 @@ const DEFAULT_MIN_DEP_AGE_MS = 24 * 60 * 60 * 1000;
 const ISO_DURATION =
   /^P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/;
 
+/** An RFC3339 date, optionally followed by a time that carries its offset. */
+const RFC3339 =
+  /^(\d{4}-\d{2}-\d{2})(T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2}))?$/;
+
 /**
  * The publish-time cutoff a `--min-dep-age` value means at `now`: a release
  * published after it is too young to install. Accepts what Deno's own flag
@@ -193,8 +197,19 @@ export function minDepAgeCutoff(
     const [w, d, h, m, sec] = duration.slice(1).map((n) => Number(n ?? 0));
     return now - ((((w * 7 + d) * 24 + h) * 60 + m) * 60 + sec) * 1000;
   }
-  const date = /^\d{4}-\d{2}-\d{2}/.test(value) ? Date.parse(value) : NaN;
-  if (!Number.isNaN(date)) return date;
+  // Strict RFC3339, as Deno is: a date alone, or a timestamp with its offset.
+  // Deno silently ignores a looser form (no offset, a space, 30 February), so
+  // accepting one here would compute the report with a cutoff Deno never uses.
+  const rfc3339 = RFC3339.exec(value);
+  if (rfc3339 !== null) {
+    const date = Date.parse(
+      rfc3339[2] === undefined ? `${value}T00:00:00Z` : value,
+    );
+    const day = new Date(Date.parse(`${rfc3339[1]}T00:00:00Z`));
+    if (!Number.isNaN(date) && day.toISOString().startsWith(rfc3339[1])) {
+      return date;
+    }
+  }
   throw new Error(
     `outdated: --min-dep-age "${value}" is not a number of minutes, an ` +
       "ISO-8601 duration (P2D, PT12H) or a date (2025-09-16).",

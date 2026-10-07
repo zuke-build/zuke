@@ -253,6 +253,8 @@ export interface ParsedArgs {
   updateOnly: string[];
   /** `outdated --min-dep-age <value>`: the release age to honour, as Deno takes it. */
   minDepAge?: string;
+  /** `outdated --update --entrypoint <file>`: further graphs sharing the lock. */
+  entrypoints: string[];
   /** Raw parameter values from declared flags, keyed by property name. */
   values: Record<string, string>;
   help: boolean;
@@ -412,7 +414,8 @@ const VALUE_FLAGS: ReadonlyMap<string, ValueFlag> = new Map([
   }],
   ["http", { set: (p, v) => (p.httpAddr = v) }],
   ["output", { set: (p, v) => (p.output = parseOutput(v)) }],
-  ["min-dep-age", { set: (p, v) => (p.minDepAge = v) }],
+  ["min-dep-age", { set: (p, v) => (p.minDepAge = v), keepEmpty: true }],
+  ["entrypoint", { set: (p, v) => p.entrypoints.push(v), keepEmpty: true }],
 ]);
 
 /**
@@ -458,6 +461,7 @@ export function parseArgs(
     exitCode: false,
     update: false,
     updateOnly: [],
+    entrypoints: [],
     confirmDestructive: false,
     mcpRegistry: false,
     help: false,
@@ -1347,6 +1351,11 @@ async function runOutdated(
       );
       return 1;
     }
+    if (parsed.entrypoints.length > 0) {
+      // Entrypoints only steer the re-resolution; a report resolves nothing.
+      cliReporter.error("outdated: --entrypoint only applies with --update.");
+      return 1;
+    }
     const report = await findOutdated(withMinDepAge(parsed, options));
     cliReporter.info(formatOutdated(report));
     // A package that could not be checked counts as a failure under
@@ -1390,6 +1399,7 @@ async function runOutdatedUpdate(
   const report = await updateOutdated({
     ...withMinDepAge(parsed, options),
     only,
+    entrypoints: parsed.entrypoints,
   });
   cliReporter.info(formatUpdate(report));
   const unresolved = report.held.length + report.unchecked.length;

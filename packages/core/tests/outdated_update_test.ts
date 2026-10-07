@@ -461,3 +461,36 @@ Deno.test("updateOutdated notices a bare-form dependant that was not relinked", 
   assertStringIncludes(message, "@zuke/cmd@1.0.1 → @zuke/git");
   assertStringIncludes(message, "stale and can be deleted");
 });
+
+Deno.test("updateOutdated passes a URL entrypoint through and refuses an empty one", async () => {
+  const seen: unknown[] = [];
+  await withLock(lockText(), async (path) => {
+    await updateOutdated({
+      lockPath: path,
+      registry: "https://registry.test",
+      fetch: registryFetch({ "@zuke/git": "1.9.0", "@std/yaml": "1.0.5" }),
+      entrypoints: ["file:///repo/zuke.ts", "C:/repo/zuke.ts"],
+      resolve: async (p, request) => {
+        seen.push(request.entrypoints);
+        await Deno.writeTextFile(p, lockText("1.9.0"));
+      },
+    });
+  });
+  assertEquals(seen, [["file:///repo/zuke.ts", "C:/repo/zuke.ts"]]);
+
+  let message = "";
+  const final = await withLock(lockText(), async (path) => {
+    try {
+      await updateOutdated({
+        lockPath: path,
+        registry: "https://registry.test",
+        fetch: () => Promise.reject(new Error("must not be asked")),
+        entrypoints: [""],
+      });
+    } catch (error) {
+      message = String(error);
+    }
+  });
+  assertStringIncludes(message, "--entrypoint needs a file");
+  assertEquals(final, lockText());
+});

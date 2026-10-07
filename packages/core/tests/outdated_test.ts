@@ -539,3 +539,21 @@ Deno.test("findOutdated honours a --min-dep-age of 0", async () => {
     assertEquals(behind.map((p) => p.latest), ["1.67.0"]);
   });
 });
+
+Deno.test("minDepAgeCutoff takes only the strict RFC3339 forms Deno honours", () => {
+  // Deno silently ignores a looser date, so accepting one would compute the
+  // report with a cutoff `deno install` never applies.
+  assertEquals(
+    minDepAgeCutoff("2025-09-16T12:00:00.5+02:00", 0),
+    Date.parse("2025-09-16T10:00:00.5Z"),
+  );
+  for (const bad of ["2025-09-16T12:00:00", "2025-09-16 10:00", "2025-02-30"]) {
+    let threw = false;
+    try {
+      minDepAgeCutoff(bad, 0);
+    } catch {
+      threw = true;
+    }
+    assertEquals(threw, true, `should have refused: "${bad}"`);
+  }
+});

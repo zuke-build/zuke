@@ -400,12 +400,19 @@ the report offered:
 ./zuke outdated --update --min-dep-age 0
 ```
 
-The lock is only re-resolved from this build's entrypoint. If the same
-`deno.lock` also serves another module graph — a workspace member's own build,
-say — packages only that graph reaches are never rewritten. `--update` checks
-that every package which depended on a dropped one depends on it again, and
-restores the lock and names the missing link if one does not, rather than
+By default the lock is re-resolved only from this build's entrypoint. If the
+same `deno.lock` also serves another module graph — a workspace member's own
+build, say — packages only that graph reaches are never rewritten. `--update`
+checks that every package which depended on a dropped one depends on it again,
+and restores the lock and names the missing link if one does not, rather than
 leaving a lock that build's `--frozen` run would reject.
+
+Name the other graphs with `--entrypoint <file>`, once for each, and they are
+re-resolved together with the build:
+
+```sh
+./zuke outdated --update --entrypoint packages/a/zuke.ts --entrypoint packages/b/zuke.ts
+```
 
 If you would rather do it by hand, deleting the whole lock also works, with one
 caveat: in a repo that also has a `package.json`, resolving afresh walks the

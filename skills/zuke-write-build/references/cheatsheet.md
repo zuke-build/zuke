@@ -1708,6 +1708,7 @@ Copy the closest one instead of composing from primitives; each is a full
 ./zuke outdated [--exit-code]  # jsr packages the lock resolves behind their latest (network)
 ./zuke outdated --update       # ...and move them up; name packages to narrow it.
 ./zuke outdated --min-dep-age 0  # count releases Deno's 24h age guard would refuse (also passed to --update)
+./zuke outdated --update --entrypoint other/zuke.ts  # re-resolve another graph sharing the lock too
                                # Touches the lock only: a package its specifier
                                # pins is reported as held, never rewritten.
                                # --exit-code exits 1 when behind OR uncheckable.
