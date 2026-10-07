@@ -1328,6 +1328,27 @@ Deno.test("--version does not read a deno.lock the project's config disables", a
   assertEquals(host.logs.includes("1.42.0"), false);
 });
 
+Deno.test("--version still reads deno.lock under a commented deno.jsonc", async () => {
+  // Deno reads its config as JSONC; a comment there must not send the CLI back
+  // to running the build, which a core older than 1.60.0 cannot answer.
+  const host = new FakeHost({
+    [atCwd("deno.jsonc")]: '{\n  // project config\n  "tasks": {},\n}',
+    [atCwd("deno.lock")]: coreLock("1.42.0"),
+  });
+  const { runner, reached } = neverRun();
+  await main(
+    ["--version"],
+    host,
+    defaultPrompter,
+    undefined,
+    undefined,
+    runner,
+    probeAt(["zuke.json", "deno.lock"]),
+  );
+  assertEquals(reached(), false);
+  assertEquals(host.logs[2], "1.42.0");
+});
+
 Deno.test("--version reads the lockfile the project's config names", async () => {
   const host = new FakeHost({
     [atCwd("deno.jsonc")]: JSON.stringify({

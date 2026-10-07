@@ -46,6 +46,12 @@ import { QUIET_DENO_ENV, spawnDeno } from "./deno_path.ts";
 /** The build file a forwarded command runs, beside {@link CONFIG_FILE}. */
 export const BUILD_FILE = "zuke.ts";
 
+/**
+ * Deno's own config files, in the order it prefers them: a `deno.json` wins
+ * over a `deno.jsonc` beside it.
+ */
+export const DENO_CONFIG_FILES = ["deno.json", "deno.jsonc"] as const;
+
 /** The lockfile whose presence turns on `--frozen`, as in the launchers. */
 export const LOCK_FILE = "deno.lock";
 
@@ -166,7 +172,7 @@ export class UntrustedBuildError extends Error {
  * The config files Deno discovers in a root's ancestors — an import map in any
  * of them rewrites what `zuke.ts` imports, so they are gated like the root.
  */
-const ANCESTOR_CONFIG_FILES = ["deno.json", "deno.jsonc", "package.json"];
+const ANCESTOR_CONFIG_FILES = [...DENO_CONFIG_FILES, "package.json"];
 
 /**
  * The files in the root itself that decide what runs: the build, its marker,

@@ -38,6 +38,7 @@ import {
   type BuildRunner,
   defaultBuildProbe,
   defaultBuildRunner,
+  DENO_CONFIG_FILES,
   locateBuild,
   NO_LOCK_NOTICE,
   runBuild,
@@ -56,7 +57,6 @@ import { type CliPaint, invocationPaint } from "./src/paint.ts";
 import {
   formatVersionPanel,
   homeRelative,
-  LOCK_CONFIG_FILES,
   lockedCoreVersions,
   projectLockPath,
   type VersionRow,
@@ -734,14 +734,14 @@ async function projectCoreVersions(
 }
 
 /**
- * The text of the first of {@link LOCK_CONFIG_FILES} at `root` that can be
+ * The text of the first of {@link DENO_CONFIG_FILES} at `root` that can be
  * read, or `undefined` when there is none.
  */
 async function firstConfigText(
   host: SetupHost,
   root: string,
 ): Promise<string | undefined> {
-  for (const name of LOCK_CONFIG_FILES) {
+  for (const name of DENO_CONFIG_FILES) {
     try {
       return await host.readText(`${root}/${name}`);
     } catch {

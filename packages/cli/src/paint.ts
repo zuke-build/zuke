@@ -5,12 +5,11 @@
  * How the global CLI paints its own output: `--version`, `--help`, and the
  * status lines `setup`, `import` and `upgrade` print.
  *
- * It mirrors the palette `@zuke/core` paints the build's own CLI with, which
- * core does not export. Sharing it means exporting it from core, and the
- * core-floor check makes this package wait for a core release to use any new
- * export — a release cycle for a handful of colour choices — so the CLI keeps
- * its own, with the two words it needs that the build's does not (`ok` and
- * `fail`).
+ * It mirrors the palette `@zuke/core` paints the build's own CLI with. Core
+ * now exports that palette from `@zuke/core/render`, but the core-floor check
+ * lets this package use a new export only once that core is released, so this
+ * copy stays until then and is removed in the change that raises the floor
+ * (#744).
  *
  * Whether to paint is `@zuke/core`'s {@link resolveOutputMode} — the same
  * answer the build's own CLI and the executor get — so `ZUKE_PLAIN`, `--plain`,

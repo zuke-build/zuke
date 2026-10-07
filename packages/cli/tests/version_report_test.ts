@@ -139,10 +139,33 @@ Deno.test("projectLockPath keeps an absolute lock path as it is", () => {
   );
 });
 
-Deno.test("projectLockPath refuses to guess at a config it cannot parse", () => {
-  // A deno.jsonc with comments is a setting this cannot read.
+Deno.test("projectLockPath reads a config the way Deno does, comments and trailing commas included", () => {
+  const root = "/work/app";
+  // A commented config with no lock setting keeps deno.lock, as before.
   assertEquals(
-    projectLockPath("/work/app", '{ // no lock\n "lock": false }'),
+    projectLockPath(root, '{\n  // project config\n  "tasks": {},\n}'),
+    "/work/app/deno.lock",
+  );
+  assertEquals(
+    projectLockPath(root, '{ /* off */ "lock": false, }'),
     null,
   );
+  assertEquals(
+    projectLockPath(root, '{ "lock": { "path": "a//b.lock", }, // here\n}'),
+    "/work/app/a/b.lock",
+  );
+  // A string holding comment markers, quotes and commas is left as written.
+  assertEquals(
+    projectLockPath(root, '{ "x": "/* \\" , ]", "lock": "z.lock" }'),
+    "/work/app/z.lock",
+  );
+  // A comment at the end with no newline, and a run of commas, stay handled.
+  assertEquals(projectLockPath(root, '{"lock": false} // end'), null);
+  assertEquals(projectLockPath(root, '{"a": 1,, "lock": false}'), null);
+});
+
+Deno.test("projectLockPath refuses to guess at a config it cannot parse", () => {
+  assertEquals(projectLockPath("/work/app", '{ "lock": false'), null);
+  assertEquals(projectLockPath("/work/app", '{ "lock": false, /* open'), null);
+  assertEquals(projectLockPath("/work/app", "[1,"), null);
 });
