@@ -20546,6 +20546,10 @@ interface SetupHost
     guards.
   readText(path: string): Promise<string>
     Read a file as UTF-8 text.
+  isTerminal?(): boolean
+    Whether stdout is an interactive terminal, which decides whether the
+    CLI's own output is rich. Optional: an implementation without it is
+    asked through Deno, the way every other process decides.
   writeText(path: string, content: string): Promise<void>
     Write UTF-8 text to a file, creating or replacing it.
 

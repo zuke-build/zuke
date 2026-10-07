@@ -37,7 +37,11 @@ import {
   type TableOptions,
   visibleWidth,
 } from "@zuke/core/render";
-import { defaultRenderer, type TargetReport } from "@zuke/core";
+import {
+  defaultRenderer,
+  resolveOutputMode,
+  type TargetReport,
+} from "@zuke/core";
 import { LEVEL_ORDER, type LogLevel, resolveLevel } from "./level.ts";
 import {
   defaultTheme,
@@ -98,14 +102,14 @@ function autoGithub(): boolean {
   return readEnv("GITHUB_ACTIONS") === "true";
 }
 
-/** Whether terminal colour should be used (a TTY, with `NO_COLOR` unset). */
+/**
+ * Whether terminal colour should be used: a TTY, `NO_COLOR` unset, and plain
+ * output (`ZUKE_PLAIN` / `--plain`) not asked for. `@zuke/core`'s
+ * {@link resolveOutputMode} decides, so a build logging through this package
+ * and the executor around it agree on what `ZUKE_PLAIN` means.
+ */
 function autoColor(): boolean {
-  if (readEnv("NO_COLOR")) return false;
-  try {
-    return Deno.stdout.isTerminal();
-  } catch {
-    return false;
-  }
+  return resolveOutputMode({ readEnv }).color;
 }
 
 /** Resolve the active output style from overrides and the environment. */

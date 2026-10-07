@@ -12,10 +12,12 @@ import {
   type DenoHost,
   DenoNotFoundError,
   pathWithDeno,
+  QUIET_DENO_ENV,
   spawnDeno,
 } from "../src/deno_path.ts";
 import { launcherBash, launcherPwsh } from "../src/launcher.ts";
 import { denoExecutable } from "@zuke/core";
+import { withEnv } from "../../core/tests/_env.ts";
 
 /** A {@link DenoHost} whose three answers the test dictates. */
 function host(overrides: Partial<DenoHost> = {}): DenoHost {
@@ -251,4 +253,17 @@ Deno.test("the compiled order is the one the launchers use in shell", () => {
     "deno",
     "/home/ana/.deno/bin/deno",
   ]);
+});
+
+Deno.test("every spawned Deno skips its update check, so its notice cannot land in our output", async () => {
+  await withEnv({ DENO_NO_UPDATE_CHECK: undefined }, async () => {
+    const child = spawnDeno(
+      ["eval", "console.log(Deno.env.get('DENO_NO_UPDATE_CHECK'))"],
+      { stdout: "piped", stderr: "null" },
+      [Deno.execPath()],
+    );
+    const { stdout } = await child.output();
+    assertEquals(new TextDecoder().decode(stdout).trim(), "1");
+  });
+  assertEquals(QUIET_DENO_ENV, { DENO_NO_UPDATE_CHECK: "1" });
 });

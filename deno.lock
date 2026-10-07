@@ -1584,7 +1584,7 @@
       "packages/cli": {
         "dependencies": [
           "jsr:@zuke/console@^1.1.0",
-          "jsr:@zuke/core@^1.60.0",
+          "jsr:@zuke/core@^1.67.0",
           "jsr:@zuke/gh@^1.6.0"
         ]
       },
@@ -1605,7 +1605,7 @@
       },
       "packages/console": {
         "dependencies": [
-          "jsr:@zuke/core@^1.57.0"
+          "jsr:@zuke/core@^1.67.0"
         ]
       },
       "packages/cspell": {

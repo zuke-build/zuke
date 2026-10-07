@@ -23,6 +23,8 @@ export class FakeHost implements SetupHost {
   readonly reads: string[] = [];
   /** When true, {@link chmod} rejects (simulating an unsupported platform). */
   chmodFails = false;
+  /** What {@link isTerminal} answers: off by default, as under `deno test`. */
+  terminal = false;
 
   constructor(initial?: Record<string, string>) {
     if (initial) {
@@ -68,6 +70,10 @@ export class FakeHost implements SetupHost {
 
   log(message: string): void {
     this.logs.push(message);
+  }
+
+  isTerminal(): boolean {
+    return this.terminal;
   }
 }
 

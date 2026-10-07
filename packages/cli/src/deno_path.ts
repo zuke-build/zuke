@@ -130,6 +130,17 @@ export function pathWithDeno(
   };
 }
 
+/**
+ * What every Deno this package spawns runs with on top of its inherited
+ * environment: no update check. Deno's "A new release of Deno is available"
+ * notice otherwise lands in the middle of the CLI's own output — between the
+ * version lines of `zuke --version`, or above a forwarded build's first line —
+ * and it is about Deno, which this command did not ask about.
+ */
+export const QUIET_DENO_ENV: Readonly<Record<string, string>> = {
+  DENO_NO_UPDATE_CHECK: "1",
+};
+
 /** Thrown when no Deno could be found to run a build with. */
 export class DenoNotFoundError extends Error {
   /** The error's name, as reported by `String(error)` and stack traces. */
@@ -195,7 +206,7 @@ export function spawnDeno(
       return new Deno.Command(command, {
         ...options,
         args,
-        env: pathWithDeno(command),
+        env: { ...QUIET_DENO_ENV, ...pathWithDeno(command) },
       }).spawn();
     } catch (error) {
       // Not installed here; the next candidate may be. Anything else — a

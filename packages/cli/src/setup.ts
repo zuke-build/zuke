@@ -211,6 +211,12 @@ export interface SetupHost {
   /** Read a file as UTF-8 text. */
   readText(path: string): Promise<string>;
   /**
+   * Whether stdout is an interactive terminal, which decides whether the
+   * CLI's own output is rich. Optional: an implementation without it is
+   * asked through Deno, the way every other process decides.
+   */
+  isTerminal?(): boolean;
+  /**
    * Write UTF-8 text to a file, creating or replacing it.
    *
    * An implementation must not write *through* a symbolic link standing at

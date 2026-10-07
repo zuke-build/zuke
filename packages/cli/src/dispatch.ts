@@ -41,7 +41,7 @@
 import { type AbsolutePath, absolutePath, CONFIG_FILE } from "@zuke/core";
 import { exists } from "./fs.ts";
 import { noLockNotice } from "./launcher.ts";
-import { spawnDeno } from "./deno_path.ts";
+import { QUIET_DENO_ENV, spawnDeno } from "./deno_path.ts";
 
 /** The build file a forwarded command runs, beside {@link CONFIG_FILE}. */
 export const BUILD_FILE = "zuke.ts";
@@ -442,7 +442,7 @@ export const defaultBuildRunner: BuildRunner = async (
     : new Deno.Command(program, {
       ...options,
       args,
-      env: { [FORWARDED_ENV]: "1" },
+      env: { ...QUIET_DENO_ENV, [FORWARDED_ENV]: "1" },
     }).spawn();
   const plan = signalPlan(child);
   for (const [signal, handler] of plan) {

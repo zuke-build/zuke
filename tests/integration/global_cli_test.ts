@@ -409,3 +409,48 @@ async function exists(path: string): Promise<boolean> {
     return false;
   }
 }
+
+Deno.test("zuke --version in a real project reads its core from deno.lock and runs nothing", async () => {
+  await withTemp(async (dir) => {
+    await Deno.writeTextFile(`${dir}/${CONFIG_FILE}`, '{ "name": "Old" }\n');
+    // A build that marks any run of it: --version must not reach it.
+    await Deno.writeTextFile(
+      `${dir}/zuke.ts`,
+      'await Deno.writeTextFile("ran.txt", "ran");\n',
+    );
+    await Deno.writeTextFile(
+      `${dir}/deno.lock`,
+      JSON.stringify({
+        version: "5",
+        specifiers: { "jsr:@zuke/core@^1.42.0": "1.42.0" },
+      }),
+    );
+    const host = recordingHost();
+    await inDir(dir, async () => {
+      assertEquals(await main(["--version"], host), 0);
+    });
+    assertEquals(host.logs.includes("1.42.0"), true, host.logs.join("\n"));
+    assertEquals(await exists(`${dir}/ran.txt`), false);
+  }, { prefix: "zuke-global-cli-" });
+});
+
+Deno.test({
+  name: "a forwarded launcher runs with Deno's update check off",
+  // POSIX launchers only: Windows reports no file mode, so it keeps `deno run`.
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await Deno.writeTextFile(`${dir}/${CONFIG_FILE}`, '{ "name": "S" }\n');
+      await Deno.writeTextFile(`${dir}/zuke.ts`, scratchBuild());
+      await Deno.writeTextFile(
+        `${dir}/zuke`,
+        '#!/bin/sh\nprintf "%s" "$DENO_NO_UPDATE_CHECK" > env.txt\n',
+        { mode: 0o755 },
+      );
+      await inDir(dir, async () => {
+        assertEquals(await main(["hello"], recordingHost()), 0);
+      });
+      assertEquals(await Deno.readTextFile(`${dir}/env.txt`), "1");
+    }, { prefix: "zuke-global-cli-" });
+  },
+});
