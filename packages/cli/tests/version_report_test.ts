@@ -42,13 +42,47 @@ Deno.test("lockedCoreVersions is empty for a lock without core, or not a lock", 
 });
 
 Deno.test("homeRelative writes home as ~, and only a whole leading directory", () => {
-  assertEquals(homeRelative("/home/me/work/app", "/home/me"), "~/work/app");
-  assertEquals(homeRelative("/home/me/work/app", "/home/me/"), "~/work/app");
-  assertEquals(homeRelative("/home/me", "/home/me"), "~");
-  assertEquals(homeRelative("/home/me2/app", "/home/me"), "/home/me2/app");
-  assertEquals(homeRelative("/srv/app", undefined), "/srv/app");
-  assertEquals(homeRelative("/srv/app", ""), "/srv/app");
-  assertEquals(homeRelative("/srv/app", "/"), "/srv/app");
+  assertEquals(
+    homeRelative("/home/me/work/app", "/home/me", false),
+    "~/work/app",
+  );
+  assertEquals(
+    homeRelative("/home/me/work/app", "/home/me/", false),
+    "~/work/app",
+  );
+  assertEquals(homeRelative("/home/me", "/home/me", false), "~");
+  assertEquals(
+    homeRelative("/home/me2/app", "/home/me", false),
+    "/home/me2/app",
+  );
+  assertEquals(homeRelative("/srv/app", undefined, false), "/srv/app");
+  assertEquals(homeRelative("/srv/app", "relative/home", false), "/srv/app");
+  assertEquals(homeRelative("/srv/app", "/", false), "/srv/app");
+  // POSIX paths are case-sensitive: a differently cased home is another one.
+  assertEquals(homeRelative("/Home/me/app", "/home/me", false), "/Home/me/app");
+});
+
+Deno.test("homeRelative matches a Windows home given with backslashes, ignoring case", () => {
+  if (Deno.build.os !== "windows") return; // absolutePath reads Windows paths only there.
+  assertEquals(
+    homeRelative("C:/Users/Me/proj", "C:\\Users\\me", true),
+    "~/proj",
+  );
+  assertEquals(
+    homeRelative("C:/Users/me/proj", "C:\\", true),
+    "C:/Users/me/proj",
+  );
+});
+
+Deno.test("lockedCoreVersions drops a resolved value that is not a release version", () => {
+  const lock = JSON.stringify({
+    specifiers: {
+      "jsr:@zuke/core@^1": "1.2.3\n::error::forged",
+      "jsr:@zuke/core@^2": "\u001b[31m2.0.0",
+      "jsr:@zuke/core@^3": "3.0.0-rc.1",
+    },
+  });
+  assertEquals(lockedCoreVersions(lock), ["3.0.0-rc.1"]);
 });
 
 Deno.test("the version panel boxes each row under a zuke title, flush", () => {

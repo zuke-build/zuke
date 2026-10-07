@@ -1465,3 +1465,64 @@ Deno.test("a command's failure is marked on a terminal", async () => {
     );
   });
 });
+
+Deno.test("an explicit --plain reaches the build's half of --help as ZUKE_PLAIN", async () => {
+  const envs: Array<Readonly<Record<string, string>> | undefined> = [];
+  const runner = (
+    _root: string,
+    _args: string[],
+    _program?: string,
+    env?: Readonly<Record<string, string>>,
+  ) => {
+    envs.push(env);
+    return Promise.resolve(0);
+  };
+  for (const args of [["--help", "--plain"], ["--help"]]) {
+    await main(
+      args,
+      new FakeHost(),
+      defaultPrompter,
+      undefined,
+      undefined,
+      runner,
+      probeAt(["zuke.json"]),
+    );
+  }
+  // As an environment variable, which a build on any core accepts, rather
+  // than a flag one older than core 1.67.0 would refuse.
+  assertEquals(envs, [{ ZUKE_PLAIN: "1" }, undefined]);
+});
+
+Deno.test("a build asked for its version is always asked plainly", async () => {
+  // Rich or not, the CLI prints the panel itself; the build's answer is the
+  // bare number under the heading, never a second panel.
+  await withEnv(RICH_ENV, async () => {
+    const host = new FakeHost();
+    host.terminal = true;
+    let seen: Readonly<Record<string, string>> | undefined;
+    await main(
+      ["--version"],
+      host,
+      defaultPrompter,
+      undefined,
+      undefined,
+      (_root, _args, _program, env) => {
+        seen = env;
+        return Promise.resolve(0);
+      },
+      probeAt(["zuke.json"]),
+    );
+    assertEquals(seen, { ZUKE_PLAIN: "1" });
+  });
+});
+
+Deno.test("ZUKE_NO_BANNER drops the setup logo too, and keeps the rest", async () => {
+  await withEnv({ ...RICH_ENV, ZUKE_NO_BANNER: "1" }, async () => {
+    const host = new FakeHost();
+    await withBanner(async () => {
+      await main(["setup", "--yes"], host, new FakePrompter(false));
+    });
+    assertEquals(host.logs.some((l) => l.includes(LOGO_TOP)), false);
+    assertEquals(host.logs.some((l) => l.startsWith("Done —")), true);
+  });
+});

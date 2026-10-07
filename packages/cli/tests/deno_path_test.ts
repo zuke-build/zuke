@@ -267,3 +267,20 @@ Deno.test("every spawned Deno skips its update check, so its notice cannot land 
   });
   assertEquals(QUIET_DENO_ENV, { DENO_NO_UPDATE_CHECK: "1" });
 });
+
+Deno.test("a caller's env reaches the spawned Deno, but cannot turn the update check back on", async () => {
+  const child = spawnDeno(
+    [
+      "eval",
+      "console.log(Deno.env.get('EXTRA'), Deno.env.get('DENO_NO_UPDATE_CHECK'))",
+    ],
+    {
+      stdout: "piped",
+      stderr: "null",
+      env: { EXTRA: "yes", DENO_NO_UPDATE_CHECK: "0" },
+    },
+    [Deno.execPath()],
+  );
+  const { stdout } = await child.output();
+  assertEquals(new TextDecoder().decode(stdout).trim(), "yes 1");
+});

@@ -36,6 +36,7 @@
 import { absolutePath, httpJson } from "@zuke/core";
 import { runDenoIsolated } from "./deno_isolated.ts";
 import type { CliPaint } from "./paint.ts";
+import { VERSION_PATTERN } from "./version_report.ts";
 import { defaultDenoHost, firstSet } from "./deno_path.ts";
 import { VERSION } from "./version.ts";
 
@@ -44,10 +45,6 @@ const PACKAGE = "jsr:@zuke/cli";
 
 /** The registry document listing every published version and the latest. */
 const META_URL = "https://jsr.io/@zuke/cli/meta.json";
-
-/** A release version: a numeric core with an optional prerelease and build. */
-const VERSION_PATTERN =
-  /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
 /**
  * What `zuke upgrade` reaches outside the process, injectable so the

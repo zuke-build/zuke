@@ -3,7 +3,14 @@
 
 /**
  * How the global CLI paints its own output: `--version`, `--help`, and the
- * status lines `setup`, `import`, `doc` and `upgrade` print.
+ * status lines `setup`, `import` and `upgrade` print.
+ *
+ * It mirrors the palette `@zuke/core` paints the build's own CLI with, which
+ * core does not export. Sharing it means exporting it from core, and the
+ * core-floor check makes this package wait for a core release to use any new
+ * export — a release cycle for a handful of colour choices — so the CLI keeps
+ * its own, with the two words it needs that the build's does not (`ok` and
+ * `fail`).
  *
  * Whether to paint is `@zuke/core`'s {@link resolveOutputMode} — the same
  * answer the build's own CLI and the executor get — so `ZUKE_PLAIN`, `--plain`,
@@ -24,9 +31,11 @@ export interface CliPaint {
   /** Whether ANSI colour is on. */
   color: boolean;
   /**
-   * Whether to open with the logo banner: off only when plain output was
-   * asked for (`ZUKE_PLAIN` / `--plain`), which implies no banner. A pipe or
-   * CI is not rich either, but nobody asked it to drop the banner.
+   * Whether to open with the logo banner: off when plain output was asked for
+   * (`ZUKE_PLAIN` / `--plain`), which implies no banner, or when the banner
+   * itself was (`ZUKE_NO_BANNER`) — the logo `setup` opens with is this
+   * command's banner. A pipe or CI is not rich either, but nobody asked it to
+   * drop the banner.
    */
   banner: boolean;
   /** A section heading such as `Usage:`. */

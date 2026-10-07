@@ -46,6 +46,7 @@ import {
 } from "./src/dispatch.ts";
 import { absolutePath, resolveDocSpec } from "@zuke/core";
 import { runDenoIsolated } from "./src/deno_isolated.ts";
+import { defaultDenoHost, firstSet } from "./src/deno_path.ts";
 import {
   defaultUpgradeHost,
   runUpgrade,
@@ -206,6 +207,9 @@ function resolveBootstrapDeno(
 
 /** The flag that asks for plain output, read here for the CLI's own commands. */
 const PLAIN_FLAG = "--plain";
+
+/** The environment that asks a spawned build for plain output. */
+const PLAIN_ENV: Readonly<Record<string, string>> = { ZUKE_PLAIN: "1" };
 
 /** The one-line identity printed under the logo and atop `--help`. */
 const TAGLINE = `zuke ${VERSION} — code-first build automation for Deno`;
@@ -586,6 +590,7 @@ async function commandHelp(
   probe: BuildProbe,
   runner: BuildRunner,
   paint: CliPaint,
+  childEnv: Readonly<Record<string, string>> | undefined,
 ): Promise<number> {
   host.log(helpText(paint));
   let location: Awaited<ReturnType<typeof locateBuild>> = null;
@@ -611,7 +616,7 @@ async function commandHelp(
     // so a build whose `--help` runs and fails is reported here too — not
     // only one that fails to spawn. Left unread, that outcome was the one
     // path this command passed over without a word of its own.
-    const code = await runBuild(runner, location, ["--help"]);
+    const code = await runBuild(runner, location, ["--help"], childEnv);
     if (code !== 0) output.error(BUILD_HELP_FAILED);
   } catch (error) {
     output.error(error instanceof Error ? error.message : String(error));
@@ -623,19 +628,22 @@ async function commandHelp(
 /**
  * `zuke --version`: this CLI's version, then — inside a project — the build's.
  *
- * The first line is the installed CLI's version, bare and unchanged, so
- * anything already reading `zuke --version` keeps working. What follows is the
- * build's, which is a different number for a real reason: `@zuke/cli` and
+ * Both numbers, because they differ for a real reason: `@zuke/cli` and
  * `@zuke/core` are separate packages on separate cadences, and a project pins
  * core through its own import map and lock. Reporting only one of them made
  * `zuke --version` and `./zuke --version` disagree with nothing to say which
  * had answered.
  *
- * The build's line comes from running the build's own `--version`, for the
- * same reason its half of the help does: the CLI links its own core, which is
- * not necessarily the one the project resolved, so asking is the only way to
- * be right. A build that cannot answer is reported and does not fail the
- * command — the CLI's own version is still correct.
+ * In plain output the first line is the installed CLI's version, bare, so
+ * anything reading `zuke --version` keeps working, and the build's follows
+ * under a heading. On a terminal the same facts are one panel.
+ *
+ * The build's version is read from its `deno.lock` — what the project
+ * actually resolves, which the CLI's own linked core need not be — so nothing
+ * is spawned, and a build on any core is answered. Only a project with no
+ * lock, or a lock naming no core, has its build asked instead, plainly; a
+ * build that cannot answer is reported and does not fail the command, since
+ * the CLI's own version is still correct.
  *
  * Outside a project there is no second line and no notice. A version query is
  * not the place to explain what a project is, and `--help` already does.
@@ -663,7 +671,11 @@ async function commandVersion(
     const rows: VersionRow[] = [["cli", VERSION]];
     if (location !== null) {
       if (core.length > 0) rows.push(["core", core.join(", ")]);
-      rows.push(["project", homeRelative(location.root, homeDir())]);
+      const home = firstSet(defaultDenoHost, "HOME", "USERPROFILE");
+      rows.push([
+        "project",
+        homeRelative(location.root, home, defaultDenoHost.windows()),
+      ]);
     }
     rows.push(["deno", Deno.version.deno]);
     rows.push(["platform", `${Deno.build.os}-${Deno.build.arch}`]);
@@ -687,22 +699,15 @@ async function commandVersion(
   // No lock to read, or none naming core: ask the build itself, as before.
   host.log(`\nThis project's build (${location.root}/zuke.ts) runs on Zuke:`);
   try {
-    const code = await runBuild(runner, location, ["--version"]);
+    // Asked plainly whatever this invocation is, so the answer is the bare
+    // version under the heading — never a second panel under the first.
+    const code = await runBuild(runner, location, ["--version"], PLAIN_ENV);
     if (code !== 0) output.error(BUILD_VERSION_FAILED);
   } catch (error) {
     output.error(error instanceof Error ? error.message : String(error));
     output.error(BUILD_VERSION_FAILED);
   }
   return 0;
-}
-
-/** The home directory, for display; `undefined` when it cannot be read. */
-function homeDir(): string | undefined {
-  try {
-    return Deno.env.get("HOME") ?? Deno.env.get("USERPROFILE");
-  } catch {
-    return undefined;
-  }
 }
 
 /**
@@ -743,12 +748,17 @@ export async function main(
   // here it is read and set aside; a command forwarded to the build keeps it
   // in its argv, where the build's own CLI reads it.
   const own = args.filter((arg) => arg !== PLAIN_FLAG);
+  const plainFlag = own.length !== args.length;
   const paint = invocationPaint(
-    own.length === args.length ? undefined : true,
+    plainFlag ? true : undefined,
     host.isTerminal?.bind(host),
   );
   if (own[0] === "--help" || own[0] === "-h") {
-    return await commandHelp(host, buildProbe, buildRunner, paint);
+    // The build's half answers to the same request: an explicit --plain
+    // reaches it as ZUKE_PLAIN, which a build on any core accepts, where the
+    // flag would be refused by one older than core 1.67.0.
+    const childEnv = plainFlag ? PLAIN_ENV : undefined;
+    return await commandHelp(host, buildProbe, buildRunner, paint, childEnv);
   }
   const command = own[0];
   const rest = own.slice(1);

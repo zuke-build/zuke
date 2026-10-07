@@ -163,11 +163,12 @@ export class DenoNotFoundError extends Error {
 }
 
 /**
- * What {@link spawnDeno} accepts: `Deno.Command`'s options without the two it
- * owns. The argv is the caller's `args`, and the environment carries the
- * resolved Deno's directory on `PATH`, which only this function knows.
+ * What {@link spawnDeno} accepts: `Deno.Command`'s options without the argv,
+ * which is the caller's `args`. An `env` is added to the inherited
+ * environment; it can never override {@link QUIET_DENO_ENV}'s update check,
+ * nor the resolved Deno's directory on `PATH`, which only this function knows.
  */
-export type DenoSpawnOptions = Omit<Deno.CommandOptions, "args" | "env">;
+export type DenoSpawnOptions = Omit<Deno.CommandOptions, "args">;
 
 /**
  * Whether `cwd` still names a directory to spawn in — vacuously true when the
@@ -206,7 +207,7 @@ export function spawnDeno(
       return new Deno.Command(command, {
         ...options,
         args,
-        env: { ...QUIET_DENO_ENV, ...pathWithDeno(command) },
+        env: { ...options.env, ...QUIET_DENO_ENV, ...pathWithDeno(command) },
       }).spawn();
     } catch (error) {
       // Not installed here; the next candidate may be. Anything else — a

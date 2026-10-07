@@ -629,9 +629,9 @@ error. The MCP server's `list_runs`/`show_run` tools (see
 The global `zuke` follows the same rules for its own commands: on a terminal
 `--version` is a panel, `--help` is painted, and `setup`, `import` and `upgrade`
 mark their outcome with ✔ or ✖; `--plain` or `ZUKE_PLAIN=1` gives the plain
-text, and `ZUKE_PLAIN` also drops the logo `setup` and `import` open with.
-`--plain` given to a command `zuke` forwards stays in the build's arguments, for
-the build's own CLI to read. Every Deno `zuke` spawns runs with
+text, and `ZUKE_PLAIN` or `ZUKE_NO_BANNER` drops the logo `setup` and `import`
+open with. `--plain` given to a command `zuke` forwards stays in the build's
+arguments, for the build's own CLI to read. Every Deno `zuke` spawns runs with
 `DENO_NO_UPDATE_CHECK=1`, so Deno's upgrade notice cannot land in the middle of
 its output, and `@zuke/console` reads colour from the same resolver, so a build
 logging through `ConsoleTasks` turns colour off under `ZUKE_PLAIN` too.

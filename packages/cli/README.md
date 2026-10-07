@@ -194,10 +194,11 @@ interface UpgradeHost
   install(denoArgs: string[]): Promise<number>
     Run `deno <denoArgs>` to reinstall, returning its exit code.
 
-type BuildRunner = (root: string, args: string[], program?: string) => Promise<number>
+type BuildRunner = (root: string, args: string[], program?: string, env?: Readonly<Record<string, string>>) => Promise<number>
   Runs `program <args>` from `root` — Deno when `program` is omitted, else the
   project's launcher at that path — and resolves to its exit code: the
   injectable subprocess seam, so the forwarding is testable without a build.
+  `env` adds variables to the environment the child inherits.
 
 type DocRunner = (denoArgs: string[]) => Promise<number>
   Runs `deno doc <args>` — the injectable subprocess seam for
