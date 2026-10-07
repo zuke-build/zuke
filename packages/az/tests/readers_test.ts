@@ -190,7 +190,7 @@ Deno.test("deploymentOutput finds an output by name, any case", async () => {
       (s) => s.name("ignored").runner(fake.run),
     );
   assertEquals(await read("apiUrl"), "https://api.example.com");
-  assertEquals(await read("APIURL"), "https://api.example.com");
+  assertEquals(await read("APIUrl"), "https://api.example.com");
   assertEquals(await read("replicas"), "3");
   assertEquals(await read("config"), '{"a":1}');
   assertEquals(fake.calls[0], [

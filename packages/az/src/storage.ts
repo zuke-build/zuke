@@ -8,7 +8,7 @@
  * ```ts
  * import { AzTasks } from "@zuke/az";
  * await AzTasks.storageBlobUploadBatch((s) =>
- *   s.accountName("stsite").authMode("login")
+ *   s.accountName("website").authMode("login")
  *     .source("dist").destination("$web").overwrite(true)
  * );
  * ```
