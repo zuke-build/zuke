@@ -740,6 +740,7 @@ the full task list and settings methods of each):
 | `@zuke/jest`, `@zuke/vitest`, `@zuke/playwright`, `@zuke/cypress`                                                                                   | `*Tasks`                                                             | test runners                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `@zuke/jsr`, `@zuke/codecov`, `@zuke/release-please`                                                                                                | `JsrTasks`, `CodecovTasks`, ...                                      | publish / coverage upload / releases                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `@zuke/kubectl`, `@zuke/helm`, `@zuke/kustomize`, `@zuke/argo-rollouts`, `@zuke/terraform`, `@zuke/tofu`, `@zuke/gcloud`                            | `*Tasks`                                                             | infra/deploy. `ArgoRolloutsTasks` drives the Argo Rollouts plugin — `setImage` starts a rollout, `promote` advances it past a pause (`.full()` skips the rest), `abort` backs it out, `status` waits on it; weights come from the Rollout manifest's steps, not the CLI. `KubectlTasks` covers the deploy surface — manifests, workloads, pods, nodes, kubeconfig — with `diffHasChanges`, `canI`, `getEntries`, `eventEntries`, `currentContext`, `versionInfo` handing back values (see below), plus `kubectlCanary` — a two-Deployment platform for `@zuke/canary`. `HelmTasks` adds `helmCanary`, a two-release platform for it. `GcloudTasks` types the Google Cloud deploy path — auth, config, builds, Cloud Run, Artifact Registry, GKE credentials, storage, functions, secrets (see below), plus `cloudRunCanary` — a Cloud Run platform for `@zuke/canary` |
+| `@zuke/aws`                                                                                                                                         | `AwsTasks`, `cloudwatch`                                             | the AWS CLI — typed STS, `configure`, S3, ECR, ECS, Lambda, CloudFormation, Secrets Manager, SSM, EKS, CloudWatch and Logs tasks, readers that hand back values (`accountId`, `ecrLoginPassword`, `secretString`, `parameterValue`, `stackOutput`, `functionVersion`, `metricValue`, `alarmState`, `logsInsightsQuery`), and `cloudwatch(...)` — a CloudWatch analysis for `@zuke/canary` (see below)                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `@zuke/security`                                                                                                                                    | `*Tasks`                                                             | security scanning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `@zuke/claude`, `@zuke/codex`, `@zuke/gemini`                                                                                                       | `ClaudeTasks`, ...                                                   | headless AI CLIs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `@zuke/ai`                                                                                                                                          | `securityReviewer`, ..., `aiFixer`, `agentFixer`                     | AI review gates + self-healing (see below)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
@@ -934,6 +935,72 @@ its cause. They run quiet, so a token never reaches the build log.
 
 `clustersGetCredentials` is the bridge to `@zuke/kubectl`: it writes the
 kubeconfig entry every kubectl task then works against.
+
+### AWS — `AwsTasks`
+
+The deploy path is typed, with the CLI's own subcommand and flag names:
+
+| Area           | Tasks                                                                                                                                             |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| STS            | `stsGetCallerIdentity`, `stsAssumeRole`                                                                                                           |
+| Config         | `configureGet`, `configureSet`                                                                                                                    |
+| S3             | `s3Cp`, `s3Sync`, `s3Ls`, `s3Rm`, `s3Mb`, `s3Presign`                                                                                             |
+| ECR            | `ecrGetLoginPassword`, `ecrDescribeImages`, `ecrDescribeRepositories`, `ecrBatchDeleteImage`                                                      |
+| ECS            | `ecsRegisterTaskDefinition`, `ecsUpdateService`, `ecsWaitServicesStable`, `ecsDescribeServices`, `ecsRunTask`                                     |
+| Lambda         | `lambdaUpdateFunctionCode`, `lambdaUpdateFunctionConfiguration`, `lambdaPublishVersion`, `lambdaUpdateAlias`, `lambdaGetFunction`, `lambdaInvoke` |
+| CloudFormation | `cloudformationDeploy`, `cloudformationDescribeStacks`, `cloudformationDeleteStack`, `cloudformationWait`                                         |
+| Secrets        | `secretsmanagerGetSecretValue`, `ssmGetParameter`, `ssmPutParameter`                                                                              |
+| EKS            | `eksUpdateKubeconfig`, `eksDescribeCluster`                                                                                                       |
+| CloudWatch     | `cloudwatchGetMetricData`, `cloudwatchGetMetricStatistics`, `cloudwatchDescribeAlarms`                                                            |
+| Logs           | `logsStartQuery`, `logsGetQueryResults`, `logsStopQuery`, `logsFilterLogEvents`, `logsTail`                                                       |
+
+`AwsTasks.run((s) => s.command("sns", "publish").flag("topic-arn", arn))` is the
+escape hatch for the rest. Global options on every settings class: `profile`,
+`region`, `output`, `query`, `endpointUrl`, `noCliPager`, `noVerifySsl`,
+`noSignRequest`, `caBundle`, `cliReadTimeout`, `cliConnectTimeout`, `debug`.
+`AWS_PAGER` is always set to `""` for the child, so CLI v2's pager never blocks
+a build.
+
+Some tasks hand back **values**:
+
+```ts
+const account = await AwsTasks.accountId((s) => s.profile("deploy"));
+const password = await AwsTasks.ecrLoginPassword((s) => s.region("eu-west-1"));
+const dbUrl = await AwsTasks.secretString((s) => s.secretId("prod/db"));
+const flag = await AwsTasks.parameterValue((s) => s.name("/api/flag"));
+const url = await AwsTasks.stackOutput("api", "ServiceUrl");
+const version = await AwsTasks.functionVersion((s) => s.functionName("api"));
+const errors = await AwsTasks.metricValue((s) =>
+  s.metricStat("errors", (m) =>
+    m.namespace("AWS/Lambda").metricName("Errors")
+      .dimension("FunctionName", "api").stat("Sum")).window("15m").aggregate(
+      "sum",
+    ).missingDataAs(0)
+);
+const state = await AwsTasks.alarmState("api-5xx"); // "OK" | "ALARM" | "INSUFFICIENT_DATA"
+const rows = await AwsTasks.logsInsightsQuery((q) =>
+  q.logGroupNames("/ecs/api").queryString("stats count(*)").window("30m")
+    .timeout("2m").aws((a) => a.region("eu-west-1"))
+);
+```
+
+- Readers pin `--query` / `--output` after your lambda and run quietly. A value
+  that may be absent or multi-line (secret, parameter, stack output) is read as
+  JSON, so a binary secret or a missing output fails instead of returning
+  `None`. Unusable output is an `AwsOutputError` (never quoting the output); a
+  Logs Insights query ending `Failed`/`Cancelled`/`Timeout`, or outlasting
+  `.timeout(...)` (then stopped), is an `AwsLogsQueryError`.
+- `metricValue` fails on no datapoints unless `.missingDataAs(0)`; with several
+  series name one with `.id(...)`.
+- Secrets: `stsAssumeRole`, `ecrGetLoginPassword`,
+  `secretsmanagerGetSecretValue` and `ssmGetParameter` always run quietly and
+  register what they return with the redactor. Write a `SecureString` with
+  `.valueFile(path)` (`file://`, off the command line); `.value(...)` refuses a
+  `file://`/`fileb://` prefix. Feed `ecrLoginPassword()` to
+  `DockerTasks.login((s) => s.passwordStdin(pw))`.
+- Every settings class takes `.runner((settings) => Promise<CommandOutput>)` —
+  the seam a test answers through instead of spawning `aws`; the exit code is
+  still judged.
 
 ### Worktrees — `GitTasks.worktree`
 
@@ -1420,6 +1487,14 @@ class Deploy extends Build {
   .connection((c) => c.sigv4((a) => a.region("us-east-1"))))`
   — `connection` takes `@zuke/prometheus`'s settings (`google()`, `azure()`,
   `sigv4()`, …).
+- **CloudWatch analysis:**
+  `.analysis(cloudwatch((m) => m.name("canary 5xx").namespace("AWS/ApplicationELB")
+  .metric("HTTPCode_Target_5XX_Count").dimension("TargetGroup", tg).stat("Sum")
+  .window("5m").max(5).missingDataAs(0).region("eu-west-1")))`
+  from `@zuke/aws` — fails when any datapoint in the window is out of bounds
+  (each covers `.period(seconds)`, default 60), or on no data unless
+  `.missingDataAs(...)`; `.metricStat(id, …)` + `.expression("100*e/r")` judges
+  metric math.
 - **Cloud Run:**
   `c.platform(cloudRunCanary((r) => r.service("api")
   .region("europe-west1").image(this.image.value).gcloud((g) => g.project(p))))`
