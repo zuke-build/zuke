@@ -627,14 +627,16 @@ error. The MCP server's `list_runs`/`show_run` tools (see
 ## Rich and plain output
 
 The global `zuke` follows the same rules for its own commands: on a terminal
-`--version` is a panel, `--help` is painted, and `setup`, `import` and `upgrade`
-mark their outcome with ✔ or ✖; `--plain` or `ZUKE_PLAIN=1` gives the plain
-text, and `ZUKE_PLAIN` or `ZUKE_NO_BANNER` drops the logo `setup` and `import`
-open with. `--plain` given to a command `zuke` forwards stays in the build's
-arguments, for the build's own CLI to read. Every Deno `zuke` spawns runs with
-`DENO_NO_UPDATE_CHECK=1`, so Deno's upgrade notice cannot land in the middle of
-its output, and `@zuke/console` reads colour from the same resolver, so a build
-logging through `ConsoleTasks` turns colour off under `ZUKE_PLAIN` too.
+`--version` is a panel, `--help` opens with the logo and is painted (the build's
+own half is painted by the project's core, from 1.67.0), and `setup`, `import`
+and `upgrade` mark their outcome with ✔ or ✖; `--plain` or `ZUKE_PLAIN=1` gives
+the plain text, and `ZUKE_PLAIN` or `ZUKE_NO_BANNER` drops the logo `--help`,
+`setup` and `import` open with. `--plain` given to a command `zuke` forwards
+stays in the build's arguments, for the build's own CLI to read. Every Deno
+`zuke` spawns runs with `DENO_NO_UPDATE_CHECK=1`, so Deno's upgrade notice
+cannot land in the middle of its output, and `@zuke/console` reads colour from
+the same resolver, so a build logging through `ConsoleTasks` turns colour off
+under `ZUKE_PLAIN` too.
 
 On an interactive terminal the build's informational commands print a rich form:
 `--version` is a small panel naming the core version, Deno, TypeScript and the

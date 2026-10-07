@@ -1483,10 +1483,65 @@ Deno.test("--help on a terminal is the plain help, painted", async () => {
       undefined,
       noProjectProbe,
     );
-    assertEquals(rich.logs[0] === plain.logs[0], false);
-    assertStringIncludes(rich.logs[0], "◆");
-    assertEquals(stripAnsi(rich.logs[0]).replaceAll("◆ ", ""), plain.logs[0]);
+    // Rich help opens with the wordmark; plain help never does.
+    assertStringIncludes(stripAnsi(rich.logs[0]), LOGO_TOP);
+    assertEquals(plain.logs.some((l) => l.includes(LOGO_TOP)), false);
+    const help = rich.logs[1];
+    assertEquals(help === plain.logs[0], false);
+    assertStringIncludes(help, "◆");
+    assertEquals(stripAnsi(help).replaceAll("◆ ", ""), plain.logs[0]);
   });
+});
+
+Deno.test("ZUKE_NO_BANNER and ZUKE_PLAIN drop the --help logo; ZUKE_NO_BANNER keeps the paint", async () => {
+  const help = async (env: Record<string, string | undefined>) => {
+    const host = new FakeHost();
+    host.terminal = true;
+    await withEnv({ ...RICH_ENV, ...env }, async () => {
+      await main(
+        ["--help"],
+        host,
+        defaultPrompter,
+        undefined,
+        undefined,
+        undefined,
+        noProjectProbe,
+      );
+    });
+    return host.logs;
+  };
+  const noBanner = await help({ ZUKE_NO_BANNER: "1" });
+  assertEquals(noBanner.some((l) => stripAnsi(l).includes(LOGO_TOP)), false);
+  assertStringIncludes(noBanner[0], "◆");
+  const plain = await help({ ZUKE_PLAIN: "1" });
+  assertEquals(plain.some((l) => l.includes(LOGO_TOP)), false);
+  assertEquals(plain[0].includes("◆"), false);
+});
+
+Deno.test("--help on a terminal paints the heading of the build's half; plain keeps its text", async () => {
+  const heading = async (terminal: boolean) => {
+    const host = new FakeHost();
+    host.terminal = terminal;
+    await withEnv(RICH_ENV, async () => {
+      await main(
+        ["--help"],
+        host,
+        defaultPrompter,
+        undefined,
+        undefined,
+        () => Promise.resolve(0),
+        probeAt(["zuke.json"]),
+      );
+    });
+    const line = host.logs.find((l) => l.includes("This project's build"));
+    assertEquals(line !== undefined, true);
+    return line ?? "";
+  };
+  const plain = await heading(false);
+  const rich = await heading(true);
+  assertEquals(plain.includes("◆"), false);
+  assertEquals(rich === plain, false);
+  assertEquals(stripAnsi(rich).replace("◆ ", ""), plain);
 });
 
 Deno.test("setup on a terminal marks its outcome; ZUKE_PLAIN drops the logo", async () => {
