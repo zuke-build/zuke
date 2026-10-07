@@ -34,7 +34,7 @@ import { type Configure, runSettings } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
 import { AwsSettings } from "./settings.ts";
 import { AwsOutputError } from "./errors.ts";
-import { readJson, readScalar } from "./scalar_output.ts";
+import { jsonFrom, scalarFrom } from "./reader.ts";
 import { isStringArray } from "./shape.ts";
 import {
   ACCOUNT_ID_QUERY,
@@ -96,27 +96,27 @@ import {
   AwsEksUpdateKubeconfigSettings,
 } from "./eks.ts";
 import {
-  type CloudwatchAlarmState,
-  CloudwatchDescribeAlarmsSettings,
-  CloudwatchGetMetricDataSettings,
-  CloudwatchGetMetricStatisticsSettings,
+  type AwsCloudwatchAlarmState,
+  AwsCloudwatchDescribeAlarmsSettings,
+  AwsCloudwatchGetMetricDataSettings,
+  AwsCloudwatchGetMetricStatisticsSettings,
 } from "./cloudwatch.ts";
 import {
-  CloudwatchMetricValueSettings,
+  AwsCloudwatchMetricValueSettings,
   metricValueOf,
 } from "./metric_value.ts";
 import { METRIC_DATA_RESULTS_QUERY } from "./metric_data.ts";
 import { ALARMS_QUERY, alarmStateOf } from "./alarm_state.ts";
 import {
-  LogsFilterLogEventsSettings,
-  LogsGetQueryResultsSettings,
-  LogsStartQuerySettings,
-  LogsStopQuerySettings,
-  LogsTailSettings,
+  AwsLogsFilterLogEventsSettings,
+  AwsLogsGetQueryResultsSettings,
+  AwsLogsStartQuerySettings,
+  AwsLogsStopQuerySettings,
+  AwsLogsTailSettings,
 } from "./logs.ts";
 import {
-  LogsInsightsQuerySettings,
-  type LogsInsightsRow,
+  AwsLogsInsightsQuerySettings,
+  type AwsLogsInsightsRow,
   runLogsInsightsQuery,
 } from "./logs_insights.ts";
 
@@ -244,10 +244,11 @@ export interface AwsTasksApi {
   ): Promise<CommandOutput>;
 
   /**
-   * Publish a version and return its number, read back as a string. Pins
-   * `--query Version --output text`.
+   * **Publish** a new version of the function — `aws lambda publish-version`,
+   * which changes the account — and return the number it was given. Pins
+   * `--query Version --output text`. Not a lookup: every call publishes.
    */
-  functionVersion(
+  lambdaPublishedVersion(
     configure?: Configure<AwsLambdaPublishVersionSettings>,
   ): Promise<string>;
 
@@ -340,7 +341,7 @@ export interface AwsTasksApi {
 
   /** Read metric datapoints: `aws cloudwatch get-metric-data`. */
   cloudwatchGetMetricData(
-    configure?: Configure<CloudwatchGetMetricDataSettings>,
+    configure?: Configure<AwsCloudwatchGetMetricDataSettings>,
   ): Promise<CommandOutput>;
 
   /**
@@ -350,38 +351,38 @@ export interface AwsTasksApi {
    * means.
    */
   metricValue(
-    configure: Configure<CloudwatchMetricValueSettings>,
+    configure: Configure<AwsCloudwatchMetricValueSettings>,
   ): Promise<number>;
 
   /** Read metric statistics: `aws cloudwatch get-metric-statistics`. */
   cloudwatchGetMetricStatistics(
-    configure?: Configure<CloudwatchGetMetricStatisticsSettings>,
+    configure?: Configure<AwsCloudwatchGetMetricStatisticsSettings>,
   ): Promise<CommandOutput>;
 
   /** Describe alarms: `aws cloudwatch describe-alarms`. */
   cloudwatchDescribeAlarms(
-    configure?: Configure<CloudwatchDescribeAlarmsSettings>,
+    configure?: Configure<AwsCloudwatchDescribeAlarmsSettings>,
   ): Promise<CommandOutput>;
 
-  /** The state of one metric or composite alarm: `OK`, `ALARM` or `INSUFFICIENT_DATA`. */
+  /** The state of one metric, composite or log alarm: `OK`, `ALARM` or `INSUFFICIENT_DATA`. */
   alarmState(
     name: string,
-    configure?: Configure<CloudwatchDescribeAlarmsSettings>,
-  ): Promise<CloudwatchAlarmState>;
+    configure?: Configure<AwsCloudwatchDescribeAlarmsSettings>,
+  ): Promise<AwsCloudwatchAlarmState>;
 
   /** Start a Logs Insights query: `aws logs start-query`. */
   logsStartQuery(
-    configure?: Configure<LogsStartQuerySettings>,
+    configure?: Configure<AwsLogsStartQuerySettings>,
   ): Promise<CommandOutput>;
 
   /** Read a Logs Insights query's results: `aws logs get-query-results`. */
   logsGetQueryResults(
-    configure?: Configure<LogsGetQueryResultsSettings>,
+    configure?: Configure<AwsLogsGetQueryResultsSettings>,
   ): Promise<CommandOutput>;
 
   /** Stop a running Logs Insights query: `aws logs stop-query`. */
   logsStopQuery(
-    configure?: Configure<LogsStopQuerySettings>,
+    configure?: Configure<AwsLogsStopQuerySettings>,
   ): Promise<CommandOutput>;
 
   /**
@@ -390,35 +391,21 @@ export interface AwsTasksApi {
    * `AwsLogsQueryError` when it ends otherwise or outlasts the timeout.
    */
   logsInsightsQuery(
-    configure: Configure<LogsInsightsQuerySettings>,
-  ): Promise<LogsInsightsRow[]>;
+    configure: Configure<AwsLogsInsightsQuerySettings>,
+  ): Promise<AwsLogsInsightsRow[]>;
 
   /** Search a log group's events: `aws logs filter-log-events`. */
   logsFilterLogEvents(
-    configure?: Configure<LogsFilterLogEventsSettings>,
+    configure?: Configure<AwsLogsFilterLogEventsSettings>,
   ): Promise<CommandOutput>;
 
   /** Print a log group's recent events: `aws logs tail`. */
-  logsTail(configure?: Configure<LogsTailSettings>): Promise<CommandOutput>;
+  logsTail(configure?: Configure<AwsLogsTailSettings>): Promise<CommandOutput>;
 }
 
 /** `settings`, configured by `configure` when there is one. */
 function configured<S>(settings: S, configure: Configure<S> | undefined): S {
   return configure ? configure(settings) : settings;
-}
-
-/** Run `settings` quietly and read the one line it printed. */
-async function scalar(
-  settings: AwsSettings,
-  task: string,
-  subject: string,
-): Promise<string> {
-  return readScalar(await settings.quiet().run(), `AwsTasks.${task}`, subject);
-}
-
-/** Run `settings` quietly with `--output json` and parse what it printed. */
-async function json(settings: AwsSettings, task: string): Promise<unknown> {
-  return readJson(await settings.quiet().output("json").run(), task);
 }
 
 /** The JSON string a pinned `--query` projected, or a clear refusal. */
@@ -438,10 +425,10 @@ export const AwsTasks: AwsTasksApi = {
   // Pinned after the caller's lambda: the reader promises an account id, so
   // the projection that produces one is not the caller's to replace.
   accountId: (c) =>
-    scalar(
+    scalarFrom(
       configured(new AwsStsGetCallerIdentitySettings(), c)
         .output("text").query(ACCOUNT_ID_QUERY),
-      "accountId",
+      "AwsTasks.accountId",
       "account id",
     ),
   stsAssumeRole: (c) => runSettings(new AwsStsAssumeRoleSettings(), c),
@@ -459,9 +446,9 @@ export const AwsTasks: AwsTasksApi = {
   ecrGetLoginPassword: (c) =>
     runSettings(new AwsEcrGetLoginPasswordSettings(), c),
   ecrLoginPassword: (c) =>
-    scalar(
+    scalarFrom(
       configured(new AwsEcrGetLoginPasswordSettings(), c),
-      "ecrLoginPassword",
+      "AwsTasks.ecrLoginPassword",
       "registry password",
     ),
   ecrDescribeImages: (c) => runSettings(new AwsEcrDescribeImagesSettings(), c),
@@ -485,11 +472,11 @@ export const AwsTasks: AwsTasksApi = {
     runSettings(new AwsLambdaUpdateFunctionConfigurationSettings(), c),
   lambdaPublishVersion: (c) =>
     runSettings(new AwsLambdaPublishVersionSettings(), c),
-  functionVersion: (c) =>
-    scalar(
+  lambdaPublishedVersion: (c) =>
+    scalarFrom(
       configured(new AwsLambdaPublishVersionSettings(), c)
         .output("text").query(FUNCTION_VERSION_QUERY),
-      "functionVersion",
+      "AwsTasks.lambdaPublishedVersion",
       "version number",
     ),
   lambdaUpdateAlias: (c) => runSettings(new AwsLambdaUpdateAliasSettings(), c),
@@ -503,10 +490,11 @@ export const AwsTasks: AwsTasksApi = {
   stackOutput: async (stack, key, c) => {
     const task = "AwsTasks.stackOutput";
     const query = stackOutputQuery(key);
-    const values = await json(
+    const values = await jsonFrom(
       configured(new AwsCloudformationDescribeStacksSettings(), c)
-        .stackName(stack).query(query),
+        .stackName(stack),
       task,
+      query,
     );
     if (!isStringArray(values)) {
       throw new AwsOutputError(task, "the stack's outputs are not a list.");
@@ -529,10 +517,10 @@ export const AwsTasks: AwsTasksApi = {
     runSettings(new AwsSecretsmanagerGetSecretValueSettings(), c),
   secretString: async (c) => {
     const task = "AwsTasks.secretString";
-    const value = await json(
-      configured(new AwsSecretsmanagerGetSecretValueSettings(), c)
-        .query(SECRET_STRING_QUERY),
+    const value = await jsonFrom(
+      configured(new AwsSecretsmanagerGetSecretValueSettings(), c),
       task,
+      SECRET_STRING_QUERY,
     );
     return jsonString(
       value,
@@ -544,10 +532,10 @@ export const AwsTasks: AwsTasksApi = {
   ssmGetParameter: (c) => runSettings(new AwsSsmGetParameterSettings(), c),
   parameterValue: async (c) => {
     const task = "AwsTasks.parameterValue";
-    const value = await json(
-      configured(new AwsSsmGetParameterSettings(), c)
-        .query(PARAMETER_VALUE_QUERY),
+    const value = await jsonFrom(
+      configured(new AwsSsmGetParameterSettings(), c),
       task,
+      PARAMETER_VALUE_QUERY,
     );
     return jsonString(value, task, "Parameter.Value");
   },
@@ -559,34 +547,38 @@ export const AwsTasks: AwsTasksApi = {
     runSettings(new AwsEksDescribeClusterSettings(), c),
 
   cloudwatchGetMetricData: (c) =>
-    runSettings(new CloudwatchGetMetricDataSettings(), c),
+    runSettings(new AwsCloudwatchGetMetricDataSettings(), c),
   metricValue: async (c) => {
-    const settings = c(new CloudwatchMetricValueSettings());
-    const results = await json(
-      settings.query(METRIC_DATA_RESULTS_QUERY),
+    const settings = c(new AwsCloudwatchMetricValueSettings());
+    const document = await jsonFrom(
+      settings,
       "AwsTasks.metricValue",
+      METRIC_DATA_RESULTS_QUERY,
     );
-    return metricValueOf(results, settings);
+    return metricValueOf(document, settings);
   },
   cloudwatchGetMetricStatistics: (c) =>
-    runSettings(new CloudwatchGetMetricStatisticsSettings(), c),
+    runSettings(new AwsCloudwatchGetMetricStatisticsSettings(), c),
   cloudwatchDescribeAlarms: (c) =>
-    runSettings(new CloudwatchDescribeAlarmsSettings(), c),
+    runSettings(new AwsCloudwatchDescribeAlarmsSettings(), c),
   alarmState: async (name, c) => {
-    const alarms = await json(
-      configured(new CloudwatchDescribeAlarmsSettings(), c)
-        .alarmNames(name).alarmTypes("MetricAlarm", "CompositeAlarm")
-        .query(ALARMS_QUERY),
+    const alarms = await jsonFrom(
+      configured(new AwsCloudwatchDescribeAlarmsSettings(), c)
+        .alarmNames(name)
+        .alarmTypes("MetricAlarm", "CompositeAlarm", "LogAlarm"),
       "AwsTasks.alarmState",
+      ALARMS_QUERY,
     );
     return alarmStateOf(alarms, name);
   },
 
-  logsStartQuery: (c) => runSettings(new LogsStartQuerySettings(), c),
-  logsGetQueryResults: (c) => runSettings(new LogsGetQueryResultsSettings(), c),
-  logsStopQuery: (c) => runSettings(new LogsStopQuerySettings(), c),
+  logsStartQuery: (c) => runSettings(new AwsLogsStartQuerySettings(), c),
+  logsGetQueryResults: (c) =>
+    runSettings(new AwsLogsGetQueryResultsSettings(), c),
+  logsStopQuery: (c) => runSettings(new AwsLogsStopQuerySettings(), c),
   logsInsightsQuery: (c) =>
-    runLogsInsightsQuery(c(new LogsInsightsQuerySettings())),
-  logsFilterLogEvents: (c) => runSettings(new LogsFilterLogEventsSettings(), c),
-  logsTail: (c) => runSettings(new LogsTailSettings(), c),
+    runLogsInsightsQuery(c(new AwsLogsInsightsQuerySettings())),
+  logsFilterLogEvents: (c) =>
+    runSettings(new AwsLogsFilterLogEventsSettings(), c),
+  logsTail: (c) => runSettings(new AwsLogsTailSettings(), c),
 };

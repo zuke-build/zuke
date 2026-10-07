@@ -17,7 +17,9 @@
 
 import type { CommandOutput } from "@zuke/core/shell";
 import { secretsIn } from "./secret_output.ts";
-import { AwsSettings } from "./settings.ts";
+import { option } from "./validate.ts";
+import { type AwsOutputFormat, AwsSettings } from "./settings.ts";
+import { freeText } from "./validate.ts";
 
 /** The `--query` the account-id reader pins, so the CLI extracts the field. */
 export const ACCOUNT_ID_QUERY = "Account";
@@ -34,7 +36,8 @@ export class AwsStsGetCallerIdentitySettings extends AwsSettings {
  * Settings for `aws sts assume-role`.
  *
  * The response carries a secret access key and a session token, so the
- * command always runs quietly — its output is captured, never streamed — and
+ * command always runs quietly — its output is captured, never streamed — with
+ * `--output json` pinned whatever the settings or the user's config say, and
  * both values are registered with the run's redactor once it returns.
  */
 export class AwsStsAssumeRoleSettings extends AwsSettings {
@@ -72,13 +75,13 @@ export class AwsStsAssumeRoleSettings extends AwsSettings {
 
   /** The external id the role's trust policy requires (`--external-id`). */
   externalId(id: string): this {
-    this.#externalId = id;
+    this.#externalId = freeText("stsAssumeRole", "--external-id", id);
     return this;
   }
 
   /** An inline session policy, as a JSON document (`--policy`). */
   policy(json: string): this {
-    this.#policy = json;
+    this.#policy = freeText("stsAssumeRole", "--policy", json);
     return this;
   }
 
@@ -92,6 +95,11 @@ export class AwsStsAssumeRoleSettings extends AwsSettings {
   tokenCode(code: string): this {
     this.#tokenCode = code;
     return this;
+  }
+
+  /** Pin `--output json`, the form the returned secrets can be found in. */
+  protected override pinnedOutput(): AwsOutputFormat {
+    return "json";
   }
 
   /** Register the returned secret access key and session token as secrets. */
@@ -112,23 +120,21 @@ export class AwsStsAssumeRoleSettings extends AwsSettings {
     const argv = [
       "sts",
       "assume-role",
-      "--role-arn",
-      this.#roleArn,
-      "--role-session-name",
-      this.#roleSessionName,
+      option("--role-arn", this.#roleArn),
+      option("--role-session-name", this.#roleSessionName),
     ];
     if (this.#durationSeconds !== undefined) {
-      argv.push("--duration-seconds", String(this.#durationSeconds));
+      argv.push(option("--duration-seconds", this.#durationSeconds));
     }
     if (this.#externalId !== undefined) {
-      argv.push("--external-id", this.#externalId);
+      argv.push(option("--external-id", this.#externalId));
     }
-    if (this.#policy !== undefined) argv.push("--policy", this.#policy);
+    if (this.#policy !== undefined) argv.push(option("--policy", this.#policy));
     if (this.#serialNumber !== undefined) {
-      argv.push("--serial-number", this.#serialNumber);
+      argv.push(option("--serial-number", this.#serialNumber));
     }
     if (this.#tokenCode !== undefined) {
-      argv.push("--token-code", this.#tokenCode);
+      argv.push(option("--token-code", this.#tokenCode));
     }
     return argv;
   }

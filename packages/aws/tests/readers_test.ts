@@ -21,7 +21,7 @@ import {
 // these are imported from their modules rather than re-exported by mod.ts.
 import { readJson, readScalar } from "../src/scalar_output.ts";
 import { secretsIn } from "../src/secret_output.ts";
-import { FakeAws, json } from "./_fake.ts";
+import { FakeAws, json, withEmptyPath } from "./_fake.ts";
 
 const CAP = 8388608;
 
@@ -113,7 +113,11 @@ Deno.test("secretsIn finds secrets in JSON, a JSON string, or plain text", () =>
   assertEquals(secretsIn(json("line1\nline2"), []), ["line1\nline2"]);
   assertEquals(secretsIn("eyJwYXNzd29yZCI6\n", []), ["eyJwYXNzd29yZCI6"]);
   assertEquals(secretsIn("\n", []), []);
-  assertEquals(secretsIn("42", ["Value"]), []);
+  // A reshaped answer without the expected keys has every scalar registered.
+  assertEquals(secretsIn("42", ["Value"]), ["42"]);
+  assertEquals(secretsIn(json({ a: true, b: null }), ["Value"]), ["true"]);
+  assertEquals(secretsIn("null\n", ["Value"]), []);
+  assertEquals(secretsIn(json({}), ["Value"]), ["{}"]);
   // A JSON secret also yields its credential-named fields, and only those.
   const rds = JSON.stringify({
     username: "admin",
@@ -169,10 +173,10 @@ Deno.test("ecrLoginPassword reads the password", async () => {
   assertEquals(fake.calls[0].slice(1, 3), ["ecr", "get-login-password"]);
 });
 
-Deno.test("functionVersion pins --query Version --output text", async () => {
+Deno.test("lambdaPublishedVersion pins --query Version --output text", async () => {
   const fake = new FakeAws("7\n");
   assertEquals(
-    await AwsTasks.functionVersion((s) =>
+    await AwsTasks.lambdaPublishedVersion((s) =>
       s.functionName("api").runner(fake.run)
     ),
     "7",
@@ -331,24 +335,6 @@ Deno.test("a reader's failed command surfaces as a CommandError", async () => {
   assertStringIncludes(error.message, "ResourceNotFoundException");
 });
 
-/**
- * Run `fn` with `PATH` pointing at an empty directory, so a task called
- * without a lambda — which spawns the bare `aws` — reaches execution and
- * finds nothing, rather than a real CLI that may be installed on the host.
- */
-async function withEmptyPath(fn: () => Promise<void>): Promise<void> {
-  const previous = Deno.env.get("PATH");
-  const empty = await Deno.makeTempDir();
-  Deno.env.set("PATH", empty);
-  try {
-    await fn();
-  } finally {
-    if (previous === undefined) Deno.env.delete("PATH");
-    else Deno.env.set("PATH", previous);
-    await Deno.remove(empty);
-  }
-}
-
 Deno.test("readers run without a lambda", async () => {
   await withEmptyPath(async () => {
     // These need no operand, so they reach the spawn and find no binary.
@@ -367,7 +353,7 @@ Deno.test("readers run without a lambda", async () => {
     await assertRejects(() => AwsTasks.secretString(), Error, "secretId");
     await assertRejects(() => AwsTasks.parameterValue(), Error, "name");
     await assertRejects(
-      () => AwsTasks.functionVersion(),
+      () => AwsTasks.lambdaPublishedVersion(),
       Error,
       "functionName",
     );

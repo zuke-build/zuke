@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * {@link LogsInsightsQuerySettings} — the settings behind
+ * {@link AwsLogsInsightsQuerySettings} — the settings behind
  * `AwsTasks.logsInsightsQuery`, which runs a CloudWatch Logs Insights query
  * to the end: `logs start-query`, then `logs get-query-results` until the
  * query is `Complete`, returning its rows.
@@ -26,17 +26,17 @@ import { parseDuration } from "@zuke/core";
 import type { Configure } from "@zuke/core/tooling";
 import { AwsLogsQueryError, AwsOutputError } from "./errors.ts";
 import {
-  LogsGetQueryResultsSettings,
-  LogsStartQuerySettings,
-  LogsStopQuerySettings,
+  AwsLogsGetQueryResultsSettings,
+  AwsLogsStartQuerySettings,
+  AwsLogsStopQuerySettings,
 } from "./logs.ts";
-import { readJson } from "./scalar_output.ts";
+import { jsonFrom, WHOLE_ANSWER } from "./reader.ts";
 import type { AwsSettings } from "./settings.ts";
 import { isRecord } from "./shape.ts";
 import { windowEnding } from "./time.ts";
 
 /** One row of a Logs Insights result: each field the query returned, by name. */
-export type LogsInsightsRow = Record<string, string>;
+export type AwsLogsInsightsRow = Record<string, string>;
 
 /** The task name in this reader's errors. */
 const TASK = "AwsTasks.logsInsightsQuery";
@@ -51,7 +51,7 @@ const DEFAULT_POLL_INTERVAL = 1_000;
 const PENDING = ["Scheduled", "Running"];
 
 /** Settings for `AwsTasks.logsInsightsQuery`: the query, and how long to wait for it. */
-export class LogsInsightsQuerySettings {
+export class AwsLogsInsightsQuerySettings {
   /** The log groups to query (set by {@link logGroupNames}). */
   readonly logGroupNames_: string[] = [];
   /** The Logs Insights query (set by {@link queryString}). */
@@ -68,6 +68,8 @@ export class LogsInsightsQuerySettings {
   pollInterval_: number = DEFAULT_POLL_INTERVAL;
   /** Global options for every command (set by {@link aws}). */
   aws_: Configure<AwsSettings> = (a) => a;
+  /** Cancels the wait and stops the query (set by {@link signal}). */
+  signal_?: AbortSignal;
 
   /** The log groups to query (`--log-group-names`); repeatable. */
   logGroupNames(...names: string[]): this {
@@ -131,25 +133,50 @@ export class LogsInsightsQuerySettings {
     this.aws_ = configure;
     return this;
   }
+
+  /**
+   * Cancel the query with `signal`: the poll stops at once, the query is
+   * stopped, and the reader fails with the signal's reason. Pass a target's
+   * `ctx.signal` here — core's own run signal reaches each `aws` command
+   * already, but not the pause between two polls.
+   */
+  signal(signal: AbortSignal): this {
+    this.signal_ = signal;
+    return this;
+  }
 }
 
-/** Configure `settings` as the query's command: global options, quiet, JSON. */
+/** `settings` with the query's global options applied. */
 function prepared<S extends AwsSettings>(
   settings: S,
-  query: LogsInsightsQuerySettings,
+  query: AwsLogsInsightsQuerySettings,
 ): S {
   query.aws_(settings);
-  return settings.quiet().output("json");
+  return settings;
 }
 
-/** Wait `ms` milliseconds. */
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/** Wait `ms` milliseconds, or until `signal` aborts. */
+function sleep(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  if (signal === undefined) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+  return new Promise((resolve, reject) => {
+    signal.throwIfAborted();
+    const aborted = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", aborted);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", aborted, { once: true });
+  });
 }
 
 /** Start the query and return its id. */
-async function start(query: LogsInsightsQuerySettings): Promise<string> {
-  const settings = new LogsStartQuerySettings()
+async function start(query: AwsLogsInsightsQuerySettings): Promise<string> {
+  const settings = new AwsLogsStartQuerySettings()
     .logGroupNames(...query.logGroupNames_);
   if (query.queryString_ !== undefined) {
     settings.queryString(query.queryString_);
@@ -157,15 +184,15 @@ async function start(query: LogsInsightsQuerySettings): Promise<string> {
   if (query.start_ !== undefined) settings.startTime(query.start_);
   if (query.end_ !== undefined) settings.endTime(query.end_);
   if (query.limit_ !== undefined) settings.limit(query.limit_);
-  const answer = readJson(await prepared(settings, query).run(), TASK);
+  const answer = await jsonFrom(prepared(settings, query), TASK, WHOLE_ANSWER);
   if (!isRecord(answer) || typeof answer.queryId !== "string") {
     throw new AwsOutputError(TASK, "start-query returned no queryId.");
   }
   return answer.queryId;
 }
 
-/** The rows of a `Complete` answer, each field by name. */
-function rowsOf(results: unknown): LogsInsightsRow[] {
+/** The rows of one `Complete` page, each field by name. */
+function rowsOf(results: unknown): AwsLogsInsightsRow[] {
   if (!Array.isArray(results)) {
     throw new AwsOutputError(
       TASK,
@@ -176,7 +203,7 @@ function rowsOf(results: unknown): LogsInsightsRow[] {
     if (!Array.isArray(fields)) {
       throw new AwsOutputError(TASK, "a result row is not a list of fields.");
     }
-    const row: LogsInsightsRow = {};
+    const row: AwsLogsInsightsRow = {};
     for (const cell of fields) {
       if (
         !isRecord(cell) || typeof cell.field !== "string" ||
@@ -193,34 +220,86 @@ function rowsOf(results: unknown): LogsInsightsRow[] {
   });
 }
 
+/** One `get-query-results` answer. */
+interface Page {
+  /** `Scheduled`, `Running`, `Complete`, `Failed`, … */
+  status: string;
+  /** The rows, once the query is `Complete`. */
+  results: unknown;
+  /** The token for the next page of rows, when there is one. */
+  nextToken: unknown;
+}
+
+/** One `get-query-results` answer, bounded by the time the reader has left. */
+async function poll(
+  query: AwsLogsInsightsQuerySettings,
+  id: string,
+  deadline: number,
+  nextToken?: string,
+): Promise<Page> {
+  const settings = prepared(
+    new AwsLogsGetQueryResultsSettings().queryId(id),
+    query,
+  ).killAfter(Math.max(1, deadline - Date.now()));
+  if (nextToken !== undefined) settings.nextToken(nextToken);
+  const answer = await jsonFrom(settings, TASK, WHOLE_ANSWER);
+  if (!isRecord(answer) || typeof answer.status !== "string") {
+    throw new AwsOutputError(TASK, "get-query-results returned no status.");
+  }
+  const { status, results, nextToken: next } = answer;
+  return { status, results, nextToken: next };
+}
+
 /** Stop a query the reader has given up on; a failure to stop is not reported. */
-async function stop(query: LogsInsightsQuerySettings, id: string) {
+async function stop(query: AwsLogsInsightsQuerySettings, id: string) {
   try {
-    await prepared(new LogsStopQuerySettings().queryId(id), query).noThrow()
-      .run();
+    const settings = prepared(
+      new AwsLogsStopQuerySettings().queryId(id),
+      query,
+    );
+    await settings.quiet().output("json").query(WHOLE_ANSWER).noThrow().run();
   } catch {
     // Best effort: the query ends on its own when the service's limit runs
-    // out, and the timeout below is the error worth reporting.
+    // out, and the error that got us here is the one worth reporting.
   }
 }
 
-/** Run the query `query` describes to the end and return its rows. */
-export async function runLogsInsightsQuery(
-  query: LogsInsightsQuerySettings,
-): Promise<LogsInsightsRow[]> {
-  const id = await start(query);
+/**
+ * The rows of a `Complete` query: `answer`'s, then every page after it the
+ * service hands a `nextToken` for.
+ */
+async function allRows(
+  query: AwsLogsInsightsQuerySettings,
+  id: string,
+  deadline: number,
+  answer: Page,
+): Promise<AwsLogsInsightsRow[]> {
+  const rows = rowsOf(answer.results);
+  let token = answer.nextToken;
+  while (typeof token === "string") {
+    const page = await poll(query, id, deadline, token);
+    rows.push(...rowsOf(page.results));
+    token = page.nextToken;
+  }
+  return rows;
+}
+
+/**
+ * Poll until the query is `Complete` and return its rows — or throw when it
+ * ends otherwise, outlasts the timeout, or is cancelled.
+ */
+async function untilComplete(
+  query: AwsLogsInsightsQuerySettings,
+  id: string,
+): Promise<AwsLogsInsightsRow[]> {
   const deadline = Date.now() + query.timeout_;
   for (;;) {
-    const settings = prepared(
-      new LogsGetQueryResultsSettings().queryId(id),
-      query,
-    );
-    const answer = readJson(await settings.run(), TASK);
-    if (!isRecord(answer) || typeof answer.status !== "string") {
-      throw new AwsOutputError(TASK, "get-query-results returned no status.");
-    }
+    query.signal_?.throwIfAborted();
+    const answer = await poll(query, id, deadline);
     const { status } = answer;
-    if (status === "Complete") return rowsOf(answer.results);
+    if (status === "Complete") {
+      return await allRows(query, id, deadline, answer);
+    }
     if (!PENDING.includes(status)) {
       throw new AwsLogsQueryError(
         id,
@@ -228,8 +307,8 @@ export async function runLogsInsightsQuery(
         `${TASK}: the query ended with status ${status}, not Complete.`,
       );
     }
-    if (Date.now() >= deadline) {
-      await stop(query, id);
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
       throw new AwsLogsQueryError(
         id,
         status,
@@ -238,6 +317,27 @@ export async function runLogsInsightsQuery(
           "or the log groups, or raise .timeout(...).",
       );
     }
-    await sleep(query.pollInterval_);
+    await sleep(Math.min(query.pollInterval_, remaining), query.signal_);
+  }
+}
+
+/**
+ * Run the query `query` describes to the end and return its rows. Whatever
+ * ends the wait early — the timeout, a cancellation, a failed command, an
+ * answer of the wrong shape — the query is stopped before the error is
+ * raised, so it does not run on in the account.
+ */
+export async function runLogsInsightsQuery(
+  query: AwsLogsInsightsQuerySettings,
+): Promise<AwsLogsInsightsRow[]> {
+  const id = await start(query);
+  try {
+    return await untilComplete(query, id);
+  } catch (error) {
+    // A query that ended on its own has nothing to stop.
+    const ended = error instanceof AwsLogsQueryError &&
+      !PENDING.includes(error.status);
+    if (!ended) await stop(query, id);
+    throw error;
   }
 }

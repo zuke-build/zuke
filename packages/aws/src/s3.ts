@@ -19,7 +19,9 @@
  * @module
  */
 
+import type { CommandOutput } from "@zuke/core/shell";
 import { AwsSettings } from "./settings.ts";
+import { operand, option } from "./validate.ts";
 
 /** Settings for `aws s3 cp`. */
 export class AwsS3CpSettings extends AwsSettings {
@@ -57,13 +59,13 @@ export class AwsS3CpSettings extends AwsSettings {
 
   /** Skip files matching the pattern (`--exclude`); repeatable, order kept. */
   exclude(pattern: string): this {
-    this.#filters.push("--exclude", pattern);
+    this.#filters.push(option("--exclude", pattern));
     return this;
   }
 
   /** Copy files matching the pattern despite an earlier exclude (`--include`). */
   include(pattern: string): this {
-    this.#filters.push("--include", pattern);
+    this.#filters.push(option("--include", pattern));
     return this;
   }
 
@@ -129,23 +131,28 @@ export class AwsS3CpSettings extends AwsSettings {
           ".destination('s3://bucket/key').",
       );
     }
-    const argv = ["s3", "cp", this.#source, this.#destination];
+    const argv = [
+      "s3",
+      "cp",
+      operand("s3Cp", "source", this.#source),
+      operand("s3Cp", "destination", this.#destination),
+    ];
     if (this.#recursive) argv.push("--recursive");
     argv.push(...this.#filters);
     if (this.#dryrun) argv.push("--dryrun");
-    if (this.#acl !== undefined) argv.push("--acl", this.#acl);
+    if (this.#acl !== undefined) argv.push(option("--acl", this.#acl));
     if (this.#contentType !== undefined) {
-      argv.push("--content-type", this.#contentType);
+      argv.push(option("--content-type", this.#contentType));
     }
     if (this.#cacheControl !== undefined) {
-      argv.push("--cache-control", this.#cacheControl);
+      argv.push(option("--cache-control", this.#cacheControl));
     }
     if (this.#storageClass !== undefined) {
-      argv.push("--storage-class", this.#storageClass);
+      argv.push(option("--storage-class", this.#storageClass));
     }
-    if (this.#sse !== undefined) argv.push("--sse", this.#sse);
+    if (this.#sse !== undefined) argv.push(option("--sse", this.#sse));
     if (this.#sseKmsKeyId !== undefined) {
-      argv.push("--sse-kms-key-id", this.#sseKmsKeyId);
+      argv.push(option("--sse-kms-key-id", this.#sseKmsKeyId));
     }
     if (this.#onlyShowErrors) argv.push("--only-show-errors");
     if (this.#noProgress) argv.push("--no-progress");
@@ -192,13 +199,13 @@ export class AwsS3SyncSettings extends AwsSettings {
 
   /** Skip files matching the pattern (`--exclude`); repeatable, order kept. */
   exclude(pattern: string): this {
-    this.#filters.push("--exclude", pattern);
+    this.#filters.push(option("--exclude", pattern));
     return this;
   }
 
   /** Sync files matching the pattern despite an earlier exclude (`--include`). */
   include(pattern: string): this {
-    this.#filters.push("--include", pattern);
+    this.#filters.push(option("--include", pattern));
     return this;
   }
 
@@ -264,21 +271,26 @@ export class AwsS3SyncSettings extends AwsSettings {
           ".destination('s3://bucket/prefix').",
       );
     }
-    const argv = ["s3", "sync", this.#source, this.#destination];
+    const argv = [
+      "s3",
+      "sync",
+      operand("s3Sync", "source", this.#source),
+      operand("s3Sync", "destination", this.#destination),
+    ];
     if (this.#delete) argv.push("--delete");
     argv.push(...this.#filters);
     if (this.#dryrun) argv.push("--dryrun");
     if (this.#exactTimestamps) argv.push("--exact-timestamps");
     if (this.#sizeOnly) argv.push("--size-only");
-    if (this.#acl !== undefined) argv.push("--acl", this.#acl);
+    if (this.#acl !== undefined) argv.push(option("--acl", this.#acl));
     if (this.#contentType !== undefined) {
-      argv.push("--content-type", this.#contentType);
+      argv.push(option("--content-type", this.#contentType));
     }
     if (this.#cacheControl !== undefined) {
-      argv.push("--cache-control", this.#cacheControl);
+      argv.push(option("--cache-control", this.#cacheControl));
     }
     if (this.#storageClass !== undefined) {
-      argv.push("--storage-class", this.#storageClass);
+      argv.push(option("--storage-class", this.#storageClass));
     }
     if (this.#onlyShowErrors) argv.push("--only-show-errors");
     if (this.#noProgress) argv.push("--no-progress");
@@ -320,7 +332,9 @@ export class AwsS3LsSettings extends AwsSettings {
   /** Emit `s3 ls` with its operand and options. */
   protected override leadingTokens(): string[] {
     const argv = ["s3", "ls"];
-    if (this.#path !== undefined) argv.push(this.#path);
+    if (this.#path !== undefined) {
+      argv.push(operand("s3Ls", "path", this.#path));
+    }
     if (this.#recursive) argv.push("--recursive");
     if (this.#humanReadable) argv.push("--human-readable");
     if (this.#summarize) argv.push("--summarize");
@@ -349,13 +363,13 @@ export class AwsS3RmSettings extends AwsSettings {
 
   /** Keep objects matching the pattern (`--exclude`); repeatable, order kept. */
   exclude(pattern: string): this {
-    this.#filters.push("--exclude", pattern);
+    this.#filters.push(option("--exclude", pattern));
     return this;
   }
 
   /** Remove objects matching the pattern despite an earlier exclude (`--include`). */
   include(pattern: string): this {
-    this.#filters.push("--include", pattern);
+    this.#filters.push(option("--include", pattern));
     return this;
   }
 
@@ -373,7 +387,7 @@ export class AwsS3RmSettings extends AwsSettings {
           "A delete with no operand is not a no-op worth guessing at.",
       );
     }
-    const argv = ["s3", "rm", this.#path];
+    const argv = ["s3", "rm", operand("s3Rm", "path", this.#path)];
     if (this.#recursive) argv.push("--recursive");
     argv.push(...this.#filters);
     if (this.#dryrun) argv.push("--dryrun");
@@ -398,20 +412,43 @@ export class AwsS3MbSettings extends AwsSettings {
         "AwsTasks.s3Mb: no bucket named — add .bucket('s3://my-bucket').",
       );
     }
-    return ["s3", "mb", this.#bucket];
+    return ["s3", "mb", operand("s3Mb", "bucket", this.#bucket)];
   }
 }
+
+/** The query parameter of a presigned URL that carries the session token. */
+const SECURITY_TOKEN = "X-Amz-Security-Token";
 
 /**
  * Settings for `aws s3 presign`.
  *
  * A presigned URL is a bearer credential for the object until it expires:
- * anyone holding it can read the object. Run with `.quiet()` when the URL
- * should not land in the build log.
+ * anyone holding it can read the object, and when the build runs on
+ * temporary credentials it also carries the session token itself
+ * (`X-Amz-Security-Token`), which is good for far more than one object. So
+ * the command always runs quietly — the URL is captured, never streamed — and
+ * the URL and that token are registered with the run's redactor.
  */
 export class AwsS3PresignSettings extends AwsSettings {
   #path?: string;
   #expiresIn?: number;
+
+  /** Settings that capture the URL instead of streaming it. */
+  constructor() {
+    super();
+    this.quiet();
+  }
+
+  /** Register the URL, and the session token it carries, as secrets. */
+  protected override onOutput(output: CommandOutput): void {
+    const url = output.stdout.trim();
+    if (url === "") return;
+    this.markSecret(url);
+    const token = URL.canParse(url)
+      ? new URL(url).searchParams.get(SECURITY_TOKEN)
+      : null;
+    if (token !== null) this.markSecret(token);
+  }
 
   /** The `s3://` object to presign (positional). */
   path(uri: string): this {
@@ -432,9 +469,9 @@ export class AwsS3PresignSettings extends AwsSettings {
         "AwsTasks.s3Presign: no object named — add .path('s3://bucket/key').",
       );
     }
-    const argv = ["s3", "presign", this.#path];
+    const argv = ["s3", "presign", operand("s3Presign", "path", this.#path)];
     if (this.#expiresIn !== undefined) {
-      argv.push("--expires-in", String(this.#expiresIn));
+      argv.push(option("--expires-in", this.#expiresIn));
     }
     return argv;
   }

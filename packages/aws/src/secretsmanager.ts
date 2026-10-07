@@ -14,17 +14,21 @@
 
 import type { CommandOutput } from "@zuke/core/shell";
 import { secretsIn } from "./secret_output.ts";
-import { AwsSettings } from "./settings.ts";
+import { option } from "./validate.ts";
+import { type AwsOutputFormat, AwsSettings } from "./settings.ts";
 
 /** The `--query` the secret reader pins, so the CLI extracts the field. */
 export const SECRET_STRING_QUERY = "SecretString";
+
+/** The fields of a `get-secret-value` response that hold the secret. */
+const SECRET_KEYS = [SECRET_STRING_QUERY, "SecretBinary"];
 
 /**
  * Settings for `aws secretsmanager get-secret-value`.
  *
  * The response is the secret, so the command always runs quietly — captured,
- * never streamed — and the `SecretString` it returns is registered with the
- * run's redactor.
+ * never streamed — with `--output json` pinned, and the `SecretString` or
+ * `SecretBinary` it returns is registered with the run's redactor.
  */
 export class AwsSecretsmanagerGetSecretValueSettings extends AwsSettings {
   #secretId?: string;
@@ -55,9 +59,14 @@ export class AwsSecretsmanagerGetSecretValueSettings extends AwsSettings {
     return this;
   }
 
-  /** Register the returned `SecretString` as a secret. */
+  /** Pin `--output json`, the form the returned secrets can be found in. */
+  protected override pinnedOutput(): AwsOutputFormat {
+    return "json";
+  }
+
+  /** Register the returned `SecretString` or `SecretBinary` as a secret. */
   protected override onOutput(output: CommandOutput): void {
-    for (const secret of secretsIn(output.stdout, [SECRET_STRING_QUERY])) {
+    for (const secret of secretsIn(output.stdout, SECRET_KEYS)) {
       this.markSecret(secret);
     }
   }
@@ -73,14 +82,13 @@ export class AwsSecretsmanagerGetSecretValueSettings extends AwsSettings {
     const argv = [
       "secretsmanager",
       "get-secret-value",
-      "--secret-id",
-      this.#secretId,
+      option("--secret-id", this.#secretId),
     ];
     if (this.#versionId !== undefined) {
-      argv.push("--version-id", this.#versionId);
+      argv.push(option("--version-id", this.#versionId));
     }
     if (this.#versionStage !== undefined) {
-      argv.push("--version-stage", this.#versionStage);
+      argv.push(option("--version-stage", this.#versionStage));
     }
     return argv;
   }

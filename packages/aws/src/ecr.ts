@@ -23,6 +23,7 @@
 
 import type { CommandOutput } from "@zuke/core/shell";
 import { secretsIn } from "./secret_output.ts";
+import { operands, option } from "./validate.ts";
 import { AwsSettings } from "./settings.ts";
 
 /** One image, by tag or by digest, as `--image-ids` takes it. */
@@ -102,17 +103,18 @@ export class AwsEcrDescribeImagesSettings extends AwsSettings {
     const argv = [
       "ecr",
       "describe-images",
-      "--repository-name",
-      this.#repositoryName,
+      option("--repository-name", this.#repositoryName),
     ];
     if (this.#registryId !== undefined) {
-      argv.push("--registry-id", this.#registryId);
+      argv.push(option("--registry-id", this.#registryId));
     }
     if (this.#imageIds.length > 0) {
       argv.push("--image-ids", JSON.stringify(this.#imageIds));
     }
     if (this.#tagStatus !== undefined) {
-      argv.push("--filter", JSON.stringify({ tagStatus: this.#tagStatus }));
+      argv.push(
+        option("--filter", JSON.stringify({ tagStatus: this.#tagStatus })),
+      );
     }
     return argv;
   }
@@ -139,10 +141,17 @@ export class AwsEcrDescribeRepositoriesSettings extends AwsSettings {
   protected override leadingTokens(): string[] {
     const argv = ["ecr", "describe-repositories"];
     if (this.#repositoryNames.length > 0) {
-      argv.push("--repository-names", ...this.#repositoryNames);
+      argv.push(
+        "--repository-names",
+        ...operands(
+          "ecrDescribeRepositories",
+          "--repository-names",
+          this.#repositoryNames,
+        ),
+      );
     }
     if (this.#registryId !== undefined) {
-      argv.push("--registry-id", this.#registryId);
+      argv.push(option("--registry-id", this.#registryId));
     }
     return argv;
   }
@@ -189,13 +198,12 @@ export class AwsEcrBatchDeleteImageSettings extends AwsSettings {
     const argv = [
       "ecr",
       "batch-delete-image",
-      "--repository-name",
-      this.#repositoryName,
+      option("--repository-name", this.#repositoryName),
       "--image-ids",
       JSON.stringify(this.#imageIds),
     ];
     if (this.#registryId !== undefined) {
-      argv.push("--registry-id", this.#registryId);
+      argv.push(option("--registry-id", this.#registryId));
     }
     return argv;
   }

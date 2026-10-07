@@ -2,23 +2,24 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * {@link CloudwatchMetricValueSettings} — the settings behind
+ * {@link AwsCloudwatchMetricValueSettings} — the settings behind
  * `AwsTasks.metricValue`, which reads one number from CloudWatch: the latest
  * datapoint of a series, or an aggregate of its datapoints over the window.
  *
  * @module
  */
 
-import { CloudwatchGetMetricDataSettings } from "./cloudwatch.ts";
+import { AwsCloudwatchGetMetricDataSettings } from "./cloudwatch.ts";
 import { AwsOutputError } from "./errors.ts";
 import { type Datapoint, datapointsOf } from "./metric_data.ts";
+import { finite } from "./validate.ts";
 
 /**
- * How {@link CloudwatchMetricValueSettings} turns a series into one number:
+ * How {@link AwsCloudwatchMetricValueSettings} turns a series into one number:
  * its newest datapoint, or the sum, average, maximum or minimum of all of
  * them.
  */
-export type CloudwatchAggregate =
+export type AwsCloudwatchAggregate =
   | "latest"
   | "sum"
   | "average"
@@ -26,18 +27,23 @@ export type CloudwatchAggregate =
   | "minimum";
 
 /** Settings for `AwsTasks.metricValue`: a `get-metric-data` request, and how to read it. */
-export class CloudwatchMetricValueSettings
-  extends CloudwatchGetMetricDataSettings {
+export class AwsCloudwatchMetricValueSettings
+  extends AwsCloudwatchGetMetricDataSettings {
   /** The series to read (set by {@link id}); the only one when unset. */
   id_?: string;
   /** How to turn the series into one number (set by {@link aggregate}). */
-  aggregate_: CloudwatchAggregate = "latest";
+  aggregate_: AwsCloudwatchAggregate = "latest";
   /** The value to return when the series is empty (set by {@link missingDataAs}). */
   missingData_?: number;
 
   /** The task name used in this reader's error messages. */
   protected override taskName(): string {
     return "metricValue";
+  }
+
+  /** The reader computes one value from the window, so it reads every page. */
+  protected override readsEveryPage(): boolean {
+    return true;
   }
 
   /**
@@ -55,7 +61,7 @@ export class CloudwatchMetricValueSettings
    * datapoint). An aggregate combines the datapoints the window holds: a
    * `"sum"` of per-minute `Sum`s is the window's total.
    */
-  aggregate(how: CloudwatchAggregate): this {
+  aggregate(how: AwsCloudwatchAggregate): this {
     this.aggregate_ = how;
     return this;
   }
@@ -67,13 +73,13 @@ export class CloudwatchMetricValueSettings
    * usually means the query is looking in the wrong place.
    */
   missingDataAs(value: number): this {
-    this.missingData_ = value;
+    this.missingData_ = finite("AwsTasks.metricValue", "missingDataAs", value);
     return this;
   }
 }
 
 /** Combine `datapoints` (newest first, at least one) as `how` says. */
-function combine(how: CloudwatchAggregate, datapoints: Datapoint[]): number {
+function combine(how: AwsCloudwatchAggregate, datapoints: Datapoint[]): number {
   const values = datapoints.map((point) => point.value);
   switch (how) {
     case "latest":
@@ -82,20 +88,22 @@ function combine(how: CloudwatchAggregate, datapoints: Datapoint[]): number {
       return values.reduce((total, value) => total + value, 0);
     case "average":
       return values.reduce((total, value) => total + value, 0) / values.length;
+    // Folded rather than spread: a long series spread into Math.max is one
+    // argument per datapoint, and enough of them overflow the call stack.
     case "maximum":
-      return Math.max(...values);
+      return values.reduce((a, b) => (b > a ? b : a));
     case "minimum":
-      return Math.min(...values);
+      return values.reduce((a, b) => (b < a ? b : a));
   }
 }
 
 /** The one number `settings` ask for, from the parsed `MetricDataResults`. */
 export function metricValueOf(
-  results: unknown,
-  settings: CloudwatchMetricValueSettings,
+  document: unknown,
+  settings: AwsCloudwatchMetricValueSettings,
 ): number {
   const task = "AwsTasks.metricValue";
-  const { id, datapoints } = datapointsOf(results, settings.id_, task);
+  const { id, datapoints } = datapointsOf(document, settings.id_, task);
   if (datapoints.length > 0) return combine(settings.aggregate_, datapoints);
   if (settings.missingData_ !== undefined) return settings.missingData_;
   throw new AwsOutputError(

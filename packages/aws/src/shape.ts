@@ -10,7 +10,7 @@
  */
 
 /** A JSON object. */
-export type JsonRecord = Record<string, unknown>;
+type JsonRecord = Record<string, unknown>;
 
 /** Whether `value` is a JSON object (not an array, not `null`). */
 export function isRecord(value: unknown): value is JsonRecord {

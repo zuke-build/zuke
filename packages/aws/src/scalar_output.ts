@@ -21,7 +21,7 @@
 import { AwsOutputError } from "./errors.ts";
 
 /** The part of a finished command a reader needs. */
-export interface ReadableOutput {
+interface ReadableOutput {
   /** Captured standard output. */
   stdout: string;
   /** Whether either captured stream hit the cap and lost its oldest bytes. */

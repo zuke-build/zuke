@@ -55,25 +55,35 @@ await AwsTasks.run((s) =>
 The global options mirror the CLI's: `profile`, `region`, `output`, `query`,
 `endpointUrl`, `noCliPager`, `noVerifySsl`, `noSignRequest`, `caBundle`,
 `cliReadTimeout`, `cliConnectTimeout` and `debug`. Every command runs with
-`AWS_PAGER` set to the empty string in its environment, so CLI v2's pager can
-never sit waiting for a keypress in a build.
+`AWS_PAGER` set to the empty string and `AWS_CLI_AUTO_PROMPT` set to `off` in
+its environment, so neither CLI v2's pager nor its auto-prompt can sit waiting
+for a keypress in a build.
+
+Every typed option is sent as one `--flag=value` token, so a value that starts
+with `-` stays a value. A positional operand or an element of a list-valued
+option is a token of its own, so one that starts with `-` is refused rather than
+letting the CLI read it as an option — `--endpoint-url=…` among them. Free-text
+setters (descriptions, payloads, queries, `externalId`, `policy`) refuse a value
+starting with `file://` or `fileb://`, which the CLI would replace with that
+file's contents. `.flag(...)` and `.args(...)` are the escape hatches and guard
+neither, so never give them an untrusted value.
 
 ## Readers
 
 A reader returns a value instead of the command's output. It pins `--query` and
 `--output` after your lambda, so the CLI does the extraction, and runs quietly:
 
-| Reader                                      | Runs                                                   | Returns                                                        |
-| ------------------------------------------- | ------------------------------------------------------ | -------------------------------------------------------------- |
-| `accountId()`                               | `sts get-caller-identity --query Account`              | the account id                                                 |
-| `ecrLoginPassword()`                        | `ecr get-login-password`                               | the registry password                                          |
-| `secretString((s) => s.secretId(id))`       | `secretsmanager get-secret-value --query SecretString` | the secret, exactly — multi-line values included               |
-| `parameterValue((s) => s.name(n))`          | `ssm get-parameter --query Parameter.Value`            | the value (add `.withDecryption()` for a `SecureString`)       |
-| `stackOutput(stack, key)`                   | `cloudformation describe-stacks` with a projection     | one stack output                                               |
-| `functionVersion((s) => s.functionName(f))` | `lambda publish-version --query Version`               | the published version number                                   |
-| `metricValue((s) => …)`                     | `cloudwatch get-metric-data`                           | the latest datapoint, or a `sum`/`average`/`maximum`/`minimum` |
-| `alarmState(name)`                          | `cloudwatch describe-alarms`                           | `"OK"`, `"ALARM"` or `"INSUFFICIENT_DATA"`                     |
-| `logsInsightsQuery((q) => …)`               | `logs start-query`, then `logs get-query-results`      | the rows, once the query is `Complete`                         |
+| Reader                                             | Runs                                                   | Returns                                                        |
+| -------------------------------------------------- | ------------------------------------------------------ | -------------------------------------------------------------- |
+| `accountId()`                                      | `sts get-caller-identity --query Account`              | the account id                                                 |
+| `ecrLoginPassword()`                               | `ecr get-login-password`                               | the registry password                                          |
+| `secretString((s) => s.secretId(id))`              | `secretsmanager get-secret-value --query SecretString` | the secret, exactly — multi-line values included               |
+| `parameterValue((s) => s.name(n))`                 | `ssm get-parameter --query Parameter.Value`            | the value (add `.withDecryption()` for a `SecureString`)       |
+| `stackOutput(stack, key)`                          | `cloudformation describe-stacks` with a projection     | one stack output                                               |
+| `lambdaPublishedVersion((s) => s.functionName(f))` | `lambda publish-version --query Version`               | the published version number                                   |
+| `metricValue((s) => …)`                            | `cloudwatch get-metric-data`                           | the latest datapoint, or a `sum`/`average`/`maximum`/`minimum` |
+| `alarmState(name)`                                 | `cloudwatch describe-alarms`                           | `"OK"`, `"ALARM"` or `"INSUFFICIENT_DATA"`                     |
+| `logsInsightsQuery((q) => …)`                      | `logs start-query`, then `logs get-query-results`      | the rows, once the query is `Complete`                         |
 
 ```ts
 const errors = await AwsTasks.metricValue((s) =>
@@ -131,10 +141,10 @@ rollout = canary((c) =>
   c.platform(platform).steps(10, 50)
     .analysis(cloudwatch((m) =>
       m.name("canary 5xx").namespace("AWS/ApplicationELB")
-        .metric("HTTPCode_Target_5XX_Count")
+        .metricName("HTTPCode_Target_5XX_Count")
         .dimension("TargetGroup", "targetgroup/api-canary/0a1b")
         .stat("Sum").window("5m").max(5).missingDataAs(0)
-        .region("eu-west-1")
+        .aws((a) => a.region("eu-west-1"))
     ))
 );
 ```
@@ -183,15 +193,16 @@ settings class takes a `.runner(...)`, so a build's AWS steps are testable
 without an account or the CLI.
 @module
 
-function cloudwatch(configure: Configure<CloudwatchAnalysisSettings>): CloudwatchAnalysis
+function cloudwatch(configure: Configure<AwsCloudwatchAnalysisSettings>): AwsCloudwatchAnalysis
   An analysis that reads a CloudWatch metric over a recent window and fails
   the canary when any datapoint is out of bounds — or when there is no data,
-  unless {@link CloudwatchAnalysisSettings.missingDataAs} says what no data
-  means. Each datapoint covers one period, so a `.max(5)` on a per-minute
-  `Sum` means "no minute with more than five".
+  unless {@link AwsCloudwatchAnalysisSettings.missingDataAs} says what no
+  data means. Each datapoint covers one period, so a `.max(5)` on a
+  per-minute `Sum` means "no minute with more than five".
 
   The lambda runs on each check, so it may read resolved parameters, and
-  every failure message passes through the run's redactor.
+  every failure message — one from the lambda included — passes through the
+  run's redactor.
 
 const AwsTasks: AwsTasksApi
   Typed task functions for the `aws` CLI.
@@ -250,18 +261,239 @@ class AwsCloudformationWaitSettings extends AwsSettings
   non-zero after 120 attempts, or as soon as the stack lands in a failed
   state — which surfaces as a `CommandError`.
 
-  waiter(name: CloudformationStackWaiter): this
+  waiter(name: AwsCloudformationStackWaiter): this
     The state to wait for, e.g. `"stack-update-complete"`.
   stackName(name: string): this
     The stack to wait on (`--stack-name`).
   override protected leadingTokens(): string[]
     Emit `cloudformation wait <waiter>` with the stack.
 
+class AwsCloudwatchAnalysisSettings extends AwsCloudwatchMetricStatSettings
+  Settings for {@link cloudwatch}: the metric, the window and the bounds.
+
+  The metric itself — `namespace`, `metricName`, `dimension`, `stat`,
+  `period`, `unit` — is set with the same setters as a `get-metric-data`
+  query, which these settings extend; it is queried as `m1`.
+
+  name_?: string
+    What the metric is called in a failure (set by {@link name}).
+  readonly metricStats_: Array<[string, Configure<AwsCloudwatchMetricStatSettings>]>
+    Further metrics an expression reads, by id (set by {@link metricStat}).
+  expression_?: string
+    The metric-math expression judged instead of the metric (set by {@link expression}).
+  window_: number
+    How far back to read, in ms (set by {@link window}).
+  min_?: number
+    The lowest acceptable value (set by {@link min}).
+  max_?: number
+    The highest acceptable value (set by {@link max}).
+  missingData_?: number
+    The value to judge when there are no datapoints (set by {@link missingDataAs}).
+  aws_: Configure<AwsSettings>
+    Global options for the command (set by {@link aws}).
+  now_: () => Date
+    The clock the window is read against (set by {@link now}).
+  name(name: string): this
+    What to call the metric when it is out of bounds.
+  metricStat(id: string, configure: Configure<AwsCloudwatchMetricStatSettings>): this
+    Add a metric for {@link expression} to read, under `id`. The metric set
+    with {@link namespace} and {@link metricName} is `m1`.
+  expression(expression: string): this
+    Judge a metric-math expression over the metrics instead of a metric —
+    `"100 * errors / requests"`, with `errors` and `requests` added by
+    {@link metricStat}.
+  window(duration: string | number): this
+    How far back to read (`"10m"`, or ms; default 5 minutes). The window
+    ends at the last period boundary, so the period still being written is
+    not judged.
+
+    CloudWatch publishes a datapoint a little after its period ends, so the
+    newest period in the window may still be short of some data. That only
+    lowers a `Sum` or a `SampleCount`: harmless for a `max`, but a `min` on
+    such a statistic can fail on a lag rather than on the candidate.
+  min(value: number): this
+    Fail when any datapoint is below `value`.
+  max(value: number): this
+    Fail when any datapoint is above `value`.
+  missingDataAs(value: number): this
+    Judge `value` when the window has no datapoints, instead of failing.
+    CloudWatch publishes nothing for a period with no events, so for a count
+    of errors no data means `0`; for a latency it usually means the metric or
+    its dimensions are wrong, which is why that is a failure by default.
+  aws(configure: Configure<AwsSettings>): this
+    Global options for the `get-metric-data` command —
+    `(a) => a.profile("prod").region("eu-west-1")`, a `.toolPath(...)`, or a
+    `.runner(...)`, the seam a test answers through. `--output` and `--query`
+    are the analysis's own and are set after it.
+  now(clock: () => Date): this
+    The clock the window is read against — the seam a test pins it with.
+
+class AwsCloudwatchDescribeAlarmsSettings extends AwsSettings
+  Settings for `aws cloudwatch describe-alarms`.
+
+  alarmNames(...names: string[]): this
+    Only these alarms (`--alarm-names`); repeatable.
+  alarmNamePrefix(prefix: string): this
+    Only alarms whose name starts with this (`--alarm-name-prefix`).
+  stateValue(state: AwsCloudwatchAlarmState): this
+    Only alarms in this state (`--state-value`).
+  alarmTypes(...types: AwsCloudwatchAlarmType[]): this
+    The kinds of alarm to return (`--alarm-types`): metric, composite or log
+    alarms; replaces any set before. Without it the CLI returns metric
+    alarms only.
+  override protected leadingTokens(): string[]
+    Emit `cloudwatch describe-alarms` with its options.
+
+class AwsCloudwatchExpressionSettings
+  Settings for one metric-math expression in a `get-metric-data` request.
+
+  label_?: string
+    A label for the series (set by {@link label}).
+  period_?: number
+    The period in seconds, for an expression that needs one (set by {@link period}).
+  returnData_: boolean
+    Whether the response carries this series (set by {@link returnData}).
+  label(text: string): this
+    A label for the series in the response.
+  period(seconds: number): this
+    The period in seconds, for an expression that has no metric to take it from.
+  returnData(value: boolean): this
+    Whether the response carries this series (default `true`).
+
+class AwsCloudwatchGetMetricDataSettings extends AwsSettings
+  Settings for `aws cloudwatch get-metric-data`.
+
+  protected taskName(): string
+    The task name used in this command's error messages.
+  metricStat(id: string, configure: Configure<AwsCloudwatchMetricStatSettings>): this
+    Add a metric to the request, under `id`, configured by `configure`.
+  expression(id: string, expression: string, configure: Configure<AwsCloudwatchExpressionSettings>): this
+    Add a metric-math expression over the request's other ids, e.g.
+    `("ratio", "100 * errors / requests")`.
+  startTime(time: AwsTime): this
+    The start of the range (`--start-time`).
+  endTime(time: AwsTime): this
+    The end of the range (`--end-time`).
+  window(duration: string | number, end: Date): this
+    The `duration` (`"15m"`, or milliseconds) up to `end` — now, unless
+    given — as `--start-time` and `--end-time`.
+  scanBy(order: "TimestampDescending" | "TimestampAscending"): this
+    The order of the datapoints (`--scan-by`); newest first by default.
+  protected readsEveryPage(): boolean
+    Whether this request must read every page. A reader that turns the
+    datapoints into one value does: a value computed from part of a window
+    looks just like a value computed from all of it. Overridden by the
+    settings behind `AwsTasks.metricValue`.
+  maxDatapoints(count: number): this
+    The most datapoints to return (`--max-datapoints`). Setting it turns off
+    the CLI's automatic pagination — the CLI treats it as a page size and
+    returns one page with a `NextToken` — so the answer may hold only part
+    of the window. `AwsTasks.metricValue` refuses it for that reason.
+  override protected leadingTokens(): string[]
+    Emit `cloudwatch get-metric-data` with its options.
+
+class AwsCloudwatchGetMetricStatisticsSettings extends AwsSettings
+  Settings for `aws cloudwatch get-metric-statistics`.
+
+  namespace(value: string): this
+    The metric's namespace (`--namespace`).
+  metricName(value: string): this
+    The metric's name (`--metric-name`).
+  dimension(name: string, value: string): this
+    A dimension that picks the series (`--dimensions`); repeatable.
+  startTime(time: AwsTime): this
+    The start of the range (`--start-time`).
+  endTime(time: AwsTime): this
+    The end of the range (`--end-time`).
+  window(duration: string | number, end: Date): this
+    The `duration` up to `end` — now, unless given — as the time range.
+  period(seconds: number): this
+    The aggregation period in seconds (`--period`).
+  statistics(...values: Array<"SampleCount" | "Average" | "Sum" | "Minimum" | "Maximum">): this
+    The basic statistics to return (`--statistics`), e.g. `"Sum"`.
+  extendedStatistics(...values: string[]): this
+    Percentiles and other extended statistics (`--extended-statistics`), e.g. `"p99"`.
+  unit(value: string): this
+    Only datapoints published in this unit (`--unit`).
+  override protected leadingTokens(): string[]
+    Emit `cloudwatch get-metric-statistics` with its options.
+
+class AwsCloudwatchMetricStatSettings
+  Settings for one metric in a `get-metric-data` request (a `MetricStat` query).
+
+  namespace_?: string
+    The metric's namespace, e.g. `AWS/ApplicationELB` (set by {@link namespace}).
+  metricName_?: string
+    The metric's name (set by {@link metricName}).
+  readonly dimensions_: Array<{ Name: string; Value: string; }>
+    The dimensions that pick the series, in order (set by {@link dimension}).
+  period_: number
+    The aggregation period in seconds (set by {@link period}).
+  stat_?: AwsCloudwatchStatistic
+    The statistic (set by {@link stat}).
+  unit_?: string
+    The unit to filter on (set by {@link unit}).
+  label_?: string
+    A label for the series (set by {@link label}).
+  returnData_: boolean
+    Whether the response carries this series (set by {@link returnData}).
+  namespace(value: string): this
+    The metric's namespace, e.g. `"AWS/ApplicationELB"`.
+  metricName(value: string): this
+    The metric's name, e.g. `"HTTPCode_Target_5XX_Count"`.
+  dimension(name: string, value: string): this
+    A dimension that picks the series, e.g. `("LoadBalancer", "app/web/1f2e")`; repeatable.
+  period(seconds: number): this
+    The aggregation period in seconds (default 60). CloudWatch accepts 1, 5,
+    10, 20, 30, or a multiple of 60.
+  stat(value: AwsCloudwatchStatistic): this
+    The statistic: `"Sum"`, `"Average"`, `"Maximum"`, `"p99"`, …
+  unit(value: string): this
+    Only datapoints published in this unit, e.g. `"Count"`.
+  label(text: string): this
+    A label for the series in the response.
+  returnData(value: boolean): this
+    Whether the response carries this series (default `true`). Pass `false`
+    for a metric that only feeds an expression.
+
+class AwsCloudwatchMetricValueSettings extends AwsCloudwatchGetMetricDataSettings
+  Settings for `AwsTasks.metricValue`: a `get-metric-data` request, and how to read it.
+
+  id_?: string
+    The series to read (set by {@link id}); the only one when unset.
+  aggregate_: AwsCloudwatchAggregate
+    How to turn the series into one number (set by {@link aggregate}).
+  missingData_?: number
+    The value to return when the series is empty (set by {@link missingDataAs}).
+  override protected taskName(): string
+    The task name used in this reader's error messages.
+  override protected readsEveryPage(): boolean
+    The reader computes one value from the window, so it reads every page.
+  id(queryId: string): this
+    The series to read, by query id. Needed only when the request returns
+    more than one — hide the inputs of an expression with
+    `.returnData(false)` and it is not.
+  aggregate(how: AwsCloudwatchAggregate): this
+    How to turn the series into one number (default `"latest"`, the newest
+    datapoint). An aggregate combines the datapoints the window holds: a
+    `"sum"` of per-minute `Sum`s is the window's total.
+  missingDataAs(value: number): this
+    Return `value` when the series has no datapoints, instead of failing.
+    CloudWatch publishes nothing for a period with no events, so for a count
+    of errors, no data does mean `0`; for a latency or a CPU reading it
+    usually means the query is looking in the wrong place.
+
 class AwsConfigureGetSettings extends AwsSettings
   Settings for `aws configure get`.
 
+  Reading a credential — `aws_secret_access_key`, `aws_session_token`, in any
+  profile — runs quietly and registers what it printed with the run's
+  redactor.
+
   varname(name: string): this
     The setting to read (positional), e.g. `"region"`.
+  override protected onOutput(output: CommandOutput): void
+    Register a credential setting's value as a secret.
   override protected leadingTokens(): string[]
     Emit `configure get` with the setting.
 
@@ -582,6 +814,84 @@ class AwsLambdaUpdateFunctionConfigurationSettings extends AwsSettings
   override protected leadingTokens(): string[]
     Emit `lambda update-function-configuration` with its options.
 
+class AwsLogsFilterLogEventsSettings extends AwsSettings
+  Settings for `aws logs filter-log-events`.
+
+  logGroupName(name: string): this
+    The log group to search (`--log-group-name`).
+  logStreamNames(...names: string[]): this
+    Only these streams (`--log-stream-names`); repeatable.
+  logStreamNamePrefix(prefix: string): this
+    Only streams whose name starts with this (`--log-stream-name-prefix`).
+  filterPattern(pattern: string): this
+    A CloudWatch Logs filter pattern (`--filter-pattern`), e.g. `"ERROR"`.
+  startTime(time: Date): this
+    The start of the range (`--start-time`, sent as epoch milliseconds).
+  endTime(time: Date): this
+    The end of the range (`--end-time`, sent as epoch milliseconds).
+  window(duration: string | number, end: Date): this
+    The `duration` up to `end` — now, unless given — as the time range.
+  override protected leadingTokens(): string[]
+    Emit `logs filter-log-events` with its options.
+
+class AwsLogsGetQueryResultsSettings extends AwsSettings
+  Settings for `aws logs get-query-results`.
+
+  queryId(id: string): this
+    The id `start-query` returned (`--query-id`).
+  nextToken(token: string): this
+    The page after the one that returned this token (`--next-token`).
+  override protected leadingTokens(): string[]
+    Emit `logs get-query-results` with the query id.
+
+class AwsLogsInsightsQuerySettings
+  Settings for `AwsTasks.logsInsightsQuery`: the query, and how long to wait for it.
+
+  readonly logGroupNames_: string[]
+    The log groups to query (set by {@link logGroupNames}).
+  queryString_?: string
+    The Logs Insights query (set by {@link queryString}).
+  start_?: Date
+    The start of the range (set by {@link startTime} or {@link window}).
+  end_?: Date
+    The end of the range (set by {@link endTime} or {@link window}).
+  limit_?: number
+    The most rows to return (set by {@link limit}).
+  timeout_: number
+    How long to wait for the query, in ms (set by {@link timeout}).
+  pollInterval_: number
+    The pause between polls, in ms (set by {@link pollInterval}).
+  aws_: Configure<AwsSettings>
+    Global options for every command (set by {@link aws}).
+  signal_?: AbortSignal
+    Cancels the wait and stops the query (set by {@link signal}).
+  logGroupNames(...names: string[]): this
+    The log groups to query (`--log-group-names`); repeatable.
+  queryString(query: string): this
+    The Logs Insights query (`--query-string`).
+  startTime(time: Date): this
+    The start of the range.
+  endTime(time: Date): this
+    The end of the range.
+  window(duration: string | number, end: Date): this
+    The `duration` up to `end` — now, unless given — as the time range.
+  limit(rows: number): this
+    The most rows to return (`--limit`).
+  timeout(duration: string | number): this
+    How long to wait for the query to finish (`"2m"`, or ms; default 5
+    minutes). A query still running then is stopped, and the reader fails.
+  pollInterval(duration: string | number): this
+    The pause between polls for the results (`"2s"`, or ms; default 1 second).
+  aws(configure: Configure<AwsSettings>): this
+    Global options for every command the query runs —
+    `(a) => a.profile("prod").region("eu-west-1")`, a `.toolPath(...)`, or a
+    `.runner(...)`.
+  signal(signal: AbortSignal): this
+    Cancel the query with `signal`: the poll stops at once, the query is
+    stopped, and the reader fails with the signal's reason. Pass a target's
+    `ctx.signal` here — core's own run signal reaches each `aws` command
+    already, but not the pause between two polls.
+
 class AwsLogsQueryError extends Error
   A CloudWatch Logs Insights query did not complete: the service reported it
   `Failed`, `Cancelled` or `Timeout`, or it was still running when the
@@ -591,6 +901,53 @@ class AwsLogsQueryError extends Error
     Build the error from the query, its last status and an explanation.
   override name: string
     The error name.
+
+class AwsLogsStartQuerySettings extends AwsSettings
+  Settings for `aws logs start-query`.
+
+  logGroupNames(...names: string[]): this
+    The log groups to query (`--log-group-names`); repeatable.
+  queryString(query: string): this
+    The Logs Insights query (`--query-string`).
+  startTime(time: Date): this
+    The start of the range (`--start-time`, sent as epoch seconds).
+  endTime(time: Date): this
+    The end of the range (`--end-time`, sent as epoch seconds).
+  window(duration: string | number, end: Date): this
+    The `duration` up to `end` — now, unless given — as the time range.
+  limit(rows: number): this
+    The most rows to return (`--limit`).
+  override protected leadingTokens(): string[]
+    Emit `logs start-query` with its options.
+
+class AwsLogsStopQuerySettings extends AwsSettings
+  Settings for `aws logs stop-query`.
+
+  queryId(id: string): this
+    The id `start-query` returned (`--query-id`).
+  override protected leadingTokens(): string[]
+    Emit `logs stop-query` with the query id.
+
+class AwsLogsTailSettings extends AwsSettings
+  Settings for `aws logs tail`. With {@link follow} the command never ends on
+  its own — bound it with `.killAfter(ms)`.
+
+  groupName(name: string): this
+    The log group to tail (positional).
+  since(value: string): this
+    How far back to start (`--since`), e.g. `"10m"` or an ISO timestamp.
+  follow(): this
+    Keep printing new events as they arrive (`--follow`).
+  filterPattern(pattern: string): this
+    A CloudWatch Logs filter pattern (`--filter-pattern`).
+  format(value: "detailed" | "short" | "json"): this
+    How each event is printed (`--format`).
+  logStreamNames(...names: string[]): this
+    Only these streams (`--log-stream-names`); repeatable.
+  logStreamNamePrefix(prefix: string): this
+    Only streams whose name starts with this (`--log-stream-name-prefix`).
+  override protected leadingTokens(): string[]
+    Emit `logs tail` with the group and its options.
 
 class AwsOutputError extends Error
   The AWS CLI succeeded but printed something a reader cannot use: output
@@ -666,9 +1023,16 @@ class AwsS3PresignSettings extends AwsSettings
   Settings for `aws s3 presign`.
 
   A presigned URL is a bearer credential for the object until it expires:
-  anyone holding it can read the object. Run with `.quiet()` when the URL
-  should not land in the build log.
+  anyone holding it can read the object, and when the build runs on
+  temporary credentials it also carries the session token itself
+  (`X-Amz-Security-Token`), which is good for far more than one object. So
+  the command always runs quietly — the URL is captured, never streamed — and
+  the URL and that token are registered with the run's redactor.
 
+  constructor()
+    Settings that capture the URL instead of streaming it.
+  override protected onOutput(output: CommandOutput): void
+    Register the URL, and the session token it carries, as secrets.
   path(uri: string): this
     The `s3://` object to presign (positional).
   expiresIn(seconds: number): this
@@ -731,8 +1095,8 @@ class AwsSecretsmanagerGetSecretValueSettings extends AwsSettings
   Settings for `aws secretsmanager get-secret-value`.
 
   The response is the secret, so the command always runs quietly — captured,
-  never streamed — and the `SecretString` it returns is registered with the
-  run's redactor.
+  never streamed — with `--output json` pinned, and the `SecretString` or
+  `SecretBinary` it returns is registered with the run's redactor.
 
   constructor()
     Settings that capture the secret instead of streaming it.
@@ -742,24 +1106,26 @@ class AwsSecretsmanagerGetSecretValueSettings extends AwsSettings
     A specific version, by id (`--version-id`).
   versionStage(label: string): this
     A specific version, by staging label (`--version-stage`); `AWSCURRENT` by default.
+  override protected pinnedOutput(): AwsOutputFormat
+    Pin `--output json`, the form the returned secrets can be found in.
   override protected onOutput(output: CommandOutput): void
-    Register the returned `SecretString` as a secret.
+    Register the returned `SecretString` or `SecretBinary` as a secret.
   override protected leadingTokens(): string[]
     Emit `secretsmanager get-secret-value` with its options.
 
 class AwsSettings extends SubcommandSettings
   Settings for an `aws` invocation.
 
-  Every instance sets `AWS_PAGER` to the empty string in the child's
-  environment. AWS CLI v2 pipes output through a pager (`less`) by default,
-  and a pager waiting for a keypress is a build that never finishes; the
-  variable is the off-switch both CLI majors honour, and setting it there
-  keeps the argv exactly what the settings say. Override it with
-  `.env({ AWS_PAGER: "…" })`, or add the explicit flag with
-  {@link noCliPager}.
+  Every instance sets two variables in the child's environment so the CLI
+  can never sit waiting for a keypress in a build: `AWS_PAGER` to the empty
+  string (CLI v2 pipes output through `less` by default) and
+  `AWS_CLI_AUTO_PROMPT` to `off` (a profile's `cli_auto_prompt` would
+  otherwise open the interactive prompt). Setting them there keeps the argv
+  exactly what the settings say; override either with `.env({...})`, or add
+  the explicit flag with {@link noCliPager}.
 
   constructor()
-    Settings with the CLI pager switched off in the child's environment.
+    Settings with the CLI's pager and auto-prompt off in the child's environment.
   override protected defaultTool(): string
     The default executable name (`aws`).
   profile(name: string): this
@@ -790,6 +1156,25 @@ class AwsSettings extends SubcommandSettings
     The socket connect timeout in seconds; `0` blocks forever (`--cli-connect-timeout`).
   debug(): this
     Turn on the CLI's debug logging (`--debug`), written to stderr.
+
+    The debug log carries credentials: request headers with the session
+    token, and response bodies — a secret's value among them. The access key,
+    secret key and session token in the environment are registered with the
+    run's redactor when this is called, but a credential the CLI loads from a
+    profile, an SSO cache or a role is not known here and is not masked. Keep
+    it for a local investigation, never a shared CI log.
+  override flag(name: string, value?: string | number): this
+    Add an arbitrary option: `--name value`, or the bare `--name`.
+
+    Two hazards come with the escape hatch, which the typed setters guard and
+    this does not: a value that starts with `-` is read by the CLI as the next
+    option, and a value that starts with `file://` or `fileb://` is replaced
+    by that file's contents — which then leave the machine in the request.
+    Never pass an untrusted value here.
+  protected pinnedOutput(): AwsOutputFormat | undefined
+    The `--output` a command insists on, whatever the settings or the user's
+    config say; `undefined` leaves it to them. A credential-bearing command
+    pins `json`, which is the form its secrets can be found in.
   runner(run: AwsSettingsRunner): this
     Replace how this command is run. The default spawns the CLI; this is the
     seam a test answers commands through, and the way a build executes `aws`
@@ -807,8 +1192,8 @@ class AwsSsmGetParameterSettings extends AwsSettings
   Settings for `aws ssm get-parameter`.
 
   A parameter may be a `SecureString`, so the command always runs quietly —
-  captured, never streamed — and the value it returns is registered with the
-  run's redactor.
+  captured, never streamed — with `--output json` pinned, and the value it
+  returns is registered with the run's redactor.
 
   constructor()
     Settings that capture the value instead of streaming it.
@@ -817,6 +1202,8 @@ class AwsSsmGetParameterSettings extends AwsSettings
   withDecryption(): this
     Return a `SecureString` decrypted (`--with-decryption`). Without it, a
     `SecureString` comes back as ciphertext.
+  override protected pinnedOutput(): AwsOutputFormat
+    Pin `--output json`, the form the returned secrets can be found in.
   override protected onOutput(output: CommandOutput): void
     Register the returned value as a secret.
   override protected leadingTokens(): string[]
@@ -842,7 +1229,7 @@ class AwsSsmPutParameterSettings extends AwsSettings
     Read the value from a file (`--value=file://<path>`), which keeps it off
     the command line. The CLI stores the file's contents exactly, trailing
     newline included.
-  type(value: SsmParameterType): this
+  type(value: AwsSsmParameterType): this
     The parameter's type (`--type`).
   overwrite(): this
     Replace an existing parameter (`--overwrite`).
@@ -861,7 +1248,8 @@ class AwsStsAssumeRoleSettings extends AwsSettings
   Settings for `aws sts assume-role`.
 
   The response carries a secret access key and a session token, so the
-  command always runs quietly — its output is captured, never streamed — and
+  command always runs quietly — its output is captured, never streamed — with
+  `--output json` pinned whatever the settings or the user's config say, and
   both values are registered with the run's redactor once it returns.
 
   constructor()
@@ -880,6 +1268,8 @@ class AwsStsAssumeRoleSettings extends AwsSettings
     The MFA device's serial number or ARN (`--serial-number`).
   tokenCode(code: string): this
     The code the MFA device shows (`--token-code`).
+  override protected pinnedOutput(): AwsOutputFormat
+    Pin `--output json`, the form the returned secrets can be found in.
   override protected onOutput(output: CommandOutput): void
     Register the returned secret access key and session token as secrets.
   override protected leadingTokens(): string[]
@@ -891,349 +1281,22 @@ class AwsStsGetCallerIdentitySettings extends AwsSettings
   override protected leadingTokens(): string[]
     Emit `sts get-caller-identity`.
 
-class CloudwatchAnalysisSettings
-  Settings for {@link cloudwatch}: the metric, the window and the bounds.
+interface AwsCloudwatchAnalysis
+  A health check run against a canary, in the shape `@zuke/canary`'s
+  `c.analysis(...)` accepts: throw to fail it, which rolls the rollout back.
 
-  name_?: string
-    What the metric is called in a failure (set by {@link name}).
-  namespace_?: string
-    The metric's namespace (set by {@link namespace}).
-  metric_?: string
-    The metric's name (set by {@link metric}).
-  readonly dimensions_: Array<[string, string]>
-    The dimensions that pick the series (set by {@link dimension}).
-  stat_?: CloudwatchStatistic
-    The statistic (set by {@link stat}).
-  period_: number
-    The aggregation period in seconds (set by {@link period}).
-  unit_?: string
-    The unit to filter on (set by {@link unit}).
-  readonly metricStats_: Array<[string, Configure<CloudwatchMetricStatSettings>]>
-    Further metrics an expression reads, by id (set by {@link metricStat}).
-  expression_?: string
-    The metric-math expression judged instead of the metric (set by {@link expression}).
-  window_: number
-    How far back to read, in ms (set by {@link window}).
-  min_?: number
-    The lowest acceptable value (set by {@link min}).
-  max_?: number
-    The highest acceptable value (set by {@link max}).
-  missingData_?: number
-    The value to judge when there are no datapoints (set by {@link missingDataAs}).
-  profile_?: string
-    The named profile (set by {@link profile}).
-  region_?: string
-    The region (set by {@link region}).
-  runner_?: AwsSettingsRunner
-    How the command is run (set by {@link runner}); spawned when unset.
-  aws_: Configure<AwsSettings>
-    Further global options (set by {@link aws}).
-  name(name: string): this
-    What to call the metric when it is out of bounds.
-  namespace(value: string): this
-    The metric's namespace, e.g. `"AWS/ApplicationELB"`.
-  metric(value: string): this
-    The metric's name, e.g. `"HTTPCode_Target_5XX_Count"`.
-  dimension(name: string, value: string): this
-    A dimension that picks the series; repeatable.
-  stat(value: CloudwatchStatistic): this
-    The statistic: `"Sum"`, `"Average"`, `"Maximum"`, `"p99"`, …
-  period(seconds: number): this
-    The aggregation period in seconds (default 60): each datapoint covers one
-    period, and each is judged.
-  unit(value: string): this
-    Only datapoints published in this unit, e.g. `"Count"`.
-  metricStat(id: string, configure: Configure<CloudwatchMetricStatSettings>): this
-    Add a metric for {@link expression} to read, under `id`. The metric set
-    with {@link namespace} and {@link metric} is `m1`.
-  expression(expression: string): this
-    Judge a metric-math expression over the metrics instead of a metric —
-    `"100 * errors / requests"`, with `errors` and `requests` added by
-    {@link metricStat}.
-  window(duration: string | number): this
-    How far back to read (`"10m"`, or ms; default 5 minutes). The window ends
-    at the start of the current minute, so the minute still being written is
-    not judged.
-  min(value: number): this
-    Fail when any datapoint is below `value`.
-  max(value: number): this
-    Fail when any datapoint is above `value`.
-  missingDataAs(value: number): this
-    Judge `value` when the window has no datapoints, instead of failing.
-    CloudWatch publishes nothing for a period with no events, so for a count
-    of errors no data means `0`; for a latency it usually means the metric or
-    its dimensions are wrong, which is why that is a failure by default.
-  profile(name: string): this
-    The named profile to read with (`--profile`).
-  region(name: string): this
-    The region the metric lives in (`--region`).
-  runner(run: AwsSettingsRunner): this
-    Replace how the `get-metric-data` command is run — the seam a test
-    answers through. The default spawns the CLI.
-  aws(configure: Configure<AwsSettings>): this
-    Any other global option — `(a) => a.endpointUrl(url)`, a
-    `.toolPath(...)` — applied after {@link profile}, {@link region} and
-    {@link runner}.
+  readonly name: string
+    `"cloudwatch"`, for diagnostics.
+  validate(context: AwsCloudwatchAnalysisContext): Promise<void>
+    Read the metric and throw when a datapoint is out of bounds.
 
-class CloudwatchDescribeAlarmsSettings extends AwsSettings
-  Settings for `aws cloudwatch describe-alarms`.
+interface AwsCloudwatchAnalysisContext
+  The part of the canary engine's context the analysis uses: the run's
+  redactor, applied to every failure message. The engine hands a richer
+  context; this is the narrow view.
 
-  alarmNames(...names: string[]): this
-    Only these alarms (`--alarm-names`); repeatable.
-  alarmNamePrefix(prefix: string): this
-    Only alarms whose name starts with this (`--alarm-name-prefix`).
-  stateValue(state: CloudwatchAlarmState): this
-    Only alarms in this state (`--state-value`).
-  alarmTypes(...types: CloudwatchAlarmType[]): this
-    The kinds of alarm to return (`--alarm-types`); replaces any set before.
-    Without it the CLI returns metric alarms only.
-  override protected leadingTokens(): string[]
-    Emit `cloudwatch describe-alarms` with its options.
-
-class CloudwatchExpressionSettings
-  Settings for one metric-math expression in a `get-metric-data` request.
-
-  label_?: string
-    A label for the series (set by {@link label}).
-  period_?: number
-    The period in seconds, for an expression that needs one (set by {@link period}).
-  returnData_: boolean
-    Whether the response carries this series (set by {@link returnData}).
-  label(text: string): this
-    A label for the series in the response.
-  period(seconds: number): this
-    The period in seconds, for an expression that has no metric to take it from.
-  returnData(value: boolean): this
-    Whether the response carries this series (default `true`).
-
-class CloudwatchGetMetricDataSettings extends AwsSettings
-  Settings for `aws cloudwatch get-metric-data`.
-
-  protected taskName(): string
-    The task name used in this command's error messages.
-  metricStat(id: string, configure: Configure<CloudwatchMetricStatSettings>): this
-    Add a metric to the request, under `id`, configured by `configure`.
-  expression(id: string, expression: string, configure: Configure<CloudwatchExpressionSettings>): this
-    Add a metric-math expression over the request's other ids, e.g.
-    `("ratio", "100 * errors / requests")`.
-  startTime(time: AwsTime): this
-    The start of the range (`--start-time`).
-  endTime(time: AwsTime): this
-    The end of the range (`--end-time`).
-  window(duration: string | number, end: Date): this
-    The `duration` (`"15m"`, or milliseconds) up to `end` — now, unless
-    given — as `--start-time` and `--end-time`.
-  scanBy(order: "TimestampDescending" | "TimestampAscending"): this
-    The order of the datapoints (`--scan-by`); newest first by default.
-  maxDatapoints(count: number): this
-    The most datapoints to return (`--max-datapoints`).
-  override protected leadingTokens(): string[]
-    Emit `cloudwatch get-metric-data` with its options.
-
-class CloudwatchGetMetricStatisticsSettings extends AwsSettings
-  Settings for `aws cloudwatch get-metric-statistics`.
-
-  namespace(value: string): this
-    The metric's namespace (`--namespace`).
-  metricName(value: string): this
-    The metric's name (`--metric-name`).
-  dimension(name: string, value: string): this
-    A dimension that picks the series (`--dimensions`); repeatable.
-  startTime(time: AwsTime): this
-    The start of the range (`--start-time`).
-  endTime(time: AwsTime): this
-    The end of the range (`--end-time`).
-  window(duration: string | number, end: Date): this
-    The `duration` up to `end` — now, unless given — as the time range.
-  period(seconds: number): this
-    The aggregation period in seconds (`--period`).
-  statistics(...values: Array<"SampleCount" | "Average" | "Sum" | "Minimum" | "Maximum">): this
-    The basic statistics to return (`--statistics`), e.g. `"Sum"`.
-  extendedStatistics(...values: string[]): this
-    Percentiles and other extended statistics (`--extended-statistics`), e.g. `"p99"`.
-  unit(value: string): this
-    Only datapoints published in this unit (`--unit`).
-  override protected leadingTokens(): string[]
-    Emit `cloudwatch get-metric-statistics` with its options.
-
-class CloudwatchMetricStatSettings
-  Settings for one metric in a `get-metric-data` request (a `MetricStat` query).
-
-  namespace_?: string
-    The metric's namespace, e.g. `AWS/ApplicationELB` (set by {@link namespace}).
-  metricName_?: string
-    The metric's name (set by {@link metricName}).
-  readonly dimensions_: Array<{ Name: string; Value: string; }>
-    The dimensions that pick the series, in order (set by {@link dimension}).
-  period_: number
-    The aggregation period in seconds (set by {@link period}).
-  stat_?: CloudwatchStatistic
-    The statistic (set by {@link stat}).
-  unit_?: string
-    The unit to filter on (set by {@link unit}).
-  label_?: string
-    A label for the series (set by {@link label}).
-  returnData_: boolean
-    Whether the response carries this series (set by {@link returnData}).
-  namespace(value: string): this
-    The metric's namespace, e.g. `"AWS/ApplicationELB"`.
-  metricName(value: string): this
-    The metric's name, e.g. `"HTTPCode_Target_5XX_Count"`.
-  dimension(name: string, value: string): this
-    A dimension that picks the series, e.g. `("LoadBalancer", "app/web/1f2e")`; repeatable.
-  period(seconds: number): this
-    The aggregation period in seconds (default 60). CloudWatch accepts 1, 5,
-    10, 30, or a multiple of 60.
-  stat(value: CloudwatchStatistic): this
-    The statistic: `"Sum"`, `"Average"`, `"Maximum"`, `"p99"`, …
-  unit(value: string): this
-    Only datapoints published in this unit, e.g. `"Count"`.
-  label(text: string): this
-    A label for the series in the response.
-  returnData(value: boolean): this
-    Whether the response carries this series (default `true`). Pass `false`
-    for a metric that only feeds an expression.
-
-class CloudwatchMetricValueSettings extends CloudwatchGetMetricDataSettings
-  Settings for `AwsTasks.metricValue`: a `get-metric-data` request, and how to read it.
-
-  id_?: string
-    The series to read (set by {@link id}); the only one when unset.
-  aggregate_: CloudwatchAggregate
-    How to turn the series into one number (set by {@link aggregate}).
-  missingData_?: number
-    The value to return when the series is empty (set by {@link missingDataAs}).
-  override protected taskName(): string
-    The task name used in this reader's error messages.
-  id(queryId: string): this
-    The series to read, by query id. Needed only when the request returns
-    more than one — hide the inputs of an expression with
-    `.returnData(false)` and it is not.
-  aggregate(how: CloudwatchAggregate): this
-    How to turn the series into one number (default `"latest"`, the newest
-    datapoint). An aggregate combines the datapoints the window holds: a
-    `"sum"` of per-minute `Sum`s is the window's total.
-  missingDataAs(value: number): this
-    Return `value` when the series has no datapoints, instead of failing.
-    CloudWatch publishes nothing for a period with no events, so for a count
-    of errors, no data does mean `0`; for a latency or a CPU reading it
-    usually means the query is looking in the wrong place.
-
-class LogsFilterLogEventsSettings extends AwsSettings
-  Settings for `aws logs filter-log-events`.
-
-  logGroupName(name: string): this
-    The log group to search (`--log-group-name`).
-  logStreamNames(...names: string[]): this
-    Only these streams (`--log-stream-names`); repeatable.
-  logStreamNamePrefix(prefix: string): this
-    Only streams whose name starts with this (`--log-stream-name-prefix`).
-  filterPattern(pattern: string): this
-    A CloudWatch Logs filter pattern (`--filter-pattern`), e.g. `"ERROR"`.
-  startTime(time: Date): this
-    The start of the range (`--start-time`, sent as epoch milliseconds).
-  endTime(time: Date): this
-    The end of the range (`--end-time`, sent as epoch milliseconds).
-  window(duration: string | number, end: Date): this
-    The `duration` up to `end` — now, unless given — as the time range.
-  override protected leadingTokens(): string[]
-    Emit `logs filter-log-events` with its options.
-
-class LogsGetQueryResultsSettings extends AwsSettings
-  Settings for `aws logs get-query-results`.
-
-  queryId(id: string): this
-    The id `start-query` returned (`--query-id`).
-  override protected leadingTokens(): string[]
-    Emit `logs get-query-results` with the query id.
-
-class LogsInsightsQuerySettings
-  Settings for `AwsTasks.logsInsightsQuery`: the query, and how long to wait for it.
-
-  readonly logGroupNames_: string[]
-    The log groups to query (set by {@link logGroupNames}).
-  queryString_?: string
-    The Logs Insights query (set by {@link queryString}).
-  start_?: Date
-    The start of the range (set by {@link startTime} or {@link window}).
-  end_?: Date
-    The end of the range (set by {@link endTime} or {@link window}).
-  limit_?: number
-    The most rows to return (set by {@link limit}).
-  timeout_: number
-    How long to wait for the query, in ms (set by {@link timeout}).
-  pollInterval_: number
-    The pause between polls, in ms (set by {@link pollInterval}).
-  aws_: Configure<AwsSettings>
-    Global options for every command (set by {@link aws}).
-  logGroupNames(...names: string[]): this
-    The log groups to query (`--log-group-names`); repeatable.
-  queryString(query: string): this
-    The Logs Insights query (`--query-string`).
-  startTime(time: Date): this
-    The start of the range.
-  endTime(time: Date): this
-    The end of the range.
-  window(duration: string | number, end: Date): this
-    The `duration` up to `end` — now, unless given — as the time range.
-  limit(rows: number): this
-    The most rows to return (`--limit`).
-  timeout(duration: string | number): this
-    How long to wait for the query to finish (`"2m"`, or ms; default 5
-    minutes). A query still running then is stopped, and the reader fails.
-  pollInterval(duration: string | number): this
-    The pause between polls for the results (`"2s"`, or ms; default 1 second).
-  aws(configure: Configure<AwsSettings>): this
-    Global options for every command the query runs —
-    `(a) => a.profile("prod").region("eu-west-1")`, a `.toolPath(...)`, or a
-    `.runner(...)`.
-
-class LogsStartQuerySettings extends AwsSettings
-  Settings for `aws logs start-query`.
-
-  logGroupNames(...names: string[]): this
-    The log groups to query (`--log-group-names`); repeatable.
-  queryString(query: string): this
-    The Logs Insights query (`--query-string`).
-  startTime(time: Date): this
-    The start of the range (`--start-time`, sent as epoch seconds).
-  endTime(time: Date): this
-    The end of the range (`--end-time`, sent as epoch seconds).
-  window(duration: string | number, end: Date): this
-    The `duration` up to `end` — now, unless given — as the time range.
-  limit(rows: number): this
-    The most rows to return (`--limit`).
-  override protected leadingTokens(): string[]
-    Emit `logs start-query` with its options.
-
-class LogsStopQuerySettings extends AwsSettings
-  Settings for `aws logs stop-query`.
-
-  queryId(id: string): this
-    The id `start-query` returned (`--query-id`).
-  override protected leadingTokens(): string[]
-    Emit `logs stop-query` with the query id.
-
-class LogsTailSettings extends AwsSettings
-  Settings for `aws logs tail`. With {@link follow} the command never ends on
-  its own — bound it with `.killAfter(ms)`.
-
-  groupName(name: string): this
-    The log group to tail (positional).
-  since(value: string): this
-    How far back to start (`--since`), e.g. `"10m"` or an ISO timestamp.
-  follow(): this
-    Keep printing new events as they arrive (`--follow`).
-  filterPattern(pattern: string): this
-    A CloudWatch Logs filter pattern (`--filter-pattern`).
-  format(value: "detailed" | "short" | "json"): this
-    How each event is printed (`--format`).
-  logStreamNames(...names: string[]): this
-    Only these streams (`--log-stream-names`); repeatable.
-  logStreamNamePrefix(prefix: string): this
-    Only streams whose name starts with this (`--log-stream-name-prefix`).
-  override protected leadingTokens(): string[]
-    Emit `logs tail` with the group and its options.
+  redact(text: string): string
+    Mask every resolved `secret` parameter in `text`.
 
 interface AwsTasksApi
   The shape of {@link AwsTasks}.
@@ -1290,9 +1353,10 @@ interface AwsTasksApi
     Change a function's settings: `aws lambda update-function-configuration`.
   lambdaPublishVersion(configure?: Configure<AwsLambdaPublishVersionSettings>): Promise<CommandOutput>
     Publish a version: `aws lambda publish-version`.
-  functionVersion(configure?: Configure<AwsLambdaPublishVersionSettings>): Promise<string>
-    Publish a version and return its number, read back as a string. Pins
-    `--query Version --output text`.
+  lambdaPublishedVersion(configure?: Configure<AwsLambdaPublishVersionSettings>): Promise<string>
+    Publish a new version of the function — `aws lambda publish-version`,
+    which changes the account — and return the number it was given. Pins
+    `--query Version --output text`. Not a lookup: every call publishes.
   lambdaUpdateAlias(configure?: Configure<AwsLambdaUpdateAliasSettings>): Promise<CommandOutput>
     Move an alias: `aws lambda update-alias`.
   lambdaGetFunction(configure?: Configure<AwsLambdaGetFunctionSettings>): Promise<CommandOutput>
@@ -1325,51 +1389,56 @@ interface AwsTasksApi
     Write a kubeconfig entry for a cluster: `aws eks update-kubeconfig`.
   eksDescribeCluster(configure?: Configure<AwsEksDescribeClusterSettings>): Promise<CommandOutput>
     Describe a cluster: `aws eks describe-cluster`.
-  cloudwatchGetMetricData(configure?: Configure<CloudwatchGetMetricDataSettings>): Promise<CommandOutput>
+  cloudwatchGetMetricData(configure?: Configure<AwsCloudwatchGetMetricDataSettings>): Promise<CommandOutput>
     Read metric datapoints: `aws cloudwatch get-metric-data`.
-  metricValue(configure: Configure<CloudwatchMetricValueSettings>): Promise<number>
+  metricValue(configure: Configure<AwsCloudwatchMetricValueSettings>): Promise<number>
     One number from CloudWatch: the latest datapoint of a series, or an
     aggregate over the window. Pins `--query MetricDataResults --output json`; fails on no data unless `.missingDataAs(value)` says what it
     means.
-  cloudwatchGetMetricStatistics(configure?: Configure<CloudwatchGetMetricStatisticsSettings>): Promise<CommandOutput>
+  cloudwatchGetMetricStatistics(configure?: Configure<AwsCloudwatchGetMetricStatisticsSettings>): Promise<CommandOutput>
     Read metric statistics: `aws cloudwatch get-metric-statistics`.
-  cloudwatchDescribeAlarms(configure?: Configure<CloudwatchDescribeAlarmsSettings>): Promise<CommandOutput>
+  cloudwatchDescribeAlarms(configure?: Configure<AwsCloudwatchDescribeAlarmsSettings>): Promise<CommandOutput>
     Describe alarms: `aws cloudwatch describe-alarms`.
-  alarmState(name: string, configure?: Configure<CloudwatchDescribeAlarmsSettings>): Promise<CloudwatchAlarmState>
-    The state of one metric or composite alarm: `OK`, `ALARM` or `INSUFFICIENT_DATA`.
-  logsStartQuery(configure?: Configure<LogsStartQuerySettings>): Promise<CommandOutput>
+  alarmState(name: string, configure?: Configure<AwsCloudwatchDescribeAlarmsSettings>): Promise<AwsCloudwatchAlarmState>
+    The state of one metric, composite or log alarm: `OK`, `ALARM` or `INSUFFICIENT_DATA`.
+  logsStartQuery(configure?: Configure<AwsLogsStartQuerySettings>): Promise<CommandOutput>
     Start a Logs Insights query: `aws logs start-query`.
-  logsGetQueryResults(configure?: Configure<LogsGetQueryResultsSettings>): Promise<CommandOutput>
+  logsGetQueryResults(configure?: Configure<AwsLogsGetQueryResultsSettings>): Promise<CommandOutput>
     Read a Logs Insights query's results: `aws logs get-query-results`.
-  logsStopQuery(configure?: Configure<LogsStopQuerySettings>): Promise<CommandOutput>
+  logsStopQuery(configure?: Configure<AwsLogsStopQuerySettings>): Promise<CommandOutput>
     Stop a running Logs Insights query: `aws logs stop-query`.
-  logsInsightsQuery(configure: Configure<LogsInsightsQuerySettings>): Promise<LogsInsightsRow[]>
+  logsInsightsQuery(configure: Configure<AwsLogsInsightsQuerySettings>): Promise<AwsLogsInsightsRow[]>
     Run a Logs Insights query to the end and return its rows: start it, poll
     `get-query-results` until it is `Complete`, and fail with an
     `AwsLogsQueryError` when it ends otherwise or outlasts the timeout.
-  logsFilterLogEvents(configure?: Configure<LogsFilterLogEventsSettings>): Promise<CommandOutput>
+  logsFilterLogEvents(configure?: Configure<AwsLogsFilterLogEventsSettings>): Promise<CommandOutput>
     Search a log group's events: `aws logs filter-log-events`.
-  logsTail(configure?: Configure<LogsTailSettings>): Promise<CommandOutput>
+  logsTail(configure?: Configure<AwsLogsTailSettings>): Promise<CommandOutput>
     Print a log group's recent events: `aws logs tail`.
 
-interface CloudwatchAnalysis
-  A health check run against a canary, in the shape `@zuke/canary`'s
-  `c.analysis(...)` accepts: throw to fail it, which rolls the rollout back.
+type AwsCloudformationStackWaiter = "stack-create-complete" | "stack-update-complete" | "stack-delete-complete" | "stack-import-complete" | "stack-rollback-complete" | "stack-exists"
+  The waiters `aws cloudformation wait` offers for a stack.
 
-  readonly name: string
-    `"cloudwatch"`, for diagnostics.
-  validate(context: CloudwatchAnalysisContext): Promise<void>
-    Read the metric and throw when a datapoint is out of bounds.
+type AwsCloudwatchAggregate = "latest" | "sum" | "average" | "maximum" | "minimum"
+  How {@link AwsCloudwatchMetricValueSettings} turns a series into one number:
+  its newest datapoint, or the sum, average, maximum or minimum of all of
+  them.
 
-interface CloudwatchAnalysisContext
-  The part of the canary engine's context the analysis uses: the run's
-  redactor, applied to every failure message. The engine hands a richer
-  context; this is the narrow view.
+type AwsCloudwatchAlarmState = "OK" | "ALARM" | "INSUFFICIENT_DATA"
+  The states a CloudWatch alarm can be in.
 
-  redact(text: string): string
-    Mask every resolved `secret` parameter in `text`.
+type AwsCloudwatchAlarmType = "MetricAlarm" | "CompositeAlarm" | "LogAlarm"
+  The kinds of alarm `describe-alarms` can return.
 
-type AwsOutputFormat = "json" | "text" | "table" | "yaml" | "yaml-stream"
+type AwsCloudwatchStatistic = "SampleCount" | "Average" | "Sum" | "Minimum" | "Maximum" | "IQM" | `p${number}` | `${"tm" | "wm" | "tc" | "ts"}${string}` | `${"TM" | "WM" | "TC" | "TS" | "PR"}(${string})`
+  A CloudWatch statistic: one of the five basic statistics, the interquartile
+  mean `IQM`, or a percentile (`p99`, `p99.9`) or other extended statistic
+  (`tm90`, `TM(10%:90%)`, `PR(100:2000)`, …).
+
+type AwsLogsInsightsRow = Record<string, string>
+  One row of a Logs Insights result: each field the query returned, by name.
+
+type AwsOutputFormat = "json" | "text" | "table" | "yaml" | "yaml-stream" | "off"
   The values the AWS CLI's `--output` option accepts.
 
 type AwsSettingsRunner = (settings: AwsSettings) => Promise<CommandOutput>
@@ -1380,32 +1449,11 @@ type AwsSettingsRunner = (settings: AwsSettings) => Promise<CommandOutput>
   spawned process, so a non-zero `code` still raises a `CommandError` unless
   the settings say `.noThrow()`.
 
+type AwsSsmParameterType = "String" | "StringList" | "SecureString"
+  The kinds of parameter Parameter Store keeps.
+
 type AwsTime = Date | string
   A time given as a `Date` or as a string the CLI parses (ISO 8601).
-
-type CloudformationStackWaiter = "stack-create-complete" | "stack-update-complete" | "stack-delete-complete" | "stack-import-complete" | "stack-rollback-complete" | "stack-exists"
-  The waiters `aws cloudformation wait` offers for a stack.
-
-type CloudwatchAggregate = "latest" | "sum" | "average" | "maximum" | "minimum"
-  How {@link CloudwatchMetricValueSettings} turns a series into one number:
-  its newest datapoint, or the sum, average, maximum or minimum of all of
-  them.
-
-type CloudwatchAlarmState = "OK" | "ALARM" | "INSUFFICIENT_DATA"
-  The states a CloudWatch alarm can be in.
-
-type CloudwatchAlarmType = "MetricAlarm" | "CompositeAlarm"
-  The kinds of alarm `describe-alarms` can return.
-
-type CloudwatchStatistic = "SampleCount" | "Average" | "Sum" | "Minimum" | "Maximum" | `p${number}` | `${"tm" | "wm" | "tc" | "ts" | "pr"}${string}` | `${"TM" | "WM" | "TC" | "TS" | "PR"}(${string})`
-  A CloudWatch statistic: one of the five basic statistics, or a percentile
-  (`p99`, `p99.9`) or other extended statistic (`tm90`, `TM(10%:90%)`, …).
-
-type LogsInsightsRow = Record<string, string>
-  One row of a Logs Insights result: each field the query returned, by name.
-
-type SsmParameterType = "String" | "StringList" | "SecureString"
-  The kinds of parameter Parameter Store keeps.
 ````
 
 </details>

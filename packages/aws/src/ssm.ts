@@ -17,26 +17,21 @@
 
 import type { CommandOutput } from "@zuke/core/shell";
 import { secretsIn } from "./secret_output.ts";
-import { AwsSettings } from "./settings.ts";
+import { type AwsOutputFormat, AwsSettings } from "./settings.ts";
+import { freeText, option } from "./validate.ts";
 
 /** The `--query` the parameter reader pins, so the CLI extracts the field. */
 export const PARAMETER_VALUE_QUERY = "Parameter.Value";
 
 /** The kinds of parameter Parameter Store keeps. */
-export type SsmParameterType = "String" | "StringList" | "SecureString";
-
-/**
- * The prefixes the AWS CLI reads a parameter's value from instead of taking
- * it literally.
- */
-const FILE_PREFIXES = ["file://", "fileb://"];
+export type AwsSsmParameterType = "String" | "StringList" | "SecureString";
 
 /**
  * Settings for `aws ssm get-parameter`.
  *
  * A parameter may be a `SecureString`, so the command always runs quietly —
- * captured, never streamed — and the value it returns is registered with the
- * run's redactor.
+ * captured, never streamed — with `--output json` pinned, and the value it
+ * returns is registered with the run's redactor.
  */
 export class AwsSsmGetParameterSettings extends AwsSettings {
   #name?: string;
@@ -63,6 +58,11 @@ export class AwsSsmGetParameterSettings extends AwsSettings {
     return this;
   }
 
+  /** Pin `--output json`, the form the returned secrets can be found in. */
+  protected override pinnedOutput(): AwsOutputFormat {
+    return "json";
+  }
+
   /** Register the returned value as a secret. */
   protected override onOutput(output: CommandOutput): void {
     for (const secret of secretsIn(output.stdout, ["Value"])) {
@@ -78,7 +78,7 @@ export class AwsSsmGetParameterSettings extends AwsSettings {
           ".name('/api/db-url').",
       );
     }
-    const argv = ["ssm", "get-parameter", "--name", this.#name];
+    const argv = ["ssm", "get-parameter", option("--name", this.#name)];
     if (this.#withDecryption) argv.push("--with-decryption");
     return argv;
   }
@@ -97,7 +97,7 @@ export class AwsSsmGetParameterSettings extends AwsSettings {
 export class AwsSsmPutParameterSettings extends AwsSettings {
   #name?: string;
   #value?: string;
-  #type?: SsmParameterType;
+  #type?: AwsSsmParameterType;
   #overwrite = false;
   #keyId?: string;
   #description?: string;
@@ -116,14 +116,7 @@ export class AwsSsmPutParameterSettings extends AwsSettings {
    * store the text — use {@link valueFile} when that is the intent.
    */
   value(text: string): this {
-    if (FILE_PREFIXES.some((prefix) => text.startsWith(prefix))) {
-      throw new Error(
-        "AwsTasks.ssmPutParameter: a value starting with file:// or fileb:// " +
-          "is read from that file by the AWS CLI, not stored as written — use " +
-          ".valueFile(path) to read a file.",
-      );
-    }
-    this.#value = text;
+    this.#value = freeText("ssmPutParameter", "--value", text);
     this.#markIfSecure();
     return this;
   }
@@ -139,7 +132,7 @@ export class AwsSsmPutParameterSettings extends AwsSettings {
   }
 
   /** The parameter's type (`--type`). */
-  type(value: SsmParameterType): this {
+  type(value: AwsSsmParameterType): this {
     this.#type = value;
     this.#markIfSecure();
     return this;
@@ -159,7 +152,7 @@ export class AwsSsmPutParameterSettings extends AwsSettings {
 
   /** A description of the parameter (`--description`). */
   description(text: string): this {
-    this.#description = text;
+    this.#description = freeText("ssmPutParameter", "--description", text);
     return this;
   }
 
@@ -199,18 +192,19 @@ export class AwsSsmPutParameterSettings extends AwsSettings {
     const argv = [
       "ssm",
       "put-parameter",
-      "--name",
-      this.#name,
+      option("--name", this.#name),
       `--value=${this.#value}`,
     ];
-    if (this.#type !== undefined) argv.push("--type", this.#type);
+    if (this.#type !== undefined) argv.push(option("--type", this.#type));
     if (this.#overwrite) argv.push("--overwrite");
-    if (this.#keyId !== undefined) argv.push("--key-id", this.#keyId);
+    if (this.#keyId !== undefined) argv.push(option("--key-id", this.#keyId));
     if (this.#description !== undefined) {
-      argv.push("--description", this.#description);
+      argv.push(option("--description", this.#description));
     }
-    if (this.#tier !== undefined) argv.push("--tier", this.#tier);
-    if (this.#dataType !== undefined) argv.push("--data-type", this.#dataType);
+    if (this.#tier !== undefined) argv.push(option("--tier", this.#tier));
+    if (this.#dataType !== undefined) {
+      argv.push(option("--data-type", this.#dataType));
+    }
     return argv;
   }
 }

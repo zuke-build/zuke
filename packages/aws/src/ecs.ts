@@ -16,6 +16,7 @@
  * @module
  */
 
+import { freeText, operands, option } from "./validate.ts";
 import { AwsSettings } from "./settings.ts";
 
 /** Settings for `aws ecs update-service`. */
@@ -71,19 +72,23 @@ export class AwsEcsUpdateServiceSettings extends AwsSettings {
       );
     }
     const argv = ["ecs", "update-service"];
-    if (this.#cluster !== undefined) argv.push("--cluster", this.#cluster);
-    argv.push("--service", this.#service);
+    if (this.#cluster !== undefined) {
+      argv.push(option("--cluster", this.#cluster));
+    }
+    argv.push(option("--service", this.#service));
     if (this.#taskDefinition !== undefined) {
-      argv.push("--task-definition", this.#taskDefinition);
+      argv.push(option("--task-definition", this.#taskDefinition));
     }
     if (this.#desiredCount !== undefined) {
-      argv.push("--desired-count", String(this.#desiredCount));
+      argv.push(option("--desired-count", this.#desiredCount));
     }
     if (this.#forceNewDeployment) argv.push("--force-new-deployment");
     if (this.#healthCheckGracePeriodSeconds !== undefined) {
       argv.push(
-        "--health-check-grace-period-seconds",
-        String(this.#healthCheckGracePeriodSeconds),
+        option(
+          "--health-check-grace-period-seconds",
+          this.#healthCheckGracePeriodSeconds,
+        ),
       );
     }
     return argv;
@@ -106,8 +111,8 @@ function servicesArgv(
     );
   }
   const argv = ["ecs", ...command];
-  if (cluster !== undefined) argv.push("--cluster", cluster);
-  argv.push("--services", ...services);
+  if (cluster !== undefined) argv.push(option("--cluster", cluster));
+  argv.push("--services", ...operands(task, "--services", services));
   return argv;
 }
 
@@ -260,26 +265,33 @@ export class AwsEcsRegisterTaskDefinitionSettings extends AwsSettings {
     }
     const argv = ["ecs", "register-task-definition"];
     if (this.#cliInputJson !== undefined) {
-      argv.push("--cli-input-json", this.#cliInputJson);
+      argv.push(option("--cli-input-json", this.#cliInputJson));
     }
-    if (this.#family !== undefined) argv.push("--family", this.#family);
+    if (this.#family !== undefined) argv.push(option("--family", this.#family));
     if (this.#containerDefinitions !== undefined) {
-      argv.push("--container-definitions", this.#containerDefinitions);
+      argv.push(option("--container-definitions", this.#containerDefinitions));
     }
     if (this.#taskRoleArn !== undefined) {
-      argv.push("--task-role-arn", this.#taskRoleArn);
+      argv.push(option("--task-role-arn", this.#taskRoleArn));
     }
     if (this.#executionRoleArn !== undefined) {
-      argv.push("--execution-role-arn", this.#executionRoleArn);
+      argv.push(option("--execution-role-arn", this.#executionRoleArn));
     }
     if (this.#networkMode !== undefined) {
-      argv.push("--network-mode", this.#networkMode);
+      argv.push(option("--network-mode", this.#networkMode));
     }
     if (this.#requiresCompatibilities.length > 0) {
-      argv.push("--requires-compatibilities", ...this.#requiresCompatibilities);
+      argv.push(
+        "--requires-compatibilities",
+        ...operands(
+          "ecsRegisterTaskDefinition",
+          "--requires-compatibilities",
+          this.#requiresCompatibilities,
+        ),
+      );
     }
-    if (this.#cpu !== undefined) argv.push("--cpu", this.#cpu);
-    if (this.#memory !== undefined) argv.push("--memory", this.#memory);
+    if (this.#cpu !== undefined) argv.push(option("--cpu", this.#cpu));
+    if (this.#memory !== undefined) argv.push(option("--memory", this.#memory));
     return argv;
   }
 }
@@ -333,7 +345,7 @@ export class AwsEcsRunTaskSettings extends AwsSettings {
 
   /** A label for who started the task (`--started-by`). */
   startedBy(value: string): this {
-    this.#startedBy = value;
+    this.#startedBy = freeText("ecsRunTask", "--started-by", value);
     return this;
   }
 
@@ -352,22 +364,24 @@ export class AwsEcsRunTaskSettings extends AwsSettings {
       );
     }
     const argv = ["ecs", "run-task"];
-    if (this.#cluster !== undefined) argv.push("--cluster", this.#cluster);
-    argv.push("--task-definition", this.#taskDefinition);
-    if (this.#count !== undefined) argv.push("--count", String(this.#count));
+    if (this.#cluster !== undefined) {
+      argv.push(option("--cluster", this.#cluster));
+    }
+    argv.push(option("--task-definition", this.#taskDefinition));
+    if (this.#count !== undefined) argv.push(option("--count", this.#count));
     if (this.#launchType !== undefined) {
-      argv.push("--launch-type", this.#launchType);
+      argv.push(option("--launch-type", this.#launchType));
     }
     if (this.#networkConfiguration !== undefined) {
-      argv.push("--network-configuration", this.#networkConfiguration);
+      argv.push(option("--network-configuration", this.#networkConfiguration));
     }
     if (this.#overrides !== undefined) {
-      argv.push("--overrides", this.#overrides);
+      argv.push(option("--overrides", this.#overrides));
     }
     if (this.#startedBy !== undefined) {
-      argv.push("--started-by", this.#startedBy);
+      argv.push(option("--started-by", this.#startedBy));
     }
-    if (this.#group !== undefined) argv.push("--group", this.#group);
+    if (this.#group !== undefined) argv.push(option("--group", this.#group));
     return argv;
   }
 }

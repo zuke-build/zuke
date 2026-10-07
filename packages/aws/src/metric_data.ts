@@ -16,8 +16,12 @@
 import { AwsOutputError } from "./errors.ts";
 import { isNumberArray, isRecord, isStringArray } from "./shape.ts";
 
-/** The `--query` the readers pin, so the CLI prints the results list alone. */
-export const METRIC_DATA_RESULTS_QUERY = "MetricDataResults";
+/**
+ * The `--query` the readers pin: the results, and the `NextToken` that says
+ * the CLI stopped before the last page.
+ */
+export const METRIC_DATA_RESULTS_QUERY =
+  "{MetricDataResults: MetricDataResults, NextToken: NextToken}";
 
 /** One datapoint of a series. */
 export interface Datapoint {
@@ -45,14 +49,19 @@ function idsOf(results: readonly unknown[]): string[] {
 }
 
 /**
- * The datapoints of series `id` in `results` (the `MetricDataResults` list),
- * newest first. With no `id`, the results must hold exactly one series.
+ * The datapoints of series `id` in `document` (what
+ * {@link METRIC_DATA_RESULTS_QUERY} projects), newest first. With no `id`, the
+ * results must hold exactly one series. A series CloudWatch marked
+ * `PartialData` beside a `NextToken` is refused: the rest of it is on a page
+ * the CLI did not fetch.
  */
 export function datapointsOf(
-  results: unknown,
+  document: unknown,
   id: string | undefined,
   task: string,
 ): { id: string; datapoints: Datapoint[] } {
+  const results = isRecord(document) ? document.MetricDataResults : undefined;
+  const more = isRecord(document) && typeof document.NextToken === "string";
   if (!Array.isArray(results)) {
     throw new AwsOutputError(
       task,
@@ -78,6 +87,13 @@ export function datapointsOf(
       throw new AwsOutputError(
         task,
         `CloudWatch answered series "${wanted}" with status ${StatusCode}.`,
+      );
+    }
+    if (StatusCode === "PartialData" && more) {
+      throw new AwsOutputError(
+        task,
+        `series "${wanted}" is PartialData and the answer has a NextToken, ` +
+          "so the rest of it is on a page that was not read.",
       );
     }
     if (

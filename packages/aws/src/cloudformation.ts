@@ -21,10 +21,11 @@
  * @module
  */
 
+import { operand, operands, option } from "./validate.ts";
 import { AwsSettings } from "./settings.ts";
 
 /** The waiters `aws cloudformation wait` offers for a stack. */
-export type CloudformationStackWaiter =
+export type AwsCloudformationStackWaiter =
   | "stack-create-complete"
   | "stack-update-complete"
   | "stack-delete-complete"
@@ -61,7 +62,7 @@ function pair(task: string, flag: string, key: string, value: string) {
         "each pair at its first '=', so a key may not be empty or contain one.",
     );
   }
-  return `${key}=${value}`;
+  return operand(task, flag, `${key}=${value}`);
 }
 
 /** Settings for `aws cloudformation deploy`. */
@@ -155,10 +156,8 @@ export class AwsCloudformationDeploySettings extends AwsSettings {
     const argv = [
       "cloudformation",
       "deploy",
-      "--template-file",
-      this.#templateFile,
-      "--stack-name",
-      this.#stackName,
+      option("--template-file", this.#templateFile),
+      option("--stack-name", this.#stackName),
     ];
     if (this.#parameterOverrides.length > 0) {
       argv.push(
@@ -169,7 +168,14 @@ export class AwsCloudformationDeploySettings extends AwsSettings {
       );
     }
     if (this.#capabilities.length > 0) {
-      argv.push("--capabilities", ...this.#capabilities);
+      argv.push(
+        "--capabilities",
+        ...operands(
+          "cloudformationDeploy",
+          "--capabilities",
+          this.#capabilities,
+        ),
+      );
     }
     if (this.#tags.length > 0) {
       argv.push(
@@ -183,10 +189,18 @@ export class AwsCloudformationDeploySettings extends AwsSettings {
     if (this.#noFailOnEmptyChangeset) {
       argv.push("--no-fail-on-empty-changeset");
     }
-    if (this.#roleArn !== undefined) argv.push("--role-arn", this.#roleArn);
-    if (this.#s3Bucket !== undefined) argv.push("--s3-bucket", this.#s3Bucket);
-    if (this.#s3Prefix !== undefined) argv.push("--s3-prefix", this.#s3Prefix);
-    if (this.#kmsKeyId !== undefined) argv.push("--kms-key-id", this.#kmsKeyId);
+    if (this.#roleArn !== undefined) {
+      argv.push(option("--role-arn", this.#roleArn));
+    }
+    if (this.#s3Bucket !== undefined) {
+      argv.push(option("--s3-bucket", this.#s3Bucket));
+    }
+    if (this.#s3Prefix !== undefined) {
+      argv.push(option("--s3-prefix", this.#s3Prefix));
+    }
+    if (this.#kmsKeyId !== undefined) {
+      argv.push(option("--kms-key-id", this.#kmsKeyId));
+    }
     return argv;
   }
 }
@@ -205,7 +219,7 @@ export class AwsCloudformationDescribeStacksSettings extends AwsSettings {
   protected override leadingTokens(): string[] {
     const argv = ["cloudformation", "describe-stacks"];
     if (this.#stackName !== undefined) {
-      argv.push("--stack-name", this.#stackName);
+      argv.push(option("--stack-name", this.#stackName));
     }
     return argv;
   }
@@ -246,12 +260,20 @@ export class AwsCloudformationDeleteStackSettings extends AwsSettings {
     const argv = [
       "cloudformation",
       "delete-stack",
-      "--stack-name",
-      this.#stackName,
+      option("--stack-name", this.#stackName),
     ];
-    if (this.#roleArn !== undefined) argv.push("--role-arn", this.#roleArn);
+    if (this.#roleArn !== undefined) {
+      argv.push(option("--role-arn", this.#roleArn));
+    }
     if (this.#retainResources.length > 0) {
-      argv.push("--retain-resources", ...this.#retainResources);
+      argv.push(
+        "--retain-resources",
+        ...operands(
+          "cloudformationDeleteStack",
+          "--retain-resources",
+          this.#retainResources,
+        ),
+      );
     }
     return argv;
   }
@@ -264,11 +286,11 @@ export class AwsCloudformationDeleteStackSettings extends AwsSettings {
  * state — which surfaces as a `CommandError`.
  */
 export class AwsCloudformationWaitSettings extends AwsSettings {
-  #waiter?: CloudformationStackWaiter;
+  #waiter?: AwsCloudformationStackWaiter;
   #stackName?: string;
 
   /** The state to wait for, e.g. `"stack-update-complete"`. */
-  waiter(name: CloudformationStackWaiter): this {
+  waiter(name: AwsCloudformationStackWaiter): this {
     this.#waiter = name;
     return this;
   }
@@ -291,8 +313,7 @@ export class AwsCloudformationWaitSettings extends AwsSettings {
       "cloudformation",
       "wait",
       this.#waiter,
-      "--stack-name",
-      this.#stackName,
+      option("--stack-name", this.#stackName),
     ];
   }
 }

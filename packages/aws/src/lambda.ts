@@ -10,7 +10,7 @@
  * await AwsTasks.lambdaUpdateFunctionCode((s) =>
  *   s.functionName("api").zipFile("dist/api.zip")
  * );
- * const version = await AwsTasks.functionVersion((s) => s.functionName("api"));
+ * const version = await AwsTasks.lambdaPublishedVersion((s) => s.functionName("api"));
  * await AwsTasks.lambdaUpdateAlias((s) =>
  *   s.functionName("api").name("live").functionVersion(version)
  * );
@@ -19,6 +19,7 @@
  * @module
  */
 
+import { freeText, operand, operands, option } from "./validate.ts";
 import { AwsSettings } from "./settings.ts";
 
 /** The `--query` the version reader pins, so the CLI extracts the field. */
@@ -35,7 +36,7 @@ function functionNameArgv(
       `AwsTasks.${task}: no function named — add .functionName('api').`,
     );
   }
-  return ["lambda", operation, "--function-name", name];
+  return ["lambda", operation, option("--function-name", name)];
 }
 
 /** Settings for `aws lambda update-function-code`. */
@@ -131,20 +132,33 @@ export class AwsLambdaUpdateFunctionCodeSettings extends AwsSettings {
           ".imageUri(uri).",
       );
     }
-    if (this.#zipFile !== undefined) argv.push("--zip-file", this.#zipFile);
-    if (this.#s3Bucket !== undefined) argv.push("--s3-bucket", this.#s3Bucket);
-    if (this.#s3Key !== undefined) argv.push("--s3-key", this.#s3Key);
-    if (this.#s3ObjectVersion !== undefined) {
-      argv.push("--s3-object-version", this.#s3ObjectVersion);
+    if (this.#zipFile !== undefined) {
+      argv.push(option("--zip-file", this.#zipFile));
     }
-    if (this.#imageUri !== undefined) argv.push("--image-uri", this.#imageUri);
+    if (this.#s3Bucket !== undefined) {
+      argv.push(option("--s3-bucket", this.#s3Bucket));
+    }
+    if (this.#s3Key !== undefined) argv.push(option("--s3-key", this.#s3Key));
+    if (this.#s3ObjectVersion !== undefined) {
+      argv.push(option("--s3-object-version", this.#s3ObjectVersion));
+    }
+    if (this.#imageUri !== undefined) {
+      argv.push(option("--image-uri", this.#imageUri));
+    }
     if (this.#publish) argv.push("--publish");
     if (this.#dryRun) argv.push("--dry-run");
     if (this.#revisionId !== undefined) {
-      argv.push("--revision-id", this.#revisionId);
+      argv.push(option("--revision-id", this.#revisionId));
     }
     if (this.#architectures.length > 0) {
-      argv.push("--architectures", ...this.#architectures);
+      argv.push(
+        "--architectures",
+        ...operands(
+          "lambdaUpdateFunctionCode",
+          "--architectures",
+          this.#architectures,
+        ),
+      );
     }
     return argv;
   }
@@ -211,7 +225,11 @@ export class AwsLambdaUpdateFunctionConfigurationSettings extends AwsSettings {
 
   /** A description of the function (`--description`). */
   description(text: string): this {
-    this.#description = text;
+    this.#description = freeText(
+      "lambdaUpdateFunctionConfiguration",
+      "--description",
+      text,
+    );
     return this;
   }
 
@@ -230,23 +248,38 @@ export class AwsLambdaUpdateFunctionConfigurationSettings extends AwsSettings {
     );
     if (this.#environment !== undefined) {
       argv.push(
-        "--environment",
-        JSON.stringify({ Variables: this.#environment }),
+        option(
+          "--environment",
+          JSON.stringify({ Variables: this.#environment }),
+        ),
       );
     }
     if (this.#timeout !== undefined) {
-      argv.push("--timeout", String(this.#timeout));
+      argv.push(option("--timeout", this.#timeout));
     }
     if (this.#memorySize !== undefined) {
-      argv.push("--memory-size", String(this.#memorySize));
+      argv.push(option("--memory-size", this.#memorySize));
     }
-    if (this.#handler !== undefined) argv.push("--handler", this.#handler);
-    if (this.#runtime !== undefined) argv.push("--runtime", this.#runtime);
-    if (this.#role !== undefined) argv.push("--role", this.#role);
+    if (this.#handler !== undefined) {
+      argv.push(option("--handler", this.#handler));
+    }
+    if (this.#runtime !== undefined) {
+      argv.push(option("--runtime", this.#runtime));
+    }
+    if (this.#role !== undefined) argv.push(option("--role", this.#role));
     if (this.#description !== undefined) {
-      argv.push("--description", this.#description);
+      argv.push(option("--description", this.#description));
     }
-    if (this.#layers.length > 0) argv.push("--layers", ...this.#layers);
+    if (this.#layers.length > 0) {
+      argv.push(
+        "--layers",
+        ...operands(
+          "lambdaUpdateFunctionConfiguration",
+          "--layers",
+          this.#layers,
+        ),
+      );
+    }
     return argv;
   }
 }
@@ -266,7 +299,7 @@ export class AwsLambdaPublishVersionSettings extends AwsSettings {
 
   /** A description of the version (`--description`). */
   description(text: string): this {
-    this.#description = text;
+    this.#description = freeText("lambdaPublishVersion", "--description", text);
     return this;
   }
 
@@ -290,13 +323,13 @@ export class AwsLambdaPublishVersionSettings extends AwsSettings {
       this.#functionName,
     );
     if (this.#description !== undefined) {
-      argv.push("--description", this.#description);
+      argv.push(option("--description", this.#description));
     }
     if (this.#codeSha256 !== undefined) {
-      argv.push("--code-sha256", this.#codeSha256);
+      argv.push(option("--code-sha256", this.#codeSha256));
     }
     if (this.#revisionId !== undefined) {
-      argv.push("--revision-id", this.#revisionId);
+      argv.push(option("--revision-id", this.#revisionId));
     }
     return argv;
   }
@@ -331,7 +364,7 @@ export class AwsLambdaUpdateAliasSettings extends AwsSettings {
 
   /** A description of the alias (`--description`). */
   description(text: string): this {
-    this.#description = text;
+    this.#description = freeText("lambdaUpdateAlias", "--description", text);
     return this;
   }
 
@@ -370,17 +403,19 @@ export class AwsLambdaUpdateAliasSettings extends AwsSettings {
         "AwsTasks.lambdaUpdateAlias: no alias named — add .name('live').",
       );
     }
-    argv.push("--name", this.#name);
+    argv.push(option("--name", this.#name));
     if (this.#functionVersion !== undefined) {
-      argv.push("--function-version", this.#functionVersion);
+      argv.push(option("--function-version", this.#functionVersion));
     }
     if (this.#description !== undefined) {
-      argv.push("--description", this.#description);
+      argv.push(option("--description", this.#description));
     }
     if (this.#routing) {
       argv.push(
-        "--routing-config",
-        JSON.stringify({ AdditionalVersionWeights: this.#weights }),
+        option(
+          "--routing-config",
+          JSON.stringify({ AdditionalVersionWeights: this.#weights }),
+        ),
       );
     }
     return argv;
@@ -412,7 +447,7 @@ export class AwsLambdaGetFunctionSettings extends AwsSettings {
       this.#functionName,
     );
     if (this.#qualifier !== undefined) {
-      argv.push("--qualifier", this.#qualifier);
+      argv.push(option("--qualifier", this.#qualifier));
     }
     return argv;
   }
@@ -446,7 +481,7 @@ export class AwsLambdaInvokeSettings extends AwsSettings {
    * `--cli-binary-format raw-in-base64-out` to send the text as it is.
    */
   payload(json: string): this {
-    this.#payload = json;
+    this.#payload = freeText("lambdaInvoke", "--payload", json);
     return this;
   }
 
@@ -485,20 +520,20 @@ export class AwsLambdaInvokeSettings extends AwsSettings {
     }
     if (this.#payload !== undefined) {
       argv.push(
-        "--cli-binary-format",
-        "raw-in-base64-out",
-        "--payload",
-        this.#payload,
+        option("--cli-binary-format", "raw-in-base64-out"),
+        option("--payload", this.#payload),
       );
     }
     if (this.#invocationType !== undefined) {
-      argv.push("--invocation-type", this.#invocationType);
+      argv.push(option("--invocation-type", this.#invocationType));
     }
-    if (this.#logType !== undefined) argv.push("--log-type", this.#logType);
+    if (this.#logType !== undefined) {
+      argv.push(option("--log-type", this.#logType));
+    }
     if (this.#qualifier !== undefined) {
-      argv.push("--qualifier", this.#qualifier);
+      argv.push(option("--qualifier", this.#qualifier));
     }
-    argv.push(this.#outfile);
+    argv.push(operand("lambdaInvoke", "outfile", this.#outfile));
     return argv;
   }
 }

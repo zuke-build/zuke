@@ -14,6 +14,7 @@
  * @module
  */
 
+import { option } from "./validate.ts";
 import { AwsSettings } from "./settings.ts";
 
 /** Settings for `aws eks update-kubeconfig`. */
@@ -68,15 +69,17 @@ export class AwsEksUpdateKubeconfigSettings extends AwsSettings {
         "AwsTasks.eksUpdateKubeconfig: no cluster named — add .name('prod').",
       );
     }
-    const argv = ["eks", "update-kubeconfig", "--name", this.#name];
+    const argv = ["eks", "update-kubeconfig", option("--name", this.#name)];
     if (this.#kubeconfig !== undefined) {
-      argv.push("--kubeconfig", this.#kubeconfig);
+      argv.push(option("--kubeconfig", this.#kubeconfig));
     }
-    if (this.#alias !== undefined) argv.push("--alias", this.#alias);
+    if (this.#alias !== undefined) argv.push(option("--alias", this.#alias));
     if (this.#userAlias !== undefined) {
-      argv.push("--user-alias", this.#userAlias);
+      argv.push(option("--user-alias", this.#userAlias));
     }
-    if (this.#roleArn !== undefined) argv.push("--role-arn", this.#roleArn);
+    if (this.#roleArn !== undefined) {
+      argv.push(option("--role-arn", this.#roleArn));
+    }
     if (this.#dryRun) argv.push("--dry-run");
     return argv;
   }
@@ -99,6 +102,6 @@ export class AwsEksDescribeClusterSettings extends AwsSettings {
         "AwsTasks.eksDescribeCluster: no cluster named — add .name('prod').",
       );
     }
-    return ["eks", "describe-cluster", "--name", this.#name];
+    return ["eks", "describe-cluster", option("--name", this.#name)];
   }
 }

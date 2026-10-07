@@ -10,15 +10,15 @@ import {
 import { CommandOutput } from "@zuke/core/shell";
 import type { Configure } from "@zuke/core/tooling";
 import {
+  AwsLogsFilterLogEventsSettings,
+  AwsLogsGetQueryResultsSettings,
+  type AwsLogsInsightsQuerySettings,
   AwsLogsQueryError,
+  AwsLogsStartQuerySettings,
+  AwsLogsStopQuerySettings,
+  AwsLogsTailSettings,
   AwsOutputError,
   AwsTasks,
-  LogsFilterLogEventsSettings,
-  LogsGetQueryResultsSettings,
-  type LogsInsightsQuerySettings,
-  LogsStartQuerySettings,
-  LogsStopQuerySettings,
-  LogsTailSettings,
 } from "../mod.ts";
 import { FakeAws, json } from "./_fake.ts";
 
@@ -32,7 +32,7 @@ function args(settings: { argv(): string[] }): string[] {
 Deno.test("logs start-query sends epoch seconds", () => {
   assertEquals(
     args(
-      new LogsStartQuerySettings().logGroupNames("/ecs/api", "/ecs/web")
+      new AwsLogsStartQuerySettings().logGroupNames("/ecs/api", "/ecs/web")
         .queryString("fields @message").window("15m", END).limit(50),
     ),
     [
@@ -41,17 +41,14 @@ Deno.test("logs start-query sends epoch seconds", () => {
       "--log-group-names",
       "/ecs/api",
       "/ecs/web",
-      "--start-time",
-      "1791373500",
-      "--end-time",
-      "1791374400",
-      "--query-string",
-      "fields @message",
-    ].concat(["--limit", "50"]),
+      "--start-time=1791373500",
+      "--end-time=1791374400",
+      "--query-string=fields @message",
+    ].concat(["--limit=50"]),
   );
   assertEquals(
     args(
-      new LogsStartQuerySettings().logGroupNames("g").queryString("q")
+      new AwsLogsStartQuerySettings().logGroupNames("g").queryString("q")
         .startTime(new Date(1500)).endTime(new Date(2500)),
     ),
     [
@@ -59,91 +56,77 @@ Deno.test("logs start-query sends epoch seconds", () => {
       "start-query",
       "--log-group-names",
       "g",
-      "--start-time",
-      "1",
-      "--end-time",
-      "2",
-      "--query-string",
-      "q",
+      "--start-time=1",
+      "--end-time=2",
+      "--query-string=q",
     ],
   );
   assertThrows(
-    () => new LogsStartQuerySettings().logGroupNames("g").argv(),
+    () => new AwsLogsStartQuerySettings().logGroupNames("g").argv(),
     Error,
     "a query needs log groups",
   );
 });
 
 Deno.test("logs get-query-results and stop-query", () => {
-  assertEquals(args(new LogsGetQueryResultsSettings().queryId("q-1")), [
+  assertEquals(args(new AwsLogsGetQueryResultsSettings().queryId("q-1")), [
     "logs",
     "get-query-results",
-    "--query-id",
-    "q-1",
+    "--query-id=q-1",
   ]);
   assertThrows(
-    () => new LogsGetQueryResultsSettings().argv(),
+    () => new AwsLogsGetQueryResultsSettings().argv(),
     Error,
     "queryId",
   );
-  assertEquals(args(new LogsStopQuerySettings().queryId("q-1")), [
+  assertEquals(args(new AwsLogsStopQuerySettings().queryId("q-1")), [
     "logs",
     "stop-query",
-    "--query-id",
-    "q-1",
+    "--query-id=q-1",
   ]);
-  assertThrows(() => new LogsStopQuerySettings().argv(), Error, "queryId");
+  assertThrows(() => new AwsLogsStopQuerySettings().argv(), Error, "queryId");
 });
 
 Deno.test("logs filter-log-events sends epoch milliseconds", () => {
   assertEquals(
     args(
-      new LogsFilterLogEventsSettings().logGroupName("/ecs/api")
+      new AwsLogsFilterLogEventsSettings().logGroupName("/ecs/api")
         .logStreamNames("a", "b").logStreamNamePrefix("api/")
         .filterPattern("ERROR").window("1m", END),
     ),
     [
       "logs",
       "filter-log-events",
-      "--log-group-name",
-      "/ecs/api",
+      "--log-group-name=/ecs/api",
       "--log-stream-names",
       "a",
       "b",
-      "--log-stream-name-prefix",
-      "api/",
-      "--filter-pattern",
-      "ERROR",
-      "--start-time",
-      "1791374340000",
-      "--end-time",
-      "1791374400000",
+      "--log-stream-name-prefix=api/",
+      "--filter-pattern=ERROR",
+      "--start-time=1791374340000",
+      "--end-time=1791374400000",
     ],
   );
   assertEquals(
     args(
-      new LogsFilterLogEventsSettings().logGroupName("g")
+      new AwsLogsFilterLogEventsSettings().logGroupName("g")
         .startTime(new Date(5)).endTime(new Date(9)),
     ),
     [
       "logs",
       "filter-log-events",
-      "--log-group-name",
-      "g",
-      "--start-time",
-      "5",
-      "--end-time",
-      "9",
+      "--log-group-name=g",
+      "--start-time=5",
+      "--end-time=9",
     ],
   );
-  assertEquals(args(new LogsFilterLogEventsSettings().logGroupName("g")), [
+  assertEquals(args(new AwsLogsFilterLogEventsSettings().logGroupName("g")), [
     "logs",
     "filter-log-events",
-    "--log-group-name",
-    "g",
+    "--log-group-name=g",
   ]);
   assertThrows(
-    () => new LogsFilterLogEventsSettings().argv(),
+    () => new AwsLogsFilterLogEventsSettings().argv(),
     Error,
     "logGroupName",
   );
@@ -152,7 +135,7 @@ Deno.test("logs filter-log-events sends epoch milliseconds", () => {
 Deno.test("logs tail with every option", () => {
   assertEquals(
     args(
-      new LogsTailSettings().groupName("/ecs/api").since("10m").follow()
+      new AwsLogsTailSettings().groupName("/ecs/api").since("10m").follow()
         .filterPattern("ERROR").format("short").logStreamNames("s")
         .logStreamNamePrefix("api/"),
     ),
@@ -160,25 +143,21 @@ Deno.test("logs tail with every option", () => {
       "logs",
       "tail",
       "/ecs/api",
-      "--since",
-      "10m",
+      "--since=10m",
       "--follow",
-      "--filter-pattern",
-      "ERROR",
-      "--format",
-      "short",
+      "--filter-pattern=ERROR",
+      "--format=short",
       "--log-stream-names",
       "s",
-      "--log-stream-name-prefix",
-      "api/",
+      "--log-stream-name-prefix=api/",
     ],
   );
-  assertEquals(args(new LogsTailSettings().groupName("g")), [
+  assertEquals(args(new AwsLogsTailSettings().groupName("g")), [
     "logs",
     "tail",
     "g",
   ]);
-  assertThrows(() => new LogsTailSettings().argv(), Error, "groupName");
+  assertThrows(() => new AwsLogsTailSettings().argv(), Error, "groupName");
 });
 
 /** Answers for one get-query-results poll. */
@@ -189,7 +168,7 @@ function poll(status: string, results: unknown = []): string {
 /** A Logs Insights query against `fake`, quick to poll. */
 function query(
   fake: FakeAws,
-  configure: Configure<LogsInsightsQuerySettings> = (q) => q,
+  configure: Configure<AwsLogsInsightsQuerySettings> = (q) => q,
 ) {
   return AwsTasks.logsInsightsQuery((q) =>
     configure(
@@ -224,11 +203,10 @@ Deno.test("logsInsightsQuery polls until Complete and returns the rows", async (
   assertEquals(fake.flag(0, "--region"), "eu-west-1");
   assertEquals(fake.flag(0, "--output"), "json");
   for (const call of fake.calls.slice(1)) {
-    assertEquals(call.slice(1, 5), [
+    assertEquals(call.slice(1, 4), [
       "logs",
       "get-query-results",
-      "--query-id",
-      "q-1",
+      "--query-id=q-1",
     ]);
     assertEquals(call.includes("eu-west-1"), true);
   }
@@ -274,7 +252,7 @@ Deno.test("logsInsightsQuery stops a query that outlasts its timeout", async () 
   );
   assertStringIncludes(error.message, "raise .timeout(...)");
   const last = fake.calls[fake.calls.length - 1];
-  assertEquals(last.slice(1, 5), ["logs", "stop-query", "--query-id", "q-3"]);
+  assertEquals(last.slice(1, 4), ["logs", "stop-query", "--query-id=q-3"]);
 });
 
 Deno.test("a failure to stop the query does not hide the timeout", async () => {

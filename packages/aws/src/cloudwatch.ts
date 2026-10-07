@@ -23,21 +23,25 @@
 
 import type { Configure } from "@zuke/core/tooling";
 import {
-  CloudwatchExpressionSettings,
-  CloudwatchMetricStatSettings,
-  type CloudwatchStatistic,
+  AwsCloudwatchExpressionSettings,
+  AwsCloudwatchMetricStatSettings,
+  type AwsCloudwatchStatistic,
   expressionQuery,
   type MetricDataQuery,
   metricStatQuery,
 } from "./metric_query.ts";
+import { operands, option } from "./validate.ts";
 import { AwsSettings } from "./settings.ts";
 import { windowEnding } from "./time.ts";
 
 /** The states a CloudWatch alarm can be in. */
-export type CloudwatchAlarmState = "OK" | "ALARM" | "INSUFFICIENT_DATA";
+export type AwsCloudwatchAlarmState = "OK" | "ALARM" | "INSUFFICIENT_DATA";
 
 /** The kinds of alarm `describe-alarms` can return. */
-export type CloudwatchAlarmType = "MetricAlarm" | "CompositeAlarm";
+export type AwsCloudwatchAlarmType =
+  | "MetricAlarm"
+  | "CompositeAlarm"
+  | "LogAlarm";
 
 /** A time given as a `Date` or as a string the CLI parses (ISO 8601). */
 export type AwsTime = Date | string;
@@ -48,7 +52,7 @@ function iso(time: AwsTime): string {
 }
 
 /** Settings for `aws cloudwatch get-metric-data`. */
-export class CloudwatchGetMetricDataSettings extends AwsSettings {
+export class AwsCloudwatchGetMetricDataSettings extends AwsSettings {
   readonly #queries: Array<(task: string) => MetricDataQuery> = [];
   #start?: AwsTime;
   #end?: AwsTime;
@@ -63,10 +67,14 @@ export class CloudwatchGetMetricDataSettings extends AwsSettings {
   /** Add a metric to the request, under `id`, configured by `configure`. */
   metricStat(
     id: string,
-    configure: Configure<CloudwatchMetricStatSettings>,
+    configure: Configure<AwsCloudwatchMetricStatSettings>,
   ): this {
     this.#queries.push((task) =>
-      metricStatQuery(task, id, configure(new CloudwatchMetricStatSettings()))
+      metricStatQuery(
+        task,
+        id,
+        configure(new AwsCloudwatchMetricStatSettings()),
+      )
     );
     return this;
   }
@@ -78,14 +86,14 @@ export class CloudwatchGetMetricDataSettings extends AwsSettings {
   expression(
     id: string,
     expression: string,
-    configure: Configure<CloudwatchExpressionSettings> = (e) => e,
+    configure: Configure<AwsCloudwatchExpressionSettings> = (e) => e,
   ): this {
     this.#queries.push((task) =>
       expressionQuery(
         task,
         id,
         expression,
-        configure(new CloudwatchExpressionSettings()),
+        configure(new AwsCloudwatchExpressionSettings()),
       )
     );
     return this;
@@ -120,7 +128,22 @@ export class CloudwatchGetMetricDataSettings extends AwsSettings {
     return this;
   }
 
-  /** The most datapoints to return (`--max-datapoints`). */
+  /**
+   * Whether this request must read every page. A reader that turns the
+   * datapoints into one value does: a value computed from part of a window
+   * looks just like a value computed from all of it. Overridden by the
+   * settings behind `AwsTasks.metricValue`.
+   */
+  protected readsEveryPage(): boolean {
+    return false;
+  }
+
+  /**
+   * The most datapoints to return (`--max-datapoints`). Setting it turns off
+   * the CLI's automatic pagination — the CLI treats it as a page size and
+   * returns one page with a `NextToken` — so the answer may hold only part
+   * of the window. `AwsTasks.metricValue` refuses it for that reason.
+   */
   maxDatapoints(count: number): this {
     this.#maxDatapoints = count;
     return this;
@@ -140,6 +163,13 @@ export class CloudwatchGetMetricDataSettings extends AwsSettings {
           ".startTime(...) and .endTime(...).",
       );
     }
+    if (this.#maxDatapoints !== undefined && this.readsEveryPage()) {
+      throw new Error(
+        `AwsTasks.${task}: .maxDatapoints(...) turns off the CLI's ` +
+          "pagination, so the value would be read from one page of the " +
+          "window. Leave it out.",
+      );
+    }
     const queries = this.#queries.map((query) => query(task));
     const ids = queries.map((query) => query.Id);
     const repeated = ids.find((id, index) => ids.indexOf(id) !== index);
@@ -154,28 +184,28 @@ export class CloudwatchGetMetricDataSettings extends AwsSettings {
       "get-metric-data",
       "--metric-data-queries",
       JSON.stringify(queries),
-      "--start-time",
-      iso(this.#start),
-      "--end-time",
-      iso(this.#end),
+      option("--start-time", iso(this.#start)),
+      option("--end-time", iso(this.#end)),
     ];
-    if (this.#scanBy !== undefined) argv.push("--scan-by", this.#scanBy);
+    if (this.#scanBy !== undefined) {
+      argv.push(option("--scan-by", this.#scanBy));
+    }
     if (this.#maxDatapoints !== undefined) {
-      argv.push("--max-datapoints", String(this.#maxDatapoints));
+      argv.push(option("--max-datapoints", this.#maxDatapoints));
     }
     return argv;
   }
 }
 
 /** Settings for `aws cloudwatch get-metric-statistics`. */
-export class CloudwatchGetMetricStatisticsSettings extends AwsSettings {
+export class AwsCloudwatchGetMetricStatisticsSettings extends AwsSettings {
   #namespace?: string;
   #metricName?: string;
   readonly #dimensions: Array<{ Name: string; Value: string }> = [];
   #start?: AwsTime;
   #end?: AwsTime;
   #period?: number;
-  readonly #statistics: CloudwatchStatistic[] = [];
+  readonly #statistics: AwsCloudwatchStatistic[] = [];
   readonly #extendedStatistics: string[] = [];
   #unit?: string;
 
@@ -267,39 +297,41 @@ export class CloudwatchGetMetricStatisticsSettings extends AwsSettings {
     const argv = [
       "cloudwatch",
       "get-metric-statistics",
-      "--namespace",
-      this.#namespace,
-      "--metric-name",
-      this.#metricName,
+      option("--namespace", this.#namespace),
+      option("--metric-name", this.#metricName),
     ];
     if (this.#dimensions.length > 0) {
       argv.push("--dimensions", JSON.stringify(this.#dimensions));
     }
     argv.push(
-      "--start-time",
-      iso(this.#start),
-      "--end-time",
-      iso(this.#end),
-      "--period",
-      String(this.#period),
+      option("--start-time", iso(this.#start)),
+      option("--end-time", iso(this.#end)),
+      option("--period", this.#period),
     );
     if (this.#statistics.length > 0) {
       argv.push("--statistics", ...this.#statistics);
     }
     if (this.#extendedStatistics.length > 0) {
-      argv.push("--extended-statistics", ...this.#extendedStatistics);
+      argv.push(
+        "--extended-statistics",
+        ...operands(
+          "cloudwatchGetMetricStatistics",
+          "--extended-statistics",
+          this.#extendedStatistics,
+        ),
+      );
     }
-    if (this.#unit !== undefined) argv.push("--unit", this.#unit);
+    if (this.#unit !== undefined) argv.push(option("--unit", this.#unit));
     return argv;
   }
 }
 
 /** Settings for `aws cloudwatch describe-alarms`. */
-export class CloudwatchDescribeAlarmsSettings extends AwsSettings {
+export class AwsCloudwatchDescribeAlarmsSettings extends AwsSettings {
   readonly #alarmNames: string[] = [];
   #alarmNamePrefix?: string;
-  #stateValue?: CloudwatchAlarmState;
-  #alarmTypes: CloudwatchAlarmType[] = [];
+  #stateValue?: AwsCloudwatchAlarmState;
+  #alarmTypes: AwsCloudwatchAlarmType[] = [];
 
   /** Only these alarms (`--alarm-names`); repeatable. */
   alarmNames(...names: string[]): this {
@@ -314,16 +346,17 @@ export class CloudwatchDescribeAlarmsSettings extends AwsSettings {
   }
 
   /** Only alarms in this state (`--state-value`). */
-  stateValue(state: CloudwatchAlarmState): this {
+  stateValue(state: AwsCloudwatchAlarmState): this {
     this.#stateValue = state;
     return this;
   }
 
   /**
-   * The kinds of alarm to return (`--alarm-types`); replaces any set before.
-   * Without it the CLI returns metric alarms only.
+   * The kinds of alarm to return (`--alarm-types`): metric, composite or log
+   * alarms; replaces any set before. Without it the CLI returns metric
+   * alarms only.
    */
-  alarmTypes(...types: CloudwatchAlarmType[]): this {
+  alarmTypes(...types: AwsCloudwatchAlarmType[]): this {
     this.#alarmTypes = [...types];
     return this;
   }
@@ -332,13 +365,20 @@ export class CloudwatchDescribeAlarmsSettings extends AwsSettings {
   protected override leadingTokens(): string[] {
     const argv = ["cloudwatch", "describe-alarms"];
     if (this.#alarmNames.length > 0) {
-      argv.push("--alarm-names", ...this.#alarmNames);
+      argv.push(
+        "--alarm-names",
+        ...operands(
+          "cloudwatchDescribeAlarms",
+          "--alarm-names",
+          this.#alarmNames,
+        ),
+      );
     }
     if (this.#alarmNamePrefix !== undefined) {
-      argv.push("--alarm-name-prefix", this.#alarmNamePrefix);
+      argv.push(option("--alarm-name-prefix", this.#alarmNamePrefix));
     }
     if (this.#stateValue !== undefined) {
-      argv.push("--state-value", this.#stateValue);
+      argv.push(option("--state-value", this.#stateValue));
     }
     if (this.#alarmTypes.length > 0) {
       argv.push("--alarm-types", ...this.#alarmTypes);

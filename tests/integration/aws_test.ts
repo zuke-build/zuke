@@ -50,7 +50,9 @@ function fakeAws(settings: AwsSettings): Promise<CommandOutput> {
     Values: datapoints,
     StatusCode: "Complete",
   }];
-  return Promise.resolve(new CommandOutput(0, JSON.stringify(results), ""));
+  return Promise.resolve(
+    new CommandOutput(0, JSON.stringify({ MetricDataResults: results }), ""),
+  );
 }
 
 /** The secret the fake Secrets Manager holds — obviously fake. */
@@ -126,10 +128,10 @@ class Deploy extends Build {
       .steps(10)
       .analysis(cloudwatch((m) =>
         m.name("canary 5xx").namespace("AWS/ApplicationELB")
-          .metric("HTTPCode_Target_5XX_Count")
+          .metricName("HTTPCode_Target_5XX_Count")
           .dimension("TargetGroup", "targetgroup/api-canary/0a1b")
           .stat("Sum").window("5m").max(5).missingDataAs(0)
-          .region("eu-west-1").runner(fakeAws)
+          .aws((a) => a.region("eu-west-1").runner(fakeAws))
       ))
   );
 }

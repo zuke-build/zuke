@@ -16,19 +16,45 @@
  * @module
  */
 
+import type { CommandOutput } from "@zuke/core/shell";
 import { AwsSettings } from "./settings.ts";
+import { operand } from "./validate.ts";
 
-/** The settings `aws configure set` writes to the credentials file. */
+/** The settings `aws configure` keeps in the credentials file that are secret. */
 const SECRET_SETTINGS = ["aws_secret_access_key", "aws_session_token"];
 
-/** Settings for `aws configure get`. */
+/**
+ * Whether `varname` names a secret credential — matched on its last
+ * `.`-separated segment, so `profile.ci.aws_secret_access_key` counts too.
+ */
+function isCredentialSetting(varname: string): boolean {
+  const last = varname.slice(varname.lastIndexOf(".") + 1);
+  return SECRET_SETTINGS.includes(last.toLowerCase());
+}
+
+/**
+ * Settings for `aws configure get`.
+ *
+ * Reading a credential — `aws_secret_access_key`, `aws_session_token`, in any
+ * profile — runs quietly and registers what it printed with the run's
+ * redactor.
+ */
 export class AwsConfigureGetSettings extends AwsSettings {
   #varname?: string;
+  #secret = false;
 
   /** The setting to read (positional), e.g. `"region"`. */
   varname(name: string): this {
     this.#varname = name;
+    this.#secret = isCredentialSetting(name);
+    if (this.#secret) this.quiet();
     return this;
+  }
+
+  /** Register a credential setting's value as a secret. */
+  protected override onOutput(output: CommandOutput): void {
+    const value = output.stdout.trim();
+    if (this.#secret && value !== "") this.markSecret(value);
   }
 
   /** Emit `configure get` with the setting. */
@@ -38,7 +64,11 @@ export class AwsConfigureGetSettings extends AwsSettings {
         "AwsTasks.configureGet: no setting named — add .varname('region').",
       );
     }
-    return ["configure", "get", this.#varname];
+    return [
+      "configure",
+      "get",
+      operand("configureGet", "setting", this.#varname),
+    ];
   }
 }
 
@@ -74,7 +104,7 @@ export class AwsConfigureSetSettings extends AwsSettings {
   #markIfSecret(): void {
     if (
       this.#value !== undefined && this.#varname !== undefined &&
-      SECRET_SETTINGS.includes(this.#varname.toLowerCase())
+      isCredentialSetting(this.#varname)
     ) {
       this.markSecret(this.#value);
     }
@@ -88,6 +118,11 @@ export class AwsConfigureSetSettings extends AwsSettings {
           "— add .varname('region').value('eu-west-1').",
       );
     }
-    return ["configure", "set", this.#varname, this.#value];
+    return [
+      "configure",
+      "set",
+      operand("configureSet", "setting", this.#varname),
+      operand("configureSet", "value", this.#value),
+    ];
   }
 }

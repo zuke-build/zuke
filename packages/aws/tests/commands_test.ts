@@ -69,20 +69,15 @@ Deno.test("sts assume-role with every option", () => {
     [
       "sts",
       "assume-role",
-      "--role-arn",
-      "arn:aws:iam::1:role/deploy",
-      "--role-session-name",
-      "ci",
-      "--duration-seconds",
-      "900",
-      "--external-id",
-      "ext",
-      "--policy",
-      "{}",
-      "--serial-number",
-      "arn:aws:iam::1:mfa/me",
-      "--token-code",
-      "123456",
+      "--role-arn=arn:aws:iam::1:role/deploy",
+      "--role-session-name=ci",
+      "--duration-seconds=900",
+      "--external-id=ext",
+      "--policy={}",
+      "--serial-number=arn:aws:iam::1:mfa/me",
+      "--token-code=123456",
+      "--output",
+      "json",
     ],
   );
   assertThrows(
@@ -145,23 +140,15 @@ Deno.test("s3 cp keeps filters in call order", () => {
       "dist",
       "s3://b/app",
       "--recursive",
-      "--exclude",
-      "*",
-      "--include",
-      "*.js",
+      "--exclude=*",
+      "--include=*.js",
       "--dryrun",
-      "--acl",
-      "private",
-      "--content-type",
-      "text/javascript",
-      "--cache-control",
-      "max-age=60",
-      "--storage-class",
-      "STANDARD_IA",
-      "--sse",
-      "aws:kms",
-      "--sse-kms-key-id",
-      "key",
+      "--acl=private",
+      "--content-type=text/javascript",
+      "--cache-control=max-age=60",
+      "--storage-class=STANDARD_IA",
+      "--sse=aws:kms",
+      "--sse-kms-key-id=key",
       "--only-show-errors",
       "--no-progress",
     ],
@@ -190,21 +177,15 @@ Deno.test("s3 sync with every option", () => {
       "dist",
       "s3://b",
       "--delete",
-      "--exclude",
-      "*.map",
-      "--include",
-      "a.map",
+      "--exclude=*.map",
+      "--include=a.map",
       "--dryrun",
       "--exact-timestamps",
       "--size-only",
-      "--acl",
-      "public-read",
-      "--content-type",
-      "text/html",
-      "--cache-control",
-      "no-cache",
-      "--storage-class",
-      "STANDARD",
+      "--acl=public-read",
+      "--content-type=text/html",
+      "--cache-control=no-cache",
+      "--storage-class=STANDARD",
       "--only-show-errors",
       "--no-progress",
     ],
@@ -244,10 +225,8 @@ Deno.test("s3 ls, rm, mb and presign", () => {
       "rm",
       "s3://b/p/",
       "--recursive",
-      "--exclude",
-      "keep/*",
-      "--include",
-      "keep/old",
+      "--exclude=keep/*",
+      "--include=keep/old",
       "--dryrun",
     ],
   );
@@ -265,7 +244,7 @@ Deno.test("s3 ls, rm, mb and presign", () => {
   assertThrows(() => new AwsS3MbSettings().argv(), Error, "bucket");
   assertEquals(
     args(new AwsS3PresignSettings().path("s3://b/k").expiresIn(300)),
-    ["s3", "presign", "s3://b/k", "--expires-in", "300"],
+    ["s3", "presign", "s3://b/k", "--expires-in=300"],
   );
   assertEquals(args(new AwsS3PresignSettings().path("s3://b/k")), [
     "s3",
@@ -290,21 +269,17 @@ Deno.test("ecr commands send image ids as JSON", () => {
     [
       "ecr",
       "describe-images",
-      "--repository-name",
-      "api",
-      "--registry-id",
-      "1",
+      "--repository-name=api",
+      "--registry-id=1",
       "--image-ids",
       '[{"imageTag":"v1,imageTag=x"},{"imageDigest":"sha256:ab"}]',
-      "--filter",
-      '{"tagStatus":"TAGGED"}',
+      '--filter={"tagStatus":"TAGGED"}',
     ],
   );
   assertEquals(args(new AwsEcrDescribeImagesSettings().repositoryName("api")), [
     "ecr",
     "describe-images",
-    "--repository-name",
-    "api",
+    "--repository-name=api",
   ]);
   assertThrows(
     () => new AwsEcrDescribeImagesSettings().argv(),
@@ -326,8 +301,7 @@ Deno.test("ecr commands send image ids as JSON", () => {
       "--repository-names",
       "a",
       "b",
-      "--registry-id",
-      "1",
+      "--registry-id=1",
     ],
   );
   assertEquals(
@@ -338,19 +312,17 @@ Deno.test("ecr commands send image ids as JSON", () => {
     [
       "ecr",
       "batch-delete-image",
-      "--repository-name",
-      "api",
+      "--repository-name=api",
       "--image-ids",
       '[{"imageTag":"old"},{"imageDigest":"sha256:cd"}]',
-      "--registry-id",
-      "1",
+      "--registry-id=1",
     ],
   );
   assertEquals(
     args(
       new AwsEcrBatchDeleteImageSettings().repositoryName("api").imageTag("o"),
     ).length,
-    6,
+    5,
   );
   assertThrows(
     () => new AwsEcrBatchDeleteImageSettings().repositoryName("api").argv(),
@@ -369,24 +341,18 @@ Deno.test("ecs update-service, describe-services and wait", () => {
     [
       "ecs",
       "update-service",
-      "--cluster",
-      "prod",
-      "--service",
-      "api",
-      "--task-definition",
-      "api:42",
-      "--desired-count",
-      "3",
+      "--cluster=prod",
+      "--service=api",
+      "--task-definition=api:42",
+      "--desired-count=3",
       "--force-new-deployment",
-      "--health-check-grace-period-seconds",
-      "60",
+      "--health-check-grace-period-seconds=60",
     ],
   );
   assertEquals(args(new AwsEcsUpdateServiceSettings().service("api")), [
     "ecs",
     "update-service",
-    "--service",
-    "api",
+    "--service=api",
   ]);
   assertThrows(
     () => new AwsEcsUpdateServiceSettings().argv(),
@@ -395,7 +361,7 @@ Deno.test("ecs update-service, describe-services and wait", () => {
   );
   assertEquals(
     args(new AwsEcsDescribeServicesSettings().cluster("c").services("a", "b")),
-    ["ecs", "describe-services", "--cluster", "c", "--services", "a", "b"],
+    ["ecs", "describe-services", "--cluster=c", "--services", "a", "b"],
   );
   assertEquals(
     args(new AwsEcsWaitServicesStableSettings().services("api")),
@@ -403,7 +369,7 @@ Deno.test("ecs update-service, describe-services and wait", () => {
   );
   assertEquals(
     args(new AwsEcsWaitServicesStableSettings().cluster("c").services("api")),
-    ["ecs", "wait", "services-stable", "--cluster", "c", "--services", "api"],
+    ["ecs", "wait", "services-stable", "--cluster=c", "--services", "api"],
   );
   assertThrows(
     () => new AwsEcsDescribeServicesSettings().argv(),
@@ -426,8 +392,7 @@ Deno.test("ecs register-task-definition and run-task", () => {
     [
       "ecs",
       "register-task-definition",
-      "--cli-input-json",
-      "file://taskdef.json",
+      "--cli-input-json=file://taskdef.json",
     ],
   );
   assertEquals(
@@ -440,22 +405,15 @@ Deno.test("ecs register-task-definition and run-task", () => {
     [
       "ecs",
       "register-task-definition",
-      "--family",
-      "api",
-      "--container-definitions",
-      "[]",
-      "--task-role-arn",
-      "t",
-      "--execution-role-arn",
-      "e",
-      "--network-mode",
-      "awsvpc",
+      "--family=api",
+      "--container-definitions=[]",
+      "--task-role-arn=t",
+      "--execution-role-arn=e",
+      "--network-mode=awsvpc",
       "--requires-compatibilities",
       "FARGATE",
-      "--cpu",
-      "256",
-      "--memory",
-      "512",
+      "--cpu=256",
+      "--memory=512",
     ],
   );
   assertThrows(
@@ -472,29 +430,20 @@ Deno.test("ecs register-task-definition and run-task", () => {
     [
       "ecs",
       "run-task",
-      "--cluster",
-      "prod",
-      "--task-definition",
-      "migrate:3",
-      "--count",
-      "1",
-      "--launch-type",
-      "FARGATE",
-      "--network-configuration",
-      "{}",
-      "--overrides",
-      "{}",
-      "--started-by",
-      "zuke",
-      "--group",
-      "migrations",
+      "--cluster=prod",
+      "--task-definition=migrate:3",
+      "--count=1",
+      "--launch-type=FARGATE",
+      "--network-configuration={}",
+      "--overrides={}",
+      "--started-by=zuke",
+      "--group=migrations",
     ],
   );
   assertEquals(args(new AwsEcsRunTaskSettings().taskDefinition("m")), [
     "ecs",
     "run-task",
-    "--task-definition",
-    "m",
+    "--task-definition=m",
   ]);
   assertThrows(
     () => new AwsEcsRunTaskSettings().argv(),
@@ -513,14 +462,11 @@ Deno.test("lambda update-function-code takes exactly one source", () => {
     [
       "lambda",
       "update-function-code",
-      "--function-name",
-      "api",
-      "--zip-file",
-      "fileb://dist/api.zip",
+      "--function-name=api",
+      "--zip-file=fileb://dist/api.zip",
       "--publish",
       "--dry-run",
-      "--revision-id",
-      "r",
+      "--revision-id=r",
       "--architectures",
       "arm64",
     ],
@@ -529,22 +475,22 @@ Deno.test("lambda update-function-code takes exactly one source", () => {
     args(
       new AwsLambdaUpdateFunctionCodeSettings().functionName("api")
         .zipFile("fileb://a.zip"),
-    ).slice(4),
-    ["--zip-file", "fileb://a.zip"],
+    ).slice(3),
+    ["--zip-file=fileb://a.zip"],
   );
   assertEquals(
     args(
       new AwsLambdaUpdateFunctionCodeSettings().functionName("api")
         .s3Bucket("b").s3Key("k").s3ObjectVersion("v"),
-    ).slice(4),
-    ["--s3-bucket", "b", "--s3-key", "k", "--s3-object-version", "v"],
+    ).slice(3),
+    ["--s3-bucket=b", "--s3-key=k", "--s3-object-version=v"],
   );
   assertEquals(
     args(
       new AwsLambdaUpdateFunctionCodeSettings().functionName("api")
         .imageUri("1.dkr.ecr/api:1"),
-    ).slice(4),
-    ["--image-uri", "1.dkr.ecr/api:1"],
+    ).slice(3),
+    ["--image-uri=1.dkr.ecr/api:1"],
   );
   assertThrows(
     () =>
@@ -571,22 +517,14 @@ Deno.test("lambda update-function-configuration sends the environment as JSON", 
     [
       "lambda",
       "update-function-configuration",
-      "--function-name",
-      "api",
-      "--environment",
-      '{"Variables":{"STAGE":"prod","A":"b c"}}',
-      "--timeout",
-      "30",
-      "--memory-size",
-      "512",
-      "--handler",
-      "index.handler",
-      "--runtime",
-      "nodejs22.x",
-      "--role",
-      "arn:role",
-      "--description",
-      "api",
+      "--function-name=api",
+      '--environment={"Variables":{"STAGE":"prod","A":"b c"}}',
+      "--timeout=30",
+      "--memory-size=512",
+      "--handler=index.handler",
+      "--runtime=nodejs22.x",
+      "--role=arn:role",
+      "--description=api",
       "--layers",
       "arn:l:1",
       "arn:l:2",
@@ -596,7 +534,7 @@ Deno.test("lambda update-function-configuration sends the environment as JSON", 
     args(
       new AwsLambdaUpdateFunctionConfigurationSettings().functionName("api"),
     ),
-    ["lambda", "update-function-configuration", "--function-name", "api"],
+    ["lambda", "update-function-configuration", "--function-name=api"],
   );
 });
 
@@ -609,23 +547,19 @@ Deno.test("lambda publish-version, get-function and update-alias", () => {
     [
       "lambda",
       "publish-version",
-      "--function-name",
-      "api",
-      "--description",
-      "v",
-      "--code-sha256",
-      "abc",
-      "--revision-id",
-      "r",
+      "--function-name=api",
+      "--description=v",
+      "--code-sha256=abc",
+      "--revision-id=r",
     ],
   );
   assertEquals(
     args(new AwsLambdaGetFunctionSettings().functionName("api").qualifier("7")),
-    ["lambda", "get-function", "--function-name", "api", "--qualifier", "7"],
+    ["lambda", "get-function", "--function-name=api", "--qualifier=7"],
   );
   assertEquals(
     args(new AwsLambdaGetFunctionSettings().functionName("api")),
-    ["lambda", "get-function", "--function-name", "api"],
+    ["lambda", "get-function", "--function-name=api"],
   );
   assertEquals(
     args(
@@ -638,28 +572,23 @@ Deno.test("lambda publish-version, get-function and update-alias", () => {
     [
       "lambda",
       "update-alias",
-      "--function-name",
-      "api",
-      "--name",
-      "live",
-      "--function-version",
-      "6",
-      "--description",
-      "d",
-      "--routing-config",
-      '{"AdditionalVersionWeights":{"7":0.1}}',
+      "--function-name=api",
+      "--name=live",
+      "--function-version=6",
+      "--description=d",
+      '--routing-config={"AdditionalVersionWeights":{"7":0.1}}',
     ],
   );
   assertEquals(
     args(
       new AwsLambdaUpdateAliasSettings().functionName("api").name("live")
         .additionalVersionWeight("7", 0.1).clearRouting(),
-    ).slice(6),
-    ["--routing-config", '{"AdditionalVersionWeights":{}}'],
+    ).slice(4),
+    ['--routing-config={"AdditionalVersionWeights":{}}'],
   );
   assertEquals(
     args(new AwsLambdaUpdateAliasSettings().functionName("api").name("live")),
-    ["lambda", "update-alias", "--function-name", "api", "--name", "live"],
+    ["lambda", "update-alias", "--function-name=api", "--name=live"],
   );
   assertThrows(
     () => new AwsLambdaUpdateAliasSettings().functionName("api").argv(),
@@ -678,18 +607,12 @@ Deno.test("lambda invoke sends a raw JSON payload and ends with the outfile", ()
     [
       "lambda",
       "invoke",
-      "--function-name",
-      "api",
-      "--cli-binary-format",
-      "raw-in-base64-out",
-      "--payload",
-      '{"a":1}',
-      "--invocation-type",
-      "RequestResponse",
-      "--log-type",
-      "Tail",
-      "--qualifier",
-      "live",
+      "--function-name=api",
+      "--cli-binary-format=raw-in-base64-out",
+      '--payload={"a":1}',
+      "--invocation-type=RequestResponse",
+      "--log-type=Tail",
+      "--qualifier=live",
       "out.json",
       "--region",
       "eu-west-1",
@@ -697,7 +620,7 @@ Deno.test("lambda invoke sends a raw JSON payload and ends with the outfile", ()
   );
   assertEquals(
     args(new AwsLambdaInvokeSettings().functionName("api").outfile("o")),
-    ["lambda", "invoke", "--function-name", "api", "o"],
+    ["lambda", "invoke", "--function-name=api", "o"],
   );
   assertThrows(
     () => new AwsLambdaInvokeSettings().functionName("api").argv(),
@@ -718,10 +641,8 @@ Deno.test("cloudformation deploy with every option", () => {
     [
       "cloudformation",
       "deploy",
-      "--template-file",
-      "stack.yaml",
-      "--stack-name",
-      "api",
+      "--template-file=stack.yaml",
+      "--stack-name=api",
       "--parameter-overrides",
       "Image=repo:tag=v1",
       "Env=prod",
@@ -731,21 +652,17 @@ Deno.test("cloudformation deploy with every option", () => {
       "team=web",
       "--no-execute-changeset",
       "--no-fail-on-empty-changeset",
-      "--role-arn",
-      "arn:role",
-      "--s3-bucket",
-      "b",
-      "--s3-prefix",
-      "p",
-      "--kms-key-id",
-      "k",
+      "--role-arn=arn:role",
+      "--s3-bucket=b",
+      "--s3-prefix=p",
+      "--kms-key-id=k",
     ],
   );
   assertEquals(
     args(
       new AwsCloudformationDeploySettings().templateFile("t").stackName("s"),
     ),
-    ["cloudformation", "deploy", "--template-file", "t", "--stack-name", "s"],
+    ["cloudformation", "deploy", "--template-file=t", "--stack-name=s"],
   );
   assertThrows(
     () => new AwsCloudformationDeploySettings().templateFile("t").argv(),
@@ -775,7 +692,7 @@ Deno.test("cloudformation describe-stacks, delete-stack and wait", () => {
   ]);
   assertEquals(
     args(new AwsCloudformationDescribeStacksSettings().stackName("api")),
-    ["cloudformation", "describe-stacks", "--stack-name", "api"],
+    ["cloudformation", "describe-stacks", "--stack-name=api"],
   );
   assertEquals(
     args(
@@ -785,10 +702,8 @@ Deno.test("cloudformation describe-stacks, delete-stack and wait", () => {
     [
       "cloudformation",
       "delete-stack",
-      "--stack-name",
-      "api",
-      "--role-arn",
-      "arn:role",
+      "--stack-name=api",
+      "--role-arn=arn:role",
       "--retain-resources",
       "Bucket",
       "Table",
@@ -796,7 +711,7 @@ Deno.test("cloudformation describe-stacks, delete-stack and wait", () => {
   );
   assertEquals(
     args(new AwsCloudformationDeleteStackSettings().stackName("api")),
-    ["cloudformation", "delete-stack", "--stack-name", "api"],
+    ["cloudformation", "delete-stack", "--stack-name=api"],
   );
   assertThrows(
     () => new AwsCloudformationDeleteStackSettings().argv(),
@@ -808,7 +723,7 @@ Deno.test("cloudformation describe-stacks, delete-stack and wait", () => {
       new AwsCloudformationWaitSettings().waiter("stack-update-complete")
         .stackName("api"),
     ),
-    ["cloudformation", "wait", "stack-update-complete", "--stack-name", "api"],
+    ["cloudformation", "wait", "stack-update-complete", "--stack-name=api"],
   );
   assertThrows(
     () => new AwsCloudformationWaitSettings().stackName("api").argv(),
@@ -826,17 +741,16 @@ Deno.test("secretsmanager get-secret-value", () => {
     [
       "secretsmanager",
       "get-secret-value",
-      "--secret-id",
-      "prod/db",
-      "--version-id",
-      "v",
-      "--version-stage",
-      "AWSPREVIOUS",
+      "--secret-id=prod/db",
+      "--version-id=v",
+      "--version-stage=AWSPREVIOUS",
+      "--output",
+      "json",
     ],
   );
   assertEquals(
     args(new AwsSecretsmanagerGetSecretValueSettings().secretId("s")),
-    ["secretsmanager", "get-secret-value", "--secret-id", "s"],
+    ["secretsmanager", "get-secret-value", "--secret-id=s", "--output", "json"],
   );
   assertThrows(
     () => new AwsSecretsmanagerGetSecretValueSettings().argv(),
@@ -848,13 +762,21 @@ Deno.test("secretsmanager get-secret-value", () => {
 Deno.test("ssm get-parameter and put-parameter", () => {
   assertEquals(
     args(new AwsSsmGetParameterSettings().name("/a").withDecryption()),
-    ["ssm", "get-parameter", "--name", "/a", "--with-decryption"],
+    [
+      "ssm",
+      "get-parameter",
+      "--name=/a",
+      "--with-decryption",
+      "--output",
+      "json",
+    ],
   );
   assertEquals(args(new AwsSsmGetParameterSettings().name("/a")), [
     "ssm",
     "get-parameter",
-    "--name",
-    "/a",
+    "--name=/a",
+    "--output",
+    "json",
   ]);
   assertThrows(() => new AwsSsmGetParameterSettings().argv(), Error, "name");
   assertEquals(
@@ -866,32 +788,26 @@ Deno.test("ssm get-parameter and put-parameter", () => {
     [
       "ssm",
       "put-parameter",
-      "--name",
-      "/a",
+      "--name=/a",
       "--value=file://token.txt",
-      "--type",
-      "SecureString",
+      "--type=SecureString",
       "--overwrite",
-      "--key-id",
-      "alias/k",
-      "--description",
-      "d",
-      "--tier",
-      "Advanced",
-      "--data-type",
-      "text",
+      "--key-id=alias/k",
+      "--description=d",
+      "--tier=Advanced",
+      "--data-type=text",
     ],
   );
   assertEquals(
     args(new AwsSsmPutParameterSettings().name("/a").value("v")),
-    ["ssm", "put-parameter", "--name", "/a", "--value=v"],
+    ["ssm", "put-parameter", "--name=/a", "--value=v"],
   );
   // A value starting with a hyphen stays a value, not the next option.
   assertEquals(
     args(
       new AwsSsmPutParameterSettings().name("/a").value("-starts-with-dash"),
     ),
-    ["ssm", "put-parameter", "--name", "/a", "--value=-starts-with-dash"],
+    ["ssm", "put-parameter", "--name=/a", "--value=-starts-with-dash"],
   );
   assertThrows(
     () => new AwsSsmPutParameterSettings().name("/a").argv(),
@@ -905,7 +821,7 @@ Deno.test("ssm put-parameter refuses a literal value the CLI would read as a fil
     assertThrows(
       () => new AwsSsmPutParameterSettings().value(value),
       Error,
-      ".valueFile(path)",
+      "file://",
     );
   }
 });
@@ -945,16 +861,11 @@ Deno.test("eks update-kubeconfig and describe-cluster", () => {
     [
       "eks",
       "update-kubeconfig",
-      "--name",
-      "prod",
-      "--kubeconfig",
-      "kc",
-      "--alias",
-      "prod",
-      "--user-alias",
-      "ci",
-      "--role-arn",
-      "arn:role",
+      "--name=prod",
+      "--kubeconfig=kc",
+      "--alias=prod",
+      "--user-alias=ci",
+      "--role-arn=arn:role",
       "--dry-run",
       "--region",
       "eu-west-1",
@@ -963,8 +874,7 @@ Deno.test("eks update-kubeconfig and describe-cluster", () => {
   assertEquals(args(new AwsEksUpdateKubeconfigSettings().name("p")), [
     "eks",
     "update-kubeconfig",
-    "--name",
-    "p",
+    "--name=p",
   ]);
   assertThrows(
     () => new AwsEksUpdateKubeconfigSettings().argv(),
@@ -974,8 +884,7 @@ Deno.test("eks update-kubeconfig and describe-cluster", () => {
   assertEquals(args(new AwsEksDescribeClusterSettings().name("p")), [
     "eks",
     "describe-cluster",
-    "--name",
-    "p",
+    "--name=p",
   ]);
   assertThrows(() => new AwsEksDescribeClusterSettings().argv(), Error, "name");
 });
@@ -1082,8 +991,9 @@ const REACH: Array<[string, () => Promise<unknown>]> = [
       AwsTasks.lambdaPublishVersion((s) => missingTool(s.functionName("f"))),
   ],
   [
-    "functionVersion",
-    () => AwsTasks.functionVersion((s) => missingTool(s.functionName("f"))),
+    "lambdaPublishedVersion",
+    () =>
+      AwsTasks.lambdaPublishedVersion((s) => missingTool(s.functionName("f"))),
   ],
   [
     "lambdaUpdateAlias",

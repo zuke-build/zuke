@@ -8,18 +8,18 @@
  * @module
  */
 
-import type { CloudwatchAlarmState } from "./cloudwatch.ts";
+import type { AwsCloudwatchAlarmState } from "./cloudwatch.ts";
 import { AwsOutputError } from "./errors.ts";
 import { isRecord } from "./shape.ts";
 
 /**
- * The `--query` the reader pins: metric and composite alarms in one flat
- * list, so it reads either kind the same way.
+ * The `--query` the reader pins: metric, composite and log alarms in one flat
+ * list, so it reads every kind the same way.
  */
-export const ALARMS_QUERY = "[MetricAlarms, CompositeAlarms][]";
+export const ALARMS_QUERY = "[MetricAlarms, CompositeAlarms, LogAlarms][]";
 
 /** Whether `value` is an alarm state. */
-function isAlarmState(value: unknown): value is CloudwatchAlarmState {
+function isAlarmState(value: unknown): value is AwsCloudwatchAlarmState {
   return value === "OK" || value === "ALARM" || value === "INSUFFICIENT_DATA";
 }
 
@@ -27,7 +27,7 @@ function isAlarmState(value: unknown): value is CloudwatchAlarmState {
 export function alarmStateOf(
   alarms: unknown,
   name: string,
-): CloudwatchAlarmState {
+): AwsCloudwatchAlarmState {
   const task = "AwsTasks.alarmState";
   if (!Array.isArray(alarms)) {
     throw new AwsOutputError(

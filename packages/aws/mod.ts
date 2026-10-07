@@ -76,50 +76,50 @@ export {
   AwsCloudformationDeleteStackSettings,
   AwsCloudformationDeploySettings,
   AwsCloudformationDescribeStacksSettings,
+  type AwsCloudformationStackWaiter,
   AwsCloudformationWaitSettings,
-  type CloudformationStackWaiter,
 } from "./src/cloudformation.ts";
 export { AwsSecretsmanagerGetSecretValueSettings } from "./src/secretsmanager.ts";
 export {
   AwsSsmGetParameterSettings,
+  type AwsSsmParameterType,
   AwsSsmPutParameterSettings,
-  type SsmParameterType,
 } from "./src/ssm.ts";
 export {
   AwsEksDescribeClusterSettings,
   AwsEksUpdateKubeconfigSettings,
 } from "./src/eks.ts";
 export {
+  type AwsCloudwatchAlarmState,
+  type AwsCloudwatchAlarmType,
+  AwsCloudwatchDescribeAlarmsSettings,
+  AwsCloudwatchGetMetricDataSettings,
+  AwsCloudwatchGetMetricStatisticsSettings,
   type AwsTime,
-  type CloudwatchAlarmState,
-  type CloudwatchAlarmType,
-  CloudwatchDescribeAlarmsSettings,
-  CloudwatchGetMetricDataSettings,
-  CloudwatchGetMetricStatisticsSettings,
 } from "./src/cloudwatch.ts";
 export {
-  CloudwatchExpressionSettings,
-  CloudwatchMetricStatSettings,
-  type CloudwatchStatistic,
+  AwsCloudwatchExpressionSettings,
+  AwsCloudwatchMetricStatSettings,
+  type AwsCloudwatchStatistic,
 } from "./src/metric_query.ts";
 export {
-  type CloudwatchAggregate,
-  CloudwatchMetricValueSettings,
+  type AwsCloudwatchAggregate,
+  AwsCloudwatchMetricValueSettings,
 } from "./src/metric_value.ts";
 export {
-  LogsFilterLogEventsSettings,
-  LogsGetQueryResultsSettings,
-  LogsStartQuerySettings,
-  LogsStopQuerySettings,
-  LogsTailSettings,
+  AwsLogsFilterLogEventsSettings,
+  AwsLogsGetQueryResultsSettings,
+  AwsLogsStartQuerySettings,
+  AwsLogsStopQuerySettings,
+  AwsLogsTailSettings,
 } from "./src/logs.ts";
 export {
-  LogsInsightsQuerySettings,
-  type LogsInsightsRow,
+  AwsLogsInsightsQuerySettings,
+  type AwsLogsInsightsRow,
 } from "./src/logs_insights.ts";
 export {
+  type AwsCloudwatchAnalysis,
+  type AwsCloudwatchAnalysisContext,
+  AwsCloudwatchAnalysisSettings,
   cloudwatch,
-  type CloudwatchAnalysis,
-  type CloudwatchAnalysisContext,
-  CloudwatchAnalysisSettings,
 } from "./src/cloudwatch_canary.ts";

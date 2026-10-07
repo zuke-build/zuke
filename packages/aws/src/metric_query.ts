@@ -3,25 +3,27 @@
 
 /**
  * The typed input to `aws cloudwatch get-metric-data`: one
- * {@link CloudwatchMetricStatSettings} per metric and one
- * {@link CloudwatchExpressionSettings} per metric-math expression, rendered
+ * {@link AwsCloudwatchMetricStatSettings} per metric and one
+ * {@link AwsCloudwatchExpressionSettings} per metric-math expression, rendered
  * to the `--metric-data-queries` JSON document by the CLI's own field names.
  *
  * @module
  */
 
 /**
- * A CloudWatch statistic: one of the five basic statistics, or a percentile
- * (`p99`, `p99.9`) or other extended statistic (`tm90`, `TM(10%:90%)`, …).
+ * A CloudWatch statistic: one of the five basic statistics, the interquartile
+ * mean `IQM`, or a percentile (`p99`, `p99.9`) or other extended statistic
+ * (`tm90`, `TM(10%:90%)`, `PR(100:2000)`, …).
  */
-export type CloudwatchStatistic =
+export type AwsCloudwatchStatistic =
   | "SampleCount"
   | "Average"
   | "Sum"
   | "Minimum"
   | "Maximum"
+  | "IQM"
   | `p${number}`
-  | `${"tm" | "wm" | "tc" | "ts" | "pr"}${string}`
+  | `${"tm" | "wm" | "tc" | "ts"}${string}`
   | `${"TM" | "WM" | "TC" | "TS" | "PR"}(${string})`;
 
 /** The period CloudWatch aggregates over when none is set, in seconds. */
@@ -31,7 +33,7 @@ export const DEFAULT_PERIOD = 60;
 const ID_SHAPE = /^[a-z][a-zA-Z0-9_]*$/;
 
 /** Settings for one metric in a `get-metric-data` request (a `MetricStat` query). */
-export class CloudwatchMetricStatSettings {
+export class AwsCloudwatchMetricStatSettings {
   /** The metric's namespace, e.g. `AWS/ApplicationELB` (set by {@link namespace}). */
   namespace_?: string;
   /** The metric's name (set by {@link metricName}). */
@@ -41,7 +43,7 @@ export class CloudwatchMetricStatSettings {
   /** The aggregation period in seconds (set by {@link period}). */
   period_: number = DEFAULT_PERIOD;
   /** The statistic (set by {@link stat}). */
-  stat_?: CloudwatchStatistic;
+  stat_?: AwsCloudwatchStatistic;
   /** The unit to filter on (set by {@link unit}). */
   unit_?: string;
   /** A label for the series (set by {@link label}). */
@@ -69,7 +71,7 @@ export class CloudwatchMetricStatSettings {
 
   /**
    * The aggregation period in seconds (default 60). CloudWatch accepts 1, 5,
-   * 10, 30, or a multiple of 60.
+   * 10, 20, 30, or a multiple of 60.
    */
   period(seconds: number): this {
     this.period_ = seconds;
@@ -77,7 +79,7 @@ export class CloudwatchMetricStatSettings {
   }
 
   /** The statistic: `"Sum"`, `"Average"`, `"Maximum"`, `"p99"`, … */
-  stat(value: CloudwatchStatistic): this {
+  stat(value: AwsCloudwatchStatistic): this {
     this.stat_ = value;
     return this;
   }
@@ -105,7 +107,7 @@ export class CloudwatchMetricStatSettings {
 }
 
 /** Settings for one metric-math expression in a `get-metric-data` request. */
-export class CloudwatchExpressionSettings {
+export class AwsCloudwatchExpressionSettings {
   /** A label for the series (set by {@link label}). */
   label_?: string;
   /** The period in seconds, for an expression that needs one (set by {@link period}). */
@@ -136,7 +138,7 @@ export class CloudwatchExpressionSettings {
 export type MetricDataQuery = Record<string, unknown>;
 
 /** Refuse an id CloudWatch would refuse, before the request is sent. */
-export function checkQueryId(task: string, id: string): void {
+function checkQueryId(task: string, id: string): void {
   if (!ID_SHAPE.test(id)) {
     throw new Error(
       `AwsTasks.${task}: "${id}" is not a CloudWatch query id — an id starts ` +
@@ -149,7 +151,7 @@ export function checkQueryId(task: string, id: string): void {
 export function metricStatQuery(
   task: string,
   id: string,
-  settings: CloudwatchMetricStatSettings,
+  settings: AwsCloudwatchMetricStatSettings,
 ): MetricDataQuery {
   checkQueryId(task, id);
   const { namespace_, metricName_, stat_ } = settings;
@@ -184,7 +186,7 @@ export function expressionQuery(
   task: string,
   id: string,
   expression: string,
-  settings: CloudwatchExpressionSettings,
+  settings: AwsCloudwatchExpressionSettings,
 ): MetricDataQuery {
   checkQueryId(task, id);
   return {

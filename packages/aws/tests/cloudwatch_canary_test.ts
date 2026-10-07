@@ -8,7 +8,7 @@ import {
 } from "../../core/tests/_assert.ts";
 import { CommandOutput } from "@zuke/core/shell";
 import type { Configure } from "@zuke/core/tooling";
-import { cloudwatch, type CloudwatchAnalysisSettings } from "../mod.ts";
+import { type AwsCloudwatchAnalysisSettings, cloudwatch } from "../mod.ts";
 import { FakeAws, json } from "./_fake.ts";
 
 /** A context whose redactor masks one secret. */
@@ -18,27 +18,31 @@ const context = {
 
 /** A `MetricDataResults` list with one series. */
 function results(id: string, values: number[]): string {
-  return json([{
-    Id: id,
-    Timestamps: values.map((_, i) =>
-      new Date(Date.UTC(2026, 9, 7, 11, 59 - i)).toISOString()
-    ),
-    Values: values,
-    StatusCode: "Complete",
-  }]);
+  return json({
+    MetricDataResults: [{
+      Id: id,
+      Timestamps: values.map((_, i) =>
+        new Date(Date.UTC(2026, 9, 7, 11, 59 - i)).toISOString()
+      ),
+      Values: values,
+      StatusCode: "Complete",
+    }],
+  });
 }
 
 /** The 5xx analysis, answered by `fake`. */
 function errors5xx(
   fake: FakeAws,
-  configure: Configure<CloudwatchAnalysisSettings> = (s) => s,
+  configure: Configure<AwsCloudwatchAnalysisSettings> = (s) => s,
 ) {
   return cloudwatch((s) =>
     configure(
       s.name("canary 5xx").namespace("AWS/ApplicationELB")
-        .metric("HTTPCode_Target_5XX_Count")
+        .metricName("HTTPCode_Target_5XX_Count")
         .dimension("TargetGroup", "targetgroup/api-canary/0a1b").stat("Sum")
-        .max(5).region("eu-west-1").profile("deploy").runner(fake.run),
+        .max(5).aws((a) =>
+          a.region("eu-west-1").profile("deploy").runner(fake.run)
+        ),
     )
   );
 }
@@ -69,7 +73,10 @@ Deno.test("cloudwatch passes when every datapoint is within bounds", async () =>
   assertEquals(fake.flag(0, "--region"), "eu-west-1");
   assertEquals(fake.flag(0, "--profile"), "deploy");
   assertEquals(fake.flag(0, "--output"), "json");
-  assertEquals(fake.flag(0, "--query"), "MetricDataResults");
+  assertEquals(
+    fake.flag(0, "--query"),
+    "{MetricDataResults: MetricDataResults, NextToken: NextToken}",
+  );
   // The window ends on a minute boundary, five minutes after it starts.
   const start = Date.parse(fake.flag(0, "--start-time") ?? "");
   const end = Date.parse(fake.flag(0, "--end-time") ?? "");
@@ -91,8 +98,12 @@ Deno.test("cloudwatch checks a minimum too", async () => {
   await assertRejects(
     () =>
       cloudwatch((s) =>
-        s.namespace("Custom").metric("SuccessRate").stat("Average").min(99.9)
-          .window("10m").period(300).unit("Percent").runner(fake.run)
+        s.namespace("Custom").metricName("SuccessRate").stat("Average").min(
+          99.9,
+        )
+          .window("10m").period(300).unit("Percent").aws((a) =>
+            a.runner(fake.run)
+          )
       ).validate(context),
     Error,
     "SuccessRate at 2026-10-07T11:59:00.000Z is 99.5, below the minimum 99.9.",
@@ -136,7 +147,9 @@ Deno.test("cloudwatch judges an expression over hidden metrics", async () => {
           m.namespace("AWS/ApplicationELB").metricName("RequestCount")
             .stat("Sum"),
       )
-      .expression("100 * errors / requests").max(1).runner(fake.run)
+      .expression("100 * errors / requests").max(1).aws((a) =>
+        a.runner(fake.run)
+      )
   ).validate(context);
   const queries = JSON.parse(fake.flag(0, "--metric-data-queries") ?? "");
   assertEquals(
@@ -150,8 +163,8 @@ Deno.test("cloudwatch judges an expression over hidden metrics", async () => {
   await assertRejects(
     () =>
       cloudwatch((s) =>
-        s.namespace("n").metric("m").stat("Sum").expression("m1 * 2").max(0)
-          .runner(new FakeAws(results("e1", [2])).run)
+        s.namespace("n").metricName("m").stat("Sum").expression("m1 * 2").max(0)
+          .aws((a) => a.runner(new FakeAws(results("e1", [2])).run))
       ).validate(context),
     Error,
     "m1 * 2 at",
@@ -167,7 +180,7 @@ Deno.test("cloudwatch judges a lone metricStat by its own id", async () => {
           "lat",
           (m) => m.namespace("AWS/Lambda").metricName("Duration").stat("p99"),
         )
-          .max(100).runner(fake.run)
+          .max(100).aws((a) => a.runner(fake.run))
       ).validate(context),
     Error,
     "cloudwatch metric at",
@@ -175,29 +188,34 @@ Deno.test("cloudwatch judges a lone metricStat by its own id", async () => {
 });
 
 Deno.test("cloudwatch refuses settings that cannot be judged", async () => {
-  const cases: Array<[Configure<CloudwatchAnalysisSettings>, string]> = [
-    [(s) => s.namespace("n").metric("m").stat("Sum"), "sets no bound"],
+  const cases: Array<[Configure<AwsCloudwatchAnalysisSettings>, string]> = [
+    [(s) => s.namespace("n").metricName("m").stat("Sum"), "sets no bound"],
     [(s) => s.max(1), "reads 0 metrics but judges one"],
     [
       (s) =>
-        s.namespace("n").metric("m").stat("Sum")
+        s.namespace("n").metricName("m").stat("Sum")
           .metricStat("b", (m) => m.namespace("n").metricName("x").stat("Sum"))
           .max(1),
       "reads 2 metrics",
     ],
-    [(s) => s.metric("m").stat("Sum").max(1), "needs a namespace"],
+    [(s) => s.metricName("m").stat("Sum").max(1), "needs a namespace"],
     [(s) => s.namespace("n").stat("Sum").max(1), "needs a namespace"],
-    [(s) => s.namespace("n").metric("m").max(1), "a statistic"],
+    [(s) => s.namespace("n").metricName("m").max(1), "a statistic"],
     [
-      (s) => s.namespace("n").metric("m").stat("Sum").min(2).max(1),
+      (s) => s.namespace("n").metricName("m").stat("Sum").min(2).max(1),
       "never pass",
     ],
-    [(s) => s.namespace("n").metric("m").stat("Sum").max(NaN), "not a number"],
+    [
+      (s) => s.namespace("n").metricName("m").stat("Sum").max(NaN),
+      "not a number",
+    ],
   ];
   for (const [configure, message] of cases) {
     const fake = new FakeAws(results("m1", [0]));
     await assertRejects(
-      () => cloudwatch((s) => configure(s.runner(fake.run))).validate(context),
+      () =>
+        cloudwatch((s) => configure(s.aws((a) => a.runner(fake.run))))
+          .validate(context),
       Error,
       message,
     );
@@ -223,7 +241,11 @@ Deno.test("cloudwatch reports a read failure, redacted", async () => {
   assertEquals(error.message.includes("s3cr3t"), false);
   await assertRejects(
     () =>
-      errors5xx(new FakeAws(json([{ Id: "m1", StatusCode: "Forbidden" }])))
+      errors5xx(
+        new FakeAws(
+          json({ MetricDataResults: [{ Id: "m1", StatusCode: "Forbidden" }] }),
+        ),
+      )
         .validate(context),
     Error,
     "status Forbidden",
@@ -231,17 +253,23 @@ Deno.test("cloudwatch reports a read failure, redacted", async () => {
   await assertRejects(
     () =>
       cloudwatch((s) =>
-        s.namespace("n").metric("m").stat("Sum").max(1)
-          .runner(() => Promise.reject("socket closed"))
+        s.namespace("n").metricName("m").stat("Sum").max(1)
+          .aws((a) => a.runner(() => Promise.reject("socket closed")))
       ).validate(context),
     Error,
     "could not be read: socket closed",
   );
 });
 
-Deno.test("cloudwatch applies further global options last", async () => {
+Deno.test("cloudwatch pins its own output and query after .aws(...)", async () => {
   const fake = new FakeAws(results("m1", [0]));
-  await errors5xx(fake, (s) => s.aws((a) => a.endpointUrl("http://localhost")))
-    .validate(context);
+  await cloudwatch((s) =>
+    s.namespace("n").metricName("m").stat("Sum").max(1).aws((a) =>
+      a.endpointUrl("http://localhost").output("text").query("bogus")
+        .runner(fake.run)
+    )
+  ).validate(context);
   assertEquals(fake.flag(0, "--endpoint-url"), "http://localhost");
+  assertEquals(fake.flag(0, "--output"), "json");
+  assertEquals(fake.calls[0].includes("bogus"), false);
 });

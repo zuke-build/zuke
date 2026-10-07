@@ -42,9 +42,14 @@ export class FakeAws {
     return Promise.resolve(typeof next === "function" ? next(argv) : next);
   };
 
-  /** The value following `flag` in call `index`. */
+  /**
+   * The value of `flag` in call `index`, whether it was sent as one
+   * `--flag=value` token or as `--flag value`.
+   */
   flag(index: number, flag: string): string | undefined {
     const argv = this.calls[index];
+    const joined = argv.find((token) => token.startsWith(`${flag}=`));
+    if (joined !== undefined) return joined.slice(flag.length + 1);
     const at = argv.indexOf(flag);
     return at === -1 ? undefined : argv[at + 1];
   }
@@ -53,4 +58,22 @@ export class FakeAws {
 /** JSON text, as the CLI prints it. */
 export function json(value: unknown): string {
   return `${JSON.stringify(value, null, 4)}\n`;
+}
+
+/**
+ * Run `fn` with `PATH` pointing at an empty directory, so a task called
+ * without a lambda — which spawns the bare `aws` — reaches execution and
+ * finds nothing, rather than a real CLI that may be installed on the host.
+ */
+export async function withEmptyPath(fn: () => Promise<void>): Promise<void> {
+  const previous = Deno.env.get("PATH");
+  const empty = await Deno.makeTempDir();
+  Deno.env.set("PATH", empty);
+  try {
+    await fn();
+  } finally {
+    if (previous === undefined) Deno.env.delete("PATH");
+    else Deno.env.set("PATH", previous);
+    await Deno.remove(empty);
+  }
 }

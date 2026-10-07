@@ -16,7 +16,7 @@
 import { parseDuration } from "@zuke/core";
 
 /** A start and end time. */
-export interface TimeRange {
+interface TimeRange {
   /** The start of the range. */
   start: Date;
   /** The end of the range. */

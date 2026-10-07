@@ -14,7 +14,7 @@
  */
 
 /** Inclusive bounds a metric must stay within; either side may be open. */
-export interface Bounds {
+interface Bounds {
   /** The lowest acceptable value, if any. */
   min?: number;
   /** The highest acceptable value, if any. */

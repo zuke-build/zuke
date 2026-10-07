@@ -19,11 +19,12 @@
  * @module
  */
 
+import { freeText, operand, operands, option } from "./validate.ts";
 import { AwsSettings } from "./settings.ts";
 import { epochMilliseconds, epochSeconds, windowEnding } from "./time.ts";
 
 /** Settings for `aws logs start-query`. */
-export class LogsStartQuerySettings extends AwsSettings {
+export class AwsLogsStartQuerySettings extends AwsSettings {
   readonly #logGroupNames: string[] = [];
   #queryString?: string;
   #start?: Date;
@@ -38,7 +39,7 @@ export class LogsStartQuerySettings extends AwsSettings {
 
   /** The Logs Insights query (`--query-string`). */
   queryString(query: string): this {
-    this.#queryString = query;
+    this.#queryString = freeText("logsStartQuery", "--query-string", query);
     return this;
   }
 
@@ -84,26 +85,30 @@ export class LogsStartQuerySettings extends AwsSettings {
       "logs",
       "start-query",
       "--log-group-names",
-      ...this.#logGroupNames,
-      "--start-time",
-      epochSeconds(this.#start),
-      "--end-time",
-      epochSeconds(this.#end),
-      "--query-string",
-      this.#queryString,
+      ...operands("logsStartQuery", "--log-group-names", this.#logGroupNames),
+      option("--start-time", epochSeconds(this.#start)),
+      option("--end-time", epochSeconds(this.#end)),
+      option("--query-string", this.#queryString),
     ];
-    if (this.#limit !== undefined) argv.push("--limit", String(this.#limit));
+    if (this.#limit !== undefined) argv.push(option("--limit", this.#limit));
     return argv;
   }
 }
 
 /** Settings for `aws logs get-query-results`. */
-export class LogsGetQueryResultsSettings extends AwsSettings {
+export class AwsLogsGetQueryResultsSettings extends AwsSettings {
   #queryId?: string;
+  #nextToken?: string;
 
   /** The id `start-query` returned (`--query-id`). */
   queryId(id: string): this {
     this.#queryId = id;
+    return this;
+  }
+
+  /** The page after the one that returned this token (`--next-token`). */
+  nextToken(token: string): this {
+    this.#nextToken = token;
     return this;
   }
 
@@ -114,12 +119,20 @@ export class LogsGetQueryResultsSettings extends AwsSettings {
         "AwsTasks.logsGetQueryResults: no query named — add .queryId(id).",
       );
     }
-    return ["logs", "get-query-results", "--query-id", this.#queryId];
+    const argv = [
+      "logs",
+      "get-query-results",
+      option("--query-id", this.#queryId),
+    ];
+    if (this.#nextToken !== undefined) {
+      argv.push(option("--next-token", this.#nextToken));
+    }
+    return argv;
   }
 }
 
 /** Settings for `aws logs stop-query`. */
-export class LogsStopQuerySettings extends AwsSettings {
+export class AwsLogsStopQuerySettings extends AwsSettings {
   #queryId?: string;
 
   /** The id `start-query` returned (`--query-id`). */
@@ -135,12 +148,12 @@ export class LogsStopQuerySettings extends AwsSettings {
         "AwsTasks.logsStopQuery: no query named — add .queryId(id).",
       );
     }
-    return ["logs", "stop-query", "--query-id", this.#queryId];
+    return ["logs", "stop-query", option("--query-id", this.#queryId)];
   }
 }
 
 /** Settings for `aws logs filter-log-events`. */
-export class LogsFilterLogEventsSettings extends AwsSettings {
+export class AwsLogsFilterLogEventsSettings extends AwsSettings {
   #logGroupName?: string;
   readonly #logStreamNames: string[] = [];
   #logStreamNamePrefix?: string;
@@ -168,7 +181,11 @@ export class LogsFilterLogEventsSettings extends AwsSettings {
 
   /** A CloudWatch Logs filter pattern (`--filter-pattern`), e.g. `"ERROR"`. */
   filterPattern(pattern: string): this {
-    this.#filterPattern = pattern;
+    this.#filterPattern = freeText(
+      "logsFilterLogEvents",
+      "--filter-pattern",
+      pattern,
+    );
     return this;
   }
 
@@ -203,23 +220,29 @@ export class LogsFilterLogEventsSettings extends AwsSettings {
     const argv = [
       "logs",
       "filter-log-events",
-      "--log-group-name",
-      this.#logGroupName,
+      option("--log-group-name", this.#logGroupName),
     ];
     if (this.#logStreamNames.length > 0) {
-      argv.push("--log-stream-names", ...this.#logStreamNames);
+      argv.push(
+        "--log-stream-names",
+        ...operands(
+          "logsFilterLogEvents",
+          "--log-stream-names",
+          this.#logStreamNames,
+        ),
+      );
     }
     if (this.#logStreamNamePrefix !== undefined) {
-      argv.push("--log-stream-name-prefix", this.#logStreamNamePrefix);
+      argv.push(option("--log-stream-name-prefix", this.#logStreamNamePrefix));
     }
     if (this.#filterPattern !== undefined) {
-      argv.push("--filter-pattern", this.#filterPattern);
+      argv.push(option("--filter-pattern", this.#filterPattern));
     }
     if (this.#start !== undefined) {
-      argv.push("--start-time", epochMilliseconds(this.#start));
+      argv.push(option("--start-time", epochMilliseconds(this.#start)));
     }
     if (this.#end !== undefined) {
-      argv.push("--end-time", epochMilliseconds(this.#end));
+      argv.push(option("--end-time", epochMilliseconds(this.#end)));
     }
     return argv;
   }
@@ -229,7 +252,7 @@ export class LogsFilterLogEventsSettings extends AwsSettings {
  * Settings for `aws logs tail`. With {@link follow} the command never ends on
  * its own — bound it with `.killAfter(ms)`.
  */
-export class LogsTailSettings extends AwsSettings {
+export class AwsLogsTailSettings extends AwsSettings {
   #groupName?: string;
   #since?: string;
   #follow = false;
@@ -258,7 +281,7 @@ export class LogsTailSettings extends AwsSettings {
 
   /** A CloudWatch Logs filter pattern (`--filter-pattern`). */
   filterPattern(pattern: string): this {
-    this.#filterPattern = pattern;
+    this.#filterPattern = freeText("logsTail", "--filter-pattern", pattern);
     return this;
   }
 
@@ -287,18 +310,25 @@ export class LogsTailSettings extends AwsSettings {
         "AwsTasks.logsTail: no log group named — add .groupName('/ecs/api').",
       );
     }
-    const argv = ["logs", "tail", this.#groupName];
-    if (this.#since !== undefined) argv.push("--since", this.#since);
+    const argv = [
+      "logs",
+      "tail",
+      operand("logsTail", "group name", this.#groupName),
+    ];
+    if (this.#since !== undefined) argv.push(option("--since", this.#since));
     if (this.#follow) argv.push("--follow");
     if (this.#filterPattern !== undefined) {
-      argv.push("--filter-pattern", this.#filterPattern);
+      argv.push(option("--filter-pattern", this.#filterPattern));
     }
-    if (this.#format !== undefined) argv.push("--format", this.#format);
+    if (this.#format !== undefined) argv.push(option("--format", this.#format));
     if (this.#logStreamNames.length > 0) {
-      argv.push("--log-stream-names", ...this.#logStreamNames);
+      argv.push(
+        "--log-stream-names",
+        ...operands("logsTail", "--log-stream-names", this.#logStreamNames),
+      );
     }
     if (this.#logStreamNamePrefix !== undefined) {
-      argv.push("--log-stream-name-prefix", this.#logStreamNamePrefix);
+      argv.push(option("--log-stream-name-prefix", this.#logStreamNamePrefix));
     }
     return argv;
   }

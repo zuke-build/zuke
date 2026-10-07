@@ -19,6 +19,7 @@
  */
 
 import { Command, CommandError, type CommandOutput } from "@zuke/core/shell";
+import { defaultReadEnv } from "@zuke/core";
 import { SubcommandSettings } from "@zuke/core/tooling";
 
 /**
@@ -39,18 +40,39 @@ export type AwsOutputFormat =
   | "text"
   | "table"
   | "yaml"
-  | "yaml-stream";
+  | "yaml-stream"
+  | "off";
+
+/** The credentials the CLI reads from the environment, which `--debug` prints. */
+const CREDENTIAL_VARIABLES = [
+  "AWS_ACCESS_KEY_ID",
+  "AWS_SECRET_ACCESS_KEY",
+  "AWS_SESSION_TOKEN",
+];
+
+/**
+ * Throw core's `CommandError` for a failed exit, rendered through a
+ * `Command` so the run's redactor masks the line exactly as it does for a
+ * spawned command's failure. Internal: the runner path of
+ * {@link AwsSettings.run} and the readers, which insist on success whatever
+ * `.noThrow()` said, share it.
+ */
+export function failOnExit(settings: AwsSettings, output: CommandOutput) {
+  if (output.code === 0) return;
+  const line = new Command(settings.argv()).commandLine;
+  throw new CommandError(line, output.code, output.stderr);
+}
 
 /**
  * Settings for an `aws` invocation.
  *
- * Every instance sets `AWS_PAGER` to the empty string in the child's
- * environment. AWS CLI v2 pipes output through a pager (`less`) by default,
- * and a pager waiting for a keypress is a build that never finishes; the
- * variable is the off-switch both CLI majors honour, and setting it there
- * keeps the argv exactly what the settings say. Override it with
- * `.env({ AWS_PAGER: "…" })`, or add the explicit flag with
- * {@link noCliPager}.
+ * Every instance sets two variables in the child's environment so the CLI
+ * can never sit waiting for a keypress in a build: `AWS_PAGER` to the empty
+ * string (CLI v2 pipes output through `less` by default) and
+ * `AWS_CLI_AUTO_PROMPT` to `off` (a profile's `cli_auto_prompt` would
+ * otherwise open the interactive prompt). Setting them there keeps the argv
+ * exactly what the settings say; override either with `.env({...})`, or add
+ * the explicit flag with {@link noCliPager}.
  */
 export class AwsSettings extends SubcommandSettings {
   #profile?: string;
@@ -67,10 +89,10 @@ export class AwsSettings extends SubcommandSettings {
   #debug = false;
   #runner?: AwsSettingsRunner;
 
-  /** Settings with the CLI pager switched off in the child's environment. */
+  /** Settings with the CLI's pager and auto-prompt off in the child's environment. */
   constructor() {
     super();
-    this.env({ AWS_PAGER: "" });
+    this.env({ AWS_PAGER: "", AWS_CLI_AUTO_PROMPT: "off" });
   }
 
   /** The default executable name (`aws`). */
@@ -152,10 +174,45 @@ export class AwsSettings extends SubcommandSettings {
     return this;
   }
 
-  /** Turn on the CLI's debug logging (`--debug`), written to stderr. */
+  /**
+   * Turn on the CLI's debug logging (`--debug`), written to stderr.
+   *
+   * **The debug log carries credentials**: request headers with the session
+   * token, and response bodies — a secret's value among them. The access key,
+   * secret key and session token in the environment are registered with the
+   * run's redactor when this is called, but a credential the CLI loads from a
+   * profile, an SSO cache or a role is not known here and is not masked. Keep
+   * it for a local investigation, never a shared CI log.
+   */
   debug(): this {
     this.#debug = true;
+    for (const name of CREDENTIAL_VARIABLES) {
+      const value = defaultReadEnv(name);
+      if (value !== undefined && value !== "") this.markSecret(value);
+    }
     return this;
+  }
+
+  /**
+   * Add an arbitrary option: `--name value`, or the bare `--name`.
+   *
+   * Two hazards come with the escape hatch, which the typed setters guard and
+   * this does not: a value that starts with `-` is read by the CLI as the next
+   * option, and a value that starts with `file://` or `fileb://` is replaced
+   * by that file's contents — which then leave the machine in the request.
+   * Never pass an untrusted value here.
+   */
+  override flag(name: string, value?: string | number): this {
+    return super.flag(name, value);
+  }
+
+  /**
+   * The `--output` a command insists on, whatever the settings or the user's
+   * config say; `undefined` leaves it to them. A credential-bearing command
+   * pins `json`, which is the form its secrets can be found in.
+   */
+  protected pinnedOutput(): AwsOutputFormat | undefined {
+    return undefined;
   }
 
   /**
@@ -178,14 +235,11 @@ export class AwsSettings extends SubcommandSettings {
   override async run(): Promise<CommandOutput> {
     const runner = this.#runner;
     if (runner === undefined) return await super.run();
+    // Core's ToolSettings has no hook to swap the spawn while keeping its
+    // output hook and exit judgement, so the two are repeated here.
     const output = await runner(this);
     this.onOutput(output);
-    if (output.code !== 0 && this.throwsOnError) {
-      // Rendered through a Command so the run's redactor masks it, exactly as
-      // a spawned command's failure is.
-      const line = new Command(this.argv()).commandLine;
-      throw new CommandError(line, output.code, output.stderr);
-    }
+    if (this.throwsOnError) failOnExit(this, output);
     return output;
   }
 
@@ -194,7 +248,8 @@ export class AwsSettings extends SubcommandSettings {
     const argv: string[] = [];
     if (this.#profile !== undefined) argv.push("--profile", this.#profile);
     if (this.#region !== undefined) argv.push("--region", this.#region);
-    if (this.#output !== undefined) argv.push("--output", this.#output);
+    const output = this.pinnedOutput() ?? this.#output;
+    if (output !== undefined) argv.push("--output", output);
     if (this.#query !== undefined) argv.push("--query", this.#query);
     if (this.#endpointUrl !== undefined) {
       argv.push("--endpoint-url", this.#endpointUrl);
