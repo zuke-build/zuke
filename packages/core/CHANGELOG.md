@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.66.0](https://github.com/zuke-build/zuke/compare/core-v1.65.0...core-v1.66.0) (2026-10-07)
+
+
+### Features
+
+* **core:** export the plaintext-backend guard, the bounded body reader and an RS256 JWT signer ([#726](https://github.com/zuke-build/zuke/issues/726)) ([88a38f9](https://github.com/zuke-build/zuke/commit/88a38f91f4c00a6322b3048385534cc262028c46))
+
 ## [1.65.0](https://github.com/zuke-build/zuke/compare/core-v1.64.0...core-v1.65.0) (2026-10-06)
 
 
