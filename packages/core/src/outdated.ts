@@ -78,6 +78,12 @@ export interface OutdatedOptions {
   registry?: string;
   /** The `fetch` to use; injected so the command is testable without network. */
   fetch?: typeof fetch;
+  /**
+   * How old a release must be to count, in any form Deno's `--min-dep-age`
+   * takes (see {@link minDepAgeCutoff}); Deno's 24-hour default when omitted.
+   * `--update` passes it on to `deno install` as well.
+   */
+  minDepAge?: string;
 }
 
 /** One `jsr:` entry of a lock file's `specifiers` map. */
@@ -148,28 +154,64 @@ export function isBehind(resolved: string, latest: string): boolean {
 }
 
 /**
- * How old a release must be before Deno will install it: Deno 2.9 refuses
- * anything younger by default (`minimumDependencyAge`, 24 hours) as a
- * supply-chain guard. A version Deno will not resolve is not one a lock can
- * move to, so it must not count as the latest either.
+ * How old a release must be before Deno will install it when no
+ * `--min-dep-age` is given: Deno 2.9 refuses anything younger by default
+ * (`minimumDependencyAge`, 24 hours) as a supply-chain guard. A version Deno
+ * will not resolve is not one a lock can move to, so it must not count as the
+ * latest either.
  *
- * Only Deno's default is applied: a project that sets a longer
+ * Only Deno's default is assumed: a project that sets a longer
  * `minimumDependencyAge` can still be shown a version Deno will refuse, and
  * `--update` then fails and restores the lock rather than corrupting it.
  */
-const MINIMUM_RELEASE_AGE_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_MIN_DEP_AGE_MS = 24 * 60 * 60 * 1000;
+
+/** An ISO-8601 duration in weeks, days, hours, minutes and seconds. */
+const ISO_DURATION =
+  /^P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/;
+
+/**
+ * The publish-time cutoff a `--min-dep-age` value means at `now`: a release
+ * published after it is too young to install. Accepts what Deno's own flag
+ * accepts — whole minutes (`120`, `0` to disable), an ISO-8601 duration
+ * (`P2D`, `PT12H`), or an RFC3339 date or timestamp (`2025-09-16`) — and
+ * Deno's 24-hour default when `value` is undefined.
+ *
+ * Years and months are refused rather than guessed at: their length depends
+ * on the calendar, and a cutoff off by a day is the wrong answer here.
+ *
+ * @throws If `value` is none of those forms.
+ */
+export function minDepAgeCutoff(
+  value: string | undefined,
+  now: number,
+): number {
+  if (value === undefined) return now - DEFAULT_MIN_DEP_AGE_MS;
+  if (/^\d+$/.test(value)) return now - Number(value) * 60_000;
+  const duration = ISO_DURATION.exec(value);
+  if (duration !== null && value !== "P" && !value.endsWith("T")) {
+    const [w, d, h, m, sec] = duration.slice(1).map((n) => Number(n ?? 0));
+    return now - ((((w * 7 + d) * 24 + h) * 60 + m) * 60 + sec) * 1000;
+  }
+  const date = /^\d{4}-\d{2}-\d{2}/.test(value) ? Date.parse(value) : NaN;
+  if (!Number.isNaN(date)) return date;
+  throw new Error(
+    `outdated: --min-dep-age "${value}" is not a number of minutes, an ` +
+      "ISO-8601 duration (P2D, PT12H) or a date (2025-09-16).",
+  );
+}
 
 /**
  * The newest version Deno would install from a JSR package's `meta.json`:
- * the highest non-yanked version published at least
- * {@link MINIMUM_RELEASE_AGE_MS} before `now`. `null` when every release is
+ * the highest non-yanked version published no later than `cutoff` (see
+ * {@link minDepAgeCutoff}). `null` when every release is
  * still too young, `undefined` when the document has no usable version.
  *
  * Without a `versions` map, the document's `latest` is the answer.
  */
 function installableLatest(
   meta: unknown,
-  now: number,
+  cutoff: number,
 ): string | null | undefined {
   if (meta === null || typeof meta !== "object") return undefined;
   const latest: unknown = Reflect.get(meta, "latest");
@@ -189,7 +231,7 @@ function installableLatest(
     // A missing or unparsable date is NaN, which fails the comparison: a
     // release whose age is unknown is not assumed old enough.
     const created = Date.parse(String(Reflect.get(info, "createdAt")));
-    if (!(now - created >= MINIMUM_RELEASE_AGE_MS)) continue;
+    if (!(created <= cutoff)) continue;
     if (best === null || isBehind(best, version)) best = version;
   }
   return best;
@@ -209,6 +251,8 @@ function installableLatest(
 export async function findOutdated(
   options: OutdatedOptions = {},
 ): Promise<OutdatedReport> {
+  // First, so a malformed value fails before the lock or the network is read.
+  const cutoff = minDepAgeCutoff(options.minDepAge, Date.now());
   const lockPath = options.lockPath ?? DEFAULT_LOCK_PATH;
   const lockText = await readTextOrNull(lockPath);
   if (lockText === null) {
@@ -225,7 +269,7 @@ export async function findOutdated(
   for (const entry of lockedJsrSpecifiers(lockText)) {
     let answer = answers.get(entry.name);
     if (answer === undefined) {
-      answer = await readLatest(registry, entry.name, options.fetch);
+      answer = await readLatest(registry, entry.name, cutoff, options.fetch);
       answers.set(entry.name, answer);
     }
     if (answer instanceof Error) {
@@ -270,6 +314,7 @@ export async function findOutdated(
 async function readLatest(
   registry: string,
   name: string,
+  cutoff: number,
   fetchImpl?: typeof fetch,
 ): Promise<string | null | Error> {
   try {
@@ -277,7 +322,7 @@ async function readLatest(
       `${registry}/${name}/meta.json`,
       fetchImpl === undefined ? {} : { fetch: fetchImpl },
     );
-    const latest = installableLatest(meta, Date.now());
+    const latest = installableLatest(meta, cutoff);
     return latest !== undefined ? latest : new Error(
       "the registry's meta.json carries no latest version",
     );

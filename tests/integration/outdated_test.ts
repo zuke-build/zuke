@@ -348,3 +348,68 @@ Deno.test("outdated does not offer a release Deno is still too young to install"
     await Deno.remove(dir, { recursive: true });
   }
 });
+
+Deno.test("outdated --update --min-dep-age passes the age on to the resolver", async () => {
+  // A release an hour old is offered, and moved to, once the age is waived —
+  // and the resolver is told the same age, or Deno would refuse that version.
+  const dir = await Deno.makeTempDir();
+  try {
+    const lockPath = `${dir}/deno.lock`;
+    await Deno.writeTextFile(
+      lockPath,
+      JSON.stringify({
+        version: "5",
+        specifiers: { "jsr:@zuke/core@^1": "1.66.0" },
+      }),
+    );
+    const meta = {
+      latest: "1.67.0",
+      versions: {
+        "1.67.0": { createdAt: new Date(Date.now() - 3_600_000).toISOString() },
+      },
+    };
+    const ages: (string | undefined)[] = [];
+    const { code, out } = await runCli(OutdatedBuild, [
+      "outdated",
+      "--update",
+      "--min-dep-age",
+      "0",
+    ], {
+      outdatedOptions: {
+        lockPath,
+        registry: "https://registry.test",
+        fetch: () => Promise.resolve(new Response(JSON.stringify(meta))),
+        resolve: async (path, minDepAge) => {
+          ages.push(minDepAge);
+          const lock = JSON.parse(await Deno.readTextFile(path));
+          lock.specifiers["jsr:@zuke/core@^1"] = "1.67.0";
+          await Deno.writeTextFile(path, JSON.stringify(lock));
+        },
+      },
+    });
+    assertEquals(code, 0, out);
+    assertEquals(ages, ["0"]);
+    assertEquals(out.includes("1.66.0  →  1.67.0"), true, out);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("outdated rejects a --min-dep-age it cannot read, before asking the registry", async () => {
+  let asked = false;
+  const { code, err } = await runCli(OutdatedBuild, [
+    "outdated",
+    "--min-dep-age=soon",
+  ], {
+    outdatedOptions: {
+      lockPath: "/nonexistent/deno.lock",
+      fetch: () => {
+        asked = true;
+        return Promise.resolve(new Response("{}"));
+      },
+    },
+  });
+  assertEquals(code, 1);
+  assertEquals(err.includes('--min-dep-age "soon"'), true, err);
+  assertEquals(asked, false);
+});

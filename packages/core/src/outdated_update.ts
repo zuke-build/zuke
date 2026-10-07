@@ -71,8 +71,14 @@ export interface UpdateReport {
   unchecked: { name: string; resolved: string; reason: string }[];
 }
 
-/** Re-resolve the lock at `lockPath` after entries were dropped from it. */
-export type ResolveLock = (lockPath: string) => Promise<void>;
+/**
+ * Re-resolve the lock at `lockPath` after entries were dropped from it,
+ * passing `minDepAge` on to Deno when one was given.
+ */
+export type ResolveLock = (
+  lockPath: string,
+  minDepAge: string | undefined,
+) => Promise<void>;
 
 /** Options for {@link updateOutdated}. */
 export interface UpdateOptions extends OutdatedOptions {
@@ -190,8 +196,12 @@ export function dropLockEntries(
  *   narrower still (`--reload=jsr:@scope/name`) does not refresh the listing.
  * - `--frozen=false` because a project may set `"frozen": true` in its config,
  *   and a frozen install refuses to write the lock at all.
+ * - `--min-dep-age` only when the caller gave one, so a project's own
+ *   `minimumDependencyAge` (or Deno's default) applies otherwise. It must
+ *   match the age the report was computed with, or Deno refuses the very
+ *   version the report offered.
  */
-const denoResolve: ResolveLock = async (lockPath) => {
+const denoResolve: ResolveLock = async (lockPath, minDepAge) => {
   const slash = lockPath.lastIndexOf("/");
   const cwd = slash > 0 ? lockPath.slice(0, slash) : ".";
   const command = new Deno.Command(denoExecutable(), {
@@ -201,6 +211,7 @@ const denoResolve: ResolveLock = async (lockPath) => {
       Deno.mainModule,
       "--reload=jsr:",
       "--frozen=false",
+      ...(minDepAge === undefined ? [] : [`--min-dep-age=${minDepAge}`]),
     ],
     cwd,
     stdout: "null",
@@ -300,7 +311,7 @@ export async function updateOutdated(
   const wasResolved = resolvedByName(before);
   await writeTextEnsuringDir(lockPath, dropLockEntries(before, names));
   try {
-    await (options.resolve ?? denoResolve)(lockPath);
+    await (options.resolve ?? denoResolve)(lockPath, options.minDepAge);
   } catch (error) {
     // Put the lock back exactly as it was. A half-dropped lock fails every
     // `--frozen` run, which is every launcher and task in a Zuke project, so

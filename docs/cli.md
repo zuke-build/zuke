@@ -390,6 +390,16 @@ published this morning is not reported, and is not a target for `--update`,
 until it is a day old. Yanked releases never are, and prereleases only for a
 package that has published nothing else.
 
+`--min-dep-age <age>` changes that age, in the same forms Deno's own flag takes:
+minutes (`120`), an ISO-8601 duration (`P2D`, `PT12H`), or a date or timestamp
+(`2025-09-16`). `--min-dep-age 0` ignores release age entirely. With `--update`
+the value is passed on to `deno install`, so the lock can move to the release
+the report offered:
+
+```sh
+./zuke outdated --update --min-dep-age 0
+```
+
 The lock is only re-resolved from this build's entrypoint. If the same
 `deno.lock` also serves another module graph — a workspace member's own build,
 say — packages only that graph reaches are never rewritten. `--update` checks

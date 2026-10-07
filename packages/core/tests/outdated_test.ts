@@ -7,6 +7,7 @@ import {
   formatOutdated,
   isBehind,
   lockedJsrSpecifiers,
+  minDepAgeCutoff,
 } from "../src/outdated.ts";
 import { withTemp } from "./_temp.ts";
 
@@ -470,5 +471,71 @@ Deno.test("findOutdated still compares a prerelease-only package", async () => {
       }),
     });
     assertEquals(behind.map((p) => p.latest), ["0.2.0-alpha.1"]);
+  });
+});
+
+Deno.test("minDepAgeCutoff reads every form Deno's --min-dep-age takes", () => {
+  const now = Date.parse("2026-10-07T12:00:00Z");
+  const hour = 60 * 60 * 1000;
+  assertEquals(minDepAgeCutoff(undefined, now), now - 24 * hour);
+  assertEquals(minDepAgeCutoff("0", now), now);
+  assertEquals(minDepAgeCutoff("120", now), now - 2 * hour);
+  assertEquals(minDepAgeCutoff("P2D", now), now - 48 * hour);
+  assertEquals(minDepAgeCutoff("PT12H", now), now - 12 * hour);
+  assertEquals(
+    minDepAgeCutoff("P1WT30M15S", now),
+    now - (168 * hour + 1_815_000),
+  );
+  assertEquals(
+    minDepAgeCutoff("2025-09-16", now),
+    Date.parse("2025-09-16"),
+  );
+  assertEquals(
+    minDepAgeCutoff("2025-09-16T12:00:00+00:00", now),
+    Date.parse("2025-09-16T12:00:00Z"),
+  );
+});
+
+Deno.test("minDepAgeCutoff refuses what it cannot read as an age", () => {
+  for (
+    const bad of [
+      "",
+      "P",
+      "PT",
+      "P1DT",
+      "P1Y",
+      "P1M",
+      "-5",
+      "1.5",
+      "soon",
+      "2025-13-45",
+    ]
+  ) {
+    let threw = false;
+    try {
+      minDepAgeCutoff(bad, 0);
+    } catch (error) {
+      threw = String(error).includes("--min-dep-age");
+    }
+    assertEquals(threw, true, `should have refused: "${bad}"`);
+  }
+});
+
+Deno.test("findOutdated honours a --min-dep-age of 0", async () => {
+  await withTemp(async (dir) => {
+    const lockPath = await lockWith(dir, { "jsr:@zuke/core@^1": "1.66.0" });
+    const { behind } = await findOutdated({
+      lockPath,
+      registry: "https://registry.test",
+      minDepAge: "0",
+      fetch: metaFetch({
+        latest: "1.67.0",
+        versions: {
+          "1.66.0": { createdAt: hoursAgo(10) },
+          "1.67.0": { createdAt: hoursAgo(1) },
+        },
+      }),
+    });
+    assertEquals(behind.map((p) => p.latest), ["1.67.0"]);
   });
 });

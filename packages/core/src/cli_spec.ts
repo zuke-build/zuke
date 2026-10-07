@@ -366,6 +366,14 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
       "Move the lock's resolved versions up to the registry's latest instead of only reporting them. Takes optional package names to narrow it. Touches the lock and nothing else: a specifier that forbids the newer release is reported as holding its package back, never rewritten.",
   },
   {
+    name: "--min-dep-age",
+    value: " <age>",
+    description: "With outdated, the release age to honour (0 ignores it)",
+    command: "outdated",
+    detail:
+      "How old a release must be to count as the latest, in any form Deno's own --min-dep-age takes: minutes (120, or 0 to ignore release age), an ISO-8601 duration (P2D, PT12H) or a date (2025-09-16). Defaults to Deno's 24 hours. With --update it is passed on to deno install, so the lock can move to a release younger than Deno would otherwise accept.",
+  },
+  {
     name: "--exit-code",
     description:
       "With outdated, exit non-zero when a package is behind or unchecked",

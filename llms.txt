@@ -77,6 +77,7 @@ Option flags:
 - `--force-graph` — With resume, continue even if the build graph changed
 - `--resume-degraded` — With resume, continue even if a state write was dropped
 - `--update` — With outdated, bump the lock's resolved versions
+- `--min-dep-age` — With outdated, the release age to honour (0 ignores it)
 - `--exit-code` — With outdated, exit non-zero when a package is behind or unchecked
 - `--status` — With runs list, keep only runs with this status
 - `--target` — With runs list, keep only runs whose graph has this target

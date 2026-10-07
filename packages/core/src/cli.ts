@@ -251,6 +251,8 @@ export interface ParsedArgs {
    * a plain report is rejected rather than silently ignored.
    */
   updateOnly: string[];
+  /** `outdated --min-dep-age <value>`: the release age to honour, as Deno takes it. */
+  minDepAge?: string;
   /** Raw parameter values from declared flags, keyed by property name. */
   values: Record<string, string>;
   help: boolean;
@@ -410,6 +412,7 @@ const VALUE_FLAGS: ReadonlyMap<string, ValueFlag> = new Map([
   }],
   ["http", { set: (p, v) => (p.httpAddr = v) }],
   ["output", { set: (p, v) => (p.output = parseOutput(v)) }],
+  ["min-dep-age", { set: (p, v) => (p.minDepAge = v) }],
 ]);
 
 /**
@@ -1344,7 +1347,7 @@ async function runOutdated(
       );
       return 1;
     }
-    const report = await findOutdated(options);
+    const report = await findOutdated(withMinDepAge(parsed, options));
     cliReporter.info(formatOutdated(report));
     // A package that could not be checked counts as a failure under
     // --exit-code: a gate asking "are we current?" has not been told yes, and
@@ -1356,6 +1359,16 @@ async function runOutdated(
     cliReporter.error(messageOf(error));
     return 1;
   }
+}
+
+/** `options` with `--min-dep-age` applied, when it was given. */
+function withMinDepAge(
+  parsed: ParsedArgs,
+  options: UpdateOptions,
+): UpdateOptions {
+  return parsed.minDepAge === undefined
+    ? options
+    : { ...options, minDepAge: parsed.minDepAge };
 }
 
 /**
@@ -1374,7 +1387,10 @@ async function runOutdatedUpdate(
   options: UpdateOptions,
 ): Promise<number> {
   const only = parsed.updateOnly.length > 0 ? parsed.updateOnly : undefined;
-  const report = await updateOutdated({ ...options, only });
+  const report = await updateOutdated({
+    ...withMinDepAge(parsed, options),
+    only,
+  });
   cliReporter.info(formatUpdate(report));
   const unresolved = report.held.length + report.unchecked.length;
   return parsed.exitCode && unresolved > 0 ? 1 : 0;
