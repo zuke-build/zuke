@@ -49,6 +49,7 @@
     "packages/node",
     "packages/dprint",
     "packages/gcloud",
+    "packages/aws",
     "packages/git",
     "packages/gh",
     "packages/codecov",

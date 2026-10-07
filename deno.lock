@@ -1560,6 +1560,11 @@
           "jsr:@zuke/core@^1.60.0"
         ]
       },
+      "packages/aws": {
+        "dependencies": [
+          "jsr:@zuke/core@^1.66.0"
+        ]
+      },
       "packages/biome": {
         "dependencies": [
           "jsr:@zuke/core@^1.44.0"
