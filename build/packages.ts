@@ -57,6 +57,7 @@ export const PACKAGES = [
   "dprint",
   "gcloud",
   "aws",
+  "az",
   "git",
   "gh",
   // After console and gh, which it depends on (PACKAGE_DEPENDENCIES).

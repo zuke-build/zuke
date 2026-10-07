@@ -1565,6 +1565,11 @@
           "jsr:@zuke/core@^1.66.0"
         ]
       },
+      "packages/az": {
+        "dependencies": [
+          "jsr:@zuke/core@^1.67.0"
+        ]
+      },
       "packages/biome": {
         "dependencies": [
           "jsr:@zuke/core@^1.44.0"
