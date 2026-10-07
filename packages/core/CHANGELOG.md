@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.68.0](https://github.com/zuke-build/zuke/compare/core-v1.67.0...core-v1.68.0) (2026-10-07)
+
+
+### Features
+
+* **core:** export the CLI palette and version panel, and follow the lock setting in zuke --version ([#745](https://github.com/zuke-build/zuke/issues/745)) ([2ee5d72](https://github.com/zuke-build/zuke/commit/2ee5d727ea027a66a8e6ef4dc7a5daafc60b0077))
+
+
+### Bug Fixes
+
+* **core:** list each outdated package once, however many ranges pin it ([#753](https://github.com/zuke-build/zuke/issues/753)) ([b6c723b](https://github.com/zuke-build/zuke/commit/b6c723b07c5d0a39a33cb994d4148e45e5f176ab))
+
 ## [1.67.0](https://github.com/zuke-build/zuke/compare/core-v1.66.0...core-v1.67.0) (2026-10-07)
 
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.12.0](https://github.com/zuke-build/zuke/compare/cli-v1.11.0...cli-v1.12.0) (2026-10-07)
+
+
+### Features
+
+* **cli:** open zuke --help with the logo and paint the build section's heading ([#749](https://github.com/zuke-build/zuke/issues/749)) ([13390e1](https://github.com/zuke-build/zuke/commit/13390e1c6ff3581ea21e86804db00d665a1e8f7e))
+* **core:** export the CLI palette and version panel, and follow the lock setting in zuke --version ([#745](https://github.com/zuke-build/zuke/issues/745)) ([2ee5d72](https://github.com/zuke-build/zuke/commit/2ee5d727ea027a66a8e6ef4dc7a5daafc60b0077))
+
 ## [1.11.0](https://github.com/zuke-build/zuke/compare/cli-v1.10.0...cli-v1.11.0) (2026-10-07)
 
 
