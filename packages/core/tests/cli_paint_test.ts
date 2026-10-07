@@ -3,7 +3,12 @@
 
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { cliPaint, PLAIN_PAINT } from "../src/cli_paint.ts";
-import { formatVersionPanel, versionFacts } from "../src/cli_version.ts";
+import {
+  formatVersionPanel,
+  versionFacts,
+  versionPanel,
+} from "../src/cli_version.ts";
+import * as render from "../src/render.ts";
 import { stripAnsi } from "../src/render.ts";
 import { VERSION } from "../src/version.ts";
 
@@ -25,6 +30,8 @@ Deno.test("plain paint is the identity, whatever it is handed", () => {
         paint.target,
         paint.muted,
         paint.brand,
+        paint.ok,
+        paint.fail,
       ]
     ) {
       assertEquals(fn("Text: [x]"), "Text: [x]");
@@ -55,6 +62,34 @@ Deno.test("rich paint without colour keeps the glyph and emits no escapes", () =
   const paint = cliPaint({ rich: true, color: false });
   assertEquals(paint.heading("Targets:"), "◆ Targets:");
   assertEquals(paint.target("name"), "name");
+  assertEquals(paint.ok("Done"), "✔ Done");
+  assertEquals(paint.fail("Nope"), "✖ Nope");
+});
+
+Deno.test("rich paint marks status lines with a coloured glyph, never extra words", () => {
+  const paint = cliPaint({ rich: true, color: true });
+  assertEquals(paint.ok("Done") === "✔ Done", false);
+  assertEquals(stripAnsi(paint.ok("Done")), "✔ Done");
+  assertEquals(stripAnsi(paint.fail("Nope")), "✖ Nope");
+});
+
+Deno.test("versionPanel boxes any rows, emphasising the first value", () => {
+  const rows = [["cli", "1.10.0"], ["core", "1.42.0"]] as const;
+  const text = versionPanel(rows, cliPaint({ rich: true, color: false }));
+  const lines = text.split("\n");
+  assertEquals(lines.length, 4);
+  assertStringIncludes(lines[0], " zuke ");
+  assertStringIncludes(lines[1], "◆ cli   1.10.0");
+  assertStringIncludes(lines[2], "◆ core  1.42.0");
+  assertEquals(new Set(lines.map((l) => l.length)).size, 1);
+  const coloured = versionPanel(rows, cliPaint({ rich: true, color: true }));
+  assertEquals(stripAnsi(coloured), text);
+});
+
+Deno.test("the palette and the panel are exported from the render entrypoint", () => {
+  assertEquals(render.cliPaint, cliPaint);
+  assertEquals(render.PLAIN_PAINT, PLAIN_PAINT);
+  assertEquals(render.versionPanel, versionPanel);
 });
 
 Deno.test("the version panel boxes each fact under a zuke title", () => {

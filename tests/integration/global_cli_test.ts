@@ -454,3 +454,33 @@ Deno.test({
     }, { prefix: "zuke-global-cli-" });
   },
 });
+
+Deno.test("zuke --version reads the lockfile a real project's deno.json names", async () => {
+  await withTemp(async (dir) => {
+    await Deno.writeTextFile(`${dir}/${CONFIG_FILE}`, '{ "name": "Moved" }\n');
+    await Deno.writeTextFile(
+      `${dir}/zuke.ts`,
+      'await Deno.writeTextFile("ran.txt", "ran");\n',
+    );
+    await Deno.writeTextFile(
+      `${dir}/deno.json`,
+      JSON.stringify({ lock: "locks/zuke.lock" }),
+    );
+    const lock = (version: string) =>
+      JSON.stringify({
+        version: "5",
+        specifiers: { "jsr:@zuke/core@^1": version },
+      });
+    // A leftover default lock the build no longer resolves through.
+    await Deno.writeTextFile(`${dir}/deno.lock`, lock("1.1.0"));
+    await Deno.mkdir(`${dir}/locks`);
+    await Deno.writeTextFile(`${dir}/locks/zuke.lock`, lock("1.42.0"));
+    const host = recordingHost();
+    await inDir(dir, async () => {
+      assertEquals(await main(["--version"], host), 0);
+    });
+    assertEquals(host.logs.includes("1.42.0"), true, host.logs.join("\n"));
+    assertEquals(host.logs.includes("1.1.0"), false);
+    assertEquals(await exists(`${dir}/ran.txt`), false);
+  }, { prefix: "zuke-global-cli-" });
+});

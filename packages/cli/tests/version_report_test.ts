@@ -10,6 +10,7 @@ import {
   formatVersionPanel,
   homeRelative,
   lockedCoreVersions,
+  projectLockPath,
 } from "../src/version_report.ts";
 import { cliPaint } from "../src/paint.ts";
 
@@ -105,4 +106,43 @@ Deno.test("the version panel boxes each row under a zuke title, flush", () => {
     cliPaint({ rich: true, color: true, banner: true }),
   );
   assertEquals(stripAnsi(coloured), plainText);
+});
+
+Deno.test("projectLockPath follows Deno's lock setting", () => {
+  const root = "/work/app";
+  assertEquals(projectLockPath(root, undefined), "/work/app/deno.lock");
+  assertEquals(projectLockPath(root, "{}"), "/work/app/deno.lock");
+  assertEquals(projectLockPath(root, '{"lock": true}'), "/work/app/deno.lock");
+  assertEquals(projectLockPath(root, '{"lock": false}'), null);
+  assertEquals(
+    projectLockPath(root, '{"lock": "locks/z.lock"}'),
+    "/work/app/locks/z.lock",
+  );
+  assertEquals(
+    projectLockPath(root, '{"lock": {"path": "../shared.lock"}}'),
+    "/work/shared.lock",
+  );
+  // An object that only freezes the lock keeps the default file.
+  assertEquals(
+    projectLockPath(root, '{"lock": {"frozen": true}}'),
+    "/work/app/deno.lock",
+  );
+  // A config that is not an object carries no lock setting.
+  assertEquals(projectLockPath(root, "[]"), "/work/app/deno.lock");
+});
+
+Deno.test("projectLockPath keeps an absolute lock path as it is", () => {
+  if (Deno.build.os === "windows") return; // "/x" has no drive there.
+  assertEquals(
+    projectLockPath("/work/app", '{"lock": "/elsewhere/z.lock"}'),
+    "/elsewhere/z.lock",
+  );
+});
+
+Deno.test("projectLockPath refuses to guess at a config it cannot parse", () => {
+  // A deno.jsonc with comments is a setting this cannot read.
+  assertEquals(
+    projectLockPath("/work/app", '{ // no lock\n "lock": false }'),
+    null,
+  );
 });

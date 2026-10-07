@@ -19,6 +19,56 @@
 import { absolutePath, lockedJsrSpecifiers } from "@zuke/core";
 import { box } from "@zuke/core/render";
 import type { CliPaint } from "./paint.ts";
+import { isRecord } from "./records.ts";
+import { LOCK_FILE } from "./dispatch.ts";
+
+/**
+ * The config files Deno reads a project's `lock` setting from, in the order it
+ * prefers them: a `deno.json` wins over a `deno.jsonc` beside it.
+ */
+export const LOCK_CONFIG_FILES = ["deno.json", "deno.jsonc"] as const;
+
+/**
+ * The lockfile the project at `root` resolves through, from the text of its
+ * config (the first of {@link LOCK_CONFIG_FILES} that exists, or `undefined`
+ * when there is none), or `null` when no lock can be read for it.
+ *
+ * It follows Deno's `lock` setting:
+ * - `false` disables the lock, and Deno then ignores any `deno.lock` left
+ *   behind, so reading that file would report a version the build does not
+ *   run. That is `null`.
+ * - A string, or an object's `path`, names the lockfile, relative to `root`
+ *   unless it is absolute.
+ * - No setting, `true`, or an object without a `path` keeps `deno.lock`.
+ *
+ * A config that is not plain JSON (a `deno.jsonc` with comments) is a setting
+ * this cannot read, so it is also `null` rather than a guess; the caller then
+ * asks the build, as it does for a project with no lock.
+ */
+export function projectLockPath(
+  root: string,
+  configText: string | undefined,
+): string | null {
+  if (configText === undefined) return `${root}/${LOCK_FILE}`;
+  let config: unknown;
+  try {
+    config = JSON.parse(configText);
+  } catch {
+    return null;
+  }
+  const lock = isRecord(config) ? config.lock : undefined;
+  if (lock === false) return null;
+  const path = typeof lock === "string"
+    ? lock
+    : isRecord(lock) && typeof lock.path === "string"
+    ? lock.path
+    : LOCK_FILE;
+  try {
+    return absolutePath(path).path;
+  } catch {
+    return absolutePath(root, path).path;
+  }
+}
 
 /** The core package whose resolved version a project's lock is read for. */
 const CORE_PACKAGE = "@zuke/core";

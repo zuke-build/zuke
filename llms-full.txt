@@ -5994,7 +5994,10 @@ interface WrapperConformanceOptions
 Primitive terminal rendering, shared by the executor's build reporting
 (`./report.ts`) and the `@zuke/console` package: ANSI styling, terminal-width
 detection, duration formatting, and the reusable `line`/`box`/`table`
-primitives that draw a build's output.
+primitives that draw a build's output — plus the palette the CLI's
+informational output is painted with ({@link cliPaint}) and its version
+panel ({@link versionPanel}), so the global `zuke` command paints with the
+same ones as the build.
 
 Everything here is pure — no I/O, no process state — so argv-free output can
 be unit-tested and reused without duplicating escape codes. Cells may already
@@ -6006,6 +6009,11 @@ function box(style: Style, content: string | readonly string[], options: BoxOpti
   A bordered panel around `content` (a string, split on newlines, or an array
   of lines). Content may carry ANSI codes; padding is measured on the visible
   text so the border stays flush.
+
+function cliPaint(mode: Pick<OutputMode, "rich" | "color">): CliPaint
+  The palette for `mode`: {@link PLAIN_PAINT} unless output is rich. Colour
+  follows `mode.color` separately, so `NO_COLOR` on a terminal still gets the
+  glyphs without the escape codes.
 
 function detectWidth(): number
   Read the terminal width if available, clamped to a sane range.
@@ -6100,8 +6108,23 @@ function table(style: Style, columns: readonly TableColumn[], rows: readonly (re
   one line per row. Column widths fit the widest visible cell; cells may already
   carry ANSI colour. Rows shorter than the columns are padded with empty cells.
 
+function versionPanel(rows: readonly VersionRow[], paint: CliPaint): string
+  A version panel: a box titled `zuke` with one aligned row per entry, the
+  first value emphasised. Colour follows `paint`, so `NO_COLOR` keeps the box
+  and drops the escape codes. The global `zuke` command prints its own
+  `--version` with it, so both panels look the same.
+
+  @param rows
+      The rows to print, in order; the first value is emphasised.
+
+  @param paint
+      The palette, from `cliPaint`.
+
 function visibleWidth(text: string): number
   The printable width of `text`, ignoring any ANSI colour codes it carries.
+
+const PLAIN_PAINT: CliPaint
+  Paint nothing: plain mode, and the default for every formatter.
 
 const SGR: { reset: string; bold: string; dim: string; italic: string; underline: string; black: string; red: string; green: string; yellow: string; blue: string; magenta: string; cyan: string; white: string; gray: string; }
   ANSI select-graphic-rendition codes, keyed by style name.
@@ -6119,6 +6142,30 @@ interface BoxOptions
     Styles for the border characters. Defaults to `["dim"]`.
   titleStyle?: readonly StyleName[]
     Styles for the title text. Defaults to `["bold"]`.
+
+interface CliPaint
+  How each kind of text in the CLI's informational output is painted.
+
+  rich: boolean
+    Whether decoration (glyphs, panels) is on, as opposed to colour alone.
+  color: boolean
+    Whether ANSI colour is on.
+  heading(text: string): string
+    A section heading such as `Commands:`.
+  command(text: string): string
+    A reserved command's name.
+  flag(text: string): string
+    A flag or parameter, such as `--plain`.
+  target(text: string): string
+    A target's name.
+  muted(text: string): string
+    Secondary detail: dependencies, tags, hints.
+  brand(text: string): string
+    The program's own name in a title line.
+  ok(text: string): string
+    A line reporting success: a green ✔ before it when rich.
+  fail(text: string): string
+    A line reporting failure or unfinished work: a red ✖ before it when rich.
 
 interface LineOptions
   Options for {@link line}.
@@ -6162,6 +6209,9 @@ interface TableOptions
 
 type StyleName = keyof typeof SGR
   A style name understood by {@link sgrCodes}, {@link paint}, and markup.
+
+type VersionRow = readonly [string, string]
+  One row of a version panel: its label and its value.
 
 A backend conformance kit for the state-api (`docs/state-api.md`).
 

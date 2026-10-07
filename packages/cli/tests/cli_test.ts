@@ -1307,6 +1307,49 @@ Deno.test("--version still asks the build when the lock names no core", async ()
   assertEquals(reached(), true);
 });
 
+Deno.test("--version does not read a deno.lock the project's config disables", async () => {
+  // Deno ignores a leftover deno.lock under "lock": false, so its core is not
+  // the one the build runs on; the build is asked instead.
+  const host = new FakeHost({
+    [atCwd("deno.json")]: JSON.stringify({ lock: false }),
+    [atCwd("deno.lock")]: coreLock("1.42.0"),
+  });
+  const { runner, reached } = neverRun();
+  await main(
+    ["--version"],
+    host,
+    defaultPrompter,
+    undefined,
+    undefined,
+    runner,
+    probeAt(["zuke.json", "deno.lock"]),
+  );
+  assertEquals(reached(), true);
+  assertEquals(host.logs.includes("1.42.0"), false);
+});
+
+Deno.test("--version reads the lockfile the project's config names", async () => {
+  const host = new FakeHost({
+    [atCwd("deno.jsonc")]: JSON.stringify({
+      lock: { path: "locks/zuke.lock" },
+    }),
+    [atCwd("deno.lock")]: coreLock("1.1.0"),
+    [atCwd("locks/zuke.lock")]: coreLock("1.42.0"),
+  });
+  const { runner, reached } = neverRun();
+  await main(
+    ["--version"],
+    host,
+    defaultPrompter,
+    undefined,
+    undefined,
+    runner,
+    probeAt(["zuke.json"]),
+  );
+  assertEquals(reached(), false);
+  assertEquals(host.logs[2], "1.42.0");
+});
+
 Deno.test("--version says why a build could not answer: core older than 1.60.0", async () => {
   const err = await capturingErr(async () => {
     await main(

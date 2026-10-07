@@ -38,8 +38,11 @@ export function versionFacts(): VersionFacts {
   };
 }
 
+/** One row of a version panel: its label and its value. */
+export type VersionRow = readonly [label: string, value: string];
+
 /** The panel's rows, in the order they are printed. */
-function rows(facts: VersionFacts): Array<[string, string]> {
+function rows(facts: VersionFacts): VersionRow[] {
   return [
     ["core", facts.core],
     ["deno", facts.deno],
@@ -49,17 +52,20 @@ function rows(facts: VersionFacts): Array<[string, string]> {
 }
 
 /**
- * The version panel: a titled box with one aligned row per fact, the core
- * version emphasised. Colour follows `paint`, so `NO_COLOR` keeps the box and
- * drops the escape codes.
+ * A version panel: a box titled `zuke` with one aligned row per entry, the
+ * first value emphasised. Colour follows `paint`, so `NO_COLOR` keeps the box
+ * and drops the escape codes. The global `zuke` command prints its own
+ * `--version` with it, so both panels look the same.
+ *
+ * @param rows The rows to print, in order; the first value is emphasised.
+ * @param paint The palette, from `cliPaint`.
  */
-export function formatVersionPanel(
-  facts: VersionFacts,
+export function versionPanel(
+  rows: readonly VersionRow[],
   paint: CliPaint,
 ): string {
-  const entries = rows(facts);
-  const width = Math.max(...entries.map(([label]) => label.length));
-  const lines = entries.map(([label, value], index) => {
+  const width = Math.max(...rows.map(([label]) => label.length));
+  const lines = rows.map(([label, value], index) => {
     const name = paint.muted(label.padEnd(width));
     const shown = index === 0 ? paint.target(value) : value;
     return `${paint.command("◆")} ${name}  ${shown}`;
@@ -69,4 +75,12 @@ export function formatVersionPanel(
     lines,
     { title: "zuke", titleStyle: ["cyan", "bold"] },
   ).join("\n");
+}
+
+/** The build's own version panel: {@link versionPanel} over `facts`. */
+export function formatVersionPanel(
+  facts: VersionFacts,
+  paint: CliPaint,
+): string {
+  return versionPanel(rows(facts), paint);
 }

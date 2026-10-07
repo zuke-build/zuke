@@ -5,7 +5,10 @@
  * Primitive terminal rendering, shared by the executor's build reporting
  * (`./report.ts`) and the `@zuke/console` package: ANSI styling, terminal-width
  * detection, duration formatting, and the reusable `line`/`box`/`table`
- * primitives that draw a build's output.
+ * primitives that draw a build's output — plus the palette the CLI's
+ * informational output is painted with ({@link cliPaint}) and its version
+ * panel ({@link versionPanel}), so the global `zuke` command paints with the
+ * same ones as the build.
  *
  * Everything here is pure — no I/O, no process state — so argv-free output can
  * be unit-tested and reused without duplicating escape codes. Cells may already
@@ -352,3 +355,6 @@ export function table(
   for (const row of rows) out.push(layout(row));
   return out;
 }
+
+export { type CliPaint, cliPaint, PLAIN_PAINT } from "./cli_paint.ts";
+export { versionPanel, type VersionRow } from "./cli_version.ts";

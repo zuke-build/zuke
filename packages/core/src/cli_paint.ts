@@ -11,6 +11,9 @@
  * Rich mode only ever adds — colour, and a glyph before each section heading —
  * so the words and their order are the same in both.
  *
+ * Exported from `@zuke/core/render`, so the global `zuke` command paints its
+ * own output with the same palette rather than a copy of it.
+ *
  * @module
  */
 
@@ -35,6 +38,10 @@ export interface CliPaint {
   muted(text: string): string;
   /** The program's own name in a title line. */
   brand(text: string): string;
+  /** A line reporting success: a green ✔ before it when rich. */
+  ok(text: string): string;
+  /** A line reporting failure or unfinished work: a red ✖ before it when rich. */
+  fail(text: string): string;
 }
 
 /** The glyph rich mode puts before a section heading. */
@@ -50,6 +57,8 @@ export const PLAIN_PAINT: CliPaint = {
   target: (text) => text,
   muted: (text) => text,
   brand: (text) => text,
+  ok: (text) => text,
+  fail: (text) => text,
 };
 
 /**
@@ -72,5 +81,7 @@ export function cliPaint(mode: Pick<OutputMode, "rich" | "color">): CliPaint {
     target: (text) => stylize(color, ["green", "bold"], text),
     muted: (text) => stylize(color, ["dim"], text),
     brand: (text) => stylize(color, ["cyan", "bold"], text),
+    ok: (text) => `${stylize(color, ["green"], "✔")} ${text}`,
+    fail: (text) => `${stylize(color, ["red"], "✖")} ${text}`,
   };
 }
