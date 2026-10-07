@@ -292,7 +292,8 @@ Deno.test("H4: credential-bearing commands pin json and mask what they print", a
   await acr.settings.runner(acrFake.run).run();
   assertEquals(acrFake.flag(0, "--output"), "json");
   assertEquals(acr.marked.includes("acr-token-value-1"), true);
-  assertEquals(acr.marked.includes("r.azurecr.io"), false);
+  // The registry host is not a credential, so it is not among the masked values.
+  assertEquals(new Set(acr.marked).has("r.azurecr.io"), false);
 
   const secret = JSON.stringify({
     host: "db.internal",
@@ -312,7 +313,7 @@ Deno.test("H4: credential-bearing commands pin json and mask what they print", a
     assertEquals(fake.flag(0, "--output"), "json");
     assertEquals(shown.marked.includes(secret), true);
     assertEquals(shown.marked.includes("db-pass-123"), true);
-    assertEquals(shown.marked.includes("db.internal"), false);
+    assertEquals(new Set(shown.marked).has("db.internal"), false);
   }
 
   // Plain text, the form a pinned format cannot be, is registered whole.
