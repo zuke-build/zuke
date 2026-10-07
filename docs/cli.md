@@ -391,10 +391,15 @@ whole npm tree and writes an `npm` section a jsr-only lock never had.
 ## Help
 
 `--help` is a map of the surface, not the manual. It lists what exists in
-labelled groups — `Commands:`, `Options:`, `Targets:`, `Parameters:` — with one
-short line each, and ends by pointing at the per-command pages. Targets are
-listed alphabetically (in `--list` too), so a long build stays scannable; each
-target's `depends on:` list keeps its declared order.
+labelled groups with one short line each: `Commands:`, then the flags that apply
+to any run sorted by what they do — `Run options:` (how the run executes:
+`--skip <dep>`, `--parallel[=N]`, `--affected[=<base>]`, `--dry-run`, …),
+`Run record:` (`--state`, `--actor <name>`), `Output:` (`--no-banner`,
+`--plain`) and `Info:` (`--list`, `--json`, `--help`, `--version`) — then
+`Targets:` and `Parameters:`. Each flag shows the value it takes. It ends by
+pointing at the per-command pages. Targets are listed alphabetically (in
+`--list` too), so a long build stays scannable; each target's `depends on:` list
+keeps its declared order.
 
 `zuke <command> --help` is where a command's detail lives: its usage lines, its
 full explanation, and the flags that qualify only it. `zuke mcp --help` carries

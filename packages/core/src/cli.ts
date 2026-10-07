@@ -50,6 +50,7 @@ import {
   COMPLETIONS_COMMAND,
   DEFAULT_TARGET,
   DOC_COMMAND,
+  FLAG_SECTIONS,
   FORCE_COMMAND,
   GENERATE_CI_COMMAND,
   GRAPH_COMMAND,
@@ -697,6 +698,11 @@ function row(
   return [label + wrapped[0].trimStart(), ...wrapped.slice(1)];
 }
 
+/** A flag as the help shows it: its name, then the value it takes, if any. */
+function flagLabel(flag: BuiltinFlag): string {
+  return `${flag.name}${flag.value ?? ""}`;
+}
+
 /** The flags that apply to any run, rather than qualifying one command. */
 function generalFlags(): BuiltinFlag[] {
   return BUILTIN_FLAGS.filter((f) => f.command === undefined);
@@ -716,7 +722,7 @@ function usageText(paint: CliPaint): string {
   );
   const flags = generalFlags();
   const flagWidth = Math.max(
-    ...flags.map((f) => f.name.length),
+    ...flags.map((f) => flagLabel(f).length),
     "<target>".length,
   );
   const program = paint.brand(PROGRAM);
@@ -735,17 +741,23 @@ function usageText(paint: CliPaint): string {
       ...row(command.name, command.description, commandWidth, paint.command),
     );
   }
-  lines.push("", paint.heading("Options:"));
-  lines.push(
-    ...row(
-      "<target>",
-      "Run the target and its transitive dependencies.",
-      flagWidth,
-      paint.target,
-    ),
-  );
-  for (const flag of flags) {
-    lines.push(...row(flag.name, flag.description, flagWidth, paint.flag));
+  for (const [section, heading] of FLAG_SECTIONS) {
+    lines.push("", paint.heading(heading));
+    if (section === "run") {
+      lines.push(
+        ...row(
+          "<target>",
+          "Run the target and its transitive dependencies.",
+          flagWidth,
+          paint.target,
+        ),
+      );
+    }
+    for (const flag of flags.filter((f) => f.section === section)) {
+      lines.push(
+        ...row(flagLabel(flag), flag.description, flagWidth, paint.flag),
+      );
+    }
   }
   lines.push(
     "",
@@ -782,11 +794,16 @@ export function formatCommandHelp(
   }
   const own = BUILTIN_FLAGS.filter((f) => f.command === command.name);
   if (own.length > 0) {
-    const width = Math.max(...own.map((f) => f.name.length));
+    const width = Math.max(...own.map((f) => flagLabel(f).length));
     lines.push("", paint.heading("Options:"));
     for (const flag of own) {
       lines.push(
-        ...row(flag.name, flag.detail ?? flag.description, width, paint.flag),
+        ...row(
+          flagLabel(flag),
+          flag.detail ?? flag.description,
+          width,
+          paint.flag,
+        ),
       );
     }
   }

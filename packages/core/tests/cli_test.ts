@@ -31,6 +31,7 @@ import { discoverParameters, parameter } from "../src/params.ts";
 import {
   BUILTIN_FLAG_NAMES,
   BUILTIN_FLAGS,
+  FLAG_SECTIONS,
   RESERVED_COMMANDS,
 } from "../src/cli_spec.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
@@ -209,9 +210,10 @@ Deno.test("the main help groups commands and options separately", () => {
   // Options block, so `graph` and `mcp` read as though they were flags.
   const help = formatHelp(discoverTargets(new Demo()));
   const commands = help.indexOf("\nCommands:\n");
-  const options = help.indexOf("\nOptions:\n");
+  // The general flags follow, grouped under their own section headings.
+  const options = help.indexOf(`\n${FLAG_SECTIONS[0][1]}\n`);
   assertEquals(commands > 0, true, "no Commands section");
-  assertEquals(options > commands, true, "no Options section after Commands");
+  assertEquals(options > commands, true, "no flag section after Commands");
   // Compare row labels, not any occurrence: a command's one-line description
   // may legitimately name a flag, as resume's mentions --check.
   const labels = help.slice(commands, options)
@@ -1677,4 +1679,44 @@ Deno.test("--list and --help are painted on a terminal, plain under --plain", as
       }
     },
   );
+});
+
+Deno.test("every general flag belongs to a help section, and every section has flags", () => {
+  const general = BUILTIN_FLAGS.filter((f) => f.command === undefined);
+  for (const flag of general) {
+    assertEquals(flag.section !== undefined, true, flag.name);
+  }
+  // A command's own flags are its help's business, not a main-help section.
+  for (const flag of BUILTIN_FLAGS.filter((f) => f.command !== undefined)) {
+    assertEquals(flag.section, undefined, flag.name);
+  }
+  for (const [section] of FLAG_SECTIONS) {
+    assertEquals(general.some((f) => f.section === section), true, section);
+  }
+});
+
+Deno.test("the main help groups the general flags under their sections, with values", () => {
+  const help = formatHelp(new Map());
+  const headings = FLAG_SECTIONS.map(([, heading]) => help.indexOf(heading));
+  // Each heading appears, in order, after the commands.
+  assertEquals(headings.every((at) => at > help.indexOf("Commands:")), true);
+  assertEquals([...headings].sort((a, b) => a - b), headings);
+  // A flag lands under its own section, before the next one begins.
+  const between = (from: string, to: string) =>
+    help.slice(help.indexOf(from), help.indexOf(to));
+  assertStringIncludes(between("Run options:", "Run record:"), "--skip <dep>");
+  assertStringIncludes(between("Run options:", "Run record:"), "<target>");
+  assertStringIncludes(between("Run record:", "Output:"), "--actor <name>");
+  assertStringIncludes(between("Output:", "Info:"), "--plain");
+  assertStringIncludes(help.slice(help.indexOf("Info:")), "--version");
+  assertEquals(help.includes("\nOptions:"), false);
+  // A command's own flags stay out of the main help.
+  assertEquals(help.includes("--allow-run"), false);
+});
+
+Deno.test("a command's help shows each flag with the value it takes", () => {
+  const mcp = formatCommandHelp("mcp") ?? "";
+  assertStringIncludes(mcp, "--allow-run[=<globs>]");
+  assertStringIncludes(mcp, "--http <host:port>");
+  assertStringIncludes(mcp, "--registry ");
 });
