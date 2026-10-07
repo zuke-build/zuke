@@ -1572,7 +1572,7 @@
       },
       "packages/canary": {
         "dependencies": [
-          "jsr:@zuke/core@^1.63.0",
+          "jsr:@zuke/core@^1.66.0",
           "jsr:@zuke/prometheus@1"
         ]
       },
@@ -1665,7 +1665,7 @@
       },
       "packages/gh": {
         "dependencies": [
-          "jsr:@zuke/core@^1.31.0"
+          "jsr:@zuke/core@^1.66.0"
         ]
       },
       "packages/git": {
@@ -1770,7 +1770,7 @@
       },
       "packages/prometheus": {
         "dependencies": [
-          "jsr:@zuke/core@^1.65.0"
+          "jsr:@zuke/core@^1.66.0"
         ]
       },
       "packages/qr": {
