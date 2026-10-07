@@ -387,7 +387,7 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   `acrBuild`, `containerappUpdate` + `containerappIngressTrafficSet`,
   `webappDeploy`, `deploymentGroupCreate`, `aksGetCredentials`, … — and readers
   hand back values: `subscriptionId`, `accessToken`, `secretValue`, `acrToken`,
-  `containerAppFqdn`, `webAppHostName`, `deploymentOutput(group, name, key)`,
+  `containerappFqdn`, `webappHostName`, `deploymentOutput(group, name, key)`,
   `metricValue` (Azure Monitor, `.missingDataAs(0)` for no data),
   `logAnalyticsQuery`. Secrets reach the CLI on stdin, credential commands run
   quietly and register what they return, a typed value the CLI would read as an

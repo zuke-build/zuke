@@ -873,16 +873,17 @@ class Deploy extends Build {
 await run(Deploy);
 ```
 
-| Setting                             | Meaning                                                                                                                                       |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `resource`, `metric`, `aggregation` | The metric: a full resource id, the metric's name, and `Total`, `Count`, `Average`, `Maximum` or `Minimum`. `namespace` when it is ambiguous. |
-| `dimension(name, value)`            | Narrow the series to a dimension value — rendered as `--filter "name eq 'value'"`; repeatable.                                                |
-| `interval(grain)`                   | What each datapoint covers (default `PT1M`). Every datapoint is judged, so `.max(5)` on a per-minute `Count` means no minute above five.      |
-| `window(duration)`                  | How far back to read (default `5m`). It ends at the last interval boundary, so the interval still being written is not judged.                |
-| `kql(workspace, query)`             | Judge a Log Analytics query that returns one row with one number instead (needs the CLI's `log-analytics` extension).                         |
-| `min(value)`, `max(value)`          | The bounds, inclusive. At least one is required.                                                                                              |
-| `missingDataAs(value)`              | What no data means. Azure Monitor reports an interval with no events without a value, so for an error count, `0`; by default it fails.        |
-| `az((a) => …)`, `now(clock)`        | The CLI's global options — `subscription`, a `runner` a test answers through — and the clock the window is read against.                      |
+| Setting                             | Meaning                                                                                                                                                      |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `resource`, `metric`, `aggregation` | The metric: a full resource id, the metric's name, and `Total`, `Count`, `Average`, `Maximum` or `Minimum`. `namespace` when it is ambiguous.                |
+| `dimension(name, value)`            | Narrow the series to a dimension value — rendered as `--filter "name eq 'value'"`; repeatable.                                                               |
+| `interval(grain)`                   | What each datapoint covers (default `PT1M`). Every datapoint is judged, so `.max(5)` on a per-minute `Count` means no minute above five.                     |
+| `window(duration)`                  | How far back to read (default `5m`), no shorter than the interval. It ends at the last interval boundary, so the interval still being written is not judged. |
+| `top(count)`                        | The most series to read (default 10). A dimension filter can match several; an answer that reaches the limit fails rather than be judged in part.            |
+| `kql(workspace, query)`             | Judge a Log Analytics query that returns one row with one number instead (needs the CLI's `log-analytics` extension).                                        |
+| `min(value)`, `max(value)`          | The bounds, inclusive. At least one is required.                                                                                                             |
+| `missingDataAs(value)`              | What no data means. Azure Monitor reports an interval with no events without a value, so for an error count, `0`; by default it fails.                       |
+| `az((a) => …)`, `now(clock)`        | The CLI's global options — `subscription`, a `runner` a test answers through — and the clock the window is read against.                                     |
 
 Azure Monitor publishes a datapoint a little after its interval ends, so the
 newest interval in the window can still be short of data. That only lowers a
