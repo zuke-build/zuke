@@ -181,3 +181,80 @@ Deno.test("integration: --no-banner is honoured on resume too", async () => {
     assertEquals(out.includes(IDENTITY), false, out);
   });
 });
+
+/** Run with the plain-output variables set as given, restoring them after. */
+async function withPlainEnv(
+  values: Record<string, string | undefined>,
+  fn: () => Promise<void>,
+): Promise<void> {
+  const saved = new Map<string, string | undefined>();
+  for (const [name, value] of Object.entries(values)) {
+    saved.set(name, Deno.env.get(name));
+    if (value === undefined) Deno.env.delete(name);
+    else Deno.env.set(name, value);
+  }
+  try {
+    await fn();
+  } finally {
+    for (const [name, value] of saved) {
+      if (value === undefined) Deno.env.delete(name);
+      else Deno.env.set(name, value);
+    }
+  }
+}
+
+Deno.test("integration: --plain is one level above --no-banner, and the run still reports", async () => {
+  const { code, out } = await runCli(Quiet, ["work", "--plain"]);
+  assertEquals(code, 0);
+  assertEquals(out.includes(IDENTITY), false, out);
+  assertEquals(out.includes("\x1b["), false, out);
+  assertEquals(out.includes("work"), true, out);
+});
+
+Deno.test("integration: ZUKE_PLAIN suppresses the banner from the environment", async () => {
+  await withPlainEnv({ ZUKE_PLAIN: "1", ZUKE_NO_BANNER: "false" }, async () => {
+    const { code, out } = await runCli(Quiet, ["work"]);
+    assertEquals(code, 0);
+    // Plain wins over a standing ZUKE_NO_BANNER=false: it implies no banner.
+    assertEquals(out.includes(IDENTITY), false, out);
+  });
+  await withPlainEnv(
+    { ZUKE_PLAIN: "0", ZUKE_NO_BANNER: undefined },
+    async () => {
+      const { out } = await runCli(Quiet, ["work"]);
+      assertEquals(out.includes(IDENTITY), true, out);
+    },
+  );
+});
+
+Deno.test("integration: --plain is honoured on resume too", async () => {
+  class Gated extends Build {
+    gate = target().waitsFor((s) => s.on(externalSignal("approved")));
+  }
+  await withStateDir(async (dir) => {
+    const first = await runCli(Gated, ["gate", "--state", "--plain"]);
+    assertEquals(first.code, 0);
+    assertEquals(first.out.includes(IDENTITY), false, first.out);
+
+    const store = new FileSystemStateStore(dir, defaultStateHost);
+    const runs = await store.listRuns({});
+    const { out } = await runCli(Gated, [
+      "resume",
+      runs[0].id,
+      "--signal",
+      "approved",
+      "--plain",
+    ]);
+    assertEquals(out.includes(IDENTITY), false, out);
+  });
+});
+
+Deno.test("integration: informational commands through a pipe stay plain", async () => {
+  // The harness captures output, which is what a pipe is: no terminal, so no
+  // rich form, and --version is the bare number a script reads.
+  const version = await runCli(Quiet, ["--version"]);
+  assertEquals(version.out.trim(), VERSION);
+  const list = await runCli(Quiet, ["--list"]);
+  assertEquals(list.out.includes("◆"), false, list.out);
+  assertEquals(list.out.includes("Targets:"), true, list.out);
+});

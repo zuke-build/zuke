@@ -182,70 +182,135 @@ export interface BuiltinFlag {
   readonly command?: string;
   /** The full explanation, shown by the owning command's help. */
   readonly detail?: string;
+  /**
+   * What the flag takes, as the help shows it after the name: ` <dep>` for a
+   * separate value, `[=N]` for an optional attached one. Undefined for a
+   * switch that takes nothing.
+   */
+  readonly value?: string;
+  /**
+   * Where the main help groups a general flag. Set on every flag without a
+   * {@link BuiltinFlag.command}; a command's own flags are listed by that
+   * command's help instead.
+   */
+  readonly section?: FlagSection;
 }
+
+/**
+ * The groups the main help sorts the general flags into: what changes how a
+ * run executes, what it records, how it prints, and what reports about the
+ * build instead of running it.
+ */
+export type FlagSection = "run" | "record" | "output" | "info";
+
+/** Each {@link FlagSection}'s heading, in the order the main help prints them. */
+export const FLAG_SECTIONS: ReadonlyArray<readonly [FlagSection, string]> = [
+  ["run", "Run options:"],
+  ["record", "Run record:"],
+  ["output", "Output:"],
+  ["info", "Info:"],
+];
 
 /** Every built-in option flag, in completion order. */
 export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
-  { name: "--list", description: "List all targets with descriptions" },
+  {
+    name: "--list",
+    section: "info",
+    description: "List all targets with descriptions",
+  },
   {
     name: "--json",
+    section: "info",
     description: "Print the build surface (commands, flags, targets) as JSON",
     detail:
       "With --list, print the build surface — commands, flags, targets and parameters — as JSON for tools and agents.",
   },
-  { name: "--skip", description: "Skip the named dependency" },
+  {
+    name: "--skip",
+    value: " <dep>",
+    section: "run",
+    description: "Skip the named dependency",
+  },
   {
     name: "--parallel",
+    value: "[=N]",
+    section: "run",
     description: "Run independent targets concurrently",
     detail:
       "Run independent targets concurrently. =N caps how many are in flight at once; the default is the CPU count.",
   },
-  { name: "--no-cache", description: "Ignore the incremental cache" },
+  {
+    name: "--no-cache",
+    section: "run",
+    description: "Ignore the incremental cache",
+  },
   {
     name: "--no-banner",
+    section: "output",
     description: "Do not print the opening banner (also ZUKE_NO_BANNER)",
     detail:
       "Do not print the opening banner — the Zuke wordmark, the framework and runtime versions with the platform, and the run id. ZUKE_NO_BANNER=1 does the same from the environment; the wordmark is already omitted on CI.",
   },
   {
+    name: "--plain",
+    section: "output",
+    description: "Plain output: no banner or colour (also ZUKE_PLAIN)",
+    detail:
+      "Plain output: no opening banner and no colour, and informational commands (--version, --help, --list, graph) print exactly what they print into a pipe, so --version is a bare number. A run keeps its target rules and summary table. ZUKE_PLAIN=1 does the same from the environment. It implies --no-banner. Decoration is already dropped on CI and when stdout is not a terminal.",
+  },
+  {
     name: "--no-remote-cache",
+    section: "run",
     description: "Use the local cache only; skip the remote cache store",
     detail:
       "Use the local cache only; do not restore from or upload to the configured remote cache store.",
   },
   {
     name: "--affected",
+    value: "[=<base>]",
+    section: "run",
     description: "Run only targets affected by changes since a git base",
     detail:
       "Run only targets affected by files changed since <base>, a git revision defaulting to HEAD. A target is affected when a changed file is under its declared inputs or when a dependency is affected; targets with no declared inputs always run.",
   },
-  { name: "--dry-run", description: "Print the plan without running targets" },
+  {
+    name: "--dry-run",
+    section: "run",
+    description: "Print the plan without running targets",
+  },
   {
     name: "--preflight",
+    section: "run",
     description: "Run only the validations' preflight checks, then stop",
     detail:
       "Run every planned validation's preflight — the checks that decide whether the run may happen at all, such as who may start a comment-triggered review — and stop without running any target. Exits non-zero when a preflight refuses. A normal run performs the same phase before its first target.",
   },
   {
     name: "--state",
+    section: "record",
     description: "Persist durable run state to .zuke/runs",
     detail:
       "Persist durable run state under .zuke/runs — a run record with per-target status and metadata — unless a store is already configured via ZUKE_STATE_URL, ZUKE_STATE_DIR or the build's stateStore(). See docs/state.md.",
   },
   {
     name: "--actor",
+    value: " <name>",
+    section: "record",
     description: "Attribute the run to <name> in its state record",
     detail:
       'Attribute the run to <name> in its state record, else ZUKE_ACTOR, the CI actor, or "anonymous". Every resume rewrites it with whoever picked the run up.',
   },
   {
     name: "--actor-kind",
+    value: " <kind>",
+    section: "record",
     description: "Who asked for the run: human (default) or service",
     detail:
       "Whether a person or a machine asked: human (the default) or service, else ZUKE_ACTOR_KIND. Recorded on the run's initiator which, unlike --actor, is stamped once at creation and never rewritten.",
   },
   {
     name: "--output",
+    value: " <fmt>",
     description: "Graph output format: text or html",
     command: "graph",
     detail:
@@ -267,12 +332,14 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
   },
   {
     name: "--signal",
+    value: " <name>",
     description: "With resume, deliver a named external signal",
     command: "resume",
     detail: "Deliver a named external signal to the run.",
   },
   {
     name: "--data",
+    value: " <json>",
     description: "With resume --signal, the signal's JSON payload",
     command: "resume",
     detail: "With --signal, the signal's JSON payload (default {}).",
@@ -308,6 +375,7 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
   },
   {
     name: "--status",
+    value: " <status>",
     description: "With runs list, keep only runs with this status",
     command: "runs",
     detail:
@@ -315,12 +383,14 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
   },
   {
     name: "--target",
+    value: " <target>",
     description: "With runs list, keep only runs whose graph has this target",
     command: "runs",
     detail: "With runs list, keep only runs whose graph contains this target.",
   },
   {
     name: "--since",
+    value: " <iso>",
     description: "With runs list, keep only runs created at/after this time",
     command: "runs",
     detail:
@@ -328,12 +398,14 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
   },
   {
     name: "--limit",
+    value: " <n>",
     description: "With runs list, return at most this many runs (newest)",
     command: "runs",
     detail: "With runs list, return at most this many runs (the newest).",
   },
   {
     name: "--initiator",
+    value: " <name>",
     description: "With runs list, keep only runs this actor started",
     command: "runs",
     detail:
@@ -341,6 +413,7 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
   },
   {
     name: "--outcome",
+    value: " <outcome>",
     description: "With force, what the target settles to: skipped or succeeded",
     command: "force",
     detail:
@@ -348,6 +421,7 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
   },
   {
     name: "--reason",
+    value: " <text>",
     description: "With force, why the target was forced (recorded on the run)",
     command: "force",
     detail:
@@ -362,6 +436,7 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
   },
   {
     name: "--keep",
+    value: " <age>",
     description: "With runs prune, keep runs newer than this age (e.g. 90d)",
     command: "runs",
     detail:
@@ -369,6 +444,7 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
   },
   {
     name: "--keep-last",
+    value: " <n>",
     description: "With runs prune, always keep the newest N terminal runs",
     command: "runs",
     detail:
@@ -376,6 +452,7 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
   },
   {
     name: "--allow-run",
+    value: "[=<globs>]",
     description:
       "With mcp, let agents run targets (optional =<glob-list> allow-list)",
     command: "mcp",
@@ -384,6 +461,7 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
   },
   {
     name: "--protect",
+    value: " <globs>",
     description: "With mcp, require an operator token to run these targets",
     command: "mcp",
     detail:
@@ -391,6 +469,7 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
   },
   {
     name: "--allowed-origin",
+    value: " <origin>",
     description:
       "With mcp --http, an extra allowed Origin (repeatable; loopback-only otherwise)",
     command: "mcp",
@@ -414,6 +493,7 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
   },
   {
     name: "--max-concurrent-runs",
+    value: " <n>",
     description:
       "With mcp --registry, cap concurrent run-tool spawns (default 4)",
     command: "mcp",
@@ -422,14 +502,16 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
   },
   {
     name: "--http",
+    value: " <host:port>",
     description: "With mcp, serve over HTTP on <host:port> instead of stdio",
     command: "mcp",
     detail:
       "Serve the streamable-HTTP transport on the given address instead of stdio. A bare <port> binds 127.0.0.1. A non-loopback host must authenticate its callers, with a bearer token (ZUKE_MCP_TOKEN) or an mcpAuth() authenticator on the build. Put real TLS in front for production. See docs/mcp.md.",
   },
-  { name: "--help", description: "Show usage" },
+  { name: "--help", section: "info", description: "Show usage" },
   {
     name: "--version",
+    section: "info",
     description: "Print the Zuke version this build runs on",
     detail:
       "Prints the @zuke/core version the build resolved, and nothing else, so a script can read it directly.\n\nThis is the build's own version rather than the installed CLI's: the two are separate packages on separate release cadences, and a project pins core through its own import map and lock. Asking the installed zuke prints both, each labelled, so it is never ambiguous which one answered.",

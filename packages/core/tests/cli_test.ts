@@ -31,6 +31,7 @@ import { discoverParameters, parameter } from "../src/params.ts";
 import {
   BUILTIN_FLAG_NAMES,
   BUILTIN_FLAGS,
+  FLAG_SECTIONS,
   RESERVED_COMMANDS,
 } from "../src/cli_spec.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
@@ -38,6 +39,10 @@ import { defaultStateHost } from "../src/state/store.ts";
 import type { RunRecord } from "../src/state/types.ts";
 import { withTemp } from "./_temp.ts";
 import { capture } from "./_console.ts";
+import { withEnv } from "./_env.ts";
+import { VERSION } from "../src/version.ts";
+import { cliPaint } from "../src/cli_paint.ts";
+import { stripAnsi } from "../src/render.ts";
 
 /** A minimal valid run record for the `runs` command tests. */
 function sampleRunRecord(overrides: Partial<RunRecord> = {}): RunRecord {
@@ -205,9 +210,10 @@ Deno.test("the main help groups commands and options separately", () => {
   // Options block, so `graph` and `mcp` read as though they were flags.
   const help = formatHelp(discoverTargets(new Demo()));
   const commands = help.indexOf("\nCommands:\n");
-  const options = help.indexOf("\nOptions:\n");
+  // The general flags follow, grouped under their own section headings.
+  const options = help.indexOf(`\n${FLAG_SECTIONS[0][1]}\n`);
   assertEquals(commands > 0, true, "no Commands section");
-  assertEquals(options > commands, true, "no Options section after Commands");
+  assertEquals(options > commands, true, "no flag section after Commands");
   // Compare row labels, not any occurrence: a command's one-line description
   // may legitimately name a flag, as resume's mentions --check.
   const labels = help.slice(commands, options)
@@ -1554,4 +1560,163 @@ Deno.test("main: resume rejects a multibyte --data payload over the byte budget"
   );
   assertEquals(code, 1); // but over it in real bytes → rejected
   assertEquals(err.join("\n").includes("too large"), true);
+});
+
+/** A build exercising every painted element: deps, a group, a fan-out, params. */
+class Painted extends Build {
+  environment = parameter("Target environment").options("dev", "prod")
+    .required();
+  checks = group();
+  clean = target().description("Remove output").executes(() => {});
+  lint = target().partOf(this.checks).executes(() => {});
+  build = target().description("Compile").dependsOn(this.clean)
+    .executes(() => {});
+  fan = target().forEach(() => ["a"], () => ({ one: target() }));
+}
+
+/** The rich text with its colour and heading glyphs taken away. */
+function stripPaint(text: string): string {
+  return stripAnsi(text).replaceAll("◆ ", "");
+}
+
+Deno.test("rich help, list, graph and command help are the plain text plus paint", () => {
+  const b = new Painted();
+  const targets = discoverTargets(b);
+  discoverGroups(b);
+  const params = discoverParameters(b);
+  const rich = cliPaint({ rich: true, color: true });
+  const pairs: Array<[string, string]> = [
+    [formatHelp(targets, params, rich), formatHelp(targets, params)],
+    [formatList(targets, params, rich), formatList(targets, params)],
+    [formatGraph(targets, rich), formatGraph(targets)],
+    [formatCommandHelp("mcp", rich) ?? "", formatCommandHelp("mcp") ?? ""],
+  ];
+  for (const [painted, plain] of pairs) {
+    assertEquals(painted === plain, false);
+    assertEquals(stripPaint(painted), plain);
+    // Plain stays free of any escape code or glyph.
+    assertEquals(plain.includes("\x1b["), false);
+    assertEquals(plain.includes("◆"), false);
+  }
+});
+
+Deno.test("parseArgs reads --plain, and leaves it unset otherwise", () => {
+  assertEquals(parseArgs(["--plain"]).plain, true);
+  assertEquals(parseArgs(["build"]).plain, undefined);
+});
+
+Deno.test("--plain is a reserved flag, so a `plain` parameter is refused by name", () => {
+  // The same trade `--version` made: a build that declared a `plain`
+  // parameter now has it refused at discovery, loudly, rather than having
+  // `--plain` quietly mean the built-in instead of its value.
+  assertEquals(BUILTIN_FLAG_NAMES.includes("plain"), true);
+  class B extends Build {
+    plain = parameter("Plain");
+  }
+  assertThrows(
+    () => discoverParameters(new B()),
+    Error,
+    'renders as "--plain", which is a built-in Zuke CLI flag',
+  );
+});
+
+Deno.test("--version is the rich panel on a terminal, and bare otherwise", async () => {
+  class B extends Build {
+    work = target().executes(() => {});
+  }
+  let rich: { code: number; out: string[]; err: string[] } = {
+    code: 1,
+    out: [],
+    err: [],
+  };
+  await withEnv(
+    { ZUKE_PLAIN: undefined, CI: undefined, GITHUB_ACTIONS: undefined },
+    async () => {
+      rich = await capture(() =>
+        main(B, ["--version"], { isTerminal: () => true })
+      );
+    },
+  );
+  assertEquals(rich.code, 0);
+  const panel = stripAnsi(rich.out.join("\n"));
+  assertStringIncludes(panel, " zuke ");
+  assertStringIncludes(panel, `core        ${VERSION}`);
+
+  for (
+    const [args, terminal] of [
+      [["--version"], false],
+      [["--version", "--plain"], true],
+    ] as const
+  ) {
+    const bare = await capture(() =>
+      main(B, [...args], { isTerminal: () => terminal })
+    );
+    assertEquals(bare.out, [VERSION], `${args} on terminal=${terminal}`);
+  }
+});
+
+Deno.test("--list and --help are painted on a terminal, plain under --plain", async () => {
+  class B extends Build {
+    work = target().description("Do work").executes(() => {});
+  }
+  await withEnv(
+    { ZUKE_PLAIN: undefined, CI: undefined, GITHUB_ACTIONS: undefined },
+    async () => {
+      for (const flag of ["--list", "--help", "graph"]) {
+        const rich = await capture(() =>
+          main(B, [flag], { isTerminal: () => true })
+        );
+        assertEquals(rich.out.join("\n").includes("◆"), true, flag);
+        const plain = await capture(() =>
+          main(B, [flag, "--plain"], { isTerminal: () => true })
+        );
+        assertEquals(plain.out.join("\n").includes("◆"), false, flag);
+        assertEquals(
+          stripPaint(rich.out.join("\n")),
+          plain.out.join("\n"),
+          flag,
+        );
+      }
+    },
+  );
+});
+
+Deno.test("every general flag belongs to a help section, and every section has flags", () => {
+  const general = BUILTIN_FLAGS.filter((f) => f.command === undefined);
+  for (const flag of general) {
+    assertEquals(flag.section !== undefined, true, flag.name);
+  }
+  // A command's own flags are its help's business, not a main-help section.
+  for (const flag of BUILTIN_FLAGS.filter((f) => f.command !== undefined)) {
+    assertEquals(flag.section, undefined, flag.name);
+  }
+  for (const [section] of FLAG_SECTIONS) {
+    assertEquals(general.some((f) => f.section === section), true, section);
+  }
+});
+
+Deno.test("the main help groups the general flags under their sections, with values", () => {
+  const help = formatHelp(new Map());
+  const headings = FLAG_SECTIONS.map(([, heading]) => help.indexOf(heading));
+  // Each heading appears, in order, after the commands.
+  assertEquals(headings.every((at) => at > help.indexOf("Commands:")), true);
+  assertEquals([...headings].sort((a, b) => a - b), headings);
+  // A flag lands under its own section, before the next one begins.
+  const between = (from: string, to: string) =>
+    help.slice(help.indexOf(from), help.indexOf(to));
+  assertStringIncludes(between("Run options:", "Run record:"), "--skip <dep>");
+  assertStringIncludes(between("Run options:", "Run record:"), "<target>");
+  assertStringIncludes(between("Run record:", "Output:"), "--actor <name>");
+  assertStringIncludes(between("Output:", "Info:"), "--plain");
+  assertStringIncludes(help.slice(help.indexOf("Info:")), "--version");
+  assertEquals(help.includes("\nOptions:"), false);
+  // A command's own flags stay out of the main help.
+  assertEquals(help.includes("--allow-run"), false);
+});
+
+Deno.test("a command's help shows each flag with the value it takes", () => {
+  const mcp = formatCommandHelp("mcp") ?? "";
+  assertStringIncludes(mcp, "--allow-run[=<globs>]");
+  assertStringIncludes(mcp, "--http <host:port>");
+  assertStringIncludes(mcp, "--registry ");
 });

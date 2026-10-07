@@ -66,7 +66,10 @@ interface BuildProbe
     The owner and mode of what a path resolves to, or `null` when nothing is
     there.
   realPath(path: string): Promise<string>
-    The path with every link resolved, as the launcher is spawned by it.
+    The path with every link resolved.
+  readLink(path: string): Promise<string | null>
+    The target a symlink names, exactly as written in the link (possibly
+    relative to the link's directory), or `null` when `path` is not a link.
   uid(): number | null
     The current user's numeric id, or `null` where the platform has none.
 

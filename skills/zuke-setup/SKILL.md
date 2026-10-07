@@ -130,13 +130,18 @@ wrappers.
 ./zuke --list --json   # the whole build surface (commands, flags, targets) as JSON
 ./zuke <target> --dry-run   # print the plan without executing
 ./zuke <target> --no-banner # no opening banner (also ZUKE_NO_BANNER)
+./zuke <target> --plain     # plain: no banner or colour (also ZUKE_PLAIN)
 ```
 
 Every run opens with a banner: the Zuke wordmark, then
 `zuke <version> · deno <version> · <platform>` and `run <id> · <cwd>`. On CI the
 wordmark is dropped — the identifying lines are what a runner log wants, six
 lines of ASCII are not — and the detected host is appended to the first line.
-`--no-banner` or `ZUKE_NO_BANNER` turns it off entirely.
+`--no-banner` or `ZUKE_NO_BANNER` turns it off entirely. On an interactive
+terminal `--version`, `--help`, `--list` and `graph` print a rich, coloured
+form; `--plain` or `ZUKE_PLAIN=1` asks for plain output everywhere (no banner or
+colour, undecorated informational commands), and output is plain automatically
+on CI and through a pipe, so `./zuke --version | …` is always the bare version.
 
 With the global CLI installed, the bare `zuke` works from anywhere inside the
 project: `zuke <target>`, `zuke --list`, `zuke graph`, `zuke mcp`, bare `zuke`

@@ -189,3 +189,20 @@ Deno.test("an unknown target exits 1 with a helpful message", async () => {
   assertStringIncludes(err, "Unknown target: nope");
   assertStringIncludes(err, "Targets:");
 });
+
+Deno.test("integration: --help groups the general flags by section, and command help keeps its own", async () => {
+  class Grouped extends Build {
+    work = target().description("Do work").executes(() => {});
+  }
+  const { code, out } = await runCli(Grouped, ["--help"]);
+  assertEquals(code, 0);
+  const order = ["Commands:", "Run options:", "Run record:", "Output:", "Info:"]
+    .map((heading) => out.indexOf(`\n${heading}\n`));
+  assertEquals(order.every((at) => at > 0), true, out);
+  assertEquals([...order].sort((a, b) => a - b), order, out);
+  assertEquals(out.includes("--skip <dep>"), true, out);
+  // mcp's own flags are not in the main help; they are in `mcp --help`.
+  assertEquals(out.includes("--allow-run"), false, out);
+  const mcp = await runCli(Grouped, ["mcp", "--help"]);
+  assertEquals(mcp.out.includes("--allow-run[=<globs>]"), true, mcp.out);
+});

@@ -410,7 +410,7 @@ Deno.test("from() preserves the source across further configuration", async () =
 Deno.test("resolveParameters registers a secret's raw value with the redactor", async () => {
   class B extends Build {
     token = parameter("Token").secret().from(fixedSource("top-secret"));
-    plain = parameter("Plain").default("visible");
+    visible = parameter("Visible").default("visible");
   }
   const params = discoverParameters(new B());
   const redactor = new Redactor();
@@ -605,12 +605,12 @@ Deno.test("a declared flag replaces the one the name would derive", () => {
     // The digit ends the run of capitals, so the derived flag would be
     // `--skip-e2-e`. This is the case `.flag()` exists for.
     skipE2E = parameter("skip the E2E suite").flag("--skip-e2e").boolean();
-    plain = parameter("derived as usual");
+    ordinary = parameter("derived as usual");
   }
   const params = discoverParameters(new B());
   assertEquals(flagOf("skipE2E", params.get("skipE2E")!), "skip-e2e");
   assertEquals(flagName("skipE2E"), "skip-e2-e"); // the rule itself is unchanged
-  assertEquals(flagOf("plain", params.get("plain")!), "plain");
+  assertEquals(flagOf("ordinary", params.get("ordinary")!), "ordinary");
 });
 
 Deno.test("the leading dashes are optional when declaring a flag", () => {

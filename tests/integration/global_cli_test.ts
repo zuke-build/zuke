@@ -144,6 +144,42 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name:
+    "zuke <target> builds this repo when ./zuke is a symlink to a shared launcher",
+  // POSIX launchers only: Windows reports no file mode, so it keeps `deno run`.
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      // Two repos: the consumer, whose `zuke` links to the shared one's. Each
+      // has its own build; the shared launcher, like the real ones, finds the
+      // project from the path it was called by.
+      for (const repo of ["app", "infra"]) {
+        await Deno.mkdir(`${dir}/${repo}`);
+        await Deno.writeTextFile(
+          `${dir}/${repo}/${CONFIG_FILE}`,
+          '{ "name": "Scratch" }\n',
+        );
+        await Deno.writeTextFile(`${dir}/${repo}/zuke.ts`, scratchBuild());
+      }
+      await Deno.writeTextFile(
+        `${dir}/infra/zuke`,
+        `#!/bin/sh\ncd "$(dirname "$0")" || exit 1\n` +
+          `exec "${Deno.execPath()}" run -A zuke.ts "$@"\n`,
+        { mode: 0o755 },
+      );
+      await Deno.symlink("../infra/zuke", `${dir}/app/zuke`);
+      await inDir(`${dir}/app`, async () => {
+        assertEquals(await main(["hello"], recordingHost()), 0);
+      });
+      // The consumer's build ran; the shared repo's did not.
+      const cwd = await Deno.readTextFile(`${dir}/app/ran.txt`);
+      assertEquals(await Deno.realPath(cwd), await Deno.realPath(`${dir}/app`));
+      assertEquals(await exists(`${dir}/infra/ran.txt`), false);
+    }, { prefix: "zuke-global-cli-" });
+  },
+});
+
 Deno.test("zuke <target> propagates a failing target's exit code", async () => {
   await withTemp(async (dir) => {
     await Deno.writeTextFile(
@@ -176,6 +212,7 @@ function confinedTo(dir: string): BuildProbe {
     ownership: (path) =>
       inside(path) ? defaultBuildProbe.ownership(path) : Promise.resolve(null),
     realPath: (path) => defaultBuildProbe.realPath(path),
+    readLink: (path) => defaultBuildProbe.readLink(path),
     uid: () => defaultBuildProbe.uid(),
   };
 }
