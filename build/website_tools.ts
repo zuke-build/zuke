@@ -278,6 +278,11 @@ export const TOOL_GROUPS: ToolGroup[] = [
         desc: "S3, ECR, ECS, Lambda, CloudFormation, CloudWatch, secrets",
       },
       {
+        name: "Azure CLI",
+        pkg: "@zuke/az",
+        desc: "ACR, AKS, Container Apps, App Service, Key Vault, Monitor",
+      },
+      {
         name: "Terraform",
         pkg: "@zuke/terraform",
         desc: "init, plan, apply, destroy",

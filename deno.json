@@ -50,6 +50,7 @@
     "packages/dprint",
     "packages/gcloud",
     "packages/aws",
+    "packages/az",
     "packages/git",
     "packages/gh",
     "packages/codecov",

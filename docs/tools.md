@@ -97,6 +97,7 @@ actually spawn (the resolved shim or the bare fallback) for diagnostics.
 | `@zuke/dprint`         | `fmt`, `check`                                                                                                                                                                      |
 | `@zuke/gcloud`         | `run` (any command; typed `containerImagesAddTag` / `sqlInstancesDescribe` / `sqlOperationsWait`), plus `GcsTasks` and `SecretManagerTasks` REST groups                             |
 | `@zuke/aws`            | typed `s3`/`ecr`/`ecs`/`lambda`/`cloudformation`/`ssm`/`eks`/`cloudwatch`/`logs` tasks, value readers, `cloudwatch(...)` canary analysis                                            |
+| `@zuke/az`             | typed `acr`/`aks`/`containerapp`/`webapp`/`keyvault`/`deployment`/`storage`/`monitor` tasks, value readers, `azureMonitor(...)` canary analysis                                     |
 | `@zuke/git`            | `init`, `clone`, `add`, `commit`, `status`, `checkout`, `branch`, `tag`, `push`, `pull`, `fetch`, `run` (+ `gitInfo()` helper)                                                      |
 | `@zuke/gh`             | `run` (any command), `commit`, `tag`, `pullRequest`, `findPullRequest`, `checkRun`, `appToken`, `uploadSarif`                                                                       |
 | `@zuke/release-please` | `releasePr`, `githubRelease`                                                                                                                                                        |

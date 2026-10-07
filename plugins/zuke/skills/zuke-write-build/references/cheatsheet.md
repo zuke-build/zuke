@@ -741,6 +741,7 @@ the full task list and settings methods of each):
 | `@zuke/jsr`, `@zuke/codecov`, `@zuke/release-please`                                                                                                | `JsrTasks`, `CodecovTasks`, ...                                      | publish / coverage upload / releases                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `@zuke/kubectl`, `@zuke/helm`, `@zuke/kustomize`, `@zuke/argo-rollouts`, `@zuke/terraform`, `@zuke/tofu`, `@zuke/gcloud`                            | `*Tasks`                                                             | infra/deploy. `ArgoRolloutsTasks` drives the Argo Rollouts plugin — `setImage` starts a rollout, `promote` advances it past a pause (`.full()` skips the rest), `abort` backs it out, `status` waits on it; weights come from the Rollout manifest's steps, not the CLI. `KubectlTasks` covers the deploy surface — manifests, workloads, pods, nodes, kubeconfig — with `diffHasChanges`, `canI`, `getEntries`, `eventEntries`, `currentContext`, `versionInfo` handing back values (see below), plus `kubectlCanary` — a two-Deployment platform for `@zuke/canary`. `HelmTasks` adds `helmCanary`, a two-release platform for it. `GcloudTasks` types the Google Cloud deploy path — auth, config, builds, Cloud Run, Artifact Registry, GKE credentials, storage, functions, secrets (see below), plus `cloudRunCanary` — a Cloud Run platform for `@zuke/canary` |
 | `@zuke/aws`                                                                                                                                         | `AwsTasks`, `cloudwatch`                                             | the AWS CLI — typed STS, `configure`, S3, ECR, ECS, Lambda, CloudFormation, Secrets Manager, SSM, EKS, CloudWatch and Logs tasks, readers that hand back values (`accountId`, `ecrLoginPassword`, `secretString`, `parameterValue`, `stackOutput`, `lambdaPublishedVersion`, `metricValue`, `alarmState`, `logsInsightsQuery`), and `cloudwatch(...)` — a CloudWatch analysis for `@zuke/canary` (see below)                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `@zuke/az`                                                                                                                                          | `AzTasks`, `azureMonitor`                                            | the Azure CLI — typed login, account, resource groups, ACR, AKS, Container Apps, App Service, Functions, Key Vault, deployment, blob storage and Azure Monitor tasks, readers that hand back values (`accessToken`, `subscriptionId`, `tenantId`, `secretValue`, `acrToken`, `containerappFqdn`, `webappHostName`, `deploymentOutput`, `resourceGroupExists`, `metricValue`, `logAnalyticsQuery`), and `azureMonitor(...)` — an Azure Monitor analysis for `@zuke/canary` (see below)                                                                                                                                                                                                                                                                                                                                                                                 |
 | `@zuke/security`                                                                                                                                    | `*Tasks`                                                             | security scanning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `@zuke/claude`, `@zuke/codex`, `@zuke/gemini`                                                                                                       | `ClaudeTasks`, ...                                                   | headless AI CLIs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `@zuke/ai`                                                                                                                                          | `securityReviewer`, ..., `aiFixer`, `agentFixer`                     | AI review gates + self-healing (see below)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
@@ -1011,6 +1012,78 @@ const rows = await AwsTasks.logsInsightsQuery((q) =>
 - Every settings class takes `.runner((settings) => Promise<CommandOutput>)` —
   the seam a test answers through instead of spawning `aws`; the exit code is
   still judged.
+
+### Azure — `AzTasks`
+
+The deploy path is typed, with the CLI's own subcommand and flag names:
+
+| Area           | Tasks                                                                                                                                                |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sign-in        | `login` (service principal + `.federatedToken` / `.certificate` / `.password`, or `.identity()`), `logout`                                           |
+| Account        | `accountShow`, `accountSet`, `accountList`, `accountGetAccessToken`                                                                                  |
+| Groups         | `groupCreate`, `groupShow`, `groupDelete` (`.yes()`), `groupExists`                                                                                  |
+| ACR            | `acrLogin`, `acrBuild`, `acrRepositoryShowTags`, `acrRepositoryDelete`                                                                               |
+| AKS            | `aksGetCredentials`, `aksShow`                                                                                                                       |
+| Container Apps | `containerappUpdate`, `containerappShow`, `containerappRevisionList`, `containerappRevisionActivate` / `Deactivate`, `containerappIngressTrafficSet` |
+| App Service    | `webappDeploy`, `webappShow`, `webappConfigAppsettingsSet`, `webappDeploymentSlotSwap`, `functionappDeploymentSourceConfigZip`                       |
+| Key Vault      | `keyvaultSecretShow`, `keyvaultSecretSet` (`.file(path)` or `.value(...)` on stdin)                                                                  |
+| Deployments    | `deploymentGroupCreate`, `deploymentGroupWhatIf`, `deploymentGroupShow` (always `--no-prompt=true`)                                                  |
+| Storage        | `storageBlobUpload`, `storageBlobDownload`, `storageBlobUploadBatch` (prefer `.authMode("login")`)                                                   |
+| Monitor        | `monitorMetricsList`, `monitorMetricsListDefinitions`, `monitorMetricsAlertList` / `Show`, `monitorActivityLogList`, `monitorLogAnalyticsQuery`      |
+
+`AzTasks.run((s) => s.command("network", "front-door", "purge").flag(...))` is
+the escape hatch for the rest. Global options on every settings class:
+`subscription`, `output`, `query`, `onlyShowErrors`, `verbose`, `debug`.
+`AZURE_EXTENSION_USE_DYNAMIC_INSTALL=no`, `AZURE_CORE_LOGIN_EXPERIENCE_V2=off`
+and `AZURE_CORE_NO_COLOR=true` are always set for the child, so the CLI never
+prompts for or silently installs an extension — add extensions (e.g.
+`log-analytics`) up front; a missing one fails as "misspelled or not recognized"
+(the log-analytics tasks name the extension). Typed options go as one
+`--flag=value` token; a positional or list element starting with `-` is refused,
+and so is any typed value the CLI would replace with a file — it expands an
+`@`-leading argument, or the value after a `key=` in one, from disk (`@-` from
+stdin). `.flag()`/`.args()`/`.command()` guard neither.
+
+Some tasks hand back **values**:
+
+```ts
+const subscription = await AzTasks.subscriptionId();
+const token = await AzTasks.accessToken((s) =>
+  s.resource("https://vault.azure.net")
+);
+const dbPassword = await AzTasks.secretValue((s) =>
+  s.vaultName("kv-prod").name("db-password")
+);
+const acr = await AzTasks.acrToken((s) => s.name("myregistry"));
+const fqdn = await AzTasks.containerappFqdn((s) =>
+  s.name("api").resourceGroup("rg-prod")
+);
+const url = await AzTasks.deploymentOutput("rg-prod", "release-42", "apiUrl");
+const failures = await AzTasks.metricValue((s) =>
+  s.resource(appInsightsId).metrics("requests/failed").aggregation("Count")
+    .window("15m").aggregate("sum").missingDataAs(0)
+);
+const rows = await AzTasks.logAnalyticsQuery((q) =>
+  q.workspace(workspaceId).analyticsQuery("AppRequests | count")
+    .timespan("30m")
+);
+```
+
+- Readers pin `--query` / `--output` after your lambda, run quietly and insist
+  on success even under `.noThrow()`. Unusable output is an `AzOutputError`
+  (never quoting the output).
+- `metricValue` needs exactly one `.aggregation(...)`, fails on no data unless
+  `.missingDataAs(0)`, spans every series (`"latest"` sums them at the newest
+  timestamp), and refuses a filtered or split answer that reached `--top` (ten
+  series by default). `logAnalyticsQuery` rows are all strings (`"None"` for
+  empty).
+- Secrets go to the CLI on **stdin** (`--password=@-`, `--federated-token=@-`,
+  `--value=@-`, `--account-key=@-`), never the argv, and are registered with the
+  redactor. `accountGetAccessToken`, `acrLogin`, `keyvaultSecretShow` and
+  `keyvaultSecretSet` run quietly with `--output json` pinned and mask what they
+  print. App settings reference Key Vault with `.keyVaultReference(name, uri)`.
+- Every settings class takes `.runner((settings) => Promise<CommandOutput>)` —
+  the seam a test answers through instead of spawning `az`.
 
 ### Worktrees — `GitTasks.worktree`
 
@@ -1505,6 +1578,15 @@ class Deploy extends Build {
   (each covers `.period(seconds)`, default 60), or on no data unless
   `.missingDataAs(...)`; `.metricStat(id, …)` + `.expression("100*e/r")` judges
   metric math.
+- **Azure Monitor analysis:**
+  `.analysis(azureMonitor((m) => m.name("canary failures").resource(appInsightsId)
+  .metric("requests/failed").aggregation("Count").dimension("cloud/roleName", "api-canary")
+  .window("5m").max(5).missingDataAs(0).az((a) => a.subscription("prod"))))`
+  from `@zuke/az` — fails when any datapoint in the window is out of bounds
+  (each covers `.interval(...)`, default `PT1M`; the window may not be shorter),
+  on no data unless `.missingDataAs(...)`, or when a dimension-filtered answer
+  reached `.top(n)` (default 10); `.kql(workspace, query)` judges a Log
+  Analytics query that returns one number instead.
 - **Cloud Run:**
   `c.platform(cloudRunCanary((r) => r.service("api")
   .region("europe-west1").image(this.image.value).gcloud((g) => g.project(p))))`

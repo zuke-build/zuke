@@ -149,6 +149,7 @@ Full reference: [docs/cli.md](./docs/cli.md).
 - [@zuke/dprint](https://jsr.io/@zuke/dprint) — typed `dprint` task wrappers for Zuke builds
 - [@zuke/gcloud](https://jsr.io/@zuke/gcloud) — typed Google Cloud tooling for Zuke builds: the `gcloud`
 - [@zuke/aws](https://jsr.io/@zuke/aws) — typed AWS CLI tasks for Zuke builds, readers and a canary analysis
+- [@zuke/az](https://jsr.io/@zuke/az) — typed Azure CLI tasks for Zuke builds, readers and a canary analysis
 - [@zuke/git](https://jsr.io/@zuke/git) — typed `git` task wrappers for Zuke builds
 - [@zuke/gh](https://jsr.io/@zuke/gh) — typed GitHub tooling for Zuke builds: the `gh` (GitHub CLI) task
 - [@zuke/cli](https://jsr.io/@zuke/cli) — the `zuke` command. Install it globally with

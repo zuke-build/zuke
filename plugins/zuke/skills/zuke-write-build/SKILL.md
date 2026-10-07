@@ -382,6 +382,20 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   class takes `.runner(fn)` so tests never spawn `aws`. For canaries,
   `cloudwatch((m) => m.namespace(…).metricName(…).stat("Sum").max(5))` is an
   analysis. See the cheatsheet.
+- **Azure (`@zuke/az`):** `AzTasks` types the deploy path with the CLI's own
+  names — `login` (federated token, certificate or managed identity),
+  `acrBuild`, `containerappUpdate` + `containerappIngressTrafficSet`,
+  `webappDeploy`, `deploymentGroupCreate`, `aksGetCredentials`, … — and readers
+  hand back values: `subscriptionId`, `accessToken`, `secretValue`, `acrToken`,
+  `containerappFqdn`, `webappHostName`, `deploymentOutput(group, name, key)`,
+  `metricValue` (Azure Monitor, `.missingDataAs(0)` for no data),
+  `logAnalyticsQuery`. Secrets reach the CLI on stdin, credential commands run
+  quietly and register what they return, a typed value the CLI would read as an
+  `@file` is refused, and every settings class takes `.runner(fn)`. For
+  canaries,
+  `azureMonitor((m) => m.resource(id).metric(…).aggregation("Count")
+  .max(5))`
+  is an analysis. See the cheatsheet.
 - **OpenTelemetry export (`@zuke/otel`):** register `otel((s) => s.endpoint(…))`
   as a plugin (`run(MyBuild, { plugins: [otel(…)] })`) to ship run/target spans
   and `zuke.run.started` / `zuke.run.suspended` / `zuke.runs` counters as
