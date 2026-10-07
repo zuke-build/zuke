@@ -160,5 +160,6 @@ export const noProjectProbe: BuildProbe = {
   exists: () => Promise.resolve(false),
   ownership: () => Promise.resolve(null),
   realPath: (path) => Promise.resolve(path),
+  readLink: () => Promise.resolve(null),
   uid: () => null,
 };

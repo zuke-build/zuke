@@ -32,8 +32,8 @@ import { resolveOutputMode } from "./output_mode.ts";
  * Whether terminal colour should be used: a TTY, `NO_COLOR` unset, and plain
  * output (`ZUKE_PLAIN`) not asked for — {@link resolveOutputMode}'s answer.
  */
-function autoColor(): boolean {
-  return resolveOutputMode().color;
+function autoColor(readEnv?: (name: string) => string | undefined): boolean {
+  return resolveOutputMode({ readEnv }).color;
 }
 
 /** Resolve the output style from the caller's overrides and the environment. */
@@ -41,8 +41,10 @@ export function resolveStyle(
   github: boolean,
   color: boolean | undefined,
   hasCustomReporter: boolean,
+  readEnv?: (name: string) => string | undefined,
 ): Style {
-  const resolved = color ?? (github || hasCustomReporter ? false : autoColor());
+  const resolved = color ??
+    (github || hasCustomReporter ? false : autoColor(readEnv));
   return { github, color: resolved, width: detectWidth() };
 }
 
@@ -69,6 +71,8 @@ export function composeOutput(opts: {
   github?: boolean;
   color?: boolean;
   renderer?: Renderer;
+  /** The environment reader the run was given, so `ZUKE_PLAIN` is read once. */
+  readEnv?: (name: string) => string | undefined;
 }): RunOutput {
   const baseReporter = opts.reporter ??
     (opts.silent ? silentReporter : consoleReporter);
@@ -92,7 +96,12 @@ export function composeOutput(opts: {
   // than through a second reader of GITHUB_ACTIONS — the private copy this
   // replaces tested the identical variable for the identical value.
   const github = opts.github ?? detectCiHost() === "github";
-  const style = resolveStyle(github, opts.color, opts.reporter !== undefined);
+  const style = resolveStyle(
+    github,
+    opts.color,
+    opts.reporter !== undefined,
+    opts.readEnv,
+  );
   const renderer = opts.renderer ?? defaultRenderer;
   return {
     baseReporter,

@@ -212,6 +212,7 @@ function confinedTo(dir: string): BuildProbe {
     ownership: (path) =>
       inside(path) ? defaultBuildProbe.ownership(path) : Promise.resolve(null),
     realPath: (path) => defaultBuildProbe.realPath(path),
+    readLink: (path) => defaultBuildProbe.readLink(path),
     uid: () => defaultBuildProbe.uid(),
   };
 }

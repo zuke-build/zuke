@@ -4248,10 +4248,6 @@ interface OutputHost
 interface OutputMode
   What {@link resolveOutputMode} decides.
 
-  plain: boolean
-    Plain output was asked for, by `--plain` or `ZUKE_PLAIN`. Distinct from
-    `!rich`: piped output is not rich either, but nobody asked for it to be
-    plain, so it keeps the banner.
   rich: boolean
     Decorate informational output — panels, glyphs, coloured headings. Only on
     an interactive terminal that is not CI, and never when plain.

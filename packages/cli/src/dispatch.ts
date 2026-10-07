@@ -92,8 +92,13 @@ export interface BuildProbe {
    * there.
    */
   ownership(path: string): Promise<Ownership | null>;
-  /** The path with every link resolved, as the launcher is spawned by it. */
+  /** The path with every link resolved. */
   realPath(path: string): Promise<string>;
+  /**
+   * The target a symlink names, exactly as written in the link (possibly
+   * relative to the link's directory), or `null` when `path` is not a link.
+   */
+  readLink(path: string): Promise<string | null>;
   /** The current user's numeric id, or `null` where the platform has none. */
   uid(): number | null;
 }
@@ -121,6 +126,10 @@ export const defaultBuildProbe: BuildProbe = {
   },
   realPath(path: string): Promise<string> {
     return Deno.realPath(path);
+  },
+  async readLink(path: string): Promise<string | null> {
+    const info = await Deno.lstat(path);
+    return info.isSymlink ? await Deno.readLink(path) : null;
   },
   uid(): number | null {
     return Deno.uid();
@@ -214,10 +223,16 @@ async function launcherAt(
   // the project it builds from the path it was called by (`dirname "$0"`), so
   // a `zuke` symlinked to a launcher shared across repos, called by its
   // resolved path, would build the shared launcher's own directory instead.
-  // That keeps what was judged and what runs the same file: re-pointing the
-  // link in between needs write access to the root, which the gate refuses
-  // to anyone but you.
-  return path;
+  const link = await probe.readLink(path);
+  if (link === null) return path;
+  // Running the link re-resolves it, so it is only the file that was judged
+  // if the link is one hop straight to it: re-pointing that hop needs write
+  // access to the root, which the gate refuses to anyone but you. A chain
+  // through another directory could be re-pointed by whoever writes there,
+  // after the check. Rather than judge every hop, a chain gets the launcher's
+  // own `deno run` — the right project, and only files the gate judged.
+  const target = link.startsWith("/") ? absolutePath(link) : root(link);
+  return target.path === real ? path : null;
 }
 
 /**

@@ -32,6 +32,11 @@ interface Fixture {
   uid?: number | null;
   /** Where `realPath` resolves a link; an unlisted path is its own. */
   links?: Record<string, string>;
+  /**
+   * What `readLink` reports, by path. Defaults to {@link links}: a link
+   * written as one hop straight to where it resolves.
+   */
+  written?: Record<string, string>;
 }
 
 /** A directory or file owned by `uid` with ordinary permissions. */
@@ -52,6 +57,10 @@ function probe(fixture: Fixture): BuildProbe & { asked: string[] } {
       return Promise.resolve(owned[path] ?? null);
     },
     realPath: (path) => Promise.resolve(fixture.links?.[path] ?? path),
+    readLink: (path) =>
+      Promise.resolve(
+        fixture.written?.[path] ?? fixture.links?.[path] ?? null,
+      ),
     uid: () => fixture.uid ?? null,
   };
 }
@@ -113,6 +122,7 @@ Deno.test("locateBuild returns null when no ancestor has zuke.json", async () =>
     },
     ownership: () => Promise.resolve(null),
     realPath: (path) => Promise.resolve(path),
+    readLink: () => Promise.resolve(null),
     uid: () => null,
   });
   assertEquals(found, null);
@@ -351,6 +361,30 @@ Deno.test("locateBuild resolves a symlinked launcher and judges its directory", 
   assertEquals(theirs.reason, "/w/shared is owned by user 0, not you (1000)");
 });
 
+Deno.test("a symlinked launcher runs by its root path only as one hop to the judged file", async () => {
+  const fixture = (written: string): Fixture => ({
+    present: ["/w/app/zuke.json"],
+    owned: {
+      "/w/app/zuke": ownedBy(1000, fileMode(0o755)),
+      "/w/shared": ownedBy(1000),
+    },
+    uid: 1000,
+    links: { "/w/app/zuke": "/w/shared/zuke" },
+    written: { "/w/app/zuke": written },
+  });
+  // Written relative to the root, the usual shape of a shared-launcher link.
+  const relative = await locateBuild(
+    "/w/app",
+    probe(fixture("../shared/zuke")),
+  );
+  assertEquals(relative?.launcher, "/w/app/zuke");
+  // A chain through another directory: whoever writes that directory could
+  // re-point its hop after the check, so the run falls back to `deno run`.
+  const chain = await locateBuild("/w/app", probe(fixture("/hop/link")));
+  assertEquals(chain?.launcher, null);
+  assertEquals(chain?.root, "/w/app");
+});
+
 Deno.test("the trust gate refuses a root file writable by everyone", async () => {
   const error = await refused("/repo", {
     present: ["/repo/zuke.json"],
@@ -563,6 +597,34 @@ Deno.test({
       // The launcher saw the repo, not the shared directory it lives in.
       const seen = (await Deno.readTextFile(out)).trim();
       assertEquals(await Deno.realPath(seen), root);
+    }, { prefix: "zuke-dispatch-" });
+  },
+});
+
+Deno.test({
+  name:
+    "a launcher reached through a chain of links falls back to deno run, never the chain",
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      // repo/zuke -> hop/link -> mine/zuke. The gate judges mine/, but running
+      // the chain re-resolves hop/link, which someone else could re-point.
+      for (const sub of ["repo", "hop", "mine"]) {
+        await Deno.mkdir(`${dir}/${sub}`);
+      }
+      await Deno.writeTextFile(`${dir}/mine/${LAUNCHER_FILE}`, "#!/bin/sh\n", {
+        mode: 0o755,
+      });
+      await Deno.symlink(`${dir}/mine/${LAUNCHER_FILE}`, `${dir}/hop/link`);
+      await Deno.symlink(`${dir}/hop/link`, `${dir}/repo/${LAUNCHER_FILE}`);
+      await Deno.writeTextFile(`${dir}/repo/${CONFIG_FILE}`, "{}\n");
+      const found = await locateBuild(`${dir}/repo`, defaultBuildProbe);
+      assertEquals(found?.launcher, null);
+      // A plain file is no link at all.
+      assertEquals(
+        await defaultBuildProbe.readLink(`${dir}/repo/${CONFIG_FILE}`),
+        null,
+      );
     }, { prefix: "zuke-dispatch-" });
   },
 });

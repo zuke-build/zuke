@@ -20,7 +20,6 @@ const pipe = () => false;
 
 Deno.test("an interactive terminal off CI is rich, coloured, and keeps the banner", () => {
   assertEquals(resolveOutputMode({ readEnv: env(), isTerminal: tty }), {
-    plain: false,
     rich: true,
     color: true,
     banner: true,
@@ -29,7 +28,6 @@ Deno.test("an interactive terminal off CI is rich, coloured, and keeps the banne
 
 Deno.test("piped output is not rich, but nobody asked for plain, so the banner stays", () => {
   assertEquals(resolveOutputMode({ readEnv: env(), isTerminal: pipe }), {
-    plain: false,
     rich: false,
     color: false,
     banner: true,
@@ -44,7 +42,6 @@ Deno.test("CI drops the decoration and keeps the banner, even on a terminal", ()
   for (const vars of cases) {
     const mode = resolveOutputMode({ readEnv: env(vars), isTerminal: tty });
     assertEquals(mode.rich, false, JSON.stringify(vars));
-    assertEquals(mode.plain, false);
     assertEquals(mode.banner, true);
   }
 });
@@ -54,7 +51,7 @@ Deno.test("ZUKE_PLAIN is one level above ZUKE_NO_BANNER: plain, colourless, no b
     readEnv: env({ [PLAIN_ENV]: "1" }),
     isTerminal: tty,
   });
-  assertEquals(mode, { plain: true, rich: false, color: false, banner: false });
+  assertEquals(mode, { rich: false, color: false, banner: false });
 });
 
 Deno.test("ZUKE_PLAIN's conventional off values mean not plain", () => {
@@ -63,7 +60,6 @@ Deno.test("ZUKE_PLAIN's conventional off values mean not plain", () => {
       readEnv: env({ [PLAIN_ENV]: value }),
       isTerminal: tty,
     });
-    assertEquals(mode.plain, false, value);
     assertEquals(mode.rich, true, value);
   }
 });
@@ -80,7 +76,7 @@ Deno.test("an explicit --plain wins over ZUKE_PLAIN in both directions", () => {
     readEnv: env({ [PLAIN_ENV]: "0" }),
     isTerminal: tty,
   });
-  assertEquals(on.plain, true);
+  assertEquals(on.rich, false);
   assertEquals(on.banner, false);
 });
 
@@ -89,7 +85,7 @@ Deno.test("ZUKE_NO_BANNER removes only the banner", () => {
     readEnv: env({ [NO_BANNER_ENV]: "1" }),
     isTerminal: tty,
   });
-  assertEquals(mode, { plain: false, rich: true, color: true, banner: false });
+  assertEquals(mode, { rich: true, color: true, banner: false });
 });
 
 Deno.test("an explicit banner choice beats ZUKE_NO_BANNER, but never plain", () => {

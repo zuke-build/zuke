@@ -4194,10 +4194,6 @@ interface OutputHost
 interface OutputMode
   What {@link resolveOutputMode} decides.
 
-  plain: boolean
-    Plain output was asked for, by `--plain` or `ZUKE_PLAIN`. Distinct from
-    `!rich`: piped output is not rich either, but nobody asked for it to be
-    plain, so it keeps the banner.
   rich: boolean
     Decorate informational output — panels, glyphs, coloured headings. Only on
     an interactive terminal that is not CI, and never when plain.
@@ -20469,7 +20465,10 @@ interface BuildProbe
     The owner and mode of what a path resolves to, or `null` when nothing is
     there.
   realPath(path: string): Promise<string>
-    The path with every link resolved, as the launcher is spawned by it.
+    The path with every link resolved.
+  readLink(path: string): Promise<string | null>
+    The target a symlink names, exactly as written in the link (possibly
+    relative to the link's directory), or `null` when `path` is not a link.
   uid(): number | null
     The current user's numeric id, or `null` where the platform has none.
 

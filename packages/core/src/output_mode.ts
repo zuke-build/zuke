@@ -10,9 +10,11 @@
  * - **Rich**, the default on an interactive terminal: colour, panels, glyphs.
  * - **No banner** (`ZUKE_NO_BANNER=1` / `--no-banner`): a run skips its opening
  *   banner. Nothing else changes.
- * - **Plain** (`ZUKE_PLAIN=1` / `--plain`): no banner, no colour, no
- *   decoration. Informational commands print the same text they print into a
- *   pipe, so `zuke --version` is a bare number.
+ * - **Plain** (`ZUKE_PLAIN=1` / `--plain`): no banner and no colour, and the
+ *   informational commands drop their decoration, printing the same text they
+ *   print into a pipe — so `zuke --version` is a bare number. A run's own
+ *   structure (its target rules and closing summary table) is the run's
+ *   output, not decoration, and stays.
  *
  * Rich output also needs somewhere to be rich. On CI, or when stdout is not a
  * terminal (piped or redirected), the decoration is dropped automatically, so a
@@ -21,8 +23,9 @@
  * platform and id are worth a line, which is why the banner module prints them
  * on CI in the first place.
  *
- * One resolver, shared by the build's CLI, the executor, and `@zuke/cli`, so
- * the three cannot come to disagree about what `ZUKE_PLAIN` means.
+ * One resolver, shared by the build's CLI and the executor — and exported so
+ * the global `@zuke/cli` can share it rather than keep a copy — so they cannot
+ * come to disagree about what `ZUKE_PLAIN` means.
  *
  * @module
  */
@@ -38,12 +41,6 @@ export const NO_BANNER_ENV = "ZUKE_NO_BANNER";
 
 /** What {@link resolveOutputMode} decides. */
 export interface OutputMode {
-  /**
-   * Plain output was asked for, by `--plain` or `ZUKE_PLAIN`. Distinct from
-   * `!rich`: piped output is not rich either, but nobody asked for it to be
-   * plain, so it keeps the banner.
-   */
-  plain: boolean;
   /**
    * Decorate informational output — panels, glyphs, coloured headings. Only on
    * an interactive terminal that is not CI, and never when plain.
@@ -73,13 +70,9 @@ export interface OutputModeOptions {
   isTerminal?: () => boolean;
 }
 
-/** Whether stdout is a terminal, reading a denied or missing stream as no. */
+/** Whether stdout is a terminal. */
 function stdoutIsTerminal(): boolean {
-  try {
-    return Deno.stdout.isTerminal();
-  } catch {
-    return false;
-  }
+  return Deno.stdout.isTerminal();
 }
 
 /**
@@ -98,7 +91,6 @@ export function resolveOutputMode(
   const plain = options.plain ?? envFlag(readEnv(PLAIN_ENV));
   const noColor = (readEnv("NO_COLOR") ?? "") !== "";
   return {
-    plain,
     rich: !plain && terminal && !isCI(readEnv),
     color: !plain && terminal && !noColor,
     banner: !plain &&

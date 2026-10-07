@@ -1573,7 +1573,7 @@ class Painted extends Build {
 }
 
 /** The rich text with its colour and heading glyphs taken away. */
-function unpaint(text: string): string {
+function stripPaint(text: string): string {
   return stripAnsi(text).replaceAll("◆ ", "");
 }
 
@@ -1591,7 +1591,7 @@ Deno.test("rich help, list, graph and command help are the plain text plus paint
   ];
   for (const [painted, plain] of pairs) {
     assertEquals(painted === plain, false);
-    assertEquals(unpaint(painted), plain);
+    assertEquals(stripPaint(painted), plain);
     // Plain stays free of any escape code or glyph.
     assertEquals(plain.includes("\x1b["), false);
     assertEquals(plain.includes("◆"), false);
@@ -1669,7 +1669,11 @@ Deno.test("--list and --help are painted on a terminal, plain under --plain", as
           main(B, [flag, "--plain"], { isTerminal: () => true })
         );
         assertEquals(plain.out.join("\n").includes("◆"), false, flag);
-        assertEquals(unpaint(rich.out.join("\n")), plain.out.join("\n"), flag);
+        assertEquals(
+          stripPaint(rich.out.join("\n")),
+          plain.out.join("\n"),
+          flag,
+        );
       }
     },
   );

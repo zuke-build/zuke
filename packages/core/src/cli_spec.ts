@@ -209,10 +209,9 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
   },
   {
     name: "--plain",
-    description:
-      "Plain output: no banner, colour or decoration (also ZUKE_PLAIN)",
+    description: "Plain output: no banner or colour (also ZUKE_PLAIN)",
     detail:
-      "Plain output: no opening banner, no colour, and no decoration on informational commands, which print exactly what they print into a pipe (so --version is a bare number). ZUKE_PLAIN=1 does the same from the environment. It implies --no-banner. Decoration is already dropped on CI and when stdout is not a terminal.",
+      "Plain output: no opening banner and no colour, and informational commands (--version, --help, --list, graph) print exactly what they print into a pipe, so --version is a bare number. A run keeps its target rules and summary table. ZUKE_PLAIN=1 does the same from the environment. It implies --no-banner. Decoration is already dropped on CI and when stdout is not a terminal.",
   },
   {
     name: "--no-remote-cache",
