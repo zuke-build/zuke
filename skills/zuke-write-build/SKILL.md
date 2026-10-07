@@ -349,7 +349,9 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   runs the one `abort`. Needs a state store. `p` is a `CanaryPlatform` (`stage`,
   `expose`, `promote`, `abort`); a hand-written object is fine, and Cloud Run
   has one ready: `cloudRunCanary((r) => r.service("api").region(…).image(…))`
-  from `@zuke/gcloud`, and Kubernetes too:
+  from `@zuke/gcloud` — judged on the candidate's own errors by
+  `cloudMonitoring((m) => m.metricType(…).cloudRunCandidate("api", …).max(5))`,
+  from the same package — and Kubernetes too:
   `kubectlCanary((k) => k.stable(…)
   .canary(…).container(…).image(…).replicas(…))`
   from `@zuke/kubectl`, and Helm:

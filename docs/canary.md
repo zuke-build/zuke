@@ -680,8 +680,9 @@ An analysis is anything with a `validate(ctx)` that throws to fail. Any core
 also reads where the rollout stands: `ctx.step`, `ctx.requested` and
 `ctx.exposure`, alongside the core context's `target`, `redact` and `signal`.
 
-The package ships three; [`@zuke/aws`](#cloudwatch) adds one for CloudWatch and
-[`@zuke/az`](#azure-monitor) one for Azure Monitor:
+The package ships three; [`@zuke/aws`](#cloudwatch) adds one for CloudWatch,
+[`@zuke/az`](#azure-monitor) one for Azure Monitor and
+[`@zuke/gcloud`](#cloud-monitoring) one for Cloud Monitoring:
 
 | Analysis                                                  | Fails when                                                                                                                                              |
 | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -895,6 +896,79 @@ The `az` CLI must be installed and signed in on the runner — the analysis runs
 it like any other `AzTasks` call. Failure messages pass through the run's
 redactor. `@zuke/canary` is not a dependency of `@zuke/az`: the analysis has the
 shape `c.analysis(...)` accepts.
+
+### Cloud Monitoring
+
+`cloudMonitoring` from [`@zuke/gcloud`](../packages/gcloud/README.md) reads a
+Cloud Monitoring metric over its REST API (`projects.timeSeries.list` — gcloud
+has no command that reads time series) and fails the canary when any aligned
+point in the window is out of bounds — the same name, `min`/`max` and failure
+wording as `prometheus(...)`. Here it gates a Cloud Run rollout on the 5xx
+responses of the canary revision itself:
+
+<!-- check -->
+
+```ts
+import { Build, parameter, run, target } from "@zuke/core";
+import { canary, httpProbe } from "@zuke/canary";
+import { cloudMonitoring, cloudRunCanary } from "@zuke/gcloud";
+
+class Deploy extends Build {
+  image = parameter("Container image to roll out").required();
+
+  rollout = canary((c) =>
+    c.platform(
+      cloudRunCanary((r) =>
+        r.service("api").region("europe-west1").image(this.image.value)
+          .gcloud((g) => g.project("my-project"))
+      ),
+    )
+      .steps(10, 50)
+      .bake("10m")
+      .analysis(httpProbe((h) => h.url("https://api.example.com/healthz")))
+      .analysis(cloudMonitoring((m) =>
+        m.name("canary 5xx").project("my-project")
+          .metricType("run.googleapis.com/request_count")
+          .resourceType("cloud_run_revision")
+          .cloudRunCandidate("api", "europe-west1")
+          .metricLabel("response_code_class", "5xx")
+          .alignmentPeriod("60s").perSeriesAligner("ALIGN_SUM")
+          .crossSeriesReducer("REDUCE_SUM")
+          .window("10m").max(5).missingDataAs(0)
+          .gcloud((g) => g.project("my-project"))
+      ))
+  );
+
+  release = target().dependsOn(this.rollout.promote).executes(() => {});
+}
+
+await run(Deploy);
+```
+
+| Setting                                                        | Meaning                                                                                                                                                                                                  |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `metricType`, `resourceType`, `resourceLabel`, `metricLabel`   | The metric, built into a Monitoring filter: each value quoted, and refused when it holds a `"` or `\`, which the filter language documents no escape for. `filter(text)` adds raw text, joined by `AND`. |
+| `cloudRunCandidate(service, region)`                           | Before each check, read the service's latest created revision — the one `cloudRunCanary` staged — and narrow the read to it by `service_name` and `revision_name`.                                       |
+| `alignmentPeriod`, `perSeriesAligner`, `crossSeriesReducer`    | The aggregation. Every aligned point is judged, so `.max(5)` on a per-minute `ALIGN_SUM` means no minute with more than five. A reducer needs an aligner, and an aligner needs a period (60 s or more).  |
+| `window(duration)`                                             | How far back to read (default `5m`), no shorter than the alignment period. It ends at the last period boundary, so the period still being written is not judged.                                         |
+| `maxPages(n)`                                                  | The most pages to read (default 100). A read with pages left over fails rather than be judged in part.                                                                                                   |
+| `logEntries((l) => …)`                                         | Judge the number of log entries a Cloud Logging filter matches over the window instead, read with `gcloud logging read` — ids only, no payloads — counting at most `.limit(n)` (default 1000).           |
+| `min(value)`, `max(value)`                                     | The bounds, inclusive. At least one is required.                                                                                                                                                         |
+| `missingDataAs(value)`                                         | What no data means. Cloud Monitoring writes no point for a minute with no requests, so for an error count, `0`; by default no data fails.                                                                |
+| `project`, `token`, `tokenProvider`, `gcloud((g) => …)`, `now` | Where and as whom: the project, the bearer token (by default `gcloud auth print-access-token`, run with the `.gcloud(...)` flags, which also run the revision and log reads), and the clock.             |
+
+Cloud Run samples its request count every 60 seconds and the point can take a
+couple of minutes to become visible, so the newest minute in the window can
+still be short of data — harmless for a `max`, but a `min` on a count can fail
+on the lag rather than on the candidate. `.cloudRunCandidate(...)` reads the
+latest created revision, which is the candidate while the rollout runs; a
+revision someone else deploys mid-rollout would be read instead, and
+`cloudRunCanary`'s promote refuses that case before moving any traffic.
+
+The default token comes from `gcloud`, which must be installed and authenticated
+on the runner. Failure messages pass through the run's redactor, and none
+carries the token. `@zuke/canary` is not a dependency of `@zuke/gcloud`: the
+analysis has the shape `c.analysis(...)` accepts.
 
 ## The lock
 
