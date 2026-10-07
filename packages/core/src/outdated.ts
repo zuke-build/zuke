@@ -158,7 +158,8 @@ function latestOf(meta: unknown): string | undefined {
  * The JSR packages the lock at `lockPath` resolves to a version older than the
  * registry's latest, and the ones the registry could not answer for.
  *
- * One registry request per distinct package name, whatever the number of
+ * One registry request, and one reported line, per distinct package name
+ * (per resolved version, where ranges split it), whatever the number of
  * specifiers pointing at it. A package that cannot be checked does not fail
  * the whole report — one unpublished or renamed dependency should not hide the
  * news about the others — but it is *reported*, because a run that reached
@@ -198,6 +199,13 @@ export async function findOutdated(
       continue;
     }
     if (!isBehind(entry.resolved, answer)) continue;
+    // Once per package and resolved version: every wrapper depends on its
+    // own range of core, and a dozen ranges resolving one version are one
+    // package to move, not twelve. Ranges resolving different versions stay
+    // apart, since each is its own thing to move.
+    if (
+      behind.some((p) => p.name === entry.name && p.resolved === entry.resolved)
+    ) continue;
     behind.push({
       name: entry.name,
       specifier: entry.specifier,

@@ -294,3 +294,19 @@ Deno.test("outdated --update names a package the lock does not resolve", async (
   assertEquals(code, 1);
   assertEquals(err.includes("@zuke/nope"), true);
 });
+
+Deno.test("outdated lists a package once, however many wrappers pin it", async () => {
+  const { code, out } = await runOutdated(
+    {
+      "jsr:@zuke/console@^1": "1.4.0",
+      "jsr:@zuke/core@^1.31.0": "1.66.0",
+      "jsr:@zuke/core@^1.40.0": "1.66.0",
+      "jsr:@zuke/core@^1.60.0": "1.66.0",
+    },
+    { "@zuke/console": "1.5.0", "@zuke/core": "1.67.0" },
+  );
+  assertEquals(code, 0);
+  const coreLines = out.split("\n").filter((l) => l.startsWith("@zuke/core"));
+  assertEquals(coreLines.length, 1, out);
+  assertEquals(out.includes("2 packages are behind"), true, out);
+});
