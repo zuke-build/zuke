@@ -13,20 +13,21 @@ latest release on JSR. All of them are `1.x` and follow full semver; see
 
 ## Core, CLI, and plugins
 
-| Package                                           | Version                                                                                                                                                                 |
-| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`@zuke/core`](https://jsr.io/@zuke/core)         | [![JSR](https://jsr.io/badges/@zuke/core)](https://jsr.io/@zuke/core) [![JSR score](https://jsr.io/badges/@zuke/core/score)](https://jsr.io/@zuke/core)                 |
-| [`@zuke/cli`](https://jsr.io/@zuke/cli)           | [![JSR](https://jsr.io/badges/@zuke/cli)](https://jsr.io/@zuke/cli) [![JSR score](https://jsr.io/badges/@zuke/cli/score)](https://jsr.io/@zuke/cli)                     |
-| [`@zuke/cmd`](https://jsr.io/@zuke/cmd)           | [![JSR](https://jsr.io/badges/@zuke/cmd)](https://jsr.io/@zuke/cmd) [![JSR score](https://jsr.io/badges/@zuke/cmd/score)](https://jsr.io/@zuke/cmd)                     |
-| [`@zuke/deno`](https://jsr.io/@zuke/deno)         | [![JSR](https://jsr.io/badges/@zuke/deno)](https://jsr.io/@zuke/deno) [![JSR score](https://jsr.io/badges/@zuke/deno/score)](https://jsr.io/@zuke/deno)                 |
-| [`@zuke/docs`](https://jsr.io/@zuke/docs)         | [![JSR](https://jsr.io/badges/@zuke/docs)](https://jsr.io/@zuke/docs) [![JSR score](https://jsr.io/badges/@zuke/docs/score)](https://jsr.io/@zuke/docs)                 |
-| [`@zuke/npm`](https://jsr.io/@zuke/npm)           | [![JSR](https://jsr.io/badges/@zuke/npm)](https://jsr.io/@zuke/npm) [![JSR score](https://jsr.io/badges/@zuke/npm/score)](https://jsr.io/@zuke/npm)                     |
-| [`@zuke/security`](https://jsr.io/@zuke/security) | [![JSR](https://jsr.io/badges/@zuke/security)](https://jsr.io/@zuke/security) [![JSR score](https://jsr.io/badges/@zuke/security/score)](https://jsr.io/@zuke/security) |
-| [`@zuke/ai`](https://jsr.io/@zuke/ai)             | [![JSR](https://jsr.io/badges/@zuke/ai)](https://jsr.io/@zuke/ai) [![JSR score](https://jsr.io/badges/@zuke/ai/score)](https://jsr.io/@zuke/ai)                         |
-| [`@zuke/console`](https://jsr.io/@zuke/console)   | [![JSR](https://jsr.io/badges/@zuke/console)](https://jsr.io/@zuke/console) [![JSR score](https://jsr.io/badges/@zuke/console/score)](https://jsr.io/@zuke/console)     |
-| [`@zuke/otel`](https://jsr.io/@zuke/otel)         | [![JSR](https://jsr.io/badges/@zuke/otel)](https://jsr.io/@zuke/otel) [![JSR score](https://jsr.io/badges/@zuke/otel/score)](https://jsr.io/@zuke/otel)                 |
-| [`@zuke/qr`](https://jsr.io/@zuke/qr)             | [![JSR](https://jsr.io/badges/@zuke/qr)](https://jsr.io/@zuke/qr) [![JSR score](https://jsr.io/badges/@zuke/qr/score)](https://jsr.io/@zuke/qr)                         |
-| [`@zuke/canary`](https://jsr.io/@zuke/canary)     | [![JSR](https://jsr.io/badges/@zuke/canary)](https://jsr.io/@zuke/canary) [![JSR score](https://jsr.io/badges/@zuke/canary/score)](https://jsr.io/@zuke/canary)         |
+| Package                                               | Version                                                                                                                                                                         |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@zuke/core`](https://jsr.io/@zuke/core)             | [![JSR](https://jsr.io/badges/@zuke/core)](https://jsr.io/@zuke/core) [![JSR score](https://jsr.io/badges/@zuke/core/score)](https://jsr.io/@zuke/core)                         |
+| [`@zuke/cli`](https://jsr.io/@zuke/cli)               | [![JSR](https://jsr.io/badges/@zuke/cli)](https://jsr.io/@zuke/cli) [![JSR score](https://jsr.io/badges/@zuke/cli/score)](https://jsr.io/@zuke/cli)                             |
+| [`@zuke/cmd`](https://jsr.io/@zuke/cmd)               | [![JSR](https://jsr.io/badges/@zuke/cmd)](https://jsr.io/@zuke/cmd) [![JSR score](https://jsr.io/badges/@zuke/cmd/score)](https://jsr.io/@zuke/cmd)                             |
+| [`@zuke/deno`](https://jsr.io/@zuke/deno)             | [![JSR](https://jsr.io/badges/@zuke/deno)](https://jsr.io/@zuke/deno) [![JSR score](https://jsr.io/badges/@zuke/deno/score)](https://jsr.io/@zuke/deno)                         |
+| [`@zuke/docs`](https://jsr.io/@zuke/docs)             | [![JSR](https://jsr.io/badges/@zuke/docs)](https://jsr.io/@zuke/docs) [![JSR score](https://jsr.io/badges/@zuke/docs/score)](https://jsr.io/@zuke/docs)                         |
+| [`@zuke/npm`](https://jsr.io/@zuke/npm)               | [![JSR](https://jsr.io/badges/@zuke/npm)](https://jsr.io/@zuke/npm) [![JSR score](https://jsr.io/badges/@zuke/npm/score)](https://jsr.io/@zuke/npm)                             |
+| [`@zuke/security`](https://jsr.io/@zuke/security)     | [![JSR](https://jsr.io/badges/@zuke/security)](https://jsr.io/@zuke/security) [![JSR score](https://jsr.io/badges/@zuke/security/score)](https://jsr.io/@zuke/security)         |
+| [`@zuke/ai`](https://jsr.io/@zuke/ai)                 | [![JSR](https://jsr.io/badges/@zuke/ai)](https://jsr.io/@zuke/ai) [![JSR score](https://jsr.io/badges/@zuke/ai/score)](https://jsr.io/@zuke/ai)                                 |
+| [`@zuke/console`](https://jsr.io/@zuke/console)       | [![JSR](https://jsr.io/badges/@zuke/console)](https://jsr.io/@zuke/console) [![JSR score](https://jsr.io/badges/@zuke/console/score)](https://jsr.io/@zuke/console)             |
+| [`@zuke/otel`](https://jsr.io/@zuke/otel)             | [![JSR](https://jsr.io/badges/@zuke/otel)](https://jsr.io/@zuke/otel) [![JSR score](https://jsr.io/badges/@zuke/otel/score)](https://jsr.io/@zuke/otel)                         |
+| [`@zuke/qr`](https://jsr.io/@zuke/qr)                 | [![JSR](https://jsr.io/badges/@zuke/qr)](https://jsr.io/@zuke/qr) [![JSR score](https://jsr.io/badges/@zuke/qr/score)](https://jsr.io/@zuke/qr)                                 |
+| [`@zuke/prometheus`](https://jsr.io/@zuke/prometheus) | [![JSR](https://jsr.io/badges/@zuke/prometheus)](https://jsr.io/@zuke/prometheus) [![JSR score](https://jsr.io/badges/@zuke/prometheus/score)](https://jsr.io/@zuke/prometheus) |
+| [`@zuke/canary`](https://jsr.io/@zuke/canary)         | [![JSR](https://jsr.io/badges/@zuke/canary)](https://jsr.io/@zuke/canary) [![JSR score](https://jsr.io/badges/@zuke/canary/score)](https://jsr.io/@zuke/canary)                 |
 
 ## Tool wrappers
 

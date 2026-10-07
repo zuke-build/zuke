@@ -155,3 +155,19 @@ export async function withStateDir(
 export function hostOf(url: string): string {
   return new URL(url).hostname;
 }
+
+/**
+ * Strip the `::add-mask::` directives from captured output.
+ *
+ * Under GitHub Actions the executor deliberately emits `::add-mask::` followed by
+ * the *raw* secret through the un-redacted base reporter, so the runner censors
+ * the value in its own logs — a redacted directive would mask nothing. That line
+ * is the one sanctioned place the raw value appears, so it is removed here before
+ * asserting the secret shows up nowhere else. Everything else stays in scope.
+ */
+export function withoutMaskDirectives(output: string): string {
+  return output
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("::add-mask::"))
+    .join("\n");
+}

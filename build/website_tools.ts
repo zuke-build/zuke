@@ -338,6 +338,11 @@ export const CORE_PACKAGES: CorePackage[] = [
       "OpenTelemetry export plugin — run & target spans over OTLP, joined across resume",
   },
   {
+    name: "@zuke/prometheus",
+    desc:
+      "typed Prometheus HTTP API client — queries, metadata, rules, probes, pluggable auth",
+  },
+  {
     name: "@zuke/canary",
     desc:
       "canary releases — stage, step up, bake under analysis, promote, one rollback",

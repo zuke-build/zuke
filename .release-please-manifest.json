@@ -16,6 +16,7 @@
   "packages/helm": "1.1.0",
   "packages/kustomize": "1.0.1",
   "packages/argo-rollouts": "1.1.0",
+  "packages/prometheus": "1.0.0",
   "packages/canary": "1.1.1",
   "packages/oxlint": "1.1.0",
   "packages/eslint": "1.1.0",

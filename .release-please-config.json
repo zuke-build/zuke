@@ -194,6 +194,17 @@
         }
       ]
     },
+    "packages/prometheus": {
+      "component": "prometheus",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
     "packages/canary": {
       "component": "canary",
       "changelog-path": "CHANGELOG.md",

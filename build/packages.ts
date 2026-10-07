@@ -71,6 +71,8 @@ export const PACKAGES = [
   "ai",
   "otel",
   "qr",
+  "prometheus",
+  // After prometheus, which it depends on (PACKAGE_DEPENDENCIES).
   "canary",
 ];
 
@@ -121,6 +123,9 @@ export const PACKAGE_DEPENDENCIES: Readonly<
   // The AI reviewer: its pull-request comments, reactions and the commenter
   // check go through GhTasks instead of a REST client of its own.
   ai: ["gh"],
+  // The canary engine: its `prometheus(...)` analysis queries through
+  // PrometheusTasks, so there is one Prometheus transport, not a second copy.
+  canary: ["prometheus"],
 };
 
 /** The current version declared in `packages/<pkg>/deno.json`. */
