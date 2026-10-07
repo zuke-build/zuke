@@ -326,7 +326,9 @@ await run(Shadowed);
     await inDir(dir, async () => {
       // The CLI answers `upgrade` itself, inside a project, without running
       // the build: the real runner and probe are in place, and the target's
-      // marker file is never written.
+      // marker file is never written. The real probe rather than
+      // `confinedTo`: the walk starts from the resolved cwd, which on macOS
+      // is `/private/var/…` under a `/var/…` temp dir.
       const host = recordingHost();
       const code = await main(
         ["upgrade"],
@@ -335,7 +337,7 @@ await run(Shadowed);
         undefined,
         undefined,
         undefined,
-        confinedTo(dir),
+        defaultBuildProbe,
         upgradeHost,
       );
       assertEquals(code, 0);
@@ -351,7 +353,7 @@ await run(Shadowed);
         undefined,
         undefined,
         undefined,
-        confinedTo(dir),
+        defaultBuildProbe,
         upgradeHost,
       );
       assertEquals(forwarded, 0);
