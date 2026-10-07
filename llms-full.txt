@@ -121,6 +121,42 @@ function assertSafeLinkTarget(entryName: string, target: string): void
   name is bounded by {@link assertSafeEntryName}; a symlink adds a second escape
   vector (its target), so a poisoned tarball can't plant `bin/x -> ../../etc`.
 
+function assertSecureBackendUrl(raw: string, what: string, readEnv: (name: string) => string | undefined): void
+  Refuse a plaintext URL for a backend Zuke both authenticates to and trusts
+  the answers from — the state service, the build registry, and the remote
+  cache.
+
+  Confidentiality is the obvious half: a bearer token sent over `http:` is
+  readable by anyone on the path, and that token can forge run records, the
+  audit trail, and the cross-run locks two deploys rely on being exclusive.
+
+  Integrity is the half that matters more, and it does not need a token at
+  all. A registry descriptor is a launch command the MCP host will spawn, and a
+  cache artifact is a file tree restored into the workspace — so an on-path
+  attacker who can answer a plaintext request reaches code execution without
+  stealing anything. That is why this refuses `http:` whether or not a
+  credential is configured.
+
+  Loopback is exempt: there is no path to sit on, and a local dev service on
+  `http://localhost` is the ordinary way to work on one. A deliberate plaintext
+  endpoint elsewhere is still reachable by setting {@link ALLOW_INSECURE_ENV},
+  which is an explicit decision rather than a silent default.
+
+  This guards the environment path — the `ZUKE_*_URL` variables, which are
+  set by whoever configures the CI job or the shell. Constructing a store in
+  code (`new HttpStateStore({ url })`, a `stateStore()` override) is deliberately
+  left alone: that URL is first-party source in the build file, so writing it is
+  itself the trust decision, and a build author who means to talk plaintext to a
+  service on their own network should not have to also set an env var.
+
+  Exported so a package that sends a credential to a service it reads answers
+  from applies this same rule rather than a second loopback check of its own:
+  `@zuke/prometheus` runs every URL that will carry a credential through it.
+
+  @throws {InsecureBackendUrlError}
+      naming the variable that relaxes it, when
+      `raw` is neither `https:` nor loopback and the opt-out is unset.
+
 function bearerChallenge(parts: BearerChallenge): string
   A `WWW-Authenticate: Bearer` challenge built from `parts`.
 
@@ -629,6 +665,14 @@ function protectedResource(resource: string): ProtectedResourceSettings
   }
   ```
 
+async function readBytesBounded(body: ReadableStream<Uint8Array> | null, limit: number): Promise<Uint8Array | null>
+  Read `body` into memory, or return `null` once it exceeds `limit` bytes.
+
+  Reads incrementally and abandons the stream at the cap, so an oversized
+  stream — a chunked HTTP body that declares no `content-length`, or a small
+  archive that decompresses to gigabytes — is never buffered whole just to be
+  rejected. A `null` body reads as empty.
+
 function redactUrl(raw: string): string
   Strip userinfo (`user:pass@`) and mask every credential-bearing parameter so
   a URL is safe to put in an error message or a log:
@@ -865,6 +909,22 @@ async function sha256Hex(data: string | Uint8Array): Promise<string>
   type is unambiguous whatever buffer the source view sits on (e.g. a
   `SharedArrayBuffer`).
 
+async function signJwtRs256(privateKeyPem: string, claims: Readonly<Record<string, unknown>>, keyId?: string): Promise<string>
+  Sign `claims` as a compact RS256 JWT with a PEM RSA private key —
+  `BEGIN RSA PRIVATE KEY` (PKCS#1) or `BEGIN PRIVATE KEY` (PKCS#8).
+
+  The header is `{"alg":"RS256","typ":"JWT"}`, plus `"kid"` when `keyId` is
+  given (a Google service-account key's `private_key_id`). The claims are
+  serialised as given: the caller sets `iat`, `exp` and the rest.
+
+  ```ts
+  const jwt = await signJwtRs256(pem, { iss: "1234", iat, exp: iat + 540 });
+  ```
+
+  @throws {Error}
+      naming the problem — an empty key, a body that is not
+      base64, or one that is not an RSA key — and never quoting the key.
+
 async function syncCiFiles(files: readonly CiFile[], options: CiSyncOptions): Promise<CiSyncResult[]>
   Bring each declared {@link CiFile} on disk in line with its definition. By
   default a changed file is rewritten; in `check` mode it is reported `stale`
@@ -924,6 +984,11 @@ function validateGraph(targets: Map<string, TargetBuilder>): void
 
   @throws {GraphError}
       with a descriptive message including the cycle path.
+
+const ALLOW_INSECURE_ENV: "ZUKE_ALLOW_INSECURE_URL"
+  The environment variable that opts a deployment out of {@link
+  assertSecureBackendUrl}'s `https:` requirement, for a plaintext endpoint on a
+  network the operator has decided to trust.
 
 const AnnounceTasks: AnnounceTasksApi
   Announcement task functions for posting build status to chat platforms.
@@ -1761,6 +1826,19 @@ class HttpStateStore implements StateStore
     nothing: an empty listing is an answer, and a missing endpoint is not.
   async releaseLock(key: string, token: string): Promise<void>
     `DELETE /locks/:key` releases; a missing lock (`404`) is not an error.
+
+class InsecureBackendUrlError extends Error
+  Raised by {@link assertSecureBackendUrl} when a backend is configured with a
+  plaintext URL. A distinct type so the CLI can report it as the configuration
+  mistake it is — a named message and exit code 1 — rather than letting a stack
+  trace escape as if the build had crashed.
+
+  constructor(setting: string, message: string)
+    Build the error from the offending setting and the full explanation.
+  override name: string
+    The error name.
+  readonly setting: string
+    The environment variable (or setting) carrying the plaintext URL.
 
 class LockConflictError extends Error
   Raised when a target's lock is already held by another run. Its `message` is

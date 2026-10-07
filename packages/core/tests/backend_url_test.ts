@@ -179,3 +179,19 @@ Deno.test("every env-configured backend still resolves over https", () => {
     true,
   );
 });
+
+Deno.test("the guard and the bounded body reader are public API for wrapper packages", async () => {
+  // A wrapper package may depend on core alone, so these are the shared copies
+  // it uses instead of retyping a loopback check or a capped reader.
+  const core = await import("../mod.ts");
+  assertEquals(core.assertSecureBackendUrl, assertSecureBackendUrl);
+  assertEquals(core.ALLOW_INSECURE_ENV, ALLOW_INSECURE_ENV);
+  assertThrows(
+    () => core.assertSecureBackendUrl("http://prom.example", "url", env({})),
+    core.InsecureBackendUrlError,
+  );
+  const body = new Response("0123456789").body;
+  assertEquals(await core.readBytesBounded(body, 4), null);
+  const small = await core.readBytesBounded(new Response("ok").body, 4);
+  assertEquals(small === null ? "" : new TextDecoder().decode(small), "ok");
+});
