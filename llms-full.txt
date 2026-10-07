@@ -20364,14 +20364,15 @@ deno install -A -g -n zuke jsr:@zuke/cli
 
 scaffold Zuke into any project with `zuke setup`, then run its build from
 anywhere inside the project with `zuke <target>`: every command that is not
-the CLI's own (`setup`, `import`, `doc`) is forwarded to the nearest
-`zuke.ts`, exactly as the `./zuke` launcher would run it.
+the CLI's own (`setup`, `import`, `doc`, `upgrade`) is forwarded to the
+nearest `zuke.ts`, exactly as the `./zuke` launcher would run it. Update the
+installed CLI itself with `zuke upgrade`.
 @module
 
-async function main(args: string[], host: SetupHost, prompter: Prompter, docRunner: DocRunner, starActions: StarActions, buildRunner: BuildRunner, buildProbe: BuildProbe): Promise<number>
+async function main(args: string[], host: SetupHost, prompter: Prompter, docRunner: DocRunner, starActions: StarActions, buildRunner: BuildRunner, buildProbe: BuildProbe, upgradeHost: UpgradeHost): Promise<number>
   The CLI entry point. Returns a process exit code; `host`, `prompter`,
-  `docRunner`, `starActions`, `buildRunner`, and `buildProbe` are injectable
-  for testing.
+  `docRunner`, `starActions`, `buildRunner`, `buildProbe`, and `upgradeHost`
+  are injectable for testing.
 
 function parseImportFlags(args: string[]): ImportFlags
   Parse the argument list following `zuke import`.
@@ -20504,6 +20505,26 @@ interface StarActions
     Star the Zuke repository through `gh api`.
   openBrowser(url: string): Promise<boolean>
     Open `url` in the default browser; `false` when it could not launch.
+
+interface UpgradeHost
+  What `zuke upgrade` reaches outside the process, injectable so the
+  command is testable without the network or a real reinstall.
+
+  mainModule(): string
+    The running CLI's main module (`Deno.mainModule`). Deno reports a JSR
+    program by its specifier, `jsr:@zuke/cli` or `jsr:@zuke/cli@<version>`.
+  binDir(): string | undefined
+    The directory `deno install -g` installs into (`<root>/bin`):
+    `DENO_INSTALL_ROOT`, else `~/.deno`, as Deno resolves it. `undefined`
+    when the environment names neither as an absolute path.
+  exists(path: string): Promise<boolean>
+    Whether `path` exists.
+  windows(): boolean
+    Whether this is Windows, where the running shim is a `.cmd` file.
+  meta(): Promise<unknown>
+    Fetch and parse `@zuke/cli`'s JSR `meta.json`.
+  install(denoArgs: string[]): Promise<number>
+    Run `deno <denoArgs>` to reinstall, returning its exit code.
 
 type BuildRunner = (root: string, args: string[], program?: string) => Promise<number>
   Runs `program <args>` from `root` — Deno when `program` is omitted, else the

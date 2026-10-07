@@ -5,7 +5,7 @@
  * Forwarding a build command from the global `zuke` to the project's build.
  *
  * The global command (`deno install -A -g -n zuke jsr:@zuke/cli`) owns only
- * `setup`, `import` and `doc`. Everything else — `zuke ci`, `zuke --list`,
+ * `setup`, `import`, `doc` and `upgrade`. Everything else — `zuke ci`, `zuke --list`,
  * `zuke graph`, `zuke mcp` — belongs to the build in the current project, so
  * `main` forwards it: it walks up from the working directory to the nearest
  * `zuke.json` (the repository-root marker `zuke setup` writes), then runs the

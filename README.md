@@ -148,6 +148,7 @@ zuke setup                                  # or: deno run -A jsr:@zuke/cli setu
 zuke setup --mcp                            # …and register the build's MCP server for your agent
 zuke import                                 # migrate package.json scripts / a Makefile instead
 zuke ci                                     # any other command runs the project's build, like ./zuke ci
+zuke upgrade                                # update the installed CLI to the latest release
 ```
 
 > [!NOTE]

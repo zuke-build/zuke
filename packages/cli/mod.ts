@@ -10,8 +10,9 @@
  *
  * scaffold Zuke into any project with `zuke setup`, then run its build from
  * anywhere inside the project with `zuke <target>`: every command that is not
- * the CLI's own (`setup`, `import`, `doc`) is forwarded to the nearest
- * `zuke.ts`, exactly as the `./zuke` launcher would run it.
+ * the CLI's own (`setup`, `import`, `doc`, `upgrade`) is forwarded to the
+ * nearest `zuke.ts`, exactly as the `./zuke` launcher would run it. Update the
+ * installed CLI itself with `zuke upgrade`.
  *
  * @module
  */
@@ -43,12 +44,18 @@ import {
   runningNotice,
 } from "./src/dispatch.ts";
 import { absolutePath, resolveDocSpec } from "@zuke/core";
-import { spawnDeno } from "./src/deno_path.ts";
+import { runDenoIsolated } from "./src/deno_isolated.ts";
+import {
+  defaultUpgradeHost,
+  runUpgrade,
+  type UpgradeHost,
+} from "./src/upgrade.ts";
 import { neutralise, output } from "./src/output.ts";
 
 export type { SetupHost } from "./src/setup.ts";
 export type { ImportSource } from "./src/import.ts";
 export type { StarActions } from "./src/star.ts";
+export type { UpgradeHost } from "./src/upgrade.ts";
 export type {
   BuildLocation,
   BuildProbe,
@@ -230,6 +237,7 @@ Zuke commands (available anywhere):
   setup [options]         Scaffold Zuke into a directory
   import [options]        Generate a build from package.json scripts or a Makefile
   doc <package>           Show a @zuke/* package's API docs (isolated resolution)
+  upgrade [<version>]     Reinstall this CLI at the latest (or given) JSR release
   --help                  Show this help
   --version               Show the CLI's version, and this project's build's
 
@@ -254,6 +262,10 @@ Import options:
   --no-bootstrap-deno     Launchers require Deno on PATH and fail closed without it
   --force, -f             Overwrite existing files
   --yes, -y               Accept defaults without prompting
+
+Upgrade options:
+  --dry-run               Say what would be installed, and install nothing
+  --force, -f             Reinstall even when already on that version
 
 Doc:
   zuke doc core           API of @zuke/core
@@ -449,41 +461,13 @@ async function commandImport(
 export type DocRunner = (denoArgs: string[]) => Promise<number>;
 
 /**
- * The default {@link DocRunner}: spawn `deno doc …` — {@link spawnDeno} finds
- * the Deno to run it, and puts that Deno first on the child's `PATH` — in an
- * isolated temp dir, relaying what it printed through the package's sink. The
- * child's output is not inherited: it repeats the arguments the user passed
- * (`deno doc` names a `--filter` it could not find) and prints a third-party
- * package's own text, neither of which may reach an Actions runner raw. Its
- * stdin is closed rather than inherited: `deno doc` reads a specifier, never
- * the terminal, and the CLI's own stdin is not its to consume.
+ * The default {@link DocRunner}: `deno doc …` in an isolated temp dir, so the
+ * surrounding repo's deno.json / node_modules / tsconfig don't drag
+ * @types/node resolution noise into the output — the whole point of
+ * `zuke doc` inside a Node project.
  */
-const defaultDocRunner: DocRunner = async (denoArgs) => {
-  // Run from a throwaway directory so the surrounding repo's deno.json /
-  // node_modules / tsconfig don't drag @types/node resolution noise into the
-  // output — the whole point of `zuke doc` inside a Node project.
-  const cwd = await Deno.makeTempDir({ prefix: "zuke-doc-" });
-  try {
-    const child = spawnDeno(denoArgs, {
-      cwd,
-      stdin: "null",
-      stdout: "piped",
-      stderr: "piped",
-    });
-    const { code, stdout, stderr } = await child.output();
-    const relay = (bytes: Uint8Array, write: (line: string) => void) => {
-      const text = new TextDecoder().decode(bytes);
-      // The console adds the line's own newline; keep the text otherwise as
-      // the child wrote it, blank lines included.
-      if (text !== "") write(text.endsWith("\n") ? text.slice(0, -1) : text);
-    };
-    relay(stdout, output.info);
-    relay(stderr, output.error);
-    return code;
-  } finally {
-    await Deno.remove(cwd, { recursive: true });
-  }
-};
+const defaultDocRunner: DocRunner = (denoArgs) =>
+  runDenoIsolated(denoArgs, "zuke-doc-");
 
 /** Run the `doc` subcommand: `deno doc <spec>` in an isolated directory. */
 async function commandDoc(
@@ -652,8 +636,8 @@ async function commandVersion(
 
 /**
  * The CLI entry point. Returns a process exit code; `host`, `prompter`,
- * `docRunner`, `starActions`, `buildRunner`, and `buildProbe` are injectable
- * for testing.
+ * `docRunner`, `starActions`, `buildRunner`, `buildProbe`, and `upgradeHost`
+ * are injectable for testing.
  */
 export async function main(
   args: string[],
@@ -663,6 +647,7 @@ export async function main(
   starActions: StarActions = defaultStarActions,
   buildRunner: BuildRunner = defaultBuildRunner,
   buildProbe: BuildProbe = defaultBuildProbe,
+  upgradeHost: UpgradeHost = defaultUpgradeHost,
 ): Promise<number> {
   if (args[0] === "--help" || args[0] === "-h") {
     return await commandHelp(host, buildProbe, buildRunner);
@@ -682,6 +667,9 @@ export async function main(
     }
     if (command === "doc") {
       return await commandDoc(rest, host, docRunner);
+    }
+    if (command === "upgrade") {
+      return await runUpgrade(rest, (line) => host.log(line), upgradeHost);
     }
   } catch (error) {
     // Surface a command's own friendly error (e.g. a setup directory collision)

@@ -55,7 +55,10 @@ export const defaultDenoHost: DenoHost = {
 };
 
 /** The first of `names` with a non-empty value, or `undefined` if none has one. */
-function firstSet(host: DenoHost, ...names: string[]): string | undefined {
+export function firstSet(
+  host: DenoHost,
+  ...names: string[]
+): string | undefined {
   for (const name of names) {
     const value = host.env(name);
     if (value !== undefined && value !== "") return value;
