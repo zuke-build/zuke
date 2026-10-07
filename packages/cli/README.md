@@ -147,6 +147,10 @@ interface SetupHost
     guards.
   readText(path: string): Promise<string>
     Read a file as UTF-8 text.
+  isTerminal?(): boolean
+    Whether stdout is an interactive terminal, which decides whether the
+    CLI's own output is rich. Optional: an implementation without it is
+    asked through Deno, the way every other process decides.
   writeText(path: string, content: string): Promise<void>
     Write UTF-8 text to a file, creating or replacing it.
 
@@ -190,10 +194,11 @@ interface UpgradeHost
   install(denoArgs: string[]): Promise<number>
     Run `deno <denoArgs>` to reinstall, returning its exit code.
 
-type BuildRunner = (root: string, args: string[], program?: string) => Promise<number>
+type BuildRunner = (root: string, args: string[], program?: string, env?: Readonly<Record<string, string>>) => Promise<number>
   Runs `program <args>` from `root` — Deno when `program` is omitted, else the
   project's launcher at that path — and resolves to its exit code: the
   injectable subprocess seam, so the forwarding is testable without a build.
+  `env` adds variables to the environment the child inherits.
 
 type DocRunner = (denoArgs: string[]) => Promise<number>
   Runs `deno doc <args>` — the injectable subprocess seam for

@@ -39,18 +39,27 @@ import {
   defaultBuildProbe,
   defaultBuildRunner,
   locateBuild,
+  LOCK_FILE,
   NO_LOCK_NOTICE,
   runBuild,
   runningNotice,
 } from "./src/dispatch.ts";
 import { absolutePath, resolveDocSpec } from "@zuke/core";
 import { runDenoIsolated } from "./src/deno_isolated.ts";
+import { defaultDenoHost, firstSet } from "./src/deno_path.ts";
 import {
   defaultUpgradeHost,
   runUpgrade,
   type UpgradeHost,
 } from "./src/upgrade.ts";
 import { neutralise, output } from "./src/output.ts";
+import { type CliPaint, invocationPaint } from "./src/paint.ts";
+import {
+  formatVersionPanel,
+  homeRelative,
+  lockedCoreVersions,
+  type VersionRow,
+} from "./src/version_report.ts";
 
 export type { SetupHost } from "./src/setup.ts";
 export type { ImportSource } from "./src/import.ts";
@@ -196,6 +205,12 @@ function resolveBootstrapDeno(
   return !/^n/i.test(prompter.ask(BOOTSTRAP_QUESTION, "y").trim());
 }
 
+/** The flag that asks for plain output, read here for the CLI's own commands. */
+const PLAIN_FLAG = "--plain";
+
+/** The environment that asks a spawned build for plain output. */
+const PLAIN_ENV: Readonly<Record<string, string>> = { ZUKE_PLAIN: "1" };
+
 /** The one-line identity printed under the logo and atop `--help`. */
 const TAGLINE = `zuke ${VERSION} — code-first build automation for Deno`;
 
@@ -271,6 +286,22 @@ Doc:
   zuke doc core           API of @zuke/core
   zuke doc @scope/pkg     API of a scoped package (or pass jsr:/npm:/https: as-is)`;
 
+/**
+ * {@link HELP} as `paint` renders it: headings marked, each row's command or
+ * flag painted, every word in place. Plain paint returns it unchanged.
+ */
+function helpText(paint: CliPaint): string {
+  if (!paint.rich) return HELP;
+  return HELP.split("\n").map((line) => {
+    if (line === TAGLINE) return paint.value(line);
+    if (/^\S.*:$/.test(line)) return paint.heading(line);
+    const row = /^( {2})(\S.*?)( {2,})(.*)$/.exec(line);
+    if (row === null) return line;
+    const [, indent, label, gap, description] = row;
+    return `${indent}${paint.name(label)}${gap}${description}`;
+  }).join("\n");
+}
+
 /** The heading that introduces the build's own half of the merged help. */
 function buildHelpHeading(root: string): string {
   return `\n${"─".repeat(72)}\nThis project's build (${root}/zuke.ts) — ` +
@@ -291,8 +322,10 @@ const BUILD_HELP_FAILED =
 
 /** What to say when the build was found but could not report its version. */
 const BUILD_VERSION_FAILED =
-  "The build was found but could not report its version. The CLI's own " +
-  "version above is unaffected.";
+  "The build was found but could not report its version: a build on " +
+  "@zuke/core older than 1.60.0 cannot answer --version, and this project " +
+  "has no deno.lock naming its core to read instead. The CLI's own version " +
+  "above is unaffected.";
 
 /** What to say where the build's half would be, when there is no project. */
 const NO_BUILD_NOTICE =
@@ -306,13 +339,14 @@ async function commandSetup(
   host: SetupHost,
   prompter: Prompter,
   starActions: StarActions,
+  paint: CliPaint,
 ): Promise<number> {
   const flags = parseSetupFlags(args);
   let name = flags.name ?? "MyBuild";
   let force = flags.force;
   const dir = flags.dir ?? ".";
 
-  printBanner(host);
+  if (paint.banner) printBanner(host);
   const interactive = !flags.yes && prompter.interactive();
   if (interactive) {
     name = prompter.ask("Build class name", name);
@@ -332,12 +366,12 @@ async function commandSetup(
   const written = result.files.filter((f) => f.status !== "skipped").length;
   reportNotes(host, result);
   if (result.manualSteps.length > 0) {
-    reportManualSteps(host, result, `${written} file(s) written`);
+    reportManualSteps(host, result, `${written} file(s) written`, paint);
     return 1;
   }
-  host.log(
+  host.log(paint.ok(
     `Done — ${written} file(s) written. Next: ./${launcherName ?? "zuke"}`,
-  );
+  ));
   if (interactive) {
     await promptStar(host, prompter, starActions);
   }
@@ -361,11 +395,12 @@ function reportManualSteps(
   host: SetupHost,
   result: SetupResult,
   written: string,
+  paint: CliPaint,
 ): void {
-  host.log(
+  host.log(paint.fail(
     `Incomplete — ${written}, but ${result.manualSteps.length} step(s) ` +
       `need you:`,
-  );
+  ));
   for (const step of result.manualSteps) host.log(`  - ${step}`);
 }
 
@@ -402,13 +437,14 @@ async function commandImport(
   args: string[],
   host: SetupHost,
   prompter: Prompter,
+  paint: CliPaint,
 ): Promise<number> {
   const flags = parseImportFlags(args);
   let name = flags.name ?? "MyBuild";
   let force = flags.force;
   const dir = flags.dir ?? ".";
 
-  printBanner(host);
+  if (paint.banner) printBanner(host);
   const interactive = !flags.yes && prompter.interactive();
   if (interactive) {
     name = prompter.ask("Build class name", name);
@@ -430,10 +466,10 @@ async function commandImport(
     host,
   );
   if (result.source === null) {
-    host.log(
+    host.log(paint.fail(
       "Nothing to import: no package.json scripts or Makefile found" +
         (flags.from ? ` for --from ${flags.from}` : "") + ".",
-    );
+    ));
     return 1;
   }
   const written = result.files.filter((f) => f.status !== "skipped").length;
@@ -444,13 +480,14 @@ async function commandImport(
       result,
       `imported ${result.taskCount} task(s) from ${result.source}, ` +
         `${written} file(s) written`,
+      paint,
     );
     return 1;
   }
-  host.log(
+  host.log(paint.ok(
     `Done — imported ${result.taskCount} task(s) from ${result.source}; ` +
       `${written} file(s) written. Next: ./zuke`,
-  );
+  ));
   return 0;
 }
 
@@ -552,8 +589,10 @@ async function commandHelp(
   host: SetupHost,
   probe: BuildProbe,
   runner: BuildRunner,
+  paint: CliPaint,
+  childEnv: Readonly<Record<string, string>> | undefined,
 ): Promise<number> {
-  host.log(HELP);
+  host.log(helpText(paint));
   let location: Awaited<ReturnType<typeof locateBuild>> = null;
   try {
     location = await locateBuild(Deno.cwd(), probe);
@@ -577,7 +616,7 @@ async function commandHelp(
     // so a build whose `--help` runs and fails is reported here too — not
     // only one that fails to spawn. Left unread, that outcome was the one
     // path this command passed over without a word of its own.
-    const code = await runBuild(runner, location, ["--help"]);
+    const code = await runBuild(runner, location, ["--help"], childEnv);
     if (code !== 0) output.error(BUILD_HELP_FAILED);
   } catch (error) {
     output.error(error instanceof Error ? error.message : String(error));
@@ -589,19 +628,22 @@ async function commandHelp(
 /**
  * `zuke --version`: this CLI's version, then — inside a project — the build's.
  *
- * The first line is the installed CLI's version, bare and unchanged, so
- * anything already reading `zuke --version` keeps working. What follows is the
- * build's, which is a different number for a real reason: `@zuke/cli` and
+ * Both numbers, because they differ for a real reason: `@zuke/cli` and
  * `@zuke/core` are separate packages on separate cadences, and a project pins
  * core through its own import map and lock. Reporting only one of them made
  * `zuke --version` and `./zuke --version` disagree with nothing to say which
  * had answered.
  *
- * The build's line comes from running the build's own `--version`, for the
- * same reason its half of the help does: the CLI links its own core, which is
- * not necessarily the one the project resolved, so asking is the only way to
- * be right. A build that cannot answer is reported and does not fail the
- * command — the CLI's own version is still correct.
+ * In plain output the first line is the installed CLI's version, bare, so
+ * anything reading `zuke --version` keeps working, and the build's follows
+ * under a heading. On a terminal the same facts are one panel.
+ *
+ * The build's version is read from its `deno.lock` — what the project
+ * actually resolves, which the CLI's own linked core need not be — so nothing
+ * is spawned, and a build on any core is answered. Only a project with no
+ * lock, or a lock naming no core, has its build asked instead, plainly; a
+ * build that cannot answer is reported and does not fail the command, since
+ * the CLI's own version is still correct.
  *
  * Outside a project there is no second line and no notice. A version query is
  * not the place to explain what a project is, and `--help` already does.
@@ -610,28 +652,81 @@ async function commandVersion(
   host: SetupHost,
   probe: BuildProbe,
   runner: BuildRunner,
+  paint: CliPaint,
 ): Promise<number> {
-  host.log(VERSION);
   let location: Awaited<ReturnType<typeof locateBuild>> = null;
+  let refusal: string | undefined;
   try {
     location = await locateBuild(Deno.cwd(), probe);
   } catch (error) {
     // A refused build is worth saying out loud even here: silence would read
     // as "no project", which is a different fact. On stderr, so the version
     // on stdout stays the one line a script reads.
-    output.error(error instanceof Error ? error.message : String(error));
+    refusal = error instanceof Error ? error.message : String(error);
+  }
+  const core = location === null
+    ? []
+    : await projectCoreVersions(host, location.root);
+  if (paint.rich) {
+    const rows: VersionRow[] = [["cli", VERSION]];
+    if (location !== null) {
+      if (core.length > 0) rows.push(["core", core.join(", ")]);
+      const home = firstSet(defaultDenoHost, "HOME", "USERPROFILE");
+      rows.push([
+        "project",
+        homeRelative(location.root, home, defaultDenoHost.windows()),
+      ]);
+    }
+    rows.push(["deno", Deno.version.deno]);
+    rows.push(["platform", `${Deno.build.os}-${Deno.build.arch}`]);
+    host.log(formatVersionPanel(rows, paint));
+  } else {
+    host.log(VERSION);
+  }
+  if (refusal !== undefined) output.error(refusal);
+  if (location === null) return 0;
+  if (core.length > 0) {
+    // The panel already named it; plain output keeps the two-part shape it
+    // always had, so a script reading the second line still finds it.
+    if (!paint.rich) {
+      host.log(
+        `\nThis project's build (${location.root}/zuke.ts) runs on Zuke:`,
+      );
+      host.log(core.join(", "));
+    }
     return 0;
   }
-  if (location === null) return 0;
+  // No lock to read, or none naming core: ask the build itself, as before.
   host.log(`\nThis project's build (${location.root}/zuke.ts) runs on Zuke:`);
   try {
-    const code = await runBuild(runner, location, ["--version"]);
+    // Asked plainly whatever this invocation is, so the answer is the bare
+    // version under the heading — never a second panel under the first.
+    const code = await runBuild(runner, location, ["--version"], PLAIN_ENV);
     if (code !== 0) output.error(BUILD_VERSION_FAILED);
   } catch (error) {
     output.error(error instanceof Error ? error.message : String(error));
     output.error(BUILD_VERSION_FAILED);
   }
   return 0;
+}
+
+/**
+ * The `@zuke/core` versions the project at `root` resolves, read from its
+ * `deno.lock`; empty when it has none, or one naming no core. Reading the lock
+ * answers for a build on any core — asking the build only works from core
+ * 1.60.0, where `--version` was added — and spawns nothing.
+ */
+async function projectCoreVersions(
+  host: SetupHost,
+  root: string,
+): Promise<string[]> {
+  let text: string;
+  try {
+    text = await host.readText(`${root}/${LOCK_FILE}`);
+  } catch {
+    return [];
+  }
+  return lockedCoreVersions(text);
 }
 
 /**
@@ -649,32 +744,52 @@ export async function main(
   buildProbe: BuildProbe = defaultBuildProbe,
   upgradeHost: UpgradeHost = defaultUpgradeHost,
 ): Promise<number> {
-  if (args[0] === "--help" || args[0] === "-h") {
-    return await commandHelp(host, buildProbe, buildRunner);
+  // `--plain` belongs to whichever CLI answers. For the commands answered
+  // here it is read and set aside; a command forwarded to the build keeps it
+  // in its argv, where the build's own CLI reads it.
+  const own = args.filter((arg) => arg !== PLAIN_FLAG);
+  const plainFlag = own.length !== args.length;
+  const paint = invocationPaint(
+    plainFlag ? true : undefined,
+    host.isTerminal?.bind(host),
+  );
+  if (own[0] === "--help" || own[0] === "-h") {
+    // The build's half answers to the same request: an explicit --plain
+    // reaches it as ZUKE_PLAIN, which a build on any core accepts, where the
+    // flag would be refused by one older than core 1.67.0.
+    const childEnv = plainFlag ? PLAIN_ENV : undefined;
+    return await commandHelp(host, buildProbe, buildRunner, paint, childEnv);
   }
-  const command = args[0];
-  const rest = args.slice(1);
+  const command = own[0];
+  const rest = own.slice(1);
 
   if (command === "--version" || command === "-V") {
-    return await commandVersion(host, buildProbe, buildRunner);
+    return await commandVersion(host, buildProbe, buildRunner, paint);
   }
   try {
     if (command === "setup") {
-      return await commandSetup(rest, host, prompter, starActions);
+      return await commandSetup(rest, host, prompter, starActions, paint);
     }
     if (command === "import") {
-      return await commandImport(rest, host, prompter);
+      return await commandImport(rest, host, prompter, paint);
     }
     if (command === "doc") {
       return await commandDoc(rest, host, docRunner);
     }
     if (command === "upgrade") {
-      return await runUpgrade(rest, (line) => host.log(line), upgradeHost);
+      return await runUpgrade(
+        rest,
+        (line) => host.log(line),
+        upgradeHost,
+        paint,
+      );
     }
   } catch (error) {
     // Surface a command's own friendly error (e.g. a setup directory collision)
     // as a clean message and non-zero exit, not an uncaught stack trace.
-    host.log(error instanceof Error ? error.message : String(error));
+    host.log(
+      paint.fail(error instanceof Error ? error.message : String(error)),
+    );
     return 1;
   }
   // Not one of ours: inside a project it is the build's — `zuke ci`,
@@ -684,15 +799,15 @@ export async function main(
   // the usage.
   const forwarded = await forwardToBuild(args, buildProbe, buildRunner);
   if (forwarded !== null) return forwarded;
-  if (args.length === 0) {
-    host.log(HELP);
+  if (own.length === 0) {
+    host.log(helpText(paint));
     return 0;
   }
   host.log(
     `Unknown command: ${command} — and no zuke.json was found in the current ` +
       `directory or any parent to forward it to.\n`,
   );
-  host.log(HELP);
+  host.log(helpText(paint));
   return 1;
 }
 

@@ -646,3 +646,34 @@ Deno.test({
     }, { prefix: "zuke-dispatch-" });
   },
 });
+
+Deno.test("runBuild hands an env to the runner on both the launcher and the Deno path", async () => {
+  const seen: Array<
+    [string | undefined, Readonly<Record<string, string>> | undefined]
+  > = [];
+  const runner = (
+    _root: string,
+    _args: string[],
+    program?: string,
+    env?: Readonly<Record<string, string>>,
+  ) => {
+    seen.push([program, env]);
+    return Promise.resolve(0);
+  };
+  const env = { ZUKE_PLAIN: "1" };
+  await withEnv({ [FORWARDED_ENV]: undefined }, async () => {
+    await runBuild(runner, { root: "/r", frozen: false, launcher: "/r/zuke" }, [
+      "--help",
+    ], env);
+    await runBuild(runner, { root: "/r", frozen: false, launcher: null }, [
+      "--help",
+    ], env);
+    await runBuild(runner, { root: "/r", frozen: false, launcher: null }, [
+      "--help",
+    ]);
+  });
+  assertEquals(seen, [["/r/zuke", env], [undefined, env], [
+    undefined,
+    undefined,
+  ]]);
+});

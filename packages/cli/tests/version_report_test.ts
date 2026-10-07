@@ -1,0 +1,108 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
+import {
+  assertEquals,
+  assertStringIncludes,
+} from "../../core/tests/_assert.ts";
+import { stripAnsi } from "@zuke/core/render";
+import {
+  formatVersionPanel,
+  homeRelative,
+  lockedCoreVersions,
+} from "../src/version_report.ts";
+import { cliPaint } from "../src/paint.ts";
+
+Deno.test("lockedCoreVersions reads the core a lock resolves, once per version", () => {
+  const lock = JSON.stringify({
+    version: "5",
+    specifiers: {
+      "jsr:@zuke/core@^1.31.0": "1.42.0",
+      "jsr:@zuke/core@^1.40.0": "1.42.0",
+      "jsr:@zuke/deno@^1": "1.3.0",
+      "jsr:@zuke/core-extra@^1": "9.9.9",
+    },
+  });
+  assertEquals(lockedCoreVersions(lock), ["1.42.0"]);
+  const split = JSON.stringify({
+    specifiers: {
+      "jsr:@zuke/core@^0.9": "0.9.4",
+      "jsr:@zuke/core@^1": "1.66.0",
+    },
+  });
+  assertEquals(lockedCoreVersions(split), ["0.9.4", "1.66.0"]);
+});
+
+Deno.test("lockedCoreVersions is empty for a lock without core, or not a lock", () => {
+  assertEquals(
+    lockedCoreVersions(JSON.stringify({ specifiers: { "npm:x@1": "1.0.0" } })),
+    [],
+  );
+  assertEquals(lockedCoreVersions("not json"), []);
+});
+
+Deno.test("homeRelative writes home as ~, and only a whole leading directory", () => {
+  assertEquals(
+    homeRelative("/home/me/work/app", "/home/me", false),
+    "~/work/app",
+  );
+  assertEquals(
+    homeRelative("/home/me/work/app", "/home/me/", false),
+    "~/work/app",
+  );
+  assertEquals(homeRelative("/home/me", "/home/me", false), "~");
+  assertEquals(
+    homeRelative("/home/me2/app", "/home/me", false),
+    "/home/me2/app",
+  );
+  assertEquals(homeRelative("/srv/app", undefined, false), "/srv/app");
+  assertEquals(homeRelative("/srv/app", "relative/home", false), "/srv/app");
+  assertEquals(homeRelative("/srv/app", "/", false), "/srv/app");
+  // POSIX paths are case-sensitive: a differently cased home is another one.
+  assertEquals(homeRelative("/Home/me/app", "/home/me", false), "/Home/me/app");
+});
+
+Deno.test("homeRelative matches a Windows home given with backslashes, ignoring case", () => {
+  if (Deno.build.os !== "windows") return; // absolutePath reads Windows paths only there.
+  assertEquals(
+    homeRelative("C:/Users/Me/proj", "C:\\Users\\me", true),
+    "~/proj",
+  );
+  assertEquals(
+    homeRelative("C:/Users/me/proj", "C:\\", true),
+    "C:/Users/me/proj",
+  );
+});
+
+Deno.test("lockedCoreVersions drops a resolved value that is not a release version", () => {
+  const lock = JSON.stringify({
+    specifiers: {
+      "jsr:@zuke/core@^1": "1.2.3\n::error::forged",
+      "jsr:@zuke/core@^2": "\u001b[31m2.0.0",
+      "jsr:@zuke/core@^3": "3.0.0-rc.1",
+    },
+  });
+  assertEquals(lockedCoreVersions(lock), ["3.0.0-rc.1"]);
+});
+
+Deno.test("the version panel boxes each row under a zuke title, flush", () => {
+  const rows = [["cli", "1.10.0"], ["core", "1.42.0"], [
+    "deno",
+    "2.8.3",
+  ]] as const;
+  const plainText = formatVersionPanel(
+    rows,
+    cliPaint({ rich: true, color: false, banner: true }),
+  );
+  const lines = plainText.split("\n");
+  assertEquals(lines.length, 5);
+  assertStringIncludes(lines[0], " zuke ");
+  assertStringIncludes(lines[1], "◆ cli   1.10.0");
+  assertStringIncludes(lines[2], "◆ core  1.42.0");
+  assertEquals(new Set(lines.map((l) => l.length)).size, 1);
+  const coloured = formatVersionPanel(
+    rows,
+    cliPaint({ rich: true, color: true, banner: true }),
+  );
+  assertEquals(stripAnsi(coloured), plainText);
+});

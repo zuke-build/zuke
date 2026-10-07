@@ -35,6 +35,8 @@
 
 import { absolutePath, httpJson } from "@zuke/core";
 import { runDenoIsolated } from "./deno_isolated.ts";
+import type { CliPaint } from "./paint.ts";
+import { VERSION_PATTERN } from "./version_report.ts";
 import { defaultDenoHost, firstSet } from "./deno_path.ts";
 import { VERSION } from "./version.ts";
 
@@ -43,10 +45,6 @@ const PACKAGE = "jsr:@zuke/cli";
 
 /** The registry document listing every published version and the latest. */
 const META_URL = "https://jsr.io/@zuke/cli/meta.json";
-
-/** A release version: a numeric core with an optional prerelease and build. */
-const VERSION_PATTERN =
-  /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
 /**
  * What `zuke upgrade` reaches outside the process, injectable so the
@@ -208,6 +206,7 @@ export async function runUpgrade(
   args: string[],
   log: (line: string) => void,
   host: UpgradeHost,
+  paint: CliPaint,
 ): Promise<number> {
   const flags = parseUpgradeFlags(args);
   const running = host.mainModule();
@@ -245,11 +244,11 @@ export async function runUpgrade(
   }
   const target = resolveTarget(meta, flags);
   if (target === VERSION && !flags.force) {
-    log(
+    log(paint.ok(
       `zuke ${VERSION} is already ${
         flags.version === undefined ? "the latest release" : "installed"
       }. Pass --force to reinstall it.`,
-    );
+    ));
     return 0;
   }
   const latest = target === field(meta, "latest");
@@ -275,9 +274,13 @@ export async function runUpgrade(
   if (code !== 0) {
     // Not "still on the old version": a forced install that failed part-way
     // may have replaced some of it, and Deno's own output above says how far.
-    log(`zuke upgrade: deno install exited ${code}; see its output above.`);
+    log(paint.fail(
+      `zuke upgrade: deno install exited ${code}; see its output above.`,
+    ));
     return code;
   }
-  log(`Done — zuke ${target} is installed. Check with: zuke --version`);
+  log(paint.ok(
+    `Done — zuke ${target} is installed. Check with: zuke --version`,
+  ));
   return 0;
 }

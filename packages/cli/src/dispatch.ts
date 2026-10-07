@@ -41,7 +41,7 @@
 import { type AbsolutePath, absolutePath, CONFIG_FILE } from "@zuke/core";
 import { exists } from "./fs.ts";
 import { noLockNotice } from "./launcher.ts";
-import { spawnDeno } from "./deno_path.ts";
+import { QUIET_DENO_ENV, spawnDeno } from "./deno_path.ts";
 
 /** The build file a forwarded command runs, beside {@link CONFIG_FILE}. */
 export const BUILD_FILE = "zuke.ts";
@@ -360,10 +360,11 @@ export function runBuild(
   runner: BuildRunner,
   location: BuildLocation,
   args: string[],
+  env?: Readonly<Record<string, string>>,
 ): Promise<number> {
   return location.launcher === null || Deno.env.get(FORWARDED_ENV) === "1"
-    ? runner(location.root, buildRunArgs(location, args))
-    : runner(location.root, args, location.launcher);
+    ? runner(location.root, buildRunArgs(location, args), undefined, env)
+    : runner(location.root, args, location.launcher, env);
 }
 
 /** The launchers' notice for a run without a lockfile, verbatim. */
@@ -382,11 +383,13 @@ export function runningNotice(root: string): string {
  * Runs `program <args>` from `root` — Deno when `program` is omitted, else the
  * project's launcher at that path — and resolves to its exit code: the
  * injectable subprocess seam, so the forwarding is testable without a build.
+ * `env` adds variables to the environment the child inherits.
  */
 export type BuildRunner = (
   root: string,
   args: string[],
   program?: string,
+  env?: Readonly<Record<string, string>>,
 ) => Promise<number>;
 
 /**
@@ -430,6 +433,7 @@ export const defaultBuildRunner: BuildRunner = async (
   root,
   args,
   program,
+  env,
 ): Promise<number> => {
   const options: Deno.CommandOptions = {
     cwd: root,
@@ -438,11 +442,11 @@ export const defaultBuildRunner: BuildRunner = async (
     stderr: "inherit",
   };
   const child = program === undefined
-    ? spawnDeno(args, options)
+    ? spawnDeno(args, { ...options, env })
     : new Deno.Command(program, {
       ...options,
       args,
-      env: { [FORWARDED_ENV]: "1" },
+      env: { ...env, ...QUIET_DENO_ENV, [FORWARDED_ENV]: "1" },
     }).spawn();
   const plan = signalPlan(child);
   for (const [signal, handler] of plan) {
