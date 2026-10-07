@@ -19,6 +19,97 @@
 import { absolutePath, lockedJsrSpecifiers } from "@zuke/core";
 import { box } from "@zuke/core/render";
 import type { CliPaint } from "./paint.ts";
+import { isRecord } from "./records.ts";
+import { LOCK_FILE } from "./dispatch.ts";
+
+/**
+ * `text` with its JSONC comments and trailing commas removed, so `JSON.parse`
+ * reads it. Deno reads `deno.json` and `deno.jsonc` alike as JSONC, and a
+ * comment is the usual reason for a `deno.jsonc`. Text inside a string is left
+ * alone, escapes included; anything this does not make valid stays invalid.
+ */
+function stripJsonc(text: string): string {
+  let out = "";
+  // A comma is held back until the next token shows whether it trails.
+  let comma = false;
+  let i = 0;
+  const emit = (token: string) => {
+    if (comma && token !== "}" && token !== "]") out += ",";
+    comma = false;
+    out += token;
+  };
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === '"') {
+      let end = i + 1;
+      while (end < text.length && text[end] !== '"') {
+        end += text[end] === "\\" ? 2 : 1;
+      }
+      emit(text.slice(i, end + 1));
+      i = end + 1;
+    } else if (text.startsWith("//", i)) {
+      const end = text.indexOf("\n", i);
+      i = end === -1 ? text.length : end;
+    } else if (text.startsWith("/*", i)) {
+      const end = text.indexOf("*/", i + 2);
+      i = end === -1 ? text.length : end + 2;
+    } else if (ch === ",") {
+      if (comma) out += ",";
+      comma = true;
+      i++;
+    } else if (/\s/.test(ch)) {
+      out += ch;
+      i++;
+    } else {
+      emit(ch);
+      i++;
+    }
+  }
+  return comma ? `${out},` : out;
+}
+
+/**
+ * The lockfile the project at `root` resolves through, from the text of its
+ * config (the first of `DENO_CONFIG_FILES` that exists, or `undefined` when
+ * there is none), or `null` when no lock can be read for it.
+ *
+ * It follows Deno's `lock` setting:
+ * - `false` disables the lock, and Deno then ignores any `deno.lock` left
+ *   behind, so reading that file would report a version the build does not
+ *   run. That is `null`.
+ * - A string, or an object's `path`, names the lockfile, relative to `root`
+ *   unless it is absolute.
+ * - No setting, `true`, or an object without a `path` keeps `deno.lock`.
+ *
+ * Comments and trailing commas are read as Deno reads them. A config that is
+ * still not valid is a setting this cannot read, so it is also `null` rather
+ * than a guess; the caller then asks the build, as it does for a project with
+ * no lock.
+ */
+export function projectLockPath(
+  root: string,
+  configText: string | undefined,
+): string | null {
+  if (configText === undefined) return `${root}/${LOCK_FILE}`;
+  let config: unknown;
+  try {
+    config = JSON.parse(stripJsonc(configText));
+  } catch {
+    return null;
+  }
+  const lock = isRecord(config) ? config.lock : undefined;
+  if (lock === false) return null;
+  const path = typeof lock === "string"
+    ? lock
+    : isRecord(lock) && typeof lock.path === "string"
+    ? lock.path
+    : LOCK_FILE;
+  try {
+    return absolutePath(path).path;
+  } catch {
+    return absolutePath(root, path).path;
+  }
+}
 
 /** The core package whose resolved version a project's lock is read for. */
 const CORE_PACKAGE = "@zuke/core";

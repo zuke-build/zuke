@@ -38,8 +38,8 @@ import {
   type BuildRunner,
   defaultBuildProbe,
   defaultBuildRunner,
+  DENO_CONFIG_FILES,
   locateBuild,
-  LOCK_FILE,
   NO_LOCK_NOTICE,
   runBuild,
   runningNotice,
@@ -58,6 +58,7 @@ import {
   formatVersionPanel,
   homeRelative,
   lockedCoreVersions,
+  projectLockPath,
   type VersionRow,
 } from "./src/version_report.ts";
 
@@ -638,7 +639,7 @@ async function commandHelp(
  * anything reading `zuke --version` keeps working, and the build's follows
  * under a heading. On a terminal the same facts are one panel.
  *
- * The build's version is read from its `deno.lock` — what the project
+ * The build's version is read from its lockfile — what the project
  * actually resolves, which the CLI's own linked core need not be — so nothing
  * is spawned, and a build on any core is answered. Only a project with no
  * lock, or a lock naming no core, has its build asked instead, plainly; a
@@ -711,22 +712,43 @@ async function commandVersion(
 }
 
 /**
- * The `@zuke/core` versions the project at `root` resolves, read from its
- * `deno.lock`; empty when it has none, or one naming no core. Reading the lock
- * answers for a build on any core — asking the build only works from core
- * 1.60.0, where `--version` was added — and spawns nothing.
+ * The `@zuke/core` versions the project at `root` resolves, read from the
+ * lockfile its config points Deno at (`deno.lock` unless it names another);
+ * empty when it has none, disables its lock, or names no core. Reading the
+ * lock answers for a build on any core — asking the build only works from
+ * core 1.60.0, where `--version` was added — and spawns nothing.
  */
 async function projectCoreVersions(
   host: SetupHost,
   root: string,
 ): Promise<string[]> {
+  const lock = projectLockPath(root, await firstConfigText(host, root));
+  if (lock === null) return [];
   let text: string;
   try {
-    text = await host.readText(`${root}/${LOCK_FILE}`);
+    text = await host.readText(lock);
   } catch {
     return [];
   }
   return lockedCoreVersions(text);
+}
+
+/**
+ * The text of the first of {@link DENO_CONFIG_FILES} at `root` that can be
+ * read, or `undefined` when there is none.
+ */
+async function firstConfigText(
+  host: SetupHost,
+  root: string,
+): Promise<string | undefined> {
+  for (const name of DENO_CONFIG_FILES) {
+    try {
+      return await host.readText(`${root}/${name}`);
+    } catch {
+      // Not there: try the next one Deno would.
+    }
+  }
+  return undefined;
 }
 
 /**

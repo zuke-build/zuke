@@ -10,6 +10,7 @@ import {
   formatVersionPanel,
   homeRelative,
   lockedCoreVersions,
+  projectLockPath,
 } from "../src/version_report.ts";
 import { cliPaint } from "../src/paint.ts";
 
@@ -105,4 +106,66 @@ Deno.test("the version panel boxes each row under a zuke title, flush", () => {
     cliPaint({ rich: true, color: true, banner: true }),
   );
   assertEquals(stripAnsi(coloured), plainText);
+});
+
+Deno.test("projectLockPath follows Deno's lock setting", () => {
+  const root = "/work/app";
+  assertEquals(projectLockPath(root, undefined), "/work/app/deno.lock");
+  assertEquals(projectLockPath(root, "{}"), "/work/app/deno.lock");
+  assertEquals(projectLockPath(root, '{"lock": true}'), "/work/app/deno.lock");
+  assertEquals(projectLockPath(root, '{"lock": false}'), null);
+  assertEquals(
+    projectLockPath(root, '{"lock": "locks/z.lock"}'),
+    "/work/app/locks/z.lock",
+  );
+  assertEquals(
+    projectLockPath(root, '{"lock": {"path": "../shared.lock"}}'),
+    "/work/shared.lock",
+  );
+  // An object that only freezes the lock keeps the default file.
+  assertEquals(
+    projectLockPath(root, '{"lock": {"frozen": true}}'),
+    "/work/app/deno.lock",
+  );
+  // A config that is not an object carries no lock setting.
+  assertEquals(projectLockPath(root, "[]"), "/work/app/deno.lock");
+});
+
+Deno.test("projectLockPath keeps an absolute lock path as it is", () => {
+  if (Deno.build.os === "windows") return; // "/x" has no drive there.
+  assertEquals(
+    projectLockPath("/work/app", '{"lock": "/elsewhere/z.lock"}'),
+    "/elsewhere/z.lock",
+  );
+});
+
+Deno.test("projectLockPath reads a config the way Deno does, comments and trailing commas included", () => {
+  const root = "/work/app";
+  // A commented config with no lock setting keeps deno.lock, as before.
+  assertEquals(
+    projectLockPath(root, '{\n  // project config\n  "tasks": {},\n}'),
+    "/work/app/deno.lock",
+  );
+  assertEquals(
+    projectLockPath(root, '{ /* off */ "lock": false, }'),
+    null,
+  );
+  assertEquals(
+    projectLockPath(root, '{ "lock": { "path": "a//b.lock", }, // here\n}'),
+    "/work/app/a/b.lock",
+  );
+  // A string holding comment markers, quotes and commas is left as written.
+  assertEquals(
+    projectLockPath(root, '{ "x": "/* \\" , ]", "lock": "z.lock" }'),
+    "/work/app/z.lock",
+  );
+  // A comment at the end with no newline, and a run of commas, stay handled.
+  assertEquals(projectLockPath(root, '{"lock": false} // end'), null);
+  assertEquals(projectLockPath(root, '{"a": 1,, "lock": false}'), null);
+});
+
+Deno.test("projectLockPath refuses to guess at a config it cannot parse", () => {
+  assertEquals(projectLockPath("/work/app", '{ "lock": false'), null);
+  assertEquals(projectLockPath("/work/app", '{ "lock": false, /* open'), null);
+  assertEquals(projectLockPath("/work/app", "[1,"), null);
 });
