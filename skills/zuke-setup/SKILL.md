@@ -18,6 +18,7 @@ the target project:
 deno install -A -g -n zuke jsr:@zuke/cli   # once, globally
 zuke setup                                  # in the project root
 ./zuke                                       # run the build
+zuke upgrade                                 # later: update the global CLI
 ```
 
 No global install? The same wizard runs directly:

@@ -13,7 +13,11 @@
 
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { CONFIG_FILE } from "../../packages/core/src/config.ts";
-import { type BuildProbe, main } from "../../packages/cli/mod.ts";
+import {
+  type BuildProbe,
+  main,
+  type UpgradeHost,
+} from "../../packages/cli/mod.ts";
 import {
   type BuildRunner,
   defaultBuildProbe,
@@ -285,3 +289,84 @@ Deno.test("a forwarded build resolves a real Deno when the CLI is a compiled bin
     assertEquals(spawned.execPath.startsWith(dir), false);
   }, { prefix: "zuke-global-cli-" });
 });
+
+Deno.test("zuke upgrade is the CLI's own; a build target named upgrade stays reachable past --", async () => {
+  await withTemp(async (dir) => {
+    await Deno.writeTextFile(
+      `${dir}/${CONFIG_FILE}`,
+      '{ "name": "Shadowed" }\n',
+    );
+    await Deno.writeTextFile(
+      `${dir}/zuke.ts`,
+      `import { Build, run, target } from "${CORE}";
+
+class Shadowed extends Build {
+  upgrade = target()
+    .description("A project target that happens to share the CLI's word")
+    .executes(async () => {
+      await Deno.writeTextFile("upgraded.txt", "build");
+    });
+}
+
+await run(Shadowed);
+`,
+    );
+    const installs: string[][] = [];
+    const upgradeHost: UpgradeHost = {
+      mainModule: () => "jsr:@zuke/cli",
+      binDir: () => `${dir}/bin`,
+      exists: () => Promise.resolve(true),
+      windows: () => false,
+      meta: () => Promise.resolve({ latest: "999.0.0", versions: {} }),
+      install: (denoArgs) => {
+        installs.push(denoArgs);
+        return Promise.resolve(0);
+      },
+    };
+    await inDir(dir, async () => {
+      // The CLI answers `upgrade` itself, inside a project, without running
+      // the build: the real runner and probe are in place, and the target's
+      // marker file is never written.
+      const host = recordingHost();
+      const code = await main(
+        ["upgrade"],
+        host,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        confinedTo(dir),
+        upgradeHost,
+      );
+      assertEquals(code, 0);
+      assertEquals(installs.length, 1);
+      assertEquals(installs[0].at(-1), "jsr:@zuke/cli");
+      assertEquals(await exists(`${dir}/upgraded.txt`), false);
+
+      // `--` hands the word to the build, through the real runner.
+      const forwarded = await main(
+        ["--", "upgrade"],
+        recordingHost(),
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        confinedTo(dir),
+        upgradeHost,
+      );
+      assertEquals(forwarded, 0);
+      assertEquals(await Deno.readTextFile(`${dir}/upgraded.txt`), "build");
+      assertEquals(installs.length, 1);
+    });
+  }, { prefix: "zuke-global-cli-" });
+});
+
+/** Whether `path` exists. */
+async function exists(path: string): Promise<boolean> {
+  try {
+    await Deno.stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
