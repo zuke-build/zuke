@@ -477,8 +477,8 @@ gemini-extension.json     # Gemini CLI extension manifest (serves skills/)
   (never a concatenated shell string), so command construction is
   injection-free.
 - **The global `zuke` command forwards to the project's build.** `@zuke/cli`
-  keeps `setup`, `import`, `doc`, `--help` and `--version` for itself and
-  forwards everything else to the nearest `zuke.json` above the working
+  keeps `setup`, `import`, `doc`, `upgrade`, `--help` and `--version` for itself
+  and forwards everything else to the nearest `zuke.json` above the working
   directory, running the `zuke.ts` beside it exactly as `./zuke` would. The
   walk-up discovery is the accepted design (#578) — it is how npm, Deno and git
   find their roots — bounded by a trust gate modelled on git's `safe.directory`
