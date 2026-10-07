@@ -273,6 +273,11 @@ export const TOOL_GROUPS: ToolGroup[] = [
         desc: "auth, builds, Cloud Run, Artifact Registry, GKE, storage",
       },
       {
+        name: "AWS CLI",
+        pkg: "@zuke/aws",
+        desc: "S3, ECR, ECS, Lambda, CloudFormation, CloudWatch, secrets",
+      },
+      {
         name: "Terraform",
         pkg: "@zuke/terraform",
         desc: "init, plan, apply, destroy",
