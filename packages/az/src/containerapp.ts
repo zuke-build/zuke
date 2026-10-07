@@ -15,7 +15,7 @@
  *   s.name("api").resourceGroup("rg-prod")
  *     .revisionWeight("api--v140", 10).revisionWeight("api--v130", 90)
  * );
- * const fqdn = await AzTasks.containerAppFqdn((s) =>
+ * const fqdn = await AzTasks.containerappFqdn((s) =>
  *   s.name("api").resourceGroup("rg-prod")
  * );
  * ```

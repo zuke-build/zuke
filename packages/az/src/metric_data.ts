@@ -41,6 +41,28 @@ interface MetricData {
   datapoints: Datapoint[];
 }
 
+/**
+ * Refuse an answer that may have been cut at the `--top` limit: `series` of
+ * them came back where `limit` is the most the CLI returns. The check is
+ * conservative — an answer of exactly `limit` series may be complete, but
+ * cannot be told apart from a cut one. `undefined` means the query holds one
+ * series, and nothing is checked.
+ */
+export function checkSeriesLimit(
+  task: string,
+  metric: string,
+  series: number,
+  limit: number | undefined,
+): void {
+  if (limit !== undefined && series >= limit) {
+    throw new AzOutputError(
+      task,
+      `"${metric}" came back with ${series} series, the --top limit, so ` +
+        "some may be missing. Raise .top(...) or narrow the dimensions.",
+    );
+  }
+}
+
 /** The JSON key an aggregation's value is reported under. */
 export function aggregationKey(aggregation: AzMonitorAggregation): string {
   return aggregation.toLowerCase();
@@ -110,8 +132,14 @@ export function metricDataOf(
     );
   }
   const names = document.map(nameOf);
-  const wanted = metric ??
-    (names.length === 1 ? names[0] : undefined);
+  if (metric === undefined && names.length === 1 && names[0] === undefined) {
+    throw new AzOutputError(
+      task,
+      "the answer's one metric has no name, so it cannot be told apart — " +
+        "check the command is monitor metrics list.",
+    );
+  }
+  const wanted = metric ?? (names.length === 1 ? names[0] : undefined);
   if (wanted === undefined) {
     throw new AzOutputError(
       task,

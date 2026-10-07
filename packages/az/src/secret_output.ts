@@ -2,19 +2,25 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * Finding the secrets in what a credential-bearing command printed, so its
- * settings can register them with the run's redactor.
+ * Finding the secrets in what a credential-bearing `az` command printed, so
+ * its settings can register them with the run's redactor.
  *
- * Internal to the package. The commands that print a secret — a secret's
- * value, a decrypted parameter, a registry password, role credentials,
- * a credential setting — run quietly, so nothing is streamed; registering
- * what they returned is what keeps the value masked when the build goes on to
- * print it, pass it to another command, or fail with it in an error.
+ * Internal to the package. The commands that print a credential — an access
+ * token, a registry token, a Key Vault secret's value — run quietly, so
+ * nothing is streamed; registering what they returned is what keeps the value
+ * masked when the build goes on to print it, pass it to another command, or
+ * fail with it in an error.
  *
- * The rule is to err towards masking. The commands pin `--output json`, but a
- * caller's `--query` can still reshape the answer, so a document that does
- * not carry the expected keys has every scalar in it registered instead, and
- * output that is not JSON at all is registered whole.
+ * The rule is to err towards masking, without masking ordinary words. The
+ * commands pin `--output json`, but a caller's `--query` can still reshape
+ * the answer — rename a key, move the secret under another — so:
+ *
+ * - the value under each expected key is registered, whatever its length;
+ * - a credential-named field anywhere in the document is registered;
+ * - when the caller set a query, or none of the keys is present, every scalar
+ *   leaf of eight or more characters is registered too;
+ * - an answer that is itself one JSON string (a reader's pinned projection)
+ *   is the secret, and output that is not JSON at all is registered whole.
  *
  * @module
  */
@@ -23,20 +29,22 @@ import { isRecord } from "./shape.ts";
 
 /**
  * The shortest value worth registering when it is *derived* — found by name
- * inside a secret rather than being the secret. A short one would mask
- * ordinary text wherever it appeared; eight characters is the threshold core's
- * redactor uses for the lines of a multi-line secret, for the same reason.
+ * or as a leaf rather than being the secret itself. A short one would mask
+ * ordinary text (`true`, `12`, `Bearer`) wherever it appeared; eight
+ * characters is the threshold core's redactor uses for the lines of a
+ * multi-line secret, for the same reason.
  */
 const MIN_DERIVED_LENGTH = 8;
 
 /**
  * A field name that marks its value as a credential, matched on the name's
- * last segment once camelCase is split: `password`, `db_password`,
- * `clientSecret`, `apiKey`, `private-key`, `credentials` — but not `keyId`
- * or `tokenType`.
+ * last segments once camelCase is split: `password`, `db_pwd`,
+ * `clientSecret`, `apiKey`, `accountKey`, `SharedAccessKey`, `sas`,
+ * `connectionString`, `privateKeyPem`, `credentials` — but not `keyId`,
+ * `tokenType` or `hostname`.
  */
 const CREDENTIAL_NAME =
-  /(^|[_-])(pass(word)?|passwd|secret|token|api_?key|private_?key|credentials?)$/i;
+  /(^|[_-])(pass(word)?|passwd|pwd|secret|token|key|sas|pem|connection_?string|credentials?)$/i;
 
 /** `name` with its camelCase boundaries turned into `_`, lowercased. */
 function segmented(name: string): string {
@@ -65,19 +73,18 @@ function underKeys(value: unknown, keys: readonly string[]): string[] {
   );
 }
 
-/**
- * The credential-named string fields, at any depth, of `value` — eight or
- * more characters long.
- */
+/** Whether `value` is long enough to register when it is derived. */
+function longEnough(value: string): boolean {
+  return value.length >= MIN_DERIVED_LENGTH;
+}
+
+/** The credential-named string fields, at any depth, of `value`. */
 function credentialFields(value: unknown): string[] {
   if (Array.isArray(value)) return value.flatMap(credentialFields);
   if (!isRecord(value)) return [];
   return Object.entries(value).flatMap(([key, child]) =>
     typeof child === "string"
-      ? CREDENTIAL_NAME.test(segmented(key)) &&
-          child.length >= MIN_DERIVED_LENGTH
-        ? [child]
-        : []
+      ? CREDENTIAL_NAME.test(segmented(key)) && longEnough(child) ? [child] : []
       : credentialFields(child)
   );
 }
@@ -96,23 +103,34 @@ function fieldsOf(secret: string): string[] {
   return credentialFields(parsed(secret));
 }
 
-/**
- * The secrets in `stdout`.
- *
- * - A JSON document yields the string under each of `keys`, wherever it
- *   sits. When none of `keys` is present — the caller reshaped the answer
- *   with `--query` — every scalar in the document is registered instead.
- * - A secret found that way that is itself a JSON object (Secrets Manager's
- *   templates) also yields its credential-named fields, at any depth.
- * - Output that is not JSON, or JSON with nothing in it, is registered whole,
- *   trimmed: that is what a command such as `ecr get-login-password` prints.
- */
-export function secretsIn(stdout: string, keys: readonly string[]): string[] {
+/** The secrets in `stdout`, by the rules in this module's documentation. */
+function secretsIn(
+  stdout: string,
+  keys: readonly string[],
+  queried: boolean,
+): string[] {
   const text = stdout.trim();
   const document = parsed(text);
-  if (document === null) return [];
+  if (document === undefined) return text === "" ? [] : [text];
+  if (typeof document === "string") return [document, ...fieldsOf(document)];
   const named = underKeys(document, keys);
-  const found = named.length > 0 ? named : leaves(document);
-  if (found.length === 0) return text === "" ? [] : [text];
-  return [...found, ...found.flatMap(fieldsOf)];
+  const derived = queried || named.length === 0
+    ? leaves(document).filter(longEnough)
+    : [];
+  const found = [...named, ...credentialFields(document), ...derived];
+  return [...new Set([...found, ...found.flatMap(fieldsOf)])];
+}
+
+/**
+ * Register the secrets in `stdout` through `mark` — the settings'
+ * `markSecret`. `keys` are the fields the command returns its secret under;
+ * `queried` says whether the caller set a `--query` that may have moved it.
+ */
+export function registerSecrets(
+  stdout: string,
+  keys: readonly string[],
+  queried: boolean,
+  mark: (secret: string) => void,
+): void {
+  for (const secret of secretsIn(stdout, keys, queried)) mark(secret);
 }

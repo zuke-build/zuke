@@ -23,7 +23,7 @@ Deno.test("az: command, global options, then extra flags", () => {
   const argv = new AzSettings()
     .command("network", "front-door", "purge")
     .subscription("prod").output("jsonc").query("[].name")
-    .onlyShowErrors().verbose().debug()
+    .verbose().debug()
     .flag("resource-group", "rg").flag("no-wait")
     .args("--extra")
     .argv();
@@ -35,7 +35,6 @@ Deno.test("az: command, global options, then extra flags", () => {
     "--subscription=prod",
     "--output=jsonc",
     "--query=[].name",
-    "--only-show-errors",
     "--verbose",
     "--debug",
     "--resource-group",
@@ -141,4 +140,11 @@ Deno.test("a runner's failed exit is returned under noThrow", async () => {
     s.command("group", "list").noThrow().runner(fake.run)
   );
   assertEquals(output.code, 1);
+});
+
+Deno.test("az: --only-show-errors on its own", () => {
+  assertEquals(new AzSettings().onlyShowErrors().argv(), [
+    "az",
+    "--only-show-errors",
+  ]);
 });

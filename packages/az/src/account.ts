@@ -20,7 +20,7 @@
  */
 
 import type { CommandOutput } from "@zuke/core/shell";
-import { secretsIn } from "./secret_output.ts";
+import { registerSecrets } from "./secret_output.ts";
 import { type AzOutputFormat, AzSettings } from "./settings.ts";
 import { operands, option } from "./validate.ts";
 
@@ -139,9 +139,12 @@ export class AzAccountGetAccessTokenSettings extends AzSettings {
 
   /** Register the returned access token as a secret. */
   protected override onOutput(output: CommandOutput): void {
-    for (const secret of secretsIn(output.stdout, [ACCESS_TOKEN_QUERY])) {
-      this.markSecret(secret);
-    }
+    registerSecrets(
+      output.stdout,
+      [ACCESS_TOKEN_QUERY],
+      this.queried,
+      (secret) => this.markSecret(secret),
+    );
   }
 
   /** Emit `account get-access-token` with its options. */

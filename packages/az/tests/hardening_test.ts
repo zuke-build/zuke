@@ -122,7 +122,9 @@ Deno.test("H2: no typed value can make the CLI read a file", () => {
     () => new AzWebappConfigAppsettingsSetSettings().setting("[a", "v"),
     () => new AzWebappConfigAppsettingsSetSettings().setting("a=b", "v"),
     () => new AzWebappConfigAppsettingsSetSettings().setting("", "v"),
-    () => new AzDeploymentGroupCreateSettings().parameter("@p", "v"),
+    () =>
+      new AzDeploymentGroupCreateSettings().resourceGroup("g").templateFile("t")
+        .parameter("@p", "v").argv(),
     () =>
       new AzDeploymentGroupCreateSettings().resourceGroup("g")
         .templateFile("t").parametersFile(file).argv(),
@@ -413,13 +415,14 @@ Deno.test("H9: aks get-credentials refuses to print credentials", () => {
   );
 });
 
-Deno.test("H10: masking finds numbers, booleans and credentials nested in lists", async () => {
+Deno.test("H10: masking finds long numbers and credentials nested in lists", async () => {
   const reshaped = recording(
     new AzAccountGetAccessTokenSettings().query("[expires_on, tokenType]"),
   );
   await reshaped.settings.runner(new FakeAz(json([1791633600, true])).run)
     .run();
-  assertEquals(reshaped.marked.sort(), ["1791633600", "true"]);
+  // Only the leaf long enough to be worth masking: `true` is not.
+  assertEquals(reshaped.marked, ["1791633600"]);
   const secret = JSON.stringify([
     { db: { password: "nested-pass-123" } },
     { note: "short" },

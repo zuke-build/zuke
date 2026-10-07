@@ -20,7 +20,7 @@
  */
 
 import { AzResourceSettings } from "./resource.ts";
-import { bool, keyed, option, pair, required } from "./validate.ts";
+import { bool, option, pair, required, settingKey } from "./validate.ts";
 
 /** The `--query` the host-name reader pins. */
 export const HOST_NAME_QUERY = "defaultHostName";
@@ -182,10 +182,11 @@ export class AzWebappConfigAppsettingsSetSettings extends AzResourceSettings {
   }
 
   /**
-   * An app setting whose value App Service reads from Key Vault (`--settings
-   * name=@Microsoft.KeyVault(SecretUri=<uri>)`); repeatable. The CLI first
-   * looks for a file named `Microsoft.KeyVault(SecretUri=…` and, finding
-   * none, sends the reference as written — the one `@` value let through.
+   * An app setting whose value App Service reads from Key Vault; repeatable.
+   * Sent as the JSON object `{"name":"@Microsoft.KeyVault(SecretUri=<uri>)"}`,
+   * a form `--settings` accepts: written as `name=@Microsoft…` the CLI would
+   * first try to read a file of that name, and send its contents if one
+   * existed.
    */
   keyVaultReference(name: string, secretUri: string): this {
     if (!secretUri.startsWith("https://") || /[()\s]/.test(secretUri)) {
@@ -194,13 +195,9 @@ export class AzWebappConfigAppsettingsSetSettings extends AzResourceSettings {
           "the secret's https:// URI, without parentheses or spaces.",
       );
     }
+    const key = settingKey("webappConfigAppsettingsSet", "setting", name);
     this.#settings.push(
-      keyed(
-        "webappConfigAppsettingsSet",
-        "setting",
-        name,
-        `@Microsoft.KeyVault(SecretUri=${secretUri})`,
-      ),
+      JSON.stringify({ [key]: `@Microsoft.KeyVault(SecretUri=${secretUri})` }),
     );
     return this;
   }

@@ -25,6 +25,33 @@
 import { AzSettings } from "./settings.ts";
 import { bool, fromStdin, option, pair, required } from "./validate.ts";
 
+/**
+ * The `sig` of a SAS token in every form a log may show it: as written,
+ * percent-decoded, and each of those URL-encoded.
+ */
+function signatureForms(token: string): string[] {
+  const written = /(?:^|[?&])sig=([^&]+)/.exec(token)?.[1];
+  if (written === undefined) return [];
+  const decoded = percentDecoded(written);
+  return [
+    ...new Set([
+      written,
+      decoded,
+      encodeURIComponent(written),
+      encodeURIComponent(decoded),
+    ]),
+  ];
+}
+
+/** `text` percent-decoded, or as it is when it is not valid encoding. */
+function percentDecoded(text: string): string {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return text;
+  }
+}
+
 /** How a storage command authenticates (`--auth-mode`). */
 export type AzStorageAuthMode = "login" | "key";
 
@@ -54,8 +81,14 @@ export abstract class AzStorageBlobSettings extends AzSettings {
     return this.#credential("--account-key", key);
   }
 
-  /** A SAS token (`--sas-token`), sent on standard input. */
+  /**
+   * A SAS token (`--sas-token`), sent on standard input. Its signature is
+   * registered on its own as well — as written, decoded and URL-encoded —
+   * since the CLI's debug log prints the token URL-encoded inside a request
+   * URL, where the token as a whole never appears.
+   */
   sasToken(token: string): this {
+    signatureForms(token).forEach((form) => this.markSecret(form));
     return this.#credential("--sas-token", token);
   }
 

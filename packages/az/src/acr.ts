@@ -22,7 +22,7 @@
  */
 
 import type { CommandOutput } from "@zuke/core/shell";
-import { secretsIn } from "./secret_output.ts";
+import { registerSecrets } from "./secret_output.ts";
 import { type AzOutputFormat, AzSettings } from "./settings.ts";
 import { fromStdin, keyed, operand, option, required } from "./validate.ts";
 
@@ -107,11 +107,18 @@ export class AzAcrLoginSettings extends AzSettings {
     return this.#password;
   }
 
-  /** Register the returned token as a secret. */
+  /**
+   * Register the returned token as a secret — with {@link exposeToken} only:
+   * without it the CLI logs Docker in and prints no credential.
+   */
   protected override onOutput(output: CommandOutput): void {
-    for (const secret of secretsIn(output.stdout, TOKEN_KEYS)) {
-      this.markSecret(secret);
-    }
+    if (!this.#exposeToken) return;
+    registerSecrets(
+      output.stdout,
+      TOKEN_KEYS,
+      this.queried,
+      (secret) => this.markSecret(secret),
+    );
   }
 
   /** Emit `acr login` with its options. */

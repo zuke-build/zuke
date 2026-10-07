@@ -59,11 +59,11 @@ and `debug`. Every command runs with three of the CLI's configuration variables
 set in its environment, so it never waits on a keypress or installs code behind
 the build's back:
 
-| Variable                                 | Effect                                                                                                                                                                                         |
-| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AZURE_EXTENSION_USE_DYNAMIC_INSTALL=no` | A command from an extension that is not installed fails with the CLI's message naming it — instead of prompting, or silently installing it when there is no terminal. Add extensions up front. |
-| `AZURE_CORE_LOGIN_EXPERIENCE_V2=off`     | An interactive `az login` does not open its subscription selector.                                                                                                                             |
-| `AZURE_CORE_NO_COLOR=true`               | No ANSI colour codes in captured output.                                                                                                                                                       |
+| Variable                                 | Effect                                                                                                                                                                                                                                                                            |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AZURE_EXTENSION_USE_DYNAMIC_INSTALL=no` | A command from an extension that is not installed fails — instead of prompting, or silently installing it when there is no terminal. The CLI's message does not name the extension (`'query' is misspelled or not recognized by the system`, exit 2), so add extensions up front. |
+| `AZURE_CORE_LOGIN_EXPERIENCE_V2=off`     | An interactive `az login` does not open its subscription selector.                                                                                                                                                                                                                |
+| `AZURE_CORE_NO_COLOR=true`               | No ANSI colour codes in captured output.                                                                                                                                                                                                                                          |
 
 Override any of them with `.env({...})`. A confirmation prompt — `group delete`,
 `acr repository delete` — is not switched off: call the command's `.yes()`.
@@ -91,18 +91,18 @@ and guard neither, so never give them an untrusted value.
 A reader returns a value instead of the command's output. It pins `--query` and
 `--output` after your lambda, so the CLI does the extraction, and runs quietly:
 
-| Reader                               | Runs                                                      | Returns                                                        |
-| ------------------------------------ | --------------------------------------------------------- | -------------------------------------------------------------- |
-| `accessToken()`                      | `account get-access-token --query accessToken`            | a bearer token, registered as a secret                         |
-| `subscriptionId()`, `tenantId()`     | `account show --query id` / `tenantId`                    | the id                                                         |
-| `secretValue((s) => …)`              | `keyvault secret show --query value`                      | the secret, exactly — multi-line values included               |
-| `acrToken((s) => s.name(r))`         | `acr login --expose-token --query accessToken`            | a registry token, for `docker login`                           |
-| `containerAppFqdn((s) => …)`         | `containerapp show --query properties.configuration…fqdn` | the ingress FQDN                                               |
-| `webAppHostName((s) => …)`           | `webapp show --query defaultHostName`                     | the host name                                                  |
-| `deploymentOutput(group, name, key)` | `deployment group show --query properties.outputs`        | one output (a non-string one as JSON)                          |
-| `resourceGroupExists(name)`          | `group exists`                                            | `true` or `false`                                              |
-| `metricValue((s) => …)`              | `monitor metrics list`                                    | the latest datapoint, or a `sum`/`average`/`maximum`/`minimum` |
-| `logAnalyticsQuery((q) => …)`        | `monitor log-analytics query`                             | the rows, every cell a string                                  |
+| Reader                               | Runs                                                      | Returns                                                       |
+| ------------------------------------ | --------------------------------------------------------- | ------------------------------------------------------------- |
+| `accessToken()`                      | `account get-access-token --query accessToken`            | a bearer token, registered as a secret                        |
+| `subscriptionId()`, `tenantId()`     | `account show --query id` / `tenantId`                    | the id                                                        |
+| `secretValue((s) => …)`              | `keyvault secret show --query value`                      | the secret, exactly — multi-line values included              |
+| `acrToken((s) => s.name(r))`         | `acr login --expose-token --query accessToken`            | a registry token, for `docker login`                          |
+| `containerappFqdn((s) => …)`         | `containerapp show --query properties.configuration…fqdn` | the ingress FQDN                                              |
+| `webappHostName((s) => …)`           | `webapp show --query defaultHostName`                     | the host name                                                 |
+| `deploymentOutput(group, name, key)` | `deployment group show --query properties.outputs`        | one output (a non-string one as JSON)                         |
+| `resourceGroupExists(name)`          | `group exists`                                            | `true` or `false`                                             |
+| `metricValue((s) => …)`              | `monitor metrics list`                                    | the newest interval, or a `sum`/`average`/`maximum`/`minimum` |
+| `logAnalyticsQuery((q) => …)`        | `monitor log-analytics query`                             | the rows, every cell a string                                 |
 
 ```ts
 const failures = await AzTasks.metricValue((s) =>
@@ -114,14 +114,20 @@ const failures = await AzTasks.metricValue((s) =>
 
 `metricValue` needs exactly one `aggregation`. Azure Monitor reports an interval
 with no data without a value, so a missing value is no data, not zero; the
-reader fails on no data unless `.missingDataAs(value)` says what it means. The
-CLI returns at most `--top` series per metric (ten by default), so the reader
-refuses an answer that reached the limit rather than total a partial one.
+reader fails on no data unless `.missingDataAs(value)` says what it means. Every
+aggregate spans every series the answer holds; `"latest"` sums the series at the
+newest timestamp. A filtered or split query returns at most `--top` series per
+metric (ten by default), so the reader refuses an answer that reached the limit
+rather than total a partial one — conservatively, since exactly `top` series may
+be complete. The range set by `.window(...)` is not aligned to the interval, so
+the newest datapoint may cover an interval still being written.
 
-`logAnalyticsQuery` runs a command from the CLI's `log-analytics` extension —
-install it with `az extension add --name log-analytics`. The extension renders
-every cell as a string, the way Python prints it: `"42"`, `"True"`, and `"None"`
-for an empty cell.
+`logAnalyticsQuery` runs a command from the CLI's `log-analytics` extension, a
+preview extension — install it with `az extension add --name log-analytics`.
+Without it the CLI only says the command is not recognized; the reader, the
+`monitorLogAnalyticsQuery` task and the canary's KQL mode turn that into an
+error that names the extension. The extension renders every cell as a string,
+the way Python prints it: `"42"`, `"True"`, and `"None"` for an empty cell.
 
 Output a reader cannot use — not JSON, the wrong shape, empty, several lines
 where one was expected, or a truncated capture — raises an `AzOutputError`,
@@ -137,18 +143,24 @@ A secret never goes on the command line where the CLI can read it another way.
 `--flag=@-` and hand the value to the CLI on standard input, so it is in neither
 the argv nor the process table; each is registered with the run's redactor too.
 The CLI strips trailing line breaks from what it reads that way — use
-`keyvaultSecretSet((s) => s.file(path))` for a value that must keep them.
+`keyvaultSecretSet((s) => s.file(path))` for a value that must keep them. A SAS
+token's `sig` is registered on its own too, as written and URL-encoded, since
+the debug log prints the token inside a request URL.
 
 The commands that print a credential — `account get-access-token`,
 `acr login --expose-token`, `keyvault secret show` and `keyvault secret set` —
 always run quietly with `--output json` pinned, and what they return is
-registered with the redactor. A Key Vault secret that is a JSON object also has
-each credential-named field (`password`, `apiKey`, `client_secret`, …) masked on
-its own. `.debug()` registers the credentials the CLI reads from the environment
+registered with the redactor: the value under its usual key, any
+credential-named field, and — when a `--query` may have moved it — every value
+eight or more characters long. A Key Vault secret that is a JSON object also has
+each credential-named field (`password`, `pwd`, `apiKey`, `accountKey`,
+`SharedAccessKey`, `sas`, `connectionString`, `privateKeyPem`, …) masked on its
+own. `.debug()` registers the credentials the CLI reads from the environment
 (`AZURE_STORAGE_KEY`, `AZURE_STORAGE_CONNECTION_STRING`,
-`AZURE_STORAGE_SAS_TOKEN`, `AZURE_CLIENT_SECRET`, `AZURE_DEVOPS_EXT_PAT`), but
-its log can still carry what the CLI holds in its own token cache — keep it out
-of shared CI logs.
+`AZURE_STORAGE_SAS_TOKEN`, `AZURE_CLIENT_SECRET`, `AZURE_DEVOPS_EXT_PAT`) — from
+the build's environment or set with `.env(...)`, in either order — but its log
+can still carry what the CLI holds in its own token cache — keep it out of
+shared CI logs.
 
 ## Azure Monitor canary analysis
 
@@ -346,7 +358,8 @@ class AzAcrLoginSettings extends AzSettings
   override protected stdinInput(): string | undefined
     The password, for the CLI to read from standard input.
   override protected onOutput(output: CommandOutput): void
-    Register the returned token as a secret.
+    Register the returned token as a secret — with {@link exposeToken} only:
+    without it the CLI logs Docker in and prints no credential.
   override protected leadingTokens(): string[]
     Emit `acr login` with its options.
 
@@ -605,7 +618,9 @@ class AzKeyvaultSecretSetSettings extends AzSettings
   file(path: string): this
     Read the value from a file (`--file`) — the way to keep it exact.
   encoding(encoding: AzKeyvaultSecretEncoding): this
-    How the file is encoded (`--encoding`); `utf-8` by default.
+    How the {@link file} is encoded (`--encoding`); `utf-8` by default.
+    Refused without a file: the CLI saves it as a `file-encoding` tag that
+    `keyvault secret download` later decodes with.
   contentType(type: string): this
     What the value is, e.g. `"password"` (`--content-type`).
   expires(time: AzTime): this
@@ -751,6 +766,8 @@ class AzMonitorAnalysisSettings
     The dimension values the series is narrowed to (set by {@link dimension}).
   kql_?: { workspace: string; query: string; }
     The workspace and query of the KQL mode (set by {@link kql}).
+  top_?: number
+    The most series to read (set by {@link top}).
   window_: number
     How far back to read, in ms (set by {@link window}).
   min_?: number
@@ -792,9 +809,14 @@ class AzMonitorAnalysisSettings
     still be short of data — harmless for a `max`, but a `min` on a `Total`
     or `Count` can fail on the lag rather than on the candidate.
   min(value: number): this
-    Fail when any datapoint is below `value`.
+    Fail when any datapoint is below `value`, a finite number.
   max(value: number): this
-    Fail when any datapoint is above `value`.
+    Fail when any datapoint is above `value`, a finite number.
+  top(count: number): this
+    The most series to read (`--top`; the CLI's default is ten). Azure
+    Monitor applies it to a query narrowed by {@link dimension}, and the
+    analysis fails rather than judge an answer that reached it — raise it
+    when a dimension value matches more series than that.
   missingDataAs(value: number): this
     Judge `value` when the window has no data, instead of failing. Azure
     Monitor reports nothing for an interval with no events, so for a count
@@ -841,10 +863,12 @@ class AzMonitorMetricValueSettings extends AzMonitorMetricsListSettings
     The metric to read, by name. Needed only when the request names more
     than one with `.metrics(...)`.
   aggregate(how: AzMonitorAggregate): this
-    How to turn the datapoints into one number (default `"latest"`, the
-    newest). An aggregate combines every datapoint in the range, across
-    every series the answer holds: a `"sum"` of per-minute `Total`s is the
-    range's total.
+    How to turn the datapoints into one number, across every series the
+    answer holds. `"latest"` (the default) is the newest interval — the sum
+    of the series' values at the newest timestamp any of them has, so a
+    metric split by a dimension reads as its total. The others combine every
+    datapoint in the range: a `"sum"` of per-minute `Total`s is the range's
+    total.
   missingDataAs(value: number): this
     Return `value` when there are no datapoints, instead of failing. Azure
     Monitor reports an interval with no events without a value, so for a
@@ -887,12 +911,6 @@ class AzMonitorMetricsListSettings extends AzSettings
 
   readonly aggregations_: AzMonitorAggregation[]
     The aggregations to compute (set by {@link aggregation}).
-  interval_?: AzMonitorInterval
-    The time grain (set by {@link interval}).
-  readonly splitBy_: string[]
-    The dimensions the series are split by (set by {@link splitBy}).
-  top_?: number
-    The most series per metric (set by {@link top}).
   protected taskName(): string
     The task name used in this command's error messages.
   resource(id: string): this
@@ -903,6 +921,8 @@ class AzMonitorMetricsListSettings extends AzSettings
     The aggregations to compute per interval (`--aggregation`); repeatable.
   interval(interval: AzMonitorInterval): this
     The time grain of each datapoint (`--interval`); one minute by default.
+    The range set by {@link window} is not aligned to it, so the newest
+    datapoint may cover an interval that is still being written.
   startTime(time: AzTime): this
     The start of the range (`--start-time`).
   endTime(time: AzTime): this
@@ -926,6 +946,12 @@ class AzMonitorMetricsListSettings extends AzSettings
     The metric namespace (`--namespace`).
   top(count: number): this
     The most time series to return per metric (`--top`); 10 by default.
+  get seriesLimit_(): number | undefined
+    The most series the answer can hold, when the query can return several —
+    {@link top}, or the CLI's default of ten — and `undefined` when it cannot.
+    Azure Monitor applies `--top` only to a filtered or split query; without
+    one there is a single series. A reader that totals the series reads this
+    to tell a complete answer from one cut at the limit.
   orderby(order: string): this
     The aggregation and direction to sort series by (`--orderby`), e.g. `"sum desc"`.
   override protected leadingTokens(): string[]
@@ -968,10 +994,10 @@ class AzSettings extends SubcommandSettings
   or colours a build log:
 
   - `AZURE_EXTENSION_USE_DYNAMIC_INSTALL=no` — a command from an extension
-    that is not installed fails with the CLI's own message naming it, instead
-    of prompting (on a terminal) or silently downloading and installing the
-    extension (without one). Install what a build needs up front with
-    `az extension add --name <name>`.
+    that is not installed fails, instead of prompting (on a terminal) or
+    silently downloading and installing the extension (without one). The
+    CLI's message does not name the extension — it says the command `is misspelled or not recognized by the system` and exits 2 — so install what
+    a build needs up front with `az extension add --name <name>`.
   - `AZURE_CORE_LOGIN_EXPERIENCE_V2=off` — an interactive `az login` does not
     open its subscription selector.
   - `AZURE_CORE_NO_COLOR=true` — no ANSI colour codes in captured output.
@@ -995,9 +1021,14 @@ class AzSettings extends SubcommandSettings
   query(expression: string): this
     A JMESPath expression that filters the output (`--query`).
   onlyShowErrors(): this
-    Print errors only, suppressing warnings (`--only-show-errors`).
+    Print errors only, suppressing warnings (`--only-show-errors`). The CLI
+    refuses it beside `--debug` or `--verbose`, and so do these settings.
   verbose(): this
     More logging, on stderr (`--verbose`).
+  override env(record: Record<string, string>): this
+    Merge additional environment variables for the process. Under
+    {@link debug} — set before or after — a credential variable set here is
+    registered with the run's redactor, like one in the build's environment.
   debug(): this
     Turn on the CLI's debug logging (`--debug`), written to stderr.
 
@@ -1006,8 +1037,8 @@ class AzSettings extends SubcommandSettings
     The credentials the CLI reads from the environment — `AZURE_STORAGE_KEY`,
     `AZURE_STORAGE_CONNECTION_STRING`, `AZURE_STORAGE_SAS_TOKEN`,
     `AZURE_CLIENT_SECRET`, `AZURE_DEVOPS_EXT_PAT`, and Terraform's
-    `ARM_CLIENT_SECRET` beside them — are registered with the run's redactor
-    when this is called, but a token the CLI holds in its own cache
+    `ARM_CLIENT_SECRET` beside them — are registered with the run's redactor,
+    whether they are in the build's environment or set with {@link env}, but a token the CLI holds in its own cache
     (`~/.azure`) is not known here and is not masked. Keep it for a local
     investigation, never a shared CI log.
   override flag(name: string, value?: string | number): this
@@ -1024,6 +1055,10 @@ class AzSettings extends SubcommandSettings
     The `--output` a command insists on, whatever the settings or the user's
     config say; `undefined` leaves it to them. A credential-bearing command
     pins `json`, which is the form its secrets can be found in.
+  protected get queried(): boolean
+    Whether a `--query` was set — by the caller, or pinned by a reader. A
+    credential-bearing command then registers every long scalar it printed,
+    since the query may have moved the secret away from its usual key.
   runner(run: AzSettingsRunner): this
     Replace how this command is run. The default spawns the CLI; this is the
     seam a test answers commands through, and the way a build executes `az`
@@ -1062,7 +1097,10 @@ abstract class AzStorageBlobSettings extends AzSettings
   accountKey(key: string): this
     The account key (`--account-key`), sent on standard input.
   sasToken(token: string): this
-    A SAS token (`--sas-token`), sent on standard input.
+    A SAS token (`--sas-token`), sent on standard input. Its signature is
+    registered on its own as well — as written, decoded and URL-encoded —
+    since the CLI's debug log prints the token URL-encoded inside a request
+    URL, where the token as a whole never appears.
   connectionString(connection: string): this
     A connection string (`--connection-string`), sent on standard input.
   override protected stdinInput(): string | undefined
@@ -1120,9 +1158,11 @@ class AzWebappConfigAppsettingsSetSettings extends AzResourceSettings
   setting(name: string, value: string): this
     An app setting (`--settings name=value`); repeatable.
   keyVaultReference(name: string, secretUri: string): this
-    An app setting whose value App Service reads from Key Vault (`--settings name=@Microsoft.KeyVault(SecretUri=<uri>)`); repeatable. The CLI first
-    looks for a file named `Microsoft.KeyVault(SecretUri=…` and, finding
-    none, sends the reference as written — the one `@` value let through.
+    An app setting whose value App Service reads from Key Vault; repeatable.
+    Sent as the JSON object `{"name":"@Microsoft.KeyVault(SecretUri=<uri>)"}`,
+    a form `--settings` accepts: written as `name=@Microsoft…` the CLI would
+    first try to read a file of that name, and send its contents if one
+    existed.
   slotSetting(name: string, value: string): this
     A setting that stays with its slot through a swap (`--slot-settings name=value`); repeatable.
   slot(name: string): this
@@ -1250,7 +1290,7 @@ interface AzTasksApi
     Roll a container app onto a new revision: `az containerapp update`.
   containerappShow(configure?: Configure<AzContainerappShowSettings>): Promise<CommandOutput>
     Describe a container app: `az containerapp show`.
-  containerAppFqdn(configure?: Configure<AzContainerappShowSettings>): Promise<string>
+  containerappFqdn(configure?: Configure<AzContainerappShowSettings>): Promise<string>
     A container app's ingress FQDN. Pins `--query properties.configuration.ingress.fqdn --output tsv`; fails for an app
     without ingress.
   containerappRevisionList(configure?: Configure<AzContainerappRevisionListSettings>): Promise<CommandOutput>
@@ -1265,7 +1305,7 @@ interface AzTasksApi
     Deploy an artifact to a web app: `az webapp deploy`.
   webappShow(configure?: Configure<AzWebappShowSettings>): Promise<CommandOutput>
     Describe a web app: `az webapp show`.
-  webAppHostName(configure?: Configure<AzWebappShowSettings>): Promise<string>
+  webappHostName(configure?: Configure<AzWebappShowSettings>): Promise<string>
     A web app's default host name. Pins `--query defaultHostName --output tsv`.
   webappConfigAppsettingsSet(configure?: Configure<AzWebappConfigAppsettingsSetSettings>): Promise<CommandOutput>
     Set app settings: `az webapp config appsettings set`.

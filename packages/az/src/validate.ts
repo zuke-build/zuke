@@ -91,10 +91,25 @@ export function operands(
 }
 
 /**
- * `key=value`, refused when the key is empty, holds an `=`, or starts with a
- * character the CLI gives a meaning to: `-` (an option), `@` (a file) or
- * `{`/`[` (a JSON document). For a pair sent inside one `--flag=key=value`
- * token, where the CLI reads no file from the value.
+ * `key`, refused when it is empty, holds an `=`, or starts with a character
+ * the CLI gives a meaning to: `-` (an option), `@` (a file) or `{`/`[` (a
+ * JSON document) — or with whitespace, which the CLI strips before that JSON
+ * check, so ` {"a":1,"b":2}=x` would have set two settings.
+ */
+export function settingKey(task: string, what: string, key: string): string {
+  if (key === "" || key.includes("=") || /^[\s\-@{[]/.test(key)) {
+    throw new Error(
+      `AzTasks.${task}: "${key}" is not usable as a ${what} name — it is ` +
+        "empty, holds '=', or starts with whitespace, '-', '@', '{' or '['.",
+    );
+  }
+  return key;
+}
+
+/**
+ * `key=value`, with the key checked by {@link settingKey}. For a pair sent
+ * inside one `--flag=key=value` token, where the CLI reads no file from the
+ * value.
  */
 export function keyed(
   task: string,
@@ -102,13 +117,7 @@ export function keyed(
   key: string,
   value: string | number,
 ): string {
-  if (key === "" || key.includes("=") || /^[-@{[]/.test(key)) {
-    throw new Error(
-      `AzTasks.${task}: "${key}" is not usable as a ${what} name — it is ` +
-        "empty, holds '=', or starts with '-', '@', '{' or '['.",
-    );
-  }
-  return `${key}=${value}`;
+  return `${settingKey(task, what, key)}=${value}`;
 }
 
 /**

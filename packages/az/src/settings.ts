@@ -83,10 +83,11 @@ export function failOnExit(settings: AzSettings, output: CommandOutput) {
  * or colours a build log:
  *
  * - `AZURE_EXTENSION_USE_DYNAMIC_INSTALL=no` — a command from an extension
- *   that is not installed fails with the CLI's own message naming it, instead
- *   of prompting (on a terminal) or silently downloading and installing the
- *   extension (without one). Install what a build needs up front with
- *   `az extension add --name <name>`.
+ *   that is not installed fails, instead of prompting (on a terminal) or
+ *   silently downloading and installing the extension (without one). The
+ *   CLI's message does not name the extension — it says the command `is
+ *   misspelled or not recognized by the system` and exits 2 — so install what
+ *   a build needs up front with `az extension add --name <name>`.
  * - `AZURE_CORE_LOGIN_EXPERIENCE_V2=off` — an interactive `az login` does not
  *   open its subscription selector.
  * - `AZURE_CORE_NO_COLOR=true` — no ANSI colour codes in captured output.
@@ -104,6 +105,8 @@ export class AzSettings extends SubcommandSettings {
   #verbose = false;
   #debug = false;
   #runner?: AzSettingsRunner;
+  /** The environment set through {@link env}, which `--debug` can print. */
+  readonly #ownEnv: Record<string, string> = {};
 
   /** Settings with the CLI's prompts, extension installs and colour off. */
   constructor() {
@@ -145,7 +148,10 @@ export class AzSettings extends SubcommandSettings {
     return this;
   }
 
-  /** Print errors only, suppressing warnings (`--only-show-errors`). */
+  /**
+   * Print errors only, suppressing warnings (`--only-show-errors`). The CLI
+   * refuses it beside `--debug` or `--verbose`, and so do these settings.
+   */
   onlyShowErrors(): this {
     this.#onlyShowErrors = true;
     return this;
@@ -158,6 +164,27 @@ export class AzSettings extends SubcommandSettings {
   }
 
   /**
+   * Merge additional environment variables for the process. Under
+   * {@link debug} — set before or after — a credential variable set here is
+   * registered with the run's redactor, like one in the build's environment.
+   */
+  override env(record: Record<string, string>): this {
+    super.env(record);
+    Object.assign(this.#ownEnv, record);
+    if (this.#debug) this.#markCredentials();
+    return this;
+  }
+
+  /** Register every credential variable, from the settings or the process. */
+  #markCredentials(): void {
+    for (const name of CREDENTIAL_VARIABLES) {
+      for (const value of [this.#ownEnv[name], defaultReadEnv(name)]) {
+        if (value !== undefined && value !== "") this.markSecret(value);
+      }
+    }
+  }
+
+  /**
    * Turn on the CLI's debug logging (`--debug`), written to stderr.
    *
    * **The debug log can carry credentials**: request and response details,
@@ -165,17 +192,14 @@ export class AzSettings extends SubcommandSettings {
    * The credentials the CLI reads from the environment — `AZURE_STORAGE_KEY`,
    * `AZURE_STORAGE_CONNECTION_STRING`, `AZURE_STORAGE_SAS_TOKEN`,
    * `AZURE_CLIENT_SECRET`, `AZURE_DEVOPS_EXT_PAT`, and Terraform's
-   * `ARM_CLIENT_SECRET` beside them — are registered with the run's redactor
-   * when this is called, but a token the CLI holds in its own cache
+   * `ARM_CLIENT_SECRET` beside them — are registered with the run's redactor,
+   * whether they are in the build's environment or set with {@link env}, but a token the CLI holds in its own cache
    * (`~/.azure`) is not known here and is not masked. Keep it for a local
    * investigation, never a shared CI log.
    */
   debug(): this {
     this.#debug = true;
-    for (const name of CREDENTIAL_VARIABLES) {
-      const value = defaultReadEnv(name);
-      if (value !== undefined && value !== "") this.markSecret(value);
-    }
+    this.#markCredentials();
     return this;
   }
 
@@ -201,6 +225,15 @@ export class AzSettings extends SubcommandSettings {
    */
   protected pinnedOutput(): AzOutputFormat | undefined {
     return undefined;
+  }
+
+  /**
+   * Whether a `--query` was set — by the caller, or pinned by a reader. A
+   * credential-bearing command then registers every long scalar it printed,
+   * since the query may have moved the secret away from its usual key.
+   */
+  protected get queried(): boolean {
+    return this.#query !== undefined;
   }
 
   /**
@@ -236,6 +269,12 @@ export class AzSettings extends SubcommandSettings {
 
   /** Emit the Azure CLI's global options after the command. */
   protected override middleTokens(): string[] {
+    if (this.#onlyShowErrors && (this.#debug || this.#verbose)) {
+      throw new Error(
+        "AzTasks: --only-show-errors cannot be combined with --debug or " +
+          "--verbose — the CLI refuses the pair. Drop one of them.",
+      );
+    }
     const argv: string[] = [];
     if (this.#subscription !== undefined) {
       argv.push(option("--subscription", this.#subscription));

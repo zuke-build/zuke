@@ -253,7 +253,7 @@ Deno.test("azureMonitor refuses a NaN bound, takes a minimum alone, and reports 
   const nan = await assertRejects(() =>
     kql(new FakeAz(json([{ n: "1" }])), (m) => m.max(NaN)).validate(context)
   );
-  assertStringIncludes(nan.message, "not a number");
+  assertStringIncludes(nan.message, "finite");
   await azureMonitor((m) =>
     m.kql("w", "q").min(1).az((a) =>
       a.runner(new FakeAz(json([{ n: "2" }])).run)

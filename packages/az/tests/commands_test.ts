@@ -664,7 +664,7 @@ Deno.test("webapp: show, appsettings set, slot swap", () => {
       "--resource-group=rg",
       "--settings",
       "MODE=prod",
-      "DB=@Microsoft.KeyVault(SecretUri=https://kv.vault.azure.net/secrets/db)",
+      '{"DB":"@Microsoft.KeyVault(SecretUri=https://kv.vault.azure.net/secrets/db)"}',
       "--slot-settings",
       "SLOT=blue",
       "--slot=staging",

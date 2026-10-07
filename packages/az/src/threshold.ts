@@ -21,7 +21,10 @@ interface Bounds {
   max?: number;
 }
 
-/** The bounds `min` and `max` describe, refusing a set that cannot work. */
+/**
+ * The bounds `min` and `max` describe, refusing a set that cannot work. Each
+ * is finite already: the analysis's setters refuse anything else.
+ */
 export function boundsOf(
   label: string,
   min: number | undefined,
@@ -29,10 +32,6 @@ export function boundsOf(
 ): Bounds {
   if (min === undefined && max === undefined) {
     throw new Error(`"${label}" sets no bound — call .min(...) or .max(...).`);
-  }
-  // A NaN bound compares false both ways and would pass every reading.
-  if (Number.isNaN(min) || Number.isNaN(max)) {
-    throw new Error(`"${label}" has a bound that is not a number.`);
   }
   if (min !== undefined && max !== undefined && min > max) {
     throw new Error(

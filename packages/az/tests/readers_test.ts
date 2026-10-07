@@ -45,7 +45,7 @@ Deno.test("a scalar reader refuses an empty or multi-line answer", async () => {
   );
   await assertRejects(
     () =>
-      AzTasks.webAppHostName((s) =>
+      AzTasks.webappHostName((s) =>
         s.name("w").resourceGroup("g").runner(new FakeAz("a\nb\n").run)
       ),
     AzOutputError,
@@ -118,19 +118,19 @@ Deno.test("a JSON reader's parse error never quotes the output", async () => {
   assertEquals(error.message.includes("super-secret"), false);
 });
 
-Deno.test("containerAppFqdn and webAppHostName", async () => {
+Deno.test("containerappFqdn and webappHostName", async () => {
   const fake = new FakeAz(
     "api.example.azurecontainerapps.io\n",
     "web.azurewebsites.net\n",
   );
   assertEquals(
-    await AzTasks.containerAppFqdn((s) =>
+    await AzTasks.containerappFqdn((s) =>
       s.name("api").resourceGroup("rg").runner(fake.run)
     ),
     "api.example.azurecontainerapps.io",
   );
   assertEquals(
-    await AzTasks.webAppHostName((s) =>
+    await AzTasks.webappHostName((s) =>
       s.name("web").resourceGroup("rg").runner(fake.run)
     ),
     "web.azurewebsites.net",
@@ -142,7 +142,7 @@ Deno.test("containerAppFqdn and webAppHostName", async () => {
   assertEquals(fake.flag(1, "--query"), "defaultHostName");
   const error = await assertRejects(
     () =>
-      AzTasks.containerAppFqdn((s) =>
+      AzTasks.containerappFqdn((s) =>
         s.name("api").resourceGroup("rg").runner(new FakeAz("\n").run)
       ),
     AzOutputError,

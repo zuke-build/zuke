@@ -13,9 +13,12 @@
  * );
  * ```
  *
- * The command comes from the CLI's `log-analytics` extension, which the
- * wrapper does not install on the fly (see `AzSettings`): add it once with
- * `az extension add --name log-analytics`.
+ * The command comes from the CLI's `log-analytics` extension — a preview
+ * extension — which the wrapper does not install on the fly (see
+ * `AzSettings`): add it once with `az extension add --name log-analytics`.
+ * Without it the CLI only says the command `is misspelled or not recognized
+ * by the system` and exits 2; the tasks here turn that into an error that
+ * names the extension.
  *
  * The extension flattens the answer's tables into one list of rows, each
  * with a `TableName` and every column **as a string** — Python's rendering
@@ -27,11 +30,40 @@
  */
 
 import { parseDuration } from "@zuke/core";
+import { CommandError } from "@zuke/core/shell";
 import { AzOutputError } from "./errors.ts";
 import { AzSettings } from "./settings.ts";
 import { isRecord } from "./shape.ts";
 import { isoDuration } from "./time.ts";
 import { operands, option, required } from "./validate.ts";
+
+/** What the CLI prints for a command whose extension is not installed. */
+const NOT_RECOGNIZED = "is misspelled or not recognized by the system";
+
+/**
+ * Run `read`, turning the CLI's "not recognized" failure — exit 2, which is
+ * all it reports when the `log-analytics` extension is missing — into an
+ * error that names the extension and how to install it. Any other failure
+ * is passed on as it is.
+ */
+export async function needingExtension<T>(read: () => Promise<T>): Promise<T> {
+  try {
+    return await read();
+  } catch (error) {
+    if (
+      error instanceof CommandError && error.code === 2 &&
+      error.stderr.includes(NOT_RECOGNIZED)
+    ) {
+      throw new Error(
+        "monitor log-analytics query comes from the CLI's log-analytics " +
+          "extension (a preview extension), and the log-analytics extension " +
+          "is not installed: az extension add --name log-analytics",
+        { cause: error },
+      );
+    }
+    throw error;
+  }
+}
 
 /** One row of a Log Analytics answer: `TableName`, and each column by name. */
 export type AzLogAnalyticsRow = Record<string, string>;

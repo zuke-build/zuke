@@ -23,7 +23,7 @@
  */
 
 import type { CommandOutput } from "@zuke/core/shell";
-import { secretsIn } from "./secret_output.ts";
+import { registerSecrets } from "./secret_output.ts";
 import { type AzOutputFormat, AzSettings } from "./settings.ts";
 import { type AzTime, utcSeconds } from "./time.ts";
 import { bool, fromStdin, option, pair } from "./validate.ts";
@@ -55,13 +55,6 @@ function secretTokens(
     );
   }
   return [option("--vault-name", vault), option("--name", name)];
-}
-
-/** Register what a secret command returned with the run's redactor. */
-function markReturned(output: CommandOutput, mark: (value: string) => void) {
-  for (const secret of secretsIn(output.stdout, [SECRET_VALUE_QUERY])) {
-    mark(secret);
-  }
 }
 
 /** Settings for `az keyvault secret show`. */
@@ -108,7 +101,12 @@ export class AzKeyvaultSecretShowSettings extends AzSettings {
 
   /** Register the returned value as a secret. */
   protected override onOutput(output: CommandOutput): void {
-    markReturned(output, (value) => this.markSecret(value));
+    registerSecrets(
+      output.stdout,
+      [SECRET_VALUE_QUERY],
+      this.queried,
+      (secret) => this.markSecret(secret),
+    );
   }
 
   /** Emit `keyvault secret show` with its options. */
@@ -186,7 +184,11 @@ export class AzKeyvaultSecretSetSettings extends AzSettings {
     return this;
   }
 
-  /** How the file is encoded (`--encoding`); `utf-8` by default. */
+  /**
+   * How the {@link file} is encoded (`--encoding`); `utf-8` by default.
+   * Refused without a file: the CLI saves it as a `file-encoding` tag that
+   * `keyvault secret download` later decodes with.
+   */
   encoding(encoding: AzKeyvaultSecretEncoding): this {
     this.#encoding = encoding;
     return this;
@@ -237,7 +239,12 @@ export class AzKeyvaultSecretSetSettings extends AzSettings {
 
   /** Register the returned value as a secret. */
   protected override onOutput(output: CommandOutput): void {
-    markReturned(output, (value) => this.markSecret(value));
+    registerSecrets(
+      output.stdout,
+      [SECRET_VALUE_QUERY],
+      this.queried,
+      (secret) => this.markSecret(secret),
+    );
   }
 
   /** Emit `keyvault secret set` with its options. */
@@ -258,6 +265,14 @@ export class AzKeyvaultSecretSetSettings extends AzSettings {
     if (this.#value !== undefined) argv.push(fromStdin("--value"));
     if (this.#file !== undefined) argv.push(option("--file", this.#file));
     if (this.#encoding !== undefined) {
+      if (this.#file === undefined) {
+        throw new Error(
+          `AzTasks.${task}: --encoding describes a --file — without one the ` +
+            "CLI still stores it as the secret's file-encoding tag, and a " +
+            "later download decodes the value with it. Add .file(path) or " +
+            "drop .encoding(...).",
+        );
+      }
       argv.push(option("--encoding", this.#encoding));
     }
     if (this.#contentType !== undefined) {

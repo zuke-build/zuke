@@ -147,10 +147,15 @@ export class AzLoginSettings extends AzSettings {
   protected override leadingTokens(): string[] {
     const argv = ["login"];
     if (this.#identity) {
-      if (this.#servicePrincipal || this.#secret || this.#certificate) {
+      if (
+        this.#servicePrincipal || this.#secret || this.#certificate ||
+        this.#username !== undefined || this.#tenant !== undefined
+      ) {
         throw new Error(
-          "AzTasks.login: --identity takes no service-principal credential — " +
-            "use .identity() alone, with .clientId(...) for a user-assigned one.",
+          "AzTasks.login: --identity takes no service-principal option — no " +
+            "username, tenant or credential. Use .identity() alone, and name " +
+            "a user-assigned identity with .clientId(...), .objectId(...) or " +
+            ".resourceId(...).",
         );
       }
       argv.push("--identity");
@@ -172,6 +177,14 @@ export class AzLoginSettings extends AzSettings {
 
   /** The service-principal half of the options, refused when incomplete. */
   #servicePrincipalTokens(): string[] {
+    const identityIds = [this.#clientId, this.#objectId, this.#resourceId];
+    if (identityIds.some((id) => id !== undefined)) {
+      throw new Error(
+        "AzTasks.login: .clientId(...), .objectId(...) and .resourceId(...) " +
+          "name a managed identity — add .identity(), or drop them for a " +
+          "service principal.",
+      );
+    }
     const credentials = [this.#secret, this.#certificate].filter((c) =>
       c !== undefined
     );

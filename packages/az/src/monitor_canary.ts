@@ -33,11 +33,19 @@
  * @module
  */
 
-import { parseDuration } from "@zuke/core";
 import type { Configure } from "@zuke/core/tooling";
 import { AzOutputError } from "./errors.ts";
-import { AzMonitorLogAnalyticsQuerySettings, rowsOf } from "./log_analytics.ts";
-import { aggregationKey, metricDataOf, METRICS_QUERY } from "./metric_data.ts";
+import {
+  AzMonitorLogAnalyticsQuerySettings,
+  needingExtension,
+  rowsOf,
+} from "./log_analytics.ts";
+import {
+  aggregationKey,
+  checkSeriesLimit,
+  metricDataOf,
+  METRICS_QUERY,
+} from "./metric_data.ts";
 import {
   type AzMonitorAggregation,
   type AzMonitorInterval,
@@ -47,6 +55,7 @@ import {
 import { jsonFrom, WHOLE_ANSWER } from "./reader.ts";
 import type { AzSettings } from "./settings.ts";
 import { boundsOf, checkThreshold } from "./threshold.ts";
+import { positiveDuration } from "./time.ts";
 import { finite } from "./validate.ts";
 
 /** The window read when none is set: the last five minutes. */
@@ -94,6 +103,8 @@ export class AzMonitorAnalysisSettings {
   readonly dimensions_: Array<[string, string]> = [];
   /** The workspace and query of the KQL mode (set by {@link kql}). */
   kql_?: { workspace: string; query: string };
+  /** The most series to read (set by {@link top}). */
+  top_?: number;
   /** How far back to read, in ms (set by {@link window}). */
   window_: number = DEFAULT_WINDOW;
   /** The lowest acceptable value (set by {@link min}). */
@@ -173,19 +184,30 @@ export class AzMonitorAnalysisSettings {
    * or `Count` can fail on the lag rather than on the candidate.
    */
   window(duration: string | number): this {
-    this.window_ = parseDuration(duration);
+    this.window_ = positiveDuration(duration);
     return this;
   }
 
-  /** Fail when any datapoint is below `value`. */
+  /** Fail when any datapoint is below `value`, a finite number. */
   min(value: number): this {
-    this.min_ = value;
+    this.min_ = finite(TASK, "min", value);
     return this;
   }
 
-  /** Fail when any datapoint is above `value`. */
+  /** Fail when any datapoint is above `value`, a finite number. */
   max(value: number): this {
-    this.max_ = value;
+    this.max_ = finite(TASK, "max", value);
+    return this;
+  }
+
+  /**
+   * The most series to read (`--top`; the CLI's default is ten). Azure
+   * Monitor applies it to a query narrowed by {@link dimension}, and the
+   * analysis fails rather than judge an answer that reached it — raise it
+   * when a dimension value matches more series than that.
+   */
+  top(count: number): this {
+    this.top_ = count;
     return this;
   }
 
@@ -249,22 +271,33 @@ async function metricPoints(
     );
   }
   const interval = INTERVAL_MS[settings.interval_];
+  if (settings.window_ < interval) {
+    throw new Error(
+      `azureMonitor "${label}" has a window of ${settings.window_} ms, ` +
+        `shorter than its interval ${settings.interval_} — it would hold no ` +
+        "whole interval. Widen .window(...) or shorten .interval(...).",
+    );
+  }
   const end = Math.floor(settings.now_().getTime() / interval) * interval;
-  const command = new AzMonitorMetricsListSettings().resource(resource)
+  const request = new AzMonitorMetricsListSettings().resource(resource)
     .metrics(metric).aggregation(aggregation).interval(settings.interval_)
     .window(settings.window_, new Date(end));
-  if (settings.namespace_ !== undefined) command.namespace(settings.namespace_);
+  if (settings.namespace_ !== undefined) request.namespace(settings.namespace_);
+  if (settings.top_ !== undefined) request.top(settings.top_);
   for (const [name, value] of settings.dimensions_) {
-    command.dimension(name, value);
+    request.dimension(name, value);
   }
-  settings.az_(command);
+  const limit = request.seriesLimit_;
+  // The instance the lambda returns is the one run, as for every reader.
+  const command = settings.az_(request);
   const document = await jsonFrom(command, TASK, METRICS_QUERY);
-  const { datapoints } = metricDataOf(
+  const { series, datapoints } = metricDataOf(
     document,
     metric,
     aggregationKey(aggregation),
     TASK,
   );
+  checkSeriesLimit(TASK, metric, series, limit);
   return datapoints.map((point) => ({
     label: `${label} at ${point.timestamp.toISOString()}`,
     value: point.value,
@@ -280,11 +313,15 @@ async function queryPoints(
   kql: { workspace: string; query: string },
   label: string,
 ): Promise<Judged[]> {
-  const command = new AzMonitorLogAnalyticsQuerySettings()
-    .workspace(kql.workspace).analyticsQuery(kql.query)
-    .timespan(settings.window_);
-  settings.az_(command);
-  const rows = rowsOf(await jsonFrom(command, TASK, WHOLE_ANSWER), TASK);
+  const command = settings.az_(
+    new AzMonitorLogAnalyticsQuerySettings()
+      .workspace(kql.workspace).analyticsQuery(kql.query)
+      .timespan(settings.window_),
+  );
+  const document = await needingExtension(() =>
+    jsonFrom(command, TASK, WHOLE_ANSWER)
+  );
+  const rows = rowsOf(document, TASK);
   if (rows.length === 0) return [];
   const cells = rows.length === 1
     ? Object.entries(rows[0]).filter(([column]) => column !== "TableName")
@@ -297,7 +334,7 @@ async function queryPoints(
     );
   }
   const [[column, text]] = cells;
-  if (text === "None" || text === "") return [];
+  if (text === "None" || text.trim() === "") return [];
   const value = Number(text);
   if (!Number.isFinite(value)) {
     throw new AzOutputError(

@@ -54,7 +54,7 @@ export abstract class AzDeploymentGroupTemplateSettings
   #templateFile?: string;
   #templateUri?: string;
   #templateSpec?: string;
-  readonly #parameters: string[] = [];
+  readonly #parameters: Array<string | [string, string]> = [];
   #mode?: AzDeploymentMode;
 
   /** A local ARM template or Bicep file (`--template-file`). */
@@ -90,9 +90,7 @@ export abstract class AzDeploymentGroupTemplateSettings
    * secure value belongs in a parameters file or a Key Vault reference.
    */
   parameter(name: string, value: string | number | boolean): this {
-    this.#parameters.push(
-      keyed("deploymentGroup", "parameter", name, String(value)),
-    );
+    this.#parameters.push([name, String(value)]);
     return this;
   }
 
@@ -123,7 +121,10 @@ export abstract class AzDeploymentGroupTemplateSettings
       argv.push(option("--template-spec", this.#templateSpec));
     }
     for (const parameter of this.#parameters) {
-      argv.push(option("--parameters", parameter));
+      const text = typeof parameter === "string"
+        ? parameter
+        : keyed(task, "parameter", ...parameter);
+      argv.push(option("--parameters", text));
     }
     if (this.#mode !== undefined) argv.push(option("--mode", this.#mode));
     argv.push(option("--no-prompt", "true"));

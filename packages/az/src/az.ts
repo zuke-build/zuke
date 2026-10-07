@@ -104,6 +104,7 @@ import { AzMonitorMetricValueSettings, metricValueOf } from "./metric_value.ts";
 import {
   type AzLogAnalyticsRow,
   AzMonitorLogAnalyticsQuerySettings,
+  needingExtension,
   rowsOf,
 } from "./log_analytics.ts";
 
@@ -225,7 +226,7 @@ export interface AzTasksApi {
    * properties.configuration.ingress.fqdn --output tsv`; fails for an app
    * without ingress.
    */
-  containerAppFqdn(
+  containerappFqdn(
     configure?: Configure<AzContainerappShowSettings>,
   ): Promise<string>;
 
@@ -260,7 +261,7 @@ export interface AzTasksApi {
   ): Promise<CommandOutput>;
 
   /** A web app's default host name. Pins `--query defaultHostName --output tsv`. */
-  webAppHostName(configure?: Configure<AzWebappShowSettings>): Promise<string>;
+  webappHostName(configure?: Configure<AzWebappShowSettings>): Promise<string>;
 
   /** Set app settings: `az webapp config appsettings set`. */
   webappConfigAppsettingsSet(
@@ -508,10 +509,10 @@ export const AzTasks: AzTasksApi = {
 
   containerappUpdate: (c) => runSettings(new AzContainerappUpdateSettings(), c),
   containerappShow: (c) => runSettings(new AzContainerappShowSettings(), c),
-  containerAppFqdn: (c) =>
+  containerappFqdn: (c) =>
     scalarFrom(
       configured(new AzContainerappShowSettings(), c),
-      "AzTasks.containerAppFqdn",
+      "AzTasks.containerappFqdn",
       FQDN_QUERY,
       "ingress FQDN — check the app has ingress enabled",
     ),
@@ -526,10 +527,10 @@ export const AzTasks: AzTasksApi = {
 
   webappDeploy: (c) => runSettings(new AzWebappDeploySettings(), c),
   webappShow: (c) => runSettings(new AzWebappShowSettings(), c),
-  webAppHostName: (c) =>
+  webappHostName: (c) =>
     scalarFrom(
       configured(new AzWebappShowSettings(), c),
-      "AzTasks.webAppHostName",
+      "AzTasks.webappHostName",
       HOST_NAME_QUERY,
       "host name",
     ),
@@ -594,16 +595,14 @@ export const AzTasks: AzTasksApi = {
   monitorActivityLogList: (c) =>
     runSettings(new AzMonitorActivityLogListSettings(), c),
   monitorLogAnalyticsQuery: (c) =>
-    runSettings(new AzMonitorLogAnalyticsQuerySettings(), c),
+    needingExtension(() =>
+      runSettings(new AzMonitorLogAnalyticsQuerySettings(), c)
+    ),
   logAnalyticsQuery: async (c) => {
     const task = "AzTasks.logAnalyticsQuery";
-    return rowsOf(
-      await jsonFrom(
-        c(new AzMonitorLogAnalyticsQuerySettings()),
-        task,
-        WHOLE_ANSWER,
-      ),
-      task,
+    const document = await needingExtension(() =>
+      jsonFrom(c(new AzMonitorLogAnalyticsQuerySettings()), task, WHOLE_ANSWER)
     );
+    return rowsOf(document, task);
   },
 };

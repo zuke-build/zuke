@@ -58,6 +58,9 @@ export type AzMonitorAggregation =
   | "Minimum"
   | "Total";
 
+/** The CLI's `--top`: the most series it returns per metric when filtered. */
+export const DEFAULT_TOP = 10;
+
 /** A dimension value written as an OData string literal: `'` doubled. */
 function odataString(value: string): string {
   return `'${value.replaceAll("'", "''")}'`;
@@ -76,18 +79,15 @@ export class AzMonitorMetricsListSettings extends AzSettings {
   readonly #metrics: string[] = [];
   /** The aggregations to compute (set by {@link aggregation}). */
   readonly aggregations_: AzMonitorAggregation[] = [];
-  /** The time grain (set by {@link interval}). */
-  interval_?: AzMonitorInterval;
+  #interval?: AzMonitorInterval;
   #start?: AzTime;
   #end?: AzTime;
   #offset?: string;
   #filter?: string;
   readonly #dimensionFilters: string[] = [];
-  /** The dimensions the series are split by (set by {@link splitBy}). */
-  readonly splitBy_: string[] = [];
+  readonly #splitBy: string[] = [];
   #namespace?: string;
-  /** The most series per metric (set by {@link top}). */
-  top_?: number;
+  #top?: number;
   #orderby?: string;
 
   /** The task name used in this command's error messages. */
@@ -113,9 +113,13 @@ export class AzMonitorMetricsListSettings extends AzSettings {
     return this;
   }
 
-  /** The time grain of each datapoint (`--interval`); one minute by default. */
+  /**
+   * The time grain of each datapoint (`--interval`); one minute by default.
+   * The range set by {@link window} is not aligned to it, so the newest
+   * datapoint may cover an interval that is still being written.
+   */
   interval(interval: AzMonitorInterval): this {
-    this.interval_ = interval;
+    this.#interval = interval;
     return this;
   }
 
@@ -172,7 +176,7 @@ export class AzMonitorMetricsListSettings extends AzSettings {
 
   /** Split the series by these dimensions (`--dimension`); repeatable. */
   splitBy(...dimensions: string[]): this {
-    this.splitBy_.push(...dimensions);
+    this.#splitBy.push(...dimensions);
     return this;
   }
 
@@ -184,8 +188,21 @@ export class AzMonitorMetricsListSettings extends AzSettings {
 
   /** The most time series to return per metric (`--top`); 10 by default. */
   top(count: number): this {
-    this.top_ = count;
+    this.#top = count;
     return this;
+  }
+
+  /**
+   * The most series the answer can hold, when the query can return several —
+   * {@link top}, or the CLI's default of ten — and `undefined` when it cannot.
+   * Azure Monitor applies `--top` only to a filtered or split query; without
+   * one there is a single series. A reader that totals the series reads this
+   * to tell a complete answer from one cut at the limit.
+   */
+  get seriesLimit_(): number | undefined {
+    const several = this.#filter !== undefined ||
+      this.#dimensionFilters.length > 0 || this.#splitBy.length > 0;
+    return several ? this.#top ?? DEFAULT_TOP : undefined;
   }
 
   /** The aggregation and direction to sort series by (`--orderby`), e.g. `"sum desc"`. */
@@ -199,7 +216,7 @@ export class AzMonitorMetricsListSettings extends AzSettings {
     const sources = [
       this.#filter !== undefined,
       this.#dimensionFilters.length > 0,
-      this.splitBy_.length > 0,
+      this.#splitBy.length > 0,
     ].filter(Boolean).length;
     if (sources > 1) {
       throw new Error(
@@ -225,10 +242,13 @@ export class AzMonitorMetricsListSettings extends AzSettings {
       argv.push("--metrics", ...operands(task, "--metrics", this.#metrics));
     }
     if (this.aggregations_.length > 0) {
-      argv.push("--aggregation", ...this.aggregations_);
+      argv.push(
+        "--aggregation",
+        ...operands(task, "--aggregation", this.aggregations_),
+      );
     }
-    if (this.interval_ !== undefined) {
-      argv.push(option("--interval", this.interval_));
+    if (this.#interval !== undefined) {
+      argv.push(option("--interval", this.#interval));
     }
     if (this.#start !== undefined) {
       argv.push(option("--start-time", iso(this.#start)));
@@ -239,13 +259,13 @@ export class AzMonitorMetricsListSettings extends AzSettings {
     if (this.#offset !== undefined) argv.push(option("--offset", this.#offset));
     const filter = this.#filterExpression(task);
     if (filter !== undefined) argv.push(option("--filter", filter));
-    if (this.splitBy_.length > 0) {
-      argv.push("--dimension", ...operands(task, "--dimension", this.splitBy_));
+    if (this.#splitBy.length > 0) {
+      argv.push("--dimension", ...operands(task, "--dimension", this.#splitBy));
     }
     if (this.#namespace !== undefined) {
       argv.push(option("--namespace", this.#namespace));
     }
-    if (this.top_ !== undefined) argv.push(option("--top", this.top_));
+    if (this.#top !== undefined) argv.push(option("--top", this.#top));
     if (this.#orderby !== undefined) {
       argv.push(option("--orderby", this.#orderby));
     }

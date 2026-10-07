@@ -11,7 +11,12 @@
  */
 
 import { AzOutputError } from "./errors.ts";
-import { aggregationKey, type Datapoint, metricDataOf } from "./metric_data.ts";
+import {
+  aggregationKey,
+  checkSeriesLimit,
+  type Datapoint,
+  metricDataOf,
+} from "./metric_data.ts";
 import {
   type AzMonitorAggregation,
   AzMonitorMetricsListSettings,
@@ -20,9 +25,6 @@ import { finite } from "./validate.ts";
 
 /** The task name in this reader's errors. */
 const TASK = "AzTasks.metricValue";
-
-/** The CLI's default `--top`: the most series it returns per metric. */
-const DEFAULT_TOP = 10;
 
 /**
  * How {@link AzMonitorMetricValueSettings} turns the datapoints into one
@@ -62,10 +64,12 @@ export class AzMonitorMetricValueSettings extends AzMonitorMetricsListSettings {
   }
 
   /**
-   * How to turn the datapoints into one number (default `"latest"`, the
-   * newest). An aggregate combines every datapoint in the range, across
-   * every series the answer holds: a `"sum"` of per-minute `Total`s is the
-   * range's total.
+   * How to turn the datapoints into one number, across every series the
+   * answer holds. `"latest"` (the default) is the newest interval — the sum
+   * of the series' values at the newest timestamp any of them has, so a
+   * metric split by a dimension reads as its total. The others combine every
+   * datapoint in the range: a `"sum"` of per-minute `Total`s is the range's
+   * total.
    */
   aggregate(how: AzMonitorAggregate): this {
     this.aggregate_ = how;
@@ -85,14 +89,17 @@ export class AzMonitorMetricValueSettings extends AzMonitorMetricsListSettings {
 }
 
 /** Combine `datapoints` (newest first, at least one) as `how` says. */
-export function combine(
+function combine(
   how: AzMonitorAggregate,
   datapoints: Datapoint[],
 ): number {
   const values = datapoints.map((point) => point.value);
   switch (how) {
-    case "latest":
-      return values[0];
+    case "latest": {
+      const newest = datapoints[0].timestamp.getTime();
+      return datapoints.filter((point) => point.timestamp.getTime() === newest)
+        .reduce((total, point) => total + point.value, 0);
+    }
     case "sum":
       return values.reduce((total, value) => total + value, 0);
     case "average":
@@ -107,7 +114,7 @@ export function combine(
 }
 
 /** The one aggregation the settings ask for, refused unless there is exactly one. */
-export function soleAggregation(
+function soleAggregation(
   aggregations: readonly AzMonitorAggregation[],
   task: string,
 ): AzMonitorAggregation {
@@ -133,15 +140,7 @@ export function metricValueOf(
     key,
     TASK,
   );
-  const top = settings.top_ ?? DEFAULT_TOP;
-  if (series >= top) {
-    throw new AzOutputError(
-      TASK,
-      `"${metric}" came back with ${series} series, the --top limit, so ` +
-        "some may be missing. Raise .top(...) or narrow the query with " +
-        ".dimension(...).",
-    );
-  }
+  checkSeriesLimit(TASK, metric, series, settings.seriesLimit_);
   if (datapoints.length > 0) return combine(settings.aggregate_, datapoints);
   if (settings.missingData_ !== undefined) return settings.missingData_;
   throw new AzOutputError(

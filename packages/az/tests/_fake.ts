@@ -42,16 +42,10 @@ export class FakeAz {
     return Promise.resolve(typeof next === "function" ? next(argv) : next);
   };
 
-  /**
-   * The value of `flag` in call `index`, whether it was sent as one
-   * `--flag=value` token or as `--flag value`.
-   */
+  /** The value of `flag` in call `index`, sent as one `--flag=value` token. */
   flag(index: number, flag: string): string | undefined {
-    const argv = this.calls[index];
-    const joined = argv.find((token) => token.startsWith(`${flag}=`));
-    if (joined !== undefined) return joined.slice(flag.length + 1);
-    const at = argv.indexOf(flag);
-    return at === -1 ? undefined : argv[at + 1];
+    const token = this.calls[index].find((t) => t.startsWith(`${flag}=`));
+    return token?.slice(flag.length + 1);
   }
 }
 

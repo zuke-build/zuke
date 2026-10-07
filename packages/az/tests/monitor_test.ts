@@ -297,12 +297,15 @@ Deno.test("metricValue: needs exactly one aggregation", async () => {
 Deno.test("metricValue: refuses an answer that may be cut at --top", async () => {
   const many = Array.from({ length: 10 }, () => data("total", [1]));
   await assertRejects(
-    () => read([metric("Requests", many)]).value,
+    () => read([metric("Requests", many)], (s) => s.splitBy("Instance")).value,
     AzOutputError,
     "--top limit",
   );
   assertEquals(
-    await read([metric("Requests", many)], (s) => s.top(50).aggregate("sum"))
+    await read(
+      [metric("Requests", many)],
+      (s) => s.dimension("Instance", "*").top(50).aggregate("sum"),
+    )
       .value,
     10,
   );
@@ -338,14 +341,14 @@ Deno.test("metricValue: refuses answers of the wrong shape", async () => {
         data: [{ timeStamp: "2026-10-07T11:00:00Z", total: "1" }],
       }],
     }], "not a number"],
-    [[{ name: "Requests" }], "carries 1 metrics"],
+    [[{ name: "Requests" }], "no name"],
     [[1, { name: { value: 3 } }], 'no metric "Requests"'],
     [[{ name: { value: "Requests" }, timeseries: [1] }], "no data list"],
   ];
   for (const [answer, message] of cases) {
     const fake = new FakeAz(json(answer));
     // Name the metric unless the case is about the reader picking one.
-    const named = !message.startsWith("carries");
+    const named = !message.startsWith("carries") && message !== "no name";
     await assertRejects(
       () =>
         AzTasks.metricValue((s) => {
