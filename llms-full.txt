@@ -22913,11 +22913,13 @@ class PrometheusConnectionSettings
   url(url: string): this
     The Prometheus base URL, such as `https://prometheus.internal`. A path or
     query string it carries — a proxy prefix, a tenant parameter — is kept,
-    and the endpoint path is appended. It must be `https:` unless it is
-    loopback, or `ZUKE_ALLOW_INSECURE_URL` is set: the answers decide whether
-    a release proceeds, and a plaintext request lets anyone on the path both
-    read the credential and choose the answer. Userinfo in the URL
+    and the endpoint path is appended. Userinfo in the URL
     (`https://user:pass@host`) is taken off the URL and sent as basic auth.
+    When the call carries any credential — a configured source, or that
+    userinfo — the URL must be `https:` unless it is loopback, or
+    `ZUKE_ALLOW_INSECURE_URL` is set, since a plaintext request hands the
+    credential to anyone on the path. An unauthenticated URL may be plaintext,
+    as an in-cluster `http://prometheus.monitoring.svc:9090` usually is.
   bearerToken(token: string): this
     Authenticate with `Authorization: Bearer <token>`.
   basicAuth(username: string, password: string): this
@@ -22926,10 +22928,12 @@ class PrometheusConnectionSettings
     Send a fixed header, such as a tenant id (`X-Scope-OrgID`). A plain
     header does not make the call credentialed, so an in-cluster
     `http://` Mimir, Cortex or Thanos with a tenant header keeps working —
-    except `Authorization`, `Proxy-Authorization` and `Cookie`, which are
-    credentials whatever setter sends them. For an API key in any other
-    header use {@link secretHeader}. The value is masked in errors either way
-    (when eight or more characters long).
+    except `Authorization`, `Proxy-Authorization`, `Cookie`, and a name core's
+    URL redactor treats as credential-bearing (`X-API-Key`, `X-Auth-Token`:
+    names containing `key`, `token`, `secret`, `auth`, `pass` and the like),
+    which count as credentials. For an API key under any other name use
+    {@link secretHeader}. The value is masked in errors either way (when eight
+    or more characters long).
   secretHeader(name: string, value: string): this
     Send a fixed header that carries a credential — an API key such as
     `X-API-Key`. Like `bearerToken`, it makes the call credentialed, so the
@@ -23717,8 +23721,15 @@ function prometheus(configure: Configure<PrometheusSettings>): CanaryAnalysis
 
   The lambda runs on each check, so it may read resolved parameters. The query
   is sent by `PrometheusTasks.query` from `@zuke/prometheus`, as a `GET` with
-  the expression in the URL — as this analysis always has — so the URL must be
-  `https:` unless it is loopback (or `ZUKE_ALLOW_INSECURE_URL` is set). Failure
+  the expression in the URL — as this analysis always has. A URL sent a
+  credential must be `https:` unless it is loopback (or
+  `ZUKE_ALLOW_INSECURE_URL` is set). A credential is an `Authorization`,
+  `Proxy-Authorization` or `Cookie` header, a header whose name looks like a
+  credential's (`X-API-Key`, `X-Auth-Token`), `user:password@` or a credential
+  parameter in the URL, or anything set through `connection(...)` — a
+  `secretHeader(...)`, `sigv4()`, `google()`, `azure()`. Any other header,
+  such as an `X-Scope-OrgID` tenant id, leaves an in-cluster
+  `http://prometheus.monitoring.svc:9090` usable. Failure
   messages pass through the run's redactor, so a secret parameter in the URL
   or the query is masked, and a header value (eight or more characters) never
   appears in them.
@@ -23884,9 +23895,9 @@ class PrometheusSettings
     Add a request header — `header("X-Scope-OrgID", tenant)`, or
     `header("Authorization", `Bearer ${token}`)`. As in `@zuke/prometheus`,
     a plain header such as a tenant id leaves an in-cluster `http://` URL
-    usable, while `Authorization`, `Proxy-Authorization` and `Cookie` are
-    credentials and need `https:` (unless loopback, or
-    `ZUKE_ALLOW_INSECURE_URL` is set).
+    usable, while `Authorization`, `Proxy-Authorization`, `Cookie` and a
+    credential-looking name (`X-API-Key`, `X-Auth-Token`) are credentials and
+    need `https:` (unless loopback, or `ZUKE_ALLOW_INSECURE_URL` is set).
   timeout(duration: string | number): this
     How long the query may take (`"10s"`, or ms; default 30 s).
   fetch(fetcher: typeof fetch): this
