@@ -152,3 +152,4 @@ export {
   CloudMonitoringAnalysisSettings,
 } from "./src/cloud_monitoring_canary.ts";
 export { type CloudRunService } from "./src/cloud_run_candidate.ts";
+export { GcloudOutputError } from "./src/errors.ts";

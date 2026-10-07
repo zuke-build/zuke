@@ -27,20 +27,34 @@
  *   which can carry anything an application logged, secrets included — are
  *   never captured, and a failure never quotes what was read.
  *
- * Like `gcloud logging read`, a filter with no `timestamp` in it reads only
- * the last `--freshness` — one day unless `.freshness(...)` says otherwise;
- * `.since(...)`/`.until(...)` bound the count by time instead.
+ * A count always has a lower time bound. Without `.since(...)` or
+ * `.freshness(...)` it counts the last day — gcloud's own default — but sent
+ * as an explicit `timestamp>=` in the filter, because gcloud silently drops
+ * its default whenever the filter's text mentions `timestamp`, and the count
+ * would then span the whole retention period.
  *
  * @module
  */
 
 import type { Configure } from "@zuke/core/tooling";
+import { GcloudOutputError } from "./errors.ts";
 import { GcloudLoggingReadSettings } from "./logging.ts";
 import { failOnExit, type GcloudSettings } from "./settings.ts";
 import { readJson } from "./scalar_output.ts";
 
 /** The most entries the count reader reads when no `.limit(...)` is set. */
 export const DEFAULT_COUNT_LIMIT = 1000;
+
+/** How far back a count reaches with no `.since(...)` or `.freshness(...)`. */
+const DEFAULT_COUNT_FRESHNESS = "1d";
+
+/**
+ * The flags the count reader pins, which a caller's `.flag(...)` or
+ * `.args(...)` would otherwise override: gcloud takes the last value, so a
+ * second `--limit` could cut the read short and a second `--format` print
+ * payloads. `--flags-file` could set either from a file.
+ */
+const PINNED = /^--(?:limit|format|flags-file)(?:=|$)/;
 
 /** The projection the count reader pins: each entry's id and nothing else. */
 const COUNT_FORMAT = "json(insertId)";
@@ -51,9 +65,9 @@ const COUNT_FORMAT = "json(insertId)";
  * above it fails as "more than n".
  */
 export class GcloudLoggingEntryCountSettings extends GcloudLoggingReadSettings {
-  /** The task name used in this reader's error messages. */
-  protected override taskName(): string {
-    return "logEntryCount";
+  /** Who this reader's error messages name. */
+  protected override owner(): string {
+    return "GcloudTasks.logEntryCount";
   }
 }
 
@@ -71,18 +85,31 @@ export async function countEntries(
   gcloud: Configure<GcloudSettings>,
 ): Promise<number> {
   const limit = settings.limit_ ?? DEFAULT_COUNT_LIMIT;
+  if (settings.freshness_ === undefined && settings.since_ === undefined) {
+    settings.freshness(DEFAULT_COUNT_FRESHNESS);
+  }
   // Judge the caller's own limit before reading one past it, so a bad one is
   // refused in gcloud's terms rather than quietly made valid by the + 1.
   settings.limit(limit).argv();
   const command = gcloud(settings.limit(limit + 1)).format(COUNT_FORMAT)
     .quiet();
+  const pinned = command.argv().filter((token) => PINNED.test(token));
+  if (pinned.length !== 2) {
+    throw new Error(
+      `${task}: the count reader pins --limit and --format itself, and a ` +
+        "--limit, --format or --flags-file set through .flag(...) or " +
+        ".args(...) would override them — gcloud takes the last value. " +
+        "Refused: use .limit(n), and leave --format to the reader.",
+    );
+  }
   const output = await command.run();
   failOnExit(command, output);
   const document = readJson(output, task);
   if (!Array.isArray(document)) {
-    throw new Error(
-      `${task}: gcloud did not print a list of entries. Leave --format to ` +
-        "the reader, which pins it.",
+    throw new GcloudOutputError(
+      task,
+      "gcloud did not print a list of entries. Leave --format to the " +
+        "reader, which pins it.",
     );
   }
   if (document.length > limit) {

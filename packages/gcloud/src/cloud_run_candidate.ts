@@ -31,12 +31,16 @@ export interface CloudRunService {
 }
 
 /**
- * The service's latest created revision, read quietly with the `gcloud`
- * lambda's global flags — through the instance that lambda returns — and
- * refused unless the command succeeded, whatever `.noThrow()` said.
+ * The service's latest created revision, read quietly in `project` (when
+ * named) with the `gcloud` lambda's global flags applied after it — so the
+ * lambda may still override the project — through the instance that lambda
+ * returns, and refused unless the command succeeded, whatever `.noThrow()`
+ * said. Without the project, a different default gcloud project would name
+ * another service's revision, and a filter on it would match nothing.
  */
 export async function candidateRevision(
   target: CloudRunService,
+  project: string | undefined,
   gcloud: Configure<GcloudSettings>,
   task: string,
 ): Promise<string> {
@@ -44,6 +48,7 @@ export async function candidateRevision(
     operand(task, "Cloud Run service", target.service),
   );
   if (target.region !== undefined) describe.region(target.region);
+  if (project !== undefined) describe.project(project);
   const command = gcloud(describe).format(LATEST_REVISION_FORMAT).quiet();
   const output = await command.run();
   failOnExit(command, output);

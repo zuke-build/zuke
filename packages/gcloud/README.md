@@ -81,7 +81,8 @@ await GcloudTasks.loggingRead((s) =>
 
 // How many entries match — reading only each entry's id, so no payload
 // reaches the build. Counts at most .limit(n) (default 1000) and fails when
-// more match, rather than return a truncated count as exact.
+// more match, rather than return a truncated count as exact. Without
+// .since(...) or .freshness(...) it counts the last day.
 const errors = await GcloudTasks.logEntryCount((s) =>
   s.resourceType("cloud_run_revision").minSeverity("ERROR").freshness("15m")
     .limit(500).project("my-proj")
@@ -122,11 +123,25 @@ const total5xx = await CloudMonitoringTasks.metricValue((s) =>
 );
 ```
 
+`.freshness(...)` is sent as an explicit `timestamp>=` in the filter, measured
+from `.now(...)`, not as gcloud's `--freshness`: gcloud silently drops that
+whenever the filter's text contains the word `timestamp`, or the order is `asc`,
+and the read then spans the whole retention period.
+
 Points are typed: an `INT64` (which the API sends as a string) becomes a
 `number` with the exact string beside it, a `DISTRIBUTION` carries its count and
 mean, and a non-finite `DOUBLE` arrives as `NaN` or `±Infinity`. A window with
 an alignment period ends at the last period boundary, so the period still being
-written is not read.
+written is not read; `.delay(...)` ends it earlier still, for a metric that
+takes time to become visible.
+
+`metricValue`'s `"latest"` sums each series' own newest point. A `DISTRIBUTION`
+reads as its mean: `"average"` weights the means by their sample counts, and
+`"sum"` — or `"latest"` over several distribution series — is refused, since
+means cannot be added. A `CUMULATIVE` metric is refused unless `ALIGN_DELTA` or
+`ALIGN_RATE` turns its running totals into increases, and a `NaN` point is
+refused rather than skipped. Output a reader cannot use is a
+`GcloudOutputError`, which never quotes it.
 
 ### `cloudMonitoring(...)` canary analysis
 
@@ -134,7 +149,11 @@ written is not read.
 `.logEntries(...)`, a log-entry count — over a recent window, for
 [`@zuke/canary`](https://jsr.io/@zuke/canary), and fails with the same words as
 `prometheus(...)`. `.cloudRunCandidate(service, region)` narrows it to the
-revision a `cloudRunCanary` rollout staged:
+revision a `cloudRunCanary` rollout staged, read in the analysis's project. The
+window ends two minutes back by default (`.delay(...)`), since Cloud Run's
+request metrics take up to 120 seconds to become visible. With
+`.missingDataAs(0)`, no data passes — so a candidate with no traffic passes too;
+see the canary guide for what to pair it with.
 
 ```ts
 import { canary } from "@zuke/canary";
@@ -157,7 +176,6 @@ rollout = canary((c) =>
         .alignmentPeriod("60s").perSeriesAligner("ALIGN_SUM")
         .crossSeriesReducer("REDUCE_SUM")
         .window("5m").max(5).missingDataAs(0)
-        .gcloud((g) => g.project("my-proj"))
     ))
 );
 ```
@@ -283,22 +301,25 @@ function cloudRunCanary(configure: Configure<CloudRunCanarySettings>): CloudRunC
   refuses on any difference before changing anything. A hand-run abort has no
   record and uses the configuration as it is.
 
-function gcloudAccessToken(run: GcloudRunner): Promise<string>
-  The default {@link AccessTokenProvider}: the trimmed stdout of
-  `gcloud auth print-access-token`, run with `--quiet` so the token never
-  streams to the build log. `run` defaults to {@link "./gcloud.ts".GcloudTasks}
+async function gcloudAccessToken(run: GcloudRunner): Promise<string>
+  The default {@link AccessTokenProvider}: the one line
+  `gcloud auth print-access-token` prints, run with `--quiet` so the token
+  never streams to the build log. A failed exit is an error even when the
+  runner's settings say `.noThrow()`, and an empty, multi-line or truncated
+  answer is refused — each would otherwise be sent as a broken token. `run` defaults to {@link "./gcloud.ts".GcloudTasks}
   `.run` and is injectable for tests.
 
 async function resolveAccessToken(options: { token?: string; tokenProvider?: AccessTokenProvider; }): Promise<string>
   Resolve a bearer token from an explicit `token` or, when it is omitted, the
   `tokenProvider` (defaulting to {@link gcloudAccessToken}). Shared by the REST
-  task groups so every call resolves auth the same way.
+  task groups so every call resolves auth the same way. The token is returned
+  trimmed of the whitespace a header drops anyway.
 
-  A token holding a line break or another control character inside it is
-  refused here, without quoting it: it cannot be an OAuth token — it is what
-  a provider that printed something else as well looks like — and the
-  runtime's own refusal of such a header value would quote the whole value,
-  token and all, into the error.
+  An empty token is refused, and so is one holding a control character after
+  that trim — a line break inside it, or a `\v` or `\f` at either end. It
+  cannot be an OAuth token, it is not quoted here, and the runtime's own
+  refusal of such a header value would quote the whole value, token and all,
+  into the error.
 
 const CloudMonitoringTasks: CloudMonitoringTasksApi
   Typed Cloud Monitoring reads.
@@ -375,11 +396,17 @@ class CloudMonitoringMetricValueSettings extends CloudMonitoringTimeSeriesSettin
     The value to return when there are no points (set by {@link missingDataAs}).
   aggregate(how: CloudMonitoringAggregate): this
     How to turn the points into one number, across every series the answer
-    holds. `"latest"` (the default) is the newest point — the sum of the
-    series' values at the newest end time any of them has, so a metric
-    split by a label reads as its total. The others combine every point in
-    the window: a `"sum"` of per-minute `ALIGN_SUM` points is the window's
-    total.
+    holds. `"latest"` (the default) sums each series' own newest point, so a
+    metric split by a label reads as its total. The others combine every
+    point in the window: a `"sum"` of per-minute `ALIGN_SUM` points is the
+    window's total.
+
+    A `DISTRIBUTION` point reads as its mean. `"average"` weights each mean
+    by its sample count; `"maximum"` and `"minimum"` are of the means.
+    Means cannot be added, so `"sum"` refuses distributions, and `"latest"`
+    refuses more than one distribution series — collapse them with
+    `.crossSeriesReducer(...)`, or align them to a number with
+    `ALIGN_PERCENTILE_99`, `ALIGN_MEAN` and the like.
   missingDataAs(value: number): this
     Return `value` when there are no points, instead of failing. Cloud
     Monitoring writes no point for a period with no events, so for a count
@@ -429,8 +456,10 @@ class CloudMonitoringTimeSeriesSettings
     How much of each series to return (set by {@link view}).
   pageSize_?: number
     The page size to ask for (set by {@link pageSize}).
-  maxPages_: number
-    The most pages to read before failing (set by {@link maxPages}).
+  maxPages_?: number
+    The most pages to read before failing (set by {@link maxPages}); 100 when unset.
+  delay_?: number
+    How far before now the window ends, in ms (set by {@link delay}).
   token_?: string
     A pre-resolved OAuth token (set by {@link token}).
   tokenProvider_?: AccessTokenProvider
@@ -487,6 +516,14 @@ class CloudMonitoringTimeSeriesSettings
   maxPages(count: number): this
     The most pages to read (default 100). A read that still has a next page
     after that many fails — a partial answer is never returned as a whole.
+  delay(duration: string | number): this
+    End the window this long before now (`"2m"`, or ms) — for the time a
+    metric takes to become readable. Google's metrics list gives it per
+    metric: Cloud Run's `request_count` and `request_latencies` are "not
+    visible for up to 120 seconds" after sampling. Without it the newest
+    points may not exist yet, or hold only part of their period. Default
+    `0` for a read; the `cloudMonitoring(...)` analysis defaults to two
+    minutes.
   token(value: string): this
     A pre-resolved OAuth access token.
   tokenProvider(provider: AccessTokenProvider): this
@@ -898,8 +935,8 @@ class GcloudLoggingEntryCountSettings extends GcloudLoggingReadSettings
   matches are counted. `.limit(n)` is the most entries counted; a count
   above it fails as "more than n".
 
-  override protected taskName(): string
-    The task name used in this reader's error messages.
+  override protected owner(): string
+    Who this reader's error messages name.
 
 class GcloudLoggingLogsListSettings extends GcloudSettings
   Settings for `gcloud logging logs list`: the logs that hold entries.
@@ -922,8 +959,14 @@ class GcloudLoggingReadSettings extends GcloudSettings
 
   limit_?: number
     The most entries to read (set by {@link limit}).
-  protected taskName(): string
-    The task name used in this command's error messages.
+  freshness_?: number
+    How long back `.freshness(...)` reaches, in ms (set by {@link freshness}).
+  since_?: GcloudLogTime
+    The earliest time `.since(...)` admits (set by {@link since}).
+  now_: () => Date
+    The clock `.freshness(...)` is measured from (set by {@link now}).
+  protected owner(): string
+    Who this command's error messages name.
   filter(expression: string): this
     Raw filter text in the Logging query language, joined with every other
     part by `AND`; repeatable. It is the caller's own text and is not
@@ -938,14 +981,19 @@ class GcloudLoggingReadSettings extends GcloudSettings
   minSeverity(severity: GcloudLogSeverity): this
     Only entries at `severity` or above: `severity>=ERROR`.
   since(time: GcloudLogTime): this
-    Only entries at or after `time`: `timestamp>="…"`. With a timestamp in
-    the filter, gcloud ignores `--freshness`.
+    Only entries at or after `time`: `timestamp>="…"`.
   until(time: GcloudLogTime): this
     Only entries before `time`: `timestamp<"…"`.
   freshness(duration: string | number): this
-    Only entries newer than this (`--freshness`; gcloud's default is one
-    day) — `"1h"`, `"90s"`, or ms. gcloud applies it only to a descending
-    read with no timestamp in the filter.
+    Only entries newer than this — `"1h"`, `"90s"`, or ms — sent as an
+    explicit `timestamp>="<now − duration>"` in the filter, measured from
+    {@link now}. gcloud's own `--freshness` is not used: gcloud silently
+    drops it whenever the filter's text contains the word `timestamp`
+    anywhere, or the order is `asc`, and the read then spans the whole
+    retention period.
+  now(clock: () => Date): this
+    The clock {@link freshness} is measured from — the seam a test pins it
+    with. Either may be set first.
   order(order: "asc" | "desc"): this
     Newest first (`desc`, gcloud's default) or oldest first (`--order`).
   limit(count: number): this
@@ -1021,6 +1069,20 @@ class GcloudMonitoringUptimeListConfigsSettings extends GcloudMonitoringListSett
     `monitoring uptime list-configs`.
   override protected taskName(): string
     The task name used in this listing's error messages.
+
+class GcloudOutputError extends Error
+  gcloud or a Google API succeeded but returned something a reader cannot
+  use: output that is not JSON, JSON of an unexpected shape, or a capture
+  that was truncated.
+
+  The message never quotes the output itself. A log read can return any
+  payload an application logged, and an error that echoed it would put a
+  secret in the build log.
+
+  constructor(readonly task: string, readonly detail: string)
+    Build the error from the reader that failed and what was wrong.
+  override name: string
+    The error name.
 
 class GcloudRunDeploySettings extends GcloudSettings
   Settings for `gcloud run deploy`.
@@ -1281,6 +1343,8 @@ interface CloudMonitoringAnalysisContext
   redactor, applied to every failure message. The engine hands a richer
   context; this is the narrow view.
 
+  readonly signal?: AbortSignal
+    Aborted when the run is cancelled; stops the check between steps.
   redact(text: string): string
     Mask every resolved `secret` parameter in `text`.
 

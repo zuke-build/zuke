@@ -15,6 +15,7 @@ import { parseDuration } from "@zuke/core";
 import type { Configure } from "@zuke/core/tooling";
 import type { AccessTokenProvider } from "./auth.ts";
 import { conjunction, labelKey, monitoringString } from "./filter.ts";
+import { checkCount } from "./limit.ts";
 import { resolveProject } from "./project.ts";
 import type { GcloudSettings } from "./settings.ts";
 
@@ -25,7 +26,7 @@ const MONITORING_BASE = "https://monitoring.googleapis.com/v3";
 const DEFAULT_WINDOW = 5 * 60_000;
 
 /** The most pages read when none is set. */
-const DEFAULT_MAX_PAGES = 100;
+export const DEFAULT_MAX_PAGES = 100;
 
 /** The shortest alignment period the API accepts: 60 seconds. */
 const MIN_ALIGNMENT_PERIOD = 60_000;
@@ -119,8 +120,10 @@ export class CloudMonitoringTimeSeriesSettings {
   view_: CloudMonitoringView = "FULL";
   /** The page size to ask for (set by {@link pageSize}). */
   pageSize_?: number;
-  /** The most pages to read before failing (set by {@link maxPages}). */
-  maxPages_: number = DEFAULT_MAX_PAGES;
+  /** The most pages to read before failing (set by {@link maxPages}); 100 when unset. */
+  maxPages_?: number;
+  /** How far before now the window ends, in ms (set by {@link delay}). */
+  delay_?: number;
   /** A pre-resolved OAuth token (set by {@link token}). */
   token_?: string;
   /** Resolves the token (set by {@link tokenProvider}). */
@@ -259,7 +262,8 @@ export class CloudMonitoringTimeSeriesSettings {
 
   /** The most results per page (`pageSize`; the API's default is 100,000). */
   pageSize(count: number): this {
-    this.pageSize_ = positiveCount("pageSize", count);
+    checkCount(count, "CloudMonitoringTasks", "pageSize");
+    this.pageSize_ = count;
     return this;
   }
 
@@ -268,7 +272,22 @@ export class CloudMonitoringTimeSeriesSettings {
    * after that many fails — a partial answer is never returned as a whole.
    */
   maxPages(count: number): this {
-    this.maxPages_ = positiveCount("maxPages", count);
+    checkCount(count, "CloudMonitoringTasks", "maxPages");
+    this.maxPages_ = count;
+    return this;
+  }
+
+  /**
+   * End the window this long before now (`"2m"`, or ms) — for the time a
+   * metric takes to become readable. Google's metrics list gives it per
+   * metric: Cloud Run's `request_count` and `request_latencies` are "not
+   * visible for up to 120 seconds" after sampling. Without it the newest
+   * points may not exist yet, or hold only part of their period. Default
+   * `0` for a read; the `cloudMonitoring(...)` analysis defaults to two
+   * minutes.
+   */
+  delay(duration: string | number): this {
+    this.delay_ = parseDuration(duration);
     return this;
   }
 
@@ -308,22 +327,24 @@ export class CloudMonitoringTimeSeriesSettings {
   }
 }
 
-/** `count`, refused unless it is a whole number of at least one. */
-function positiveCount(setter: string, count: number): number {
-  if (!Number.isInteger(count) || count < 1) {
-    throw new Error(
-      `CloudMonitoringTasks: .${setter}(${count}) is not a count — use a ` +
-        "whole number of at least 1.",
-    );
-  }
-  return count;
+/** A start and end time. */
+export interface TimeInterval {
+  /** The start of the interval. */
+  start: Date;
+  /** The end of the interval. */
+  end: Date;
 }
 
-/** The interval the settings read: explicit, or the window ending now. */
+/**
+ * The interval the settings read: explicit, or the window ending
+ * `delayDefault` ms (or the settings' own {@link CloudMonitoringTimeSeriesSettings.delay})
+ * before now, aligned down to the alignment period when there is one.
+ */
 export function intervalOf(
   settings: CloudMonitoringTimeSeriesSettings,
   task: string,
-): { start: Date; end: Date } {
+  delayDefault: number,
+): TimeInterval {
   const explicit = settings.interval_;
   if (explicit !== undefined) {
     if (
@@ -341,7 +362,7 @@ export function intervalOf(
   }
   const window = settings.window_;
   const period = settings.alignmentPeriod_;
-  const now = settings.now_().getTime();
+  const now = settings.now_().getTime() - (settings.delay_ ?? delayDefault);
   if (Number.isNaN(now)) {
     throw new Error(
       `${task}: the clock set with .now(...) gave an invalid date.`,
@@ -430,20 +451,31 @@ function checkAggregation(
   }
 }
 
+/** What a read adds to the settings, without changing them. */
+export interface TimeSeriesQuery {
+  /** Resource labels that narrow the filter beyond the settings' own. */
+  extraResourceLabels?: ReadonlyArray<[string, string]>;
+  /** The interval, when the caller has resolved it already. */
+  interval?: TimeInterval;
+  /** Aborts the read between pages and in flight. */
+  signal?: AbortSignal;
+}
+
 /**
  * The URL of the first page the settings ask for — the query a page token is
  * added to for each later page — refusing settings the API would refuse.
- * `extraResourceLabels` narrow it further without changing the settings, so
- * a settings instance read twice is read the same way both times.
+ * `query.extraResourceLabels` narrow it further without changing the
+ * settings, so a settings instance read twice is read the same way both
+ * times.
  */
 export function timeSeriesRequest(
   settings: CloudMonitoringTimeSeriesSettings,
   task: string,
-  extraResourceLabels: ReadonlyArray<[string, string]> = [],
+  query: TimeSeriesQuery,
 ): URL {
   checkAggregation(settings, task);
-  const filter = filterOf(settings, task, extraResourceLabels);
-  const { start, end } = intervalOf(settings, task);
+  const filter = filterOf(settings, task, query.extraResourceLabels ?? []);
+  const { start, end } = query.interval ?? intervalOf(settings, task, 0);
   const project = resolveProject(
     { project: settings.project_, readEnv: settings.readEnv_ },
     task,
@@ -452,28 +484,28 @@ export function timeSeriesRequest(
   const url = new URL(
     `${MONITORING_BASE}/projects/${encodeURIComponent(project)}/timeSeries`,
   );
-  const query = url.searchParams;
-  query.set("filter", filter);
-  query.set("interval.startTime", start.toISOString());
-  query.set("interval.endTime", end.toISOString());
+  const params = url.searchParams;
+  params.set("filter", filter);
+  params.set("interval.startTime", start.toISOString());
+  params.set("interval.endTime", end.toISOString());
   if (settings.alignmentPeriod_ !== undefined) {
-    query.set(
+    params.set(
       "aggregation.alignmentPeriod",
       `${settings.alignmentPeriod_ / 1000}s`,
     );
   }
   if (settings.perSeriesAligner_ !== undefined) {
-    query.set("aggregation.perSeriesAligner", settings.perSeriesAligner_);
+    params.set("aggregation.perSeriesAligner", settings.perSeriesAligner_);
   }
   if (settings.crossSeriesReducer_ !== undefined) {
-    query.set("aggregation.crossSeriesReducer", settings.crossSeriesReducer_);
+    params.set("aggregation.crossSeriesReducer", settings.crossSeriesReducer_);
   }
   for (const field of settings.groupByFields_) {
-    query.append("aggregation.groupByFields", field);
+    params.append("aggregation.groupByFields", field);
   }
-  query.set("view", settings.view_);
+  params.set("view", settings.view_);
   if (settings.pageSize_ !== undefined) {
-    query.set("pageSize", String(settings.pageSize_));
+    params.set("pageSize", String(settings.pageSize_));
   }
   return url;
 }

@@ -29,7 +29,7 @@
 import { parseDuration } from "@zuke/core";
 import { commaJoined } from "./comma_list.ts";
 import { conjunction, labelKey, loggingString } from "./filter.ts";
-import { checkLimit } from "./limit.ts";
+import { checkCount, checkLimit } from "./limit.ts";
 import { GcloudSettings } from "./settings.ts";
 import { option } from "./validate.ts";
 
@@ -44,6 +44,19 @@ export type GcloudLogSeverity =
   | "CRITICAL"
   | "ALERT"
   | "EMERGENCY";
+
+/** Every severity, lowest to highest, for the runtime check. */
+const SEVERITIES: readonly GcloudLogSeverity[] = [
+  "DEFAULT",
+  "DEBUG",
+  "INFO",
+  "NOTICE",
+  "WARNING",
+  "ERROR",
+  "CRITICAL",
+  "ALERT",
+  "EMERGENCY",
+];
 
 /** A time a log filter compares `timestamp` with. */
 export type GcloudLogTime = Date | string;
@@ -83,15 +96,23 @@ export class GcloudLoggingReadSettings extends GcloudSettings {
   readonly #typed: string[] = [];
   /** The raw filter parts, as written. */
   readonly #raw: string[] = [];
-  #freshness?: string;
   #order?: "asc" | "desc";
   #parent?: [string, string];
   #view?: LogView;
   #resourceNames: string[] = [];
 
-  /** The task name used in this command's error messages. */
-  protected taskName(): string {
-    return "loggingRead";
+  /** How long back `.freshness(...)` reaches, in ms (set by {@link freshness}). */
+  freshness_?: number;
+  /** The earliest time `.since(...)` admits (set by {@link since}). */
+  since_?: GcloudLogTime;
+  /** The clock `.freshness(...)` is measured from (set by {@link now}). */
+  now_: () => Date = () => new Date();
+  /** The `timestamp>=` bound `.freshness(...)` resolved to. */
+  #freshnessSince?: string;
+
+  /** Who this command's error messages name. */
+  protected owner(): string {
+    return "GcloudTasks.loggingRead";
   }
 
   /**
@@ -108,7 +129,7 @@ export class GcloudLoggingReadSettings extends GcloudSettings {
   /** Only entries from this monitored-resource type: `resource.type="…"`. */
   resourceType(type: string): this {
     this.#typed.push(
-      `resource.type=${loggingString(this.#task, "resource type", type)}`,
+      `resource.type=${loggingString(this.#owner, "resource type", type)}`,
     );
     return this;
   }
@@ -116,8 +137,8 @@ export class GcloudLoggingReadSettings extends GcloudSettings {
   /** Only entries whose resource label `key` is `value`; repeatable. */
   resourceLabel(key: string, value: string): this {
     this.#typed.push(
-      `resource.labels.${labelKey(this.#task, key)}=${
-        loggingString(this.#task, "resource label value", value)
+      `resource.labels.${labelKey(this.#owner, key)}=${
+        loggingString(this.#owner, "resource label value", value)
       }`,
     );
     return this;
@@ -126,8 +147,8 @@ export class GcloudLoggingReadSettings extends GcloudSettings {
   /** Only entries whose own label `key` is `value`; repeatable. */
   label(key: string, value: string): this {
     this.#typed.push(
-      `labels.${labelKey(this.#task, key)}=${
-        loggingString(this.#task, "label value", value)
+      `labels.${labelKey(this.#owner, key)}=${
+        loggingString(this.#owner, "label value", value)
       }`,
     );
     return this;
@@ -135,17 +156,26 @@ export class GcloudLoggingReadSettings extends GcloudSettings {
 
   /** Only entries at `severity` or above: `severity>=ERROR`. */
   minSeverity(severity: GcloudLogSeverity): this {
+    // The type admits only the nine names; a JavaScript caller's string is
+    // checked too, since it goes into the filter unquoted.
+    if (!SEVERITIES.some((known) => known === severity)) {
+      throw new Error(
+        `${this.#owner}: ${
+          JSON.stringify(severity)
+        } is not a Cloud Logging severity — use one of ${
+          SEVERITIES.join(", ")
+        }.`,
+      );
+    }
     this.#typed.push(`severity>=${severity}`);
     return this;
   }
 
-  /**
-   * Only entries at or after `time`: `timestamp>="…"`. With a timestamp in
-   * the filter, gcloud ignores `--freshness`.
-   */
+  /** Only entries at or after `time`: `timestamp>="…"`. */
   since(time: GcloudLogTime): this {
+    this.since_ = time;
     this.#typed.push(
-      `timestamp>=${loggingString(this.#task, "time", rfc3339(time))}`,
+      `timestamp>=${loggingString(this.#owner, "time", rfc3339(time))}`,
     );
     return this;
   }
@@ -153,27 +183,54 @@ export class GcloudLoggingReadSettings extends GcloudSettings {
   /** Only entries before `time`: `timestamp<"…"`. */
   until(time: GcloudLogTime): this {
     this.#typed.push(
-      `timestamp<${loggingString(this.#task, "time", rfc3339(time))}`,
+      `timestamp<${loggingString(this.#owner, "time", rfc3339(time))}`,
     );
     return this;
   }
 
   /**
-   * Only entries newer than this (`--freshness`; gcloud's default is one
-   * day) — `"1h"`, `"90s"`, or ms. gcloud applies it only to a descending
-   * read with no timestamp in the filter.
+   * Only entries newer than this — `"1h"`, `"90s"`, or ms — sent as an
+   * explicit `timestamp>="<now − duration>"` in the filter, measured from
+   * {@link now}. gcloud's own `--freshness` is not used: gcloud silently
+   * drops it whenever the filter's text contains the word `timestamp`
+   * anywhere, or the order is `asc`, and the read then spans the whole
+   * retention period.
    */
   freshness(duration: string | number): this {
     const ms = parseDuration(duration);
-    if (ms < 1000) {
+    if (ms <= 0) {
       throw new Error(
-        `GcloudTasks.${this.#task}: .freshness(${
+        `${this.#owner}: .freshness(${
           JSON.stringify(duration)
-        }) is under a second, and gcloud counts it in whole seconds.`,
+        }) must be longer than zero.`,
       );
     }
-    this.#freshness = `${Math.ceil(ms / 1000)}s`;
+    this.freshness_ = ms;
+    this.#resolveFreshness();
     return this;
+  }
+
+  /**
+   * The clock {@link freshness} is measured from — the seam a test pins it
+   * with. Either may be set first.
+   */
+  now(clock: () => Date): this {
+    this.now_ = clock;
+    this.#resolveFreshness();
+    return this;
+  }
+
+  /**
+   * Resolve the freshness bound now, in a setter — so the clock is read at
+   * task time, inside the settings lambda, and argv stays a pure function of
+   * the settings.
+   */
+  #resolveFreshness(): void {
+    if (this.freshness_ === undefined) return;
+    const since = new Date(this.now_().getTime() - this.freshness_);
+    this.#freshnessSince = `timestamp>=${
+      loggingString(this.#owner, "time", rfc3339(since))
+    }`;
   }
 
   /** Newest first (`desc`, gcloud's default) or oldest first (`--order`). */
@@ -225,28 +282,28 @@ export class GcloudLoggingReadSettings extends GcloudSettings {
     return this;
   }
 
-  /** The task name, for the messages raised while a setter runs. */
-  get #task(): string {
-    return this.taskName();
+  /** Who the messages raised while a setter runs name. */
+  get #owner(): string {
+    return this.owner();
   }
 
   /** Emit `logging read` with its filter and flags. */
   protected override leadingTokens(): string[] {
-    const task = this.#task;
-    checkLimit(this.limit_, task);
+    const owner = this.#owner;
+    checkCount(this.limit_, owner, "limit");
     const view = viewFlags(this.#view);
     if (view.length > 0 && this.#resourceNames.length > 0) {
       throw new Error(
-        `GcloudTasks.${task}: .logView(...) and .resourceNames(...) each say ` +
-          "where to read from, and gcloud accepts one. Keep one.",
+        `${owner}: .logView(...) and .resourceNames(...) each say where to ` +
+          "read from, and gcloud accepts one. Keep one.",
       );
     }
     const argv = ["logging", "read"];
-    const filter = conjunction(this.#typed, this.#raw);
+    const typed = this.#freshnessSince === undefined
+      ? this.#typed
+      : [...this.#typed, this.#freshnessSince];
+    const filter = conjunction(typed, this.#raw);
     if (filter !== "") argv.push(filter);
-    if (this.#freshness !== undefined) {
-      argv.push(option("--freshness", this.#freshness));
-    }
     if (this.#order !== undefined) argv.push(option("--order", this.#order));
     if (this.#parent !== undefined) {
       argv.push(option(this.#parent[0], this.#parent[1]));
@@ -256,7 +313,7 @@ export class GcloudLoggingReadSettings extends GcloudSettings {
       argv.push(
         option(
           "--resource-names",
-          commaJoined(this.#resourceNames, task, "--resource-names"),
+          commaJoined(this.#resourceNames, owner, "--resource-names"),
         ),
       );
     }
@@ -313,7 +370,7 @@ export class GcloudLoggingLogsListSettings extends GcloudSettings {
       argv.push(
         option(
           "--sort-by",
-          commaJoined(this.#sortBy, "loggingLogsList", "--sort-by"),
+          commaJoined(this.#sortBy, "GcloudTasks.loggingLogsList", "--sort-by"),
         ),
       );
     }

@@ -430,7 +430,7 @@ Deno.test("the interval: explicit, unaligned, aligned, and refused", async () =>
   );
 });
 
-Deno.test("metricValue: latest sums the series at the newest time", async () => {
+Deno.test("metricValue: latest sums each series' own newest point", async () => {
   const body = {
     timeSeries: [
       series([2, 7], 10, "a"),
@@ -443,7 +443,7 @@ Deno.test("metricValue: latest sums the series at the newest time", async () => 
       const configured = fiveXx(s, pages(body).fetch).view("HEADERS");
       return how === undefined ? configured : configured.aggregate(how);
     });
-  assertEquals(await read(), 5);
+  assertEquals(await read(), 2 + 3 + 5);
   assertEquals(await read("sum"), 17);
   assertEquals(await read("average"), 17 / 4);
   assertEquals(await read("maximum"), 7);

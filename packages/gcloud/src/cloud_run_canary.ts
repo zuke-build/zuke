@@ -52,7 +52,11 @@ import {
   UID_FORMAT,
 } from "./cloud_run_canary_record.ts";
 import { readScalar } from "./scalar_output.ts";
-import type { GcloudSettings, GcloudSettingsRunner } from "./settings.ts";
+import {
+  failOnExit,
+  type GcloudSettings,
+  type GcloudSettingsRunner,
+} from "./settings.ts";
 
 /** The projection that reads back the revision a `services update` created. */
 export const LATEST_REVISION_FORMAT = "value(status.latestCreatedRevisionName)";
@@ -490,20 +494,15 @@ export class CloudRunCanary {
 /**
  * Run one prepared command and fail on a non-zero exit — whatever the
  * `.gcloud(...)` lambda says. With `noThrow()` set there, a failed rollback
- * would otherwise return normally and be reported as done.
+ * would otherwise return normally and be reported as done. The failure is
+ * core's `CommandError`, whose command line the run's redactor masks.
  */
 async function runChecked(
   settings: CloudRunCanarySettings,
   command: GcloudSettings,
 ): Promise<CommandOutput> {
   const output = await settings.runner_(command);
-  if (output.code !== 0) {
-    const detail = output.stderr.trim();
-    throw new Error(
-      `cloudRunCanary: gcloud ${command.argv().slice(1, 4).join(" ")} ` +
-        `exited ${output.code}${detail === "" ? "." : `: ${detail}`}`,
-    );
-  }
+  failOnExit(command, output);
   return output;
 }
 

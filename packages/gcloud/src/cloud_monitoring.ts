@@ -44,6 +44,8 @@ import {
 } from "./time_series.ts";
 import {
   CloudMonitoringTimeSeriesSettings,
+  DEFAULT_MAX_PAGES,
+  type TimeSeriesQuery,
   timeSeriesRequest,
 } from "./time_series_settings.ts";
 
@@ -90,19 +92,24 @@ function tokenOf(settings: CloudMonitoringTimeSeriesSettings): Promise<string> {
 /**
  * Every series the settings describe, following `nextPageToken` until the
  * last page — and failing, not truncating, when there are more pages than
- * `.maxPages(n)` allows. `extraResourceLabels` narrow the filter beyond the
- * settings' own.
+ * `.maxPages(n)` allows. `query` narrows the filter beyond the settings' own,
+ * fixes the interval, and carries a signal that aborts the read between
+ * pages and in flight.
  */
 export async function readTimeSeries(
   settings: CloudMonitoringTimeSeriesSettings,
   task: string,
-  extraResourceLabels: ReadonlyArray<[string, string]> = [],
+  query: TimeSeriesQuery = {},
 ): Promise<CloudMonitoringTimeSeries[]> {
-  const url = timeSeriesRequest(settings, task, extraResourceLabels);
+  const { signal } = query;
+  const url = timeSeriesRequest(settings, task, query);
+  signal?.throwIfAborted();
   const token = await tokenOf(settings);
   const series: CloudMonitoringTimeSeries[] = [];
-  for (let page = 0; page < settings.maxPages_; page++) {
-    const body = await gcpJson(url.href, { method: "GET" }, {
+  const maxPages = settings.maxPages_ ?? DEFAULT_MAX_PAGES;
+  for (let page = 0; page < maxPages; page++) {
+    signal?.throwIfAborted();
+    const body = await gcpJson(url.href, { method: "GET", signal }, {
       token,
       fetch: settings.fetch_,
     });
@@ -114,10 +121,9 @@ export async function readTimeSeries(
     url.searchParams.set("pageToken", parsed.nextPageToken);
   }
   throw new Error(
-    `${task}: Cloud Monitoring still had more pages after ` +
-      `${settings.maxPages_}, so the answer is incomplete. Narrow the ` +
-      "filter or the window, aggregate with .crossSeriesReducer(...), or " +
-      "raise .maxPages(...).",
+    `${task}: Cloud Monitoring still had more pages after ${maxPages}, so ` +
+      "the answer is incomplete. Narrow the filter or the window, aggregate " +
+      "with .crossSeriesReducer(...), or raise .maxPages(...).",
   );
 }
 

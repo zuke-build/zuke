@@ -86,7 +86,10 @@ export abstract class GcloudMonitoringListSettings extends GcloudSettings {
     if (pageSize !== undefined) argv.push(option("--page-size", pageSize));
     if (this.#sortBy.length > 0) {
       argv.push(
-        option("--sort-by", commaJoined(this.#sortBy, task, "--sort-by")),
+        option(
+          "--sort-by",
+          commaJoined(this.#sortBy, `GcloudTasks.${task}`, "--sort-by"),
+        ),
       );
     }
     if (this.#uri) argv.push("--uri");
@@ -164,7 +167,7 @@ export class GcloudMonitoringPoliciesDescribeSettings extends GcloudSettings {
       "monitoring",
       "policies",
       "describe",
-      operand("monitoringPoliciesDescribe", "policy", this.#policy),
+      operand("GcloudTasks.monitoringPoliciesDescribe", "policy", this.#policy),
     ];
   }
 }

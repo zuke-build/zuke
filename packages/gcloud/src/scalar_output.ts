@@ -23,6 +23,8 @@
  * @module
  */
 
+import { GcloudOutputError } from "./errors.ts";
+
 /** The part of a finished command a scalar reader needs. */
 export interface ScalarOutput {
   /** Captured standard output. */
@@ -94,9 +96,10 @@ export function readJson(output: ScalarOutput, caller: string): unknown {
   try {
     return JSON.parse(output.stdout);
   } catch {
-    throw new Error(
-      `${caller}: gcloud's output is not JSON. Leave --format to the reader, ` +
-        "which pins it.",
+    throw new GcloudOutputError(
+      caller,
+      "gcloud's output is not JSON. Leave --format to the reader, which " +
+        "pins it.",
     );
   }
 }

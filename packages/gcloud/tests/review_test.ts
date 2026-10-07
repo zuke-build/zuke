@@ -91,8 +91,8 @@ Deno.test("S1: a token with a line break is refused without quoting it", async (
 });
 
 Deno.test("S1: a provider's truncation notice is a refusal, not a header", async () => {
-  // gcloudAccessToken reads `.text()`, which prefixes a truncated capture
-  // with a notice line: the token would then hold a line break.
+  // A truncated capture begins mid-token, so the default provider refuses
+  // it rather than send what survives.
   const fetch = ignoringFetch();
   await assertRejects(
     () =>
@@ -106,7 +106,7 @@ Deno.test("S1: a provider's truncation notice is a refusal, not a header", async
         )
       ),
     Error,
-    "control character",
+    "capture cap",
   );
   assertEquals(fetch.calls, 0);
   // Surrounding whitespace is not refused: the header trims it.
@@ -247,11 +247,9 @@ Deno.test("L6: a blank raw filter is no filter, not ()", async () => {
   const runner = ignoring("[]");
   await GcloudTasks.logEntryCount((s) =>
     s.filter("  ").runner((settings) => {
-      assertEquals(settings.argv().slice(1, 4), [
-        "logging",
-        "read",
-        "--limit=1001",
-      ]);
+      // Only the default time bound: no `()` for the blank filter.
+      assertEquals(settings.argv()[3].startsWith('timestamp>="'), true);
+      assertEquals(settings.argv()[3].includes("()"), false);
       return runner.run();
     })
   );

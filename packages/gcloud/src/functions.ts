@@ -165,7 +165,11 @@ export class GcloudFunctionsDeploySettings extends GcloudSettings {
     if (this.#envVars.length > 0) {
       argv.push(
         "--set-env-vars",
-        commaJoined(this.#envVars, "functionsDeploy", "--set-env-vars"),
+        commaJoined(
+          this.#envVars,
+          "GcloudTasks.functionsDeploy",
+          "--set-env-vars",
+        ),
       );
     }
     if (this.#memory !== undefined) argv.push("--memory", this.#memory);

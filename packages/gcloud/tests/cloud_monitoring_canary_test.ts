@@ -50,9 +50,10 @@ Deno.test("cloudMonitoring passes when every point is within bounds", async () =
   const fake = pages({ timeSeries: [series([0, 5, 1])] });
   await analysis(fake.fetch).validate(plain);
   assertEquals(fake.urls[0].searchParams.get("view"), "FULL");
+  // Two minutes back for the ingestion delay, then down to the minute.
   assertEquals(
     fake.urls[0].searchParams.get("interval.endTime"),
-    "2026-10-07T12:10:00.000Z",
+    "2026-10-07T12:08:00.000Z",
   );
 });
 
@@ -76,7 +77,7 @@ Deno.test("cloudMonitoring: no data fails unless missingDataAs says what it mean
   await assertRejects(
     () => analysis(pages({}).fetch).validate(plain),
     Error,
-    "canary 5xx has no data in the last 300000 ms",
+    "canary 5xx has no data between 2026-10-07T12:03:00.000Z and 2026-10-07T12:08:00.000Z",
   );
   await analysis(pages({}).fetch, (m) => m.missingDataAs(0)).validate(plain);
   await assertRejects(
@@ -283,14 +284,14 @@ Deno.test("a metric and log entries together are refused", async () => {
       cloudMonitoring((m) => m.metricType("m").max(1).logEntries((l) => l))
         .validate(plain),
     Error,
-    "not both",
+    "only apply to a metric read",
   );
   await assertRejects(
     () =>
       cloudMonitoring((m) => m.filter("x").max(1).logEntries((l) => l))
         .validate(plain),
     Error,
-    "not both",
+    "only apply to a metric read",
   );
   for (
     const narrow of [
@@ -304,7 +305,7 @@ Deno.test("a metric and log entries together are refused", async () => {
         cloudMonitoring((m) => narrow(m).max(1).logEntries((l) => l))
           .validate(plain),
       Error,
-      "would not narrow the log read",
+      "only apply to a metric read",
     );
   }
 });
@@ -372,6 +373,7 @@ Deno.test("cloudRunCandidate narrows the metric to the latest created revision",
         'resource.type = "cloud_run_revision" AND ' +
         'resource.labels.service_name = "api" AND ' +
         'resource.labels.revision_name = "api-00007-abc" AND ' +
+        'resource.labels.location = "europe-west1" AND ' +
         'metric.labels.response_code_class = "5xx"',
     );
   }

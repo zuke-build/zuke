@@ -47,16 +47,25 @@ import {
 } from "./cloud_run_candidate.ts";
 import { countEntries } from "./log_entry_count.ts";
 import { GcloudLoggingReadSettings } from "./logging.ts";
-import { numericPoints } from "./metric_value.ts";
+import { numericSeries } from "./metric_value.ts";
 import { boundsOf, checkThreshold } from "./threshold.ts";
 import {
   CloudMonitoringTimeSeriesSettings,
   intervalOf,
+  type TimeInterval,
 } from "./time_series_settings.ts";
 import { finite } from "./validate.ts";
 
 /** The task name in this analysis's errors. */
 const TASK = "cloudMonitoring";
+
+/**
+ * How far before now the window ends when no `.delay(...)` is set: two
+ * minutes. Google's metrics list says Cloud Run's request metrics are "not
+ * visible for up to 120 seconds" after sampling, so a window ending now
+ * would judge minutes that have not arrived yet.
+ */
+const DEFAULT_DELAY = 2 * 60_000;
 
 /**
  * The part of the canary engine's context the analysis uses: the run's
@@ -66,6 +75,8 @@ const TASK = "cloudMonitoring";
 export interface CloudMonitoringAnalysisContext {
   /** Mask every resolved `secret` parameter in `text`. */
   redact(text: string): string;
+  /** Aborted when the run is cancelled; stops the check between steps. */
+  readonly signal?: AbortSignal;
 }
 
 /**
@@ -169,6 +180,14 @@ interface Judged {
   value: number;
 }
 
+/** What a check read: the values to judge, and the interval they cover. */
+interface Reading {
+  /** The values. */
+  judged: Judged[];
+  /** The interval read. */
+  interval: TimeInterval;
+}
+
 /** Whether any part of the metric's filter is set. */
 function narrowsMetric(settings: CloudMonitoringAnalysisSettings): boolean {
   return settings.metricType_ !== undefined ||
@@ -176,6 +195,29 @@ function narrowsMetric(settings: CloudMonitoringAnalysisSettings): boolean {
     settings.resourceLabels_.length > 0 ||
     settings.metricLabels_.length > 0 ||
     settings.filters_.length > 0;
+}
+
+/**
+ * The settings only a metric read uses, by setter, when any is set — the
+ * log count has no use for them, so setting one alongside it is a mistake.
+ */
+function metricOnly(settings: CloudMonitoringAnalysisSettings): string[] {
+  const set: Array<[string, boolean]> = [
+    [
+      ".metricType/.resourceType/.resourceLabel/.metricLabel/.filter",
+      narrowsMetric(settings),
+    ],
+    [".perSeriesAligner", settings.perSeriesAligner_ !== undefined],
+    [".crossSeriesReducer", settings.crossSeriesReducer_ !== undefined],
+    [".groupByFields", settings.groupByFields_.length > 0],
+    [".token", settings.token_ !== undefined],
+    [".tokenProvider", settings.tokenProvider_ !== undefined],
+    [".fetch", settings.fetch_ !== undefined],
+    [".maxPages", settings.maxPages_ !== undefined],
+    [".pageSize", settings.pageSize_ !== undefined],
+    [".readEnv", settings.readEnv_ !== undefined],
+  ];
+  return set.filter(([, isSet]) => isSet).map(([setter]) => setter);
 }
 
 /** The label a failure names: the analysis's name, or what it reads. */
@@ -188,30 +230,59 @@ function labelOf(settings: CloudMonitoringAnalysisSettings): string {
 
 /**
  * The `[key, value]` resource labels that narrow a read to the Cloud Run
- * candidate, when one is set — read afresh on each check.
+ * candidate, when one is set — read afresh on each check, in the analysis's
+ * project, and with the region as the `location` label when one is named.
  */
 async function candidateLabels(
   settings: CloudMonitoringAnalysisSettings,
 ): Promise<Array<[string, string]>> {
   const target = settings.cloudRunCandidate_;
   if (target === undefined) return [];
-  const revision = await candidateRevision(target, settings.gcloud_, TASK);
-  return [["service_name", target.service], ["revision_name", revision]];
+  const revision = await candidateRevision(
+    target,
+    settings.project_,
+    settings.gcloud_,
+    TASK,
+  );
+  const labels: Array<[string, string]> = [
+    ["service_name", target.service],
+    ["revision_name", revision],
+  ];
+  if (target.region !== undefined) labels.push(["location", target.region]);
+  return labels;
 }
 
-/** The points of the metric `settings` describe, over its aligned window. */
+/** The points of the metric `settings` describe, over its window. */
 async function metricPoints(
   settings: CloudMonitoringAnalysisSettings,
   label: string,
-): Promise<Judged[]> {
-  const candidate = await candidateLabels(settings);
+  signal: AbortSignal | undefined,
+): Promise<Reading> {
+  const interval = intervalOf(settings, TASK, DEFAULT_DELAY);
+  signal?.throwIfAborted();
+  const extraResourceLabels = await candidateLabels(settings);
   // The analysis judges points, and a HEADERS view returns none.
   settings.view("FULL");
-  const series = await readTimeSeries(settings, TASK, candidate);
-  return numericPoints(series, TASK).map((point) => ({
-    label: `${label} at ${point.end.toISOString()}`,
-    value: point.value,
-  }));
+  const series = await readTimeSeries(settings, TASK, {
+    extraResourceLabels,
+    interval,
+    signal,
+  });
+  const judged = numericSeries(series, settings.perSeriesAligner_, TASK)
+    .flatMap((one) => one.points)
+    .map((point) => ({
+      label: `${label} at ${point.end.toISOString()}`,
+      value: point.value,
+    }));
+  return { judged, interval };
+}
+
+/** The log read of the analysis: its refusals name the analysis. */
+class AnalysisLogRead extends GcloudLoggingReadSettings {
+  /** Who the read's error messages name. */
+  protected override owner(): string {
+    return TASK;
+  }
 }
 
 /** The number of log entries the filter matches over the window. */
@@ -219,15 +290,28 @@ async function logPoints(
   settings: CloudMonitoringAnalysisSettings,
   configure: Configure<GcloudLoggingReadSettings>,
   label: string,
-): Promise<Judged[]> {
-  const { start, end } = intervalOf(settings, TASK);
-  const base = new GcloudLoggingReadSettings();
+  signal: AbortSignal | undefined,
+): Promise<Reading> {
+  const unused = metricOnly(settings);
+  if (unused.length > 0) {
+    throw new Error(
+      `${TASK}: ${unused.join(", ")} only apply to a metric read, and this ` +
+        "analysis counts log entries. Drop them, or put the log filter inside " +
+        ".logEntries(...).",
+    );
+  }
+  const interval = intervalOf(settings, TASK, 0);
+  const base = new AnalysisLogRead();
+  // The project the analysis names; otherwise gcloud's own configured one.
   if (settings.project_ !== undefined) base.project(settings.project_);
-  const read = configure(base).since(start).until(end);
+  const read = configure(base).since(interval.start).until(interval.end);
+  signal?.throwIfAborted();
   for (const [key, value] of await candidateLabels(settings)) {
     read.resourceLabel(key, value);
   }
-  return [{ label, value: await countEntries(read, TASK, settings.gcloud_) }];
+  signal?.throwIfAborted();
+  const count = await countEntries(read, TASK, settings.gcloud_);
+  return { judged: [{ label, value: count }], interval };
 }
 
 /**
@@ -267,33 +351,27 @@ export function cloudMonitoring(
       const { settings, label, bounds } = await attempt(context, "", () => {
         const settings = configure(new CloudMonitoringAnalysisSettings());
         const label = labelOf(settings);
-        if (settings.logEntries_ !== undefined && narrowsMetric(settings)) {
-          throw new Error(
-            `cloudMonitoring "${label}" judges a metric or log entries, not ` +
-              "both — the metric's filter (.metricType, .resourceType, " +
-              ".resourceLabel, .metricLabel, .filter) would not narrow the " +
-              "log read. Put the log filter inside .logEntries(...).",
-          );
-        }
         const bounds = boundsOf(label, settings.min_, settings.max_);
         return { settings, label, bounds };
       });
       const logs = settings.logEntries_;
-      const judged = await attempt(
+      const { signal } = context;
+      const { judged, interval } = await attempt(
         context,
         `${label} could not be read: `,
         () =>
           logs === undefined
-            ? metricPoints(settings, label)
-            : logPoints(settings, logs, label),
+            ? metricPoints(settings, label, signal)
+            : logPoints(settings, logs, label, signal),
       );
       if (judged.length === 0) {
         const missing = settings.missingData_;
         if (missing === undefined) {
           throw new Error(context.redact(
-            `${label} has no data in the last ${settings.window_} ms — check ` +
-              "the project, metric type, resource and labels, or call " +
-              ".missingDataAs(0) if no data means healthy.",
+            `${label} has no data between ${interval.start.toISOString()} ` +
+              `and ${interval.end.toISOString()} — check the project, metric ` +
+              "type, resource and labels, or call .missingDataAs(0) if no " +
+              "data means healthy.",
           ));
         }
         judged.push({ label: `${label} (no data)`, value: missing });

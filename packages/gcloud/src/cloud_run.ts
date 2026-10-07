@@ -205,13 +205,13 @@ export class GcloudRunDeploySettings extends GcloudSettings {
     if (this.#envVars.length > 0) {
       argv.push(
         "--set-env-vars",
-        commaJoined(this.#envVars, "runDeploy", "--set-env-vars"),
+        commaJoined(this.#envVars, "GcloudTasks.runDeploy", "--set-env-vars"),
       );
     }
     if (this.#secrets.length > 0) {
       argv.push(
         "--set-secrets",
-        commaJoined(this.#secrets, "runDeploy", "--set-secrets"),
+        commaJoined(this.#secrets, "GcloudTasks.runDeploy", "--set-secrets"),
       );
     }
     if (this.#memory !== undefined) argv.push("--memory", this.#memory);
@@ -379,13 +379,17 @@ export class GcloudRunUpdateTrafficSettings extends GcloudSettings {
     if (this.#toRevisions.length > 0) {
       argv.push(
         "--to-revisions",
-        commaJoined(this.#toRevisions, "runUpdateTraffic", "--to-revisions"),
+        commaJoined(
+          this.#toRevisions,
+          "GcloudTasks.runUpdateTraffic",
+          "--to-revisions",
+        ),
       );
     }
     if (this.#toTags.length > 0) {
       argv.push(
         "--to-tags",
-        commaJoined(this.#toTags, "runUpdateTraffic", "--to-tags"),
+        commaJoined(this.#toTags, "GcloudTasks.runUpdateTraffic", "--to-tags"),
       );
     }
     return argv;
@@ -555,7 +559,7 @@ export class GcloudRunServicesUpdateSettings extends GcloudSettings {
         "--update-env-vars",
         commaJoined(
           this.#updateEnvVars,
-          "runServicesUpdate",
+          "GcloudTasks.runServicesUpdate",
           "--update-env-vars",
         ),
       );
@@ -565,7 +569,7 @@ export class GcloudRunServicesUpdateSettings extends GcloudSettings {
         "--remove-env-vars",
         commaJoined(
           this.#removeEnvVars,
-          "runServicesUpdate",
+          "GcloudTasks.runServicesUpdate",
           "--remove-env-vars",
         ),
       );
@@ -576,7 +580,7 @@ export class GcloudRunServicesUpdateSettings extends GcloudSettings {
         "--update-secrets",
         commaJoined(
           this.#updateSecrets,
-          "runServicesUpdate",
+          "GcloudTasks.runServicesUpdate",
           "--update-secrets",
         ),
       );

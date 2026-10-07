@@ -17,6 +17,7 @@
  * @module
  */
 
+import { GcloudOutputError } from "./errors.ts";
 import { isRecord, readArray, readString } from "./rest.ts";
 
 /**
@@ -36,7 +37,10 @@ export type CloudMonitoringValue =
     kind: "int64";
     /** The value as a number. */
     value: number;
-    /** The value exactly as the API sent it. */
+    /**
+     * The value in decimal. Exact when the API sent a string, as proto3 JSON
+     * does; a value sent as a JSON number was already rounded to a double.
+     */
     raw: string;
   }
   | {
@@ -95,7 +99,7 @@ export interface CloudMonitoringTimeSeries {
 }
 
 /** One page: its series, and the token of the next page, if any. */
-export interface TimeSeriesPage {
+interface TimeSeriesPage {
   /** The series on this page. */
   series: CloudMonitoringTimeSeries[];
   /** The token for the next page; absent on the last. */
@@ -103,17 +107,21 @@ export interface TimeSeriesPage {
 }
 
 /** A refusal naming the reader and what did not fit, never the value. */
-function unreadable(task: string, what: string): Error {
-  return new Error(
-    `${task}: Cloud Monitoring returned ${what}, which is not the documented ` +
-      "shape of a time series list. Refused rather than guessed at.",
+function unreadable(task: string, what: string): GcloudOutputError {
+  return new GcloudOutputError(
+    task,
+    `Cloud Monitoring returned ${what}, which is not the documented shape ` +
+      "of a time series list. Refused rather than guessed at.",
   );
 }
 
 /** A proto3 JSON 64-bit integer: a decimal string (or a plain number). */
 function int64Of(value: unknown, task: string, what: string): string {
+  // A JSON number is already a double, so its decimal form is exact only to
+  // the double's precision; BigInt writes it out in full rather than as
+  // `1e+21`.
   if (typeof value === "number" && Number.isInteger(value)) {
-    return String(value);
+    return BigInt(value).toString();
   }
   if (typeof value === "string" && /^-?\d+$/.test(value)) return value;
   throw unreadable(task, `an ${what} that is not an integer`);
@@ -236,10 +244,11 @@ export function timeSeriesPageOf(body: unknown, task: string): TimeSeriesPage {
   if (!isRecord(body)) throw unreadable(task, "a page that is not an object");
   const errors = readArray(body, "executionErrors");
   if (errors.length > 0) {
-    throw new Error(
-      `${task}: Cloud Monitoring reported ${errors.length} execution ` +
-        "error(s), so the answer is partial — some series could not be read. " +
-        "Refused rather than judged as if it were whole.",
+    throw new GcloudOutputError(
+      task,
+      `Cloud Monitoring reported ${errors.length} execution error(s), so ` +
+        "the answer is partial — some series could not be read. Refused " +
+        "rather than judged as if it were whole.",
     );
   }
   const series = readArray(body, "timeSeries").map((item) =>

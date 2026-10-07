@@ -179,7 +179,7 @@ class Deploy extends Build {
           .crossSeriesReducer("REDUCE_SUM")
           .window("5m").max(5).missingDataAs(0)
           .token(TOKEN).fetch(fakeFetch)
-          .gcloud((g) => g.project("my-proj").runner(fakeGcloud))
+          .gcloud((g) => g.runner(fakeGcloud))
       ))
   );
 }
@@ -198,9 +198,12 @@ Deno.test("canary's cloudMonitoring analysis promotes a healthy candidate", asyn
     assertStringIncludes(
       urls[0].searchParams.get("filter") ?? "",
       'resource.labels.revision_name = "api-00002" AND ' +
+        'resource.labels.location = "europe-west1" AND ' +
         'metric.labels.response_code_class = "5xx"',
     );
     assertEquals(calls[0].slice(1, 5), ["run", "services", "describe", "api"]);
+    // The revision is read in the analysis's own project.
+    assertEquals(calls[0][calls[0].indexOf("--project") + 1], "my-proj");
   });
 });
 

@@ -20,11 +20,14 @@ export function option(flag: string, value: string | number): string {
   return `${flag}=${value}`;
 }
 
-/** `value`, refused when gcloud would read it as a flag rather than a value. */
-export function operand(task: string, what: string, value: string): string {
+/**
+ * `value`, refused when gcloud would read it as a flag rather than a value;
+ * `owner` names the caller, e.g. `GcloudTasks.monitoringPoliciesDescribe`.
+ */
+export function operand(owner: string, what: string, value: string): string {
   if (value.startsWith("-")) {
     throw new Error(
-      `GcloudTasks.${task}: the ${what} "${value}" starts with '-', which ` +
+      `${owner}: the ${what} "${value}" starts with '-', which ` +
         "gcloud would read as a flag rather than a value. Refused.",
     );
   }

@@ -29,6 +29,7 @@ Deno.test("logging read: typed parts, quoted, then raw text, joined by AND", () 
     .since(new Date(Date.UTC(2026, 9, 7, 12)))
     .until("2026-10-07T12:05:00Z")
     .filter("textPayload:timeout")
+    .now(() => new Date(Date.UTC(2026, 9, 7, 12)))
     .freshness("10m").order("asc").limit(5).project("p")
     .argv();
   assertEquals(argv, [
@@ -38,8 +39,8 @@ Deno.test("logging read: typed parts, quoted, then raw text, joined by AND", () 
     'resource.type="cloud_run_revision" AND ' +
     'resource.labels.service_name="api" AND labels.env="prod" AND ' +
     'severity>=ERROR AND timestamp>="2026-10-07T12:00:00.000Z" AND ' +
-    'timestamp<"2026-10-07T12:05:00Z" AND (textPayload:timeout)',
-    "--freshness=600s",
+    'timestamp<"2026-10-07T12:05:00Z" AND ' +
+    'timestamp>="2026-10-07T11:50:00.000Z" AND (textPayload:timeout)',
     "--order=asc",
     "--limit=5",
     "--project",
@@ -128,19 +129,20 @@ Deno.test("logging read: refusals in gcloud's own terms", () => {
     "GcloudTasks.loggingRead: .limit(0) is not a count",
   );
   assertThrows(
-    () => new GcloudLoggingReadSettings().freshness("500ms"),
+    () => new GcloudLoggingReadSettings().freshness(0),
     Error,
-    "under a second",
+    "longer than zero",
   );
   assertThrows(
     () => new GcloudLoggingReadSettings().resourceNames("a,b").argv(),
     Error,
     "joins its values with commas",
   );
-  // Freshness rounds up to whole seconds, and takes ms.
-  assertEquals(
-    new GcloudLoggingReadSettings().freshness(1500).argv()[3],
-    "--freshness=2s",
+  // Freshness takes ms too, and the clock may be set after it.
+  assertStringIncludes(
+    new GcloudLoggingReadSettings().freshness(1500)
+      .now(() => new Date(Date.UTC(2026, 9, 7, 12))).argv()[3],
+    'timestamp>="2026-10-07T11:59:58.500Z"',
   );
 });
 

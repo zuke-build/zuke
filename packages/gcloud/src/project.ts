@@ -12,8 +12,16 @@
 
 import { defaultReadEnv } from "@zuke/core";
 
+/**
+ * A project id (lowercase letters, digits and hyphens, starting with a
+ * letter, optionally behind a legacy `domain:` scope) or a project number.
+ * It goes into a URL path, so `.`, `..` and anything with a `/` must not.
+ */
+const PROJECT_SHAPE =
+  /^(?:(?:[a-z0-9-]+\.)+[a-z]+:)?[a-z](?:[a-z0-9-]*[a-z0-9])?$|^\d+$/;
+
 /** Where a project id may come from: the caller, or the environment. */
-export interface ProjectSource {
+interface ProjectSource {
   /** The project id, when the caller named one. */
   project?: string;
   /** Reads an environment variable; defaults to `Deno.env.get`. */
@@ -22,20 +30,27 @@ export interface ProjectSource {
 
 /**
  * The project the caller named, or the one in `GOOGLE_CLOUD_PROJECT` (then
- * `GCLOUD_PROJECT`) — refused when there is neither, with `caller` and the
- * way to name one (`how`) in the message.
+ * `GCLOUD_PROJECT`) — refused when there is neither, or when it is not the
+ * shape of a project id or number, with `caller` and the way to name one
+ * (`how`) in the message.
  */
 export function resolveProject(
   source: ProjectSource,
   caller: string,
   how: string,
 ): string {
-  if (source.project !== undefined) return source.project;
   const readEnv = source.readEnv ?? defaultReadEnv;
-  const project = readEnv("GOOGLE_CLOUD_PROJECT") ?? readEnv("GCLOUD_PROJECT");
+  const project = source.project ?? readEnv("GOOGLE_CLOUD_PROJECT") ??
+    readEnv("GCLOUD_PROJECT");
   if (project === undefined || project === "") {
     throw new Error(
       `${caller}: no project — ${how} or set GOOGLE_CLOUD_PROJECT.`,
+    );
+  }
+  if (!PROJECT_SHAPE.test(project)) {
+    throw new Error(
+      `${caller}: "${project}" is not a project id or number — it goes into ` +
+        "the request's path, so it is refused rather than sent.",
     );
   }
   return project;

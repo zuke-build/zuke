@@ -21,7 +21,8 @@
 
 /**
  * The values as one comma-separated argument, refusing any that already
- * contains a comma.
+ * contains a comma, and a first value that starts with `^`. `owner` names
+ * the caller in the refusal, e.g. `GcloudTasks.runDeploy`.
  *
  * gcloud's own escape for such a value is the alternate-delimiter syntax
  * (`^:^A=1,2:B=3`), which a caller can still pass through the settings class's
@@ -29,19 +30,28 @@
  */
 export function commaJoined(
   values: readonly string[],
-  task: string,
+  owner: string,
   flag: string,
 ): string {
   const offender = values.find((value) => value.includes(","));
   if (offender !== undefined) {
     throw new Error(
-      `GcloudTasks.${task}: ${flag} joins its values with commas, so ` +
+      `${owner}: ${flag} joins its values with commas, so ` +
         `${
           JSON.stringify(offender)
         } cannot be passed this way — gcloud would ` +
         "read the text after the comma as another entry. Use gcloud's " +
         "alternate-delimiter syntax through .flag() for a value that must " +
         "contain one.",
+    );
+  }
+  // gcloud reads a list that starts with '^' as `^<delimiter>^<items>`, so a
+  // first value starting with one would choose the delimiter the rest is
+  // split on rather than be a value.
+  if (values[0]?.startsWith("^")) {
+    throw new Error(
+      `${owner}: ${flag}'s first value starts with '^', which gcloud reads ` +
+        "as its alternate-delimiter syntax rather than as a value. Refused.",
     );
   }
   return values.join(",");

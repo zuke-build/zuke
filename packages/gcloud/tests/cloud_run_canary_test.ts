@@ -7,7 +7,7 @@ import {
   assertStringIncludes,
 } from "../../core/tests/_assert.ts";
 import type { JsonValue, TargetStateHandle } from "@zuke/core";
-import { CommandOutput } from "@zuke/core/shell";
+import { CommandError, CommandOutput } from "@zuke/core/shell";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import { missingTool } from "@zuke/core/tooling/conformance";
 import {
@@ -726,8 +726,8 @@ Deno.test("a failed command fails the call even when gcloud is told not to throw
     ).runner(failing)
   );
   // noThrow renders no flag, so the record still matches.
-  await assertRejects(() => p.abort(ctx), Error, "exited 1");
-  await assertRejects(() => p.expose(10, ctx), Error, "exited 1");
+  await assertRejects(() => p.abort(ctx), CommandError, "exit 1");
+  await assertRejects(() => p.expose(10, ctx), CommandError, "exit 1");
   const silent = cloudRunCanary((r) =>
     r.service("api").image("i").runner(() =>
       Promise.resolve(new CommandOutput(2, "", " "))
@@ -735,8 +735,8 @@ Deno.test("a failed command fails the call even when gcloud is told not to throw
   );
   await assertRejects(
     () => silent.stage(context()),
-    Error,
-    "gcloud run services describe exited 2.",
+    CommandError,
+    "Command failed (exit 2): gcloud run services describe api",
   );
 });
 
