@@ -45,6 +45,14 @@ export {
   operatingSystem,
 } from "./src/host.ts";
 export {
+  NO_BANNER_ENV,
+  type OutputMode,
+  type OutputModeOptions,
+  PLAIN_ENV,
+  resolveOutputMode,
+} from "./src/output_mode.ts";
+export { lockedJsrSpecifiers, type LockedSpecifier } from "./src/outdated.ts";
+export {
   type Condition,
   type ConditionContext,
   type DeclaredEffect,

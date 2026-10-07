@@ -39,6 +39,9 @@ import {
 } from "./completions.ts";
 import { resolveDocSpec } from "./doc_spec.ts";
 import { VERSION } from "./version.ts";
+import { type CliPaint, cliPaint, PLAIN_PAINT } from "./cli_paint.ts";
+import { formatVersionPanel, versionFacts } from "./cli_version.ts";
+import { resolveOutputMode } from "./output_mode.ts";
 import {
   BUILTIN_FLAG_NAMES,
   BUILTIN_FLAGS,
@@ -156,6 +159,11 @@ export interface ParsedArgs {
   cache?: boolean;
   /** Suppress the opening banner (`--no-banner`); undefined leaves it on. */
   banner?: boolean;
+  /**
+   * Plain output (`--plain`): no banner, no colour, no decoration. Undefined
+   * leaves the decision to `ZUKE_PLAIN` and the terminal.
+   */
+  plain?: boolean;
   /** Disable only the remote cache store (`--no-remote-cache`); undefined leaves it on. */
   remoteCache?: boolean;
   /** Restrict the run to targets affected since a git base (`--affected[=<base>]`). */
@@ -473,6 +481,8 @@ export function parseArgs(
       parsed.cache = false;
     } else if (arg === "--no-banner") {
       parsed.banner = false;
+    } else if (arg === "--plain") {
+      parsed.plain = true;
     } else if (arg === "--no-remote-cache") {
       parsed.remoteCache = false;
     } else if (arg === "--affected") {
@@ -670,10 +680,19 @@ function wrapDetail(text: string, indent: number, width = 80): string[] {
   return lines;
 }
 
-/** One `  name   description` row, wrapped under the name column. */
-function row(name: string, description: string, width: number): string[] {
-  const label = `  ${name.padEnd(width)}  `;
-  const wrapped = wrapDetail(description, label.length);
+/**
+ * One `  name   description` row, wrapped under the name column. `paintName`
+ * is applied after padding, so the escape codes never count toward the column.
+ */
+function row(
+  name: string,
+  description: string,
+  width: number,
+  paintName: (text: string) => string = (text) => text,
+): string[] {
+  const indent = width + 4;
+  const label = `  ${paintName(name.padEnd(width))}  `;
+  const wrapped = wrapDetail(description, indent);
   if (wrapped.length === 0) return [label.trimEnd()];
   return [label + wrapped[0].trimStart(), ...wrapped.slice(1)];
 }
@@ -691,7 +710,7 @@ function generalFlags(): BuiltinFlag[] {
  * hard to scan. The per-entry prose lives in each command's own help, so this
  * stays a map of the surface rather than the manual.
  */
-function usageText(): string {
+function usageText(paint: CliPaint): string {
   const commandWidth = Math.max(
     ...RESERVED_COMMANDS.map((c) => c.name.length),
   );
@@ -700,33 +719,39 @@ function usageText(): string {
     ...flags.map((f) => f.name.length),
     "<target>".length,
   );
+  const program = paint.brand(PROGRAM);
   const lines = [
-    `${PROGRAM} — code-first build automation`,
+    `${program} — code-first build automation`,
     "",
-    "Usage:",
-    `  ${PROGRAM} <target> [options]`,
-    `  ${PROGRAM} <command> [options]`,
-    `  ${PROGRAM} --list [--json]`,
+    paint.heading("Usage:"),
+    `  ${program} <target> [options]`,
+    `  ${program} <command> [options]`,
+    `  ${program} --list [--json]`,
     "",
-    "Commands:",
+    paint.heading("Commands:"),
   ];
   for (const command of RESERVED_COMMANDS) {
-    lines.push(...row(command.name, command.description, commandWidth));
+    lines.push(
+      ...row(command.name, command.description, commandWidth, paint.command),
+    );
   }
-  lines.push("", "Options:");
+  lines.push("", paint.heading("Options:"));
   lines.push(
     ...row(
       "<target>",
       "Run the target and its transitive dependencies.",
       flagWidth,
+      paint.target,
     ),
   );
   for (const flag of flags) {
-    lines.push(...row(flag.name, flag.description, flagWidth));
+    lines.push(...row(flag.name, flag.description, flagWidth, paint.flag));
   }
   lines.push(
     "",
-    `Run \`${PROGRAM} <command> --help\` for a command's own options and detail.`,
+    paint.muted(
+      `Run \`${PROGRAM} <command> --help\` for a command's own options and detail.`,
+    ),
   );
   return lines.join("\n");
 }
@@ -738,22 +763,31 @@ function usageText(): string {
  * Returns `undefined` for a name that is not a reserved command, so the caller
  * can fall back to the main help rather than print an empty page.
  */
-export function formatCommandHelp(name: string): string | undefined {
+export function formatCommandHelp(
+  name: string,
+  paint: CliPaint = PLAIN_PAINT,
+): string | undefined {
   const command = RESERVED_COMMANDS.find((c) => c.name === name);
   if (command === undefined) return undefined;
-  const lines = [`${PROGRAM} ${command.name} — ${command.description}`, ""];
+  const program = paint.brand(PROGRAM);
+  const lines = [
+    `${program} ${paint.command(command.name)} — ${command.description}`,
+    "",
+  ];
   const usage = command.usage ?? [command.name];
-  lines.push("Usage:");
-  for (const line of usage) lines.push(`  ${PROGRAM} ${line}`);
+  lines.push(paint.heading("Usage:"));
+  for (const line of usage) lines.push(`  ${program} ${line}`);
   if (command.detail !== undefined) {
     lines.push("", ...wrapDetail(command.detail, 0));
   }
   const own = BUILTIN_FLAGS.filter((f) => f.command === command.name);
   if (own.length > 0) {
     const width = Math.max(...own.map((f) => f.name.length));
-    lines.push("", "Options:");
+    lines.push("", paint.heading("Options:"));
     for (const flag of own) {
-      lines.push(...row(flag.name, flag.detail ?? flag.description, width));
+      lines.push(
+        ...row(flag.name, flag.detail ?? flag.description, width, paint.flag),
+      );
     }
   }
   return lines.join("\n");
@@ -763,14 +797,16 @@ export function formatCommandHelp(name: string): string | undefined {
 export function formatHelp(
   targets: Map<string, TargetBuilder>,
   params: Map<string, AnyParameter> = new Map(),
+  paint: CliPaint = PLAIN_PAINT,
 ): string {
-  return `${usageText()}\n\n${formatList(targets, params)}`;
+  return `${usageText(paint)}\n\n${formatList(targets, params, paint)}`;
 }
 
 /** Render `--list`: each target with its description and dependencies, then parameters. */
 export function formatList(
   targets: Map<string, TargetBuilder>,
   params: Map<string, AnyParameter> = new Map(),
+  paint: CliPaint = PLAIN_PAINT,
 ): string {
   // `unlisted` targets stay runnable by name but are hidden from the listing.
   const listed = new Map(
@@ -778,8 +814,8 @@ export function formatList(
   );
   const targetText = listed.size === 0
     ? "No targets defined."
-    : renderTargets(listed);
-  const paramText = formatParameters(params);
+    : renderTargets(listed, paint);
+  const paramText = formatParameters(params, paint);
   return paramText === "" ? targetText : `${targetText}\n\n${paramText}`;
 }
 
@@ -787,51 +823,67 @@ export function formatList(
  * Render the target listing (non-empty), sorted by name so a long build is
  * scannable; dependencies stay in declaration order.
  */
-function renderTargets(targets: Map<string, TargetBuilder>): string {
+function renderTargets(
+  targets: Map<string, TargetBuilder>,
+  paint: CliPaint,
+): string {
   const width = Math.max(...[...targets.keys()].map((n) => n.length));
-  const lines = ["Targets:"];
+  const lines = [paint.heading("Targets:")];
   const sorted = [...targets].sort(([a], [b]) => a.localeCompare(b, "en"));
   for (const [name, t] of sorted) {
     const deps = depNames(t);
     const desc = t.description_ ?? "";
-    const fanOut = t.forEach_ !== undefined ? "  [fan-out]" : "";
-    const suffix = deps.length ? `  (depends on: ${deps.join(", ")})` : "";
-    lines.push(`  ${name.padEnd(width)}  ${desc}${fanOut}${suffix}`);
+    const fanOut = t.forEach_ !== undefined ? paint.muted("  [fan-out]") : "";
+    const suffix = deps.length
+      ? paint.muted(`  (depends on: ${deps.join(", ")})`)
+      : "";
+    lines.push(
+      `  ${paint.target(name.padEnd(width))}  ${desc}${fanOut}${suffix}`,
+    );
   }
   return lines.join("\n");
 }
 
 /** Render the parameters section, or `""` when no parameters are declared. */
-function formatParameters(params: Map<string, AnyParameter>): string {
+function formatParameters(
+  params: Map<string, AnyParameter>,
+  paint: CliPaint,
+): string {
   if (params.size === 0) return "";
   const flags = [...params].map(([n, p]) => flagOf(n, p));
   const width = Math.max(...flags.map((f) => f.length));
-  const lines = ["Parameters:"];
+  const lines = [paint.heading("Parameters:")];
   for (const [name, p] of params) {
     const bits: string[] = [];
     if (p.required_) bits.push("required");
     if (p.options_ && p.options_.length > 0) {
       bits.push(`one of: ${p.options_.join(", ")}`);
     }
-    const meta = bits.length > 0 ? `  (${bits.join("; ")})` : "";
+    const meta = bits.length > 0 ? paint.muted(`  (${bits.join("; ")})`) : "";
     const desc = p.description_ ?? "";
-    lines.push(`  --${flagOf(name, p).padEnd(width)}  ${desc}${meta}`);
+    const flag = paint.flag(`--${flagOf(name, p).padEnd(width)}`);
+    lines.push(`  ${flag}  ${desc}${meta}`);
   }
   return lines.join("\n");
 }
 
 /** Render the `graph` text output: an adjacency listing of `target → deps`. */
-export function formatGraph(targets: Map<string, TargetBuilder>): string {
+export function formatGraph(
+  targets: Map<string, TargetBuilder>,
+  paint: CliPaint = PLAIN_PAINT,
+): string {
   if (targets.size === 0) return "No targets defined.";
-  const lines = ["Dependency graph:"];
+  const lines = [paint.heading("Dependency graph:")];
   for (const [name, t] of targets) {
     const deps = depNames(t);
     const group = t.group_?.name_ !== undefined
-      ? `  [group: ${t.group_.name_}]`
+      ? paint.muted(`  [group: ${t.group_.name_}]`)
       : "";
-    const fanOut = t.forEach_ !== undefined ? "  [fan-out]" : "";
-    const arrow = deps.length ? ` → ${deps.join(", ")}` : "";
-    lines.push(`  ${name}${arrow}${group}${fanOut}`);
+    const fanOut = t.forEach_ !== undefined ? paint.muted("  [fan-out]") : "";
+    const arrow = deps.length
+      ? ` ${paint.muted("→")} ${deps.map(paint.command).join(", ")}`
+      : "";
+    lines.push(`  ${paint.target(name)}${arrow}${group}${fanOut}`);
   }
   return lines.join("\n");
 }
@@ -890,6 +942,13 @@ export interface MainOptions {
   installOptions?: InstallOptions;
   /** Renderer for the build's banners and summary (see {@link RunOptions}). */
   renderer?: Renderer;
+  /**
+   * Whether stdout is an interactive terminal, which decides whether the
+   * informational commands (`--help`, `--list`, `graph`, `--version`) print
+   * their rich form. Defaults to asking Deno; injected in tests, which never
+   * run on a terminal.
+   */
+  isTerminal?: () => boolean;
   /**
    * Where the run narrates its progress — the lock-wait notice, cancellation
    * lines, and the like. Injected in tests, which need to observe those lines
@@ -962,6 +1021,17 @@ async function installCompletionScript(
 const MAX_SIGNAL_DATA_BYTES = 64 * 1024;
 
 /**
+ * The run options `--plain` overrides: no banner and no colour. Spread after the
+ * run's own `banner` so the flag wins over `--no-banner`'s absence; without the
+ * flag it adds nothing, and `ZUKE_PLAIN` is the executor's own to read.
+ */
+function plainOverrides(
+  parsed: ParsedArgs,
+): { banner?: boolean; color?: boolean } {
+  return parsed.plain ? { banner: false, color: false } : {};
+}
+
+/**
  * Parse a `--data` JSON payload. Its *shape* is intentionally free-form (the
  * build interprets its own signals, like parameters), but its size is capped so
  * a webhook forwarding a large body can't bloat the persisted run record.
@@ -1023,6 +1093,7 @@ async function runResume(
       forceGraph: parsed.forceGraph,
       resumeDegraded: parsed.resumeDegraded,
       banner: parsed.banner,
+      ...plainOverrides(parsed),
       plugins,
     });
     return result.ok ? 0 : 1;
@@ -1415,6 +1486,15 @@ async function runCommand(
     return 1;
   }
 
+  // How decorated the informational commands below are: rich on an
+  // interactive terminal, plain under `--plain`/`ZUKE_PLAIN`, on CI, or piped.
+  const paint = cliPaint(
+    resolveOutputMode({
+      plain: parsed.plain,
+      isTerminal: options.isTerminal,
+    }),
+  );
+
   if (parsed.help) {
     // `zuke mcp --help` asks about mcp, not about the build. The parser has
     // already recorded which command was named, so the detail the main help
@@ -1422,16 +1502,19 @@ async function runCommand(
     const command = namedCommand(parsed);
     const detail = command === undefined
       ? undefined
-      : formatCommandHelp(command);
-    cliReporter.info(detail ?? formatHelp(targets, params));
+      : formatCommandHelp(command, paint);
+    cliReporter.info(detail ?? formatHelp(targets, params, paint));
     return 0;
   }
 
   if (parsed.version) {
-    // Bare, so a script can read it without parsing around a banner. Help
-    // wins when both are given, matching how `--help` beats an unknown flag:
+    // Bare unless rich, so a script — which reads through a pipe, and is
+    // therefore never rich — gets a number it need not parse around. Help wins
+    // when both are given, matching how `--help` beats an unknown flag:
     // whoever asked for help is the one who needs it.
-    cliReporter.info(VERSION);
+    cliReporter.info(
+      paint.rich ? formatVersionPanel(versionFacts(), paint) : VERSION,
+    );
     return 0;
   }
 
@@ -1454,14 +1537,14 @@ async function runCommand(
     return 0;
   }
   if (parsed.list) {
-    cliReporter.info(formatList(targets, params));
+    cliReporter.info(formatList(targets, params, paint));
     return 0;
   }
   if (parsed.graph) {
     if (parsed.output === "html") {
       return await graphCommand(targets, { open: parsed.open }, graphHost);
     }
-    cliReporter.info(formatGraph(targets));
+    cliReporter.info(formatGraph(targets, paint));
     return 0;
   }
   if (parsed.completions) {
@@ -1513,7 +1596,7 @@ async function runCommand(
     if (targets.has(DEFAULT_TARGET)) {
       name = DEFAULT_TARGET;
     } else {
-      cliReporter.info(formatList(targets, params));
+      cliReporter.info(formatList(targets, params, paint));
       return 0;
     }
   }
@@ -1573,6 +1656,7 @@ async function runCommand(
       parallel: parsed.parallel,
       cache: parsed.cache,
       banner: parsed.banner,
+      ...plainOverrides(parsed),
       remoteCache: parsed.remoteCache === false ? false : undefined,
       affected: parsed.affected ? { base: parsed.affectedBase } : undefined,
       dryRun: parsed.dryRun,

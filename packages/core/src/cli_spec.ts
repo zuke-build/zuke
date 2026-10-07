@@ -208,6 +208,13 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
       "Do not print the opening banner — the Zuke wordmark, the framework and runtime versions with the platform, and the run id. ZUKE_NO_BANNER=1 does the same from the environment; the wordmark is already omitted on CI.",
   },
   {
+    name: "--plain",
+    description:
+      "Plain output: no banner, colour or decoration (also ZUKE_PLAIN)",
+    detail:
+      "Plain output: no opening banner, no colour, and no decoration on informational commands, which print exactly what they print into a pipe (so --version is a bare number). ZUKE_PLAIN=1 does the same from the environment. It implies --no-banner. Decoration is already dropped on CI and when stdout is not a terminal.",
+  },
+  {
     name: "--no-remote-cache",
     description: "Use the local cache only; skip the remote cache store",
     detail:

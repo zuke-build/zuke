@@ -81,7 +81,7 @@ export interface OutdatedOptions {
 }
 
 /** One `jsr:` entry of a lock file's `specifiers` map. */
-interface LockedSpecifier {
+export interface LockedSpecifier {
   /** The specifier as written, e.g. `jsr:@zuke/git@^1`. */
   specifier: string;
   /** The package it names, e.g. `@zuke/git`. */

@@ -26,15 +26,14 @@ import { maskPatterns, Redactor } from "./redact.ts";
 import { detectWidth, type Style, type TargetReport } from "./report.ts";
 import { defaultRenderer, type Renderer } from "./renderer.ts";
 import { detectCiHost } from "./host.ts";
+import { resolveOutputMode } from "./output_mode.ts";
 
-/** Whether terminal colour should be used (TTY, and `NO_COLOR` unset). */
+/**
+ * Whether terminal colour should be used: a TTY, `NO_COLOR` unset, and plain
+ * output (`ZUKE_PLAIN`) not asked for — {@link resolveOutputMode}'s answer.
+ */
 function autoColor(): boolean {
-  try {
-    if (Deno.env.get("NO_COLOR")) return false;
-  } catch {
-    return false;
-  }
-  return Deno.stdout.isTerminal();
+  return resolveOutputMode().color;
 }
 
 /** Resolve the output style from the caller's overrides and the environment. */

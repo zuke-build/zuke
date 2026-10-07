@@ -21,7 +21,8 @@
  */
 
 import type { Build, BuildResult } from "./build.ts";
-import { defaultReadEnv, envFlag, messageOf } from "./internal.ts";
+import { defaultReadEnv, messageOf } from "./internal.ts";
+import { resolveOutputMode } from "./output_mode.ts";
 import { escapingReporter, type Reporter } from "./reporter.ts";
 export type { Reporter } from "./reporter.ts";
 import {
@@ -87,7 +88,8 @@ export interface ExecuteOptions {
    * Print the opening banner — the wordmark (off CI), the framework, runtime
    * and platform versions, and this run's id and directory. Defaults to on;
    * `false` is the CLI's `--no-banner`, and `ZUKE_NO_BANNER` turns it off from
-   * the environment.
+   * the environment. Plain output (`ZUKE_PLAIN`, or the CLI's `--plain`) turns
+   * it off as well, whatever this says.
    *
    * Only ever printed when the run writes to the real console. A `silent` run
    * or one given its own {@link ExecuteOptions.reporter} is embedding the
@@ -842,20 +844,21 @@ async function resolveCache(
 
 /**
  * Whether to print the opening banner: on unless the caller turned it off
- * (`--no-banner`, or `banner: false` programmatically) or the environment did
- * (`ZUKE_NO_BANNER`).
+ * (`--no-banner`, or `banner: false` programmatically), the environment did
+ * (`ZUKE_NO_BANNER`), or plain output was asked for (`ZUKE_PLAIN`), which
+ * implies no banner.
  *
- * The explicit option wins, so a decision made for one run is not overridden
- * by a standing preference exported in the shell it runs from — in either
- * direction. What counts as "set" is {@link envFlag}'s business, so
- * `ZUKE_NO_BANNER=FALSE` cannot come to mean the opposite of `false`.
+ * The explicit option wins over `ZUKE_NO_BANNER`, so a decision made for one
+ * run is not overridden by a standing preference exported in the shell it runs
+ * from — in either direction. Plain is the one level above it: a caller who
+ * wants plain output and a banner is asking for two contradictory things, and
+ * plain is the stronger request. {@link resolveOutputMode} owns all of it.
  */
 function showBanner(
   option: boolean | undefined,
   readEnv: (name: string) => string | undefined,
 ): boolean {
-  if (option !== undefined) return option;
-  return !envFlag(readEnv("ZUKE_NO_BANNER"));
+  return resolveOutputMode({ banner: option, readEnv }).banner;
 }
 
 /**

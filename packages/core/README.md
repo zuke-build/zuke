@@ -614,6 +614,14 @@ function lockKey(...parts: Array<string | number>): string
   Each part is sanitised (non-`[A-Za-z0-9._-]` runs become `_`) and empty parts
   are dropped, so `lockKey("deploy", repo)` is stable and injection-free.
 
+function lockedJsrSpecifiers(lockText: string): LockedSpecifier[]
+  The `jsr:` specifiers a lock resolves, in the order the lock lists them.
+
+  Tolerant by design: a lock whose shape is unfamiliar yields no entries
+  rather than throwing, because "I could not read your lock" is a worse answer
+  to `zuke outdated` than "nothing to report" only if it is silent — and the
+  caller distinguishes the two by the specifier count, not by an exception.
+
 function logoLines(color: boolean, options: LogoOptions): string[]
   The logo as printable lines: the {@link ZUKE_LOGO} art painted two-tone when
   `color` is on (letters bright, shadow dimmed), plus the optional tagline.
@@ -843,6 +851,14 @@ function resolveDocSpec(spec: string, cwd: string): string
   so `deno doc` is handed a canonical path and an error that echoes it names
   a path the reader recognises. `cwd` must itself be absolute, which is what
   makes that possible; {@link absolutePath} throws if it is not.
+
+function resolveOutputMode(options: OutputModeOptions): OutputMode
+  Decide how decorated output should be, from the explicit flags and the
+  environment. Pure apart from its two injectable reads.
+
+  What counts as a set variable is {@link envFlag}'s business, so
+  `ZUKE_PLAIN=false` and `ZUKE_PLAIN=0` mean "not plain". `NO_COLOR` follows its
+  own convention instead: any non-empty value turns colour off.
 
 function resolveRemoteStore(option: RemoteCacheStore | false | undefined, declared: RemoteCacheStore | undefined, readEnv: (name: string) => string | undefined): RemoteCacheStore | undefined
   Pick the remote store for a run by precedence: an explicit `option` wins
@@ -1080,6 +1096,12 @@ const INVALID_TOKEN: McpAuthReject
   credentials at all, because there is nothing yet to have been wrong. Sending
   `invalid_token` to a client that simply has not logged in tells it its stored
   token was rejected, which is a different and misleading thing.
+
+const NO_BANNER_ENV: "ZUKE_NO_BANNER"
+  The environment variable that turns off a run's opening banner.
+
+const PLAIN_ENV: "ZUKE_PLAIN"
+  The environment variable that asks for plain output.
 
 const REDACTED: "[redacted]"
   The placeholder a {@link Redactor} substitutes for each secret value.
@@ -3637,7 +3659,8 @@ interface ExecuteOptions
     Print the opening banner — the wordmark (off CI), the framework, runtime
     and platform versions, and this run's id and directory. Defaults to on;
     `false` is the CLI's `--no-banner`, and `ZUKE_NO_BANNER` turns it off from
-    the environment.
+    the environment. Plain output (`ZUKE_PLAIN`, or the CLI's `--plain`) turns
+    it off as well, whatever this says.
 
     Only ever printed when the run writes to the real console. A `silent` run
     or one given its own {@link ExecuteOptions.reporter} is embedding the
@@ -4066,6 +4089,16 @@ interface LockHolder
   runUrl?: string
     A link to the holding run (e.g. its CI job), when known.
 
+interface LockedSpecifier
+  One `jsr:` entry of a lock file's `specifiers` map.
+
+  specifier: string
+    The specifier as written, e.g. `jsr:@zuke/git@^1`.
+  name: string
+    The package it names, e.g. `@zuke/git`.
+  resolved: string
+    The version the lock resolves it to.
+
 interface LogoOptions
   Options for {@link logoLines} and `ConsoleTasks.logo`.
 
@@ -4211,6 +4244,35 @@ interface OutputHost
     The entry names within a directory.
   writeFile(path: string, bytes: Uint8Array): Promise<void>
     Write a file, creating parent directories as needed.
+
+interface OutputMode
+  What {@link resolveOutputMode} decides.
+
+  plain: boolean
+    Plain output was asked for, by `--plain` or `ZUKE_PLAIN`. Distinct from
+    `!rich`: piped output is not rich either, but nobody asked for it to be
+    plain, so it keeps the banner.
+  rich: boolean
+    Decorate informational output — panels, glyphs, coloured headings. Only on
+    an interactive terminal that is not CI, and never when plain.
+  color: boolean
+    Emit ANSI colour: a terminal, `NO_COLOR` unset, and not plain.
+  banner: boolean
+    Print a run's opening banner: not plain, and not turned off.
+
+interface OutputModeOptions
+  Inputs to {@link resolveOutputMode}; every field has a real default.
+
+  plain?: boolean
+    An explicit `--plain`. Wins over `ZUKE_PLAIN` in both directions, the way
+    every explicit flag here wins over a standing preference in the shell.
+  banner?: boolean
+    An explicit banner choice (`--no-banner` is `false`). Wins over
+    `ZUKE_NO_BANNER`, but never over plain: plain means no banner.
+  readEnv?: (name: string) => string | undefined
+    Reads an environment variable; defaults to the process environment.
+  isTerminal?: () => boolean
+    Whether stdout is an interactive terminal; defaults to asking Deno.
 
 interface Platform extends InstallPlatform
   A platform with helpers to name it the way a tool's downloads do. `osLabel`
@@ -4402,6 +4464,8 @@ interface ResumeOptions
     Non-secret parameter overrides; the rest come from the record.
   banner?: boolean
     Print the opening banner (see {@link "./executor.ts".ExecuteOptions.banner}).
+  color?: boolean
+    Force ANSI colour on or off (see {@link "./executor.ts".ExecuteOptions.color}).
   readEnv?: (name: string) => string | undefined
     Reads an environment variable (secrets re-resolve from here).
   actor?: string
