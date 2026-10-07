@@ -1,0 +1,17 @@
+{
+  "name": "@zuke/aws",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "Typed AWS tooling for Zuke builds — typed aws CLI tasks for the deploy path (STS, S3, ECR, ECS, Lambda, CloudFormation, Secrets Manager, SSM, EKS), CloudWatch and Logs Insights readers, and a CloudWatch canary analysis, all injection-free and testable without an account.",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "imports": {
+    "@zuke/core": "jsr:@zuke/core@^1.66.0"
+  },
+  "publish": {
+    "exclude": [
+      "tests/"
+    ]
+  }
+}

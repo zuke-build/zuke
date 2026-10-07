@@ -371,6 +371,17 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   in-cluster `http://` one is fine); custom auth via `.credentials(fn)`, and the
   managed services built in with no cloud CLI: `.google()`, `.azure()`,
   `.sigv4((a) => a.region(…))`. Canary's `prometheus(...)` analysis runs on it.
+- **AWS (`@zuke/aws`):** `AwsTasks` types the deploy path with the CLI's own
+  names — `s3Sync`, `ecrLoginPassword`, `ecsUpdateService` +
+  `ecsWaitServicesStable`, `lambdaUpdateFunctionCode`, `cloudformationDeploy`,
+  `eksUpdateKubeconfig`, … — and readers hand back values: `accountId`,
+  `secretString`, `parameterValue`, `stackOutput(stack, key)`,
+  `lambdaPublishedVersion`, `metricValue` (CloudWatch, `.missingDataAs(0)` for
+  no data), `alarmState`, `logsInsightsQuery` (polls to `Complete`). Credential
+  commands run quietly and register what they return as secrets; every settings
+  class takes `.runner(fn)` so tests never spawn `aws`. For canaries,
+  `cloudwatch((m) => m.namespace(…).metricName(…).stat("Sum").max(5))` is an
+  analysis. See the cheatsheet.
 - **OpenTelemetry export (`@zuke/otel`):** register `otel((s) => s.endpoint(…))`
   as a plugin (`run(MyBuild, { plugins: [otel(…)] })`) to ship run/target spans
   and `zuke.run.started` / `zuke.run.suspended` / `zuke.runs` counters as

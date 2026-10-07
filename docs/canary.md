@@ -680,7 +680,8 @@ An analysis is anything with a `validate(ctx)` that throws to fail. Any core
 also reads where the rollout stands: `ctx.step`, `ctx.requested` and
 `ctx.exposure`, alongside the core context's `target`, `redact` and `signal`.
 
-The package ships three:
+The package ships three, and [`@zuke/aws`](#cloudwatch) adds a fourth for
+CloudWatch:
 
 | Analysis                                                  | Fails when                                                                                                                                              |
 | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -758,6 +759,72 @@ export const gmp = prometheus((p) =>
     .connection((c) => c.google())
 );
 ```
+
+### CloudWatch
+
+`cloudwatch` from [`@zuke/aws`](../packages/aws/README.md) reads a CloudWatch
+metric with `aws cloudwatch get-metric-data` and fails the canary when any
+datapoint in the window is out of bounds — the same name, `min`/`max` and
+failure wording as `prometheus(...)`:
+
+<!-- check -->
+
+```ts
+import { Build, parameter, run, target } from "@zuke/core";
+import { canary, httpProbe } from "@zuke/canary";
+import { cloudwatch } from "@zuke/aws";
+
+class Deploy extends Build {
+  targetGroup = parameter("The canary's ALB target group").required();
+
+  rollout = canary((c) =>
+    c.platform({
+      exposure: "traffic",
+      describe: () => "ALB weighted target groups",
+      async stage() {},
+      async expose(percent) {
+        return percent;
+      },
+      async promote() {},
+      async abort() {},
+    })
+      .steps(10, 50)
+      .bake("10m")
+      .analysis(httpProbe((h) => h.url("https://api.example.com/health")))
+      .analysis(cloudwatch((m) =>
+        m.name("canary 5xx").namespace("AWS/ApplicationELB")
+          .metricName("HTTPCode_Target_5XX_Count")
+          .dimension("TargetGroup", this.targetGroup.value)
+          .stat("Sum").window("10m").max(5).missingDataAs(0)
+          .aws((a) => a.region("eu-west-1"))
+      ))
+  );
+
+  release = target().dependsOn(this.rollout.promote).executes(() => {});
+}
+
+await run(Deploy);
+```
+
+| Setting                                        | Meaning                                                                                                                                     |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `namespace`, `metricName`, `dimension`, `stat` | The metric, queried as `m1`. `stat` is `Sum`, `Average`, `Maximum`, `Minimum`, `SampleCount`, `IQM`, or a percentile such as `p99`.         |
+| `period(seconds)`                              | What each datapoint covers (default 60). Every datapoint is judged, so `.max(5)` on a per-minute `Sum` means no minute with more than five. |
+| `window(duration)`                             | How far back to read (default `5m`). It ends at the last period boundary, so the period still being written is not judged.                  |
+| `metricStat(id, (m) => …)`, `expression(text)` | Judge metric math instead: add the inputs by id, and `expression("100 * errors / requests")` is what is judged; the inputs are not.         |
+| `min(value)`, `max(value)`                     | The bounds, inclusive. At least one is required.                                                                                            |
+| `missingDataAs(value)`                         | What no datapoints means. CloudWatch publishes nothing for a minute with no events, so for an error count, `0`; by default no data fails.   |
+| `aws((a) => …)`, `now(clock)`                  | The CLI's global options — `profile`, `region`, a `runner` a test answers through — and the clock the window is read against.               |
+
+CloudWatch publishes a datapoint a little after its period ends, so the newest
+period in the window can still be short of data. That only lowers a `Sum` or a
+`SampleCount` — harmless for a `max`, but a `min` on such a statistic can fail
+on the lag rather than on the candidate; widen the period or judge an `Average`.
+
+The `aws` CLI must be installed and authenticated on the runner — the analysis
+runs it like any other `AwsTasks` call. Failure messages pass through the run's
+redactor. `@zuke/canary` is not a dependency of `@zuke/aws`: the analysis has
+the shape `c.analysis(...)` accepts, so the two packages stay independent.
 
 ## The lock
 

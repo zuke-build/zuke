@@ -546,6 +546,17 @@
         }
       ]
     },
+    "packages/aws": {
+      "component": "aws",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
     "packages/git": {
       "component": "git",
       "changelog-path": "CHANGELOG.md",
