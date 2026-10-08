@@ -17,7 +17,7 @@
   "packages/kustomize": "1.0.1",
   "packages/argo-rollouts": "1.1.0",
   "packages/prometheus": "1.1.0",
-  "packages/canary": "1.2.0",
+  "packages/canary": "1.2.1",
   "packages/oxlint": "1.1.0",
   "packages/eslint": "1.1.0",
   "packages/cspell": "1.2.0",

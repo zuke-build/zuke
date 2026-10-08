@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/zuke-build/zuke/compare/canary-v1.2.0...canary-v1.2.1) (2026-10-08)
+
+
+### Bug Fixes
+
+* **canary:** point Prometheus auth docs at connection, not a raw header ([#771](https://github.com/zuke-build/zuke/issues/771)) ([df7e9d0](https://github.com/zuke-build/zuke/commit/df7e9d00ea0eaed6d6a9eba4731e3907f40ee221)), closes [#770](https://github.com/zuke-build/zuke/issues/770)
+
 ## [1.2.0](https://github.com/zuke-build/zuke/compare/canary-v1.1.1...canary-v1.2.0) (2026-10-07)
 
 
