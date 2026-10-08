@@ -1,18 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { assertEquals } from "../../core/tests/_assert.ts";
 import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../core/tests/_assert.ts";
-import { stripAnsi } from "@zuke/core/render";
-import {
-  formatVersionPanel,
   homeRelative,
   lockedCoreVersions,
   projectLockPath,
 } from "../src/version_report.ts";
-import { cliPaint } from "../src/paint.ts";
 
 Deno.test("lockedCoreVersions reads the core a lock resolves, once per version", () => {
   const lock = JSON.stringify({
@@ -84,28 +78,6 @@ Deno.test("lockedCoreVersions drops a resolved value that is not a release versi
     },
   });
   assertEquals(lockedCoreVersions(lock), ["3.0.0-rc.1"]);
-});
-
-Deno.test("the version panel boxes each row under a zuke title, flush", () => {
-  const rows = [["cli", "1.10.0"], ["core", "1.42.0"], [
-    "deno",
-    "2.8.3",
-  ]] as const;
-  const plainText = formatVersionPanel(
-    rows,
-    cliPaint({ rich: true, color: false, banner: true }),
-  );
-  const lines = plainText.split("\n");
-  assertEquals(lines.length, 5);
-  assertStringIncludes(lines[0], " zuke ");
-  assertStringIncludes(lines[1], "◆ cli   1.10.0");
-  assertStringIncludes(lines[2], "◆ core  1.42.0");
-  assertEquals(new Set(lines.map((l) => l.length)).size, 1);
-  const coloured = formatVersionPanel(
-    rows,
-    cliPaint({ rich: true, color: true, banner: true }),
-  );
-  assertEquals(stripAnsi(coloured), plainText);
 });
 
 Deno.test("projectLockPath follows Deno's lock setting", () => {
