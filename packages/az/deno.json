@@ -1,6 +1,6 @@
 {
   "name": "@zuke/az",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "license": "MIT",
   "description": "Typed Azure tooling for Zuke builds — typed az CLI tasks for the deploy path (login, account, resource groups, ACR, AKS, Container Apps, App Service, Functions, Key Vault, deployments, blob storage), Azure Monitor readers, and an Azure Monitor canary analysis, all injection-free and testable without a subscription.",
   "exports": {
