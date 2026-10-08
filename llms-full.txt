@@ -23735,6 +23735,11 @@ interface UpgradeHost
     Fetch and parse `@zuke/cli`'s JSR `meta.json`.
   install(denoArgs: string[]): Promise<number>
     Run `deno <denoArgs>` to reinstall, returning its exit code.
+  denoVersion(): string
+    The version of the Deno that runs the reinstall: the one running this
+    CLI, since `zuke upgrade` only ever runs from a JSR install under Deno.
+  readText(path: string): Promise<string>
+    Read a text file, rejecting when it cannot be read.
 
 type BuildRunner = (root: string, args: string[], program?: string, env?: Readonly<Record<string, string>>) => Promise<number>
   Runs `program <args>` from `root` — Deno when `program` is omitted, else the
