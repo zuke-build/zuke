@@ -52,10 +52,14 @@ import {
   UID_FORMAT,
 } from "./cloud_run_canary_record.ts";
 import { readScalar } from "./scalar_output.ts";
-import type { GcloudSettings } from "./settings.ts";
+import {
+  failOnExit,
+  type GcloudSettings,
+  type GcloudSettingsRunner,
+} from "./settings.ts";
 
 /** The projection that reads back the revision a `services update` created. */
-const LATEST_REVISION_FORMAT = "value(status.latestCreatedRevisionName)";
+export const LATEST_REVISION_FORMAT = "value(status.latestCreatedRevisionName)";
 
 /** The state key the staged candidate's revision name is recorded under. */
 const CANDIDATE = "cloudRunCandidate";
@@ -75,15 +79,6 @@ const STAGE = "cloudRunStage";
  * `--to-tags <tag>=<percent>` or `--to-revisions <revision>=100` means.
  */
 const LABEL_SHAPE = /^[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?$/;
-
-/**
- * Runs one prepared `gcloud` command and returns its output. The default runs
- * it; a test or a build that executes gcloud some other way injects its own
- * with {@link CloudRunCanarySettings.runner}.
- */
-export type GcloudSettingsRunner = (
-  settings: GcloudSettings,
-) => Promise<CommandOutput>;
 
 /**
  * The part of the canary engine's context the Cloud Run platform uses: the
@@ -499,20 +494,15 @@ export class CloudRunCanary {
 /**
  * Run one prepared command and fail on a non-zero exit — whatever the
  * `.gcloud(...)` lambda says. With `noThrow()` set there, a failed rollback
- * would otherwise return normally and be reported as done.
+ * would otherwise return normally and be reported as done. The failure is
+ * core's `CommandError`, whose command line the run's redactor masks.
  */
 async function runChecked(
   settings: CloudRunCanarySettings,
   command: GcloudSettings,
 ): Promise<CommandOutput> {
   const output = await settings.runner_(command);
-  if (output.code !== 0) {
-    const detail = output.stderr.trim();
-    throw new Error(
-      `cloudRunCanary: gcloud ${command.argv().slice(1, 4).join(" ")} ` +
-        `exited ${output.code}${detail === "" ? "." : `: ${detail}`}`,
-    );
-  }
+  failOnExit(command, output);
   return output;
 }
 

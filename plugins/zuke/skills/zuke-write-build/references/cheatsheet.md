@@ -739,7 +739,7 @@ the full task list and settings methods of each):
 | `@zuke/husky`                                                                                                                                       | `HuskyTasks`                                                         | git hooks                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `@zuke/jest`, `@zuke/vitest`, `@zuke/playwright`, `@zuke/cypress`                                                                                   | `*Tasks`                                                             | test runners                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `@zuke/jsr`, `@zuke/codecov`, `@zuke/release-please`                                                                                                | `JsrTasks`, `CodecovTasks`, ...                                      | publish / coverage upload / releases                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `@zuke/kubectl`, `@zuke/helm`, `@zuke/kustomize`, `@zuke/argo-rollouts`, `@zuke/terraform`, `@zuke/tofu`, `@zuke/gcloud`                            | `*Tasks`                                                             | infra/deploy. `ArgoRolloutsTasks` drives the Argo Rollouts plugin — `setImage` starts a rollout, `promote` advances it past a pause (`.full()` skips the rest), `abort` backs it out, `status` waits on it; weights come from the Rollout manifest's steps, not the CLI. `KubectlTasks` covers the deploy surface — manifests, workloads, pods, nodes, kubeconfig — with `diffHasChanges`, `canI`, `getEntries`, `eventEntries`, `currentContext`, `versionInfo` handing back values (see below), plus `kubectlCanary` — a two-Deployment platform for `@zuke/canary`. `HelmTasks` adds `helmCanary`, a two-release platform for it. `GcloudTasks` types the Google Cloud deploy path — auth, config, builds, Cloud Run, Artifact Registry, GKE credentials, storage, functions, secrets (see below), plus `cloudRunCanary` — a Cloud Run platform for `@zuke/canary` |
+| `@zuke/kubectl`, `@zuke/helm`, `@zuke/kustomize`, `@zuke/argo-rollouts`, `@zuke/terraform`, `@zuke/tofu`, `@zuke/gcloud`                            | `*Tasks`                                                             | infra/deploy. `ArgoRolloutsTasks` drives the Argo Rollouts plugin — `setImage` starts a rollout, `promote` advances it past a pause (`.full()` skips the rest), `abort` backs it out, `status` waits on it; weights come from the Rollout manifest's steps, not the CLI. `KubectlTasks` covers the deploy surface — manifests, workloads, pods, nodes, kubeconfig — with `diffHasChanges`, `canI`, `getEntries`, `eventEntries`, `currentContext`, `versionInfo` handing back values (see below), plus `kubectlCanary` — a two-Deployment platform for `@zuke/canary`. `HelmTasks` adds `helmCanary`, a two-release platform for it. `GcloudTasks` types the Google Cloud deploy path — auth, builds, Cloud Run, Artifact Registry, GKE, storage, secrets, logs, metrics (see below), plus `cloudRunCanary` and a `cloudMonitoring(...)` analysis for `@zuke/canary`. |
 | `@zuke/aws`                                                                                                                                         | `AwsTasks`, `cloudwatch`                                             | the AWS CLI — typed STS, `configure`, S3, ECR, ECS, Lambda, CloudFormation, Secrets Manager, SSM, EKS, CloudWatch and Logs tasks, readers that hand back values (`accountId`, `ecrLoginPassword`, `secretString`, `parameterValue`, `stackOutput`, `lambdaPublishedVersion`, `metricValue`, `alarmState`, `logsInsightsQuery`), and `cloudwatch(...)` — a CloudWatch analysis for `@zuke/canary` (see below)                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `@zuke/az`                                                                                                                                          | `AzTasks`, `azureMonitor`                                            | the Azure CLI — typed login, account, resource groups, ACR, AKS, Container Apps, App Service, Functions, Key Vault, deployment, blob storage and Azure Monitor tasks, readers that hand back values (`accessToken`, `subscriptionId`, `tenantId`, `secretValue`, `acrToken`, `containerappFqdn`, `webappHostName`, `deploymentOutput`, `resourceGroupExists`, `metricValue`, `logAnalyticsQuery`), and `azureMonitor(...)` — an Azure Monitor analysis for `@zuke/canary` (see below)                                                                                                                                                                                                                                                                                                                                                                                 |
 | `@zuke/security`                                                                                                                                    | `*Tasks`                                                             | security scanning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -906,6 +906,8 @@ The deploy path is typed, so a build never string-builds it:
 | GKE         | `clustersGetCredentials`, `clustersList`, `clustersDescribe`                                   |
 | Functions   | `functionsDeploy`, `functionsDescribe`                                                         |
 | Secrets     | `secretsAccess`                                                                                |
+| Logging     | `loggingRead`, `loggingLogsList`                                                               |
+| Monitoring  | `monitoringPoliciesList/Describe`, `monitoringDashboardsList`, `monitoringUptimeListConfigs`   |
 
 `runDeploy` and `runServicesUpdate` are not interchangeable: `run deploy`
 creates the service when it is absent and resets settings the call does not
@@ -936,6 +938,45 @@ its cause. They run quiet, so a token never reaches the build log.
 
 `clustersGetCredentials` is the bridge to `@zuke/kubectl`: it writes the
 kubeconfig entry every kubectl task then works against.
+
+A log filter is built from typed parts — `resourceType`, `resourceLabel`,
+`label`, `minSeverity`, `since`, `until` — each value quoted and escaped, plus
+raw `.filter(...)` text, joined with `AND`. `logEntryCount` counts the matches,
+reading only each entry's id (no payload reaches the build), and fails rather
+than return a truncated count when more than `.limit(n)` (default 1000) match.
+`.freshness(...)` becomes an explicit `timestamp>=` bound (gcloud's own
+`--freshness` is silently dropped when the filter mentions `timestamp`), and a
+count with no bound counts the last day:
+
+```ts
+const errors = await GcloudTasks.logEntryCount((s) =>
+  s.resourceType("cloud_run_revision").minSeverity("ERROR").freshness("15m")
+);
+```
+
+gcloud cannot read a metric's time series, so `CloudMonitoringTasks` reads them
+over the REST API with the same gcloud-based token. The filter is typed too
+(`metricType`, `resourceType`, `resourceLabel`, `metricLabel`, raw `.filter`);
+every page is read up to `.maxPages(n)`, and a read with pages left over fails.
+`metricValue`'s `"latest"` sums each series' newest point; distribution means
+are averaged by count and never summed; a `CUMULATIVE` metric needs
+`ALIGN_DELTA`/`ALIGN_RATE`; `.delay(...)` ends the window early for ingestion
+lag:
+
+```ts
+const series = await CloudMonitoringTasks.timeSeriesList((s) =>
+  s.project("p").metricType("run.googleapis.com/request_count")
+    .alignmentPeriod("60s").perSeriesAligner("ALIGN_SUM")
+    .crossSeriesReducer("REDUCE_SUM").window("15m")
+);
+const fiveXx = await CloudMonitoringTasks.metricValue((s) =>
+  s.project("p").metricType("run.googleapis.com/request_count")
+    .metricLabel("response_code_class", "5xx")
+    .alignmentPeriod("60s").perSeriesAligner("ALIGN_SUM")
+    .crossSeriesReducer("REDUCE_SUM")
+    .window("15m").aggregate("sum").missingDataAs(0)
+);
+```
 
 ### AWS — `AwsTasks`
 
@@ -1594,6 +1635,20 @@ class Deploy extends Build {
   (`.tag(...)`, default `canary`) in whole percents; `promote` refuses a
   revision deployed mid-rollout; a hand-run `abort` needs
   `.stable("<revision>")` to know where to send traffic, and refuses without it.
+- **Cloud Monitoring analysis:**
+  `.analysis(cloudMonitoring((m) => m.name("canary 5xx").project(p)
+  .metricType("run.googleapis.com/request_count").resourceType("cloud_run_revision")
+  .cloudRunCandidate("api", "europe-west1").metricLabel("response_code_class", "5xx")
+  .alignmentPeriod("60s").perSeriesAligner("ALIGN_SUM").crossSeriesReducer("REDUCE_SUM")
+  .window("5m").max(5).missingDataAs(0)))`
+  from `@zuke/gcloud` — fails when any aligned point in the window is out of
+  bounds (the window may not be shorter than the alignment period, and ends
+  `.delay(...)` before now, default 2m), on no data unless `.missingDataAs(...)`
+  — which then passes a candidate with no traffic too — or when there are more
+  pages than `.maxPages(n)`; a `CUMULATIVE` metric needs `ALIGN_DELTA` or
+  `ALIGN_RATE`; `.cloudRunCandidate(service, region)` narrows it to the revision
+  `cloudRunCanary` staged, in the analysis's project; `.logEntries((l) => …)`
+  judges a log-entry count instead.
 - **Kubernetes canary** —
   `kubectlCanary((k) => k.stable("api").canary("api-canary").container("api").image(img).replicas(10))`
   from `@zuke/kubectl` is a `"replicas"` platform for `canary(...)`: two

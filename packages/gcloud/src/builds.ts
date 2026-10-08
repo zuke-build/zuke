@@ -129,7 +129,11 @@ export class GcloudBuildsSubmitSettings extends GcloudSettings {
     if (this.#substitutions.length > 0) {
       argv.push(
         "--substitutions",
-        commaJoined(this.#substitutions, "buildsSubmit", "--substitutions"),
+        commaJoined(
+          this.#substitutions,
+          "GcloudTasks.buildsSubmit",
+          "--substitutions",
+        ),
       );
     }
     if (this.#async) argv.push("--async");

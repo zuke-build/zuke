@@ -115,7 +115,11 @@ export class GcloudAuthPrintIdentityTokenSettings extends GcloudSettings {
     if (this.#audiences.length > 0) {
       argv.push(
         "--audiences",
-        commaJoined(this.#audiences, "identityToken", "--audiences"),
+        commaJoined(
+          this.#audiences,
+          "GcloudTasks.identityToken",
+          "--audiences",
+        ),
       );
     }
     if (this.#includeEmail) argv.push("--include-email");
@@ -143,7 +147,7 @@ export class GcloudAuthConfigureDockerSettings extends GcloudSettings {
       argv.push(
         commaJoined(
           this.#registries,
-          "authConfigureDocker",
+          "GcloudTasks.authConfigureDocker",
           "the registry list",
         ),
       );

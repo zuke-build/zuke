@@ -15,10 +15,43 @@
  * argv it guards sit together. The global flags follow from `middleTokens`,
  * which is an order gcloud accepts.
  *
+ * It also carries the runner seam ({@link GcloudSettings.runner}): a test, or a
+ * build that executes gcloud some other way, answers the prepared command
+ * instead of a spawned process.
+ *
  * @module
  */
 
+import { Command, CommandError, type CommandOutput } from "@zuke/core/shell";
 import { SubcommandSettings } from "@zuke/core/tooling";
+
+/**
+ * Runs one prepared `gcloud` command and returns what the process produced.
+ * The default spawns gcloud; a test, or a build that executes gcloud some
+ * other way, injects its own with {@link GcloudSettings.runner}. The runner
+ * only produces the output: the exit code is judged afterwards exactly as for
+ * a spawned process, so a non-zero `code` still raises a `CommandError`
+ * unless the settings say `.noThrow()`.
+ */
+export type GcloudSettingsRunner = (
+  settings: GcloudSettings,
+) => Promise<CommandOutput>;
+
+/**
+ * Throw core's `CommandError` for a failed exit, rendered through a `Command`
+ * so the run's redactor masks the line exactly as it does for a spawned
+ * command's failure. Internal: the runner path of {@link GcloudSettings.run}
+ * and the readers, which insist on success whatever `.noThrow()` said, share
+ * it.
+ */
+export function failOnExit(
+  settings: GcloudSettings,
+  output: CommandOutput,
+): void {
+  if (output.code === 0) return;
+  const line = new Command(settings.argv()).commandLine;
+  throw new CommandError(line, output.code, output.stderr);
+}
 
 /** Settings for a `gcloud` invocation. */
 export class GcloudSettings extends SubcommandSettings {
@@ -28,6 +61,7 @@ export class GcloudSettings extends SubcommandSettings {
   #format?: string;
   #verbosity?: string;
   #noPrompt = false;
+  #runner?: GcloudSettingsRunner;
 
   /** The default executable name (`gcloud`). */
   protected override defaultTool(): string {
@@ -102,6 +136,35 @@ export class GcloudSettings extends SubcommandSettings {
   noPrompt(): this {
     this.#noPrompt = true;
     return this;
+  }
+
+  /**
+   * Replace how this command is run. The default spawns gcloud; this is the
+   * seam a test answers commands through, and the way a build executes gcloud
+   * through something else. The runner reads the argv from the settings it is
+   * handed and must not call their `run()` — that is the call it replaces.
+   */
+  runner(run: GcloudSettingsRunner): this {
+    this.#runner = run;
+    return this;
+  }
+
+  /**
+   * Run the command — through the {@link runner} when one is set, otherwise
+   * by spawning gcloud. Either way the output is reported to the settings'
+   * output hook and a non-zero exit throws a `CommandError` unless
+   * `.noThrow()` was called.
+   */
+  override async run(): Promise<CommandOutput> {
+    const runner = this.#runner;
+    if (runner === undefined) return await super.run();
+    // Build the argv first, as a real spawn does, so every refusal a setter's
+    // value triggers fires before a runner sees the settings.
+    this.argv();
+    const output = await runner(this);
+    this.onOutput(output);
+    if (this.throwsOnError) failOnExit(this, output);
+    return output;
   }
 
   /** Emit gcloud's common global flags between the command path and the flags. */

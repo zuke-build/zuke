@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { CommandError, CommandOutput } from "@zuke/core/shell";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
   assertWrapperConformance,
@@ -110,4 +111,42 @@ Deno.test("gcloud: conforms to the wrapper contract", async () => {
       resolution: "path",
     },
   );
+});
+
+Deno.test("a runner answers in place of gcloud, and the exit is still judged", async () => {
+  const seen: string[][] = [];
+  const out = await GcloudTasks.run((s) =>
+    s.command("auth", "list").runner((settings) => {
+      seen.push(settings.argv());
+      return Promise.resolve(new CommandOutput(0, "ok\n", ""));
+    })
+  );
+  assertEquals(out.stdout, "ok\n");
+  assertEquals(seen, [["gcloud", "auth", "list"]]);
+  const failing = () =>
+    Promise.resolve(new CommandOutput(2, "", "ERROR: (gcloud) bad flag"));
+  await assertRejects(
+    () => GcloudTasks.run((s) => s.command("auth", "list").runner(failing)),
+    CommandError,
+  );
+  const tolerated = await GcloudTasks.run((s) =>
+    s.command("auth", "list").noThrow().runner(failing)
+  );
+  assertEquals(tolerated.code, 2);
+});
+
+Deno.test("a runner never sees settings whose argv a setter refused", async () => {
+  let ran = false;
+  await assertRejects(
+    () =>
+      GcloudTasks.monitoringPoliciesDescribe((s) =>
+        s.policy("-x").runner(() => {
+          ran = true;
+          return Promise.resolve(new CommandOutput(0, "", ""));
+        })
+      ),
+    Error,
+    "starts with '-'",
+  );
+  assertEquals(ran, false);
 });
