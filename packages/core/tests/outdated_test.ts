@@ -7,6 +7,7 @@ import {
   formatOutdated,
   isBehind,
   lockedJsrSpecifiers,
+  minDepAgeCutoff,
 } from "../src/outdated.ts";
 import { withTemp } from "./_temp.ts";
 
@@ -398,4 +399,161 @@ Deno.test("formatOutdated names what it could not check, however the run went", 
     ],
   });
   assertEquals(many.includes("2 packages could not be checked:"), true);
+});
+
+/** A `fetch` answering every `meta.json` with `meta`. */
+function metaFetch(meta: unknown): typeof fetch {
+  return () => Promise.resolve(new Response(JSON.stringify(meta)));
+}
+
+/** An ISO timestamp `hours` before now. */
+function hoursAgo(hours: number): string {
+  return new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+}
+
+Deno.test("findOutdated targets the newest release Deno would install", async () => {
+  await withTemp(async (dir) => {
+    const lockPath = await lockWith(dir, { "jsr:@zuke/core@^1": "1.1.0" });
+    // Deno refuses releases younger than 24h by default, so the registry's
+    // `latest` (1.3.0, an hour old) is not one a lock can move to — and
+    // neither is a yanked release, a prerelease, or one of unknown age.
+    const { behind, unchecked } = await findOutdated({
+      lockPath,
+      registry: "https://registry.test",
+      fetch: metaFetch({
+        latest: "1.3.0",
+        versions: {
+          "1.1.0": { createdAt: hoursAgo(100) },
+          "1.2.0": { createdAt: hoursAgo(48) },
+          "1.3.0": { createdAt: hoursAgo(1) },
+          "1.4.0": { createdAt: hoursAgo(72), yanked: true },
+          "1.5.0-rc.1": { createdAt: hoursAgo(72) },
+          "1.6.0": {},
+          "1.7.0": null,
+        },
+      }),
+    });
+    assertEquals(unchecked, []);
+    assertEquals(behind.map((p) => p.latest), ["1.2.0"]);
+  });
+});
+
+Deno.test("findOutdated is silent when every newer release is too young", async () => {
+  await withTemp(async (dir) => {
+    const lockPath = await lockWith(dir, { "jsr:@zuke/core@1.66.0": "1.66.0" });
+    const report = await findOutdated({
+      lockPath,
+      registry: "https://registry.test",
+      fetch: metaFetch({
+        latest: "1.67.0",
+        versions: {
+          "1.66.0": { createdAt: hoursAgo(10) },
+          "1.67.0": { createdAt: hoursAgo(7) },
+        },
+      }),
+    });
+    assertEquals(report, { behind: [], unchecked: [] });
+  });
+});
+
+Deno.test("findOutdated still compares a prerelease-only package", async () => {
+  await withTemp(async (dir) => {
+    const lockPath = await lockWith(dir, { "jsr:@x/alpha@*": "0.1.0-alpha.1" });
+    const { behind } = await findOutdated({
+      lockPath,
+      registry: "https://registry.test",
+      fetch: metaFetch({
+        latest: "0.2.0-alpha.1",
+        versions: {
+          "0.1.0-alpha.1": { createdAt: hoursAgo(100) },
+          "0.2.0-alpha.1": { createdAt: hoursAgo(48) },
+        },
+      }),
+    });
+    assertEquals(behind.map((p) => p.latest), ["0.2.0-alpha.1"]);
+  });
+});
+
+Deno.test("minDepAgeCutoff reads every form Deno's --min-dep-age takes", () => {
+  const now = Date.parse("2026-10-07T12:00:00Z");
+  const hour = 60 * 60 * 1000;
+  assertEquals(minDepAgeCutoff(undefined, now), now - 24 * hour);
+  assertEquals(minDepAgeCutoff("0", now), now);
+  assertEquals(minDepAgeCutoff("120", now), now - 2 * hour);
+  assertEquals(minDepAgeCutoff("P2D", now), now - 48 * hour);
+  assertEquals(minDepAgeCutoff("PT12H", now), now - 12 * hour);
+  assertEquals(
+    minDepAgeCutoff("P1WT30M15S", now),
+    now - (168 * hour + 1_815_000),
+  );
+  assertEquals(
+    minDepAgeCutoff("2025-09-16", now),
+    Date.parse("2025-09-16"),
+  );
+  assertEquals(
+    minDepAgeCutoff("2025-09-16T12:00:00+00:00", now),
+    Date.parse("2025-09-16T12:00:00Z"),
+  );
+});
+
+Deno.test("minDepAgeCutoff refuses what it cannot read as an age", () => {
+  for (
+    const bad of [
+      "",
+      "P",
+      "PT",
+      "P1DT",
+      "P1Y",
+      "P1M",
+      "-5",
+      "1.5",
+      "soon",
+      "2025-13-45",
+    ]
+  ) {
+    let threw = false;
+    try {
+      minDepAgeCutoff(bad, 0);
+    } catch (error) {
+      threw = String(error).includes("--min-dep-age");
+    }
+    assertEquals(threw, true, `should have refused: "${bad}"`);
+  }
+});
+
+Deno.test("findOutdated honours a --min-dep-age of 0", async () => {
+  await withTemp(async (dir) => {
+    const lockPath = await lockWith(dir, { "jsr:@zuke/core@^1": "1.66.0" });
+    const { behind } = await findOutdated({
+      lockPath,
+      registry: "https://registry.test",
+      minDepAge: "0",
+      fetch: metaFetch({
+        latest: "1.67.0",
+        versions: {
+          "1.66.0": { createdAt: hoursAgo(10) },
+          "1.67.0": { createdAt: hoursAgo(1) },
+        },
+      }),
+    });
+    assertEquals(behind.map((p) => p.latest), ["1.67.0"]);
+  });
+});
+
+Deno.test("minDepAgeCutoff takes only the strict RFC3339 forms Deno honours", () => {
+  // Deno silently ignores a looser date, so accepting one would compute the
+  // report with a cutoff `deno install` never applies.
+  assertEquals(
+    minDepAgeCutoff("2025-09-16T12:00:00.5+02:00", 0),
+    Date.parse("2025-09-16T10:00:00.5Z"),
+  );
+  for (const bad of ["2025-09-16T12:00:00", "2025-09-16 10:00", "2025-02-30"]) {
+    let threw = false;
+    try {
+      minDepAgeCutoff(bad, 0);
+    } catch {
+      threw = true;
+    }
+    assertEquals(threw, true, `should have refused: "${bad}"`);
+  }
 });

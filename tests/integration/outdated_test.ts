@@ -310,3 +310,136 @@ Deno.test("outdated lists a package once, however many wrappers pin it", async (
   assertEquals(coreLines.length, 1, out);
   assertEquals(out.includes("2 packages are behind"), true, out);
 });
+
+Deno.test("outdated does not offer a release Deno is still too young to install", async () => {
+  // Deno refuses releases under 24h old by default; offering one sends
+  // `--update` into a resolution that cannot succeed.
+  const dir = await Deno.makeTempDir();
+  try {
+    const lockPath = `${dir}/deno.lock`;
+    await Deno.writeTextFile(
+      lockPath,
+      JSON.stringify({
+        version: "5",
+        specifiers: { "jsr:@zuke/core@^1": "1.66.0" },
+      }),
+    );
+    const hour = 60 * 60 * 1000;
+    const meta = {
+      latest: "1.67.0",
+      versions: {
+        "1.66.0": { createdAt: new Date(Date.now() - 48 * hour).toISOString() },
+        "1.67.0": { createdAt: new Date(Date.now() - hour).toISOString() },
+      },
+    };
+    const { code, out } = await runCli(OutdatedBuild, [
+      "outdated",
+      "--exit-code",
+    ], {
+      outdatedOptions: {
+        lockPath,
+        registry: "https://registry.test",
+        fetch: () => Promise.resolve(new Response(JSON.stringify(meta))),
+      },
+    });
+    assertEquals(code, 0);
+    assertEquals(out.includes("at its latest release"), true);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("outdated --update --min-dep-age passes the age on to the resolver", async () => {
+  // A release an hour old is offered, and moved to, once the age is waived —
+  // and the resolver is told the same age, or Deno would refuse that version.
+  const dir = await Deno.makeTempDir();
+  try {
+    const lockPath = `${dir}/deno.lock`;
+    await Deno.writeTextFile(
+      lockPath,
+      JSON.stringify({
+        version: "5",
+        specifiers: { "jsr:@zuke/core@^1": "1.66.0" },
+      }),
+    );
+    const meta = {
+      latest: "1.67.0",
+      versions: {
+        "1.67.0": { createdAt: new Date(Date.now() - 3_600_000).toISOString() },
+      },
+    };
+    const requests: unknown[] = [];
+    const { code, out } = await runCli(OutdatedBuild, [
+      "outdated",
+      "--update",
+      "--min-dep-age",
+      "0",
+      "--entrypoint",
+      "/repo/a/zuke.ts",
+      "--entrypoint=b/zuke.ts",
+    ], {
+      outdatedOptions: {
+        lockPath,
+        registry: "https://registry.test",
+        fetch: () => Promise.resolve(new Response(JSON.stringify(meta))),
+        resolve: async (path, request) => {
+          requests.push(request);
+          const lock = JSON.parse(await Deno.readTextFile(path));
+          lock.specifiers["jsr:@zuke/core@^1"] = "1.67.0";
+          await Deno.writeTextFile(path, JSON.stringify(lock));
+        },
+      },
+    });
+    assertEquals(code, 0, out);
+    // Relative entrypoints are resolved against the working directory.
+    assertEquals(requests, [{
+      minDepAge: "0",
+      entrypoints: [
+        "/repo/a/zuke.ts",
+        `${Deno.cwd().replaceAll("\\", "/")}/b/zuke.ts`,
+      ],
+    }]);
+    assertEquals(out.includes("1.66.0  →  1.67.0"), true, out);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("outdated rejects a --min-dep-age it cannot read, before asking the registry", async () => {
+  let asked = false;
+  const { code, err } = await runCli(OutdatedBuild, [
+    "outdated",
+    "--min-dep-age=soon",
+  ], {
+    outdatedOptions: {
+      lockPath: "/nonexistent/deno.lock",
+      fetch: () => {
+        asked = true;
+        return Promise.resolve(new Response("{}"));
+      },
+    },
+  });
+  assertEquals(code, 1);
+  assertEquals(err.includes('--min-dep-age "soon"'), true, err);
+  assertEquals(asked, false);
+});
+
+Deno.test("outdated rejects --entrypoint without --update", async () => {
+  const { code, err } = await runOutdated(
+    { "jsr:@zuke/git@^1": "1.2.0" },
+    { "@zuke/git": "1.9.0" },
+    ["--entrypoint", "other/zuke.ts"],
+  );
+  assertEquals(code, 1);
+  assertEquals(err.includes("--entrypoint only applies with --update"), true);
+});
+
+Deno.test("outdated refuses an empty --min-dep-age rather than defaulting", async () => {
+  const { code, err } = await runCli(OutdatedBuild, [
+    "outdated",
+    "--min-dep-age",
+    "",
+  ], { outdatedOptions: { lockPath: "/nonexistent/deno.lock" } });
+  assertEquals(code, 1);
+  assertEquals(err.includes('--min-dep-age ""'), true, err);
+});

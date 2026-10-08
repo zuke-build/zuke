@@ -384,6 +384,36 @@ graph. And Deno caches the registry's version listing, so without
 about — landing one release behind, silently, which is the failure this command
 exists to prevent.
 
+"Latest" means the newest release Deno would actually install. Deno refuses
+releases younger than 24 hours by default (`minimumDependencyAge`), so a version
+published this morning is not reported, and is not a target for `--update`,
+until it is a day old. Yanked releases never are, and prereleases only for a
+package that has published nothing else.
+
+`--min-dep-age <age>` changes that age, in the same forms Deno's own flag takes:
+minutes (`120`), an ISO-8601 duration (`P2D`, `PT12H`), or a date or timestamp
+(`2025-09-16`). `--min-dep-age 0` ignores release age entirely. With `--update`
+the value is passed on to `deno install`, so the lock can move to the release
+the report offered:
+
+```sh
+./zuke outdated --update --min-dep-age 0
+```
+
+By default the lock is re-resolved only from this build's entrypoint. If the
+same `deno.lock` also serves another module graph — a workspace member's own
+build, say — packages only that graph reaches are never rewritten. `--update`
+checks that every package which depended on a dropped one depends on it again,
+and restores the lock and names the missing link if one does not, rather than
+leaving a lock that build's `--frozen` run would reject.
+
+Name the other graphs with `--entrypoint <file>`, once for each, and they are
+re-resolved together with the build:
+
+```sh
+./zuke outdated --update --entrypoint packages/a/zuke.ts --entrypoint packages/b/zuke.ts
+```
+
 If you would rather do it by hand, deleting the whole lock also works, with one
 caveat: in a repo that also has a `package.json`, resolving afresh walks the
 whole npm tree and writes an `npm` section a jsr-only lock never had.

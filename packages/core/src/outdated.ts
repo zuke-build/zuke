@@ -40,7 +40,7 @@ export interface OutdatedPackage {
   specifier: string;
   /** The version the lock resolves that specifier to. */
   resolved: string;
-  /** The latest version the registry publishes. */
+  /** The newest version the registry publishes that Deno would install. */
   latest: string;
 }
 
@@ -78,6 +78,12 @@ export interface OutdatedOptions {
   registry?: string;
   /** The `fetch` to use; injected so the command is testable without network. */
   fetch?: typeof fetch;
+  /**
+   * How old a release must be to count, in any form Deno's `--min-dep-age`
+   * takes (see {@link minDepAgeCutoff}); Deno's 24-hour default when omitted.
+   * `--update` passes it on to `deno install` as well.
+   */
+  minDepAge?: string;
 }
 
 /** One `jsr:` entry of a lock file's `specifiers` map. */
@@ -147,11 +153,103 @@ export function isBehind(resolved: string, latest: string): boolean {
   return resolved !== latest && resolved.includes("-") && !latest.includes("-");
 }
 
-/** The `latest` field of a JSR package's `meta.json`, or `undefined`. */
-function latestOf(meta: unknown): string | undefined {
+/**
+ * How old a release must be before Deno will install it when no
+ * `--min-dep-age` is given: Deno 2.9 refuses anything younger by default
+ * (`minimumDependencyAge`, 24 hours) as a supply-chain guard. A version Deno
+ * will not resolve is not one a lock can move to, so it must not count as the
+ * latest either.
+ *
+ * Only Deno's default is assumed: a project that sets a longer
+ * `minimumDependencyAge` can still be shown a version Deno will refuse, and
+ * `--update` then fails and restores the lock rather than corrupting it.
+ */
+const DEFAULT_MIN_DEP_AGE_MS = 24 * 60 * 60 * 1000;
+
+/** An ISO-8601 duration in weeks, days, hours, minutes and seconds. */
+const ISO_DURATION =
+  /^P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/;
+
+/** An RFC3339 date, optionally followed by a time that carries its offset. */
+const RFC3339 =
+  /^(\d{4}-\d{2}-\d{2})(T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2}))?$/;
+
+/**
+ * The publish-time cutoff a `--min-dep-age` value means at `now`: a release
+ * published after it is too young to install. Accepts what Deno's own flag
+ * accepts — whole minutes (`120`, `0` to disable), an ISO-8601 duration
+ * (`P2D`, `PT12H`), or an RFC3339 date or timestamp (`2025-09-16`) — and
+ * Deno's 24-hour default when `value` is undefined.
+ *
+ * Years and months are refused rather than guessed at: their length depends
+ * on the calendar, and a cutoff off by a day is the wrong answer here.
+ *
+ * @throws If `value` is none of those forms.
+ */
+export function minDepAgeCutoff(
+  value: string | undefined,
+  now: number,
+): number {
+  if (value === undefined) return now - DEFAULT_MIN_DEP_AGE_MS;
+  if (/^\d+$/.test(value)) return now - Number(value) * 60_000;
+  const duration = ISO_DURATION.exec(value);
+  if (duration !== null && value !== "P" && !value.endsWith("T")) {
+    const [w, d, h, m, sec] = duration.slice(1).map((n) => Number(n ?? 0));
+    return now - ((((w * 7 + d) * 24 + h) * 60 + m) * 60 + sec) * 1000;
+  }
+  // Strict RFC3339, as Deno is: a date alone, or a timestamp with its offset.
+  // Deno silently ignores a looser form (no offset, a space, 30 February), so
+  // accepting one here would compute the report with a cutoff Deno never uses.
+  const rfc3339 = RFC3339.exec(value);
+  if (rfc3339 !== null) {
+    const date = Date.parse(
+      rfc3339[2] === undefined ? `${value}T00:00:00Z` : value,
+    );
+    const day = new Date(Date.parse(`${rfc3339[1]}T00:00:00Z`));
+    if (!Number.isNaN(date) && day.toISOString().startsWith(rfc3339[1])) {
+      return date;
+    }
+  }
+  throw new Error(
+    `outdated: --min-dep-age "${value}" is not a number of minutes, an ` +
+      "ISO-8601 duration (P2D, PT12H) or a date (2025-09-16).",
+  );
+}
+
+/**
+ * The newest version Deno would install from a JSR package's `meta.json`:
+ * the highest non-yanked version published no later than `cutoff` (see
+ * {@link minDepAgeCutoff}). `null` when every release is
+ * still too young, `undefined` when the document has no usable version.
+ *
+ * Without a `versions` map, the document's `latest` is the answer.
+ */
+function installableLatest(
+  meta: unknown,
+  cutoff: number,
+): string | null | undefined {
   if (meta === null || typeof meta !== "object") return undefined;
   const latest: unknown = Reflect.get(meta, "latest");
-  return typeof latest === "string" ? latest : undefined;
+  const versions: unknown = Reflect.get(meta, "versions");
+  if (versions === null || typeof versions !== "object") {
+    return typeof latest === "string" ? latest : undefined;
+  }
+  // A package that has only ever published prereleases has one as its
+  // `latest`; only then do prereleases count.
+  const prereleases = typeof latest === "string" && latest.includes("-");
+  let best: string | null = null;
+  for (const [version, info] of Object.entries(versions)) {
+    if (!VERSION_CORE.test(version)) continue;
+    if (!prereleases && version.includes("-")) continue;
+    if (info === null || typeof info !== "object") continue;
+    if (Reflect.get(info, "yanked") === true) continue;
+    // A missing or unparsable date is NaN, which fails the comparison: a
+    // release whose age is unknown is not assumed old enough.
+    const created = Date.parse(String(Reflect.get(info, "createdAt")));
+    if (!(created <= cutoff)) continue;
+    if (best === null || isBehind(best, version)) best = version;
+  }
+  return best;
 }
 
 /**
@@ -168,6 +266,8 @@ function latestOf(meta: unknown): string | undefined {
 export async function findOutdated(
   options: OutdatedOptions = {},
 ): Promise<OutdatedReport> {
+  // First, so a malformed value fails before the lock or the network is read.
+  const cutoff = minDepAgeCutoff(options.minDepAge, Date.now());
   const lockPath = options.lockPath ?? DEFAULT_LOCK_PATH;
   const lockText = await readTextOrNull(lockPath);
   if (lockText === null) {
@@ -180,11 +280,11 @@ export async function findOutdated(
   const registry = options.registry ?? JSR_REGISTRY;
   const behind: OutdatedPackage[] = [];
   const unchecked: UncheckedPackage[] = [];
-  const answers = new Map<string, string | Error>();
+  const answers = new Map<string, string | null | Error>();
   for (const entry of lockedJsrSpecifiers(lockText)) {
     let answer = answers.get(entry.name);
     if (answer === undefined) {
-      answer = await readLatest(registry, entry.name, options.fetch);
+      answer = await readLatest(registry, entry.name, cutoff, options.fetch);
       answers.set(entry.name, answer);
     }
     if (answer instanceof Error) {
@@ -198,7 +298,8 @@ export async function findOutdated(
       }
       continue;
     }
-    if (!isBehind(entry.resolved, answer)) continue;
+    // `null`: every newer release is still too young for Deno to install.
+    if (answer === null || !isBehind(entry.resolved, answer)) continue;
     // Once per package and resolved version: every wrapper depends on its
     // own range of core, and a dozen ranges resolving one version are one
     // package to move, not twelve. Ranges resolving different versions stay
@@ -217,7 +318,8 @@ export async function findOutdated(
 }
 
 /**
- * The registry's latest version for `name`, or the reason there is none.
+ * The newest version of `name` Deno would install, `null` when every release
+ * is still too young, or the reason there is no answer.
  *
  * An `Error` rather than `undefined`: a transport failure and a 404 are both
  * "no answer", and the difference between them is exactly what the caller has
@@ -227,15 +329,16 @@ export async function findOutdated(
 async function readLatest(
   registry: string,
   name: string,
+  cutoff: number,
   fetchImpl?: typeof fetch,
-): Promise<string | Error> {
+): Promise<string | null | Error> {
   try {
     const meta = await httpJson<unknown>(
       `${registry}/${name}/meta.json`,
       fetchImpl === undefined ? {} : { fetch: fetchImpl },
     );
-    const latest = latestOf(meta);
-    return latest ?? new Error(
+    const latest = installableLatest(meta, cutoff);
+    return latest !== undefined ? latest : new Error(
       "the registry's meta.json carries no latest version",
     );
   } catch (error) {

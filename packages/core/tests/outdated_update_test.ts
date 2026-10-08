@@ -308,3 +308,189 @@ Deno.test("updateOutdated accepts a resolver that normalises the specifier", asy
     ]);
   });
 });
+
+Deno.test("dropLockEntries removes the dropped specifiers from dependants", () => {
+  // Deno rejects a lock whose `dependencies` name a specifier the `specifiers`
+  // map no longer has ("Invalid jsr dependency … Lockfile may be corrupt").
+  const text = JSON.stringify({
+    specifiers: {
+      "jsr:@zuke/cmd@1.0.1": "1.0.1",
+      "jsr:@zuke/core@^1.25.0": "1.66.0",
+      "jsr:@std/yaml@1": "1.0.5",
+    },
+    jsr: {
+      "@zuke/cmd@1.0.1": {
+        integrity: "aaa",
+        dependencies: ["jsr:@zuke/core@^1.25.0", "jsr:@std/yaml@1"],
+      },
+      "@zuke/core@1.66.0": { integrity: "bbb" },
+      "@std/yaml@1.0.5": { integrity: "ccc" },
+    },
+  });
+  const out = JSON.parse(dropLockEntries(text, ["@zuke/core"]));
+  assertEquals(out.jsr["@zuke/cmd@1.0.1"], {
+    integrity: "aaa",
+    dependencies: ["jsr:@std/yaml@1"],
+  });
+  assertEquals(out.jsr["@std/yaml@1.0.5"], { integrity: "ccc" });
+});
+
+/** A lock where `@zuke/cmd` depends on `@zuke/git`, which is behind. */
+const dependantLock = JSON.stringify({
+  version: "5",
+  specifiers: {
+    "jsr:@zuke/cmd@1.0.1": "1.0.1",
+    "jsr:@zuke/git@^1": "1.2.0",
+  },
+  jsr: {
+    "@zuke/cmd@1.0.1": {
+      integrity: "aaa",
+      dependencies: ["jsr:@zuke/git@^1"],
+    },
+    "@zuke/git@1.2.0": { integrity: "bbb" },
+  },
+});
+
+/** A resolver that puts `@zuke/git` back at 1.9.0, and its dependant's edge only if `relink`. */
+function gitResolver(relink: boolean) {
+  return async (p: string) => {
+    const lock = JSON.parse(await Deno.readTextFile(p));
+    lock.specifiers["jsr:@zuke/git@^1"] = "1.9.0";
+    lock.jsr["@zuke/git@1.9.0"] = { integrity: "ccc" };
+    if (relink) lock.jsr["@zuke/cmd@1.0.1"].dependencies = ["jsr:@zuke/git@^1"];
+    await Deno.writeTextFile(p, JSON.stringify(lock));
+  };
+}
+
+Deno.test("updateOutdated keeps an update whose dependants were relinked", async () => {
+  await withLock(dependantLock, async (path) => {
+    const report = await updateOutdated({
+      lockPath: path,
+      registry: "https://registry.test",
+      fetch: registryFetch({ "@zuke/git": "1.9.0", "@zuke/cmd": "1.0.1" }),
+      resolve: gitResolver(true),
+    });
+    assertEquals(report.updated, [{
+      name: "@zuke/git",
+      from: "1.2.0",
+      to: "1.9.0",
+    }]);
+  });
+});
+
+Deno.test("updateOutdated restores the lock when a dependant was not relinked", async () => {
+  // A lock can serve a second entrypoint (a workspace member's build) that the
+  // re-resolution never reaches; its records keep the shortened dependency
+  // list, which fails that build's `--frozen` run. Restore rather than ship it.
+  let message = "";
+  const final = await withLock(dependantLock, async (path) => {
+    try {
+      await updateOutdated({
+        lockPath: path,
+        registry: "https://registry.test",
+        fetch: registryFetch({ "@zuke/git": "1.9.0", "@zuke/cmd": "1.0.1" }),
+        resolve: gitResolver(false),
+      });
+    } catch (error) {
+      message = String(error);
+    }
+  });
+  assertStringIncludes(message, "@zuke/cmd@1.0.1 → @zuke/git");
+  assertStringIncludes(message, "restored unchanged");
+  assertEquals(final, dependantLock);
+});
+
+Deno.test("updateOutdated restores the lock when the resolver writes something unreadable", async () => {
+  let message = "";
+  const final = await withLock(dependantLock, async (path) => {
+    try {
+      await updateOutdated({
+        lockPath: path,
+        registry: "https://registry.test",
+        fetch: registryFetch({ "@zuke/git": "1.9.0", "@zuke/cmd": "1.0.1" }),
+        resolve: (p) => Deno.writeTextFile(p, "not json"),
+      });
+    } catch (error) {
+      message = String(error);
+    }
+  });
+  assertStringIncludes(message, "restored unchanged");
+  assertEquals(final, dependantLock);
+});
+
+Deno.test("dropLockEntries removes a dependency Deno wrote without its range", () => {
+  // With one locked range for a package, Deno writes its dependants' entry as
+  // a bare `jsr:@std/internal` — which no specifier key matches exactly.
+  const text = JSON.stringify({
+    specifiers: {
+      "jsr:@std/internal@^1.0.14": "1.0.14",
+      "jsr:@std/path@^1": "1.1.6",
+    },
+    jsr: {
+      "@std/internal@1.0.14": { integrity: "aaa" },
+      "@std/path@1.1.6": {
+        integrity: "bbb",
+        dependencies: ["jsr:@std/internal", "jsr:@std/internal-x"],
+      },
+    },
+  });
+  const out = JSON.parse(dropLockEntries(text, ["@std/internal"]));
+  assertEquals(out.jsr["@std/path@1.1.6"].dependencies, [
+    "jsr:@std/internal-x",
+  ]);
+});
+
+Deno.test("updateOutdated notices a bare-form dependant that was not relinked", async () => {
+  const text = dependantLock.replace(
+    '["jsr:@zuke/git@^1"]',
+    '["jsr:@zuke/git"]',
+  );
+  let message = "";
+  await withLock(text, async (path) => {
+    try {
+      await updateOutdated({
+        lockPath: path,
+        registry: "https://registry.test",
+        fetch: registryFetch({ "@zuke/git": "1.9.0", "@zuke/cmd": "1.0.1" }),
+        resolve: gitResolver(false),
+      });
+    } catch (error) {
+      message = String(error);
+    }
+  });
+  assertStringIncludes(message, "@zuke/cmd@1.0.1 → @zuke/git");
+  assertStringIncludes(message, "stale and can be deleted");
+});
+
+Deno.test("updateOutdated passes a URL entrypoint through and refuses an empty one", async () => {
+  const seen: unknown[] = [];
+  await withLock(lockText(), async (path) => {
+    await updateOutdated({
+      lockPath: path,
+      registry: "https://registry.test",
+      fetch: registryFetch({ "@zuke/git": "1.9.0", "@std/yaml": "1.0.5" }),
+      entrypoints: ["file:///repo/zuke.ts", "C:/repo/zuke.ts"],
+      resolve: async (p, request) => {
+        seen.push(request.entrypoints);
+        await Deno.writeTextFile(p, lockText("1.9.0"));
+      },
+    });
+  });
+  assertEquals(seen, [["file:///repo/zuke.ts", "C:/repo/zuke.ts"]]);
+
+  let message = "";
+  const final = await withLock(lockText(), async (path) => {
+    try {
+      await updateOutdated({
+        lockPath: path,
+        registry: "https://registry.test",
+        fetch: () => Promise.reject(new Error("must not be asked")),
+        entrypoints: [""],
+      });
+    } catch (error) {
+      message = String(error);
+    }
+  });
+  assertStringIncludes(message, "--entrypoint needs a file");
+  assertEquals(final, lockText());
+});
