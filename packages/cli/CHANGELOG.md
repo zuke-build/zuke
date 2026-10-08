@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.0](https://github.com/zuke-build/zuke/compare/cli-v1.12.1...cli-v1.13.0) (2026-10-08)
+
+
+### Features
+
+* **cli:** zuke add, remove, cache and relock, so a project needs only zuke ([#767](https://github.com/zuke-build/zuke/issues/767)) ([166539b](https://github.com/zuke-build/zuke/commit/166539bb67f206ec6be8dd7b820487e225ebd332))
+
 ## [1.12.1](https://github.com/zuke-build/zuke/compare/cli-v1.12.0...cli-v1.12.1) (2026-10-08)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.70.1](https://github.com/zuke-build/zuke/compare/core-v1.70.0...core-v1.70.1) (2026-10-08)
+
+
+### Bug Fixes
+
+* **core:** register a reshaped secret wherever the query moved it ([#764](https://github.com/zuke-build/zuke/issues/764)) ([714610f](https://github.com/zuke-build/zuke/commit/714610f40b3757f7396424d7cdb7206f7fa25f15))
+
 ## [1.70.0](https://github.com/zuke-build/zuke/compare/core-v1.69.0...core-v1.70.0) (2026-10-08)
 
 
