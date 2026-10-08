@@ -10,9 +10,11 @@
  *
  * scaffold Zuke into any project with `zuke setup`, then run its build from
  * anywhere inside the project with `zuke <target>`: every command that is not
- * the CLI's own (`setup`, `import`, `doc`, `upgrade`) is forwarded to the
+ * the CLI's own (`setup`, `import`, `doc`, `upgrade`, and the project
+ * commands `add`, `remove`, `cache` and `relock`) is forwarded to the
  * nearest `zuke.ts`, exactly as the `./zuke` launcher would run it. Update the
- * installed CLI itself with `zuke upgrade`.
+ * installed CLI itself with `zuke upgrade`, and manage a project's
+ * dependencies and lock with `zuke add`, `remove`, `cache` and `relock`.
  *
  * @module
  */
@@ -38,7 +40,6 @@ import {
   type BuildRunner,
   defaultBuildProbe,
   defaultBuildRunner,
-  DENO_CONFIG_FILES,
   locateBuild,
   NO_LOCK_NOTICE,
   runBuild,
@@ -53,11 +54,16 @@ import {
   type UpgradeHost,
 } from "./src/upgrade.ts";
 import { neutralise, output } from "./src/output.ts";
+import { runRelock } from "./src/relock.ts";
+import { runCache } from "./src/cache.ts";
+import { runDependencies } from "./src/dependencies.ts";
+import { defaultProjectHost, type ProjectHost } from "./src/project.ts";
 import { type CliPaint, invocationPaint } from "./src/paint.ts";
 import { versionPanel, type VersionRow } from "@zuke/core/render";
 import {
   homeRelative,
   lockedCoreVersions,
+  projectConfigText,
   projectLockPath,
 } from "./src/version_report.ts";
 
@@ -65,6 +71,7 @@ export type { SetupHost } from "./src/setup.ts";
 export type { ImportSource } from "./src/import.ts";
 export type { StarActions } from "./src/star.ts";
 export type { UpgradeHost } from "./src/upgrade.ts";
+export type { ProjectHost } from "./src/project.ts";
 export type {
   BuildLocation,
   BuildProbe,
@@ -253,6 +260,10 @@ Zuke commands (available anywhere):
   import [options]        Generate a build from package.json scripts or a Makefile
   doc <package>           Show a @zuke/* package's API docs (isolated resolution)
   upgrade [<version>]     Reinstall this CLI at the latest (or given) JSR release
+  add <package...>        Add packages to this project's deno.json (docker = @zuke/docker)
+  remove <package...>     Remove packages from this project's deno.json
+  cache [options]         Fetch everything the build imports, keeping the lock
+  relock [options]        Regenerate this project's lock from scratch
   --help                  Show this help
   --version               Show the CLI's version, and this project's build's
 
@@ -281,6 +292,10 @@ Import options:
 Upgrade options:
   --dry-run               Say what would be installed, and install nothing
   --force, -f             Reinstall even when already on that version
+
+Cache and relock options:
+  --min-dep-age <age>     Only resolve releases at least this old (0 for the newest)
+  --dry-run               Say what would run, and change nothing
 
 Doc:
   zuke doc core           API of @zuke/core
@@ -731,7 +746,10 @@ async function projectCoreVersions(
   host: SetupHost,
   root: string,
 ): Promise<string[]> {
-  const lock = projectLockPath(root, await firstConfigText(host, root));
+  const lock = projectLockPath(
+    root,
+    await projectConfigText((path) => host.readText(path), root),
+  );
   if (lock === null) return [];
   let text: string;
   try {
@@ -743,27 +761,9 @@ async function projectCoreVersions(
 }
 
 /**
- * The text of the first of {@link DENO_CONFIG_FILES} at `root` that can be
- * read, or `undefined` when there is none.
- */
-async function firstConfigText(
-  host: SetupHost,
-  root: string,
-): Promise<string | undefined> {
-  for (const name of DENO_CONFIG_FILES) {
-    try {
-      return await host.readText(`${root}/${name}`);
-    } catch {
-      // Not there: try the next one Deno would.
-    }
-  }
-  return undefined;
-}
-
-/**
  * The CLI entry point. Returns a process exit code; `host`, `prompter`,
- * `docRunner`, `starActions`, `buildRunner`, `buildProbe`, and `upgradeHost`
- * are injectable for testing.
+ * `docRunner`, `starActions`, `buildRunner`, `buildProbe`, `upgradeHost` and
+ * `projectHost` are injectable for testing.
  */
 export async function main(
   args: string[],
@@ -774,6 +774,7 @@ export async function main(
   buildRunner: BuildRunner = defaultBuildRunner,
   buildProbe: BuildProbe = defaultBuildProbe,
   upgradeHost: UpgradeHost = defaultUpgradeHost,
+  projectHost: ProjectHost = defaultProjectHost,
 ): Promise<number> {
   // `--plain` belongs to whichever CLI answers. For the commands answered
   // here it is read and set aside; a command forwarded to the build keeps it
@@ -813,6 +814,38 @@ export async function main(
         (line) => host.log(line),
         upgradeHost,
         paint,
+      );
+    }
+    const log = (line: string) => host.log(line);
+    if (command === "relock") {
+      return await runRelock(
+        rest,
+        log,
+        projectHost,
+        paint,
+        Deno.cwd(),
+        buildProbe,
+      );
+    }
+    if (command === "cache") {
+      return await runCache(
+        rest,
+        log,
+        projectHost,
+        paint,
+        Deno.cwd(),
+        buildProbe,
+      );
+    }
+    if (command === "add" || command === "remove") {
+      return await runDependencies(
+        command,
+        rest,
+        log,
+        projectHost,
+        paint,
+        Deno.cwd(),
+        buildProbe,
       );
     }
   } catch (error) {

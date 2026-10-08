@@ -19,6 +19,8 @@ deno install -A -g -n zuke jsr:@zuke/cli   # once, globally
 zuke setup                                  # in the project root
 ./zuke                                       # run the build
 zuke upgrade                                 # later: update the global CLI
+zuke add docker                              # add a wrapper: jsr:@zuke/docker into deno.json
+zuke relock --min-dep-age 0                  # regenerate the lock (e.g. to move core forward)
 ```
 
 No global install? The same wizard runs directly:
