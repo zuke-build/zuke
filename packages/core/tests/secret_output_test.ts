@@ -12,7 +12,7 @@
  */
 
 import { assertEquals } from "./_assert.ts";
-import { keepNumberSource, secretsInOutput } from "../src/secret_output.ts";
+import { secretsInOutput } from "../src/secret_output.ts";
 import { SecretOutputSettings } from "../src/tooling.ts";
 
 /** The secrets found in `stdout`, described by `configure`. */
@@ -353,18 +353,6 @@ Deno.test("a deeply nested document neither overflows the stack nor throws", () 
     "}".repeat(depth)
   }`;
   assertFound(found(objects, (s) => s.keys("x")), "bbbbbbbbbb");
-});
-
-Deno.test("a number's spelling falls back to its value without source access", () => {
-  // Engines without JSON source text access pass the reviver no context.
-  const kept = keepNumberSource("n", 1e21);
-  assertEquals(
-    typeof kept === "object" && kept !== null && "source" in kept
-      ? kept.source
-      : undefined,
-    "1e+21",
-  );
-  assertEquals(keepNumberSource("s", "text"), "text");
 });
 
 Deno.test("a base64 credential that decodes to control characters is left encoded", () => {

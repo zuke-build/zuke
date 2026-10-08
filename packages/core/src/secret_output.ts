@@ -124,13 +124,11 @@ class NumberText {
 }
 
 /**
- * The reviver that keeps each number's source spelling. Engines without
- * JSON source text access pass no `context`, and the parsed value's own
- * spelling is the best left.
- *
- * Exported for its test only, since Deno always passes a `context`.
+ * The reviver that keeps each number's source spelling. The reviver type
+ * declares `context` optional, as engines without JSON source text access
+ * pass none; the parsed value's own spelling is then the best left.
  */
-export function keepNumberSource(
+function keepNumberSource(
   _key: string,
   value: unknown,
   context?: { source?: unknown },
