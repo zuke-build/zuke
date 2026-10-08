@@ -5914,10 +5914,11 @@ abstract class ToolSettings
       whole and its only string — whatever its length;
     - a keyed value — under an expected key or a credential name
       (`password`, `clientSecret`, `accountKey`, `connectionString`, `auth`,
-      …) anywhere in the document — from three characters, never a word such
-      as `true` or `enabled`;
-    - a derived value — any other scalar, after a query or with no
-      expected key present — from eight characters, never under ordinary
+      …) anywhere in the document, or any scalar of a document with none of
+      the expected keys (the secret moved, so `id` or `type` may hold it) —
+      from three characters, never a word such as `true` or `enabled`;
+    - a derived value — any other scalar of a queried document that still
+      has an expected key — from eight characters, never under ordinary
       vocabulary such as `region`, `type`, an id, a date or an `error`, and at
       most 2000 per output.
 
