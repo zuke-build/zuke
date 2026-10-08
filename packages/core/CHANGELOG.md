@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.70.0](https://github.com/zuke-build/zuke/compare/core-v1.69.0...core-v1.70.0) (2026-10-08)
+
+
+### Features
+
+* **core:** find the secrets in a credential-bearing command's output ([#761](https://github.com/zuke-build/zuke/issues/761)) ([254e471](https://github.com/zuke-build/zuke/commit/254e471e0d89e94a955d425007c31f6fc9faec17))
+
 ## [1.69.0](https://github.com/zuke-build/zuke/compare/core-v1.68.0...core-v1.69.0) (2026-10-08)
 
 

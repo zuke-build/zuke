@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.1](https://github.com/zuke-build/zuke/compare/cli-v1.12.0...cli-v1.12.1) (2026-10-08)
+
+
+### Bug Fixes
+
+* **cli:** make zuke upgrade install the release it names on Deno 2.9 ([#762](https://github.com/zuke-build/zuke/issues/762)) ([271fb9f](https://github.com/zuke-build/zuke/commit/271fb9f932fe2cc8193e03013d6025d4303de7c3))
+
 ## [1.12.0](https://github.com/zuke-build/zuke/compare/cli-v1.11.0...cli-v1.12.0) (2026-10-07)
 
 
