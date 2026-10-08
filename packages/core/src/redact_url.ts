@@ -130,16 +130,86 @@ export function redactUrls(text: string): string {
 
 /** One whitespace-free token of a message, with every URL in it redacted. */
 function redactToken(token: string): string {
-  const starts = urlStarts(token);
-  if (starts.length === 0) return token;
-  let out = token.slice(0, starts[0]);
-  for (let i = 0; i < starts.length; i++) {
-    const segment = token.slice(starts[i], starts[i + 1] ?? token.length);
+  const { head, segments } = urlSegments(token);
+  let out = head;
+  for (const segment of segments) {
     let end = segment.length;
     while (end > 0 && CLOSING.includes(segment[end - 1])) end--;
     out += redactUrl(segment.slice(0, end)) + segment.slice(end);
   }
   return out;
+}
+
+/**
+ * `token` split at the start of every URL in it (see {@link urlStarts}): the
+ * text before the first, and each URL running to the next one or the token's
+ * end. A token with no URL is all `head`.
+ */
+function urlSegments(token: string): { head: string; segments: string[] } {
+  const starts = urlStarts(token);
+  const segments = starts.map((start, i) =>
+    token.slice(start, starts[i + 1] ?? token.length)
+  );
+  return { head: token.slice(0, starts[0] ?? token.length), segments };
+}
+
+/**
+ * The password of every URL in `text` that carries one in its userinfo
+ * (`postgres://user:pass@host`), both as the parser spells it and
+ * percent-decoded — for a caller that must mask the password on its own, not
+ * only the URL around it. URLs are found the way {@link redactUrls} finds them;
+ * one the parser rejects, or reads no password from, is read textually, so it
+ * fails closed.
+ *
+ * Internal: used to register a secret's parts with the redactor (see
+ * `./secret_output.ts`), not re-exported from any entrypoint.
+ */
+export function urlPasswords(text: string): string[] {
+  const found = new Set<string>();
+  for (const token of text.split(/\s+/)) {
+    for (const segment of urlSegments(token).segments) {
+      for (const password of passwordOf(segment)) found.add(password);
+    }
+  }
+  return [...found];
+}
+
+/**
+ * The userinfo password of `raw`, as parsed and percent-decoded — or nothing
+ * when `raw` has no password. Where the parser finds none — it rejected the
+ * URL, or a `#` or `?` in the password ended the authority early
+ * (`postgres://u:1234#abcd@host`) — `raw` is read textually, by the rule
+ * {@link stripUserinfo} strips it with, so a password with a bare `/`, `#` or
+ * `?` in it, or one in front of a malformed port, is still found. A malformed
+ * escape leaves the spelling as written as the only form.
+ */
+function passwordOf(raw: string): string[] {
+  let parsed = "";
+  try {
+    parsed = new URL(raw).password;
+  } catch {
+    // Rejected: read textually below.
+  }
+  const password = parsed === "" ? textualPassword(raw) : parsed;
+  if (password === "") return [];
+  try {
+    return [password, decodeURIComponent(password)];
+  } catch {
+    return [password];
+  }
+}
+
+/**
+ * The password in `token`'s userinfo — what follows the first `:` between the
+ * authority's start and the token's last `@` — or `""` when there is none.
+ */
+function textualPassword(token: string): string {
+  const at = token.lastIndexOf("@");
+  if (at < 0) return "";
+  const start = authorityStart(token, at);
+  const userinfo = token.slice(start, at);
+  const colon = userinfo.indexOf(":");
+  return colon < 0 ? "" : userinfo.slice(colon + 1);
 }
 
 /**
@@ -247,14 +317,23 @@ function scrubTokens(text: string, checkValues: boolean): string {
   ).join("");
 }
 
-/** `token` without the userinfo before its last `@`. */
-function stripUserinfo(token: string): string {
-  const at = token.lastIndexOf("@");
-  if (at < 0) return token;
+/**
+ * Where the authority of `token` starts — past its scheme and any slashes —
+ * searching no further than `at`, the `@` that ends its userinfo.
+ */
+function authorityStart(token: string, at: number): number {
   let start = LEADING_SCHEME.exec(token)?.[0].length ?? 0;
   while (start < at && (token[start] === "/" || token[start] === "\\")) {
     start++;
   }
+  return start;
+}
+
+/** `token` without the userinfo before its last `@`. */
+function stripUserinfo(token: string): string {
+  const at = token.lastIndexOf("@");
+  if (at < 0) return token;
+  const start = authorityStart(token, at);
   return token.slice(0, start) + token.slice(at + 1);
 }
 

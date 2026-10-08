@@ -19,7 +19,11 @@ import {
 } from "../src/tooling.ts";
 import { withAmbientRedactor } from "../src/ambient_redactor.ts";
 import { REDACTED, Redactor } from "../src/redact.ts";
-import { CommandError, CommandTimeoutError } from "../src/shell.ts";
+import {
+  CommandError,
+  type CommandOutput,
+  CommandTimeoutError,
+} from "../src/shell.ts";
 import { withTemp } from "./_temp.ts";
 
 /** Minimal concrete settings: runs `deno eval <script>` — hermetic. */
@@ -635,6 +639,94 @@ Deno.test("markSecret outside a run is a no-op, not a crash", async () => {
   }
   new TokenSettings().token("hunter2");
   await Promise.resolve();
+});
+
+/**
+ * A credential-bearing tool: it prints `script`'s output, and registers the
+ * secrets in it — under `SecretString`, unless the caller queried.
+ */
+class SecretEvalSettings extends EvalSettings {
+  /** Whether the caller set a query, as a wrapper's `--query` would. */
+  queried = false;
+
+  protected override onOutput(output: CommandOutput): void {
+    this.markSecretsInOutput(
+      output.stdout,
+      (s) => s.keys("SecretString").queried(this.queried),
+    );
+  }
+}
+
+Deno.test("markSecretsInOutput registers the secrets a tool printed", async () => {
+  const redactor = new Redactor();
+  const printed = JSON.stringify({
+    Name: "prod/db",
+    SecretString: "aaaaaaaa1",
+  });
+  await withAmbientRedactor(redactor, async () => {
+    await new SecretEvalSettings()
+      .script(`console.log(${JSON.stringify(printed)})`)
+      .quiet()
+      .run();
+  });
+  assertEquals(redactor.redact("pw=aaaaaaaa1"), `pw=${REDACTED}`);
+  // Only the secret: the secret's name is ordinary output.
+  assertEquals(redactor.redact("prod/db"), "prod/db");
+});
+
+Deno.test("markSecretsInOutput goes through markSecret, with or without a lambda", () => {
+  class Recording extends EvalSettings {
+    readonly marked: string[] = [];
+    protected override markSecret(value: string): void {
+      this.marked.push(value);
+    }
+    register(stdout: string, keys?: string[]): string[] {
+      if (keys === undefined) this.markSecretsInOutput(stdout);
+      else this.markSecretsInOutput(stdout, (s) => s.keys(...keys));
+      return this.marked;
+    }
+  }
+  assertEquals(new Recording().register("aaaaaaaaaaaa\n"), ["aaaaaaaaaaaa"]);
+  assertEquals(
+    new Recording().register('{"value":"pin1","other":"bbbbbbbbbb"}', [
+      "value",
+    ]),
+    ["pin1"],
+  );
+  assertEquals(new Recording().register(""), []);
+});
+
+Deno.test("markSecretsInOutput outside a run is a no-op, not a crash", async () => {
+  const out = await new SecretEvalSettings()
+    .script("console.log('\"aaaaaaaa1\"')")
+    .quiet()
+    .run();
+  assertEquals(out.code, 0);
+});
+
+Deno.test("L3: markSecretsInOutput does not read the output outside a run", async () => {
+  // The base markSecret registers nothing without a redactor, so the search
+  // is skipped: the lambda describing the output is never even called.
+  class Counting extends EvalSettings {
+    calls = 0;
+    register(stdout: string): void {
+      this.markSecretsInOutput(stdout, (s) => {
+        this.calls++;
+        return s;
+      });
+    }
+  }
+  const outside = new Counting();
+  outside.register("aaaaaaaa1");
+  assertEquals(outside.calls, 0);
+  const inside = new Counting();
+  const redactor = new Redactor();
+  await withAmbientRedactor(redactor, () => {
+    inside.register("aaaaaaaa1");
+    return Promise.resolve();
+  });
+  assertEquals(inside.calls, 1);
+  assertEquals(redactor.redact("aaaaaaaa1"), REDACTED);
 });
 
 Deno.test("stdinInput() reaches the tool's standard input", async () => {

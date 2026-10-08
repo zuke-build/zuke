@@ -111,6 +111,60 @@ the base contributes the shared chainers (`env`, `cwd`, `noThrow`, `quiet`,
 wrapper package is a workspace sibling that depends only on `@zuke/core` — the
 existing `@zuke/*` wrappers are the template.
 
+A wrapper for a command that **prints a credential** — an access token, a
+registry password, a secret's value — registers what it printed from `onOutput`,
+so the build cannot print it back. `markSecretsInOutput` is the one
+implementation of that search: name the field the secret comes back under, and
+say whether the caller reshaped the answer with a query.
+
+<!-- check -->
+
+```ts
+import type { CommandOutput } from "@zuke/core/shell";
+import { ToolSettings } from "@zuke/core/tooling";
+
+// `secrets-cli` is a made-up tool: substitute the CLI you are wrapping.
+class SecretsCliGetSettings extends ToolSettings {
+  #query?: string;
+  query(expression: string): this {
+    this.#query = expression;
+    return this;
+  }
+  protected override defaultTool(): string {
+    return "secrets-cli";
+  }
+  protected override buildArgs(): string[] {
+    const query = this.#query === undefined ? [] : [`--query=${this.#query}`];
+    return ["get", "--output=json", ...query];
+  }
+  protected override onOutput(output: CommandOutput): void {
+    this.markSecretsInOutput(
+      output.stdout,
+      (s) => s.keys("value").queried(this.#query !== undefined),
+    );
+  }
+}
+```
+
+Each value is registered by what makes it a secret:
+
+- **the answer** — output that is not JSON, a JSON string, a number as written;
+  after a query, or with no expected key present, the document whole and its
+  only string — whatever its length;
+- **a keyed value** — under an expected key, or under a credential name
+  (`password`, `clientSecret`, `accountKey`, `connectionString`, `auth`, …)
+  anywhere in the document — from three characters, never a word such as `true`
+  or `enabled`;
+- **a derived value** — any other scalar, after a query or with no expected key
+  present — from eight characters, never under ordinary vocabulary such as
+  `region`, `type`, an id, a date or an `error`, and at most 2000 per output.
+
+Each secret's parts are registered too: the leaves of a secret that is itself
+JSON, the credential pairs of a connection string, query string, dotenv, YAML or
+XML file, the password of a `scheme://user:pass@host` URL, and the decoded text
+of a base64 credential. Every value is also registered trimmed, and in the
+JSON-escaped spellings the raw output may carry it in.
+
 ## 3. Components — reusable target bundles
 
 A **component** is a function that returns an object of related targets.
