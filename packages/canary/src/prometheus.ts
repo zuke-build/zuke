@@ -84,12 +84,17 @@ export class PrometheusSettings {
   }
 
   /**
-   * Add a request header — `header("X-Scope-OrgID", tenant)`, or
-   * `header("Authorization", `Bearer ${token}`)`. As in `@zuke/prometheus`,
-   * a plain header such as a tenant id leaves an in-cluster `http://` URL
+   * Add a plain request header, such as a tenant id:
+   * `header("X-Scope-OrgID", tenant)`. Authenticate through
+   * {@link connection} instead, with `connection((c) => c.bearerToken(token))`
+   * or `c.basicAuth(…)` / `c.secretHeader(…)`, so `@zuke/prometheus` handles
+   * the credential itself: `bearerToken` refuses an empty token, most likely a
+   * missing secret, rather than sending a blank `Bearer `. As in
+   * `@zuke/prometheus`, a plain header leaves an in-cluster `http://` URL
    * usable, while `Authorization`, `Proxy-Authorization`, `Cookie` and a
-   * credential-looking name (`X-API-Key`, `X-Auth-Token`) are credentials and
-   * need `https:` (unless loopback, or `ZUKE_ALLOW_INSECURE_URL` is set).
+   * credential-looking name (`X-API-Key`, `X-Auth-Token`) are credentials
+   * wherever they are set and need `https:` (unless loopback, or
+   * `ZUKE_ALLOW_INSECURE_URL` is set).
    */
   header(name: string, value: string): this {
     this.headers_[name] = value;
@@ -110,8 +115,8 @@ export class PrometheusSettings {
 
   /**
    * Configure the rest of the connection with `@zuke/prometheus`'s own
-   * settings — the managed services' credentials, an API-key header, a
-   * response cap:
+   * settings — a bearer token, the managed services' credentials, an API-key
+   * header, a response cap:
    *
    * ```ts
    * prometheus((p) =>

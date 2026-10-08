@@ -730,16 +730,35 @@ reader.
 
 `connection(...)` hands the rest of the connection to `@zuke/prometheus`'s own
 settings — applied after `url`, `header`, `timeout` and `fetch`, so a request
-signer set there signs the headers set before it. It is how a canary reads a
-managed Prometheus with the cloud's own credentials, with no `gcloud`, `az` or
-`aws` CLI on the runner:
+signer set there signs the headers set before it. It is where every credential
+goes: a bearer token or basic auth for a Prometheus of your own, and the cloud's
+own credentials for a managed one, with no `gcloud`, `az` or `aws` CLI on the
+runner. Keep `header(...)` for plain headers such as a tenant id; a token set as
+a raw `Authorization` header skips the checks `bearerToken` makes, so a missing
+secret is sent as a blank `Bearer` instead of failing by name:
+
+<!-- check -->
 
 ```ts
+import { Build, parameter } from "@zuke/core";
 import { prometheus } from "@zuke/canary";
 
 const ERROR_RATIO =
   'sum(rate(http_requests_total{rev="canary",code=~"5.."}[5m])) / ' +
   'sum(rate(http_requests_total{rev="canary"}[5m]))';
+
+// A Prometheus of your own, behind a bearer token from a secret parameter.
+// The lambda runs on each check, so it reads the resolved value.
+export class Deploy extends Build {
+  promToken = parameter("Prometheus bearer token").secret().required();
+
+  errorRatio = prometheus((p) =>
+    p.name("error ratio")
+      .url("https://prometheus.internal")
+      .query(ERROR_RATIO).max(0.01)
+      .connection((c) => c.bearerToken(this.promToken.value))
+  );
+}
 
 // Amazon Managed Service for Prometheus, signed with SigV4.
 export const amp = prometheus((p) =>
