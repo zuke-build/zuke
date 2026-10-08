@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * What `zuke --version` reports about the project it was run in, and the rich
- * panel it prints on a terminal.
+ * What `zuke --version` reports about the project it was run in. The rich
+ * panel it prints on a terminal is core's `versionPanel`, so it matches the
+ * build's own.
  *
  * The project's Zuke version is read from its `deno.lock` — the version the
  * build actually resolves — rather than by running the build's own
@@ -17,8 +18,6 @@
  */
 
 import { absolutePath, lockedJsrSpecifiers } from "@zuke/core";
-import { box } from "@zuke/core/render";
-import type { CliPaint } from "./paint.ts";
 import { isRecord } from "./records.ts";
 import { LOCK_FILE } from "./dispatch.ts";
 
@@ -170,29 +169,4 @@ export function homeRelative(
   return fold(path).startsWith(`${fold(base)}/`)
     ? `~${path.slice(base.length)}`
     : path;
-}
-
-/** One row of the version panel: its label and its value. */
-export type VersionRow = readonly [label: string, value: string];
-
-/**
- * The version panel: a titled box with one aligned row per fact, the first
- * value — the CLI's own version — emphasised. Colour follows `paint`, so
- * `NO_COLOR` keeps the box and drops the escape codes.
- */
-export function formatVersionPanel(
-  rows: readonly VersionRow[],
-  paint: CliPaint,
-): string {
-  const width = Math.max(...rows.map(([label]) => label.length));
-  const lines = rows.map(([label, value], index) => {
-    const name = paint.muted(label.padEnd(width));
-    const shown = index === 0 ? paint.value(value) : value;
-    return `${paint.name("◆")} ${name}  ${shown}`;
-  });
-  return box(
-    { github: false, color: paint.color, width: 0 },
-    lines,
-    { title: "zuke", titleStyle: ["cyan", "bold"] },
-  ).join("\n");
 }

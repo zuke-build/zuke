@@ -54,12 +54,11 @@ import {
 } from "./src/upgrade.ts";
 import { neutralise, output } from "./src/output.ts";
 import { type CliPaint, invocationPaint } from "./src/paint.ts";
+import { versionPanel, type VersionRow } from "@zuke/core/render";
 import {
-  formatVersionPanel,
   homeRelative,
   lockedCoreVersions,
   projectLockPath,
-  type VersionRow,
 } from "./src/version_report.ts";
 
 export type { SetupHost } from "./src/setup.ts";
@@ -294,12 +293,12 @@ Doc:
 function helpText(paint: CliPaint): string {
   if (!paint.rich) return HELP;
   return HELP.split("\n").map((line) => {
-    if (line === TAGLINE) return paint.value(line);
+    if (line === TAGLINE) return paint.target(line);
     if (/^\S.*:$/.test(line)) return paint.heading(line);
     const row = /^( {2})(\S.*?)( {2,})(.*)$/.exec(line);
     if (row === null) return line;
     const [, indent, label, gap, description] = row;
-    return `${indent}${paint.name(label)}${gap}${description}`;
+    return `${indent}${paint.command(label)}${gap}${description}`;
   }).join("\n");
 }
 
@@ -690,7 +689,7 @@ async function commandVersion(
     }
     rows.push(["deno", Deno.version.deno]);
     rows.push(["platform", `${Deno.build.os}-${Deno.build.arch}`]);
-    host.log(formatVersionPanel(rows, paint));
+    host.log(versionPanel(rows, paint));
   } else {
     host.log(VERSION);
   }
