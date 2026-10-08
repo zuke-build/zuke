@@ -22,7 +22,6 @@
  */
 
 import type { CommandOutput } from "@zuke/core/shell";
-import { registerSecrets } from "./secret_output.ts";
 import { type AzOutputFormat, AzSettings } from "./settings.ts";
 import { fromStdin, keyed, operand, option, required } from "./validate.ts";
 
@@ -113,11 +112,9 @@ export class AzAcrLoginSettings extends AzSettings {
    */
   protected override onOutput(output: CommandOutput): void {
     if (!this.#exposeToken) return;
-    registerSecrets(
+    this.markSecretsInOutput(
       output.stdout,
-      TOKEN_KEYS,
-      this.queried,
-      (secret) => this.markSecret(secret),
+      (s) => s.keys(...TOKEN_KEYS).queried(this.queried),
     );
   }
 

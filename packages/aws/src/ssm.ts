@@ -16,7 +16,6 @@
  */
 
 import type { CommandOutput } from "@zuke/core/shell";
-import { secretsIn } from "./secret_output.ts";
 import { type AwsOutputFormat, AwsSettings } from "./settings.ts";
 import { freeText, option } from "./validate.ts";
 
@@ -65,9 +64,10 @@ export class AwsSsmGetParameterSettings extends AwsSettings {
 
   /** Register the returned value as a secret. */
   protected override onOutput(output: CommandOutput): void {
-    for (const secret of secretsIn(output.stdout, ["Value"])) {
-      this.markSecret(secret);
-    }
+    this.markSecretsInOutput(
+      output.stdout,
+      (s) => s.keys("Value").queried(this.queried),
+    );
   }
 
   /** Emit `ssm get-parameter` with its options. */

@@ -23,7 +23,6 @@
  */
 
 import type { CommandOutput } from "@zuke/core/shell";
-import { registerSecrets } from "./secret_output.ts";
 import { type AzOutputFormat, AzSettings } from "./settings.ts";
 import { type AzTime, utcSeconds } from "./time.ts";
 import { bool, fromStdin, option, pair } from "./validate.ts";
@@ -101,11 +100,9 @@ export class AzKeyvaultSecretShowSettings extends AzSettings {
 
   /** Register the returned value as a secret. */
   protected override onOutput(output: CommandOutput): void {
-    registerSecrets(
+    this.markSecretsInOutput(
       output.stdout,
-      [SECRET_VALUE_QUERY],
-      this.queried,
-      (secret) => this.markSecret(secret),
+      (s) => s.keys(SECRET_VALUE_QUERY).queried(this.queried),
     );
   }
 
@@ -239,11 +236,9 @@ export class AzKeyvaultSecretSetSettings extends AzSettings {
 
   /** Register the returned value as a secret. */
   protected override onOutput(output: CommandOutput): void {
-    registerSecrets(
+    this.markSecretsInOutput(
       output.stdout,
-      [SECRET_VALUE_QUERY],
-      this.queried,
-      (secret) => this.markSecret(secret),
+      (s) => s.keys(SECRET_VALUE_QUERY).queried(this.queried),
     );
   }
 

@@ -86,7 +86,7 @@ Deno.test("S2: a numeric parameter and a reshaped assume-role are masked", async
   assertEquals(role.marked.includes("st-value-5678"), true);
 });
 
-Deno.test("S3: credential fields are found nested, by name segment, 8+ chars", async () => {
+Deno.test("S3: a JSON secret's credential fields and long leaves are found nested", async () => {
   const secret = JSON.stringify({
     db: { password: "nested-pass-123" },
     apiKey: "short",
@@ -94,21 +94,30 @@ Deno.test("S3: credential fields are found nested, by name segment, 8+ chars", a
     keyId: "key-identifier-12",
     hostname: "db.example.internal",
     list: [{ token: "token-in-a-list" }],
+    user: "app",
+    apiToken: "on",
   });
   const { settings, marked } = recording(
     new AwsSecretsmanagerGetSecretValueSettings().secretId("s"),
   );
   await settings.runner(new FakeAws(json({ SecretString: secret })).run).run();
+  // Core's rules: a credential-named field counts from three characters
+  // (`short`), and every leaf of a secret that is itself JSON from eight —
+  // whatever its name, since the whole document is the secret.
   for (
     const masked of [
       "nested-pass-123",
       "client-secret-value",
       "token-in-a-list",
+      "short",
+      "key-identifier-12",
+      "db.example.internal",
     ]
   ) {
     assertEquals(marked.includes(masked), true, masked);
   }
-  for (const kept of ["short", "key-identifier-12", "db.example.internal"]) {
+  // A short ordinary leaf, and a credential field too short to be one.
+  for (const kept of ["app", "on"]) {
     assertEquals(marked.includes(kept), false, kept);
   }
 });

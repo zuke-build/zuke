@@ -111,13 +111,18 @@ usual `CommandError`.
 ## Secrets
 
 The commands that print a credential — `sts assume-role`,
-`ecr get-login-password`, `secretsmanager get-secret-value` and
-`ssm get-parameter` — always run quietly, and what they return is registered
-with the run's redactor, so the value is masked if the build later prints it. A
-secret that is a JSON object also has each field whose name marks it as a
-credential (`password`, `apiKey`, `client_secret`, …) masked on its own, so a
-password parsed out of a database secret stays masked while its `engine` and
-`host` do not.
+`ecr get-login-password`, `secretsmanager get-secret-value`,
+`ssm get-parameter`, and `configure get` of `aws_secret_access_key` or
+`aws_session_token` — always run quietly, and what they return is registered
+with the run's redactor, so the value is masked if the build later prints it.
+The output is searched by core's shared rules (`markSecretsInOutput` in
+`@zuke/core/tooling`): the value under its usual key, any credential-named field
+(`password`, `apiKey`, `client_secret`, …), and — when a `--query` may have
+moved it — the answer whole and every value eight or more characters long. A
+secret's own parts are masked on their own too: the fields of a secret that is a
+JSON object, the password in a connection string or a `scheme://user:pass@host`
+URL, and the decoded text of a base64 credential — so a password parsed out of a
+database secret stays masked by itself.
 
 Where the CLI offers a way to keep a secret off the command line, the wrapper
 uses it: `ssmPutParameter((s) => s.valueFile(path))` sends
@@ -1175,6 +1180,10 @@ class AwsSettings extends SubcommandSettings
     The `--output` a command insists on, whatever the settings or the user's
     config say; `undefined` leaves it to them. A credential-bearing command
     pins `json`, which is the form its secrets can be found in.
+  protected get queried(): boolean
+    Whether a `--query` was set — by the caller, or pinned by a reader. A
+    credential-bearing command then registers every long scalar it printed,
+    since the query may have moved the secret away from its usual key.
   runner(run: AwsSettingsRunner): this
     Replace how this command is run. The default spawns the CLI; this is the
     seam a test answers commands through, and the way a build executes `aws`

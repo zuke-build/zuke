@@ -150,12 +150,15 @@ the debug log prints the token inside a request URL.
 The commands that print a credential — `account get-access-token`,
 `acr login --expose-token`, `keyvault secret show` and `keyvault secret set` —
 always run quietly with `--output json` pinned, and what they return is
-registered with the redactor: the value under its usual key, any
-credential-named field, and — when a `--query` may have moved it — every value
-eight or more characters long. A Key Vault secret that is a JSON object also has
-each credential-named field (`password`, `pwd`, `apiKey`, `accountKey`,
-`SharedAccessKey`, `sas`, `connectionString`, `privateKeyPem`, …) masked on its
-own. `.debug()` registers the credentials the CLI reads from the environment
+registered with the redactor by core's shared rules (`markSecretsInOutput` in
+`@zuke/core/tooling`): the value under its usual key, any credential-named field
+(`password`, `db_pwd`, `apiKey`, `accountKey`, `SharedAccessKey`, `sas`,
+`connectionString`, `privateKeyPem`, …), and — when a `--query` may have moved
+it — the answer whole and every value eight or more characters long. A secret's
+own parts are masked on their own too: the fields of a Key Vault secret that is
+a JSON object, the password in a connection string or a
+`scheme://user:pass@host` URL, and the decoded text of a base64 credential.
+`.debug()` registers the credentials the CLI reads from the environment
 (`AZURE_STORAGE_KEY`, `AZURE_STORAGE_CONNECTION_STRING`,
 `AZURE_STORAGE_SAS_TOKEN`, `AZURE_CLIENT_SECRET`, `AZURE_DEVOPS_EXT_PAT`) — from
 the build's environment or set with `.env(...)`, in either order — but its log
