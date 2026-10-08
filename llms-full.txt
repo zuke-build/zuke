@@ -23567,15 +23567,17 @@ deno install -A -g -n zuke jsr:@zuke/cli
 
 scaffold Zuke into any project with `zuke setup`, then run its build from
 anywhere inside the project with `zuke <target>`: every command that is not
-the CLI's own (`setup`, `import`, `doc`, `upgrade`) is forwarded to the
+the CLI's own (`setup`, `import`, `doc`, `upgrade`, and the project
+commands `add`, `remove`, `cache` and `relock`) is forwarded to the
 nearest `zuke.ts`, exactly as the `./zuke` launcher would run it. Update the
-installed CLI itself with `zuke upgrade`.
+installed CLI itself with `zuke upgrade`, and manage a project's
+dependencies and lock with `zuke add`, `remove`, `cache` and `relock`.
 @module
 
-async function main(args: string[], host: SetupHost, prompter: Prompter, docRunner: DocRunner, starActions: StarActions, buildRunner: BuildRunner, buildProbe: BuildProbe, upgradeHost: UpgradeHost): Promise<number>
+async function main(args: string[], host: SetupHost, prompter: Prompter, docRunner: DocRunner, starActions: StarActions, buildRunner: BuildRunner, buildProbe: BuildProbe, upgradeHost: UpgradeHost, projectHost: ProjectHost): Promise<number>
   The CLI entry point. Returns a process exit code; `host`, `prompter`,
-  `docRunner`, `starActions`, `buildRunner`, `buildProbe`, and `upgradeHost`
-  are injectable for testing.
+  `docRunner`, `starActions`, `buildRunner`, `buildProbe`, `upgradeHost` and
+  `projectHost` are injectable for testing.
 
 function parseImportFlags(args: string[]): ImportFlags
   Parse the argument list following `zuke import`.
@@ -23628,6 +23630,21 @@ interface Ownership
     The numeric owner, or `null` where the platform reports none (Windows).
   mode: number | null
     The permission bits, or `null` where the platform reports none.
+
+interface ProjectHost
+  What the project commands reach outside the process, injectable so they
+  are testable without a real `deno`.
+
+  readText(path: string): Promise<string>
+    Read a text file, rejecting when it cannot be read.
+  writeText(path: string, text: string): Promise<void>
+    Write a text file, replacing what is there.
+  remove(path: string): Promise<void>
+    Remove a file.
+  deno(denoArgs: string[], cwd: string): Promise<number>
+    Run `deno <denoArgs>` in `cwd`, returning its exit code.
+  denoVersion(): string
+    The version of the Deno that runs the command.
 
 interface Prompter
   The interactive surface, injectable so the wizard is testable without a TTY.

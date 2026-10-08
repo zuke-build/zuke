@@ -28,6 +28,10 @@ import {
   spawnDeno,
 } from "../../packages/cli/src/deno_path.ts";
 import { defaultHost, type SetupHost } from "../../packages/cli/src/setup.ts";
+import {
+  defaultProjectHost,
+  type ProjectHost,
+} from "../../packages/cli/src/project.ts";
 import { withTemp } from "../../packages/core/tests/_temp.ts";
 import { withEnv } from "../../packages/core/tests/_env.ts";
 import { capture } from "../../packages/core/tests/_console.ts";
@@ -576,4 +580,198 @@ Deno.test("zuke upgrade reports an install that resolved another release as a fa
     );
     assertEquals(logs.includes("Done"), false);
   }, { prefix: "zuke-global-cli-" });
+});
+
+/**
+ * Run `fn` with a localhost module server, so a real `deno install` has a
+ * remote import to lock without leaving the machine.
+ */
+async function withModuleServer(
+  fn: (url: string) => Promise<void>,
+): Promise<void> {
+  const server = Deno.serve(
+    { port: 0, hostname: "localhost", onListen: () => {} },
+    () =>
+      new Response("export const answer = 42;\n", {
+        headers: { "content-type": "application/typescript" },
+      }),
+  );
+  try {
+    await fn(`http://localhost:${server.addr.port}/mod.ts`);
+  } finally {
+    await server.shutdown();
+  }
+}
+
+Deno.test("zuke relock and cache drive a real deno install in the project root", async () => {
+  await withModuleServer(async (url) => {
+    await withTemp(async (dir) => {
+      await Deno.writeTextFile(`${dir}/${CONFIG_FILE}`, '{ "name": "Lock" }\n');
+      // Deno writes a lock only for a project with a config, as every Zuke
+      // project has.
+      await Deno.writeTextFile(`${dir}/deno.json`, "{}\n");
+      await Deno.writeTextFile(
+        `${dir}/zuke.ts`,
+        `import { answer } from "${url}";\nconsole.log(answer);\n`,
+      );
+      // A stale lock from an old core, as a project stuck on it has.
+      await Deno.writeTextFile(
+        `${dir}/deno.lock`,
+        JSON.stringify({
+          version: "5",
+          specifiers: { "jsr:@zuke/core@^1": "1.66.0" },
+        }),
+      );
+      // The real host, with an import grant for this test's own server:
+      // Deno allows remote imports only from its default hosts (jsr.io and
+      // the like), which a project's real dependencies come from.
+      const projectHost: ProjectHost = {
+        ...defaultProjectHost,
+        deno: (args, cwd) =>
+          defaultProjectHost.deno(
+            [...args, `--allow-import=${new URL(url).host}`],
+            cwd,
+          ),
+      };
+      await withEnv({ DENO_DIR: `${dir}/.deno-dir` }, async () => {
+        const host = recordingHost();
+        await inDir(dir, async () => {
+          const code = await main(
+            ["relock"],
+            host,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            defaultBuildProbe,
+            undefined,
+            projectHost,
+          );
+          assertEquals(code, 0, host.logs.join("\n"));
+        });
+        const lock = await Deno.readTextFile(`${dir}/deno.lock`);
+        assertEquals(lock.includes("@zuke/core"), false, lock);
+        assertEquals(lock.includes(url), true, lock);
+        assertEquals(
+          host.logs.some((l) => l.includes("@zuke/core 1.66.0 → none")),
+          true,
+          host.logs.join("\n"),
+        );
+
+        // cache keeps the lock it finds.
+        const cached = recordingHost();
+        await inDir(dir, async () => {
+          assertEquals(
+            await main(
+              ["cache"],
+              cached,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              defaultBuildProbe,
+              undefined,
+              projectHost,
+            ),
+            0,
+          );
+        });
+        assertEquals(await Deno.readTextFile(`${dir}/deno.lock`), lock);
+      });
+    }, { prefix: "zuke-global-cli-" });
+  });
+});
+
+Deno.test("zuke add maps short names and runs deno add in the project root", async () => {
+  await withTemp(async (dir) => {
+    await Deno.writeTextFile(`${dir}/${CONFIG_FILE}`, '{ "name": "Deps" }\n');
+    await Deno.writeTextFile(`${dir}/zuke.ts`, "\n");
+    const runs: { args: string[]; cwd: string }[] = [];
+    const projectHost = {
+      readText: (path: string) => Deno.readTextFile(path),
+      writeText: (path: string, text: string) => Deno.writeTextFile(path, text),
+      remove: (path: string) => Deno.remove(path),
+      deno: (args: string[], cwd: string) => {
+        runs.push({ args, cwd });
+        return Promise.resolve(0);
+      },
+      denoVersion: () => "2.9.3",
+    };
+    await Deno.mkdir(`${dir}/sub`);
+    await inDir(`${dir}/sub`, async () => {
+      const code = await main(
+        ["add", "docker", "@std/yaml"],
+        recordingHost(),
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        defaultBuildProbe,
+        undefined,
+        projectHost,
+      );
+      assertEquals(code, 0);
+    });
+    assertEquals(runs.length, 1);
+    assertEquals(runs[0].args, ["add", "jsr:@zuke/docker", "jsr:@std/yaml"]);
+    assertEquals(
+      await Deno.realPath(runs[0].cwd),
+      await Deno.realPath(dir),
+    );
+  }, { prefix: "zuke-global-cli-" });
+});
+
+Deno.test({
+  name: "zuke relock writes through a symlinked lock, keeping the link",
+  // Creating a symlink needs privileges Windows runners do not grant.
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    await withModuleServer(async (url) => {
+      await withTemp(async (dir) => {
+        await Deno.writeTextFile(`${dir}/${CONFIG_FILE}`, '{ "name": "L" }\n');
+        await Deno.writeTextFile(`${dir}/deno.json`, "{}\n");
+        await Deno.writeTextFile(
+          `${dir}/zuke.ts`,
+          `import { answer } from "${url}";\nconsole.log(answer);\n`,
+        );
+        await Deno.writeTextFile(
+          `${dir}/shared.lock`,
+          JSON.stringify({
+            version: "5",
+            specifiers: { "jsr:@zuke/core@^1": "1.66.0" },
+          }),
+        );
+        await Deno.symlink(`${dir}/shared.lock`, `${dir}/deno.lock`);
+        const projectHost: ProjectHost = {
+          ...defaultProjectHost,
+          deno: (args, cwd) =>
+            defaultProjectHost.deno(
+              [...args, `--allow-import=${new URL(url).host}`],
+              cwd,
+            ),
+        };
+        await withEnv({ DENO_DIR: `${dir}/.deno-dir` }, async () => {
+          await inDir(dir, async () => {
+            const host = recordingHost();
+            const code = await main(
+              ["relock"],
+              host,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              defaultBuildProbe,
+              undefined,
+              projectHost,
+            );
+            assertEquals(code, 0, host.logs.join("\n"));
+          });
+        });
+        assertEquals((await Deno.lstat(`${dir}/deno.lock`)).isSymlink, true);
+        const shared = await Deno.readTextFile(`${dir}/shared.lock`);
+        assertEquals(shared.includes(url), true, shared);
+        assertEquals(await exists(`${dir}/deno.lock.relock-backup`), false);
+      }, { prefix: "zuke-global-cli-" });
+    });
+  },
 });

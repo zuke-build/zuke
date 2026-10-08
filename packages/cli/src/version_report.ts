@@ -19,7 +19,7 @@
 
 import { absolutePath, lockedJsrSpecifiers } from "@zuke/core";
 import { isRecord } from "./records.ts";
-import { LOCK_FILE } from "./dispatch.ts";
+import { DENO_CONFIG_FILES, LOCK_FILE } from "./dispatch.ts";
 
 /**
  * `text` with its JSONC comments and trailing commas removed, so `JSON.parse`
@@ -65,6 +65,25 @@ function stripJsonc(text: string): string {
     }
   }
   return comma ? `${out},` : out;
+}
+
+/**
+ * The text of the first of Deno's config files at `root` that can be read, in
+ * the order Deno prefers them (`deno.json`, then `deno.jsonc`), or
+ * `undefined` when there is none: the input {@link projectLockPath} takes.
+ */
+export async function projectConfigText(
+  readText: (path: string) => Promise<string>,
+  root: string,
+): Promise<string | undefined> {
+  for (const name of DENO_CONFIG_FILES) {
+    try {
+      return await readText(`${root}/${name}`);
+    } catch {
+      // Not there: try the next one Deno would.
+    }
+  }
+  return undefined;
 }
 
 /**

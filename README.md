@@ -149,6 +149,7 @@ zuke setup --mcp                            # …and register the build's MCP se
 zuke import                                 # migrate package.json scripts / a Makefile instead
 zuke ci                                     # any other command runs the project's build, like ./zuke ci
 zuke upgrade                                # update the installed CLI to the latest release
+zuke add docker                             # add @zuke/docker to the project (also: remove, cache, relock)
 ```
 
 > [!NOTE]
