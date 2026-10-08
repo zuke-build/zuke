@@ -260,6 +260,8 @@ Deno.test("M6: derived leaves skip non-secret vocabulary", () => {
       state: "Provisioned",
       error: { message: "something went wrong" },
       moved: "gggggggggggg",
+      // The key is still present, so the other leaves are only derived.
+      SecretString: "ssssssssss",
     }),
     (s) => s.keys("SecretString").queried(true),
   );
@@ -319,7 +321,8 @@ Deno.test("M8: registering many patterns is not quadratic", () => {
 
 Deno.test("M8: a large output registers in bounded time and count", async () => {
   const leaves = Array.from({ length: 40_000 }, (_, i) => `leaf-${i}-aaaaaaa`);
-  const stdout = JSON.stringify({ items: leaves });
+  // The key is present, so the 40000 other leaves are derived and capped.
+  const stdout = JSON.stringify({ SecretString: "ssssssssss", items: leaves });
   const settings = new SecretOutputSettings().keys("SecretString").queried(
     true,
   );
@@ -328,7 +331,8 @@ Deno.test("M8: a large output registers in bounded time and count", async () => 
     within(2_000, () => (secrets = secretsInOutput(stdout, settings))),
     true,
   );
-  // At most 2000 derived leaves, plus the whole output in its spellings.
+  // At most 2000 derived leaves, plus the secret and the whole output in its
+  // spellings.
   assertEquals(secrets.length <= 2_010, true, String(secrets.length));
   assertEquals(secrets.length >= 2_000, true, String(secrets.length));
   const redactor = new Redactor();
@@ -338,6 +342,24 @@ Deno.test("M8: a large output registers in bounded time and count", async () => 
     return Promise.resolve();
   });
   assertEquals(performance.now() - start < 2_000, true);
+});
+
+Deno.test("M8: a large moved output registers in bounded time", async () => {
+  // With no expected key every leaf is keyed and uncapped, so this is the
+  // worst case for registration: still linear.
+  const leaves = Array.from({ length: 40_000 }, (_, i) => `leaf-${i}-aaaaaaa`);
+  const stdout = JSON.stringify({ items: leaves });
+  const settings = new SecretOutputSettings().keys("SecretString");
+  const redactor = new Redactor();
+  const start = performance.now();
+  await withAmbientRedactor(redactor, () => {
+    for (const secret of secretsInOutput(stdout, settings)) {
+      redactor.add(secret);
+    }
+    return Promise.resolve();
+  });
+  assertEquals(performance.now() - start < 4_000, true);
+  assertEquals(redactor.redact("leaf-39999-aaaaaaa"), "[redacted]");
 });
 
 Deno.test("L1: a base64 credential is registered decoded, with its password", () => {
@@ -392,4 +414,95 @@ Deno.test("M8: a 50k-line output registers and redacts in bounded time", async (
   });
   assertEquals(redactor.redact("x line 7: value-7-aaaaaaa"), "x [redacted]");
   assertEquals(performance.now() - start < 2_000, true);
+});
+
+Deno.test("moved: a secret renamed onto ordinary vocabulary is still registered", () => {
+  // `--query "{id:SecretString,Name:Name}"` and its kin: the expected key is
+  // gone, so no field name says anything about what its value is.
+  for (const key of ["id", "type", "status", "region", "CreatedDate"]) {
+    const secrets = found(
+      JSON.stringify({ [key]: "Sup3r-Value-9", Name: "name-x" }),
+      (s) => s.keys("SecretString").queried(true),
+    );
+    assertFound(secrets, "Sup3r-Value-9", "name-x");
+  }
+  const inError = found(
+    JSON.stringify({ error: { message: "Sup3r-Value-9" }, Name: "name-x" }),
+    (s) => s.keys("SecretString").queried(true),
+  );
+  assertFound(inError, "Sup3r-Value-9");
+});
+
+Deno.test("moved: a short secret moved into a list is registered", () => {
+  // `--query "[Name,SecretString]"`.
+  const secrets = found(
+    JSON.stringify(["name-x", "pin7"]),
+    (s) => s.keys("SecretString").queried(true),
+  );
+  assertFound(secrets, "name-x", "pin7");
+  // Words a setting takes are still not registered.
+  assertNotFound(
+    found(
+      JSON.stringify(["name-x", "true", "on"]),
+      (s) => s.keys("SecretString").queried(true),
+    ),
+    "true",
+    "on",
+  );
+});
+
+Deno.test("moved: a renamed JSON secret has its inner password found", () => {
+  const inner = JSON.stringify({ username: "app", password: "hunter2" });
+  const secrets = found(
+    JSON.stringify({ id: inner, Name: "name-x" }),
+    (s) => s.keys("SecretString").queried(true),
+  );
+  assertFound(secrets, inner, "hunter2");
+});
+
+Deno.test("moved: a renamed connection string has its password found", () => {
+  const connection = "Server=db;User ID=app;Password=hunter2;";
+  const secrets = found(
+    JSON.stringify({ type: connection, Name: "name-x" }),
+    (s) => s.keys("connectionString").queried(true),
+  );
+  assertFound(secrets, connection, "hunter2");
+});
+
+Deno.test("moved: output with none of the keys and no query is read the same way", () => {
+  // No query, but none of the expected keys either: the wrapper's knowledge
+  // of the shape is void, exactly as when a query moved the secret.
+  const secrets = found(
+    JSON.stringify({ id: "Sup3r-Value-9", note: "pin7" }),
+    (s) => s.keys("SecretString"),
+  );
+  assertFound(secrets, "Sup3r-Value-9", "pin7");
+});
+
+Deno.test("moved: keyed leaves are not starved by the derived budget", () => {
+  // Thousands of moved leaves, each a candidate; the 2000 cap on *derived*
+  // values must not drop the ones past it.
+  const leaves = Array.from({ length: 3_000 }, (_, i) => `leaf-${i}-aaaa`);
+  const secrets = found(
+    JSON.stringify({ items: leaves }),
+    (s) => s.keys("SecretString").queried(true),
+  );
+  assertFound(secrets, "leaf-0-aaaa", "leaf-2999-aaaa");
+});
+
+Deno.test("kept: a queried output that still has its key skips vocabulary", () => {
+  // The key is present, so the secret did not move: the other leaves are only
+  // derived, and ordinary vocabulary and short values stay unregistered.
+  const secrets = found(
+    JSON.stringify({
+      SecretString: "aaaaaaaaaa",
+      region: "eu-west-1-zone",
+      CreatedDate: "2026-10-08T00:00:00Z",
+      Name: "pin7",
+      moved: "gggggggggggg",
+    }),
+    (s) => s.keys("SecretString").queried(true),
+  );
+  assertFound(secrets, "aaaaaaaaaa", "gggggggggggg");
+  assertNotFound(secrets, "eu-west-1-zone", "2026-10-08T00:00:00Z", "pin7");
 });
