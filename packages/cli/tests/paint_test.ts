@@ -4,9 +4,19 @@
 import { assertEquals } from "../../core/tests/_assert.ts";
 import { stripAnsi } from "@zuke/core/render";
 import { cliPaint, invocationPaint, PLAIN_PAINT } from "../src/paint.ts";
+import * as core from "@zuke/core/render";
 import { withEnv } from "../../core/tests/_env.ts";
 
-const KINDS = ["heading", "name", "muted", "value", "ok", "fail"] as const;
+const KINDS = [
+  "heading",
+  "command",
+  "flag",
+  "target",
+  "muted",
+  "brand",
+  "ok",
+  "fail",
+] as const;
 
 Deno.test("plain paint is the identity, and keeps the banner unless plain was asked for", () => {
   for (const kind of KINDS) assertEquals(PLAIN_PAINT[kind]("text"), "text");
@@ -28,7 +38,7 @@ Deno.test("rich paint adds glyphs and colour, never words", () => {
   assertEquals(stripAnsi(paint.heading("Usage:")), "◆ Usage:");
   assertEquals(stripAnsi(paint.ok("Done")), "✔ Done");
   assertEquals(stripAnsi(paint.fail("Nope")), "✖ Nope");
-  for (const kind of ["name", "muted", "value"] as const) {
+  for (const kind of ["command", "muted", "target"] as const) {
     const painted = paint[kind]("x");
     assertEquals(painted === "x", false, kind);
     assertEquals(stripAnsi(painted), "x", kind);
@@ -38,7 +48,7 @@ Deno.test("rich paint adds glyphs and colour, never words", () => {
 Deno.test("rich paint under NO_COLOR keeps the glyphs and emits no escapes", () => {
   const paint = cliPaint({ rich: true, color: false, banner: true });
   assertEquals(paint.ok("Done"), "✔ Done");
-  assertEquals(paint.name("x"), "x");
+  assertEquals(paint.command("x"), "x");
 });
 
 Deno.test("invocationPaint reads --plain, ZUKE_PLAIN and the terminal through core", async () => {
@@ -54,4 +64,12 @@ Deno.test("invocationPaint reads --plain, ZUKE_PLAIN and the terminal through co
   await withEnv({ ZUKE_PLAIN: "1" }, () => {
     assertEquals(invocationPaint(undefined, () => true).rich, false);
   });
+});
+
+Deno.test("the palette is core's, with the banner beside it", () => {
+  const mode = { rich: true, color: true, banner: false };
+  const mine = cliPaint(mode);
+  const theirs = core.cliPaint(mode);
+  for (const kind of KINDS) assertEquals(mine[kind]("x"), theirs[kind]("x"));
+  assertEquals(mine.banner, false);
 });

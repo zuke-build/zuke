@@ -1408,6 +1408,14 @@ Deno.test("--version on a terminal is one panel: cli, core, project, deno, platf
     }
     assertStringIncludes(panel, VERSION);
     assertStringIncludes(panel, "1.42.0");
+    // The CLI's own contract for the panel it prints through core's
+    // versionPanel: a box titled zuke, the CLI's row first, every line flush.
+    const lines = panel.split("\n");
+    assertStringIncludes(lines[0], " zuke ");
+    assertEquals(lines[0].startsWith("┌"), true);
+    assertEquals(lines[lines.length - 1].startsWith("└"), true);
+    assertStringIncludes(lines[1], `◆ cli       ${VERSION}`);
+    assertEquals(new Set(lines.map((l) => l.length)).size, 1);
 
     // Outside a project the panel names only what there is.
     const lone = new FakeHost();
