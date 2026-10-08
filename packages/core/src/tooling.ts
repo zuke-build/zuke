@@ -26,8 +26,11 @@ import { Command, CommandError, type CommandOutput } from "./shell.ts";
 import { checkMaxCapturedBytes } from "./capture.ts";
 import { ambientRedactor } from "./ambient_redactor.ts";
 import { type AbsolutePath, absolutePath, type PathLike } from "./path.ts";
+import { secretsInOutput } from "./secret_output.ts";
+import { SecretOutputSettings } from "./secret_output_settings.ts";
 
 export type { PathLike };
+export { SecretOutputSettings };
 
 /**
  * How {@link ToolSettings.run} locates a wrapper's binary when no explicit
@@ -241,6 +244,65 @@ export abstract class ToolSettings {
    */
   protected markSecret(value: string): void {
     ambientRedactor()?.add(value);
+  }
+
+  /**
+   * Register the secrets in what a credential-bearing command printed, so the
+   * build cannot print them back. Call it from {@link onOutput}, which sees the
+   * output of every run — a failed one too:
+   *
+   * ```ts
+   * protected override onOutput(output: CommandOutput): void {
+   *   this.markSecretsInOutput(output.stdout, (s) =>
+   *     s.keys("SecretString").queried(this.queried));
+   * }
+   * ```
+   *
+   * The lambda describes the output ({@link SecretOutputSettings}): the field
+   * the secret comes back under, and whether the caller reshaped the answer
+   * with a query. What is registered errs towards masking without masking
+   * ordinary words, by what makes each value a secret:
+   *
+   * - **the answer** — output that is not JSON, a JSON string, a number as
+   *   written; after a query, or with no expected key present, the document
+   *   whole and its only string — whatever its length;
+   * - **a keyed value** — under an expected key or a credential name
+   *   (`password`, `clientSecret`, `accountKey`, `connectionString`, `auth`,
+   *   …) anywhere in the document — from three characters, never a word such
+   *   as `true` or `enabled`;
+   * - **a derived value** — any other scalar, after a query or with no
+   *   expected key present — from eight characters, never under ordinary
+   *   vocabulary such as `region`, `type`, an id, a date or an `error`, and at
+   *   most 2000 per output.
+   *
+   * Each secret's parts are registered too: the leaves of a secret that is
+   * itself JSON, the credential pairs of a connection string, query string,
+   * dotenv, YAML or XML file, the password of a `scheme://user:pass@host` URL,
+   * and the decoded text of a base64 credential. Every value is registered
+   * trimmed as well, and in the JSON-escaped spellings the raw output carries.
+   *
+   * Every value goes through {@link markSecret}, so it shares its scope: the
+   * base one does nothing outside a run, and then the output is not even read.
+   * Reading the output never throws, whatever it holds, as {@link onOutput}
+   * must not.
+   */
+  protected markSecretsInOutput(
+    stdout: string,
+    configure?: Configure<SecretOutputSettings>,
+  ): void {
+    // Outside a run the base markSecret registers nothing, so there is nothing
+    // to search for — unless a subclass overrides it to see the values.
+    if (
+      ambientRedactor() === undefined &&
+      this.markSecret === ToolSettings.prototype.markSecret
+    ) {
+      return;
+    }
+    const settings = new SecretOutputSettings();
+    const described = configure === undefined ? settings : configure(settings);
+    for (const secret of secretsInOutput(stdout, described)) {
+      this.markSecret(secret);
+    }
   }
 
   #env: Record<string, string> = {};
