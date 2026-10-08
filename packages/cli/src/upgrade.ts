@@ -23,9 +23,10 @@
  * from another shell. Moving back to latest shrinks the file, which is safe.
  *
  * On Deno 2.6 and later the reinstall turns the minimum dependency age off
- * (see {@link installArgs}), and success is reported only once the lock the
- * install wrote resolves `@zuke/cli` to the release that was asked for: Deno
- * exiting 0 means it installed *a* version, not necessarily that one.
+ * (see {@link installArgs}), and on a Deno that writes the install lock (2.7
+ * and later) success is reported only once that lock resolves `@zuke/cli` to
+ * the release that was asked for: Deno exiting 0 means it installed *a*
+ * version, not necessarily that one.
  *
  * It only ever replaces an install that is there: the shim's own
  * `<root>/bin/.zuke/deno.json` must exist, so a one-off
@@ -198,15 +199,36 @@ function resolveTarget(meta: unknown, flags: UpgradeFlags): string {
 }
 
 /**
- * Whether Deno `version` accepts `--minimum-dependency-age`: 2.6.0 and later.
- * A version this cannot read is treated as not accepting it, since passing a
- * flag Deno does not know fails the whole install.
+ * Whether Deno `version` is 2.`minor` or later. A version this cannot read is
+ * treated as older: each caller gates something that misbehaves on a Deno
+ * that lacks it.
  */
-export function acceptsMinimumDependencyAge(version: string): boolean {
+function denoAtLeast(version: string, minor: number): boolean {
   const match = /^(\d+)\.(\d+)\./.exec(version);
   if (match === null) return false;
   const major = Number(match[1]);
-  return major > 2 || (major === 2 && Number(match[2]) >= 6);
+  return major > 2 || (major === 2 && Number(match[2]) >= minor);
+}
+
+/**
+ * Whether the reinstall passes `--minimum-dependency-age=0` on Deno
+ * `version`: 2.6.0 and later. The flag arrived during 2.5 (2.5.0 rejects it
+ * as an unknown argument, which fails the whole install), and no Deno before
+ * 2.9 applies a default age, so gating on a whole minor that has it loses
+ * nothing.
+ */
+export function acceptsMinimumDependencyAge(version: string): boolean {
+  return denoAtLeast(version, 6);
+}
+
+/**
+ * Whether `deno install -g` on Deno `version` writes the lock beside the shim
+ * (`<root>/bin/.zuke/deno.lock`): 2.7.0 and later. An older Deno installs a
+ * `--no-config` shim and leaves any lock a newer Deno wrote untouched, so
+ * that lock says nothing about what it just installed and is not checked.
+ */
+export function writesInstallLock(version: string): boolean {
+  return denoAtLeast(version, 7);
 }
 
 /**
@@ -346,11 +368,14 @@ export async function runUpgrade(
   // A zero exit says Deno installed *something*. Confirm it is the target
   // before saying so: a resolver that picks another release (Deno 2.9's
   // dependency-age window did) would otherwise be reported as a success.
-  const installed = await installedVersion(
-    host,
-    absolutePath(marker).parent()("deno.lock").path,
-    denoArgs[denoArgs.length - 1],
-  );
+  const deno = host.denoVersion();
+  const installed = writesInstallLock(deno)
+    ? await installedVersion(
+      host,
+      absolutePath(marker).parent()("deno.lock").path,
+      denoArgs[denoArgs.length - 1],
+    )
+    : target;
   if (installed !== target) {
     log(paint.fail(
       `zuke upgrade: deno install finished, but its lock resolves ` +

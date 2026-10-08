@@ -12,6 +12,7 @@ import {
   defaultUpgradeHost,
   installArgs,
   parseUpgradeFlags,
+  writesInstallLock,
 } from "../src/upgrade.ts";
 import { VERSION } from "../src/version.ts";
 import { FakeHost, FakeStarActions, noProjectProbe } from "./_fakes.ts";
@@ -193,7 +194,8 @@ Deno.test("installArgs keeps the documented unversioned spec for latest, pins ot
 });
 
 Deno.test("installArgs leaves the dependency-age flag off a Deno that would reject it", () => {
-  // Deno 2.5 and older fail the whole install on an unknown flag.
+  // 2.5.0 rejects the flag, failing the whole install; the gate is a whole
+  // minor that has it.
   for (const old of ["2.5.6", "2.4.5", "1.46.3", "nightly"]) {
     const args = installArgs("2.0.0", true, old);
     assertEquals(args.includes("--minimum-dependency-age=0"), false, old);
@@ -206,8 +208,27 @@ Deno.test("installArgs leaves the dependency-age flag off a Deno that would reje
 
 Deno.test("acceptsMinimumDependencyAge reads the major and minor", () => {
   assertEquals(acceptsMinimumDependencyAge("2.6.0"), true);
+  assertEquals(acceptsMinimumDependencyAge("2.7.0+fb4db33"), true);
   assertEquals(acceptsMinimumDependencyAge("2.5.9"), false);
   assertEquals(acceptsMinimumDependencyAge("garbage"), false);
+});
+
+Deno.test("writesInstallLock starts at 2.7, where deno install -g writes the lock", () => {
+  assertEquals(writesInstallLock("2.7.0"), true);
+  assertEquals(writesInstallLock("2.9.3"), true);
+  assertEquals(writesInstallLock("2.6.0"), false);
+});
+
+Deno.test("zuke upgrade on a Deno that writes no install lock does not read a leftover one", async () => {
+  // Deno 2.6 installs a --no-config shim and leaves a lock a newer Deno wrote
+  // in place; that lock says nothing about this install.
+  const fake = new FakeUpgradeHost();
+  fake.deno = "2.6.0";
+  fake.resolves = "1.0.0";
+  const { code, logs } = await upgrade([], fake);
+  assertEquals(code, 0);
+  assertEquals(fake.read, []);
+  assertStringIncludes(logs.join("\n"), `zuke ${NEWER} is installed`);
 });
 
 Deno.test("zuke upgrade fails when the install resolved another release than it asked for", async () => {
