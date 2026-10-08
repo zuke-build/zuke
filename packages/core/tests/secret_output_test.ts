@@ -12,7 +12,7 @@
  */
 
 import { assertEquals } from "./_assert.ts";
-import { secretsInOutput } from "../src/secret_output.ts";
+import { keepNumberSource, secretsInOutput } from "../src/secret_output.ts";
 import { SecretOutputSettings } from "../src/tooling.ts";
 
 /** The secrets found in `stdout`, described by `configure`. */
@@ -94,13 +94,15 @@ Deno.test("a numeric parameter is registered as written", () => {
   assertEquals(found("12\n", (s) => s.keys("Value")), ["12"]);
 });
 
-Deno.test("a reshaped assume-role query registers every long scalar", () => {
+Deno.test("a reshaped assume-role query registers every scalar it moved", () => {
+  // Neither expected key survives the query, so every leaf may be a secret —
+  // the duration too, as a keyed value of three or more characters.
   const secrets = found(
-    json(["aaaaaaaaaaaa", "bbbbbbbbbbbb", 3600]),
+    json(["aaaaaaaaaaaa", "bbbbbbbbbbbb", 3600, 12]),
     (s) => s.keys("SecretAccessKey", "SessionToken").queried(true),
   );
-  assertFound(secrets, "aaaaaaaaaaaa", "bbbbbbbbbbbb");
-  assertNotFound(secrets, "3600");
+  assertFound(secrets, "aaaaaaaaaaaa", "bbbbbbbbbbbb", "3600");
+  assertNotFound(secrets, "12");
 });
 
 Deno.test("a query that moves the secret to another key still masks it", () => {
@@ -114,11 +116,12 @@ Deno.test("a query that moves the secret to another key still masks it", () => {
 });
 
 Deno.test("short derived values are not registered", () => {
+  // The expected key is present, so the other leaves are only derived.
   const secrets = found(
-    json([true, 12, "Bearer", "aaaaaaaaaa"]),
+    json({ x: "xxxxxxxx", other: [true, 12, "Bearer", "aaaaaaaaaa"] }),
     (s) => s.keys("x").queried(true),
   );
-  assertFound(secrets, "aaaaaaaaaa");
+  assertFound(secrets, "xxxxxxxx", "aaaaaaaaaa");
   assertNotFound(secrets, "true", "12", "Bearer");
   assertNotFound(
     found(json({ password: "ab", token: true, x: "y", n: 1 })),
@@ -220,7 +223,8 @@ Deno.test("Azure's credential field names are registered", () => {
     keyId: "kid",
     hostname: "db",
   };
-  const document = json(fields);
+  // The expected key is present, so only the names decide.
+  const document = json({ ...fields, value: "vvvvvvvv" });
   const secrets = found(document, (s) => s.keys("value"));
   for (const [name, value] of Object.entries(fields)) {
     const secret = name !== "keyId" && name !== "hostname";
@@ -349,4 +353,23 @@ Deno.test("a deeply nested document neither overflows the stack nor throws", () 
     "}".repeat(depth)
   }`;
   assertFound(found(objects, (s) => s.keys("x")), "bbbbbbbbbb");
+});
+
+Deno.test("a number's spelling falls back to its value without source access", () => {
+  // Engines without JSON source text access pass the reviver no context.
+  const kept = keepNumberSource("n", 1e21);
+  assertEquals(
+    typeof kept === "object" && kept !== null && "source" in kept
+      ? kept.source
+      : undefined,
+    "1e+21",
+  );
+  assertEquals(keepNumberSource("s", "text"), "text");
+});
+
+Deno.test("a base64 credential that decodes to control characters is left encoded", () => {
+  const encoded = btoa("aaaa\u0001bbbb");
+  const secrets = found(json({ password: encoded }), (s) => s.keys("x"));
+  assertFound(secrets, encoded);
+  assertNotFound(secrets, "aaaa\u0001bbbb");
 });

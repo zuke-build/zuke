@@ -24,16 +24,28 @@
  *   a queried `Bearer` is masked too.
  * - **A keyed value** — under one of the expected keys, under a credential
  *   name anywhere in the document (`password`, `clientSecret`, `accountKey`,
- *   `connectionString`, …), or a credential pair, URL password or decoded
- *   base64 credential found inside a secret — is registered from
+ *   `connectionString`, …), any leaf of a document with **none** of the
+ *   expected keys, or a credential pair, URL password or decoded base64
+ *   credential found inside a secret — is registered from
  *   {@link MIN_KEYED_LENGTH} characters, unless it is one of the
- *   {@link ENUM_WORDS} (`on`, `true`, `enabled`).
- * - **A derived value** — any leaf, registered because the caller queried or
- *   no expected key is present, or any leaf of a secret that is itself JSON —
- *   must clear {@link MIN_DERIVED_LENGTH}, and once the caller queried is
+ *   {@link ENUM_WORDS} (`on`, `true`, `enabled`), and is searched for parts.
+ * - **A derived value** — any other leaf of a queried document that still
+ *   carries an expected key, or any leaf of a secret that is itself JSON —
+ *   must clear {@link MIN_DERIVED_LENGTH}; in a queried document it is also
  *   skipped under ordinary vocabulary (`region`, `type`, an `id`, a date, an
  *   `error`; see `./credential_name.ts`). At most {@link DERIVED_BUDGET} are
- *   registered per output.
+ *   registered per output; keyed values never count against it.
+ *
+ * When **none** of the expected keys is present, the secret has moved: a
+ * query renamed it (`{id: SecretString}`, `[Name, SecretString]`), or the
+ * output is not the shape the wrapper knows. Either way no field name says
+ * anything about what its value is — `id` or `type` may hold the secret — so
+ * every leaf is a keyed value, with no vocabulary filter, and a short PIN or a
+ * renamed JSON secret or connection string is still found. Output never queried
+ * with none of the keys is read the same way, since the wrapper's knowledge of
+ * its shape is just as void. Only when an expected key is still present does
+ * the key say where the secret is, and the other leaves of a queried document
+ * fall to the derived threshold.
  *
  * A number is registered as the output spells it — `1e10`, or a twenty-digit
  * id a double would round. A blank value is never registered, and every value
@@ -115,8 +127,10 @@ class NumberText {
  * The reviver that keeps each number's source spelling. Engines without
  * JSON source text access pass no `context`, and the parsed value's own
  * spelling is the best left.
+ *
+ * Exported for its test only, since Deno always passes a `context`.
  */
-function keepNumberSource(
+export function keepNumberSource(
   _key: string,
   value: unknown,
   context?: { source?: unknown },
@@ -436,18 +450,22 @@ function inDocument(
       }
     }
   }
-  if (settings.queried_ || keyed.length === 0) {
-    reshapedParts(document, text, leaves, findings);
+  // No expected key at all: the secret moved — a query renamed it, or the
+  // output is not the shape the wrapper knows — so any leaf may be it.
+  const moved = keyed.length === 0;
+  if (moved) { for (const leaf of leaves) findings.add(leaf.text, "keyed", 0); }
+  if (settings.queried_ || moved) {
+    reshapedAnswer(document, text, leaves, findings);
   }
+  if (settings.queried_ && !moved) derivedLeaves(leaves, findings);
 }
 
 /**
  * Register what an output the caller reshaped — or one with none of the
- * expected keys — holds: the output whole, as the answer, and so its only
- * string or the lone element of a one-element list; then every leaf long
- * enough to be derived, less ordinary vocabulary.
+ * expected keys — holds as its answer: the output whole, and so its only
+ * string or the lone element of a one-element list.
  */
-function reshapedParts(
+function reshapedAnswer(
   document: object,
   text: string,
   leaves: Leaf[],
@@ -461,6 +479,13 @@ function reshapedParts(
     const only = scalarText(document[0]);
     if (only !== undefined) findings.add(only, "answer", 0);
   }
+}
+
+/**
+ * Register the leaves of a queried output that still carries an expected key,
+ * as derived values: long enough, and not under ordinary vocabulary.
+ */
+function derivedLeaves(leaves: Leaf[], findings: Findings): void {
   for (const leaf of leaves) {
     const plain = leaf.inError ||
       (leaf.key !== undefined && isNonSecretName(leaf.key));
