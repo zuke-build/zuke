@@ -5907,22 +5907,30 @@ abstract class ToolSettings
     The lambda describes the output ({@link SecretOutputSettings}): the field
     the secret comes back under, and whether the caller reshaped the answer
     with a query. What is registered errs towards masking without masking
-    ordinary words. A string under an expected key is the secret, whatever its
-    length — unless the caller queried, when the key no longer says what it
-    holds. So is an answer that is one JSON string, or output that is not JSON
-    at all. A credential-named field (`password`, `clientSecret`,
-    `accountKey`, `connectionString`, …) anywhere in the document is
-    registered, and so — when the caller queried, or no expected key is
-    present — is every scalar of eight or more characters. Each secret found
-    also has its parts registered: the credential fields of a secret that is
-    itself JSON, the credential pairs of a connection string or dotenv file,
-    and the password of a `scheme://user:pass@host` URL. A derived value
-    shorter than eight characters is never registered, so `true`, `12` or
-    `Bearer` cannot mask the log.
+    ordinary words, by what makes each value a secret:
 
-    Every value goes through {@link markSecret}, so it shares its scope: it
-    does nothing outside a run. Reading the output never throws, whatever it
-    holds, as {@link onOutput} must not.
+    - the answer — output that is not JSON, a JSON string, a number as
+      written; after a query, or with no expected key present, the document
+      whole and its only string — whatever its length;
+    - a keyed value — under an expected key or a credential name
+      (`password`, `clientSecret`, `accountKey`, `connectionString`, `auth`,
+      …) anywhere in the document — from three characters, never a word such
+      as `true` or `enabled`;
+    - a derived value — any other scalar, after a query or with no
+      expected key present — from eight characters, never under ordinary
+      vocabulary such as `region`, `type`, an id, a date or an `error`, and at
+      most 2000 per output.
+
+    Each secret's parts are registered too: the leaves of a secret that is
+    itself JSON, the credential pairs of a connection string, query string,
+    dotenv, YAML or XML file, the password of a `scheme://user:pass@host` URL,
+    and the decoded text of a base64 credential. Every value is registered
+    trimmed as well, and in the JSON-escaped spellings the raw output carries.
+
+    Every value goes through {@link markSecret}, so it shares its scope: the
+    base one does nothing outside a run, and then the output is not even read.
+    Reading the output never throws, whatever it holds, as {@link onOutput}
+    must not.
   abstract protected defaultTool(): string
     The binary to spawn when {@link toolPath} is not set.
   abstract protected buildArgs(): string[]

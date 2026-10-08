@@ -704,6 +704,31 @@ Deno.test("markSecretsInOutput outside a run is a no-op, not a crash", async () 
   assertEquals(out.code, 0);
 });
 
+Deno.test("L3: markSecretsInOutput does not read the output outside a run", async () => {
+  // The base markSecret registers nothing without a redactor, so the search
+  // is skipped: the lambda describing the output is never even called.
+  class Counting extends EvalSettings {
+    calls = 0;
+    register(stdout: string): void {
+      this.markSecretsInOutput(stdout, (s) => {
+        this.calls++;
+        return s;
+      });
+    }
+  }
+  const outside = new Counting();
+  outside.register("aaaaaaaa1");
+  assertEquals(outside.calls, 0);
+  const inside = new Counting();
+  const redactor = new Redactor();
+  await withAmbientRedactor(redactor, () => {
+    inside.register("aaaaaaaa1");
+    return Promise.resolve();
+  });
+  assertEquals(inside.calls, 1);
+  assertEquals(redactor.redact("aaaaaaaa1"), REDACTED);
+});
+
 Deno.test("stdinInput() reaches the tool's standard input", async () => {
   // A real pipe, not an argv assertion: what is being proved is that the text
   // arrives on the child's stdin, which only a subprocess can show.

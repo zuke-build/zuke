@@ -17,6 +17,7 @@ import {
 import { Build, target } from "../../packages/core/mod.ts";
 import type { CommandOutput } from "../../packages/core/src/shell.ts";
 import { ToolSettings } from "../../packages/core/src/tooling.ts";
+import { withEnv } from "../../packages/core/tests/_env.ts";
 import { runCli, withoutMaskDirectives } from "./_harness.ts";
 
 /** The password inside the fake secret — low-entropy and obviously fake. */
@@ -42,6 +43,34 @@ class GetSecretSettings extends ToolSettings {
 
   protected override onOutput(output: CommandOutput): void {
     this.markSecretsInOutput(output.stdout, (s) => s.keys("SecretString"));
+  }
+}
+
+/** The short password inside a secret printed as text — low-entropy. */
+const SHORT_PASSWORD = "hunter2";
+
+/**
+ * A fake `get-secret-value --query SecretString --output text`: the secret's
+ * own JSON, printed bare, with a password under eight characters in it.
+ */
+class GetSecretTextSettings extends ToolSettings {
+  protected override defaultTool(): string {
+    return Deno.execPath();
+  }
+
+  protected override buildArgs(): string[] {
+    const secret = JSON.stringify({
+      username: "app",
+      password: SHORT_PASSWORD,
+    });
+    return ["eval", `console.log(${JSON.stringify(secret)})`];
+  }
+
+  protected override onOutput(output: CommandOutput): void {
+    this.markSecretsInOutput(
+      output.stdout,
+      (s) => s.keys("SecretString").queried(true),
+    );
   }
 }
 
@@ -92,30 +121,24 @@ class Leaky extends Build {
       throw new Error(`login refused for password ${password}`);
     });
 
+  leakShort = target()
+    .description("Read a secret printed as text, then fail with its password")
+    .executes(async () => {
+      const output = await new GetSecretTextSettings().quiet().run();
+      const secret: unknown = JSON.parse(output.stdout);
+      const password = typeof secret === "object" && secret !== null &&
+          "password" in secret
+        ? String(secret.password)
+        : "";
+      throw new Error(`login refused for password ${password}`);
+    });
+
   leakArgv = target()
     .description("Read a secret, then pass its password to a failing command")
     .executes(async () => {
       const password = new URL(await readSecret()).password;
       await new ConnectSettings().secret(password).quiet().run();
     });
-}
-
-/** Run `fn` with the environment GitHub Actions gives a job, then restore it. */
-async function underActions(fn: () => Promise<void>): Promise<void> {
-  const previous = {
-    CI: Deno.env.get("CI"),
-    GITHUB_ACTIONS: Deno.env.get("GITHUB_ACTIONS"),
-  };
-  Deno.env.set("CI", "true");
-  Deno.env.set("GITHUB_ACTIONS", "true");
-  try {
-    await fn();
-  } finally {
-    for (const [name, value] of Object.entries(previous)) {
-      if (value === undefined) Deno.env.delete(name);
-      else Deno.env.set(name, value);
-    }
-  }
 }
 
 for (
@@ -126,17 +149,31 @@ for (
   ]
 ) {
   Deno.test(`a secret a tool printed is masked when ${name} prints it`, async () => {
-    const { code, out, err } = await runCli(Leaky, [name]);
-    assertEquals(code, 1);
-    assertStringIncludes(out + err, expected);
-    const body = withoutMaskDirectives(out + err);
-    assertEquals(body.includes(PASSWORD), false, body);
-    assertEquals(body.includes(SECRET), false, body);
+    // Plain mode: no CI host, so nothing but the redactor stands between the
+    // secret and the output.
+    await withEnv({ CI: undefined, GITHUB_ACTIONS: undefined }, async () => {
+      const { code, out, err } = await runCli(Leaky, [name]);
+      assertEquals(code, 1);
+      assertStringIncludes(out + err, expected);
+      const body = withoutMaskDirectives(out + err);
+      assertEquals(body.includes(PASSWORD), false, body);
+      assertEquals(body.includes(SECRET), false, body);
+    });
   });
 }
 
+Deno.test("a short password in a secret printed as text is masked", async () => {
+  await withEnv({ CI: undefined, GITHUB_ACTIONS: undefined }, async () => {
+    const { code, out, err } = await runCli(Leaky, ["leakShort"]);
+    assertEquals(code, 1);
+    assertStringIncludes(out + err, "login refused for password");
+    const body = withoutMaskDirectives(out + err);
+    assertEquals(body.includes(SHORT_PASSWORD), false, body);
+  });
+});
+
 Deno.test("a secret a tool printed stays masked under GitHub Actions", async () => {
-  await underActions(async () => {
+  await withEnv({ CI: "true", GITHUB_ACTIONS: "true" }, async () => {
     const { code, out, err } = await runCli(Leaky, ["leakPart"]);
     assertEquals(code, 1);
     assertStringIncludes(out + err, "login refused for password");

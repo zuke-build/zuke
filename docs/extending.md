@@ -123,18 +123,19 @@ say whether the caller reshaped the answer with a query.
 import type { CommandOutput } from "@zuke/core/shell";
 import { ToolSettings } from "@zuke/core/tooling";
 
-class VaultReadSettings extends ToolSettings {
+// `secrets-cli` is a made-up tool: substitute the CLI you are wrapping.
+class SecretsCliGetSettings extends ToolSettings {
   #query?: string;
   query(expression: string): this {
     this.#query = expression;
     return this;
   }
   protected override defaultTool(): string {
-    return "vault";
+    return "secrets-cli";
   }
   protected override buildArgs(): string[] {
     const query = this.#query === undefined ? [] : [`--query=${this.#query}`];
-    return ["read", "--format=json", ...query];
+    return ["get", "--output=json", ...query];
   }
   protected override onOutput(output: CommandOutput): void {
     this.markSecretsInOutput(
@@ -145,17 +146,24 @@ class VaultReadSettings extends ToolSettings {
 }
 ```
 
-The value under an expected key is registered whatever its length (after a
-query, only when it is eight or more characters long — the key no longer says
-what it holds), as is an answer that is one JSON string or output that is not
-JSON at all. So is every credential-named field (`password`, `clientSecret`,
-`accountKey`, `connectionString`, …) anywhere in the document, and — after a
-query, or when no expected key is present — every scalar of eight or more
-characters. Each secret's parts are registered too: the credential fields of a
-secret that is itself JSON, the credential pairs of a connection string or
-dotenv file, and the password of a `scheme://user:pass@host` URL. A derived
-value shorter than eight characters never is, so `true`, `12` or `Bearer` cannot
-mask the log.
+Each value is registered by what makes it a secret:
+
+- **the answer** — output that is not JSON, a JSON string, a number as written;
+  after a query, or with no expected key present, the document whole and its
+  only string — whatever its length;
+- **a keyed value** — under an expected key, or under a credential name
+  (`password`, `clientSecret`, `accountKey`, `connectionString`, `auth`, …)
+  anywhere in the document — from three characters, never a word such as `true`
+  or `enabled`;
+- **a derived value** — any other scalar, after a query or with no expected key
+  present — from eight characters, never under ordinary vocabulary such as
+  `region`, `type`, an id, a date or an `error`, and at most 2000 per output.
+
+Each secret's parts are registered too: the leaves of a secret that is itself
+JSON, the credential pairs of a connection string, query string, dotenv, YAML or
+XML file, the password of a `scheme://user:pass@host` URL, and the decoded text
+of a base64 credential. Every value is also registered trimmed, and in the
+JSON-escaped spellings the raw output may carry it in.
 
 ## 3. Components — reusable target bundles
 

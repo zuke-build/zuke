@@ -59,16 +59,15 @@ export const MIN_DERIVED_LENGTH = 8;
  * indentation surrounds it.
  */
 export function maskPatterns(value: string): string[] {
-  const patterns: string[] = [];
-  if (value.length > 0) patterns.push(value);
-  if (!value.includes("\n")) return patterns;
+  // A Set, so a secret of many lines is deduplicated in linear time.
+  const patterns = new Set<string>();
+  if (value.length > 0) patterns.add(value);
+  if (!value.includes("\n")) return [...patterns];
   for (const line of value.split(/\r?\n/)) {
     const trimmed = line.trim();
-    if (trimmed.length >= MIN_DERIVED_LENGTH && !patterns.includes(trimmed)) {
-      patterns.push(trimmed);
-    }
+    if (trimmed.length >= MIN_DERIVED_LENGTH) patterns.add(trimmed);
   }
-  return patterns;
+  return [...patterns];
 }
 
 /**
@@ -79,7 +78,12 @@ export function maskPatterns(value: string): string[] {
  * masked whole rather than partially.
  */
 export class Redactor {
+  /** Every pattern, for an O(1) duplicate check. */
+  readonly #known = new Set<string>();
+  /** The patterns, longest first once {@link Redactor.redact} has sorted them. */
   readonly #secrets: string[] = [];
+  /** Whether a pattern was added since the list was last sorted. */
+  #unsorted = false;
 
   /**
    * Register a secret value to mask. Ignores empty strings and duplicates.
@@ -95,15 +99,23 @@ export class Redactor {
 
   /** Register one already-derived pattern, ignoring empties and duplicates. */
   #addPattern(pattern: string): void {
-    if (pattern.length === 0 || this.#secrets.includes(pattern)) return;
+    if (pattern.length === 0 || this.#known.has(pattern)) return;
+    this.#known.add(pattern);
     this.#secrets.push(pattern);
-    // Keep the list longest-first so a secret that is a substring of another
-    // never masks only the inner part, leaving the rest exposed.
-    this.#secrets.sort((a, b) => b.length - a.length);
+    // Sorted once, when next used, rather than on every add: registering n
+    // patterns one by one would otherwise cost n sorts.
+    this.#unsorted = true;
   }
 
   /** Replace every registered secret in `line` with {@link REDACTED}. */
   redact(line: string): string {
+    if (this.#unsorted) {
+      // Longest first, so a secret that is a substring of another never masks
+      // only the inner part, leaving the rest exposed. The sort is stable, so
+      // patterns of one length keep the order they were added in.
+      this.#secrets.sort((a, b) => b.length - a.length);
+      this.#unsorted = false;
+    }
     let out = line;
     for (const secret of this.#secrets) out = out.split(secret).join(REDACTED);
     return out;

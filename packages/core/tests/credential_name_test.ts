@@ -13,7 +13,11 @@
  */
 
 import { assertEquals } from "./_assert.ts";
-import { isCredentialName } from "../src/credential_name.ts";
+import {
+  isCredentialName,
+  isErrorName,
+  isNonSecretName,
+} from "../src/credential_name.ts";
 
 Deno.test("credential names match on their last segment, in every case style", () => {
   for (
@@ -26,7 +30,6 @@ Deno.test("credential names match on their last segment, in every case style", (
       "dbpassword",
       "DB_PASSWORD",
       "passwd",
-      "pwd",
       "db-pwd",
       "DBPwd",
       "passphrase",
@@ -39,8 +42,6 @@ Deno.test("credential names match on their last segment, in every case style", (
       "accessToken",
       "refresh-token",
       "tokens",
-      "key",
-      "keys",
       "apiKey",
       "api_key",
       "api-key",
@@ -94,7 +95,10 @@ Deno.test("names that only look like credentials do not match", () => {
       "compass",
       "passwordLastUsed",
       "secretName",
-      "SecretString",
+      "pwd",
+      "PWD",
+      "key",
+      "keys",
       "secretId",
       "username",
       "Name",
@@ -103,5 +107,50 @@ Deno.test("names that only look like credentials do not match", () => {
     ]
   ) {
     assertEquals(isCredentialName(name), false, name);
+  }
+});
+
+Deno.test("non-secret vocabulary is recognised, unless it is a credential", () => {
+  for (
+    const name of [
+      "region",
+      "Location",
+      "type",
+      "Arn",
+      "id",
+      "roleId",
+      "subscription_ids",
+      "status",
+      "state",
+      "VersionStages",
+      "CreatedDate",
+      "LastModifiedTime",
+      "timestamp",
+      "updated_at",
+    ]
+  ) {
+    assertEquals(isNonSecretName(name), true, name);
+  }
+  for (
+    const name of [
+      "password",
+      "token",
+      "at",
+      "value",
+      "",
+      "--",
+      "x".repeat(200),
+    ]
+  ) {
+    assertEquals(isNonSecretName(name), false, name);
+  }
+});
+
+Deno.test("error fields are recognised by their last segment", () => {
+  for (const name of ["error", "errors", "lastError", "validation_errors"]) {
+    assertEquals(isErrorName(name), true, name);
+  }
+  for (const name of ["errorCode", "", `${"x".repeat(200)}Error`]) {
+    assertEquals(isErrorName(name), false, name);
   }
 });
