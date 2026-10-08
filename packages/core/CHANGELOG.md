@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.69.0](https://github.com/zuke-build/zuke/compare/core-v1.68.0...core-v1.69.0) (2026-10-08)
+
+
+### Features
+
+* **core:** keep outdated --update from corrupting the lock; add --min-dep-age and --entrypoint ([#754](https://github.com/zuke-build/zuke/issues/754)) ([3bd7a2d](https://github.com/zuke-build/zuke/commit/3bd7a2d7ba470cf6bad52c9f0e3442fa0573f005))
+
 ## [1.68.0](https://github.com/zuke-build/zuke/compare/core-v1.67.0...core-v1.68.0) (2026-10-07)
 
 

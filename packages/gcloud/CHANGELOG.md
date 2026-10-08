@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/zuke-build/zuke/compare/gcloud-v1.3.1...gcloud-v1.4.0) (2026-10-08)
+
+
+### Features
+
+* **gcloud:** Cloud Logging and Cloud Monitoring tasks, time-series reads and a cloudMonitoring canary analysis ([#755](https://github.com/zuke-build/zuke/issues/755)) ([a708a86](https://github.com/zuke-build/zuke/commit/a708a8641da27c1b21231edb17a2dced6e15c49d))
+
 ## [1.3.1](https://github.com/zuke-build/zuke/compare/gcloud-v1.3.0...gcloud-v1.3.1) (2026-10-06)
 
 
