@@ -5783,6 +5783,41 @@ class DynamicToolSettings extends ToolSettings
   override protected buildArgs(): string[]
     The argv assembled from the `arg`/`flag`/`option` calls, in order.
 
+class SecretOutputSettings
+  What a wrapper knows about the output of a command that prints a secret —
+  which field the secret comes back under, and whether the caller reshaped the
+  answer — configured through the lambda handed to
+  `ToolSettings.markSecretsInOutput`:
+
+  ```ts
+  protected override onOutput(output: CommandOutput): void {
+    this.markSecretsInOutput(output.stdout, (s) =>
+      s.keys("SecretString", "SecretBinary").queried(this.queried));
+  }
+  ```
+
+  Neither setting is required: with no keys, a JSON answer has every scalar of
+  eight or more characters registered, and an answer that is not JSON (a bare
+  token) is registered whole.
+
+  keys_: string[]
+    The field names the command returns its secret under; see {@link keys}.
+  queried_: boolean
+    Whether the caller reshaped the output; see {@link queried}.
+  keys(...names: string[]): this
+    The field names the command returns its secret under, at any depth of the
+    JSON it prints — `SecretString`, `accessToken`, `value`. A string found
+    under one is registered whatever its length, since it is the secret.
+    Accumulates across calls.
+  queried(reshaped: boolean): this
+    Whether the caller passed a query (`--query`, a JMESPath projection) that
+    may have reshaped the output — renamed a key, or moved the secret under
+    another. When it did, the expected keys are no longer trusted to hold the
+    secret: every scalar of eight or more characters in the answer is
+    registered, and a short value under an expected key is treated like any
+    other derived value — `{accessToken: tokenType}` must not register
+    `Bearer`.
+
 abstract class SubcommandSettings extends ToolSettings
   Base for a wrapper over a CLI organised into subcommand groups — a command
   path built with {@link command} plus repeatable `--flag [value]` options built
@@ -5857,6 +5892,37 @@ abstract class ToolSettings
     Does nothing outside a run, where there is no redactor to register with —
     a wrapper used standalone in a script still works, it simply has nothing
     masking its output.
+  protected markSecretsInOutput(stdout: string, configure?: Configure<SecretOutputSettings>): void
+    Register the secrets in what a credential-bearing command printed, so the
+    build cannot print them back. Call it from {@link onOutput}, which sees the
+    output of every run — a failed one too:
+
+    ```ts
+    protected override onOutput(output: CommandOutput): void {
+      this.markSecretsInOutput(output.stdout, (s) =>
+        s.keys("SecretString").queried(this.queried));
+    }
+    ```
+
+    The lambda describes the output ({@link SecretOutputSettings}): the field
+    the secret comes back under, and whether the caller reshaped the answer
+    with a query. What is registered errs towards masking without masking
+    ordinary words. A string under an expected key is the secret, whatever its
+    length — unless the caller queried, when the key no longer says what it
+    holds. So is an answer that is one JSON string, or output that is not JSON
+    at all. A credential-named field (`password`, `clientSecret`,
+    `accountKey`, `connectionString`, …) anywhere in the document is
+    registered, and so — when the caller queried, or no expected key is
+    present — is every scalar of eight or more characters. Each secret found
+    also has its parts registered: the credential fields of a secret that is
+    itself JSON, the credential pairs of a connection string or dotenv file,
+    and the password of a `scheme://user:pass@host` URL. A derived value
+    shorter than eight characters is never registered, so `true`, `12` or
+    `Bearer` cannot mask the log.
+
+    Every value goes through {@link markSecret}, so it shares its scope: it
+    does nothing outside a run. Reading the output never throws, whatever it
+    holds, as {@link onOutput} must not.
   abstract protected defaultTool(): string
     The binary to spawn when {@link toolPath} is not set.
   abstract protected buildArgs(): string[]

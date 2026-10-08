@@ -10,6 +10,7 @@
 
 import { assertEquals } from "./_assert.ts";
 import { HttpError, redactUrl, redactUrls } from "../mod.ts";
+import { urlPasswords } from "../src/redact_url.ts";
 
 /** Assert none of `secrets` survives in `text`. */
 function assertClean(text: string, ...secrets: string[]): void {
@@ -321,4 +322,36 @@ Deno.test("redactUrls redacts every URL in a token, wherever it starts", () => {
   ) {
     assertClean(redactUrls(message), "SECRET");
   }
+});
+
+Deno.test("urlPasswords finds each URL's password, as parsed and decoded", () => {
+  assertEquals(
+    urlPasswords(
+      "db postgres://app:aaaaaaaa%40b@db/app and redis://:bbbbbbbb@cache",
+    ),
+    ["aaaaaaaa%40b", "aaaaaaaa@b", "bbbbbbbb"],
+  );
+  // Two URLs run together in one token are found apart.
+  assertEquals(
+    urlPasswords("https://u:cccccccc@h/?next=https://v:dddddddd@g/"),
+    ["cccccccc", "dddddddd"],
+  );
+  // A malformed escape the parser keeps leaves its spelling as the only form.
+  assertEquals(urlPasswords("https://u:eeee%zz@h"), ["eeee%zz"]);
+});
+
+Deno.test("urlPasswords finds nothing without a password", () => {
+  assertEquals(urlPasswords("https://host/x https://user@host/ plain"), []);
+  assertEquals(urlPasswords("https://[bad https://user@[bad"), []);
+});
+
+Deno.test("urlPasswords reads a URL the parser rejects textually", () => {
+  // A rejected host, a bare `/` in the password (which the parser reads as the
+  // end of the authority, then rejects the port), and a malformed port.
+  assertEquals(urlPasswords("https://u:ffffffff@[bad"), ["ffffffff"]);
+  assertEquals(urlPasswords("postgres://u:gggg/gggg@db/app"), ["gggg/gggg"]);
+  assertEquals(urlPasswords("redis://u:hhhh%40hhhh@h:port"), [
+    "hhhh%40hhhh",
+    "hhhh@hhhh",
+  ]);
 });

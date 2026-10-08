@@ -26,8 +26,11 @@ import { Command, CommandError, type CommandOutput } from "./shell.ts";
 import { checkMaxCapturedBytes } from "./capture.ts";
 import { ambientRedactor } from "./ambient_redactor.ts";
 import { type AbsolutePath, absolutePath, type PathLike } from "./path.ts";
+import { secretsInOutput } from "./secret_output.ts";
+import { SecretOutputSettings } from "./secret_output_settings.ts";
 
 export type { PathLike };
+export { SecretOutputSettings };
 
 /**
  * How {@link ToolSettings.run} locates a wrapper's binary when no explicit
@@ -241,6 +244,49 @@ export abstract class ToolSettings {
    */
   protected markSecret(value: string): void {
     ambientRedactor()?.add(value);
+  }
+
+  /**
+   * Register the secrets in what a credential-bearing command printed, so the
+   * build cannot print them back. Call it from {@link onOutput}, which sees the
+   * output of every run — a failed one too:
+   *
+   * ```ts
+   * protected override onOutput(output: CommandOutput): void {
+   *   this.markSecretsInOutput(output.stdout, (s) =>
+   *     s.keys("SecretString").queried(this.queried));
+   * }
+   * ```
+   *
+   * The lambda describes the output ({@link SecretOutputSettings}): the field
+   * the secret comes back under, and whether the caller reshaped the answer
+   * with a query. What is registered errs towards masking without masking
+   * ordinary words. A string under an expected key is the secret, whatever its
+   * length — unless the caller queried, when the key no longer says what it
+   * holds. So is an answer that is one JSON string, or output that is not JSON
+   * at all. A credential-named field (`password`, `clientSecret`,
+   * `accountKey`, `connectionString`, …) anywhere in the document is
+   * registered, and so — when the caller queried, or no expected key is
+   * present — is every scalar of eight or more characters. Each secret found
+   * also has its parts registered: the credential fields of a secret that is
+   * itself JSON, the credential pairs of a connection string or dotenv file,
+   * and the password of a `scheme://user:pass@host` URL. A derived value
+   * shorter than eight characters is never registered, so `true`, `12` or
+   * `Bearer` cannot mask the log.
+   *
+   * Every value goes through {@link markSecret}, so it shares its scope: it
+   * does nothing outside a run. Reading the output never throws, whatever it
+   * holds, as {@link onOutput} must not.
+   */
+  protected markSecretsInOutput(
+    stdout: string,
+    configure?: Configure<SecretOutputSettings>,
+  ): void {
+    const settings = new SecretOutputSettings();
+    const described = configure === undefined ? settings : configure(settings);
+    for (const secret of secretsInOutput(stdout, described)) {
+      this.markSecret(secret);
+    }
   }
 
   #env: Record<string, string> = {};

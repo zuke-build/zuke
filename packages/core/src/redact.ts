@@ -29,21 +29,27 @@
 export const REDACTED = "[redacted]";
 
 /**
- * The shortest line of a multi-line secret worth masking on its own.
+ * The shortest pattern worth masking when it is *derived* from a secret rather
+ * than being the secret itself: a line of a multi-line secret, or a value found
+ * inside a credential-bearing command's output (see `./secret_output.ts`).
  *
  * Every line of a secret is registered as its own pattern (see
  * {@link maskPatterns}), and a very short one would mask ordinary text wherever
  * it appeared — a two-character line turns every `ok` in the log into
- * `[redacted]`. Eight characters is long enough that an accidental collision
- * with meaningful output is rare, and short enough to still cover a line that
- * carries real key material. The value as a whole is always registered
- * regardless, so nothing is lost for output that contains it intact.
+ * `[redacted]`, and a derived `true`, `12` or `Bearer` would do the same.
+ * Eight characters is long enough that an accidental collision with meaningful
+ * output is rare, and short enough to still cover a line that carries real key
+ * material. The value as a whole is always registered regardless, so nothing is
+ * lost for output that contains it intact.
+ *
+ * Exported for the other redaction modules only; it is not part of any
+ * entrypoint.
  */
-const MIN_LINE_LENGTH = 8;
+export const MIN_DERIVED_LENGTH = 8;
 
 /**
  * Every pattern that masking `value` must match: the value itself, plus — when
- * it spans lines — each of its lines that clears {@link MIN_LINE_LENGTH}.
+ * it spans lines — each of its lines that clears {@link MIN_DERIVED_LENGTH}.
  *
  * Redaction is applied **per line**: a reporter masks one line at a time, and a
  * CI host's own masker reads a directive to the end of the line. So a
@@ -58,7 +64,7 @@ export function maskPatterns(value: string): string[] {
   if (!value.includes("\n")) return patterns;
   for (const line of value.split(/\r?\n/)) {
     const trimmed = line.trim();
-    if (trimmed.length >= MIN_LINE_LENGTH && !patterns.includes(trimmed)) {
+    if (trimmed.length >= MIN_DERIVED_LENGTH && !patterns.includes(trimmed)) {
       patterns.push(trimmed);
     }
   }

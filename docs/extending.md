@@ -111,6 +111,52 @@ the base contributes the shared chainers (`env`, `cwd`, `noThrow`, `quiet`,
 wrapper package is a workspace sibling that depends only on `@zuke/core` — the
 existing `@zuke/*` wrappers are the template.
 
+A wrapper for a command that **prints a credential** — an access token, a
+registry password, a secret's value — registers what it printed from `onOutput`,
+so the build cannot print it back. `markSecretsInOutput` is the one
+implementation of that search: name the field the secret comes back under, and
+say whether the caller reshaped the answer with a query.
+
+<!-- check -->
+
+```ts
+import type { CommandOutput } from "@zuke/core/shell";
+import { ToolSettings } from "@zuke/core/tooling";
+
+class VaultReadSettings extends ToolSettings {
+  #query?: string;
+  query(expression: string): this {
+    this.#query = expression;
+    return this;
+  }
+  protected override defaultTool(): string {
+    return "vault";
+  }
+  protected override buildArgs(): string[] {
+    const query = this.#query === undefined ? [] : [`--query=${this.#query}`];
+    return ["read", "--format=json", ...query];
+  }
+  protected override onOutput(output: CommandOutput): void {
+    this.markSecretsInOutput(
+      output.stdout,
+      (s) => s.keys("value").queried(this.#query !== undefined),
+    );
+  }
+}
+```
+
+The value under an expected key is registered whatever its length (after a
+query, only when it is eight or more characters long — the key no longer says
+what it holds), as is an answer that is one JSON string or output that is not
+JSON at all. So is every credential-named field (`password`, `clientSecret`,
+`accountKey`, `connectionString`, …) anywhere in the document, and — after a
+query, or when no expected key is present — every scalar of eight or more
+characters. Each secret's parts are registered too: the credential fields of a
+secret that is itself JSON, the credential pairs of a connection string or
+dotenv file, and the password of a `scheme://user:pass@host` URL. A derived
+value shorter than eight characters never is, so `true`, `12` or `Bearer` cannot
+mask the log.
+
 ## 3. Components — reusable target bundles
 
 A **component** is a function that returns an object of related targets.

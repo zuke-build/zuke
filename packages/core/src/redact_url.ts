@@ -143,6 +143,63 @@ function redactToken(token: string): string {
 }
 
 /**
+ * The password of every URL in `text` that carries one in its userinfo
+ * (`postgres://user:pass@host`), both as the parser spells it and
+ * percent-decoded — for a caller that must mask the password on its own, not
+ * only the URL around it. URLs are found the way {@link redactUrls} finds them;
+ * one the parser rejects is read textually, so it fails closed.
+ *
+ * Internal: used to register a secret's parts with the redactor (see
+ * `./secret_output.ts`), not re-exported from any entrypoint.
+ */
+export function urlPasswords(text: string): string[] {
+  const found = new Set<string>();
+  for (const token of text.split(/\s+/)) {
+    const starts = urlStarts(token);
+    for (let i = 0; i < starts.length; i++) {
+      const segment = token.slice(starts[i], starts[i + 1] ?? token.length);
+      for (const password of passwordOf(segment)) found.add(password);
+    }
+  }
+  return [...found];
+}
+
+/**
+ * The userinfo password of `raw`, as parsed and percent-decoded — or nothing
+ * when `raw` has no password. A URL the parser rejects is read textually, by
+ * the rule {@link stripUserinfo} strips it with, so a password with a bare `/`
+ * in it, or one in front of a malformed port, is still found. A malformed
+ * escape leaves the spelling as written as the only form.
+ */
+function passwordOf(raw: string): string[] {
+  let password: string;
+  try {
+    password = new URL(raw).password;
+  } catch {
+    password = textualPassword(raw);
+  }
+  if (password === "") return [];
+  try {
+    return [password, decodeURIComponent(password)];
+  } catch {
+    return [password];
+  }
+}
+
+/**
+ * The password in `token`'s userinfo — what follows the first `:` between the
+ * authority's start and the token's last `@` — or `""` when there is none.
+ */
+function textualPassword(token: string): string {
+  const at = token.lastIndexOf("@");
+  if (at < 0) return "";
+  const start = authorityStart(token, at);
+  const userinfo = token.slice(start, at);
+  const colon = userinfo.indexOf(":");
+  return colon < 0 ? "" : userinfo.slice(colon + 1);
+}
+
+/**
  * Where each URL in `token` starts, in order: the scheme in front of every
  * `://` or `:\\`, walked back to its first letter (so `--https://` and
  * `1https://` still find `https`), and every web scheme the parser reads
@@ -247,14 +304,23 @@ function scrubTokens(text: string, checkValues: boolean): string {
   ).join("");
 }
 
-/** `token` without the userinfo before its last `@`. */
-function stripUserinfo(token: string): string {
-  const at = token.lastIndexOf("@");
-  if (at < 0) return token;
+/**
+ * Where the authority of `token` starts — past its scheme and any slashes —
+ * searching no further than `at`, the `@` that ends its userinfo.
+ */
+function authorityStart(token: string, at: number): number {
   let start = LEADING_SCHEME.exec(token)?.[0].length ?? 0;
   while (start < at && (token[start] === "/" || token[start] === "\\")) {
     start++;
   }
+  return start;
+}
+
+/** `token` without the userinfo before its last `@`. */
+function stripUserinfo(token: string): string {
+  const at = token.lastIndexOf("@");
+  if (at < 0) return token;
+  const start = authorityStart(token, at);
   return token.slice(0, start) + token.slice(at + 1);
 }
 
