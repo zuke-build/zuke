@@ -75,6 +75,11 @@ export async function projectRoot(
 
 /** Flags accepted by the commands that resolve the build's module graph. */
 export interface InstallFlags {
+  /**
+   * Entrypoints to resolve beside `zuke.ts` — the other programs that share
+   * the lock, such as an app's own `main.ts`.
+   */
+  entrypoints: string[];
   /** Deno's `--minimum-dependency-age` value, when one was given. */
   minDepAge?: string;
   /** Report what would run, and change nothing. */
@@ -82,9 +87,10 @@ export interface InstallFlags {
 }
 
 /**
- * Parse `relock`'s or `cache`'s arguments: `--min-dep-age <value>` (or
- * `=<value>`) and `--dry-run`. Strict, so a mistyped option is refused rather
- * than ignored by a command that rewrites the lock.
+ * Parse `relock`'s or `cache`'s arguments: further entrypoints, then
+ * `--min-dep-age <value>` (or `=<value>`) and `--dry-run`. Strict, so a
+ * mistyped option is refused rather than ignored by a command that rewrites
+ * the lock.
  *
  * @throws {Error} naming `command` on an unknown option or a missing value.
  */
@@ -92,7 +98,7 @@ export function parseInstallFlags(
   command: string,
   args: readonly string[],
 ): InstallFlags {
-  const flags: InstallFlags = { dryRun: false };
+  const flags: InstallFlags = { entrypoints: [], dryRun: false };
   const missing = () =>
     new Error(
       `zuke ${command}: --min-dep-age needs a value, such as 0 or P2D.`,
@@ -111,10 +117,12 @@ export function parseInstallFlags(
       }
       flags.minDepAge = value;
       i++;
+    } else if (!arg.startsWith("-")) {
+      flags.entrypoints.push(arg);
     } else {
       throw new Error(
-        `zuke ${command}: unknown option ${arg}. It takes ` +
-          "--min-dep-age <value> and --dry-run.",
+        `zuke ${command}: unknown option ${arg}. It takes further ` +
+          "entrypoints, --min-dep-age <value> and --dry-run.",
       );
     }
   }
@@ -122,8 +130,9 @@ export function parseInstallFlags(
 }
 
 /**
- * The `deno install` argv that resolves the build's module graph into the
- * lock, honouring `--min-dep-age` when one was given.
+ * The `deno install` argv that resolves the build's module graph — and any
+ * further entrypoints — into the lock, honouring `--min-dep-age` when one was
+ * given.
  *
  * @throws {Error} naming `command` when a `--min-dep-age` was given and Deno
  * `denoVersion` does not accept the flag.
@@ -133,7 +142,7 @@ export function installArgs(
   flags: InstallFlags,
   denoVersion: string,
 ): string[] {
-  const args = ["install", "--entrypoint", BUILD_FILE];
+  const args = ["install", "--entrypoint", BUILD_FILE, ...flags.entrypoints];
   if (flags.minDepAge === undefined) return args;
   if (!acceptsMinimumDependencyAge(denoVersion)) {
     throw new Error(

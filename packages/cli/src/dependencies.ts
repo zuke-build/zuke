@@ -20,6 +20,7 @@
 import type { BuildProbe } from "./dispatch.ts";
 import type { CliPaint } from "./paint.ts";
 import { type ProjectHost, projectRoot } from "./project.ts";
+import { projectConfigText } from "./version_report.ts";
 
 /** A bare Zuke package name, as `zuke add docker` takes it. */
 const BARE_NAME = /^[a-z0-9][a-z0-9-]*$/;
@@ -103,10 +104,21 @@ export async function runDependencies(
     log(`Would run in ${root}: deno ${denoArgs.join(" ")}`);
     return 0;
   }
+  const config = () => projectConfigText((path) => host.readText(path), root);
+  const before = await config();
   const code = await host.deno(denoArgs, root);
   if (code !== 0) {
     log(paint.fail(`zuke ${command}: deno ${command} exited ${code}.`));
     return code;
+  }
+  // `deno remove` exits 0 when it finds nothing to remove; an unchanged
+  // config is how that shows.
+  if (command === "remove" && (await config()) === before) {
+    log(paint.fail(
+      `zuke remove: nothing was removed; this project's deno.json has no ` +
+        `${specifiers.join(", ")}.`,
+    ));
+    return 1;
   }
   log(paint.ok(
     `${command === "add" ? "Added" : "Removed"} ${specifiers.join(", ")}.`,

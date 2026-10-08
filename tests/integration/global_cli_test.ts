@@ -720,3 +720,58 @@ Deno.test("zuke add maps short names and runs deno add in the project root", asy
     );
   }, { prefix: "zuke-global-cli-" });
 });
+
+Deno.test({
+  name: "zuke relock writes through a symlinked lock, keeping the link",
+  // Creating a symlink needs privileges Windows runners do not grant.
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    await withModuleServer(async (url) => {
+      await withTemp(async (dir) => {
+        await Deno.writeTextFile(`${dir}/${CONFIG_FILE}`, '{ "name": "L" }\n');
+        await Deno.writeTextFile(`${dir}/deno.json`, "{}\n");
+        await Deno.writeTextFile(
+          `${dir}/zuke.ts`,
+          `import { answer } from "${url}";\nconsole.log(answer);\n`,
+        );
+        await Deno.writeTextFile(
+          `${dir}/shared.lock`,
+          JSON.stringify({
+            version: "5",
+            specifiers: { "jsr:@zuke/core@^1": "1.66.0" },
+          }),
+        );
+        await Deno.symlink(`${dir}/shared.lock`, `${dir}/deno.lock`);
+        const projectHost: ProjectHost = {
+          ...defaultProjectHost,
+          deno: (args, cwd) =>
+            defaultProjectHost.deno(
+              [...args, `--allow-import=${new URL(url).host}`],
+              cwd,
+            ),
+        };
+        await withEnv({ DENO_DIR: `${dir}/.deno-dir` }, async () => {
+          await inDir(dir, async () => {
+            const host = recordingHost();
+            const code = await main(
+              ["relock"],
+              host,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              defaultBuildProbe,
+              undefined,
+              projectHost,
+            );
+            assertEquals(code, 0, host.logs.join("\n"));
+          });
+        });
+        assertEquals((await Deno.lstat(`${dir}/deno.lock`)).isSymlink, true);
+        const shared = await Deno.readTextFile(`${dir}/shared.lock`);
+        assertEquals(shared.includes(url), true, shared);
+        assertEquals(await exists(`${dir}/deno.lock.relock-backup`), false);
+      }, { prefix: "zuke-global-cli-" });
+    });
+  },
+});

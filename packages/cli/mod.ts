@@ -262,8 +262,8 @@ Zuke commands (available anywhere):
   upgrade [<version>]     Reinstall this CLI at the latest (or given) JSR release
   add <package...>        Add packages to this project's deno.json (docker = @zuke/docker)
   remove <package...>     Remove packages from this project's deno.json
-  cache [options]         Fetch everything the build imports, keeping the lock
-  relock [options]        Regenerate this project's lock from scratch
+  cache [<entry>...]      Fetch everything the build imports, keeping the lock
+  relock [<entry>...]     Regenerate this project's lock from scratch
   --help                  Show this help
   --version               Show the CLI's version, and this project's build's
 

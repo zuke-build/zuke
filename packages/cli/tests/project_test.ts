@@ -92,14 +92,24 @@ async function collect(
 }
 
 Deno.test("parseInstallFlags reads --min-dep-age in both forms, and --dry-run", () => {
-  assertEquals(parseInstallFlags("relock", []), { dryRun: false });
+  assertEquals(parseInstallFlags("relock", []), {
+    entrypoints: [],
+    dryRun: false,
+  });
   assertEquals(parseInstallFlags("relock", ["--min-dep-age", "0"]), {
+    entrypoints: [],
     dryRun: false,
     minDepAge: "0",
   });
   assertEquals(parseInstallFlags("cache", ["--min-dep-age=P2D", "--dry-run"]), {
+    entrypoints: [],
     dryRun: true,
     minDepAge: "P2D",
+  });
+  // Anything not an option is a further entrypoint.
+  assertEquals(parseInstallFlags("relock", ["main.ts", "tools/x.ts"]), {
+    entrypoints: ["main.ts", "tools/x.ts"],
+    dryRun: false,
   });
 });
 
@@ -123,13 +133,20 @@ Deno.test("parseInstallFlags refuses an unknown option or a missing value", () =
 });
 
 Deno.test("installArgs adds the dependency-age flag only when asked, and only where Deno has it", () => {
-  assertEquals(installArgs("cache", { dryRun: false }, "2.9.3"), [
-    "install",
-    "--entrypoint",
-    "zuke.ts",
-  ]);
   assertEquals(
-    installArgs("cache", { dryRun: false, minDepAge: "0" }, "2.9.3"),
+    installArgs("cache", { entrypoints: [], dryRun: false }, "2.9.3"),
+    [
+      "install",
+      "--entrypoint",
+      "zuke.ts",
+    ],
+  );
+  assertEquals(
+    installArgs(
+      "cache",
+      { entrypoints: [], dryRun: false, minDepAge: "0" },
+      "2.9.3",
+    ),
     [
       "install",
       "--entrypoint",
@@ -138,7 +155,12 @@ Deno.test("installArgs adds the dependency-age flag only when asked, and only wh
     ],
   );
   assertThrows(
-    () => installArgs("relock", { dryRun: false, minDepAge: "0" }, "2.4.5"),
+    () =>
+      installArgs(
+        "relock",
+        { entrypoints: [], dryRun: false, minDepAge: "0" },
+        "2.4.5",
+      ),
     Error,
     "does not accept",
   );
@@ -160,7 +182,13 @@ Deno.test("relock regenerates the lock and reports core before and after", async
   );
   assertEquals(code, 0);
   assertEquals(host.runs, [{
-    args: ["install", "--entrypoint", "zuke.ts", "--minimum-dependency-age=0"],
+    args: [
+      "install",
+      "--entrypoint",
+      "zuke.ts",
+      "--minimum-dependency-age=0",
+      "--frozen=false",
+    ],
     cwd: ROOT,
   }]);
   assertStringIncludes(
@@ -354,6 +382,8 @@ Deno.test("parseDependencyArgs needs a package", () => {
 
 Deno.test("add and remove run deno add / remove in the root", async () => {
   const host = new FakeProjectHost();
+  host.files.set(`${ROOT}/deno.json`, "{}");
+  host.writes = { [`${ROOT}/deno.json`]: '{ "imports": {} }' };
   const added = await collect((log) =>
     runDependencies(
       "add",
@@ -367,6 +397,7 @@ Deno.test("add and remove run deno add / remove in the root", async () => {
   );
   assertEquals(added.code, 0);
   assertStringIncludes(added.logs, "Added jsr:@zuke/docker, jsr:@zuke/gh.");
+  host.writes = { [`${ROOT}/deno.json`]: "{}" };
   const removed = await collect((log) =>
     runDependencies(
       "remove",
@@ -414,4 +445,122 @@ Deno.test("add and remove run deno add / remove in the root", async () => {
   );
   assertEquals(bad.code, 1);
   assertStringIncludes(bad.logs, "deno remove exited 1");
+});
+
+Deno.test("remove says so when deno remove found nothing to remove", async () => {
+  const host = new FakeProjectHost();
+  host.files.set(`${ROOT}/deno.json`, '{ "imports": {} }');
+  const { code, logs } = await collect((log) =>
+    runDependencies(
+      "remove",
+      ["missing"],
+      log,
+      host,
+      PLAIN_PAINT,
+      ROOT,
+      projectProbe,
+    )
+  );
+  assertEquals(code, 1);
+  assertStringIncludes(logs, "nothing was removed");
+  assertEquals(logs.includes("Removed"), false);
+});
+
+Deno.test("relock keeps a backup on disk while it works, and removes it after", async () => {
+  const host = new FakeProjectHost();
+  const original = coreLock("1.66.0");
+  host.files.set(`${ROOT}/deno.lock`, original);
+  host.writes = { [`${ROOT}/deno.lock`]: coreLock("1.69.0") };
+  const seen: (string | undefined)[] = [];
+  const deno = host.deno.bind(host);
+  host.deno = (args, cwd) => {
+    // Mid-install: the old lock is on disk as a backup, the lock is emptied.
+    seen.push(host.files.get(`${ROOT}/deno.lock.relock-backup`));
+    seen.push(host.files.get(`${ROOT}/deno.lock`));
+    return deno(args, cwd);
+  };
+  const { code } = await collect((log) =>
+    runRelock([], log, host, PLAIN_PAINT, ROOT, projectProbe)
+  );
+  assertEquals(code, 0);
+  assertEquals(seen[0], original);
+  assertEquals(JSON.parse(seen[1] ?? "{}"), { version: "5" });
+  assertEquals(host.files.has(`${ROOT}/deno.lock.relock-backup`), false);
+});
+
+Deno.test("relock refuses to start over a backup a dead run left behind", async () => {
+  const host = new FakeProjectHost();
+  host.files.set(`${ROOT}/deno.lock`, '{ "version": "5" }');
+  host.files.set(`${ROOT}/deno.lock.relock-backup`, coreLock("1.66.0"));
+  await assertRejects(
+    () => runRelock([], () => {}, host, PLAIN_PAINT, ROOT, projectProbe),
+    Error,
+    "did not finish",
+  );
+  assertEquals(host.runs, []);
+  assertEquals(
+    host.files.get(`${ROOT}/deno.lock.relock-backup`),
+    coreLock("1.66.0"),
+  );
+});
+
+Deno.test("relock names further entrypoints, and the packages a narrower graph dropped", async () => {
+  const host = new FakeProjectHost();
+  host.files.set(
+    `${ROOT}/deno.lock`,
+    JSON.stringify({
+      version: "5",
+      specifiers: {
+        "jsr:@zuke/core@^1": "1.66.0",
+        "jsr:@std/path@^1": "1.0.0",
+      },
+    }),
+  );
+  host.writes = { [`${ROOT}/deno.lock`]: coreLock("1.69.0") };
+  const { logs } = await collect((log) =>
+    runRelock(["main.ts"], log, host, PLAIN_PAINT, ROOT, projectProbe)
+  );
+  assertEquals(host.runs[0].args.slice(0, 4), [
+    "install",
+    "--entrypoint",
+    "zuke.ts",
+    "main.ts",
+  ]);
+  assertStringIncludes(logs, "No longer locked: @std/path");
+  assertStringIncludes(logs, "zuke.ts and main.ts were resolved");
+});
+
+Deno.test("relock warns when Deno's dependency age resolved an older core", async () => {
+  const host = new FakeProjectHost();
+  host.files.set(`${ROOT}/deno.lock`, coreLock("1.70.0"));
+  host.writes = { [`${ROOT}/deno.lock`]: coreLock("1.67.0") };
+  const plain = await collect((log) =>
+    runRelock([], log, host, PLAIN_PAINT, ROOT, projectProbe)
+  );
+  assertStringIncludes(plain.logs, "--min-dep-age 0");
+
+  const asked = new FakeProjectHost();
+  asked.files.set(`${ROOT}/deno.lock`, coreLock("1.70.0"));
+  asked.writes = { [`${ROOT}/deno.lock`]: coreLock("1.67.0") };
+  const told = await collect((log) =>
+    runRelock(
+      ["--min-dep-age", "P7D"],
+      log,
+      asked,
+      PLAIN_PAINT,
+      ROOT,
+      projectProbe,
+    )
+  );
+  assertEquals(told.logs.includes("resolved older"), false);
+});
+
+Deno.test("relock in a workspace member does not claim to restore what was never there", async () => {
+  const host = new FakeProjectHost();
+  const { code, logs } = await collect((log) =>
+    runRelock([], log, host, PLAIN_PAINT, ROOT, projectProbe)
+  );
+  assertEquals(code, 1);
+  assertEquals(logs.includes("restored"), false);
+  assertStringIncludes(logs, "workspace root");
 });
