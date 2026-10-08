@@ -357,10 +357,14 @@ await run(Shadowed);
       exists: () => Promise.resolve(true),
       windows: () => false,
       meta: () => Promise.resolve({ latest: "999.0.0", versions: {} }),
-      install: (denoArgs) => {
+      install: async (denoArgs) => {
         installs.push(denoArgs);
-        return Promise.resolve(0);
+        // Stand in for Deno: the install writes the lock beside the shim.
+        await writeInstallLock(`${dir}/bin`, "999.0.0");
+        return 0;
       },
+      denoVersion: () => "2.9.3",
+      readText: (path) => Deno.readTextFile(path),
     };
     await inDir(dir, async () => {
       // The CLI answers `upgrade` itself, inside a project, without running
@@ -401,6 +405,18 @@ await run(Shadowed);
     });
   }, { prefix: "zuke-global-cli-" });
 });
+
+/** Write the lock `deno install -g` leaves beside the shim, resolving `version`. */
+async function writeInstallLock(bin: string, version: string): Promise<void> {
+  await Deno.mkdir(`${bin}/.zuke`, { recursive: true });
+  await Deno.writeTextFile(
+    `${bin}/.zuke/deno.lock`,
+    JSON.stringify({
+      version: "5",
+      specifiers: { "jsr:@zuke/cli@*": version },
+    }),
+  );
+}
 
 /** Whether `path` exists. */
 async function exists(path: string): Promise<boolean> {
@@ -515,5 +531,49 @@ Deno.test("zuke --help on a terminal opens with the logo and paints the build's 
     assertEquals(logs[0].startsWith(ZUKE_LOGO.split("\n")[0]), true);
     const heading = logs.find((l) => l.includes("This project's build"));
     assertEquals(heading?.includes("◆ This project's build"), true);
+  }, { prefix: "zuke-global-cli-" });
+});
+
+Deno.test("zuke upgrade reports an install that resolved another release as a failure", async () => {
+  // Deno 2.9's dependency-age window resolved an unversioned install of the
+  // latest release to an older one; the lock the install wrote says so.
+  await withTemp(async (dir) => {
+    const installs: string[][] = [];
+    const upgradeHost: UpgradeHost = {
+      mainModule: () => "jsr:@zuke/cli",
+      binDir: () => `${dir}/bin`,
+      exists: () => Promise.resolve(true),
+      windows: () => false,
+      meta: () => Promise.resolve({ latest: "999.0.0", versions: {} }),
+      install: async (denoArgs) => {
+        installs.push(denoArgs);
+        await writeInstallLock(`${dir}/bin`, "1.8.0");
+        return 0;
+      },
+      denoVersion: () => "2.9.3",
+      readText: (path) => Deno.readTextFile(path),
+    };
+    const host = recordingHost();
+    await inDir(dir, async () => {
+      const code = await main(
+        ["upgrade"],
+        host,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        defaultBuildProbe,
+        upgradeHost,
+      );
+      assertEquals(code, 1);
+    });
+    assertEquals(installs[0].includes("--minimum-dependency-age=0"), true);
+    const logs = host.logs.join("\n");
+    assertEquals(
+      logs.includes("resolves @zuke/cli to 1.8.0, not 999.0.0"),
+      true,
+      logs,
+    );
+    assertEquals(logs.includes("Done"), false);
   }, { prefix: "zuke-global-cli-" });
 });

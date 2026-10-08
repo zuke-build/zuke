@@ -22,6 +22,12 @@
  * the file, so on Windows that one case is refused with the command to run
  * from another shell. Moving back to latest shrinks the file, which is safe.
  *
+ * On Deno 2.6 and later the reinstall turns the minimum dependency age off
+ * (see {@link installArgs}), and on a Deno that writes the install lock (2.7
+ * and later) success is reported only once that lock resolves `@zuke/cli` to
+ * the release that was asked for: Deno exiting 0 means it installed *a*
+ * version, not necessarily that one.
+ *
  * It only ever replaces an install that is there: the shim's own
  * `<root>/bin/.zuke/deno.json` must exist, so a one-off
  * `deno run jsr:@zuke/cli upgrade`, or an install under another `--root`,
@@ -33,7 +39,7 @@
  * @module
  */
 
-import { absolutePath, httpJson } from "@zuke/core";
+import { absolutePath, httpJson, lockedJsrSpecifiers } from "@zuke/core";
 import { runDenoIsolated } from "./deno_isolated.ts";
 import type { CliPaint } from "./paint.ts";
 import { VERSION_PATTERN } from "./version_report.ts";
@@ -70,6 +76,13 @@ export interface UpgradeHost {
   meta(): Promise<unknown>;
   /** Run `deno <denoArgs>` to reinstall, returning its exit code. */
   install(denoArgs: string[]): Promise<number>;
+  /**
+   * The version of the Deno that runs the reinstall: the one running this
+   * CLI, since `zuke upgrade` only ever runs from a JSR install under Deno.
+   */
+  denoVersion(): string;
+  /** Read a text file, rejecting when it cannot be read. */
+  readText(path: string): Promise<string>;
 }
 
 /** The real {@link UpgradeHost}: `Deno.mainModule`, JSR, and `deno install`. */
@@ -97,6 +110,8 @@ export const defaultUpgradeHost: UpgradeHost = {
   windows: () => defaultDenoHost.windows(),
   meta: () => httpJson<unknown>(META_URL),
   install: (denoArgs) => runDenoIsolated(denoArgs, "zuke-upgrade-"),
+  denoVersion: () => Deno.version.deno,
+  readText: (path) => Deno.readTextFile(path),
 };
 
 /** Flags accepted by `zuke upgrade`. */
@@ -184,15 +199,86 @@ function resolveTarget(meta: unknown, flags: UpgradeFlags): string {
 }
 
 /**
+ * Whether Deno `version` is 2.`minor` or later. A version this cannot read is
+ * treated as older: each caller gates something that misbehaves on a Deno
+ * that lacks it.
+ */
+function denoAtLeast(version: string, minor: number): boolean {
+  const match = /^(\d+)\.(\d+)\./.exec(version);
+  if (match === null) return false;
+  const major = Number(match[1]);
+  return major > 2 || (major === 2 && Number(match[2]) >= minor);
+}
+
+/**
+ * Whether the reinstall passes `--minimum-dependency-age=0` on Deno
+ * `version`: 2.6.0 and later. The flag arrived during 2.5 (2.5.0 rejects it
+ * as an unknown argument, which fails the whole install), and no Deno before
+ * 2.9 applies a default age, so gating on a whole minor that has it loses
+ * nothing.
+ */
+export function acceptsMinimumDependencyAge(version: string): boolean {
+  return denoAtLeast(version, 6);
+}
+
+/**
+ * Whether `deno install -g` on Deno `version` writes the lock beside the shim
+ * (`<root>/bin/.zuke/deno.lock`): 2.7.0 and later. An older Deno installs a
+ * `--no-config` shim and leaves any lock a newer Deno wrote untouched, so
+ * that lock says nothing about what it just installed and is not checked.
+ */
+export function writesInstallLock(version: string): boolean {
+  return denoAtLeast(version, 7);
+}
+
+/**
  * The `deno install` argv that reinstalls the global command at `target`.
  * When `target` is the latest release, the specifier is unversioned (see the
  * module docs for why the shim must not change).
+ *
+ * On a Deno that has one, the minimum dependency age is turned off. Deno 2.9
+ * applies a cooling-off window to registry resolution, which skips releases
+ * from the last few days: an unversioned install then resolves to an older
+ * release, and a pinned one fails to resolve at all. Upgrading is an explicit
+ * choice of a specific published release, so the window does not apply. The
+ * flag only steers resolution and is not written into the shim.
  */
-export function installArgs(target: string, latest: boolean): string[] {
+export function installArgs(
+  target: string,
+  latest: boolean,
+  denoVersion: string,
+): string[] {
   const args = ["install", "--global", "--force", "--allow-all"];
+  if (acceptsMinimumDependencyAge(denoVersion)) {
+    args.push("--minimum-dependency-age=0");
+  }
   args.push("--name", "zuke");
   if (latest) return [...args, `--reload=${PACKAGE}`, PACKAGE];
   return [...args, `${PACKAGE}@${target}`];
+}
+
+/**
+ * The version the install's lock resolves `spec` to (the specifier the
+ * install was given), or `undefined` when the lock cannot be read or does not
+ * name it: what was actually installed, whatever was asked for. The exact
+ * specifier is matched, so another `@zuke/cli` entry in the lock cannot stand
+ * in for it.
+ */
+async function installedVersion(
+  host: UpgradeHost,
+  lockPath: string,
+  spec: string,
+): Promise<string | undefined> {
+  let text: string;
+  try {
+    text = await host.readText(lockPath);
+  } catch {
+    return undefined;
+  }
+  // Deno records an unversioned specifier as the `*` range.
+  const key = spec === PACKAGE ? `${PACKAGE}@*` : spec;
+  return lockedJsrSpecifiers(text).find((entry) => entry.specifier === key)
+    ?.resolved;
 }
 
 /**
@@ -252,7 +338,7 @@ export async function runUpgrade(
     return 0;
   }
   const latest = target === field(meta, "latest");
-  const denoArgs = installArgs(target, latest);
+  const denoArgs = installArgs(target, latest, host.denoVersion());
   if (!latest && host.windows()) {
     throw new Error(
       `zuke upgrade: on Windows, installing ${target} would rewrite the ` +
@@ -278,6 +364,25 @@ export async function runUpgrade(
       `zuke upgrade: deno install exited ${code}; see its output above.`,
     ));
     return code;
+  }
+  // A zero exit says Deno installed *something*. Confirm it is the target
+  // before saying so: a resolver that picks another release (Deno 2.9's
+  // dependency-age window did) would otherwise be reported as a success.
+  const deno = host.denoVersion();
+  const installed = writesInstallLock(deno)
+    ? await installedVersion(
+      host,
+      absolutePath(marker).parent()("deno.lock").path,
+      denoArgs[denoArgs.length - 1],
+    )
+    : target;
+  if (installed !== target) {
+    log(paint.fail(
+      `zuke upgrade: deno install finished, but its lock resolves ` +
+        `@zuke/cli to ${installed ?? "nothing"}, not ${target}. ` +
+        "Check with: zuke --version",
+    ));
+    return 1;
   }
   log(paint.ok(
     `Done — zuke ${target} is installed. Check with: zuke --version`,
