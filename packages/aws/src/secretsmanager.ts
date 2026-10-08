@@ -13,7 +13,6 @@
  */
 
 import type { CommandOutput } from "@zuke/core/shell";
-import { secretsIn } from "./secret_output.ts";
 import { option } from "./validate.ts";
 import { type AwsOutputFormat, AwsSettings } from "./settings.ts";
 
@@ -66,9 +65,10 @@ export class AwsSecretsmanagerGetSecretValueSettings extends AwsSettings {
 
   /** Register the returned `SecretString` or `SecretBinary` as a secret. */
   protected override onOutput(output: CommandOutput): void {
-    for (const secret of secretsIn(output.stdout, SECRET_KEYS)) {
-      this.markSecret(secret);
-    }
+    this.markSecretsInOutput(
+      output.stdout,
+      (s) => s.keys(...SECRET_KEYS).queried(this.queried),
+    );
   }
 
   /** Emit `secretsmanager get-secret-value` with its options. */

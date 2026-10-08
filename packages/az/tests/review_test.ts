@@ -134,10 +134,20 @@ Deno.test("S4: Azure's credential field names are masked", async () => {
   await shown.settings.runner(
     new FakeAz(json({ value: JSON.stringify(fields) })).run,
   ).run();
+  // Core masks every leaf of eight or more characters of a secret that is
+  // itself JSON, whatever its name — `keyId` and `hostname` included, since
+  // the whole document is the secret — and a credential-named one from three.
   for (const [name, value] of Object.entries(fields)) {
-    const secret = name !== "keyId" && name !== "hostname";
-    assertEquals(shown.marked.includes(value), secret, name);
+    assertEquals(shown.marked.includes(value), true, name);
   }
+  // A short leaf is masked only under a credential name.
+  const short = recording(new AzKeyvaultSecretShowSettings().id("x"));
+  await short.settings.runner(
+    new FakeAz(json({ value: JSON.stringify({ db_pwd: "abc", port: "5432" }) }))
+      .run,
+  ).run();
+  assertEquals(short.marked.includes("abc"), true);
+  assertEquals(short.marked.includes("5432"), false);
 });
 
 Deno.test("S5: a query that moves the secret to another key still masks it", async () => {
@@ -158,12 +168,29 @@ Deno.test("S6: acr login without a token masks nothing", async () => {
   assertEquals(marked, []);
 });
 
-Deno.test("S6: a fallback scalar shorter than eight characters is not masked", async () => {
+Deno.test("S6: a moved answer masks its leaves of three or more characters only", async () => {
+  // The query dropped `accessToken`, so the secret may sit under any key:
+  // core masks every leaf of three or more characters, but never an enum
+  // word such as `true` or a two-character value such as `12`.
   const { settings, marked } = recording(
+    new AzAccountGetAccessTokenSettings().query("[ok, n, tokenType, scope]"),
+  );
+  await settings.runner(
+    new FakeAz(json([true, 12, "Bearer", "https://management.azure.com"])).run,
+  ).run();
+  for (const kept of ["true", "12"]) {
+    assertEquals(marked.includes(kept), false, kept);
+  }
+  assertEquals(marked.includes("Bearer"), true);
+  // Core's answer rule: a queried answer whose only string is short is that
+  // string — a short queried PIN must be masked, so a lone `Bearer` is too.
+  const lone = recording(
     new AzAccountGetAccessTokenSettings().query("[ok, n, tokenType]"),
   );
-  await settings.runner(new FakeAz(json([true, 12, "Bearer"])).run).run();
-  assertEquals(marked, []);
+  await lone.settings.runner(new FakeAz(json([true, 12, "Bearer"])).run).run();
+  assertEquals(lone.marked.includes("Bearer"), true);
+  assertEquals(lone.marked.includes("true"), false);
+  assertEquals(lone.marked.includes("12"), false);
   // A secret that is the whole answer is masked whatever its length.
   const short = recording(new AzKeyvaultSecretShowSettings().id("x"));
   await short.settings.runner(new FakeAz(json("pin1")).run).run();

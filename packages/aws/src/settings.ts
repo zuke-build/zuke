@@ -216,6 +216,15 @@ export class AwsSettings extends SubcommandSettings {
   }
 
   /**
+   * Whether a `--query` was set — by the caller, or pinned by a reader. A
+   * credential-bearing command then registers every long scalar it printed,
+   * since the query may have moved the secret away from its usual key.
+   */
+  protected get queried(): boolean {
+    return this.#query !== undefined;
+  }
+
+  /**
    * Replace how this command is run. The default spawns the CLI; this is the
    * seam a test answers commands through, and the way a build executes `aws`
    * through something else. The runner reads the argv from the settings it is

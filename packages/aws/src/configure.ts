@@ -53,8 +53,8 @@ export class AwsConfigureGetSettings extends AwsSettings {
 
   /** Register a credential setting's value as a secret. */
   protected override onOutput(output: CommandOutput): void {
-    const value = output.stdout.trim();
-    if (this.#secret && value !== "") this.markSecret(value);
+    if (!this.#secret) return;
+    this.markSecretsInOutput(output.stdout);
   }
 
   /** Emit `configure get` with the setting. */

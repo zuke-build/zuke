@@ -297,6 +297,7 @@ Deno.test("H4: credential-bearing commands pin json and mask what they print", a
 
   const secret = JSON.stringify({
     host: "db.internal",
+    user: "app",
     password: "db-pass-123",
   });
   for (
@@ -313,7 +314,10 @@ Deno.test("H4: credential-bearing commands pin json and mask what they print", a
     assertEquals(fake.flag(0, "--output"), "json");
     assertEquals(shown.marked.includes(secret), true);
     assertEquals(shown.marked.includes("db-pass-123"), true);
-    assertEquals(new Set(shown.marked).has("db.internal"), false);
+    // Core masks every leaf of eight or more characters of a JSON secret,
+    // so the host is masked; a short ordinary leaf is not.
+    assertEquals(shown.marked.includes("db.internal"), true);
+    assertEquals(shown.marked.includes("app"), false);
   }
 
   // Plain text, the form a pinned format cannot be, is registered whole.
@@ -422,8 +426,10 @@ Deno.test("H10: masking finds long numbers and credentials nested in lists", asy
   );
   await reshaped.settings.runner(new FakeAz(json([1791633600, true])).run)
     .run();
-  // Only the leaf long enough to be worth masking: `true` is not.
-  assertEquals(reshaped.marked, ["1791633600"]);
+  // The leaf long enough to be worth masking, and the answer as a whole —
+  // core registers a queried document whole — but not `true` on its own.
+  assertEquals(reshaped.marked.includes("1791633600"), true);
+  assertEquals(reshaped.marked.includes("true"), false);
   const secret = JSON.stringify([
     { db: { password: "nested-pass-123" } },
     { note: "short" },
@@ -432,4 +438,30 @@ Deno.test("H10: masking finds long numbers and credentials nested in lists", asy
   await shown.settings.runner(new FakeAz(json({ value: secret })).run).run();
   assertEquals(shown.marked.includes("nested-pass-123"), true);
   assertEquals(shown.marked.includes("short"), false);
+});
+
+Deno.test("H11: credential-bearing commands route through core's shared helper", async () => {
+  // A number answer, as a query can print it, is masked as written — the
+  // package's own copy skipped a leaf this short.
+  const pin = recording(
+    new AzKeyvaultSecretShowSettings().id("x").query("to_number(value)"),
+  );
+  await pin.settings.runner(new FakeAz("4821\n").run).run();
+  assertEquals(pin.marked.includes("4821"), true);
+
+  // A connection-string secret's password is masked on its own, and in the
+  // JSON-escaped spelling the raw output carries.
+  const conn = recording(new AzKeyvaultSecretShowSettings().id("x"));
+  await conn.settings.runner(
+    new FakeAz(json({ value: 'Server=db;Password=pair"pass-1' })).run,
+  ).run();
+  assertEquals(conn.marked.includes('pair"pass-1'), true);
+  assertEquals(conn.marked.includes('pair\\"pass-1'), true);
+
+  // An access token's `\/`-escaped spelling.
+  const token = recording(new AzAccountGetAccessTokenSettings());
+  await token.settings.runner(
+    new FakeAz(json({ accessToken: "eyJ.a/b.token-1" })).run,
+  ).run();
+  assertEquals(token.marked.includes("eyJ.a\\/b.token-1"), true);
 });

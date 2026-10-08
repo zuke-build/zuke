@@ -10,6 +10,7 @@ import {
 import { CommandOutput } from "@zuke/core/shell";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
+  AwsConfigureGetSettings,
   AwsEcrGetLoginPasswordSettings,
   AwsOutputError,
   AwsSecretsmanagerGetSecretValueSettings,
@@ -20,7 +21,6 @@ import {
 // Internal to the package: the public surface is the task-shaped readers, so
 // these are imported from their modules rather than re-exported by mod.ts.
 import { readJson, readScalar } from "../src/scalar_output.ts";
-import { secretsIn } from "../src/secret_output.ts";
 import { FakeAws, json, withEmptyPath } from "./_fake.ts";
 
 const CAP = 8388608;
@@ -96,42 +96,6 @@ Deno.test("readJson parses, and never quotes output it cannot parse", () => {
     AwsOutputError,
     "9-byte",
   );
-});
-
-Deno.test("secretsIn finds secrets in JSON, a JSON string, or plain text", () => {
-  assertEquals(
-    secretsIn(
-      json({ Credentials: { SecretAccessKey: "sk", SessionToken: "st" } }),
-      ["SecretAccessKey", "SessionToken"],
-    ),
-    ["sk", "st"],
-  );
-  assertEquals(
-    secretsIn(json([{ Value: "a" }, { Value: 1 }, "x"]), ["Value"]),
-    ["a"],
-  );
-  assertEquals(secretsIn(json("line1\nline2"), []), ["line1\nline2"]);
-  assertEquals(secretsIn("eyJwYXNzd29yZCI6\n", []), ["eyJwYXNzd29yZCI6"]);
-  assertEquals(secretsIn("\n", []), []);
-  // A reshaped answer without the expected keys has every scalar registered.
-  assertEquals(secretsIn("42", ["Value"]), ["42"]);
-  assertEquals(secretsIn(json({ a: true, b: null }), ["Value"]), ["true"]);
-  assertEquals(secretsIn("null\n", ["Value"]), []);
-  assertEquals(secretsIn(json({}), ["Value"]), ["{}"]);
-  // A JSON secret also yields its credential-named fields, and only those.
-  const rds = JSON.stringify({
-    username: "admin",
-    password: "pw-inside-json",
-    engine: "postgres",
-    port: 5432,
-    apiKey: "key-inside-json",
-  });
-  assertEquals(secretsIn(json({ SecretString: rds }), ["SecretString"]), [
-    rds,
-    "pw-inside-json",
-    "key-inside-json",
-  ]);
-  assertEquals(secretsIn(json("[1,2]"), []), ["[1,2]"]);
 });
 
 Deno.test("accountId pins --query Account --output text, quietly", async () => {
@@ -323,6 +287,90 @@ Deno.test("credential-bearing commands register what they return", async () => {
   );
   await parameter.run();
   assertEquals(parameter.marked, ["the-value"]);
+});
+
+Deno.test("credential-bearing output is searched by core's rules", async () => {
+  // A JSON string answer is the secret, in the escaped spelling too.
+  const multi = new RecordingSecret().secretId("s").query("SecretString")
+    .runner(new FakeAws(json("line1\nline2")).run);
+  await multi.run();
+  assertEquals(multi.marked.includes("line1\nline2"), true);
+  assertEquals(multi.marked.includes("line1\\nline2"), true);
+
+  // Plain text is the secret, trimmed.
+  const login = new RecordingLogin().runner(
+    new FakeAws("eyJwYXNzd29yZCI6\n").run,
+  );
+  await login.run();
+  assertEquals(login.marked, ["eyJwYXNzd29yZCI6"]);
+
+  // A number answer is registered as written.
+  const pin = new RecordingParameter().name("/pin").runner(
+    new FakeAws("42\n").run,
+  );
+  await pin.run();
+  assertEquals(pin.marked, ["42"]);
+
+  // Nothing to register: a blank answer, null, an empty document, or one of
+  // only booleans and nulls — registered, `true` would mask every `true`.
+  for (const stdout of ["\n", "null\n", json({}), json({ a: true, b: null })]) {
+    const none = new RecordingParameter().name("/a").runner(
+      new FakeAws(stdout).run,
+    );
+    await none.run();
+    assertEquals(none.marked, [], stdout);
+  }
+
+  // A value under an expected key counts from three characters.
+  const assume = new RecordingAssumeRole().roleArn("r").roleSessionName("n")
+    .runner(
+      new FakeAws(json({
+        Credentials: { SecretAccessKey: "sk", SessionToken: "st-1" },
+      })).run,
+    );
+  await assume.run();
+  assertEquals(assume.marked, ["st-1"]);
+
+  // A JSON secret yields its credential fields and its long leaves.
+  const rds = JSON.stringify({
+    username: "admin",
+    password: "pw-inside-json",
+    engine: "postgres",
+    port: 5432,
+    apiKey: "key-inside-json",
+  });
+  const secret = new RecordingSecret().secretId("s").runner(
+    new FakeAws(json({ SecretString: rds })).run,
+  );
+  await secret.run();
+  for (const masked of [rds, "pw-inside-json", "key-inside-json", "postgres"]) {
+    assertEquals(secret.marked.includes(masked), true, masked);
+  }
+  for (const kept of ["admin", "5432"]) {
+    assertEquals(secret.marked.includes(kept), false, kept);
+  }
+});
+
+Deno.test("credential-bearing commands route through core's shared helper", async () => {
+  // Searched by core: a connection string's password on its own, and the
+  // JSON-escaped spelling the raw output carries — neither of which the
+  // package's own copy found.
+  const secret = new RecordingSecret().secretId("s").runner(
+    new FakeAws(json({ SecretString: 'Server=db;Password=pair"pass-1' })).run,
+  );
+  await secret.run();
+  assertEquals(secret.marked.includes('pair"pass-1'), true);
+  assertEquals(secret.marked.includes('pair\\"pass-1'), true);
+
+  // configure get of a credential: the `\/`-escaped spelling of a key with a
+  // slash in it, as a JSON encoder may print it.
+  const marked: string[] = [];
+  const get = new AwsConfigureGetSettings().varname("aws_secret_access_key");
+  Object.defineProperty(get, "markSecret", {
+    value: (value: string) => marked.push(value),
+  });
+  await get.runner(new FakeAws("example/secret-key\n").run).run();
+  assertEquals(marked, ["example/secret-key", "example\\/secret-key"]);
 });
 
 Deno.test("a reader's failed command surfaces as a CommandError", async () => {

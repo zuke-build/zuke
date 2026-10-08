@@ -1562,12 +1562,12 @@
       },
       "packages/aws": {
         "dependencies": [
-          "jsr:@zuke/core@^1.66.0"
+          "jsr:@zuke/core@^1.70.1"
         ]
       },
       "packages/az": {
         "dependencies": [
-          "jsr:@zuke/core@^1.67.0"
+          "jsr:@zuke/core@^1.70.1"
         ]
       },
       "packages/biome": {

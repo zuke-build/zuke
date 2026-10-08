@@ -16,7 +16,6 @@
  */
 
 import type { CommandOutput } from "@zuke/core/shell";
-import { secretsIn } from "./secret_output.ts";
 import { option } from "./validate.ts";
 import { type AwsOutputFormat, AwsSettings } from "./settings.ts";
 import { freeText } from "./validate.ts";
@@ -104,9 +103,10 @@ export class AwsStsAssumeRoleSettings extends AwsSettings {
 
   /** Register the returned secret access key and session token as secrets. */
   protected override onOutput(output: CommandOutput): void {
-    for (const secret of secretsIn(output.stdout, CREDENTIAL_KEYS)) {
-      this.markSecret(secret);
-    }
+    this.markSecretsInOutput(
+      output.stdout,
+      (s) => s.keys(...CREDENTIAL_KEYS).queried(this.queried),
+    );
   }
 
   /** Emit `sts assume-role` with its options. */

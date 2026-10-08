@@ -22,7 +22,6 @@
  */
 
 import type { CommandOutput } from "@zuke/core/shell";
-import { secretsIn } from "./secret_output.ts";
 import { operands, option } from "./validate.ts";
 import { AwsSettings } from "./settings.ts";
 
@@ -46,7 +45,7 @@ export class AwsEcrGetLoginPasswordSettings extends AwsSettings {
 
   /** Register the printed password as a secret. */
   protected override onOutput(output: CommandOutput): void {
-    for (const secret of secretsIn(output.stdout, [])) this.markSecret(secret);
+    this.markSecretsInOutput(output.stdout);
   }
 
   /** Emit `ecr get-login-password`. */
