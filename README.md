@@ -29,7 +29,7 @@ whole thing to **AI agents** as typed tools. Inspired by
 ## Five minutes to a typed build
 
 ```sh
-deno install -A -g -n zuke jsr:@zuke/cli   # 1. the CLI, once
+deno install -A -g -n zuke jsr:@zuke/cli    # 1. the CLI, once
 zuke setup                                  # 2. scaffold zuke.ts + the ./zuke launcher
 zuke                                        # 3. run it (or ./zuke — no install needed)
 zuke generate-ci                            # 4. write .github/workflows/ci.yml from the build
