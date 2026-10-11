@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.71.0](https://github.com/zuke-build/zuke/compare/core-v1.70.1...core-v1.71.0) (2026-10-11)
+
+
+### Features
+
+* **core:** add job environments, outputs, sparse matrices, and path filters ([#780](https://github.com/zuke-build/zuke/issues/780)) ([e774671](https://github.com/zuke-build/zuke/commit/e774671891ce8b26ba6510404e5665601ba534f8))
+
 ## [1.70.1](https://github.com/zuke-build/zuke/compare/core-v1.70.0...core-v1.70.1) (2026-10-08)
 
 
