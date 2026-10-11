@@ -482,6 +482,11 @@ const DEFAULT_NAME = "CI";
 /** The default job id when one is not given. */
 const DEFAULT_JOB_ID = "build";
 
+/** A job's id, or the default one when it declares none. */
+function jobKey(job: CiJob): string {
+  return job.id ?? DEFAULT_JOB_ID;
+}
+
 /** The id of the generated GitHub job that guards a DST-zone schedule. */
 const GUARD_JOB_ID = "zuke-schedule-guard";
 
@@ -562,8 +567,7 @@ function pathPatterns(
   if (filter.paths !== undefined && filter.pathsIgnore !== undefined) {
     throw new Error(
       `cicd: \`triggers.${field}\` sets both \`paths\` and \`pathsIgnore\`, ` +
-        `which GitHub rejects — use one (a \`paths\` pattern can exclude with ` +
-        `a leading \`!\`).`,
+        `which GitHub rejects — use one or the other.`,
     );
   }
   const ignore = filter.paths === undefined;
@@ -601,7 +605,7 @@ function refuseJobField(
 ): void {
   if (job[field] === undefined) return;
   throw new Error(
-    `cicd: job "${job.id ?? DEFAULT_JOB_ID}" sets \`${field}\`, which ` +
+    `cicd: job "${jobKey(job)}" sets \`${field}\`, which ` +
       `${provider} cannot represent — drop it for this provider.`,
   );
 }
@@ -644,12 +648,12 @@ function githubTrigger(
 function githubRunsOn(job: CiJob): string {
   const fallback = job.runsOn ?? DEFAULT_RUNNER;
   if (!hasMatrix(job)) return fallback;
-  const rows = expandMatrix(job.id ?? DEFAULT_JOB_ID, job);
+  const rows = expandMatrix(jobKey(job), job);
   const withOs = rows.filter((row) => "os" in row).length;
   if (withOs === rows.length) return "${{ matrix.os }}";
   if (withOs === 0) return fallback;
   throw new Error(
-    `cicd: job "${job.id ?? DEFAULT_JOB_ID}" sets \`os\` in only some matrix ` +
+    `cicd: job "${jobKey(job)}" sets \`os\` in only some matrix ` +
       `combinations, so the rest would have no runner — give every row an ` +
       `\`os\`, or none and set \`runsOn\`.`,
   );
@@ -1008,7 +1012,7 @@ function github(pipeline: CiPipeline): YamlValue {
       env: step.env,
       "continue-on-error": step.continueOnError,
     }));
-    jobs[job.id ?? DEFAULT_JOB_ID] = {
+    jobs[jobKey(job)] = {
       name: job.name,
       "runs-on": githubRunsOn(job),
       environment: environmentValue(job.environment),
@@ -1102,9 +1106,10 @@ function gitlab(pipeline: CiPipeline): YamlValue {
     });
   }
   // An unfiltered push needs no rule of its own, but a path filter does: it is
-  // the only place the `changes:` can go.
+  // the only place the `changes:` can go. Any branch, exactly as a branch rule
+  // above matches one, so it narrows by path and by nothing else.
   if (triggers.push?.length === 0 && pushChanges !== undefined) {
-    rules.push({ if: `$CI_PIPELINE_SOURCE == "push"`, changes: pushChanges });
+    rules.push({ if: "$CI_COMMIT_BRANCH", changes: pushChanges });
   }
   if (triggers.pullRequest) {
     rules.push({
@@ -1118,7 +1123,7 @@ function gitlab(pipeline: CiPipeline): YamlValue {
   config.stages = ["build"];
   for (const job of pipeline.jobs ?? DEFAULT_JOBS) {
     refuseJobField(job, "outputs", "GitLab");
-    config[job.id ?? DEFAULT_JOB_ID] = {
+    config[jobKey(job)] = {
       stage: "build",
       image: job.runsOn,
       environment: environmentValue(job.environment),
@@ -1138,10 +1143,12 @@ function gitlab(pipeline: CiPipeline): YamlValue {
  * `exclude` and its entries would otherwise each multiply out.
  */
 function gitlabMatrix(job: CiJob): YamlValue | undefined {
-  if (isSparse(job)) {
-    return { matrix: expandMatrix(job.id ?? DEFAULT_JOB_ID, job) };
-  }
-  return job.matrix === undefined ? undefined : { matrix: [job.matrix] };
+  if (!hasMatrix(job)) return undefined;
+  // Expanded either way, so GitLab refuses the same matrices the other
+  // providers do (an empty axis, an `include` axis) rather than rendering them.
+  const rows = expandMatrix(jobKey(job), job);
+  if (isSparse(job) || job.matrix === undefined) return { matrix: rows };
+  return { matrix: [job.matrix] };
 }
 
 /**
@@ -1151,11 +1158,11 @@ function gitlabMatrix(job: CiJob): YamlValue | undefined {
  */
 function azureMatrix(job: CiJob): Record<string, YamlValue> {
   const configs: Record<string, YamlValue> = {};
-  for (const combo of expandMatrix(job.id ?? DEFAULT_JOB_ID, job)) {
+  for (const combo of expandMatrix(jobKey(job), job)) {
     const name = Object.values(combo).map(String).join("_");
     if (Object.hasOwn(configs, name)) {
       throw new Error(
-        `cicd: job "${job.id ?? DEFAULT_JOB_ID}" has two matrix combinations ` +
+        `cicd: job "${jobKey(job)}" has two matrix combinations ` +
           `named "${name}" on Azure, which names each by its values — make ` +
           `the rows differ in value, not just in key.`,
       );
@@ -1238,7 +1245,7 @@ function azure(pipeline: CiPipeline): YamlValue {
       }
     }
     jobs.push({
-      job: job.id ?? DEFAULT_JOB_ID,
+      job: jobKey(job),
       displayName: job.name,
       pool: { vmImage: job.runsOn ?? DEFAULT_RUNNER },
       dependsOn: job.needs,

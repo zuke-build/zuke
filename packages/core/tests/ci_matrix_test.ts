@@ -123,3 +123,11 @@ Deno.test("hasMatrix and isSparse read all three parts", () => {
   assertEquals(isSparse({ matrixInclude: [] }), true);
   assertEquals(isSparse({ matrixExclude: [] }), true);
 });
+
+Deno.test("expandMatrix: an axis named like GitHub's row lists is refused", () => {
+  assertThrows(
+    () => expandMatrix("test", { matrix: { exclude: ["a"] } }),
+    Error,
+    `job "test" has a matrix axis named "exclude"`,
+  );
+});

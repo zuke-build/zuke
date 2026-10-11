@@ -291,6 +291,29 @@ Deno.test("a bad exclude row is an error on every provider that renders matrices
   }
 });
 
+Deno.test("an axis named include or exclude is refused on every matrix provider", () => {
+  // GitHub would read the axis as its own row list and drop or overwrite it.
+  for (const provider of ["github", "gitlab", "azure"] as const) {
+    for (const name of ["include", "exclude"]) {
+      assertThrows(
+        () => generateCi(oneJob({ matrix: { [name]: ["a", "b"] } }), provider),
+        Error,
+        `has a matrix axis named "${name}"`,
+      );
+    }
+  }
+});
+
+Deno.test("gitlab: an axis with no values is refused, as on github and azure", () => {
+  for (const provider of ["github", "gitlab", "azure"] as const) {
+    assertThrows(
+      () => generateCi(oneJob({ matrix: { os: [] } }), provider),
+      Error,
+      "no combinations left",
+    );
+  }
+});
+
 // --- path filters -----------------------------------------------------------
 
 const WEBSITE = ["website/**", ".github/workflows/website-project.yml"];
@@ -420,7 +443,10 @@ Deno.test("gitlab: an every-branch push filter gets a push-source rule", () => {
     oneJob({}, { triggers: { push: [], pushPaths: { paths: ["src/**"] } } }),
     "gitlab",
   );
-  assertStringIncludes(yaml, 'CI_PIPELINE_SOURCE == \\"push\\"');
+  // Any branch, like the per-branch rules — not only the `push` source, which
+  // would also shut out scheduled, API and trigger pipelines.
+  assertStringIncludes(yaml, `- if: "$CI_COMMIT_BRANCH"\n`);
+  assertEquals(yaml.includes("CI_PIPELINE_SOURCE"), false);
   assertStringIncludes(yaml, `      changes:\n        - "src/**"\n`);
 });
 

@@ -76,12 +76,25 @@ function matches(combo: CiMatrixRow, row: CiMatrixRow): boolean {
  * fits none becomes a combination of its own. Rows created that way are not
  * extended by later `include` rows — exactly as GitHub documents it.
  *
- * Throws for what GitHub would reject when the workflow runs: an `exclude` key
- * that is not an axis, and a matrix with no combinations left.
+ * Throws for what GitHub would reject or misread when the workflow runs: an
+ * axis named `include` or `exclude`, an `exclude` key that is not an axis, and
+ * a matrix with no combinations left.
  */
 export function expandMatrix(jobId: string, spec: MatrixSpec): CiMatrixRow[] {
   const axes = spec.matrix ?? {};
   const original = Object.keys(axes);
+  // GitHub reads these two keys of `strategy.matrix` as its own row lists, so
+  // an axis by either name would be silently reinterpreted there.
+  const reserved = { include: "matrixInclude", exclude: "matrixExclude" };
+  for (const [name, field] of Object.entries(reserved)) {
+    if (original.includes(name)) {
+      throw new Error(
+        `cicd: job "${jobId}" has a matrix axis named "${name}", which GitHub ` +
+          `reads as its own row list — rename the axis, or declare the rows ` +
+          `with \`${field}\`.`,
+      );
+    }
+  }
   for (const row of spec.matrixExclude ?? []) {
     for (const key of Object.keys(row)) {
       if (!original.includes(key)) {
