@@ -404,12 +404,14 @@ export {
   cicd,
   type CiCheckout,
   type CiConcurrency,
+  type CiEnvironment,
   CiFile,
   type CiFileSpec,
   type CiHardenRunner,
   type CiInvocation,
   type CiInvokes,
   type CiJob,
+  type CiPathFilter,
   type CiPinResolver,
   type CiPipeline,
   type CiProvider,
@@ -427,6 +429,7 @@ export {
   syncCiFiles,
   ZUKE_ACTION,
 } from "./src/ci.ts";
+export { type CiMatrixAxes, type CiMatrixRow } from "./src/ci_matrix.ts";
 export { type ScheduleEntry } from "./src/ci_schedule.ts";
 export { type RunPlan } from "./src/run_plan.ts";
 

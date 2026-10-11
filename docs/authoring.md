@@ -662,7 +662,88 @@ The model is a portable subset: a `run` step (a shell command) maps to every
 provider; a `uses` step (a GitHub Action) renders only for GitHub and is skipped
 elsewhere, since GitLab and Azure check out the repo automatically. `runsOn` is
 interpreted per provider (a runner label, a Docker image, or a `vmImage`); when
-a matrix defines `os`, GitHub runs on it automatically.
+every matrix combination sets `os`, GitHub runs on it automatically.
+
+#### Deployments, job outputs, sparse matrices, and path filters
+
+A deploy pipeline needs a few things beyond steps, and each is a typed field on
+a job (`pipeline.jobs`) or an invocation (`invokes`), so the deployment YAML
+lives in the build with everything else:
+
+```ts
+ci = cicd({
+  provider: "github",
+  pipeline: {
+    triggers: {
+      push: ["main"],
+      pushPaths: { paths: ["website/**"] }, // or { pathsIgnore: [...] }
+      pullRequest: ["main"],
+      pullRequestPaths: { paths: ["website/**"] },
+    },
+  },
+  invokes: [
+    {
+      target: this.test,
+      failFast: false,
+      // Exactly these combinations — not every Node × OS pairing.
+      matrixInclude: [
+        { node: "24", os: "ubuntu-latest" },
+        { node: "26", os: "ubuntu-latest" },
+        { node: "26", os: "macos-latest" },
+      ],
+    },
+    {
+      target: this.deploy,
+      permissions: { pages: "write", "id-token": "write" },
+      environment: {
+        name: "github-pages",
+        url: "${{ steps.deployment.outputs.page_url }}",
+      },
+      outputs: { "page-url": "${{ steps.deployment.outputs.page_url }}" },
+    },
+    {
+      target: this.smoke, // dependsOn(this.deploy), so it needs the deploy job
+      env: { DEPLOYMENT_URL: "${{ needs.deploy.outputs.page-url }}" },
+    },
+  ],
+});
+```
+
+- **`environment`** — a name, or `{ name, url }` — is the deployment environment
+  the job runs in: what protection rules, required reviewers and
+  environment-scoped secrets attach to (not `env`, which is variables). It
+  grants nothing by itself; the provider still enforces the environment's rules.
+- **`outputs`** hands values to the jobs that `need` this one, read as
+  `${{ needs.<job>.outputs.<name> }}`. Expressions render verbatim.
+- **`matrixInclude` / `matrixExclude`** make a matrix sparse, with GitHub's
+  semantics: `exclude` rows (partial matches over the `matrix` axes) are removed
+  first, then each `include` row extends every combination it agrees with on the
+  original axes, or becomes a combination of its own. With no `matrix` axes the
+  include rows _are_ the matrix. An exclude key that is not an axis, a matrix
+  that leaves nothing to run, and `os` set in only some rows are errors.
+- **`pushPaths` / `pullRequestPaths`** narrow one trigger each to changes under
+  the given paths (`paths`) or outside them (`pathsIgnore` — one or the other,
+  never both). Each requires the trigger it narrows. A workflow the filter skips
+  never reports, so a **required** status check it would have produced stays
+  pending and blocks the merge — filter only workflows whose checks are not
+  required, or decide inside the run (e.g. `--affected`) instead.
+
+Provider support follows what each platform can actually express, and a field a
+provider cannot carry is an **error**, never silently dropped — losing an
+environment would lose its approval gate, and losing a path filter would run on
+every change:
+
+| Field                   | GitHub         | GitLab                | Azure                  | Bitbucket           |
+| ----------------------- | -------------- | --------------------- | ---------------------- | ------------------- |
+| `environment`           | `environment`  | `environment`         | error                  | error               |
+| `outputs`               | `outputs`      | error                 | error                  | error               |
+| `matrixInclude/Exclude` | native         | expanded combinations | named configurations   | ignored (no matrix) |
+| `paths`                 | `paths`        | `rules: changes:`     | `trigger`/`pr` `paths` | error               |
+| `pathsIgnore`           | `paths-ignore` | error                 | `paths: exclude`       | error               |
+
+GitLab and Azure receive a sparse matrix already expanded into exactly the
+combinations GitHub would run, so one declaration means the same jobs on every
+provider. Path patterns pass through in each provider's own glob syntax.
 
 For one-off rendering without the build wiring, `generateCi(pipeline, provider)`
 returns the YAML string directly (pass an empty pipeline,

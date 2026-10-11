@@ -39,6 +39,14 @@ import { readTextOrNull, writeTextEnsuringDir } from "./internal.ts";
 import { type Build, discoverTargets, forEachField } from "./build.ts";
 import { TargetBuilder } from "./target.ts";
 import {
+  type CiMatrixAxes,
+  type CiMatrixRow,
+  expandMatrix,
+  hasMatrix,
+  isSparse,
+  type MatrixSpec,
+} from "./ci_matrix.ts";
+import {
   anyScheduleNeedsGuard,
   guardShell,
   type ScheduleEntry,
@@ -218,13 +226,33 @@ export interface CiJob {
   /**
    * The runner. Interpreted per provider: a GitHub runner label and Azure
    * `vmImage` (default `ubuntu-latest`), or a GitLab Docker image (runner
-   * default when omitted). Ignored when a matrix defines `os` on GitHub.
+   * default when omitted). Ignored on GitHub when every matrix combination
+   * sets `os`, which then picks the runner.
    */
   runsOn?: string;
   /** Other jobs (by {@link id}) that must finish before this one. */
   needs?: string[];
   /** A build matrix: each key fans out over its values. */
-  matrix?: Record<string, Array<string | number>>;
+  matrix?: CiMatrixAxes;
+  /**
+   * Matrix rows to add — GitHub's `matrix.include`. A row that agrees with an
+   * axis combination on every axis it names extends that combination with its
+   * other keys; a row that fits none becomes a combination of its own. With no
+   * {@link matrix} at all, the rows *are* the matrix — the way to run exactly
+   * the combinations you list (four Node lines on Ubuntu plus one on macOS)
+   * rather than every pairing of two axes.
+   *
+   * Rendered natively on GitHub. GitLab and Azure receive the expanded
+   * combinations, so each provider runs the same jobs; Bitbucket has no matrix.
+   */
+  matrixInclude?: CiMatrixRow[];
+  /**
+   * Axis combinations to remove — GitHub's `matrix.exclude`. Each row is a
+   * partial match over the {@link matrix} axes (`{ os: "windows-latest" }`
+   * drops every Windows combination), and naming a key that is not an axis is
+   * an error. Applied before {@link matrixInclude}, as on GitHub.
+   */
+  matrixExclude?: CiMatrixRow[];
   /**
    * Let the other matrix legs finish when one fails (`fail-fast: false`). Default
    * GitHub behaviour cancels them, which hides whether a failure is
@@ -256,6 +284,31 @@ export interface CiJob {
   /** Environment variables for the job. */
   env?: Record<string, string>;
   /**
+   * The deployment environment the job runs in: a name, or a name and the URL
+   * the deployment is reachable at (often an expression such as
+   * `${{ steps.deployment.outputs.page_url }}`, rendered verbatim). Not to be
+   * confused with {@link env}: an environment is what the provider's
+   * protection rules, required reviewers and environment-scoped secrets attach
+   * to, and a GitHub Pages deployment needs one.
+   *
+   * Declaring it grants nothing on its own — the provider still enforces the
+   * environment's rules. Rendered on GitHub and GitLab, whose `environment:`
+   * takes the same name and URL. Azure (whose environments belong to a
+   * separate deployment-job form) and Bitbucket refuse it with an error rather
+   * than drop it, because a job silently stripped of its environment would
+   * also be stripped of the approval gate guarding it.
+   */
+  environment?: string | CiEnvironment;
+  /**
+   * Values this job hands to the jobs that `needs` it — GitHub's job
+   * `outputs:`, keyed by output name, each usually a step output expression
+   * (`${{ steps.deployment.outputs.page_url }}`). A consumer reads one as
+   * `${{ needs.<job>.outputs.<name> }}`. Expressions are rendered verbatim.
+   * GitHub only: the other providers have no job outputs, so they refuse it
+   * with an error rather than render a pipeline whose consumers read nothing.
+   */
+  outputs?: Record<string, string>;
+  /**
    * A condition gating the job. A raw provider expression: GitHub `if:`, Azure
    * `condition:`. Ignored on GitLab. Use it to e.g. skip forked pull requests.
    */
@@ -274,6 +327,34 @@ export interface CiJob {
   steps?: CiStep[];
 }
 
+/**
+ * A deployment environment a job runs in, by name and optionally the URL the
+ * deployment is reachable at. See {@link CiJob.environment}.
+ */
+export interface CiEnvironment {
+  /** The environment's name, as the repository's settings define it. */
+  name: string;
+  /**
+   * The deployment's URL, shown on the run and the environment page. A literal
+   * or a provider expression; rendered verbatim either way.
+   */
+  url?: string;
+}
+
+/**
+ * Narrow a trigger to the changed files that matter: run only when a changed
+ * file matches one of `paths`, or skip when every changed file matches one of
+ * `pathsIgnore`. Exactly one of the two, as GitHub requires; the patterns are
+ * passed through in the provider's own glob syntax.
+ *
+ * Mind required status checks: a workflow the filter skips never reports, so a
+ * check it would have produced stays pending and blocks the merge. Filter
+ * workflows whose checks are not required, or decide inside the run instead.
+ */
+export type CiPathFilter =
+  | { paths: string[]; pathsIgnore?: never }
+  | { pathsIgnore: string[]; paths?: never };
+
 /** When the pipeline runs. */
 export interface CiTriggers {
   /**
@@ -286,6 +367,21 @@ export interface CiTriggers {
    * means every branch (no filter); omit the field to disable the trigger.
    */
   pullRequest?: string[];
+  /**
+   * Run the {@link push} trigger only for pushes that change these paths (see
+   * {@link CiPathFilter}). Requires {@link push}. Rendered as `paths` /
+   * `paths-ignore` on GitHub, `trigger.paths` on Azure and a `changes:` rule on
+   * GitLab, which can express `paths` but not `pathsIgnore`; Bitbucket has no
+   * trigger-level path filter, so a filter for either of those is an error
+   * rather than a pipeline that runs on every change.
+   */
+  pushPaths?: CiPathFilter;
+  /**
+   * Run the {@link pullRequest} trigger only for pull/merge requests that change
+   * these paths (see {@link CiPathFilter}). Requires {@link pullRequest}.
+   * Provider support as for {@link pushPaths}.
+   */
+  pullRequestPaths?: CiPathFilter;
   /**
    * Which pull-request activity types fire the pipeline, on top of the branch
    * filter — GitHub's default is `opened`, `synchronize`, `reopened`. Add
@@ -435,16 +531,137 @@ function runCommands(steps: CiStep[]): string[] {
   return commands;
 }
 
+/** A validated {@link CiPathFilter}: its patterns, and which way they cut. */
+interface PathPatterns {
+  /** True for `pathsIgnore`, false for `paths`. */
+  ignore: boolean;
+  /** The glob patterns, verbatim. */
+  patterns: string[];
+}
+
+/**
+ * Validate the path filter on one trigger event, for every provider alike: it
+ * needs the event it narrows, exactly one of its two lists, and at least one
+ * pattern. A filter on an event that is off would otherwise vanish without a
+ * trace, and an empty list means different things to different providers.
+ */
+function pathPatterns(
+  field: "pushPaths" | "pullRequestPaths",
+  filter: CiPathFilter | undefined,
+  branches: string[] | undefined,
+): PathPatterns | undefined {
+  if (filter === undefined) return undefined;
+  const event = field === "pushPaths" ? "push" : "pullRequest";
+  if (branches === undefined) {
+    throw new Error(
+      `cicd: \`triggers.${field}\` narrows the ${event} trigger, which is not ` +
+        `enabled — set \`triggers.${event}\` too (an empty array for every ` +
+        `branch), or drop the filter.`,
+    );
+  }
+  if (filter.paths !== undefined && filter.pathsIgnore !== undefined) {
+    throw new Error(
+      `cicd: \`triggers.${field}\` sets both \`paths\` and \`pathsIgnore\`, ` +
+        `which GitHub rejects — use one (a \`paths\` pattern can exclude with ` +
+        `a leading \`!\`).`,
+    );
+  }
+  const ignore = filter.paths === undefined;
+  const patterns = filter.paths ?? filter.pathsIgnore;
+  if (!Array.isArray(patterns) || patterns.length === 0) {
+    throw new Error(
+      `cicd: \`triggers.${field}\` needs at least one pattern in \`paths\` ` +
+        `or \`pathsIgnore\` — omit the filter to run on every change.`,
+    );
+  }
+  return { ignore, patterns };
+}
+
+/**
+ * Refuse a trigger's path filter on a provider that cannot express it, rather
+ * than render a pipeline that runs on every change.
+ */
+function refusePathFilter(provider: string, field: string): never {
+  throw new Error(
+    `cicd: \`triggers.${field}\` cannot be expressed for ${provider} — ` +
+      `drop the filter for this provider, or decide inside the run (e.g. ` +
+      `\`--affected\`).`,
+  );
+}
+
+/**
+ * Refuse a job field a provider cannot carry, rather than drop it silently:
+ * both fields this guards change what a job may do or hand on, so losing one
+ * without a word produces a pipeline that is wrong rather than merely plainer.
+ */
+function refuseJobField(
+  job: CiJob,
+  field: "environment" | "outputs",
+  provider: string,
+): void {
+  if (job[field] === undefined) return;
+  throw new Error(
+    `cicd: job "${job.id ?? DEFAULT_JOB_ID}" sets \`${field}\`, which ` +
+      `${provider} cannot represent — drop it for this provider.`,
+  );
+}
+
+/** A job's environment in the `{ name, url }` form GitHub and GitLab share. */
+function environmentValue(
+  environment: string | CiEnvironment | undefined,
+): YamlValue | undefined {
+  if (environment === undefined || typeof environment === "string") {
+    return environment;
+  }
+  return { name: environment.name, url: environment.url };
+}
+
 /**
  * A GitHub trigger filter: `{ branches: [...] }` for a non-empty branch list,
  * or `{}` (no filter — every branch) for an empty one. `types` is added when the
- * trigger declares activity types.
+ * trigger declares activity types, and `paths`/`paths-ignore` when it declares
+ * a path filter.
  */
-function githubTrigger(branches: string[], types?: string[]): YamlValue {
+function githubTrigger(
+  branches: string[],
+  types?: string[],
+  paths?: PathPatterns,
+): YamlValue {
   const filter: Record<string, YamlValue> = {};
   if (branches.length > 0) filter.branches = branches;
   if (types !== undefined && types.length > 0) filter.types = types;
+  if (paths !== undefined) {
+    filter[paths.ignore ? "paths-ignore" : "paths"] = paths.patterns;
+  }
   return filter;
+}
+
+/**
+ * The runner a GitHub job uses: `${{ matrix.os }}` when every combination of
+ * its matrix sets `os`, else its own `runsOn`. A matrix where only some rows set
+ * `os` would leave the rest with an empty runner label, so it is refused.
+ */
+function githubRunsOn(job: CiJob): string {
+  const fallback = job.runsOn ?? DEFAULT_RUNNER;
+  if (!hasMatrix(job)) return fallback;
+  const rows = expandMatrix(job.id ?? DEFAULT_JOB_ID, job);
+  const withOs = rows.filter((row) => "os" in row).length;
+  if (withOs === rows.length) return "${{ matrix.os }}";
+  if (withOs === 0) return fallback;
+  throw new Error(
+    `cicd: job "${job.id ?? DEFAULT_JOB_ID}" sets \`os\` in only some matrix ` +
+      `combinations, so the rest would have no runner — give every row an ` +
+      `\`os\`, or none and set \`runsOn\`.`,
+  );
+}
+
+/** A GitHub `strategy.matrix`: the axes, plus any include/exclude rows. */
+function githubMatrix(job: MatrixSpec): YamlValue {
+  return {
+    ...job.matrix,
+    include: job.matrixInclude,
+    exclude: job.matrixExclude,
+  };
 }
 
 /**
@@ -735,12 +952,25 @@ function jobSteps(job: CiJob, pipeline: CiPipeline): CiStep[] {
 /** Render a GitHub Actions workflow object. */
 function github(pipeline: CiPipeline): YamlValue {
   const triggers = pipeline.triggers ?? DEFAULT_TRIGGERS;
+  const pushPaths = pathPatterns(
+    "pushPaths",
+    triggers.pushPaths,
+    triggers.push,
+  );
+  const prPaths = pathPatterns(
+    "pullRequestPaths",
+    triggers.pullRequestPaths,
+    triggers.pullRequest,
+  );
   const on: Record<string, YamlValue> = {};
-  if (triggers.push) on.push = githubTrigger(triggers.push);
+  if (triggers.push) {
+    on.push = githubTrigger(triggers.push, undefined, pushPaths);
+  }
   if (triggers.pullRequest) {
     on.pull_request = githubTrigger(
       triggers.pullRequest,
       triggers.pullRequestTypes,
+      prPaths,
     );
   }
   if (triggers.manual) on.workflow_dispatch = {};
@@ -767,7 +997,6 @@ function github(pipeline: CiPipeline): YamlValue {
 
   const jobs: Record<string, YamlValue> = {};
   for (const job of pipeline.jobs ?? DEFAULT_JOBS) {
-    const matrixOs = job.matrix !== undefined && "os" in job.matrix;
     const steps = jobSteps(job, pipeline).map((step): YamlValue => ({
       name: step.name,
       id: step.id,
@@ -781,7 +1010,8 @@ function github(pipeline: CiPipeline): YamlValue {
     }));
     jobs[job.id ?? DEFAULT_JOB_ID] = {
       name: job.name,
-      "runs-on": matrixOs ? "${{ matrix.os }}" : (job.runsOn ?? DEFAULT_RUNNER),
+      "runs-on": githubRunsOn(job),
+      environment: environmentValue(job.environment),
       permissions: job.permissions,
       // A guarded schedule makes every job wait on the guard and run only when
       // the guard cleared this firing (the correct wall-clock, or a non-schedule
@@ -789,14 +1019,15 @@ function github(pipeline: CiPipeline): YamlValue {
       needs: guarded ? [...(job.needs ?? []), GUARD_JOB_ID] : job.needs,
       if: guarded ? guardedIf(job.if) : job.if,
       "timeout-minutes": job.timeoutMinutes,
-      strategy: job.matrix
+      strategy: hasMatrix(job)
         ? {
           // `fail-fast` only when explicitly declared, so an existing matrix
           // keeps GitHub's default rather than gaining a redundant `true`.
           "fail-fast": job.failFast,
-          matrix: job.matrix,
+          matrix: githubMatrix(job),
         }
         : undefined,
+      outputs: job.outputs,
       env: job.env,
       concurrency: job.concurrency
         ? {
@@ -835,48 +1066,101 @@ function gitlab(pipeline: CiPipeline): YamlValue {
   const triggers = pipeline.triggers ?? DEFAULT_TRIGGERS;
   const config: Record<string, YamlValue> = {};
 
+  // GitLab's `changes:` runs a pipeline when any changed file matches, which
+  // is GitHub's `paths`; nothing in a rule means "unless every file matches",
+  // so `pathsIgnore` has no faithful form here.
+  const changes = (
+    field: "pushPaths" | "pullRequestPaths",
+    filter: PathPatterns | undefined,
+  ): string[] | undefined => {
+    if (filter?.ignore) {
+      refusePathFilter(
+        "GitLab, whose `changes:` has no pathsIgnore form",
+        field,
+      );
+    }
+    return filter?.patterns;
+  };
+  const pushChanges = changes(
+    "pushPaths",
+    pathPatterns("pushPaths", triggers.pushPaths, triggers.push),
+  );
+  const prChanges = changes(
+    "pullRequestPaths",
+    pathPatterns(
+      "pullRequestPaths",
+      triggers.pullRequestPaths,
+      triggers.pullRequest,
+    ),
+  );
+
   const rules: YamlValue[] = [];
   for (const branch of triggers.push ?? []) {
-    rules.push({ if: `$CI_COMMIT_BRANCH == "${branch}"` });
+    rules.push({
+      if: `$CI_COMMIT_BRANCH == "${branch}"`,
+      changes: pushChanges,
+    });
+  }
+  // An unfiltered push needs no rule of its own, but a path filter does: it is
+  // the only place the `changes:` can go.
+  if (triggers.push?.length === 0 && pushChanges !== undefined) {
+    rules.push({ if: `$CI_PIPELINE_SOURCE == "push"`, changes: pushChanges });
   }
   if (triggers.pullRequest) {
-    rules.push({ if: `$CI_PIPELINE_SOURCE == "merge_request_event"` });
+    rules.push({
+      if: `$CI_PIPELINE_SOURCE == "merge_request_event"`,
+      changes: prChanges,
+    });
   }
   if (triggers.manual) rules.push({ if: `$CI_PIPELINE_SOURCE == "web"` });
   if (rules.length > 0) config.workflow = { rules };
 
   config.stages = ["build"];
   for (const job of pipeline.jobs ?? DEFAULT_JOBS) {
+    refuseJobField(job, "outputs", "GitLab");
     config[job.id ?? DEFAULT_JOB_ID] = {
       stage: "build",
       image: job.runsOn,
+      environment: environmentValue(job.environment),
       needs: job.needs,
       variables: job.env,
       timeout: job.timeoutMinutes ? `${job.timeoutMinutes} minutes` : undefined,
-      parallel: job.matrix ? { matrix: [job.matrix] } : undefined,
+      parallel: gitlabMatrix(job),
       script: runCommands(job.steps ?? DEFAULT_STEPS),
     };
   }
   return config;
 }
 
-/** Expand a matrix into Azure's named-configuration form (cartesian product). */
-function azureMatrix(
-  matrix: Record<string, Array<string | number>>,
-): Record<string, YamlValue> {
-  let combos: Array<Record<string, string | number>> = [{}];
-  for (const key of Object.keys(matrix)) {
-    const expanded: Array<Record<string, string | number>> = [];
-    for (const combo of combos) {
-      for (const value of matrix[key]) {
-        expanded.push({ ...combo, [key]: value });
-      }
-    }
-    combos = expanded;
+/**
+ * A GitLab `parallel:` block. Axes alone keep GitLab's own product form; a
+ * sparse matrix is listed as its expanded combinations, since GitLab has no
+ * `exclude` and its entries would otherwise each multiply out.
+ */
+function gitlabMatrix(job: CiJob): YamlValue | undefined {
+  if (isSparse(job)) {
+    return { matrix: expandMatrix(job.id ?? DEFAULT_JOB_ID, job) };
   }
+  return job.matrix === undefined ? undefined : { matrix: [job.matrix] };
+}
+
+/**
+ * Expand a job's matrix into Azure's named-configuration form: one entry per
+ * combination, named by its joined values. Two combinations that would share a
+ * name are refused, since the second would silently replace the first.
+ */
+function azureMatrix(job: CiJob): Record<string, YamlValue> {
   const configs: Record<string, YamlValue> = {};
-  for (const combo of combos) {
-    configs[Object.values(combo).map(String).join("_")] = combo;
+  for (const combo of expandMatrix(job.id ?? DEFAULT_JOB_ID, job)) {
+    const name = Object.values(combo).map(String).join("_");
+    if (Object.hasOwn(configs, name)) {
+      throw new Error(
+        `cicd: job "${job.id ?? DEFAULT_JOB_ID}" has two matrix combinations ` +
+          `named "${name}" on Azure, which names each by its values — make ` +
+          `the rows differ in value, not just in key.`,
+      );
+    }
+    configs[name] = combo;
   }
   return configs;
 }
@@ -888,11 +1172,32 @@ function azure(pipeline: CiPipeline): YamlValue {
   // An empty branch array means "every branch" — Azure spells that `*`.
   const include = (branches: string[]) =>
     branches.length > 0 ? branches : ["*"];
+  // Azure filters paths with the same include/exclude pair it uses for branches.
+  const paths = (filter: PathPatterns | undefined): YamlValue | undefined =>
+    filter === undefined
+      ? undefined
+      : { [filter.ignore ? "exclude" : "include"]: filter.patterns };
+  const pushPaths = pathPatterns(
+    "pushPaths",
+    triggers.pushPaths,
+    triggers.push,
+  );
+  const prPaths = pathPatterns(
+    "pullRequestPaths",
+    triggers.pullRequestPaths,
+    triggers.pullRequest,
+  );
   if (triggers.push) {
-    config.trigger = { branches: { include: include(triggers.push) } };
+    config.trigger = {
+      branches: { include: include(triggers.push) },
+      paths: paths(pushPaths),
+    };
   } else if (triggers.manual) config.trigger = "none";
   if (triggers.pullRequest) {
-    config.pr = { branches: { include: include(triggers.pullRequest) } };
+    config.pr = {
+      branches: { include: include(triggers.pullRequest) },
+      paths: paths(prPaths),
+    };
   }
   if (triggers.schedule && triggers.schedule.length > 0) {
     for (const entry of triggers.schedule) {
@@ -916,6 +1221,12 @@ function azure(pipeline: CiPipeline): YamlValue {
 
   const jobs: YamlValue[] = [];
   for (const job of pipeline.jobs ?? DEFAULT_JOBS) {
+    refuseJobField(
+      job,
+      "environment",
+      "Azure Pipelines (outside a deployment job)",
+    );
+    refuseJobField(job, "outputs", "Azure Pipelines");
     const steps: YamlValue[] = [];
     for (const step of job.steps ?? DEFAULT_STEPS) {
       if (step.run !== undefined) {
@@ -933,7 +1244,7 @@ function azure(pipeline: CiPipeline): YamlValue {
       dependsOn: job.needs,
       condition: job.if,
       timeoutInMinutes: job.timeoutMinutes,
-      strategy: job.matrix ? { matrix: azureMatrix(job.matrix) } : undefined,
+      strategy: hasMatrix(job) ? { matrix: azureMatrix(job) } : undefined,
       variables: job.env,
       steps,
     });
@@ -947,12 +1258,28 @@ function azure(pipeline: CiPipeline): YamlValue {
  * sections (`pull-requests`, `branches`, `default`, `custom`) each holding an
  * ordered list of steps; there's no job DAG, no matrix, and no per-step env in
  * the YAML (repository/workspace variables flow in as env automatically), so
- * `needs`, `matrix`, `if`, and step `env` are ignored here.
+ * `needs`, the matrix fields, `if`, and step `env` are ignored here. A job's
+ * `environment` and `outputs`, and a trigger's path filter, are refused
+ * instead: dropping those would change what the pipeline guards or skips.
  */
 function bitbucket(pipeline: CiPipeline): YamlValue {
   const triggers = pipeline.triggers ?? DEFAULT_TRIGGERS;
+  if (pathPatterns("pushPaths", triggers.pushPaths, triggers.push)) {
+    refusePathFilter("Bitbucket", "pushPaths");
+  }
+  if (
+    pathPatterns(
+      "pullRequestPaths",
+      triggers.pullRequestPaths,
+      triggers.pullRequest,
+    )
+  ) {
+    refusePathFilter("Bitbucket", "pullRequestPaths");
+  }
   const steps: YamlValue[] = [];
   for (const job of pipeline.jobs ?? DEFAULT_JOBS) {
+    refuseJobField(job, "environment", "Bitbucket");
+    refuseJobField(job, "outputs", "Bitbucket");
     steps.push({
       step: {
         name: job.name,
@@ -1140,6 +1467,8 @@ function invokedPipeline(
       runsOn: invocation.runsOn,
       needs: needs.length > 0 ? needs : undefined,
       matrix: invocation.matrix,
+      matrixInclude: invocation.matrixInclude,
+      matrixExclude: invocation.matrixExclude,
       failFast: invocation.failFast,
       permissions: invocation.permissions,
       timeoutMinutes: invocation.timeoutMinutes,
@@ -1147,6 +1476,8 @@ function invokedPipeline(
       checkout: invocation.checkout,
       bootstrap: invocation.bootstrap,
       if: invocation.if,
+      environment: invocation.environment,
+      outputs: invocation.outputs,
       steps: [
         ...(invocation.before ?? []),
         ...run,
@@ -1237,7 +1568,11 @@ export interface CiInvocation {
   /** The runner, when it differs from the pipeline default. */
   runsOn?: string;
   /** A build matrix — fanning one target out over several OSes, say. */
-  matrix?: Record<string, Array<string | number>>;
+  matrix?: CiMatrixAxes;
+  /** Matrix rows to add (see {@link CiJob.matrixInclude}). */
+  matrixInclude?: CiMatrixRow[];
+  /** Matrix combinations to remove (see {@link CiJob.matrixExclude}). */
+  matrixExclude?: CiMatrixRow[];
   /** Let the other matrix legs finish when one fails. */
   failFast?: boolean;
   /** The token permissions this job needs (see {@link CiJob.permissions}). */
@@ -1252,6 +1587,10 @@ export interface CiInvocation {
   bootstrap?: CiBootstrap | false;
   /** A condition gating the job. */
   if?: string;
+  /** The deployment environment the job runs in (see {@link CiJob.environment}). */
+  environment?: string | CiEnvironment;
+  /** Values the job hands to the jobs that need it (see {@link CiJob.outputs}). */
+  outputs?: Record<string, string>;
   /**
    * Environment variables for the target's own step — where a secret is mapped
    * in, e.g. `{ GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }`.

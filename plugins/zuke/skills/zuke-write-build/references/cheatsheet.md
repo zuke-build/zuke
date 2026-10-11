@@ -1700,6 +1700,18 @@ schedules are UI-side and ignored. Numeric fields + whole-hour offsets only,
 else a friendly error.
 `cicd({ provider: "github", pipeline: { triggers: { schedule: [{ cron: "30 9 * * 1-5", tz: "Europe/Sofia" }] } } })`.
 
+**Deploy jobs, outputs, sparse matrices, path filters** — on a job or an
+`invokes` entry: `environment: "prod" | { name, url }` (the deployment
+environment that protection rules and environment secrets attach to — not
+`env`), `outputs: { name: "${{ steps.x.outputs.y }}" }` (read downstream as
+`${{ needs.<job>.outputs.<name> }}`), `matrixInclude`/`matrixExclude` rows
+(GitHub semantics; include-only rows are the whole matrix). On triggers:
+`pushPaths`/`pullRequestPaths: { paths } | { pathsIgnore }`, each needing its
+trigger. A field a provider cannot express is an error, never dropped: `outputs`
+is GitHub-only, `environment` GitHub/GitLab, `pathsIgnore` GitHub/Azure, `paths`
+everywhere but Bitbucket. A path-filtered workflow leaves required checks
+pending when it skips.
+
 ## Recipes — complete builds for the common small-project jobs
 
 Copy the closest one instead of composing from primitives; each is a full

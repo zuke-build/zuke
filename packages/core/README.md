@@ -3191,6 +3191,16 @@ interface CiConcurrency
   cancelInProgress?: boolean
     Cancel an in-progress run in the same group when a new one starts.
 
+interface CiEnvironment
+  A deployment environment a job runs in, by name and optionally the URL the
+  deployment is reachable at. See {@link CiJob.environment}.
+
+  name: string
+    The environment's name, as the repository's settings define it.
+  url?: string
+    The deployment's URL, shown on the run and the environment page. A literal
+    or a provider expression; rendered verbatim either way.
+
 interface CiFileSpec
   A CI configuration file declared on a build: a pipeline bound to a path.
 
@@ -3299,8 +3309,12 @@ interface CiInvocation
     Override the display name (defaults to the target's description, else its name).
   runsOn?: string
     The runner, when it differs from the pipeline default.
-  matrix?: Record<string, Array<string | number>>
+  matrix?: CiMatrixAxes
     A build matrix — fanning one target out over several OSes, say.
+  matrixInclude?: CiMatrixRow[]
+    Matrix rows to add (see {@link CiJob.matrixInclude}).
+  matrixExclude?: CiMatrixRow[]
+    Matrix combinations to remove (see {@link CiJob.matrixExclude}).
   failFast?: boolean
     Let the other matrix legs finish when one fails.
   permissions?: Record<string, string>
@@ -3315,6 +3329,10 @@ interface CiInvocation
     The prelude action for this job, overriding the pipeline default.
   if?: string
     A condition gating the job.
+  environment?: string | CiEnvironment
+    The deployment environment the job runs in (see {@link CiJob.environment}).
+  outputs?: Record<string, string>
+    Values the job hands to the jobs that need it (see {@link CiJob.outputs}).
   env?: Record<string, string>
     Environment variables for the target's own step — where a secret is mapped
     in, e.g. `{ GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }`.
@@ -3341,11 +3359,27 @@ interface CiJob
   runsOn?: string
     The runner. Interpreted per provider: a GitHub runner label and Azure
     `vmImage` (default `ubuntu-latest`), or a GitLab Docker image (runner
-    default when omitted). Ignored when a matrix defines `os` on GitHub.
+    default when omitted). Ignored on GitHub when every matrix combination
+    sets `os`, which then picks the runner.
   needs?: string[]
     Other jobs (by {@link id}) that must finish before this one.
-  matrix?: Record<string, Array<string | number>>
+  matrix?: CiMatrixAxes
     A build matrix: each key fans out over its values.
+  matrixInclude?: CiMatrixRow[]
+    Matrix rows to add — GitHub's `matrix.include`. A row that agrees with an
+    axis combination on every axis it names extends that combination with its
+    other keys; a row that fits none becomes a combination of its own. With no
+    {@link matrix} at all, the rows are the matrix — the way to run exactly
+    the combinations you list (four Node lines on Ubuntu plus one on macOS)
+    rather than every pairing of two axes.
+
+    Rendered natively on GitHub. GitLab and Azure receive the expanded
+    combinations, so each provider runs the same jobs; Bitbucket has no matrix.
+  matrixExclude?: CiMatrixRow[]
+    Axis combinations to remove — GitHub's `matrix.exclude`. Each row is a
+    partial match over the {@link matrix} axes (`{ os: "windows-latest" }`
+    drops every Windows combination), and naming a key that is not an axis is
+    an error. Applied before {@link matrixInclude}, as on GitHub.
   failFast?: boolean
     Let the other matrix legs finish when one fails (`fail-fast: false`). Default
     GitHub behaviour cancels them, which hides whether a failure is
@@ -3366,6 +3400,27 @@ interface CiJob
     pass `false` to render hardening and checkout as separate steps instead.
   env?: Record<string, string>
     Environment variables for the job.
+  environment?: string | CiEnvironment
+    The deployment environment the job runs in: a name, or a name and the URL
+    the deployment is reachable at (often an expression such as
+    `${{ steps.deployment.outputs.page_url }}`, rendered verbatim). Not to be
+    confused with {@link env}: an environment is what the provider's
+    protection rules, required reviewers and environment-scoped secrets attach
+    to, and a GitHub Pages deployment needs one.
+
+    Declaring it grants nothing on its own — the provider still enforces the
+    environment's rules. Rendered on GitHub and GitLab, whose `environment:`
+    takes the same name and URL. Azure (whose environments belong to a
+    separate deployment-job form) and Bitbucket refuse it with an error rather
+    than drop it, because a job silently stripped of its environment would
+    also be stripped of the approval gate guarding it.
+  outputs?: Record<string, string>
+    Values this job hands to the jobs that `needs` it — GitHub's job
+    `outputs:`, keyed by output name, each usually a step output expression
+    (`${{ steps.deployment.outputs.page_url }}`). A consumer reads one as
+    `${{ needs.<job>.outputs.<name> }}`. Expressions are rendered verbatim.
+    GitHub only: the other providers have no job outputs, so they refuse it
+    with an error rather than render a pipeline whose consumers read nothing.
   if?: string
     A condition gating the job. A raw provider expression: GitHub `if:`, Azure
     `condition:`. Ignored on GitLab. Use it to e.g. skip forked pull requests.
@@ -3468,6 +3523,17 @@ interface CiTriggers
   pullRequest?: string[]
     Branches whose pull/merge requests trigger the pipeline. An empty array
     means every branch (no filter); omit the field to disable the trigger.
+  pushPaths?: CiPathFilter
+    Run the {@link push} trigger only for pushes that change these paths (see
+    {@link CiPathFilter}). Requires {@link push}. Rendered as `paths` /
+    `paths-ignore` on GitHub, `trigger.paths` on Azure and a `changes:` rule on
+    GitLab, which can express `paths` but not `pathsIgnore`; Bitbucket has no
+    trigger-level path filter, so a filter for either of those is an error
+    rather than a pipeline that runs on every change.
+  pullRequestPaths?: CiPathFilter
+    Run the {@link pullRequest} trigger only for pull/merge requests that change
+    these paths (see {@link CiPathFilter}). Requires {@link pullRequest}.
+    Provider support as for {@link pushPaths}.
   pullRequestTypes?: string[]
     Which pull-request activity types fire the pipeline, on top of the branch
     filter — GitHub's default is `opened`, `synchronize`, `reopened`. Add
@@ -5329,6 +5395,23 @@ type CiHost = "github" | "gitlab" | "azure" | "bitbucket" | "local"
 
 type CiInvokes = TargetBuilder | CiInvocation
   A target to invoke, bare when the derived job needs no adjustment.
+
+type CiMatrixAxes = Record<string, Array<string | number>>
+  A matrix's independent axes: each key fans out over its values.
+
+type CiMatrixRow = Record<string, string | number>
+  One matrix combination, as an `include` or `exclude` entry spells it:
+  `{ node: "26", os: "macos-latest" }`.
+
+type CiPathFilter = { paths: string[]; pathsIgnore?: never; } | { pathsIgnore: string[]; paths?: never; }
+  Narrow a trigger to the changed files that matter: run only when a changed
+  file matches one of `paths`, or skip when every changed file matches one of
+  `pathsIgnore`. Exactly one of the two, as GitHub requires; the patterns are
+  passed through in the provider's own glob syntax.
+
+  Mind required status checks: a workflow the filter skips never reports, so a
+  check it would have produced stays pending and blocks the merge. Filter
+  workflows whose checks are not required, or decide inside the run instead.
 
 type CiPinResolver = (action: string) => CiUses
   Resolves an action's pinned reference by name, e.g. `"actions/checkout"`.

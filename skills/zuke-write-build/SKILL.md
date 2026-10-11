@@ -258,7 +258,10 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   forces PATH and an explicit `.toolPath(...)` always wins. See the cheatsheet /
   `docs/tools.md`.
 - **Code-first CI:** `cicd({ provider: "github" })` generates and verifies the
-  workflow YAML from the build.
+  workflow YAML from the build — deploy jobs included: `environment`, `outputs`,
+  sparse `matrixInclude`/`matrixExclude` and per-event
+  `pushPaths`/`pullRequestPaths` are typed fields, so no hand-kept YAML is
+  needed (a field a provider cannot express is an error, not dropped).
 - **Operate the build from an agent:** `zuke mcp` serves the build over MCP so
   an AI client can list, inspect, and (with `--allow-run`) run targets — on
   stdio, or over HTTP with `--http <host:port>` (loopback by default; a
