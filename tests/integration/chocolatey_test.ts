@@ -86,6 +86,10 @@ Deno.test({
           ...choco.env,
           PATH: `${choco.binDir}:${Deno.env.get("PATH") ?? ""}`,
           CHOCO_API_KEY: API_KEY,
+          // On an Actions runner the build prints `::add-mask::<secret>` so
+          // the runner masks it — the one place the key is meant to appear.
+          // Run as a local build, so the assertion below covers every line.
+          GITHUB_ACTIONS: undefined,
         },
         async () => {
           const result = await runCli(Release, ["publish"]);
