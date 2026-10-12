@@ -139,6 +139,8 @@ Deno.test("runShards: a failing shard fails the run after every shard printed", 
     "1 of 2 test shard(s) failed — 2 failing test(s)",
   );
   assertStringIncludes(error.message, "see the shard output above");
+  // Every shard printed its result line, so none is called out as uncounted.
+  assertEquals(error.message.includes("exited before"), false);
   assertStringIncludes(printed[1], "error: Test failed"); // stderr is shown
   assertEquals(printed[2], "── test shard 2/2 ──"); // the passing shard printed too
 });
@@ -153,7 +155,8 @@ Deno.test("runShards: a shard that crashed before its result line still fails", 
         (text) => printed.push(text),
       ),
     Error,
-    "1 of 1 test shard(s) failed — 0 failing test(s)",
+    "Shard(s) 1 exited before printing a result line, so their tests are " +
+      "not counted.",
   );
   // Nothing to print beyond the header for an empty shard output.
   assertEquals(printed, ["── test shard 1/1 ──"]);

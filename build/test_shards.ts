@@ -109,9 +109,23 @@ export async function runShards(
   reportTestCounts(counts);
   const failedShards = outputs.filter((out) => out.code !== 0).length;
   if (failedShards > 0) {
+    // A shard that died before deno printed its result line (a module that
+    // fails to load, a crashed process) contributes no counts, so the failing
+    // total alone would understate it — name those shards outright.
+    const silent = outputs.flatMap((out, i) =>
+      out.code !== 0 && parseTestSummary(out.stdout) === undefined
+        ? [i + 1]
+        : []
+    );
+    const uncounted = silent.length === 0
+      ? ""
+      : ` Shard(s) ${
+        silent.join(", ")
+      } exited before printing a result line, so their tests are not counted.`;
     throw new Error(
       `${failedShards} of ${shards.length} test shard(s) failed — ` +
-        `${counts.failed} failing test(s); see the shard output above.`,
+        `${counts.failed} failing test(s); see the shard output above.` +
+        uncounted,
     );
   }
   return counts;
