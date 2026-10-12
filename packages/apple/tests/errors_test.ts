@@ -76,6 +76,9 @@ Deno.test("printable collapses control characters and trims", () => {
   assertEquals(printable("x".repeat(500)), "x".repeat(500));
   // Regression: bidi overrides could reorder what the terminal shows.
   assertEquals(printable("a\u202eb\u2066c\u200fd"), "a b c d");
+  // Regression (finding 7): line and paragraph separators and the Arabic
+  // letter mark were let through.
+  assertEquals(printable("a\u2028b\u2029c\u061cd"), "a b c d");
 });
 
 Deno.test("operand only rewrites what getopt would read as an option", () => {

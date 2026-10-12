@@ -31,10 +31,20 @@
  * removed. Every step is attempted even when an earlier one fails, and any
  * that fail are reported together as a {@link KeychainCleanupError}.
  *
- * The user keychain search list is one per user, not one per build: two
- * temporary keychains open at once in the same account — parallel targets, or
- * two jobs on one self-hosted runner user — each restore the list they read,
- * so their lifetimes must not overlap. Run signing targets one at a time.
+ * The user keychain search list is one per user, not one per build, and each
+ * keychain restores the list it read. So within one process the keychain
+ * lifetimes are serialized: a second `temporaryKeychain` — say from a parallel
+ * target in a `group()` — waits until the first has been torn down, and two
+ * overlapping calls can neither drop each other's keychain from the list nor
+ * leave a deleted one on it. Separate processes running as the same user — two
+ * builds, or two jobs on one self-hosted runner account — cannot see that
+ * lock, so they must not sign at the same time.
+ *
+ * Under a deep dry run (`--dry-run`) commands are echoed rather than run, and
+ * core exposes no way for a wrapper to tell. The certificate is still decoded
+ * and written to its private file (and deleted again), and then the setup
+ * fails with "no valid codesigning identity", because the echoed
+ * `find-identity` prints nothing. Leave signing targets out of a dry run.
  *
  * @module
  */
@@ -81,6 +91,15 @@ interface CleanupStep {
   run: () => Promise<unknown>;
 }
 
+/**
+ * The tail of the process's keychain lifetimes: each `open_` waits for it, so
+ * no two keychains are set up, used or torn down at the same time.
+ */
+let lifetimes: Promise<void> = Promise.resolve();
+
+/** Ignore how a lifetime ended — the next one waits only for it to end. */
+function settle(): void {}
+
 /** The applications allowed to use the key when none are named. */
 const DEFAULT_APPLICATIONS = ["/usr/bin/codesign"];
 
@@ -96,7 +115,7 @@ function decodeCertificate(base64: string | undefined): Uint8Array {
     );
   }
   const compact = base64.replace(/\s+/g, "");
-  if (compact === "" || !/^[A-Za-z0-9+/]+={0,2}$/.test(compact)) {
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(compact)) {
     throw new KeychainError(
       "SecurityTasks.temporaryKeychain: the certificate is not base64. " +
         "Encode the .p12 with `base64 -i cert.p12` and pass that text.",
@@ -184,8 +203,20 @@ export class TemporaryKeychainSettings {
    * @throws {KeychainCleanupError} When any cleanup step failed; the error of
    * a failed setup or callback is its `cause`.
    */
-  async open_<T>(use: (keychain: TemporaryKeychain) => Promise<T>): Promise<T> {
+  open_<T>(use: (keychain: TemporaryKeychain) => Promise<T>): Promise<T> {
     const p12 = decodeCertificate(this.#certificate);
+    // One keychain lifetime at a time in this process: each restores the
+    // search list it read, so two that overlapped would corrupt it.
+    const turn = lifetimes.then(() => this.#lifetime(p12, use));
+    lifetimes = turn.then(settle, settle);
+    return turn;
+  }
+
+  /** Set up, run `use`, and tear down — one serialized keychain lifetime. */
+  async #lifetime<T>(
+    p12: Uint8Array,
+    use: (keychain: TemporaryKeychain) => Promise<T>,
+  ): Promise<T> {
     const dir = await this.#host.makeTempDir();
     const cleanup: CleanupStep[] = [{
       step: "remove the keychain directory",
@@ -260,7 +291,7 @@ export class TemporaryKeychainSettings {
     await this.#run(
       new SecurityListKeychainsSettings().domain("user").set(
         keychain,
-        ...previous.filter((k) => k !== keychain),
+        ...previous,
       ),
     );
     const listed = await this.#run(

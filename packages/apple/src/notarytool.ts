@@ -18,6 +18,11 @@
  * // lists the issues from the submission's log.
  * ```
  *
+ * Under a deep dry run (`--dry-run`) the command is echoed, not run, so there
+ * is no JSON to read and `submit`, `info`, `log` and `history` fail with a
+ * `NotarytoolOutputError`; core exposes no way for a wrapper to tell a dry
+ * run apart. Leave notarization targets out of a dry run.
+ *
  * @module
  */
 
@@ -103,19 +108,29 @@ export class NotarytoolSubmitSettings extends NotarytoolSettings {
    * `NotarytoolTasks.submit` calls before judging the status.
    *
    * The exit code is judged after the JSON is read: notarytool can exit
-   * non-zero for a submission Apple did not accept, and that result is still
-   * the most useful thing to report. Only a failed run with no readable result
-   * raises the `CommandError` — even under `.noThrow()`, since there is then
-   * nothing to return.
+   * non-zero for a waited submission Apple did not accept, and that result —
+   * which `NotarytoolTasks.submit` turns into a `NotarizationError` with the
+   * log — is the most useful thing to report. Any other non-zero exit raises
+   * the `CommandError`, even when it printed a result with an id (an upload
+   * that failed after the id was issued, say); `.noThrow()` returns the
+   * result instead. A failed run with no readable result raises it even under
+   * `.noThrow()`, since there is then nothing to return.
    */
   async submit_(): Promise<NotarytoolSubmission> {
+    const throws = this.throwsOnError;
     const output = await this.noThrow().run();
+    let submission: NotarytoolSubmission;
     try {
-      return parseSubmission(output.stdout, "submit");
+      submission = parseSubmission(output.stdout, "submit");
     } catch (error) {
       if (output.code === 0) throw error;
       throw this.failureOf(output);
     }
+    const rejected = this.#wait && submission.status !== "Accepted";
+    if (throws && output.code !== 0 && !rejected) {
+      throw this.failureOf(output);
+    }
+    return submission;
   }
 
   /** Assemble the submit arguments. */

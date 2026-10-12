@@ -443,3 +443,70 @@ Deno.test("info, log and history parse their JSON", async () => {
     assertEquals(past, [{ id: ID, status: "Accepted", name: "a.zip" }]);
   });
 });
+
+Deno.test("with wait, every status but exactly Accepted is a NotarizationError", async () => {
+  // Regression (finding 2): the check must fail closed — a status it does not
+  // know, a missing one, or a differently cased "accepted" is not acceptance.
+  const results = [
+    { id: ID, status: "Rejected", message: "done" },
+    { id: ID, status: "In Progress", message: "timed out waiting" },
+    { id: ID, message: "no status at all" },
+    { id: ID, status: "accepted", message: "lower case" },
+  ];
+  for (const result of results) {
+    await withFake({
+      submit: { stdout: JSON.stringify(result) },
+      log: { code: 1 },
+    }, async (dir) => {
+      const error = await rejection(
+        () =>
+          NotarytoolTasks.submit((s) =>
+            s.toolPath(Deno.execPath()).cwd(dir).quiet().file("a.zip")
+              .keychainProfile("p").wait()
+          ),
+        NotarizationError,
+      );
+      assertEquals(error.submission.message, result.message);
+    });
+  }
+});
+
+Deno.test("a non-zero exit fails the submit even when it printed a result", async () => {
+  // Regression (finding 3): an upload that failed after its id was issued, and
+  // an accepted result from a run that still failed, used to pass.
+  const failedUpload = JSON.stringify({
+    id: ID,
+    message: "Error: upload failed",
+  });
+  await withFake(
+    { submit: { stdout: failedUpload, code: 69 } },
+    async (dir) => {
+      const error = await rejection(
+        () =>
+          NotarytoolTasks.submit((s) =>
+            s.toolPath(Deno.execPath()).cwd(dir).quiet().file("a.zip")
+              .keychainProfile("p")
+          ),
+        CommandError,
+      );
+      assertEquals(error.code, 69);
+      // Under noThrow the result is handed back for the caller to judge.
+      const result = await NotarytoolTasks.submit((s) =>
+        s.toolPath(Deno.execPath()).cwd(dir).quiet().file("a.zip")
+          .keychainProfile("p").noThrow()
+      );
+      assertEquals(result.message, "Error: upload failed");
+    },
+  );
+  await withFake({ submit: { stdout: ACCEPTED, code: 1 } }, async (dir) => {
+    const error = await rejection(
+      () =>
+        NotarytoolTasks.submit((s) =>
+          s.toolPath(Deno.execPath()).cwd(dir).quiet().file("a.zip")
+            .keychainProfile("p").wait()
+        ),
+      CommandError,
+    );
+    assertEquals(error.code, 1);
+  });
+});

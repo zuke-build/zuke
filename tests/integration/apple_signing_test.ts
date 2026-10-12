@@ -32,8 +32,13 @@ import {
   fakeNotarytool,
   writeFakeSecurity,
 } from "../../packages/apple/tests/_fake_tool.ts";
+import {
+  defaultKeychainHost,
+  type KeychainHost,
+} from "../../packages/apple/src/keychain_host.ts";
 import { runCli } from "./_harness.ts";
 
+const LOGIN = "/Users/ci/Library/Keychains/login.keychain-db";
 const HASH = "0123456789ABCDEF0123456789ABCDEF01234567";
 const IDENTITY = "Developer ID Application: Example (ABCDE12345)";
 const P12_PASSWORD = "p12-export-password-that-must-not-escape";
@@ -125,12 +130,21 @@ Deno.test("a failing keychain step fails the target, masks the password, and sti
   await inFakeSecurityDir({
     "unlock-keychain": { stderr: "SecKeychainUnlock: bad password", code: 51 },
   }, async () => {
+    // The real host, with every security argv recorded on the way through.
+    const sent: string[][] = [];
+    const recording: KeychainHost = {
+      ...defaultKeychainHost,
+      security: (settings) => {
+        sent.push(settings.argv());
+        return defaultKeychainHost.security(settings);
+      },
+    };
     class Sign extends Build {
       sign = target().executes(async () => {
         await SecurityTasks.temporaryKeychain(
           (s) =>
             s.toolPath(Deno.execPath()).certificate(P12_BASE64)
-              .certificatePassword(P12_PASSWORD),
+              .certificatePassword(P12_PASSWORD).host(recording),
           () => Promise.resolve(),
         );
       });
@@ -140,7 +154,24 @@ Deno.test("a failing keychain step fails the target, masks the password, and sti
     assertStringIncludes(err, "unlock-keychain -p [redacted] ");
     const keychain = /unlock-keychain -p \[redacted\] (\S+)/.exec(err)?.[1];
     assertEquals(typeof keychain, "string");
-    assertEquals(await exists(String(keychain)), false);
+    // The real temp directory the real host created is gone: the keychain's
+    // cleanup ran (the fake create-keychain writes no file, so checking the
+    // keychain path alone would prove nothing).
+    const dir = String(keychain).slice(0, String(keychain).lastIndexOf("/"));
+    assertStringIncludes(dir, "zuke-keychain-");
+    assertEquals(await exists(dir), false);
+    // The keychain was deleted, and the search list was put back as read.
+    assertEquals(
+      sent.some((a) => a[1] === "delete-keychain" && a[2] === keychain),
+      true,
+    );
+    assertEquals(sent.at(-1)?.slice(1), [
+      "list-keychains",
+      "-d",
+      "user",
+      "-s",
+      LOGIN,
+    ]);
   });
 });
 

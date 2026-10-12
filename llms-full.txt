@@ -26388,10 +26388,13 @@ class NotarytoolSubmitSettings extends NotarytoolSettings
     `NotarytoolTasks.submit` calls before judging the status.
 
     The exit code is judged after the JSON is read: notarytool can exit
-    non-zero for a submission Apple did not accept, and that result is still
-    the most useful thing to report. Only a failed run with no readable result
-    raises the `CommandError` — even under `.noThrow()`, since there is then
-    nothing to return.
+    non-zero for a waited submission Apple did not accept, and that result —
+    which `NotarytoolTasks.submit` turns into a `NotarizationError` with the
+    log — is the most useful thing to report. Any other non-zero exit raises
+    the `CommandError`, even when it printed a result with an id (an upload
+    that failed after the id was issued, say); `.noThrow()` returns the
+    result instead. A failed run with no readable result raises it even under
+    `.noThrow()`, since there is then nothing to return.
   override protected subcommandArgs(): string[]
     Assemble the submit arguments.
 
@@ -26568,7 +26571,7 @@ class TemporaryKeychainSettings
   host(value: KeychainHost): this
     Replace the machine the keychain is set up on — the seam a test uses to
     record the steps without macOS. Production code leaves the default.
-  async open_(use: (keychain: TemporaryKeychain) => Promise<T>): Promise<T>
+  open_(use: (keychain: TemporaryKeychain) => Promise<T>): Promise<T>
     Set the keychain up, run `use` with it, and tear it down — what
     `SecurityTasks.temporaryKeychain` calls. Returns what `use` returns.
 

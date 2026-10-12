@@ -67,13 +67,30 @@ is put back as it was read, and the temp directory is removed. Every cleanup
 step runs even if an earlier one fails; failures are reported together as a
 `KeychainCleanupError`, with the callback's own error as its `cause`.
 
+The keychain search list is one per user, and each keychain restores the list it
+read, so keychain lifetimes are serialized within a process: a second
+`temporaryKeychain` — from a parallel target in a `group()`, say — waits until
+the first has been torn down. Separate processes running as the same user (two
+builds, or two jobs on one self-hosted runner account) cannot see that lock and
+must not sign at the same time.
+
+## Dry runs
+
+Under `--dry-run` commands are echoed rather than run, and core gives a wrapper
+no way to tell. `temporaryKeychain` therefore still decodes the certificate and
+writes (then deletes) its private file before failing with "no valid codesigning
+identity", and every `NotarytoolTasks` call fails with a `NotarytoolOutputError`
+because there is no JSON to read. Keep signing and notarization targets out of a
+dry run.
+
 ## Notarization
 
 `NotarytoolTasks.submit` always passes `--output-format json` and returns
 `{ id, status, message }`. With `.wait()`, any final status other than
 `Accepted` fetches `notarytool log <id>` with the same credentials and throws a
 `NotarizationError` whose message lists the log's issues (and whose `.log` holds
-them parsed). Set `.noThrow()` to get the result back instead.
+them parsed). Any other non-zero exit is a `CommandError`, even when notarytool
+printed a result with an id. Set `.noThrow()` to get the result back instead.
 
 Authenticate with exactly one of:
 
@@ -405,10 +422,13 @@ class NotarytoolSubmitSettings extends NotarytoolSettings
     `NotarytoolTasks.submit` calls before judging the status.
 
     The exit code is judged after the JSON is read: notarytool can exit
-    non-zero for a submission Apple did not accept, and that result is still
-    the most useful thing to report. Only a failed run with no readable result
-    raises the `CommandError` — even under `.noThrow()`, since there is then
-    nothing to return.
+    non-zero for a waited submission Apple did not accept, and that result —
+    which `NotarytoolTasks.submit` turns into a `NotarizationError` with the
+    log — is the most useful thing to report. Any other non-zero exit raises
+    the `CommandError`, even when it printed a result with an id (an upload
+    that failed after the id was issued, say); `.noThrow()` returns the
+    result instead. A failed run with no readable result raises it even under
+    `.noThrow()`, since there is then nothing to return.
   override protected subcommandArgs(): string[]
     Assemble the submit arguments.
 
@@ -585,7 +605,7 @@ class TemporaryKeychainSettings
   host(value: KeychainHost): this
     Replace the machine the keychain is set up on — the seam a test uses to
     record the steps without macOS. Production code leaves the default.
-  async open_(use: (keychain: TemporaryKeychain) => Promise<T>): Promise<T>
+  open_(use: (keychain: TemporaryKeychain) => Promise<T>): Promise<T>
     Set the keychain up, run `use` with it, and tear it down — what
     `SecurityTasks.temporaryKeychain` calls. Returns what `use` returns.
 

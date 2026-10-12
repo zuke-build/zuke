@@ -241,16 +241,89 @@ Deno.test("a non-Error thrown by a cleanup step is still reported", async () => 
   assertEquals(error.failures.at(-1)?.message, "plain string");
 });
 
-Deno.test("the search list already holding the keychain is not doubled", async () => {
-  const host = new FakeHost();
-  host.stdout["list-keychains"] = `"${KEYCHAIN}"\n"${LOGIN}"`;
-  await keychain(host).open_(() => Promise.resolve());
+/**
+ * A fake host whose `list-keychains` reads and writes one search list shared
+ * with other hosts — the per-user list two keychains in one process contend
+ * for — and whose temp dirs and keychain names are its own.
+ */
+class SharedListHost extends FakeHost {
+  /** Every list this host saw while its callback ran. */
+  readonly seenDuringUse: string[][] = [];
+
+  constructor(readonly name: string, readonly shared: { list: string[] }) {
+    super();
+  }
+  override security(settings: SecuritySettings): Promise<CommandOutput> {
+    const argv = settings.argv();
+    if (argv[1] !== "list-keychains") return super.security(settings);
+    this.log.push(argv.join(" "));
+    const set = argv.indexOf("-s");
+    if (set === -1) {
+      const listed = this.shared.list.map((k) => `    "${k}"`).join("\n");
+      return Promise.resolve(new CommandOutput(0, listed, ""));
+    }
+    this.shared.list = argv.slice(set + 1);
+    return Promise.resolve(new CommandOutput(0, "", ""));
+  }
+  override makeTempDir(): Promise<string> {
+    this.log.push("mkdtemp");
+    return Promise.resolve(`/tmp/${this.name}`);
+  }
+  override randomHex(bytes: number): string {
+    return `${this.name}${bytes}`;
+  }
+}
+
+Deno.test("overlapping keychains in one process are serialized, so the search list survives", async () => {
+  // Regression (finding 1): each keychain restores the list it read, so two
+  // that overlapped left a deleted keychain on the list, or dropped the
+  // other's keychain while it was signing.
+  const shared = { list: [LOGIN] };
+  const a = new SharedListHost("a", shared);
+  const b = new SharedListHost("b", shared);
+  const order: string[] = [];
+  /** A callback that yields to the event loop while it "signs". */
+  const use = (host: SharedListHost) => async (k: { keychain: string }) => {
+    order.push(`${host.name} start`);
+    for (let i = 0; i < 5; i++) {
+      host.seenDuringUse.push([...shared.list]);
+      assertEquals(shared.list[0], k.keychain);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+    order.push(`${host.name} end`);
+  };
+  await Promise.all([
+    keychain(a).open_(use(a)),
+    keychain(b).open_(use(b)),
+  ]);
+  assertEquals(order, ["a start", "a end", "b start", "b end"]);
+  assertEquals(shared.list, [LOGIN]);
+  // Each saw only its own keychain ahead of the original list.
   assertEquals(
-    host.log.includes(
-      `security list-keychains -d user -s ${KEYCHAIN} ${LOGIN}`,
+    a.seenDuringUse.every((l) =>
+      l.join() === `/tmp/a/zuke-a8.keychain-db,${LOGIN}`
     ),
     true,
   );
+  assertEquals(
+    b.seenDuringUse.every((l) =>
+      l.join() === `/tmp/b/zuke-b8.keychain-db,${LOGIN}`
+    ),
+    true,
+  );
+  // b did not even read the list until a had been torn down.
+  assertEquals(b.log[0], "mkdtemp");
+});
+
+Deno.test("a failed keychain does not block the next one in the process", async () => {
+  const failing = new FakeHost();
+  failing.failures["create-keychain"] = "create failed";
+  const first = keychain(failing).open_(() => Promise.resolve("first"));
+  const second = keychain(new FakeHost()).open_(() =>
+    Promise.resolve("second")
+  );
+  await assertRejects(() => first, Error, "create failed");
+  assertEquals(await second, "second");
 });
 
 Deno.test("no identity in the certificate is a friendly KeychainError, and still cleans up", async () => {

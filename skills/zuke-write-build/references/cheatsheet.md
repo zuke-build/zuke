@@ -1161,6 +1161,15 @@ const result = await NotarytoolTasks.submit((s) =>
   (`.identity(nameOrHash)` picks among several). Cleanup — delete the keychain,
   restore the list, remove the dir — always runs; a failed cleanup step throws
   `KeychainCleanupError` with the callback's error as its `cause`.
+- The search list is per user, so keychain lifetimes are serialized within a
+  process — a second `temporaryKeychain` (a parallel target in a `group()`)
+  waits for the first to be torn down. Separate processes as the same user (two
+  builds, two jobs on one self-hosted runner account) cannot see that lock and
+  must not sign at the same time.
+- `--dry-run` echoes commands instead of running them and wrappers cannot tell,
+  so `temporaryKeychain` fails with "no valid codesigning identity" and
+  `NotarytoolTasks` fail with `NotarytoolOutputError` — keep signing and
+  notarization targets out of a dry run.
 - `NotarytoolTasks.submit` pins `--output-format json`. With `.wait()`, a status
   other than `Accepted` fetches `notarytool log` with the same credentials and
   throws `NotarizationError` (`.submission`, `.log.issues`); `.noThrow()`
