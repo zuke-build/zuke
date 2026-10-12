@@ -1,6 +1,6 @@
 {
   "name": "@zuke/signpath",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "license": "MIT",
   "description": "Authenticode signing through SignPath for Zuke builds — submit a signing request (direct upload or GitHub Actions origin verification), wait for it, download the signed artifact, and verify it with signtool, with the API token kept out of every error.",
   "exports": {

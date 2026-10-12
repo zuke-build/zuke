@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/zuke-build/zuke/compare/homebrew-v1.0.0...homebrew-v1.0.1) (2026-10-12)
+
+
+### Bug Fixes
+
+* **homebrew:** require the @zuke/gh release that has createOrUpdateFile ([#803](https://github.com/zuke-build/zuke/issues/803)) ([abbcf20](https://github.com/zuke-build/zuke/commit/abbcf20c70ee3dec125a776bce3d28bc118d0477)), closes [#789](https://github.com/zuke-build/zuke/issues/789)
+
 ## 1.0.0 (2026-10-12)
 
 
