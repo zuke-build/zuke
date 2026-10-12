@@ -1688,6 +1688,12 @@
           "jsr:@zuke/core@^1.49.0"
         ]
       },
+      "packages/homebrew": {
+        "dependencies": [
+          "jsr:@zuke/core@^1.71.0",
+          "jsr:@zuke/gh@^1.14.0"
+        ]
+      },
       "packages/husky": {
         "dependencies": [
           "jsr:@zuke/core@^1.25.0"

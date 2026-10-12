@@ -376,6 +376,17 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   in-cluster `http://` one is fine); custom auth via `.credentials(fn)`, and the
   managed services built in with no cloud CLI: `.google()`, `.azure()`,
   `.sigv4((a) => a.region(…))`. Canary's `prometheus(...)` analysis runs on it.
+- **Homebrew (`@zuke/homebrew`):** ship a prebuilt binary through a tap —
+  `HomebrewTasks.formula((s) => s.name(…).description(…).homepage(…)
+  .version(…).binary((b) => b.os("macos").arch("arm").url(…).sha256(…))
+  .install(…).test((t) => t.command("--version").expectVersion()))`
+  renders the Ruby (every value escaped),
+  `HomebrewTasks.publish((s) => s.tap("acme/tap")
+  .formula(name, ruby).token(…))`
+  writes `Formula/<name>.rb` (`unchanged`, no commit, when identical),
+  `HomebrewTasks.verify` installs/tests/uninstalls it through a throwaway local
+  tap, and `HomebrewTasks.verifyJob` is its macOS + Linux CI job. `BrewTasks`
+  types the `brew` CLI itself.
 - **AWS (`@zuke/aws`):** `AwsTasks` types the deploy path with the CLI's own
   names — `s3Sync`, `ecrLoginPassword`, `ecsUpdateService` +
   `ecsWaitServicesStable`, `lambdaUpdateFunctionCode`, `cloudformationDeploy`,

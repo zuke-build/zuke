@@ -734,6 +734,51 @@ class GhCommitSettings
   authToken_(): string
     The effective token, from the setting or the environment.
 
+class GhContentsSettings
+  Settings for creating or updating one file.
+
+  `owner/repo` and the token fall back to the Actions environment, so a job
+  that already has them names only the file.
+
+  path_?: string
+    The repository-relative file path. Set by {@link path}.
+  content_?: string
+    The new file content. Set by {@link content}.
+  message_?: string
+    The commit message. Set by {@link message}.
+  branch_?: string
+    The branch to write on. Set by {@link branch}.
+  repo_?: string
+    `owner/repo`. Set by {@link repo}.
+  token_?: string
+    The token. Set by {@link token}.
+  baseUrl_: string
+    The API root. Set by {@link baseUrl}.
+  fetch_: typeof fetch
+    The `fetch` implementation. Set by {@link fetch}.
+  path(value: string): this
+    The file's path inside the repository, e.g. `Formula/app.rb` (required).
+    Relative, `/`-separated, with no `.` or `..` segment.
+  content(text: string): this
+    The file's new content, as text (required). Written as UTF-8.
+  message(text: string): this
+    The commit message (required).
+  branch(name: string): this
+    The branch to write on. Defaults to the repository's default branch.
+  repo(slug: string): this
+    `owner/repo`. Defaults to `GITHUB_REPOSITORY`.
+  token(value: string): this
+    The token to authenticate with — needs `contents: write` on the
+    repository. Defaults to `GITHUB_TOKEN`.
+  baseUrl(url: string): this
+    The API root, for GitHub Enterprise.
+  fetch(fn: typeof fetch): this
+    Override the `fetch` implementation (a test seam).
+  repoSlug_(): string
+    The effective `owner/repo`, from the setting or the environment.
+  authToken_(): string
+    The effective token, from the setting or the environment.
+
 class GhIssueCloseSettings extends GhCommandSettings
   Settings for `gh issue close`.
 
@@ -2399,6 +2444,32 @@ interface GhCommitResult
   branch: string
     The branch it landed on.
 
+interface GhContentsApi
+  The create-or-update-file operation {@link GhTasks} exposes.
+
+  createOrUpdateFile(configure?: Configure<GhContentsSettings>): Promise<GhContentsResult>
+    Write one file through the contents API, creating it or replacing its
+    content — or, when it already holds exactly this content, writing nothing
+    and reporting `unchanged`.
+
+    A write that loses a race (the file changed between the read and the
+    write) is read once more: if the file now holds this content the result is
+    `unchanged`, otherwise the conflict is raised rather than overwritten.
+
+interface GhContentsResult
+  What became of a {@link GhContentsApi.createOrUpdateFile} call.
+
+  state: "created" | "updated" | "unchanged"
+    `created` when the file did not exist, `updated` when it held other
+    content, `unchanged` when it already held exactly this content and nothing
+    was written.
+  path: string
+    The repository-relative path that was written (or left alone).
+  commitSha?: string
+    The commit that wrote the file; absent when the state is `unchanged`.
+  blobSha: string
+    The file's git blob SHA after the call.
+
 interface GhIssueApi
   The `gh issue` members of {@link "./gh.ts".GhTasks}.
 
@@ -2818,7 +2889,7 @@ interface GhSecretEntry
   visibility?: string
     The visibility of an organization secret.
 
-interface GhTasksApi extends GhAppTokenApi, GhSarifApi, GhReleaseAssetApi, GhReleaseLatestApi, GhReleaseEnsureApi, GhCommitApi, GhPullRequestApi, GhCheckRunApi, GhReactionApi, GhCollaboratorApi, GhPrApi, GhIssueApi, GhReleaseApi, GhRunApi, GhWorkflowApi, GhSecretApi, GhVariableApi, GhCacheApi, GhRepoApi, GhLabelApi
+interface GhTasksApi extends GhAppTokenApi, GhSarifApi, GhReleaseAssetApi, GhReleaseLatestApi, GhReleaseEnsureApi, GhCommitApi, GhContentsApi, GhPullRequestApi, GhCheckRunApi, GhReactionApi, GhCollaboratorApi, GhPrApi, GhIssueApi, GhReleaseApi, GhRunApi, GhWorkflowApi, GhSecretApi, GhVariableApi, GhCacheApi, GhRepoApi, GhLabelApi
   The shape of {@link GhTasks}: the `gh` CLI plus the GitHub operations that
   have no CLI subcommand (see {@link GhAppTokenApi}, {@link GhSarifApi}) and
   would otherwise force a build back to a marketplace action.

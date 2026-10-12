@@ -700,6 +700,17 @@
         }
       ]
     },
+    "packages/homebrew": {
+      "component": "homebrew",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
     "packages/qr": {
       "component": "qr",
       "changelog-path": "CHANGELOG.md",

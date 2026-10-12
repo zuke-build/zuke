@@ -98,6 +98,12 @@ import {
   type GhReleaseEnsureResult,
   type GhReleaseEnsureSettings,
 } from "./release_ensure.ts";
+import {
+  createOrUpdateFile,
+  type GhContentsApi,
+  type GhContentsResult,
+  type GhContentsSettings,
+} from "./contents.ts";
 import { callApi, type GhApiSettings } from "./api_command.ts";
 export { GhSettings };
 import {
@@ -129,6 +135,7 @@ export interface GhTasksApi
     GhReleaseLatestApi,
     GhReleaseEnsureApi,
     GhCommitApi,
+    GhContentsApi,
     GhPullRequestApi,
     GhCheckRunApi,
     GhReactionApi,
@@ -177,6 +184,11 @@ export const GhTasks: GhTasksApi = {
   },
   tag(configure?: (s: GhTagSettings) => GhTagSettings): Promise<void> {
     return tagCommit(configure);
+  },
+  createOrUpdateFile(
+    configure?: Configure<GhContentsSettings>,
+  ): Promise<GhContentsResult> {
+    return createOrUpdateFile(configure);
   },
   pullRequest(
     configure?: (s: GhPullRequestSettings) => GhPullRequestSettings,

@@ -159,6 +159,11 @@ export {
   tagCommit,
 } from "./src/commit.ts";
 export {
+  type GhContentsApi,
+  type GhContentsResult,
+  GhContentsSettings,
+} from "./src/contents.ts";
+export {
   type GhReaction,
   type GhReactionApi,
   type GhReactionContent,

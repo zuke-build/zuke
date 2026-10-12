@@ -53,6 +53,7 @@
     "packages/az",
     "packages/git",
     "packages/gh",
+    "packages/homebrew",
     "packages/codecov",
     "packages/claude",
     "packages/codex",

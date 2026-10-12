@@ -60,6 +60,8 @@ export const PACKAGES = [
   "az",
   "git",
   "gh",
+  // After gh, which it depends on (PACKAGE_DEPENDENCIES).
+  "homebrew",
   // After console and gh, which it depends on (PACKAGE_DEPENDENCIES).
   "cli",
   "codecov",
@@ -125,6 +127,9 @@ export const PACKAGE_DEPENDENCIES: Readonly<
   // The AI reviewer: its pull-request comments, reactions and the commenter
   // check go through GhTasks instead of a REST client of its own.
   ai: ["gh"],
+  // The Homebrew tap publisher: it writes the formula into the tap through
+  // GhTasks.createOrUpdateFile, so there is one GitHub transport, not two.
+  homebrew: ["gh"],
   // The canary engine: its `prometheus(...)` analysis queries through
   // PrometheusTasks, so there is one Prometheus transport, not a second copy.
   canary: ["prometheus"],

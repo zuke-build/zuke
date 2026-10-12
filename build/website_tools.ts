@@ -300,6 +300,11 @@ export const TOOL_GROUPS: ToolGroup[] = [
         desc: "commit, tag, push, merge-base, blame, gitInfo()",
       },
       { name: "GitHub CLI", pkg: "@zuke/gh", desc: "releases, PRs, workflows" },
+      {
+        name: "Homebrew",
+        pkg: "@zuke/homebrew",
+        desc: "brew, formula rendering, tap publishing",
+      },
       { name: "Husky", pkg: "@zuke/husky", desc: "install & manage git hooks" },
       { name: "JSR", pkg: "@zuke/jsr", desc: "publish, add, remove" },
       {
