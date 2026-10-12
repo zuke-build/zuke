@@ -24,6 +24,11 @@ zuke setup                                  # in your project
 ./zuke                                      # run the build
 ```
 
+On macOS or Linux without Deno, `brew install zuke-build/tap/zuke` installs the
+same CLI as a signed standalone binary instead; the `./zuke` launcher that
+`zuke setup` writes then installs Deno when the build first runs. Both routes
+are covered, with how to verify a download, in [installing](./install.md).
+
 Without installing, the same wizard runs via `deno run -A jsr:@zuke/cli setup`
 (flags: `--dir <path>`, `--name <Class>`, `--force`, `--yes`, `--mcp`,
 `--bootstrap-deno` / `--no-bootstrap-deno`). Pass `--mcp` to also write a

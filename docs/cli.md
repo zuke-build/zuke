@@ -3,7 +3,8 @@
 "zuke" names **two different programs**, and this reference is split to match:
 
 - **The global `zuke` CLI** (`jsr:@zuke/cli`, installed once with
-  `deno install -A -g -n zuke jsr:@zuke/cli`) owns the commands that scaffold
+  `deno install -A -g -n zuke jsr:@zuke/cli`, or as a standalone binary with
+  `brew install zuke-build/tap/zuke` — see [installing](./install.md)) owns the commands that scaffold
   and inspect projects — `setup`, `import`, `doc`, `upgrade`, the project
   commands `add`, `remove`, `cache` and `relock`, `--help` and `--version` — and
   **forwards everything else to your build**: inside a project (a `zuke.json` in

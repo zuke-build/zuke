@@ -35,6 +35,10 @@ zuke                                        # 3. run it (or ./zuke — no instal
 zuke generate-ci                            # 4. write .github/workflows/ci.yml from the build
 ```
 
+No Deno yet? On macOS or Linux, `brew install zuke-build/tap/zuke` installs the
+same CLI as a standalone binary, and the `./zuke` launcher `zuke setup` writes
+fetches Deno when the build first runs. See [installing](./docs/install.md).
+
 Step 4 needs one line in the build. Here is the whole file after you have
 replaced the scaffolded sample target with real work:
 
@@ -144,6 +148,7 @@ project that must never download a tool from its build entry point.
 
 ```sh
 deno install -A -g -n zuke jsr:@zuke/cli   # the CLI: setup, import, doc — and it forwards the rest
+brew install zuke-build/tap/zuke            # …or the same CLI as a signed binary (macOS, Linux)
 zuke setup                                  # or: deno run -A jsr:@zuke/cli setup
 zuke setup --mcp                            # …and register the build's MCP server for your agent
 zuke import                                 # migrate package.json scripts / a Makefile instead

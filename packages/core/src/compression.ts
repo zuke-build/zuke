@@ -129,6 +129,13 @@ export interface TarEntry {
    * into `lib/node_modules`, so extracting a runtime tree must preserve them.
    */
   linkname?: string;
+  /**
+   * A regular file's permission bits, written into its header: `0o755` for an
+   * executable, so a binary shipped in the archive runs once extracted.
+   * Defaults to `0o644`. Ignored for a symlink entry, which is always
+   * `0o777`.
+   */
+  mode?: number;
 }
 
 /** The tar block size; headers and data are padded to a multiple of this. */
@@ -158,7 +165,12 @@ function writeOctal(
 
 /** Build the 512-byte `ustar` header for one entry (a file, or a symlink when
  * `linkname` is given). */
-function tarHeader(name: string, size: number, linkname?: string): Uint8Array {
+function tarHeader(
+  name: string,
+  size: number,
+  linkname: string | undefined,
+  mode: number,
+): Uint8Array {
   const nameBytes = new TextEncoder().encode(name);
   if (nameBytes.length > 100) {
     throw new Error(
@@ -171,9 +183,15 @@ function tarHeader(name: string, size: number, linkname?: string): Uint8Array {
       `tar: symlink target exceeds 100 bytes (ustar limit): "${linkname}"`,
     );
   }
+  if (!Number.isInteger(mode) || mode < 0 || mode > 0o7777) {
+    throw new Error(
+      `tar: mode for "${name}" must be permission bits from 0 to 0o7777, ` +
+        `got ${mode}`,
+    );
+  }
   const header = new Uint8Array(BLOCK);
   writeString(header, 0, name);
-  writeOctal(header, 100, 7, isLink ? 0o777 : 0o644); // mode
+  writeOctal(header, 100, 7, isLink ? 0o777 : mode); // mode
   writeOctal(header, 108, 7, 0); // uid
   writeOctal(header, 116, 7, 0); // gid
   writeOctal(header, 124, 11, isLink ? 0 : size); // size (a symlink carries none)
@@ -198,7 +216,12 @@ export function tar(entries: TarEntry[]): Uint8Array {
   const blocks: Uint8Array[] = [];
   let total = 0;
   for (const entry of entries) {
-    const header = tarHeader(entry.name, entry.data.length, entry.linkname);
+    const header = tarHeader(
+      entry.name,
+      entry.data.length,
+      entry.linkname,
+      entry.mode ?? 0o644,
+    );
     blocks.push(header);
     total += BLOCK;
     // A symlink entry carries no data blocks; a file's data is block-padded.

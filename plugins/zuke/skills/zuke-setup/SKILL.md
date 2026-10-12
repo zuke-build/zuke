@@ -29,6 +29,12 @@ No global install? The same wizard runs directly:
 deno run -A jsr:@zuke/cli setup
 ```
 
+No Deno at all, on macOS or Linux? `brew install zuke-build/tap/zuke` installs
+the same CLI as a signed standalone binary; `zuke setup` then works at once, and
+the `./zuke` launcher it writes installs Deno when the build first runs. Update
+that install with `brew upgrade zuke`, not `zuke upgrade` (which refuses it).
+`zuke --version` on a terminal shows which install answered.
+
 `setup` flags: `--dir <path>`, `--name <ClassName>`, `--force` (overwrite
 existing files), `--yes` (non-interactive), `--bootstrap-deno` /
 `--no-bootstrap-deno` (which launchers to write — see below; the wizard asks

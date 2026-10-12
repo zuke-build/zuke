@@ -20,6 +20,7 @@
 
 import {
   type AbsolutePath,
+  absolutePath,
   appendJobSummary,
   Build,
   discoverTargets,
@@ -68,7 +69,24 @@ import {
   releaseIsOwed,
   workflowActionInputs,
 } from "./build/action_release.ts";
-import { mintAppToken } from "./build/app_token.ts";
+import { mintAppToken, resolveAppCredentials } from "./build/app_token.ts";
+import {
+  CLI_TAP,
+  httpCliReleaseProbe,
+  planCliRelease,
+} from "./build/cli_release.ts";
+import { binaryPath, packageCliArchives } from "./build/cli_package.ts";
+import {
+  assertReportsVersion,
+  compileCliBinaries,
+} from "./build/cli_compile.ts";
+import { signingCredentials, signMacBinaries } from "./build/cli_sign.ts";
+import {
+  publishCliFormula,
+  uploadCliRelease,
+  verifyCliFormula,
+} from "./build/cli_publish.ts";
+import { writeStepOutputs } from "./build/step_outputs.ts";
 import { mintReleaseToken } from "./build/release_token.ts";
 import { localVersion, PACKAGES } from "./build/packages.ts";
 import {
@@ -149,6 +167,15 @@ const GITLEAKS_REPORT = "gitleaks-report.json";
  * target) covers the branch; this covers the branch that already landed.
  */
 const GITLEAKS_CONFIG = ["[extend]", "useDefault = true", ""].join("\n");
+
+/** Where the CLI's compiled binaries are built, one directory per target. */
+const CLI_BIN_DIR = "dist/cli/bin";
+
+/** Where the CLI's release archives and SHA256SUMS are packed. */
+const CLI_RELEASE_DIR = "dist/cli/release";
+
+/** Where the CLI's formula is rendered for verification. */
+const CLI_FORMULA_FILE = "dist/cli/zuke.rb";
 
 /**
  * What the `check` target type-checks: the roots of the root `check` task in
@@ -1910,6 +1937,104 @@ class ZukeBuild extends Build {
           success: ConsoleTasks.success,
         });
       }
+    });
+
+  // The CLI's standalone binaries (#782). Five stages, one CI job each, in
+  // the order release.yml runs them: compile on Linux, sign and notarize on
+  // macOS, package and upload with an attestation, verify the formula with
+  // the real brew, then update the tap. `cliBinaries` decides whether any of
+  // it is owed for the current version; the rest run only when it says so.
+  cliBinaries = target()
+    .description(
+      "Compile the CLI's standalone binaries when its release lacks them",
+    )
+    .executes(async () => {
+      const version = await localVersion("cli");
+      const plan = await planCliRelease(version, httpCliReleaseProbe(version));
+      ConsoleTasks.info(plan.reason);
+      await writeStepOutputs({
+        version,
+        build: String(plan.build),
+        tap: String(plan.tap),
+      });
+      if (plan.build) {
+        await compileCliBinaries(
+          version,
+          absolutePath(Deno.cwd(), CLI_BIN_DIR).path,
+        );
+      }
+    });
+
+  cliSign = target()
+    .description("Sign and notarize the CLI's macOS binaries (macOS only)")
+    .executes(async () => {
+      const version = await localVersion("cli");
+      await signMacBinaries(
+        CLI_BIN_DIR,
+        signingCredentials((name) => Deno.env.get(name)),
+      );
+      // The runner is Apple silicon: run the signed arm64 binary itself.
+      await assertReportsVersion(
+        binaryPath(CLI_BIN_DIR, "aarch64-apple-darwin"),
+        version,
+      );
+    });
+
+  cliPackage = target()
+    .description("Pack the CLI's binaries into release archives and SHA256SUMS")
+    .executes(async () => {
+      const version = await localVersion("cli");
+      const sums = await packageCliArchives(
+        version,
+        CLI_BIN_DIR,
+        CLI_RELEASE_DIR,
+      );
+      for (const sum of sums) ConsoleTasks.info(`${sum.sha256}  ${sum.name}`);
+    });
+
+  cliUpload = target()
+    .description("Upload the CLI's archives, attestation and SHA256SUMS")
+    .executes(async () => {
+      const token = Deno.env.get("GITHUB_TOKEN");
+      const attestation = Deno.env.get("CLI_ATTESTATION_BUNDLE");
+      if (!token || !attestation) {
+        throw new Error(
+          "cliUpload needs GITHUB_TOKEN and CLI_ATTESTATION_BUNDLE (the " +
+            "attest-build-provenance step's bundle-path) in the env.",
+        );
+      }
+      await uploadCliRelease({
+        version: await localVersion("cli"),
+        dir: CLI_RELEASE_DIR,
+        attestation,
+        token,
+      });
+    });
+
+  cliFormulaVerify = target()
+    .description("Install the CLI's formula with the real brew and test it")
+    .executes(async () => {
+      await Deno.mkdir("dist/cli", { recursive: true });
+      await verifyCliFormula(await localVersion("cli"), CLI_FORMULA_FILE);
+    });
+
+  cliTap = target()
+    .description("Publish the CLI's formula to the Homebrew tap")
+    .executes(async () => {
+      const credentials = resolveAppCredentials({
+        appId: Deno.env.get("ZUKE_BUILD_APP_ID"),
+        privateKey: Deno.env.get("ZUKE_BUILD_APP_KEY"),
+      });
+      if (credentials === null) {
+        throw new Error(
+          "cliTap needs ZUKE_BUILD_APP_ID and ZUKE_BUILD_APP_KEY: the tap is " +
+            "written with the app's token, scoped to the tap's contents.",
+        );
+      }
+      const token = await mintAppToken(credentials, CLI_TAP.repo, {
+        contents: "write",
+      });
+      await publishCliFormula(await localVersion("cli"), token);
     });
 
   // `release` (release-please) needs a GITHUB_TOKEN; `publishJsr` needs JSR

@@ -4942,6 +4942,11 @@ interface TarEntry
     For a symbolic-link entry, its target (≤ 100 bytes); absent for a regular
     file. Node's release tarballs, for one, ship `bin/npm`/`bin/npx` as symlinks
     into `lib/node_modules`, so extracting a runtime tree must preserve them.
+  mode?: number
+    A regular file's permission bits, written into its header: `0o755` for an
+    executable, so a binary shipped in the archive runs once extracted.
+    Defaults to `0o644`. Ignored for a symlink entry, which is always
+    `0o777`.
 
 interface TargetContext
   The context passed to every target body. Optional to receive — an existing

@@ -47,6 +47,37 @@ Deno.test("tar/untar round-trips entries in order", () => {
   assertEquals(out[2].data.length, 0);
 });
 
+Deno.test("tar writes a file's mode, defaulting to 0644", () => {
+  // The mode field is 7 octal digits at offset 100 of each 512-byte header.
+  const modeOf = (archive: Uint8Array, header: number) =>
+    parseInt(dec(archive.slice(header * 512 + 100, header * 512 + 107)), 8);
+  const archive = tar([
+    { name: "zuke", data: enc("binary"), mode: 0o755 },
+    { name: "README", data: enc("text") },
+  ]);
+  assertEquals(modeOf(archive, 0), 0o755);
+  // "binary" pads to one data block, so the second header is block 2.
+  assertEquals(modeOf(archive, 2), 0o644);
+  // A symlink is always 0777, whatever mode it is given.
+  const link = tar([{
+    name: "l",
+    data: enc(""),
+    linkname: "zuke",
+    mode: 0o600,
+  }]);
+  assertEquals(modeOf(link, 0), 0o777);
+});
+
+Deno.test("tar rejects a mode that is not permission bits", () => {
+  for (const mode of [-1, 0o10000, 1.5, Number.NaN]) {
+    assertThrows(
+      () => tar([{ name: "x", data: enc("x"), mode }]),
+      Error,
+      "permission bits",
+    );
+  }
+});
+
 Deno.test("tar output is reproducible (fixed mtime)", () => {
   const e: TarEntry[] = [{ name: "x", data: enc("same") }];
   assertEquals(tar(e), tar(e));

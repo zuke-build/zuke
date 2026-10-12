@@ -68,6 +68,21 @@ export const SEED_PINS: Readonly<Record<string, CiActionRef>> = {
     ref: "ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc",
     version: "v2.4.4",
   },
+  // The CLI release: binaries travel between its jobs as artifacts, and the
+  // published archives carry a build-provenance attestation.
+  "actions/upload-artifact": {
+    ref: "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9",
+    version: "v7.0.2",
+  },
+  "actions/download-artifact": {
+    ref: "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
+    version: "v8.0.2",
+  },
+  "actions/attest-build-provenance": {
+    ref:
+      "actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8",
+    version: "v4.2.2",
+  },
   // The three subpaths of one action are pinned separately because pins are
   // keyed by the full `uses:` path, subpath included — and must agree, since
   // they ship as one release.

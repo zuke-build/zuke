@@ -21,6 +21,7 @@
  */
 
 import { cicd, type CiFile, type TargetBuilder } from "@zuke/core";
+import { HomebrewTasks } from "@zuke/homebrew";
 import { actionPin } from "./action_pins.ts";
 
 /**
@@ -45,6 +46,18 @@ export interface WorkflowTargets {
   publishJsr: TargetBuilder;
   /** Opens and merges the website documentation sync PR. */
   syncWebsite: TargetBuilder;
+  /** Decides what the CLI's binary release owes, and compiles if anything. */
+  cliBinaries: TargetBuilder;
+  /** Signs and notarizes the CLI's macOS binaries. */
+  cliSign: TargetBuilder;
+  /** Packs the CLI's binaries into release archives. */
+  cliPackage: TargetBuilder;
+  /** Uploads the CLI's archives, attestation and checksums. */
+  cliUpload: TargetBuilder;
+  /** Verifies the CLI's formula with the real brew. */
+  cliFormulaVerify: TargetBuilder;
+  /** Publishes the CLI's formula to the Homebrew tap. */
+  cliTap: TargetBuilder;
   /** The supply-chain scanners. */
   security: TargetBuilder;
   /** CodeQL static analysis, run entirely by the marketplace actions. */
@@ -139,6 +152,24 @@ const WEBSITE_SYNC_ENDPOINTS = [
   ...REPO_WRITE_ENDPOINTS,
   "registry.npmjs.org:443",
 ];
+
+/** The artifact the compiled CLI binaries travel in, unsigned. */
+const CLI_BINARIES_ARTIFACT = "cli-binaries";
+
+/** The artifact the signed macOS binaries travel in. */
+const CLI_SIGNED_ARTIFACT = "cli-binaries-signed";
+
+/** What a CLI release job reads from the planning job. */
+const CLI_PLAN = "needs.cliBinaries.outputs";
+
+/**
+ * The upload ran, or had nothing to do: the binaries were already published
+ * and only the tap is owed. Anything else — a failed or skipped upload while
+ * a build was owed — must stop the formula from being verified or published
+ * against binaries that are not there.
+ */
+const CLI_UPLOAD_SETTLED = `(${CLI_PLAN}.build != 'true' || ` +
+  "needs.cliUpload.result == 'success')";
 
 /**
  * Declare every GitHub workflow for `targets`, keyed by the file each writes.
@@ -377,6 +408,149 @@ export function githubWorkflows(
           // in depth against a compromised dependency in the build graph. The
           // action release above now holds the key on the same terms.
           harden: { egress: "block", allowedEndpoints: WEBSITE_SYNC_ENDPOINTS },
+          env: {
+            ZUKE_BUILD_APP_ID: "${{ secrets.ZUKE_BUILD_APP_ID }}",
+            ZUKE_BUILD_APP_KEY: "${{ secrets.ZUKE_BUILD_APP_KEY }}",
+          },
+        },
+        // The CLI's standalone binaries (#782): compile → sign → upload →
+        // verify → tap. Every stage is idempotent, and `cliBinaries` decides
+        // what is owed from what is already published, so a run that failed
+        // part way is finished by the next push rather than redone.
+        {
+          target: targets.cliBinaries,
+          name: "CLI binaries: plan and compile",
+          // The binaries are compiled from the version JSR just published.
+          after: [targets.publishJsr],
+          permissions: { contents: "read" },
+          timeoutMinutes: 30,
+          outputs: {
+            version: "${{ steps.plan.outputs.version }}",
+            build: "${{ steps.plan.outputs.build }}",
+            tap: "${{ steps.plan.outputs.tap }}",
+          },
+          steps: [
+            {
+              id: "plan",
+              name: "Plan the CLI release, and compile when owed",
+              run: "./zuke cliBinaries",
+            },
+            {
+              name: "Hand the binaries to the signing job",
+              if: "steps.plan.outputs.build == 'true'",
+              uses: actionPin("actions/upload-artifact"),
+              with: {
+                name: CLI_BINARIES_ARTIFACT,
+                path: "dist/cli/bin",
+                "if-no-files-found": "error",
+                "retention-days": "1",
+              },
+            },
+          ],
+        },
+        {
+          target: targets.cliSign,
+          name: "CLI binaries: sign and notarize (macOS)",
+          after: [targets.cliBinaries],
+          if: `${CLI_PLAN}.build == 'true'`,
+          runsOn: "macos-latest",
+          // The Developer ID certificate and the notary key live in this
+          // environment, so a deployment rule can require approval before
+          // anything is signed with them.
+          environment: "cli-signing",
+          permissions: { contents: "read" },
+          timeoutMinutes: 60,
+          before: [{
+            name: "Fetch the compiled binaries",
+            uses: actionPin("actions/download-artifact"),
+            with: { name: CLI_BINARIES_ARTIFACT, path: "dist/cli/bin" },
+          }],
+          env: {
+            APPLE_CERTIFICATE_P12: "${{ secrets.APPLE_CERTIFICATE_P12 }}",
+            APPLE_CERTIFICATE_PASSWORD:
+              "${{ secrets.APPLE_CERTIFICATE_PASSWORD }}",
+            APPLE_NOTARY_KEY: "${{ secrets.APPLE_NOTARY_KEY }}",
+            APPLE_NOTARY_KEY_ID: "${{ secrets.APPLE_NOTARY_KEY_ID }}",
+            APPLE_NOTARY_ISSUER: "${{ secrets.APPLE_NOTARY_ISSUER }}",
+          },
+          then: [{
+            name: "Hand the signed binaries on",
+            uses: actionPin("actions/upload-artifact"),
+            with: {
+              name: CLI_SIGNED_ARTIFACT,
+              path: "dist/cli/bin/*-apple-darwin",
+              "if-no-files-found": "error",
+              "retention-days": "1",
+            },
+          }],
+        },
+        {
+          target: targets.cliUpload,
+          name: "CLI binaries: package, attest and upload",
+          after: [targets.cliBinaries, targets.cliSign],
+          if: `${CLI_PLAN}.build == 'true'`,
+          // `contents: write` to attach assets to the release; `id-token` and
+          // `attestations` for the build-provenance attestation, which is
+          // signed through Sigstore with this workflow's OIDC identity.
+          permissions: {
+            contents: "write",
+            "id-token": "write",
+            attestations: "write",
+          },
+          timeoutMinutes: 20,
+          steps: [
+            {
+              name: "Fetch the compiled binaries",
+              uses: actionPin("actions/download-artifact"),
+              with: { name: CLI_BINARIES_ARTIFACT, path: "dist/cli/bin" },
+            },
+            {
+              // Over the unsigned macOS binaries from the same artifact.
+              name: "Fetch the signed macOS binaries",
+              uses: actionPin("actions/download-artifact"),
+              with: { name: CLI_SIGNED_ARTIFACT, path: "dist/cli/bin" },
+            },
+            { name: "Package the archives", run: "./zuke cliPackage" },
+            {
+              id: "attest",
+              name: "Attest the archives' build provenance",
+              uses: actionPin("actions/attest-build-provenance"),
+              with: {
+                "subject-path":
+                  "dist/cli/release/*.tar.gz\ndist/cli/release/SHA256SUMS",
+              },
+            },
+            {
+              name: "Upload to the release",
+              run: "./zuke cliUpload",
+              env: {
+                GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+                CLI_ATTESTATION_BUNDLE:
+                  "${{ steps.attest.outputs.bundle-path }}",
+              },
+            },
+          ],
+        },
+        {
+          ...HomebrewTasks.verifyJob((s) => s.target(targets.cliFormulaVerify)),
+          after: [targets.cliBinaries, targets.cliUpload],
+          if: `\${{ !cancelled() && ${CLI_PLAN}.tap == 'true' && ` +
+            `${CLI_UPLOAD_SETTLED} }}`,
+          permissions: { contents: "read" },
+          timeoutMinutes: 30,
+        },
+        {
+          target: targets.cliTap,
+          name: "CLI binaries: publish the Homebrew formula",
+          after: [targets.cliBinaries, targets.cliFormulaVerify],
+          if:
+            "${{ !cancelled() && needs.cliFormulaVerify.result == 'success' }}",
+          // The tap is written with an app token minted inside the target,
+          // scoped to the tap's contents; GITHUB_TOKEN cannot reach another
+          // repository at all.
+          permissions: { contents: "read" },
+          timeoutMinutes: 15,
+          harden: { egress: "block", allowedEndpoints: REPO_WRITE_ENDPOINTS },
           env: {
             ZUKE_BUILD_APP_ID: "${{ secrets.ZUKE_BUILD_APP_ID }}",
             ZUKE_BUILD_APP_KEY: "${{ secrets.ZUKE_BUILD_APP_KEY }}",
