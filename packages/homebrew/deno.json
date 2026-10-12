@@ -8,7 +8,7 @@
   },
   "imports": {
     "@zuke/core": "jsr:@zuke/core@^1.71.0",
-    "@zuke/gh": "jsr:@zuke/gh@^1.14.0"
+    "@zuke/gh": "jsr:@zuke/gh@^1.15.0"
   },
   "publish": {
     "exclude": [
