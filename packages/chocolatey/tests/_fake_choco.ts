@@ -43,7 +43,14 @@ export function fakeChoco(fail: string[] = []): FakeChoco {
       `"${script}" "$@"\n`,
   );
   Deno.chmodSync(choco, 0o755);
+  // The staging directory is created under TMPDIR. Pointed at a resolved path,
+  // the directory a task passes to choco and the working directory the fake
+  // records (which the OS reports resolved) agree on macOS, where the default
+  // temp dir sits behind the /var -> /private/var link.
+  const tmp = `${Deno.realPathSync(dir)}/tmp`;
+  Deno.mkdirSync(tmp);
   const env = {
+    TMPDIR: tmp,
     FAKE_CHOCO_LOG: log,
     FAKE_CHOCO_BIN: binDir,
     FAKE_CHOCO_FAIL: fail.join(","),
