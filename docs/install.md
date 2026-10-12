@@ -75,18 +75,20 @@ sha256sum --ignore-missing --check SHA256SUMS
 # It was built by Zuke's release workflow, from this repository — the
 # attestation is signed through Sigstore with the workflow's own identity:
 gh attestation verify zuke-1.14.0-x86_64-unknown-linux-gnu.tar.gz \
-  --repo zuke-build/zuke
+  --repo zuke-build/zuke \
+  --signer-workflow zuke-build/zuke/.github/workflows/release.yml \
+  --source-ref refs/heads/master
 ```
 
 Without the GitHub CLI, the published bundle verifies with
-[cosign](https://docs.sigstore.dev/cosign/) instead:
+[cosign](https://docs.sigstore.dev/cosign/) 2.4 or later instead:
 
 ```sh
 cosign verify-blob-attestation \
   --bundle zuke-1.14.0.sigstore.json \
   --new-bundle-format \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp '^https://github.com/zuke-build/zuke/\.github/workflows/release\.yml@' \
+  --certificate-identity 'https://github.com/zuke-build/zuke/.github/workflows/release.yml@refs/heads/master' \
   --type slsaprovenance1 \
   zuke-1.14.0-x86_64-unknown-linux-gnu.tar.gz
 ```

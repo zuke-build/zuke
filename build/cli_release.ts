@@ -24,6 +24,7 @@ import {
   type FormulaOs,
   HomebrewTasks,
 } from "@zuke/homebrew";
+import { isNewerSemver } from "./semver.ts";
 
 /** The repository the CLI is released from. */
 export const CLI_REPO = "zuke-build/zuke";
@@ -62,6 +63,16 @@ export const CLI_TARGETS: readonly CliTarget[] = [
 export const MACOS_TARGETS: readonly CliTarget[] = CLI_TARGETS.filter((t) =>
   t.os === "macos"
 );
+
+/**
+ * The first CLI version that ships as a standalone binary.
+ *
+ * Earlier releases predate the binary's own support for being one: their
+ * `zuke --version` names no install, and their `zuke upgrade` does not refuse
+ * a Homebrew install, so it would put a second `zuke` beside it. Building
+ * binaries for them would publish exactly that behaviour to the tap.
+ */
+export const FIRST_BINARY_VERSION = "1.14.0";
 
 /** The release-please tag of a CLI version: `cli-v1.14.0`. */
 export function cliReleaseTag(version: string): string {
@@ -196,6 +207,7 @@ export interface CliReleasePlan {
 /**
  * What is owed for `version`, from what is already published.
  *
+ * - Older than {@link FIRST_BINARY_VERSION}: nothing, ever.
  * - No GitHub release yet: nothing. Release-please has not cut this version,
  *   and the binaries go on its release.
  * - A release without {@link CHECKSUMS}: everything. The manifest is uploaded
@@ -209,6 +221,14 @@ export async function planCliRelease(
   probe: CliReleaseProbe,
 ): Promise<CliReleasePlan> {
   const tag = cliReleaseTag(version);
+  if (isNewerSemver(FIRST_BINARY_VERSION, version)) {
+    return {
+      build: false,
+      tap: false,
+      reason: `${tag} predates the first binary release ` +
+        `(${FIRST_BINARY_VERSION}), so it ships from JSR only.`,
+    };
+  }
   if (!(await probe.releaseExists())) {
     return { build: false, tap: false, reason: `${tag} is not released yet.` };
   }
@@ -281,7 +301,7 @@ export function httpCliReleaseProbe(
 /** Fetch `version`'s published {@link CHECKSUMS} manifest. */
 export async function fetchChecksums(
   version: string,
-  fetcher: Fetch = fetch,
+  fetcher: Fetch,
 ): Promise<Map<string, string>> {
   const url = releaseAssetUrl(version, CHECKSUMS);
   const response = await fetcher(url);

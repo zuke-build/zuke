@@ -88,7 +88,7 @@ export async function uploadCliRelease(options: UploadOptions): Promise<void> {
 export async function writeCliFormula(
   version: string,
   path: string,
-  fetcher: Fetch = fetch,
+  fetcher: Fetch,
 ): Promise<string> {
   const formula = cliFormula(version, await fetchChecksums(version, fetcher));
   await Deno.writeTextFile(path, formula);

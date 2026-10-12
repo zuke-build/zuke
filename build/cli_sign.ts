@@ -46,8 +46,7 @@ const IDENTITY = "Developer ID Application";
 const IDENTIFIER = "build.zuke.cli";
 
 /** The entitlements every signed binary carries. */
-const ENTITLEMENTS = new URL("./cli_entitlements.plist", import.meta.url)
-  .pathname;
+const ENTITLEMENTS = `${import.meta.dirname}/cli_entitlements.plist`;
 
 /** The environment variables {@link signingCredentials} reads. */
 export const SIGNING_ENV: Readonly<Record<keyof SigningCredentials, string>> = {
@@ -205,9 +204,10 @@ export async function signMacBinaries(
       s.key(key).keyId(credentials.notaryKeyId)
         .issuer(credentials.notaryIssuer).file(zip).wait().timeout("30m")
     );
+    // `submit` with `.wait()` throws on anything but Accepted.
     ConsoleTasks.info(
       `Notarized ${binaries.length} binaries: submission ${submission.id} ` +
-        `${submission.status ?? "Accepted"}.`,
+        "accepted.",
     );
   } finally {
     await Deno.remove(scratch, { recursive: true });

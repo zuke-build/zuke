@@ -26,6 +26,7 @@ import {
   type CliReleaseProbe,
   cliReleaseTag,
   fetchChecksums,
+  FIRST_BINARY_VERSION,
   httpCliReleaseProbe,
   MACOS_TARGETS,
   parseChecksums,
@@ -163,6 +164,29 @@ function probe(
   };
 }
 
+Deno.test("planCliRelease owes nothing for a version older than the first binary release", async () => {
+  // 1.13.0 predates the CLI's own Homebrew support: its upgrade would put a
+  // JSR zuke beside the brewed one, so it must never reach the tap.
+  for (const old of ["1.13.0", "1.13.9", "0.9.0"]) {
+    const asked: string[] = [];
+    const plan = await planCliRelease(
+      old,
+      probe({ release: true, sums: false }, asked),
+    );
+    assertEquals([plan.build, plan.tap], [false, false], old);
+    assertStringIncludes(
+      plan.reason,
+      `first binary release (${FIRST_BINARY_VERSION})`,
+    );
+    assertEquals(asked, [], old);
+  }
+  const first = await planCliRelease(
+    FIRST_BINARY_VERSION,
+    probe({ release: true, sums: false }),
+  );
+  assertEquals(first.build, true);
+});
+
 Deno.test("planCliRelease owes nothing before release-please cuts the version", async () => {
   const asked: string[] = [];
   const plan = await planCliRelease(
@@ -193,8 +217,8 @@ Deno.test("planCliRelease owes only the tap when its formula points elsewhere", 
   }
   // A version that merely starts with this one's digits is another release.
   const longer = await planCliRelease(
-    "1.1.0",
-    probe({ release: true, sums: true, tap: ".../cli-v1.1.0.1/..." }),
+    "1.14.1",
+    probe({ release: true, sums: true, tap: ".../cli-v1.14.10/..." }),
   );
   assertEquals(longer.tap, true);
 });

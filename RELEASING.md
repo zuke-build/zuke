@@ -95,6 +95,55 @@ the packages publish themselves.
 > from the local workspace, so it cannot catch a sibling floor that is too low —
 > the follow-up is the control.
 
+## The CLI's standalone binaries
+
+From `@zuke/cli` 1.14.0, every CLI release also ships `deno compile` binaries
+for macOS and Linux on its `cli-v<version>` GitHub release, and through the
+Homebrew tap
+[`zuke-build/homebrew-tap`](https://github.com/zuke-build/homebrew-tap). Five
+jobs in `release.yml` do it after `publishJsr`, each running a `cli*` target in
+`zuke.ts` (the code is in `build/cli_*.ts`):
+
+1. `cliBinaries` decides what the current CLI version owes from what is
+   published — nothing before its release exists, everything while the release
+   lacks `SHA256SUMS`, only the tap while the formula points elsewhere — and,
+   when binaries are owed, compiles them from the published
+   `jsr:@zuke/cli@<version>`.
+2. `cliSign` signs the macOS binaries with the Developer ID under the hardened
+   runtime and notarizes them, on a macOS runner in the `cli-signing`
+   environment. Missing credentials fail it: nothing is published unsigned.
+3. `cliUpload` packs the archives, attests their build provenance, and uploads
+   them, the attestation bundle, and `SHA256SUMS` last.
+4. `cliFormulaVerify` installs the formula built from the published `SHA256SUMS`
+   with the real `brew` on macOS and Linux, runs its test, and checks the macOS
+   signatures.
+5. `cliTap` commits the formula to the tap with the app's token.
+
+Every stage is idempotent, so a run that fails part way is finished by the next
+push to master. How users verify a download is in
+[docs/install.md](docs/install.md#verifying-a-download).
+
+**Setup, before the first binary release:**
+
+- A `cli-signing` environment holding `APPLE_CERTIFICATE_P12` (the Developer ID
+  Application certificate and key, a base64 `.p12`),
+  `APPLE_CERTIFICATE_PASSWORD`, `APPLE_NOTARY_KEY` (the App Store Connect API
+  key's `.p8` text), `APPLE_NOTARY_KEY_ID` and `APPLE_NOTARY_ISSUER`. Give it a
+  deployment branch rule allowing **only `master`**: the release workflow can
+  also be dispatched by hand from any branch, and the rule is what keeps the
+  signing secrets away from one. GitHub creates an environment a workflow names
+  with no rules at all, so configure it before the first run.
+- The `ZUKE_BUILD_APP_*` app installed on `zuke-build/homebrew-tap` with
+  contents write access.
+- Releases left mutable: assets are attached after release-please publishes a
+  release, which an immutable release refuses.
+
+**Recovering a bad release.** Once `SHA256SUMS` is on a release, the binaries
+count as published and are not rebuilt. If one turns out to be broken — the
+verify job fails on every push — delete `SHA256SUMS` from that release; the next
+run rebuilds, re-signs and re-uploads everything, then verifies and republishes
+the formula.
+
 ## Manual trigger
 
 `release.yml` also has a `workflow_dispatch` trigger, so you can run
