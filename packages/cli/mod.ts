@@ -705,8 +705,17 @@ async function commandVersion(
     : await projectCoreVersions(host, location.root);
   if (paint.rich) {
     const home = firstSet(defaultDenoHost, "HOME", "USERPROFILE");
-    const display = (path: string) =>
-      homeRelative(path, home, defaultDenoHost.windows());
+    // An executable path comes from the OS, with backslashes on Windows;
+    // homeRelative compares forward-slash paths, as absolutePath writes them.
+    const display = (path: string) => {
+      let normal = path;
+      try {
+        normal = absolutePath(path).path;
+      } catch {
+        // Not absolute: shown as it is.
+      }
+      return homeRelative(normal, home, defaultDenoHost.windows());
+    };
     const rows: VersionRow[] = [
       ["cli", VERSION],
       ["install", installLabel(await installSource(installHost), display)],

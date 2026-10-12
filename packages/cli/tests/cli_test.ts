@@ -1476,6 +1476,35 @@ Deno.test("--version names a Homebrew install in the panel, and keeps plain outp
   assertEquals(await version(false), [VERSION]);
 });
 
+Deno.test("--version shortens a Windows binary's backslash path under home", async () => {
+  // The OS reports the executable with backslashes on Windows, while the
+  // home prefix is compared in absolutePath's forward-slash form.
+  const binary: UpgradeHost = {
+    ...defaultUpgradeHost,
+    standalone: () => true,
+    execPath: () => "C:\\Users\\me\\bin\\zuke.exe",
+    realPath: (path) => Promise.resolve(path),
+  };
+  await withEnv({ ...RICH_ENV, HOME: "C:\\Users\\me" }, async () => {
+    const host = new FakeHost();
+    host.terminal = true;
+    await main(
+      ["--version"],
+      host,
+      defaultPrompter,
+      undefined,
+      undefined,
+      () => Promise.resolve(0),
+      noProjectProbe,
+      binary,
+    );
+    assertStringIncludes(
+      stripAnsi(host.logs[0]),
+      "standalone binary (~/bin/zuke.exe)",
+    );
+  });
+});
+
 Deno.test("--plain is the CLI's for its own commands, and the build's for a forwarded one", async () => {
   await withEnv(RICH_ENV, async () => {
     const host = new FakeHost();

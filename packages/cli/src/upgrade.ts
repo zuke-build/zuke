@@ -45,6 +45,7 @@ import type { CliPaint } from "./paint.ts";
 import { VERSION_PATTERN } from "./version_report.ts";
 import { defaultDenoHost, firstSet } from "./deno_path.ts";
 import { VERSION } from "./version.ts";
+import { ZUKE_REPO_URL } from "./star.ts";
 import {
   type InstallHost,
   installSource,
@@ -52,7 +53,7 @@ import {
 } from "./install_source.ts";
 
 /** Where the compiled binaries are published. */
-const RELEASES_URL = "https://github.com/zuke-build/zuke/releases";
+const RELEASES_URL = `${ZUKE_REPO_URL}/releases`;
 
 /** The registry document listing every published version and the latest. */
 const META_URL = "https://jsr.io/@zuke/cli/meta.json";

@@ -19,7 +19,11 @@
  * A Homebrew binary and one downloaded from the release page are the same
  * bytes, so only where the executable lives separates them: Homebrew keeps
  * every formula under `<prefix>/Cellar/<formula>/<version>/`, and links it
- * onto `PATH` from there. The link is resolved before the path is read.
+ * onto `PATH` from there. The link is resolved before the path is read, which
+ * in a compiled binary needs read permission: the release binaries are
+ * compiled with `-A`, as the JSR install runs with it. Without it the path is
+ * the one the OS reported — already resolved on Linux, possibly the link on
+ * macOS, where a Homebrew install would then read as a plain binary.
  *
  * @module
  */
