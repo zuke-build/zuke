@@ -1,6 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+// cspell:ignore linuxbrew libexec
+
 import { assertEquals } from "../../core/tests/_assert.ts";
 import {
   type InstallHost,

@@ -24,6 +24,8 @@
  * @module
  */
 
+// cspell:ignore linuxbrew
+
 /** The JSR package the global command is installed from. */
 export const JSR_PACKAGE = "jsr:@zuke/cli";
 
