@@ -52,12 +52,22 @@ interface Cached<T> {
   readonly expiresAt: number;
 }
 
+/** A shared fetch that failed, and the last call that was in flight with it. */
+interface Failed {
+  /** What the fetch failed with. */
+  readonly error: unknown;
+  /** The last call ticket issued before it failed. */
+  readonly through: number;
+}
+
 /** One key's state: a usable value, a fetch in flight, or both. */
 interface Entry<T> {
   /** The cached value. */
   readonly cached?: Cached<T>;
   /** The fetch every concurrent caller awaits. */
   readonly pending?: Promise<T>;
+  /** The last shared fetch's failure, for the calls that overlapped it. */
+  readonly failed?: Failed;
 }
 
 /** A per-provider cache of expiring credentials. */
@@ -66,6 +76,12 @@ export class TokenCache<T> {
   readonly #entries = new WeakMap<typeof fetch, Map<string, Entry<T>>>();
   /** The shared fetch's time limit, in ms. */
   readonly #limitMs: number;
+  /**
+   * The last call ticket issued. A call takes one before it awaits its key's
+   * digest, so the order of tickets is the order calls arrived in, whatever
+   * order their digests resolve in.
+   */
+  #ticket = 0;
 
   /**
    * A cache whose shared fetches may take `limitMs` (30 s by default — the
@@ -93,6 +109,7 @@ export class TokenCache<T> {
     identity: readonly unknown[],
     fetchFresh: (shared: PrometheusCredentialsContext) => Promise<Expiring<T>>,
   ): Promise<T> {
+    const ticket = ++this.#ticket;
     const key = await sha256Hex(JSON.stringify(identity));
     let entries = this.#entries.get(context.fetch);
     if (entries === undefined) {
@@ -106,6 +123,11 @@ export class TokenCache<T> {
     }
     if (entry?.pending !== undefined) {
       return await raceSignal(entry.pending, context.signal);
+    }
+    // A call that arrived while the last fetch was in flight shares its
+    // failure, even when that fetch settled before this call's digest did.
+    if (entry?.failed !== undefined && ticket <= entry.failed.through) {
+      throw entry.failed.error;
     }
     const map = entries;
     const limit = AbortSignal.timeout(this.#limitMs);
@@ -123,19 +145,23 @@ export class TokenCache<T> {
       });
       return fresh.value;
     }, (error: unknown) => {
-      map.set(key, { cached: stale });
       if (stale !== undefined && context.now() < stale.expiresAt) {
+        map.set(key, { cached: stale });
         return stale.value;
       }
       // Say why a fetch was cut off: the provider's own message is already
       // scrubbed, and this adds only the limit.
-      if (limit.aborted) {
-        throw new Error(
+      const failure = limit.aborted
+        ? new Error(
           `${messageOf(error)} — the token request exceeded the ${seconds} s ` +
             `limit for a shared token fetch`,
-        );
-      }
-      throw error;
+        )
+        : error;
+      map.set(key, {
+        cached: stale,
+        failed: { error: failure, through: this.#ticket },
+      });
+      throw failure;
     });
     map.set(key, { cached: stale, pending });
     return await raceSignal(pending, context.signal);

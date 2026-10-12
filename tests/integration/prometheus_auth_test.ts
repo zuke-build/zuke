@@ -155,3 +155,31 @@ Deno.test("a token endpoint echoing the client secret never gets it printed", as
   assertStringIncludes(out + err, "wrong secret: [redacted]");
   assertEquals((out + err).includes(AZURE_SECRET), false);
 });
+
+class TwoQueries extends Build {
+  both = target().executes(async () => {
+    // Two queries at once, as two parallel targets would make them: they
+    // must share one token request, even when it fails straight away.
+    const results = await Promise.allSettled(
+      [1, 2].map(() =>
+        PrometheusTasks.query((s) => seams(s).url(AZURE).azure().query("up"))
+      ),
+    );
+    const failed = results.filter((result) => result.status === "rejected");
+    if (failed.length > 0) throw new Error(`${failed.length} queries failed`);
+  });
+}
+
+Deno.test("concurrent queries share one token request that fails at once", async () => {
+  azureRefuses = true;
+  net = server();
+  const { code, out, err } = await runCli(TwoQueries, ["both"]);
+  assertEquals(code, 1);
+  assertStringIncludes(out + err, "2 queries failed");
+  assertEquals(
+    net.sent.filter((request) =>
+      request.url.hostname === "login.microsoftonline.com"
+    ).length,
+    1,
+  );
+});

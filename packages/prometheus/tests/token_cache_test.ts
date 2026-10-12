@@ -208,3 +208,25 @@ Deno.test("entries are kept apart by identity and by fetch seam", async () => {
   assertEquals(await cache.get(two, ["a"], fresh("a2")), "a2");
   assertEquals(await cache.get(one, ["a"], fresh("x")), "a1");
 });
+
+Deno.test("callers that arrive together share a fetch that fails at once", async () => {
+  // The key is a digest computed asynchronously, so a fetch that settles
+  // before the second caller's digest resolves must still be the one that
+  // caller shares — not a reason for it to start a second fetch.
+  const cache = new TokenCache<string>();
+  const ctx = context();
+  let fetches = 0;
+  const failing = () => {
+    fetches++;
+    return Promise.reject(new Error("endpoint down"));
+  };
+  const both = await Promise.allSettled([
+    cache.get(ctx, ["a"], failing),
+    cache.get(ctx, ["a"], failing),
+  ]);
+  assertEquals(both.map((result) => result.status), ["rejected", "rejected"]);
+  assertEquals(fetches, 1);
+  // The failure is not cached: a call that starts after it fetches again.
+  await assertRejects(() => cache.get(ctx, ["a"], failing), Error, "down");
+  assertEquals(fetches, 2);
+});
