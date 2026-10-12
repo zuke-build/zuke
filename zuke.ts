@@ -1980,7 +1980,7 @@ class ZukeBuild extends Build {
       if (plan.build) {
         await compileCliBinaries(
           version,
-          absolutePath(Deno.cwd(), CLI_BIN_DIR).path,
+          absolutePath(Deno.cwd(), CLI_BIN_DIR),
         );
       }
     });
@@ -1995,7 +1995,10 @@ class ZukeBuild extends Build {
       );
       // The runner is Apple silicon: run the signed arm64 binary itself.
       await assertReportsVersion(
-        binaryPath(CLI_BIN_DIR, "aarch64-apple-darwin"),
+        absolutePath(
+          Deno.cwd(),
+          binaryPath(CLI_BIN_DIR, "aarch64-apple-darwin"),
+        ),
         version,
       );
     });

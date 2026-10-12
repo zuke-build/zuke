@@ -15,7 +15,14 @@ import {
   assertStringIncludes,
 } from "../../packages/core/tests/_assert.ts";
 import { withTemp } from "../../packages/core/tests/_temp.ts";
-import { Build, gunzip, sha256Hex, target, untar } from "@zuke/core";
+import {
+  absolutePath,
+  Build,
+  gunzip,
+  sha256Hex,
+  target,
+  untar,
+} from "@zuke/core";
 import { HomebrewVerifySettings } from "@zuke/homebrew";
 import { runCli } from "./_harness.ts";
 import {
@@ -28,6 +35,7 @@ import {
 } from "../../build/cli_release.ts";
 import { binaryPath, packageCliArchives } from "../../build/cli_package.ts";
 import { verifyCliFormula } from "../../build/cli_publish.ts";
+import { assertReportsVersion } from "../../build/cli_compile.ts";
 import { writeStepOutputs } from "../../build/step_outputs.ts";
 
 const VERSION = "1.14.0";
@@ -136,5 +144,41 @@ Deno.test("a release run plans, packages, and verifies the formula that pins wha
       await Deno.readTextFile(outputs),
       "build=false\ntap=true\n",
     );
+  });
+});
+
+Deno.test("a signing run checks the signed binary it names relative to the checkout", async () => {
+  // As cliSign does: the binaries directory is relative to the build's
+  // working directory, while the version check runs from a temporary one.
+  if (Deno.build.os === "windows") return;
+  await withTemp(async (dir) => {
+    const triple = "aarch64-apple-darwin";
+    await Deno.mkdir(`${dir}/dist/cli/bin/${triple}`, { recursive: true });
+    await Deno.symlink(
+      Deno.execPath(),
+      binaryPath(`${dir}/dist/cli/bin`, triple),
+    );
+    const { stdout } = await new Deno.Command(Deno.execPath(), {
+      args: ["--version"],
+    }).output();
+    const version = new TextDecoder().decode(stdout).split("\n")[0];
+
+    class SignRun extends Build {
+      smoke = target().executes(async () => {
+        await assertReportsVersion(
+          absolutePath(Deno.cwd(), binaryPath("dist/cli/bin", triple)),
+          version,
+        );
+      });
+    }
+
+    const cwd = Deno.cwd();
+    Deno.chdir(dir);
+    try {
+      const result = await runCli(SignRun, ["smoke"]);
+      assertEquals(result.code, 0, result.err);
+    } finally {
+      Deno.chdir(cwd);
+    }
   });
 });

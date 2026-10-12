@@ -19,6 +19,7 @@
  */
 
 import { type DenoCompileSettings, DenoTasks } from "@zuke/deno";
+import { type AbsolutePath, absolutePath } from "@zuke/core";
 import { $ } from "@zuke/core/shell";
 import { binaryPath } from "./cli_package.ts";
 import { CLI_TARGETS } from "./cli_release.ts";
@@ -34,20 +35,20 @@ export type Compile = (
 ) => Promise<unknown>;
 
 /**
- * Compile every target's binary into `binDir` — an absolute path, since the
+ * Compile every target's binary into `binDir` — absolute, since the
  * compile runs from a temporary directory — then run the one built for this
  * machine, if any, to check it reports `version`.
  */
 export async function compileCliBinaries(
   version: string,
-  binDir: string,
+  binDir: AbsolutePath,
   compile: Compile = (configure) => DenoTasks.compile(configure),
 ): Promise<void> {
   const scratch = await Deno.makeTempDir({ prefix: "zuke-compile-" });
   try {
     for (const target of CLI_TARGETS) {
-      const output = binaryPath(binDir, target.triple);
-      await Deno.mkdir(`${binDir}/${target.triple}`, { recursive: true });
+      const output = binaryPath(binDir.path, target.triple);
+      await Deno.mkdir(binDir(target.triple).path, { recursive: true });
       await compile((s) =>
         s.allowAll().target(target.triple).output(output)
           .script(cliSpecifier(version)).cwd(scratch)
@@ -55,7 +56,10 @@ export async function compileCliBinaries(
     }
     const host = CLI_TARGETS.find((t) => t.triple === Deno.build.target);
     if (host !== undefined) {
-      await assertReportsVersion(binaryPath(binDir, host.triple), version);
+      await assertReportsVersion(
+        absolutePath(binaryPath(binDir.path, host.triple)),
+        version,
+      );
     }
   } finally {
     await Deno.remove(scratch, { recursive: true });
@@ -66,22 +70,25 @@ export async function compileCliBinaries(
  * Run `binary --version` outside any project and fail unless its first line
  * is exactly `version`.
  *
+ * `binary` is absolute because the check runs from an empty temporary
+ * directory, where a relative path would name nothing.
+ *
  * This is the check that the compile resolved the release it was asked for.
  * A Deno that holds back recently published versions (2.9 does by default)
  * would otherwise build an older CLI under the new version's name.
  */
 export async function assertReportsVersion(
-  binary: string,
+  binary: AbsolutePath,
   version: string,
 ): Promise<void> {
   const scratch = await Deno.makeTempDir({ prefix: "zuke-smoke-" });
   try {
-    const reported = (await $`${binary} --version`.cwd(scratch).env({
+    const reported = (await $`${binary.path} --version`.cwd(scratch).env({
       ZUKE_PLAIN: "1",
     }).text()).split("\n")[0];
     if (reported !== version) {
       throw new Error(
-        `${binary} reports version ${JSON.stringify(reported)}, not ` +
+        `${binary.path} reports version ${JSON.stringify(reported)}, not ` +
           `${version}: the compile did not resolve the release it was asked for.`,
       );
     }
