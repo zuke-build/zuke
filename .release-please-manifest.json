@@ -64,5 +64,6 @@
   "packages/otel": "1.0.2",
   "packages/qr": "1.1.0",
   "packages/apple": "1.0.0",
-  "packages/homebrew": "1.0.0"
+  "packages/homebrew": "1.0.0",
+  "packages/chocolatey": "0.0.0"
 }

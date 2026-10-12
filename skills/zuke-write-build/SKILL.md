@@ -389,6 +389,20 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   `.version(…)` only when the URLs do not carry it — `brew audit` rejects a
   version it can already scan from the URL. `BrewTasks` types the `brew` CLI
   itself.
+- **Chocolatey (`@zuke/chocolatey`):** ship a prebuilt Windows binary —
+  `ChocolateyTasks.package((s) => s.id(…).version(…).authors(…)
+  .projectUrl(…).description(…).url64bit(zipUrl).checksum64(sha))`
+  renders the nuspec and `tools/chocolateyinstall.ps1` (XML- and
+  PowerShell-escaped; no uninstall script — choco removes the unpacked zip and
+  its shims),
+  `ChocolateyTasks.verify((s) => s.package(pkg).binary("app")
+  .command("--version").expectVersion())`
+  packs/installs/runs/uninstalls it from a temp source,
+  `ChocolateyTasks.publish((s) => s.package(pkg)
+  .apiKey(…))` pushes to
+  `https://push.chocolatey.org/` with the key masked, and
+  `ChocolateyTasks.verifyJob` is its Windows CI job. `ChocoTasks` types the
+  `choco` CLI itself.
 - **AWS (`@zuke/aws`):** `AwsTasks` types the deploy path with the CLI's own
   names — `s3Sync`, `ecrLoginPassword`, `ecsUpdateService` +
   `ecsWaitServicesStable`, `lambdaUpdateFunctionCode`, `cloudformationDeploy`,

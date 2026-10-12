@@ -154,6 +154,7 @@ Full reference: [docs/cli.md](./docs/cli.md).
 - [@zuke/az](https://jsr.io/@zuke/az) — typed Azure CLI tasks for Zuke builds, readers and a canary analysis
 - [@zuke/git](https://jsr.io/@zuke/git) — typed `git` task wrappers for Zuke builds
 - [@zuke/gh](https://jsr.io/@zuke/gh) — typed GitHub tooling for Zuke builds: the `gh` (GitHub CLI) task
+- [@zuke/chocolatey](https://jsr.io/@zuke/chocolatey) — ship a prebuilt Windows binary through
 - [@zuke/homebrew](https://jsr.io/@zuke/homebrew) — ship a prebuilt binary through a
 - [@zuke/cli](https://jsr.io/@zuke/cli) — the `zuke` command. Install it globally with
 - [@zuke/codecov](https://jsr.io/@zuke/codecov) — a typed Codecov CLI (`codecovcli`) task wrapper for Zuke

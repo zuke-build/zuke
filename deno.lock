@@ -1591,6 +1591,11 @@
           "jsr:@zuke/prometheus@1"
         ]
       },
+      "packages/chocolatey": {
+        "dependencies": [
+          "jsr:@zuke/core@^1.71.0"
+        ]
+      },
       "packages/claude": {
         "dependencies": [
           "jsr:@zuke/core@^1.31.0"

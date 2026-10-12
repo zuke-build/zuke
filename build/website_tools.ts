@@ -295,6 +295,11 @@ export const TOOL_GROUPS: ToolGroup[] = [
     blurb: "Script Git, GitHub, and publishing straight from your build.",
     tools: [
       {
+        name: "Chocolatey",
+        pkg: "@zuke/chocolatey",
+        desc: "choco, package rendering, publishing",
+      },
+      {
         name: "Git",
         pkg: "@zuke/git",
         desc: "commit, tag, push, merge-base, blame, gitInfo()",

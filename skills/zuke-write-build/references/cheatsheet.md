@@ -734,6 +734,7 @@ the full task list and settings methods of each):
 | `@zuke/docker`, `@zuke/docker-compose`                                                                                                              | `DockerTasks`, ...                                                   | build/run/compose. `DockerComposeTasks` covers the Compose surface — the lifecycle (`up`/`down`/`create`/`scale`/`wait`), images, containers (`run`/`exec`/`cp`/`export`), and the listings — with `servicePort`, `waitExitCode` and `composeVersion` handing back values. `dockerComposeCanary` is a stable/canary service platform for `@zuke/canary`. `DockerTasks` covers the everyday docker surface — containers, images, registry, and the `volume`/`network`/`system`/`context` groups — with `psEntries`, `imageEntries`, `volumeNames`, `networkNames` handing back values                                                                                                                                                                                                                                                                                  |
 | `@zuke/git`, `@zuke/gh`                                                                                                                             | `GitTasks`, `GhTasks`                                                | git — the everyday surface, typed (see below) — and GitHub CLI: typed `pr`/`issue`/`release`/`run`/`workflow`/`repo`/`secret`/`variable`/`label`/`cache` tasks (see below), `GhTasks.run` for the long tail, `GhTasks.api` for REST endpoints without a verb, `GhTasks.createOrUpdateFile` to write one file through the contents API (`unchanged` when identical, no commit)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `@zuke/homebrew`                                                                                                                                    | `BrewTasks`, `HomebrewTasks`                                         | Homebrew — `BrewTasks` types `brew` (`install`/`uninstall`/`test`/`audit`/`style`/`livecheck`/`tap`/`untap`/`tapNew`/`repository`, `info` parsed from `--json=v2`); `HomebrewTasks` ships a prebuilt binary through a tap: `formula` renders the Ruby, `publish` writes it to the tap (idempotent), `verify` installs/tests/uninstalls it through a throwaway local tap, `verifyJob` is its macOS + Linux CI job (see below)                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `@zuke/chocolatey`                                                                                                                                  | `ChocoTasks`, `ChocolateyTasks`                                      | Chocolatey — `ChocoTasks` types `choco` v2 (`pack`/`push`/`install`/`uninstall`/`apikey`, common `--yes`/`--force`/`--no-progress`/`--limit-output`); `ChocolateyTasks` ships a prebuilt Windows binary: `package` renders the nuspec and `chocolateyinstall.ps1` for a release zip, `verify` packs/installs/runs/uninstalls it from a temp source, `publish` pushes it with the API key masked, `verifyJob` is its Windows CI job (see below)                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `@zuke/cspell`, `@zuke/eslint`, `@zuke/oxlint`, `@zuke/biome`, `@zuke/dprint`, `@zuke/knip`, `@zuke/dpdm`, `@zuke/lint-staged`, `@zuke/shellcheck`  | `*Tasks`                                                             | lint/format/spell/dead-code. `ShellcheckTasks.lint` analyses shell scripts; give it `.shell("sh")` or ShellCheck reads the shebang and checks a POSIX script as bash                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `@zuke/tsc`, `@zuke/tsx`, `@zuke/tsc-alias`, `@zuke/tsup`, `@zuke/tsdown`, `@zuke/vite`, `@zuke/storybook`, `@zuke/turbo`, `@zuke/nx`, `@zuke/nest` | `*Tasks`                                                             | TS compile / bundle / monorepo / framework CLIs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `@zuke/openapi-ts`, `@zuke/orval`, `@zuke/redocly`                                                                                                  | `*Tasks`                                                             | generate API clients from OpenAPI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -1765,6 +1766,51 @@ release = cicd({
   The uninstall and `untap --force` always run. On a GitHub Linux runner brew is
   off `PATH`; `verifyJob` adds it, or pass `.toolPath(...)`.
 - `formula` needs a `test` block for `verify` (`brew test` fails without one).
+
+## Chocolatey packages — `@zuke/chocolatey`
+
+Ship a prebuilt Windows binary (a zip on a release) through Chocolatey. Every
+nuspec value is XML-escaped and every script value PowerShell-quoted, so the
+package holds only literals.
+
+```ts
+import { ChocolateyTasks } from "@zuke/chocolatey";
+
+const pkg = ChocolateyTasks.package((s) =>
+  s.id("app").version("1.2.3").authors("Acme") // id: lowercase, NuGet version
+    .projectUrl("https://example.com").licenseUrl("https://example.com/LICENSE")
+    .description("Command-line tool that builds and ships widgets") // 30-4000
+    .tags("cli", "widgets")
+    .url64bit(winZipUrl).checksum64(winZipSha) // https + 64 hex digits
+); // pkg.files: { "app.nuspec", "tools/chocolateyinstall.ps1" } — deterministic
+
+// A target that installs it the way a user would, then removes it:
+verifyPackage = target().executes(() =>
+  ChocolateyTasks.verify((s) =>
+    s.package(pkg).binary("app").command("--version").expectVersion()
+  )
+);
+// …and its CI job, a windows-latest matrix:
+release = cicd({
+  invokes: [ChocolateyTasks.verifyJob((s) => s.target(this.verifyPackage))],
+});
+
+await ChocolateyTasks.publish((s) =>
+  s.package(pkg).apiKey(this.chocoApiKey.value) // default https://push.chocolatey.org/
+); // { source, nupkg: "app.1.2.3.nupkg" }
+```
+
+- The zip is unpacked into the package's `tools`, where choco shims every
+  `.exe`; uninstall removes both, so no `chocolateyuninstall.ps1` is rendered.
+- `verify` packs in a temp directory, installs with
+  `--source=<dir>
+  --version=<v> --yes --force`, runs the shim, then always
+  uninstalls and removes the directory (a cleanup error never hides the real
+  one).
+- choco takes the key only as `--api-key=` (or a key saved by
+  `ChocoTasks.apikey((s) => s.add()…)`): it is masked in logs and errors but is
+  in the process table during the push — on a shared host save it instead and
+  leave `.apiKey` unset.
 
 ## Helpers from `@zuke/core`
 
