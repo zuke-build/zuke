@@ -29,15 +29,15 @@ whole thing to **AI agents** as typed tools. Inspired by
 ## Five minutes to a typed build
 
 ```sh
-deno install -A -g -n zuke jsr:@zuke/cli    # 1. the CLI, once
+deno install -A -g -n zuke jsr:@zuke/cli    # 1. the CLI, once, from JSR
+brew install zuke-build/tap/zuke            #    …or as a signed binary (macOS, Linux)
 zuke setup                                  # 2. scaffold zuke.ts + the ./zuke launcher
 zuke                                        # 3. run it (or ./zuke — no install needed)
 zuke generate-ci                            # 4. write .github/workflows/ci.yml from the build
 ```
 
-No Deno yet? On macOS or Linux, `brew install zuke-build/tap/zuke` installs the
-same CLI as a standalone binary, and the `./zuke` launcher `zuke setup` writes
-fetches Deno when the build first runs. See [installing](./docs/install.md).
+Both installs are the same CLI, and both are supported; the Homebrew binary
+needs no Deno up front. See [Install](#install).
 
 Step 4 needs one line in the build. Here is the whole file after you have
 replaced the scaffolded sample target with real work:
@@ -137,25 +137,50 @@ Teams running Zuke in production:
 
 ## Install
 
-Zuke runs on [Deno](https://deno.com/) and is imported straight from
-[JSR](https://jsr.io/@zuke) — there is nothing else to install. By default the
-scaffolded `./zuke` launcher (and `zuke.ps1` on Windows) bootstraps a pinned,
-checksum-verified Deno on first use, so a checkout needs **nothing** installed
-up front — it is the same script this repository runs on, [`zuke`](./zuke) /
+The `zuke` CLI scaffolds a project, migrates an existing one, and runs its
+build. It ships two ways, built from the same release: pick the one that suits
+the machine. `zuke --version` tells you which one you are running.
+
+### From JSR (any OS, with Deno)
+
+```sh
+deno install -A -g -n zuke jsr:@zuke/cli
+```
+
+Needs [Deno](https://deno.com/) 2. Upgrade with `zuke upgrade`, which moves the
+install to the latest release (or to a given one).
+
+### With Homebrew (macOS, Linux)
+
+```sh
+brew install zuke-build/tap/zuke
+```
+
+A standalone binary: no Deno needed. The macOS builds are signed with a
+Developer ID and notarized by Apple, and every archive carries a
+build-provenance attestation you can verify. Upgrade with `brew upgrade zuke`.
+See [installing](./docs/install.md) for how to check a download.
+
+### Set up a project
+
+The same steps, however you installed the CLI:
+
+```sh
+zuke setup          # scaffold zuke.ts, zuke.json and the ./zuke launcher
+zuke setup --mcp    # …and register the build's MCP server for your agent
+zuke import         # or migrate package.json scripts / a Makefile instead
+zuke                # run the default target; any other command runs the build, like ./zuke ci
+zuke add docker     # add @zuke/docker to the project (also: remove, cache, relock)
+```
+
+Zuke runs on Deno and is imported straight from [JSR](https://jsr.io/@zuke) —
+there is nothing else to install. The scaffolded `./zuke` launcher (and
+`zuke.ps1` on Windows) bootstraps a pinned, checksum-verified Deno on first use,
+so a checkout needs **nothing** installed up front — not even the CLI. It is the
+same script this repository runs on, [`zuke`](./zuke) /
 [`zuke.ps1`](./zuke.ps1). `zuke setup` asks; `--no-bootstrap-deno` scaffolds a
 launcher that uses the Deno on your `PATH` and fails closed without one, for a
 project that must never download a tool from its build entry point.
-
-```sh
-deno install -A -g -n zuke jsr:@zuke/cli   # the CLI: setup, import, doc — and it forwards the rest
-brew install zuke-build/tap/zuke            # …or the same CLI as a signed binary (macOS, Linux)
-zuke setup                                  # or: deno run -A jsr:@zuke/cli setup
-zuke setup --mcp                            # …and register the build's MCP server for your agent
-zuke import                                 # migrate package.json scripts / a Makefile instead
-zuke ci                                     # any other command runs the project's build, like ./zuke ci
-zuke upgrade                                # update the installed CLI to the latest release
-zuke add docker                             # add @zuke/docker to the project (also: remove, cache, relock)
-```
 
 > [!NOTE]
 > **Maturity.** Every one of the 66 packages is `1.x` and follows full semver —
