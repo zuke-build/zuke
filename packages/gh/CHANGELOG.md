@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.0](https://github.com/zuke-build/zuke/compare/gh-v1.14.0...gh-v1.15.0) (2026-10-12)
+
+
+### Features
+
+* **homebrew:** add @zuke/homebrew with BrewTasks, formula rendering and tap publishing ([#790](https://github.com/zuke-build/zuke/issues/790)) ([bcb3512](https://github.com/zuke-build/zuke/commit/bcb3512c7aa01d79b02a8af318710860aa53ba3f))
+
 ## [1.14.0](https://github.com/zuke-build/zuke/compare/gh-v1.13.0...gh-v1.14.0) (2026-10-07)
 
 

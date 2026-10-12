@@ -1,6 +1,6 @@
 {
   "name": "@zuke/apple",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "license": "MIT",
   "description": "Typed Apple code-signing tasks for Zuke builds — codesign, notarytool, security and ditto wrappers with a temporary CI keychain, parsed notarization results, and passwords kept out of logs, via an injection-free settings-lambda API.",
   "exports": {

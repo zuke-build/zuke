@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.0](https://github.com/zuke-build/zuke/compare/cli-v1.13.0...cli-v1.14.0) (2026-10-12)
+
+
+### Features
+
+* **cli:** report the install source in --version and send Homebrew upgrades to brew ([#787](https://github.com/zuke-build/zuke/issues/787)) ([1a9391d](https://github.com/zuke-build/zuke/commit/1a9391d2db7f452115f121bff1d9b440ce73eea2))
+
 ## [1.13.0](https://github.com/zuke-build/zuke/compare/cli-v1.12.1...cli-v1.13.0) (2026-10-08)
 
 

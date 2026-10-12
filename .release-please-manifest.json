@@ -1,5 +1,5 @@
 {
-  "packages/core": "1.71.0",
+  "packages/core": "1.72.0",
   "packages/deno": "1.4.2",
   "packages/docs": "1.0.1",
   "packages/npm": "1.3.1",
@@ -9,7 +9,7 @@
   "packages/yarn": "1.2.0",
   "packages/cmd": "1.0.1",
   "packages/console": "1.5.0",
-  "packages/cli": "1.13.0",
+  "packages/cli": "1.14.0",
   "packages/docker": "1.1.1",
   "packages/docker-compose": "1.3.0",
   "packages/kubectl": "1.2.0",
@@ -51,7 +51,7 @@
   "packages/aws": "1.1.1",
   "packages/az": "1.1.1",
   "packages/git": "1.6.0",
-  "packages/gh": "1.14.0",
+  "packages/gh": "1.15.0",
   "packages/codecov": "1.0.4",
   "packages/claude": "1.1.2",
   "packages/codex": "1.1.2",
@@ -63,6 +63,6 @@
   "packages/ai": "2.12.1",
   "packages/otel": "1.0.2",
   "packages/qr": "1.1.0",
-  "packages/apple": "0.0.0",
-  "packages/homebrew": "0.0.0"
+  "packages/apple": "1.0.0",
+  "packages/homebrew": "1.0.0"
 }

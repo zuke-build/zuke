@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.72.0](https://github.com/zuke-build/zuke/compare/core-v1.71.0...core-v1.72.0) (2026-10-12)
+
+
+### Features
+
+* **cli:** build, sign, attest and tap the zuke CLI as a standalone binary ([#796](https://github.com/zuke-build/zuke/issues/796)) ([e437476](https://github.com/zuke-build/zuke/commit/e437476675e7051547f8e2f50c7598885a28fdda))
+
 ## [1.71.0](https://github.com/zuke-build/zuke/compare/core-v1.70.1...core-v1.71.0) (2026-10-11)
 
 
