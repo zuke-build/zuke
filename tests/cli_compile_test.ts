@@ -44,12 +44,14 @@ Deno.test("the binaries are compiled from the published JSR release", () => {
 
 Deno.test("compileCliBinaries compiles every target with -A into its own directory", async () => {
   await withTemp(async (dir) => {
+    // Written as `absolutePath` normalises it, so the argv compares on Windows.
+    const bin = absolutePath(dir, "bin");
     const compiles: string[][] = [];
     const host = CLI_TARGETS.find((t) => t.triple === Deno.build.target);
     const expected = host === undefined ? "1.14.0" : await denoVersionLine();
     await compileCliBinaries(
       expected,
-      absolutePath(dir, "bin"),
+      bin,
       async (configure) => {
         const settings = configure(new DenoCompileSettings());
         compiles.push(settings.argv());
@@ -57,7 +59,7 @@ Deno.test("compileCliBinaries compiles every target with -A into its own directo
         // deno, whose --version the check then reads.
         const target = settings.argv()[settings.argv().indexOf("--target") + 1];
         if (target === host?.triple) {
-          await Deno.symlink(Deno.execPath(), binaryPath(`${dir}/bin`, target));
+          await Deno.symlink(Deno.execPath(), binaryPath(bin.path, target));
         }
       },
     );
@@ -68,7 +70,7 @@ Deno.test("compileCliBinaries compiles every target with -A into its own directo
       assertEquals(argv[argv.indexOf("--target") + 1], target);
       assertEquals(
         argv[argv.indexOf("--output") + 1],
-        binaryPath(`${dir}/bin`, target),
+        binaryPath(bin.path, target),
       );
       assertEquals(argv.at(-1), `jsr:@zuke/cli@${expected}`);
     }
