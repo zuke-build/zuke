@@ -20,6 +20,7 @@
 import { gzip } from "@zuke/core";
 import type { Configure, PathLike } from "@zuke/core/tooling";
 import { caller, DEFAULT_BASE_URL, env } from "./api.ts";
+import { base64 } from "./base64.ts";
 import { resolveAuthToken, resolveRepoSlug } from "./credentials.ts";
 
 /** What GitHub returns for an accepted SARIF upload. */
@@ -122,12 +123,10 @@ export class GhSarifSettings {
       throw new Error("uploading SARIF requires .ref(...) (or GITHUB_REF).");
     }
     const packed = await gzip(await Deno.readFile(this.file_));
-    let binary = "";
-    for (const byte of packed) binary += String.fromCharCode(byte);
     const body: Record<string, string> = {
       commit_sha: commit,
       ref,
-      sarif: btoa(binary),
+      sarif: base64(packed),
     };
     if (this.checkoutUri_ !== undefined) {
       body.checkout_uri = this.checkoutUri_;

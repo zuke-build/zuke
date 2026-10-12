@@ -40,6 +40,7 @@ import {
   isRecord,
   readString,
 } from "./api.ts";
+import { base64 } from "./base64.ts";
 import { resolveAuthToken, resolveRepoSlug } from "./credentials.ts";
 
 /** The operation's name, as its error messages open with it. */
@@ -205,15 +206,6 @@ async function blobSha(text: string): Promise<string> {
     .join("");
 }
 
-/** Base64 of `text` as UTF-8, the encoding the contents API takes. */
-function base64(text: string): string {
-  let binary = "";
-  for (const byte of new TextEncoder().encode(text)) {
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary);
-}
-
 /**
  * The current file's blob SHA, or `undefined` when there is no file.
  *
@@ -278,28 +270,32 @@ export async function createOrUpdateFile(
     : `?ref=${encodeURIComponent(branch)}`;
   const wanted = await blobSha(content);
 
-  // Two rounds at most: the second only runs when the first write lost a race,
-  // and exists to tell "someone wrote the same thing" from a real conflict.
-  for (let round = 0;; round++) {
-    const existing = await currentSha(call, endpoint, query);
-    if (existing === wanted) {
+  const existing = await currentSha(call, endpoint, query);
+  if (existing === wanted) {
+    return { state: "unchanged", path, blobSha: wanted };
+  }
+  try {
+    const written = await call("PUT", endpoint, {
+      message,
+      content: base64(new TextEncoder().encode(content)),
+      ...(existing === undefined ? {} : { sha: existing }),
+      ...(branch === undefined ? {} : { branch }),
+    });
+    return {
+      state: existing === undefined ? "created" : "updated",
+      path,
+      commitSha: readString(written, ["commit", "sha"], "contents write"),
+      blobSha: readString(written, ["content", "sha"], "contents write"),
+    };
+  } catch (error) {
+    if (!isConflict(error)) throw error;
+    // Another writer got there between the read and the write. Read once more
+    // only to tell "it wrote the same thing" — an `unchanged` result — from a
+    // real conflict. Never write again: the file now holds someone else's
+    // content, and replacing it is exactly what the sha check exists to stop.
+    if (await currentSha(call, endpoint, query) === wanted) {
       return { state: "unchanged", path, blobSha: wanted };
     }
-    try {
-      const written = await call("PUT", endpoint, {
-        message,
-        content: base64(content),
-        ...(existing === undefined ? {} : { sha: existing }),
-        ...(branch === undefined ? {} : { branch }),
-      });
-      return {
-        state: existing === undefined ? "created" : "updated",
-        path,
-        commitSha: readString(written, ["commit", "sha"], "contents write"),
-        blobSha: readString(written, ["content", "sha"], "contents write"),
-      };
-    } catch (error) {
-      if (round > 0 || !isConflict(error)) throw error;
-    }
+    throw error;
   }
 }

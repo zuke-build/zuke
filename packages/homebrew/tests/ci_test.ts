@@ -44,9 +44,9 @@ Deno.test("verify job: a macOS + Linux matrix running the target", () => {
 Deno.test("verify job: the runners are configurable, and each job owns its steps", () => {
   const build = new Release();
   const job = HomebrewTasks.verifyJob((s) =>
-    s.target(build.verifyFormula).runners("macos-15", "ubuntu-24.04-arm")
+    s.target(build.verifyFormula).runners("macos-15", "macos-15-intel")
   );
-  assertEquals(job.matrix, { os: ["macos-15", "ubuntu-24.04-arm"] });
+  assertEquals(job.matrix, { os: ["macos-15", "macos-15-intel"] });
   // Mutating one job's steps must not leak into the next.
   job.before?.push({ run: "true" });
   const next = HomebrewTasks.verifyJob((s) => s.target(build.verifyFormula));

@@ -26,7 +26,7 @@ const RELEASE = "https://github.com/acme/app/releases/download/v1.2.3";
 /** A complete formula, binaries declared in the reverse of render order. */
 function complete(s: FormulaSettings): FormulaSettings {
   return s.name("app").description("Command-line tool for widgets")
-    .homepage("https://example.com/app").version("1.2.3").license("MIT")
+    .homepage("https://example.com/app").license("MIT")
     .binary((b) =>
       b.os("linux").arch("intel").url(`${RELEASE}/app-x86_64-linux.tar.gz`)
         .sha256(SHA.linuxIntel)
@@ -51,7 +51,6 @@ function complete(s: FormulaSettings): FormulaSettings {
 const GOLDEN = `class App < Formula
   desc "Command-line tool for widgets"
   homepage "https://example.com/app"
-  version "1.2.3"
   license "MIT"
 
   on_macos do
@@ -95,7 +94,7 @@ Deno.test("formula: the full rendering, macOS before Linux and ARM before Intel"
 Deno.test("formula: the rendering is deterministic whatever order binaries are declared in", () => {
   const forward = HomebrewTasks.formula((s) => {
     const base = s.name("app").description("Command-line tool for widgets")
-      .homepage("https://example.com/app").version("1.2.3").license("MIT");
+      .homepage("https://example.com/app").license("MIT");
     for (
       const [os, arch, sha] of [
         ["macos", "arm", SHA.macArm],
@@ -120,6 +119,17 @@ Deno.test("formula: the rendering is deterministic whatever order binaries are d
     HomebrewTasks.formula(complete),
     HomebrewTasks.formula(complete),
   );
+});
+
+Deno.test("formula: a URL that carries the version gets no version line, so brew audit does not call it redundant", () => {
+  // Finding 3 of the adversarial review: brew audit's ResourceAuditor rejects
+  // a `version` that repeats the one Version.detect scans from the URL, which
+  // every GitHub release asset URL carries. Unset, no line is rendered — and
+  // `expectVersion()` still renders, matching the scanned version.
+  const ruby = HomebrewTasks.formula(complete);
+  assertEquals(ruby.includes("\n  version "), false);
+  assertEquals(ruby.includes("/releases/download/v1.2.3/"), true);
+  assertEquals(ruby.includes("assert_match version.to_s"), true);
 });
 
 Deno.test("formula: a single platform, no license, several binaries, caveats and a plain test", () => {
@@ -227,18 +237,12 @@ Deno.test("formula: each missing field is named", () => {
     [(s) => s.name("app").description("Widget tool"), ".homepage(...)"],
     [
       (s) => s.name("app").description("Widget tool").homepage("https://e.com"),
-      ".version(...)",
-    ],
-    [
-      (s) =>
-        s.name("app").description("Widget tool").homepage("https://e.com")
-          .version("1"),
       "at least one .binary(",
     ],
     [
       (s) =>
         s.name("app").description("Widget tool").homepage("https://e.com")
-          .version("1").binary((b) =>
+          .binary((b) =>
             b.os("macos").arch("arm").url("https://e.com/a").sha256(sha)
           ),
       '.install("<binary>")',

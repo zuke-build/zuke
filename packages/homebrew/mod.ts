@@ -13,7 +13,7 @@
  *
  * const ruby = HomebrewTasks.formula((s) =>
  *   s.name("app").description("Command-line tool for widgets")
- *     .homepage("https://example.com").version("1.2.3").license("MIT")
+ *     .homepage("https://example.com").license("MIT")
  *     .binary((b) => b.os("macos").arch("arm").url(macArmUrl).sha256(macArmSha))
  *     .binary((b) => b.os("linux").arch("intel").url(linuxUrl).sha256(linuxSha))
  *     .install("app")

@@ -151,33 +151,42 @@ Deno.test("contents: a lost race that wrote the same content is unchanged", asyn
   ]);
   const result = await GhTasks.createOrUpdateFile(write(fetch));
   assertEquals(result.state, "unchanged");
-  assertEquals(seen.length, 3);
+  assertEquals(seen.map((request) => request.method), ["GET", "PUT", "GET"]);
 });
 
-Deno.test("contents: a lost race with different content is retried once against the new sha", async () => {
+Deno.test("contents: a lost race with different content raises the conflict and never writes again", async () => {
+  // Finding 2 of the adversarial review: the retry used to PUT over the other
+  // writer's newer blob. The second read decides only between "unchanged" and
+  // the conflict; it must never lead to a second write.
+  for (const status of [409, 422]) {
+    const { fetch, seen } = fake([
+      [200, { type: "file", sha: "a" }],
+      [status, { message: "conflict" }],
+      [200, { type: "file", sha: "someone-elses-newer-blob" }],
+      WRITTEN,
+    ]);
+    const error = await assertRejects(
+      () => GhTasks.createOrUpdateFile(write(fetch)),
+      GhApiError,
+    );
+    assertEquals(error instanceof GhApiError ? error.status : 0, status);
+    assertEquals(seen.map((request) => request.method), ["GET", "PUT", "GET"]);
+  }
+});
+
+Deno.test("contents: a lost create race whose file vanished again is still a conflict", async () => {
   const { fetch, seen } = fake([
-    [200, { type: "file", sha: "a" }],
-    [409, { message: "conflict" }],
-    [200, { type: "file", sha: "b" }],
+    [404, {}],
+    [422, { message: "sha wasn't supplied" }],
+    [404, {}],
     WRITTEN,
   ]);
-  const result = await GhTasks.createOrUpdateFile(write(fetch));
-  assertEquals(result.state, "updated");
-  assertEquals(seen[3].body.sha, "b");
-});
-
-Deno.test("contents: a second conflict is raised, not overwritten", async () => {
-  const { fetch } = fake([
-    [200, { type: "file", sha: "a" }],
-    [409, { message: "conflict" }],
-    [200, { type: "file", sha: "b" }],
-    [409, { message: "conflict again" }],
-  ]);
-  const error = await assertRejects(
+  await assertRejects(
     () => GhTasks.createOrUpdateFile(write(fetch)),
     GhApiError,
+    "422",
   );
-  assertEquals(error instanceof GhApiError ? error.status : 0, 409);
+  assertEquals(seen.filter((request) => request.method === "PUT").length, 1);
 });
 
 Deno.test("contents: an auth failure is raised at once and never carries the token", async () => {

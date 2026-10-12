@@ -25,7 +25,7 @@
 import { GhTasks } from "@zuke/gh";
 import type { Configure } from "@zuke/core/tooling";
 import { assertDefinesFormula } from "./formula_name.ts";
-import { tapName } from "./tap.ts";
+import { tapRepository } from "./tap.ts";
 
 /** What became of a `HomebrewTasks.publish` call. */
 export interface HomebrewPublishResult {
@@ -129,7 +129,7 @@ export async function publishFormula(
   if (name === undefined || source === undefined) {
     throw new Error("publishing a formula requires .formula(name, source).");
   }
-  const { repo } = tapName(tap);
+  const repo = tapRepository(tap);
   assertDefinesFormula(source, name);
   const path = `Formula/${name}.rb`;
   const { token_: token, branch_: branch, baseUrl_: baseUrl } = settings;

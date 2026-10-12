@@ -19,6 +19,9 @@
  * literal holding one would not read the way it parses.
  */
 const INVISIBLE = new Set([
+  0x00ad, // soft hyphen
+  0x061c, // Arabic letter mark
+  0x180e, // Mongolian vowel separator
   0x200b,
   0x200c,
   0x200d,
@@ -31,10 +34,21 @@ const INVISIBLE = new Set([
   0x202c,
   0x202d,
   0x202e,
+  0x2060, // word joiner
+  0x2061,
+  0x2062,
+  0x2063,
+  0x2064,
   0x2066,
   0x2067,
   0x2068,
   0x2069,
+  0x206a, // deprecated format characters
+  0x206b,
+  0x206c,
+  0x206d,
+  0x206e,
+  0x206f,
   0xfeff,
 ]);
 

@@ -8,7 +8,7 @@
  * ```ts
  * const ruby = HomebrewTasks.formula((s) =>
  *   s.name("app").description("Build automation for Deno")
- *     .homepage("https://example.com").version("1.2.3").license("MIT")
+ *     .homepage("https://example.com").license("MIT")
  *     .binary((b) => b.os("macos").arch("arm").url(macArm).sha256(macArmSha))
  *     .binary((b) => b.os("linux").arch("intel").url(linux).sha256(linuxSha))
  *     .install("app")
@@ -102,8 +102,16 @@ export class FormulaSettings {
   }
 
   /**
-   * The version (required), e.g. `1.2.3`. Stated explicitly because a prebuilt
-   * archive's URL rarely spells it the way Homebrew would parse it.
+   * The version, e.g. `1.2.3` — set it only when Homebrew cannot read it from
+   * the archive URLs.
+   *
+   * Homebrew detects a formula's version from its URL, and `brew audit`
+   * rejects a `version` line that repeats what it detected ("version … is
+   * redundant with version scanned from URL"). A GitHub release asset such as
+   * `…/releases/download/v1.2.3/app-aarch64-apple-darwin.tar.gz` carries it, so
+   * leave this unset there; `expectVersion()` in the test still works, against
+   * the detected version. Set it for a URL with no version in it, such as a
+   * `…/releases/latest/download/…` link or a content-addressed store.
    */
   version(value: string): this {
     this.version_ = value;
@@ -265,8 +273,10 @@ export function renderFormula(configure: Configure<FormulaSettings>): string {
   assertDescription(description, name);
   const homepage = required(settings.homepage_, "homepage");
   assertHttpsUrl(homepage, "formula .homepage(...)");
-  const version = required(settings.version_, "version");
-  assertPattern(version, VERSION, "version", "a version such as 1.2.3");
+  const version = settings.version_;
+  if (version !== undefined) {
+    assertPattern(version, VERSION, "version", "a version such as 1.2.3");
+  }
   const license = settings.license_;
   if (license !== undefined) {
     assertPattern(
@@ -290,7 +300,7 @@ export function renderFormula(configure: Configure<FormulaSettings>): string {
     `class ${className} < Formula`,
     `  desc ${rubyString(description)}`,
     `  homepage ${rubyString(homepage)}`,
-    `  version ${rubyString(version)}`,
+    ...(version === undefined ? [] : [`  version ${rubyString(version)}`]),
     ...(license === undefined ? [] : [`  license ${rubyString(license)}`]),
     ...platformLines(binaries),
     "",

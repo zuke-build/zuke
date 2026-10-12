@@ -19,23 +19,16 @@ const SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 /** The prefix GitHub tap repositories carry. */
 const PREFIX = "homebrew-";
 
-/** A tap, resolved to both of its spellings. */
-export interface TapName {
-  /** The GitHub repository, `owner/homebrew-x`. */
-  repo: string;
-  /** The name `brew` commands take, `owner/x`. */
-  short: string;
-}
-
 /**
- * Resolve `owner/x` or `owner/homebrew-x` to both spellings.
+ * Resolve `owner/x` or `owner/homebrew-x` to the tap's GitHub repository,
+ * `owner/homebrew-x`.
  *
  * @throws {Error} when the value is not exactly two segments of letters,
  *   digits, `.`, `-` and `_` — a third segment or a `..` would point the
  *   token-bearing write at some other repository — or when the tap part is
  *   empty once the prefix is removed.
  */
-export function tapName(value: string): TapName {
+export function tapRepository(value: string): string {
   const parts = value.split("/");
   const [owner, repository] = parts;
   const wellFormed = parts.length === 2 &&
@@ -49,5 +42,5 @@ export function tapName(value: string): TapName {
         `or brew's short "owner/name" (letters, digits, ".", "-", "_").`,
     );
   }
-  return { repo: `${owner}/${PREFIX}${tap}`, short: `${owner}/${tap}` };
+  return `${owner}/${PREFIX}${tap}`;
 }

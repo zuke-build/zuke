@@ -59,8 +59,10 @@ export class HomebrewVerifyJobSettings {
 
   /**
    * The runner labels to verify on, replacing the default `macos-latest` and
-   * `ubuntu-latest` — e.g. `"macos-15", "macos-15-intel", "ubuntu-24.04-arm"`
-   * to cover every platform a formula ships a binary for.
+   * `ubuntu-latest` — e.g. `"macos-15", "macos-15-intel", "ubuntu-latest"` to
+   * cover both Mac CPU families. GitHub's ARM Linux runners
+   * (`ubuntu-24.04-arm`) ship without Homebrew, so they cannot verify a
+   * formula without installing it first.
    */
   runners(...labels: string[]): this {
     this.runners_ = labels;

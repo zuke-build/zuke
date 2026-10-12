@@ -9,20 +9,18 @@
  */
 
 import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
-import { tapName } from "../src/tap.ts";
+import { tapRepository } from "../src/tap.ts";
 
 Deno.test("tap: the short and the repository spelling name the same repository", () => {
-  const expected = { repo: "acme/homebrew-tap", short: "acme/tap" };
-  assertEquals(tapName("acme/tap"), expected);
-  assertEquals(tapName("acme/homebrew-tap"), expected);
-  assertEquals(tapName("zuke-build/homebrew-tap"), {
-    repo: "zuke-build/homebrew-tap",
-    short: "zuke-build/tap",
-  });
-  assertEquals(tapName("a_b/x.y"), {
-    repo: "a_b/homebrew-x.y",
-    short: "a_b/x.y",
-  });
+  // Finding 5 of the adversarial review: only the repository is ever used,
+  // so only the repository is returned.
+  assertEquals(tapRepository("acme/tap"), "acme/homebrew-tap");
+  assertEquals(tapRepository("acme/homebrew-tap"), "acme/homebrew-tap");
+  assertEquals(
+    tapRepository("zuke-build/homebrew-tap"),
+    "zuke-build/homebrew-tap",
+  );
+  assertEquals(tapRepository("a_b/x.y"), "a_b/homebrew-x.y");
 });
 
 Deno.test("tap: anything that could address another repository is refused", () => {
@@ -44,6 +42,6 @@ Deno.test("tap: anything that could address another repository is refused", () =
       "acme/%2e%2e",
     ]
   ) {
-    assertThrows(() => tapName(value), Error, "invalid tap");
+    assertThrows(() => tapRepository(value), Error, "invalid tap");
   }
 });

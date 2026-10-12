@@ -11,7 +11,7 @@ import { HomebrewTasks } from "@zuke/homebrew";
 
 const ruby = HomebrewTasks.formula((s) =>
   s.name("app").description("Command-line tool for widgets")
-    .homepage("https://example.com").version("1.2.3").license("MIT")
+    .homepage("https://example.com").license("MIT")
     .binary((b) => b.os("macos").arch("arm").url(macArmUrl).sha256(macArmSha))
     .binary((b) => b.os("macos").arch("intel").url(macX64Url).sha256(macX64Sha))
     .binary((b) => b.os("linux").arch("intel").url(linuxUrl).sha256(linuxSha))
@@ -35,7 +35,6 @@ written.
 class App < Formula
   desc "Command-line tool for widgets"
   homepage "https://example.com"
-  version "1.2.3"
   license "MIT"
 
   on_macos do
@@ -60,6 +59,11 @@ end
   whatever order the binaries were declared in, so re-rendering an unchanged
   release produces the same bytes — which is what lets `publish` report
   `unchanged`.
+- **Version only when needed.** Homebrew reads the version from the archive URL,
+  and `brew audit` rejects a `version` line that repeats it. A GitHub release
+  asset (`…/releases/download/v1.2.3/…`) carries it, so leave `.version(...)`
+  unset; set it only for a URL with no version in it. The test's
+  `expectVersion()` works either way.
 - **Validated.** The class name is derived from `.name(...)` exactly as
   Homebrew's `Formulary.class_s` does (`app-cli` → `AppCli`, `app@2` → `AppAT2`,
   `python@3.12` → `PythonAT312`), and a name whose class would not be a Ruby
@@ -156,7 +160,7 @@ import { HomebrewTasks } from "@zuke/homebrew";
 
 const ruby = HomebrewTasks.formula((s) =>
   s.name("app").description("Command-line tool for widgets")
-    .homepage("https://example.com").version("1.2.3").license("MIT")
+    .homepage("https://example.com").license("MIT")
     .binary((b) => b.os("macos").arch("arm").url(macArmUrl).sha256(macArmSha))
     .binary((b) => b.os("linux").arch("intel").url(linuxUrl).sha256(linuxSha))
     .install("app")
@@ -436,8 +440,16 @@ class FormulaSettings
   homepage(url: string): this
     The project's homepage (required; must be `https`).
   version(value: string): this
-    The version (required), e.g. `1.2.3`. Stated explicitly because a prebuilt
-    archive's URL rarely spells it the way Homebrew would parse it.
+    The version, e.g. `1.2.3` — set it only when Homebrew cannot read it from
+    the archive URLs.
+
+    Homebrew detects a formula's version from its URL, and `brew audit`
+    rejects a `version` line that repeats what it detected ("version … is
+    redundant with version scanned from URL"). A GitHub release asset such as
+    `…/releases/download/v1.2.3/app-aarch64-apple-darwin.tar.gz` carries it, so
+    leave this unset there; `expectVersion()` in the test still works, against
+    the detected version. Set it for a URL with no version in it, such as a
+    `…/releases/latest/download/…` link or a content-addressed store.
   license(spdx: string): this
     The SPDX license identifier, e.g. `MIT`.
   binary(configure: Configure<FormulaBinarySettings>): this
@@ -539,8 +551,10 @@ class HomebrewVerifyJobSettings
     otherwise installs, tests and uninstalls the formula.
   runners(...labels: string[]): this
     The runner labels to verify on, replacing the default `macos-latest` and
-    `ubuntu-latest` — e.g. `"macos-15", "macos-15-intel", "ubuntu-24.04-arm"`
-    to cover every platform a formula ships a binary for.
+    `ubuntu-latest` — e.g. `"macos-15", "macos-15-intel", "ubuntu-latest"` to
+    cover both Mac CPU families. GitHub's ARM Linux runners
+    (`ubuntu-24.04-arm`) ship without Homebrew, so they cannot verify a
+    formula without installing it first.
 
 class HomebrewVerifySettings
   Settings for verifying a formula file.

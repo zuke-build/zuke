@@ -56,6 +56,33 @@ Deno.test("ruby: invisible and bidirectional characters are spelled out", () => 
   );
 });
 
+Deno.test("ruby: the remaining invisible format characters are spelled out too", () => {
+  // Finding 6 of the adversarial review: these render as nothing as well.
+  const codes = [
+    0x00ad,
+    0x061c,
+    0x180e,
+    0x2060,
+    0x2061,
+    0x2062,
+    0x2063,
+    0x2064,
+    0x206a,
+    0x206b,
+    0x206c,
+    0x206d,
+    0x206e,
+    0x206f,
+    0xfeff,
+  ];
+  for (const code of codes) {
+    assertEquals(
+      rubyString(`a${String.fromCodePoint(code)}b`),
+      `"a\\u{${code.toString(16)}}b"`,
+    );
+  }
+});
+
 Deno.test("ruby: the literal is always one line with balanced, escaped quotes", () => {
   const hostile = [
     '"; `rm -rf /`; "',
