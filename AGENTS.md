@@ -538,10 +538,17 @@ gemini-extension.json     # Gemini CLI extension manifest (serves skills/)
   keeping its own copy, so `build/packages.ts` is the single list the tests
   compare everything else against. `tests/release_config_test.ts` and
   `tests/build_tools_test.ts` enforce that all six agree — run them after adding
-  a package. Omitting `zuke.ts` means the package is released but never
-  published; omitting the `README.md` table means it is invisible to anyone
-  browsing the repo; omitting `build/website_tools.ts` fails the gate, because
-  the website's package grid is generated from it by `syncWebsite`.
+  a package. **Register a new package at version `0.0.0`** — in
+  `.release-please-manifest.json` and its `deno.json` alike. release-please
+  reads the manifest as the last _released_ version, so anything but `0.0.0`
+  makes it bump from there: a package added at `1.0.0` is first released as
+  `1.1.0`, and `1.0.0` never exists. At `0.0.0` the first release is `1.0.0`,
+  and `publishJsr` skips the package until then. `tests/release_config_test.ts`
+  fails on a package with no `CHANGELOG.md` that is not at `0.0.0`. Omitting
+  `zuke.ts` means the package is released but never published; omitting the
+  `README.md` table means it is invisible to anyone browsing the repo; omitting
+  `build/website_tools.ts` fails the gate, because the website's package grid is
+  generated from it by `syncWebsite`.
 - **Update docs with code.** If behaviour changes, update `README.md`, JSDoc,
   and the spec/acceptance criteria in the same PR.
 - **The agent skills are docs too — and they ship to a marketplace.** `skills/`
