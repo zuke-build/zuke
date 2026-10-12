@@ -711,6 +711,17 @@
         }
       ]
     },
+    "packages/chocolatey": {
+      "component": "chocolatey",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
     "packages/qr": {
       "component": "qr",
       "changelog-path": "CHANGELOG.md",

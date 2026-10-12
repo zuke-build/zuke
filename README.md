@@ -29,15 +29,16 @@ whole thing to **AI agents** as typed tools. Inspired by
 ## Five minutes to a typed build
 
 ```sh
-deno install -A -g -n zuke jsr:@zuke/cli    # 1. the CLI, once
+deno install -A -g -n zuke jsr:@zuke/cli    # 1. the CLI, once, from JSR
+brew install zuke-build/tap/zuke            #    …or as a signed binary (macOS, Linux)
+choco install zuke                          #    …or as a signed binary (Windows)
 zuke setup                                  # 2. scaffold zuke.ts + the ./zuke launcher
 zuke                                        # 3. run it (or ./zuke — no install needed)
 zuke generate-ci                            # 4. write .github/workflows/ci.yml from the build
 ```
 
-No Deno yet? On macOS or Linux, `brew install zuke-build/tap/zuke` installs the
-same CLI as a standalone binary, and the `./zuke` launcher `zuke setup` writes
-fetches Deno when the build first runs. See [installing](./docs/install.md).
+Every install is the same CLI, and every one is supported; the binaries need no
+Deno up front. See [Install](#install).
 
 Step 4 needs one line in the build. Here is the whole file after you have
 replaced the scaffolded sample target with real work:
@@ -109,7 +110,7 @@ Three short recipes cover what a small project wants first:
   support — no bespoke DSL. The `$` tagged template from `@zuke/core/shell` runs
   processes with sane defaults and is injection-safe, so it also replaces the
   `scripts/*.sh` nobody dares touch.
-- **A typed wrapper for every tool.** 67 packages: a tiny core, the CLI, and a
+- **A typed wrapper for every tool.** 68 packages: a tiny core, the CLI, and a
   `*Tasks` object per tool — Deno, npm, pnpm, Bun, Docker, Kubernetes,
   Terraform, Vite, Playwright, GitHub, Claude Code, and the rest — whose
   settings lambdas mirror the real flags. See [Packages](./docs/packages.md).
@@ -137,28 +138,64 @@ Teams running Zuke in production:
 
 ## Install
 
-Zuke runs on [Deno](https://deno.com/) and is imported straight from
-[JSR](https://jsr.io/@zuke) — there is nothing else to install. By default the
-scaffolded `./zuke` launcher (and `zuke.ps1` on Windows) bootstraps a pinned,
-checksum-verified Deno on first use, so a checkout needs **nothing** installed
-up front — it is the same script this repository runs on, [`zuke`](./zuke) /
+The `zuke` CLI scaffolds a project, migrates an existing one, and runs its
+build. It ships three ways, built from the same release: pick the one that suits
+the machine. `zuke --version` tells you which one you are running.
+
+### From JSR (any OS, with Deno)
+
+```sh
+deno install -A -g -n zuke jsr:@zuke/cli
+```
+
+Needs [Deno](https://deno.com/) 2. Upgrade with `zuke upgrade`, which moves the
+install to the latest release (or to a given one).
+
+### With Homebrew (macOS, Linux)
+
+```sh
+brew install zuke-build/tap/zuke
+```
+
+A standalone binary: no Deno needed. The macOS builds are signed with a
+Developer ID and notarized by Apple, and every archive carries a
+build-provenance attestation you can verify. Upgrade with `brew upgrade zuke`.
+See [installing](./docs/install.md) for how to check a download.
+
+### With Chocolatey (Windows)
+
+```powershell
+choco install zuke
+```
+
+A standalone binary: no Deno needed. The executable is Authenticode-signed, and
+the archive it is installed from carries the same build-provenance attestation
+as the others. Upgrade with `choco upgrade zuke`. See
+[installing](./docs/install.md) for how to check a download.
+
+### Set up a project
+
+The same steps, however you installed the CLI:
+
+```sh
+zuke setup          # scaffold zuke.ts, zuke.json and the ./zuke launcher
+zuke setup --mcp    # …and register the build's MCP server for your agent
+zuke import         # or migrate package.json scripts / a Makefile instead
+zuke                # run the default target; any other command runs the build, like ./zuke ci
+zuke add docker     # add @zuke/docker to the project (also: remove, cache, relock)
+```
+
+Zuke runs on Deno and is imported straight from [JSR](https://jsr.io/@zuke) —
+there is nothing else to install. The scaffolded `./zuke` launcher (and
+`zuke.ps1` on Windows) bootstraps a pinned, checksum-verified Deno on first use,
+so a checkout needs **nothing** installed up front — not even the CLI. It is the
+same script this repository runs on, [`zuke`](./zuke) /
 [`zuke.ps1`](./zuke.ps1). `zuke setup` asks; `--no-bootstrap-deno` scaffolds a
 launcher that uses the Deno on your `PATH` and fails closed without one, for a
 project that must never download a tool from its build entry point.
 
-```sh
-deno install -A -g -n zuke jsr:@zuke/cli   # the CLI: setup, import, doc — and it forwards the rest
-brew install zuke-build/tap/zuke            # …or the same CLI as a signed binary (macOS, Linux)
-zuke setup                                  # or: deno run -A jsr:@zuke/cli setup
-zuke setup --mcp                            # …and register the build's MCP server for your agent
-zuke import                                 # migrate package.json scripts / a Makefile instead
-zuke ci                                     # any other command runs the project's build, like ./zuke ci
-zuke upgrade                                # update the installed CLI to the latest release
-zuke add docker                             # add @zuke/docker to the project (also: remove, cache, relock)
-```
-
 > [!NOTE]
-> **Maturity.** Every one of the 67 packages is `1.x` and follows full semver —
+> **Maturity.** Every one of the 68 packages is `1.x` and follows full semver —
 > `@zuke/core`, the `@zuke/cli` command, and all the tool wrappers. A minor or
 > patch release never breaks a public symbol; a breaking change bumps the major.
 > See [Versioning & compatibility](./docs/versioning.md). The npm scope `@zuke`
@@ -193,7 +230,7 @@ refused on contributor-controlled events:
 
 ## Packages
 
-Zuke ships as a JSR workspace of 67 packages:
+Zuke ships as a JSR workspace of 68 packages:
 [`@zuke/core`](https://jsr.io/@zuke/core) (the engine, the `$` shell, and the
 tooling base classes), the [`@zuke/cli`](https://jsr.io/@zuke/cli) command, a
 generic [`@zuke/cmd`](https://jsr.io/@zuke/cmd) fallback, plugins such as
@@ -209,6 +246,7 @@ a typed wrapper per tool — [`@zuke/deno`](https://jsr.io/@zuke/deno),
 [`@zuke/aws`](https://jsr.io/@zuke/aws), [`@zuke/az`](https://jsr.io/@zuke/az),
 [`@zuke/gh`](https://jsr.io/@zuke/gh), [`@zuke/git`](https://jsr.io/@zuke/git),
 [`@zuke/homebrew`](https://jsr.io/@zuke/homebrew),
+[`@zuke/chocolatey`](https://jsr.io/@zuke/chocolatey),
 [`@zuke/kubectl`](https://jsr.io/@zuke/kubectl),
 [`@zuke/terraform`](https://jsr.io/@zuke/terraform),
 [`@zuke/vite`](https://jsr.io/@zuke/vite),

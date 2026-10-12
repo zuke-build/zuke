@@ -1591,6 +1591,11 @@
           "jsr:@zuke/prometheus@1"
         ]
       },
+      "packages/chocolatey": {
+        "dependencies": [
+          "jsr:@zuke/core@^1.71.0"
+        ]
+      },
       "packages/claude": {
         "dependencies": [
           "jsr:@zuke/core@^1.31.0"
@@ -1696,7 +1701,7 @@
       "packages/homebrew": {
         "dependencies": [
           "jsr:@zuke/core@^1.71.0",
-          "jsr:@zuke/gh@^1.14.0"
+          "jsr:@zuke/gh@^1.15.0"
         ]
       },
       "packages/husky": {

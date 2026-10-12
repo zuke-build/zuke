@@ -54,6 +54,7 @@
     "packages/git",
     "packages/gh",
     "packages/homebrew",
+    "packages/chocolatey",
     "packages/codecov",
     "packages/claude",
     "packages/codex",

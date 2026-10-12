@@ -60,6 +60,7 @@ export const PACKAGES = [
   "az",
   "git",
   "gh",
+  "chocolatey",
   // After gh, which it depends on (PACKAGE_DEPENDENCIES).
   "homebrew",
   // After console and gh, which it depends on (PACKAGE_DEPENDENCIES).
