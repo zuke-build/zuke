@@ -107,3 +107,29 @@ and notarized on a macOS runner, attested, then checked with a real
 `brew install` on macOS and Linux before the formula is published — is in
 [`build/cli_release.ts`](../build/cli_release.ts) and the `cli*` jobs of
 [`release.yml`](../.github/workflows/release.yml).
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io),
+certificate by [SignPath Foundation](https://signpath.org).
+
+The Windows binary is Authenticode-signed through the SignPath Foundation's
+programme for open-source projects. Only the release workflow on `master`
+submits a signing request, and SignPath checks that the artifact came from that
+workflow run before it signs anything.
+
+Team roles:
+
+- **Committers and reviewers:**
+  [members of the zuke-build organization](https://github.com/orgs/zuke-build/people)
+  with write access to [`zuke-build/zuke`](https://github.com/zuke-build/zuke).
+  Every change reaches `master` through a reviewed pull request.
+- **Approvers:** [@totollygeek](https://github.com/totollygeek), who approves
+  each release's signing request.
+
+Privacy: this program will not transfer any information to other networked
+systems unless specifically requested by the user or the person installing or
+operating it. The `zuke` CLI collects no telemetry. It reaches the network only
+for what you ask of it: `zuke upgrade` reads the latest release from JSR, and a
+build downloads Deno and the packages it imports, plus whatever its own targets
+call.

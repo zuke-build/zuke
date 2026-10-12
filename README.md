@@ -159,7 +159,8 @@ brew install zuke-build/tap/zuke
 A standalone binary: no Deno needed. The macOS builds are signed with a
 Developer ID and notarized by Apple, and every archive carries a
 build-provenance attestation you can verify. Upgrade with `brew upgrade zuke`.
-See [installing](./docs/install.md) for how to check a download.
+See [installing](./docs/install.md) for how to check a download, and for the
+[code signing policy](./docs/install.md#code-signing-policy).
 
 ### Set up a project
 
