@@ -7,7 +7,7 @@ points from a dependency to the target that depends on it, so a target runs
 after everything that points at it. This is the same graph `./zuke graph` prints
 as text and `./zuke graph --output=html` renders interactively.
 
-42 target(s), 27 dependency edge(s). Regenerate with `./zuke graphDoc`; the
+48 target(s), 27 dependency edge(s). Regenerate with `./zuke graphDoc`; the
 `graphDocCheck` target in the CI gate fails when this page drifts from the
 build.
 
@@ -53,8 +53,14 @@ flowchart TD
   t37["release"]
   t38["actionRelease"]
   t39["publishJsr"]
-  t40["publish"]
-  t41["default"]
+  t40["cliBinaries"]
+  t41["cliSign"]
+  t42["cliPackage"]
+  t43["cliUpload"]
+  t44["cliFormulaVerify"]
+  t45["cliTap"]
+  t46["publish"]
+  t47["default"]
   t1 --> t5
   t5 --> t6
   t6 --> t8
@@ -79,9 +85,9 @@ flowchart TD
   t30 --> t32
   t29 --> t32
   t35 --> t36
-  t37 --> t40
-  t39 --> t40
-  t32 --> t41
+  t37 --> t46
+  t39 --> t46
+  t32 --> t47
 ```
 
 ## Targets
@@ -128,5 +134,11 @@ flowchart TD
 | `release`            | Maintain release PRs and GitHub releases (release-please)                | —                                                                                                                                                                                                                                                                                           |
 | `actionRelease`      | Tag a new version of the Marketplace action when it changed              | —                                                                                                                                                                                                                                                                                           |
 | `publishJsr`         | Publish new package versions to JSR, core first                          | —                                                                                                                                                                                                                                                                                           |
+| `cliBinaries`        | Compile the CLI's standalone binaries when its release lacks them        | —                                                                                                                                                                                                                                                                                           |
+| `cliSign`            | Sign and notarize the CLI's macOS binaries (macOS only)                  | —                                                                                                                                                                                                                                                                                           |
+| `cliPackage`         | Pack the CLI's binaries into release archives and SHA256SUMS             | —                                                                                                                                                                                                                                                                                           |
+| `cliUpload`          | Upload the CLI's archives, attestation and SHA256SUMS                    | —                                                                                                                                                                                                                                                                                           |
+| `cliFormulaVerify`   | Install the CLI's formula with the real brew and test it                 | —                                                                                                                                                                                                                                                                                           |
+| `cliTap`             | Publish the CLI's formula to the Homebrew tap                            | —                                                                                                                                                                                                                                                                                           |
 | `publish`            | Release then publish new versions to JSR                                 | `release`, `publishJsr`                                                                                                                                                                                                                                                                     |
 | `default`            | Default: run the full CI gate                                            | `ci`                                                                                                                                                                                                                                                                                        |
