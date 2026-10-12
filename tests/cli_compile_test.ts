@@ -16,7 +16,7 @@ import {
   assertRejects,
   assertStringIncludes,
 } from "../packages/core/tests/_assert.ts";
-import { withTemp } from "../packages/core/tests/_temp.ts";
+import { withTemp, withTempCwd } from "../packages/core/tests/_temp.ts";
 import { absolutePath } from "@zuke/core";
 import { DenoCompileSettings } from "@zuke/deno";
 import {
@@ -100,18 +100,12 @@ Deno.test("assertReportsVersion runs a binary named relative to the build's dire
   // checkout; the check runs it from a temporary directory, so the path must
   // be resolved against the checkout first.
   if (Deno.build.os === "windows") return;
-  await withTemp(async (dir) => {
-    await Deno.mkdir(`${dir}/bin/host`, { recursive: true });
-    await Deno.symlink(Deno.execPath(), binaryPath(`${dir}/bin`, "host"));
-    const cwd = Deno.cwd();
-    Deno.chdir(dir);
-    try {
-      await assertReportsVersion(
-        absolutePath(Deno.cwd(), binaryPath("bin", "host")),
-        await denoVersionLine(),
-      );
-    } finally {
-      Deno.chdir(cwd);
-    }
+  await withTempCwd(async () => {
+    await Deno.mkdir("bin/host", { recursive: true });
+    await Deno.symlink(Deno.execPath(), binaryPath("bin", "host"));
+    await assertReportsVersion(
+      absolutePath(Deno.cwd(), binaryPath("bin", "host")),
+      await denoVersionLine(),
+    );
   });
 });

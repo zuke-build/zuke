@@ -14,7 +14,7 @@ import {
   assertEquals,
   assertStringIncludes,
 } from "../../packages/core/tests/_assert.ts";
-import { withTemp } from "../../packages/core/tests/_temp.ts";
+import { withTemp, withTempCwd } from "../../packages/core/tests/_temp.ts";
 import {
   absolutePath,
   Build,
@@ -151,13 +151,10 @@ Deno.test("a signing run checks the signed binary it names relative to the check
   // As cliSign does: the binaries directory is relative to the build's
   // working directory, while the version check runs from a temporary one.
   if (Deno.build.os === "windows") return;
-  await withTemp(async (dir) => {
+  await withTempCwd(async () => {
     const triple = "aarch64-apple-darwin";
-    await Deno.mkdir(`${dir}/dist/cli/bin/${triple}`, { recursive: true });
-    await Deno.symlink(
-      Deno.execPath(),
-      binaryPath(`${dir}/dist/cli/bin`, triple),
-    );
+    await Deno.mkdir(`dist/cli/bin/${triple}`, { recursive: true });
+    await Deno.symlink(Deno.execPath(), binaryPath("dist/cli/bin", triple));
     const { stdout } = await new Deno.Command(Deno.execPath(), {
       args: ["--version"],
     }).output();
@@ -172,13 +169,7 @@ Deno.test("a signing run checks the signed binary it names relative to the check
       });
     }
 
-    const cwd = Deno.cwd();
-    Deno.chdir(dir);
-    try {
-      const result = await runCli(SignRun, ["smoke"]);
-      assertEquals(result.code, 0, result.err);
-    } finally {
-      Deno.chdir(cwd);
-    }
+    const result = await runCli(SignRun, ["smoke"]);
+    assertEquals(result.code, 0, result.err);
   });
 });
