@@ -65,7 +65,8 @@
     "packages/ai",
     "packages/otel",
     "packages/qr",
-    "packages/apple"
+    "packages/apple",
+    "packages/signpath"
   ],
   "imports": {
     "@std/yaml": "jsr:@std/yaml@^1.2.0"

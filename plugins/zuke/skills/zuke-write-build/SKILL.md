@@ -426,6 +426,16 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   it creates, unlocks and imports into a throwaway keychain and always deletes
   it and restores the search list, even when the callback throws. Passwords are
   masked in every rendering and error. See the cheatsheet.
+- **Windows signing (`@zuke/signpath`):**
+  `SignPathTasks.submit((s) =>
+  s.organizationId(org).apiToken(token).projectSlug(p).signingPolicySlug(q)
+  .gitHubOrigin((g) => g.artifactId(id)).output(path))`
+  submits to SignPath (GitHub-origin verified, or `.artifact(path)` to upload),
+  waits (`.timeout()`, `.pollInterval()`), throws `SignPathSigningError` /
+  `SignPathTimeoutError` naming the request and its web URL, and downloads the
+  signed file; `status`/`download` take an existing id. `SigntoolTasks.verify`
+  wraps `signtool verify /pa /v`. Tokens are scrubbed from every error. See the
+  cheatsheet.
 - **OpenTelemetry export (`@zuke/otel`):** register `otel((s) => s.endpoint(…))`
   as a plugin (`run(MyBuild, { plugins: [otel(…)] })`) to ship run/target spans
   and `zuke.run.started` / `zuke.run.suspended` / `zuke.runs` counters as

@@ -1819,6 +1819,11 @@
           "jsr:@zuke/core@^1.44.0"
         ]
       },
+      "packages/signpath": {
+        "dependencies": [
+          "jsr:@zuke/core@^1.72.0"
+        ]
+      },
       "packages/storybook": {
         "dependencies": [
           "jsr:@zuke/core@^1.25.0"

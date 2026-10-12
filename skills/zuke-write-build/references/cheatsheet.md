@@ -744,6 +744,7 @@ the full task list and settings methods of each):
 | `@zuke/aws`                                                                                                                                         | `AwsTasks`, `cloudwatch`                                             | the AWS CLI — typed STS, `configure`, S3, ECR, ECS, Lambda, CloudFormation, Secrets Manager, SSM, EKS, CloudWatch and Logs tasks, readers that hand back values (`accountId`, `ecrLoginPassword`, `secretString`, `parameterValue`, `stackOutput`, `lambdaPublishedVersion`, `metricValue`, `alarmState`, `logsInsightsQuery`), and `cloudwatch(...)` — a CloudWatch analysis for `@zuke/canary` (see below)                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `@zuke/az`                                                                                                                                          | `AzTasks`, `azureMonitor`                                            | the Azure CLI — typed login, account, resource groups, ACR, AKS, Container Apps, App Service, Functions, Key Vault, deployment, blob storage and Azure Monitor tasks, readers that hand back values (`accessToken`, `subscriptionId`, `tenantId`, `secretValue`, `acrToken`, `containerappFqdn`, `webappHostName`, `deploymentOutput`, `resourceGroupExists`, `metricValue`, `logAnalyticsQuery`), and `azureMonitor(...)` — an Azure Monitor analysis for `@zuke/canary` (see below)                                                                                                                                                                                                                                                                                                                                                                                 |
 | `@zuke/apple`                                                                                                                                       | `CodesignTasks`, `NotarytoolTasks`, `SecurityTasks`, `DittoTasks`    | macOS signing — `codesign` sign/verify/display, `xcrun notarytool` submit/info/log/history (parsed JSON; a rejected `.wait()` throws with the log's issues), `security` keychain subcommands and `temporaryKeychain(...)` for CI, and `ditto` to zip a bundle (see below)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `@zuke/signpath`                                                                                                                                    | `SignPathTasks`, `SigntoolTasks`                                     | Windows Authenticode signing through SignPath — `submit` (GitHub-origin `.gitHubOrigin((g) => g.artifactId(id))` or direct `.artifact(path)`; waits, throws on Denied/Failed/Canceled/timeout, downloads to `.output(path)`), `status`, `download`, and `signtool verify` (see below)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `@zuke/security`                                                                                                                                    | `*Tasks`                                                             | security scanning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `@zuke/claude`, `@zuke/codex`, `@zuke/gemini`                                                                                                       | `ClaudeTasks`, ...                                                   | headless AI CLIs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `@zuke/ai`                                                                                                                                          | `securityReviewer`, ..., `aiFixer`, `agentFixer`                     | AI review gates + self-healing (see below)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
@@ -1184,6 +1185,46 @@ const result = await NotarytoolTasks.submit((s) =>
   `temporaryKeychain` generates.
 - A path operand that starts with `-` is passed as `./-…`, so a file name can
   never be read as a flag.
+
+### Windows signing — `@zuke/signpath`
+
+`SignPathTasks` submits to [SignPath](https://about.signpath.io) (free for OSS
+through the SignPath Foundation) and `SigntoolTasks.verify` checks the result on
+a Windows runner. From GitHub Actions, upload the file with
+`actions/upload-artifact` (v4+) and let SignPath fetch it and verify the run:
+
+```ts
+const { signingRequestId } = await SignPathTasks.submit((s) =>
+  s.organizationId(this.signpathOrg.value).apiToken(this.signpathToken.value)
+    .projectSlug("zuke").signingPolicySlug("release-signing")
+    .gitHubOrigin((g) => g.artifactId(this.artifactId.value))
+    .timeout("30m").output("dist/signed/zuke.zip")
+); // { signingRequestId, webUrl, status, signedArtifact }
+await SigntoolTasks.verify((s) =>
+  s.authenticodePolicy().verbose().file("dist/signed/zuke.exe")
+); // signtool verify /pa /v …
+```
+
+- `.gitHubOrigin(...)` posts to SignPath's GitHub connector exactly as
+  `signpath/github-action-submit-signing-request` does; run id, repository and
+  token default to `GITHUB_RUN_ID`, `GITHUB_REPOSITORY`, `GITHUB_TOKEN`. An
+  origin that does not verify throws `SignPathValidationError` with the
+  connector's errors. `.artifact(path)` uploads directly instead
+  (`SubmitWithArtifact`). Exactly one is required.
+- `submit` polls every `.pollInterval()` (10s) up to `.timeout()` (10m):
+  `Completed` returns; `Denied`/`Failed`/`Canceled` throw
+  `SignPathSigningError`; the deadline throws `SignPathTimeoutError` — both name
+  the request id and its SignPath web URL. `SignPathTasks.status` / `download`
+  work on an existing id.
+- The org id and token default to `SIGNPATH_ORGANIZATION_ID` /
+  `SIGNPATH_API_TOKEN`; ids must be GUIDs; API and connector URLs must be
+  `https:`. Every error is scrubbed of the API and GitHub tokens — still declare
+  the token `parameter(...).secret()`.
+- The download goes to exactly `.output(path)` (never the server's file name),
+  via a temp sibling renamed on success; redirects to storage drop the token.
+- SignPath calls are HTTP, not commands: never mark a signing target
+  `.dryRunnable()`, or `--dry-run` really submits. `signtool` is rarely on
+  `PATH` — set `.toolPath(...)` to the Windows SDK's `signtool.exe`.
 
 ### Worktrees — `GitTasks.worktree`
 
