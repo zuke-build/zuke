@@ -356,7 +356,10 @@ await run(Shadowed);
     );
     const installs: string[][] = [];
     const upgradeHost: UpgradeHost = {
+      standalone: () => false,
       mainModule: () => "jsr:@zuke/cli",
+      execPath: () => Deno.execPath(),
+      realPath: (path) => Deno.realPath(path),
       binDir: () => `${dir}/bin`,
       exists: () => Promise.resolve(true),
       windows: () => false,
@@ -408,6 +411,90 @@ await run(Shadowed);
       assertEquals(installs.length, 1);
     });
   }, { prefix: "zuke-global-cli-" });
+});
+
+Deno.test({
+  name: "a Homebrew zuke names itself in --version and sends upgrade to brew",
+  // Homebrew's link on PATH is a symbolic link, which Windows only lets an
+  // elevated or developer-mode process create; Homebrew does not run there.
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      // The layout Homebrew installs: the binary in the Cellar, linked into
+      // the prefix's bin, which is what PATH (and so the OS) reports.
+      const cellar = `${dir}/Cellar/zuke/1.14.0/bin`;
+      await Deno.mkdir(cellar, { recursive: true });
+      await Deno.mkdir(`${dir}/bin`);
+      await Deno.writeTextFile(`${cellar}/zuke`, "");
+      await Deno.symlink(`${cellar}/zuke`, `${dir}/bin/zuke`);
+      const resolved = await Deno.realPath(`${cellar}/zuke`);
+      const installs: string[][] = [];
+      const brewed: UpgradeHost = {
+        // A binary compiled from JSR still reports the JSR specifier.
+        standalone: () => true,
+        mainModule: () => "jsr:@zuke/cli@1.14.0",
+        execPath: () => `${dir}/bin/zuke`,
+        realPath: (path) => Deno.realPath(path),
+        binDir: () => `${dir}/deno-bin`,
+        exists: () => Promise.resolve(true),
+        windows: () => false,
+        meta: () => Promise.resolve({ latest: "999.0.0", versions: {} }),
+        install: (denoArgs) => {
+          installs.push(denoArgs);
+          return Promise.resolve(0);
+        },
+        denoVersion: () => "2.9.3",
+        readText: (path) => Deno.readTextFile(path),
+      };
+      await inDir(dir, async () => {
+        const upgrade = recordingHost();
+        const refused = await capture(() =>
+          main(
+            ["upgrade"],
+            upgrade,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            confinedTo(dir),
+            brewed,
+          )
+        );
+        assertEquals(refused.code, 1);
+        const said = [...upgrade.logs, ...refused.err].join("\n");
+        assertEquals(said.includes("brew upgrade zuke"), true, said);
+        assertEquals(said.includes(resolved), true, said);
+        assertEquals(installs, []);
+
+        const rich = {
+          NO_COLOR: undefined,
+          ZUKE_PLAIN: undefined,
+          CI: undefined,
+          GITHUB_ACTIONS: undefined,
+        };
+        await withEnv(rich, async () => {
+          const version = { ...recordingHost(), isTerminal: () => true };
+          await main(
+            ["--version"],
+            version,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            confinedTo(dir),
+            brewed,
+          );
+          const panel = stripAnsi(version.logs.join("\n"));
+          assertEquals(panel.includes("Homebrew ("), true, panel);
+          assertEquals(
+            panel.includes("Cellar/zuke/1.14.0/bin/zuke"),
+            true,
+            panel,
+          );
+        });
+      });
+    }, { prefix: "zuke-global-cli-" });
+  },
 });
 
 /** Write the lock `deno install -g` leaves beside the shim, resolving `version`. */
@@ -544,7 +631,10 @@ Deno.test("zuke upgrade reports an install that resolved another release as a fa
   await withTemp(async (dir) => {
     const installs: string[][] = [];
     const upgradeHost: UpgradeHost = {
+      standalone: () => false,
       mainModule: () => "jsr:@zuke/cli",
+      execPath: () => Deno.execPath(),
+      realPath: (path) => Deno.realPath(path),
       binDir: () => `${dir}/bin`,
       exists: () => Promise.resolve(true),
       windows: () => false,

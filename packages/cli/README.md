@@ -81,6 +81,20 @@ interface ImportFlags extends SetupFlags
   from?: ImportSource
     Force a source (`package.json` or `makefile`); auto-detected when unset.
 
+interface InstallHost
+  The process facts {@link installSource} reads, injectable so each install
+  kind is testable from a single process.
+
+  standalone(): boolean
+    Whether this process is a `deno compile` binary (`Deno.build.standalone`).
+  mainModule(): string
+    The running CLI's main module (`Deno.mainModule`). Deno reports a JSR
+    program by its specifier, `jsr:@zuke/cli` or `jsr:@zuke/cli@<version>`.
+  execPath(): string
+    The running executable's path (`Deno.execPath()`).
+  realPath(path: string): Promise<string>
+    `path` with every symbolic link resolved (`Deno.realPath`).
+
 interface Ownership
   What the trust gate needs to know about a filesystem entry.
 
@@ -191,13 +205,10 @@ interface StarActions
   openBrowser(url: string): Promise<boolean>
     Open `url` in the default browser; `false` when it could not launch.
 
-interface UpgradeHost
+interface UpgradeHost extends InstallHost
   What `zuke upgrade` reaches outside the process, injectable so the
   command is testable without the network or a real reinstall.
 
-  mainModule(): string
-    The running CLI's main module (`Deno.mainModule`). Deno reports a JSR
-    program by its specifier, `jsr:@zuke/cli` or `jsr:@zuke/cli@<version>`.
   binDir(): string | undefined
     The directory `deno install -g` installs into (`<root>/bin`):
     `DENO_INSTALL_ROOT`, else `~/.deno`, as Deno resolves it. `undefined`

@@ -60,8 +60,27 @@ class FakeUpgradeHost implements UpgradeHost {
   /** Every path passed to {@link exists}. */
   readonly probed: string[] = [];
 
+  /** Whether this stands in for a `deno compile` binary. */
+  compiled = false;
+  /** What {@link execPath} answers. */
+  exe = "/usr/local/bin/zuke";
+  /** Symbolic links {@link realPath} resolves; any other path is itself. */
+  links: Record<string, string> = {};
+
+  standalone(): boolean {
+    return this.compiled;
+  }
+
   mainModule(): string {
     return this.running;
+  }
+
+  execPath(): string {
+    return this.exe;
+  }
+
+  realPath(path: string): Promise<string> {
+    return Promise.resolve(this.links[path] ?? path);
   }
 
   binDir(): string | undefined {
@@ -362,6 +381,39 @@ Deno.test("zuke upgrade refuses a CLI that does not run from JSR", async () => {
   }
 });
 
+Deno.test("zuke upgrade sends a Homebrew install to brew, even one compiled from JSR", async () => {
+  // A binary compiled from jsr:@zuke/cli still reports that specifier as its
+  // main module. Classified by it alone, the Homebrew zuke would reinstall the
+  // JSR one beside it and report success, leaving itself untouched.
+  const fake = new FakeUpgradeHost(undefined, FROM_JSR);
+  fake.compiled = true;
+  fake.exe = "/opt/homebrew/bin/zuke";
+  fake.links = {
+    "/opt/homebrew/bin/zuke": "/opt/homebrew/Cellar/zuke/1.14.0/bin/zuke",
+  };
+  const { code, logs } = await upgrade([], fake);
+  assertEquals(code, 1);
+  const text = logs.join("\n");
+  assertStringIncludes(text, "installed with Homebrew");
+  assertStringIncludes(text, "/opt/homebrew/Cellar/zuke/1.14.0/bin/zuke");
+  assertStringIncludes(text, "brew upgrade zuke");
+  assertEquals(fake.installs, []);
+  assertEquals(fake.probed, []);
+});
+
+Deno.test("zuke upgrade refuses any other standalone binary, naming where to get one", async () => {
+  const fake = new FakeUpgradeHost(undefined, FROM_JSR);
+  fake.compiled = true;
+  fake.exe = "/home/me/bin/zuke";
+  const { code, logs } = await upgrade([], fake);
+  assertEquals(code, 1);
+  const text = logs.join("\n");
+  assertStringIncludes(text, "standalone binary (/home/me/bin/zuke)");
+  assertStringIncludes(text, "github.com/zuke-build/zuke/releases");
+  assertStringIncludes(text, "brew install zuke-build/tap/zuke");
+  assertEquals(fake.installs, []);
+});
+
 Deno.test("zuke upgrade refuses when there is no global install to replace", async () => {
   const absent = new FakeUpgradeHost();
   absent.present = false;
@@ -442,6 +494,12 @@ Deno.test("zuke --help lists upgrade and its options", async () => {
 
 Deno.test("the default upgrade host reports its main module and runs deno in isolation", async () => {
   assertEquals(defaultUpgradeHost.mainModule(), Deno.mainModule);
+  assertEquals(defaultUpgradeHost.standalone(), Deno.build.standalone);
+  assertEquals(defaultUpgradeHost.execPath(), Deno.execPath());
+  assertEquals(
+    await defaultUpgradeHost.realPath(Deno.execPath()),
+    await Deno.realPath(Deno.execPath()),
+  );
   assertEquals(
     defaultUpgradeHost.windows(),
     Deno.build.os === "windows",
