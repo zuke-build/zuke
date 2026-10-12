@@ -295,7 +295,7 @@ Deno.test("publishCliFormula writes Formula/zuke.rb to the tap's main branch", a
       return new Response(manifest());
     }
     if (request.method === "GET") return json({ message: "Not Found" }, 404);
-    return json({ commit: { sha: "c0ffee" }, content: { sha: "b10b" } }, 201);
+    return json({ commit: { sha: "c0de" }, content: { sha: "b10b" } }, 201);
   }, seen);
   await publishCliFormula(VERSION, "ghs_tap", github);
   const put = seen.find((r) => r.method === "PUT");

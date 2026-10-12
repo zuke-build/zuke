@@ -36,7 +36,7 @@ const CREDENTIALS = {
   certificate: "cDEy",
   certificatePassword: "p12-password",
   notaryKey: "-----BEGIN PRIVATE KEY-----\nkey\n-----END PRIVATE KEY-----\n",
-  notaryKeyId: "KEYID12345",
+  notaryKeyId: "ABCD123456",
   notaryIssuer: "00000000-0000-0000-0000-000000000000",
 };
 
@@ -178,7 +178,7 @@ Deno.test("signMacBinaries signs and verifies each macOS binary inside the keych
     for (
       const part of [
         "notarytool submit",
-        "--key-id KEYID12345",
+        "--key-id ABCD123456",
         `--issuer ${CREDENTIALS.notaryIssuer}`,
         "--wait",
         "--timeout 30m",
