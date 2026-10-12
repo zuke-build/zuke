@@ -177,9 +177,8 @@ Deno.test("concurrent queries share one token request that fails at once", async
   assertEquals(code, 1);
   assertStringIncludes(out + err, "2 queries failed");
   assertEquals(
-    net.sent.filter((request) =>
-      request.url.hostname === "login.microsoftonline.com"
-    ).length,
+    net.sent.filter((request) => request.url.pathname.endsWith("/token"))
+      .length,
     1,
   );
 });
