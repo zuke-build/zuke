@@ -310,6 +310,17 @@ export const TOOL_GROUPS: ToolGroup[] = [
     ],
   },
   {
+    category: "Code signing & notarization",
+    blurb: "Sign, notarize, and package macOS apps from CI.",
+    tools: [
+      {
+        name: "Apple",
+        pkg: "@zuke/apple",
+        desc: "codesign, notarytool, keychains, ditto",
+      },
+    ],
+  },
+  {
     category: "Supply-chain security",
     blurb: "Scan workflows, secrets, and dependencies as part of the gate.",
     tools: [

@@ -401,6 +401,18 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   `azureMonitor((m) => m.resource(id).metric(…).aggregation("Count")
   .max(5))`
   is an analysis. See the cheatsheet.
+- **Apple signing (`@zuke/apple`):** `CodesignTasks.sign`/`verify`/`display`,
+  `DittoTasks.archive` (the zip notarization wants —
+  `ditto -c -k
+  --keepParent`), `NotarytoolTasks.submit`/`info`/`log`/`history`
+  (always `--output-format json`, parsed; with `.wait()` anything but `Accepted`
+  throws a `NotarizationError` listing the log's issues) and `SecurityTasks`
+  named after the `security` subcommands. For CI, wrap signing in
+  `SecurityTasks.temporaryKeychain((s) => s.certificate(p12Base64)
+  .certificatePassword(pw), async ({ keychain, identity }) => …)`:
+  it creates, unlocks and imports into a throwaway keychain and always deletes
+  it and restores the search list, even when the callback throws. Passwords are
+  masked in every rendering and error. See the cheatsheet.
 - **OpenTelemetry export (`@zuke/otel`):** register `otel((s) => s.endpoint(…))`
   as a plugin (`run(MyBuild, { plugins: [otel(…)] })`) to ship run/target spans
   and `zuke.run.started` / `zuke.run.suspended` / `zuke.runs` counters as
