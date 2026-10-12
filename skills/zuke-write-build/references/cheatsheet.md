@@ -742,6 +742,7 @@ the full task list and settings methods of each):
 | `@zuke/kubectl`, `@zuke/helm`, `@zuke/kustomize`, `@zuke/argo-rollouts`, `@zuke/terraform`, `@zuke/tofu`, `@zuke/gcloud`                            | `*Tasks`                                                             | infra/deploy. `ArgoRolloutsTasks` drives the Argo Rollouts plugin — `setImage` starts a rollout, `promote` advances it past a pause (`.full()` skips the rest), `abort` backs it out, `status` waits on it; weights come from the Rollout manifest's steps, not the CLI. `KubectlTasks` covers the deploy surface — manifests, workloads, pods, nodes, kubeconfig — with `diffHasChanges`, `canI`, `getEntries`, `eventEntries`, `currentContext`, `versionInfo` handing back values (see below), plus `kubectlCanary` — a two-Deployment platform for `@zuke/canary`. `HelmTasks` adds `helmCanary`, a two-release platform for it. `GcloudTasks` types the Google Cloud deploy path — auth, builds, Cloud Run, Artifact Registry, GKE, storage, secrets, logs, metrics (see below), plus `cloudRunCanary` and a `cloudMonitoring(...)` analysis for `@zuke/canary`. |
 | `@zuke/aws`                                                                                                                                         | `AwsTasks`, `cloudwatch`                                             | the AWS CLI — typed STS, `configure`, S3, ECR, ECS, Lambda, CloudFormation, Secrets Manager, SSM, EKS, CloudWatch and Logs tasks, readers that hand back values (`accountId`, `ecrLoginPassword`, `secretString`, `parameterValue`, `stackOutput`, `lambdaPublishedVersion`, `metricValue`, `alarmState`, `logsInsightsQuery`), and `cloudwatch(...)` — a CloudWatch analysis for `@zuke/canary` (see below)                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `@zuke/az`                                                                                                                                          | `AzTasks`, `azureMonitor`                                            | the Azure CLI — typed login, account, resource groups, ACR, AKS, Container Apps, App Service, Functions, Key Vault, deployment, blob storage and Azure Monitor tasks, readers that hand back values (`accessToken`, `subscriptionId`, `tenantId`, `secretValue`, `acrToken`, `containerappFqdn`, `webappHostName`, `deploymentOutput`, `resourceGroupExists`, `metricValue`, `logAnalyticsQuery`), and `azureMonitor(...)` — an Azure Monitor analysis for `@zuke/canary` (see below)                                                                                                                                                                                                                                                                                                                                                                                 |
+| `@zuke/apple`                                                                                                                                       | `CodesignTasks`, `NotarytoolTasks`, `SecurityTasks`, `DittoTasks`    | macOS signing — `codesign` sign/verify/display, `xcrun notarytool` submit/info/log/history (parsed JSON; a rejected `.wait()` throws with the log's issues), `security` keychain subcommands and `temporaryKeychain(...)` for CI, and `ditto` to zip a bundle (see below)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `@zuke/security`                                                                                                                                    | `*Tasks`                                                             | security scanning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `@zuke/claude`, `@zuke/codex`, `@zuke/gemini`                                                                                                       | `ClaudeTasks`, ...                                                   | headless AI CLIs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `@zuke/ai`                                                                                                                                          | `securityReviewer`, ..., `aiFixer`, `agentFixer`                     | AI review gates + self-healing (see below)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
@@ -1125,6 +1126,63 @@ const rows = await AzTasks.logAnalyticsQuery((q) =>
   print. App settings reference Key Vault with `.keyVaultReference(name, uri)`.
 - Every settings class takes `.runner((settings) => Promise<CommandOutput>)` —
   the seam a test answers through instead of spawning `az`.
+
+### Apple signing — `@zuke/apple`
+
+`CodesignTasks`, `NotarytoolTasks`, `SecurityTasks` and `DittoTasks` mirror
+`codesign`, `xcrun notarytool`, `security` and `ditto`. A CI job signs from a
+throwaway keychain, zips with `ditto`, and notarizes:
+
+```ts
+await SecurityTasks.temporaryKeychain(
+  (s) => s.certificate(this.p12.value).certificatePassword(this.p12Pass.value),
+  async ({ keychain, identity }) => {
+    await CodesignTasks.sign((s) =>
+      s.identity(identity.hash).keychain(keychain).options("runtime")
+        .timestamp().force().file("dist/MyApp.app")
+    );
+  },
+);
+await CodesignTasks.verify((s) => s.strict().deep().file("dist/MyApp.app"));
+await DittoTasks.archive((s) =>
+  s.keepParent().source("dist/MyApp.app").destination("dist/MyApp.zip")
+); // ditto -c -k --keepParent
+const result = await NotarytoolTasks.submit((s) =>
+  s.file("dist/MyApp.zip").key("AuthKey.p8").keyId(keyId).issuer(issuer)
+    .wait().timeout("30m")
+); // { id, status, message }
+```
+
+- `temporaryKeychain` reads the user search list, creates a uniquely named
+  keychain with a random password in a private temp dir, turns auto-lock off,
+  unlocks it, imports the decoded `.p12` from a `0600` file it deletes at once,
+  runs `set-key-partition-list -S apple-tool:,apple:`, puts the keychain first
+  on the search list and resolves the one codesigning identity
+  (`.identity(nameOrHash)` picks among several). Cleanup — delete the keychain,
+  restore the list, remove the dir — always runs; a failed cleanup step throws
+  `KeychainCleanupError` with the callback's error as its `cause`.
+- The search list is per user, so keychain lifetimes are serialized within a
+  process — a second `temporaryKeychain` (a parallel target in a `group()`)
+  waits for the first to be torn down. Separate processes as the same user (two
+  builds, two jobs on one self-hosted runner account) cannot see that lock and
+  must not sign at the same time.
+- `--dry-run` echoes commands instead of running them and wrappers cannot tell,
+  so `temporaryKeychain` fails with "no valid codesigning identity" and
+  `NotarytoolTasks` fail with `NotarytoolOutputError` — keep signing and
+  notarization targets out of a dry run.
+- `NotarytoolTasks.submit` pins `--output-format json`. With `.wait()`, a status
+  other than `Accepted` fetches `notarytool log` with the same credentials and
+  throws `NotarizationError` (`.submission`, `.log.issues`); `.noThrow()`
+  returns the result instead. Authenticate with exactly one of
+  `.key().keyId()
+  [.issuer()]`, `.keychainProfile(name)`, or
+  `.appleId().password().teamId()`.
+- Every password (`-p`, `-P`, `-k`, `--password`) is registered with the run's
+  redactor and masked out of any `CommandError` — but it is still an argv token
+  while the command runs, so prefer the API key and the random keychain password
+  `temporaryKeychain` generates.
+- A path operand that starts with `-` is passed as `./-…`, so a file name can
+  never be read as a flag.
 
 ### Worktrees — `GitTasks.worktree`
 
