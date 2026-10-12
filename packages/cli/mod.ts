@@ -34,6 +34,11 @@ import {
   type StarActions,
 } from "./src/star.ts";
 import { VERSION } from "./src/version.ts";
+import {
+  type InstallHost,
+  installLabel,
+  installSource,
+} from "./src/install_source.ts";
 import { DENO_PIN } from "./src/deno_pin.ts";
 import {
   type BuildProbe,
@@ -70,6 +75,7 @@ import {
 export type { SetupHost } from "./src/setup.ts";
 export type { ImportSource } from "./src/import.ts";
 export type { StarActions } from "./src/star.ts";
+export type { InstallHost } from "./src/install_source.ts";
 export type { UpgradeHost } from "./src/upgrade.ts";
 export type { ProjectHost } from "./src/project.ts";
 export type {
@@ -260,6 +266,7 @@ Zuke commands (available anywhere):
   import [options]        Generate a build from package.json scripts or a Makefile
   doc <package>           Show a @zuke/* package's API docs (isolated resolution)
   upgrade [<version>]     Reinstall this CLI at the latest (or given) JSR release
+                          (Homebrew installs: brew upgrade zuke)
   add <package...>        Add packages to this project's deno.json (docker = @zuke/docker)
   remove <package...>     Remove packages from this project's deno.json
   cache [<entry>...]      Fetch everything the build imports, keeping the lock
@@ -661,7 +668,10 @@ async function commandHelp(
  *
  * In plain output the first line is the installed CLI's version, bare, so
  * anything reading `zuke --version` keeps working, and the build's follows
- * under a heading. On a terminal the same facts are one panel.
+ * under a heading. On a terminal the same facts are one panel, which also
+ * names how this CLI was installed (JSR, Homebrew, a standalone binary, or
+ * source): one machine can hold more than one `zuke`, and the panel says which
+ * answered. Plain output leaves it out, keeping its lines as they were.
  *
  * The build's version is read from its lockfile — what the project
  * actually resolves, which the CLI's own linked core need not be — so nothing
@@ -678,6 +688,7 @@ async function commandVersion(
   probe: BuildProbe,
   runner: BuildRunner,
   paint: CliPaint,
+  installHost: InstallHost,
 ): Promise<number> {
   let location: Awaited<ReturnType<typeof locateBuild>> = null;
   let refusal: string | undefined;
@@ -693,14 +704,25 @@ async function commandVersion(
     ? []
     : await projectCoreVersions(host, location.root);
   if (paint.rich) {
-    const rows: VersionRow[] = [["cli", VERSION]];
+    const home = firstSet(defaultDenoHost, "HOME", "USERPROFILE");
+    // An executable path comes from the OS, with backslashes on Windows;
+    // homeRelative compares forward-slash paths, as absolutePath writes them.
+    const display = (path: string) => {
+      let normal = path;
+      try {
+        normal = absolutePath(path).path;
+      } catch {
+        // Not absolute: shown as it is.
+      }
+      return homeRelative(normal, home, defaultDenoHost.windows());
+    };
+    const rows: VersionRow[] = [
+      ["cli", VERSION],
+      ["install", installLabel(await installSource(installHost), display)],
+    ];
     if (location !== null) {
       if (core.length > 0) rows.push(["core", core.join(", ")]);
-      const home = firstSet(defaultDenoHost, "HOME", "USERPROFILE");
-      rows.push([
-        "project",
-        homeRelative(location.root, home, defaultDenoHost.windows()),
-      ]);
+      rows.push(["project", display(location.root)]);
     }
     rows.push(["deno", Deno.version.deno]);
     rows.push(["platform", `${Deno.build.os}-${Deno.build.arch}`]);
@@ -796,7 +818,13 @@ export async function main(
   const rest = own.slice(1);
 
   if (command === "--version" || command === "-V") {
-    return await commandVersion(host, buildProbe, buildRunner, paint);
+    return await commandVersion(
+      host,
+      buildProbe,
+      buildRunner,
+      paint,
+      upgradeHost,
+    );
   }
   try {
     if (command === "setup") {

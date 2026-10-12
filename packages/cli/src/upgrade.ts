@@ -45,9 +45,15 @@ import type { CliPaint } from "./paint.ts";
 import { VERSION_PATTERN } from "./version_report.ts";
 import { defaultDenoHost, firstSet } from "./deno_path.ts";
 import { VERSION } from "./version.ts";
+import { ZUKE_REPO_URL } from "./star.ts";
+import {
+  type InstallHost,
+  installSource,
+  JSR_PACKAGE as PACKAGE,
+} from "./install_source.ts";
 
-/** The JSR package the global command is installed from. */
-const PACKAGE = "jsr:@zuke/cli";
+/** Where the compiled binaries are published. */
+const RELEASES_URL = `${ZUKE_REPO_URL}/releases`;
 
 /** The registry document listing every published version and the latest. */
 const META_URL = "https://jsr.io/@zuke/cli/meta.json";
@@ -56,12 +62,7 @@ const META_URL = "https://jsr.io/@zuke/cli/meta.json";
  * What `zuke upgrade` reaches outside the process, injectable so the
  * command is testable without the network or a real reinstall.
  */
-export interface UpgradeHost {
-  /**
-   * The running CLI's main module (`Deno.mainModule`). Deno reports a JSR
-   * program by its specifier, `jsr:@zuke/cli` or `jsr:@zuke/cli@<version>`.
-   */
-  mainModule(): string;
+export interface UpgradeHost extends InstallHost {
   /**
    * The directory `deno install -g` installs into (`<root>/bin`):
    * `DENO_INSTALL_ROOT`, else `~/.deno`, as Deno resolves it. `undefined`
@@ -87,7 +88,10 @@ export interface UpgradeHost {
 
 /** The real {@link UpgradeHost}: `Deno.mainModule`, JSR, and `deno install`. */
 export const defaultUpgradeHost: UpgradeHost = {
+  standalone: () => Deno.build.standalone,
   mainModule: () => Deno.mainModule,
+  execPath: () => Deno.execPath(),
+  realPath: (path) => Deno.realPath(path),
   binDir: () => {
     const explicit = firstSet(defaultDenoHost, "DENO_INSTALL_ROOT");
     const home = firstSet(defaultDenoHost, "HOME", "USERPROFILE");
@@ -295,13 +299,30 @@ export async function runUpgrade(
   paint: CliPaint,
 ): Promise<number> {
   const flags = parseUpgradeFlags(args);
-  const running = host.mainModule();
-  if (running !== PACKAGE && !running.startsWith(`${PACKAGE}@`)) {
-    // A local checkout or a `deno compile` binary. Reinstalling from JSR
-    // would put a different executable on PATH and leave this one, the one
-    // actually running, exactly as it was.
+  // Anything but a JSR install is refused: reinstalling from JSR would put a
+  // different executable on PATH and leave this one, the one actually
+  // running, exactly as it was. A compiled binary is classified before its
+  // main module is read, because one compiled from JSR still reports
+  // `jsr:@zuke/cli` and would otherwise upgrade a second, unrelated install.
+  const source = await installSource(host);
+  if (source.kind === "homebrew") {
     throw new Error(
-      `zuke upgrade: this zuke runs ${running}, not ${PACKAGE}, so ` +
+      `zuke upgrade: this zuke was installed with Homebrew ` +
+        `(${source.location}), so reinstalling from JSR would not update ` +
+        "it. Update it with: brew upgrade zuke",
+    );
+  }
+  if (source.kind === "binary") {
+    throw new Error(
+      `zuke upgrade: this zuke is a standalone binary (${source.location}), ` +
+        "so reinstalling from JSR would not update it. Replace it with the " +
+        `binary from ${RELEASES_URL}, or install with Homebrew (brew install ` +
+        `zuke-build/tap/zuke) or from JSR (deno install -A -g -n zuke ${PACKAGE}).`,
+    );
+  }
+  if (source.kind === "source") {
+    throw new Error(
+      `zuke upgrade: this zuke runs ${source.location}, not ${PACKAGE}, so ` +
         "reinstalling from JSR would not update it. Update it where it came " +
         "from.",
     );

@@ -10,7 +10,9 @@ import {
   defaultPrompter,
   main,
   parseSetupFlags,
+  type UpgradeHost,
 } from "../mod.ts";
+import { defaultUpgradeHost } from "../src/upgrade.ts";
 import { VERSION } from "../src/version.ts";
 import { DENO_PIN } from "../src/deno_pin.ts";
 import {
@@ -1386,7 +1388,7 @@ Deno.test("--version says why a build could not answer: core older than 1.60.0",
   assertStringIncludes(err.join("\n"), "older than 1.60.0");
 });
 
-Deno.test("--version on a terminal is one panel: cli, core, project, deno, platform", async () => {
+Deno.test("--version on a terminal is one panel: cli, install, core, project, deno, platform", async () => {
   await withEnv(RICH_ENV, async () => {
     const host = new FakeHost({ [atCwd("deno.lock")]: coreLock("1.42.0") });
     host.terminal = true;
@@ -1403,7 +1405,9 @@ Deno.test("--version on a terminal is one panel: cli, core, project, deno, platf
     assertEquals(reached(), false);
     assertEquals(host.logs.length, 1);
     const panel = stripAnsi(host.logs[0]);
-    for (const label of ["cli", "core", "project", "deno", "platform"]) {
+    for (
+      const label of ["cli", "install", "core", "project", "deno", "platform"]
+    ) {
       assertStringIncludes(panel, `◆ ${label}`);
     }
     assertStringIncludes(panel, VERSION);
@@ -1432,6 +1436,72 @@ Deno.test("--version on a terminal is one panel: cli, core, project, deno, platf
     const alone = stripAnsi(lone.logs[0]);
     assertEquals(alone.includes("◆ core"), false);
     assertEquals(alone.includes("◆ project"), false);
+  });
+});
+
+Deno.test("--version names a Homebrew install in the panel, and keeps plain output one line", async () => {
+  // One machine can hold the JSR zuke and the Homebrew one; the panel says
+  // which answered. Plain output is what scripts read, so it stays the bare
+  // version.
+  const brewed: UpgradeHost = {
+    ...defaultUpgradeHost,
+    standalone: () => true,
+    mainModule: () => "jsr:@zuke/cli@1.14.0",
+    execPath: () => "/opt/homebrew/bin/zuke",
+    realPath: () =>
+      Promise.resolve("/opt/homebrew/Cellar/zuke/1.14.0/bin/zuke"),
+  };
+  const version = async (terminal: boolean) => {
+    const host = new FakeHost();
+    host.terminal = terminal;
+    await main(
+      ["--version"],
+      host,
+      defaultPrompter,
+      undefined,
+      undefined,
+      () => Promise.resolve(0),
+      noProjectProbe,
+      brewed,
+    );
+    return host.logs;
+  };
+  await withEnv(RICH_ENV, async () => {
+    const panel = stripAnsi((await version(true))[0]);
+    assertStringIncludes(
+      panel,
+      "◆ install   Homebrew (/opt/homebrew/Cellar/zuke/1.14.0/bin/zuke)",
+    );
+  });
+  assertEquals(await version(false), [VERSION]);
+});
+
+Deno.test("--version shortens a Windows binary's backslash path under home", async () => {
+  // The OS reports the executable with backslashes on Windows, while the
+  // home prefix is compared in absolutePath's forward-slash form.
+  const binary: UpgradeHost = {
+    ...defaultUpgradeHost,
+    standalone: () => true,
+    execPath: () => "C:\\Users\\me\\bin\\zuke.exe",
+    realPath: (path) => Promise.resolve(path),
+  };
+  await withEnv({ ...RICH_ENV, HOME: "C:\\Users\\me" }, async () => {
+    const host = new FakeHost();
+    host.terminal = true;
+    await main(
+      ["--version"],
+      host,
+      defaultPrompter,
+      undefined,
+      undefined,
+      () => Promise.resolve(0),
+      noProjectProbe,
+      binary,
+    );
+    assertStringIncludes(
+      stripAnsi(host.logs[0]),
+      "standalone binary (~/bin/zuke.exe)",
+    );
   });
 });
 
