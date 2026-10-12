@@ -134,6 +134,12 @@ import {
 import { checkRootLaunchers, syncRootLaunchers } from "./build/launchers.ts";
 import { checkSkillTree } from "./build/skill_check.ts";
 import {
+  discoverTestFiles,
+  partitionShards,
+  runShards,
+  shardCount,
+} from "./build/test_shards.ts";
+import {
   buildGeminiArchive,
   GEMINI_ASSET_NAMES,
 } from "./build/gemini_archive.ts";
@@ -186,7 +192,7 @@ const CLI_FORMULA_FILE = "dist/cli/zuke.rb";
  * Windows' 32 KB command line, which fails the spawn itself ("The filename or
  * extension is too long").
  */
-const CHECK_ROOTS = ["zuke.ts", "build", "tests", "packages"];
+const CHECK_ROOTS = ["zuke.ts", "build", "tests", "packages", "examples"];
 class ZukeBuild extends Build {
   clean = target()
     .description("Remove build artifacts")
@@ -323,10 +329,24 @@ class ZukeBuild extends Build {
       // the job-summary and AI-reviewer/fixer code paths would otherwise append
       // to the real Actions summary, polluting it. The parent `./zuke ci` run
       // keeps the env var and still writes the build table and any fixer section.
-      await DenoTasks.test((s) =>
-        s.allowAll().coverage("cov_profile").frozen().env({
-          GITHUB_STEP_SUMMARY: "",
-        })
+      //
+      // The files are split across one `deno test` process per CPU (see
+      // build/test_shards.ts for why processes rather than `--parallel`), all
+      // writing into the one coverage profile. `--clean` can't empty it here —
+      // concurrent shards would race to wipe each other's profiles — so the
+      // directory is emptied once up front. `noCheck`: the `check` target this
+      // depends on already type-checked every test file, and each shard would
+      // otherwise re-check its own slice of the graph from scratch.
+      await FileTasks.remove("cov_profile", { recursive: true });
+      const files = await discoverTestFiles();
+      await runShards(
+        partitionShards(files, shardCount()),
+        (paths) =>
+          DenoTasks.test((s) =>
+            s.allowAll().coverage("cov_profile").frozen().noCheck()
+              .paths(...paths).env({ GITHUB_STEP_SUMMARY: "" }).quiet()
+              .noThrow()
+          ),
       );
     });
 
