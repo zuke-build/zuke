@@ -339,7 +339,11 @@ Deno.test("a durable bake parks the run until its time is up", async () => {
     const check = analysis();
     const Rollout = rolloutOf(
       platform,
-      (c) => c.steps(10).bake(60).durable().analysis(check),
+      // Long enough that the "too early" check below always lands inside it,
+      // even on a loaded machine running the suite's shards side by side: a
+      // durable bake compares wall-clock times, so a 60ms bake could already
+      // be over by the time a starved process got round to checking.
+      (c) => c.steps(10).bake(500).durable().analysis(check),
     );
     const b = built(Rollout);
     const parked = await execute(b, b.ship, {
@@ -351,7 +355,7 @@ Deno.test("a durable bake parks the run until its time is up", async () => {
     await resumeCheck(new Rollout(), { stateStore: store, silent: true });
     assertEquals(platform.calls.includes("promote rev-2"), false);
     assertEquals(check.seen.length, 0);
-    await new Promise((r) => setTimeout(r, 80));
+    await new Promise((r) => setTimeout(r, 550));
     await resumeCheck(new Rollout(), { stateStore: store, silent: true });
     assertEquals(platform.calls.at(-1), "promote rev-2");
     assertEquals(check.seen.map((c) => c.target), ["rollout.step1.analyze"]);
