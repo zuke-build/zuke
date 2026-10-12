@@ -6,6 +6,11 @@
  * the configured route, wait for the request to complete, and download the
  * signed artifact when asked.
  *
+ * A GitHub-origin request is submitted through the connector, but polled and
+ * downloaded through the documented REST endpoints, like a direct one — an
+ * assumption: SignPath's action polls the connector's mirror of them instead,
+ * with the same token.
+ *
  * Validation runs before anything is sent — the connection, the request, the
  * output path — so a misconfigured build fails without leaving a signing
  * request behind in SignPath.

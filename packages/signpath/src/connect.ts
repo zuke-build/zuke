@@ -190,6 +190,9 @@ export function apiUrl(connection: Connection, path: string): URL {
  * Built here rather than taken from an answer: the GitHub connector does
  * return a `signingRequestUrl`, but a link printed into the build log should
  * not be one a server chose.
+ *
+ * Assumption: the `/Web/<org>/SigningRequests/<id>` path is the SignPath web
+ * app's own URL scheme; SignPath's REST documentation does not spell it out.
  */
 export function webUrl(
   connection: Connection,

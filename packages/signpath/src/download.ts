@@ -16,7 +16,8 @@
  * only once complete, so a failed, oversized or timed-out download never
  * leaves a truncated artifact where the build expects a signed one.
  *
- * A redirect — should SignPath hand the download to blob storage — is followed
+ * A redirect — should SignPath hand the download to blob storage, which its
+ * documentation neither promises nor rules out (an assumption) — is followed
  * by hand, at most five hops: each hop must be `https:` (or stay on the
  * origin it left), and the API token is dropped as soon as a hop leaves
  * SignPath's origin, so a storage host never receives it.
