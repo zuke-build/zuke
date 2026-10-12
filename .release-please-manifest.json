@@ -63,6 +63,6 @@
   "packages/ai": "2.12.1",
   "packages/otel": "1.0.2",
   "packages/qr": "1.1.0",
-  "packages/apple": "1.0.0",
-  "packages/homebrew": "1.0.0"
+  "packages/apple": "0.0.0",
+  "packages/homebrew": "0.0.0"
 }

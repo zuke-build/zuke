@@ -14,6 +14,11 @@ request.
    breaking change bumps the **major** version. `bump-minor-pre-major` is
    **off**, so a breaking change is never absorbed into a minor bump.
 
+   A **new package** is registered at `0.0.0` (manifest and `deno.json`), and
+   its first release is `1.0.0`. release-please treats any other manifest
+   version as already released, so a package added at `1.0.0` would be first
+   released as `1.1.0` — which is how `@zuke/az` and `@zuke/aws` started there.
+
 2. **Zuke runs the whole release.** `.github/workflows/release.yml` is itself
    driven by Zuke: on every push to `master` it runs four least-privilege jobs,
    each invoking one target — `release`, then `actionRelease` and `publishJsr`

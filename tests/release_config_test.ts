@@ -46,6 +46,31 @@ Deno.test("manifest versions match each package deno.json", async () => {
   }
 });
 
+Deno.test("a package that was never released is registered at 0.0.0", async () => {
+  // release-please reads the manifest as the last *released* version. Any
+  // version but 0.0.0 becomes a synthetic previous release, so a package
+  // registered at 1.0.0 is first released as 1.1.0 and 1.0.0 never exists —
+  // what happened to @zuke/az and @zuke/aws. At 0.0.0 the first release is the
+  // strategy's initial version, 1.0.0, and publishJsr skips the package until
+  // then. A package with no CHANGELOG.md has never been released.
+  for (const path of PACKAGES) {
+    const released = await Deno.stat(`${path}/CHANGELOG.md`).then(
+      () => true,
+      () => false,
+    );
+    const { version } = await readJson(`${path}/deno.json`);
+    assertEquals(
+      version === "0.0.0",
+      !released,
+      released
+        ? `${path} has been released, so it cannot be at 0.0.0`
+        : `${path} has no CHANGELOG.md, so it has never been released and ` +
+          `must be registered at 0.0.0 (its first release is then 1.0.0), ` +
+          `not ${String(version)}`,
+    );
+  }
+});
+
 /** One extra-file and the lines in it carrying release-please's inline marker. */
 interface MarkedFile {
   /** The package directory that lists the file, e.g. `packages/core`. */
