@@ -1555,6 +1555,11 @@
           "jsr:@zuke/gh@^1.13.0"
         ]
       },
+      "packages/apple": {
+        "dependencies": [
+          "jsr:@zuke/core@^1.71.0"
+        ]
+      },
       "packages/argo-rollouts": {
         "dependencies": [
           "jsr:@zuke/core@^1.60.0"
