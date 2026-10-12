@@ -75,7 +75,7 @@
     "test": "GITHUB_STEP_SUMMARY= deno test -A --frozen",
     "cov": "deno run -A --frozen zuke.ts coverage",
     "cov:report": "deno coverage cov_profile '--exclude=tests/'",
-    "check": "deno check --frozen zuke.ts build tests packages",
+    "check": "deno check --frozen zuke.ts build tests packages examples",
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
     "lint": "deno lint",

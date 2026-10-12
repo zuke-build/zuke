@@ -334,6 +334,15 @@ flow mechanism, or anything with cross-process or cross-OS behaviour) also adds
 an **e2e** test. All three obey guideline 5: hermetic and fast, no network, no
 ambient tools.
 
+The gate's `test` target splits the `*_test.ts` files across one `deno test`
+process per CPU (`build/test_shards.ts`), so **files run concurrently with each
+other** in separate processes, while the tests inside one file still run in
+order. A test may set `Deno.env` or change the working directory, which only
+affect its own process, but it must not write to a fixed path that another file
+could also use: work in a `Deno.makeTempDir()` instead. Name every test module
+`*_test.ts`, because the shards run explicit file lists and a test enforces the
+naming convention.
+
 1. **Unit — `packages/<pkg>/tests/*_test.ts`.** One module in isolation, with
    fakes and the local `packages/core/tests/_assert.ts` helper (never a
    third-party assert library). For a tool wrapper, assert the **pure

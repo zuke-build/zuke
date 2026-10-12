@@ -148,6 +148,67 @@ Deno.test("check: a failing snippet is reported with its source location, temp p
   });
 });
 
+Deno.test("check: every snippet is checked in one run, and a clean run stops there", async () => {
+  await withTemp(async (dir) => {
+    const md = `${dir}/x.md`;
+    await Deno.writeTextFile(
+      md,
+      [
+        CHECK_MARKER,
+        "```ts",
+        "const a = 1;",
+        "```",
+        "",
+        CHECK_MARKER,
+        "```ts",
+        "const b = 2;",
+        "```",
+      ]
+        .join("\n"),
+    );
+    const calls: number[] = [];
+    const spy: SnippetChecker = (...paths) => {
+      calls.push(paths.length);
+      return Promise.resolve({ ok: true, detail: "" });
+    };
+    assertEquals(await checkSnippets([md], spy), []);
+    assertEquals(calls, [2]); // one batched run over both snippets
+  });
+});
+
+Deno.test("check: a failed batch is re-checked per snippet, naming only the failing one", async () => {
+  await withTemp(async (dir) => {
+    const md = `${dir}/x.md`;
+    await Deno.writeTextFile(
+      md,
+      [
+        CHECK_MARKER,
+        "```ts",
+        "const a = 1;",
+        "```",
+        "",
+        CHECK_MARKER,
+        "```ts",
+        "const b = 2;",
+        "```",
+      ]
+        .join("\n"),
+    );
+    const calls: string[][] = [];
+    const fake: SnippetChecker = (...paths) => {
+      calls.push(paths);
+      // The batch fails, and so does the second snippet on its own.
+      const bad = paths.length > 1 || paths[0].endsWith("snippet_1.ts");
+      return Promise.resolve({ ok: !bad, detail: bad ? "broken" : "" });
+    };
+    const failures = await checkSnippets([md], fake);
+    assertEquals(calls.map((c) => c.length), [2, 1, 1]);
+    assertEquals(failures.length, 1);
+    assertEquals(failures[0].line, 7); // the second block's fence line
+    assertEquals(failures[0].detail, "broken");
+  });
+});
+
 Deno.test("reduceTempPath normalises POSIX and Windows path forms to snippet.ts", () => {
   // POSIX: the forward-slash path and its file:// URL both reduce.
   assertEquals(

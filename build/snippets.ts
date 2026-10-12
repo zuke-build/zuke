@@ -103,9 +103,12 @@ export async function collectCheckedSnippets(
   return all;
 }
 
-/** The type-check seam: check the module at `path`, returning ok + any output. */
+/**
+ * The type-check seam: check the modules at `paths` in one run, returning ok +
+ * any output.
+ */
 export type SnippetChecker = (
-  path: string,
+  ...paths: string[]
 ) => Promise<{ ok: boolean; detail: string }>;
 
 /**
@@ -113,13 +116,13 @@ export type SnippetChecker = (
  * the examples gate (`build/examples.ts`), which checks whole build files the
  * same way.
  */
-export const denoCheck: SnippetChecker = async (path) => {
+export const denoCheck: SnippetChecker = async (...paths) => {
   // `--quiet` drops deno's `Check <relative-path>` progress line, which would
   // otherwise leak the random temp-dir name into failure output as a relative
   // path (a form {@link reduceTempPath} can't match); the `file://` error
   // locations deno still prints are reduced there.
   const out = await DenoTasks.check((s) =>
-    s.paths(path).args("--quiet").quiet().noThrow()
+    s.paths(...paths).args("--quiet").quiet().noThrow()
   );
   return { ok: out.code === 0, detail: `${out.stderr}${out.stdout}`.trim() };
 };
@@ -143,9 +146,15 @@ export function reduceTempPath(detail: string, path: string): string {
 /**
  * Type-check every marked snippet in `files`, returning one {@link
  * SnippetFailure} per snippet that fails. Each snippet is written to a temp file
- * *inside the repo* (so `@zuke/…` resolves to the workspace) and checked; the
- * temp directory is removed afterwards, even on error. The `check` seam is
+ * *inside the repo* (so `@zuke/…` resolves to the workspace); the temp
+ * directory is removed afterwards, even on error. The `check` seam is
  * injectable so the orchestration is unit-testable without spawning `deno`.
+ *
+ * Every snippet is checked in **one** `deno check` first: Deno treats each file
+ * as its own module, so checking them together is equivalent to checking them
+ * apart, and it pays for loading the workspace's types once instead of once
+ * per snippet. Only when that run fails is each snippet re-checked alone, so
+ * every failure is still named by its own source location with its own output.
  */
 export async function checkSnippets(
   files: string[],
@@ -156,10 +165,14 @@ export async function checkSnippets(
   const dir = await Deno.makeTempDir({ dir: Deno.cwd(), prefix: ".snippets-" });
   const failures: SnippetFailure[] = [];
   try {
+    const paths = snippets.map((_, i) => `${dir}/snippet_${i}.ts`);
+    for (let i = 0; i < snippets.length; i++) {
+      await FileTasks.writeText(paths[i], `${snippets[i].code}\n`);
+    }
+    if ((await check(...paths)).ok) return [];
     for (let i = 0; i < snippets.length; i++) {
       const snippet = snippets[i];
-      const path = `${dir}/snippet_${i}.ts`;
-      await FileTasks.writeText(path, `${snippet.code}\n`);
+      const path = paths[i];
       const { ok, detail } = await check(path);
       if (!ok) {
         failures.push({
