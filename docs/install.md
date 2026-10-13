@@ -36,18 +36,6 @@ Homebrew install, because reinstalling from JSR would leave this one as it was.
 The binaries are built for Apple silicon and Intel Macs, and for arm64 and
 x86_64 Linux.
 
-## Chocolatey (Windows)
-
-```powershell
-choco install zuke
-```
-
-The same standalone binary for x86_64 Windows, installed from the release's
-`.zip` with its SHA-256 checked against the one the package pins. It needs **no
-Deno up front**, exactly as the Homebrew binary does, and `zuke.exe` is
-Authenticode-signed. Upgrade with `choco upgrade zuke`; `zuke upgrade` refuses
-to run from a Chocolatey install, for the same reason as from Homebrew.
-
 ## Which one am I running?
 
 Both can be installed side by side. On a terminal, `zuke --version` names the
