@@ -28,20 +28,37 @@ whole thing to **AI agents** as typed tools. Inspired by
 
 ## Five minutes to a typed build
 
+**1. Install the CLI** — pick one. Every route is the same CLI and fully
+supported; the binaries need no Deno up front. See [Install](#install).
+
+From JSR (any OS, with Deno):
+
 ```sh
-deno install -A -g -n zuke jsr:@zuke/cli    # 1. the CLI, once, from JSR
-brew install zuke-build/tap/zuke            #    …or as a signed binary (macOS, Linux)
-choco install zuke                          #    …or as a signed binary (Windows)
-zuke setup                                  # 2. scaffold zuke.ts + the ./zuke launcher
-zuke                                        # 3. run it (or ./zuke — no install needed)
-zuke generate-ci                            # 4. write .github/workflows/ci.yml from the build
+deno install -A -g -n zuke jsr:@zuke/cli
 ```
 
-Every install is the same CLI, and every one is supported; the binaries need no
-Deno up front. See [Install](#install).
+With Homebrew (macOS, Linux):
 
-Step 4 needs one line in the build. Here is the whole file after you have
-replaced the scaffolded sample target with real work:
+```sh
+brew install zuke-build/tap/zuke
+```
+
+With Chocolatey (Windows):
+
+```powershell
+choco install zuke
+```
+
+**2. Set up a project and run it**, whichever way you installed:
+
+```sh
+zuke setup         # scaffold zuke.ts + the ./zuke launcher
+zuke               # run it (or ./zuke — no install needed)
+zuke generate-ci   # write .github/workflows/ci.yml from the build
+```
+
+`zuke generate-ci` needs one line in the build. Here is the whole file after you
+have replaced the scaffolded sample target with real work:
 
 <!-- check -->
 
