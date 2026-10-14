@@ -33,6 +33,9 @@ import {
   windowsArchiveName,
 } from "./cli_release.ts";
 
+/** The Chocolatey account that pushes and maintains the package. */
+export const CHOCOLATEY_OWNER = "zuke";
+
 /** The package icon: the mascot from the logo, square, as the gallery shows it. */
 export const ICON_URL =
   `https://cdn.jsdelivr.net/gh/${CLI_REPO}@master/assets/icon.png`;
@@ -72,6 +75,8 @@ export function cliChocolateyPackage(
   return ChocolateyTasks.package((s) =>
     s.id(CHOCOLATEY_ID).version(version).title("Zuke")
       .authors("The Zuke contributors")
+      // The community repository account that maintains the package.
+      .owners(CHOCOLATEY_OWNER)
       .projectUrl("https://zuke.build")
       .iconUrl(ICON_URL)
       .licenseUrl(`${repo}/blob/master/LICENSE`)
