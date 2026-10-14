@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.1](https://github.com/zuke-build/zuke/compare/cli-v1.15.0...cli-v1.15.1) (2026-10-14)
+
+
+### Bug Fixes
+
+* **cli:** ship release binaries through a draft release, which immutable releases require ([#824](https://github.com/zuke-build/zuke/issues/824)) ([113a0f7](https://github.com/zuke-build/zuke/commit/113a0f7d993c2dca97a82b53fb086c3071f5f914)), closes [#823](https://github.com/zuke-build/zuke/issues/823)
+
 ## [1.15.0](https://github.com/zuke-build/zuke/compare/cli-v1.14.0...cli-v1.15.0) (2026-10-14)
 
 
