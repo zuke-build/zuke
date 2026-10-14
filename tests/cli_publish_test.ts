@@ -23,8 +23,10 @@ import {
   CodesignVerifySettings,
 } from "@zuke/apple";
 import { HomebrewVerifySettings } from "@zuke/homebrew";
+import { GhReleaseEditSettings, GhReleaseUploadSettings } from "@zuke/gh";
 import {
   publishCliFormula,
+  type ReleaseTools,
   type SignatureTools,
   uploadCliRelease,
   verifyCliFormula,
@@ -38,7 +40,6 @@ import {
   CLI_TARGETS,
   MACOS_TARGETS,
   releaseAssetUrl,
-  windowsArchiveName,
 } from "../build/cli_release.ts";
 
 const VERSION = "1.14.0";
@@ -80,67 +81,87 @@ const json = (value: unknown, status = 200) =>
     headers: { "content-type": "application/json" },
   });
 
-Deno.test("uploadCliRelease uploads the archives and attestation, and SHA256SUMS last", async () => {
+/** {@link ReleaseTools} recording each `gh release` argv, failing on `failOn`. */
+function recordingGh(
+  argvs: string[][],
+  failOn?: "upload" | "edit",
+): ReleaseTools {
+  return {
+    upload: (configure) => {
+      argvs.push(configure(new GhReleaseUploadSettings()).argv().slice(1));
+      return failOn === "upload"
+        ? Promise.reject(new Error("release not found"))
+        : Promise.resolve();
+    },
+    edit: (configure) => {
+      argvs.push(configure(new GhReleaseEditSettings()).argv().slice(1));
+      return failOn === "edit"
+        ? Promise.reject(new Error("edit failed"))
+        : Promise.resolve();
+    },
+  };
+}
+
+Deno.test("uploadCliRelease attaches everything to the draft, then publishes it without moving Latest", async () => {
   await withTemp(async (dir) => {
-    for (const target of CLI_TARGETS) {
-      await Deno.writeTextFile(`${dir}/${archiveName(VERSION, target)}`, "a");
-    }
-    await Deno.writeTextFile(`${dir}/${windowsArchiveName(VERSION)}`, "a");
-    await Deno.writeTextFile(`${dir}/${CHECKSUMS}`, manifest());
     await Deno.writeTextFile(`${dir}/bundle.json`, "{}");
-    const seen: Seen[] = [];
+    const argvs: string[][] = [];
     await uploadCliRelease({
       version: VERSION,
       dir,
       attestation: `${dir}/bundle.json`,
-      token: "ghs_token",
-      fetch: fakeFetch((request) => {
-        if (request.method === "GET") {
-          return json({
-            id: 7,
-            tag_name: "cli-v1.14.0",
-            upload_url:
-              "https://uploads.github.com/repos/zuke-build/zuke/releases/7/assets{?name,label}",
-            assets: [],
-          });
-        }
-        return json({ browser_download_url: "https://example" }, 201);
-      }, seen),
+      gh: recordingGh(argvs),
     });
-    const uploads = seen.filter((r) => r.method === "POST").map((r) =>
-      new URL(r.url).searchParams.get("name")
-    );
-    assertEquals(uploads, [
-      ...CLI_TARGETS.map((t) => archiveName(VERSION, t)),
-      "zuke-1.14.0-x86_64-pc-windows-msvc.zip",
-      "zuke-1.14.0.sigstore.json",
-      CHECKSUMS,
+    const [upload, edit] = argvs;
+    assertEquals(upload.slice(0, 4), [
+      "release",
+      "upload",
+      "cli-v1.14.0",
+      `${dir}/${archiveName(VERSION, CLI_TARGETS[0])}`,
     ]);
-    // Every lookup names this release, in this repository.
-    for (const get of seen.filter((r) => r.method === "GET")) {
-      assertEquals(
-        get.url,
-        "https://api.github.com/repos/zuke-build/zuke/releases/tags/cli-v1.14.0",
-      );
+    assertEquals(
+      upload.filter((a) => a.startsWith(dir)).map((a) =>
+        a.slice(dir.length + 1)
+      ),
+      [
+        ...CLI_TARGETS.map((t) => archiveName(VERSION, t)),
+        "zuke-1.14.0-x86_64-pc-windows-msvc.zip",
+        "zuke-1.14.0.sigstore.json",
+        CHECKSUMS,
+      ],
+    );
+    assertEquals(upload.includes("--clobber"), true);
+    assertEquals(upload[upload.indexOf("--repo") + 1], "zuke-build/zuke");
+    // The bundle is attached under its published name.
+    assertEquals(
+      await Deno.readTextFile(`${dir}/zuke-1.14.0.sigstore.json`),
+      "{}",
+    );
+    assertEquals(edit.slice(0, 3), ["release", "edit", "cli-v1.14.0"]);
+    for (const flag of ["--draft=false", "--latest=false"]) {
+      assertEquals(edit.includes(flag), true, flag);
     }
+    assertEquals(edit[edit.indexOf("--repo") + 1], "zuke-build/zuke");
   });
 });
 
-Deno.test("uploadCliRelease fails when the release does not exist", async () => {
+Deno.test("uploadCliRelease leaves the release a draft when the upload fails", async () => {
   await withTemp(async (dir) => {
     await Deno.writeTextFile(`${dir}/bundle.json`, "{}");
+    const argvs: string[][] = [];
     await assertRejects(
       () =>
         uploadCliRelease({
           version: VERSION,
           dir,
           attestation: `${dir}/bundle.json`,
-          token: "ghs_token",
-          fetch: fakeFetch(() => json({ message: "Not Found" }, 404)),
+          gh: recordingGh(argvs, "upload"),
         }),
       Error,
-      "404",
+      "release not found",
     );
+    // Nothing was published: the next run attaches to the draft again.
+    assertEquals(argvs.map((a) => a[1]), ["upload"]);
   });
 });
 

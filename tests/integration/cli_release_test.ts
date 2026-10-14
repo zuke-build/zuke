@@ -57,8 +57,8 @@ Deno.test("a release run plans, packages, and verifies the formula and package t
       await Deno.mkdir(`${bin}/${triple}`, { recursive: true });
       await Deno.writeTextFile(binaryPath(bin, triple), `zuke for ${triple}`);
     }
-    // GitHub, as the release looks once `package`'s output is uploaded: the
-    // release exists and serves the manifest and archives this run wrote.
+    // GitHub, as the release looks once `package`'s output is attached and
+    // the draft published: it serves the manifest and archives this run wrote.
     const published = new Set<string>();
     const github: typeof fetch = async (input) => {
       const url = input instanceof Request ? input.url : String(input);
@@ -67,19 +67,15 @@ Deno.test("a release run plans, packages, and verifies the formula and package t
           return new Response(await Deno.readFile(`${release}/${name}`));
         }
       }
-      return new Response("", {
-        status: url.endsWith("/releases/tag/cli-v1.14.0") ? 200 : 404,
-      });
+      return new Response("", { status: 404 });
     };
     const installed: string[] = [];
 
     class ReleaseRun extends Build {
       plan = target().executes(async () => {
         const plan = await planCliRelease(VERSION, {
-          releaseExists: async () =>
-            (await github(
-              "https://github.com/zuke-build/zuke/releases/tag/cli-v1.14.0",
-            )).ok,
+          // The draft is published once its assets are attached.
+          releasePublished: () => Promise.resolve(published.has(CHECKSUMS)),
           checksumsPublished: () => Promise.resolve(published.has(CHECKSUMS)),
           tapFormula: () => Promise.resolve(undefined),
           windowsArchivePublished: () =>

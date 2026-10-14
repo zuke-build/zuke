@@ -2022,11 +2022,14 @@ class ZukeBuild extends Build {
     });
 
   cliUpload = target()
-    .description("Upload the CLI's archives, attestation and SHA256SUMS")
+    .description(
+      "Attach the CLI's archives, attestation and SHA256SUMS to its draft " +
+        "release, then publish it",
+    )
     .executes(async () => {
-      const token = Deno.env.get("GITHUB_TOKEN");
       const attestation = Deno.env.get("CLI_ATTESTATION_BUNDLE");
-      if (!token || !attestation) {
+      // gh reads GITHUB_TOKEN itself; checked here to fail with a clear message.
+      if (!Deno.env.get("GITHUB_TOKEN") || !attestation) {
         throw new Error(
           "cliUpload needs GITHUB_TOKEN and CLI_ATTESTATION_BUNDLE (the " +
             "attest-build-provenance step's bundle-path) in the env.",
@@ -2036,7 +2039,6 @@ class ZukeBuild extends Build {
         version: await localVersion("cli"),
         dir: CLI_RELEASE_DIR,
         attestation,
-        token,
       });
     });
 

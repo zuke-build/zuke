@@ -5,8 +5,9 @@
  * Publishing a CLI release's binaries, verifying its formula, and updating
  * the Homebrew tap.
  *
- * The three run as separate CI jobs, in that order, and each reads what the
- * one before it published rather than anything handed over in between: the
+ * The upload attaches everything to the version's draft release and then
+ * publishes it. The three run as separate CI jobs, in that order, and each
+ * reads what the one before it published rather than anything handed over in between: the
  * verify and tap stages fetch the release's own `SHA256SUMS`, so the formula
  * they check and publish pins exactly the bytes users download.
  *
@@ -21,7 +22,11 @@ import {
 } from "@zuke/apple";
 import { ConsoleTasks } from "@zuke/console";
 import { gunzip, untar } from "@zuke/core";
-import { GhTasks } from "@zuke/gh";
+import {
+  type GhReleaseEditSettings,
+  type GhReleaseUploadSettings,
+  GhTasks,
+} from "@zuke/gh";
 import { HomebrewTasks, type HomebrewTasksApi } from "@zuke/homebrew";
 import {
   archiveName,
@@ -42,51 +47,63 @@ import {
 
 /** What {@link uploadCliRelease} needs to write to the release. */
 export interface UploadOptions {
-  /** The CLI version, whose `cli-v<version>` release receives the assets. */
+  /** The CLI version, whose `cli-v<version>` draft release receives the assets. */
   readonly version: string;
   /** The directory holding the archives and {@link CHECKSUMS}. */
   readonly dir: string;
   /** The provenance attestation bundle to publish beside them. */
   readonly attestation: string;
-  /** A token allowed to write the repository's releases. */
-  readonly token: string;
-  /** The transport for the GitHub API; the global `fetch` by default. */
-  readonly fetch?: Fetch;
+  /** The `gh release` commands to run; the real `gh` by default. */
+  readonly gh?: ReleaseTools;
 }
 
+/** The `gh release` commands {@link uploadCliRelease} runs, injectable for tests. */
+export interface ReleaseTools {
+  /** Attach assets to a release (`gh release upload`). */
+  upload(
+    configure: (s: GhReleaseUploadSettings) => GhReleaseUploadSettings,
+  ): Promise<unknown>;
+  /** Edit a release (`gh release edit`). */
+  edit(
+    configure: (s: GhReleaseEditSettings) => GhReleaseEditSettings,
+  ): Promise<unknown>;
+}
+
+/** The real {@link ReleaseTools}: `@zuke/gh`'s `GhTasks`, authenticated by `GITHUB_TOKEN`. */
+export const GH_RELEASE: ReleaseTools = {
+  upload: (configure) => GhTasks.releaseUpload(configure),
+  edit: (configure) => GhTasks.releaseEdit(configure),
+};
+
 /**
- * Upload the archives and the attestation bundle to the release, then
- * {@link CHECKSUMS} last — its presence is what marks the binaries published
- * (`planCliRelease`), so a run that fails part way leaves them owed.
+ * Attach the archives, the attestation bundle and {@link CHECKSUMS} to the
+ * version's draft release, then publish it.
  *
- * An asset already there with different bytes is replaced: a retried run
- * signs afresh, and the manifest it uploads must describe the archives
- * beside it.
- *
- * @throws {GhApiError} when the release does not exist: with an explicit
- * tag, `uploadReleaseAsset` reports a missing release as the API's 404.
+ * Publishing is what locks the release, so it comes last: a run that fails
+ * before it leaves a draft the next run attaches to again, replacing what is
+ * there (a retried run signs afresh, and the manifest must describe the
+ * archives beside it). `gh` finds a draft by its tag, which the REST lookup
+ * by tag does not. The release is published without moving the "Latest
+ * release" pointer, which stays on the Marketplace action's release.
  */
 export async function uploadCliRelease(options: UploadOptions): Promise<void> {
-  const { version, dir, attestation, token, fetch: fetcher = fetch } = options;
-  const uploads: Array<{ file: string; name: string }> = [
-    ...CLI_TARGETS.map((target) => {
-      const name = archiveName(version, target);
-      return { file: `${dir}/${name}`, name };
-    }),
-    {
-      file: `${dir}/${windowsArchiveName(version)}`,
-      name: windowsArchiveName(version),
-    },
-    { file: attestation, name: attestationName(version) },
-    { file: `${dir}/${CHECKSUMS}`, name: CHECKSUMS },
+  const { version, dir, attestation, gh = GH_RELEASE } = options;
+  const tag = cliReleaseTag(version);
+  // gh names an asset after its file, so the bundle is copied to its name.
+  const bundle = `${dir}/${attestationName(version)}`;
+  await Deno.copyFile(attestation, bundle);
+  const files = [
+    ...CLI_TARGETS.map((target) => `${dir}/${archiveName(version, target)}`),
+    `${dir}/${windowsArchiveName(version)}`,
+    bundle,
+    `${dir}/${CHECKSUMS}`,
   ];
-  for (const { file, name } of uploads) {
-    const result = await GhTasks.uploadReleaseAsset((s) =>
-      s.file(file).name(name).tag(cliReleaseTag(version)).repo(CLI_REPO)
-        .token(token).refresh().fetch(fetcher)
-    );
-    ConsoleTasks.info(`${name}: ${result.state}.`);
-  }
+  await gh.upload((s) => s.tag(tag).files(...files).clobber().repo(CLI_REPO));
+  ConsoleTasks.info(`${tag}: attached ${files.length} assets.`);
+  await gh.edit((s) =>
+    s.tag(tag).flag("draft=false").flag("latest=false").repo(CLI_REPO)
+  );
+  ConsoleTasks.info(`${tag}: published.`);
 }
 
 /** Write `version`'s formula, from its published checksums, to `path`. */

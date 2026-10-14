@@ -119,6 +119,7 @@
     "packages/cli": {
       "component": "cli",
       "changelog-path": "CHANGELOG.md",
+      "draft": true,
       "extra-files": [
         {
           "type": "json",

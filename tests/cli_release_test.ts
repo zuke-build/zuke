@@ -169,7 +169,7 @@ function probe(
   asked: string[] = [],
 ): CliReleaseProbe {
   return {
-    releaseExists: () => {
+    releasePublished: () => {
       asked.push("release");
       return Promise.resolve(facts.release);
     },
@@ -214,29 +214,32 @@ Deno.test("planCliRelease owes nothing for a version older than the first binary
   }
   const first = await planCliRelease(
     FIRST_BINARY_VERSION,
-    probe({ release: true, sums: false }),
+    probe({ release: false, sums: false }),
   );
   assertEquals(first.build, true);
 });
 
-Deno.test("planCliRelease owes nothing before release-please cuts the version", async () => {
+Deno.test("planCliRelease owes everything while the release is an unpublished draft", async () => {
   const asked: string[] = [];
   const plan = await planCliRelease(
     VERSION,
     probe({ release: false, sums: false }, asked),
   );
-  assertEquals([plan.build, plan.tap, plan.chocolatey], [false, false, false]);
-  assertStringIncludes(plan.reason, "not released yet");
+  assertEquals([plan.build, plan.tap, plan.chocolatey], [true, true, true]);
+  assertStringIncludes(plan.reason, "not published yet");
+  // The draft takes assets until it is published; nothing else is asked.
   assertEquals(asked, ["release"]);
 });
 
-Deno.test("planCliRelease owes everything while the release lacks SHA256SUMS", async () => {
+Deno.test("planCliRelease owes nothing for a release published without its binaries", async () => {
+  // Immutable once published: nothing can be added, so retrying would only
+  // fail on every push. The next CLI release ships the binaries.
   const plan = await planCliRelease(
     VERSION,
     probe({ release: true, sums: false }),
   );
-  assertEquals([plan.build, plan.tap, plan.chocolatey], [true, true, true]);
-  assertStringIncludes(plan.reason, "no SHA256SUMS");
+  assertEquals([plan.build, plan.tap, plan.chocolatey], [false, false, false]);
+  assertStringIncludes(plan.reason, "immutable");
 });
 
 Deno.test("planCliRelease owes only the tap when its formula points elsewhere", async () => {
@@ -345,7 +348,7 @@ Deno.test("httpCliReleaseProbe reads presence from status codes, without a token
       ),
     }, seen),
   );
-  assertEquals(await http.releaseExists(), true);
+  assertEquals(await http.releasePublished(), true);
   assertEquals(await http.checksumsPublished(), true);
   assertEquals(await http.tapFormula(), "class Zuke < Formula\nend\n");
   assertEquals(await http.windowsArchivePublished(), true);
@@ -354,7 +357,7 @@ Deno.test("httpCliReleaseProbe reads presence from status codes, without a token
   assertEquals(seen.slice(0, 2).every((r) => r.startsWith("HEAD ")), true);
 
   const absent = httpCliReleaseProbe(VERSION, fakeFetch({}));
-  assertEquals(await absent.releaseExists(), false);
+  assertEquals(await absent.releasePublished(), false);
   assertEquals(await absent.checksumsPublished(), false);
   assertEquals(await absent.tapFormula(), undefined);
   assertEquals(await absent.windowsArchivePublished(), false);
@@ -371,7 +374,7 @@ Deno.test("httpCliReleaseProbe fails on an answer that is neither present nor ab
         broken,
     }),
   );
-  await assertRejects(() => http.releaseExists(), Error, "answered 500");
+  await assertRejects(() => http.releasePublished(), Error, "answered 500");
   await assertRejects(() => http.tapFormula(), Error, "answered 500");
 });
 

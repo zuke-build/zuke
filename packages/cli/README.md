@@ -9,6 +9,12 @@ zuke setup
 zuke upgrade        # later: move the installed CLI to the latest release
 ```
 
+The same CLI also ships as a standalone binary that needs no Deno up front:
+`brew install zuke-build/tap/zuke` on macOS and Linux, and `choco install zuke`
+on Windows (not Authenticode-signed yet). Update those with `brew upgrade zuke`
+or `choco upgrade zuke`. See
+[installing](https://github.com/zuke-build/zuke/blob/master/docs/install.md).
+
 <!-- ZUKE:API:START -->
 
 ## API

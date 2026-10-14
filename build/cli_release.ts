@@ -12,6 +12,11 @@
  * stages, which run as separate CI jobs on separate machines, cannot disagree
  * about any of it.
  *
+ * Releases are immutable once published, so release-please cuts the CLI's
+ * release as a draft: the pipeline attaches the binaries, checksums and
+ * attestation to the draft and only then publishes it, which locks the
+ * release with everything already inside.
+ *
  * Every stage is idempotent, and {@link planCliRelease} is what makes the
  * pipeline so: it asks what is already published, so a run that failed half
  * way is completed by the next push to master rather than redone or skipped.
@@ -198,8 +203,11 @@ export function cliFormula(
 
 /** What {@link planCliRelease} asks about the published state. */
 export interface CliReleaseProbe {
-  /** Whether the GitHub release for the version exists yet. */
-  releaseExists(): Promise<boolean>;
+  /**
+   * Whether the GitHub release for the version is published. A draft is not:
+   * it is invisible without a token, and still takes assets.
+   */
+  releasePublished(): Promise<boolean>;
   /** Whether that release already carries its {@link CHECKSUMS}. */
   checksumsPublished(): Promise<boolean>;
   /** The tap's current formula source, or `undefined` when it has none. */
@@ -212,7 +220,7 @@ export interface CliReleaseProbe {
 
 /** What a release run still has to do for a version. */
 export interface CliReleasePlan {
-  /** Build, sign and upload the binaries. */
+  /** Build, sign and upload the binaries, then publish the release. */
   readonly build: boolean;
   /** Verify the formula and publish it to the tap. */
   readonly tap: boolean;
@@ -226,10 +234,15 @@ export interface CliReleasePlan {
  * What is owed for `version`, from what is already published.
  *
  * - Older than {@link FIRST_BINARY_VERSION}: nothing, ever.
- * - No GitHub release yet: nothing. Release-please has not cut this version,
- *   and the binaries go on its release.
- * - A release without {@link CHECKSUMS}: everything. The manifest is uploaded
- *   last, so its absence means the binaries are missing or incomplete.
+ * - The release is not published: everything. Release-please cut it as a
+ *   draft, and it is published only once the binaries are attached, so an
+ *   unpublished release means they are still owed. (A version release-please
+ *   has not cut at all fails at the upload, which finds no draft: the
+ *   version in the checkout only moves when a release PR merges.)
+ * - Published without {@link CHECKSUMS}: nothing, and the reason says why. A
+ *   published release is immutable, so nothing can be added to it; the next
+ *   CLI release ships the binaries. Only a release published before the
+ *   draft flow can be in this state.
  * - Binaries published but the tap's formula does not point at them: only the
  *   tap, which a failed verify or publish leaves behind.
  * - Binaries published, with the Windows zip, but Chocolatey lacks the
@@ -251,20 +264,23 @@ export async function planCliRelease(
         `(${FIRST_BINARY_VERSION}), so it ships from JSR only.`,
     };
   }
-  if (!(await probe.releaseExists())) {
-    return {
-      build: false,
-      tap: false,
-      chocolatey: false,
-      reason: `${tag} is not released yet.`,
-    };
-  }
-  if (!(await probe.checksumsPublished())) {
+  if (!(await probe.releasePublished())) {
     return {
       build: true,
       tap: true,
       chocolatey: true,
-      reason: `${tag} has no ${CHECKSUMS}, so its binaries are owed.`,
+      reason: `${tag} is not published yet, so its binaries are owed; the ` +
+        "release is published once they are attached.",
+    };
+  }
+  if (!(await probe.checksumsPublished())) {
+    return {
+      build: false,
+      tap: false,
+      chocolatey: false,
+      reason: `${tag} was published without its binaries, and a published ` +
+        "release is immutable, so they cannot be added; the next CLI " +
+        "release ships them.",
     };
   }
   const formula = await probe.tapFormula();
@@ -328,7 +344,8 @@ export function httpCliReleaseProbe(
     throw new Error(`HEAD ${url} answered ${response.status}`);
   };
   return {
-    releaseExists: () =>
+    // Anonymous, so a draft answers 404 like a missing release.
+    releasePublished: () =>
       present(`https://github.com/${CLI_REPO}/releases/tag/${tag}`),
     checksumsPublished: () => present(releaseAssetUrl(version, CHECKSUMS)),
     windowsArchivePublished: () =>
