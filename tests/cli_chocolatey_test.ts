@@ -25,6 +25,7 @@ import {
 } from "../build/cli_release.ts";
 import {
   cliChocolateyPackage,
+  ICON_URL,
   publishCliChocolatey,
   verifyCliChocolatey,
 } from "../build/cli_chocolatey.ts";
@@ -50,6 +51,7 @@ Deno.test("cliChocolateyPackage pins the release's Windows zip, and says it is u
   const nuspec = pkg.files["zuke.nuspec"];
   assertStringIncludes(nuspec, "not Authenticode-signed yet");
   assertStringIncludes(nuspec, "releases/tag/cli-v1.15.0");
+  assertStringIncludes(nuspec, `<iconUrl>${ICON_URL}</iconUrl>`);
 });
 
 Deno.test("cliChocolateyPackage refuses checksums without the Windows zip", () => {

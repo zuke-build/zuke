@@ -33,6 +33,10 @@ import {
   windowsArchiveName,
 } from "./cli_release.ts";
 
+/** The package icon: the mascot from the logo, square, as the gallery shows it. */
+export const ICON_URL =
+  `https://cdn.jsdelivr.net/gh/${CLI_REPO}@master/assets/icon.png`;
+
 /** What the package's description tells a Chocolatey user. */
 const DESCRIPTION = [
   "Zuke is code-first, strongly-typed build automation for Deno and",
@@ -69,6 +73,7 @@ export function cliChocolateyPackage(
     s.id(CHOCOLATEY_ID).version(version).title("Zuke")
       .authors("The Zuke contributors")
       .projectUrl("https://zuke.build")
+      .iconUrl(ICON_URL)
       .licenseUrl(`${repo}/blob/master/LICENSE`)
       .packageSourceUrl(repo)
       .bugTrackerUrl(`${repo}/issues`)
