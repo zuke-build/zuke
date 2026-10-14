@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.0](https://github.com/zuke-build/zuke/compare/cli-v1.14.0...cli-v1.15.0) (2026-10-14)
+
+
+### Features
+
+* **cli:** publish the Windows binary to Chocolatey, unsigned until Authenticode lands ([#819](https://github.com/zuke-build/zuke/issues/819)) ([60e24a8](https://github.com/zuke-build/zuke/commit/60e24a814f15ee9603cfc9ebf34f49e7c5e37b7e))
+
 ## [1.14.0](https://github.com/zuke-build/zuke/compare/cli-v1.13.0...cli-v1.14.0) (2026-10-12)
 
 

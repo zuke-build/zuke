@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.73.0](https://github.com/zuke-build/zuke/compare/core-v1.72.0...core-v1.73.0) (2026-10-14)
+
+
+### Features
+
+* **cli:** publish the Windows binary to Chocolatey, unsigned until Authenticode lands ([#819](https://github.com/zuke-build/zuke/issues/819)) ([60e24a8](https://github.com/zuke-build/zuke/commit/60e24a814f15ee9603cfc9ebf34f49e7c5e37b7e))
+
+
+### Bug Fixes
+
+* **core:** wait on a mutex marker Windows reports as access denied ([#822](https://github.com/zuke-build/zuke/issues/822)) ([159da36](https://github.com/zuke-build/zuke/commit/159da364ce6a918672fff8cb05461b284f11ee36)), closes [#821](https://github.com/zuke-build/zuke/issues/821)
+
 ## [1.72.0](https://github.com/zuke-build/zuke/compare/core-v1.71.0...core-v1.72.0) (2026-10-12)
 
 
