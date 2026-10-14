@@ -118,12 +118,22 @@ async function steal(host: StateHost, marker: string): Promise<boolean> {
  * Mutual exclusion is worth more than auto-recovering the marker a holder killed
  * in that window leaves behind: that one wedges, and the error
  * {@link withFileMutex} raises names the file to delete.
+ *
+ * A marker that cannot be read at all is not expired either. On Windows a file
+ * its holder is deleting or writing answers a read with "access denied" until
+ * the holder is done, so the read is retried on the next spin, not thrown.
  */
 async function markerExpired(
   host: StateHost,
   marker: string,
 ): Promise<boolean> {
-  const stamp = await host.readText(marker);
+  let stamp: string | null;
+  try {
+    stamp = await host.readText(marker);
+  } catch (error) {
+    if (error instanceof Deno.errors.PermissionDenied) return false;
+    throw error;
+  }
   if (stamp === null || !/^\d+$/.test(stamp)) return false;
   return host.now() - Number(stamp) > MUTEX_TTL_MS;
 }

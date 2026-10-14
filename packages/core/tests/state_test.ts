@@ -994,6 +994,27 @@ Deno.test("FileSystemStateStore never steals an unstamped mutex marker", async (
   }
 });
 
+Deno.test("a mutex marker that reads as access denied is waited on, not thrown", async () => {
+  // Windows answers a read of a file its holder is deleting with "access
+  // denied". The waiter must spin on, and get the mutex once the holder is gone.
+  const marker = "/runs/run-1.json.lock";
+  class DeletingHost extends FakeStateHost {
+    override readText(path: string): Promise<string | null> {
+      if (path === marker && this.locks.has(marker)) {
+        this.locks.delete(marker); // the holder finishes releasing it
+        return Promise.reject(new Deno.errors.PermissionDenied("denied"));
+      }
+      return super.readText(path);
+    }
+  }
+  const host = new DeletingHost();
+  host.locks.add(marker);
+  const store = new FileSystemStateStore("/runs", host);
+  const record = sampleRecord();
+  await store.putRun(record, null);
+  assertEquals((await store.getRun(record.id))?.record.id, record.id);
+});
+
 Deno.test("two writers never both reclaim the same stale mutex marker", async () => {
   // Reclaiming with a bare `remove` is not a compare-and-swap: two writers that
   // read the same stale stamp would both delete a marker — the second deleting
