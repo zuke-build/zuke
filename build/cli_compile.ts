@@ -22,7 +22,7 @@ import { type DenoCompileSettings, DenoTasks } from "@zuke/deno";
 import { type AbsolutePath, absolutePath } from "@zuke/core";
 import { $ } from "@zuke/core/shell";
 import { binaryPath } from "./cli_package.ts";
-import { CLI_TARGETS } from "./cli_release.ts";
+import { CLI_TARGETS, WINDOWS_TRIPLE } from "./cli_release.ts";
 
 /** The published package a release's binaries are compiled from. */
 export function cliSpecifier(version: string): string {
@@ -46,18 +46,19 @@ export async function compileCliBinaries(
 ): Promise<void> {
   const scratch = await Deno.makeTempDir({ prefix: "zuke-compile-" });
   try {
-    for (const target of CLI_TARGETS) {
-      const output = binaryPath(binDir.path, target.triple);
-      await Deno.mkdir(binDir(target.triple).path, { recursive: true });
+    const triples = [...CLI_TARGETS.map((t) => t.triple), WINDOWS_TRIPLE];
+    for (const triple of triples) {
+      const output = binaryPath(binDir.path, triple);
+      await Deno.mkdir(binDir(triple).path, { recursive: true });
       await compile((s) =>
-        s.allowAll().target(target.triple).output(output)
+        s.allowAll().target(triple).output(output)
           .script(cliSpecifier(version)).cwd(scratch)
       );
     }
-    const host = CLI_TARGETS.find((t) => t.triple === Deno.build.target);
+    const host = triples.find((triple) => triple === Deno.build.target);
     if (host !== undefined) {
       await assertReportsVersion(
-        absolutePath(binaryPath(binDir.path, host.triple)),
+        absolutePath(binaryPath(binDir.path, host)),
         version,
       );
     }

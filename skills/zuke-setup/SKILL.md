@@ -32,8 +32,11 @@ deno run -A jsr:@zuke/cli setup
 No Deno at all, on macOS or Linux? `brew install zuke-build/tap/zuke` installs
 the same CLI as a signed standalone binary; `zuke setup` then works at once, and
 the `./zuke` launcher it writes installs Deno when the build first runs. Update
-that install with `brew upgrade zuke`, not `zuke upgrade` (which refuses it).
-`zuke --version` on a terminal shows which install answered.
+that install with `brew upgrade zuke`, not `zuke upgrade` (which refuses it). On
+Windows, `choco install zuke` installs the same binary through Chocolatey (not
+Authenticode-signed yet, so SmartScreen may warn); update it with
+`choco upgrade zuke`. `zuke --version` on a terminal shows which install
+answered.
 
 `setup` flags: `--dir <path>`, `--name <ClassName>`, `--force` (overwrite
 existing files), `--yes` (non-interactive), `--bootstrap-deno` /

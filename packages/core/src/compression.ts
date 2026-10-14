@@ -2,22 +2,22 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * Compression helpers for build scripts: gzip/gunzip byte streams, read or write
- * `tar` / `.tar.gz` archives, and read `.zip` archives. Dependency-free — gzip
- * and deflate use the platform `CompressionStream`/`DecompressionStream`, and
- * the tar reader/writer and the zip reader implement the formats directly.
+ * Compression helpers for build scripts: gzip/gunzip byte streams, and read or
+ * write `tar` / `.tar.gz` and `.zip` archives. Dependency-free — gzip and
+ * deflate use the platform `CompressionStream`/`DecompressionStream`, and the
+ * tar and zip readers and writers implement the formats directly.
  *
  * ```ts
  * import { createTarGzip, extractTarGzip, extractZip } from "@zuke/core";
  *
  * await createTarGzip(["dist/app.js", "README.md"], "artifact.tar.gz");
  * await extractTarGzip("artifact.tar.gz", "out");
- * await extractZip("tool.zip", "out"); // read-only: many release assets ship zip
+ * await extractZip("tool.zip", "out");
  * ```
  *
  * `tar` entry names are limited to 100 bytes (the `ustar` name field); longer
  * names throw. Archives are written with a fixed mtime so output is
- * reproducible. Zip reading supports the two methods release assets use —
+ * reproducible, and a zip is written with deflated entries. Zip reading supports the two methods release assets use —
  * `stored` and `deflate` — and rejects encrypted or zip64 archives with a
  * friendly error; every extractor rejects an entry name that would escape the
  * destination directory (a "zip slip").
@@ -750,6 +750,121 @@ export async function unzip(archive: Uint8Array): Promise<TarEntry[]> {
     p += 46 + nameLen + extraLen + commentLen;
   }
   return entries;
+}
+
+/** The CRC-32 lookup table (reflected polynomial `0xedb88320`). */
+const CRC_TABLE = Uint32Array.from({ length: 256 }, (_, n) => {
+  let c = n;
+  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  return c >>> 0;
+});
+
+/** The CRC-32 of `data`, which every zip header carries for its entry. */
+function crc32(data: Uint8Array): number {
+  let c = 0xffffffff;
+  for (const byte of data) c = CRC_TABLE[(c ^ byte) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+/** Raw-DEFLATE `data` with the platform `CompressionStream`. */
+async function deflateRaw(data: Uint8Array): Promise<Uint8Array> {
+  const stream = new Blob([new Uint8Array(data)]).stream().pipeThrough(
+    new CompressionStream("deflate-raw"),
+  );
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+/** The fixed DOS date every entry is written with: 1980-01-01, zip's epoch. */
+const ZIP_DOS_DATE = (1 << 5) | 1;
+
+/** General-purpose flag bit 11: the entry name is UTF-8. */
+const ZIP_UTF8 = 0x0800;
+
+/**
+ * Create a `.zip` archive from the given entries (in order), each deflated —
+ * the writer {@link unzip} reads. Like {@link tar}, every entry carries a
+ * fixed timestamp, so the bytes depend only on the entries.
+ *
+ * Only regular files are written: an entry with a `linkname` throws, since
+ * zip has no portable symlink, and `mode` is ignored, since zip extractors
+ * do not agree on reading one. An archive that would need zip64 (an entry or
+ * the archive past 4 GiB, or 65535 entries or more) throws too.
+ */
+export async function zip(entries: TarEntry[]): Promise<Uint8Array> {
+  if (entries.length >= 0xffff) {
+    throw new Error(`zip: ${entries.length} entries need zip64 (unsupported).`);
+  }
+  const encoder = new TextEncoder();
+  const locals: Uint8Array[] = [];
+  const centrals: Uint8Array[] = [];
+  let offset = 0;
+  for (const entry of entries) {
+    if (entry.linkname !== undefined) {
+      throw new Error(
+        `zip: "${entry.name}" is a symlink, which zip cannot hold.`,
+      );
+    }
+    const needsZip64 = () =>
+      new Error(`zip: "${entry.name}" needs zip64 (unsupported).`);
+    if (entry.data.length >= ZIP64_SENTINEL || offset >= ZIP64_SENTINEL) {
+      throw needsZip64();
+    }
+    const name = encoder.encode(entry.name);
+    const body = await deflateRaw(entry.data);
+    // Incompressible data can deflate to slightly more than it started as.
+    if (body.length >= ZIP64_SENTINEL) throw needsZip64();
+    // The fields the local header and the central directory share, from
+    // "version needed" to the name length.
+    const shared = new Uint8Array(26);
+    const fields = new DataView(shared.buffer);
+    fields.setUint16(0, 20, true); // version needed: 2.0, for deflate
+    fields.setUint16(2, ZIP_UTF8, true);
+    fields.setUint16(4, ZIP_DEFLATE, true);
+    fields.setUint16(6, 0, true); // time: midnight
+    fields.setUint16(8, ZIP_DOS_DATE, true);
+    fields.setUint32(10, crc32(entry.data), true);
+    fields.setUint32(14, body.length, true);
+    fields.setUint32(18, entry.data.length, true);
+    fields.setUint16(22, name.length, true);
+    // Bytes 24-25 are the extra field's length, 0 in both headers.
+
+    const local = new Uint8Array(30 + name.length + body.length);
+    new DataView(local.buffer).setUint32(0, ZIP_LOCAL_SIG, true);
+    local.set(shared, 4);
+    local.set(name, 30);
+    local.set(body, 30 + name.length);
+    locals.push(local);
+
+    const central = new Uint8Array(46 + name.length);
+    const view = new DataView(central.buffer);
+    view.setUint32(0, ZIP_CD_SIG, true);
+    view.setUint16(4, 20, true); // version made by: 2.0, MS-DOS attributes
+    central.set(shared, 6);
+    // Comment length, disk number and both attribute fields stay 0.
+    view.setUint32(42, offset, true);
+    central.set(name, 46);
+    centrals.push(central);
+
+    offset += local.length;
+  }
+  const directorySize = centrals.reduce((sum, c) => sum + c.length, 0);
+  if (offset >= ZIP64_SENTINEL) {
+    throw new Error("zip: the archive needs zip64 (unsupported).");
+  }
+  const end = new Uint8Array(22);
+  const view = new DataView(end.buffer);
+  view.setUint32(0, ZIP_EOCD_SIG, true);
+  view.setUint16(8, entries.length, true);
+  view.setUint16(10, entries.length, true);
+  view.setUint32(12, directorySize, true);
+  view.setUint32(16, offset, true);
+  const archive = new Uint8Array(offset + directorySize + end.length);
+  let at = 0;
+  for (const part of [...locals, ...centrals, end]) {
+    archive.set(part, at);
+    at += part.length;
+  }
+  return archive;
 }
 
 /**

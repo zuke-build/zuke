@@ -37,6 +37,7 @@ import {
   fetchChecksums,
   MACOS_TARGETS,
   releaseAssetUrl,
+  windowsArchiveName,
 } from "./cli_release.ts";
 
 /** What {@link uploadCliRelease} needs to write to the release. */
@@ -72,6 +73,10 @@ export async function uploadCliRelease(options: UploadOptions): Promise<void> {
       const name = archiveName(version, target);
       return { file: `${dir}/${name}`, name };
     }),
+    {
+      file: `${dir}/${windowsArchiveName(version)}`,
+      name: windowsArchiveName(version),
+    },
     { file: attestation, name: attestationName(version) },
     { file: `${dir}/${CHECKSUMS}`, name: CHECKSUMS },
   ];

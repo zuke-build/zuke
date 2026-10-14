@@ -65,6 +65,8 @@ Deno.test("the CLI release stages run in order, each after the one it reads from
   assertEquals(needs("cliUpload"), ["cliBinaries", "cliSign"]);
   assertEquals(needs("cliFormulaVerify"), ["cliBinaries", "cliUpload"]);
   assertEquals(needs("cliTap"), ["cliBinaries", "cliFormulaVerify"]);
+  assertEquals(needs("cliChocolateyVerify"), ["cliBinaries", "cliUpload"]);
+  assertEquals(needs("cliChocolatey"), ["cliBinaries", "cliChocolateyVerify"]);
 });
 
 Deno.test("the Apple signing secrets reach only the macOS signing job, in its environment", () => {
@@ -89,7 +91,16 @@ Deno.test("only the upload job may write the release or sign an attestation", ()
     "id-token": "write",
     attestations: "write",
   });
-  for (const id of ["cliBinaries", "cliSign", "cliFormulaVerify", "cliTap"]) {
+  for (
+    const id of [
+      "cliBinaries",
+      "cliSign",
+      "cliFormulaVerify",
+      "cliTap",
+      "cliChocolateyVerify",
+      "cliChocolatey",
+    ]
+  ) {
     assertEquals(job(id).permissions, { contents: "read" }, id);
   }
 });
@@ -109,7 +120,11 @@ Deno.test("the upload attests the archives and the manifest before uploading the
     : "";
   assertEquals(
     String(subjects).trim().split("\n"),
-    ["dist/cli/release/*.tar.gz", "dist/cli/release/SHA256SUMS"],
+    [
+      "dist/cli/release/*.tar.gz",
+      "dist/cli/release/*.zip",
+      "dist/cli/release/SHA256SUMS",
+    ],
   );
   // The bundle the attestation step wrote is what the upload publishes.
   const upload = steps[at("./zuke cliUpload")];
@@ -145,6 +160,34 @@ Deno.test("nothing is verified or tapped unless the upload it depends on succeed
   for (const id of ["cliSign", "cliUpload"]) {
     assertEquals(job(id).if, "needs.cliBinaries.outputs.build == 'true'", id);
   }
+});
+
+Deno.test("the Chocolatey API key reaches only the push job, in its environment", () => {
+  for (const [id, subject] of jobs()) {
+    const held = envKeys(id).includes("CHOCOLATEY_API_KEY");
+    assertEquals(held, id === "cliChocolatey", id);
+    if (id === "cliChocolatey") {
+      assertEquals(subject.environment, "chocolatey");
+      assertEquals(subject["runs-on"], "windows-latest");
+    }
+  }
+});
+
+Deno.test("the Chocolatey package is verified only after a settled upload, and pushed only once verified", () => {
+  const verify = String(job("cliChocolateyVerify").if);
+  for (
+    const part of [
+      "!cancelled()",
+      "needs.cliBinaries.outputs.chocolatey == 'true'",
+      "needs.cliBinaries.outputs.build != 'true' || needs.cliUpload.result == 'success'",
+    ]
+  ) {
+    assertEquals(verify.includes(part), true, verify);
+  }
+  assertEquals(
+    job("cliChocolatey").if,
+    "${{ !cancelled() && needs.cliChocolateyVerify.result == 'success' }}",
+  );
 });
 
 Deno.test("the tap job holds the app key with egress blocked, and no GITHUB_TOKEN", () => {

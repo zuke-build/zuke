@@ -82,6 +82,10 @@ import {
 } from "./build/cli_compile.ts";
 import { signingCredentials, signMacBinaries } from "./build/cli_sign.ts";
 import {
+  publishCliChocolatey,
+  verifyCliChocolatey,
+} from "./build/cli_chocolatey.ts";
+import {
   publishCliFormula,
   uploadCliRelease,
   verifyCliFormula,
@@ -1962,7 +1966,8 @@ class ZukeBuild extends Build {
   // The CLI's standalone binaries (#782). Five stages, one CI job each, in
   // the order release.yml runs them: compile on Linux, sign and notarize on
   // macOS, package and upload with an attestation, verify the formula with
-  // the real brew, then update the tap. `cliBinaries` decides whether any of
+  // the real brew, then update the tap. Beside the last two, the Windows
+  // binary's Chocolatey package is verified and pushed the same way (#818). `cliBinaries` decides whether any of
   // it is owed for the current version; the rest run only when it says so.
   cliBinaries = target()
     .description(
@@ -1976,6 +1981,7 @@ class ZukeBuild extends Build {
         version,
         build: String(plan.build),
         tap: String(plan.tap),
+        chocolatey: String(plan.chocolatey),
       });
       if (plan.build) {
         await compileCliBinaries(
@@ -2058,6 +2064,27 @@ class ZukeBuild extends Build {
         contents: "write",
       });
       await publishCliFormula(await localVersion("cli"), token);
+    });
+
+  cliChocolateyVerify = target()
+    .description("Install the CLI's Chocolatey package with choco and run it")
+    .executes(async () => {
+      await verifyCliChocolatey(await localVersion("cli"));
+    });
+
+  cliChocolatey = target()
+    .description(
+      "Push the CLI's Chocolatey package to the community repository",
+    )
+    .executes(async () => {
+      const apiKey = Deno.env.get("CHOCOLATEY_API_KEY");
+      if (!apiKey) {
+        throw new Error(
+          "cliChocolatey needs CHOCOLATEY_API_KEY: the community " +
+            "repository's API key for the account that owns the package.",
+        );
+      }
+      await publishCliChocolatey(await localVersion("cli"), apiKey);
     });
 
   // `release` (release-please) needs a GITHUB_TOKEN; `publishJsr` needs JSR

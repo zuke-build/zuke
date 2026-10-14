@@ -28,8 +28,8 @@ whole thing to **AI agents** as typed tools. Inspired by
 
 ## Five minutes to a typed build
 
-**1. Install the CLI** — pick one. Both are the same CLI and fully supported;
-the Homebrew binary needs no Deno up front. See [Install](#install).
+**1. Install the CLI** — pick one. Every route is the same CLI and fully
+supported; the binaries need no Deno up front. See [Install](#install).
 
 From JSR (any OS, with Deno):
 
@@ -41,6 +41,12 @@ With Homebrew (macOS, Linux):
 
 ```sh
 brew install zuke-build/tap/zuke
+```
+
+With Chocolatey (Windows):
+
+```powershell
+choco install zuke
 ```
 
 **2. Set up a project and run it**, whichever way you installed:
@@ -150,7 +156,7 @@ Teams running Zuke in production:
 ## Install
 
 The `zuke` CLI scaffolds a project, migrates an existing one, and runs its
-build. It ships two ways, built from the same release: pick the one that suits
+build. It ships three ways, built from the same release: pick the one that suits
 the machine. `zuke --version` tells you which one you are running.
 
 ### From JSR (any OS, with Deno)
@@ -173,6 +179,19 @@ Developer ID and notarized by Apple, and every archive carries a
 build-provenance attestation you can verify. Upgrade with `brew upgrade zuke`.
 See [installing](./docs/install.md) for how to check a download, and for the
 [code signing policy](./docs/install.md#code-signing-policy).
+
+### With Chocolatey (Windows)
+
+```powershell
+choco install zuke
+```
+
+A standalone binary: no Deno needed. The executable is **not Authenticode-signed
+yet**, so SmartScreen may warn on first run; until it is, the archive it is
+installed from carries the same SHA-256 pin and build-provenance attestation as
+the others. Upgrade with `choco upgrade zuke`. See
+[installing](./docs/install.md#with-chocolatey-windows) for how to check a
+download.
 
 ### Set up a project
 

@@ -25,9 +25,11 @@ zuke setup                                  # in your project
 ```
 
 On macOS or Linux without Deno, `brew install zuke-build/tap/zuke` installs the
-same CLI as a signed standalone binary instead; the `./zuke` launcher that
-`zuke setup` writes then installs Deno when the build first runs. Both routes
-are covered, with how to verify a download, in [installing](./install.md).
+same CLI as a signed standalone binary instead, and on Windows
+`choco install zuke` installs it through Chocolatey (not Authenticode-signed
+yet); the `./zuke` launcher that `zuke setup` writes then installs Deno when the
+build first runs. Every route is covered, with how to verify a download, in
+[installing](./install.md).
 
 Without installing, the same wizard runs via `deno run -A jsr:@zuke/cli setup`
 (flags: `--dir <path>`, `--name <Class>`, `--force`, `--yes`, `--mcp`,

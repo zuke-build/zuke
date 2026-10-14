@@ -3,9 +3,10 @@
 
 /**
  * The CLI's standalone release, end to end through a real build: a run that
- * plans, packages, and verifies the formula the way release.yml's jobs do,
- * driven through the CLI `main()` — with GitHub and `brew` replaced by fakes
- * that serve and check what the earlier targets wrote.
+ * plans, packages, and verifies the formula and the Chocolatey package the
+ * way release.yml's jobs do, driven through the CLI `main()` — with GitHub,
+ * `brew` and `choco` replaced by fakes that serve and check what the earlier
+ * targets wrote.
  *
  * @module
  */
@@ -22,7 +23,9 @@ import {
   sha256Hex,
   target,
   untar,
+  unzip,
 } from "@zuke/core";
+import { ChocolateyVerifySettings } from "@zuke/chocolatey";
 import { HomebrewVerifySettings } from "@zuke/homebrew";
 import { runCli } from "./_harness.ts";
 import {
@@ -32,7 +35,10 @@ import {
   parseChecksums,
   planCliRelease,
   releaseAssetUrl,
+  WINDOWS_TRIPLE,
+  windowsArchiveName,
 } from "../../build/cli_release.ts";
+import { verifyCliChocolatey } from "../../build/cli_chocolatey.ts";
 import { binaryPath, packageCliArchives } from "../../build/cli_package.ts";
 import { verifyCliFormula } from "../../build/cli_publish.ts";
 import { assertReportsVersion } from "../../build/cli_compile.ts";
@@ -40,17 +46,16 @@ import { writeStepOutputs } from "../../build/step_outputs.ts";
 
 const VERSION = "1.14.0";
 
-Deno.test("a release run plans, packages, and verifies the formula that pins what it packed", async () => {
+Deno.test("a release run plans, packages, and verifies the formula and package that pin what it packed", async () => {
   await withTemp(async (dir) => {
     const bin = `${dir}/bin`;
     const release = `${dir}/release`;
     const outputs = `${dir}/github_output`;
-    for (const t of CLI_TARGETS) {
-      await Deno.mkdir(`${bin}/${t.triple}`, { recursive: true });
-      await Deno.writeTextFile(
-        binaryPath(bin, t.triple),
-        `zuke for ${t.triple}`,
-      );
+    for (
+      const triple of [...CLI_TARGETS.map((t) => t.triple), WINDOWS_TRIPLE]
+    ) {
+      await Deno.mkdir(`${bin}/${triple}`, { recursive: true });
+      await Deno.writeTextFile(binaryPath(bin, triple), `zuke for ${triple}`);
     }
     // GitHub, as the release looks once `package`'s output is uploaded: the
     // release exists and serves the manifest and archives this run wrote.
@@ -77,16 +82,43 @@ Deno.test("a release run plans, packages, and verifies the formula that pins wha
             )).ok,
           checksumsPublished: () => Promise.resolve(published.has(CHECKSUMS)),
           tapFormula: () => Promise.resolve(undefined),
+          windowsArchivePublished: () =>
+            Promise.resolve(published.has(windowsArchiveName(VERSION))),
+          chocolateyPublished: () => Promise.resolve(false),
         });
-        await writeStepOutputs(
-          { build: String(plan.build), tap: String(plan.tap) },
-          outputs,
-        );
+        await writeStepOutputs({
+          build: String(plan.build),
+          tap: String(plan.tap),
+          chocolatey: String(plan.chocolatey),
+        }, outputs);
       });
       package = target().dependsOn(this.plan).executes(async () => {
         await packageCliArchives(VERSION, bin, release);
         for (const t of CLI_TARGETS) published.add(archiveName(VERSION, t));
+        published.add(windowsArchiveName(VERSION));
         published.add(CHECKSUMS);
+      });
+      chocolatey = target().dependsOn(this.package).executes(async () => {
+        await verifyCliChocolatey(VERSION, github, {
+          verify: async (configure) => {
+            // Stand in for `choco install`: fetch the zip the install script
+            // names and check it against the checksum it pins.
+            const settings = configure(new ChocolateyVerifySettings());
+            const script =
+              settings.package_?.files["tools/chocolateyinstall.ps1"] ?? "";
+            const url = /url64bit\s+= '([^']+)'/.exec(script)?.[1] ?? "";
+            const sha256 = /checksum64\s+= '([0-9a-f]{64})'/.exec(script)
+              ?.[1];
+            const bytes = new Uint8Array(
+              await (await github(url)).arrayBuffer(),
+            );
+            assertEquals(await sha256Hex(bytes), sha256, url);
+            const [exe] = await unzip(bytes);
+            assertEquals(exe.name, "zuke.exe");
+            assertEquals(settings.binary_, "zuke");
+            installed.push(new TextDecoder().decode(exe.data));
+          },
+        });
       });
       verify = target().dependsOn(this.package).executes(async () => {
         await verifyCliFormula(VERSION, `${dir}/zuke.rb`, {
@@ -117,32 +149,42 @@ Deno.test("a release run plans, packages, and verifies the formula that pins wha
           os: "linux",
         });
       });
+      // The two jobs that read the upload, as release.yml runs them.
+      release = target().dependsOn(this.verify, this.chocolatey).executes(
+        () => {},
+      );
     }
 
-    const result = await runCli(ReleaseRun, ["verify"]);
+    const result = await runCli(ReleaseRun, ["release"]);
     assertEquals(result.code, 0, result.err);
     // The plan ran before anything was published, so everything was owed.
-    assertEquals(await Deno.readTextFile(outputs), "build=true\ntap=true\n");
     assertEquals(
-      installed,
-      CLI_TARGETS.map((t) => `zuke for ${t.triple}`),
+      await Deno.readTextFile(outputs),
+      "build=true\ntap=true\nchocolatey=true\n",
+    );
+    assertEquals(
+      installed.sort(),
+      [
+        ...CLI_TARGETS.map((t) => `zuke for ${t.triple}`),
+        `zuke for ${WINDOWS_TRIPLE}`,
+      ].sort(),
     );
     const manifest = parseChecksums(
       await Deno.readTextFile(`${release}/${CHECKSUMS}`),
     );
-    assertEquals(manifest.size, CLI_TARGETS.length);
+    assertEquals(manifest.size, CLI_TARGETS.length + 1);
     assertStringIncludes(
       await Deno.readTextFile(`${dir}/zuke.rb`),
       "class Zuke < Formula",
     );
 
-    // Once published, a second run's plan owes no build — only the tap,
-    // whose formula this fake never received.
+    // Once published, a second run's plan owes no build — only the tap and
+    // the Chocolatey package, which these fakes never received.
     const again = await runCli(ReleaseRun, ["plan"]);
     assertEquals(again.code, 0, again.err);
     assertStringIncludes(
       await Deno.readTextFile(outputs),
-      "build=false\ntap=true\n",
+      "build=false\ntap=true\nchocolatey=true\n",
     );
   });
 });

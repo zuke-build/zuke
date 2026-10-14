@@ -367,6 +367,7 @@ export {
   type TarEntry,
   untar,
   unzip,
+  zip,
 } from "./src/compression.ts";
 export {
   type ArchiveFormat,

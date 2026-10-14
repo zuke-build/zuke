@@ -401,6 +401,19 @@ Deno.test("zuke upgrade sends a Homebrew install to brew, even one compiled from
   assertEquals(fake.probed, []);
 });
 
+Deno.test("zuke upgrade sends a Chocolatey install to choco", async () => {
+  const fake = new FakeUpgradeHost(undefined, FROM_JSR);
+  fake.compiled = true;
+  fake.exe = "C:\\ProgramData\\chocolatey\\lib\\zuke\\tools\\zuke.exe";
+  const { code, logs } = await upgrade([], fake);
+  assertEquals(code, 1);
+  const text = logs.join("\n");
+  assertStringIncludes(text, "installed with Chocolatey");
+  assertStringIncludes(text, "choco upgrade zuke");
+  assertEquals(fake.installs, []);
+  assertEquals(fake.probed, []);
+});
+
 Deno.test("zuke upgrade refuses any other standalone binary, naming where to get one", async () => {
   const fake = new FakeUpgradeHost(undefined, FROM_JSR);
   fake.compiled = true;
@@ -411,6 +424,7 @@ Deno.test("zuke upgrade refuses any other standalone binary, naming where to get
   assertStringIncludes(text, "standalone binary (/home/me/bin/zuke)");
   assertStringIncludes(text, "github.com/zuke-build/zuke/releases");
   assertStringIncludes(text, "brew install zuke-build/tap/zuke");
+  assertStringIncludes(text, "choco install zuke");
   assertEquals(fake.installs, []);
 });
 

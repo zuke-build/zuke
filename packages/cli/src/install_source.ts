@@ -5,7 +5,8 @@
  * How the running `zuke` was installed.
  *
  * The CLI ships two ways: from JSR with `deno install -g`, and as a
- * `deno compile` binary, which Homebrew installs from the release archives.
+ * `deno compile` binary, which Homebrew and Chocolatey install from the
+ * release archives.
  * One machine can hold both, so `zuke --version` says which one answered and
  * `zuke upgrade` refuses to reinstall from JSR when that is not where the
  * running executable came from.
@@ -19,7 +20,9 @@
  * A Homebrew binary and one downloaded from the release page are the same
  * bytes, so only where the executable lives separates them: Homebrew keeps
  * every formula under `<prefix>/Cellar/<formula>/<version>/`, and links it
- * onto `PATH` from there. The link is resolved before the path is read, which
+ * onto `PATH` from there. Chocolatey unpacks the package into
+ * `<ChocolateyInstall>\lib\<id>\tools\`, and its shim on `PATH` runs the
+ * executable from there, so that is the path the binary reports. The link is resolved before the path is read, which
  * in a compiled binary needs read permission: the release binaries are
  * compiled with `-A`, as the JSR install runs with it. Without it the path is
  * the one the OS reported — already resolved on Linux, possibly the link on
@@ -44,13 +47,29 @@ const FORMULA = "zuke";
 const CELLAR_BINARY = new RegExp(`/Cellar/${FORMULA}/[^/]+/bin/${FORMULA}$`);
 
 /**
+ * A Chocolatey-installed executable: `<ChocolateyInstall>\lib\zuke\tools\zuke.exe`.
+ * Only the tail is matched, since `ChocolateyInstall` can be moved, and
+ * without regard to case, since Windows paths have none.
+ */
+const CHOCOLATEY_BINARY = new RegExp(
+  `[\\\\/]lib[\\\\/]${FORMULA}[\\\\/]tools[\\\\/]${FORMULA}\\.exe$`,
+  "i",
+);
+
+/**
  * Where the running CLI came from:
  * - `jsr`: `deno install -g` of {@link JSR_PACKAGE};
  * - `homebrew`: the compiled binary, installed by Homebrew;
+ * - `chocolatey`: the compiled binary, installed by Chocolatey;
  * - `binary`: the compiled binary, installed any other way;
  * - `source`: run under Deno from anything but JSR, e.g. a checkout.
  */
-export type InstallKind = "jsr" | "homebrew" | "binary" | "source";
+export type InstallKind =
+  | "jsr"
+  | "homebrew"
+  | "chocolatey"
+  | "binary"
+  | "source";
 
 /** The install the running CLI came from, and where it lives. */
 export interface InstallSource {
@@ -58,7 +77,7 @@ export interface InstallSource {
   readonly kind: InstallKind;
   /**
    * The module specifier for `jsr` and `source`, the resolved executable
-   * path for `homebrew` and `binary`.
+   * path for the compiled binary's kinds.
    */
   readonly location: string;
 }
@@ -95,10 +114,12 @@ export async function installSource(host: InstallHost): Promise<InstallSource> {
     } catch {
       // Unresolvable: the path as the OS reported it is still the best answer.
     }
-    return {
-      kind: CELLAR_BINARY.test(path) ? "homebrew" : "binary",
-      location: path,
-    };
+    const kind = CELLAR_BINARY.test(path)
+      ? "homebrew"
+      : CHOCOLATEY_BINARY.test(path)
+      ? "chocolatey"
+      : "binary";
+    return { kind, location: path };
   }
   const main = host.mainModule();
   return { kind: isJsrModule(main) ? "jsr" : "source", location: main };
@@ -108,6 +129,7 @@ export async function installSource(host: InstallHost): Promise<InstallSource> {
 const KIND_LABELS: Readonly<Record<InstallKind, string>> = {
   jsr: "JSR",
   homebrew: "Homebrew",
+  chocolatey: "Chocolatey",
   binary: "standalone binary",
   source: "source",
 };
@@ -122,8 +144,8 @@ export function installLabel(
   source: InstallSource,
   display: (path: string) => string,
 ): string {
-  const where = source.kind === "homebrew" || source.kind === "binary"
-    ? display(source.location)
-    : source.location;
+  const where = source.kind === "jsr" || source.kind === "source"
+    ? source.location
+    : display(source.location);
   return `${KIND_LABELS[source.kind]} (${where})`;
 }

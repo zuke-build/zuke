@@ -15,6 +15,7 @@ import {
   type TarEntry,
   untar,
   unzip,
+  zip,
 } from "../src/compression.ts";
 import { DEFLATE, makeZip, STORED } from "./_zip.ts";
 import { GNU, longLink, ustarArchive } from "./_tar.ts";
@@ -928,4 +929,39 @@ Deno.test("gunzipBounded counts decompressed bytes, not compressed ones", async 
   const archive = await gzip(payload);
   assertEquals((await gunzipBounded(archive, 4096))?.byteLength, 4096);
   assertEquals(await gunzipBounded(archive, 4095), null);
+});
+
+Deno.test("zip writes entries unzip reads back, in order", async () => {
+  const entries = [
+    { name: "zuke.exe", data: enc("MZ".repeat(5000)) },
+    { name: "docs/naïve.txt", data: enc("hello") },
+    { name: "empty", data: new Uint8Array(0) },
+  ];
+  const back = await unzip(await zip(entries));
+  assertEquals(
+    back.map((e) => [e.name, dec(e.data)]),
+    entries.map((e) => [
+      e.name,
+      dec(e.data),
+    ]),
+  );
+});
+
+Deno.test("zip is deterministic and records each entry's CRC-32", async () => {
+  const entries = [{ name: "check", data: enc("123456789") }];
+  const archive = await zip(entries);
+  assertEquals(archive, await zip(entries));
+  const view = new DataView(archive.buffer);
+  // The CRC-32 check value of "123456789", at the local header's CRC field.
+  assertEquals(view.getUint32(14, true), 0xcbf43926);
+  // The fixed timestamp: midnight, 1980-01-01.
+  assertEquals([view.getUint16(10, true), view.getUint16(12, true)], [0, 0x21]);
+});
+
+Deno.test("zip refuses a symlink entry", async () => {
+  await assertRejects(
+    () => zip([{ name: "link", data: new Uint8Array(0), linkname: "target" }]),
+    Error,
+    "symlink",
+  );
 });

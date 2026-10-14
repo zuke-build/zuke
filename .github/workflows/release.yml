@@ -99,6 +99,7 @@ jobs:
       version: "${{ steps.plan.outputs.version }}"
       build: "${{ steps.plan.outputs.build }}"
       tap: "${{ steps.plan.outputs.tap }}"
+      chocolatey: "${{ steps.plan.outputs.chocolatey }}"
     steps:
       - name: Harden and check out with Zuke
         uses: zuke-build/zuke@2478fa5a69fb4f16540e54959c98cd976ec3f075 # v1.0.5
@@ -188,6 +189,7 @@ jobs:
         with:
           subject-path: |
             dist/cli/release/*.tar.gz
+            dist/cli/release/*.zip
             dist/cli/release/SHA256SUMS
       - name: Upload to the release
         run: ./zuke cliUpload
@@ -243,3 +245,47 @@ jobs:
         env:
           ZUKE_BUILD_APP_ID: "${{ secrets.ZUKE_BUILD_APP_ID }}"
           ZUKE_BUILD_APP_KEY: "${{ secrets.ZUKE_BUILD_APP_KEY }}"
+  cliChocolateyVerify:
+    name: "Verify Chocolatey package (${{ matrix.os }})"
+    runs-on: "${{ matrix.os }}"
+    permissions:
+      contents: read
+    needs:
+      - cliBinaries
+      - cliUpload
+    if: "${{ !cancelled() && needs.cliBinaries.outputs.chocolatey == 'true' && (needs.cliBinaries.outputs.build != 'true' || needs.cliUpload.result == 'success') }}"
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-latest
+    steps:
+      - name: Harden and check out with Zuke
+        uses: zuke-build/zuke@2478fa5a69fb4f16540e54959c98cd976ec3f075 # v1.0.5
+        with:
+          egress-policy: audit
+          persist-credentials: "false"
+      - name: Run cliChocolateyVerify with Zuke
+        run: ./zuke cliChocolateyVerify
+  cliChocolatey:
+    name: "CLI binaries: push the Chocolatey package"
+    runs-on: windows-latest
+    environment: chocolatey
+    permissions:
+      contents: read
+    needs:
+      - cliBinaries
+      - cliChocolateyVerify
+    if: "${{ !cancelled() && needs.cliChocolateyVerify.result == 'success' }}"
+    timeout-minutes: 15
+    steps:
+      - name: Harden and check out with Zuke
+        uses: zuke-build/zuke@2478fa5a69fb4f16540e54959c98cd976ec3f075 # v1.0.5
+        with:
+          egress-policy: audit
+          persist-credentials: "false"
+      - name: Run cliChocolatey with Zuke
+        run: ./zuke cliChocolatey
+        env:
+          CHOCOLATEY_API_KEY: "${{ secrets.CHOCOLATEY_API_KEY }}"

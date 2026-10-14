@@ -21,6 +21,7 @@
  */
 
 import { cicd, type CiFile, type TargetBuilder } from "@zuke/core";
+import { ChocolateyTasks } from "@zuke/chocolatey";
 import { HomebrewTasks } from "@zuke/homebrew";
 import { actionPin } from "./action_pins.ts";
 
@@ -58,6 +59,10 @@ export interface WorkflowTargets {
   cliFormulaVerify: TargetBuilder;
   /** Publishes the CLI's formula to the Homebrew tap. */
   cliTap: TargetBuilder;
+  /** Verifies the CLI's Chocolatey package with the real choco. */
+  cliChocolateyVerify: TargetBuilder;
+  /** Pushes the CLI's Chocolatey package to the community repository. */
+  cliChocolatey: TargetBuilder;
   /** The supply-chain scanners. */
   security: TargetBuilder;
   /** CodeQL static analysis, run entirely by the marketplace actions. */
@@ -428,6 +433,7 @@ export function githubWorkflows(
             version: "${{ steps.plan.outputs.version }}",
             build: "${{ steps.plan.outputs.build }}",
             tap: "${{ steps.plan.outputs.tap }}",
+            chocolatey: "${{ steps.plan.outputs.chocolatey }}",
           },
           steps: [
             {
@@ -517,7 +523,8 @@ export function githubWorkflows(
               uses: actionPin("actions/attest-build-provenance"),
               with: {
                 "subject-path":
-                  "dist/cli/release/*.tar.gz\ndist/cli/release/SHA256SUMS",
+                  "dist/cli/release/*.tar.gz\ndist/cli/release/*.zip\n" +
+                  "dist/cli/release/SHA256SUMS",
               },
             },
             {
@@ -555,6 +562,33 @@ export function githubWorkflows(
             ZUKE_BUILD_APP_ID: "${{ secrets.ZUKE_BUILD_APP_ID }}",
             ZUKE_BUILD_APP_KEY: "${{ secrets.ZUKE_BUILD_APP_KEY }}",
           },
+        },
+        // The Windows binary's Chocolatey package, beside the tap: verified
+        // with the real choco, then pushed. Not Authenticode-signed yet (#793).
+        {
+          ...ChocolateyTasks.verifyJob((s) =>
+            s.target(targets.cliChocolateyVerify)
+          ),
+          after: [targets.cliBinaries, targets.cliUpload],
+          if: `\${{ !cancelled() && ${CLI_PLAN}.chocolatey == 'true' && ` +
+            `${CLI_UPLOAD_SETTLED} }}`,
+          permissions: { contents: "read" },
+          timeoutMinutes: 30,
+        },
+        {
+          target: targets.cliChocolatey,
+          name: "CLI binaries: push the Chocolatey package",
+          after: [targets.cliBinaries, targets.cliChocolateyVerify],
+          if: "${{ !cancelled() && " +
+            "needs.cliChocolateyVerify.result == 'success' }}",
+          // choco is what pushes, and GitHub's Windows runners ship it.
+          runsOn: "windows-latest",
+          // The community repository's API key lives in this environment, so
+          // a deployment rule can require approval before a push.
+          environment: "chocolatey",
+          permissions: { contents: "read" },
+          timeoutMinutes: 15,
+          env: { CHOCOLATEY_API_KEY: "${{ secrets.CHOCOLATEY_API_KEY }}" },
         },
       ],
     }),

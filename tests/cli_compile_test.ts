@@ -25,7 +25,7 @@ import {
   compileCliBinaries,
 } from "../build/cli_compile.ts";
 import { binaryPath } from "../build/cli_package.ts";
-import { CLI_TARGETS } from "../build/cli_release.ts";
+import { CLI_TARGETS, WINDOWS_TRIPLE } from "../build/cli_release.ts";
 
 /** The running deno, as the absolute path the smoke check takes. */
 const deno = absolutePath(Deno.execPath());
@@ -63,9 +63,10 @@ Deno.test("compileCliBinaries compiles every target with -A into its own directo
         }
       },
     );
-    assertEquals(compiles.length, CLI_TARGETS.length);
+    const triples = [...CLI_TARGETS.map((t) => t.triple), WINDOWS_TRIPLE];
+    assertEquals(compiles.length, triples.length);
     for (const [i, argv] of compiles.entries()) {
-      const target = CLI_TARGETS[i].triple;
+      const target = triples[i];
       assertEquals(argv.includes("--allow-all"), true, argv.join(" "));
       assertEquals(argv[argv.indexOf("--target") + 1], target);
       assertEquals(

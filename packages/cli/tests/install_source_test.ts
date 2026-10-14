@@ -96,6 +96,33 @@ Deno.test("installSource does not take another formula's or directory's Cellar f
   }
 });
 
+Deno.test("installSource finds Chocolatey's package directory, wherever choco lives", async () => {
+  for (
+    const path of [
+      "C:\\ProgramData\\chocolatey\\lib\\zuke\\tools\\zuke.exe",
+      "D:\\Tools\\Choco\\LIB\\Zuke\\Tools\\ZUKE.EXE",
+      "C:/ProgramData/chocolatey/lib/zuke/tools/zuke.exe",
+    ]
+  ) {
+    const source = await installSource(host({ standalone: true, exe: path }));
+    assertEquals(source, { kind: "chocolatey", location: path }, path);
+  }
+});
+
+Deno.test("installSource does not take another package's or directory's lib for zuke's", async () => {
+  for (
+    const path of [
+      "C:\\ProgramData\\chocolatey\\lib\\zuke-evil\\tools\\zuke.exe",
+      "C:\\ProgramData\\chocolatey\\lib\\zuke\\tools\\old\\zuke.exe",
+      "C:\\ProgramData\\chocolatey\\lib\\zuke\\zuke.exe",
+      "C:\\ProgramData\\chocolatey\\bin\\zuke.exe",
+    ]
+  ) {
+    const source = await installSource(host({ standalone: true, exe: path }));
+    assertEquals(source.kind, "binary", path);
+  }
+});
+
 Deno.test("installSource keeps the reported path when the link cannot be resolved", async () => {
   const source = await installSource(host({
     standalone: true,
@@ -120,6 +147,13 @@ Deno.test("installLabel names the kind, shortening a path but never a specifier"
       location: "/home/me/.linuxbrew/Cellar/zuke/1.14.0/bin/zuke",
     }, tilde),
     "Homebrew (~/.linuxbrew/Cellar/zuke/1.14.0/bin/zuke)",
+  );
+  assertEquals(
+    installLabel({
+      kind: "chocolatey",
+      location: "C:/ProgramData/chocolatey/lib/zuke/tools/zuke.exe",
+    }, tilde),
+    "Chocolatey (C:/ProgramData/chocolatey/lib/zuke/tools/zuke.exe)",
   );
   assertEquals(
     installLabel({ kind: "binary", location: "/home/me/bin/zuke" }, tilde),

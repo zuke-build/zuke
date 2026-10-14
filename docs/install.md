@@ -4,10 +4,10 @@
 
 The global `zuke` command (`@zuke/cli`) scaffolds projects (`zuke setup`,
 `zuke import`), shows package docs (`zuke doc`), and forwards everything else to
-the build of the project you are in. There are two supported ways to install it.
-Both install the same program, from the same release.
+the build of the project you are in. There are three supported ways to install
+it. All of them install the same program, from the same release.
 
-You do not need either one to _run_ a project's build: `./zuke` (or
+You do not need any of them to _run_ a project's build: `./zuke` (or
 `.\zuke.ps1`) in a scaffolded project bootstraps a pinned, checksum-verified
 Deno on its own.
 
@@ -36,9 +36,29 @@ Homebrew install, because reinstalling from JSR would leave this one as it was.
 The binaries are built for Apple silicon and Intel Macs, and for arm64 and
 x86_64 Linux.
 
+## With Chocolatey (Windows)
+
+```powershell
+choco install zuke
+```
+
+The same standalone binary for x86_64 Windows, installed from the release's
+`.zip` with its SHA-256 checked against the one the package pins. It needs **no
+Deno up front**, exactly as the Homebrew binary does. Upgrade with
+`choco upgrade zuke`; `zuke upgrade` refuses to run from a Chocolatey install,
+for the same reason as from Homebrew.
+
+> [!IMPORTANT]
+> `zuke.exe` is **not Authenticode-signed yet**, so Windows SmartScreen may warn
+> the first time it runs. Signing is on its way (see the
+> [code signing policy](#code-signing-policy)). Until then, the checksum and the
+> build-provenance attestation in [Verifying a download](#verifying-a-download)
+> are what prove the binary is the one Zuke's release built. If you would rather
+> not run an unsigned executable, install from JSR instead.
+
 ## Which one am I running?
 
-Both can be installed side by side. On a terminal, `zuke --version` names the
+They can be installed side by side. On a terminal, `zuke --version` names the
 install that answered:
 
 ```text
@@ -50,23 +70,25 @@ install that answered:
 └────────────────────────────────────────────────────────────────────┘
 ```
 
-The row reads `JSR (jsr:@zuke/cli@…)`, `Homebrew (…)`, `standalone binary (…)`
-(a binary installed some other way), or `source (…)` (a local checkout). Piped
-or under `--plain`, `zuke --version` prints only the bare version, for scripts.
+The row reads `JSR (jsr:@zuke/cli@…)`, `Homebrew (…)`, `Chocolatey (…)`,
+`standalone binary (…)` (a binary installed some other way), or `source (…)` (a
+local checkout). Piped or under `--plain`, `zuke --version` prints only the bare
+version, for scripts.
 
 ## Verifying a download
 
 Every binary release, `cli-v<version>` on the
 [releases page](https://github.com/zuke-build/zuke/releases), carries:
 
-| Asset                            | What it is                                                      |
-| -------------------------------- | --------------------------------------------------------------- |
-| `zuke-<version>-<target>.tar.gz` | The binary, alone, as `zuke` (mode `0755`)                      |
-| `SHA256SUMS`                     | The SHA-256 of every archive, in `sha256sum --check` format     |
-| `zuke-<version>.sigstore.json`   | The build-provenance attestation covering the archives and sums |
+| Asset                                       | What it is                                                      |
+| ------------------------------------------- | --------------------------------------------------------------- |
+| `zuke-<version>-<target>.tar.gz`            | The macOS or Linux binary, alone, as `zuke` (mode `0755`)       |
+| `zuke-<version>-x86_64-pc-windows-msvc.zip` | The Windows binary, alone, as `zuke.exe`                        |
+| `SHA256SUMS`                                | The SHA-256 of every archive, in `sha256sum --check` format     |
+| `zuke-<version>.sigstore.json`              | The build-provenance attestation covering the archives and sums |
 
-Homebrew checks the SHA-256 it pins for each archive on every install. To verify
-a download yourself:
+Homebrew and Chocolatey check the SHA-256 they pin for each archive on every
+install. To verify a download yourself:
 
 ```sh
 # The archive is one the release lists, byte for byte:
@@ -102,21 +124,35 @@ codesign --display --verbose=4 zuke 2>&1 | grep Authority   # Developer ID Appli
 spctl --assess --type execute --verbose zuke                # source=Notarized Developer ID
 ```
 
+On Windows, the same checks in PowerShell, with the GitHub CLI:
+
+```powershell
+(Get-FileHash zuke-1.15.0-x86_64-pc-windows-msvc.zip).Hash   # compare with SHA256SUMS
+gh attestation verify zuke-1.15.0-x86_64-pc-windows-msvc.zip `
+  --repo zuke-build/zuke `
+  --signer-workflow zuke-build/zuke/.github/workflows/release.yml `
+  --source-ref refs/heads/master
+```
+
 How the release is built — compiled from the published `jsr:@zuke/cli`, signed
 and notarized on a macOS runner, attested, then checked with a real
-`brew install` on macOS and Linux before the formula is published — is in
+`brew install` on macOS and Linux and a real `choco install` on Windows before
+the formula and the package are published — is in
 [`build/cli_release.ts`](../build/cli_release.ts) and the `cli*` jobs of
 [`release.yml`](../.github/workflows/release.yml).
 
 ## Code signing policy
 
-Free code signing provided by [SignPath.io](https://about.signpath.io),
-certificate by [SignPath Foundation](https://signpath.org).
+The Windows binary is **not Authenticode-signed yet**. Zuke has applied to the
+[SignPath Foundation](https://signpath.org)'s programme for open-source
+projects, which provides free code signing through
+[SignPath.io](https://about.signpath.io). Until a signing service is in place,
+`zuke.exe` ships unsigned, and the checksum and build-provenance attestation
+above are what vouch for it.
 
-The Windows binary is Authenticode-signed through the SignPath Foundation's
-programme for open-source projects. Only the release workflow on `master`
-submits a signing request, and SignPath checks that the artifact came from that
-workflow run before it signs anything.
+Once signing is in place, the policy is this: only the release workflow on
+`master` submits a signing request, and the signing service checks that the
+artifact came from that workflow run before it signs anything.
 
 Team roles:
 

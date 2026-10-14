@@ -1001,6 +1001,16 @@ function validateGraph(targets: Map<string, TargetBuilder>): void
   @throws {GraphError}
       with a descriptive message including the cycle path.
 
+async function zip(entries: TarEntry[]): Promise<Uint8Array>
+  Create a `.zip` archive from the given entries (in order), each deflated —
+  the writer {@link unzip} reads. Like {@link tar}, every entry carries a
+  fixed timestamp, so the bytes depend only on the entries.
+
+  Only regular files are written: an entry with a `linkname` throws, since
+  zip has no portable symlink, and `mode` is ignored, since zip extractors
+  do not agree on reading one. An archive that would need zip64 (an entry or
+  the archive past 4 GiB, or 65535 entries or more) throws too.
+
 const ALLOW_INSECURE_ENV: "ZUKE_ALLOW_INSECURE_URL"
   The environment variable that opts a deployment out of {@link
   assertSecureBackendUrl}'s `https:` requirement, for a plaintext endpoint on a

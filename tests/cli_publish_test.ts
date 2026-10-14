@@ -38,6 +38,7 @@ import {
   CLI_TARGETS,
   MACOS_TARGETS,
   releaseAssetUrl,
+  windowsArchiveName,
 } from "../build/cli_release.ts";
 
 const VERSION = "1.14.0";
@@ -84,6 +85,7 @@ Deno.test("uploadCliRelease uploads the archives and attestation, and SHA256SUMS
     for (const target of CLI_TARGETS) {
       await Deno.writeTextFile(`${dir}/${archiveName(VERSION, target)}`, "a");
     }
+    await Deno.writeTextFile(`${dir}/${windowsArchiveName(VERSION)}`, "a");
     await Deno.writeTextFile(`${dir}/${CHECKSUMS}`, manifest());
     await Deno.writeTextFile(`${dir}/bundle.json`, "{}");
     const seen: Seen[] = [];
@@ -110,6 +112,7 @@ Deno.test("uploadCliRelease uploads the archives and attestation, and SHA256SUMS
     );
     assertEquals(uploads, [
       ...CLI_TARGETS.map((t) => archiveName(VERSION, t)),
+      "zuke-1.14.0-x86_64-pc-windows-msvc.zip",
       "zuke-1.14.0.sigstore.json",
       CHECKSUMS,
     ]);

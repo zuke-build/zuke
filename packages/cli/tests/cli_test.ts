@@ -1476,6 +1476,33 @@ Deno.test("--version names a Homebrew install in the panel, and keeps plain outp
   assertEquals(await version(false), [VERSION]);
 });
 
+Deno.test("--version names a Chocolatey install in the panel", async () => {
+  const chocolatey: UpgradeHost = {
+    ...defaultUpgradeHost,
+    standalone: () => true,
+    execPath: () => "C:\\ProgramData\\chocolatey\\lib\\zuke\\tools\\zuke.exe",
+    realPath: (path) => Promise.resolve(path),
+  };
+  await withEnv(RICH_ENV, async () => {
+    const host = new FakeHost();
+    host.terminal = true;
+    await main(
+      ["--version"],
+      host,
+      defaultPrompter,
+      undefined,
+      undefined,
+      () => Promise.resolve(0),
+      noProjectProbe,
+      chocolatey,
+    );
+    assertStringIncludes(
+      stripAnsi(host.logs[0]),
+      "◆ install   Chocolatey (C:/ProgramData/chocolatey/lib/zuke/tools/zuke.exe)",
+    );
+  });
+});
+
 Deno.test("--version shortens a Windows binary's backslash path under home", async () => {
   // The OS reports the executable with backslashes on Windows, while the
   // home prefix is compared in absolutePath's forward-slash form.

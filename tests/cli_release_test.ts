@@ -15,7 +15,7 @@ import {
   assertThrows,
 } from "../packages/core/tests/_assert.ts";
 import { withTemp } from "../packages/core/tests/_temp.ts";
-import { gunzip, sha256Hex, untar } from "@zuke/core";
+import { gunzip, sha256Hex, untar, unzip } from "@zuke/core";
 import {
   archiveName,
   attestationName,
@@ -32,6 +32,8 @@ import {
   parseChecksums,
   planCliRelease,
   releaseAssetUrl,
+  WINDOWS_TRIPLE,
+  windowsArchiveName,
 } from "../build/cli_release.ts";
 import { binaryPath, packageCliArchives } from "../build/cli_package.ts";
 import { writeStepOutputs } from "../build/step_outputs.ts";
@@ -53,6 +55,18 @@ Deno.test("release names follow the tag release-please cuts", () => {
   assertEquals(
     archiveName(VERSION, CLI_TARGETS[0]),
     "zuke-1.14.0-aarch64-apple-darwin.tar.gz",
+  );
+  assertEquals(
+    windowsArchiveName(VERSION),
+    "zuke-1.14.0-x86_64-pc-windows-msvc.zip",
+  );
+  assertEquals(
+    binaryPath("bin", WINDOWS_TRIPLE),
+    `bin/${WINDOWS_TRIPLE}/zuke.exe`,
+  );
+  assertEquals(
+    binaryPath("bin", "x86_64-apple-darwin"),
+    "bin/x86_64-apple-darwin/zuke",
   );
   assertEquals(attestationName(VERSION), "zuke-1.14.0.sigstore.json");
   assertEquals(
@@ -145,7 +159,13 @@ Deno.test("cliFormula refuses checksums missing an archive", () => {
 
 /** A probe answering from fixed facts, recording what was asked. */
 function probe(
-  facts: { release: boolean; sums: boolean; tap?: string },
+  facts: {
+    release: boolean;
+    sums: boolean;
+    tap?: string;
+    windows?: boolean;
+    chocolatey?: boolean;
+  },
   asked: string[] = [],
 ): CliReleaseProbe {
   return {
@@ -161,6 +181,14 @@ function probe(
       asked.push("tap");
       return Promise.resolve(facts.tap);
     },
+    windowsArchivePublished: () => {
+      asked.push("windows");
+      return Promise.resolve(facts.windows ?? false);
+    },
+    chocolateyPublished: () => {
+      asked.push("chocolatey");
+      return Promise.resolve(facts.chocolatey ?? false);
+    },
   };
 }
 
@@ -173,7 +201,11 @@ Deno.test("planCliRelease owes nothing for a version older than the first binary
       old,
       probe({ release: true, sums: false }, asked),
     );
-    assertEquals([plan.build, plan.tap], [false, false], old);
+    assertEquals([plan.build, plan.tap, plan.chocolatey], [
+      false,
+      false,
+      false,
+    ], old);
     assertStringIncludes(
       plan.reason,
       `first binary release (${FIRST_BINARY_VERSION})`,
@@ -193,7 +225,7 @@ Deno.test("planCliRelease owes nothing before release-please cuts the version", 
     VERSION,
     probe({ release: false, sums: false }, asked),
   );
-  assertEquals([plan.build, plan.tap], [false, false]);
+  assertEquals([plan.build, plan.tap, plan.chocolatey], [false, false, false]);
   assertStringIncludes(plan.reason, "not released yet");
   assertEquals(asked, ["release"]);
 });
@@ -203,7 +235,7 @@ Deno.test("planCliRelease owes everything while the release lacks SHA256SUMS", a
     VERSION,
     probe({ release: true, sums: false }),
   );
-  assertEquals([plan.build, plan.tap], [true, true]);
+  assertEquals([plan.build, plan.tap, plan.chocolatey], [true, true, true]);
   assertStringIncludes(plan.reason, "no SHA256SUMS");
 });
 
@@ -232,7 +264,44 @@ Deno.test("planCliRelease owes nothing once the formula points at the release", 
       tap: `url "${releaseAssetUrl(VERSION, "zuke.tar.gz")}"`,
     }),
   );
-  assertEquals([plan.build, plan.tap], [false, false]);
+  assertEquals([plan.build, plan.tap, plan.chocolatey], [false, false, false]);
+});
+
+Deno.test("planCliRelease owes the Chocolatey package while Chocolatey lacks the published zip's version", async () => {
+  const tap = `url "${releaseAssetUrl(VERSION, "zuke.tar.gz")}"`;
+  const asked: string[] = [];
+  const owed = await planCliRelease(
+    VERSION,
+    probe({ release: true, sums: true, tap, windows: true }, asked),
+  );
+  assertEquals([owed.build, owed.tap, owed.chocolatey], [false, false, true]);
+  assertStringIncludes(owed.reason, "Chocolatey package is owed");
+  assertEquals(asked, ["release", "sums", "tap", "windows", "chocolatey"]);
+
+  // Pushed — approved or in moderation: nothing more.
+  const pushed = await planCliRelease(
+    VERSION,
+    probe({ release: true, sums: true, tap, windows: true, chocolatey: true }),
+  );
+  assertEquals(pushed.chocolatey, false);
+
+  // A release from before the Windows binary has no zip to package, and the
+  // tap can be owed independently.
+  const asked2: string[] = [];
+  const older = await planCliRelease(
+    VERSION,
+    probe({ release: true, sums: true }, asked2),
+  );
+  assertEquals([older.tap, older.chocolatey], [true, false]);
+  assertEquals(asked2.includes("chocolatey"), false);
+});
+
+Deno.test("planCliRelease still plans the tap when Chocolatey cannot be asked", async () => {
+  const plan = await planCliRelease(VERSION, {
+    ...probe({ release: true, sums: true, windows: true }),
+    chocolateyPublished: () => Promise.reject(new Error("answered 403")),
+  });
+  assertEquals([plan.tap, plan.chocolatey], [true, true]);
 });
 
 /** A fetch answering by URL, recording each request's method and URL. */
@@ -266,11 +335,21 @@ Deno.test("httpCliReleaseProbe reads presence from status codes, without a token
       }),
       "https://raw.githubusercontent.com/zuke-build/homebrew-tap/main/Formula/zuke.rb":
         new Response("class Zuke < Formula\nend\n"),
+      [releaseAssetUrl(VERSION, windowsArchiveName(VERSION))]: new Response(
+        null,
+        { status: 302 },
+      ),
+      "https://community.chocolatey.org/packages/zuke/1.14.0": new Response(
+        null,
+        { status: 200 },
+      ),
     }, seen),
   );
   assertEquals(await http.releaseExists(), true);
   assertEquals(await http.checksumsPublished(), true);
   assertEquals(await http.tapFormula(), "class Zuke < Formula\nend\n");
+  assertEquals(await http.windowsArchivePublished(), true);
+  assertEquals(await http.chocolateyPublished(), true);
   // The presence checks never follow the redirect to the asset's storage.
   assertEquals(seen.slice(0, 2).every((r) => r.startsWith("HEAD ")), true);
 
@@ -278,6 +357,8 @@ Deno.test("httpCliReleaseProbe reads presence from status codes, without a token
   assertEquals(await absent.releaseExists(), false);
   assertEquals(await absent.checksumsPublished(), false);
   assertEquals(await absent.tapFormula(), undefined);
+  assertEquals(await absent.windowsArchivePublished(), false);
+  assertEquals(await absent.chocolateyPublished(), false);
 });
 
 Deno.test("httpCliReleaseProbe fails on an answer that is neither present nor absent", async () => {
@@ -308,25 +389,30 @@ Deno.test("fetchChecksums parses the published manifest and fails on a missing o
   );
 });
 
+/** Write a fake binary for every target, Windows included, under `bin`. */
+async function fakeBinaries(bin: string): Promise<void> {
+  for (const triple of [...CLI_TARGETS.map((t) => t.triple), WINDOWS_TRIPLE]) {
+    await Deno.mkdir(`${bin}/${triple}`, { recursive: true });
+    await Deno.writeTextFile(binaryPath(bin, triple), `binary for ${triple}`);
+  }
+}
+
 Deno.test("packageCliArchives packs each binary executable, with matching checksums", async () => {
   await withTemp(async (dir) => {
-    for (const target of CLI_TARGETS) {
-      await Deno.mkdir(`${dir}/bin/${target.triple}`, { recursive: true });
-      await Deno.writeTextFile(
-        binaryPath(`${dir}/bin`, target.triple),
-        `binary for ${target.triple}`,
-      );
-    }
+    await fakeBinaries(`${dir}/bin`);
     const out = `${dir}/release`;
     const packed = await packageCliArchives(VERSION, `${dir}/bin`, out);
     assertEquals(
       packed.map((p) => p.name),
-      CLI_TARGETS.map((t) => archiveName(VERSION, t)),
+      [
+        ...CLI_TARGETS.map((t) => archiveName(VERSION, t)),
+        windowsArchiveName(VERSION),
+      ],
     );
     const manifest = parseChecksums(
       await Deno.readTextFile(`${out}/${CHECKSUMS}`),
     );
-    for (const { name, sha256 } of packed) {
+    for (const { name, sha256 } of packed.slice(0, CLI_TARGETS.length)) {
       const bytes = await Deno.readFile(`${out}/${name}`);
       assertEquals(await sha256Hex(bytes), sha256);
       assertEquals(manifest.get(name), sha256);
@@ -341,6 +427,16 @@ Deno.test("packageCliArchives packs each binary executable, with matching checks
         "0000755",
       );
     }
+    // Windows gets a zip holding zuke.exe, which choco shims as `zuke`.
+    const windows = packed[CLI_TARGETS.length];
+    const zipped = await Deno.readFile(`${out}/${windows.name}`);
+    assertEquals(await sha256Hex(zipped), windows.sha256);
+    assertEquals(manifest.get(windows.name), windows.sha256);
+    const entries = await unzip(zipped);
+    assertEquals(
+      entries.map((e) => [e.name, new TextDecoder().decode(e.data)]),
+      [["zuke.exe", `binary for ${WINDOWS_TRIPLE}`]],
+    );
     // The same binaries pack to the same bytes.
     const again = await packageCliArchives(VERSION, `${dir}/bin`, `${dir}/2`);
     assertEquals(again, packed);
@@ -353,6 +449,14 @@ Deno.test("packageCliArchives refuses a release missing a platform", async () =>
       () => packageCliArchives(VERSION, `${dir}/bin`, `${dir}/out`),
       Error,
       "no aarch64-apple-darwin binary to package",
+    );
+    // Windows is no exception.
+    await fakeBinaries(`${dir}/bin`);
+    await Deno.remove(binaryPath(`${dir}/bin`, WINDOWS_TRIPLE));
+    await assertRejects(
+      () => packageCliArchives(VERSION, `${dir}/bin`, `${dir}/out`),
+      Error,
+      `no ${WINDOWS_TRIPLE} binary to package`,
     );
   });
 });
