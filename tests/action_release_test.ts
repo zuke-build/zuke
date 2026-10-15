@@ -25,7 +25,6 @@ import {
   assertReleasable,
   assertWorkflowInputsAvailable,
   declaredInputs,
-  draftReleaseUrl,
   latestVersion,
   majorTag,
   nextVersion,
@@ -208,18 +207,6 @@ Deno.test("a repository with no action release yet starts at v1.0.0", async () =
   const result = await releaseAction(deps);
   assertEquals(result.released, "v1.0.0");
   assertEquals(calls[1], `tag:v1.0.0@${SHA.slice(0, 4)}`);
-});
-
-Deno.test("the operator is told the one step that stays manual", async () => {
-  // GitHub gates the Marketplace tick behind a 2FA confirmation no token can
-  // perform, so a run that says only "tagged" would read as finished when it
-  // is not.
-  const messages: string[] = [];
-  const { deps } = fakeDeps({ info: (m) => messages.push(m) });
-  await releaseAction(deps);
-  const printed = messages.join("\n");
-  assertStringIncludes(printed, draftReleaseUrl("v1.0.0"));
-  assertStringIncludes(printed, "browser");
 });
 
 Deno.test("the committed pin file matches what the module expects", () => {

@@ -12,11 +12,14 @@
  * a tag left where it is silently withholds the security fixes the whole pin
  * arrangement exists to deliver.
  *
- * What this module does *not* do is publish. Ticking "Publish this Action to
- * the GitHub Marketplace" needs a 2FA confirmation that GitHub performs only in
- * a browser, and app tokens — which is what this repository's release workflow
- * holds — are the case that still requires it. So the automation stops at the
- * tag and the version file, and prints the one link a human still has to open.
+ * Nothing here touches the Marketplace, and nothing needs to. The listing was
+ * created once, in a browser, behind the 2FA confirmation GitHub puts on
+ * "Publish this Action to the GitHub Marketplace"; from then on it reads the
+ * repository's "Latest release" pointer and shows whatever that names. The
+ * release record {@link reconcileReleases} publishes through the API is that
+ * pointer, so a release cut here reaches the listing with no further step —
+ * v1.0.6 did, with nobody opening the release form. The checkbox is only ever
+ * needed again to re-create a listing that was taken down.
  *
  * @module
  */
@@ -353,11 +356,6 @@ export function assertWorkflowInputsAvailable(
   );
 }
 
-/** The URL that opens a pre-filled release draft for `version`. */
-export function draftReleaseUrl(version: string): string {
-  return `https://github.com/${ACTION_SLUG}/releases/new?tag=${version}`;
-}
-
 /**
  * The repository state a release requires, as {@link ReleaseActionDeps.state}
  * reports it.
@@ -591,11 +589,11 @@ export async function reconcileMajorTag(
  * The second half of a release, and the half nothing forced to happen. Tagging
  * is what reaches a consumer — `uses: zuke-build/zuke@v1` resolves through the
  * tag and never consults the releases page — so a missing release breaks
- * nothing and announces nothing. It was left to a human because the module doc
- * above says publishing needs a browser, and that is true of the Marketplace
- * checkbox and of nothing else: the release itself is a `POST /releases`, which
+ * nothing and announces nothing. It was left to a human on the belief that
+ * publishing needs a browser, which is true only of creating the Marketplace
+ * listing in the first place: the release itself is a `POST /releases`, which
  * the app token this target already mints can perform with the `contents:
- * write` it already holds.
+ * write` it already holds, and the listing follows the release from there.
  *
  * Left undone it is not cosmetic, because two things key on the release rather
  * than the tag. `markReleaseLatest` cannot pin the "Latest release" pointer to
@@ -800,13 +798,6 @@ export async function releaseAction(
     source,
   });
 
-  deps.info(
-    `Listing it on the Marketplace still needs one browser step, because ` +
-      `GitHub gates that behind a 2FA confirmation no token can perform — ` +
-      `and only that step: the release itself is published above, and ` +
-      `${ACTION_SLUG}@${major} resolves through the tag either way. ` +
-      draftReleaseUrl(version),
-  );
   return { released: version };
 }
 

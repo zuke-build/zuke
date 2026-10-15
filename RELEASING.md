@@ -53,10 +53,13 @@ request.
    which left the repository's "Latest release" pointer on a package release and
    stopped the Gemini extension archive refreshing, with every run green.
 
-   The one step that stays manual is ticking **Publish this Action to the GitHub
-   Marketplace**, which GitHub gates behind a 2FA confirmation no token can
-   perform. It affects the Marketplace listing only: `uses: zuke-build/zuke@v1`
-   resolves through the tag and never consults it.
+   Nothing is left to do by hand. The Marketplace listing reads the repository's
+   "Latest release" pointer, which that published release sets, so the new
+   version shows there on its own. Ticking **Publish this Action to the GitHub
+   Marketplace** — the step GitHub gates behind a 2FA confirmation — was needed
+   once to create the listing and is only needed again to re-create one that was
+   taken down. `uses: zuke-build/zuke@v1` never consults the listing either way:
+   it resolves through the tag.
 
 5. **`publishJsr` pushes to JSR.** The `publishJsr` target walks the packages
    **core first** (so the workspace's `jsr:@zuke/core` dependency resolves) and
