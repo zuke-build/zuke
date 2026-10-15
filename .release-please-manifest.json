@@ -52,7 +52,7 @@
   "packages/az": "1.1.1",
   "packages/git": "1.6.0",
   "packages/gh": "1.15.0",
-  "packages/codecov": "1.0.4",
+  "packages/codecov": "1.1.0",
   "packages/claude": "1.1.2",
   "packages/codex": "1.1.2",
   "packages/gemini": "1.1.2",
