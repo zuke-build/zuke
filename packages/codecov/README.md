@@ -97,6 +97,9 @@ class CodecovUploadSettings extends ToolSettings
     Root folder used to resolve report file paths (`--network-root-folder`).
   reportType(value: string): this
     Report kind: `coverage` (default) or `test_results` (`--report-type`).
+  disableTelem(): this
+    Keep the CLI from reporting its own errors to Codecov's Sentry
+    (`--disable-telem`). A global flag, so it is emitted before the subcommand.
   disableSearch(): this
     Upload only the named files, skipping the auto-search (`--disable-search`).
   handleNoReportsFound(): this

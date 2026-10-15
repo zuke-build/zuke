@@ -274,6 +274,7 @@
     "taskdef",
     "TEAMID",
     "TEAMPROJECT",
+    "telem",
     "textconv",
     "tfplan",
     "tfvars",

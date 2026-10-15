@@ -32,12 +32,14 @@ Deno.test("codecov: every setting renders in a deterministic order", () => {
     .flags("unit", "integration")
     .plugins("noop")
     .disableSearch()
+    .disableTelem()
     .handleNoReportsFound()
     .failOnError()
     .dryRun()
     .argv();
   assertEquals(argv, [
     "codecovcli",
+    "--disable-telem",
     "upload-process",
     "--slug",
     "acme/app",

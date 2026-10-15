@@ -454,10 +454,12 @@ class ZukeBuild extends Build {
         throw new Error("codecov was not provisioned by the toolchain.");
       }
       // The token rides through the masked `.env(...)` chainer, never argv;
-      // fail-on-error makes a failed upload loud.
+      // fail-on-error makes a failed upload loud. Telemetry is off so the CLI
+      // never calls Sentry, which the job's blocked egress would refuse anyway.
       await CodecovTasks.upload((s) =>
         s
           .toolPath(bin)
+          .disableTelem()
           .files("cov.lcov")
           .slug("zuke-build/zuke")
           .failOnError()
