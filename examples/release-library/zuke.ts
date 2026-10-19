@@ -6,9 +6,9 @@
  * the version, commit, tag, push, cut a GitHub release with generated notes,
  * publish to JSR. Every step is a typed wrapper; nothing is a shell string.
  *
- *   deno run -A zuke.ts --release-version 1.1.0            # the whole release
- *   deno run -A zuke.ts tag --release-version 1.1.0        # stop after tagging
- *   deno run -A zuke.ts release --release-version 1.1.0 --dry-run
+ *   zuke --release-version 1.1.0     # the whole release
+ *   zuke tag --release-version 1.1.0 # stop after tagging
+ *   zuke release --release-version 1.1.0 --dry-run
  */
 import { Build, FileTasks, parameter, run, target } from "jsr:@zuke/core@^1";
 import { DenoTasks } from "jsr:@zuke/deno@^1";

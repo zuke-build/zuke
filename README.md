@@ -97,8 +97,8 @@ first build: **[Getting started](./docs/getting-started.md)**.
 Prefer to poke at something real? [`examples/`](./examples) holds six cloneable
 projects — a Deno library gate, a generated-CI-only project, a Node app, a
 library release routine, a shell script turned into targets, and a canary
-rollout that runs locally — each runnable from its own folder with
-`deno run -A zuke.ts`.
+rollout that runs locally — each runnable from its own folder with the `zuke`
+CLI.
 
 Three short recipes cover what a small project wants first:
 [replace your shell scripts](./docs/recipes/replace-shell-scripts.md),

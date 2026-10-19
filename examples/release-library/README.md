@@ -9,10 +9,10 @@ check ─▶ test ─▶ bump ─▶ tag ─▶ push ─▶ release ─▶ publi
 ```
 
 ```sh
-deno run -A zuke.ts --release-version 1.1.0           # the whole release
-deno run -A zuke.ts tag --release-version 1.1.0       # stop after the tag
-deno run -A zuke.ts release --release-version 1.1.0 --dry-run # print the plan, run nothing
-VERSION=1.1.0 deno run -A zuke.ts                     # the parameter from the env
+zuke --release-version 1.1.0                   # the whole release
+zuke tag --release-version 1.1.0               # stop after the tag
+zuke release --release-version 1.1.0 --dry-run # print the plan, run nothing
+VERSION=1.1.0 zuke                             # the parameter from the env
 ```
 
 What to notice in [`zuke.ts`](./zuke.ts):

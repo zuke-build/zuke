@@ -10,9 +10,9 @@ rollout.stage ─▶ step1 (10 %): expose ─▶ bake ─▶ analyze
 ```
 
 ```sh
-deno run -A zuke.ts ship            # 10 % → 50 % → promoted
-deno run -A zuke.ts ship --broken   # v2 answers 500: the probe fails, rolled back
-deno run -A zuke.ts --list          # every target the rollout makes
+zuke ship          # 10 % → 50 % → promoted
+zuke ship --broken # v2 answers 500: the probe fails, rolled back
+zuke --list        # every target the rollout makes
 ```
 
 The platform is [`local_router.ts`](./local_router.ts): both versions behind one
@@ -43,11 +43,10 @@ What to notice:
   at your service's URL, and add a metric analysis such as `prometheus(...)` —
   [docs/canary.md](../../docs/canary.md) has each one.
 - **Every failure runs one rollback.** A failed probe, a failed step, Ctrl-C,
-  `deno run -A zuke.ts cancel <run-id>` — each ends in `rollout.abort`. Run it
-  by hand with `deno run -A zuke.ts rollout.abort`.
+  `zuke cancel <run-id>` — each ends in `rollout.abort`. Run it by hand with
+  `zuke rollout.abort`.
 - **A rollout keeps durable state.** The run record lands in `.zuke/` beside the
-  build, and `deno run -A zuke.ts runs list` lists it. That is what lets a real
-  rollout park at an `.approval(...)` gate, or bake for hours with `.durable()`,
-  and be resumed by another process. This router lives inside the build's own
-  process, so the example runs start to finish in one go; a real platform has no
-  such limit.
+  build, and `zuke runs list` lists it. That is what lets a real rollout park at
+  an `.approval(...)` gate, or bake for hours with `.durable()`, and be resumed
+  by another process. This router lives inside the build's own process, so the
+  example runs start to finish in one go; a real platform has no such limit.

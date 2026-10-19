@@ -6,9 +6,9 @@
  * 10 % and then 50 % of the traffic, each step bakes while an HTTP probe
  * checks the router, and it is promoted — or, when it fails, rolled back.
  *
- *   deno run -A zuke.ts ship            # 10 % → 50 % → promoted
- *   deno run -A zuke.ts ship --broken   # the probe fails; rolled back
- *   deno run -A zuke.ts --list          # every target the rollout makes
+ *   zuke ship          # 10 % → 50 % → promoted
+ *   zuke ship --broken # the probe fails; rolled back
+ *   zuke --list        # every target the rollout makes
  */
 import { Build, parameter, run, target } from "jsr:@zuke/core@^1";
 import { canary, httpProbe } from "jsr:@zuke/canary@^1";

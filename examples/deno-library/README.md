@@ -10,9 +10,9 @@ check ─▶ test ─▶ coverage ─┘
 ```
 
 ```sh
-deno run -A zuke.ts            # the whole gate
-deno run -A zuke.ts coverage   # check → test → coverage
-deno run -A zuke.ts --parallel # format, lint and check run concurrently
+zuke            # the whole gate
+zuke coverage   # check → test → coverage
+zuke --parallel # format, lint and check run concurrently
 ```
 
 What to notice in [`zuke.ts`](./zuke.ts):

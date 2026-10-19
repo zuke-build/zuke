@@ -6,9 +6,9 @@ three `cicd()` declarations, one per provider, all generated from the same
 source.
 
 ```sh
-deno run -A zuke.ts generate-ci          # writes the three files below
-deno run -A zuke.ts generate-ci --check  # the CI gate: fail if one drifted
-deno run -A zuke.ts test                 # run the same targets locally
+zuke generate-ci         # writes the three files below
+zuke generate-ci --check # the CI gate: fail if one drifted
+zuke test                # run the same targets locally
 ```
 
 | Field    | Provider        | Written to                                               |

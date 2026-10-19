@@ -5,13 +5,13 @@
  * Never write CI YAML again.
  *
  * This build's real job is the pipeline: one `cicd()` field per provider, each
- * generated from the same two targets. `deno run -A zuke.ts generate-ci`
+ * generated from the same two targets. `zuke generate-ci`
  * writes every file; running any target regenerates them; on CI the run
  * verifies the committed copies instead and fails if they have drifted.
  *
- *   deno run -A zuke.ts generate-ci          # write the pipeline files
- *   deno run -A zuke.ts generate-ci --check  # fail if a committed file drifted
- *   deno run -A zuke.ts test                 # the same targets, locally
+ *   zuke generate-ci         # write the pipeline files
+ *   zuke generate-ci --check # fail if a committed file drifted
+ *   zuke test                # the same targets, locally
  */
 import { Build, cicd, run, target } from "jsr:@zuke/core@^1";
 import { DenoTasks } from "jsr:@zuke/deno@^1";

@@ -2,13 +2,18 @@
 
 Small, complete projects you can copy into your own repository. Each folder is a
 repo in miniature — its own `zuke.ts`, `zuke.json` and README — and runs from
-its own directory:
+its own directory with the `zuke` CLI, which finds the `zuke.json` beside the
+build and runs it:
 
 ```sh
+deno install -A -g -n zuke jsr:@zuke/cli   # once
 cd examples/deno-library
-deno run -A zuke.ts --list   # what the build can do
-deno run -A zuke.ts          # run its default target
+zuke --list                                # what the build can do
+zuke                                       # run its default target
 ```
+
+Other ways to install the CLI — Homebrew, Chocolatey, a signed binary — are in
+[installing](../docs/install.md).
 
 | Example                                | What it shows                                                                                                             |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |

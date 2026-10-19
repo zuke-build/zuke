@@ -6,9 +6,9 @@
  * dependencies: Deno runs the build, and the typed `@zuke/npm` wrapper drives
  * the app's own npm scripts and toolchain.
  *
- *   deno run -A zuke.ts            # install → test → build → pack
- *   deno run -A zuke.ts test       # just install → test
- *   npm run zuke -- --list         # the same, for npm-centric colleagues
+ *   zuke                   # install → test → build → pack
+ *   zuke test              # just install → test
+ *   npm run zuke -- --list # the same, for npm-centric colleagues
  */
 import { Build, run, target } from "jsr:@zuke/core@^1";
 import { NpmTasks } from "jsr:@zuke/npm@^1";
