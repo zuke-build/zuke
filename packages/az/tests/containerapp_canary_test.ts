@@ -34,7 +34,10 @@ function memoryState(accept = true): TargetStateHandle {
 }
 
 /** An engine-like context with a recorded summary. */
-function context(state = memoryState()) {
+function context(
+  state = memoryState(),
+  reason?: "rollback" | "hand-run",
+) {
   const summary: Record<string, string | number> = {};
   return {
     state,
@@ -42,6 +45,7 @@ function context(state = memoryState()) {
     reportSummary: (pairs: Record<string, string | number>) => {
       Object.assign(summary, pairs);
     },
+    reason,
   };
 }
 
@@ -529,6 +533,32 @@ Deno.test("containerAppCanary: a rollback run by hand goes to the configured sta
   assertEquals(model.trafficMoves(), [["api--v1=100"]]);
 });
 
+Deno.test("containerAppCanary: an engine rollback with nothing recorded runs nothing", async () => {
+  // A degraded run record, or a stage whose first state write was rejected:
+  // nothing was staged, so pinning traffic to the stable revision would
+  // change an app no rollout touched.
+  const model = new ContainerAppModel();
+  const ctx = context(memoryState(), "rollback");
+  await platform(model, (a) => a.stable("api--v1")).abort(ctx);
+  // Nor does it need a stable revision to do nothing.
+  await platform(model).abort(context(memoryState(), "rollback"));
+  // Nor does it read the settings: a stage that failed on its own settings
+  // is not failed a second time by its rollback.
+  await containerAppCanary((a) => a.name("-bad"))
+    .abort(context(memoryState(), "rollback"));
+  assertEquals(model.calls, []);
+  assertEquals(ctx.summary, {});
+});
+
+Deno.test("containerAppCanary: a hand run, named or from an engine that names no reason, falls back alike", async () => {
+  for (const reason of ["hand-run", undefined] as const) {
+    const model = new ContainerAppModel();
+    await platform(model, (a) => a.stable("api--v1"))
+      .abort(context(memoryState(), reason));
+    assertEquals(model.trafficMoves(), [["api--v1=100"]]);
+  }
+});
+
 Deno.test("containerAppCanary: a rollback run by hand without a usable stable revision refuses", async () => {
   const model = new ContainerAppModel();
   await assertRejects(
@@ -921,7 +951,7 @@ Deno.test("containerAppCanary: the rollback of a stage that failed hands the tra
   // The deploy changed nothing, so no revision was made: once stage fails,
   // the pin is the only change left, and "latest" serves the same revision.
   const model = new ContainerAppModel();
-  const ctx = context();
+  const ctx = context(memoryState(), "rollback");
   const unchanged = containerAppCanary((a) =>
     a.name("api").resourceGroup("rg-prod").image("acr.io/api:1")
       .az((z) => z.subscription("sub-prod").runner(model.runner))
@@ -944,7 +974,7 @@ Deno.test("containerAppCanary: the rollback of a stage that failed hands the tra
 Deno.test("containerAppCanary: the rollback of a stage that made a revision leaves the traffic pinned, and says so", async () => {
   const model = new ContainerAppModel();
   model.provisioning = "Failed";
-  const ctx = context();
+  const ctx = context(memoryState(), "rollback");
   await assertRejects(
     () => platform(model).stage(ctx),
     Error,

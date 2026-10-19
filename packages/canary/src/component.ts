@@ -24,6 +24,8 @@ import { type CanaryPhase, planCanary } from "./plan.ts";
 import type { CanarySettings } from "./settings.ts";
 import { messageOf } from "./message.ts";
 import type {
+  CanaryAbortContext,
+  CanaryAbortReason,
   CanaryAnalysis,
   CanaryAnalysisContext,
   CanaryContext,
@@ -106,7 +108,10 @@ export function canary(configure: Configure<CanarySettings>): Canary {
       // A compensation after promotion — a later target cancelling the run —
       // must not return traffic to a version promotion already retired.
       if (ctx.state.get()[PROMOTED] === true) return;
-      await platform.abort(canaryContext(ctx, ctx.state));
+      await platform.abort({
+        ...canaryContext(ctx, ctx.state),
+        reason: abortReason(ctx, nameOf(stage)),
+      });
       ctx.reportSummary({ "Rolled back": platform.describe() });
     });
 
@@ -122,7 +127,11 @@ export function canary(configure: Configure<CanarySettings>): Canary {
         // may have left a candidate behind — and a target that did not succeed
         // is never compensated. Roll back here, while the handles are at hand,
         // under a signal the cancellation cannot cut short in turn.
-        await rollBackStage(platform, { ...canaryCtx, signal: NEVER }, error);
+        await rollBackStage(
+          platform,
+          { ...canaryCtx, signal: NEVER, reason: "rollback" },
+          error,
+        );
       }
       ctx.reportSummary({ Platform: platform.describe() });
     });
@@ -262,7 +271,7 @@ const NEVER: AbortSignal = new AbortController().signal;
  */
 async function rollBackStage(
   platform: CanaryPlatform,
-  ctx: CanaryContext,
+  ctx: CanaryAbortContext,
   cause: unknown,
 ): Promise<never> {
   try {
@@ -275,6 +284,16 @@ async function rollBackStage(
     );
   }
   throw cause;
+}
+
+/**
+ * Why the `abort` target runs. As the stage's compensation it runs over the
+ * plan of the run it undoes, which includes `stage` — even when a degraded
+ * record lost the stage's own row, so its outcome cannot be read. A hand-run
+ * `rollout.abort` is a run of its own, planned without `stage`.
+ */
+function abortReason(ctx: TargetContext, stage: string): CanaryAbortReason {
+  return ctx.plan().includes(stage) ? "rollback" : "hand-run";
 }
 
 /** The {@link CanaryContext} a platform call gets from a target's context. */

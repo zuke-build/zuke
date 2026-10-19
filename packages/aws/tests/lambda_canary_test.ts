@@ -37,7 +37,10 @@ function memoryState(accept = true): TargetStateHandle & {
 }
 
 /** An engine-like context with a recorded summary. */
-function context(state = memoryState()) {
+function context(
+  state = memoryState(),
+  reason?: "rollback" | "hand-run",
+) {
   const summary: Record<string, string | number> = {};
   return {
     state,
@@ -45,6 +48,7 @@ function context(state = memoryState()) {
     reportSummary: (pairs: Record<string, string | number>) => {
       Object.assign(summary, pairs);
     },
+    reason,
   };
 }
 
@@ -747,6 +751,38 @@ Deno.test("lambdaCanary: a rollback run by hand goes to the configured stable ve
   model.live.weights = { "2": 0.3 };
   await platform(model, (l) => l.stable("2")).abort(context());
   assertEquals(model.live, { version: "2", weights: {}, revision: "rev-1" });
+});
+
+Deno.test("lambdaCanary: an engine rollback with nothing recorded runs nothing", async () => {
+  // A degraded run record, or a stage whose first state write was rejected:
+  // nothing was staged, so moving the alias to the stable version would
+  // change a function no rollout touched.
+  const model = new LambdaModel();
+  model.live.weights = { "2": 0.3 };
+  await platform(model, (l) => l.stable("2"))
+    .abort(context(memoryState(), "rollback"));
+  // Nor does it need a stable version to do nothing.
+  await platform(model).abort(context(memoryState(), "rollback"));
+  // Nor does it read the settings: a stage that failed on its own settings
+  // is not failed a second time by its rollback.
+  await lambdaCanary((l) => l.functionName("bad name!"))
+    .abort(context(memoryState(), "rollback"));
+  assertEquals(model.calls, []);
+  assertEquals(model.live, {
+    version: "3",
+    weights: { "2": 0.3 },
+    revision: "rev-0",
+  });
+});
+
+Deno.test("lambdaCanary: a hand run, named or from an engine that names no reason, falls back alike", async () => {
+  for (const reason of ["hand-run", undefined] as const) {
+    const model = new LambdaModel();
+    model.live.weights = { "2": 0.3 };
+    await platform(model, (l) => l.stable("2"))
+      .abort(context(memoryState(), reason));
+    assertEquals(model.live, { version: "2", weights: {}, revision: "rev-1" });
+  }
 });
 
 Deno.test("lambdaCanary: a rollback run by hand without a usable stable version refuses", async () => {

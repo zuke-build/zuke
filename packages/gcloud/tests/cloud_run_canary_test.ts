@@ -60,7 +60,7 @@ function fakeGcloud(...revisions: string[]): {
   return { runner, calls, live };
 }
 
-function context() {
+function context(reason?: "rollback" | "hand-run") {
   const summary: Record<string, string | number> = {};
   return {
     state: memoryState(),
@@ -68,6 +68,7 @@ function context() {
     reportSummary: (pairs: Record<string, string | number>) => {
       Object.assign(summary, pairs);
     },
+    reason,
   };
 }
 
@@ -635,6 +636,32 @@ Deno.test("a hand-run abort returns all traffic to the configured stable revisio
     "--project",
     "p",
   ]]);
+});
+
+Deno.test("a rollback with nothing recorded runs nothing, even with a stable revision set", async () => {
+  // A degraded run record, or a stage whose first state write was rejected:
+  // nothing was staged, so moving production to the stable revision would
+  // change a service no rollout touched.
+  const { runner, calls } = fakeGcloud();
+  await platform(runner, (r) => r.stable("api-00001-old"))
+    .abort(context("rollback"));
+  // Nor does it need a stable revision to do nothing.
+  await platform(runner).abort(context("rollback"));
+  // Nor does it read the settings: a stage that failed on its own settings
+  // is not failed a second time by its rollback.
+  await cloudRunCanary((r) => r.service("Bad Name")).abort(context("rollback"));
+  assertEquals(calls, []);
+});
+
+Deno.test("a hand-run abort, named or from an engine that names no reason, falls back alike", async () => {
+  for (const reason of ["hand-run", undefined] as const) {
+    const { runner, calls } = fakeGcloud();
+    await platform(runner, (r) => r.stable("api-00001-old"))
+      .abort(context(reason));
+    assertEquals(calls.length, 1);
+    assertEquals(calls[0].slice(3, 5), ["update-traffic", "api"]);
+    assertEquals(calls[0].includes("api-00001-old=100"), true);
+  }
 });
 
 Deno.test("a hand-run abort with no stable revision refuses rather than claim a rollback", async () => {

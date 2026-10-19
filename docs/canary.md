@@ -60,14 +60,14 @@ state disabled is refused when the rollout starts.
 The engine never talks to Cloud Run, Kubernetes or anything else directly. It
 calls a `CanaryPlatform`:
 
-| Member                 | Contract                                                                                                                |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `exposure`             | `"traffic"` (an exact split), `"replicas"` (quantised to whole instances) or `"channel"` (a release channel, no steps). |
-| `describe()`           | A short name for the summary.                                                                                           |
-| `stage(ctx)`           | Candidate in place at 0 %. Record what a rollback needs in `ctx.state`.                                                 |
-| `expose(percent, ctx)` | Set exposure to `percent` (absolute) and return the exposure achieved. Repeating it is harmless.                        |
-| `promote(ctx)`         | Send everything to the candidate. Idempotent.                                                                           |
-| `abort(ctx)`           | Return everything to the stable version. Idempotent, and must cope with empty state (see below).                        |
+| Member                 | Contract                                                                                                                                                |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `exposure`             | `"traffic"` (an exact split), `"replicas"` (quantised to whole instances) or `"channel"` (a release channel, no steps).                                 |
+| `describe()`           | A short name for the summary.                                                                                                                           |
+| `stage(ctx)`           | Candidate in place at 0 %. Record what a rollback needs in `ctx.state`.                                                                                 |
+| `expose(percent, ctx)` | Set exposure to `percent` (absolute) and return the exposure achieved. Repeating it is harmless.                                                        |
+| `promote(ctx)`         | Send everything to the candidate. Idempotent.                                                                                                           |
+| `abort(ctx)`           | Return everything to the stable version. Idempotent, and must cope with empty state; `ctx.reason` says why it runs (see [Rolling back](#rolling-back)). |
 
 Every call gets the same `ctx.state`, the rollout's durable platform state, so
 `abort` can read what `stage` wrote even in another process after a resume.
@@ -93,8 +93,12 @@ const compose: CanaryPlatform = {
   exposure: "replicas",
   describe: () => "compose service api",
   async stage(ctx) {
+    // Record first: a rollback with nothing recorded changes nothing.
+    const recorded = { stable: "api", candidate: "api-canary" };
+    if (!await ctx.state.trySet(recorded)) {
+      throw new Error("could not record the rollout; nothing was started");
+    }
     await $`docker compose up -d --scale api-canary=1 api-canary`;
-    await ctx.state.set({ stable: "api", candidate: "api-canary" });
   },
   async expose(percent) {
     const canaries = Math.round(percent / 25);
@@ -1251,8 +1255,11 @@ There is one rollback, `rollout.abort`, and every path reaches it:
 | The approval timed out                    | the gate's `.onTimeout("cancel-run")`                       |
 | `zuke cancel <run-id>`                    | the cancellation walk runs `stage`'s compensation           |
 
-When `abort` runs as a rollback, `ctx.state` holds everything `stage` and the
-later calls recorded.
+When `abort` runs as the stage's compensation, `ctx.state` holds everything
+`stage` and the later calls recorded, and `ctx.reason` is `"rollback"`. A
+compensation a build names itself — `.onFailure(() => this.rollout.abort)` on
+another target — gets that target's state instead, still with `"rollback"`;
+after a promotion it changes nothing, as below.
 
 Two cases deliberately **do not** roll back:
 
@@ -1265,9 +1272,22 @@ Two cases deliberately **do not** roll back:
   returning traffic to a version promotion already retired.
 
 **Running `zuke rollout.abort` by hand is different.** It starts a fresh run,
-which has no recorded state from the rollout, so `ctx.state` is empty. That is
-why the platform contract says `abort` must work from its own configuration
-alone. When the rollout declares a lock, a hand-run `abort` takes it too, so it
-is refused while a rollout holds the service. To stop a rollout that is still
-running or parked, use `zuke cancel <run-id>` instead: it rolls back with the
-recorded state, and it releases the rollout's lock.
+which has no recorded state from the rollout, so `ctx.state` is empty and
+`ctx.reason` is `"hand-run"`. That is why the platform contract says `abort`
+must work from its own configuration alone — and only then. A rollback can also
+arrive with empty state: when `stage` failed before it recorded anything, or a
+degraded run record lost the stage's row. A platform that records before it
+changes anything has, in that case, changed nothing, so there is nothing to
+undo. The platform packages above fall back to the stable version they are
+configured with (`.stable(...)`, `.stableImage(...)`, `.stableRevision(...)`)
+only when `ctx.reason` is `"hand-run"`, or absent — an engine older than the
+field names none. So a platform of your own records what a rollback needs before
+it changes anything: write the handles in `stage` first — with
+`ctx.state.trySet(...)`, stopping when it returns `false` — then deploy. Forcing
+`rollout.stage` succeeded with `zuke force` leaves its rollback no record
+either, so a cancel after it changes nothing; roll back with a hand-run
+`zuke rollout.abort` instead. When the rollout declares a lock, a hand-run
+`abort` takes it too, so it is refused while a rollout holds the service. To
+stop a rollout that is still running or parked, use `zuke cancel <run-id>`
+instead: it rolls back with the recorded state, and it releases the rollout's
+lock.

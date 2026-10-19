@@ -96,6 +96,13 @@ export interface AwsLambdaCanaryContext {
   readonly state: TargetStateHandle;
   /** Add key/value pairs to the calling target's row in the build summary. */
   reportSummary(pairs: SummaryPairs): void;
+  /**
+   * Why `abort` runs: `"rollback"` when the engine undoes a rollout,
+   * `"hand-run"` for `rollout.abort` run on its own. An engine older than
+   * this field leaves it out, which is treated as a hand run — the behaviour
+   * from before the field existed.
+   */
+  readonly reason?: "rollback" | "hand-run";
 }
 
 /**
@@ -424,14 +431,22 @@ export class AwsLambdaCanary {
    * - **`stage` failed before recording it**: the alias was never changed,
    *   so nothing runs.
    * - **Any other stage marker**: the record is damaged, and this refuses.
-   * - **Nothing recorded** (`rollout.abort` run by hand, a fresh run): the
-   *   alias goes to the version set with {@link AwsLambdaCanarySettings.stable}
-   *   and its routing is cleared. Without one this refuses, since claiming a
-   *   rollback it cannot do would be worse.
+   * - **Nothing recorded, on a rollback** (`ctx.reason` is `"rollback"`):
+   *   nothing was staged, so nothing runs — the stable version is not even
+   *   read.
+   * - **Nothing recorded, run by hand** (`rollout.abort` on its own, a fresh
+   *   run, or an engine that names no reason): the alias goes to the version
+   *   set with {@link AwsLambdaCanarySettings.stable} and its routing is
+   *   cleared. Without one this refuses, since claiming a rollback it cannot
+   *   do would be worse.
    */
   async abort(ctx: AwsLambdaCanaryContext): Promise<void> {
     const stage = ctx.state.get()[STAGE];
     if (stage === "publishing") return;
+    // A rollback with nothing recorded: nothing was staged. Before the
+    // settings are read, so a stage that failed on its own settings is not
+    // failed a second time by its rollback.
+    if (stage === undefined && ctx.reason === "rollback") return;
     const settings = this.#settings();
     const identity = identityOf(settings);
     if (stage === "staged") {
@@ -771,7 +786,8 @@ function damagedStage(stage: JsonValue | undefined): Error {
  * - **promote** — `update-alias --function-version <candidate>` with the
  *   routing cleared.
  * - **abort** — takes the candidate's weight off mid-rollout; run by hand,
- *   `--function-version <stable>` with the routing cleared.
+ *   `--function-version <stable>` with the routing cleared. A rollback with
+ *   nothing recorded runs nothing: nothing was staged.
  *
  * Every call after `stage` that has its record — expose, promote, and abort
  * mid-rollout — compares the configured function, alias and AWS flags with

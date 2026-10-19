@@ -1704,7 +1704,9 @@ class Deploy extends Build {
   achieved; `promote` / `abort` are idempotent; `ctx.state` is shared by every
   call (never a secret in it). `zuke rollout.abort` **by hand** is a fresh run
   with empty state, so `abort` must work from its own configuration; use
-  `zuke cancel <run-id>` for a rollout still running or parked.
+  `zuke cancel <run-id>` for a rollout still running or parked. `ctx.reason`
+  tells `abort` why it runs: fall back to a configured stable version only for
+  `"hand-run"` — a `"rollback"` with empty state means nothing was staged.
 - Analyses are any `Validation`; a canary-aware one reads `ctx.step`,
   `ctx.requested`, `ctx.exposure`. See `docs/canary.md`.
 - A managed Prometheus:

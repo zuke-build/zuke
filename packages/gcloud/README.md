@@ -214,7 +214,8 @@ rollout = canary((c) =>
 - **`promote`** checks that the latest revision is still the candidate, then
   runs `--to-latest`.
 - **`abort`** sets the tag back to 0 % mid-rollout. Run by hand, it sends all
-  traffic to the `.stable(...)` revision.
+  traffic to the `.stable(...)` revision. A rollback with no record of a stage
+  runs nothing — nothing was staged, so the stable revision is left alone.
 
 `stage` records the service, region, tag and `.gcloud(...)` flags, and the
 service's `metadata.uid`. Every later call — in a resumed process or a
@@ -293,7 +294,8 @@ function cloudRunCanary(configure: Configure<CloudRunCanarySettings>): CloudRunC
   - promote — checks the latest revision is still the candidate, then
     `update-traffic --to-latest`.
   - abort — `update-traffic --to-tags canary=0` mid-rollout; run by hand,
-    `--to-revisions <stable>=100` to the revision set with `.stable(...)`.
+    `--to-revisions <stable>=100` to the revision set with `.stable(...)`. A
+    rollback with nothing recorded runs nothing: nothing was staged.
 
   Every call after `stage` that has its record — expose, promote, and abort
   mid-rollout — first compares the configured service, region, tag and
@@ -586,10 +588,13 @@ class CloudRunCanary
     - `stage` failed before tagging it: nothing has any traffic to take
       back, so nothing runs.
     - Any other stage marker: the record is damaged, and this refuses.
-    - Nothing recorded (`rollout.abort` run by hand, a fresh run): all
-      traffic goes to the revision set with
-      {@link CloudRunCanarySettings.stable}. Without one this refuses, since
-      claiming a rollback it cannot do would be worse.
+    - Nothing recorded, on a rollback (`ctx.reason` is `"rollback"`):
+      nothing was staged, so nothing runs — the stable revision is not even
+      read.
+    - Nothing recorded, run by hand (`rollout.abort` on its own, a fresh
+      run, or an engine that names no reason): all traffic goes to the
+      revision set with {@link CloudRunCanarySettings.stable}. Without one
+      this refuses, since claiming a rollback it cannot do would be worse.
 
 class CloudRunCanarySettings
   How {@link cloudRunCanary} reaches the service, configured through its
@@ -1401,6 +1406,11 @@ interface CloudRunCanaryContext
 
   readonly state: TargetStateHandle
     The rollout's durable platform state, shared by every call.
+  readonly reason?: "rollback" | "hand-run"
+    Why `abort` runs: `"rollback"` when the engine undoes a rollout,
+    `"hand-run"` for `rollout.abort` run on its own. An engine older than
+    this field leaves it out, which is treated as a hand run — the behaviour
+    from before the field existed.
   reportSummary(pairs: SummaryPairs): void
     Add key/value pairs to the calling target's row in the build summary.
 

@@ -75,7 +75,7 @@ function fakeKubectl(
   return { runner, calls };
 }
 
-function context() {
+function context(reason?: "rollback" | "hand-run") {
   const summary: Record<string, string | number> = {};
   return {
     state: memoryState(),
@@ -83,6 +83,7 @@ function context() {
     reportSummary: (pairs: Record<string, string | number>) => {
       Object.assign(summary, pairs);
     },
+    reason,
   };
 }
 
@@ -402,6 +403,48 @@ Deno.test("a hand-run abort restores the configured stable image", async () => {
     status("api"),
     scale("api-canary", 0),
   ]);
+});
+
+Deno.test("a rollback with nothing recorded runs nothing, even with a stable image set", async () => {
+  // A degraded run record, or a stage whose first state write was rejected:
+  // nothing was staged, so restoring the stable image would change a
+  // Deployment no rollout touched.
+  const { runner, calls } = fakeKubectl();
+  await platform(runner, (k) => k.stableImage("reg/api:1"))
+    .abort(context("rollback"));
+  // Nor does it need a stable image to do nothing.
+  await platform(runner).abort(context("rollback"));
+  assertEquals(calls, []);
+});
+
+Deno.test("a rollback refuses a stage marker stage never writes, and runs nothing", async () => {
+  const { runner, calls } = fakeKubectl();
+  const stray = context("rollback");
+  await stray.state.set({
+    kubectlCanaryStage: "bogus",
+    kubectlCanaryStableImage: "reg/api:7",
+    kubectlCanaryReplicas: 3,
+  });
+  await assertRejects(
+    () => platform(runner, (k) => k.stableImage("reg/api:1")).abort(stray),
+    Error,
+    'its stage marker is "bogus"',
+  );
+  assertEquals(calls, []);
+});
+
+Deno.test("a hand-run abort, named or from an engine that names no reason, falls back alike", async () => {
+  for (const reason of ["hand-run", undefined] as const) {
+    const { runner, calls } = fakeKubectl();
+    await platform(runner, (k) => k.stableImage("reg/api:1"))
+      .abort(context(reason));
+    assertEquals(calls, [
+      setImage("api", "reg/api:1"),
+      scale("api", 10),
+      status("api"),
+      scale("api-canary", 0),
+    ]);
+  }
 });
 
 Deno.test("a hand-run abort with no stable image refuses rather than claim a rollback", async () => {

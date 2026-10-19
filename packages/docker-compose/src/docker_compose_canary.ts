@@ -422,10 +422,13 @@ export class DockerComposeCanary {
    *   `d.stable('sha256:<the recorded stable image ID>')`.
    * - **`stage` failed before recording them**: nothing had changed, so
    *   nothing runs — and the settings are not even read.
-   * - **Nothing recorded** (`rollout.abort` run by hand, a fresh run): the
-   *   settings, with the image set by
-   *   {@link DockerComposeCanarySettings.stable}. Without one this refuses,
-   *   since claiming a rollback it cannot do would be worse.
+   * - **Nothing recorded, on a rollback** (`ctx.reason` is `"rollback"`):
+   *   nothing was staged, so nothing runs — no container is read or scaled,
+   *   and the settings are not even read.
+   * - **Nothing recorded, run by hand** (`rollout.abort` on its own, a fresh
+   *   run, or an engine that names no reason): the settings, with the image
+   *   set by {@link DockerComposeCanarySettings.stable}. Without one this
+   *   refuses, since claiming a rollback it cannot do would be worse.
    *
    * Every command sets the stable variable to the image ID `stage` recorded,
    * not to the reference, so a tag moved since cannot bring in an image
@@ -477,6 +480,9 @@ export class DockerComposeCanary {
     const state = ctx.state.get();
     if (state[STAGE] === "deploying") return;
     const recorded = recordedRollout(state);
+    // The fallback to `.stable(...)` below is a hand run's alone: a rollback
+    // with no record staged nothing, so it has nothing to undo.
+    if (recorded === undefined && ctx.reason === "rollback") return;
     const { project, rollback } = recorded === undefined
       ? this.#handRun()
       : { project: await this.#recorded(recorded), rollback: recorded };
@@ -1003,7 +1009,8 @@ function staged(rollout: Rollout | undefined): Rollout {
  *   replica on the stable image, then the stable service recreated on it.
  *   The stable replicas are then read again and must be on the stable
  *   image, before the canary service goes to none. Run by hand, the stable
- *   image is the one set with `.stable(...)`.
+ *   image is the one set with `.stable(...)`. A rollback with nothing
+ *   recorded runs nothing: nothing was staged.
  *
  * The stable service's `scale:` in the Compose file must equal
  * `.replicas(...)`, and Compose 2.21 or later (`docker compose`) is

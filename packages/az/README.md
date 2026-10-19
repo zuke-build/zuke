@@ -300,7 +300,8 @@ function containerAppCanary(configure: Configure<AzContainerAppCanarySettings>):
     before (once the candidate is also the newest ready revision), or
     `<candidate>=100 <stable>=0` otherwise.
   - abort — `--revision-weight <stable>=100 <candidate>=0` mid-rollout;
-    run by hand, `<stable>=100` to the revision set with `.stable(...)`.
+    run by hand, `<stable>=100` to the revision set with `.stable(...)`. A
+    rollback with nothing recorded runs nothing: nothing was staged.
 
   Every call after `stage` that has its record — expose, promote, and abort
   mid-rollout — compares the configured app, resource group and `az` flags
@@ -559,9 +560,13 @@ class AzContainerAppCanary
       only to the stable revision, and that is still the newest revision.
       Otherwise it is left pinned, and the summary says so.
     - Any other stage marker: the record is damaged, and this refuses.
-    - Nothing recorded (`rollout.abort` run by hand, a fresh run): all
-      traffic goes to the revision set with
-      {@link AzContainerAppCanarySettings.stable}. Without one this refuses.
+    - Nothing recorded, on a rollback (`ctx.reason` is `"rollback"`):
+      nothing was staged, so nothing runs — the stable revision is not even
+      read.
+    - Nothing recorded, run by hand (`rollout.abort` on its own, a fresh
+      run, or an engine that names no reason): all traffic goes to the
+      revision set with {@link AzContainerAppCanarySettings.stable}. Without
+      one this refuses.
 
 class AzContainerAppCanarySettings
   How {@link containerAppCanary} reaches the app and deploys the candidate,
@@ -1411,6 +1416,11 @@ interface AzContainerAppCanaryContext
 
   readonly state: TargetStateHandle
     The rollout's durable platform state, shared by every call.
+  readonly reason?: "rollback" | "hand-run"
+    Why `abort` runs: `"rollback"` when the engine undoes a rollout,
+    `"hand-run"` for `rollout.abort` run on its own. An engine older than
+    this field leaves it out, which is treated as a hand run — the behaviour
+    from before the field existed.
   reportSummary(pairs: SummaryPairs): void
     Add key/value pairs to the calling target's row in the build summary.
 

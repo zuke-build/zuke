@@ -49,6 +49,24 @@ export interface CanaryContext {
 }
 
 /**
+ * Why `abort` runs:
+ *
+ * - `"rollback"` — the engine is undoing this rollout: a stage that failed or
+ *   was cancelled, a failed step, `zuke cancel`. With nothing in `state`,
+ *   nothing was staged, so there is nothing to undo.
+ * - `"hand-run"` — `rollout.abort` was run on its own, outside any rollout.
+ *   With nothing in `state`, the platform falls back to the stable version
+ *   its own configuration names.
+ */
+export type CanaryAbortReason = "rollback" | "hand-run";
+
+/** What the engine hands {@link CanaryPlatform.abort}: the context, and why. */
+export interface CanaryAbortContext extends CanaryContext {
+  /** Why `abort` runs — see {@link CanaryAbortReason}. */
+  readonly reason: CanaryAbortReason;
+}
+
+/**
  * A place a canary runs. The engine stages the candidate, moves its exposure
  * step by step, and then promotes it or aborts it — through these calls only.
  *
@@ -62,7 +80,12 @@ export interface CanaryContext {
  * - `abort` must also work with **empty** state. A rollback reads the state
  *   `stage` wrote, but `zuke <rollout>.abort` run by hand is a fresh run that
  *   has none, so `abort` falls back to what its own configuration says the
- *   stable version is.
+ *   stable version is. It does so only when `ctx.reason` is `"hand-run"`: a
+ *   `"rollback"` with empty state means nothing was staged, and moving
+ *   traffic to the configured stable version would change a service no
+ *   rollout touched. So `stage` records what a rollback needs **before** it
+ *   changes anything — with `ctx.state.trySet(...)`, stopping when it returns
+ *   `false` — or a rollback after a lost write would find nothing to undo.
  */
 export interface CanaryPlatform {
   /** How this platform measures exposure. */
@@ -76,7 +99,7 @@ export interface CanaryPlatform {
   /** Send all traffic to the candidate and retire the old version. */
   promote(ctx: CanaryContext): Promise<void>;
   /** Return all traffic to the stable version and remove the candidate. */
-  abort(ctx: CanaryContext): Promise<void>;
+  abort(ctx: CanaryAbortContext): Promise<void>;
 }
 
 /**

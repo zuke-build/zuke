@@ -55,12 +55,12 @@ await run(Deploy);
 Every upgrade passes `--reset-then-reuse-values`, and every command on the
 stable release `--history-max 0`:
 
-| Call      | helm                                                                                                                                                                                                                                                                                                                                                                                 |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `stage`   | `get all <stable> --template '{{.Release.Version}} {{.Release.Info.Status}} {{.Release.Info.FirstDeployed.UnixNano}}'` — refused unless `deployed`, else the revision and first-deployed time are recorded; `get all <canary>` — refused if the canary release already exists; then `upgrade <canary> <chart> --set replicaCount=0 --set-string image.tag=<image> --install --wait`. |
-| `expose`  | `get all <stable> --template '{{.Release.Info.FirstDeployed.UnixNano}}'` — refused unless it is the recorded time; then `upgrade <canary> <chart> --set replicaCount=<n> --wait`, then `upgrade <stable> <stable chart> --set replicaCount=<total-n>`. `n` is rounded, at least 1 above 0 %; returns `n / total`.                                                                    |
-| `promote` | The same first-deployed check, then `upgrade <stable> <chart> --set replicaCount=<total> --set-string image.tag=<image> --wait`, then `uninstall <canary> --ignore-not-found`.                                                                                                                                                                                                       |
-| `abort`   | The same first-deployed check, then `rollback <stable> <recorded revision> --wait`, then `uninstall <canary> --ignore-not-found` (only the check and the uninstall when the canary install was under way). Run by hand there is no record, so no check: the revision is set with `.stableRevision(n)`; without one it refuses.                                                       |
+| Call      | helm                                                                                                                                                                                                                                                                                                                                                                                                       |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stage`   | `get all <stable> --template '{{.Release.Version}} {{.Release.Info.Status}} {{.Release.Info.FirstDeployed.UnixNano}}'` — refused unless `deployed`, else the revision and first-deployed time are recorded; `get all <canary>` — refused if the canary release already exists; then `upgrade <canary> <chart> --set replicaCount=0 --set-string image.tag=<image> --install --wait`.                       |
+| `expose`  | `get all <stable> --template '{{.Release.Info.FirstDeployed.UnixNano}}'` — refused unless it is the recorded time; then `upgrade <canary> <chart> --set replicaCount=<n> --wait`, then `upgrade <stable> <stable chart> --set replicaCount=<total-n>`. `n` is rounded, at least 1 above 0 %; returns `n / total`.                                                                                          |
+| `promote` | The same first-deployed check, then `upgrade <stable> <chart> --set replicaCount=<total> --set-string image.tag=<image> --wait`, then `uninstall <canary> --ignore-not-found`.                                                                                                                                                                                                                             |
+| `abort`   | The same first-deployed check, then `rollback <stable> <recorded revision> --wait`, then `uninstall <canary> --ignore-not-found` (only the check and the uninstall when the canary install was under way). Run by hand there is no record, so no check: the revision is set with `.stableRevision(n)`; without one it refuses. A rollback the engine runs with no record runs nothing: nothing was staged. |
 
 `stage` records the image, the total replica count, the charts and their
 versions, the values files and the image and replica keys, and `expose` and
@@ -194,7 +194,8 @@ function helmCanary(configure: Configure<HelmCanarySettings>): HelmCanary
     (waiting), then on the stable release with the remainder.
   - promote — `upgrade <stable> --set replicaCount=<total> --set-string image.tag=<image> --wait`, then `uninstall <canary> --ignore-not-found`.
   - abort — `rollback <stable> <recorded revision> --wait`, then the same
-    uninstall; run by hand, the revision set with `.stableRevision(...)`.
+    uninstall; run by hand, the revision set with `.stableRevision(...)`. A
+    rollback with nothing recorded runs nothing: nothing was staged.
 
   Every call after `stage` that has its record first reads the stable
   release's first-deployed time again and refuses, changing nothing, unless
@@ -247,9 +248,13 @@ class HelmCanary
       touched, so only the canary release is uninstalled.
     - Stage failed before the canary install: nothing changed; nothing
       runs.
-    - Nothing recorded (`rollout.abort` run by hand, a fresh run): the
-      rollback goes to {@link HelmCanarySettings.stableRevision}. Without one
-      this refuses, since claiming a rollback it cannot do would be worse.
+    - Nothing recorded, on a rollback (`ctx.reason` is `"rollback"`):
+      nothing was staged, so nothing runs — neither a rollback nor an
+      uninstall, and the stable revision is not even read.
+    - Nothing recorded, run by hand (`rollout.abort` on its own, a fresh
+      run, or an engine that names no reason): the rollback goes to
+      {@link HelmCanarySettings.stableRevision}. Without one this refuses,
+      since claiming a rollback it cannot do would be worse.
     - A record it does not recognise: refuses.
 
     Staged, or with the install under way, it first reads when the stable
@@ -347,8 +352,9 @@ class HelmCanarySettings
     The stable release's revision to roll back to when `rollout.abort` is run
     by hand — the one `helm history <stable>` lists from before the rollout.
     Such a run is fresh, with no record of a rollout, so it has nothing else
-    to go on. A rollback the engine runs mid-rollout does not use it: that one
-    returns to the revision `stage` recorded.
+    to go on. A rollback the engine runs does not use it: mid-rollout it
+    returns to the revision `stage` recorded, and with nothing recorded it
+    runs nothing, since nothing was staged.
   helm(configure: Configure<HelmSettings>): this
     Global flags for every helm command the platform runs —
     `(s) => s.kubeContext("prod").kubeconfig("~/.kube/prod")`, or a
@@ -556,6 +562,11 @@ interface HelmCanaryContext
 
   readonly state: TargetStateHandle
     The rollout's durable platform state, shared by every call.
+  readonly reason?: "rollback" | "hand-run"
+    Why `abort` runs: `"rollback"` when the engine undoes a rollout,
+    `"hand-run"` for `rollout.abort` run on its own. An engine older than
+    this field leaves it out, which is treated as a hand run — the behaviour
+    from before the field existed.
   reportSummary(pairs: SummaryPairs): void
     Add key/value pairs to the calling target's row in the build summary.
 

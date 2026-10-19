@@ -117,6 +117,7 @@ Deno.test("a failed analysis rolls the rollout back and fails the run", async ()
     assertEquals(code, 1);
     assertStringIncludes(out + err, "error ratio 0.3 above 0.01");
     assertEquals(platform.calls, ["stage", "expose 10 rev-2", "abort rev-1"]);
+    assertEquals(platform.abortReasons, ["rollback"]);
     const run = await new FileSystemStateStore(dir, defaultStateHost).getRun(
       await onlyRun(dir),
     );
@@ -131,6 +132,7 @@ Deno.test("zuke cancel on a parked rollout runs the same rollback", async () => 
     const cancelled = await runCli(Deploy, ["cancel", await onlyRun(dir)]);
     assertEquals(cancelled.code, 0, cancelled.err);
     assertEquals(platform.calls.at(-1), "abort rev-1");
+    assertEquals(platform.abortReasons, ["rollback"]);
     // The rollout's lock went with it: a new rollout can start.
     const again = await runCli(Deploy, ["rollout.stage"]);
     assertEquals(again.code, 0, again.err);
@@ -143,5 +145,43 @@ Deno.test("a rollback run by hand has no recorded state to read", async () => {
     const { code } = await runCli(Deploy, ["rollout.abort"]);
     assertEquals(code, 0);
     assertEquals(platform.calls, ["abort -"]);
+    assertEquals(platform.abortReasons, ["hand-run"]);
+  });
+});
+
+Deno.test("a stage that fails is rolled back as a rollback, not a hand run", async () => {
+  fresh();
+  platform.failOn = "stage";
+  await withStateDir(async () => {
+    const { code } = await runCli(Deploy, ["rollout.stage"]);
+    assertEquals(code, 1);
+    assertEquals(platform.calls, ["stage", "abort rev-1"]);
+    assertEquals(platform.abortReasons, ["rollback"]);
+  });
+});
+
+Deno.test("zuke cancel on a degraded record that lost the stage's row still rolls back as a rollback", async () => {
+  // The record lost a write for good, taking the stage's own row with it: the
+  // cancellation compensates the stage anyway, with no recorded state. That
+  // is a rollback of this run — never the hand-run fallback a platform keeps
+  // for `rollout.abort` run on its own (#836).
+  fresh();
+  await withStateDir(async (dir) => {
+    const parked = await runCli(Deploy, ["ship"]);
+    assertEquals(parked.code, 0, parked.err);
+    const store = new FileSystemStateStore(dir, defaultStateHost);
+    const id = await onlyRun(dir);
+    const stored = await store.getRun(id);
+    if (stored === null) throw new Error("the parked run has no record");
+    const { "rollout.stage": _lost, ...rest } = stored.record.targets;
+    const put = await store.putRun(
+      { ...stored.record, targets: rest, degraded: true },
+      stored.version,
+    );
+    assertEquals(put.ok, true);
+    const cancelled = await runCli(Deploy, ["cancel", id]);
+    assertEquals(cancelled.code, 0, cancelled.err);
+    assertEquals(platform.calls.at(-1), "abort -");
+    assertEquals(platform.abortReasons, ["rollback"]);
   });
 });

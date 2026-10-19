@@ -94,7 +94,7 @@ function fakeHelm(cluster: Cluster = {}): {
   return { runner, calls };
 }
 
-function context() {
+function context(reason?: "rollback" | "hand-run") {
   const summary: Record<string, string | number> = {};
   return {
     state: memoryState(),
@@ -102,6 +102,7 @@ function context() {
     reportSummary: (pairs: Record<string, string | number>) => {
       Object.assign(summary, pairs);
     },
+    reason,
   };
 }
 
@@ -491,6 +492,16 @@ Deno.test("abort while the canary install was under way only uninstalls it", asy
   assertEquals(calls, [FIRST_READ, UNINSTALL]);
 });
 
+Deno.test("an engine rollback of a stage cut short during the install still uninstalls the canary", async () => {
+  // The deploying marker is a record: the canary release may exist, so a
+  // rollback removes it — the reason only matters when nothing is recorded.
+  const ctx = context("rollback");
+  await ctx.state.set(DEPLOYING);
+  const { runner, calls } = fakeHelm();
+  await platform(runner).abort(ctx);
+  assertEquals(calls, [FIRST_READ, UNINSTALL]);
+});
+
 Deno.test("a retried stage keeps the earlier attempt's record and its canary release", async () => {
   // A first attempt was cut short during the canary install, so the canary
   // release is this rollout's own: the retry does not refuse it as a
@@ -604,6 +615,41 @@ Deno.test("a hand-run abort rolls back to the configured revision", async () => 
     ["rollback", "api", "41", ...SCOPE, "--wait", "--history-max", "0"],
     UNINSTALL,
   ]);
+});
+
+Deno.test("a rollback with nothing recorded runs nothing, even with a stable revision set", async () => {
+  // A degraded run record, or a stage whose first state write was rejected:
+  // nothing was staged, so rolling the stable release back would change a
+  // release no rollout touched — and the canary release is not this one's.
+  const { runner, calls } = fakeHelm();
+  await platform(runner, (h) => h.stableRevision(41))
+    .abort(context("rollback"));
+  // Nor does it need a stable revision to do nothing.
+  await platform(runner).abort(context("rollback"));
+  assertEquals(calls, []);
+});
+
+Deno.test("a rollback still refuses a record it does not recognise", async () => {
+  const { runner, calls } = fakeHelm();
+  const unknown = context("rollback");
+  await unknown.state.set({ helmStage: "bogus" });
+  await assertRejects(
+    () => platform(runner, (h) => h.stableRevision(3)).abort(unknown),
+    Error,
+    'unrecognised stage "bogus"',
+  );
+  assertEquals(calls, []);
+});
+
+Deno.test("a hand-run abort, named or from an engine that names no reason, falls back alike", async () => {
+  for (const reason of ["hand-run", undefined] as const) {
+    const { runner, calls } = fakeHelm();
+    await platform(runner, (h) => h.stableRevision(41)).abort(context(reason));
+    assertEquals(calls, [
+      ["rollback", "api", "41", ...SCOPE, "--wait", "--history-max", "0"],
+      UNINSTALL,
+    ]);
+  }
 });
 
 Deno.test("a hand-run abort with no revision refuses rather than claim a rollback", async () => {

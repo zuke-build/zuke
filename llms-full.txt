@@ -10162,7 +10162,8 @@ function dockerComposeCanary(configure: Configure<DockerComposeCanarySettings>):
     replica on the stable image, then the stable service recreated on it.
     The stable replicas are then read again and must be on the stable
     image, before the canary service goes to none. Run by hand, the stable
-    image is the one set with `.stable(...)`.
+    image is the one set with `.stable(...)`. A rollback with nothing
+    recorded runs nothing: nothing was staged.
 
   The stable service's `scale:` in the Compose file must equal
   `.replicas(...)`, and Compose 2.21 or later (`docker compose`) is
@@ -10302,10 +10303,13 @@ class DockerComposeCanary
       `d.stable('sha256:<the recorded stable image ID>')`.
     - `stage` failed before recording them: nothing had changed, so
       nothing runs — and the settings are not even read.
-    - Nothing recorded (`rollout.abort` run by hand, a fresh run): the
-      settings, with the image set by
-      {@link DockerComposeCanarySettings.stable}. Without one this refuses,
-      since claiming a rollback it cannot do would be worse.
+    - Nothing recorded, on a rollback (`ctx.reason` is `"rollback"`):
+      nothing was staged, so nothing runs — no container is read or scaled,
+      and the settings are not even read.
+    - Nothing recorded, run by hand (`rollout.abort` on its own, a fresh
+      run, or an engine that names no reason): the settings, with the image
+      set by {@link DockerComposeCanarySettings.stable}. Without one this
+      refuses, since claiming a rollback it cannot do would be worse.
 
     Every command sets the stable variable to the image ID `stage` recorded,
     not to the reference, so a tag moved since cannot bring in an image
@@ -10412,8 +10416,9 @@ class DockerComposeCanarySettings
     by hand — a reference with no whitespace or control characters. Such a
     run is fresh, with no record of a rollout, so it has nothing else to go
     on — and the release it is undoing has usually been promoted already. A
-    rollback the engine runs mid-rollout does not use it: that one returns to
-    the image ID `stage` saw the stable replicas running.
+    rollback the engine runs does not use it: mid-rollout it returns to the
+    image ID `stage` saw the stable replicas running, and with nothing
+    recorded it runs nothing, since nothing was staged.
   compose(configure: Configure<DockerComposeSettings>): this
     Global flags for every Compose command the platform runs —
     `(s) => s.file("compose.yml").projectName("shop")`, or `.usePlugin()` to
@@ -10968,6 +10973,11 @@ interface DockerComposeCanaryContext
 
   readonly state: TargetStateHandle
     The rollout's durable platform state, shared by every call.
+  readonly reason?: "rollback" | "hand-run"
+    Why `abort` runs: `"rollback"` when the engine undoes a rollout,
+    `"hand-run"` for `rollout.abort` run on its own. An engine older than
+    this field leaves it out, which is treated as a hand run — the behaviour
+    from before the field existed.
   reportSummary(pairs: SummaryPairs): void
     Add key/value pairs to the calling target's row in the build summary.
 
@@ -11120,7 +11130,8 @@ function kubectlCanary(configure: Configure<KubectlCanarySettings>): KubectlCana
   - promote — `set image` the candidate on the stable Deployment, `scale`
     it to the total, `rollout status` it, then `scale` the canary to 0.
   - abort — the same with the stable image: the one `stage` read, or, run
-    by hand, the one set with `.stableImage(...)`.
+    by hand, the one set with `.stableImage(...)`. A rollback with nothing
+    recorded runs nothing: nothing was staged.
 
   `stage` records the Deployments, container and namespace it changed, and
   the later calls refuse a lambda that names others. Keep them — and the kube
@@ -11295,8 +11306,13 @@ class KubectlCanary
       than `stage` recorded is refused.
     - `stage` failed before the candidate was on record: the canary had
       no replicas and the stable Deployment was not touched, so nothing runs.
-    - Nothing recorded (`rollout.abort` run by hand, a fresh run): the
-      same, with the image set by {@link KubectlCanarySettings.stableImage}.
+    - Nothing recorded, on a rollback (`ctx.reason` is `"rollback"`):
+      nothing was staged, so nothing runs — the stable image is not even
+      read. A marker `stage` never writes is a damaged record, and a
+      rollback refuses it.
+    - Nothing recorded, run by hand (`rollout.abort` on its own, a fresh
+      run, or an engine that names no reason): the same as staged, with the
+      image set by {@link KubectlCanarySettings.stableImage}.
       Without one this refuses: after a promote the stable Deployment runs the
       candidate, and moving replicas alone would report a rollback that
       changed nothing.
@@ -12043,6 +12059,11 @@ interface KubectlCanaryContext
 
   readonly state: TargetStateHandle
     The rollout's durable platform state, shared by every call.
+  readonly reason?: "rollback" | "hand-run"
+    Why `abort` runs: `"rollback"` when the engine undoes a rollout,
+    `"hand-run"` for `rollout.abort` run on its own. An engine older than
+    this field leaves it out, which is treated as a hand run — the behaviour
+    from before the field existed.
   reportSummary(pairs: SummaryPairs): void
     Add key/value pairs to the calling target's row in the build summary.
 
@@ -12265,7 +12286,8 @@ function helmCanary(configure: Configure<HelmCanarySettings>): HelmCanary
     (waiting), then on the stable release with the remainder.
   - promote — `upgrade <stable> --set replicaCount=<total> --set-string image.tag=<image> --wait`, then `uninstall <canary> --ignore-not-found`.
   - abort — `rollback <stable> <recorded revision> --wait`, then the same
-    uninstall; run by hand, the revision set with `.stableRevision(...)`.
+    uninstall; run by hand, the revision set with `.stableRevision(...)`. A
+    rollback with nothing recorded runs nothing: nothing was staged.
 
   Every call after `stage` that has its record first reads the stable
   release's first-deployed time again and refuses, changing nothing, unless
@@ -12318,9 +12340,13 @@ class HelmCanary
       touched, so only the canary release is uninstalled.
     - Stage failed before the canary install: nothing changed; nothing
       runs.
-    - Nothing recorded (`rollout.abort` run by hand, a fresh run): the
-      rollback goes to {@link HelmCanarySettings.stableRevision}. Without one
-      this refuses, since claiming a rollback it cannot do would be worse.
+    - Nothing recorded, on a rollback (`ctx.reason` is `"rollback"`):
+      nothing was staged, so nothing runs — neither a rollback nor an
+      uninstall, and the stable revision is not even read.
+    - Nothing recorded, run by hand (`rollout.abort` on its own, a fresh
+      run, or an engine that names no reason): the rollback goes to
+      {@link HelmCanarySettings.stableRevision}. Without one this refuses,
+      since claiming a rollback it cannot do would be worse.
     - A record it does not recognise: refuses.
 
     Staged, or with the install under way, it first reads when the stable
@@ -12418,8 +12444,9 @@ class HelmCanarySettings
     The stable release's revision to roll back to when `rollout.abort` is run
     by hand — the one `helm history <stable>` lists from before the rollout.
     Such a run is fresh, with no record of a rollout, so it has nothing else
-    to go on. A rollback the engine runs mid-rollout does not use it: that one
-    returns to the revision `stage` recorded.
+    to go on. A rollback the engine runs does not use it: mid-rollout it
+    returns to the revision `stage` recorded, and with nothing recorded it
+    runs nothing, since nothing was staged.
   helm(configure: Configure<HelmSettings>): this
     Global flags for every helm command the platform runs —
     `(s) => s.kubeContext("prod").kubeconfig("~/.kube/prod")`, or a
@@ -12627,6 +12654,11 @@ interface HelmCanaryContext
 
   readonly state: TargetStateHandle
     The rollout's durable platform state, shared by every call.
+  readonly reason?: "rollback" | "hand-run"
+    Why `abort` runs: `"rollback"` when the engine undoes a rollout,
+    `"hand-run"` for `rollout.abort` run on its own. An engine older than
+    this field leaves it out, which is treated as a hand run — the behaviour
+    from before the field existed.
   reportSummary(pairs: SummaryPairs): void
     Add key/value pairs to the calling target's row in the build summary.
 
@@ -15369,7 +15401,8 @@ function cloudRunCanary(configure: Configure<CloudRunCanarySettings>): CloudRunC
   - promote — checks the latest revision is still the candidate, then
     `update-traffic --to-latest`.
   - abort — `update-traffic --to-tags canary=0` mid-rollout; run by hand,
-    `--to-revisions <stable>=100` to the revision set with `.stable(...)`.
+    `--to-revisions <stable>=100` to the revision set with `.stable(...)`. A
+    rollback with nothing recorded runs nothing: nothing was staged.
 
   Every call after `stage` that has its record — expose, promote, and abort
   mid-rollout — first compares the configured service, region, tag and
@@ -15662,10 +15695,13 @@ class CloudRunCanary
     - `stage` failed before tagging it: nothing has any traffic to take
       back, so nothing runs.
     - Any other stage marker: the record is damaged, and this refuses.
-    - Nothing recorded (`rollout.abort` run by hand, a fresh run): all
-      traffic goes to the revision set with
-      {@link CloudRunCanarySettings.stable}. Without one this refuses, since
-      claiming a rollback it cannot do would be worse.
+    - Nothing recorded, on a rollback (`ctx.reason` is `"rollback"`):
+      nothing was staged, so nothing runs — the stable revision is not even
+      read.
+    - Nothing recorded, run by hand (`rollout.abort` on its own, a fresh
+      run, or an engine that names no reason): all traffic goes to the
+      revision set with {@link CloudRunCanarySettings.stable}. Without one
+      this refuses, since claiming a rollback it cannot do would be worse.
 
 class CloudRunCanarySettings
   How {@link cloudRunCanary} reaches the service, configured through its
@@ -16477,6 +16513,11 @@ interface CloudRunCanaryContext
 
   readonly state: TargetStateHandle
     The rollout's durable platform state, shared by every call.
+  readonly reason?: "rollback" | "hand-run"
+    Why `abort` runs: `"rollback"` when the engine undoes a rollout,
+    `"hand-run"` for `rollout.abort` run on its own. An engine older than
+    this field leaves it out, which is treated as a hand run — the behaviour
+    from before the field existed.
   reportSummary(pairs: SummaryPairs): void
     Add key/value pairs to the calling target's row in the build summary.
 
@@ -16762,7 +16803,8 @@ function lambdaCanary(configure: Configure<AwsLambdaCanarySettings>): AwsLambdaC
   - promote — `update-alias --function-version <candidate>` with the
     routing cleared.
   - abort — takes the candidate's weight off mid-rollout; run by hand,
-    `--function-version <stable>` with the routing cleared.
+    `--function-version <stable>` with the routing cleared. A rollback with
+    nothing recorded runs nothing: nothing was staged.
 
   Every call after `stage` that has its record — expose, promote, and abort
   mid-rollout — compares the configured function, alias and AWS flags with
@@ -17323,10 +17365,14 @@ class AwsLambdaCanary
     - `stage` failed before recording it: the alias was never changed,
       so nothing runs.
     - Any other stage marker: the record is damaged, and this refuses.
-    - Nothing recorded (`rollout.abort` run by hand, a fresh run): the
-      alias goes to the version set with {@link AwsLambdaCanarySettings.stable}
-      and its routing is cleared. Without one this refuses, since claiming a
-      rollback it cannot do would be worse.
+    - Nothing recorded, on a rollback (`ctx.reason` is `"rollback"`):
+      nothing was staged, so nothing runs — the stable version is not even
+      read.
+    - Nothing recorded, run by hand (`rollout.abort` on its own, a fresh
+      run, or an engine that names no reason): the alias goes to the version
+      set with {@link AwsLambdaCanarySettings.stable} and its routing is
+      cleared. Without one this refuses, since claiming a rollback it cannot
+      do would be worse.
 
 class AwsLambdaCanarySettings
   How {@link lambdaCanary} reaches the alias and finds the candidate,
@@ -18038,6 +18084,11 @@ interface AwsLambdaCanaryContext
 
   readonly state: TargetStateHandle
     The rollout's durable platform state, shared by every call.
+  readonly reason?: "rollback" | "hand-run"
+    Why `abort` runs: `"rollback"` when the engine undoes a rollout,
+    `"hand-run"` for `rollout.abort` run on its own. An engine older than
+    this field leaves it out, which is treated as a hand run — the behaviour
+    from before the field existed.
   reportSummary(pairs: SummaryPairs): void
     Add key/value pairs to the calling target's row in the build summary.
 
@@ -18271,7 +18322,8 @@ function containerAppCanary(configure: Configure<AzContainerAppCanarySettings>):
     before (once the candidate is also the newest ready revision), or
     `<candidate>=100 <stable>=0` otherwise.
   - abort — `--revision-weight <stable>=100 <candidate>=0` mid-rollout;
-    run by hand, `<stable>=100` to the revision set with `.stable(...)`.
+    run by hand, `<stable>=100` to the revision set with `.stable(...)`. A
+    rollback with nothing recorded runs nothing: nothing was staged.
 
   Every call after `stage` that has its record — expose, promote, and abort
   mid-rollout — compares the configured app, resource group and `az` flags
@@ -18530,9 +18582,13 @@ class AzContainerAppCanary
       only to the stable revision, and that is still the newest revision.
       Otherwise it is left pinned, and the summary says so.
     - Any other stage marker: the record is damaged, and this refuses.
-    - Nothing recorded (`rollout.abort` run by hand, a fresh run): all
-      traffic goes to the revision set with
-      {@link AzContainerAppCanarySettings.stable}. Without one this refuses.
+    - Nothing recorded, on a rollback (`ctx.reason` is `"rollback"`):
+      nothing was staged, so nothing runs — the stable revision is not even
+      read.
+    - Nothing recorded, run by hand (`rollout.abort` on its own, a fresh
+      run, or an engine that names no reason): all traffic goes to the
+      revision set with {@link AzContainerAppCanarySettings.stable}. Without
+      one this refuses.
 
 class AzContainerAppCanarySettings
   How {@link containerAppCanary} reaches the app and deploys the candidate,
@@ -19382,6 +19438,11 @@ interface AzContainerAppCanaryContext
 
   readonly state: TargetStateHandle
     The rollout's durable platform state, shared by every call.
+  readonly reason?: "rollback" | "hand-run"
+    Why `abort` runs: `"rollback"` when the engine undoes a rollout,
+    `"hand-run"` for `rollout.abort` run on its own. An engine older than
+    this field leaves it out, which is treated as a hand run — the behaviour
+    from before the field existed.
   reportSummary(pairs: SummaryPairs): void
     Add key/value pairs to the calling target's row in the build summary.
 
@@ -29856,6 +29917,12 @@ interface Canary
     The single phase of a canary with no steps, when it bakes or analyses.
   [step: `step${number}`]: CanaryPhaseTargets
 
+interface CanaryAbortContext extends CanaryContext
+  What the engine hands {@link CanaryPlatform.abort}: the context, and why.
+
+  readonly reason: CanaryAbortReason
+    Why `abort` runs — see {@link CanaryAbortReason}.
+
 interface CanaryAnalysis
   A health check run against a canary: throw to fail it, which rolls the
   rollout back. Any core `Validation` is one, since a function that accepts a
@@ -29920,7 +29987,12 @@ interface CanaryPlatform
   - `abort` must also work with empty state. A rollback reads the state
     `stage` wrote, but `zuke <rollout>.abort` run by hand is a fresh run that
     has none, so `abort` falls back to what its own configuration says the
-    stable version is.
+    stable version is. It does so only when `ctx.reason` is `"hand-run"`: a
+    `"rollback"` with empty state means nothing was staged, and moving
+    traffic to the configured stable version would change a service no
+    rollout touched. So `stage` records what a rollback needs before it
+    changes anything — with `ctx.state.trySet(...)`, stopping when it returns
+    `false` — or a rollback after a lost write would find nothing to undo.
 
   readonly exposure: ExposureKind
     How this platform measures exposure.
@@ -29932,7 +30004,7 @@ interface CanaryPlatform
     Set exposure to `percent` (0–100) and return the exposure achieved.
   promote(ctx: CanaryContext): Promise<void>
     Send all traffic to the candidate and retire the old version.
-  abort(ctx: CanaryContext): Promise<void>
+  abort(ctx: CanaryAbortContext): Promise<void>
     Return all traffic to the stable version and remove the candidate.
 
 interface ThresholdBounds
@@ -29942,6 +30014,16 @@ interface ThresholdBounds
     The lowest acceptable value, if any.
   max?: number
     The highest acceptable value, if any.
+
+type CanaryAbortReason = "rollback" | "hand-run"
+  Why `abort` runs:
+
+  - `"rollback"` — the engine is undoing this rollout: a stage that failed or
+    was cancelled, a failed step, `zuke cancel`. With nothing in `state`,
+    nothing was staged, so there is nothing to undo.
+  - `"hand-run"` — `rollout.abort` was run on its own, outside any rollout.
+    With nothing in `state`, the platform falls back to the stable version
+    its own configuration names.
 
 type ExposureKind = "traffic" | "replicas" | "channel"
   How a platform exposes a candidate:

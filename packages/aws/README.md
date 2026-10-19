@@ -265,7 +265,8 @@ function lambdaCanary(configure: Configure<AwsLambdaCanarySettings>): AwsLambdaC
   - promote — `update-alias --function-version <candidate>` with the
     routing cleared.
   - abort — takes the candidate's weight off mid-rollout; run by hand,
-    `--function-version <stable>` with the routing cleared.
+    `--function-version <stable>` with the routing cleared. A rollback with
+    nothing recorded runs nothing: nothing was staged.
 
   Every call after `stage` that has its record — expose, promote, and abort
   mid-rollout — compares the configured function, alias and AWS flags with
@@ -826,10 +827,14 @@ class AwsLambdaCanary
     - `stage` failed before recording it: the alias was never changed,
       so nothing runs.
     - Any other stage marker: the record is damaged, and this refuses.
-    - Nothing recorded (`rollout.abort` run by hand, a fresh run): the
-      alias goes to the version set with {@link AwsLambdaCanarySettings.stable}
-      and its routing is cleared. Without one this refuses, since claiming a
-      rollback it cannot do would be worse.
+    - Nothing recorded, on a rollback (`ctx.reason` is `"rollback"`):
+      nothing was staged, so nothing runs — the stable version is not even
+      read.
+    - Nothing recorded, run by hand (`rollout.abort` on its own, a fresh
+      run, or an engine that names no reason): the alias goes to the version
+      set with {@link AwsLambdaCanarySettings.stable} and its routing is
+      cleared. Without one this refuses, since claiming a rollback it cannot
+      do would be worse.
 
 class AwsLambdaCanarySettings
   How {@link lambdaCanary} reaches the alias and finds the candidate,
@@ -1541,6 +1546,11 @@ interface AwsLambdaCanaryContext
 
   readonly state: TargetStateHandle
     The rollout's durable platform state, shared by every call.
+  readonly reason?: "rollback" | "hand-run"
+    Why `abort` runs: `"rollback"` when the engine undoes a rollout,
+    `"hand-run"` for `rollout.abort` run on its own. An engine older than
+    this field leaves it out, which is treated as a hand run — the behaviour
+    from before the field existed.
   reportSummary(pairs: SummaryPairs): void
     Add key/value pairs to the calling target's row in the build summary.
 
