@@ -65,9 +65,13 @@ request.
    **core first** (so the workspace's `jsr:@zuke/core` dependency resolves) and
    publishes each one whose `deno.json` version is **not yet on JSR** — it
    queries each package's JSR `meta.json` first, so it is idempotent and a no-op
-   on pushes that didn't release anything. Authentication is OIDC — the JSR
-   package ↔ repo link means **no tokens or secrets** are required; the workflow
-   just grants `id-token: write`.
+   on pushes that didn't release anything. A package that does not land — a JSR
+   task left pending, a rejected upload — fails the job, but only after the walk
+   has tried every other package: the ones that do not depend on it still
+   publish, and the job's error names every version that is missing. Re-run the
+   job once the cause is fixed. Authentication is OIDC — the JSR package ↔ repo
+   link means **no tokens or secrets** are required; the workflow just grants
+   `id-token: write`.
 
 So the steady-state flow is: merge conventional commits → merge the release PR →
 the packages publish themselves.

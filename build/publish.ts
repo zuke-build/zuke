@@ -160,3 +160,68 @@ export async function publishOne(
   }
   throw new Error(`Publishing ${name} timed out before reaching JSR.`);
 }
+
+/**
+ * The dependencies {@link publishAll} needs beyond {@link PublishOneDeps}:
+ * each package's version, and where a version that did not land is reported.
+ */
+export interface PublishAllDeps extends PublishOneDeps {
+  /** The version `pkg` releases from this commit; `"0.0.0"` means none yet. */
+  versionOf(pkg: string): Promise<string>;
+  /** Report a version that did not land, and why. */
+  failed(message: string): void;
+}
+
+/**
+ * Publish every package's pending version to JSR, in `packages` order (core
+ * first, each package after the workspace packages it depends on). A package
+ * that fails — a JSR task left pending, a rejected upload — is reported and
+ * the walk carries on, so one stuck package cannot hold back the rest of the
+ * release (#849). A package whose dependency did not land in this walk is not
+ * tried: it may need the dependency's new version, which JSR does not have.
+ * Every package depends on `core`; `dependencies` lists the others
+ * (`PACKAGE_DEPENDENCIES`).
+ *
+ * @throws {Error} after the last package, naming every version that did not
+ * land.
+ */
+export async function publishAll(
+  packages: readonly string[],
+  dependencies: Readonly<Record<string, readonly string[]>>,
+  deps: PublishAllDeps,
+): Promise<void> {
+  const missing = new Set<string>();
+  const failures: string[] = [];
+  for (const pkg of packages) {
+    const version = await deps.versionOf(pkg);
+    if (version === "0.0.0") {
+      deps.info(`@zuke/${pkg} has no released version yet.`);
+      continue;
+    }
+    const name = `@zuke/${pkg}@${version}`;
+    const needs = pkg === "core" ? [] : ["core", ...(dependencies[pkg] ?? [])];
+    const blocker = needs.find((dependency) => missing.has(dependency));
+    try {
+      // A version already on JSR needs nothing from its dependencies.
+      if (
+        blocker !== undefined &&
+        !await deps.isPublished(`@zuke/${pkg}`, version)
+      ) {
+        throw new Error(`its dependency @zuke/${blocker} did not land.`);
+      }
+      await publishOne(pkg, version, deps);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      deps.failed(`${name} did not publish: ${reason}`);
+      missing.add(pkg);
+      failures.push(name);
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `${failures.length} package version(s) did not reach JSR: ` +
+        `${failures.join(", ")}. Re-run once the cause is fixed — a version ` +
+        "already on JSR is skipped.",
+    );
+  }
+}

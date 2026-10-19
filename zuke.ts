@@ -92,11 +92,15 @@ import {
 } from "./build/cli_publish.ts";
 import { writeStepOutputs } from "./build/step_outputs.ts";
 import { mintReleaseToken } from "./build/release_token.ts";
-import { localVersion, PACKAGES } from "./build/packages.ts";
+import {
+  localVersion,
+  PACKAGE_DEPENDENCIES,
+  PACKAGES,
+} from "./build/packages.ts";
 import {
   CODECOV_CLI_VERSION,
   installCli,
-  publishOne,
+  publishAll,
   publishPackage,
   TOOLS_ROOT,
 } from "./build/publish.ts";
@@ -1950,19 +1954,14 @@ class ZukeBuild extends Build {
   publishJsr = target()
     .description("Publish new package versions to JSR, core first")
     .executes(async () => {
-      for (const pkg of PACKAGES) {
-        const version = await localVersion(pkg);
-        if (version === "0.0.0") {
-          ConsoleTasks.info(`@zuke/${pkg} has no released version yet.`);
-          continue;
-        }
-        await publishOne(pkg, version, {
-          isPublished,
-          publishPackage,
-          info: ConsoleTasks.info,
-          success: ConsoleTasks.success,
-        });
-      }
+      await publishAll(PACKAGES, PACKAGE_DEPENDENCIES, {
+        versionOf: localVersion,
+        isPublished,
+        publishPackage,
+        info: ConsoleTasks.info,
+        success: ConsoleTasks.success,
+        failed: ConsoleTasks.error,
+      });
     });
 
   // The CLI's standalone binaries (#782). Five stages, one CI job each, in
