@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.0](https://github.com/zuke-build/zuke/compare/cli-v1.15.1...cli-v1.16.0) (2026-10-19)
+
+
+### Features
+
+* **cli:** point every user-facing doc and setup at the zuke command ([#845](https://github.com/zuke-build/zuke/issues/845)) ([89b8a9d](https://github.com/zuke-build/zuke/commit/89b8a9d288341982fcfe1dd68033da03c5fce062))
+
 ## [1.15.1](https://github.com/zuke-build/zuke/compare/cli-v1.15.0...cli-v1.15.1) (2026-10-14)
 
 

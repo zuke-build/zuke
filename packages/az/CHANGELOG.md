@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.0](https://github.com/zuke-build/zuke/compare/az-v1.1.1...az-v1.2.0) (2026-10-19)
+
+
+### Features
+
+* **az:** Container Apps platform for @zuke/canary ([#842](https://github.com/zuke-build/zuke/issues/842)) ([4172c0a](https://github.com/zuke-build/zuke/commit/4172c0a39241f0361c0cbda5eefbd708e04eb78a))
+
+
+### Bug Fixes
+
+* **canary:** tell abort whether it is a rollback or a hand run ([#846](https://github.com/zuke-build/zuke/issues/846)) ([6186b80](https://github.com/zuke-build/zuke/commit/6186b8015dba2c06d0591152c2ebbf3ae1e98377))
+
 ## [1.1.1](https://github.com/zuke-build/zuke/compare/az-v1.1.0...az-v1.1.1) (2026-10-08)
 
 

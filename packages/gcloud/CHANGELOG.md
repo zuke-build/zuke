@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/zuke-build/zuke/compare/gcloud-v1.4.0...gcloud-v1.4.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* **canary:** tell abort whether it is a rollback or a hand run ([#846](https://github.com/zuke-build/zuke/issues/846)) ([6186b80](https://github.com/zuke-build/zuke/commit/6186b8015dba2c06d0591152c2ebbf3ae1e98377))
+
 ## [1.4.0](https://github.com/zuke-build/zuke/compare/gcloud-v1.3.1...gcloud-v1.4.0) (2026-10-08)
 
 
