@@ -68,9 +68,9 @@ await run(MyBuild);
 ```
 
 ```sh
-./zuke generate-ci           # writes both workflow files
-./zuke generate-ci --check   # the gate: fails if a committed file drifted
-./zuke outdated              # ask right now, as a report
+zuke generate-ci           # writes both workflow files
+zuke generate-ci --check   # the gate: fails if a committed file drifted
+zuke outdated              # ask right now, as a report
 ```
 
 ## What gets generated

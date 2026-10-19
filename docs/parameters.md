@@ -42,8 +42,8 @@ await run(Deploy);
 ```
 
 ```sh
-./zuke deploy --environment production --workers 8 --repos api,web --preview
-ENVIRONMENT=staging REPOS=api,web ./zuke deploy   # values from the environment
+zuke deploy --environment production --workers 8 --repos api,web --preview
+ENVIRONMENT=staging REPOS=api,web zuke deploy   # values from the environment
 ```
 
 ## Declaring
@@ -86,9 +86,9 @@ tags = parameter("Image tags").array();
 ```
 
 ```sh
-./zuke deploy --tags latest,canary      # ["latest", "canary"]
-./zuke deploy --tags latest --tags canary  # same result
-TAGS=latest,canary ./zuke deploy        # from the environment
+zuke deploy --tags latest,canary           # ["latest", "canary"]
+zuke deploy --tags latest --tags canary    # same result
+TAGS=latest,canary zuke deploy             # from the environment
 ```
 
 `.array()` composes with the kind and choices declared before it — every

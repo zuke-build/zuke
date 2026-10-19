@@ -91,15 +91,15 @@ await run(Release);
 ```
 
 ```sh
-./zuke --release-version 1.1.0           # the whole release
-./zuke tag --release-version 1.1.0       # stop after the tag: a safe local rehearsal
-./zuke release --release-version 1.1.0 --dry-run # print the plan, run nothing
-RELEASE_VERSION=1.1.0 ./zuke             # the parameter from the environment
+zuke --release-version 1.1.0                     # the whole release
+zuke tag --release-version 1.1.0                 # stop after the tag: a safe local rehearsal
+zuke release --release-version 1.1.0 --dry-run   # print the plan, run nothing
+RELEASE_VERSION=1.1.0 zuke                       # the parameter from the environment
 ```
 
 ## Why a chain beats a script
 
-- **You can stop anywhere.** `./zuke tag` runs check → test → bump → tag and
+- **You can stop anywhere.** `zuke tag` runs check → test → bump → tag and
   nothing after it; `--dry-run` prints the plan for any target. A script has one
   entry point and a comment that says "don't run past here".
 - **Every step is the real CLI, typed.**
@@ -110,7 +110,7 @@ RELEASE_VERSION=1.1.0 ./zuke             # the parameter from the environment
   methods, a typo is a compile error, and the argv is built without a shell.
 - **The version is a typed input.** `parameter(…).required()` is read from
   `--release-version` or `RELEASE_VERSION`, checked before the first target
-  runs, and used in the targets as `this.releaseVersion.value`. `./zuke --list`
+  runs, and used in the targets as `this.releaseVersion.value`. `zuke --list`
   documents it.
 - **The release notes write themselves.** `--generate-notes` turns the merged
   pull requests since the previous tag into the release body.

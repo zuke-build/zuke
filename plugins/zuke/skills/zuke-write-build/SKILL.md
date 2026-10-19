@@ -109,8 +109,10 @@ it cannot answer "does one exist for this tool?"; only the catalogue
    methods (cheatsheet → `deno doc` / `llms-full.txt`).
 3. Add or edit the target field. Place it **below** every target it depends on.
    Wire dependencies with `this.<field>`.
-4. Validate: `./zuke --list` shows it; `./zuke <target> --dry-run` previews the
-   plan; `./zuke <target>` runs it.
+4. Validate with the `zuke` command (it works from any directory inside the
+   project; install it with `deno install -A -g -n zuke jsr:@zuke/cli` if it is
+   missing): `zuke --list` shows it; `zuke <target> --dry-run` previews the
+   plan; `zuke <target>` runs it.
 
 ## Common building blocks (see the cheatsheet for details)
 
@@ -192,10 +194,9 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   counts. Not retried by `.retry`; not run under `--dry-run`.
 - A `Validation` may carry an optional `preflight(ctx)` — called for every
   validation in the plan before any target, dependencies included, starts; a
-  throw refuses the whole run. `./zuke <target> --preflight` runs only that
-  phase (no target executes, missing parameters tolerated), which is how the
-  AI-review command job checks who may start a review before any secret is in
-  reach.
+  throw refuses the whole run. `zuke <target> --preflight` runs only that phase
+  (no target executes, missing parameters tolerated), which is how the AI-review
+  command job checks who may start a review before any secret is in reach.
 - **External-event waits:**
   `.waitsFor((s) => s.on(externalSignal("approved")).timeout("72h"))` makes a
   target a **gate** with no body: the run proceeds past it only when the trigger

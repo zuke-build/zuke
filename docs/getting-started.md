@@ -21,15 +21,15 @@ into any directory:
 ```sh
 deno install -A -g -n zuke jsr:@zuke/cli   # once
 zuke setup                                  # in your project
-./zuke                                      # run the build
+zuke                                        # run the build
 ```
 
 On macOS or Linux without Deno, `brew install zuke-build/tap/zuke` installs the
 same CLI as a signed standalone binary instead, and on Windows
 `choco install zuke` installs it through Chocolatey (not Authenticode-signed
-yet); the `./zuke` launcher that `zuke setup` writes then installs Deno when the
-build first runs. Every route is covered, with how to verify a download, in
-[installing](./install.md).
+yet); the `./zuke` launcher that `zuke setup` writes then installs Deno the
+first time `zuke` runs the build. Every route is covered, with how to verify a
+download, in [installing](./install.md).
 
 Without installing, the same wizard runs via `deno run -A jsr:@zuke/cli setup`
 (flags: `--dir <path>`, `--name <Class>`, `--force`, `--yes`, `--mcp`,
@@ -73,45 +73,42 @@ Flags: `--from
 
 ## Run it yourself
 
-Or just create a `zuke.ts` in your project root and run it with Deno:
+Or write the `zuke.ts` by hand: put it in your project root beside a `zuke.json`
+(which marks the root — see [paths](./paths.md#repo-root-reporoot)), and run it:
 
 ```sh
-deno run -A zuke.ts <target>
+zuke <target>
 ```
 
-The `-A` grants permissions (your targets typically run processes, read/write
+With no launcher in the root, `zuke` runs the build as `deno run -A zuke.ts`:
+the `-A` grants permissions (your targets typically run processes, read/write
 files, etc.).
 
 ## `./zuke` launcher (no Deno required up front)
 
-For a one-command `./build.sh`-style experience, drop the bootstrap launchers
-[`zuke`](../zuke) (bash) and [`zuke.ps1`](../zuke.ps1) (PowerShell) in your repo
-root. They locate the project, **install Deno on first use if it's missing**
-(pinned by default, and verified against a per-platform SHA-256; override with
-`DENO_VERSION` plus its `DENO_SHA256`), then run `zuke.ts` — so a fresh checkout
-needs nothing but the script:
+On a machine without the CLI — a CI runner — the committed launchers run the
+build: [`zuke`](../zuke) (bash) and [`zuke.ps1`](../zuke.ps1) (PowerShell),
+which `zuke setup` and `zuke import` write into your repo root. They locate the
+project, **install Deno on first use if it's missing** (pinned by default, and
+verified against a per-platform SHA-256; override with `DENO_VERSION` plus its
+`DENO_SHA256`), then run `zuke.ts` — so a fresh checkout needs nothing but the
+script:
 
 ```sh
 ./zuke ci          # full gate          (Windows: .\zuke.ps1 ci)
 ./zuke test        # type-check + tests  (Windows: .\zuke.ps1 test)
-./zuke --list      # list every target
 ```
 
-The launchers `zuke setup` scaffolds are simpler: they run `zuke.ts` with the
-Deno on `PATH` and point at Deno's install docs when it is missing, since a
-generated launcher has no pinned checksum to verify a download against. Copy the
-two launchers above into your repo when you want the verified bootstrap too.
+`--no-bootstrap-deno` scaffolds launchers that use the Deno on `PATH` instead
+and fail closed without it. If you already have Deno, `deno task zuke <target>`
+(via the `zuke` task in `deno.json`) does the same thing.
 
-If you already have Deno, `deno task zuke <target>` (via the `zuke` task in
-`deno.json`) does the same thing.
-
-`zuke setup`/`zuke import` scaffold this launcher for you, so once it's in place
-run every target with `./zuke <target>` — or, from anywhere inside the project,
-with the bare `zuke <target>` you installed globally, which forwards to the
-project's build (the [CLI reference](./cli.md) has the rules). Shell completions
-(`./zuke completions install <shell>`) register the words `zuke` and `./zuke`,
-so both forms complete targets; `deno task zuke <target>` does not, because the
-shell matches the completion on the first word of the line.
+Day to day you don't call the launcher yourself: `zuke <target>`, from anywhere
+inside the project, forwards to it (the [CLI reference](./cli.md) has the
+rules). Shell completions (`zuke completions install <shell>`) register the
+words `zuke` and `./zuke`, so both forms complete targets;
+`deno task zuke <target>` does not, because the shell matches the completion on
+the first word of the line.
 
 ## Quick start
 
@@ -157,9 +154,9 @@ await run(MyBuild);
 ```
 
 ```sh
-deno run -A zuke.ts test     # clean → restore → compile → test
-deno run -A zuke.ts          # runs `default` (→ test)
-deno run -A zuke.ts --list   # show all targets
+zuke test     # clean → restore → compile → test
+zuke          # runs `default` (→ test)
+zuke --list   # show all targets
 ```
 
 Example output:

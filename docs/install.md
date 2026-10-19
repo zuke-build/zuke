@@ -7,9 +7,9 @@ The global `zuke` command (`@zuke/cli`) scaffolds projects (`zuke setup`,
 the build of the project you are in. There are three supported ways to install
 it. All of them install the same program, from the same release.
 
-You do not need any of them to _run_ a project's build: `./zuke` (or
-`.\zuke.ps1`) in a scaffolded project bootstraps a pinned, checksum-verified
-Deno on its own.
+A machine without the CLI — a CI runner — can still run a project's build: the
+committed `./zuke` launcher (`.\zuke.ps1` on Windows) that `zuke setup` writes
+bootstraps a pinned, checksum-verified Deno on its own.
 
 ## From JSR (recommended)
 
@@ -27,8 +27,7 @@ brew install zuke-build/tap/zuke
 ```
 
 This installs a standalone binary, so it needs **no Deno up front**.
-`zuke
-setup` runs right away, and the `./zuke` launcher it writes installs Deno
+`zuke setup` runs right away, and the `./zuke` launcher it writes installs Deno
 the first time the build runs; from then on `zuke <target>` forwards to that
 Deno. Upgrade with `brew upgrade zuke`. `zuke upgrade` refuses to run from a
 Homebrew install, because reinstalling from JSR would leave this one as it was.

@@ -169,6 +169,7 @@ Deno.test("main import honours the launcher flags and question too", async () =>
     flagged.files.get("zuke")?.includes("Deno not found on PATH"),
     true,
   );
+  assertEquals(flagged.logs.some((l) => l.endsWith("Next: zuke")), true);
 
   const asked = new FakeHost({ Makefile: "build:\n\techo hi\n" });
   const prompter = new FakePrompter(true, "", true, false, "no");
@@ -244,7 +245,9 @@ Deno.test("main setup --launcher-name renames the launcher and reports it", asyn
   );
   assertEquals(code, 0);
   assertEquals(host.files.has("build"), true);
-  assertEquals(host.logs.some((l) => l.includes("./build")), true);
+  assertEquals(host.logs.some((l) => /create\s+build$/.test(l)), true);
+  // The next step is the zuke command, whatever the launcher is called.
+  assertEquals(host.logs.some((l) => l.endsWith("Next: zuke")), true);
 });
 
 Deno.test("main doc runs `deno doc <spec>` in an isolated temp-dir cwd", async () => {

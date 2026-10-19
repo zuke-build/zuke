@@ -53,7 +53,7 @@ choco install zuke
 
 ```sh
 zuke setup         # scaffold zuke.ts + the ./zuke launcher
-zuke               # run it (or ./zuke — no install needed)
+zuke               # run the build
 zuke generate-ci   # write .github/workflows/ci.yml from the build
 ```
 
@@ -81,10 +81,10 @@ class MyBuild extends Build {
 await run(MyBuild);
 ```
 
-`./zuke test` runs `lint` then `test`. `./zuke --list` prints every target with
-its description and dependencies. `./zuke graph --output=html` draws the graph.
-And the workflow file is regenerated on every run and verified on CI, so the
-YAML can never drift from the build.
+`zuke test` runs `lint` then `test`. `zuke --list` prints every target with its
+description and dependencies. `zuke graph --output=html` draws the graph. And
+the workflow file is regenerated on every run and verified on CI, so the YAML
+can never drift from the build.
 
 <p align="center">
   <img src="https://github.com/zuke-build/zuke/raw/master/assets/demo.svg" alt="Zuke in action: scaffold a build, list targets, run the gate" width="760" />
@@ -116,14 +116,14 @@ Three short recipes cover what a small project wants first:
   `fanOut: true` turns every target into its own job wired by `needs:` edges
   that mirror `dependsOn`. It is regenerated on every run, and
   `generate-ci --check` fails CI when the committed file has drifted. You run
-  the exact same targets locally with `./zuke ci` before you push.
-- **Let your agent run the build.** `./zuke mcp` serves the build over the
+  the exact same targets locally with `zuke ci` before you push.
+- **Let your agent run the build.** `zuke mcp` serves the build over the
   [Model Context Protocol](./docs/mcp.md): an agent lists the targets, reads the
   graph, and runs one with typed parameters, instead of guessing
   `npm run what?`. `zuke setup --mcp` writes the client registration on day one.
-  `./zuke --list --json` and the generated [`llms.txt`](./llms.txt) are the
-  static counterparts, and the [agent skills](./docs/agent-skills.md) teach
-  Claude Code, Codex, and Gemini CLI to write a `zuke.ts` the right way.
+  `zuke --list --json` and the generated [`llms.txt`](./llms.txt) are the static
+  counterparts, and the [agent skills](./docs/agent-skills.md) teach Claude
+  Code, Codex, and Gemini CLI to write a `zuke.ts` the right way.
 - **Just TypeScript.** Build logic is ordinary async functions with full editor
   support — no bespoke DSL. The `$` tagged template from `@zuke/core/shell` runs
   processes with sane defaults and is injection-safe, so it also replaces the
@@ -202,7 +202,7 @@ The same steps, however you installed the CLI:
 zuke setup          # scaffold zuke.ts, zuke.json and the ./zuke launcher
 zuke setup --mcp    # …and register the build's MCP server for your agent
 zuke import         # or migrate package.json scripts / a Makefile instead
-zuke                # run the default target; any other command runs the build, like ./zuke ci
+zuke                # run the default target; any other command runs the build, like zuke ci
 zuke add docker     # add @zuke/docker to the project (also: remove, cache, relock)
 ```
 

@@ -29,9 +29,9 @@ await run(MyBuild);
 ```
 
 ```sh
-./zuke generate-ci           # write every declared pipeline file
-./zuke generate-ci --check   # the CI gate: fail if a committed file drifted
-./zuke test                  # the same targets, locally, before you push
+zuke generate-ci           # write every declared pipeline file
+zuke generate-ci --check   # the CI gate: fail if a committed file drifted
+zuke test                  # the same targets, locally, before you push
 ```
 
 The provider is the only required field. The default is a workflow named `CI`,
@@ -83,8 +83,8 @@ Three things to notice:
 Running any target regenerates the declared files, so you cannot forget to. On
 CI — Zuke detects `GITHUB_ACTIONS`, `GITLAB_CI`, `TF_BUILD` and Bitbucket's
 variables — a run _verifies_ the committed files instead and fails when they
-have drifted. `./zuke generate-ci --check` is the same verification as a
-dedicated gate, and `--dry-run` skips regeneration altogether.
+have drifted. `zuke generate-ci --check` is the same verification as a dedicated
+gate, and `--dry-run` skips regeneration altogether.
 
 ## One declaration, four providers
 

@@ -62,7 +62,7 @@ async function scaffold(): Promise<{
 Deno.test("zuke setup scaffolds a project whose first run has no lockfile to freeze", async () => {
   const { read, log, code } = await scaffold();
   assertEquals(code, 0);
-  assertEquals(log.includes("Next: ./zuke"), true);
+  assertEquals(log.includes("Next: zuke"), true);
 
   // The bash launcher — the entry point setup tells the user to run — only
   // asks for --frozen when there is a lockfile to verify.
@@ -165,7 +165,7 @@ async function setupIn(
 Deno.test("integration: setup exits 1 rather than claim success over a JSONC deno.json", async () => {
   // deno.json is JSONC — Deno accepts `//` comments that JSON.parse rejects.
   // The scaffolded build resolves @zuke/core through this file, so a skip here
-  // leaves a build that cannot start; saying "Next: ./zuke" over that is worse
+  // leaves a build that cannot start; saying "Next: zuke" over that is worse
   // than saying plainly what is left to do. The file keeps its comments.
   const dir = await Deno.makeTempDir({ prefix: "zuke-setup-jsonc-" });
   const jsonc = '{\n  // cfg\n  "tasks": { "dev": "echo hi" }\n}\n';
@@ -175,7 +175,7 @@ Deno.test("integration: setup exits 1 rather than claim success over a JSONC den
 
     assertEquals(code, 1);
     assertEquals(await Deno.readTextFile(`${dir}/deno.json`), jsonc);
-    assertEquals(log.includes("Next: ./zuke"), false);
+    assertEquals(log.includes("Next: zuke"), false);
     assertEquals(log.includes("Incomplete —"), true);
     assertEquals(log.includes('"@zuke/core": "jsr:@zuke/core@^1"'), true);
   } finally {

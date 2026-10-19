@@ -22,10 +22,10 @@ beside `/runs`, so one service can host both.
 
 ```sh
 # Record this build in the registry (writes .zuke/builds/<id>.json by default).
-deno run -A zuke.ts register
+zuke register
 
 # Print the descriptor that was written.
-deno run -A zuke.ts register --json
+zuke register --json
 ```
 
 Registration is **idempotent**: re-running `register` refreshes the descriptor

@@ -724,7 +724,7 @@ the full task list and settings methods of each):
 | Package                                                                                                                                             | Object                                                               | Typical tasks                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `@zuke/core`                                                                                                                                        | `FileTasks`, `AnnounceTasks`, `ToolTasks`, `BrowserTasks`            | copy/move/remove files, symlink/readLink (`force` re-points an existing link); Slack/Teams/Discord posts; install tool binaries; open an http(s) URL in the default browser (`BrowserTasks.open`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `@zuke/cli`                                                                                                                                         | the `zuke` command                                                   | not a wrapper — `deno install -A -g -n zuke jsr:@zuke/cli`, then `zuke setup` scaffolds a project; inside one, `zuke <target>` forwards to its `zuke.ts` like `./zuke <target>`; `zuke upgrade` updates the installed CLI; `zuke add <tool>`/`remove` edit the project's deno.json (`zuke add docker` = `jsr:@zuke/docker`), `zuke cache` fetches the build's graph, and `zuke relock [--min-dep-age 0]` regenerates the lock whatever core the project is on                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `@zuke/cli`                                                                                                                                         | the `zuke` command                                                   | not a wrapper — `deno install -A -g -n zuke jsr:@zuke/cli`, then `zuke setup` scaffolds a project; inside one, `zuke <target>` runs that project's build from any directory in it; `zuke upgrade` updates the installed CLI; `zuke add <tool>`/`remove` edit the project's deno.json (`zuke add docker` = `jsr:@zuke/docker`), `zuke cache` fetches the build's graph, and `zuke relock [--min-dep-age 0]` regenerates the lock whatever core the project is on                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `@zuke/console`                                                                                                                                     | `ConsoleTasks`                                                       | themed console output (headings, notices, the `logo()` splash) so a build never hand-rolls `console.log`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `@zuke/qr`                                                                                                                                          | `QrTasks`                                                            | `print`/`render`/`encode` a QR code for any data — URLs, Wi-Fi and login strings, tokens, JSON — as terminal output, text lines or the raw module matrix; no `qrencode` needed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `@zuke/deno`                                                                                                                                        | `DenoTasks`                                                          | `check`, `test`, `bench`, `fmt`, `lint`, `cache`, `clean`, `doc`, `run`, `serve`, `eval`, `task`, `compile`, `info`, `init`, `upgrade`, `add`, `remove`, `install`, `uninstall`, `outdated`, `why`, `ci`, `approveScripts`, `bumpVersion`, `publish`, `pack`, `coverage`; readers `moduleGraph`, `cacheInfo`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
@@ -1946,56 +1946,66 @@ Copy the closest one instead of composing from primitives; each is a full
 ## Run & inspect
 
 ```sh
-./zuke --list                 # all targets
-./zuke --list --json          # whole surface (commands, flags, targets) as JSON
-./zuke <target> --dry-run     # preview the plan, run nothing
-./zuke <target>               # run it
-./zuke <target> --parallel[=N]   # run independent targets concurrently (N caps in-flight)
-./zuke <target> --affected[=<base>]  # only targets changed since a git base (default HEAD)
-./zuke <target> --skip <dep>  # run it but skip a named dependency (repeatable)
-./zuke <target> --no-cache    # ignore the incremental cache
-./zuke <target> --no-banner   # no opening banner (also ZUKE_NO_BANNER)
-./zuke <target> --plain       # plain: no banner or colour (also ZUKE_PLAIN)
-./zuke <target> --state       # persist run state to .zuke/runs (durable state)
-./zuke <target> --actor <who> # attribute the run in its state record
-./zuke runs list [--status s] # list persisted runs (also --target, --since, --limit, --counts, --json)
-./zuke runs show <id>         # one run's full per-target status (+ --json)
-./zuke runs prune --keep 90d --keep-last 50  # delete old terminal runs (--dry-run to preview)
-./zuke graph [--output=html] [--no-open]  # print the dependency graph, or render it interactively
-./zuke generate-ci [--check]  # write the declared CI workflow files (--check verifies instead)
-./zuke completions install bash  # wire target/flag completion into your shell (or `print`)
-./zuke resume <id> --signal <name> [--data <json>]  # continue a suspended run
-./zuke resume --check          # reap abandoned runs, then re-check suspended ones (cron entry point)
-./zuke resume <id> --resume-degraded  # continue past a degraded record (a state write was lost)
-./zuke cancel <id>            # cancel a run and run its .onCancel() compensations
-./zuke mcp [--allow-run]      # serve the build over MCP for an AI client (stdio)
-./zuke mcp --http 7777        # ...or over HTTP (loopback; token off-loopback; Origin-guarded)
-./zuke mcp --http 7777 --allowed-origin https://app.example  # permit an extra browser Origin
-./zuke mcp --allow-run=deploy,checks* --protect deploy --confirm-destructive
+zuke --list                   # all targets
+zuke --list --json            # whole surface (commands, flags, targets) as JSON
+zuke <target> --dry-run       # preview the plan, run nothing
+zuke <target>                 # run it
+zuke <target> --parallel[=N]  # run independent targets concurrently (N caps in-flight)
+zuke <target> --affected[=<base>]
+                              # only targets changed since a git base (default HEAD)
+zuke <target> --skip <dep>    # run it but skip a named dependency (repeatable)
+zuke <target> --no-cache      # ignore the incremental cache
+zuke <target> --no-banner     # no opening banner (also ZUKE_NO_BANNER)
+zuke <target> --plain         # plain: no banner or colour (also ZUKE_PLAIN)
+zuke <target> --state         # persist run state to .zuke/runs (durable state)
+zuke <target> --actor <who>   # attribute the run in its state record
+zuke runs list [--status s]   # list persisted runs (also --target, --since, --limit, --counts, --json)
+zuke runs show <id>           # one run's full per-target status (+ --json)
+zuke runs prune --keep 90d --keep-last 50
+                              # delete old terminal runs (--dry-run to preview)
+zuke graph [--output=html] [--no-open]
+                              # print the dependency graph, or render it interactively
+zuke generate-ci [--check]    # write the declared CI workflow files (--check verifies instead)
+zuke completions install bash
+                              # wire target/flag completion into your shell (or `print`)
+zuke resume <id> --signal <name> [--data <json>]
+                              # continue a suspended run
+zuke resume --check           # reap abandoned runs, then re-check suspended ones (cron entry point)
+zuke resume <id> --resume-degraded
+                              # continue past a degraded record (a state write was lost)
+zuke cancel <id>              # cancel a run and run its .onCancel() compensations
+zuke mcp [--allow-run]        # serve the build over MCP for an AI client (stdio)
+zuke mcp --http 7777          # ...or over HTTP (loopback; token off-loopback; Origin-guarded)
+zuke mcp --http 7777 --allowed-origin https://app.example
+                              # permit an extra browser Origin
+zuke mcp --allow-run=deploy,checks* --protect deploy --confirm-destructive
                               # authz tiers: allow-list, operator token, confirm
-./zuke runs show mcp-audit    # the MCP tool-call audit trail (host only, not served over MCP)
-./zuke register [--json]      # record this build in the build registry (idempotent)
-./zuke doc deno               # print a package's API (deno doc) from an isolated empty dir
+zuke runs show mcp-audit      # the MCP tool-call audit trail (host only, not served over MCP)
+zuke register [--json]        # record this build in the build registry (idempotent)
+zuke doc deno                 # print a package's API (deno doc) from an isolated empty dir
                               # A bare name takes the @zuke scope, @scope/pkg takes
                               # the scheme, a path (./m.ts, src/m.ts, m.ts) is resolved
                               # against your cwd, and jsr:/npm:/https: pass through.
-                              # `zuke doc` and `./zuke doc` resolve identically.
-./zuke --version              # the Zuke version this build runs on, bare
-                              # (`zuke --version` prints the CLI's, then this, labelled)
-./zuke <command> --help        # a command's own usage, detail and flags
-                               # (--help alone lists what exists, one line each)
-./zuke outdated [--exit-code]  # jsr packages the lock resolves behind their latest (network)
-./zuke outdated --update       # ...and move them up; name packages to narrow it.
-./zuke outdated --min-dep-age 0  # count releases Deno's 24h age guard would refuse (also passed to --update)
-./zuke outdated --update --entrypoint other/zuke.ts  # re-resolve another graph sharing the lock too
-                               # Touches the lock only: a package its specifier
-                               # pins is reported as held, never rewritten.
-                               # --exit-code exits 1 when behind OR uncheckable.
-                               # Wire it as a SCHEDULED pipeline, never in the ci
-                               # gate: it needs the network, and a dependency's
-                               # release would redden unrelated PRs.
-./zuke mcp --registry --allow-run  # serve the registry: registered builds as tools, spawned
-./zuke mcp --registry --max-concurrent-runs 4  # cap concurrent run-tool spawns (default 4)
+zuke --version                # the CLI's version, then the build's Zuke version, labelled
+zuke -- --version             # only the Zuke version this build runs on, bare
+zuke <command> --help         # a command's own usage, detail and flags
+                              # (--help alone lists what exists, one line each)
+zuke outdated [--exit-code]   # jsr packages the lock resolves behind their latest (network)
+zuke outdated --update        # ...and move them up; name packages to narrow it.
+zuke outdated --min-dep-age 0
+                              # count releases Deno's 24h age guard would refuse (also passed to --update)
+zuke outdated --update --entrypoint other/zuke.ts
+                              # re-resolve another graph sharing the lock too
+                              # Touches the lock only: a package its specifier
+                              # pins is reported as held, never rewritten.
+                              # --exit-code exits 1 when behind OR uncheckable.
+                              # Wire it as a SCHEDULED pipeline, never in the ci
+                              # gate: it needs the network, and a dependency's
+                              # release would redden unrelated PRs.
+zuke mcp --registry --allow-run
+                              # serve the registry: registered builds as tools, spawned
+zuke mcp --registry --max-concurrent-runs 4
+                              # cap concurrent run-tool spawns (default 4)
 ```
 
 **MCP authorization** (`docs/mcp.md`): the two gates have deliberately different

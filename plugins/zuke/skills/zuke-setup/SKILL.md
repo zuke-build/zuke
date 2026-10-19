@@ -16,14 +16,15 @@ the target project:
 
 ```sh
 deno install -A -g -n zuke jsr:@zuke/cli   # once, globally
-zuke setup                                  # in the project root
-./zuke                                       # run the build
-zuke upgrade                                 # later: update the global CLI
-zuke add docker                              # add a wrapper: jsr:@zuke/docker into deno.json
-zuke relock --min-dep-age 0                  # regenerate the lock (e.g. to move core forward)
+zuke setup                                 # in the project root
+zuke                                       # run the build
+zuke upgrade                               # later: update the global CLI
+zuke add docker                            # add a wrapper: jsr:@zuke/docker into deno.json
+zuke relock --min-dep-age 0                # regenerate the lock (e.g. to move core forward)
 ```
 
-No global install? The same wizard runs directly:
+No global install? The same wizard runs directly (install the CLI afterwards to
+run the build with `zuke`):
 
 ```sh
 deno run -A jsr:@zuke/cli setup
@@ -50,7 +51,7 @@ stdio MCP client — can list and run the targets through typed calls;
 `zuke/` directory already occupies it — a directory collision now fails with an
 actionable error instead of silently skipping the launcher). With `--mcp`, an
 MCP client lists and runs the targets through typed calls; without it, the build
-is still discoverable through `./zuke --list --json`.
+is still discoverable through `zuke --list --json`.
 
 Running as an agent, always pass `--yes`: it skips every interactive question,
 including the closing "star the Zuke repository?" prompt — that question is for
@@ -113,17 +114,17 @@ wrappers.
   that has the `zuke` task but not the imports is still completed — skipping it
   would leave the `zuke.ts` written in the same run with nothing to resolve. Two
   shapes cannot be completed automatically, and setup reports them as steps for
-  you and **exits 1** rather than printing `Next: ./zuke` over a build that
-  cannot start: a `deno.json` that is JSONC (Deno accepts `//` comments and
-  trailing commas that a JSON parser does not, and rewriting the file would
-  discard them), and one that delegates via `importMap` to a separate file (Deno
-  ignores that field the moment `imports` appears beside it, so the entry
-  belongs in the other file — setup reads that file and stays quiet once it
-  declares the entry, so a correctly configured project still exits 0). Both are
-  left byte-for-byte untouched. A mapping that already points somewhere other
-  than the JSR package is kept — that is how a pin or a local checkout survives
-  — with a note saying so. `--mcp` that cannot register into an unparseable
-  `.mcp.json` is reported the same way, as a note.
+  you and **exits 1** rather than printing `Next: zuke` over a build that cannot
+  start: a `deno.json` that is JSONC (Deno accepts `//` comments and trailing
+  commas that a JSON parser does not, and rewriting the file would discard
+  them), and one that delegates via `importMap` to a separate file (Deno ignores
+  that field the moment `imports` appears beside it, so the entry belongs in the
+  other file — setup reads that file and stays quiet once it declares the entry,
+  so a correctly configured project still exits 0). Both are left byte-for-byte
+  untouched. A mapping that already points somewhere other than the JSR package
+  is kept — that is how a pin or a local checkout survives — with a note saying
+  so. `--mcp` that cannot register into an unparseable `.mcp.json` is reported
+  the same way, as a note.
 - **`zuke.json`** — `{ "name": "..." }`, which marks the repo root.
 - **`.gitignore`** — created or appended so `.zuke/` is ignored (the cache and
   durable run state live there); untouched if it already covers it.
@@ -134,14 +135,18 @@ wrappers.
 
 ## Running the build
 
+Run the build with the global `zuke` command, from any directory inside the
+project. If `zuke` is not on `PATH`, install it first with
+`deno install -A -g -n zuke jsr:@zuke/cli`.
+
 ```sh
-./zuke                 # run the default target  (Windows: .\zuke.ps1)
-./zuke <target>        # run a specific target
-./zuke --list          # list every target
-./zuke --list --json   # the whole build surface (commands, flags, targets) as JSON
-./zuke <target> --dry-run   # print the plan without executing
-./zuke <target> --no-banner # no opening banner (also ZUKE_NO_BANNER)
-./zuke <target> --plain     # plain: no banner or colour (also ZUKE_PLAIN)
+zuke                      # run the default target
+zuke <target>             # run a specific target
+zuke --list               # list every target
+zuke --list --json        # the whole build surface (commands, flags, targets) as JSON
+zuke <target> --dry-run   # print the plan without executing
+zuke <target> --no-banner # no opening banner (also ZUKE_NO_BANNER)
+zuke <target> --plain     # plain: no banner or colour (also ZUKE_PLAIN)
 ```
 
 Every run opens with a banner: the Zuke wordmark, then
@@ -152,42 +157,45 @@ lines of ASCII are not — and the detected host is appended to the first line.
 terminal `--version`, `--help`, `--list` and `graph` print a rich, coloured
 form; `--plain` or `ZUKE_PLAIN=1` asks for plain output everywhere (no banner or
 colour, undecorated informational commands), and output is plain automatically
-on CI and through a pipe, so `./zuke --version | …` is always the bare version.
+on CI and through a pipe, so `zuke -- --version | …` is always the bare version
+of Zuke the build runs on (`zuke --version` alone also reports the CLI's).
 
-With the global CLI installed, the bare `zuke` works from anywhere inside the
-project: `zuke <target>`, `zuke --list`, `zuke graph`, `zuke mcp`, bare `zuke`
-for the default target — every command that is not the CLI's own (`setup`,
-`import`, `doc`) is forwarded to the nearest `zuke.ts`. `--help` and `--version`
-show both surfaces, the CLI's and then the build's, each labelled;
-`zuke -- --help` is the build's own usage alone, and `zuke -- <target>` reaches
-a target that shares one of those names. It walks up to the `zuke.json` that
-marks the repository root and runs the executable `./zuke <args>` launcher
-there, so a project's customised launcher (pinned Deno, exported env, a lock
-outside the repo) applies to `zuke` too. With no executable launcher (and on
-Windows) it runs `deno run -A zuke.ts <args>`, with `--frozen` once a
-`deno.lock` exists. Outside a project, `zuke <target>` reports the unknown
-command and the missing `zuke.json`, and a bare `zuke` prints the usage. The
-forwarding refuses a project whose root directory is owned by another user or is
-world-writable, and one where an ancestor `deno.json`, `deno.jsonc` or
-`package.json` Deno would read is owned by another user (the `safe.directory`
-rule git applies, since discovery runs code the caller never named); the error
-names what was refused and the fix — run that project's own `./zuke` there, or
-fix the ownership. On Windows the gate is inert.
+The bare `zuke` works from anywhere inside the project: `zuke <target>`,
+`zuke --list`, `zuke graph`, `zuke mcp`, bare `zuke` for the default target —
+every command that is not the CLI's own (`setup`, `import`, `doc`) is forwarded
+to the nearest `zuke.ts`. `--help` and `--version` show both surfaces, the CLI's
+and then the build's, each labelled; `zuke -- --help` is the build's own usage
+alone, and `zuke -- <target>` reaches a target that shares one of those names.
+It walks up to the `zuke.json` that marks the repository root and runs the
+executable `./zuke <args>` launcher there, so a project's customised launcher
+(pinned Deno, exported env, a lock outside the repo) applies to `zuke` too. With
+no executable launcher (and on Windows) it runs `deno run -A zuke.ts <args>`,
+with `--frozen` once a `deno.lock` exists. Outside a project, `zuke <target>`
+reports the unknown command and the missing `zuke.json`, and a bare `zuke`
+prints the usage. The forwarding refuses a project whose root directory is owned
+by another user or is world-writable, and one where an ancestor `deno.json`,
+`deno.jsonc` or `package.json` Deno would read is owned by another user (the
+`safe.directory` rule git applies, since discovery runs code the caller never
+named); the error names what was refused and the fix — run that project's own
+`./zuke` there, or fix the ownership. On Windows the gate is inert.
 
-The CLI is self-describing: `./zuke --help` prints the usage grammar plus the
+The CLI is self-describing: `zuke --help` prints the usage grammar plus the
 build's live targets and parameters, so an agent discovers the real command
 surface instead of guessing. For an AI client to operate the build through typed
 calls, `zuke mcp` runs a Model Context Protocol server over it (register with
 `claude mcp add zuke -- deno run -A zuke.ts mcp`; add `--allow-run` to let the
 agent execute targets, not just inspect them).
 
-If Deno is already installed you can also use `deno task zuke <target>` or
-`deno run -A zuke.ts <target>`. The `-A` flag grants permissions, since targets
-typically run processes and touch files. These are not quite equivalent to the
-launcher: the scaffolded `zuke` task deliberately omits `--frozen`, so it may
-heal a stale lockfile where `./zuke` would fail on it.
+The scaffolded `deno.json` also carries a `zuke` task
+(`deno task zuke <target>`), but it is not quite equivalent: it deliberately
+omits `--frozen`, so it may heal a stale lockfile where `zuke` would fail on it.
+Prefer `zuke`.
 
-## Manual setup (no CLI)
+On a machine without the CLI — a CI runner — the committed `./zuke` launcher
+(`zuke.ps1` on Windows) installs Deno and runs the build, which is why generated
+CI workflows call `./zuke <target>`.
+
+## Manual setup (without `zuke setup`)
 
 Declare the packages the build imports in `deno.json` — bare specifier to `jsr:`
 dependency, caret major — so the build can import them by bare specifier. An
@@ -222,8 +230,10 @@ class CI extends Build {
 await run(CI);
 ```
 
-Run with `deno run -A zuke.ts test`. (For the `./zuke` launcher experience,
-prefer `zuke setup`, which drops the launcher scripts in for you.)
+Mark the project root with a `zuke.json` (`{ "name": "my-project" }`) so the
+`zuke` command can find the build, then run it with `zuke test`. (For the
+launcher scripts a CLI-less CI runner needs, prefer `zuke setup`, which drops
+them in for you.)
 
 ## Finding the exact API — never guess
 
