@@ -76,9 +76,9 @@ Every call gets the same `ctx.state`, the rollout's durable platform state, so
 network calls.
 
 Adapters for specific platforms belong in their wrapper packages; see
-[Cloud Run](#cloud-run), [Kubernetes](#kubernetes), [Helm](#helm) and
-[Docker Compose](#docker-compose) below. Until one exists for yours, a platform
-is a plain object in the build:
+[Cloud Run](#cloud-run), [Kubernetes](#kubernetes), [Helm](#helm),
+[Docker Compose](#docker-compose) and [AWS Lambda](#aws-lambda) below. Until one
+exists for yours, a platform is a plain object in the build:
 
 <!-- check -->
 
@@ -656,6 +656,118 @@ image variables are applied after it, so an `.env(...)` there cannot override
 them. A command that exits non-zero fails the call even under `.noThrow()`, and
 trailing `.args(...)` there are refused, since they would follow the service
 operand of every command — a guard against accidents, not a security boundary.
+
+### AWS Lambda
+
+`lambdaCanary` from `@zuke/aws` is a Lambda **alias** as a platform. The alias
+keeps pointing at the stable version and gives the candidate a share of its
+invocations through weighted routing (`AdditionalVersionWeights`):
+
+<!-- check -->
+
+```ts
+import { Build, parameter, run, target } from "@zuke/core";
+import { canary, httpProbe } from "@zuke/canary";
+import { cloudwatch, lambdaCanary } from "@zuke/aws";
+
+class Deploy extends Build {
+  zip = parameter("Deployment package to roll out").required();
+
+  rollout = canary((c) =>
+    c.platform(
+      lambdaCanary((l) =>
+        l.functionName("api").alias("live").zipFile(this.zip.value)
+          .aws((a) => a.profile("deploy").region("eu-west-1"))
+      ),
+    )
+      .steps(10, 25, 50)
+      .bake("10m")
+      .analysis(httpProbe((h) => h.url("https://api.example.com/healthz")))
+      .analysis(cloudwatch((m) =>
+        m.name("api errors").namespace("AWS/Lambda")
+          .metricName("Errors").dimension("FunctionName", "api")
+          .stat("Sum").window("10m").max(0).missingDataAs(0)
+          .aws((a) => a.profile("deploy").region("eu-west-1"))
+      ))
+  );
+  ship = target().dependsOn(this.rollout.promote).executes(() => {});
+}
+
+await run(Deploy);
+```
+
+Its lambda runs on every call, so it may read resolved parameters. Name the
+candidate once: a code source — `.zipFile(path)`, `.s3Bucket(b).s3Key(k)` or
+`.imageUri(uri)` — which `stage` ships and publishes, or `.version("12")` for a
+version the build already published, for example with
+`AwsTasks.lambdaPublishedVersion`. The `Errors` metric above is the whole
+function's, both versions together; Lambda also publishes it per version under
+the `FunctionName`, `Resource` (`api:live`) and `ExecutedVersion` dimensions,
+which judges the candidate alone once its number is known.
+
+| Call      | aws                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `stage`   | `lambda get-alias`, whose version becomes the stable one, read back with `get-function`; for a code source, `lambda wait function-updated-v2` and `lambda update-function-code --publish`; `get-function --qualifier <candidate>` to read the candidate back; `lambda wait published-version-active`, so a `Pending` version (SnapStart, an image) takes no traffic; then records the rollout. The alias is not changed. |
+| `expose`  | The record check, then `lambda update-alias --routing-config '{"AdditionalVersionWeights":{"<candidate>":<n/100>}}' --revision-id <rev>`. The stable version keeps the rest. `0` clears the routing.                                                                                                                                                                                                                     |
+| `promote` | The record check, then `lambda update-alias --function-version <candidate>` with the routing cleared and `--revision-id`. An alias already on the candidate is left as it is.                                                                                                                                                                                                                                            |
+| `abort`   | Mid-rollout: the identity and ARN checks, then the candidate's weight comes off, keeping any other version's weight — written with `--revision-id` even when the candidate has no share. Run by hand (no recorded state): `update-alias --function-version <stable>` with the routing cleared, to the version set with `.stable(...)`, and it refuses without one.                                                       |
+
+`stage` refuses an alias that already splits its traffic (another rollout, or
+one that left its weights behind), one that points at `$LATEST` (weighted
+routing works only between published versions), and a candidate that is the
+stable version — which is what publishing unchanged code and configuration gives
+back. Lambda also requires the two versions to share an execution role and a
+dead-letter configuration; when they do not, the first `expose` fails and the
+canary rolls back.
+
+A code source becomes the function's `$LATEST` the moment `stage` publishes it,
+and a rollback does not change `$LATEST` back. Only invocations of the alias are
+split: callers of the unqualified function — an event source or trigger wired to
+it — run the candidate from `stage` on, and keep running it after a rollback. If
+anything invokes the function unqualified, publish the version first and roll it
+out with `.version(...)`, which leaves `$LATEST` alone, or point those callers
+at the alias.
+
+The record holds the function, the alias and the global flags `.aws(...)` gives
+every command, plus the alias's ARN, and the stable and candidate versions with
+their `CodeSha256`. The flags are recorded as argv in the rollout's state, which
+is plain JSON, so never pass a secret on the command line through `.aws(...)`.
+The record check, before anything changes:
+
+- compares the configured function, alias and flags with the record, before any
+  command;
+- reads the alias and compares its ARN, which names the account and region — so
+  a changed `AWS_PROFILE` or `AWS_REGION`, which the flags cannot see, is
+  refused;
+- for `expose` and `promote`, checks that the alias still points at the stable
+  version and splits only with the candidate, and that the candidate still has
+  the code hash recorded — a function deleted and created again starts its
+  version numbers over.
+
+Every `update-alias` carries the `--revision-id` the read returned, so a change
+someone makes to the alias between the read and the update fails the update
+rather than being overwritten. The `.aws(...)` lambda runs for each command, and
+a command it gives other flags than the ones the call checked does not run.
+
+The rollback writes the alias even when the candidate holds no share, so an
+`expose` of the same rollout still in flight — a `zuke cancel` from another
+process racing it — fails on the stale revision instead of landing after the
+rollback; a rollback whose own write loses such a race reads the alias again and
+retries, up to five times. An alias that already points at the candidate goes
+back to the stable version, once that version still has the code hash recorded.
+One that points at the candidate and also splits with another version is a newer
+rollout built on this one, and the rollback refuses rather than undo both.
+
+A refusal changes nothing. After an identity or ARN refusal the run stops and
+its rollback refuses the same way, so the candidate keeps the share it had; the
+refusal gives the recovery — a `lambda get-alias` that should print the recorded
+ARN, and the `update-alias` that sends all of the alias's traffic back to the
+recorded stable version, both built from the recorded function, alias and flags.
+After a refusal because the alias no longer splits as the rollout left it, the
+rollback still runs and takes the candidate's weight off, leaving the rest of
+the alias as someone else set it. A hand-run `zuke rollout.abort` with
+`.stable(...)` has no record to check against. After an abort the candidate
+version still exists.
 
 ## Bakes: inline or durable
 

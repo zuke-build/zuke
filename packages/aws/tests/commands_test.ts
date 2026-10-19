@@ -26,12 +26,14 @@ import {
   AwsEcsWaitServicesStableSettings,
   AwsEksDescribeClusterSettings,
   AwsEksUpdateKubeconfigSettings,
+  AwsLambdaGetAliasSettings,
   AwsLambdaGetFunctionSettings,
   AwsLambdaInvokeSettings,
   AwsLambdaPublishVersionSettings,
   AwsLambdaUpdateAliasSettings,
   AwsLambdaUpdateFunctionCodeSettings,
   AwsLambdaUpdateFunctionConfigurationSettings,
+  AwsLambdaWaitSettings,
   AwsS3CpSettings,
   AwsS3LsSettings,
   AwsS3MbSettings,
@@ -595,6 +597,63 @@ Deno.test("lambda publish-version, get-function and update-alias", () => {
     Error,
     "no alias named",
   );
+  assertEquals(
+    args(
+      new AwsLambdaUpdateAliasSettings().functionName("api").name("live")
+        .clearRouting().revisionId("r-1"),
+    ).slice(4),
+    ['--routing-config={"AdditionalVersionWeights":{}}', "--revision-id=r-1"],
+  );
+});
+
+Deno.test("lambda wait names the waiter, the function and the version", () => {
+  assertEquals(
+    args(
+      new AwsLambdaWaitSettings().waiter("published-version-active")
+        .functionName("api").qualifier("4"),
+    ),
+    [
+      "lambda",
+      "wait",
+      "published-version-active",
+      "--function-name=api",
+      "--qualifier=4",
+    ],
+  );
+  assertEquals(
+    args(
+      new AwsLambdaWaitSettings().waiter("function-updated-v2")
+        .functionName("api"),
+    ),
+    ["lambda", "wait", "function-updated-v2", "--function-name=api"],
+  );
+  assertThrows(
+    () => new AwsLambdaWaitSettings().functionName("api").argv(),
+    Error,
+    "AwsTasks.lambdaWait: name the state",
+  );
+  assertThrows(
+    () => new AwsLambdaWaitSettings().waiter("function-exists").argv(),
+    Error,
+    "AwsTasks.lambdaWait: no function named",
+  );
+});
+
+Deno.test("lambda get-alias names the function and the alias", () => {
+  assertEquals(
+    args(new AwsLambdaGetAliasSettings().functionName("api").name("live")),
+    ["lambda", "get-alias", "--function-name=api", "--name=live"],
+  );
+  assertThrows(
+    () => new AwsLambdaGetAliasSettings().functionName("api").argv(),
+    Error,
+    "AwsTasks.lambdaGetAlias: no alias named",
+  );
+  assertThrows(
+    () => new AwsLambdaGetAliasSettings().name("live").argv(),
+    Error,
+    "AwsTasks.lambdaGetAlias: no function named",
+  );
 });
 
 Deno.test("lambda invoke sends a raw JSON payload and ends with the outfile", () => {
@@ -1003,8 +1062,22 @@ const REACH: Array<[string, () => Promise<unknown>]> = [
       ),
   ],
   [
+    "lambdaGetAlias",
+    () =>
+      AwsTasks.lambdaGetAlias((s) =>
+        missingTool(s.functionName("f").name("live"))
+      ),
+  ],
+  [
     "lambdaGetFunction",
     () => AwsTasks.lambdaGetFunction((s) => missingTool(s.functionName("f"))),
+  ],
+  [
+    "lambdaWait",
+    () =>
+      AwsTasks.lambdaWait((s) =>
+        missingTool(s.waiter("function-updated-v2").functionName("f"))
+      ),
   ],
   [
     "lambdaInvoke",

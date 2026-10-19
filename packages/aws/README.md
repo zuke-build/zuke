@@ -5,8 +5,9 @@ Typed [`aws`](https://aws.amazon.com/cli/) (AWS CLI v2) task wrapper for
 settings-lambda API. Typed settings cover a deploy path's commands — STS, S3,
 ECR, ECS, Lambda, CloudFormation, Secrets Manager, SSM, EKS, CloudWatch and
 CloudWatch Logs — with the CLI's own subcommand and flag names; a general
-builder covers everything else. Arguments stay a discrete argv array, so command
-construction is injection-free.
+builder covers everything else. For `@zuke/canary` it adds a Lambda alias
+platform and a CloudWatch analysis. Arguments stay a discrete argv array, so
+command construction is injection-free.
 
 ## Usage
 
@@ -133,6 +134,38 @@ starting with `file://` or `fileb://` is refused, because the CLI would read
 that file instead of storing the text. Hand `ecrLoginPassword()` to
 `docker login --password-stdin`, never to `-p`.
 
+## Lambda canary platform
+
+`lambdaCanary(...)` is a platform for a `@zuke/canary` rollout: a Lambda alias
+whose weighted routing gives the candidate version a growing share of its
+invocations, then moves the alias to it.
+
+```ts
+import { canary } from "@zuke/canary";
+import { lambdaCanary } from "@zuke/aws";
+
+rollout = canary((c) =>
+  c.platform(
+    lambdaCanary((l) =>
+      l.functionName("api").alias("live").zipFile("dist/api.zip")
+        .aws((a) => a.profile("deploy").region("eu-west-1"))
+    ),
+  )
+    .steps(10, 25, 50)
+    .bake("10m")
+);
+```
+
+`stage` publishes the candidate with `update-function-code --publish` (or takes
+`.version(...)`) and waits for it to be `Active`, without touching the alias;
+`expose` sets the candidate's `AdditionalVersionWeights`; `promote` points the
+alias at it. Publishing a code source also makes it the function's `$LATEST`,
+which a rollback does not undo. Every call after `stage` checks the alias's ARN,
+which names the account and region, against the one recorded, and every
+`update-alias` carries `--revision-id`, so a change made by someone else in
+between is never overwritten. See
+[docs/canary.md](https://github.com/zuke-build/zuke/blob/master/docs/canary.md#aws-lambda).
+
 ## CloudWatch canary analysis
 
 `cloudwatch(...)` is an analysis for a `@zuke/canary` rollout: it reads a metric
@@ -173,12 +206,13 @@ AWS steps can be tested without an account or the CLI.
 <summary>Full typed API — generated from <code>deno doc</code></summary>
 
 ````text
-`@zuke/aws` — typed AWS CLI tasks for Zuke builds, readers and a canary analysis.
+`@zuke/aws` — typed AWS CLI tasks, readers, and a canary platform and analysis.
 
 The `aws` CLI wrapper has typed settings for the deploy path (STS, S3, ECR,
 ECS, Lambda, CloudFormation, Secrets Manager, SSM, EKS), CloudWatch and
-CloudWatch Logs monitoring, readers that return a value, and a
-`cloudwatch(...)` analysis for `@zuke/canary` rollouts.
+CloudWatch Logs monitoring, readers that return a value, and for
+`@zuke/canary` rollouts a `lambdaCanary(...)` platform — a Lambda alias's
+weighted routing — and a `cloudwatch(...)` analysis.
 
 ```ts
 import { AwsTasks, cloudwatch } from "@zuke/aws";
@@ -208,6 +242,44 @@ function cloudwatch(configure: Configure<AwsCloudwatchAnalysisSettings>): AwsClo
   The lambda runs on each check, so it may read resolved parameters, and
   every failure message — one from the lambda included — passes through the
   run's redactor.
+
+function lambdaCanary(configure: Configure<AwsLambdaCanarySettings>): AwsLambdaCanary
+  A Lambda alias as a canary platform, for `@zuke/canary`:
+
+  ```ts
+  c.platform(lambdaCanary((l) =>
+    l.functionName("api").alias("live").zipFile("dist/api.zip")
+      .aws((a) => a.profile("deploy").region("eu-west-1"))
+  ))
+  ```
+
+  The lambda runs on every call, so it may read resolved parameters.
+
+  - stage — reads the alias (`get-alias`), whose version becomes the
+    stable one; waits out an update in progress (`wait function-updated-v2`)
+    and publishes the candidate with `update-function-code --publish`, or
+    takes `.version(...)`; reads it back with `get-function`; waits for it
+    to be `Active` (`wait published-version-active`); records the rollout.
+    The alias is not changed.
+  - expose — `update-alias --routing-config AdditionalVersionWeights={"<candidate>": <n/100>} --revision-id <rev>`.
+  - promote — `update-alias --function-version <candidate>` with the
+    routing cleared.
+  - abort — takes the candidate's weight off mid-rollout; run by hand,
+    `--function-version <stable>` with the routing cleared.
+
+  Every call after `stage` that has its record — expose, promote, and abort
+  mid-rollout — compares the configured function, alias and AWS flags with
+  the record, reads the alias and checks its ARN (which names the account and
+  region), and refuses on any difference before changing anything. Expose and
+  promote also check that the alias splits only as the rollout left it and
+  that the candidate still has the code staged. Each `update-alias` carries
+  the alias's `--revision-id`, so a change made between the read and the
+  update fails it. A hand-run abort has no record and uses the configuration
+  as it is.
+
+  Lambda's weighted routing needs the two versions to share an execution role
+  and a dead-letter configuration; the update fails, and the canary rolls
+  back, when they do not.
 
 const AwsTasks: AwsTasksApi
   Typed task functions for the `aws` CLI.
@@ -694,6 +766,143 @@ class AwsEksUpdateKubeconfigSettings extends AwsSettings
   override protected leadingTokens(): string[]
     Emit `eks update-kubeconfig` with its options.
 
+class AwsLambdaCanary
+  A Lambda alias as a canary platform. Create one with {@link lambdaCanary};
+  hand it to `@zuke/canary`'s `c.platform(...)`.
+
+  Exposure is a share of the alias's invocations, set exactly.
+
+  constructor(configure: Configure<AwsLambdaCanarySettings>)
+    A platform whose settings `configure` produces, afresh on every call.
+  readonly exposure: "traffic"
+    The alias splits invocations, so exposure is a traffic share.
+  describe(): string
+    `"Lambda alias api:live"`, for the build summary.
+  async stage(ctx: AwsLambdaCanaryContext): Promise<void>
+    Read the alias and its stable version, publish the candidate (or take the
+    version given) and wait for it to be `Active`, then record the rollout:
+    the function, alias and AWS flags every later call is checked against,
+    the alias's ARN, the stable version and the candidate with their code
+    hashes. The alias itself is not changed, so the candidate takes no
+    traffic yet — though publishing a code source does make it the
+    function's `$LATEST`.
+
+    Refuses an alias that already splits its traffic — another rollout, or
+    one left behind — and one that points at `$LATEST`, which weighted
+    routing does not allow; and a candidate that is the stable version, which
+    is what publishing unchanged code and configuration gives back. A stage
+    run again over a record of the same rollout checks it and changes
+    nothing.
+  async expose(percent: number, ctx: AwsLambdaCanaryContext): Promise<number>
+    Send `percent` of the alias's invocations to the candidate, as its
+    additional weight; the stable version keeps the rest. First the
+    configuration is compared with the record; then the alias is read, and
+    this refuses — changing nothing — unless it is still the alias staged,
+    still points at the stable version, and splits only with the candidate,
+    and unless the candidate still has the code staged. The update carries
+    the alias's revision, so a change made in between fails it.
+  async promote(ctx: AwsLambdaCanaryContext): Promise<void>
+    Point the alias at the candidate and clear its routing, so the candidate
+    takes every invocation. Before that, the same checks as
+    {@link expose}: the record, the alias's ARN, that it still splits only
+    between the stable version and the candidate, and the candidate's code.
+    An alias already pointing at the candidate with no routing is left as it
+    is, so a promote run again changes nothing.
+  async abort(ctx: AwsLambdaCanaryContext): Promise<void>
+    Take the candidate's traffic back. Idempotent. What it does depends on
+    what this rollout recorded:
+
+    - The rollout is staged (a rollback mid-rollout): once the
+      configuration and the alias's ARN match the record, the candidate's
+      weight comes off the alias, leaving any other weight as it is. The
+      update is written even when the candidate has no share, so an expose
+      of this rollout still in flight — a `zuke cancel` from another process
+      races it — fails on the revision instead of landing afterwards; a
+      write that loses such a race reads the alias again and retries. An
+      alias already pointing at the candidate — promoted, or moved there —
+      goes back to the stable version, once that version still has the code
+      recorded; one that also splits with another version is a newer rollout
+      built on the candidate, and this refuses rather than undo it too.
+    - `stage` failed before recording it: the alias was never changed,
+      so nothing runs.
+    - Any other stage marker: the record is damaged, and this refuses.
+    - Nothing recorded (`rollout.abort` run by hand, a fresh run): the
+      alias goes to the version set with {@link AwsLambdaCanarySettings.stable}
+      and its routing is cleared. Without one this refuses, since claiming a
+      rollback it cannot do would be worse.
+
+class AwsLambdaCanarySettings
+  How {@link lambdaCanary} reaches the alias and finds the candidate,
+  configured through its lambda.
+
+  functionName_?: string
+    The function's name or ARN (set by {@link functionName}).
+  alias_?: string
+    The alias whose traffic is split (set by {@link alias}).
+  zipFile_?: string
+    The deployment package on disk (set by {@link zipFile}).
+  s3Bucket_?: string
+    The bucket holding the package (set by {@link s3Bucket}).
+  s3Key_?: string
+    The package's key in that bucket (set by {@link s3Key}).
+  s3ObjectVersion_?: string
+    The package object's version (set by {@link s3ObjectVersion}).
+  imageUri_?: string
+    The container image (set by {@link imageUri}).
+  version_?: string
+    An already published candidate version (set by {@link version}).
+  stable_?: string
+    The version a hand-run rollback returns to (set by {@link stable}).
+  aws_: Configure<AwsSettings>
+    Global options for every command (set by {@link aws}).
+  functionName(name: string): this
+    The function to roll out — its name, partial ARN or ARN.
+  alias(name: string): this
+    The alias whose traffic the canary splits, e.g. `"live"`. It must
+    already exist and point at a published version: that version is the
+    stable one.
+  zipFile(path: string): this
+    The candidate's deployment package on disk, shipped and published by
+    `stage` (`update-function-code --zip-file --publish`). Name one code
+    source — this, {@link s3Bucket} with {@link s3Key}, or {@link imageUri} —
+    or a {@link version} instead.
+  s3Bucket(name: string): this
+    The bucket holding the candidate's package (`--s3-bucket`).
+  s3Key(key: string): this
+    The candidate package's key in that bucket (`--s3-key`).
+  s3ObjectVersion(version: string): this
+    The candidate package object's version (`--s3-object-version`).
+  imageUri(uri: string): this
+    The candidate's container image, for an image function (`--image-uri`).
+  version(number: string): this
+    An already published version to roll out — one the build published
+    itself, for example with `AwsTasks.lambdaPublishedVersion`. Use this or a
+    code source, not both. Unlike a code source it leaves the function's
+    `$LATEST` as it is.
+  stable(number: string): this
+    The version to send all traffic back to when `rollout.abort` is run by
+    hand. Such a run is fresh, with no record of a rollout, so it has nothing
+    else to go on — and the release it is undoing has usually been promoted
+    already. A rollback the engine runs mid-rollout does not use it: that one
+    takes the candidate's weight off the alias instead.
+  aws(configure: Configure<AwsSettings>): this
+    Global options for every command the platform runs —
+    `(a) => a.profile("deploy").region("eu-west-1")`, a `.toolPath(...)`, or
+    a `.runner(...)`, the seam a test answers through. The flags it gives are
+    recorded in the rollout's state, which is plain JSON: never pass a secret
+    on the command line here. A reader's `--output` and `--query` are its own
+    and are set after it.
+
+class AwsLambdaGetAliasSettings extends AwsSettings
+  Settings for `aws lambda get-alias`.
+
+  functionName(name: string): this
+    The function's name or ARN (`--function-name`).
+  name(alias: string): this
+    The alias to describe (`--name`), e.g. `"live"`.
+  override protected leadingTokens(): string[]
+    Emit `lambda get-alias` with its options.
+
 class AwsLambdaGetFunctionSettings extends AwsSettings
   Settings for `aws lambda get-function`.
 
@@ -758,6 +967,10 @@ class AwsLambdaUpdateAliasSettings extends AwsSettings
     Send a share of the alias's traffic to another version
     (`--routing-config AdditionalVersionWeights`), as a fraction from 0 to 1;
     repeatable. The rest goes to {@link functionVersion}.
+  revisionId(id: string): this
+    Update only if the alias is still at this revision (`--revision-id`) — the
+    `RevisionId` a `get-alias` read, so a change made in between fails the
+    update instead of being overwritten.
   clearRouting(): this
     Clear the alias's weighted routing, sending all traffic to its version
     (`--routing-config` with no additional weights).
@@ -818,6 +1031,20 @@ class AwsLambdaUpdateFunctionConfigurationSettings extends AwsSettings
     The layers to attach, by version ARN (`--layers`); replaces the set.
   override protected leadingTokens(): string[]
     Emit `lambda update-function-configuration` with its options.
+
+class AwsLambdaWaitSettings extends AwsSettings
+  Settings for `aws lambda wait`: poll the function until it reaches the
+  state named, exiting non-zero — a `CommandError` — when it fails or the
+  waiter gives up.
+
+  waiter(name: AwsLambdaWaiter): this
+    The state to wait for, e.g. `"published-version-active"`.
+  functionName(name: string): this
+    The function's name or ARN (`--function-name`).
+  qualifier(value: string): this
+    The version or alias to wait on (`--qualifier`).
+  override protected leadingTokens(): string[]
+    Emit `lambda wait <waiter>` with its options.
 
 class AwsLogsFilterLogEventsSettings extends AwsSettings
   Settings for `aws logs filter-log-events`.
@@ -1307,6 +1534,16 @@ interface AwsCloudwatchAnalysisContext
   redact(text: string): string
     Mask every resolved `secret` parameter in `text`.
 
+interface AwsLambdaCanaryContext
+  The part of the canary engine's context the Lambda platform uses: the
+  rollout's durable state, where the staged versions are recorded, and the
+  build summary. The engine hands a richer context; this is the narrow view.
+
+  readonly state: TargetStateHandle
+    The rollout's durable platform state, shared by every call.
+  reportSummary(pairs: SummaryPairs): void
+    Add key/value pairs to the calling target's row in the build summary.
+
 interface AwsTasksApi
   The shape of {@link AwsTasks}.
 
@@ -1368,8 +1605,12 @@ interface AwsTasksApi
     `--query Version --output text`. Not a lookup: every call publishes.
   lambdaUpdateAlias(configure?: Configure<AwsLambdaUpdateAliasSettings>): Promise<CommandOutput>
     Move an alias: `aws lambda update-alias`.
+  lambdaGetAlias(configure?: Configure<AwsLambdaGetAliasSettings>): Promise<CommandOutput>
+    Describe an alias: `aws lambda get-alias`.
   lambdaGetFunction(configure?: Configure<AwsLambdaGetFunctionSettings>): Promise<CommandOutput>
     Describe a function: `aws lambda get-function`.
+  lambdaWait(configure?: Configure<AwsLambdaWaitSettings>): Promise<CommandOutput>
+    Wait for a function or version to reach a state: `aws lambda wait`.
   lambdaInvoke(configure?: Configure<AwsLambdaInvokeSettings>): Promise<CommandOutput>
     Invoke a function: `aws lambda invoke`.
   cloudformationDeploy(configure?: Configure<AwsCloudformationDeploySettings>): Promise<CommandOutput>
@@ -1443,6 +1684,12 @@ type AwsCloudwatchStatistic = "SampleCount" | "Average" | "Sum" | "Minimum" | "M
   A CloudWatch statistic: one of the five basic statistics, the interquartile
   mean `IQM`, or a percentile (`p99`, `p99.9`) or other extended statistic
   (`tm90`, `TM(10%:90%)`, `PR(100:2000)`, …).
+
+type AwsLambdaWaiter = "function-active" | "function-active-v2" | "function-exists" | "function-updated" | "function-updated-v2" | "published-version-active"
+  The states `aws lambda wait` can wait for. `function-updated-v2` waits for
+  an update in progress to finish; `published-version-active` for a version
+  just published to leave `Pending` — SnapStart and image functions take a
+  while, and Lambda fails invocations of a version until it is `Active`.
 
 type AwsLogsInsightsRow = Record<string, string>
   One row of a Logs Insights result: each field the query returned, by name.

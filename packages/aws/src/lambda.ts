@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * The `aws lambda` service — shipping new code, publishing a version, moving
- * an alias onto it, and invoking the function.
+ * The `aws lambda` service — shipping new code, publishing a version, reading
+ * and moving an alias, and invoking the function.
  *
  * ```ts
  * import { AwsTasks } from "@zuke/aws";
@@ -343,6 +343,7 @@ export class AwsLambdaUpdateAliasSettings extends AwsSettings {
   #description?: string;
   readonly #weights: Record<string, number> = {};
   #routing = false;
+  #revisionId?: string;
 
   /** The function's name or ARN (`--function-name`). */
   functionName(name: string): this {
@@ -376,6 +377,16 @@ export class AwsLambdaUpdateAliasSettings extends AwsSettings {
   additionalVersionWeight(version: string, weight: number): this {
     this.#weights[version] = weight;
     this.#routing = true;
+    return this;
+  }
+
+  /**
+   * Update only if the alias is still at this revision (`--revision-id`) — the
+   * `RevisionId` a `get-alias` read, so a change made in between fails the
+   * update instead of being overwritten.
+   */
+  revisionId(id: string): this {
+    this.#revisionId = id;
     return this;
   }
 
@@ -418,6 +429,43 @@ export class AwsLambdaUpdateAliasSettings extends AwsSettings {
         ),
       );
     }
+    if (this.#revisionId !== undefined) {
+      argv.push(option("--revision-id", this.#revisionId));
+    }
+    return argv;
+  }
+}
+
+/** Settings for `aws lambda get-alias`. */
+export class AwsLambdaGetAliasSettings extends AwsSettings {
+  #functionName?: string;
+  #name?: string;
+
+  /** The function's name or ARN (`--function-name`). */
+  functionName(name: string): this {
+    this.#functionName = name;
+    return this;
+  }
+
+  /** The alias to describe (`--name`), e.g. `"live"`. */
+  name(alias: string): this {
+    this.#name = alias;
+    return this;
+  }
+
+  /** Emit `lambda get-alias` with its options. */
+  protected override leadingTokens(): string[] {
+    const argv = functionNameArgv(
+      "lambdaGetAlias",
+      "get-alias",
+      this.#functionName,
+    );
+    if (this.#name === undefined) {
+      throw new Error(
+        "AwsTasks.lambdaGetAlias: no alias named — add .name('live').",
+      );
+    }
+    argv.push(option("--name", this.#name));
     return argv;
   }
 }
@@ -534,6 +582,65 @@ export class AwsLambdaInvokeSettings extends AwsSettings {
       argv.push(option("--qualifier", this.#qualifier));
     }
     argv.push(operand("lambdaInvoke", "outfile", this.#outfile));
+    return argv;
+  }
+}
+
+/**
+ * The states `aws lambda wait` can wait for. `function-updated-v2` waits for
+ * an update in progress to finish; `published-version-active` for a version
+ * just published to leave `Pending` — SnapStart and image functions take a
+ * while, and Lambda fails invocations of a version until it is `Active`.
+ */
+export type AwsLambdaWaiter =
+  | "function-active"
+  | "function-active-v2"
+  | "function-exists"
+  | "function-updated"
+  | "function-updated-v2"
+  | "published-version-active";
+
+/**
+ * Settings for `aws lambda wait`: poll the function until it reaches the
+ * state named, exiting non-zero — a `CommandError` — when it fails or the
+ * waiter gives up.
+ */
+export class AwsLambdaWaitSettings extends AwsSettings {
+  #waiter?: AwsLambdaWaiter;
+  #functionName?: string;
+  #qualifier?: string;
+
+  /** The state to wait for, e.g. `"published-version-active"`. */
+  waiter(name: AwsLambdaWaiter): this {
+    this.#waiter = name;
+    return this;
+  }
+
+  /** The function's name or ARN (`--function-name`). */
+  functionName(name: string): this {
+    this.#functionName = name;
+    return this;
+  }
+
+  /** The version or alias to wait on (`--qualifier`). */
+  qualifier(value: string): this {
+    this.#qualifier = value;
+    return this;
+  }
+
+  /** Emit `lambda wait <waiter>` with its options. */
+  protected override leadingTokens(): string[] {
+    if (this.#waiter === undefined) {
+      throw new Error(
+        "AwsTasks.lambdaWait: name the state — add " +
+          ".waiter('function-updated-v2').",
+      );
+    }
+    const argv = functionNameArgv("lambdaWait", "wait", this.#functionName);
+    argv.splice(2, 0, this.#waiter);
+    if (this.#qualifier !== undefined) {
+      argv.push(option("--qualifier", this.#qualifier));
+    }
     return argv;
   }
 }
