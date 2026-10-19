@@ -6,7 +6,9 @@ settings-lambda API. Typed settings cover a deploy path's commands — login,
 account, resource groups, ACR, AKS, Container Apps, App Service, Functions, Key
 Vault, resource-group deployments, blob storage and Azure Monitor — with the
 CLI's own subcommand and flag names; a general builder covers everything else.
-Arguments stay a discrete argv array, so command construction is injection-free.
+For `@zuke/canary` it adds a Container Apps platform and an Azure Monitor
+analysis. Arguments stay a discrete argv array, so command construction is
+injection-free.
 
 ## Usage
 
@@ -165,6 +167,37 @@ the build's environment or set with `.env(...)`, in either order — but its log
 can still carry what the CLI holds in its own token cache — keep it out of
 shared CI logs.
 
+## Container Apps canary platform
+
+`containerAppCanary(...)` is a platform for a `@zuke/canary` rollout: a
+container app in multiple-revision mode whose ingress traffic gives the
+candidate revision a growing share, split by revision name, then all of it.
+
+```ts
+import { canary } from "@zuke/canary";
+import { containerAppCanary } from "@zuke/az";
+
+rollout = canary((c) =>
+  c.platform(
+    containerAppCanary((a) =>
+      a.name("api").resourceGroup("rg-prod").image("acr.io/api:1.5.0")
+        .az((z) => z.subscription("prod"))
+    ),
+  )
+    .steps(10, 25, 50)
+    .bake("10m")
+);
+```
+
+`stage` pins the app's traffic to the revision serving it by name, so the new
+revision cannot inherit "latest" routing, then deploys the image with
+`containerapp update`; `expose` sets `ingress traffic set --revision-weight`;
+`promote` hands the traffic to the candidate — back through "latest" if it
+followed the latest revision before. Every call after `stage` checks the app's
+resource id, which names the subscription, against the one recorded, and refuses
+traffic that something else has changed. See
+[docs/canary.md](https://github.com/zuke-build/zuke/blob/master/docs/canary.md#azure-container-apps).
+
 ## Azure Monitor canary analysis
 
 `azureMonitor(...)` is an analysis for a `@zuke/canary` rollout: it reads a
@@ -208,13 +241,14 @@ Azure steps can be tested without a subscription or the CLI.
 <summary>Full typed API — generated from <code>deno doc</code></summary>
 
 ````text
-`@zuke/az` — typed Azure CLI tasks for Zuke builds, readers and a canary analysis.
+`@zuke/az` — typed Azure CLI tasks, readers, and a canary platform and analysis.
 
 The `az` CLI wrapper has typed settings for the deploy path (login,
 account, resource groups, ACR, AKS, Container Apps, App Service, Functions,
 Key Vault, deployments, blob storage), Azure Monitor metrics and Log
-Analytics, readers that return a value, and an `azureMonitor(...)` analysis
-for `@zuke/canary` rollouts.
+Analytics, readers that return a value, and for `@zuke/canary` rollouts a
+`containerAppCanary(...)` platform — a container app's revision traffic
+weights — and an `azureMonitor(...)` analysis.
 
 ```ts
 import { AzTasks, azureMonitor } from "@zuke/az";
@@ -243,6 +277,42 @@ function azureMonitor(configure: Configure<AzMonitorAnalysisSettings>): AzMonito
   The lambda runs on each check, so it may read resolved parameters, and
   every failure message — one from the lambda included — passes through the
   run's redactor.
+
+function containerAppCanary(configure: Configure<AzContainerAppCanarySettings>): AzContainerAppCanary
+  An Azure container app as a canary platform, for `@zuke/canary`:
+
+  ```ts
+  c.platform(containerAppCanary((a) =>
+    a.name("api").resourceGroup("rg-prod").image(this.image.value)
+      .az((z) => z.subscription("prod"))
+  ))
+  ```
+
+  The lambda runs on every call, so it may read resolved parameters. The app
+  must be in multiple-revision mode, with ingress.
+
+  - stage — reads the app (`containerapp show`); pins all traffic to the
+    serving revision by name (`ingress traffic set --revision-weight <stable>=100`); deploys the image (`containerapp update`), which makes
+    the candidate revision; checks it is `Provisioned`; records the rollout.
+  - expose — `ingress traffic set --revision-weight <stable>=<100-n> <candidate>=<n>`.
+  - promote — checks the latest revision is still the candidate, then
+    `--revision-weight latest=100` when traffic followed the latest revision
+    before (once the candidate is also the newest ready revision), or
+    `<candidate>=100 <stable>=0` otherwise.
+  - abort — `--revision-weight <stable>=100 <candidate>=0` mid-rollout;
+    run by hand, `<stable>=100` to the revision set with `.stable(...)`.
+
+  Every call after `stage` that has its record — expose, promote, and abort
+  mid-rollout — compares the configured app, resource group and `az` flags
+  with the record, reads the app and checks its resource id (which names the
+  subscription), and refuses on any difference before changing anything.
+  Expose and promote also check that the traffic still goes only to the
+  stable revision and the candidate, and that the candidate is the revision
+  staged. Every command after the check carries `--subscription` with the
+  subscription the checked id names, so a default subscription that changes
+  in the meantime cannot redirect it. The CLI has no conditional update for
+  ingress traffic, so a change landing between a read and the write that
+  follows it is not caught.
 
 const AzTasks: AzTasksApi
   Typed task functions for the `az` CLI.
@@ -423,6 +493,117 @@ class AzAksShowSettings extends AzResourceSettings
 
   override protected leadingTokens(): string[]
     Emit `aks show`.
+
+class AzContainerAppCanary
+  An Azure container app as a canary platform. Create one with
+  {@link containerAppCanary}; hand it to `@zuke/canary`'s `c.platform(...)`.
+
+  Exposure is a share of the app's ingress traffic, set exactly, in whole
+  percents.
+
+  constructor(configure: Configure<AzContainerAppCanarySettings>)
+    A platform whose settings `configure` produces, afresh on every call.
+  readonly exposure: "traffic"
+    Container Apps splits requests, so exposure is a traffic share.
+  describe(): string
+    `"container app api"`, for the build summary.
+  async stage(ctx: AzContainerAppCanaryContext): Promise<void>
+    Read the app, pin all of its traffic to the revision serving it by name
+    — so the new revision cannot inherit "latest" routing — deploy the
+    candidate image as a new revision, and record the rollout: the app,
+    resource group and `az` flags every later call is checked against, the
+    app's resource id, the stable and candidate revisions, and whether the
+    traffic followed the latest revision before.
+
+    Before the pin it records the app, resource group and flags, the app's
+    id, the stable revision and whether the traffic followed the latest
+    revision, so a stage run again checks against them, and the rollback of
+    a stage that fails can hand the traffic back to "latest".
+
+    Refuses an app that is not in multiple-revision mode, one without
+    ingress, one whose traffic is already split or carries labels, one whose
+    traffic follows the latest revision while its newest revision has not
+    provisioned, a deploy that made no new revision, a latest revision other
+    than the one `.revisionSuffix(...)` names, and a candidate that did not
+    provision. A stage run again over a record of the same rollout checks it
+    and changes nothing.
+  async expose(percent: number, ctx: AzContainerAppCanaryContext): Promise<number>
+    Send `percent` of the app's traffic to the candidate revision and the
+    rest to the stable one, by name. First the configuration is compared
+    with the record; then the app is read, and this refuses — changing
+    nothing — unless it is still the app staged, its traffic still goes only
+    to the stable revision and the candidate, and the candidate is still the
+    revision staged.
+  async promote(ctx: AzContainerAppCanaryContext): Promise<void>
+    Send all traffic to the candidate — after checking, as {@link expose}
+    does, the record, the app's id, the split and the candidate, and that
+    the candidate is still the app's latest revision. Traffic that followed
+    the latest revision before the rollout is handed back to "latest";
+    otherwise the candidate is pinned by name. An app already serving only
+    the candidate that way is left as it is, so a promote run again changes
+    nothing.
+  async abort(ctx: AzContainerAppCanaryContext): Promise<void>
+    Send all traffic back to the stable revision, by name. Idempotent. What
+    it does depends on what this rollout recorded:
+
+    - The rollout is staged (a rollback mid-rollout, or after a promote):
+      once the configuration and the app's id match the record, the stable
+      revision gets 100 % and the candidate 0 %. Traffic that also goes to a
+      third revision is a newer rollout, and this refuses rather than undo it
+      too. The traffic stays pinned to the stable revision by name, even if it
+      followed "latest" before: the latest revision is the candidate now.
+    - `stage` failed before recording it: the candidate never had any
+      traffic. Traffic that followed the latest revision and was pinned to
+      the stable one by name is handed back to "latest" — once the
+      configuration and the app's id match the pin, the traffic still goes
+      only to the stable revision, and that is still the newest revision.
+      Otherwise it is left pinned, and the summary says so.
+    - Any other stage marker: the record is damaged, and this refuses.
+    - Nothing recorded (`rollout.abort` run by hand, a fresh run): all
+      traffic goes to the revision set with
+      {@link AzContainerAppCanarySettings.stable}. Without one this refuses.
+
+class AzContainerAppCanarySettings
+  How {@link containerAppCanary} reaches the app and deploys the candidate,
+  configured through its lambda.
+
+  name_?: string
+    The container app (set by {@link name}).
+  resourceGroup_?: string
+    Its resource group (set by {@link resourceGroup}).
+  image_?: string
+    The candidate's container image (set by {@link image}).
+  containerName_?: string
+    The container the image is for (set by {@link containerName}).
+  revisionSuffix_?: string
+    A suffix for the candidate revision's name (set by {@link revisionSuffix}).
+  stable_?: string
+    The revision a hand-run rollback returns to (set by {@link stable}).
+  az_: Configure<AzSettings>
+    Global options for every command (set by {@link az}).
+  name(name: string): this
+    The container app to roll out to. It must already exist.
+  resourceGroup(name: string): this
+    The resource group the app is in.
+  image(reference: string): this
+    The candidate's container image, deployed by `stage`.
+  containerName(name: string): this
+    The container the image is for, when the app has several (`--container-name`).
+  revisionSuffix(suffix: string): this
+    A suffix for the candidate revision's name (`--revision-suffix`), so it is
+    `<app>--<suffix>`. It must be new to the app.
+  stable(revision: string): this
+    The revision to send all traffic to when `rollout.abort` is run by hand.
+    Such a run is fresh, with no record of a rollout, so it has nothing else
+    to go on. A rollback the engine runs mid-rollout does not use it: that
+    one returns the traffic to the revision `stage` recorded.
+  az(configure: Configure<AzSettings>): this
+    Global options for every command the platform runs —
+    `(z) => z.subscription("prod")`, a `.toolPath(...)`, or a `.runner(...)`,
+    the seam a test answers through. The flags it gives are recorded in the
+    rollout's state, which is plain JSON: never pass a secret on the command
+    line here. A reader's `--output` and `--query` are its own and are set
+    after it.
 
 class AzContainerappIngressTrafficSetSettings extends AzResourceSettings
   Settings for `az containerapp ingress traffic set`: the share of traffic
@@ -1221,6 +1402,17 @@ class AzWebappShowSettings extends AzResourceSettings
     A slot instead of production (`--slot`).
   override protected leadingTokens(): string[]
     Emit `webapp show` with its options.
+
+interface AzContainerAppCanaryContext
+  The part of the canary engine's context the Container Apps platform uses:
+  the rollout's durable state, where the staged revisions are recorded, and
+  the build summary. The engine hands a richer context; this is the narrow
+  view.
+
+  readonly state: TargetStateHandle
+    The rollout's durable platform state, shared by every call.
+  reportSummary(pairs: SummaryPairs): void
+    Add key/value pairs to the calling target's row in the build summary.
 
 interface AzMonitorAnalysis
   A health check run against a canary, in the shape `@zuke/canary`'s

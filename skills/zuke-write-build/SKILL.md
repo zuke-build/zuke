@@ -366,7 +366,10 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   from `@zuke/docker-compose`, and AWS Lambda:
   `lambdaCanary((l) => l.functionName(…).alias("live")
   .zipFile(…).aws((a) => a.region(…)))`
-  from `@zuke/aws`. See the cheatsheet.
+  from `@zuke/aws`, and Azure Container Apps:
+  `containerAppCanary((a) => a.name(…).resourceGroup(…)
+  .image(…).az((z) => z.subscription(…)))`
+  from `@zuke/az`. See the cheatsheet.
 - **Prometheus (`@zuke/prometheus`):** read a metric instead of hand-rolling the
   HTTP call —
   `PrometheusTasks.value(await PrometheusTasks.query((s) =>

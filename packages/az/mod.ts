@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * `@zuke/az` — typed Azure CLI tasks for Zuke builds, readers and a canary analysis.
+ * `@zuke/az` — typed Azure CLI tasks, readers, and a canary platform and analysis.
  *
  * The `az` CLI wrapper has typed settings for the deploy path (login,
  * account, resource groups, ACR, AKS, Container Apps, App Service, Functions,
  * Key Vault, deployments, blob storage), Azure Monitor metrics and Log
- * Analytics, readers that return a value, and an `azureMonitor(...)` analysis
- * for `@zuke/canary` rollouts.
+ * Analytics, readers that return a value, and for `@zuke/canary` rollouts a
+ * `containerAppCanary(...)` platform — a container app's revision traffic
+ * weights — and an `azureMonitor(...)` analysis.
  *
  * ```ts
  * import { AzTasks, azureMonitor } from "@zuke/az";
@@ -116,3 +117,9 @@ export {
   AzMonitorAnalysisSettings,
   azureMonitor,
 } from "./src/monitor_canary.ts";
+export {
+  AzContainerAppCanary,
+  type AzContainerAppCanaryContext,
+  AzContainerAppCanarySettings,
+  containerAppCanary,
+} from "./src/containerapp_canary.ts";

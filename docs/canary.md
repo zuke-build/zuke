@@ -77,8 +77,9 @@ network calls.
 
 Adapters for specific platforms belong in their wrapper packages; see
 [Cloud Run](#cloud-run), [Kubernetes](#kubernetes), [Helm](#helm),
-[Docker Compose](#docker-compose) and [AWS Lambda](#aws-lambda) below. Until one
-exists for yours, a platform is a plain object in the build:
+[Docker Compose](#docker-compose), [AWS Lambda](#aws-lambda) and
+[Azure Container Apps](#azure-container-apps) below. Until one exists for yours,
+a platform is a plain object in the build:
 
 <!-- check -->
 
@@ -769,6 +770,125 @@ the alias as someone else set it. A hand-run `zuke rollout.abort` with
 `.stable(...)` has no record to check against. After an abort the candidate
 version still exists.
 
+### Azure Container Apps
+
+`containerAppCanary` from `@zuke/az` is an Azure container app as a platform.
+The candidate is a new revision of the app, and its exposure is its share of the
+app's ingress traffic, split between the two revisions by name:
+
+<!-- check -->
+
+```ts
+import { Build, parameter, run, target } from "@zuke/core";
+import { canary, httpProbe } from "@zuke/canary";
+import { azureMonitor, containerAppCanary } from "@zuke/az";
+
+class Deploy extends Build {
+  image = parameter("Container image to roll out").required();
+
+  rollout = canary((c) =>
+    c.platform(
+      containerAppCanary((a) =>
+        a.name("api").resourceGroup("rg-prod").image(this.image.value)
+          .az((z) => z.subscription("prod"))
+      ),
+    )
+      .steps(10, 25, 50)
+      .bake("10m")
+      .analysis(httpProbe((h) => h.url("https://api.example.com/healthz")))
+      .analysis(azureMonitor((m) =>
+        m.name("api 5xx")
+          .resource(
+            "/subscriptions/prod/resourceGroups/rg-prod/providers/" +
+              "Microsoft.App/containerApps/api",
+          )
+          .metric("Requests").aggregation("Total")
+          .dimension("statusCodeCategory", "5xx")
+          .window("10m").max(0).missingDataAs(0)
+          .az((z) => z.subscription("prod"))
+      ))
+  );
+  ship = target().dependsOn(this.rollout.promote).executes(() => {});
+}
+
+await run(Deploy);
+```
+
+The app must already exist, in **multiple-revision mode**
+(`az containerapp
+revision set-mode --mode multiple`), with ingress. Its lambda
+runs on every call, so it may read resolved parameters. `.image(...)` is the
+candidate, which `stage` deploys; `.containerName(...)` picks the container in
+an app with several, and `.revisionSuffix(...)` names the candidate revision
+`<app>--<suffix>`. The `Requests` metric above is the whole app's; it also has a
+`revisionName` dimension, which judges the candidate alone once its name is
+known.
+
+| Call      | az                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stage`   | `containerapp show`, whose one revision taking all traffic becomes the stable one; `ingress traffic set --revision-weight <stable>=100`, which pins that traffic to the stable revision by name, so the new revision cannot inherit traffic that followed "latest"; `containerapp update --image`, which makes the candidate; `containerapp show` and `revision list` to read it back and check it is `Provisioned`; then records the rollout. |
+| `expose`  | The record check, then `ingress traffic set --revision-weight <stable>=<100-n> <candidate>=<n>`. Whole percents only.                                                                                                                                                                                                                                                                                                                          |
+| `promote` | The record check, and that the app's latest revision is still the candidate; then `--revision-weight latest=100` if the traffic followed the latest revision before the rollout — once the candidate is also the newest ready revision, where "latest" sends it — or `<candidate>=100 <stable>=0` if it was pinned by name. An app already serving only the candidate that way is left as it is.                                               |
+| `abort`   | Mid-rollout: the identity and resource-id checks, then `--revision-weight <stable>=100 <candidate>=0`. After a stage that failed: `latest=100`, when the traffic followed the latest revision and it is safe (see below). Run by hand (no recorded state): `<stable>=100` to the revision set with `.stable(...)`, and it refuses without one.                                                                                                 |
+
+`stage` refuses an app in single- or labels-revision mode, one without ingress,
+one whose traffic is already split or carries labels, and one whose traffic
+follows the latest revision while its newest revision has not provisioned —
+traffic that follows "latest" goes to the newest _ready_ revision, so which one
+serves would be in doubt. After the deploy it refuses a deploy that made no new
+revision (Container Apps makes one only when the image or the template changes),
+a latest revision other than `<app>--<suffix>` when `.revisionSuffix(...)` is
+set (another deploy landed in between), and a candidate that did not provision.
+The pin is the one change `stage` makes to traffic, and it does not move any:
+the stable revision had all of it. `stage` records the pin before it makes it,
+so the rollback of a stage that fails hands traffic that followed "latest" back
+to it — once the configuration and the app's resource id match the pin, the
+traffic still goes only to the stable revision, and that revision is still the
+app's newest. When the failed stage did make a revision (one that did not
+provision, say), "latest" could send the traffic elsewhere, so the rollback
+leaves it pinned and the summary reports `Pinned to: <stable>`; hand it back
+with `az containerapp ingress traffic set --revision-weight latest=100` once
+that revision is deactivated.
+
+The record holds the app, the resource group and the global flags `.az(...)`
+gives every command, plus the app's resource id, the stable and candidate
+revisions, when the candidate was created, and whether the traffic followed the
+latest revision. The flags are recorded as argv in the rollout's state, which is
+plain JSON, so never pass a secret on the command line through `.az(...)`. The
+record check, before anything changes:
+
+- compares the configured app, resource group and flags with the record, before
+  any command;
+- reads the app and compares its resource id, which names the subscription — so
+  an `az account set` or another signed-in identity, which the flags cannot see,
+  is refused;
+- for `expose` and `promote`, checks that the traffic still goes only to the
+  stable revision and the candidate, and that the candidate still has the
+  creation time recorded — an app deleted and created again can have a revision
+  of the same name.
+
+Every command a call runs after it has checked the app's resource id carries
+`--subscription` with the subscription that id names, so another job's
+`az account set` landing mid-call cannot redirect a write. The `.az(...)` lambda
+runs for each command, and a command it gives other flags than the ones the call
+checked does not run. The CLI has no conditional update for ingress traffic, so
+a change someone makes between a read and the write that follows it is not
+caught.
+
+A refusal changes nothing. After an identity or resource-id refusal the run
+stops and its rollback refuses the same way, so the candidate keeps the share it
+had; the refusal gives the recovery — a `containerapp show --query=id` that
+should print the recorded resource id, and the `ingress traffic set` that sends
+all of the traffic back to the recorded stable revision, both built from the
+recorded app, resource group and flags. After a refusal because the traffic no
+longer splits as the rollout left it, the rollback still sends the traffic back
+to the stable revision, unless a third revision has a share: that is a newer
+rollout or a change made by hand, and the rollback refuses rather than undo it.
+After a rollback the traffic stays pinned to the stable revision by name, and
+the candidate revision still exists, with no traffic; deactivate it with
+`az containerapp revision deactivate` when it is no longer wanted. A hand-run
+`zuke rollout.abort` with `.stable(...)` has no record to check against.
+
 ## Bakes: inline or durable
 
 By default a bake is **inline**: the bake target sleeps in the process while
@@ -970,23 +1090,19 @@ failure wording as `prometheus(...)`:
 ```ts
 import { Build, parameter, run, target } from "@zuke/core";
 import { canary, httpProbe } from "@zuke/canary";
-import { azureMonitor } from "@zuke/az";
+import { azureMonitor, containerAppCanary } from "@zuke/az";
 
 class Deploy extends Build {
   appInsights = parameter("The Application Insights component's resource id")
     .required();
 
   rollout = canary((c) =>
-    c.platform({
-      exposure: "traffic",
-      describe: () => "Container Apps revision weights",
-      async stage() {},
-      async expose(percent) {
-        return percent;
-      },
-      async promote() {},
-      async abort() {},
-    })
+    c.platform(
+      containerAppCanary((a) =>
+        a.name("api").resourceGroup("rg-prod").image("acr.io/api:2")
+          .az((z) => z.subscription("prod"))
+      ),
+    )
       .steps(10, 50)
       .bake("10m")
       .analysis(httpProbe((h) => h.url("https://api.example.com/health")))
