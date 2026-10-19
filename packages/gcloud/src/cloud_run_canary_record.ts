@@ -15,6 +15,7 @@
  */
 
 import type { JsonValue } from "@zuke/core";
+import { joinShellArgs } from "@zuke/core/shell";
 import type { Configure } from "@zuke/core/tooling";
 import {
   GcloudRunServicesDescribeSettings,
@@ -208,19 +209,22 @@ function recovery(recorded: RecordedIdentity): string {
   );
   if (recorded.region !== null) revisions.flag("region", recorded.region);
   revisions.args(...recorded.flags);
+  const check = joinShellArgs(describe.argv());
+  const back = joinShellArgs(undo.argv());
+  const list = joinShellArgs(revisions.argv());
   return "The run stops, and its rollback refuses the same way, so a " +
     "resume or `zuke cancel` will not roll it back: the candidate's tagged " +
     "route stays as it is. To recover, set the configuration and gcloud's " +
     "active project back to what the rollout started with, check that " +
-    `\`${shell(describe.argv())}\` prints ${recorded.uid} — the service ` +
+    `\`${check}\` prints ${recorded.uid} — the service ` +
     "that was staged (a rollback run by hand has no record to check it " +
     "against) — then take the candidate's traffic back with " +
-    `\`${shell(undo.argv())}\`. Prefer that: it returns the tag's share to ` +
+    `\`${back}\`. Prefer that: it returns the tag's share to ` +
     "the revisions already serving, keeping their split. Running the " +
     "rollout's <field>.abort target by hand (for example `zuke " +
     "rollout.abort`) with r.stable('<revision>') instead sends all traffic " +
     "to that one revision, collapsing any earlier split; " +
-    `\`${shell(revisions.argv())}\` lists the revisions to choose from. If ` +
+    `\`${list}\` lists the revisions to choose from. If ` +
     "it prints another uid, the service the rollout staged was deleted or " +
     "is out of reach: check `gcloud run services list` and clean up by hand.";
 }
@@ -240,8 +244,9 @@ export function checkApplied(
   flags: readonly string[],
 ): void {
   if (sameArgv(argv.slice(own), flags)) return;
+  const command = joinShellArgs(argv);
   throw new Error(
-    `cloudRunCanary: r.gcloud(...) gave this command \`${shell(argv)}\` ` +
+    `cloudRunCanary: r.gcloud(...) gave this command \`${command}\` ` +
       `where the gcloud flags this call resolved are ${shownFlags(flags)}, ` +
       "so it does not run: the lambda must give the same flags every time " +
       "it runs. " +
@@ -259,15 +264,6 @@ function scopedTo<S extends GcloudSettings & { region(value: string): S }>(
 ): S {
   if (recorded.region !== null) command.region(recorded.region);
   return command.args(...recorded.flags);
-}
-
-/** An argv as a POSIX shell would take it back, quoting what needs it. */
-function shell(argv: readonly string[]): string {
-  return argv.map((token) =>
-    /^[A-Za-z0-9_@%+=:,./-]+$/.test(token)
-      ? token
-      : `'${token.replaceAll("'", "'\\''")}'`
-  ).join(" ");
 }
 
 /**
@@ -306,7 +302,7 @@ function shownRegion(region: string | null): string {
 
 /** Global flags as an operator would type them, or a note there are none. */
 function shownFlags(flags: readonly string[]): string {
-  return flags.length === 0 ? "no gcloud flags" : `\`${shell(flags)}\``;
+  return flags.length === 0 ? "no gcloud flags" : `\`${joinShellArgs(flags)}\``;
 }
 
 /** Whether a recorded value is a list of strings. */

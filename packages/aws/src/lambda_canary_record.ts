@@ -17,6 +17,7 @@
  */
 
 import type { JsonValue } from "@zuke/core";
+import { joinShellArgs } from "@zuke/core/shell";
 import type { Configure } from "@zuke/core/tooling";
 import type { LambdaAlias } from "./lambda_canary_alias.ts";
 import { AwsSettings } from "./settings.ts";
@@ -250,25 +251,16 @@ export function recovery(recorded: LambdaRecord): string {
     "or `zuke cancel` will not roll it back: the candidate keeps whatever " +
     "share of the alias it had. To recover, set the configuration and the " +
     "AWS environment back to what the rollout started with, check that " +
-    `\`${shell(read)}\` prints the ARN ${recorded.aliasArn} — the alias that ` +
+    `\`${read}\` prints the ARN ${recorded.aliasArn} — the alias that ` +
     "was staged — then send all of its traffic back to the stable version " +
-    `${recorded.stable} with \`${shell(undo)}\`. If it prints another ARN, ` +
+    `${recorded.stable} with \`${undo}\`. If it prints another ARN, ` +
     "the alias the rollout staged is out of reach from this environment: " +
     "fix the profile or region first.";
 }
 
-/** A command's argv as an operator would type it, with the recorded flags. */
-function scopedTo(recorded: LambdaRecord, command: string[]): string[] {
-  return ["aws", ...command, ...recorded.flags];
-}
-
-/** An argv as a POSIX shell would take it back, quoting what needs it. */
-function shell(argv: readonly string[]): string {
-  return argv.map((token) =>
-    /^[A-Za-z0-9_@%+=:,./-]+$/.test(token)
-      ? token
-      : `'${token.replaceAll("'", "'\\''")}'`
-  ).join(" ");
+/** A command as an operator would type it, with the recorded flags. */
+function scopedTo(recorded: LambdaRecord, command: string[]): string {
+  return joinShellArgs(["aws", ...command, ...recorded.flags]);
 }
 
 /**
@@ -301,5 +293,5 @@ function shown(value: string): string {
 
 /** Global flags as an operator would type them, or a note there are none. */
 function shownFlags(flags: readonly string[]): string {
-  return flags.length === 0 ? "no AWS flags" : `\`${shell(flags)}\``;
+  return flags.length === 0 ? "no AWS flags" : `\`${joinShellArgs(flags)}\``;
 }

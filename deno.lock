@@ -1567,12 +1567,12 @@
       },
       "packages/aws": {
         "dependencies": [
-          "jsr:@zuke/core@^1.70.1"
+          "jsr:@zuke/core@^1.74.0"
         ]
       },
       "packages/az": {
         "dependencies": [
-          "jsr:@zuke/core@^1.70.1"
+          "jsr:@zuke/core@^1.74.0"
         ]
       },
       "packages/biome": {
@@ -1675,7 +1675,7 @@
       },
       "packages/gcloud": {
         "dependencies": [
-          "jsr:@zuke/core@^1.58.0"
+          "jsr:@zuke/core@^1.74.0"
         ]
       },
       "packages/gemini": {
@@ -1700,7 +1700,7 @@
       },
       "packages/homebrew": {
         "dependencies": [
-          "jsr:@zuke/core@^1.71.0",
+          "jsr:@zuke/core@^1.74.0",
           "jsr:@zuke/gh@^1.15.0"
         ]
       },

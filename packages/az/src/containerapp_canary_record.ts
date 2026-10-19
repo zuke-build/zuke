@@ -20,6 +20,7 @@
  */
 
 import type { JsonValue } from "@zuke/core";
+import { joinShellArgs } from "@zuke/core/shell";
 import type { Configure } from "@zuke/core/tooling";
 import {
   type ContainerApp,
@@ -272,7 +273,7 @@ export function sameArgv(a: readonly string[], b: readonly string[]): boolean {
 export function recovery(
   recorded: ContainerAppPin | ContainerAppRecord,
 ): string {
-  const read = [
+  const read = joinShellArgs([
     "az",
     "containerapp",
     "show",
@@ -280,7 +281,7 @@ export function recovery(
     `--resource-group=${recorded.resourceGroup}`,
     "--query=id",
     ...recorded.flags,
-  ];
+  ]);
   const weights = "candidate" in recorded
     ? [`${recorded.stable}=100`, `${recorded.candidate}=0`]
     : recorded.followedLatest
@@ -288,13 +289,13 @@ export function recovery(
     : undefined;
   const check = "The run stops, and its rollback refuses the same way. To " +
     "recover, set the configuration and the Azure CLI's subscription back " +
-    `to what the rollout started with, and check that \`${shell(read)}\` ` +
+    `to what the rollout started with, and check that \`${read}\` ` +
     `prints ${recorded.appId} — the app that was staged.`;
   if (weights === undefined) {
     return `${check} No candidate took traffic and the traffic was pinned ` +
       `to ${recorded.stable} by name before, so there is nothing to undo.`;
   }
-  const undo = [
+  const undo = joinShellArgs([
     "az",
     "containerapp",
     "ingress",
@@ -305,30 +306,21 @@ export function recovery(
     "--revision-weight",
     ...weights,
     ...recorded.flags,
-  ];
+  ]);
   if (!("candidate" in recorded)) {
     return `${check} No candidate took traffic, but the traffic is pinned to ` +
       `${recorded.stable} by name; hand it back to the latest revision, as it ` +
-      `was, with \`${shell(undo)}\`.`;
+      `was, with \`${undo}\`.`;
   }
   return "The run stops, and its rollback refuses the same way, so a resume " +
     "or `zuke cancel` will not roll it back: the candidate keeps whatever " +
     "share of the traffic it had. To recover, set the configuration and the " +
     "Azure CLI's subscription back to what the rollout started with, check " +
-    `that \`${shell(read)}\` prints ${recorded.appId} — the app that was ` +
+    `that \`${read}\` prints ${recorded.appId} — the app that was ` +
     "staged — then send all of its traffic back to the stable revision " +
-    `${recorded.stable} with \`${shell(undo)}\`. If it prints another id, ` +
+    `${recorded.stable} with \`${undo}\`. If it prints another id, ` +
     "the app the rollout staged is out of reach from this environment: fix " +
     "the subscription first.";
-}
-
-/** An argv as a POSIX shell would take it back, quoting what needs it. */
-function shell(argv: readonly string[]): string {
-  return argv.map((token) =>
-    /^[A-Za-z0-9_@%+=:,./-]+$/.test(token)
-      ? token
-      : `'${token.replaceAll("'", "'\\''")}'`
-  ).join(" ");
 }
 
 /**
@@ -361,7 +353,7 @@ function shown(value: string): string {
 
 /** Global flags as an operator would type them, or a note there are none. */
 function shownFlags(flags: readonly string[]): string {
-  return flags.length === 0 ? "no az flags" : `\`${shell(flags)}\``;
+  return flags.length === 0 ? "no az flags" : `\`${joinShellArgs(flags)}\``;
 }
 
 /** Whether a recorded value is a list of strings. */
