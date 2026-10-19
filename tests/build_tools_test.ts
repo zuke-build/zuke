@@ -37,7 +37,7 @@ import {
   symbolSignature,
   transformPackage,
 } from "../build/api_reference.ts";
-import { launcherScript, publishOne } from "../build/publish.ts";
+import { launcherScript, publishAll, publishOne } from "../build/publish.ts";
 import {
   DEFAULT_WEBSITE_REPO,
   mintableFor,
@@ -479,6 +479,112 @@ Deno.test("publishOne: a stalled publish that never landed throws", async () => 
     () => publishOne("core", "1.0.0", deps),
     Error,
     "timed out before reaching JSR",
+  );
+});
+
+/**
+ * A fake {@link import("../build/publish.ts").PublishAllDeps}: every package is
+ * at `1.0.0` unless `versions` says otherwise, none but `onJsr` is on JSR, and the
+ * upload of each package in `stalls` times out without landing.
+ */
+function fakeAllDeps(opts: {
+  versions?: Record<string, string>;
+  stalls?: string[];
+  onJsr?: string[];
+}) {
+  const calls = {
+    published: [] as string[],
+    info: [] as string[],
+    failed: [] as string[],
+  };
+  return {
+    deps: {
+      versionOf: (pkg: string) =>
+        Promise.resolve(opts.versions?.[pkg] ?? "1.0.0"),
+      isPublished: (pkg: string, _version: string) =>
+        Promise.resolve(opts.onJsr?.includes(pkg) ?? false),
+      publishPackage: (pkg: string) => {
+        const stalled = opts.stalls?.includes(pkg) ?? false;
+        if (!stalled) calls.published.push(pkg);
+        return Promise.resolve(!stalled);
+      },
+      info: (m: string) => calls.info.push(m),
+      success: (_m: string) => {},
+      failed: (m: string) => calls.failed.push(m),
+    },
+    calls,
+  };
+}
+
+Deno.test("publishAll: publishes every package in order", async () => {
+  const { deps, calls } = fakeAllDeps({});
+  await publishAll(["core", "deno", "npm"], {}, deps);
+  assertEquals(calls.published, ["core", "deno", "npm"]);
+  assertEquals(calls.failed, []);
+});
+
+Deno.test("publishAll: a stalled package does not stop the ones after it", async () => {
+  const { deps, calls } = fakeAllDeps({ stalls: ["docker-compose"] });
+  await assertRejects(
+    () => publishAll(["core", "docker-compose", "kubectl", "helm"], {}, deps),
+    Error,
+    "1 package version(s) did not reach JSR: @zuke/docker-compose@1.0.0.",
+  );
+  assertEquals(calls.published, ["core", "kubectl", "helm"]);
+  assertEquals(calls.failed, [
+    "@zuke/docker-compose@1.0.0 did not publish: Publishing " +
+    "@zuke/docker-compose@1.0.0 timed out before reaching JSR.",
+  ]);
+});
+
+Deno.test("publishAll: a package whose dependency did not land is not tried", async () => {
+  const { deps, calls } = fakeAllDeps({ stalls: ["gh"] });
+  await assertRejects(
+    () =>
+      publishAll(["core", "gh", "console", "cli", "qr"], { cli: ["gh"] }, deps),
+    Error,
+    "2 package version(s) did not reach JSR: @zuke/gh@1.0.0, @zuke/cli@1.0.0.",
+  );
+  assertEquals(calls.published, ["core", "console", "qr"]);
+  assertEquals(
+    calls.failed[1],
+    "@zuke/cli@1.0.0 did not publish: its dependency @zuke/gh did not land.",
+  );
+});
+
+Deno.test("publishAll: when core does not land, nothing else is tried", async () => {
+  const { deps, calls } = fakeAllDeps({ stalls: ["core"] });
+  await assertRejects(
+    () => publishAll(["core", "deno"], {}, deps),
+    Error,
+    "@zuke/core@1.0.0, @zuke/deno@1.0.0",
+  );
+  assertEquals(calls.published, []);
+});
+
+Deno.test("publishAll: a version already on JSR is not a failure when its dependency stalls", async () => {
+  const { deps, calls } = fakeAllDeps({
+    stalls: ["core"],
+    onJsr: ["@zuke/deno"],
+  });
+  await assertRejects(
+    () => publishAll(["core", "deno", "npm"], {}, deps),
+    Error,
+    "2 package version(s) did not reach JSR: @zuke/core@1.0.0, @zuke/npm@1.0.0.",
+  );
+  assertEquals(
+    calls.info.includes("@zuke/deno@1.0.0 is already on JSR."),
+    true,
+  );
+});
+
+Deno.test("publishAll: a package with no released version is skipped, not a failure", async () => {
+  const { deps, calls } = fakeAllDeps({ versions: { signpath: "0.0.0" } });
+  await publishAll(["core", "signpath"], {}, deps);
+  assertEquals(calls.published, ["core"]);
+  assertEquals(
+    calls.info.includes("@zuke/signpath has no released version yet."),
+    true,
   );
 });
 
