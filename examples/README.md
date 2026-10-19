@@ -10,13 +10,14 @@ deno run -A zuke.ts --list   # what the build can do
 deno run -A zuke.ts          # run its default target
 ```
 
-| Example                                | What it shows                                                                                                           |
-| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| [`deno-library`](./deno-library)       | The everyday gate for a Deno package: format, lint, type-check, test, and a 95% coverage threshold.                     |
-| [`ci-only`](./ci-only)                 | A project whose only job is the pipeline: one `cicd()` per provider, generated and verified. Never write CI YAML again. |
-| [`node-app`](./node-app)               | Drive an npm project's install, test and build through `@zuke/npm`, without adding a dependency to it.                  |
-| [`release-library`](./release-library) | Release a small library: bump, tag, push, GitHub release with generated notes, publish.                                 |
-| [`scripts-to-zuke`](./scripts-to-zuke) | The same `scripts/release.sh` three ways: bash, the `$` shell with no build class, and targets.                         |
+| Example                                | What it shows                                                                                                             |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| [`deno-library`](./deno-library)       | The everyday gate for a Deno package: format, lint, type-check, test, and a 95% coverage threshold.                       |
+| [`canary-release`](./canary-release)   | A canary rollout you can run locally: steps, bakes, an HTTP probe, promotion — and the rollback when the candidate fails. |
+| [`ci-only`](./ci-only)                 | A project whose only job is the pipeline: one `cicd()` per provider, generated and verified. Never write CI YAML again.   |
+| [`node-app`](./node-app)               | Drive an npm project's install, test and build through `@zuke/npm`, without adding a dependency to it.                    |
+| [`release-library`](./release-library) | Release a small library: bump, tag, push, GitHub release with generated notes, publish.                                   |
+| [`scripts-to-zuke`](./scripts-to-zuke) | The same `scripts/release.sh` three ways: bash, the `$` shell with no build class, and targets.                           |
 
 Inside this repository the `jsr:@zuke/*` imports resolve to the workspace, so
 the examples always match the source you are reading, and `./zuke examplesCheck`
