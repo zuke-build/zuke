@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.74.0](https://github.com/zuke-build/zuke/compare/core-v1.73.0...core-v1.74.0) (2026-10-19)
+
+
+### Features
+
+* **core:** render an argv as a paste-able shell command line ([#847](https://github.com/zuke-build/zuke/issues/847)) ([12c43b4](https://github.com/zuke-build/zuke/commit/12c43b4e70a32a2e5ceb08f6ab766fc0aebba724))
+
 ## [1.73.0](https://github.com/zuke-build/zuke/compare/core-v1.72.0...core-v1.73.0) (2026-10-14)
 
 

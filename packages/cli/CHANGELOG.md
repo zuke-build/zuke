@@ -1,5 +1,46 @@
 # Changelog
 
+## [1.17.0](https://github.com/zuke-build/zuke/compare/cli-v1.16.0...cli-v1.17.0) (2026-10-19)
+
+
+### Features
+
+* add missing typed builders, DenoSettings.frozen, and --frozen scaffolding ([#268](https://github.com/zuke-build/zuke/issues/268)) ([8549b12](https://github.com/zuke-build/zuke/commit/8549b127216a37fd176cfc2e091d558de43c98a8))
+* **cli:** add `zuke upgrade` command to update the installed CLI ([#729](https://github.com/zuke-build/zuke/issues/729)) ([09801ce](https://github.com/zuke-build/zuke/commit/09801ce74bf2a1272179e0798d73d38ceb817f85))
+* **cli:** add zuke import to scaffold a build from package.json or a Makefile ([#159](https://github.com/zuke-build/zuke/issues/159)) ([5fa7605](https://github.com/zuke-build/zuke/commit/5fa7605004451822f6c2576981dd681d1c68d3d7))
+* **cli:** forward build commands to zuke.ts from global CLI ([#579](https://github.com/zuke-build/zuke/issues/579)) ([f4eb6b9](https://github.com/zuke-build/zuke/commit/f4eb6b9c31d9d5e450059206261be2c7c48389ec))
+* **cli:** forward the global zuke through the project's ./zuke launcher ([#675](https://github.com/zuke-build/zuke/issues/675)) ([bbb4546](https://github.com/zuke-build/zuke/commit/bbb45464931693c22884c1784e002be58401fc2b)), closes [#674](https://github.com/zuke-build/zuke/issues/674)
+* **cli:** group the help, move detail behind per-command help, merge both surfaces ([#649](https://github.com/zuke-build/zuke/issues/649)) ([50987ff](https://github.com/zuke-build/zuke/commit/50987ff8b3a64fee4efa576e6f211732e1d917a7))
+* **cli:** let zuke setup choose launchers that bootstrap a pinned Deno ([#525](https://github.com/zuke-build/zuke/issues/525)) ([48a1e40](https://github.com/zuke-build/zuke/commit/48a1e408571f22d9e2c1084f2bbebc173e7ba609)), closes [#512](https://github.com/zuke-build/zuke/issues/512)
+* **cli:** node-repo ergonomics — npm workspaces, setup collision guard, zuke doc ([#209](https://github.com/zuke-build/zuke/issues/209)) ([c0e3e38](https://github.com/zuke-build/zuke/commit/c0e3e382696add8747303f7b6f6b10318b0bdc3c))
+* **cli:** open setup with the Zuke logo and close with a star prompt ([#368](https://github.com/zuke-build/zuke/issues/368)) ([3783152](https://github.com/zuke-build/zuke/commit/37831529707b4b99e4d53cd49f7a65a6ff1facb5))
+* **cli:** open zuke --help with the logo and paint the build section's heading ([#749](https://github.com/zuke-build/zuke/issues/749)) ([13390e1](https://github.com/zuke-build/zuke/commit/13390e1c6ff3581ea21e86804db00d665a1e8f7e))
+* **cli:** point every user-facing doc and setup at the zuke command ([#845](https://github.com/zuke-build/zuke/issues/845)) ([89b8a9d](https://github.com/zuke-build/zuke/commit/89b8a9d288341982fcfe1dd68033da03c5fce062))
+* **cli:** publish the Windows binary to Chocolatey, unsigned until Authenticode lands ([#819](https://github.com/zuke-build/zuke/issues/819)) ([60e24a8](https://github.com/zuke-build/zuke/commit/60e24a814f15ee9603cfc9ebf34f49e7c5e37b7e))
+* **cli:** report the install source in --version and send Homebrew upgrades to brew ([#787](https://github.com/zuke-build/zuke/issues/787)) ([1a9391d](https://github.com/zuke-build/zuke/commit/1a9391d2db7f452115f121bff1d9b440ce73eea2))
+* **cli:** rich global-CLI output and a lock-based zuke --version ([#741](https://github.com/zuke-build/zuke/issues/741)) ([91f6916](https://github.com/zuke-build/zuke/commit/91f6916fcd5d2729723527a68b7143de441f641d))
+* **cli:** zuke add, remove, cache and relock, so a project needs only zuke ([#767](https://github.com/zuke-build/zuke/issues/767)) ([166539b](https://github.com/zuke-build/zuke/commit/166539bb67f206ec6be8dd7b820487e225ebd332))
+* **cli:** zuke setup --mcp registers the build's MCP server ([#508](https://github.com/zuke-build/zuke/issues/508)) ([f990855](https://github.com/zuke-build/zuke/commit/f990855382b3b33db80bd274c9750c790d44d5a5))
+* **core:** add splitShellArgs, cap captured output, escalate kills, redact echoes ([#267](https://github.com/zuke-build/zuke/issues/267)) ([08f63fd](https://github.com/zuke-build/zuke/commit/08f63fd33fa2b1010e586637d66aaf8fe435a745))
+* **core:** document all public API symbols to raise JSR score ([#163](https://github.com/zuke-build/zuke/issues/163)) ([6e21b1b](https://github.com/zuke-build/zuke/commit/6e21b1bf312e39faac95473e34c87eeee7398eef))
+* **core:** export the CLI palette and version panel, and follow the lock setting in zuke --version ([#745](https://github.com/zuke-build/zuke/issues/745)) ([2ee5d72](https://github.com/zuke-build/zuke/commit/2ee5d727ea027a66a8e6ef4dc7a5daafc60b0077))
+* **core:** harden the registry launch, scaffold, spawn and workflow-gate paths ([#542](https://github.com/zuke-build/zuke/issues/542)) ([4257b0b](https://github.com/zuke-build/zuke/commit/4257b0bc5ef5e387a44f913349646d4baccd1654))
+* **core:** resolve doc specs by one rule, and answer --version on the build ([#660](https://github.com/zuke-build/zuke/issues/660)) ([de5af3f](https://github.com/zuke-build/zuke/commit/de5af3f7c2204aafd075ce0be63187d439bb2b77))
+* **core:** rich build-CLI output with a ZUKE_PLAIN / --plain switch ([#735](https://github.com/zuke-build/zuke/issues/735)) ([e345b58](https://github.com/zuke-build/zuke/commit/e345b5844ecb9fee40cc9843b7f3bf23d2d781bb))
+
+
+### Bug Fixes
+
+* **cli:** escape line separators in generated literals; license headers and review docs ([#347](https://github.com/zuke-build/zuke/issues/347)) ([114f842](https://github.com/zuke-build/zuke/commit/114f84246e83fc6fb0bd12b55e8eb04192978074))
+* **cli:** make zuke upgrade install the release it names on Deno 2.9 ([#762](https://github.com/zuke-build/zuke/issues/762)) ([271fb9f](https://github.com/zuke-build/zuke/commit/271fb9f932fe2cc8193e03013d6025d4303de7c3))
+* **cli:** raise the core floor to the version that has splitShellArgs ([#275](https://github.com/zuke-build/zuke/issues/275)) ([0c84ba3](https://github.com/zuke-build/zuke/commit/0c84ba380b82387b5611e9fccf27b61ee2ff8af5))
+* **cli:** resolve the real Deno instead of spawning the compiled binary ([#588](https://github.com/zuke-build/zuke/issues/588)) ([c124cfc](https://github.com/zuke-build/zuke/commit/c124cfc2e3dc790e70081a2a4ae600b81394a66d))
+* **cli:** route every console write through an escaping sink ([#582](https://github.com/zuke-build/zuke/issues/582)) ([245a3af](https://github.com/zuke-build/zuke/commit/245a3aff2b643f2cbb26a13761f85bef3ef5fbfd))
+* **cli:** scaffold bare specifiers in deno.json import map ([#624](https://github.com/zuke-build/zuke/issues/624)) ([90b2bba](https://github.com/zuke-build/zuke/commit/90b2bbaf5c52999bd98033bb3df7b150da9c36df))
+* **cli:** ship release binaries through a draft release, which immutable releases require ([#824](https://github.com/zuke-build/zuke/issues/824)) ([113a0f7](https://github.com/zuke-build/zuke/commit/113a0f7d993c2dca97a82b53fb086c3071f5f914)), closes [#823](https://github.com/zuke-build/zuke/issues/823)
+* **core:** widen the version constant so a bump cannot stale the API docs ([#635](https://github.com/zuke-build/zuke/issues/635)) ([fdefeeb](https://github.com/zuke-build/zuke/commit/fdefeeb2fa3c95a211006be6f6adca9f09303305)), closes [#633](https://github.com/zuke-build/zuke/issues/633)
+* **deno:** resolve Deno the shared way in the wrapper and the global CLI ([#607](https://github.com/zuke-build/zuke/issues/607)) ([e3891f8](https://github.com/zuke-build/zuke/commit/e3891f8ad01608335b3a2701b28371f5a7d407fc))
+
 ## [1.16.0](https://github.com/zuke-build/zuke/compare/cli-v1.15.1...cli-v1.16.0) (2026-10-19)
 
 
