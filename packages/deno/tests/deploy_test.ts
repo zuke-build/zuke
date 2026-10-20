@@ -17,6 +17,7 @@ import {
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import { missingTool } from "@zuke/core/tooling/conformance";
 import {
+  DenoDeployAppsGetSettings,
   DenoDeployAppsListSettings,
   DenoDeployCreateSettings,
   DenoDeployDeploymentsListSettings,
@@ -61,8 +62,33 @@ Deno.test("deploy: shared flags, then the command's own, root last", () => {
   );
 });
 
-Deno.test("deploy: the token never reaches the argv", () => {
-  assertEquals(args(new DenoDeploySettings().token("ddp_secret")), ["deploy"]);
+Deno.test("deploy: the token goes to DENO_DEPLOY_TOKEN, masked, not the argv", () => {
+  class Spy extends DenoDeploySettings {
+    readonly marked: string[] = [];
+    readonly envs: Array<Record<string, string>> = [];
+    protected override markSecret(value: string): void {
+      this.marked.push(value);
+    }
+    override env(record: Record<string, string>): this {
+      this.envs.push(record);
+      return super.env(record);
+    }
+  }
+  const settings = new Spy().token("ddp_secret");
+  assertEquals(settings.marked, ["ddp_secret"]);
+  assertEquals(settings.envs, [{ DENO_DEPLOY_TOKEN: "ddp_secret" }]);
+  assertEquals(args(settings), ["deploy"]);
+});
+
+Deno.test("env: a secret value is masked, a plain one is not", () => {
+  class Spy extends DenoDeployEnvValueSettings {
+    readonly marked: string[] = [];
+    protected override markSecret(value: string): void {
+      this.marked.push(value);
+    }
+  }
+  assertEquals(new Spy("add").secretValue("sk-1").marked, ["sk-1"]);
+  assertEquals(new Spy("add").value("prod").marked, []);
 });
 
 Deno.test("create: every flag the wrapper exposes", () => {
@@ -187,6 +213,11 @@ Deno.test("env: required parts and unsafe values are refused", () => {
     "DenoDeployTasks.envUpdateValue: .value() or .secretValue() is required.",
   );
   assertThrows(
+    () => new DenoDeployEnvValueSettings("add").value(""),
+    Error,
+    "DenoDeployTasks.envAdd: the value is empty",
+  );
+  assertThrows(
     () => new DenoDeployEnvValueSettings("add").value("--prod"),
     Error,
     "load it from a file",
@@ -266,10 +297,11 @@ Deno.test("logs, deployments, apps, orgs and whoami", () => {
     "apps",
     "list",
   ]);
-  assertEquals(args(new DenoDeployQuerySettings("apps get").app("api")), [
+  assertEquals(args(new DenoDeployAppsGetSettings().org("acme").app("api")), [
     "deploy",
     "apps",
     "get",
+    "--org=acme",
     "--app=api",
   ]);
   assertEquals(args(new DenoDeployQuerySettings("orgs list")), [
@@ -282,6 +314,11 @@ Deno.test("logs, deployments, apps, orgs and whoami", () => {
     "whoami",
     "--json",
   ]);
+  assertThrows(
+    () => args(new DenoDeployLogsSettings().end("2026-01-02T00:00:00Z")),
+    Error,
+    "DenoDeployTasks.logs: .end() needs a .start()",
+  );
   assertThrows(
     () => new DenoDeployAppsListSettings().limit(0),
     Error,

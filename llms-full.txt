@@ -6822,7 +6822,21 @@ class DenoCoverageSettings extends DenoSettings
   override protected buildArgs(): string[]
     Assemble the `deno coverage` argv.
 
-class DenoDeployAppsListSettings extends DenoDeployCommandSettings
+abstract class DenoDeployAppSettings extends DenoDeployOrgSettings
+  Base for the `deno deploy` commands scoped to an application.
+
+  app(name: string): this
+    The application (`--app`).
+
+class DenoDeployAppsGetSettings extends DenoDeployAppSettings
+  Settings for `deno deploy apps get`: an application, with its URLs.
+
+  override protected commandPath(): string[]
+    `deno deploy apps get`.
+  override protected commandArgs(): string[]
+    No arguments of its own.
+
+class DenoDeployAppsListSettings extends DenoDeployOrgSettings
   Settings for `deno deploy apps list`.
 
   limit(count: number): this
@@ -6846,10 +6860,6 @@ abstract class DenoDeployCommandSettings extends DenoSettings
     in a process listing or an error's command line, and it is registered
     with the run's redactor. Without it, the CLI reads `DENO_DEPLOY_TOKEN`
     from the build's own environment.
-  org(name: string): this
-    The organization (`--org`).
-  app(name: string): this
-    The application (`--app`).
   config(path: PathLike): this
     The config file to read and write the org and app from (`--config`).
   json(): this
@@ -6860,6 +6870,8 @@ abstract class DenoDeployCommandSettings extends DenoSettings
     a prompt.
   quietOutput(): this
     Suppress non-essential output (`--quiet`).
+  protected shared(...tokens: string[]): this
+    Append flags to the shared ones, which precede the command's own.
   override protected buildArgs(): string[]
     Assemble the `deno deploy …` argv.
 
@@ -6907,7 +6919,7 @@ class DenoDeployCreateSettings extends DenoDeployUploadSettings
   override protected commandArgs(): string[]
     The create flags, then the upload flags and the root directory.
 
-class DenoDeployDeploymentsListSettings extends DenoDeployCommandSettings
+class DenoDeployDeploymentsListSettings extends DenoDeployAppSettings
   Settings for `deno deploy deployments list`.
 
   limit(count: number): this
@@ -6921,7 +6933,7 @@ class DenoDeployDeploymentsListSettings extends DenoDeployCommandSettings
   override protected commandArgs(): string[]
     The paging and filter flags.
 
-class DenoDeployEnvDeleteSettings extends DenoDeployCommandSettings
+class DenoDeployEnvDeleteSettings extends DenoDeployAppSettings
   Settings for `deno deploy env delete`.
 
   variable(name: string): this
@@ -6931,7 +6943,7 @@ class DenoDeployEnvDeleteSettings extends DenoDeployCommandSettings
   override protected commandArgs(): string[]
     The variable.
 
-class DenoDeployEnvListSettings extends DenoDeployCommandSettings
+class DenoDeployEnvListSettings extends DenoDeployAppSettings
   Settings for `deno deploy env list`.
 
   override protected commandPath(): string[]
@@ -6939,7 +6951,7 @@ class DenoDeployEnvListSettings extends DenoDeployCommandSettings
   override protected commandArgs(): string[]
     No arguments of its own.
 
-class DenoDeployEnvLoadSettings extends DenoDeployCommandSettings
+class DenoDeployEnvLoadSettings extends DenoDeployAppSettings
   Settings for `deno deploy env load`: load variables from a `.env` file.
 
   file(path: PathLike): this
@@ -6957,7 +6969,7 @@ class DenoDeployEnvLoadSettings extends DenoDeployCommandSettings
     takes every argument after it, so anything placed after it would be read
     as one more key.
 
-class DenoDeployEnvUpdateContextsSettings extends DenoDeployCommandSettings
+class DenoDeployEnvUpdateContextsSettings extends DenoDeployAppSettings
   Settings for `deno deploy env update-contexts`.
 
   variable(name: string): this
@@ -6969,7 +6981,7 @@ class DenoDeployEnvUpdateContextsSettings extends DenoDeployCommandSettings
   override protected commandArgs(): string[]
     The variable, then its contexts.
 
-class DenoDeployEnvValueSettings extends DenoDeployCommandSettings
+class DenoDeployEnvValueSettings extends DenoDeployAppSettings
   Settings for `deno deploy env add` and `deno deploy env update-value`.
 
   The value is a positional argument, so one that starts with `-` would be
@@ -6990,7 +7002,7 @@ class DenoDeployEnvValueSettings extends DenoDeployCommandSettings
   override protected commandArgs(): string[]
     `--secret` for a secret `add`, then the variable and its value.
 
-class DenoDeployLogsSettings extends DenoDeployCommandSettings
+class DenoDeployLogsSettings extends DenoDeployAppSettings
   Settings for `deno deploy logs`.
 
   start(timestamp: string | Date): this
@@ -7006,14 +7018,20 @@ class DenoDeployLogsSettings extends DenoDeployCommandSettings
   override protected commandArgs(): string[]
     The time-range flags.
 
+abstract class DenoDeployOrgSettings extends DenoDeployCommandSettings
+  Base for the `deno deploy` commands scoped to an organization.
+
+  org(name: string): this
+    The organization (`--org`).
+
 class DenoDeployQuerySettings extends DenoDeployCommandSettings
-  Settings for the read-only commands with no flags of their own:
-  `deno deploy apps get`, `deno deploy orgs list` and `deno deploy whoami`.
+  Settings for `deno deploy orgs list` and `deno deploy whoami`, which take
+  neither an organization nor an application.
 
   constructor(command: DenoDeployQueryCommand)
     Settings for `deno deploy <command>`.
   override protected commandPath(): string[]
-    The command's path, e.g. `apps get`.
+    The command's path, e.g. `orgs list`.
   override protected commandArgs(): string[]
     No arguments of its own.
 
@@ -7027,7 +7045,7 @@ class DenoDeploySettings extends DenoDeployUploadSettings
   override protected commandArgs(): string[]
     `--prod`, then the upload flags and the root directory.
 
-abstract class DenoDeployUploadSettings extends DenoDeployCommandSettings
+abstract class DenoDeployUploadSettings extends DenoDeployAppSettings
   The flags shared by the commands that upload source from a local directory:
   `deno deploy` and `deno deploy create`.
 
@@ -7884,7 +7902,7 @@ interface DenoDeployTasksApi
     List an application's deployments: `deno deploy deployments list`.
   appsList(configure?: Configure<DenoDeployAppsListSettings>): Promise<CommandOutput>
     List an organization's applications: `deno deploy apps list`.
-  appsGet(configure?: Configure<DenoDeployQuerySettings>): Promise<CommandOutput>
+  appsGet(configure?: Configure<DenoDeployAppsGetSettings>): Promise<CommandOutput>
     Show an application, with its production URL: `deno deploy apps get`.
   orgsList(configure?: Configure<DenoDeployQuerySettings>): Promise<CommandOutput>
     List the organizations the token reaches: `deno deploy orgs list`.
@@ -8004,8 +8022,8 @@ type DenoCompileTarget = "x86_64-unknown-linux-gnu" | "aarch64-unknown-linux-gnu
 type DenoDeployEnvValueCommand = "add" | "update-value"
   The `deno deploy env` subcommands that set a variable's value.
 
-type DenoDeployQueryCommand = "apps get" | "orgs list" | "whoami"
-  A read-only `deno deploy` command that takes only the shared flags.
+type DenoDeployQueryCommand = "orgs list" | "whoami"
+  A read-only `deno deploy` command scoped to the token alone.
 
 type DenoDeployRegion = "us" | "eu" | "global"
   Where a new application is deployed (`--region`).

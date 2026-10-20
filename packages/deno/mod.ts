@@ -22,7 +22,9 @@ export {
   type DenoDeployTasksApi,
 } from "./src/deploy_tasks.ts";
 export {
+  DenoDeployAppSettings,
   DenoDeployCommandSettings,
+  DenoDeployOrgSettings,
   DenoDeployUploadSettings,
 } from "./src/deploy_settings.ts";
 export {
@@ -41,6 +43,7 @@ export {
   DenoDeployEnvValueSettings,
 } from "./src/deploy_env.ts";
 export {
+  DenoDeployAppsGetSettings,
   DenoDeployAppsListSettings,
   DenoDeployDeploymentsListSettings,
   DenoDeployLogsSettings,

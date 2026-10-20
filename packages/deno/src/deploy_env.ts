@@ -8,7 +8,7 @@
  */
 
 import type { PathLike } from "@zuke/core/tooling";
-import { DenoDeployCommandSettings, pathOperand } from "./deploy_settings.ts";
+import { DenoDeployAppSettings, pathOperand } from "./deploy_settings.ts";
 
 /** `name` if it is an environment variable name, else a friendly error. */
 function variableName(task: string, name: string): string {
@@ -30,7 +30,7 @@ function required(task: string, variable: string | undefined): string {
 }
 
 /** Settings for `deno deploy env list`. */
-export class DenoDeployEnvListSettings extends DenoDeployCommandSettings {
+export class DenoDeployEnvListSettings extends DenoDeployAppSettings {
   /** `deno deploy env list`. */
   protected override commandPath(): string[] {
     return ["env", "list"];
@@ -52,7 +52,7 @@ export type DenoDeployEnvValueCommand = "add" | "update-value";
  * read as a flag and is refused; load such a value from a file with
  * `DenoDeployTasks.envLoad` instead.
  */
-export class DenoDeployEnvValueSettings extends DenoDeployCommandSettings {
+export class DenoDeployEnvValueSettings extends DenoDeployAppSettings {
   readonly #command: DenoDeployEnvValueCommand;
   #variable?: string;
   #value?: string;
@@ -76,6 +76,12 @@ export class DenoDeployEnvValueSettings extends DenoDeployCommandSettings {
 
   /** The variable's value; required, unless set by {@link secretValue}. */
   value(value: string): this {
+    if (value === "") {
+      throw new Error(
+        `DenoDeployTasks.${this.#task()}: the value is empty, which the CLI ` +
+          `refuses; delete the variable with DenoDeployTasks.envDelete instead.`,
+      );
+    }
     if (value.startsWith("-")) {
       throw new Error(
         `DenoDeployTasks.${this.#task()}: a value starting with "-" would be ` +
@@ -116,8 +122,7 @@ export class DenoDeployEnvValueSettings extends DenoDeployCommandSettings {
 }
 
 /** Settings for `deno deploy env update-contexts`. */
-export class DenoDeployEnvUpdateContextsSettings
-  extends DenoDeployCommandSettings {
+export class DenoDeployEnvUpdateContextsSettings extends DenoDeployAppSettings {
   #variable?: string;
   #contexts: string[] = [];
 
@@ -151,7 +156,7 @@ export class DenoDeployEnvUpdateContextsSettings
 }
 
 /** Settings for `deno deploy env delete`. */
-export class DenoDeployEnvDeleteSettings extends DenoDeployCommandSettings {
+export class DenoDeployEnvDeleteSettings extends DenoDeployAppSettings {
   #variable?: string;
 
   /** The variable to delete; required. */
@@ -172,7 +177,7 @@ export class DenoDeployEnvDeleteSettings extends DenoDeployCommandSettings {
 }
 
 /** Settings for `deno deploy env load`: load variables from a `.env` file. */
-export class DenoDeployEnvLoadSettings extends DenoDeployCommandSettings {
+export class DenoDeployEnvLoadSettings extends DenoDeployAppSettings {
   #file?: string;
   #flags: string[] = [];
   #nonSecrets: string[] = [];

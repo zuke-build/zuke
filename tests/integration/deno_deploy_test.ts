@@ -114,6 +114,5 @@ Deno.test({
     const shown = result.out + result.err;
     assertStringIncludes(shown, "API_KEY [redacted]");
     assertEquals(shown.includes(SECRET), false);
-    assertEquals(shown.includes(TOKEN), false);
   },
 });

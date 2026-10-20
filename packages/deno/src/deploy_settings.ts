@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * The base every `deno deploy` settings class builds on: the token, the
- * organization and application, and the output and prompting flags every
- * subcommand shares, plus the flags shared by the two commands that upload
- * source (`deno deploy` and `deno deploy create`).
+ * The bases every `deno deploy` settings class builds on: the token and the
+ * output and prompting flags every subcommand shares; the organization, for
+ * the commands scoped to one; the application, for the commands scoped to
+ * one; and the flags shared by the two commands that upload source
+ * (`deno deploy` and `deno deploy create`). Each setter exists only on the
+ * commands the CLI accepts it on — `whoami --org`, say, is a usage error.
  *
  * Every valued option renders as one `--name=value` argv entry, so a value
  * that starts with `-` cannot be read as a flag of its own.
@@ -52,18 +54,6 @@ export abstract class DenoDeployCommandSettings extends DenoSettings {
     return this.env({ DENO_DEPLOY_TOKEN: value });
   }
 
-  /** The organization (`--org`). */
-  org(name: string): this {
-    this.#shared.push(option("org", name));
-    return this;
-  }
-
-  /** The application (`--app`). */
-  app(name: string): this {
-    this.#shared.push(option("app", name));
-    return this;
-  }
-
   /** The config file to read and write the org and app from (`--config`). */
   config(path: PathLike): this {
     this.#shared.push(option("config", String(path)));
@@ -88,7 +78,12 @@ export abstract class DenoDeployCommandSettings extends DenoSettings {
 
   /** Suppress non-essential output (`--quiet`). */
   quietOutput(): this {
-    this.#shared.push("--quiet");
+    return this.shared("--quiet");
+  }
+
+  /** Append flags to the shared ones, which precede the command's own. */
+  protected shared(...tokens: string[]): this {
+    this.#shared.push(...tokens);
     return this;
   }
 
@@ -103,12 +98,27 @@ export abstract class DenoDeployCommandSettings extends DenoSettings {
   }
 }
 
+/** Base for the `deno deploy` commands scoped to an organization. */
+export abstract class DenoDeployOrgSettings extends DenoDeployCommandSettings {
+  /** The organization (`--org`). */
+  org(name: string): this {
+    return this.shared(option("org", name));
+  }
+}
+
+/** Base for the `deno deploy` commands scoped to an application. */
+export abstract class DenoDeployAppSettings extends DenoDeployOrgSettings {
+  /** The application (`--app`). */
+  app(name: string): this {
+    return this.shared(option("app", name));
+  }
+}
+
 /**
  * The flags shared by the commands that upload source from a local directory:
  * `deno deploy` and `deno deploy create`.
  */
-export abstract class DenoDeployUploadSettings
-  extends DenoDeployCommandSettings {
+export abstract class DenoDeployUploadSettings extends DenoDeployAppSettings {
   #root?: string;
   #upload: string[] = [];
 

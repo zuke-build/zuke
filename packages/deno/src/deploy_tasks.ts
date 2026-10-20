@@ -30,6 +30,7 @@ import {
   DenoDeployEnvValueSettings,
 } from "./deploy_env.ts";
 import {
+  DenoDeployAppsGetSettings,
   DenoDeployAppsListSettings,
   DenoDeployDeploymentsListSettings,
   DenoDeployLogsSettings,
@@ -80,7 +81,7 @@ export interface DenoDeployTasksApi {
   ): Promise<CommandOutput>;
   /** Show an application, with its production URL: `deno deploy apps get`. */
   appsGet(
-    configure?: Configure<DenoDeployQuerySettings>,
+    configure?: Configure<DenoDeployAppsGetSettings>,
   ): Promise<CommandOutput>;
   /** List the organizations the token reaches: `deno deploy orgs list`. */
   orgsList(
@@ -114,7 +115,7 @@ export const DenoDeployTasks: DenoDeployTasksApi = {
   appsList: (configure) =>
     runSettings(new DenoDeployAppsListSettings(), configure),
   appsGet: (configure) =>
-    runSettings(new DenoDeployQuerySettings("apps get"), configure),
+    runSettings(new DenoDeployAppsGetSettings(), configure),
   orgsList: (configure) =>
     runSettings(new DenoDeployQuerySettings("orgs list"), configure),
   whoami: (configure) =>

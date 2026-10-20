@@ -8,7 +8,12 @@
  * @module
  */
 
-import { DenoDeployCommandSettings, option } from "./deploy_settings.ts";
+import {
+  DenoDeployAppSettings,
+  DenoDeployCommandSettings,
+  DenoDeployOrgSettings,
+  option,
+} from "./deploy_settings.ts";
 
 /** `count` if it is a whole number from 1 up, else a friendly error. */
 function limit(task: string, count: number): number {
@@ -27,17 +32,21 @@ function isoTime(timestamp: string | Date): string {
 }
 
 /** Settings for `deno deploy logs`. */
-export class DenoDeployLogsSettings extends DenoDeployCommandSettings {
+export class DenoDeployLogsSettings extends DenoDeployAppSettings {
   #flags: string[] = [];
+  #start = false;
+  #end = false;
 
   /** Logs from this timestamp on, e.g. `2026-01-01T00:00:00Z` (`--start`). */
   start(timestamp: string | Date): this {
+    this.#start = true;
     this.#flags.push(option("start", isoTime(timestamp)));
     return this;
   }
 
   /** Logs up to this timestamp; needs {@link start} (`--end`). */
   end(timestamp: string | Date): this {
+    this.#end = true;
     this.#flags.push(option("end", isoTime(timestamp)));
     return this;
   }
@@ -59,6 +68,12 @@ export class DenoDeployLogsSettings extends DenoDeployCommandSettings {
 
   /** The time-range flags. */
   protected override commandArgs(): string[] {
+    if (this.#end && !this.#start) {
+      throw new Error(
+        "DenoDeployTasks.logs: .end() needs a .start(); the CLI refuses an " +
+          "end without one.",
+      );
+    }
     return [...this.#flags];
   }
 }
@@ -72,8 +87,7 @@ export type DenoDeploymentStatus =
   | "failed";
 
 /** Settings for `deno deploy deployments list`. */
-export class DenoDeployDeploymentsListSettings
-  extends DenoDeployCommandSettings {
+export class DenoDeployDeploymentsListSettings extends DenoDeployAppSettings {
   #flags: string[] = [];
 
   /** At most this many deployments (`--limit`). */
@@ -106,7 +120,7 @@ export class DenoDeployDeploymentsListSettings
 }
 
 /** Settings for `deno deploy apps list`. */
-export class DenoDeployAppsListSettings extends DenoDeployCommandSettings {
+export class DenoDeployAppsListSettings extends DenoDeployOrgSettings {
   #limit?: number;
 
   /** At most this many applications (`--limit`). */
@@ -126,14 +140,25 @@ export class DenoDeployAppsListSettings extends DenoDeployCommandSettings {
   }
 }
 
-/**
- * A read-only `deno deploy` command that takes only the shared flags.
- */
-export type DenoDeployQueryCommand = "apps get" | "orgs list" | "whoami";
+/** Settings for `deno deploy apps get`: an application, with its URLs. */
+export class DenoDeployAppsGetSettings extends DenoDeployAppSettings {
+  /** `deno deploy apps get`. */
+  protected override commandPath(): string[] {
+    return ["apps", "get"];
+  }
+
+  /** No arguments of its own. */
+  protected override commandArgs(): string[] {
+    return [];
+  }
+}
+
+/** A read-only `deno deploy` command scoped to the token alone. */
+export type DenoDeployQueryCommand = "orgs list" | "whoami";
 
 /**
- * Settings for the read-only commands with no flags of their own:
- * `deno deploy apps get`, `deno deploy orgs list` and `deno deploy whoami`.
+ * Settings for `deno deploy orgs list` and `deno deploy whoami`, which take
+ * neither an organization nor an application.
  */
 export class DenoDeployQuerySettings extends DenoDeployCommandSettings {
   readonly #command: DenoDeployQueryCommand;
@@ -144,7 +169,7 @@ export class DenoDeployQuerySettings extends DenoDeployCommandSettings {
     this.#command = command;
   }
 
-  /** The command's path, e.g. `apps get`. */
+  /** The command's path, e.g. `orgs list`. */
   protected override commandPath(): string[] {
     return this.#command.split(" ");
   }
