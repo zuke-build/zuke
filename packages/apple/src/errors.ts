@@ -154,3 +154,67 @@ export interface KeychainCleanupFailure {
   /** The step's error message. */
   message: string;
 }
+
+/**
+ * Raised by `ProvisioningProfileTasks` when a profile cannot be read, is
+ * expired, or could not be removed after `temporary`. When the callback had
+ * already failed before the removal did, that error is the
+ * {@link Error.cause}.
+ */
+export class ProvisioningProfileError extends Error {
+  /** The error name. */
+  override name = "ProvisioningProfileError";
+
+  /** Build the error; the message is prefixed with `Provisioning profile:`. */
+  constructor(message: string, options?: ErrorOptions) {
+    super(`Provisioning profile: ${message}`, options);
+  }
+}
+
+/** One entry of an App Store Connect API error response's `errors` list. */
+export interface AppStoreConnectErrorDetail {
+  /** The machine-readable code, e.g. `ENTITY_ERROR.ATTRIBUTE.INVALID`. */
+  code: string;
+  /** The short title. */
+  title: string;
+  /** The explanation, when the API gave one. */
+  detail?: string;
+}
+
+/**
+ * Raised when the App Store Connect API answers with an error status. The
+ * message names the request and every error the API listed; it never carries
+ * the API key or the token signed with it.
+ */
+export class AppStoreConnectError extends Error {
+  /** The error name. */
+  override name = "AppStoreConnectError";
+
+  /** Build the error from the request, the status and the API's errors. */
+  constructor(
+    /** The request, e.g. `GET /v1/apps`. */
+    readonly request: string,
+    /** The HTTP status. */
+    readonly status: number,
+    /** The errors the response listed, possibly none. */
+    readonly errors: ReadonlyArray<AppStoreConnectErrorDetail>,
+  ) {
+    super(
+      `App Store Connect: ${request} failed with HTTP ${status}` +
+        (errors.length === 0 ? "." : ":\n" +
+          errors.map((e) => `  - ${e.code}: ${e.detail ?? e.title}`).join(
+            "\n",
+          )),
+    );
+  }
+}
+
+/**
+ * Raised by `TestFlightTasks.distribute` when the release cannot go ahead:
+ * no app has the bundle id, a beta group does not exist, the build finished
+ * processing as `INVALID` or `FAILED`, or it had not finished by the timeout.
+ */
+export class TestFlightError extends Error {
+  /** The error name. */
+  override name = "TestFlightError";
+}

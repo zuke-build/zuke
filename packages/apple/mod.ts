@@ -55,11 +55,15 @@ export {
   type ExportSigningStyle,
 } from "./src/export_options.ts";
 export {
+  AppStoreConnectError,
+  type AppStoreConnectErrorDetail,
   KeychainCleanupError,
   type KeychainCleanupFailure,
   KeychainError,
   NotarizationError,
   NotarytoolOutputError,
+  ProvisioningProfileError,
+  TestFlightError,
 } from "./src/errors.ts";
 export {
   type TemporaryKeychain,
@@ -119,3 +123,34 @@ export {
   XcodebuildProjectSettings,
   XcodebuildSettings,
 } from "./src/xcodebuild_settings.ts";
+export {
+  type AltoolOperation,
+  type AltoolPlatform,
+  AltoolSettings,
+  AltoolTasks,
+  type AltoolTasksApi,
+} from "./src/altool.ts";
+export {
+  APP_STORE_CONNECT_API_URL,
+  AppStoreConnectSettings,
+} from "./src/app_store_connect.ts";
+export {
+  type InstalledProvisioningProfile,
+  ProvisioningProfileSettings,
+  ProvisioningProfileTasks,
+  type ProvisioningProfileTasksApi,
+} from "./src/provisioning.ts";
+export type { ProvisioningHost } from "./src/provisioning_host.ts";
+export type {
+  ProvisioningProfile,
+  ProvisioningProfileKind,
+} from "./src/provisioning_profile.ts";
+export {
+  type TestFlightBuild,
+  TestFlightTasks,
+  type TestFlightTasksApi,
+} from "./src/testflight.ts";
+export {
+  type TestFlightPlatform,
+  TestFlightSettings,
+} from "./src/testflight_settings.ts";

@@ -446,7 +446,15 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   .exportOptionsPlist(plist))`;
   `.destination("upload")` in the export options uploads to App Store Connect.
   Also `build`, `test`, `clean`, `resolvePackageDependencies`,
-  `showBuildSettings`. See the cheatsheet.
+  `showBuildSettings`. Wrap the signing steps in
+  `ProvisioningProfileTasks.temporary((s) => s.base64(profile),
+  async ({ profile }) => …)`
+  to install the profile and always remove it (`profile.uuid`/`bundleId` feed
+  the export options), then
+  `TestFlightTasks.distribute((s) => s.issuerId(i).keyId(k).privateKey(p8)
+  .bundleId(b).buildNumber(n).usesNonExemptEncryption(false).group("QA"))`
+  waits for App Store Connect to process the build and distributes it.
+  `AltoolTasks.uploadApp` wraps the deprecated `altool`. See the cheatsheet.
 - **Apple signing (`@zuke/apple`):** `CodesignTasks.sign`/`verify`/`display`,
   `DittoTasks.archive` (the zip notarization wants —
   `ditto -c -k

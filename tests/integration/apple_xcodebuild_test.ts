@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * Integration coverage for `XcodebuildTasks`: a real build, driven through the
- * CLI `main()` entry point, that archives an iOS app, writes its export
- * options and exports the `.ipa`, in dependency order — and fails the run when
- * `xcodebuild` does.
+ * Integration coverage for building and shipping an iOS app: real builds,
+ * driven through the CLI `main()` entry point, that archive an app, write its
+ * export options and export the `.ipa`, in dependency order — and fail the
+ * run when `xcodebuild` does; and a whole TestFlight release that installs a
+ * provisioning profile for the signing steps only, uploads, and distributes
+ * the build through an App Store Connect API served on loopback.
  *
  * The export step proves the pieces meet: the fake `xcodebuild` reads the
  * `ExportOptions.plist` the build wrote and reports its export method.
@@ -19,7 +21,13 @@
 
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
-import { XcodebuildTasks } from "../../packages/apple/mod.ts";
+import {
+  ProvisioningProfileTasks,
+  TestFlightTasks,
+  XcodebuildTasks,
+} from "../../packages/apple/mod.ts";
+import { apiKey } from "../../packages/apple/tests/_asc.ts";
+import { base64, profileBytes } from "../../packages/apple/tests/_profile.ts";
 import { runCli } from "./_harness.ts";
 
 /**
@@ -153,3 +161,127 @@ Deno.test({
       assertEquals(printed, []);
     }),
 });
+
+/** A local App Store Connect: one app whose build is processed. */
+function serveAppStoreConnect(calls: string[]): Deno.HttpServer<Deno.NetAddr> {
+  return Deno.serve(
+    { hostname: "127.0.0.1", port: 0, onListen() {} },
+    async (request) => {
+      const url = new URL(request.url);
+      const auth = request.headers.get("Authorization") ?? "";
+      calls.push(
+        `${request.method} ${url.pathname}${
+          auth.startsWith("Bearer ey") ? "" : " (no token)"
+        }`,
+      );
+      if (request.method !== "GET") {
+        await request.body?.cancel();
+        return new Response(null, { status: 201 });
+      }
+      const data = url.pathname === "/v1/apps"
+        ? [{ id: "app-1", attributes: { bundleId: "com.example.app" } }]
+        : url.pathname === "/v1/builds"
+        ? [{ id: "build-1", attributes: { processingState: "VALID" } }]
+        : [{ id: "g-qa", attributes: { name: "QA" } }];
+      return Response.json({ data });
+    },
+  );
+}
+
+Deno.test({
+  name: "TestFlight: profile, archive, upload and distribute in one build",
+  ignore: Deno.build.os === "windows",
+  fn: () =>
+    withFakeXcodebuild(async (dir, xcodebuild) => {
+      const home = `${dir}/home`;
+      const profiles = [
+        `${home}/Library/Developer/Xcode/UserData/Provisioning Profiles`,
+        `${home}/Library/MobileDevice/Provisioning Profiles`,
+      ];
+      const uuid = "0f8fad5b-d9cb-469f-a165-70867728950e";
+      const pem = (await apiKey()).pem;
+      const calls: string[] = [];
+      const server = serveAppStoreConnect(calls);
+      const previousHome = Deno.env.get("HOME");
+      Deno.env.set("HOME", home);
+      let installedDuringArchive: boolean[] = [];
+      try {
+        class Release extends Build {
+          upload = target().executes(async () => {
+            await ProvisioningProfileTasks.temporary(
+              (s) => s.base64(base64(profileBytes())),
+              async ({ profile }) => {
+                installedDuringArchive = await Promise.all(
+                  profiles.map((p) => exists(`${p}/${uuid}.mobileprovision`)),
+                );
+                await XcodebuildTasks.archive((s) =>
+                  s.toolPath(xcodebuild).cwd(dir).quiet().scheme("App")
+                    .archivePath(`${dir}/App.xcarchive`)
+                );
+                await XcodebuildTasks.writeExportOptions(
+                  `${dir}/ExportOptions.plist`,
+                  (o) =>
+                    o.method("app-store-connect").signingStyle("manual")
+                      .provisioningProfile(profile.bundleId, profile.uuid)
+                      .destination("upload"),
+                );
+                await XcodebuildTasks.exportArchive((s) =>
+                  s.toolPath(xcodebuild).cwd(dir).quiet()
+                    .archivePath(`${dir}/App.xcarchive`).exportPath(
+                      `${dir}/ipa`,
+                    )
+                    .exportOptionsPlist(`${dir}/ExportOptions.plist`)
+                );
+              },
+            );
+          });
+          testflight = target().dependsOn(this.upload).executes(async () => {
+            await TestFlightTasks.distribute((s) =>
+              s.apiUrl(`http://127.0.0.1:${server.addr.port}`)
+                .issuerId("issuer").keyId("KEY").privateKey(pem)
+                .bundleId("com.example.app").buildNumber(42)
+                .usesNonExemptEncryption(false).group("QA")
+            );
+          });
+        }
+        const { code, err } = await runCli(Release, ["testflight"]);
+        assertEquals(code, 0, err);
+      } finally {
+        if (previousHome === undefined) Deno.env.delete("HOME");
+        else Deno.env.set("HOME", previousHome);
+        await server.shutdown();
+      }
+      // Installed in both of Xcode's directories while signing, gone after.
+      assertEquals(installedDuringArchive, [true, true]);
+      assertEquals(
+        await Promise.all(
+          profiles.map((p) => exists(`${p}/${uuid}.mobileprovision`)),
+        ),
+        [false, false],
+      );
+      const plist = await Deno.readTextFile(`${dir}/ExportOptions.plist`);
+      assertEquals(
+        plist.includes(
+          `<key>com.example.app</key>\n\t\t<string>${uuid}</string>`,
+        ),
+        true,
+      );
+      assertEquals(calls, [
+        "GET /v1/apps",
+        "GET /v1/builds",
+        "PATCH /v1/builds/build-1",
+        "GET /v1/betaGroups",
+        "POST /v1/builds/build-1/relationships/betaGroups",
+      ]);
+    }),
+});
+
+/** Whether `path` exists. */
+async function exists(path: string): Promise<boolean> {
+  try {
+    await Deno.stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
