@@ -67,7 +67,11 @@ export class FlutterBuildSettings extends FlutterAppSettings {
     return this.#push("--no-tree-shake-icons");
   }
 
-  /** Android: an ABI to build for, e.g. `android-arm64` (`--target-platform`); repeatable. */
+  /**
+   * The platform to build for (`--target-platform`). Android takes several ABIs,
+   * e.g. `android-arm64`, joined into one list; `linux` and `windows` take one,
+   * e.g. `linux-arm64`.
+   */
   targetPlatform(platform: string): this {
     this.#targetPlatforms.push(platform);
     return this;

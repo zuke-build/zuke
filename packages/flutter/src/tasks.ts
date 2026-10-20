@@ -58,7 +58,11 @@ export interface FlutterTasksApi {
   ): Promise<CommandOutput>;
   /** Run the unit and widget tests: `flutter test`. */
   test(configure?: Configure<FlutterTestSettings>): Promise<CommandOutput>;
-  /** Build an Android library: `flutter build aar`. */
+  /**
+   * Build an Android library: `flutter build aar`. It builds the debug, profile
+   * and release variants unless told not to, so a single mode needs the others
+   * turned off through `.args("--no-debug", "--no-profile")`.
+   */
   buildAar: FlutterBuildTask;
   /** Build an Android APK: `flutter build apk`. */
   buildApk: FlutterBuildTask;

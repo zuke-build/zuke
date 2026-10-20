@@ -380,6 +380,24 @@ Deno.test("doctor, precache, config and version", () => {
   ]);
 });
 
+Deno.test("precache and config refuse names that are not flag names", () => {
+  assertThrows(
+    () => new FlutterPrecacheSettings().platform(""),
+    Error,
+    "FlutterTasks.precache:",
+  );
+  assertThrows(
+    () => new FlutterConfigSettings().enable("-web"),
+    Error,
+    "FlutterTasks.config:",
+  );
+  assertThrows(
+    () => new FlutterConfigSettings().disable("Web desktop"),
+    Error,
+    "is not a flag name",
+  );
+});
+
 Deno.test("FlutterTasks: every task reaches execution with its subcommand", async () => {
   const seen: string[][] = [];
   // Records the argv each task built, then points it at a binary that cannot exist.

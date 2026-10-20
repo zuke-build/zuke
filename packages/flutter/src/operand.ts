@@ -33,3 +33,14 @@ export function nameOperand(task: string, name: string): string {
   }
   return name;
 }
+
+/** `name` as the tail of a generated flag (`--enable-<name>`), or a friendly error. */
+export function flagName(task: string, name: string): string {
+  if (!/^[a-z][a-z0-9-]*$/.test(name)) {
+    throw new Error(
+      `FlutterTasks.${task}: ${JSON.stringify(name)} is not a flag name ` +
+        `(lowercase letters, digits and "-").`,
+    );
+  }
+  return name;
+}

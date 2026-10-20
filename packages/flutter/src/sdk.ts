@@ -9,6 +9,7 @@
  */
 
 import type { PathLike } from "@zuke/core/tooling";
+import { flagName } from "./operand.ts";
 import { FlutterSettings } from "./settings.ts";
 
 /** Settings for `flutter doctor`. */
@@ -34,7 +35,7 @@ export class FlutterPrecacheSettings extends FlutterSettings {
 
   /** Fetch a platform's artifacts, e.g. `android` → `--android`; repeatable. */
   platform(name: string): this {
-    this.#platforms.push(`--${name}`);
+    this.#platforms.push(`--${flagName("precache", name)}`);
     return this;
   }
 
@@ -63,12 +64,12 @@ export class FlutterConfigSettings extends FlutterSettings {
 
   /** Turn a feature on, e.g. `web` → `--enable-web`; repeatable. */
   enable(feature: string): this {
-    return this.#push(`--enable-${feature}`);
+    return this.#push(`--enable-${flagName("config", feature)}`);
   }
 
   /** Turn a feature off, e.g. `web` → `--no-enable-web`; repeatable. */
   disable(feature: string): this {
-    return this.#push(`--no-enable-${feature}`);
+    return this.#push(`--no-enable-${flagName("config", feature)}`);
   }
 
   /** The Android SDK directory (`--android-sdk`). */

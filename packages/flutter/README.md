@@ -103,7 +103,9 @@ class FlutterBuildSettings extends FlutterAppSettings
   noTreeShakeIcons(): this
     Keep every icon font glyph (`--no-tree-shake-icons`).
   targetPlatform(platform: string): this
-    Android: an ABI to build for, e.g. `android-arm64` (`--target-platform`); repeatable.
+    The platform to build for (`--target-platform`). Android takes several ABIs,
+    e.g. `android-arm64`, joined into one list; `linux` and `windows` take one,
+    e.g. `linux-arm64`.
   splitPerAbi(): this
     `apk`: one APK per ABI (`--split-per-abi`).
   noCodesign(): this
@@ -348,7 +350,9 @@ interface FlutterTasksApi
   The shape of {@link FlutterTasks}.
 
   buildAar: FlutterBuildTask
-    Build an Android library: `flutter build aar`.
+    Build an Android library: `flutter build aar`. It builds the debug, profile
+    and release variants unless told not to, so a single mode needs the others
+    turned off through `.args("--no-debug", "--no-profile")`.
   buildApk: FlutterBuildTask
     Build an Android APK: `flutter build apk`.
   buildAppBundle: FlutterBuildTask
