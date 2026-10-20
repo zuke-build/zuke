@@ -6531,6 +6531,9 @@ function parseModuleGraph(stdout: string): DenoModuleGraph
   Entries without a specifier are skipped rather than guessed at: a module
   deno could not name is not a module a build can act on.
 
+const DenoDeployTasks: DenoDeployTasksApi
+  Typed task functions for `deno deploy`.
+
 const DenoTasks: DenoTasksApi
   Typed task functions for the `deno` CLI.
 
@@ -6818,6 +6821,244 @@ class DenoCoverageSettings extends DenoSettings
     The `--output` file path, if {@link output} was set; read by the task.
   override protected buildArgs(): string[]
     Assemble the `deno coverage` argv.
+
+abstract class DenoDeployAppSettings extends DenoDeployOrgSettings
+  Base for the `deno deploy` commands scoped to an application.
+
+  app(name: string): this
+    The application (`--app`).
+
+class DenoDeployAppsGetSettings extends DenoDeployAppSettings
+  Settings for `deno deploy apps get`: an application, with its URLs.
+
+  override protected commandPath(): string[]
+    `deno deploy apps get`.
+  override protected commandArgs(): string[]
+    No arguments of its own.
+
+class DenoDeployAppsListSettings extends DenoDeployOrgSettings
+  Settings for `deno deploy apps list`.
+
+  limit(count: number): this
+    At most this many applications (`--limit`).
+  override protected commandPath(): string[]
+    `deno deploy apps list`.
+  override protected commandArgs(): string[]
+    `--limit`, when set.
+
+abstract class DenoDeployCommandSettings extends DenoSettings
+  Base for all `deno deploy` settings. Each subcommand names its command path
+  and its own arguments; the shared flags go between them.
+
+  abstract protected commandPath(): string[]
+    The command path after `deploy`, e.g. `["env", "add"]`.
+  abstract protected commandArgs(): string[]
+    The subcommand's own flags and operands.
+  token(value: string): this
+    The Deno Deploy access token. It is passed in the `DENO_DEPLOY_TOKEN`
+    environment variable rather than on the command line, so it never shows
+    in a process listing or an error's command line, and it is registered
+    with the run's redactor. Without it, the CLI reads `DENO_DEPLOY_TOKEN`
+    from the build's own environment.
+  config(path: PathLike): this
+    The config file to read and write the org and app from (`--config`).
+  json(): this
+    Print one JSON object on stdout instead of human-readable output (`--json`).
+  nonInteractive(): this
+    Fail instead of prompting, taking every value from flags or the
+    environment (`--non-interactive`). Use it in CI, where nothing can answer
+    a prompt.
+  quietOutput(): this
+    Suppress non-essential output (`--quiet`).
+  protected shared(...tokens: string[]): this
+    Append flags to the shared ones, which precede the command's own.
+  override protected buildArgs(): string[]
+    Assemble the `deno deploy …` argv.
+
+class DenoDeployCreateSettings extends DenoDeployUploadSettings
+  Settings for `deno deploy create`: create an application.
+
+  dryRun(): this
+    Validate the flags without creating the application (`--dry-run`).
+  source(source: DenoDeploySource): this
+    Where the source comes from (`--source`).
+  repository(owner: string, repo: string): this
+    A GitHub source repository: `--owner` and `--repo`.
+  appDirectory(path: PathLike): this
+    The application's directory inside the source (`--app-directory`).
+  doNotUseDetectedBuildConfig(): this
+    Ignore the detected build configuration (`--do-not-use-detected-build-config`).
+  frameworkPreset(preset: string): this
+    The framework preset, e.g. `fresh` or `astro` (`--framework-preset`).
+  installCommand(command: string): this
+    The install command (`--install-command`).
+  buildCommand(command: string): this
+    The build command (`--build-command`).
+  preDeployCommand(command: string): this
+    The command run before each deployment (`--pre-deploy-command`).
+  runtimeMode(mode: DenoDeployRuntimeMode): this
+    Whether the application is a server or static files (`--runtime-mode`).
+  entrypoint(path: PathLike): this
+    A dynamic application's entrypoint (`--entrypoint`).
+  argument(value: string): this
+    An argument for a dynamic application's entrypoint (`--arguments`); repeatable.
+  workingDirectory(path: PathLike): this
+    A dynamic application's working directory (`--working-directory`).
+  staticDir(path: PathLike): this
+    The directory a static application is served from (`--static-dir`).
+  singlePageApp(): this
+    Serve `index.html` for every path without a file (`--single-page-app`).
+  buildTimeout(duration: string | number): this
+    The build timeout, e.g. `10m` or `600s` (`--build-timeout`).
+  buildMemoryLimit(megabytes: number): this
+    The build memory limit in megabytes (`--build-memory-limit`).
+  region(region: DenoDeployRegion): this
+    The region to deploy to (`--region`).
+  override protected commandPath(): string[]
+    `deno deploy create`.
+  override protected commandArgs(): string[]
+    The create flags, then the upload flags and the root directory.
+
+class DenoDeployDeploymentsListSettings extends DenoDeployAppSettings
+  Settings for `deno deploy deployments list`.
+
+  limit(count: number): this
+    At most this many deployments (`--limit`).
+  cursor(cursor: string): this
+    Continue from a previous `--json` page's cursor (`--cursor`).
+  status(status: DenoDeploymentStatus): this
+    Only deployments with this status (`--status`).
+  override protected commandPath(): string[]
+    `deno deploy deployments list`.
+  override protected commandArgs(): string[]
+    The paging and filter flags.
+
+class DenoDeployEnvDeleteSettings extends DenoDeployAppSettings
+  Settings for `deno deploy env delete`.
+
+  variable(name: string): this
+    The variable to delete; required.
+  override protected commandPath(): string[]
+    `deno deploy env delete`.
+  override protected commandArgs(): string[]
+    The variable.
+
+class DenoDeployEnvListSettings extends DenoDeployAppSettings
+  Settings for `deno deploy env list`.
+
+  override protected commandPath(): string[]
+    `deno deploy env list`.
+  override protected commandArgs(): string[]
+    No arguments of its own.
+
+class DenoDeployEnvLoadSettings extends DenoDeployAppSettings
+  Settings for `deno deploy env load`: load variables from a `.env` file.
+
+  file(path: PathLike): this
+    The `.env` file to load; required.
+  nonSecret(key: string): this
+    A key in the file to store as a plain value, not a secret (`--non-secrets`); repeatable.
+  replace(): this
+    Replace variables that already exist (`--replace`).
+  skipExisting(): this
+    Keep variables that already exist (`--skip-existing`).
+  override protected commandPath(): string[]
+    `deno deploy env load`.
+  override protected commandArgs(): string[]
+    The file, the flags, then `--non-secrets` and its keys last: the option
+    takes every argument after it, so anything placed after it would be read
+    as one more key.
+
+class DenoDeployEnvUpdateContextsSettings extends DenoDeployAppSettings
+  Settings for `deno deploy env update-contexts`.
+
+  variable(name: string): this
+    The variable to update; required.
+  context(name: string): this
+    A context the variable applies in, e.g. `production`; repeatable.
+  override protected commandPath(): string[]
+    `deno deploy env update-contexts`.
+  override protected commandArgs(): string[]
+    The variable, then its contexts.
+
+class DenoDeployEnvValueSettings extends DenoDeployAppSettings
+  Settings for `deno deploy env add` and `deno deploy env update-value`.
+
+  The value is a positional argument, so one that starts with `-` would be
+  read as a flag and is refused; load such a value from a file with
+  `DenoDeployTasks.envLoad` instead.
+
+  constructor(command: DenoDeployEnvValueCommand)
+    Settings for `deno deploy env <command>`.
+  variable(name: string): this
+    The variable to set; required.
+  value(value: string): this
+    The variable's value; required, unless set by {@link secretValue}.
+  secretValue(value: string): this
+    A secret value: masked in the build's logs and errors, and for `add`
+    stored as a secret (`--secret`).
+  override protected commandPath(): string[]
+    `deno deploy env add|update-value`.
+  override protected commandArgs(): string[]
+    `--secret` for a secret `add`, then the variable and its value.
+
+class DenoDeployLogsSettings extends DenoDeployAppSettings
+  Settings for `deno deploy logs`.
+
+  start(timestamp: string | Date): this
+    Logs from this timestamp on, e.g. `2026-01-01T00:00:00Z` (`--start`).
+  end(timestamp: string | Date): this
+    Logs up to this timestamp; needs {@link start} (`--end`).
+  once(): this
+    Print the logs available now and exit, instead of following them
+    (`--once`). Without it the command streams until stopped, so a build
+    almost always wants this.
+  override protected commandPath(): string[]
+    `deno deploy logs`.
+  override protected commandArgs(): string[]
+    The time-range flags.
+
+abstract class DenoDeployOrgSettings extends DenoDeployCommandSettings
+  Base for the `deno deploy` commands scoped to an organization.
+
+  org(name: string): this
+    The organization (`--org`).
+
+class DenoDeployQuerySettings extends DenoDeployCommandSettings
+  Settings for `deno deploy orgs list` and `deno deploy whoami`, which take
+  neither an organization nor an application.
+
+  constructor(command: DenoDeployQueryCommand)
+    Settings for `deno deploy <command>`.
+  override protected commandPath(): string[]
+    The command's path, e.g. `orgs list`.
+  override protected commandArgs(): string[]
+    No arguments of its own.
+
+class DenoDeploySettings extends DenoDeployUploadSettings
+  Settings for `deno deploy`: upload a directory to an application.
+
+  prod(): this
+    Deploy straight to production rather than as a preview (`--prod`).
+  override protected commandPath(): string[]
+    `deno deploy` has no subcommand.
+  override protected commandArgs(): string[]
+    `--prod`, then the upload flags and the root directory.
+
+abstract class DenoDeployUploadSettings extends DenoDeployAppSettings
+  The flags shared by the commands that upload source from a local directory:
+  `deno deploy` and `deno deploy create`.
+
+  root(path: PathLike): this
+    The directory to upload (defaults to the working directory).
+  ignore(path: PathLike): this
+    Leave a path out of the upload (`--ignore`); repeatable.
+  allowNodeModules(): this
+    Include the `node_modules` directory in the upload (`--allow-node-modules`).
+  noWait(): this
+    Return once uploaded, without waiting for the build (`--no-wait`).
+  protected uploadArgs(): string[]
+    The upload flags, then the root directory last.
 
 class DenoDocSettings extends DenoSettings
   Settings for `deno doc`.
@@ -7636,6 +7877,38 @@ interface DenoCacheInfo
   originStorage?: string
     Where origin-bound storage (`localStorage`) is kept.
 
+interface DenoDeployTasksApi
+  The shape of {@link DenoDeployTasks}.
+
+  deploy(configure?: Configure<DenoDeploySettings>): Promise<CommandOutput>
+    Deploy a directory to an application: `deno deploy`.
+  create(configure?: Configure<DenoDeployCreateSettings>): Promise<CommandOutput>
+    Create an application: `deno deploy create`.
+  envList(configure?: Configure<DenoDeployEnvListSettings>): Promise<CommandOutput>
+    List an application's variables: `deno deploy env list`.
+  envAdd(configure: Configure<DenoDeployEnvValueSettings>): Promise<CommandOutput>
+    Add a variable: `deno deploy env add`.
+  envUpdateValue(configure: Configure<DenoDeployEnvValueSettings>): Promise<CommandOutput>
+    Change a variable's value: `deno deploy env update-value`.
+  envUpdateContexts(configure: Configure<DenoDeployEnvUpdateContextsSettings>): Promise<CommandOutput>
+    Change the contexts a variable applies in: `deno deploy env update-contexts`.
+  envDelete(configure: Configure<DenoDeployEnvDeleteSettings>): Promise<CommandOutput>
+    Delete a variable: `deno deploy env delete`.
+  envLoad(configure: Configure<DenoDeployEnvLoadSettings>): Promise<CommandOutput>
+    Load variables from a `.env` file: `deno deploy env load`.
+  logs(configure?: Configure<DenoDeployLogsSettings>): Promise<CommandOutput>
+    Print an application's logs: `deno deploy logs`.
+  deploymentsList(configure?: Configure<DenoDeployDeploymentsListSettings>): Promise<CommandOutput>
+    List an application's deployments: `deno deploy deployments list`.
+  appsList(configure?: Configure<DenoDeployAppsListSettings>): Promise<CommandOutput>
+    List an organization's applications: `deno deploy apps list`.
+  appsGet(configure?: Configure<DenoDeployAppsGetSettings>): Promise<CommandOutput>
+    Show an application, with its production URL: `deno deploy apps get`.
+  orgsList(configure?: Configure<DenoDeployQuerySettings>): Promise<CommandOutput>
+    List the organizations the token reaches: `deno deploy orgs list`.
+  whoami(configure?: Configure<DenoDeployQuerySettings>): Promise<CommandOutput>
+    Check the token: `deno deploy whoami`.
+
 interface DenoModule
   One module in the graph {@link parseModuleGraph} returns.
 
@@ -7745,6 +8018,24 @@ type DenoCompileTarget = "x86_64-unknown-linux-gnu" | "aarch64-unknown-linux-gnu
   A target triple `deno compile` can cross-compile to, as listed by
   `deno compile --help`. Typed as a union so a typo in a release matrix is a
   compile-time error rather than a build that fails minutes into CI.
+
+type DenoDeployEnvValueCommand = "add" | "update-value"
+  The `deno deploy env` subcommands that set a variable's value.
+
+type DenoDeployQueryCommand = "orgs list" | "whoami"
+  A read-only `deno deploy` command scoped to the token alone.
+
+type DenoDeployRegion = "us" | "eu" | "global"
+  Where a new application is deployed (`--region`).
+
+type DenoDeployRuntimeMode = "dynamic" | "static"
+  How a new application runs (`--runtime-mode`).
+
+type DenoDeploySource = "local" | "github"
+  Where a new application's source comes from (`--source`).
+
+type DenoDeploymentStatus = "skipped" | "queued" | "building" | "succeeded" | "failed"
+  A deployment's build status, for filtering (`--status`).
 
 type DenoPermission = "read" | "write" | "net" | "env" | "run" | "sys" | "ffi" | "import"
   A Deno permission domain, as used by `--allow-*` flags.
