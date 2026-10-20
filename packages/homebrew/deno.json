@@ -1,6 +1,6 @@
 {
   "name": "@zuke/homebrew",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "license": "MIT",
   "description": "Ship a prebuilt binary through a Homebrew tap from a Zuke build — a typed brew CLI wrapper, an injection-safe formula renderer for per-platform binaries, idempotent tap publishing over the GitHub API, local-tap install verification, and its macOS/Linux CI job.",
   "exports": {

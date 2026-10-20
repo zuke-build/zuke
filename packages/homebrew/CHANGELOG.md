@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/zuke-build/zuke/compare/homebrew-v1.0.1...homebrew-v1.0.2) (2026-10-20)
+
+
+### Bug Fixes
+
+* **gcloud,aws,az,homebrew:** quote recovery commands with the core shell quoter ([#851](https://github.com/zuke-build/zuke/issues/851)) ([62d1623](https://github.com/zuke-build/zuke/commit/62d162367dff7a02b2ac8f639a6644ab61d2c0a4))
+
 ## [1.0.1](https://github.com/zuke-build/zuke/compare/homebrew-v1.0.0...homebrew-v1.0.1) (2026-10-12)
 
 
