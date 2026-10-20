@@ -60,6 +60,9 @@ Deno.test("plist: malformed documents are refused with a reason", () => {
       'the key "a" repeats',
     ],
     [doc("<true/>") + "<true/>", "content after </plist>"],
+    // A comment is skipped where it stands, not cut out: removing it must not
+    // join "<str" and "ing>" into a tag.
+    [doc("<str<!-- x -->ing>a</string>"), "unsupported element"],
   ];
   for (const [xml, reason] of cases) {
     assertThrows(() => parsePlist(xml), Error, reason);

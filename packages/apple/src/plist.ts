@@ -56,11 +56,14 @@ function decode(text: string): string {
 /** The document's tags and text runs, without the prolog and comments. */
 function tokenize(xml: string): Token[] {
   const tokens: Token[] = [];
-  const body = xml.replace(
-    /<\?[\s\S]*?\?>|<!--[\s\S]*?-->|<!DOCTYPE[^>]*>/g,
-    "",
-  );
-  for (const match of body.matchAll(/<([^>]+)>|([^<]+)/g)) {
+  // One pass: the prolog, comments and the doctype are matched and skipped in
+  // place, never cut out of the text, so no removal can splice a new tag
+  // together from what surrounded it.
+  for (
+    const match of xml.matchAll(
+      /<\?[\s\S]*?\?>|<!--[\s\S]*?-->|<!DOCTYPE[^>]*>|<([^>]+)>|([^<]+)/g,
+    )
+  ) {
     if (match[1] !== undefined) {
       // `<true />` and `<true/>` are the same tag.
       tokens.push({ tag: match[1].trim().replace(/\s+\/$/, "/") });
