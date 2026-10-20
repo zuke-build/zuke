@@ -124,6 +124,11 @@ export const TOOL_GROUPS: ToolGroup[] = [
     blurb: "Scaffold app frameworks and generate typed clients from a schema.",
     tools: [
       {
+        name: "Flutter",
+        pkg: "@zuke/flutter",
+        desc: "analyze, test, build apps, pub",
+      },
+      {
         name: "Nest",
         pkg: "@zuke/nest",
         desc: "NestJS: build, start, generate",

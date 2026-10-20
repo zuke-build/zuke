@@ -66,5 +66,6 @@
   "packages/apple": "1.0.0",
   "packages/homebrew": "1.0.2",
   "packages/chocolatey": "1.0.0",
-  "packages/signpath": "1.0.0"
+  "packages/signpath": "1.0.0",
+  "packages/flutter": "0.0.0"
 }

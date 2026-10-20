@@ -67,7 +67,8 @@
     "packages/otel",
     "packages/qr",
     "packages/apple",
-    "packages/signpath"
+    "packages/signpath",
+    "packages/flutter"
   ],
   "imports": {
     "@std/yaml": "jsr:@std/yaml@^1.2.0"

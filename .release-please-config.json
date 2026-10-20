@@ -755,6 +755,17 @@
           "jsonpath": "$.version"
         }
       ]
+    },
+    "packages/flutter": {
+      "component": "flutter",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
     }
   }
 }
