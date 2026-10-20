@@ -31,7 +31,9 @@ import { ExportOptionsSettings } from "./export_options.ts";
 import {
   XcodebuildActionSettings,
   XcodebuildArchiveSettings,
+  type XcodebuildPlainAction,
   XcodebuildShowBuildSettings,
+  type XcodebuildTestAction,
   XcodebuildTestSettings,
 } from "./xcodebuild_actions.ts";
 import { XcodebuildExportArchiveSettings } from "./xcodebuild_export.ts";
@@ -86,7 +88,7 @@ export interface XcodebuildTasksApi {
 
 /** An {@link XcodebuildActionTask} for `action`. */
 function actionTask(
-  action: ConstructorParameters<typeof XcodebuildActionSettings>[0],
+  action: XcodebuildPlainAction,
 ): XcodebuildActionTask {
   return (configure) =>
     runSettings(new XcodebuildActionSettings(action), configure);
@@ -94,7 +96,7 @@ function actionTask(
 
 /** An {@link XcodebuildTestTask} for `action`. */
 function testTask(
-  action: ConstructorParameters<typeof XcodebuildTestSettings>[0],
+  action: XcodebuildTestAction,
 ): XcodebuildTestTask {
   return (configure) =>
     runSettings(new XcodebuildTestSettings(action), configure);

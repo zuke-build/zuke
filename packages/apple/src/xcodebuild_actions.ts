@@ -59,6 +59,16 @@ export class XcodebuildTestSettings extends XcodebuildProjectSettings {
     this.#action = action;
   }
 
+  /**
+   * Run the tests a `build-for-testing` run described, from its `.xctestrun`
+   * file (`-xctestrun`), instead of a scheme — the usual way to run
+   * `test-without-building`.
+   */
+  xctestrun(path: PathLike): this {
+    this.#flags.push("-xctestrun", operand(path));
+    return this;
+  }
+
   /** The test plan to run (`-testPlan`). */
   testPlan(name: string): this {
     this.#flags.push("-testPlan", name);

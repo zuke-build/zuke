@@ -92,6 +92,17 @@ Deno.test("build: project flags, the action, build settings, shared flags", () =
   );
 });
 
+Deno.test("build: scheme, configuration and sdk are single-valued", () => {
+  assertEquals(
+    args(
+      new XcodebuildActionSettings("build").scheme("A").scheme("B")
+        .configuration("Debug").configuration("Release").sdk("macosx")
+        .sdk("iphoneos"),
+    ),
+    ["-scheme", "B", "-configuration", "Release", "-sdk", "iphoneos", "build"],
+  );
+});
+
 Deno.test("build: one container, and only build setting names", () => {
   assertThrows(
     () => new XcodebuildActionSettings("build").workspace("a").project("b"),
@@ -139,9 +150,13 @@ Deno.test("test: every test flag after the action", () => {
       "3",
     ],
   );
-  assertEquals(args(new XcodebuildTestSettings("test-without-building")), [
-    "test-without-building",
-  ]);
+  assertEquals(
+    args(
+      new XcodebuildTestSettings("test-without-building")
+        .xctestrun("build/App.xctestrun"),
+    ),
+    ["test-without-building", "-xctestrun", "build/App.xctestrun"],
+  );
   assertThrows(
     () => new XcodebuildTestSettings("test").testIterations(0),
     Error,

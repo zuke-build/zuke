@@ -93,6 +93,9 @@ function settingName(name: string): string {
  */
 export abstract class XcodebuildProjectSettings extends XcodebuildSettings {
   #container?: string[];
+  #scheme?: string;
+  #configuration?: string;
+  #sdk?: string;
   #project: string[] = [];
   #settings: string[] = [];
 
@@ -119,21 +122,21 @@ export abstract class XcodebuildProjectSettings extends XcodebuildSettings {
     return this.#setContainer("-project", path);
   }
 
-  /** The scheme to build (`-scheme`); required with a workspace. */
+  /** The scheme to build (`-scheme`); required with a workspace. A later call replaces it. */
   scheme(name: string): this {
-    this.#project.push("-scheme", name);
+    this.#scheme = name;
     return this;
   }
 
-  /** The build configuration, e.g. `Release` (`-configuration`). */
+  /** The build configuration, e.g. `Release` (`-configuration`). A later call replaces it. */
   configuration(name: string): this {
-    this.#project.push("-configuration", name);
+    this.#configuration = name;
     return this;
   }
 
-  /** The SDK, e.g. `iphoneos` or `iphonesimulator` (`-sdk`). */
+  /** The SDK, e.g. `iphoneos` or `iphonesimulator` (`-sdk`). A later call replaces it. */
   sdk(name: string): this {
-    this.#project.push("-sdk", name);
+    this.#sdk = name;
     return this;
   }
 
@@ -183,8 +186,15 @@ export abstract class XcodebuildProjectSettings extends XcodebuildSettings {
 
   /** The project flags, the action, then the build settings. */
   protected override invocationArgs(): string[] {
+    const single: string[] = [];
+    if (this.#scheme !== undefined) single.push("-scheme", this.#scheme);
+    if (this.#configuration !== undefined) {
+      single.push("-configuration", this.#configuration);
+    }
+    if (this.#sdk !== undefined) single.push("-sdk", this.#sdk);
     return [
       ...(this.#container ?? []),
+      ...single,
       ...this.#project,
       ...this.actionArgs(),
       ...this.#settings,

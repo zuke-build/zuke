@@ -27781,7 +27781,8 @@ class ExportOptionsSettings
   Settings for an `ExportOptions.plist`.
 
   readonly options_: Map<string, ExportOptionValue>
-    The options set so far, in the order they were set.
+    The options set so far, in the order each key was first set; setting a
+    key again replaces its value in place.
   method(method: ExportMethod): this
     How the archive is exported (`method`); required.
   teamId(id: string): this
@@ -28196,11 +28197,11 @@ abstract class XcodebuildProjectSettings extends XcodebuildSettings
   project(path: PathLike): this
     The project to build, e.g. `App.xcodeproj` (`-project`).
   scheme(name: string): this
-    The scheme to build (`-scheme`); required with a workspace.
+    The scheme to build (`-scheme`); required with a workspace. A later call replaces it.
   configuration(name: string): this
-    The build configuration, e.g. `Release` (`-configuration`).
+    The build configuration, e.g. `Release` (`-configuration`). A later call replaces it.
   sdk(name: string): this
-    The SDK, e.g. `iphoneos` or `iphonesimulator` (`-sdk`).
+    The SDK, e.g. `iphoneos` or `iphonesimulator` (`-sdk`). A later call replaces it.
   destination(specifier: string): this
     A destination, e.g. `generic/platform=iOS` or
     `platform=iOS Simulator,name=iPhone 16` (`-destination`); repeatable.
@@ -28256,6 +28257,10 @@ class XcodebuildTestSettings extends XcodebuildProjectSettings
 
   constructor(action: XcodebuildTestAction)
     Settings for `xcodebuild <action>`.
+  xctestrun(path: PathLike): this
+    Run the tests a `build-for-testing` run described, from its `.xctestrun`
+    file (`-xctestrun`), instead of a scheme — the usual way to run
+    `test-without-building`.
   testPlan(name: string): this
     The test plan to run (`-testPlan`).
   onlyTesting(identifier: string): this
@@ -28468,8 +28473,10 @@ interface XcodebuildTasksApi
 type ExportDestination = "export" | "upload"
   Whether to write the export locally or upload it to App Store Connect (`destination`).
 
-type ExportMethod = "app-store-connect" | "release-testing" | "enterprise" | "debugging" | "developer-id" | "mac-application" | "validation"
-  How an archive is exported (`method`), as Xcode 15.3 and later name it.
+type ExportMethod = "app-store-connect" | "release-testing" | "enterprise" | "debugging" | "developer-id" | "mac-application" | "validation" | "app-store" | "ad-hoc" | "development"
+  How an archive is exported (`method`). Xcode 15.3 renamed three methods:
+  `app-store-connect`, `release-testing` and `debugging` were `app-store`,
+  `ad-hoc` and `development`, which older Xcode versions still require.
 
 type ExportOptionValue = string | boolean | Record<string, string>
   One value in an `ExportOptions.plist`: a string, a boolean, or a string dictionary.

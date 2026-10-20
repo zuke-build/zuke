@@ -62,14 +62,21 @@ Deno.test("export options: method is required and control characters are refused
       new ExportOptionsSettings().method("debugging").teamId("A\u0001")
         .render(),
     Error,
-    "ExportOptions: teamID holds a control character",
+    "ExportOptions: teamID holds a character",
+  );
+  assertThrows(
+    () =>
+      new ExportOptionsSettings().method("debugging").teamId("a\uD800b")
+        .render(),
+    Error,
+    "ExportOptions: teamID holds a character",
   );
   assertThrows(
     () =>
       new ExportOptionsSettings().method("debugging")
         .provisioningProfile("com.x\u0007", "P").render(),
     Error,
-    "ExportOptions: a key holds a control character",
+    "ExportOptions: a key holds a character",
   );
 });
 

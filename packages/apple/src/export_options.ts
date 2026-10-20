@@ -8,7 +8,11 @@
  * @module
  */
 
-/** How an archive is exported (`method`), as Xcode 15.3 and later name it. */
+/**
+ * How an archive is exported (`method`). Xcode 15.3 renamed three methods:
+ * `app-store-connect`, `release-testing` and `debugging` were `app-store`,
+ * `ad-hoc` and `development`, which older Xcode versions still require.
+ */
 export type ExportMethod =
   | "app-store-connect"
   | "release-testing"
@@ -16,7 +20,10 @@ export type ExportMethod =
   | "debugging"
   | "developer-id"
   | "mac-application"
-  | "validation";
+  | "validation"
+  | "app-store"
+  | "ad-hoc"
+  | "development";
 
 /** Whether Xcode or the export options pick the signing assets (`signingStyle`). */
 export type ExportSigningStyle = "automatic" | "manual";
@@ -29,13 +36,17 @@ export type ExportOptionValue = string | boolean | Record<string, string>;
 
 /**
  * `value` as property-list text: the XML special characters become entities,
- * and a control character XML cannot carry is refused.
+ * and a character XML cannot carry — a control character, U+FFFE, U+FFFF or
+ * a lone surrogate — is refused.
  */
 function plistText(key: string, value: string): string {
-  // deno-lint-ignore no-control-regex
-  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f￾￿]/.test(value)) {
+  if (
+    // deno-lint-ignore no-control-regex
+    /[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff]/.test(value) ||
+    !value.isWellFormed()
+  ) {
     throw new Error(
-      `ExportOptions: ${key} holds a control character a plist cannot carry.`,
+      `ExportOptions: ${key} holds a character a plist cannot carry.`,
     );
   }
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;")
@@ -59,7 +70,10 @@ function entry(key: string, value: ExportOptionValue, pad: string): string[] {
 
 /** Settings for an `ExportOptions.plist`. */
 export class ExportOptionsSettings {
-  /** The options set so far, in the order they were set. */
+  /**
+   * The options set so far, in the order each key was first set; setting a
+   * key again replaces its value in place.
+   */
   readonly options_: Map<string, ExportOptionValue> = new Map();
 
   #set(key: string, value: ExportOptionValue): this {
