@@ -48,6 +48,13 @@ export {
 export type { CodesignDisplay } from "./src/codesign_display.ts";
 export { DittoSettings, DittoTasks, type DittoTasksApi } from "./src/ditto.ts";
 export {
+  type ExportDestination,
+  type ExportMethod,
+  ExportOptionsSettings,
+  type ExportOptionValue,
+  type ExportSigningStyle,
+} from "./src/export_options.ts";
+export {
   KeychainCleanupError,
   type KeychainCleanupFailure,
   KeychainError,
@@ -93,3 +100,22 @@ export {
   SecurityListKeychainsSettings,
 } from "./src/security_search.ts";
 export { SecuritySettings } from "./src/security_settings.ts";
+export {
+  type XcodebuildActionTask,
+  XcodebuildTasks,
+  type XcodebuildTasksApi,
+  type XcodebuildTestTask,
+} from "./src/xcodebuild.ts";
+export {
+  XcodebuildActionSettings,
+  XcodebuildArchiveSettings,
+  type XcodebuildPlainAction,
+  XcodebuildShowBuildSettings,
+  type XcodebuildTestAction,
+  XcodebuildTestSettings,
+} from "./src/xcodebuild_actions.ts";
+export { XcodebuildExportArchiveSettings } from "./src/xcodebuild_export.ts";
+export {
+  XcodebuildProjectSettings,
+  XcodebuildSettings,
+} from "./src/xcodebuild_settings.ts";

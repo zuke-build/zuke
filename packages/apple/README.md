@@ -1,9 +1,10 @@
 # @zuke/apple
 
-Typed task wrappers for Apple's code-signing tools in
-[Zuke](https://github.com/zuke-build/zuke#readme) builds — `codesign`,
-`xcrun notarytool`, `security` and `ditto` — in a fluent settings-lambda API.
-Arguments stay a discrete argv array, so command construction is injection-free.
+Typed task wrappers for Apple's build and code-signing tools in
+[Zuke](https://github.com/zuke-build/zuke#readme) builds — `xcodebuild`,
+`codesign`, `xcrun notarytool`, `security` and `ditto` — in a fluent
+settings-lambda API. Arguments stay a discrete argv array, so command
+construction is injection-free.
 
 ```ts
 import {
@@ -33,16 +34,50 @@ const submission = await NotarytoolTasks.submit((s) =>
 
 ## The tools
 
-| Task object       | Binary             | Tasks                                                                                                                                                              |
-| ----------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `CodesignTasks`   | `codesign`         | `sign`, `verify`, `display` (parsed: identifier, team, authorities — read from stderr, where `codesign` writes them)                                               |
-| `NotarytoolTasks` | `xcrun notarytool` | `submit`, `info`, `log`, `history` — each returns the tool's JSON, parsed                                                                                          |
-| `SecurityTasks`   | `security`         | `createKeychain`, `deleteKeychain`, `unlockKeychain`, `setKeychainSettings`, `import`, `setKeyPartitionList`, `listKeychains`, `findIdentity`, `temporaryKeychain` |
-| `DittoTasks`      | `ditto`            | `copy`, `archive` (`-c -k`), `extract` (`-x -k`)                                                                                                                   |
+| Task object       | Binary             | Tasks                                                                                                                                                                              |
+| ----------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CodesignTasks`   | `codesign`         | `sign`, `verify`, `display` (parsed: identifier, team, authorities — read from stderr, where `codesign` writes them)                                                               |
+| `NotarytoolTasks` | `xcrun notarytool` | `submit`, `info`, `log`, `history` — each returns the tool's JSON, parsed                                                                                                          |
+| `SecurityTasks`   | `security`         | `createKeychain`, `deleteKeychain`, `unlockKeychain`, `setKeychainSettings`, `import`, `setKeyPartitionList`, `listKeychains`, `findIdentity`, `temporaryKeychain`                 |
+| `DittoTasks`      | `ditto`            | `copy`, `archive` (`-c -k`), `extract` (`-x -k`)                                                                                                                                   |
+| `XcodebuildTasks` | `xcodebuild`       | `build`, `clean`, `analyze`, `buildForTesting`, `test`, `testWithoutBuilding`, `archive`, `exportArchive`, `resolvePackageDependencies`, `showBuildSettings`, `writeExportOptions` |
 
 Task and setting names follow the real subcommands and flags:
 `SecurityTasks.setKeyPartitionList` runs `security set-key-partition-list`,
 `.privateKeys()` is its `-s`, `DittoSettings.keepParent()` is `--keepParent`.
+
+## Building an iOS app
+
+`XcodebuildTasks` archives a scheme and exports the archive to an `.ipa`. The
+`ExportOptions.plist` the export needs is written from typed settings by
+`writeExportOptions`, so the build does not keep a hand-edited plist:
+
+```ts
+import { XcodebuildTasks } from "@zuke/apple";
+
+await XcodebuildTasks.archive((s) =>
+  s.workspace("App.xcworkspace").scheme("App").configuration("Release")
+    .destination("generic/platform=iOS").archivePath("build/App.xcarchive")
+    .allowProvisioningUpdates()
+    .authenticationKey("AuthKey_ABC123.p8", "ABC123", issuer)
+);
+await XcodebuildTasks.writeExportOptions(
+  "build/ExportOptions.plist",
+  (o) =>
+    o.method("app-store-connect").teamId("ABCDE12345").destination("upload"),
+);
+await XcodebuildTasks.exportArchive((s) =>
+  s.archivePath("build/App.xcarchive").exportPath("build/ipa")
+    .exportOptionsPlist("build/ExportOptions.plist")
+    .allowProvisioningUpdates()
+    .authenticationKey("AuthKey_ABC123.p8", "ABC123", issuer)
+);
+```
+
+With `.destination("upload")` the export uploads to App Store Connect; with
+`"export"` (the default) it writes the `.ipa` to the export path. Build setting
+overrides go through `.buildSetting(name, value)`, which accepts a condition in
+the name (`CODE_SIGN_IDENTITY[sdk=iphoneos*]`) and refuses anything else.
 
 ## A temporary keychain for CI
 
@@ -178,6 +213,9 @@ const NotarytoolTasks: NotarytoolTasksApi
 const SecurityTasks: SecurityTasksApi
   Typed task functions for macOS `security`.
 
+const XcodebuildTasks: XcodebuildTasksApi
+  Typed task functions for `xcodebuild`.
+
 class CodesignDisplaySettings extends CodesignSettings
   Settings for `codesign --display`.
 
@@ -273,6 +311,40 @@ class DittoSettings extends ToolSettings
     Where to write it (positional). Required.
   override protected buildArgs(): string[]
     Assemble the `ditto` argv: flags, then source and destination.
+
+class ExportOptionsSettings
+  Settings for an `ExportOptions.plist`.
+
+  readonly options_: Map<string, ExportOptionValue>
+    The options set so far, in the order they were set.
+  method(method: ExportMethod): this
+    How the archive is exported (`method`); required.
+  teamId(id: string): this
+    The developer team id (`teamID`).
+  signingStyle(style: ExportSigningStyle): this
+    Automatic or manual signing (`signingStyle`).
+  signingCertificate(name: string): this
+    The certificate to sign with, e.g. `Apple Distribution` (`signingCertificate`).
+  provisioningProfile(bundleId: string, profile: string): this
+    The provisioning profile, by name or UUID, for one bundle identifier
+    (`provisioningProfiles`); repeatable, once per app and extension.
+  destination(destination: ExportDestination): this
+    Export to a directory, or upload to App Store Connect (`destination`).
+  uploadSymbols(enabled: boolean): this
+    Include symbols for crash reports (`uploadSymbols`).
+  manageAppVersionAndBuildNumber(enabled: boolean): this
+    Let App Store Connect manage the version and build number (`manageAppVersionAndBuildNumber`).
+  stripSwiftSymbols(enabled: boolean): this
+    Strip Swift symbols from the binary (`stripSwiftSymbols`).
+  testFlightInternalTestingOnly(enabled: boolean): this
+    Limit a TestFlight upload to internal testers (`testFlightInternalTestingOnly`).
+  render(): string
+    The property list, as `xcodebuild -exportArchive -exportOptionsPlist`
+    reads it. Pure: no I/O.
+
+    @throws {Error}
+        when no {@link method} is set, or a value holds a control
+        character a plist cannot carry.
 
 class KeychainCleanupError extends Error
   Raised by `SecurityTasks.temporaryKeychain` when tearing the keychain down
@@ -617,6 +689,126 @@ class TemporaryKeychainSettings
         When any cleanup step failed; the error of
         a failed setup or callback is its `cause`.
 
+class XcodebuildActionSettings extends XcodebuildProjectSettings
+  Settings for `xcodebuild build`, `clean`, `analyze`, `build-for-testing` and
+  `-resolvePackageDependencies`.
+
+  constructor(action: XcodebuildPlainAction)
+    Settings for `xcodebuild <action>`.
+  override protected actionArgs(): string[]
+    The action.
+
+class XcodebuildArchiveSettings extends XcodebuildProjectSettings
+  Settings for `xcodebuild archive`.
+
+  archivePath(path: PathLike): this
+    Where to write the `.xcarchive` (`-archivePath`); required.
+  override protected actionArgs(): string[]
+    `archive -archivePath <path>`.
+
+class XcodebuildExportArchiveSettings extends XcodebuildSettings
+  Settings for `xcodebuild -exportArchive`.
+
+  archivePath(path: PathLike): this
+    The `.xcarchive` to export (`-archivePath`); required.
+  exportPath(path: PathLike): this
+    The directory to write the export to (`-exportPath`); required.
+  exportOptionsPlist(path: PathLike): this
+    The export options (`-exportOptionsPlist`); required. Write one with
+    `XcodebuildTasks.writeExportOptions`.
+  override protected invocationArgs(): string[]
+    `-exportArchive` with its three paths.
+
+abstract class XcodebuildProjectSettings extends XcodebuildSettings
+  The project flags every build action takes. Each action names itself and
+  its own flags; the project flags come first, then the action, then the
+  build settings.
+
+  abstract protected actionArgs(): string[]
+    The action and its own flags, e.g. `["archive", "-archivePath", …]`.
+  workspace(path: PathLike): this
+    The workspace to build, e.g. `App.xcworkspace` (`-workspace`).
+  project(path: PathLike): this
+    The project to build, e.g. `App.xcodeproj` (`-project`).
+  scheme(name: string): this
+    The scheme to build (`-scheme`); required with a workspace.
+  configuration(name: string): this
+    The build configuration, e.g. `Release` (`-configuration`).
+  sdk(name: string): this
+    The SDK, e.g. `iphoneos` or `iphonesimulator` (`-sdk`).
+  destination(specifier: string): this
+    A destination, e.g. `generic/platform=iOS` or
+    `platform=iOS Simulator,name=iPhone 16` (`-destination`); repeatable.
+  derivedDataPath(path: PathLike): this
+    Where intermediate build files go (`-derivedDataPath`).
+  clonedSourcePackagesDirPath(path: PathLike): this
+    Where Swift packages are checked out (`-clonedSourcePackagesDirPath`).
+  resultBundlePath(path: PathLike): this
+    Write an `.xcresult` bundle with the logs and results (`-resultBundlePath`).
+  xcconfig(path: PathLike): this
+    Apply an `.xcconfig` file's settings over every target (`-xcconfig`).
+  buildSetting(name: string, value: string): this
+    Override a build setting for every target, e.g.
+    `("DEVELOPMENT_TEAM", "ABCDE12345")` → `DEVELOPMENT_TEAM=ABCDE12345`;
+    repeatable. A condition goes in the name:
+    `CODE_SIGN_IDENTITY[sdk=iphoneos*]`.
+  override protected invocationArgs(): string[]
+    The project flags, the action, then the build settings.
+
+abstract class XcodebuildSettings extends ToolSettings
+  Base for all `xcodebuild` settings: the binary is `xcodebuild`, on `PATH`.
+
+  override protected defaultTool(): string
+    The default executable name (`xcodebuild`).
+  override protected defaultResolution(): ToolResolution
+    Resolve from `PATH` — `xcodebuild` ships with Xcode in `/usr/bin`.
+  abstract protected invocationArgs(): string[]
+    The invocation's own arguments, placed after the shared flags.
+  quietOutput(): this
+    Print only warnings and errors (`-quiet`).
+  allowProvisioningUpdates(): this
+    Let Xcode create and update provisioning profiles and certificates
+    (`-allowProvisioningUpdates`); on CI, pair it with
+    {@link authenticationKey}.
+  authenticationKey(path: PathLike, keyId: string, issuerId: string): this
+    Sign in to the developer account with an App Store Connect API key
+    instead of an Xcode account: the `AuthKey_<id>.p8` file, its key id and
+    its issuer id (`-authenticationKeyPath`, `-authenticationKeyID`,
+    `-authenticationKeyIssuerID`).
+  override protected buildArgs(): string[]
+    Assemble the argv: the invocation's arguments, then the shared flags.
+
+class XcodebuildShowBuildSettings extends XcodebuildProjectSettings
+  Settings for `xcodebuild -showBuildSettings`.
+
+  json(): this
+    Print the settings as JSON (`-json`).
+  override protected actionArgs(): string[]
+    `-showBuildSettings`, then `-json` when asked for.
+
+class XcodebuildTestSettings extends XcodebuildProjectSettings
+  Settings for `xcodebuild test` and `test-without-building`.
+
+  constructor(action: XcodebuildTestAction)
+    Settings for `xcodebuild <action>`.
+  testPlan(name: string): this
+    The test plan to run (`-testPlan`).
+  onlyTesting(identifier: string): this
+    Run only this test target, class or method, e.g. `AppTests/LoginTests`
+    (`-only-testing`); repeatable.
+  skipTesting(identifier: string): this
+    Skip this test target, class or method (`-skip-testing`); repeatable.
+  enableCodeCoverage(enabled: boolean): this
+    Turn code coverage on or off (`-enableCodeCoverage YES|NO`).
+  parallelTestingEnabled(enabled: boolean): this
+    Turn parallel testing on or off (`-parallel-testing-enabled YES|NO`).
+  retryTestsOnFailure(): this
+    Re-run a failed test until it passes, up to the iteration limit (`-retry-tests-on-failure`).
+  testIterations(count: number): this
+    How many times to run each test (`-test-iterations`).
+  override protected actionArgs(): string[]
+    The action and the test flags.
+
 interface CodesignDisplay
   A code signature as `codesign --display` describes it.
 
@@ -781,6 +973,45 @@ interface TemporaryKeychain
   identity: SecurityIdentity
     The codesigning identity imported into it.
 
+interface XcodebuildTasksApi
+  The shape of {@link XcodebuildTasks}.
+
+  build: XcodebuildActionTask
+    Build a scheme: `xcodebuild build`.
+  clean: XcodebuildActionTask
+    Remove build products: `xcodebuild clean`.
+  analyze: XcodebuildActionTask
+    Run the static analyzer: `xcodebuild analyze`.
+  buildForTesting: XcodebuildActionTask
+    Build for a later test run: `xcodebuild build-for-testing`.
+  resolvePackageDependencies: XcodebuildActionTask
+    Resolve Swift package dependencies: `xcodebuild -resolvePackageDependencies`.
+  test: XcodebuildTestTask
+    Build and run the tests: `xcodebuild test`.
+  testWithoutBuilding: XcodebuildTestTask
+    Run tests already built: `xcodebuild test-without-building`.
+  archive(configure: Configure<XcodebuildArchiveSettings>): Promise<CommandOutput>
+    Build an `.xcarchive`: `xcodebuild archive`.
+  exportArchive(configure: Configure<XcodebuildExportArchiveSettings>): Promise<CommandOutput>
+    Export an archive to an `.ipa`, or upload it: `xcodebuild -exportArchive`.
+  showBuildSettings(configure?: Configure<XcodebuildShowBuildSettings>): Promise<CommandOutput>
+    Print the resolved build settings: `xcodebuild -showBuildSettings`.
+  writeExportOptions(path: PathLike, configure: Configure<ExportOptionsSettings>): Promise<void>
+    Write an `ExportOptions.plist` for {@link exportArchive} to `path`. Runs
+    no subprocess.
+
+type ExportDestination = "export" | "upload"
+  Whether to write the export locally or upload it to App Store Connect (`destination`).
+
+type ExportMethod = "app-store-connect" | "release-testing" | "enterprise" | "debugging" | "developer-id" | "mac-application" | "validation"
+  How an archive is exported (`method`), as Xcode 15.3 and later name it.
+
+type ExportOptionValue = string | boolean | Record<string, string>
+  One value in an `ExportOptions.plist`: a string, a boolean, or a string dictionary.
+
+type ExportSigningStyle = "automatic" | "manual"
+  Whether Xcode or the export options pick the signing assets (`signingStyle`).
+
 type SecurityDomain = "user" | "system" | "common" | "dynamic"
   A preference domain `security list-keychains` reads or sets (`-d`).
 
@@ -789,6 +1020,18 @@ type SecurityImportFormat = "openssl" | "openssh1" | "openssh2" | "bsafe" | "raw
 
 type SecurityItemType = "pub" | "priv" | "session" | "cert" | "agg"
   An item type `security import` accepts (`-t`).
+
+type XcodebuildActionTask = (configure?: Configure<XcodebuildActionSettings>) => Promise<CommandOutput>
+  A task that runs a flag-free `xcodebuild` action.
+
+type XcodebuildPlainAction = "analyze" | "build" | "build-for-testing" | "clean" | "-resolvePackageDependencies"
+  An `xcodebuild` action that takes no flags of its own.
+
+type XcodebuildTestAction = "test" | "test-without-building"
+  An `xcodebuild` action that runs tests.
+
+type XcodebuildTestTask = (configure?: Configure<XcodebuildTestSettings>) => Promise<CommandOutput>
+  A task that runs an `xcodebuild` test action.
 ````
 
 </details>

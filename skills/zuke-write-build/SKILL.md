@@ -435,6 +435,18 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   `azureMonitor((m) => m.resource(id).metric(…).aggregation("Count")
   .max(5))`
   is an analysis. See the cheatsheet.
+- **iOS app builds (`@zuke/apple`):**
+  `XcodebuildTasks.archive((s) =>
+  s.workspace(w).scheme(scheme).configuration("Release")
+  .destination("generic/platform=iOS").archivePath(a))`,
+  then
+  `writeExportOptions(plist, (o) => o.method("app-store-connect").teamId(t))`
+  and
+  `exportArchive((s) => s.archivePath(a).exportPath(dir)
+  .exportOptionsPlist(plist))`;
+  `.destination("upload")` in the export options uploads to App Store Connect.
+  Also `build`, `test`, `clean`, `resolvePackageDependencies`,
+  `showBuildSettings`. See the cheatsheet.
 - **Apple signing (`@zuke/apple`):** `CodesignTasks.sign`/`verify`/`display`,
   `DittoTasks.archive` (the zip notarization wants —
   `ditto -c -k

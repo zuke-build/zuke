@@ -331,7 +331,7 @@ export const TOOL_GROUPS: ToolGroup[] = [
       {
         name: "Apple",
         pkg: "@zuke/apple",
-        desc: "codesign, notarytool, keychains, ditto",
+        desc: "xcodebuild, codesign, notarytool, keychains, ditto",
       },
       {
         name: "SignPath",
