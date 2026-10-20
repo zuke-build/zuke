@@ -447,6 +447,12 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   it creates, unlocks and imports into a throwaway keychain and always deletes
   it and restores the search list, even when the callback throws. Passwords are
   masked in every rendering and error. See the cheatsheet.
+- **Deno Deploy (`@zuke/deno`):**
+  `DenoDeployTasks.deploy((s) =>
+  s.token(t).org(o).app(a).prod().json().nonInteractive())`;
+  `create`, the `env*` tasks (`envAdd((s) => s.variable("K").secretValue(v))`),
+  `logs` (`.once()`), `deploymentsList`, `appsGet`, `whoami`. The token goes in
+  `DENO_DEPLOY_TOKEN`, never the argv. See the cheatsheet.
 - **Flutter apps (`@zuke/flutter`):** `FlutterTasks.pubGet()`, `.analyze()`,
   `.test((s) => s.coverage())`, and one task per artifact —
   `buildAppBundle((s) => s.release().flavor("prod").buildNumber(n))`,

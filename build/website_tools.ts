@@ -50,7 +50,7 @@ export const TOOL_GROUPS: ToolGroup[] = [
       {
         name: "Deno",
         pkg: "@zuke/deno",
-        desc: "run, test, check, fmt, lint, coverage",
+        desc: "run, test, check, fmt, lint, coverage, Deno Deploy",
       },
       {
         name: "Node",
