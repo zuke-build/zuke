@@ -7,6 +7,7 @@
  */
 
 import { assertEquals } from "../packages/core/tests/_assert.ts";
+import { withTempCwd } from "../packages/core/tests/_temp.ts";
 import { formatText } from "../build/fmt_text.ts";
 
 Deno.test("formatText formats TypeScript with the repository's rules", async () => {
@@ -30,18 +31,21 @@ Deno.test("formatText is idempotent", async () => {
 });
 
 Deno.test("formatText leaves no temporary directory behind", async () => {
-  const before = await scratchDirs();
-  await formatText("const x = 1;\n", "ts");
-  assertEquals(await scratchDirs(), before);
+  // formatText makes its scratch directory in the working directory, and the
+  // suite's other shards call it concurrently in the repository root, so the
+  // root is no place to count them (#857). A private working directory inside
+  // the repository — dot-prefixed so a concurrent `deno fmt` skips it, as
+  // formatText's own is — still formats under the repository's config, and
+  // only this call can leave anything in it.
+  await withTempCwd(async (dir) => {
+    await formatText("const x = 1;\n", "ts");
+    assertEquals(await entries(dir), []);
+  }, { dir: Deno.cwd(), prefix: ".fmt-cleanup-test-" });
 });
 
-/** The helper's scratch directories currently present in the working tree. */
-async function scratchDirs(): Promise<string[]> {
+/** Every entry in `dir`. */
+async function entries(dir: string): Promise<string[]> {
   const found: string[] = [];
-  for await (const entry of Deno.readDir(Deno.cwd())) {
-    if (entry.isDirectory && entry.name.startsWith(".fmt-text-")) {
-      found.push(entry.name);
-    }
-  }
-  return found.sort();
+  for await (const entry of Deno.readDir(dir)) found.push(entry.name);
+  return found;
 }
