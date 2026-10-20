@@ -37,7 +37,15 @@ import {
   symbolSignature,
   transformPackage,
 } from "../build/api_reference.ts";
-import { launcherScript, publishAll, publishOne } from "../build/publish.ts";
+import {
+  LANDING_POLL_MS,
+  LANDING_POLLS_AFTER_ERROR,
+  LANDING_POLLS_AFTER_TIMEOUT,
+  launcherScript,
+  PUBLISH_ATTEMPTS,
+  publishAll,
+  publishOne,
+} from "../build/publish.ts";
 import {
   DEFAULT_WEBSITE_REPO,
   mintableFor,
@@ -418,67 +426,122 @@ Deno.test("transformPackage: dedupes first-seen, sorts, drops zero-declaration s
 // build/publish.ts — the timeout re-check decision
 // ---------------------------------------------------------------------------
 
-/** A fake {@link import("../build/publish.ts").PublishOneDeps} recording every call. */
+/**
+ * A fake {@link import("../build/publish.ts").PublishOneDeps} recording every
+ * call. `publishedAnswers` are JSR's answers in order (then `false`), and
+ * `attempts` what each `deno publish` does: `true` publishes, `false` times
+ * out, an `Error` fails.
+ */
 function fakeDeps(opts: {
   publishedAnswers: boolean[];
-  publishResult: boolean;
+  attempts: (boolean | Error)[];
 }) {
-  const calls = { info: [] as string[], success: [] as string[] };
+  const calls = {
+    info: [] as string[],
+    success: [] as string[],
+    publishes: 0,
+    waits: [] as number[],
+  };
   const answers = [...opts.publishedAnswers];
   return {
     deps: {
-      isPublished: (_pkg: string, _version: string) => {
-        const next = answers.shift();
-        return Promise.resolve(next ?? false);
+      isPublished: (_pkg: string, _version: string) =>
+        Promise.resolve(answers.shift() ?? false),
+      publishPackage: (_pkg: string) => {
+        const result = opts.attempts[calls.publishes++] ?? false;
+        return result instanceof Error
+          ? Promise.reject(result)
+          : Promise.resolve(result);
       },
-      publishPackage: (_pkg: string) => Promise.resolve(opts.publishResult),
       info: (m: string) => calls.info.push(m),
       success: (m: string) => calls.success.push(m),
+      wait: (ms: number) => {
+        calls.waits.push(ms);
+        return Promise.resolve();
+      },
     },
     calls,
   };
 }
 
 Deno.test("publishOne: skips a package already on JSR", async () => {
-  const { deps, calls } = fakeDeps({
-    publishedAnswers: [true],
-    publishResult: true,
-  });
+  const { deps, calls } = fakeDeps({ publishedAnswers: [true], attempts: [] });
   await publishOne("core", "1.0.0", deps);
   assertEquals(calls.info, ["@zuke/core@1.0.0 is already on JSR."]);
-  assertEquals(calls.success, []);
+  assertEquals(calls.publishes, 0);
 });
 
 Deno.test("publishOne: publishes cleanly when not yet on JSR", async () => {
   const { deps, calls } = fakeDeps({
     publishedAnswers: [false],
-    publishResult: true,
+    attempts: [true],
   });
   await publishOne("core", "1.0.0", deps);
   assertEquals(calls.info, ["Publishing @zuke/core@1.0.0 to JSR..."]);
   assertEquals(calls.success, []);
+  assertEquals(calls.waits, []);
 });
 
-Deno.test("publishOne: a stalled publish that actually landed is a success", async () => {
+Deno.test("publishOne: a timed-out upload JSR finishes processing is a success", async () => {
+  // Not there, not yet, then there: JSR finished it during the second wait.
   const { deps, calls } = fakeDeps({
-    publishedAnswers: [false, true],
-    publishResult: false,
+    publishedAnswers: [false, false, false, true],
+    attempts: [false],
   });
   await publishOne("core", "1.0.0", deps);
+  assertEquals(calls.publishes, 1);
+  assertEquals(calls.waits, [LANDING_POLL_MS, LANDING_POLL_MS]);
   assertEquals(calls.success, [
-    "@zuke/core@1.0.0 uploaded (provenance stalled).",
+    "@zuke/core@1.0.0 reached JSR after the upload timed out.",
   ]);
 });
 
-Deno.test("publishOne: a stalled publish that never landed throws", async () => {
-  const { deps } = fakeDeps({
-    publishedAnswers: [false, false],
-    publishResult: false,
+Deno.test("publishOne: an attempt that fails is retried, and the retry can land it", async () => {
+  const { deps, calls } = fakeDeps({
+    publishedAnswers: [false],
+    attempts: [new Error("503 Service Unavailable"), true],
+  });
+  await publishOne("core", "1.0.0", deps);
+  assertEquals(calls.publishes, 2);
+  // A failure gets only a short look before the next attempt.
+  assertEquals(calls.waits.length, LANDING_POLLS_AFTER_ERROR);
+  assertEquals(
+    calls.info[1],
+    "Publishing @zuke/core@1.0.0 to JSR again (attempt 2 of 3)...",
+  );
+});
+
+Deno.test("publishOne: a version that never lands throws after every attempt", async () => {
+  const { deps, calls } = fakeDeps({
+    publishedAnswers: [],
+    attempts: [false, false, false],
   });
   await assertRejects(
     () => publishOne("core", "1.0.0", deps),
     Error,
-    "timed out before reaching JSR",
+    "Publishing @zuke/core@1.0.0 did not reach JSR after 3 attempts; " +
+      "the last: the upload timed out.",
+  );
+  assertEquals(calls.publishes, PUBLISH_ATTEMPTS);
+  assertEquals(
+    calls.waits.length,
+    PUBLISH_ATTEMPTS * LANDING_POLLS_AFTER_TIMEOUT,
+  );
+});
+
+Deno.test("publishOne: the last attempt's failure is the one reported", async () => {
+  const { deps, calls } = fakeDeps({
+    publishedAnswers: [],
+    attempts: [false, false, new Error("slow types in mod.ts")],
+  });
+  await assertRejects(
+    () => publishOne("core", "1.0.0", deps),
+    Error,
+    "the last: slow types in mod.ts.",
+  );
+  assertEquals(
+    calls.waits.length,
+    2 * LANDING_POLLS_AFTER_TIMEOUT + LANDING_POLLS_AFTER_ERROR,
   );
 });
 
@@ -511,6 +574,7 @@ function fakeAllDeps(opts: {
       info: (m: string) => calls.info.push(m),
       success: (_m: string) => {},
       failed: (m: string) => calls.failed.push(m),
+      wait: (_ms: number) => Promise.resolve(),
     },
     calls,
   };
@@ -533,7 +597,8 @@ Deno.test("publishAll: a stalled package does not stop the ones after it", async
   assertEquals(calls.published, ["core", "kubectl", "helm"]);
   assertEquals(calls.failed, [
     "@zuke/docker-compose@1.0.0 did not publish: Publishing " +
-    "@zuke/docker-compose@1.0.0 timed out before reaching JSR.",
+    "@zuke/docker-compose@1.0.0 did not reach JSR after 3 attempts; the " +
+    "last: the upload timed out.",
   ]);
 });
 

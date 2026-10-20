@@ -103,6 +103,7 @@ import {
   publishAll,
   publishPackage,
   TOOLS_ROOT,
+  waitFor,
 } from "./build/publish.ts";
 import {
   collectDocLintReports,
@@ -1961,6 +1962,7 @@ class ZukeBuild extends Build {
         info: ConsoleTasks.info,
         success: ConsoleTasks.success,
         failed: ConsoleTasks.error,
+        wait: waitFor,
       });
     });
 

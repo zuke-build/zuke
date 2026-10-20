@@ -8,6 +8,7 @@
 
 import { type AbsolutePath, FileTasks, repoRoot } from "@zuke/core";
 import { CommandTimeoutError } from "@zuke/core/shell";
+import { delay } from "../packages/core/src/internal.ts";
 import { DenoRunSettings, DenoTasks } from "@zuke/deno";
 
 /**
@@ -26,6 +27,28 @@ export const CODECOV_CLI_VERSION = "v11.2.8";
 
 /** How long to wait for one `deno publish` before treating it as stalled. */
 export const PUBLISH_TIMEOUT_MS = 180_000;
+
+/** How many times {@link publishOne} runs `deno publish` for one version. */
+export const PUBLISH_ATTEMPTS = 3;
+
+/** How long {@link publishOne} waits between checks that a version landed. */
+export const LANDING_POLL_MS = 30_000;
+
+/**
+ * How many checks {@link publishOne} makes after an upload that timed out:
+ * JSR accepted it and is still processing, which has taken from minutes to
+ * the better part of an hour when its queue is slow (#855). Ten checks thirty
+ * seconds apart give it five minutes before the next attempt.
+ */
+export const LANDING_POLLS_AFTER_TIMEOUT = 10;
+
+/**
+ * How many checks {@link publishOne} makes after an attempt that failed
+ * outright. A failure can come after the upload was accepted (a 503 while
+ * deno polled the publishing status), so it is worth a short look — but a
+ * failure deno decided locally will not land however long it is given.
+ */
+export const LANDING_POLLS_AFTER_ERROR = 2;
 
 /**
  * Provision an npm-distributed CLI as a launcher under {@link TOOLS_ROOT} and
@@ -125,20 +148,23 @@ export interface PublishOneDeps {
   publishPackage(pkg: string): Promise<boolean>;
   /** Report an in-progress/skip status line. */
   info(message: string): void;
-  /** Report that a stalled publish is confirmed to have landed. */
+  /** Report that a stalled or failed upload is confirmed to have landed. */
   success(message: string): void;
+  /** Wait `ms` milliseconds between checks. */
+  wait(ms: number): Promise<void>;
 }
 
 /**
  * Publish one package's pending version to JSR: skip it if already published,
- * otherwise publish it — and, if the publish itself times out, re-check JSR
- * once before deciding whether the timeout was fatal. JSR's post-upload
- * provenance finalization occasionally hangs *after* the upload completes, so
- * a `false` from {@link PublishOneDeps.publishPackage} isn't necessarily a
- * failed publish.
+ * otherwise run `deno publish` up to {@link PUBLISH_ATTEMPTS} times. After an
+ * attempt that times out or fails, JSR is checked for a while before the next
+ * one: an upload JSR accepted keeps processing after deno gives up on it — its
+ * queue has taken the better part of an hour (#855) — so a stalled attempt is
+ * not necessarily a failed publish, and running `deno publish` again for an
+ * accepted version just waits on the same JSR task.
  *
- * @throws {Error} naming the package/version, if the publish times out and the
- * re-check still doesn't find it on JSR.
+ * @throws {Error} naming the package/version and the last attempt's outcome,
+ * if no attempt lands it on JSR.
  */
 export async function publishOne(
   pkg: string,
@@ -146,20 +172,43 @@ export async function publishOne(
   deps: PublishOneDeps,
 ): Promise<void> {
   const name = `@zuke/${pkg}@${version}`;
-  if (await deps.isPublished(`@zuke/${pkg}`, version)) {
+  const onJsr = () => deps.isPublished(`@zuke/${pkg}`, version);
+  if (await onJsr()) {
     deps.info(`${name} is already on JSR.`);
     return;
   }
-  deps.info(`Publishing ${name} to JSR...`);
-  if (await deps.publishPackage(pkg)) return;
-  // Timed out: the upload usually lands before JSR's finalization hangs, so a
-  // re-check tells us whether it actually published.
-  if (await deps.isPublished(`@zuke/${pkg}`, version)) {
-    deps.success(`${name} uploaded (provenance stalled).`);
-    return;
+  let outcome = "";
+  for (let attempt = 1; attempt <= PUBLISH_ATTEMPTS; attempt++) {
+    deps.info(
+      attempt === 1
+        ? `Publishing ${name} to JSR...`
+        : `Publishing ${name} to JSR again (attempt ${attempt} of ` +
+          `${PUBLISH_ATTEMPTS})...`,
+    );
+    let polls = LANDING_POLLS_AFTER_TIMEOUT;
+    try {
+      if (await deps.publishPackage(pkg)) return;
+      outcome = "the upload timed out";
+    } catch (error) {
+      outcome = error instanceof Error ? error.message : String(error);
+      polls = LANDING_POLLS_AFTER_ERROR;
+    }
+    for (let poll = 0; poll < polls; poll++) {
+      if (await onJsr()) {
+        deps.success(`${name} reached JSR after ${outcome}.`);
+        return;
+      }
+      await deps.wait(LANDING_POLL_MS);
+    }
   }
-  throw new Error(`Publishing ${name} timed out before reaching JSR.`);
+  throw new Error(
+    `Publishing ${name} did not reach JSR after ${PUBLISH_ATTEMPTS} ` +
+      `attempts; the last: ${outcome}.`,
+  );
 }
+
+/** Wait `ms` milliseconds: the real {@link PublishOneDeps.wait}. */
+export const waitFor: (ms: number) => Promise<void> = delay;
 
 /**
  * The dependencies {@link publishAll} needs beyond {@link PublishOneDeps}:

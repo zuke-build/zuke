@@ -173,7 +173,7 @@ Deno.test("the Chocolatey API key reaches only the push job, in its environment"
   }
 });
 
-Deno.test("the Chocolatey package is verified only after a settled upload, and pushed only once verified", () => {
+Deno.test("the Chocolatey package is verified only after a settled upload, and pushed only once verified and CHOCOLATEY_PUSH is enabled", () => {
   const verify = String(job("cliChocolateyVerify").if);
   for (
     const part of [
@@ -186,7 +186,8 @@ Deno.test("the Chocolatey package is verified only after a settled upload, and p
   }
   assertEquals(
     job("cliChocolatey").if,
-    "${{ !cancelled() && needs.cliChocolateyVerify.result == 'success' }}",
+    "${{ !cancelled() && needs.cliChocolateyVerify.result == 'success' && " +
+      "vars.CHOCOLATEY_PUSH == 'enabled' }}",
   );
 });
 

@@ -65,13 +65,16 @@ request.
    **core first** (so the workspace's `jsr:@zuke/core` dependency resolves) and
    publishes each one whose `deno.json` version is **not yet on JSR** — it
    queries each package's JSR `meta.json` first, so it is idempotent and a no-op
-   on pushes that didn't release anything. A package that does not land — a JSR
-   task left pending, a rejected upload — fails the job, but only after the walk
-   has tried every other package: the ones that do not depend on it still
-   publish, and the job's error names every version that is missing. Re-run the
-   job once the cause is fixed. Authentication is OIDC — the JSR package ↔ repo
-   link means **no tokens or secrets** are required; the workflow just grants
-   `id-token: write`.
+   on pushes that didn't release anything. JSR keeps processing an upload after
+   `deno publish` gives up on it, and its queue has taken the better part of an
+   hour, so each version gets up to three attempts: after one times out, the job
+   checks JSR every 30 seconds for five minutes before trying again (after one
+   fails outright, for a minute). A package that still does not land fails the
+   job, but only after the walk has tried every other package: the ones that do
+   not depend on it still publish, and the job's error names every version that
+   is missing. Re-run the job once the cause is fixed. Authentication is OIDC —
+   the JSR package ↔ repo link means **no tokens or secrets** are required; the
+   workflow just grants `id-token: write`.
 
 So the steady-state flow is: merge conventional commits → merge the release PR →
 the packages publish themselves.
@@ -144,7 +147,14 @@ which locks the release with its binaries already inside. The jobs in
    published `SHA256SUMS` with the real `choco` on Windows and runs it.
 7. `cliChocolatey` pushes the package to the community repository with
    `CHOCOLATEY_API_KEY`, held in the `chocolatey` environment. The Windows
-   executable is not Authenticode-signed yet (#793).
+   executable is not Authenticode-signed yet (#793). The push runs only while
+   the repository variable `CHOCOLATEY_PUSH` is `enabled`. It is paused while
+   the package's first version waits in community moderation, because until that
+   version is approved a new push is refused with a 403 that would fail every
+   release (#855). The package is still built and verified on every release.
+   Once the moderators approve it, set the variable under Settings → Secrets and
+   variables → Actions → Variables, and the next release pushes whatever version
+   is owed.
 
 Every stage is idempotent, so a run that fails part way is finished by the next
 push to master. How users verify a download is in

@@ -58,7 +58,7 @@ jobs:
       id-token: write
     needs:
       - release
-    timeout-minutes: 30
+    timeout-minutes: 90
     steps:
       - name: Harden and check out with Zuke
         uses: zuke-build/zuke@2eac30bdd8cdbcc60c208d879f1088a592ea84b4 # v1.0.6
@@ -277,7 +277,7 @@ jobs:
     needs:
       - cliBinaries
       - cliChocolateyVerify
-    if: "${{ !cancelled() && needs.cliChocolateyVerify.result == 'success' }}"
+    if: "${{ !cancelled() && needs.cliChocolateyVerify.result == 'success' && vars.CHOCOLATEY_PUSH == 'enabled' }}"
     timeout-minutes: 15
     steps:
       - name: Harden and check out with Zuke

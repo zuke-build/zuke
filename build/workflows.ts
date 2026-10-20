@@ -393,8 +393,11 @@ export function githubWorkflows(
           // only read access to contents — so the publishing credential is
           // isolated from release-please's write scopes.
           permissions: { contents: "read", "id-token": "write" },
-          // Backstop: publishJsr already times out a stalled publish per package.
-          timeoutMinutes: 30,
+          // Backstop: publishJsr bounds each package itself — three attempts,
+          // each a 3-minute upload and up to 5 minutes waiting for JSR to
+          // finish processing it (#855) — and a version whose dependency did
+          // not land is skipped at once, so this only stops a runaway job.
+          timeoutMinutes: 90,
         },
         {
           target: targets.syncWebsite,
@@ -579,8 +582,14 @@ export function githubWorkflows(
           target: targets.cliChocolatey,
           name: "CLI binaries: push the Chocolatey package",
           after: [targets.cliBinaries, targets.cliChocolateyVerify],
+          // Paused until the repository variable CHOCOLATEY_PUSH is
+          // `enabled`: the package's first version is still in community
+          // moderation, and pushing another until it is approved is refused
+          // with a 403 that would fail every release (#855). The package is
+          // still built and verified above on every release.
           if: "${{ !cancelled() && " +
-            "needs.cliChocolateyVerify.result == 'success' }}",
+            "needs.cliChocolateyVerify.result == 'success' && " +
+            "vars.CHOCOLATEY_PUSH == 'enabled' }}",
           // choco is what pushes, and GitHub's Windows runners ship it.
           runsOn: "windows-latest",
           // The community repository's API key lives in this environment, so
