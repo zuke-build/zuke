@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * Unit: the RS256 JWT signer — header and claims framing, the `kid`, a
- * signature that verifies with the public half of a key generated here (no
- * key is committed), PKCS#1 and PKCS#8 input, and the named failures.
+ * Unit: the RS256 and ES256 JWT signers — header and claims framing, the
+ * `kid`, a signature that verifies with the public half of a key generated
+ * here (no key is committed), PKCS#1 and PKCS#8 input, and the named failures.
  */
 
 import { assertEquals, assertRejects } from "./_assert.ts";
-import { signJwtRs256 } from "../mod.ts";
+import { signJwtEs256, signJwtRs256 } from "../mod.ts";
 
 /** Base64-encode bytes into 64-column PEM lines. */
 function pem(label: string, bytes: Uint8Array): string {
@@ -108,5 +108,60 @@ Deno.test("signJwtRs256 names an empty, non-base64 or non-RSA key", async () => 
   ];
   for (const [key, message] of cases) {
     await assertRejects(() => signJwtRs256(key, {}), Error, message);
+  }
+});
+
+/** A fresh P-256 key pair, its private half as PKCS#8 PEM. */
+async function ecKeys(): Promise<{ pkcs8: string; publicKey: CryptoKey }> {
+  const pair = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+  const der = new Uint8Array(
+    await crypto.subtle.exportKey("pkcs8", pair.privateKey),
+  );
+  return { pkcs8: pem("PRIVATE KEY", der), publicKey: pair.publicKey };
+}
+
+Deno.test("signJwtEs256 frames header and claims and signs them verifiably", async () => {
+  const { pkcs8, publicKey } = await ecKeys();
+  const jwt = await signJwtEs256(pkcs8, { iss: "me", iat: 1, exp: 2 }, "KEY1");
+  const [header, claims, signature] = jwt.split(".");
+  const text = (part: string) => new TextDecoder().decode(segment(part));
+  assertEquals(JSON.parse(text(header)), {
+    alg: "ES256",
+    typ: "JWT",
+    kid: "KEY1",
+  });
+  assertEquals(JSON.parse(text(claims)), { iss: "me", iat: 1, exp: 2 });
+  // ES256 is the raw 64-byte r‖s pair, not a DER sequence.
+  assertEquals(segment(signature).length, 64);
+  assertEquals(
+    await crypto.subtle.verify(
+      { name: "ECDSA", hash: "SHA-256" },
+      publicKey,
+      segment(signature),
+      new TextEncoder().encode(`${header}.${claims}`),
+    ),
+    true,
+  );
+  const plain = await signJwtEs256(pkcs8, {});
+  assertEquals(JSON.parse(text(plain.split(".")[0])), {
+    alg: "ES256",
+    typ: "JWT",
+  });
+});
+
+Deno.test("signJwtEs256 names an empty, non-base64 or non-P-256 key", async () => {
+  const { pkcs8: rsaKey } = await keys();
+  const cases: Array<[string, string]> = [
+    ["", "the private key is empty"],
+    [armor("!!!"), "not valid base64"],
+    [armor("AAAA"), "could not be read as a PKCS#8 P-256 PEM"],
+    [rsaKey, "could not be read as a PKCS#8 P-256 PEM"],
+  ];
+  for (const [key, message] of cases) {
+    await assertRejects(() => signJwtEs256(key, {}), Error, message);
   }
 });

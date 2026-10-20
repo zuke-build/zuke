@@ -925,7 +925,25 @@ async function sha256Hex(data: string | Uint8Array): Promise<string>
   type is unambiguous whatever buffer the source view sits on (e.g. a
   `SharedArrayBuffer`).
 
-async function signJwtRs256(privateKeyPem: string, claims: Readonly<Record<string, unknown>>, keyId?: string): Promise<string>
+function signJwtEs256(privateKeyPem: string, claims: Readonly<Record<string, unknown>>, keyId?: string): Promise<string>
+  Sign `claims` as a compact ES256 JWT with a PEM P-256 private key in
+  PKCS#8 — `BEGIN PRIVATE KEY`, as an App Store Connect `AuthKey_<id>.p8`
+  holds it.
+
+  The header is `{"alg":"ES256","typ":"JWT"}`, plus `"kid"` when `keyId` is
+  given (App Store Connect requires it). The claims are serialised as given:
+  the caller sets `iat`, `exp` and the rest. The signature is the raw r‖s
+  pair ES256 requires.
+
+  ```ts
+  const jwt = await signJwtEs256(p8, { iss: issuerId, iat, exp: iat + 1200 }, keyId);
+  ```
+
+  @throws {Error}
+      naming the problem — an empty key, a body that is not
+      base64, or one that is not a P-256 key — and never quoting the key.
+
+function signJwtRs256(privateKeyPem: string, claims: Readonly<Record<string, unknown>>, keyId?: string): Promise<string>
   Sign `claims` as a compact RS256 JWT with a PEM RSA private key —
   `BEGIN RSA PRIVATE KEY` (PKCS#1) or `BEGIN PRIVATE KEY` (PKCS#8).
 
