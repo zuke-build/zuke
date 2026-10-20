@@ -75,7 +75,8 @@ import {
   SecurityListKeychainsSettings,
 } from "./security_search.ts";
 import type { SecuritySettings } from "./security_settings.ts";
-import { printable } from "./text.ts";
+import { decodeBase64 } from "./base64.ts";
+import { messageOf, printable } from "./text.ts";
 
 /** What the callback of `SecurityTasks.temporaryKeychain` is handed. */
 export interface TemporaryKeychain {
@@ -114,21 +115,14 @@ function decodeCertificate(base64: string | undefined): Uint8Array {
         ".certificate(base64P12), e.g. from a secret parameter.",
     );
   }
-  const compact = base64.replace(/\s+/g, "");
-  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(compact)) {
+  const bytes = decodeBase64(base64);
+  if (bytes === undefined || bytes.length === 0) {
     throw new KeychainError(
       "SecurityTasks.temporaryKeychain: the certificate is not base64. " +
         "Encode the .p12 with `base64 -i cert.p12` and pass that text.",
     );
   }
-  try {
-    return Uint8Array.from(atob(compact), (c) => c.charCodeAt(0));
-  } catch {
-    throw new KeychainError(
-      "SecurityTasks.temporaryKeychain: the certificate is not valid " +
-        "base64 (its length or padding is wrong).",
-    );
-  }
+  return bytes;
 }
 
 /** Settings for `SecurityTasks.temporaryKeychain`. */
@@ -368,7 +362,7 @@ async function runCleanup(
     } catch (error) {
       failures.push({
         step,
-        message: error instanceof Error ? error.message : String(error),
+        message: messageOf(error),
       });
     }
   }

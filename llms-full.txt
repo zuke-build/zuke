@@ -28637,6 +28637,8 @@ interface ProvisioningHost
     Write a file, replacing one that exists.
   remove(path: string): Promise<void>
     Remove a file.
+  exists(path: string): Promise<boolean>
+    Whether a file exists.
   home(): string
     The user's home directory.
 
@@ -28677,8 +28679,9 @@ interface ProvisioningProfileTasksApi
     Install a profile where Xcode looks for it, named by its UUID. Refuses an
     expired profile unless `.allowExpired()`.
   temporary(configure: Configure<ProvisioningProfileSettings>, fn: (installed: InstalledProvisioningProfile) => Promise<T>): Promise<T>
-    Install a profile, run `fn`, then remove every file installed — even when
-    `fn` throws. Returns what `fn` returns.
+    Install a profile, run `fn`, then remove every file the install created —
+    even when `fn` throws. A copy that was already installed under the same
+    UUID is left in place. Returns what `fn` returns.
 
     @throws {ProvisioningProfileError}
         when a file could not be removed; if

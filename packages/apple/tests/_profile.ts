@@ -123,6 +123,9 @@ export class MemoryHost implements ProvisioningHost {
     this.files.delete(path);
     return Promise.resolve();
   }
+  exists(path: string): Promise<boolean> {
+    return Promise.resolve(this.files.has(path));
+  }
   home(): string {
     return "/Users/ci";
   }

@@ -20,6 +20,8 @@ export interface ProvisioningHost {
   writeFile(path: string, data: Uint8Array): Promise<void>;
   /** Remove a file. */
   remove(path: string): Promise<void>;
+  /** Whether a file exists. */
+  exists(path: string): Promise<boolean>;
   /** The user's home directory. */
   home(): string;
 }
@@ -30,5 +32,6 @@ export const defaultProvisioningHost: ProvisioningHost = {
   makeDirectory: (path) => Deno.mkdir(path, { recursive: true }),
   writeFile: (path, data) => Deno.writeFile(path, data),
   remove: (path) => Deno.remove(path),
+  exists: (path) => FileTasks.exists(path),
   home: () => FileTasks.homeDirectory(),
 };

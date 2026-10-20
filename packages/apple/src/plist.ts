@@ -13,6 +13,8 @@
  * @module
  */
 
+import { decodeBase64 } from "./base64.ts";
+
 /** A value read from a property list. */
 export type PlistValue =
   | string
@@ -131,11 +133,14 @@ class Reader {
         return false;
       case "integer":
       case "real": {
-        const number = Number(this.#text(token.tag));
-        if (!Number.isFinite(number)) {
+        const text = this.#text(token.tag).trim();
+        const pattern = token.tag === "integer"
+          ? /^[+-]?\d+$/
+          : /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+        if (!pattern.test(text)) {
           throw new Error(`plist: <${token.tag}> is not a number.`);
         }
-        return number;
+        return Number(text);
       }
       case "date": {
         const date = new Date(this.#text("date"));
@@ -143,8 +148,11 @@ class Reader {
         return date;
       }
       case "data": {
-        const base64 = this.#text("data").replace(/\s+/g, "");
-        return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+        const bytes = decodeBase64(this.#text("data"));
+        if (bytes === undefined) {
+          throw new Error("plist: <data> is not base64.");
+        }
+        return bytes;
       }
       case "array": {
         const items: PlistValue[] = [];
@@ -156,6 +164,9 @@ class Reader {
         while (!this.#take("/dict")) {
           this.#expect("key");
           const key = this.#text("key");
+          if (Object.hasOwn(dict, key)) {
+            throw new Error(`plist: the key ${JSON.stringify(key)} repeats.`);
+          }
           dict[key] = this.value();
         }
         return dict;
@@ -173,6 +184,9 @@ class Reader {
     }
     const root = this.value();
     this.#expect("/plist");
+    if (this.#at !== this.#tokens.length) {
+      throw new Error("plist: content after </plist>.");
+    }
     return root;
   }
 }

@@ -1,5 +1,6 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
+// cspell:ignore frob
 
 import {
   assertEquals,
@@ -180,6 +181,31 @@ Deno.test("install: custom directories, expiry and unsafe UUIDs", async () => {
   );
 });
 
+Deno.test("temporary: a profile that was already installed is left in place", async () => {
+  const host = new MemoryHost();
+  const existing =
+    `/Users/ci/Library/MobileDevice/Provisioning Profiles/${UUID}.mobileprovision`;
+  host.files.set(existing, profileBytes());
+  await ProvisioningProfileTasks.temporary(
+    (s) => s.host(host).now(() => NOW).base64(base64(profileBytes())),
+    () => Promise.resolve(),
+  );
+  assertEquals([...host.files.keys()], [existing]);
+});
+
+Deno.test("profile: a malformed plist keeps the parser's error as the cause", async () => {
+  const error = await rejection(
+    () =>
+      ProvisioningProfileTasks.inspect((s) =>
+        s.base64(
+          base64(profileBytes({ plist: "<?xml?><plist><frob/></plist>" })),
+        )
+      ),
+    ProvisioningProfileError,
+  );
+  assertEquals(error.cause instanceof Error, true);
+});
+
 Deno.test("install: a failed write removes what was written", async () => {
   const host = new MemoryHost();
   host.failWrite = (path) => path.includes("MobileDevice");
@@ -239,10 +265,12 @@ Deno.test("temporary: a removal that fails is reported, with the cause", async (
   assertEquals(ok.cause, undefined);
   // The other directory's copy was still removed.
   assertEquals(host.files.size, 1);
+  const fresh = new MemoryHost();
+  fresh.failRemove = (path) => path.includes("MobileDevice");
   const failed = await rejection(
     () =>
       ProvisioningProfileTasks.temporary(
-        (s) => s.host(host).now(() => NOW).base64(base64(profileBytes())),
+        (s) => s.host(fresh).now(() => NOW).base64(base64(profileBytes())),
         () => Promise.reject("not an Error"),
       ),
     ProvisioningProfileError,

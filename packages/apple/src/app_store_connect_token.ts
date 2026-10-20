@@ -11,6 +11,8 @@
  * @module
  */
 
+import { decodeBase64 } from "./base64.ts";
+
 /** How long a token is valid: the API refuses more than 20 minutes. */
 const LIFETIME_SECONDS = 20 * 60;
 
@@ -36,15 +38,7 @@ function encodeJson(value: Record<string, string | number>): string {
 function pemBody(pem: string): Uint8Array<ArrayBuffer> | undefined {
   const match = /-----BEGIN PRIVATE KEY-----([\s\S]*?)-----END PRIVATE KEY-----/
     .exec(pem);
-  if (match === null) return undefined;
-  try {
-    return Uint8Array.from(
-      atob(match[1].replace(/\s+/g, "")),
-      (c) => c.charCodeAt(0),
-    );
-  } catch {
-    return undefined;
-  }
+  return match === null ? undefined : decodeBase64(match[1]);
 }
 
 /** What signing a token needs. */

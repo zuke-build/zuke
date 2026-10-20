@@ -13,6 +13,7 @@
 
 import { ProvisioningProfileError } from "./errors.ts";
 import { parsePlist, type PlistDict, type PlistValue } from "./plist.ts";
+import { messageOf } from "./text.ts";
 
 /**
  * How a profile distributes the app, as Xcode's Organizer names it:
@@ -146,9 +147,7 @@ export function readProvisioningProfile(
       ),
     );
   } catch (error) {
-    throw new ProvisioningProfileError(
-      error instanceof Error ? error.message : String(error),
-    );
+    throw new ProvisioningProfileError(messageOf(error), { cause: error });
   }
   if (!isDict(root)) {
     throw new ProvisioningProfileError(

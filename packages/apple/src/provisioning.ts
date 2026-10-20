@@ -29,6 +29,7 @@
  */
 
 import type { Configure, PathLike } from "@zuke/core/tooling";
+import { decodeBase64 } from "./base64.ts";
 import { ProvisioningProfileError } from "./errors.ts";
 import {
   defaultProvisioningHost,
@@ -38,6 +39,7 @@ import {
   type ProvisioningProfile,
   readProvisioningProfile,
 } from "./provisioning_profile.ts";
+import { messageOf } from "./text.ts";
 
 /** The directories under the home directory Xcode reads profiles from. */
 const PROFILE_DIRECTORIES = [
@@ -119,14 +121,11 @@ async function profileBytes(
     return await settings.host_.readFile(file_);
   }
   if (base64_ !== undefined && file_ === undefined) {
-    try {
-      return Uint8Array.from(
-        atob(base64_.replace(/\s+/g, "")),
-        (c) => c.charCodeAt(0),
-      );
-    } catch {
+    const bytes = decodeBase64(base64_);
+    if (bytes === undefined) {
       throw new ProvisioningProfileError("the .base64() value is not base64.");
     }
+    return bytes;
   }
   throw new ProvisioningProfileError(
     "set exactly one of .file() and .base64().",
@@ -156,9 +155,7 @@ async function removeAll(
     try {
       await host.remove(path);
     } catch (error) {
-      failed.push(
-        `${path}: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      failed.push(`${path}: ${messageOf(error)}`);
     }
   }
   if (failed.length > 0) {
@@ -169,13 +166,25 @@ async function removeAll(
   }
 }
 
+/** An installed profile, and the files the install created. */
+interface Installation {
+  /** The profile and every file it is installed as. */
+  installed: InstalledProvisioningProfile;
+  /**
+   * The files that did not exist before — what removing the profile again
+   * may delete. A profile already installed under the same UUID is left in
+   * place.
+   */
+  created: string[];
+}
+
 /**
- * Install the profile `settings` names; return it and its paths. If one
- * write fails, the files already written are removed before it throws.
+ * Install the profile `settings` names. If one write fails, the files it had
+ * created are removed before it throws.
  */
 async function install(
   settings: ProvisioningProfileSettings,
-): Promise<InstalledProvisioningProfile> {
+): Promise<Installation> {
   const { profile, bytes } = await read(settings);
   if (
     !settings.allowExpired_ &&
@@ -199,18 +208,21 @@ async function install(
     ? settings.directories_
     : PROFILE_DIRECTORIES.map((dir) => `${host.home()}/${dir}`);
   const paths: string[] = [];
+  const created: string[] = [];
   try {
     for (const directory of directories) {
       await host.makeDirectory(directory);
       const path = `${directory}/${profile.uuid}.mobileprovision`;
+      const existed = await host.exists(path);
       await host.writeFile(path, bytes);
       paths.push(path);
+      if (!existed) created.push(path);
     }
   } catch (error) {
-    await removeAll(host, paths, { cause: error });
+    await removeAll(host, created, { cause: error });
     throw error;
   }
-  return { profile, paths };
+  return { installed: { profile, paths }, created };
 }
 
 /** The shape of {@link ProvisioningProfileTasks}. */
@@ -227,8 +239,9 @@ export interface ProvisioningProfileTasksApi {
     configure: Configure<ProvisioningProfileSettings>,
   ): Promise<InstalledProvisioningProfile>;
   /**
-   * Install a profile, run `fn`, then remove every file installed — even when
-   * `fn` throws. Returns what `fn` returns.
+   * Install a profile, run `fn`, then remove every file the install created —
+   * even when `fn` throws. A copy that was already installed under the same
+   * UUID is left in place. Returns what `fn` returns.
    *
    * @throws {ProvisioningProfileError} when a file could not be removed; if
    *   `fn` had thrown first, its error is the cause.
@@ -244,20 +257,21 @@ export const ProvisioningProfileTasks: ProvisioningProfileTasksApi = {
   async inspect(configure) {
     return (await read(configure(new ProvisioningProfileSettings()))).profile;
   },
-  install(configure) {
-    return install(configure(new ProvisioningProfileSettings()));
+  async install(configure) {
+    return (await install(configure(new ProvisioningProfileSettings())))
+      .installed;
   },
   async temporary(configure, fn) {
     const settings = configure(new ProvisioningProfileSettings());
-    const installed = await install(settings);
+    const { installed, created } = await install(settings);
     let result;
     try {
       result = await fn(installed);
     } catch (error) {
-      await removeAll(settings.host_, installed.paths, { cause: error });
+      await removeAll(settings.host_, created, { cause: error });
       throw error;
     }
-    await removeAll(settings.host_, installed.paths);
+    await removeAll(settings.host_, created);
     return result;
   },
 };

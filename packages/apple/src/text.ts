@@ -35,3 +35,8 @@ export function printable(value: string): string {
     ? `${flat.slice(0, MAX_VALUE_LENGTH)}…`
     : flat;
 }
+
+/** The message of a thrown value: its `message` when it is an `Error`. */
+export function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}

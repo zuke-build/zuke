@@ -163,6 +163,41 @@ Deno.test("distribute: nothing is written that was not asked for", async () => {
   ]);
 });
 
+Deno.test("distribute: compliance already answered by the build is not patched", async () => {
+  const log: string[] = [];
+  const fake = store(
+    ["VALID"],
+    (call) =>
+      call.method === "GET" && call.path.startsWith("/v1/builds?")
+        ? {
+          body: {
+            data: [{
+              id: "build-1",
+              attributes: {
+                processingState: "VALID",
+                usesNonExemptEncryption: false,
+              },
+            }],
+          },
+        }
+        : undefined,
+  );
+  await TestFlightTasks.distribute((s) =>
+    against(fake, log)(s).usesNonExemptEncryption(false)
+  );
+  assertEquals(fake.calls.filter((c) => c.method === "PATCH"), []);
+  assertEquals(
+    log.at(-1),
+    "TestFlight: export compliance already answered by the build " +
+      "(usesNonExemptEncryption: false)",
+  );
+  const appQuery = fake.calls.find((c) => c.path.startsWith("/v1/apps?"));
+  assertEquals(
+    appQuery?.path,
+    "/v1/apps?filter[bundleId]=com.example.app&limit=200",
+  );
+});
+
 Deno.test("distribute: a build that fails processing throws", async () => {
   for (const state of ["INVALID", "FAILED"]) {
     await assertRejects(

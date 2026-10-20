@@ -71,7 +71,7 @@ async function findApp(
   const apps = resources(
     await client.request(
       "GET",
-      `/v1/apps?${query({ "filter[bundleId]": bundleId, limit: "2" })}`,
+      `/v1/apps?${query({ "filter[bundleId]": bundleId, limit: "200" })}`,
     ),
   );
   // filter[bundleId] also matches longer ids that start with it.
@@ -214,7 +214,15 @@ async function distribute(
   const client = new AppStoreConnectClient(settings);
   const appId = await findApp(client, bundleId_);
   const build = await waitForBuild(client, settings, appId, buildNumber_);
-  if (settings.usesNonExemptEncryption_ !== undefined) {
+  const answered = build.attributes.usesNonExemptEncryption;
+  if (typeof answered === "boolean") {
+    // Info.plist's ITSAppUsesNonExemptEncryption answered it already, and
+    // App Store Connect refuses to change the answer.
+    settings.log_(
+      `TestFlight: export compliance already answered by the build ` +
+        `(usesNonExemptEncryption: ${answered})`,
+    );
+  } else if (settings.usesNonExemptEncryption_ !== undefined) {
     await client.request("PATCH", `/v1/builds/${build.id}`, {
       data: {
         ...ref("builds", build.id),

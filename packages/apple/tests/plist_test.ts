@@ -15,6 +15,7 @@ Deno.test("plist: every value type", () => {
     <key>selfClosed</key><string/>
     <key>i</key><integer>-3</integer>
     <key>r</key><real>1.5</real>
+    <key>e</key><real>-2e3</real>
     <key>t</key><true />
     <key>f</key><false/>
     <key>d</key><date>2026-01-02T03:04:05Z</date>
@@ -28,6 +29,7 @@ Deno.test("plist: every value type", () => {
     selfClosed: "",
     i: -3,
     r: 1.5,
+    e: -2000,
     t: true,
     f: false,
     d: new Date("2026-01-02T03:04:05Z"),
@@ -49,6 +51,15 @@ Deno.test("plist: malformed documents are refused with a reason", () => {
     [doc("<dict><string>x</string></dict>"), "expected <key>"],
     [doc("<string>x</string><string>y</string>"), "expected </plist>"],
     ["<plist>text</plist>", "text outside an element"],
+    [doc("<integer>0x10</integer>"), "<integer> is not a number"],
+    [doc("<integer></integer>"), "<integer> is not a number"],
+    [doc("<real>1.5.2</real>"), "<real> is not a number"],
+    [doc("<data>!!</data>"), "<data> is not base64"],
+    [
+      doc("<dict><key>a</key><true/><key>a</key><false/></dict>"),
+      'the key "a" repeats',
+    ],
+    [doc("<true/>") + "<true/>", "content after </plist>"],
   ];
   for (const [xml, reason] of cases) {
     assertThrows(() => parsePlist(xml), Error, reason);
