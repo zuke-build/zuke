@@ -27,19 +27,34 @@ const FAILING = new URL(
   "../../packages/deno/tests/fixtures/failing_suite.ts",
   import.meta.url,
 ).href;
+// No such file: deno exits before running any test, as it did on #852's runner.
+const MISSING = new URL(
+  "../../packages/deno/tests/fixtures/no_such_suite.ts",
+  import.meta.url,
+).href;
 
-/** A build whose `test` target runs `shards` the way `zuke.ts` does. */
-function shardedBuild(shards: string[][]): new () => Build {
+/**
+ * A build whose `test` target runs `shards` the way `zuke.ts` does. `attempt`
+ * picks the files each run is given, so a test can make the first run of a
+ * shard die before it tests anything.
+ */
+function shardedBuild(
+  shards: string[][],
+  attempt: (paths: string[], run: number) => string[] = (paths) => paths,
+): new () => Build {
+  let runs = 0;
   return class extends Build {
     test = target()
       .description("run the fixture suites as shards")
       .executes(async () => {
         await runShards(
           shards,
-          (paths) =>
-            DenoTasks.test((s) =>
-              s.paths(...paths).noCheck().quiet().noThrow()
-            ),
+          (paths) => {
+            const files = attempt(paths, runs++);
+            return DenoTasks.test((s) =>
+              s.paths(...files).noCheck().quiet().noThrow()
+            );
+          },
         );
       });
   };
@@ -74,5 +89,32 @@ Deno.test("a failing shard fails the target, and the row still counts both", asy
   assertStringIncludes(
     `${r.out}\n${r.err}`,
     "1 of 2 test shard(s) failed — 1 failing test(s)",
+  );
+});
+
+Deno.test("a shard whose deno died before testing is run again, and passes", async () => {
+  const r = await runCli(
+    shardedBuild([[PASSING]], (paths, run) => run === 0 ? [MISSING] : paths),
+    ["test"],
+  );
+  assertEquals(r.code, 0, r.err);
+  // Only the run that tested anything is counted.
+  assertStringIncludes(
+    row(r.out, "test"),
+    "// Tests: 3 · Passed: 2 · Failed: 0 · Skipped: 1",
+  );
+  assertStringIncludes(r.out, "no_such_suite.ts");
+  assertStringIncludes(
+    r.out,
+    "── test shard 1/1: deno exited before running any test; ran it again ──",
+  );
+});
+
+Deno.test("a shard that dies before testing twice fails the target", async () => {
+  const r = await runCli(shardedBuild([[MISSING]]), ["test"]);
+  assertEquals(r.code, 1);
+  assertStringIncludes(
+    `${r.out}\n${r.err}`,
+    "Shard(s) 1 exited before printing a result line",
   );
 });

@@ -147,17 +147,94 @@ Deno.test("runShards: a failing shard fails the run after every shard printed", 
 
 Deno.test("runShards: a shard that crashed before its result line still fails", async () => {
   const printed: string[] = [];
+  let attempts = 0;
   await assertRejects(
     () =>
       runShards(
         [["a_test.ts"]],
-        () => Promise.resolve({ code: 1, stdout: "", stderr: "" }),
+        () => {
+          attempts++;
+          return Promise.resolve({ code: 1, stdout: "", stderr: "" });
+        },
         (text) => printed.push(text),
       ),
     Error,
     "Shard(s) 1 exited before printing a result line, so their tests are " +
       "not counted.",
   );
-  // Nothing to print beyond the header for an empty shard output.
-  assertEquals(printed, ["── test shard 1/1 ──"]);
+  // Died before testing both times: run once more, then failed — never a loop.
+  assertEquals(attempts, 2);
+  // Nothing to print beyond the headers for empty shard outputs.
+  assertEquals(printed, [
+    "── test shard 1/1 ──",
+    "── test shard 1/1: deno exited before running any test; ran it again ──",
+  ]);
+});
+
+/** Deno's bare startup failure from #852, with nothing on stdout. */
+const DIED: ShardOutput = {
+  code: 1,
+  stdout: "",
+  stderr: "error: No such file or directory (os error 2)\n",
+};
+
+Deno.test("runShards: a shard whose deno died before testing is run again", async () => {
+  const printed: string[] = [];
+  const seen: string[][] = [];
+  const counts = await runShards(
+    [["a_test.ts"], ["b_test.ts"]],
+    (files) => {
+      seen.push(files);
+      // Shard 1's first attempt dies at startup; every other run passes.
+      return Promise.resolve(
+        seen.length === 1 ? DIED : shard(0, "ok | 2 passed | 0 failed"),
+      );
+    },
+    (text) => printed.push(text),
+  );
+  assertEquals(counts, { passed: 4, failed: 0, skipped: 0 });
+  assertEquals(seen, [["a_test.ts"], ["b_test.ts"], ["a_test.ts"]]);
+  // The dead attempt stays on record, ahead of the run that replaced it.
+  assertEquals(printed.slice(0, 3), [
+    "── test shard 1/2 ──",
+    "error: No such file or directory (os error 2)",
+    "── test shard 1/2: deno exited before running any test; ran it again ──",
+  ]);
+  assertStringIncludes(printed[3], "2 passed");
+});
+
+Deno.test("runShards: a shard that started a test file is never run again", async () => {
+  // The colour codes deno prints are no disguise for its start line.
+  const grey = "\x1b[0m\x1b[38;5;245m";
+  const started: ShardOutput = {
+    code: 1,
+    stdout: `${grey}running 3 tests from ./a_test.ts\x1b[0m\n`,
+    stderr: "error: Uncaught (in promise) Error: boom\n",
+  };
+  let attempts = 0;
+  const error = await assertRejects(
+    () =>
+      runShards([["a_test.ts"]], () => {
+        attempts++;
+        return Promise.resolve(started);
+      }, () => {}),
+    Error,
+    "1 of 1 test shard(s) failed",
+  );
+  assertEquals(attempts, 1);
+  assertStringIncludes(error.message, "Shard(s) 1 exited before printing");
+});
+
+Deno.test("runShards: a shard that printed its result line is never run again", async () => {
+  let attempts = 0;
+  await assertRejects(
+    () =>
+      runShards([["a_test.ts"]], () => {
+        attempts++;
+        return Promise.resolve(shard(1, "FAILED | 0 passed | 1 failed"));
+      }, () => {}),
+    Error,
+    "1 failing test(s)",
+  );
+  assertEquals(attempts, 1);
 });

@@ -19,6 +19,7 @@
  */
 
 import { glob, reportTestCounts, type TestCounts } from "@zuke/core";
+import { stripAnsi } from "@zuke/core/render";
 import { parseTestSummary } from "../packages/deno/src/test_summary.ts";
 
 /**
@@ -69,6 +70,43 @@ export interface ShardOutput {
 /** The seam that runs `deno test` over one shard's files. */
 export type ShardRunner = (files: string[]) => Promise<ShardOutput>;
 
+/** Deno's line as it starts a test file: `running 3 tests from ./a_test.ts`. */
+const STARTED_FILE = /^running \d+ tests? from /m;
+
+/**
+ * Whether deno exited before it ran a single test file: a non-zero exit with
+ * neither a `running … from` line nor a result line. Deno itself failed, not a
+ * test — on a freshly provisioned macOS runner it has exited at startup with a
+ * bare `No such file or directory (os error 2)` (#852) — so running the slice
+ * again cannot hide a failing test. A shard that started even one file is
+ * never re-run: whatever it printed is the verdict.
+ */
+function diedBeforeTesting(out: ShardOutput): boolean {
+  return out.code !== 0 && parseTestSummary(out.stdout) === undefined &&
+    !STARTED_FILE.test(stripAnsi(out.stdout));
+}
+
+/** One shard's final output, and the attempt that died before testing, if any. */
+interface ShardRun {
+  out: ShardOutput;
+  died: ShardOutput | undefined;
+}
+
+/** Run one shard, and run it once more if deno died before testing. */
+async function runShard(
+  files: string[],
+  runner: ShardRunner,
+): Promise<ShardRun> {
+  const first = await runner(files);
+  if (!diedBeforeTesting(first)) return { out: first, died: undefined };
+  return { out: await runner(files), died: first };
+}
+
+/** A shard output as one block of text, or `""` when it printed nothing. */
+function textOf(out: ShardOutput): string {
+  return `${out.stdout}${out.stderr}`.trimEnd();
+}
+
 /** Sum the counts of every shard that printed a result line. */
 function sumCounts(outputs: ShardOutput[]): TestCounts {
   let passed = 0;
@@ -88,8 +126,9 @@ function sumCounts(outputs: ShardOutput[]): TestCounts {
  * Run every shard concurrently through `runner`, then print each shard's
  * captured output **in shard order** — interleaved live output from several
  * processes would be unreadable, and a failure's detail must stay next to its
- * test. The summed counts are reported into the running target's row, and
- * returned.
+ * test. A shard whose deno died before it ran any test is run once more, and
+ * both attempts are printed. The summed counts are reported into the running
+ * target's row, and returned.
  *
  * @throws when any shard exits non-zero, after every shard has finished and
  * printed, so one failing slice never hides another's result.
@@ -99,12 +138,23 @@ export async function runShards(
   runner: ShardRunner,
   print: (text: string) => void = (text) => console.log(text),
 ): Promise<TestCounts> {
-  const outputs = await Promise.all(shards.map((files) => runner(files)));
-  outputs.forEach((out, i) => {
-    print(`── test shard ${i + 1}/${shards.length} ──`);
-    const text = `${out.stdout}${out.stderr}`.trimEnd();
+  const runs = await Promise.all(
+    shards.map((files) => runShard(files, runner)),
+  );
+  runs.forEach((run, i) => {
+    const label = `test shard ${i + 1}/${shards.length}`;
+    print(`── ${label} ──`);
+    if (run.died !== undefined) {
+      const died = textOf(run.died);
+      if (died !== "") print(died);
+      print(
+        `── ${label}: deno exited before running any test; ran it again ──`,
+      );
+    }
+    const text = textOf(run.out);
     if (text !== "") print(text);
   });
+  const outputs = runs.map((run) => run.out);
   const counts = sumCounts(outputs);
   reportTestCounts(counts);
   const failedShards = outputs.filter((out) => out.code !== 0).length;
