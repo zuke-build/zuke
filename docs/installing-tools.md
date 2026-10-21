@@ -75,14 +75,15 @@ await CmdTasks.exec(String(bin), (s) => s.args("--version"));
 - **`"raw"`** (default) — the URL points straight at the executable; it's saved
   as `<destDir>/<name>` and `chmod +x`'d.
 - **`.archive("tar.gz")` / `.archive("tar.xz")` / `.archive("zip")`** — the URL
-  points at a tarball (gzipped or xz-compressed; the xz decoder is built in) or
-  a zip; Zuke unpacks it to a scratch directory, copies `.binaryPath(...)`
-  (default the name) out to `<destDir>/<name>`, then discards the scratch. Set
-  `.binaryPath(...)` when the binary lives in a subdirectory of the archive
-  (e.g. Helm ships it under `linux-amd64/helm`). Zip reading covers the `stored`
-  and `deflate` methods release assets use (dprint et al. ship zip-only);
-  encrypted or zip64 archives are rejected with a clear error, and no archive
-  entry may escape the destination directory (a "zip slip").
+  points at a tarball (gzipped or xz-compressed; a system `xz` decompresses when
+  one is on `PATH`, else the built-in decoder) or a zip; Zuke unpacks it to a
+  scratch directory, copies `.binaryPath(...)` (default the name) out to
+  `<destDir>/<name>`, then discards the scratch. Set `.binaryPath(...)` when the
+  binary lives in a subdirectory of the archive (e.g. Helm ships it under
+  `linux-amd64/helm`). Zip reading covers the `stored` and `deflate` methods
+  release assets use (dprint et al. ship zip-only); encrypted or zip64 archives
+  are rejected with a clear error, and no archive entry may escape the
+  destination directory (a "zip slip").
 
 On Windows the installed filename gains an `.exe` suffix and the executable bit
 is skipped.
@@ -176,10 +177,10 @@ accessor: `root("bin", "node")` is a binary and `root("bin")` a directory to add
 to `PATH`. It takes the same settings-lambda as `install()`, plus two that only
 apply to a tree:
 
-| Method            | Purpose                                                                                                                                                                                                         |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `.strip(n)`       | Drop `n` leading path components while unpacking (tar's `--strip-components`) — `1` unwraps a release tarball's `tool-v1.2.3/` directory. Defaults to `0`.                                                      |
-| `.bins(...paths)` | Paths (relative to the stripped root) to mark executable on POSIX — the tar reader doesn't preserve mode bits, so a runtime's `bin/node`, `bin/npm`, … need it. Following a symlink chmods its real target too. |
+| Method            | Purpose                                                                                                                                                                                                                                                                                |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.strip(n)`       | Drop `n` leading path components while unpacking (tar's `--strip-components`) — `1` unwraps a release tarball's `tool-v1.2.3/` directory. Defaults to `0`.                                                                                                                             |
+| `.bins(...paths)` | Paths (relative to the stripped root) to mark executable on POSIX. Extraction keeps the archive's mode bits (tar entries, and zips made on Unix), so this is a fallback for an archive that ships a binary without the executable bit. Following a symlink chmods its real target too. |
 
 A tree always ships packed, so `.archive(...)` defaults to `"tar.gz"` and
 `"raw"` is rejected

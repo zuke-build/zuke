@@ -15,7 +15,8 @@ import { fixture, FLUTTER_TAR_XZ } from "../../packages/core/tests/_xz.ts";
 import { withTemp } from "../../packages/core/tests/_temp.ts";
 import { runCli } from "./_harness.ts";
 
-Deno.test("a build installs a tar.xz runtime tree through ToolTasks.installTree", async () => {
+/** Install the fixture SDK through a real build and report what it saw. */
+async function installFlutter(): Promise<void> {
   await withTemp(async (dir) => {
     const bytes = fixture(FLUTTER_TAR_XZ);
     const checksum = await sha256Hex(bytes);
@@ -43,4 +44,20 @@ Deno.test("a build installs a tar.xz runtime tree through ToolTasks.installTree"
       "3.47.7\n",
     ]);
   });
+}
+
+Deno.test(
+  "a build installs a tar.xz runtime tree through ToolTasks.installTree",
+  installFlutter,
+);
+
+Deno.test("a build installs a tar.xz tree with the built-in decoder when no xz is on PATH", async () => {
+  const path = Deno.env.get("PATH");
+  Deno.env.set("PATH", "");
+  try {
+    await installFlutter();
+  } finally {
+    if (path === undefined) Deno.env.delete("PATH");
+    else Deno.env.set("PATH", path);
+  }
 });
