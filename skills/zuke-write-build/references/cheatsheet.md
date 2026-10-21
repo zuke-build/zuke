@@ -677,11 +677,13 @@ tools = toolchain((t) =>
 // install() returns Map<name, AbsolutePath>; npm packages need `npm` on PATH.
 ```
 
-`.archive("tar.gz")` or `.archive("zip")` unpacks an archive and copies
-`.binaryPath(...)` (default the name) out — zip reading covers the `stored`/
-`deflate` methods release assets use, rejects encrypted/zip64 archives, and
-blocks zip-slip. `.checksum(sha256)` verifies (the archive's SHA-256 for an
-archive, the binary's for `"raw"`) and doubles as the install cache key.
+`.archive("tar.gz")`, `.archive("tar.xz")` or `.archive("zip")` unpacks an
+archive and copies `.binaryPath(...)` (default the name) out — the xz decoder is
+built in (for `.tar.xz`-only releases such as the Flutter SDK and Zig), zip
+reading covers the `stored`/`deflate` methods release assets use, rejects
+encrypted/zip64 archives, and every format blocks zip-slip. `.checksum(sha256)`
+verifies (the archive's SHA-256 for an archive, the binary's for `"raw"`) and
+doubles as the install cache key.
 
 **Multi-file runtimes (Node.js, a JDK, …)** — `ToolTasks.installTree((s) => …)`
 (or `toolchain().tree((s) => …)`) keeps the _whole_ extracted tree instead of

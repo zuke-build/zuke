@@ -3,15 +3,17 @@
 
 /**
  * Compression helpers for build scripts: gzip/gunzip byte streams, and read or
- * write `tar` / `.tar.gz` and `.zip` archives. Dependency-free — gzip and
- * deflate use the platform `CompressionStream`/`DecompressionStream`, and the
- * tar and zip readers and writers implement the formats directly.
+ * write `tar` / `.tar.gz` and `.zip` archives, plus read `.tar.xz`.
+ * Dependency-free — gzip and deflate use the platform
+ * `CompressionStream`/`DecompressionStream`, xz has a built-in LZMA2 decoder,
+ * and the tar and zip readers and writers implement the formats directly.
  *
  * ```ts
- * import { createTarGzip, extractTarGzip, extractZip } from "@zuke/core";
+ * import { createTarGzip, extractTarGzip, extractTarXz, extractZip } from "@zuke/core";
  *
  * await createTarGzip(["dist/app.js", "README.md"], "artifact.tar.gz");
  * await extractTarGzip("artifact.tar.gz", "out");
+ * await extractTarXz("flutter.tar.xz", "out", { strip: 1 });
  * await extractZip("tool.zip", "out");
  * ```
  *
@@ -26,7 +28,8 @@
  */
 
 import type { PathLike } from "./path.ts";
-import { lstatOrNull, readBytesBounded } from "./internal.ts";
+import { crc32, lstatOrNull, readBytesBounded } from "./internal.ts";
+import { unxz } from "./xz.ts";
 
 /**
  * Reject an archive entry whose name would escape the destination directory — an
@@ -429,7 +432,7 @@ export async function createTarGzip(
   await Deno.writeFile(String(dest), await gzip(tar(entries)));
 }
 
-/** Options common to {@link extractTarGzip} and {@link extractZip}. */
+/** Options common to {@link extractTarGzip}, {@link extractTarXz} and {@link extractZip}. */
 export interface ExtractOptions {
   /**
    * Drop this many leading path components from every entry (like tar's
@@ -452,6 +455,22 @@ export async function extractTarGzip(
   options: ExtractOptions = {},
 ): Promise<void> {
   const archive = untar(await gunzip(await Deno.readFile(String(src))));
+  await writeEntries(archive, destDir, options);
+}
+
+/**
+ * Read the `.tar.xz` at `src`, decompress and unpack it, and write each entry
+ * under `destDir` exactly as {@link extractTarGzip} does — the same symlink
+ * handling, the same zip-slip guards, the same {@link ExtractOptions.strip}.
+ * The xz decoder is built in (the platform has none), covering the single
+ * LZMA2 filter chain `xz` writes by default and verifying each block's check.
+ */
+export async function extractTarXz(
+  src: PathLike,
+  destDir: PathLike,
+  options: ExtractOptions = {},
+): Promise<void> {
+  const archive = untar(await unxz(await Deno.readFile(String(src))));
   await writeEntries(archive, destDir, options);
 }
 
@@ -752,20 +771,6 @@ export async function unzip(archive: Uint8Array): Promise<TarEntry[]> {
     p += 46 + nameLen + extraLen + commentLen;
   }
   return entries;
-}
-
-/** The CRC-32 lookup table (reflected polynomial `0xedb88320`). */
-const CRC_TABLE = Uint32Array.from({ length: 256 }, (_, n) => {
-  let c = n;
-  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-  return c >>> 0;
-});
-
-/** The CRC-32 of `data`, which every zip header carries for its entry. */
-function crc32(data: Uint8Array): number {
-  let c = 0xffffffff;
-  for (const byte of data) c = CRC_TABLE[(c ^ byte) & 0xff] ^ (c >>> 8);
-  return (c ^ 0xffffffff) >>> 0;
 }
 
 /** Raw-DEFLATE `data` with the platform `CompressionStream`. */

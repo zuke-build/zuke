@@ -372,6 +372,13 @@ async function extractTarGzip(src: PathLike, destDir: PathLike, options: Extract
   recreated as symlinks and directory entries as directories; pass
   {@link ExtractOptions.strip} to drop leading path components.
 
+async function extractTarXz(src: PathLike, destDir: PathLike, options: ExtractOptions): Promise<void>
+  Read the `.tar.xz` at `src`, decompress and unpack it, and write each entry
+  under `destDir` exactly as {@link extractTarGzip} does — the same symlink
+  handling, the same zip-slip guards, the same {@link ExtractOptions.strip}.
+  The xz decoder is built in (the platform has none), covering the single
+  LZMA2 filter chain `xz` writes by default and verifying each block's check.
+
 async function extractZip(src: PathLike, destDir: PathLike, options: ExtractOptions): Promise<void>
   Read the `.zip` at `src`, unpack it, and write each entry under `destDir`
   (creating parent directories as needed) — the zip counterpart of
@@ -2741,8 +2748,8 @@ class ToolInstallSettings
   destDir(dir: PathLike): this
     The directory to install the binary into (created if missing).
   archive(format: DownloadFormat | ((platform: Platform) => DownloadFormat)): this
-    Treat the download as a `"tar.gz"` or `"zip"` to unpack (default `"raw"`,
-    the bare binary). Pair with {@link binaryPath} for the binary inside. Pass a
+    Treat the download as a `"tar.gz"`, `"tar.xz"` or `"zip"` to unpack
+    (default `"raw"`, the bare binary). Pair with {@link binaryPath} for the binary inside. Pass a
     `(platform) => format` resolver when the format is per-platform, as it is
     for most Go and Rust releases — `.tar.gz` on Linux and macOS, `.zip` on
     Windows (see {@link InstallReleaseOptions.archive}).
@@ -3831,7 +3838,7 @@ interface ExecuteOptions
     `resumeRun`.
 
 interface ExtractOptions
-  Options common to {@link extractTarGzip} and {@link extractZip}.
+  Options common to {@link extractTarGzip}, {@link extractTarXz} and {@link extractZip}.
 
   strip?: number
     Drop this many leading path components from every entry (like tar's
@@ -4092,8 +4099,8 @@ interface InstallReleaseOptions
     The directory to install the binary into (created if missing).
   archive?: DownloadFormat | ((platform: Platform) => DownloadFormat)
     The download format. `"raw"` (default) treats the download as the binary
-    itself; `"tar.gz"` and `"zip"` unpack it and take {@link binaryPath} from
-    inside. Many release assets ship one or the other.
+    itself; `"tar.gz"`, `"tar.xz"` and `"zip"` unpack it and take
+    {@link binaryPath} from inside. Many release assets ship one or the other.
 
     Like {@link url} and {@link checksum} this accepts a resolver, because the
     format is routinely per-platform: a Go or Rust project typically publishes
@@ -4101,7 +4108,7 @@ interface InstallReleaseOptions
     `(p) => p.os === "windows" ? "zip" : "tar.gz"` rather than declaring one
     format that is wrong on a third of the platforms.
   binaryPath?: string | ((platform: Platform) => string)
-    For a `"tar.gz"` or `"zip"` archive, the binary's path within the archive.
+    For a packed archive, the binary's path within the archive.
     Defaults to {@link name}.
 
     Also resolver-friendly, for the same reason: the same release usually names
@@ -4140,7 +4147,8 @@ interface InstallTreeOptions
   archive: ArchiveFormat | ((platform: Platform) => ArchiveFormat)
     The archive format — a multi-file runtime always ships packed. Accepts a
     per-platform resolver for the usual `.tar.gz` on Unix / `.zip` on Windows
-    split (see {@link InstallReleaseOptions.archive}).
+    split (see {@link InstallReleaseOptions.archive}); `"tar.xz"` covers the
+    Flutter SDK and Zig, which ship only that.
   strip?: number
     Leading path components to drop while unpacking (tar's `--strip-components`).
     A release tarball wraps everything in a `tool-v1.2.3/` directory, so `1`
@@ -5397,7 +5405,7 @@ type AnnouncementLevel = "success" | "failure" | "warning" | "info"
 type Architecture = "x86_64" | "aarch64"
   The CPU architectures Zuke recognises.
 
-type ArchiveFormat = "tar.gz" | "zip"
+type ArchiveFormat = "tar.gz" | "tar.xz" | "zip"
   A packed download format, unpacked after the checksum is verified.
 
 type BuildLocation = { kind: "module"; module: string; cwd: string; repo?: string; } | { kind: "command"; command: string[]; cwd: string; repo?: string; }
