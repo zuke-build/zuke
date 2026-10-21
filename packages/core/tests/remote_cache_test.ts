@@ -20,6 +20,7 @@ import {
 } from "../src/remote_cache.ts";
 import { HttpError } from "../src/http.ts";
 import { GitHubActionsCacheStore } from "../src/github_actions_cache.ts";
+import { S3CacheStore } from "../src/s3_cache.ts";
 import { gzip, tar } from "../src/compression.ts";
 import { withTemp } from "./_temp.ts";
 import { defaultCacheHost } from "../src/cache.ts";
@@ -219,6 +220,88 @@ Deno.test("HttpCacheStore PUT sends the artifact and throws on failure", async (
   });
   const err = await assertRejects(() => badStore.put("k", enc("x")));
   assertEquals(err instanceof HttpError, true);
+});
+
+Deno.test("HttpCacheStore sends extra headers and keeps a base URL's query", async () => {
+  const { fetch, calls } = fakeFetch(() => new Response(null, { status: 201 }));
+  // An Azure Blob container's SAS URL: the key goes before the query.
+  const store = new HttpCacheStore({
+    url: "https://acct.blob.core.windows.net/container/?sv=2024&sig=abc",
+    headers: { "x-custom": "1", Authorization: "Basic credentials" },
+    fetch,
+  });
+  await store.put("k", enc("x"));
+  assertEquals(
+    calls[0].url,
+    "https://acct.blob.core.windows.net/container/k?sv=2024&sig=abc",
+  );
+  const headers = new Headers(calls[0].init?.headers);
+  assertEquals(headers.get("x-custom"), "1");
+  assertEquals(headers.get("Authorization"), "Basic credentials");
+  assertEquals(headers.get("x-ms-blob-type"), "BlockBlob");
+  await store.get("k");
+  assertEquals(new Headers(calls[1].init?.headers).get("x-custom"), "1");
+  assertEquals(calls[1].url, calls[0].url);
+
+  // The bearer token wins over a conflicting extra header.
+  const bearer = new HttpCacheStore({
+    url: "https://cache.test",
+    token: "t",
+    headers: { Authorization: "Basic x" },
+    fetch,
+  });
+  await bearer.get("k");
+  assertEquals(
+    new Headers(calls[2].init?.headers).get("Authorization"),
+    "Bearer t",
+  );
+});
+
+Deno.test("envCacheStore selects an S3 store from the AWS variables", () => {
+  const env =
+    (vars: Record<string, string>) => (name: string): string | undefined =>
+      Object.prototype.hasOwnProperty.call(vars, name) ? vars[name] : undefined;
+  const aws = {
+    ZUKE_REMOTE_CACHE_S3_URL: "https://bucket.s3.amazonaws.com/cache",
+    AWS_ACCESS_KEY_ID: "AKIDEXAMPLE",
+    AWS_SECRET_ACCESS_KEY: "secret",
+    AWS_DEFAULT_REGION: "us-east-1",
+  };
+  assertEquals(envCacheStore(env(aws)) instanceof S3CacheStore, true);
+  assertEquals(
+    envCacheStore(
+      env({ ...aws, AWS_SESSION_TOKEN: "tok", AWS_REGION: "auto" }),
+    ) instanceof
+      S3CacheStore,
+    true,
+  );
+  // A plain URL still wins; the S3 URL wins over a directory.
+  assertEquals(
+    envCacheStore(
+      env({ ...aws, ZUKE_REMOTE_CACHE_URL: "https://c.test" }),
+    ) instanceof
+      HttpCacheStore,
+    true,
+  );
+  assertEquals(
+    envCacheStore(env({ ...aws, ZUKE_REMOTE_CACHE_DIR: "/tmp/x" })) instanceof
+      S3CacheStore,
+    true,
+  );
+  // Misconfiguration names the variable rather than sending an unsigned request.
+  const missing = assertThrows(() =>
+    envCacheStore(env({ ...aws, AWS_DEFAULT_REGION: "" }))
+  );
+  assertStringIncludes(missing.message, "AWS_REGION or AWS_DEFAULT_REGION");
+  const noKey = assertThrows(() =>
+    envCacheStore(env({ ...aws, AWS_ACCESS_KEY_ID: "" }))
+  );
+  assertStringIncludes(noKey.message, "AWS_ACCESS_KEY_ID");
+  assertThrows(() =>
+    envCacheStore(
+      env({ ...aws, ZUKE_REMOTE_CACHE_S3_URL: "http://bucket.test/cache" }),
+    )
+  );
 });
 
 Deno.test("envCacheStore selects HTTP, then filesystem, then nothing", () => {

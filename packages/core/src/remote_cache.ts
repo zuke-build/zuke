@@ -14,8 +14,10 @@
  * the target's outputs (built with the dependency-free {@link "./compression.ts"
  * | tar/gzip} helpers). Two backends ship, both dependency-free:
  * {@link FileSystemCacheStore} (a shared/mounted directory) and
- * {@link HttpCacheStore} (any object store or cache server behind a URL), and a
- * third, {@link "./github_actions_cache.ts".GitHubActionsCacheStore}, uses the
+ * {@link HttpCacheStore} (any object store or cache server behind a URL); a
+ * third, {@link "./s3_cache.ts".S3CacheStore}, signs the HTTP store's requests
+ * for S3-compatible object storage, and a fourth,
+ * {@link "./github_actions_cache.ts".GitHubActionsCacheStore}, uses the
  * GitHub Actions cache service a job already holds credentials for. A build
  * selects one with a typed `remoteCache()` override, or one is picked up from
  * the environment by {@link envCacheStore}.
@@ -36,6 +38,8 @@ import {
 import { GitHubActionsCacheStore } from "./github_actions_cache.ts";
 import { assertSecureBackendUrl, HttpError } from "./http.ts";
 import { readBytesBounded, readFileOrNull } from "./internal.ts";
+import type { AwsCredentials } from "./aws_sigv4.ts";
+import { S3CacheStore } from "./s3_cache.ts";
 
 /**
  * A content-addressed store for archived target outputs, keyed by
@@ -363,10 +367,21 @@ export class FileSystemCacheStore implements RemoteCacheStore {
 
 /** Configuration for an {@link HttpCacheStore}. */
 export interface HttpCacheStoreOptions {
-  /** The base URL keys are appended to (any trailing slash is ignored). */
+  /**
+   * The base URL keys are appended to (any trailing slash is ignored). A query
+   * string is kept and the key goes before it, so an Azure Blob container's
+   * SAS URL (`https://acct.blob.core.windows.net/container?sv=…`) works as
+   * is.
+   */
   url: string;
   /** A bearer token sent as `Authorization: Bearer <token>`, if set. */
   token?: string;
+  /**
+   * Headers sent on every request: basic auth for a Gradle-protocol or WebDAV
+   * cache, GitLab's `JOB-TOKEN`, or whatever else a server wants. The store's
+   * own headers (the bearer token, the content type) win on a clash.
+   */
+  headers?: Record<string, string>;
   /** The `fetch` implementation; defaults to the global. Overridable for tests. */
   fetch?: typeof fetch;
   /**
@@ -400,25 +415,31 @@ export interface HttpCacheStoreOptions {
  */
 export class HttpCacheStore implements RemoteCacheStore {
   readonly #base: string;
+  readonly #query: string;
   readonly #token?: string;
+  readonly #headers: Readonly<Record<string, string>>;
   readonly #fetch: typeof fetch;
   readonly #maxArtifactBytes: number;
 
   /** Build the store from its URL, optional token, size cap, and `fetch` seam. */
   constructor(options: HttpCacheStoreOptions) {
-    this.#base = options.url.replace(/\/+$/, "");
+    const at = options.url.indexOf("?");
+    const path = at === -1 ? options.url : options.url.slice(0, at);
+    this.#base = path.replace(/\/+$/, "");
+    this.#query = at === -1 ? "" : options.url.slice(at);
     this.#token = options.token;
+    this.#headers = options.headers ?? {};
     this.#fetch = options.fetch ?? fetch;
     this.#maxArtifactBytes = options.maxArtifactBytes ??
       DEFAULT_MAX_ARTIFACT_BYTES;
   }
 
   #url(key: string): string {
-    return `${this.#base}/${encodeURIComponent(key)}`;
+    return `${this.#base}/${encodeURIComponent(key)}${this.#query}`;
   }
 
-  #headers(extra?: Record<string, string>): Record<string, string> {
-    const headers: Record<string, string> = { ...extra };
+  #requestHeaders(extra?: Record<string, string>): Record<string, string> {
+    const headers: Record<string, string> = { ...this.#headers, ...extra };
     if (this.#token !== undefined && this.#token !== "") {
       headers.Authorization = `Bearer ${this.#token}`;
     }
@@ -428,7 +449,9 @@ export class HttpCacheStore implements RemoteCacheStore {
   /** Fetch the archived outputs stored under `key`, or `null` if there are none. */
   async get(key: string): Promise<Uint8Array | null> {
     const url = this.#url(key);
-    const response = await this.#fetch(url, { headers: this.#headers() });
+    const response = await this.#fetch(url, {
+      headers: this.#requestHeaders(),
+    });
     if (response.status === 404) {
       await response.body?.cancel();
       return null;
@@ -455,7 +478,13 @@ export class HttpCacheStore implements RemoteCacheStore {
     const url = this.#url(key);
     const response = await this.#fetch(url, {
       method: "PUT",
-      headers: this.#headers({ "content-type": "application/octet-stream" }),
+      headers: this.#requestHeaders({
+        "content-type": "application/octet-stream",
+        // Azure Blob Storage refuses a PUT without a blob type; every other
+        // server ignores the header. Stated here so a SAS URL needs nothing
+        // else.
+        "x-ms-blob-type": "BlockBlob",
+      }),
       // Copy into a fresh ArrayBuffer-backed Blob so the body type is unambiguous
       // regardless of the source buffer (e.g. a SharedArrayBuffer).
       body: new Blob([new Uint8Array(artifact)]),
@@ -469,6 +498,9 @@ export class HttpCacheStore implements RemoteCacheStore {
  * Resolve a {@link RemoteCacheStore} from the environment, or `undefined` when
  * none is configured. `ZUKE_REMOTE_CACHE_URL` (with an optional
  * `ZUKE_REMOTE_CACHE_TOKEN`) selects an {@link HttpCacheStore}; otherwise
+ * `ZUKE_REMOTE_CACHE_S3_URL` selects an {@link "./s3_cache.ts".S3CacheStore}
+ * signed with `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (and
+ * `AWS_SESSION_TOKEN`) in `AWS_REGION` or `AWS_DEFAULT_REGION`; otherwise
  * `ZUKE_REMOTE_CACHE_DIR` selects a {@link FileSystemCacheStore}; otherwise,
  * on a GitHub Actions job that exposes its `ACTIONS_RUNTIME_TOKEN` and
  * `ACTIONS_RESULTS_URL` (the `actions-cache` input of the `zuke-build/zuke`
@@ -485,6 +517,11 @@ export function envCacheStore(
       token: readEnv("ZUKE_REMOTE_CACHE_TOKEN"),
     });
   }
+  const s3 = readEnv("ZUKE_REMOTE_CACHE_S3_URL");
+  if (s3 !== undefined && s3 !== "") {
+    assertSecureBackendUrl(s3, "ZUKE_REMOTE_CACHE_S3_URL", readEnv);
+    return new S3CacheStore({ url: s3, ...s3Signing(readEnv) });
+  }
   const dir = readEnv("ZUKE_REMOTE_CACHE_DIR");
   if (dir !== undefined && dir !== "") return new FileSystemCacheStore(dir);
   const token = readEnv("ACTIONS_RUNTIME_TOKEN");
@@ -497,6 +534,36 @@ export function envCacheStore(
     return new GitHubActionsCacheStore({ url: results, token });
   }
   return undefined;
+}
+
+/**
+ * The signing region and credentials for `ZUKE_REMOTE_CACHE_S3_URL`, from the
+ * variables the AWS SDKs read. Misconfiguration is an error naming the
+ * variable rather than an unsigned request the bucket would refuse.
+ */
+function s3Signing(
+  readEnv: (name: string) => string | undefined,
+): { region: string; credentials: AwsCredentials } {
+  const need = (...names: string[]): string => {
+    for (const name of names) {
+      const value = readEnv(name);
+      if (value !== undefined && value !== "") return value;
+    }
+    throw new Error(
+      `remote cache: ZUKE_REMOTE_CACHE_S3_URL needs ${names.join(" or ")}.`,
+    );
+  };
+  const sessionToken = readEnv("AWS_SESSION_TOKEN");
+  return {
+    region: need("AWS_REGION", "AWS_DEFAULT_REGION"),
+    credentials: {
+      accessKeyId: need("AWS_ACCESS_KEY_ID"),
+      secretAccessKey: need("AWS_SECRET_ACCESS_KEY"),
+      ...(sessionToken === undefined || sessionToken === ""
+        ? {}
+        : { sessionToken }),
+    },
+  };
 }
 
 /**

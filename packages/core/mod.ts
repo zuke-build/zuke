@@ -154,6 +154,14 @@ export {
   GitHubActionsCacheStore,
   type GitHubActionsCacheStoreOptions,
 } from "./src/github_actions_cache.ts";
+export { S3CacheStore, type S3CacheStoreOptions } from "./src/s3_cache.ts";
+export {
+  type AwsCredentials,
+  type AwsSignableRequest,
+  type AwsSignature,
+  signSigV4,
+} from "./src/aws_sigv4.ts";
+export { uriEncode } from "./src/uri.ts";
 export {
   archiveOutputs,
   envCacheStore,
