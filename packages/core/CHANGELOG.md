@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.77.0](https://github.com/zuke-build/zuke/compare/core-v1.76.0...core-v1.77.0) (2026-10-21)
+
+
+### Features
+
+* **core:** cache SDK outputs with their .git, long paths and a raised size limit ([#893](https://github.com/zuke-build/zuke/issues/893)) ([216de10](https://github.com/zuke-build/zuke/commit/216de102ae73c5c43794bf1e1f2822697313d114))
+* **core:** keep tar and zip file modes and zip symlinks on extraction ([#891](https://github.com/zuke-build/zuke/issues/891)) ([a9d3933](https://github.com/zuke-build/zuke/commit/a9d3933c2111768c81312f076af24f101442b117))
+
+
+### Bug Fixes
+
+* **core:** speed up tar.xz extraction with the system xz ([#892](https://github.com/zuke-build/zuke/issues/892)) ([f86689d](https://github.com/zuke-build/zuke/commit/f86689d8d7398a5f4bc98ad6f5e87b45f2335b14))
+
 ## [1.76.0](https://github.com/zuke-build/zuke/compare/core-v1.75.0...core-v1.76.0) (2026-10-21)
 
 
