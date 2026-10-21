@@ -6,6 +6,7 @@ import {
   assertSafeEntryName,
   assertSafeLinkTarget,
   createTarGzip,
+  decompressWith,
   extractTarGzip,
   extractTarXz,
   extractZip,
@@ -1001,4 +1002,31 @@ Deno.test("extractTarXz refuses a path that escapes the destination", async () =
     // Refused up front: not even the harmless sibling entry was written.
     assertEquals(await Deno.stat(`${dir}/out/pkg/ok`).catch(() => null), null);
   });
+});
+
+Deno.test("extractTarXz falls back to the built-in decoder with no system xz", async () => {
+  const path = Deno.env.get("PATH");
+  Deno.env.set("PATH", "");
+  try {
+    await withTemp(async (dir) => {
+      const archive = `${dir}/flutter.tar.xz`;
+      await Deno.writeFile(archive, fixture(FLUTTER_TAR_XZ));
+      await extractTarXz(archive, `${dir}/out`, { strip: 1 });
+      assertEquals(await Deno.readTextFile(`${dir}/out/version`), "3.47.7\n");
+    });
+  } finally {
+    if (path === undefined) Deno.env.delete("PATH");
+    else Deno.env.set("PATH", path);
+  }
+});
+
+Deno.test("decompressWith returns stdout, or null on a failed or missing command", async () => {
+  const deno = Deno.execPath();
+  const out = await decompressWith(deno, [
+    "eval",
+    "await Deno.stdout.write(new Uint8Array([1, 2, 3]))",
+  ]);
+  assertEquals(out === null ? null : [...out], [1, 2, 3]);
+  assertEquals(await decompressWith(deno, ["eval", "Deno.exit(3)"]), null);
+  assertEquals(await decompressWith("zuke-no-such-xz", ["-dc"]), null);
 });

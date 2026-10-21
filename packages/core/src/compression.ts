@@ -462,16 +462,43 @@ export async function extractTarGzip(
  * Read the `.tar.xz` at `src`, decompress and unpack it, and write each entry
  * under `destDir` exactly as {@link extractTarGzip} does — the same symlink
  * handling, the same zip-slip guards, the same {@link ExtractOptions.strip}.
- * The xz decoder is built in (the platform has none), covering the single
- * LZMA2 filter chain `xz` writes by default and verifying each block's check.
+ * The system `xz` decompresses when one is on `PATH`, several times faster
+ * than the built-in decoder this falls back to, which covers the single LZMA2
+ * filter chain `xz` writes by default and verifies each block's check. Either
+ * way Zuke's own tar reader and guards unpack the result.
  */
 export async function extractTarXz(
   src: PathLike,
   destDir: PathLike,
   options: ExtractOptions = {},
 ): Promise<void> {
-  const archive = untar(await unxz(await Deno.readFile(String(src))));
-  await writeEntries(archive, destDir, options);
+  const path = String(src);
+  // `-T0` decodes a multi-block archive on every core (xz 5.4+).
+  const tarball = await decompressWith("xz", ["-dcT0", "--", path]) ??
+    await unxz(await Deno.readFile(path));
+  await writeEntries(untar(tarball), destDir, options);
+}
+
+/**
+ * The standard output of `cmd args`, or `null` when it cannot be spawned (not
+ * installed, no run permission) or exits non-zero, so the caller falls back to
+ * the built-in decoder, whose error names the problem.
+ */
+export async function decompressWith(
+  cmd: string,
+  args: string[],
+): Promise<Uint8Array | null> {
+  try {
+    const out = await new Deno.Command(cmd, {
+      args,
+      stdin: "null",
+      stdout: "piped",
+      stderr: "null",
+    }).output();
+    return out.success ? out.stdout : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Drop the first `n` path components from `name`, returning "" if none remain. */

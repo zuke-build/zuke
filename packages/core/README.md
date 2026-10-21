@@ -433,8 +433,10 @@ async function extractTarXz(src: PathLike, destDir: PathLike, options: ExtractOp
   Read the `.tar.xz` at `src`, decompress and unpack it, and write each entry
   under `destDir` exactly as {@link extractTarGzip} does — the same symlink
   handling, the same zip-slip guards, the same {@link ExtractOptions.strip}.
-  The xz decoder is built in (the platform has none), covering the single
-  LZMA2 filter chain `xz` writes by default and verifying each block's check.
+  The system `xz` decompresses when one is on `PATH`, several times faster
+  than the built-in decoder this falls back to, which covers the single LZMA2
+  filter chain `xz` writes by default and verifies each block's check. Either
+  way Zuke's own tar reader and guards unpack the result.
 
 async function extractZip(src: PathLike, destDir: PathLike, options: ExtractOptions): Promise<void>
   Read the `.zip` at `src`, unpack it, and write each entry under `destDir`

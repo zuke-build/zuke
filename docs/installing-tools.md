@@ -75,14 +75,15 @@ await CmdTasks.exec(String(bin), (s) => s.args("--version"));
 - **`"raw"`** (default) — the URL points straight at the executable; it's saved
   as `<destDir>/<name>` and `chmod +x`'d.
 - **`.archive("tar.gz")` / `.archive("tar.xz")` / `.archive("zip")`** — the URL
-  points at a tarball (gzipped or xz-compressed; the xz decoder is built in) or
-  a zip; Zuke unpacks it to a scratch directory, copies `.binaryPath(...)`
-  (default the name) out to `<destDir>/<name>`, then discards the scratch. Set
-  `.binaryPath(...)` when the binary lives in a subdirectory of the archive
-  (e.g. Helm ships it under `linux-amd64/helm`). Zip reading covers the `stored`
-  and `deflate` methods release assets use (dprint et al. ship zip-only);
-  encrypted or zip64 archives are rejected with a clear error, and no archive
-  entry may escape the destination directory (a "zip slip").
+  points at a tarball (gzipped or xz-compressed; a system `xz` decompresses when
+  one is on `PATH`, else the built-in decoder) or a zip; Zuke unpacks it to a
+  scratch directory, copies `.binaryPath(...)` (default the name) out to
+  `<destDir>/<name>`, then discards the scratch. Set `.binaryPath(...)` when the
+  binary lives in a subdirectory of the archive (e.g. Helm ships it under
+  `linux-amd64/helm`). Zip reading covers the `stored` and `deflate` methods
+  release assets use (dprint et al. ship zip-only); encrypted or zip64 archives
+  are rejected with a clear error, and no archive entry may escape the
+  destination directory (a "zip slip").
 
 On Windows the installed filename gains an `.exe` suffix and the executable bit
 is skipped.
