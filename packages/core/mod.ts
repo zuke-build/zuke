@@ -372,6 +372,7 @@ export {
   createTarGzip,
   type ExtractOptions,
   extractTarGzip,
+  extractTarXz,
   extractZip,
   gunzip,
   gzip,

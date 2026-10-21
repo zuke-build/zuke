@@ -59,29 +59,30 @@ await CmdTasks.exec(String(bin), (s) => s.args("--version"));
 
 ### Settings
 
-| Method                        | Purpose                                                                                                            |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `.name(name)`                 | The tool name, and the installed filename (`.exe` is appended on Windows). **Required.**                           |
-| `.url((platform) => string)`  | Resolve the download URL for the target platform (see [platforms](#cross-platform-url-resolution)). **Required.**  |
-| `.destDir(dir)`               | Directory to install into (created if missing). Defaults to `.zuke/tools`.                                         |
-| `.archive("tar.gz" \| "zip")` | Unpack a gzipped tarball or a zip; the default `"raw"` treats the download as the binary.                          |
-| `.binaryPath(path)`           | For an archive, the binary's path _inside_ it. Defaults to the name.                                               |
-| `.checksum(sha256)`           | Expected SHA-256, or a `(platform) => string` resolver — [verifies and caches](#pinning-verification-and-caching). |
-| `.platform({ os, arch })`     | Resolve for a specific platform instead of the host.                                                               |
-| `.download(fn)`               | Override the downloader (defaults to an HTTPS download); mainly a test seam.                                       |
+| Method                       | Purpose                                                                                                            |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `.name(name)`                | The tool name, and the installed filename (`.exe` is appended on Windows). **Required.**                           |
+| `.url((platform) => string)` | Resolve the download URL for the target platform (see [platforms](#cross-platform-url-resolution)). **Required.**  |
+| `.destDir(dir)`              | Directory to install into (created if missing). Defaults to `.zuke/tools`.                                         |
+| `.archive(format)`           | Unpack a `"tar.gz"`, `"tar.xz"` or `"zip"`; the default `"raw"` treats the download as the binary.                 |
+| `.binaryPath(path)`          | For an archive, the binary's path _inside_ it. Defaults to the name.                                               |
+| `.checksum(sha256)`          | Expected SHA-256, or a `(platform) => string` resolver — [verifies and caches](#pinning-verification-and-caching). |
+| `.platform({ os, arch })`    | Resolve for a specific platform instead of the host.                                                               |
+| `.download(fn)`              | Override the downloader (defaults to an HTTPS download); mainly a test seam.                                       |
 
 ### Raw binaries vs. archives
 
 - **`"raw"`** (default) — the URL points straight at the executable; it's saved
   as `<destDir>/<name>` and `chmod +x`'d.
-- **`.archive("tar.gz")` / `.archive("zip")`** — the URL points at a gzipped
-  tarball or a zip; Zuke unpacks it to a scratch directory, copies
-  `.binaryPath(...)` (default the name) out to `<destDir>/<name>`, then discards
-  the scratch. Set `.binaryPath(...)` when the binary lives in a subdirectory of
-  the archive (e.g. Helm ships it under `linux-amd64/helm`). Zip reading covers
-  the `stored` and `deflate` methods release assets use (dprint et al. ship
-  zip-only); encrypted or zip64 archives are rejected with a clear error, and no
-  archive entry may escape the destination directory (a "zip slip").
+- **`.archive("tar.gz")` / `.archive("tar.xz")` / `.archive("zip")`** — the URL
+  points at a tarball (gzipped or xz-compressed; the xz decoder is built in) or
+  a zip; Zuke unpacks it to a scratch directory, copies `.binaryPath(...)`
+  (default the name) out to `<destDir>/<name>`, then discards the scratch. Set
+  `.binaryPath(...)` when the binary lives in a subdirectory of the archive
+  (e.g. Helm ships it under `linux-amd64/helm`). Zip reading covers the `stored`
+  and `deflate` methods release assets use (dprint et al. ship zip-only);
+  encrypted or zip64 archives are rejected with a clear error, and no archive
+  entry may escape the destination directory (a "zip slip").
 
 On Windows the installed filename gains an `.exe` suffix and the executable bit
 is skipped.
@@ -111,10 +112,9 @@ publish — and it does three jobs at once:
    re-downloaded and re-verified, never silently reused. Bumping the checksum
    for a new version is a natural miss that re-fetches.
 
-What the checksum covers depends on the format: for `"tar.gz"` and `"zip"` it's
-the SHA-256 of the **archive** (what projects list in their
-`checksums.txt`/`sha256sum` files); for `"raw"` it's the SHA-256 of the
-**binary** itself.
+What the checksum covers depends on the format: for an archive it's the SHA-256
+of the **archive** (what projects list in their `checksums.txt`/`sha256sum`
+files); for `"raw"` it's the SHA-256 of the **binary** itself.
 
 Without a checksum, the tool is downloaded every run and left unverified — fine
 for a quick spike, but pin one for anything real.
@@ -183,15 +183,17 @@ apply to a tree:
 
 A tree always ships packed, so `.archive(...)` defaults to `"tar.gz"` and
 `"raw"` is rejected
-(`a tree install needs an archive ("tar.gz" or "zip"), not
-"raw"`). Everything
-else — `.name(...)`, `.url(...)`, `.destDir(...)`, `.checksum(...)`,
-`.platform(...)`, `.download(...)` — behaves as for [`install()`](#settings);
-the tree lands at `<destDir>/<name>`. Pinning, verification, and caching work
-the same, except the checksum is always the SHA-256 of the **archive** and a
-cache hit additionally requires the declared `.bins(...)` to still be present.
-For a one-off outside a toolchain use `ToolTasks.installTree`; group several
-with [`Toolchain.tree`](#toolchain--many-tools), or drop to the
+(`a tree install needs an archive ("tar.gz", "tar.xz" or "zip"), not "raw"`).
+`"tar.xz"` covers the runtimes that ship only that — the Flutter SDK on Linux,
+Zig — with the same checksum-before-unpack, `.strip(...)`, `.bins(...)`, symlink
+and path-traversal guarantees as `"tar.gz"`. Everything else — `.name(...)`,
+`.url(...)`, `.destDir(...)`, `.checksum(...)`, `.platform(...)`,
+`.download(...)` — behaves as for [`install()`](#settings); the tree lands at
+`<destDir>/<name>`. Pinning, verification, and caching work the same, except the
+checksum is always the SHA-256 of the **archive** and a cache hit additionally
+requires the declared `.bins(...)` to still be present. For a one-off outside a
+toolchain use `ToolTasks.installTree`; group several with
+[`Toolchain.tree`](#toolchain--many-tools), or drop to the
 [`installTree`](#the-installrelease-primitive) primitive directly.
 
 ## `toolchain()` — many tools

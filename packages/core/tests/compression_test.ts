@@ -7,6 +7,7 @@ import {
   assertSafeLinkTarget,
   createTarGzip,
   extractTarGzip,
+  extractTarXz,
   extractZip,
   gunzip,
   gunzipBounded,
@@ -20,6 +21,7 @@ import {
 import { DEFLATE, makeZip, STORED } from "./_zip.ts";
 import { GNU, longLink, ustarArchive } from "./_tar.ts";
 import { withTemp } from "./_temp.ts";
+import { ESCAPING_TAR_XZ, fixture, FLUTTER_TAR_XZ } from "./_xz.ts";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 const dec = (b: Uint8Array) => new TextDecoder().decode(b);
@@ -964,4 +966,39 @@ Deno.test("zip refuses a symlink entry", async () => {
     Error,
     "symlink",
   );
+});
+
+Deno.test("extractTarXz unpacks an xz tarball with strip and keeps its symlink", async () => {
+  await withTemp(async (dir) => {
+    const archive = `${dir}/flutter.tar.xz`;
+    await Deno.writeFile(archive, fixture(FLUTTER_TAR_XZ));
+    await extractTarXz(archive, `${dir}/out`, { strip: 1 });
+    assertEquals(await Deno.readTextFile(`${dir}/out/version`), "3.47.7\n");
+    assertEquals(
+      await Deno.readTextFile(`${dir}/out/bin/cache/dart-sdk/bin/dart`),
+      "#!/bin/sh\necho dart\n",
+    );
+    if (Deno.build.os !== "windows") {
+      const link = await Deno.lstat(`${dir}/out/bin/dart`);
+      assertEquals(link.isSymlink, true);
+      assertEquals(
+        await Deno.readTextFile(`${dir}/out/bin/dart`),
+        "#!/bin/sh\necho dart\n",
+      );
+    }
+  });
+});
+
+Deno.test("extractTarXz refuses a path that escapes the destination", async () => {
+  await withTemp(async (dir) => {
+    const archive = `${dir}/evil.tar.xz`;
+    await Deno.writeFile(archive, fixture(ESCAPING_TAR_XZ));
+    await assertRejects(
+      () => extractTarXz(archive, `${dir}/out`),
+      Error,
+      "escapes the destination",
+    );
+    // Refused up front: not even the harmless sibling entry was written.
+    assertEquals(await Deno.stat(`${dir}/out/pkg/ok`).catch(() => null), null);
+  });
 });

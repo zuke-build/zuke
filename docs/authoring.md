@@ -532,8 +532,9 @@ Pack build artifacts without any dependency. `gzip(bytes)`/`gunzip(bytes)` wrap
 the platform `CompressionStream`; `tar(entries)`/`untar(archive)` read and write
 the POSIX `ustar` format in memory; and the file helpers
 `createTarGzip(files, dest, { cwd })` / `extractTarGzip(src, destDir)` produce
-and unpack `.tar.gz` archives. Entry names are limited to 100 bytes and archives
-use a fixed mtime, so output is reproducible.
+and unpack `.tar.gz` archives, and `extractTarXz(src, destDir)` unpacks a
+`.tar.xz` with a built-in LZMA2 decoder. Entry names are limited to 100 bytes
+and archives use a fixed mtime, so output is reproducible.
 
 <!-- check -->
 

@@ -335,8 +335,14 @@ Deno.test("treeOptions_ requires name and url and rejects a raw archive", () => 
       new ToolInstallSettings().name("x").url(() => "u").archive("raw")
         .treeOptions_(DEFAULT_TOOLS_DIR),
     Error,
-    'not "raw"',
+    '("tar.gz", "tar.xz" or "zip"), not "raw"',
   );
+});
+
+Deno.test("treeOptions_ accepts a tar.xz archive", () => {
+  const spec = new ToolInstallSettings().name("flutter").url(() => "u")
+    .archive("tar.xz").treeOptions_(".fallback");
+  assertEquals(spec.archive, "tar.xz");
 });
 
 Deno.test("treeOptions_ carries strip/bins and defaults the archive to tar.gz", () => {
