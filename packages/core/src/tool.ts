@@ -156,7 +156,9 @@ export class ToolInstallSettings {
 
   /**
    * For a tree install, the paths (relative to the stripped root) to mark
-   * executable on POSIX — a runtime's `bin/node`, `bin/npm`, … Ignored by a
+   * executable on POSIX — a runtime's `bin/node`, `bin/npm`, … Extraction
+   * already keeps the archive's mode bits, so this is a fallback for an
+   * archive that ships them without the executable bit. Ignored by a
    * single-binary install.
    */
   bins(...paths: string[]): this {

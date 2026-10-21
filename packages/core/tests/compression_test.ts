@@ -435,7 +435,7 @@ Deno.test("extractTarGzip contains a symlink chain hidden behind case variation"
   ], "pwned.txt");
 });
 
-Deno.test("extractTarGzip does not follow a leaf symlink when a later file entry has the same name", async () => {
+Deno.test("extractTarGzip refuses a link hop that would let a same-name file escape", async () => {
   if (Deno.build.os === "windows") return; // symlink creation is privileged there
   await withTemp(async (dir) => {
     // A symlink planted AT the leaf (target lexically in-bounds via one hop),
@@ -450,15 +450,17 @@ Deno.test("extractTarGzip does not follow a leaf symlink when a later file entry
         { name: "d/pwn", data: enc("PWNED") },
       ])),
     );
-    await extractTarGzip(archive, `${dir}/out`);
-    // Nothing landed outside the destination, and the file wrote at its own path.
+    // The hop through `up` is refused outright (the reused-destination test
+    // below covers unlinking a leaf symlink before a write).
+    await assertRejects(
+      () => extractTarGzip(archive, `${dir}/out`),
+      Error,
+      "after a name",
+    );
     assertEquals(
       await Deno.stat(`${dir}/pwned`).then(() => true).catch(() => false),
       false,
     );
-    const leaf = await Deno.lstat(`${dir}/out/d/pwn`);
-    assertEquals(leaf.isFile, true); // a real file now, not the symlink
-    assertEquals(await Deno.readTextFile(`${dir}/out/d/pwn`), "PWNED");
   });
 });
 
@@ -613,6 +615,140 @@ Deno.test("unzip skips directory entries and keeps nested files", async () => {
   const out = await unzip(zip);
   assertEquals(out.map((e) => e.name), ["bin/tool"]);
   assertEquals(dec(out[0].data), "#!/bin/sh\n");
+});
+
+Deno.test("unzip reads a Unix zip's modes and symlinks", async () => {
+  const zip = await makeZip([
+    { name: "bin/tool", data: enc("#!/bin/sh\n"), unixMode: 0o104755 },
+    {
+      name: "bin/link",
+      data: enc("tool"),
+      method: DEFLATE,
+      unixMode: 0o120777,
+    },
+    { name: "plain.txt", data: enc("x"), unixMode: 0o100000 },
+    { name: "dos.txt", data: enc("y") },
+  ]);
+  const out = await unzip(zip);
+  assertEquals(out[0].mode, 0o4755);
+  assertEquals(out[1].linkname, "tool");
+  assertEquals(out[1].data.length, 0);
+  // A Unix entry with no permission bits, and a non-Unix one, carry no mode.
+  assertEquals(out[2].mode, undefined);
+  assertEquals(out[3].mode, undefined);
+});
+
+Deno.test({
+  name: "extractZip keeps Unix modes and recreates symlinks",
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await Deno.writeFile(
+        `${dir}/sdk.zip`,
+        await makeZip([
+          { name: "a/Versions/A/tool", data: enc("x"), unixMode: 0o104755 },
+          { name: "a/Versions/Current", data: enc("A"), unixMode: 0o120755 },
+          { name: "a/readme", data: enc("r"), unixMode: 0o100600 },
+        ]),
+      );
+      await extractZip(`${dir}/sdk.zip`, `${dir}/out`);
+      const tool = await Deno.stat(`${dir}/out/a/Versions/A/tool`);
+      // Executable, and the bits above 0o777 dropped.
+      assertEquals((tool.mode ?? 0) & 0o4100, 0o100);
+      assertEquals(
+        ((await Deno.stat(`${dir}/out/a/readme`)).mode ?? 0) & 0o777,
+        0o600,
+      );
+      assertEquals(await Deno.readLink(`${dir}/out/a/Versions/Current`), "A");
+    });
+  },
+});
+
+Deno.test("assertSafeLinkTarget refuses .. after a name, and empty or NUL targets", () => {
+  // Leading climbs stay allowed (Node's bin/npm -> ../lib/...).
+  assertSafeLinkTarget("bin/npm", "../lib/npm-cli.js");
+  for (const target of ["x/up/..", "a/../b", "", "a\0b"]) {
+    assertThrows(() => assertSafeLinkTarget("p1", target), Error, "symlink");
+  }
+});
+
+Deno.test("extractZip refuses a symlink chain that would climb out", async () => {
+  await withTemp(async (dir) => {
+    await Deno.writeFile(
+      `${dir}/chain.zip`,
+      await makeZip([
+        { name: "x/up", data: enc(".."), unixMode: 0o120777 },
+        { name: "p1", data: enc("x/up/.."), unixMode: 0o120777 },
+      ]),
+    );
+    await assertRejects(
+      () => extractZip(`${dir}/chain.zip`, `${dir}/out`),
+      Error,
+      "after a name",
+    );
+  });
+});
+
+Deno.test({
+  name: "extraction keeps files owner-readable and never world-writable",
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await Deno.writeFile(
+        `${dir}/t.tgz`,
+        await gzip(tar([
+          { name: "none", data: enc("x"), mode: 0 },
+          { name: "open", data: enc("x"), mode: 0o777 },
+        ])),
+      );
+      await extractTarGzip(`${dir}/t.tgz`, `${dir}/out`);
+      const mode = async (name: string) =>
+        ((await Deno.stat(`${dir}/out/${name}`)).mode ?? 0) & 0o777;
+      assertEquals(await mode("none"), 0o600);
+      assertEquals(await mode("open"), 0o755);
+    });
+  },
+});
+
+Deno.test("extractZip refuses a Unix symlink that escapes", async () => {
+  await withTemp(async (dir) => {
+    await Deno.writeFile(
+      `${dir}/evil.zip`,
+      await makeZip([
+        { name: "link", data: enc("../../etc"), unixMode: 0o120777 },
+      ]),
+    );
+    await assertRejects(
+      () => extractZip(`${dir}/evil.zip`, `${dir}/out`),
+      Error,
+      "escapes the destination",
+    );
+  });
+});
+
+Deno.test({
+  name: "extractTarGzip applies each file's mode",
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await Deno.writeFile(
+        `${dir}/t.tgz`,
+        await gzip(tar([
+          { name: "bin/run", data: enc("x"), mode: 0o755 },
+          { name: "secret", data: enc("s"), mode: 0o600 },
+        ])),
+      );
+      await extractTarGzip(`${dir}/t.tgz`, `${dir}/out`);
+      assertEquals(
+        ((await Deno.stat(`${dir}/out/bin/run`)).mode ?? 0) & 0o111,
+        0o111,
+      );
+      assertEquals(
+        ((await Deno.stat(`${dir}/out/secret`)).mode ?? 0) & 0o777,
+        0o600,
+      );
+    });
+  },
 });
 
 Deno.test("extractZip writes files (stored + deflate + nested) to disk", async () => {

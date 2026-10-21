@@ -176,6 +176,12 @@ function assertSafeLinkTarget(entryName: string, target: string): void
   name is bounded by {@link assertSafeEntryName}; a symlink adds a second escape
   vector (its target), so a poisoned tarball can't plant `bin/x -> ../../etc`.
 
+  A `..` is allowed only before the target's first name: after a name, that
+  name may itself be a symlink, and `..` would climb from wherever it points —
+  so a chain such as `up -> ..` then `p -> up/..` could reach outside the root
+  while every target looked bounded. An empty target, or one holding a NUL, is
+  refused too.
+
 function assertSecureBackendUrl(raw: string, what: string, readEnv: (name: string) => string | undefined): void
   Refuse a plaintext URL for a backend Zuke both authenticates to and trusts
   the answers from — the state service, the build registry, and the remote
@@ -598,8 +604,9 @@ async function installTree(options: InstallTreeOptions): Promise<AbsolutePath>
 
   Because {@link AbsolutePath} is callable, the root doubles as an accessor:
   `root("bin", "node")` is the node binary and `root("bin")` is the directory to
-  put on `PATH` (with `prependPath`). Declared {@link InstallTreeOptions.bins}
-  are marked executable on POSIX. With a {@link InstallTreeOptions.checksum} the
+  put on `PATH` (with `prependPath`). Files keep the archive's permission bits;
+  declared {@link InstallTreeOptions.bins} are also marked executable on POSIX,
+  as a fallback. With a {@link InstallTreeOptions.checksum} the
   archive is verified before unpacking and a matching prior install is reused.
 
 function isCI(env: (name: string) => string | undefined): boolean
@@ -1079,7 +1086,9 @@ function untar(archive: Uint8Array): TarEntry[]
 async function unzip(archive: Uint8Array): Promise<TarEntry[]>
   Read the entries of a `.zip` archive, decompressing `stored` and `deflate`
   members. The central directory is the source of truth. Directory entries (a
-  trailing `/`) are skipped. Encrypted, zip64, or otherwise-compressed entries
+  trailing `/`) are skipped. An entry from a zip made on Unix keeps its
+  permission bits as `mode`, and a Unix symlink entry comes back with its
+  target as `linkname`, so {@link extractZip} recreates it. Encrypted, zip64, or otherwise-compressed entries
   throw a friendly error naming the offending entry, and a header or data field
   that runs past the archive is reported as a malformed zip (not a raw
   out-of-bounds error). Every offset read from the archive is bounds-checked;
@@ -2845,7 +2854,9 @@ class ToolInstallSettings
     release tarball's `tool-v1.2.3/` directory. Ignored by a single-binary install.
   bins(...paths: string[]): this
     For a tree install, the paths (relative to the stripped root) to mark
-    executable on POSIX — a runtime's `bin/node`, `bin/npm`, … Ignored by a
+    executable on POSIX — a runtime's `bin/node`, `bin/npm`, … Extraction
+    already keeps the archive's mode bits, so this is a fallback for an
+    archive that ships them without the executable bit. Ignored by a
     single-binary install.
   checksum(sha256: string | ((platform: Platform) => string)): this
     The expected SHA-256 (hex) of the downloaded artifact — verifies and caches
@@ -4278,9 +4289,10 @@ interface InstallTreeOptions
     unwraps it; {@link bins} and the returned tree root are then relative to the
     stripped tree. Defaults to `0`.
   bins?: readonly string[]
-    Paths (relative to the stripped tree root) to mark executable on POSIX — the
-    tar reader does not preserve mode bits, so a runtime's `bin/node`,
-    `bin/npm`, … need it. Chmod follows a symlink to its real target, so listing
+    Paths (relative to the stripped tree root) to mark executable on POSIX — a
+    runtime's `bin/node`, `bin/npm`, … Extraction keeps the archive's mode
+    bits, so this is a fallback for an archive that ships a binary without the
+    executable bit. Chmod follows a symlink to its real target, so listing
     a symlinked bin makes the script it points at executable too.
   platform?: InstallPlatform
     The platform to resolve for. Defaults to {@link hostPlatform}.
@@ -5172,7 +5184,9 @@ interface TarEntry
     into `lib/node_modules`, so extracting a runtime tree must preserve them.
   mode?: number
     A regular file's permission bits, written into its header: `0o755` for an
-    executable, so a binary shipped in the archive runs once extracted.
+    executable, so a binary shipped in the archive runs once extracted. The
+    extractors apply them on POSIX, always owner-readable and -writable and
+    never group- or world-writable.
     Defaults to `0o644`. Ignored for a symlink entry, which is always
     `0o777`.
 

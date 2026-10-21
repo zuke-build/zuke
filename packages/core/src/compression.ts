@@ -55,9 +55,21 @@ export function assertSafeEntryName(name: string): void {
  * extraction root once resolved against the link's own directory. A file entry's
  * name is bounded by {@link assertSafeEntryName}; a symlink adds a second escape
  * vector (its target), so a poisoned tarball can't plant `bin/x -> ../../etc`.
+ *
+ * A `..` is allowed only before the target's first name: after a name, that
+ * name may itself be a symlink, and `..` would climb from wherever it points —
+ * so a chain such as `up -> ..` then `p -> up/..` could reach outside the root
+ * while every target looked bounded. An empty target, or one holding a NUL, is
+ * refused too.
  */
 export function assertSafeLinkTarget(entryName: string, target: string): void {
   const normalized = target.replace(/\\/g, "/");
+  if (normalized === "" || normalized.includes("\0")) {
+    throw new Error(
+      `archive: refusing a symlink "${entryName}" with an empty or NUL-bearing ` +
+        `target.`,
+    );
+  }
   if (normalized.startsWith("/") || /^[A-Za-z]:/.test(normalized)) {
     throw new Error(
       `archive: refusing a symlink "${entryName}" to an absolute path: ` +
@@ -67,8 +79,15 @@ export function assertSafeLinkTarget(entryName: string, target: string): void {
   // Resolve the target relative to the symlink's own directory; it must never
   // climb above the extraction root.
   const parts = entryName.replace(/\\/g, "/").split("/").slice(0, -1);
+  let named = false;
   for (const segment of normalized.split("/")) {
     if (segment === "" || segment === ".") continue;
+    if (segment === ".." && named) {
+      throw new Error(
+        `archive: refusing a symlink "${entryName}" whose target climbs with ` +
+          `".." after a name, which may itself be a symlink: "${target}".`,
+      );
+    }
     if (segment === "..") {
       if (parts.length === 0) {
         throw new Error(
@@ -78,6 +97,7 @@ export function assertSafeLinkTarget(entryName: string, target: string): void {
       }
       parts.pop();
     } else {
+      named = true;
       parts.push(segment);
     }
   }
@@ -134,7 +154,9 @@ export interface TarEntry {
   linkname?: string;
   /**
    * A regular file's permission bits, written into its header: `0o755` for an
-   * executable, so a binary shipped in the archive runs once extracted.
+   * executable, so a binary shipped in the archive runs once extracted. The
+   * extractors apply them on POSIX, always owner-readable and -writable and
+   * never group- or world-writable.
    * Defaults to `0o644`. Ignored for a symlink entry, which is always
    * `0o777`.
    */
@@ -622,7 +644,13 @@ async function writeEntries(
       // would get the wrong type — rare (runtimes ship .zip on Windows).
       await Deno.symlink(entry.linkname, path, { type: "file" });
     } else {
-      await Deno.writeFile(path, entry.data);
+      // The archive's permission bits, kept owner-readable and -writable and
+      // never group- or world-writable; Windows ignores the mode.
+      await Deno.writeFile(path, entry.data, {
+        mode: entry.mode === undefined
+          ? undefined
+          : (entry.mode | 0o600) & 0o755,
+      });
     }
   }
 }
@@ -642,6 +670,12 @@ const ZIP_LOCAL_SIG = 0x04034b50;
 const ZIP_STORED = 0;
 /** Compression method: DEFLATE. */
 const ZIP_DEFLATE = 8;
+/** The "version made by" host byte for Unix, whose attributes carry `st_mode`. */
+const ZIP_HOST_UNIX = 3;
+/** The file-type mask of `st_mode`. */
+const S_IFMT = 0o170000;
+/** The `st_mode` file type of a symbolic link. */
+const S_IFLNK = 0o120000;
 /** The 32-bit sentinel a field carries when its real value lives in a zip64 record. */
 const ZIP64_SENTINEL = 0xffffffff;
 
@@ -703,7 +737,9 @@ async function readLocalEntry(
 /**
  * Read the entries of a `.zip` archive, decompressing `stored` and `deflate`
  * members. The central directory is the source of truth. Directory entries (a
- * trailing `/`) are skipped. Encrypted, zip64, or otherwise-compressed entries
+ * trailing `/`) are skipped. An entry from a zip made on Unix keeps its
+ * permission bits as `mode`, and a Unix symlink entry comes back with its
+ * target as `linkname`, so {@link extractZip} recreates it. Encrypted, zip64, or otherwise-compressed entries
  * throw a friendly error naming the offending entry, and a header or data field
  * that runs past the archive is reported as a malformed zip (not a raw
  * out-of-bounds error). Every offset read from the archive is bounds-checked;
@@ -756,17 +792,30 @@ export async function unzip(archive: Uint8Array): Promise<TarEntry[]> {
       throw new Error(`zip: unsupported zip feature (zip64 entry "${name}").`);
     }
     if (!name.endsWith("/")) {
-      entries.push({
+      const data = await readLocalEntry(
+        view,
+        archive,
+        localOffset,
+        compressedSize,
+        method,
         name,
-        data: await readLocalEntry(
-          view,
-          archive,
-          localOffset,
-          compressedSize,
-          method,
+      );
+      // A zip made on Unix (host byte 3) keeps `st_mode` in the high half of
+      // the external attributes: the permission bits, and S_IFLNK for a
+      // symlink, whose data is its target.
+      const unixMode = view.getUint8(p + 5) === ZIP_HOST_UNIX
+        ? view.getUint32(p + 38, true) >>> 16
+        : 0;
+      if ((unixMode & S_IFMT) === S_IFLNK) {
+        entries.push({
           name,
-        ),
-      });
+          data: new Uint8Array(0),
+          linkname: new TextDecoder().decode(data),
+        });
+      } else {
+        const mode = unixMode & 0o7777;
+        entries.push(mode === 0 ? { name, data } : { name, data, mode });
+      }
     }
     p += 46 + nameLen + extraLen + commentLen;
   }

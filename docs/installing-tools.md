@@ -176,10 +176,10 @@ accessor: `root("bin", "node")` is a binary and `root("bin")` a directory to add
 to `PATH`. It takes the same settings-lambda as `install()`, plus two that only
 apply to a tree:
 
-| Method            | Purpose                                                                                                                                                                                                         |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `.strip(n)`       | Drop `n` leading path components while unpacking (tar's `--strip-components`) — `1` unwraps a release tarball's `tool-v1.2.3/` directory. Defaults to `0`.                                                      |
-| `.bins(...paths)` | Paths (relative to the stripped root) to mark executable on POSIX — the tar reader doesn't preserve mode bits, so a runtime's `bin/node`, `bin/npm`, … need it. Following a symlink chmods its real target too. |
+| Method            | Purpose                                                                                                                                                                                                                                                                                |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.strip(n)`       | Drop `n` leading path components while unpacking (tar's `--strip-components`) — `1` unwraps a release tarball's `tool-v1.2.3/` directory. Defaults to `0`.                                                                                                                             |
+| `.bins(...paths)` | Paths (relative to the stripped root) to mark executable on POSIX. Extraction keeps the archive's mode bits (tar entries, and zips made on Unix), so this is a fallback for an archive that ships a binary without the executable bit. Following a symlink chmods its real target too. |
 
 A tree always ships packed, so `.archive(...)` defaults to `"tar.gz"` and
 `"raw"` is rejected
