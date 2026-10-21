@@ -35,6 +35,8 @@ export interface NuspecMetadata {
   projectUrl: string;
   /** `<iconUrl>`, when set. */
   iconUrl?: string;
+  /** `<copyright>`, when set. */
+  copyright?: string;
   /** `<licenseUrl>`, when set. */
   licenseUrl?: string;
   /** `<docsUrl>`, when set. */
@@ -82,6 +84,7 @@ export function renderNuspec(metadata: NuspecMetadata): string {
     ...element("authors", joined(metadata.authors, ", ")),
     ...element("projectUrl", metadata.projectUrl),
     ...element("iconUrl", metadata.iconUrl),
+    ...element("copyright", metadata.copyright),
     ...element("licenseUrl", metadata.licenseUrl),
     "    <requireLicenseAcceptance>false</requireLicenseAcceptance>",
     ...element("docsUrl", metadata.docsUrl),

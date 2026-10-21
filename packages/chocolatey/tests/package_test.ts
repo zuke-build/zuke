@@ -46,6 +46,7 @@ const FULL_NUSPEC = `<?xml version="1.0" encoding="utf-8"?>
     <authors>Acme Corp, Jane Doe</authors>
     <projectUrl>https://example.com</projectUrl>
     <iconUrl>https://example.com/icon.png</iconUrl>
+    <copyright>Copyright (c) 2026 Acme Corp</copyright>
     <licenseUrl>https://example.com/LICENSE</licenseUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <docsUrl>https://example.com/docs</docsUrl>
@@ -85,6 +86,7 @@ const full: Configure<ChocolateyPackageSettings> = (s) =>
     .projectUrl("https://example.com")
     .licenseUrl("https://example.com/LICENSE")
     .iconUrl("https://example.com/icon.png")
+    .copyright("Copyright (c) 2026 Acme Corp")
     .packageSourceUrl("https://github.com/acme/app")
     .docsUrl("https://example.com/docs")
     .bugTrackerUrl("https://github.com/acme/app/issues")
@@ -345,6 +347,7 @@ Deno.test("package: one-line fields refuse line breaks and controls", () => {
     [(s) => s.title("App\n<injected>"), ".title("],
     [(s) => s.summary("a\tb"), ".summary("],
     [(s) => s.summary("   "), ".summary("],
+    [(s) => s.copyright("Acme\n<injected>"), ".copyright("],
     [(s) => s.authors("Acme\r\n"), ".authors("],
     [(s) => s.owners(""), ".owners("],
   ];

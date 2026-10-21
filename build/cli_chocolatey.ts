@@ -36,9 +36,19 @@ import {
 /** The Chocolatey account that pushes and maintains the package. */
 export const CHOCOLATEY_OWNER = "zuke";
 
-/** The package icon: the mascot from the logo, square, as the gallery shows it. */
-export const ICON_URL =
-  `https://cdn.jsdelivr.net/gh/${CLI_REPO}@master/assets/icon.png`;
+/** The copyright notice, as the repository's LICENSE states it. */
+export const COPYRIGHT = "Copyright (c) 2026 Zuke contributors";
+
+/**
+ * The package icon — the mascot from the logo, square, as the gallery shows
+ * it — pinned to the release's own tag, so a published package's icon never
+ * changes under it. Releases are immutable, so the tag names one commit.
+ */
+export function iconUrl(version: string): string {
+  return `https://cdn.jsdelivr.net/gh/${CLI_REPO}@${
+    cliReleaseTag(version)
+  }/assets/icon.png`;
+}
 
 /** What the package's description tells a Chocolatey user. */
 const DESCRIPTION = [
@@ -78,7 +88,8 @@ export function cliChocolateyPackage(
       // The community repository account that maintains the package.
       .owners(CHOCOLATEY_OWNER)
       .projectUrl("https://zuke.build")
-      .iconUrl(ICON_URL)
+      .iconUrl(iconUrl(version))
+      .copyright(COPYRIGHT)
       .licenseUrl(`${repo}/blob/master/LICENSE`)
       .packageSourceUrl(repo)
       .bugTrackerUrl(`${repo}/issues`)
