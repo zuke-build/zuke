@@ -219,15 +219,16 @@ your workspace, so it needs no checkout before it — which is the point, since
 [`step-security/harden-runner`](https://github.com/step-security/harden-runner)
 only governs what runs after it.
 
-| Input                 | Default | What it does                                                                                                              |
-| --------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `target`              | `""`    | The Zuke target to run. Omit to harden and check out only.                                                                |
-| `egress-policy`       | `audit` | `audit` records outbound traffic; `block` enforces `allowed-endpoints`.                                                   |
-| `allowed-endpoints`   | `""`    | Space-separated `host:port` list permitted under `block`.                                                                 |
-| `persist-credentials` | `false` | Leave the token in git config, for a later push.                                                                          |
-| `fetch-depth`         | `1`     | Commits to fetch. `0` is the full history, which a secret scan needs.                                                     |
-| `ref`                 | `""`    | Branch, tag or SHA to check out. Empty follows the event — the base or default branch on a secret-bearing one. See below. |
-| `deno-version`        | `""`    | Install this Deno. Usually unnecessary — the `./zuke` launcher bootstraps its own.                                        |
+| Input                 | Default | What it does                                                                                                                    |
+| --------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `target`              | `""`    | The Zuke target to run. Omit to harden and check out only.                                                                      |
+| `egress-policy`       | `audit` | `audit` records outbound traffic; `block` enforces `allowed-endpoints`.                                                         |
+| `allowed-endpoints`   | `""`    | Space-separated `host:port` list permitted under `block`.                                                                       |
+| `persist-credentials` | `false` | Leave the token in git config, for a later push.                                                                                |
+| `fetch-depth`         | `1`     | Commits to fetch. `0` is the full history, which a secret scan needs.                                                           |
+| `ref`                 | `""`    | Branch, tag or SHA to check out. Empty follows the event — the base or default branch on a secret-bearing one. See below.       |
+| `deno-version`        | `""`    | Install this Deno. Usually unnecessary — the `./zuke` launcher bootstraps its own.                                              |
+| `actions-cache`       | `false` | Expose the Actions cache service to the build, so its [remote cache](./caching.md#on-github-actions) shares outputs through it. |
 
 Running a target needs a committed `./zuke` launcher in the repository (that is
 what `zuke setup` writes); the step fails with an annotation saying so if there

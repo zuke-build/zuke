@@ -494,13 +494,18 @@ machine. It applies to targets that declare both `inputs` and `outputs`, and is
 keyed by the same input fingerprint the local cache uses. A store outage is
 never fatal — Zuke logs a warning and falls back to a local rebuild.
 
-Two dependency-free backends ship, behind one `RemoteCacheStore` interface:
+Three dependency-free backends ship, behind one `RemoteCacheStore` interface:
 
 - **`FileSystemCacheStore`** — a shared or mounted directory (an NFS mount, a CI
   volume). Archives are `<dir>/<key>.tar.gz`.
 - **`HttpCacheStore`** — `GET`/`PUT <url>/<key>` with an optional bearer token.
   Works with any object store or cache server behind a URL (an S3/GCS/R2 bucket,
   or a self-hosted endpoint).
+- **`GitHubActionsCacheStore`** — the GitHub Actions cache service, with the
+  job's own `ACTIONS_RUNTIME_TOKEN` and `ACTIONS_RESULTS_URL`. Picked up
+  automatically once the `zuke-build/zuke` action's `actions-cache` input
+  (`bootstrap: { actionsCache: true }` in `cicd()`) exports them to the job —
+  see [On GitHub Actions](./caching.md#on-github-actions).
 
 Declare one in code with a typed `remoteCache()` override:
 
@@ -527,9 +532,9 @@ ZUKE_REMOTE_CACHE_DIR=/mnt/zuke-cache ./zuke ci     # filesystem backend
 ```
 
 Precedence is: an explicit `execute({ remoteCache })` option, then the build's
-`remoteCache()` override, then the `ZUKE_REMOTE_CACHE_*` environment variables.
-`--no-remote-cache` uses the local cache only for a run; `--no-cache` disables
-both.
+`remoteCache()` override, then the `ZUKE_REMOTE_CACHE_*` environment variables,
+then the Actions credentials. `--no-remote-cache` uses the local cache only for
+a run; `--no-cache` disables both.
 
 > **Note:** archive entry names use the POSIX `ustar` format (a 100-byte path
 > limit), so extremely deep output paths are rejected with a clear error.

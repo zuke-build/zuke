@@ -53,11 +53,17 @@ export interface CacheHost extends OutputHost {
 /** The real, `Deno`-backed {@link CacheHost}. */
 export const defaultCacheHost: CacheHost = {
   readFile: readFileOrNull,
-  async stat(path: string): Promise<{ isDirectory: boolean } | null> {
-    // Narrowed to the one field {@link OutputHost} promises, so a test double
-    // never has to fabricate a whole `Deno.FileInfo`.
+  async stat(
+    path: string,
+  ): Promise<{ isDirectory: boolean; mode?: number } | null> {
+    // Narrowed to the fields {@link OutputHost} promises, so a test double
+    // never has to fabricate a whole `Deno.FileInfo`. `mode` is null on
+    // Windows, where there are no permission bits to carry.
     const info = await statOrNull(path);
-    return info === null ? null : { isDirectory: info.isDirectory };
+    if (info === null) return null;
+    return info.mode === null
+      ? { isDirectory: info.isDirectory }
+      : { isDirectory: info.isDirectory, mode: info.mode };
   },
   async lstat(
     path: string,

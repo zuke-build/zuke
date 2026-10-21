@@ -14,9 +14,11 @@
  * the target's outputs (built with the dependency-free {@link "./compression.ts"
  * | tar/gzip} helpers). Two backends ship, both dependency-free:
  * {@link FileSystemCacheStore} (a shared/mounted directory) and
- * {@link HttpCacheStore} (any object store or cache server behind a URL). A
- * build selects one with a typed `remoteCache()` override, or one is picked up
- * from the environment by {@link envCacheStore}.
+ * {@link HttpCacheStore} (any object store or cache server behind a URL), and a
+ * third, {@link "./github_actions_cache.ts".GitHubActionsCacheStore}, uses the
+ * GitHub Actions cache service a job already holds credentials for. A build
+ * selects one with a typed `remoteCache()` override, or one is picked up from
+ * the environment by {@link envCacheStore}.
  *
  * @module
  */
@@ -31,6 +33,7 @@ import {
   type TarEntry,
   untar,
 } from "./compression.ts";
+import { GitHubActionsCacheStore } from "./github_actions_cache.ts";
 import { assertSecureBackendUrl, HttpError } from "./http.ts";
 import { readBytesBounded, readFileOrNull } from "./internal.ts";
 
@@ -70,8 +73,13 @@ const DEFAULT_MAX_INFLATED_BYTES = 2 * 1024 * 1024 * 1024;
 export interface OutputHost {
   /** File contents, or `null` if the path does not exist. */
   readFile(path: string): Promise<Uint8Array | null>;
-  /** Whether a path exists and is a directory, or `null` if it is missing. */
-  stat(path: string): Promise<{ isDirectory: boolean } | null>;
+  /**
+   * Whether a path exists and is a directory, or `null` if it is missing. A
+   * host that has permission bits reports them as `mode`, so an archived
+   * binary is restored executable; one that does not (Windows, a test double)
+   * leaves it out and the entry takes the archive's default.
+   */
+  stat(path: string): Promise<{ isDirectory: boolean; mode?: number } | null>;
   /**
    * Describe a path *without* following a final symlink, or `null` if it is
    * missing. Distinct from {@link OutputHost.stat}, which resolves a link and so
@@ -83,8 +91,11 @@ export interface OutputHost {
   ): Promise<{ isSymlink: boolean; isDirectory: boolean } | null>;
   /** The entry names within a directory. */
   readDir(path: string): Promise<string[]>;
-  /** Write a file, creating parent directories as needed. */
-  writeFile(path: string, bytes: Uint8Array): Promise<void>;
+  /**
+   * Write a file, creating parent directories as needed, with the permission
+   * bits `mode` where the platform has them.
+   */
+  writeFile(path: string, bytes: Uint8Array, mode?: number): Promise<void>;
 }
 
 /** Normalise a path for archive entry names: `\`→`/`, drop a leading `./`. */
@@ -114,7 +125,11 @@ async function collectEntries(
     if (info === null) return; // a declared output that isn't there — skip it
     if (!info.isDirectory) {
       const data = await host.readFile(path);
-      if (data !== null) entries.push({ name: normalize(path), data });
+      if (data === null) return;
+      // Permission bits only: the tar header has no room for a file type, and
+      // the executable bit is what a restored binary needs to keep.
+      const mode = info.mode === undefined ? undefined : info.mode & 0o777;
+      entries.push({ name: normalize(path), data, mode });
       return;
     }
     for (const name of (await host.readDir(path)).slice().sort()) {
@@ -127,9 +142,10 @@ async function collectEntries(
 }
 
 /**
- * Archive a target's `outputs` into a gzipped tar of their current contents.
- * A declared output that does not exist is skipped, as is anything under a
- * `.git` or `.zuke` directory.
+ * Archive a target's `outputs` into a gzipped tar of their current contents,
+ * each file with its permission bits so a binary restores executable. A
+ * declared output that does not exist is skipped, as is anything under a
+ * `.git` or `.zuke` directory other than `.zuke/tools`.
  */
 export async function archiveOutputs(
   outputs: readonly string[],
@@ -143,9 +159,16 @@ export async function archiveOutputs(
  * as an output. `.git` is the one that turns a poisoned cache into code
  * execution: a restored `.git/hooks/pre-commit` or a rewritten `.git/config`
  * runs on the developer's next ordinary git command. `.zuke` holds the run state
- * and cache index Zuke itself trusts.
+ * and cache index Zuke itself trusts — except its `tools` subtree, where a
+ * build's declared toolchain installs the binaries it provisions. Those are
+ * exactly the outputs a remote cache exists to share (a pinned SDK, a
+ * checksum-verified scanner), and the toolchain re-verifies a restored binary
+ * against its recorded checksum before reusing it.
  */
 const FORBIDDEN_DIRS = [".git", ".zuke"];
+
+/** The one `.zuke` subtree a restore may write into: see {@link FORBIDDEN_DIRS}. */
+const TOOLS_DIR = "tools";
 
 /**
  * Whether any segment of `name` (already normalised) is a
@@ -154,8 +177,10 @@ const FORBIDDEN_DIRS = [".git", ".zuke"];
  * runs on the same ordinary git command the top-level one would.
  */
 function isForbiddenPath(name: string): boolean {
-  return name.toLowerCase().split("/").some((segment) =>
-    FORBIDDEN_DIRS.includes(segment)
+  const segments = name.toLowerCase().split("/");
+  return segments.some((segment, i) =>
+    FORBIDDEN_DIRS.includes(segment) &&
+    !(segment === ".zuke" && segments[i + 1] === TOOLS_DIR)
   );
 }
 
@@ -200,7 +225,8 @@ function assertPlainFileEntry(entry: TarEntry): void {
  * leaves no half-written, partially-trusted output tree. An entry is refused
  * when its name is absolute or escapes the workspace with `..`, when it is a
  * symlink or directory entry (which {@link archiveOutputs} never produces),
- * when it lands under `.git` or `.zuke`, when — given `outputs` — it falls
+ * when it lands under `.git` or `.zuke` (`.zuke/tools` aside), when — given
+ * `outputs` — it falls
  * outside the target's declared outputs, and when the path it would be written
  * to passes through, or is, a symlink that already exists on disk.
  *
@@ -246,7 +272,7 @@ export async function restoreOutputs(
   // as it goes and must evict.
   const realDirs = new Set<string>(["."]);
   const probe: LinkProbe = (path) => host.lstat(normalize(path));
-  const validated: { name: string; data: Uint8Array }[] = [];
+  const validated: TarEntry[] = [];
   for (const entry of entries) {
     assertSafeEntryName(entry.name);
     assertPlainFileEntry(entry);
@@ -281,7 +307,7 @@ export async function restoreOutputs(
           `with a real file to cache this target.`,
       );
     }
-    validated.push({ name, data: entry.data });
+    validated.push({ name, data: entry.data, mode: entry.mode });
   }
   // Write the *validated* path rather than the raw entry name. Every check
   // above reasoned about the normalised form, and a name that differs from it
@@ -291,7 +317,7 @@ export async function restoreOutputs(
   // archive Zuke produced the two are the same string.
   const written: string[] = [];
   for (const entry of validated) {
-    await host.writeFile(entry.name, entry.data);
+    await host.writeFile(entry.name, entry.data, entry.mode);
     written.push(entry.name);
   }
   return written;
@@ -443,7 +469,10 @@ export class HttpCacheStore implements RemoteCacheStore {
  * Resolve a {@link RemoteCacheStore} from the environment, or `undefined` when
  * none is configured. `ZUKE_REMOTE_CACHE_URL` (with an optional
  * `ZUKE_REMOTE_CACHE_TOKEN`) selects an {@link HttpCacheStore}; otherwise
- * `ZUKE_REMOTE_CACHE_DIR` selects a {@link FileSystemCacheStore}.
+ * `ZUKE_REMOTE_CACHE_DIR` selects a {@link FileSystemCacheStore}; otherwise,
+ * on a GitHub Actions job that exposes its `ACTIONS_RUNTIME_TOKEN` and
+ * `ACTIONS_RESULTS_URL` (the `actions-cache` input of the `zuke-build/zuke`
+ * action), a {@link "./github_actions_cache.ts".GitHubActionsCacheStore}.
  */
 export function envCacheStore(
   readEnv: (name: string) => string | undefined,
@@ -458,6 +487,15 @@ export function envCacheStore(
   }
   const dir = readEnv("ZUKE_REMOTE_CACHE_DIR");
   if (dir !== undefined && dir !== "") return new FileSystemCacheStore(dir);
+  const token = readEnv("ACTIONS_RUNTIME_TOKEN");
+  const results = readEnv("ACTIONS_RESULTS_URL");
+  if (
+    token !== undefined && token !== "" && results !== undefined &&
+    results !== ""
+  ) {
+    assertSecureBackendUrl(results, "ACTIONS_RESULTS_URL", readEnv);
+    return new GitHubActionsCacheStore({ url: results, token });
+  }
   return undefined;
 }
 

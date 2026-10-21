@@ -1220,6 +1220,30 @@ Deno.test("every prelude option maps onto the action's own input names", () => {
   assertEquals(yaml.includes("denoland/setup-deno"), false);
 });
 
+Deno.test("bootstrap actionsCache renders the action's actions-cache input", () => {
+  class B extends Build {
+    gate = target().executes(() => {});
+    wf = cicd({
+      pins: (action) => `${action}@${"e".repeat(40)}`,
+      invokes: [{ target: this.gate, bootstrap: { actionsCache: true } }],
+    });
+  }
+  const yaml = discoverCiFiles(new B())[0].render();
+  assertStringIncludes(yaml, 'actions-cache: "true"');
+  // Off is the action's default, so it is left unsaid.
+  class Off extends Build {
+    gate = target().executes(() => {});
+    wf = cicd({
+      pins: (action) => `${action}@${"e".repeat(40)}`,
+      invokes: [{ target: this.gate, bootstrap: { actionsCache: false } }],
+    });
+  }
+  assertEquals(
+    discoverCiFiles(new Off())[0].render().includes("actions-cache"),
+    false,
+  );
+});
+
 Deno.test("the two security-relevant inputs are always stated", () => {
   // Even when they match the action's own defaults, exactly as the two steps
   // this replaced stated them. Whether a job records egress or enforces it, and

@@ -143,19 +143,21 @@ fails a build.
 
 ### Backends
 
-Two dependency-free stores ship, behind one `RemoteCacheStore` interface
+Three dependency-free stores ship, behind one `RemoteCacheStore` interface
 (`get(key)` / `put(key, artifact)`):
 
-| Store                  | Backed by                                         | Use case                                                                                  |
-| ---------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `FileSystemCacheStore` | a directory (`<dir>/<key>.tar.gz`)                | a shared/mounted volume, an NFS path, a self-hosted runner cache                          |
-| `HttpCacheStore`       | `GET`/`PUT <url>/<key>` (+ optional bearer token) | any object store or cache server behind a URL — an S3/GCS/R2 bucket, or your own endpoint |
+| Store                     | Backed by                                                    | Use case                                                                                  |
+| ------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| `FileSystemCacheStore`    | a directory (`<dir>/<key>.tar.gz`)                           | a shared/mounted volume, an NFS path, a self-hosted runner cache                          |
+| `HttpCacheStore`          | `GET`/`PUT <url>/<key>` (+ optional bearer token)            | any object store or cache server behind a URL — an S3/GCS/R2 bucket, or your own endpoint |
+| `GitHubActionsCacheStore` | the GitHub Actions cache service (what `actions/cache` uses) | a workflow on GitHub Actions — no server, no secret beyond the runner's own               |
 
 An artifact is a **gzipped `tar`** of the target's outputs, built with Zuke's
-dependency-free `tar`/`gzip` helpers. Entry names use the POSIX `ustar` format's
-100-byte path limit, so an extremely deep output path is rejected with a clear
-error rather than silently truncated. You can implement `RemoteCacheStore`
-yourself for any other backend.
+dependency-free `tar`/`gzip` helpers; each file carries its permission bits, so
+a restored binary is still executable. Entry names use the POSIX `ustar`
+format's 100-byte path limit, so an extremely deep output path is rejected with
+a clear error rather than silently truncated. You can implement
+`RemoteCacheStore` yourself for any other backend.
 
 ### Configuring it
 
@@ -188,19 +190,61 @@ class CI extends Build {
 
 …or from the environment, with no build-file change — the CI-friendly path:
 
-| Variable                                                       | Selects                  |
-| -------------------------------------------------------------- | ------------------------ |
-| `ZUKE_REMOTE_CACHE_URL` (+ optional `ZUKE_REMOTE_CACHE_TOKEN`) | an `HttpCacheStore`      |
-| `ZUKE_REMOTE_CACHE_DIR`                                        | a `FileSystemCacheStore` |
+| Variable                                                       | Selects                     |
+| -------------------------------------------------------------- | --------------------------- |
+| `ZUKE_REMOTE_CACHE_URL` (+ optional `ZUKE_REMOTE_CACHE_TOKEN`) | an `HttpCacheStore`         |
+| `ZUKE_REMOTE_CACHE_DIR`                                        | a `FileSystemCacheStore`    |
+| `ACTIONS_RUNTIME_TOKEN` + `ACTIONS_RESULTS_URL`                | a `GitHubActionsCacheStore` |
 
 ```sh
 ZUKE_REMOTE_CACHE_URL=https://cache.example.com ZUKE_REMOTE_CACHE_TOKEN=… ./zuke ci
 ZUKE_REMOTE_CACHE_DIR=/mnt/zuke-cache ./zuke ci
 ```
 
-A URL wins over a directory when both are set. **`--no-remote-cache`** uses the
-local cache only for a run (it skips both restore and upload); **`--no-cache`**
-still disables _both_ caches.
+A URL wins over a directory when both are set, and either wins over the Actions
+credentials. **`--no-remote-cache`** uses the local cache only for a run (it
+skips both restore and upload); **`--no-cache`** still disables _both_ caches.
+
+### On GitHub Actions
+
+The Actions cache service is the store a workflow already has: every job holds a
+token for it, it needs no server, and GitHub evicts entries by age and by the
+repository's quota. The runner hands that token (`ACTIONS_RUNTIME_TOKEN`) and
+the service URL (`ACTIONS_RESULTS_URL`) to JavaScript actions only — a `run:`
+step never sees them — so the `zuke-build/zuke` action has an `actions-cache`
+input that exports them to the job. Turn it on from `cicd()`:
+
+```ts
+class CI extends Build {
+  installFlutter = target()
+    .description("Provision the Flutter SDK into .zuke/tools")
+    .cacheKey(FLUTTER_VERSION, FLUTTER_SHA256)
+    .outputs(".zuke/tools/flutter")
+    .executes(async () => {
+      /* download, verify the checksum, unpack */
+    });
+
+  ci = cicd({
+    provider: "github",
+    pins,
+    pipeline: { bootstrap: { actionsCache: true } },
+    invokes: [this.installFlutter],
+  });
+}
+```
+
+With that, the target restores its 1.5 GB of outputs on a hit and installs once
+on a miss — what a hand-written `actions/cache` step around it did, now derived
+from the target's own `.outputs(...)` and cache key. A job that uses the action
+directly sets `with: actions-cache: "true"`. Restores follow the Actions cache's
+own scoping (a run sees entries from its branch and the default branch), and the
+service stores an entry once: a key two parallel jobs race to upload is kept
+from whichever finalized first.
+
+GitLab CI and Azure Pipelines have no equivalent store a job can call: their
+`cache:` keyword and `Cache@2` task are handled by the runner outside the job,
+with no API. On those providers, point `ZUKE_REMOTE_CACHE_URL` at an object
+store or use a `FileSystemCacheStore` on a shared volume.
 
 ### How a key is derived
 
@@ -220,11 +264,11 @@ target:
 - Point them only at a cache **you control**, and prefer a
   [secret parameter](./parameters.md) or an environment variable over a
   hard-coded value.
-- **`ZUKE_REMOTE_CACHE_URL` must be `https:`.** A plaintext URL is refused
-  before the first request: an on-path attacker who answers it chooses the file
-  tree that gets written into your workspace, which needs no token to steal.
-  Loopback is exempt, and `ZUKE_ALLOW_INSECURE_URL=1` opts a deliberate
-  plaintext endpoint back in.
+- **`ZUKE_REMOTE_CACHE_URL` must be `https:`** (and so must
+  `ACTIONS_RESULTS_URL`). A plaintext URL is refused before the first request:
+  an on-path attacker who answers it chooses the file tree that gets written
+  into your workspace, which needs no token to steal. Loopback is exempt, and
+  `ZUKE_ALLOW_INSECURE_URL=1` opts a deliberate plaintext endpoint back in.
 - On CI, **restrict egress** to the cache host, so a misconfigured or overridden
   URL can't exfiltrate build artifacts.
 - **Restore is confined to the target's declared outputs.** Every archive entry
@@ -233,10 +277,12 @@ target:
   contains a **`..`** segment; when it is a **symlink or directory entry**
   (which archiving never produces, so its presence means something else built
   the archive); when it lands under **`.git` or `.zuke`** — a restored git hook
-  runs on the next ordinary git command; and when it falls **outside the paths
-  the target declared with `.outputs(...)`**. That last one is what stops an
-  innocuous-looking `deno.json` or lockfile riding along in an otherwise valid
-  artifact.
+  runs on the next ordinary git command — with `.zuke/tools` the one exception,
+  since a provisioned toolchain is what a remote cache is for and the toolchain
+  re-verifies a restored binary against its recorded checksum before reusing it;
+  and when it falls **outside the paths the target declared with
+  `.outputs(...)`**. That last one is what stops an innocuous-looking
+  `deno.json` or lockfile riding along in an otherwise valid artifact.
 - **A restore never writes through a symbolic link.** The checks above are
   lexical — they reason about the entry's _name_. An archive cannot carry a
   link, but a workspace can already hold one at a declared output, and writing a

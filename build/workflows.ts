@@ -24,6 +24,20 @@ import { cicd, type CiFile, type TargetBuilder } from "@zuke/core";
 import { ChocolateyTasks } from "@zuke/chocolatey";
 import { HomebrewTasks } from "@zuke/homebrew";
 import { actionPin } from "./action_pins.ts";
+import { ACTION_PIN } from "./action_release.ts";
+
+/**
+ * Share the build's cacheable outputs (the provisioned toolchain) through the
+ * GitHub Actions cache. The prelude action's `actions-cache` input exports the
+ * cache service's credentials to the job, and `envCacheStore` does the rest.
+ *
+ * Gated on the released action accepting the input rather than switched on
+ * outright: `actionPinCheck` refuses a workflow that passes the pinned release
+ * an input it does not have, and the release that adds one is cut from master
+ * after the change lands. So the first regeneration after the pin moves turns
+ * this on, with nothing to remember.
+ */
+const ACTIONS_CACHE = ACTION_PIN.inputs.includes("actions-cache");
 
 /**
  * The targets the workflows invoke.
@@ -205,6 +219,7 @@ export function githubWorkflows(
           group: "ci-${{ github.workflow }}-${{ github.ref }}",
           cancelInProgress: true,
         },
+        bootstrap: { actionsCache: ACTIONS_CACHE },
       },
       invokes: [
         {
@@ -619,6 +634,7 @@ export function githubWorkflows(
           // master and the weekly run still walk the whole history.
           fetchDepth: 0,
         },
+        bootstrap: { actionsCache: ACTIONS_CACHE },
       },
       // The scanners come from the build's declared toolchain — pinned,
       // checksum-verified, cached — so there is no install step, and the findings

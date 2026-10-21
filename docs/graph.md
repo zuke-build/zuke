@@ -7,7 +7,7 @@ points from a dependency to the target that depends on it, so a target runs
 after everything that points at it. This is the same graph `./zuke graph` prints
 as text and `./zuke graph --output=html` renders interactively.
 
-50 target(s), 27 dependency edge(s). Regenerate with `./zuke graphDoc`; the
+51 target(s), 29 dependency edge(s). Regenerate with `./zuke graphDoc`; the
 `graphDocCheck` target in the CI gate fails when this page drifts from the
 build.
 
@@ -22,74 +22,77 @@ flowchart TD
   t6["test"]
   t7["integration"]
   t8["coverage"]
-  t9["coverageUpload"]
-  t10["apiDocs"]
-  t11["apiDocsCheck"]
-  t12["apiReference"]
-  t13["syncWebsite"]
-  t14["docLint"]
-  t15["snippetsCheck"]
-  t16["examplesCheck"]
-  t17["hclGen"]
-  t18["hclSyncCheck"]
-  t19["pluginSync"]
-  t20["pluginSyncCheck"]
-  t21["launcherSync"]
-  t22["launcherSyncCheck"]
-  t23["skillsCheck"]
-  t24["graphDoc"]
-  t25["graphDocCheck"]
-  t26["pluginVersionCheck"]
-  t27["prBodyLint"]
-  t28["coreFloorCheck"]
-  t29["lockCheck"]
-  t30["security"]
-  t31["actionPinCheck"]
-  t32["ci"]
-  t33["scorecard"]
-  t34["codeql"]
-  t35["reviewBase"]
-  t36["review"]
-  t37["release"]
-  t38["actionRelease"]
-  t39["publishJsr"]
-  t40["cliBinaries"]
-  t41["cliSign"]
-  t42["cliPackage"]
-  t43["cliUpload"]
-  t44["cliFormulaVerify"]
-  t45["cliTap"]
-  t46["cliChocolateyVerify"]
-  t47["cliChocolatey"]
-  t48["publish"]
-  t49["default"]
+  t9["provisionTools"]
+  t10["coverageUpload"]
+  t11["apiDocs"]
+  t12["apiDocsCheck"]
+  t13["apiReference"]
+  t14["syncWebsite"]
+  t15["docLint"]
+  t16["snippetsCheck"]
+  t17["examplesCheck"]
+  t18["hclGen"]
+  t19["hclSyncCheck"]
+  t20["pluginSync"]
+  t21["pluginSyncCheck"]
+  t22["launcherSync"]
+  t23["launcherSyncCheck"]
+  t24["skillsCheck"]
+  t25["graphDoc"]
+  t26["graphDocCheck"]
+  t27["pluginVersionCheck"]
+  t28["prBodyLint"]
+  t29["coreFloorCheck"]
+  t30["lockCheck"]
+  t31["security"]
+  t32["actionPinCheck"]
+  t33["ci"]
+  t34["scorecard"]
+  t35["codeql"]
+  t36["reviewBase"]
+  t37["review"]
+  t38["release"]
+  t39["actionRelease"]
+  t40["publishJsr"]
+  t41["cliBinaries"]
+  t42["cliSign"]
+  t43["cliPackage"]
+  t44["cliUpload"]
+  t45["cliFormulaVerify"]
+  t46["cliTap"]
+  t47["cliChocolateyVerify"]
+  t48["cliChocolatey"]
+  t49["publish"]
+  t50["default"]
   t1 --> t5
   t5 --> t6
   t6 --> t8
-  t8 --> t9
-  t2 --> t32
-  t3 --> t32
-  t4 --> t32
-  t8 --> t32
-  t9 --> t32
-  t11 --> t32
-  t14 --> t32
-  t15 --> t32
-  t16 --> t32
-  t18 --> t32
-  t20 --> t32
-  t22 --> t32
-  t23 --> t32
-  t25 --> t32
-  t26 --> t32
-  t27 --> t32
-  t31 --> t32
-  t30 --> t32
-  t29 --> t32
-  t35 --> t36
-  t37 --> t48
-  t39 --> t48
-  t32 --> t49
+  t8 --> t10
+  t9 --> t10
+  t9 --> t31
+  t2 --> t33
+  t3 --> t33
+  t4 --> t33
+  t8 --> t33
+  t10 --> t33
+  t12 --> t33
+  t15 --> t33
+  t16 --> t33
+  t17 --> t33
+  t19 --> t33
+  t21 --> t33
+  t23 --> t33
+  t24 --> t33
+  t26 --> t33
+  t27 --> t33
+  t28 --> t33
+  t32 --> t33
+  t31 --> t33
+  t30 --> t33
+  t36 --> t37
+  t38 --> t49
+  t40 --> t49
+  t33 --> t50
 ```
 
 ## Targets
@@ -105,7 +108,8 @@ flowchart TD
 | `test`                | Run the test suite with coverage                                                            | `check`                                                                                                                                                                                                                                                                                     |
 | `integration`         | Run the subprocess e2e suite (real processes, OS matrix)                                    | —                                                                                                                                                                                                                                                                                           |
 | `coverage`            | Enforce the 95% coverage gate                                                               | `test`                                                                                                                                                                                                                                                                                      |
-| `coverageUpload`      | Upload the coverage report to Codecov                                                       | `coverage`                                                                                                                                                                                                                                                                                  |
+| `provisionTools`      | Provision the pinned scanner binaries into .zuke/tools                                      | —                                                                                                                                                                                                                                                                                           |
+| `coverageUpload`      | Upload the coverage report to Codecov                                                       | `coverage`, `provisionTools`                                                                                                                                                                                                                                                                |
 | `apiDocs`             | Generate agent-readable API docs (llms.txt, llms-full.txt, READMEs)                         | —                                                                                                                                                                                                                                                                                           |
 | `apiDocsCheck`        | Verify the generated API docs are current                                                   | —                                                                                                                                                                                                                                                                                           |
 | `apiReference`        | Generate the structured API reference (dist/api.json) for the website                       | —                                                                                                                                                                                                                                                                                           |
@@ -126,7 +130,7 @@ flowchart TD
 | `prBodyLint`          | Fail if the PR body has code release-please's parser can't handle                           | —                                                                                                                                                                                                                                                                                           |
 | `coreFloorCheck`      | Type-check every package against the @zuke/core version it declares                         | —                                                                                                                                                                                                                                                                                           |
 | `lockCheck`           | Verify the run did not rewrite deno.lock                                                    | —                                                                                                                                                                                                                                                                                           |
-| `security`            | Run supply-chain security scanners (zuke/security)                                          | —                                                                                                                                                                                                                                                                                           |
+| `security`            | Run supply-chain security scanners (zuke/security)                                          | `provisionTools`                                                                                                                                                                                                                                                                            |
 | `actionPinCheck`      | Verify the workflows only use inputs the released action has                                | —                                                                                                                                                                                                                                                                                           |
 | `ci`                  | Full pre-commit / CI gate                                                                   | `format`, `lint`, `spell`, `coverage`, `coverageUpload`, `apiDocsCheck`, `docLint`, `snippetsCheck`, `examplesCheck`, `hclSyncCheck`, `pluginSyncCheck`, `launcherSyncCheck`, `skillsCheck`, `graphDocCheck`, `pluginVersionCheck`, `prBodyLint`, `actionPinCheck`, `security`, `lockCheck` |
 | `scorecard`           | OpenSSF Scorecard (runs in CI via scorecard.yml)                                            | —                                                                                                                                                                                                                                                                                           |
