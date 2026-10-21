@@ -23,6 +23,26 @@ import { stripAnsi } from "@zuke/core/render";
 import { parseTestSummary } from "../packages/deno/src/test_summary.ts";
 
 /**
+ * Environment every test process runs with, layered over the inherited one. A
+ * blank value reads as unset to each reader, so the suite stays hermetic on a
+ * CI job that would otherwise lend it the job's own services: the step
+ * summary, which tests exercising it would append to, and the remote cache —
+ * `ACTIONS_RUNTIME_TOKEN`/`ACTIONS_RESULTS_URL` (the action's `actions-cache`
+ * input) or an ambient `ZUKE_REMOTE_CACHE_*` — through which a test build with
+ * declared inputs would restore another test's outputs instead of running its
+ * body. The parent `./zuke` run keeps them all, so its own targets still use
+ * the cache and write the summary.
+ */
+export const HERMETIC_ENV: Record<string, string> = {
+  GITHUB_STEP_SUMMARY: "",
+  ACTIONS_RUNTIME_TOKEN: "",
+  ACTIONS_RESULTS_URL: "",
+  ZUKE_REMOTE_CACHE_URL: "",
+  ZUKE_REMOTE_CACHE_S3_URL: "",
+  ZUKE_REMOTE_CACHE_DIR: "",
+};
+
+/**
  * The test files the suite consists of: every `*_test.ts`, sorted, outside
  * `node_modules`. This is the repository's naming convention, and
  * `tests/test_shards_test.ts` pins that no file deno's default discovery

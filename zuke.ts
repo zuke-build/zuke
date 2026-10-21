@@ -144,6 +144,7 @@ import { checkRootLaunchers, syncRootLaunchers } from "./build/launchers.ts";
 import { checkSkillTree } from "./build/skill_check.ts";
 import {
   discoverTestFiles,
+  HERMETIC_ENV,
   partitionShards,
   runShards,
   shardCount,
@@ -341,10 +342,10 @@ class ZukeBuild extends Build {
     .description("Run the test suite with coverage")
     .dependsOn(this.check)
     .executes(async () => {
-      // Blank GITHUB_STEP_SUMMARY for the test subprocess: tests that exercise
-      // the job-summary and AI-reviewer/fixer code paths would otherwise append
-      // to the real Actions summary, polluting it. The parent `./zuke ci` run
-      // keeps the env var and still writes the build table and any fixer section.
+      // The test processes get HERMETIC_ENV (see build/test_shards.ts): the
+      // job's step summary and remote cache are blanked for them, so a test
+      // never appends to the real Actions summary or restores outputs from the
+      // job's cache, while the parent `./zuke ci` run keeps both.
       //
       // The files are split across one `deno test` process per CPU (see
       // build/test_shards.ts for why processes rather than `--parallel`), all
@@ -360,8 +361,7 @@ class ZukeBuild extends Build {
         (paths) =>
           DenoTasks.test((s) =>
             s.allowAll().coverage("cov_profile").frozen().noCheck()
-              .paths(...paths).env({ GITHUB_STEP_SUMMARY: "" }).quiet()
-              .noThrow()
+              .paths(...paths).env(HERMETIC_ENV).quiet().noThrow()
           ),
       );
     });
@@ -381,15 +381,15 @@ class ZukeBuild extends Build {
       // instead of silently running nowhere until someone remembers to add it
       // here.
       const paths = await glob("tests/e2e/*_e2e.ts");
-      // Blank GITHUB_STEP_SUMMARY for the suite, as the `test` target does.
-      // These fixtures are whole builds run as real subprocesses, so each one
-      // appends its own result table to the Actions summary — including the
+      // HERMETIC_ENV for the suite, as the `test` target does. These fixtures
+      // are whole builds run as real subprocesses, so each one appends its own
+      // result table to the Actions summary — including the
       // ones that are *meant* to fail or suspend (a target reaped by a timeout,
       // a `waitsFor` gate that never opens). The job then displays a red,
       // half-finished build table while passing, which reads as a broken suite
       // and buries the one table that describes the actual run.
       await DenoTasks.test((s) =>
-        s.allowAll().paths(...paths).env({ GITHUB_STEP_SUMMARY: "" })
+        s.allowAll().paths(...paths).env(HERMETIC_ENV)
       );
     });
 

@@ -14,8 +14,10 @@ import {
   assertStringIncludes,
 } from "../packages/core/tests/_assert.ts";
 import { withTemp } from "../packages/core/tests/_temp.ts";
+import { envCacheStore } from "../packages/core/mod.ts";
 import {
   discoverTestFiles,
+  HERMETIC_ENV,
   partitionShards,
   runShards,
   shardCount,
@@ -237,4 +239,23 @@ Deno.test("runShards: a shard that printed its result line is never run again", 
     "1 failing test(s)",
   );
   assertEquals(attempts, 1);
+});
+
+Deno.test("the hermetic env blanks the job's summary and remote cache", () => {
+  // A ci job with the action's `actions-cache` input, and a developer's own
+  // remote cache: either would hand every test build a remote cache, so a
+  // target with declared inputs restores another test's outputs and skips its
+  // body (the cancelled-run caching test turned green-by-cache this way).
+  const job: Record<string, string> = {
+    GITHUB_STEP_SUMMARY: "/tmp/summary.md",
+    ACTIONS_RUNTIME_TOKEN: "runtime",
+    ACTIONS_RESULTS_URL: "https://results.example/",
+    ZUKE_REMOTE_CACHE_URL: "https://cache.example/",
+    ZUKE_REMOTE_CACHE_DIR: "/tmp/remote",
+  };
+  const readEnv = (env: Record<string, string>) => (name: string) => env[name];
+  assertEquals(envCacheStore(readEnv(job)) !== undefined, true);
+  const hermetic = { ...job, ...HERMETIC_ENV };
+  assertEquals(envCacheStore(readEnv(hermetic)), undefined);
+  assertEquals(hermetic.GITHUB_STEP_SUMMARY, "");
 });
