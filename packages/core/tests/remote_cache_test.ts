@@ -243,18 +243,29 @@ Deno.test("HttpCacheStore sends extra headers and keeps a base URL's query", asy
   assertEquals(new Headers(calls[1].init?.headers).get("x-custom"), "1");
   assertEquals(calls[1].url, calls[0].url);
 
-  // The bearer token wins over a conflicting extra header.
+  // On a clash the store's own headers win, on both paths: the bearer token
+  // over an extra Authorization, and a PUT's content type and blob type over
+  // extras of the same names — so a later refactor of the merge order cannot
+  // quietly send a caller's value for a header the protocol relies on.
   const bearer = new HttpCacheStore({
     url: "https://cache.test",
     token: "t",
-    headers: { Authorization: "Basic x" },
+    headers: {
+      Authorization: "Basic x",
+      "content-type": "text/plain",
+      "x-ms-blob-type": "PageBlob",
+    },
     fetch,
   });
   await bearer.get("k");
-  assertEquals(
-    new Headers(calls[2].init?.headers).get("Authorization"),
-    "Bearer t",
-  );
+  const got = new Headers(calls[2].init?.headers);
+  assertEquals(got.get("Authorization"), "Bearer t");
+  assertEquals(got.get("content-type"), "text/plain"); // nothing of its own on a GET
+  await bearer.put("k", enc("x"));
+  const put = new Headers(calls[3].init?.headers);
+  assertEquals(put.get("Authorization"), "Bearer t");
+  assertEquals(put.get("content-type"), "application/octet-stream");
+  assertEquals(put.get("x-ms-blob-type"), "BlockBlob");
 });
 
 Deno.test("envCacheStore selects an S3 store from the AWS variables", () => {
