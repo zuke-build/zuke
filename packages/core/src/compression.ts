@@ -17,8 +17,8 @@
  * await extractZip("tool.zip", "out");
  * ```
  *
- * `tar` entry names are limited to 100 bytes (the `ustar` name field); longer
- * names throw. Archives are written with a fixed mtime so output is
+ * `tar` writes a name or symlink target past the `ustar` field's 100 bytes as
+ * a pax extended header. Archives are written with a fixed mtime so output is
  * reproducible, and a zip is written with deflated entries. Zip reading supports the two methods release assets use —
  * `stored` and `deflate` — and rejects encrypted or zip64 archives with a
  * friendly error; every extractor rejects an entry name that would escape the
@@ -122,13 +122,12 @@ export async function gunzipBounded(
 
 /** A single entry within a tar archive — a regular file or a symbolic link. */
 export interface TarEntry {
-  /** The entry's path inside the archive (≤ 100 bytes). */
+  /** The entry's path inside the archive. */
   name: string;
   /** The file contents (empty for a symlink entry). */
   data: Uint8Array;
   /**
-   * For a symbolic-link entry, its target (≤ 100 bytes); absent for a regular
-   * file. Node's release tarballs, for one, ship `bin/npm`/`bin/npx` as symlinks
+   * For a symbolic-link entry, its target; absent for a regular file. Node's release tarballs, for one, ship `bin/npm`/`bin/npx` as symlinks
    * into `lib/node_modules`, so extracting a runtime tree must preserve them.
    */
   linkname?: string;
@@ -166,41 +165,27 @@ function writeOctal(
   writeString(block, offset, text);
 }
 
-/** Build the 512-byte `ustar` header for one entry (a file, or a symlink when
- * `linkname` is given). */
+/**
+ * Build the 512-byte `ustar` header for one member: `name` and `linkname` are
+ * already cut to the field's 100 bytes (a longer value rides in a pax record
+ * before it).
+ */
 function tarHeader(
-  name: string,
+  name: Uint8Array,
   size: number,
-  linkname: string | undefined,
+  typeflag: number,
   mode: number,
+  linkname: Uint8Array,
 ): Uint8Array {
-  const nameBytes = new TextEncoder().encode(name);
-  if (nameBytes.length > 100) {
-    throw new Error(
-      `tar: entry name exceeds 100 bytes (ustar limit): "${name}"`,
-    );
-  }
-  const isLink = linkname !== undefined;
-  if (isLink && new TextEncoder().encode(linkname).length > 100) {
-    throw new Error(
-      `tar: symlink target exceeds 100 bytes (ustar limit): "${linkname}"`,
-    );
-  }
-  if (!Number.isInteger(mode) || mode < 0 || mode > 0o7777) {
-    throw new Error(
-      `tar: mode for "${name}" must be permission bits from 0 to 0o7777, ` +
-        `got ${mode}`,
-    );
-  }
   const header = new Uint8Array(BLOCK);
-  writeString(header, 0, name);
-  writeOctal(header, 100, 7, isLink ? 0o777 : mode); // mode
+  header.set(name, 0);
+  writeOctal(header, 100, 7, mode); // mode
   writeOctal(header, 108, 7, 0); // uid
   writeOctal(header, 116, 7, 0); // gid
-  writeOctal(header, 124, 11, isLink ? 0 : size); // size (a symlink carries none)
+  writeOctal(header, 124, 11, size); // size
   writeOctal(header, 136, 11, 0); // mtime (fixed for reproducibility)
-  header[156] = isLink ? 0x32 : 0x30; // typeflag '2' (symlink) | '0' (file)
-  if (isLink) writeString(header, 157, linkname); // linkname field
+  header[156] = typeflag;
+  header.set(linkname, 157); // linkname field
   writeString(header, 257, "ustar\0"); // magic
   header[263] = 0x30; // version "00"
   header[264] = 0x30;
@@ -214,25 +199,77 @@ function tarHeader(
   return header;
 }
 
-/** Create a `ustar` archive from the given entries (in order). */
+/** The ustar name and linkname field width. */
+const USTAR_FIELD = 100;
+
+/**
+ * One pax extended-header record, `"<len> <key>=<value>\n"`, where `<len>`
+ * counts the whole record in bytes, its own digits included.
+ */
+function paxRecord(key: string, value: string): string {
+  const rest = new TextEncoder().encode(` ${key}=${value}\n`).length;
+  let len = rest + 1;
+  while (len !== rest + String(len).length) len = rest + String(len).length;
+  return `${len} ${key}=${value}\n`;
+}
+
+/**
+ * Create a `ustar` archive from the given entries (in order). A name or
+ * symlink target past ustar's 100 bytes is carried by a pax extended header
+ * (typeflag `'x'`) ahead of its member, which {@link untar} and every modern
+ * `tar` read back.
+ */
 export function tar(entries: TarEntry[]): Uint8Array {
+  const encoder = new TextEncoder();
   const blocks: Uint8Array[] = [];
   let total = 0;
+  const member = (header: Uint8Array, data: Uint8Array) => {
+    const body = new Uint8Array(padded(data.length));
+    body.set(data);
+    blocks.push(header, body);
+    total += BLOCK + body.length;
+  };
   for (const entry of entries) {
-    const header = tarHeader(
-      entry.name,
-      entry.data.length,
-      entry.linkname,
-      entry.mode ?? 0o644,
+    const mode = entry.mode ?? 0o644;
+    if (!Number.isInteger(mode) || mode < 0 || mode > 0o7777) {
+      throw new Error(
+        `tar: mode for "${entry.name}" must be permission bits from 0 to ` +
+          `0o7777, got ${mode}`,
+      );
+    }
+    const name = encoder.encode(entry.name);
+    const link = encoder.encode(entry.linkname ?? "");
+    let records = "";
+    if (name.length > USTAR_FIELD) records += paxRecord("path", entry.name);
+    if (link.length > USTAR_FIELD) {
+      records += paxRecord("linkpath", entry.linkname ?? "");
+    }
+    if (records !== "") {
+      const data = encoder.encode(records);
+      member(
+        tarHeader(
+          encoder.encode("PaxHeader"),
+          data.length,
+          0x78, // typeflag 'x' (pax extended header)
+          0o644,
+          new Uint8Array(0),
+        ),
+        data,
+      );
+    }
+    const isLink = entry.linkname !== undefined;
+    // A symlink carries no data and is always 0o777.
+    const data = isLink ? new Uint8Array(0) : entry.data;
+    member(
+      tarHeader(
+        name.subarray(0, USTAR_FIELD),
+        data.length,
+        isLink ? 0x32 : 0x30, // typeflag '2' (symlink) | '0' (file)
+        isLink ? 0o777 : mode,
+        link.subarray(0, USTAR_FIELD),
+      ),
+      data,
     );
-    blocks.push(header);
-    total += BLOCK;
-    // A symlink entry carries no data blocks; a file's data is block-padded.
-    const size = entry.linkname === undefined ? entry.data.length : 0;
-    const body = new Uint8Array(padded(size));
-    if (entry.linkname === undefined) body.set(entry.data);
-    blocks.push(body);
-    total += body.length;
   }
   // Two zero blocks terminate the archive.
   const trailer = new Uint8Array(BLOCK * 2);

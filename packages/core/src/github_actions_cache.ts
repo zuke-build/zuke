@@ -42,6 +42,11 @@ export interface GitHubActionsCacheStoreOptions {
    * *decompress* to is bounded separately, by `restoreOutputs`.
    */
   maxArtifactBytes?: number;
+  /**
+   * The most a fetched artifact may decompress to, in bytes — see
+   * {@link RemoteCacheStore.maxInflatedBytes}. Defaults to 2 GiB.
+   */
+  maxInflatedBytes?: number;
 }
 
 /** The Twirp route every `CacheService` call is `POST`ed to, under the base URL. */
@@ -81,9 +86,12 @@ export class GitHubActionsCacheStore implements RemoteCacheStore {
   readonly #token: string;
   readonly #fetch: typeof fetch;
   readonly #maxArtifactBytes: number;
+  /** The most an artifact may decompress to; see {@link RemoteCacheStore.maxInflatedBytes}. */
+  readonly maxInflatedBytes?: number;
 
   /** Build the store from the service URL, the runtime token, and the `fetch` seam. */
   constructor(options: GitHubActionsCacheStoreOptions) {
+    this.maxInflatedBytes = options.maxInflatedBytes;
     this.#base = options.url.replace(/\/+$/, "");
     this.#token = options.token;
     this.#fetch = options.fetch ?? fetch;

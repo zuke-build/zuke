@@ -507,6 +507,99 @@ Deno.test("restoreOutputs refuses protected paths whatever the outputs declare",
   }
 });
 
+Deno.test("a .git inside .zuke/tools round-trips, and only there", async () => {
+  // An SDK such as Flutter's is a git checkout that runs git on itself.
+  const src = new MemFs();
+  src.dirs.set(".zuke/tools", ["flutter"]);
+  src.dirs.set(".zuke/tools/flutter", [".git", "bin"]);
+  src.dirs.set(".zuke/tools/flutter/.git", ["HEAD"]);
+  src.files.set(".zuke/tools/flutter/.git/HEAD", enc("ref: refs/heads/stable"));
+  src.files.set(".zuke/tools/flutter/bin", enc("flutter"));
+  const out = new MemFs();
+  assertEquals(
+    await restoreOutputs(
+      await archiveOutputs([".zuke/tools"], src),
+      out,
+      [".zuke/tools"],
+    ),
+    [".zuke/tools/flutter/.git/HEAD", ".zuke/tools/flutter/bin"],
+  );
+  // A .git before the tools subtree, or beside it, is still refused.
+  for (
+    const name of [
+      ".git/.zuke/tools/x",
+      "sub/.git/hooks/pre-commit",
+      ".zuke/.git/config",
+      ".zuke/runs/.git/config",
+    ]
+  ) {
+    const artifact = await gzip(tar([{ name, data: enc("x") }]));
+    const err = await assertRejects(() => restoreOutputs(artifact, out, ["."]));
+    assertStringIncludes(err.message, "protected path");
+  }
+});
+
+Deno.test("envCacheStore passes ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES to the store", () => {
+  const env =
+    (vars: Record<string, string>) => (name: string): string | undefined =>
+      Object.prototype.hasOwnProperty.call(vars, name) ? vars[name] : undefined;
+  const limit = { ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES: "4294967296" };
+  const stores: Record<string, string>[] = [
+    { ZUKE_REMOTE_CACHE_URL: "https://c.test" },
+    {
+      ZUKE_REMOTE_CACHE_S3_URL: "https://bucket.s3.amazonaws.com/cache",
+      AWS_ACCESS_KEY_ID: "AKIDEXAMPLE",
+      AWS_SECRET_ACCESS_KEY: "secret",
+      AWS_REGION: "auto",
+    },
+    { ZUKE_REMOTE_CACHE_DIR: "/tmp/x" },
+    { ACTIONS_RUNTIME_TOKEN: "t", ACTIONS_RESULTS_URL: "https://r.test" },
+  ];
+  for (const vars of stores) {
+    assertEquals(
+      envCacheStore(env({ ...vars, ...limit }))?.maxInflatedBytes,
+      4294967296,
+    );
+    assertEquals(envCacheStore(env(vars))?.maxInflatedBytes, undefined);
+  }
+  // Read only once a store is chosen: a bad value cannot fail a build with none.
+  assertEquals(
+    envCacheStore(env({ ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES: "abc" })),
+    undefined,
+  );
+  for (const bad of ["0", "-1", "4GiB", "1e10", "9007199254740993"]) {
+    assertThrows(
+      () =>
+        envCacheStore(
+          env({ ...stores[2], ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES: bad }),
+        ),
+      Error,
+      "ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES",
+    );
+  }
+});
+
+Deno.test("restoreOutputs refuses a bound that is not a positive whole number", async () => {
+  const artifact = await gzip(tar([{ name: "dist/a", data: enc("x") }]));
+  for (const bound of [NaN, 0, -1, 1.5]) {
+    const err = await assertRejects(() =>
+      restoreOutputs(artifact, new MemFs(), ["dist"], bound)
+    );
+    assertStringIncludes(err.message, "maxInflatedBytes");
+  }
+});
+
+Deno.test("restoreOutputs refuses a .git spelled with a trailing dot or space", async () => {
+  // Windows drops both, so either would land in the workspace's real `.git`.
+  for (const name of [".git./hooks/pre-commit", ".git /config", ".zuke. /x"]) {
+    const artifact = await gzip(tar([{ name, data: enc("x") }]));
+    const err = await assertRejects(() =>
+      restoreOutputs(artifact, new MemFs(), ["."])
+    );
+    assertStringIncludes(err.message, "protected path");
+  }
+});
+
 Deno.test("restoreOutputs refuses entry kinds archiveOutputs never produces", async () => {
   const out = new MemFs();
   // A symlink is how a *later* entry writes through a name the checks approved.

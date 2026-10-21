@@ -52,6 +52,13 @@ export interface RemoteCacheStore {
   get(key: string): Promise<Uint8Array | null>;
   /** Store `artifact` (a gzipped tar of a target's outputs) under `key`. */
   put(key: string, artifact: Uint8Array): Promise<void>;
+  /**
+   * The most an artifact from this store may decompress to, in bytes, before
+   * {@link restoreOutputs} refuses it. Defaults to 2 GiB; raise it for a target
+   * whose outputs are genuinely larger, such as a whole SDK. The restore holds
+   * the inflated archive in memory, so the bound is also its memory ceiling.
+   */
+  readonly maxInflatedBytes?: number;
 }
 
 /**
@@ -149,7 +156,7 @@ async function collectEntries(
  * Archive a target's `outputs` into a gzipped tar of their current contents,
  * each file with its permission bits so a binary restores executable. A
  * declared output that does not exist is skipped, as is anything under a
- * `.git` or `.zuke` directory other than `.zuke/tools`.
+ * `.git` or `.zuke` directory, other than `.zuke/tools` and whatever it holds.
  */
 export async function archiveOutputs(
   outputs: readonly string[],
@@ -168,6 +175,12 @@ export async function archiveOutputs(
  * exactly the outputs a remote cache exists to share (a pinned SDK, a
  * checksum-verified scanner), and the toolchain re-verifies a restored binary
  * against its recorded checksum before reusing it.
+ *
+ * A `.git` *inside* that subtree is allowed too: an SDK such as Flutter's is a
+ * git checkout that runs `git` on itself, so it is broken without one. That
+ * grants a store nothing new — it can already replace the SDK's own binaries
+ * and scripts there — and the workspace's own `.git`, or any outside
+ * `.zuke/tools`, stays refused.
  */
 const FORBIDDEN_DIRS = [".git", ".zuke"];
 
@@ -181,10 +194,17 @@ const TOOLS_DIR = "tools";
  * runs on the same ordinary git command the top-level one would.
  */
 function isForbiddenPath(name: string): boolean {
-  const segments = name.toLowerCase().split("/");
+  // Windows drops a segment's trailing dots and spaces, so `.git.` is `.git`.
+  const segments = name.toLowerCase().split("/").map((segment) =>
+    segment.replace(/[. ]+$/, "")
+  );
+  const tools = segments.findIndex((segment, i) =>
+    segment === ".zuke" && segments[i + 1] === TOOLS_DIR
+  );
   return segments.some((segment, i) =>
     FORBIDDEN_DIRS.includes(segment) &&
-    !(segment === ".zuke" && segments[i + 1] === TOOLS_DIR)
+    !(segment === ".zuke" && segments[i + 1] === TOOLS_DIR) &&
+    !(segment === ".git" && tools !== -1 && tools < i)
   );
 }
 
@@ -243,7 +263,8 @@ function assertPlainFileEntry(entry: TarEntry): void {
  * surprise.
  *
  * @param maxBytes The most the artifact may decompress to before it is refused,
- *   defaulting to 2 GiB. The bound is applied *while* decompressing, so a small
+ *   defaulting to 2 GiB; the executor passes the store's
+ *   {@link RemoteCacheStore.maxInflatedBytes}. The bound is applied *while* decompressing, so a small
  *   archive that expands without limit is refused rather than buffered first.
  *   It is larger than the bound a store puts on the compressed bytes because
  *   outputs compress; both exist to stop memory exhaustion.
@@ -262,6 +283,13 @@ export async function restoreOutputs(
   outputs?: readonly string[],
   maxBytes: number = DEFAULT_MAX_INFLATED_BYTES,
 ): Promise<string[]> {
+  // A NaN bound would disable the check (`total > NaN` is never true).
+  if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
+    throw new Error(
+      `remote cache: maxInflatedBytes must be a positive whole number of ` +
+        `bytes, got ${maxBytes}.`,
+    );
+  }
   const inflated = await gunzipBounded(artifact, maxBytes);
   if (inflated === null) {
     throw new Error(
@@ -336,17 +364,30 @@ export function remoteCacheKey(name: string, fingerprint: string): string {
   return `${safe}-${fingerprint}`;
 }
 
+/** Configuration for a {@link FileSystemCacheStore}. */
+export interface FileSystemCacheStoreOptions {
+  /**
+   * The most a fetched artifact may decompress to, in bytes — see
+   * {@link RemoteCacheStore.maxInflatedBytes}. Defaults to 2 GiB.
+   */
+  maxInflatedBytes?: number;
+}
+
 /** A {@link RemoteCacheStore} backed by a shared or mounted directory. */
 export class FileSystemCacheStore implements RemoteCacheStore {
   readonly #dir: string;
+  /** The most an artifact may decompress to; see {@link RemoteCacheStore.maxInflatedBytes}. */
+  readonly maxInflatedBytes?: number;
 
   /**
    * Build the store over a directory.
    *
    * @param dir The directory archives are read from and written to.
+   * @param options The restore bound.
    */
-  constructor(dir: string) {
+  constructor(dir: string, options: FileSystemCacheStoreOptions = {}) {
     this.#dir = dir;
+    this.maxInflatedBytes = options.maxInflatedBytes;
   }
 
   #path(key: string): string {
@@ -392,6 +433,11 @@ export interface HttpCacheStoreOptions {
    * {@link restoreOutputs}.
    */
   maxArtifactBytes?: number;
+  /**
+   * The most a fetched artifact may decompress to, in bytes — see
+   * {@link RemoteCacheStore.maxInflatedBytes}. Defaults to 2 GiB.
+   */
+  maxInflatedBytes?: number;
 }
 
 /**
@@ -420,9 +466,12 @@ export class HttpCacheStore implements RemoteCacheStore {
   readonly #headers: Readonly<Record<string, string>>;
   readonly #fetch: typeof fetch;
   readonly #maxArtifactBytes: number;
+  /** The most an artifact may decompress to; see {@link RemoteCacheStore.maxInflatedBytes}. */
+  readonly maxInflatedBytes?: number;
 
-  /** Build the store from its URL, optional token, size cap, and `fetch` seam. */
+  /** Build the store from its URL, optional token, size caps, and `fetch` seam. */
   constructor(options: HttpCacheStoreOptions) {
+    this.maxInflatedBytes = options.maxInflatedBytes;
     const at = options.url.indexOf("?");
     const path = at === -1 ? options.url : options.url.slice(0, at);
     this.#base = path.replace(/\/+$/, "");
@@ -505,25 +554,36 @@ export class HttpCacheStore implements RemoteCacheStore {
  * on a GitHub Actions job that exposes its `ACTIONS_RUNTIME_TOKEN` and
  * `ACTIONS_RESULTS_URL` (the `actions-cache` input of the `zuke-build/zuke`
  * action), a {@link "./github_actions_cache.ts".GitHubActionsCacheStore}.
+ * Whichever is chosen takes `ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES`, when set,
+ * as its {@link RemoteCacheStore.maxInflatedBytes}.
  */
 export function envCacheStore(
   readEnv: (name: string) => string | undefined,
 ): RemoteCacheStore | undefined {
+  // Read only once a store is chosen, so it cannot fail a build that has none.
+  const limit = () => envInflatedLimit(readEnv);
   const url = readEnv("ZUKE_REMOTE_CACHE_URL");
   if (url !== undefined && url !== "") {
     assertSecureBackendUrl(url, "ZUKE_REMOTE_CACHE_URL", readEnv);
     return new HttpCacheStore({
       url,
       token: readEnv("ZUKE_REMOTE_CACHE_TOKEN"),
+      maxInflatedBytes: limit(),
     });
   }
   const s3 = readEnv("ZUKE_REMOTE_CACHE_S3_URL");
   if (s3 !== undefined && s3 !== "") {
     assertSecureBackendUrl(s3, "ZUKE_REMOTE_CACHE_S3_URL", readEnv);
-    return new S3CacheStore({ url: s3, ...s3Signing(readEnv) });
+    return new S3CacheStore({
+      url: s3,
+      ...s3Signing(readEnv),
+      maxInflatedBytes: limit(),
+    });
   }
   const dir = readEnv("ZUKE_REMOTE_CACHE_DIR");
-  if (dir !== undefined && dir !== "") return new FileSystemCacheStore(dir);
+  if (dir !== undefined && dir !== "") {
+    return new FileSystemCacheStore(dir, { maxInflatedBytes: limit() });
+  }
   const token = readEnv("ACTIONS_RUNTIME_TOKEN");
   const results = readEnv("ACTIONS_RESULTS_URL");
   if (
@@ -531,9 +591,34 @@ export function envCacheStore(
     results !== ""
   ) {
     assertSecureBackendUrl(results, "ACTIONS_RESULTS_URL", readEnv);
-    return new GitHubActionsCacheStore({ url: results, token });
+    return new GitHubActionsCacheStore({
+      url: results,
+      token,
+      maxInflatedBytes: limit(),
+    });
   }
   return undefined;
+}
+
+/**
+ * `ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES` as a byte count, or `undefined` when
+ * unset. Anything but a positive whole number is an error naming the variable,
+ * not a silently ignored limit.
+ */
+function envInflatedLimit(
+  readEnv: (name: string) => string | undefined,
+): number | undefined {
+  const name = "ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES";
+  const raw = readEnv(name);
+  if (raw === undefined || raw === "") return undefined;
+  const bytes = Number(raw);
+  if (!/^[1-9][0-9]*$/.test(raw) || !Number.isSafeInteger(bytes)) {
+    throw new Error(
+      `remote cache: ${name} must be a positive whole number of bytes, ` +
+        `got "${raw}".`,
+    );
+  }
+  return bytes;
 }
 
 /**

@@ -86,16 +86,16 @@ Deno.test("tar output is reproducible (fixed mtime)", () => {
   assertEquals(tar(e), tar(e));
 });
 
-Deno.test("tar rejects names longer than the ustar limit", () => {
-  const longName = "a/".repeat(60); // > 100 bytes
-  // assertThrows would need sync; use a try to assert the message.
-  let message = "";
-  try {
-    tar([{ name: longName, data: enc("x") }]);
-  } catch (error) {
-    message = error instanceof Error ? error.message : String(error);
-  }
-  assertEquals(message.includes("exceeds 100 bytes"), true);
+Deno.test("tar carries a name past the ustar limit in a pax header", () => {
+  // Multi-byte, so the record length counts bytes, not characters.
+  const longName = "é/".repeat(60) + "file";
+  const out = untar(tar([
+    { name: longName, data: enc("x"), mode: 0o755 },
+    { name: "short", data: enc("y") },
+  ]));
+  assertEquals(out.map((e) => e.name), [longName, "short"]);
+  assertEquals(dec(out[0].data), "x");
+  assertEquals(out[0].mode, 0o755);
 });
 
 Deno.test("untar stops at the zero-block trailer and ignores non-files", () => {
@@ -780,14 +780,11 @@ Deno.test("tar/untar round-trips a symlink entry (linkname, no data)", () => {
   assertEquals(out[1].data.length, 0); // a symlink carries no data
 });
 
-Deno.test("tar rejects a symlink target longer than the ustar limit", () => {
-  let message = "";
-  try {
-    tar([{ name: "l", data: new Uint8Array(0), linkname: "x/".repeat(60) }]);
-  } catch (error) {
-    message = error instanceof Error ? error.message : String(error);
-  }
-  assertEquals(message.includes("symlink target exceeds 100 bytes"), true);
+Deno.test("tar carries a long name and symlink target in one pax header", () => {
+  const name = "n/".repeat(55) + "link";
+  const target = "x/".repeat(60) + "t";
+  const out = untar(tar([{ name, data: new Uint8Array(0), linkname: target }]));
+  assertEquals(out, [{ name, data: new Uint8Array(0), linkname: target }]);
 });
 
 Deno.test("extractTarGzip strips leading path components", async () => {

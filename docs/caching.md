@@ -203,6 +203,9 @@ ZUKE_REMOTE_CACHE_URL=https://cache.example.com ZUKE_REMOTE_CACHE_TOKEN=… ./zu
 ZUKE_REMOTE_CACHE_DIR=/mnt/zuke-cache ./zuke ci
 ```
 
+`ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES` raises the 2 GiB bound on what a fetched
+artifact may decompress to, for whichever store the variables select.
+
 That is also the precedence: a plain URL, then an S3 URL, then a directory, then
 the Actions credentials. **`--no-remote-cache`** uses the local cache only for a
 run (it skips both restore and upload); **`--no-cache`** still disables _both_
@@ -326,10 +329,13 @@ target:
   the archive); when it lands under **`.git` or `.zuke`** — a restored git hook
   runs on the next ordinary git command — with `.zuke/tools` the one exception,
   since a provisioned toolchain is what a remote cache is for and the toolchain
-  re-verifies a restored binary against its recorded checksum before reusing it;
-  and when it falls **outside the paths the target declared with
-  `.outputs(...)`**. That last one is what stops an innocuous-looking
-  `deno.json` or lockfile riding along in an otherwise valid artifact.
+  re-verifies a restored binary against its recorded checksum before reusing it.
+  A `.git` _inside_ `.zuke/tools` is allowed too, because an SDK such as
+  Flutter's is a git checkout that runs `git` on itself; a store that could
+  write there could already replace the SDK's binaries; and when it falls
+  **outside the paths the target declared with `.outputs(...)`**. That last one
+  is what stops an innocuous-looking `deno.json` or lockfile riding along in an
+  otherwise valid artifact.
 - **A restore never writes through a symbolic link.** The checks above are
   lexical — they reason about the entry's _name_. An archive cannot carry a
   link, but a workspace can already hold one at a declared output, and writing a
@@ -351,8 +357,12 @@ target:
   outputs compress, so a legitimate archive inflates several times over and a
   shared cap would refuse real artifacts. The wire bound defaults to 512 MiB and
   is `maxArtifactBytes` on `HttpCacheStore`; the inflated bound defaults to 2
-  GiB. Because a tar entry costs at least its 512-byte header, bounding bytes
-  bounds entry count too.
+  GiB and is `maxInflatedBytes` on every built-in store, or
+  `ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES` (a byte count) for an env-selected one.
+  Raise it to cache a larger output such as a whole SDK; the restore holds the
+  inflated archive in memory, so it is also the memory ceiling. Because a tar
+  entry costs at least its 512-byte header, bounding bytes bounds entry count
+  too.
 - **A refused archive is a cache miss, not a build failure.** The target
   rebuilds and the refusal is reported as a warning — so whoever can write the
   store cannot halt every build that reads it. That covers every refusal above,

@@ -144,7 +144,7 @@ async function archiveOutputs(outputs: readonly string[], host: OutputHost): Pro
   Archive a target's `outputs` into a gzipped tar of their current contents,
   each file with its permission bits so a binary restores executable. A
   declared output that does not exist is skipped, as is anything under a
-  `.git` or `.zuke` directory other than `.zuke/tools`.
+  `.git` or `.zuke` directory, other than `.zuke/tools` and whatever it holds.
 
 function assert(condition: unknown, message: string): asserts condition
   Assert that `condition` is truthy, narrowing it for the rest of the scope.
@@ -385,6 +385,8 @@ function envCacheStore(readEnv: (name: string) => string | undefined): RemoteCac
   on a GitHub Actions job that exposes its `ACTIONS_RUNTIME_TOKEN` and
   `ACTIONS_RESULTS_URL` (the `actions-cache` input of the `zuke-build/zuke`
   action), a {@link "./github_actions_cache.ts".GitHubActionsCacheStore}.
+  Whichever is chosen takes `ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES`, when set,
+  as its {@link RemoteCacheStore.maxInflatedBytes}.
 
 function envStateStore(readEnv: (name: string) => string | undefined, host: StateHost): StateStore | undefined
   Resolve a {@link StateStore} from the environment, or `undefined` when none is
@@ -911,7 +913,8 @@ async function restoreOutputs(artifact: Uint8Array, host: OutputHost, outputs?: 
 
   @param maxBytes
       The most the artifact may decompress to before it is refused,
-      defaulting to 2 GiB. The bound is applied while decompressing, so a small
+      defaulting to 2 GiB; the executor passes the store's
+      {@link RemoteCacheStore.maxInflatedBytes}. The bound is applied while decompressing, so a small
       archive that expands without limit is refused rather than buffered first.
       It is larger than the bound a store puts on the compressed bytes because
       outputs compress; both exist to stop memory exhaustion.
@@ -1038,7 +1041,10 @@ async function syncCiFiles(files: readonly CiFile[], options: CiSyncOptions): Pr
   instead (so CI can fail when the committed config has drifted).
 
 function tar(entries: TarEntry[]): Uint8Array
-  Create a `ustar` archive from the given entries (in order).
+  Create a `ustar` archive from the given entries (in order). A name or
+  symlink target past ustar's 100 bytes is carried by a pax extended header
+  (typeflag `'x'`) ahead of its member, which {@link untar} and every modern
+  `tar` read back.
 
 function target(): TargetBuilder
   Create a new, empty target builder.
@@ -1752,12 +1758,17 @@ class FileSystemBuildRegistry implements BuildRegistry
 class FileSystemCacheStore implements RemoteCacheStore
   A {@link RemoteCacheStore} backed by a shared or mounted directory.
 
-  constructor(dir: string)
+  constructor(dir: string, options: FileSystemCacheStoreOptions)
     Build the store over a directory.
 
     @param dir
         The directory archives are read from and written to.
 
+    @param options
+        The restore bound.
+
+  readonly maxInflatedBytes?: number
+    The most an artifact may decompress to; see {@link RemoteCacheStore.maxInflatedBytes}.
   get(key: string): Promise<Uint8Array | null>
     Fetch the archived outputs stored under `key`, or `null` if there are none.
   async put(key: string, artifact: Uint8Array): Promise<void>
@@ -1859,6 +1870,8 @@ class GitHubActionsCacheStore implements RemoteCacheStore
 
   constructor(options: GitHubActionsCacheStoreOptions)
     Build the store from the service URL, the runtime token, and the `fetch` seam.
+  readonly maxInflatedBytes?: number
+    The most an artifact may decompress to; see {@link RemoteCacheStore.maxInflatedBytes}.
   async get(key: string): Promise<Uint8Array | null>
     Fetch the archived outputs stored under `key`, or `null` if there are none.
   async put(key: string, artifact: Uint8Array): Promise<void>
@@ -1921,7 +1934,9 @@ class HttpCacheStore implements RemoteCacheStore
   decompresses to.
 
   constructor(options: HttpCacheStoreOptions)
-    Build the store from its URL, optional token, size cap, and `fetch` seam.
+    Build the store from its URL, optional token, size caps, and `fetch` seam.
+  readonly maxInflatedBytes?: number
+    The most an artifact may decompress to; see {@link RemoteCacheStore.maxInflatedBytes}.
   async get(key: string): Promise<Uint8Array | null>
     Fetch the archived outputs stored under `key`, or `null` if there are none.
   async put(key: string, artifact: Uint8Array): Promise<void>
@@ -2268,6 +2283,8 @@ class S3CacheStore implements RemoteCacheStore
 
   constructor(options: S3CacheStoreOptions)
     Build the store from the bucket URL, region, credentials and seams.
+  readonly maxInflatedBytes?: number
+    The most an artifact may decompress to; see {@link RemoteCacheStore.maxInflatedBytes}.
   get(key: string): Promise<Uint8Array | null>
     Fetch the archived outputs stored under `key`, or `null` if there are none.
   put(key: string, artifact: Uint8Array): Promise<void>
@@ -3984,6 +4001,13 @@ interface FanOutOptions
   env?: Record<string, string>
     Environment variables set on every job (e.g. the remote-cache config).
 
+interface FileSystemCacheStoreOptions
+  Configuration for a {@link FileSystemCacheStore}.
+
+  maxInflatedBytes?: number
+    The most a fetched artifact may decompress to, in bytes — see
+    {@link RemoteCacheStore.maxInflatedBytes}. Defaults to 2 GiB.
+
 interface FileTasksApi
   The shape of {@link FileTasks}.
 
@@ -4103,6 +4127,9 @@ interface GitHubActionsCacheStoreOptions
     this store is written only by the repository's own workflows and the
     outputs worth caching here are the big ones (a 1.5 GB SDK). What the bytes
     decompress to is bounded separately, by `restoreOutputs`.
+  maxInflatedBytes?: number
+    The most a fetched artifact may decompress to, in bytes — see
+    {@link RemoteCacheStore.maxInflatedBytes}. Defaults to 2 GiB.
 
 interface GlobOptions
   Options for {@link glob}.
@@ -4170,6 +4197,9 @@ interface HttpCacheStoreOptions
     outputs are genuinely larger; a refusal is a warned rebuild, not a build
     failure. What the bytes decompress to is bounded separately, by
     {@link restoreOutputs}.
+  maxInflatedBytes?: number
+    The most a fetched artifact may decompress to, in bytes — see
+    {@link RemoteCacheStore.maxInflatedBytes}. Defaults to 2 GiB.
 
 interface HttpOptions
   Options shared by the HTTP helpers.
@@ -4597,6 +4627,11 @@ interface RemoteCacheStore
   point of view: the executor never fails a build because the store is
   unreachable — it just rebuilds and, where it can, re-uploads.
 
+  readonly maxInflatedBytes?: number
+    The most an artifact from this store may decompress to, in bytes, before
+    {@link restoreOutputs} refuses it. Defaults to 2 GiB; raise it for a target
+    whose outputs are genuinely larger, such as a whole SDK. The restore holds
+    the inflated archive in memory, so the bound is also its memory ceiling.
   get(key: string): Promise<Uint8Array | null>
     Fetch the archived outputs stored under `key`, or `null` if there are none.
   put(key: string, artifact: Uint8Array): Promise<void>
@@ -5035,6 +5070,9 @@ interface S3CacheStoreOptions
     The most a fetched artifact may weigh on the wire, in bytes, before it is
     refused. Defaults to 512 MiB — see
     {@link "./remote_cache.ts".HttpCacheStoreOptions.maxArtifactBytes}.
+  maxInflatedBytes?: number
+    The most a fetched artifact may decompress to, in bytes — see
+    {@link RemoteCacheStore.maxInflatedBytes}. Defaults to 2 GiB.
 
 interface ScheduleEntry
   A scheduled trigger: a 5-field cron expression in an optional IANA timezone.
@@ -5163,12 +5201,11 @@ interface TarEntry
   A single entry within a tar archive — a regular file or a symbolic link.
 
   name: string
-    The entry's path inside the archive (≤ 100 bytes).
+    The entry's path inside the archive.
   data: Uint8Array
     The file contents (empty for a symlink entry).
   linkname?: string
-    For a symbolic-link entry, its target (≤ 100 bytes); absent for a regular
-    file. Node's release tarballs, for one, ship `bin/npm`/`bin/npx` as symlinks
+    For a symbolic-link entry, its target; absent for a regular file. Node's release tarballs, for one, ship `bin/npm`/`bin/npx` as symlinks
     into `lib/node_modules`, so extracting a runtime tree must preserve them.
   mode?: number
     A regular file's permission bits, written into its header: `0o755` for an

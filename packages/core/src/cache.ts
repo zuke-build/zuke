@@ -233,7 +233,12 @@ class FsCache implements BuildCache {
         // Throwing instead would let anyone who can write the store halt every
         // build that reads it, and the store is documented as best-effort.
         try {
-          await restoreOutputs(artifact, this.#host, target.outputs_);
+          await restoreOutputs(
+            artifact,
+            this.#host,
+            target.outputs_,
+            this.#remote.maxInflatedBytes,
+          );
         } catch (error) {
           this.#warn?.(
             `remote cache restore for "${name}" was refused, rebuilding: ${

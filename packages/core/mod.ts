@@ -166,6 +166,7 @@ export {
   archiveOutputs,
   envCacheStore,
   FileSystemCacheStore,
+  type FileSystemCacheStoreOptions,
   HttpCacheStore,
   type HttpCacheStoreOptions,
   type OutputHost,

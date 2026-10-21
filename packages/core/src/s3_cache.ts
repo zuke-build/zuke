@@ -43,6 +43,11 @@ export interface S3CacheStoreOptions {
    * {@link "./remote_cache.ts".HttpCacheStoreOptions.maxArtifactBytes}.
    */
   maxArtifactBytes?: number;
+  /**
+   * The most a fetched artifact may decompress to, in bytes — see
+   * {@link RemoteCacheStore.maxInflatedBytes}. Defaults to 2 GiB.
+   */
+  maxInflatedBytes?: number;
 }
 
 /** The request body as bytes: the HTTP store sends a `Blob` or nothing. */
@@ -67,6 +72,8 @@ async function bodyBytes(
  */
 export class S3CacheStore implements RemoteCacheStore {
   readonly #http: HttpCacheStore;
+  /** The most an artifact may decompress to; see {@link RemoteCacheStore.maxInflatedBytes}. */
+  readonly maxInflatedBytes?: number;
 
   /** Build the store from the bucket URL, region, credentials and seams. */
   constructor(options: S3CacheStoreOptions) {
@@ -97,6 +104,7 @@ export class S3CacheStore implements RemoteCacheStore {
       fetch: signing,
       maxArtifactBytes: options.maxArtifactBytes,
     });
+    this.maxInflatedBytes = options.maxInflatedBytes;
   }
 
   /** Fetch the archived outputs stored under `key`, or `null` if there are none. */
