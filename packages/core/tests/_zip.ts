@@ -32,6 +32,11 @@ export interface ZipEntrySpec {
    * the local one lands on the wrong data offset.
    */
   localExtra?: Uint8Array;
+  /**
+   * A Unix `st_mode` (e.g. `0o100755`, or `0o120777` for a symlink): marks the
+   * entry as made on Unix and stores the mode in its external attributes.
+   */
+  unixMode?: number;
 }
 
 /** Raw-DEFLATE `data` via the platform `CompressionStream` (matches the reader). */
@@ -80,7 +85,8 @@ export async function makeZip(specs: ZipEntrySpec[]): Promise<Uint8Array> {
     const ch = new Uint8Array(46 + nameBytes.length);
     const cv = new DataView(ch.buffer);
     cv.setUint32(0, 0x02014b50, true);
-    cv.setUint16(4, 20, true); // version made by
+    // version made by: host 3 (Unix) when a mode is given, else MS-DOS
+    cv.setUint16(4, spec.unixMode === undefined ? 20 : (3 << 8) | 20, true);
     cv.setUint16(6, 20, true); // version needed
     cv.setUint16(8, flags, true);
     cv.setUint16(10, method, true);
@@ -88,6 +94,7 @@ export async function makeZip(specs: ZipEntrySpec[]): Promise<Uint8Array> {
     cv.setUint32(20, spec.zip64 ? SENTINEL : comp.length, true);
     cv.setUint32(24, spec.zip64 ? SENTINEL : data.length, true);
     cv.setUint16(28, nameBytes.length, true);
+    cv.setUint32(38, (spec.unixMode ?? 0) * 0x10000, true); // external attributes
     cv.setUint32(42, spec.zip64 ? SENTINEL : offset, true); // local header offset
     ch.set(nameBytes, 46);
     central.push(ch);

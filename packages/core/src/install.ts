@@ -433,9 +433,10 @@ export interface InstallTreeOptions {
    */
   strip?: number;
   /**
-   * Paths (relative to the stripped tree root) to mark executable on POSIX — the
-   * tar reader does not preserve mode bits, so a runtime's `bin/node`,
-   * `bin/npm`, … need it. Chmod follows a symlink to its real target, so listing
+   * Paths (relative to the stripped tree root) to mark executable on POSIX — a
+   * runtime's `bin/node`, `bin/npm`, … Extraction keeps the archive's mode
+   * bits, so this is a fallback for an archive that ships a binary without the
+   * executable bit. Chmod follows a symlink to its real target, so listing
    * a symlinked bin makes the script it points at executable too.
    */
   bins?: readonly string[];
@@ -461,8 +462,9 @@ export interface InstallTreeOptions {
  *
  * Because {@link AbsolutePath} is callable, the root doubles as an accessor:
  * `root("bin", "node")` is the node binary and `root("bin")` is the directory to
- * put on `PATH` (with `prependPath`). Declared {@link InstallTreeOptions.bins}
- * are marked executable on POSIX. With a {@link InstallTreeOptions.checksum} the
+ * put on `PATH` (with `prependPath`). Files keep the archive's permission bits;
+ * declared {@link InstallTreeOptions.bins} are also marked executable on POSIX,
+ * as a fallback. With a {@link InstallTreeOptions.checksum} the
  * archive is verified before unpacking and a matching prior install is reused.
  */
 export async function installTree(
@@ -504,8 +506,8 @@ export async function installTree(
     await Deno.remove(scratch, { recursive: true });
   }
 
-  // The tar reader drops mode bits, so make the declared bins executable —
-  // skipped for a Windows target, whose `.exe`/`.cmd` bins need no POSIX mode
+  // Extraction keeps the archive's mode bits; the declared bins are a fallback
+  // for an archive that ships them without the executable bit — skipped for a Windows target, whose `.exe`/`.cmd` bins need no POSIX mode
   // (mirrors installRelease, and keeps the skip branch testable via `platform`).
   if (platform.os !== "windows") {
     for (const bin of bins) {
