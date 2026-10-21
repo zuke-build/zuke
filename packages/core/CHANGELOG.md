@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.76.0](https://github.com/zuke-build/zuke/compare/core-v1.75.0...core-v1.76.0) (2026-10-21)
+
+
+### Features
+
+* **core:** remote cache store backed by the GitHub Actions cache ([#877](https://github.com/zuke-build/zuke/issues/877)) ([213d523](https://github.com/zuke-build/zuke/commit/213d5234c03e1fedc314159a77b2f680c2d6c8f5))
+* **core:** S3-compatible remote cache store and HTTP store headers ([#883](https://github.com/zuke-build/zuke/issues/883)) ([b3f6ddb](https://github.com/zuke-build/zuke/commit/b3f6ddbb93144d43ca2719a43745a4da12c9cbc8))
+* **core:** support tar.xz archives in installRelease and installTree ([#878](https://github.com/zuke-build/zuke/issues/878)) ([88c76a5](https://github.com/zuke-build/zuke/commit/88c76a5e46abcfb33636a4bfabe95d0b7d9118a7))
+
 ## [1.75.0](https://github.com/zuke-build/zuke/compare/core-v1.74.0...core-v1.75.0) (2026-10-21)
 
 
