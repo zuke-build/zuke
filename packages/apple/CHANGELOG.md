@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/zuke-build/zuke/compare/apple-v1.0.0...apple-v1.1.0) (2026-10-21)
+
+
+### Features
+
+* **apple:** build iOS apps and ship them to TestFlight ([#865](https://github.com/zuke-build/zuke/issues/865)) ([49398cd](https://github.com/zuke-build/zuke/commit/49398cdc8bf44674c64ce9d98c889ebac71c42c9))
+
 ## 1.0.0 (2026-10-12)
 
 
