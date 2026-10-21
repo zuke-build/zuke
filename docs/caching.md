@@ -153,10 +153,11 @@ Three dependency-free stores ship, behind one `RemoteCacheStore` interface
 | `GitHubActionsCacheStore` | the GitHub Actions cache service (what `actions/cache` uses) | a workflow on GitHub Actions — no server, no secret beyond the runner's own               |
 
 An artifact is a **gzipped `tar`** of the target's outputs, built with Zuke's
-dependency-free `tar`/`gzip` helpers. Entry names use the POSIX `ustar` format's
-100-byte path limit, so an extremely deep output path is rejected with a clear
-error rather than silently truncated. You can implement `RemoteCacheStore`
-yourself for any other backend.
+dependency-free `tar`/`gzip` helpers; each file carries its permission bits, so
+a restored binary is still executable. Entry names use the POSIX `ustar`
+format's 100-byte path limit, so an extremely deep output path is rejected with
+a clear error rather than silently truncated. You can implement
+`RemoteCacheStore` yourself for any other backend.
 
 ### Configuring it
 
@@ -276,10 +277,12 @@ target:
   contains a **`..`** segment; when it is a **symlink or directory entry**
   (which archiving never produces, so its presence means something else built
   the archive); when it lands under **`.git` or `.zuke`** — a restored git hook
-  runs on the next ordinary git command; and when it falls **outside the paths
-  the target declared with `.outputs(...)`**. That last one is what stops an
-  innocuous-looking `deno.json` or lockfile riding along in an otherwise valid
-  artifact.
+  runs on the next ordinary git command — with `.zuke/tools` the one exception,
+  since a provisioned toolchain is what a remote cache is for and the toolchain
+  re-verifies a restored binary against its recorded checksum before reusing it;
+  and when it falls **outside the paths the target declared with
+  `.outputs(...)`**. That last one is what stops an innocuous-looking
+  `deno.json` or lockfile riding along in an otherwise valid artifact.
 - **A restore never writes through a symbolic link.** The checks above are
   lexical — they reason about the entry's _name_. An archive cannot carry a
   link, but a workspace can already hold one at a declared output, and writing a

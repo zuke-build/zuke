@@ -87,9 +87,10 @@ function appendJobSummary(markdown: string): boolean
   that produced it — the build's own result is the signal that matters.
 
 async function archiveOutputs(outputs: readonly string[], host: OutputHost): Promise<Uint8Array>
-  Archive a target's `outputs` into a gzipped tar of their current contents.
-  A declared output that does not exist is skipped, as is anything under a
-  `.git` or `.zuke` directory.
+  Archive a target's `outputs` into a gzipped tar of their current contents,
+  each file with its permission bits so a binary restores executable. A
+  declared output that does not exist is skipped, as is anything under a
+  `.git` or `.zuke` directory other than `.zuke/tools`.
 
 function assert(condition: unknown, message: string): asserts condition
   Assert that `condition` is truthy, narrowing it for the rest of the scope.
@@ -831,7 +832,8 @@ async function restoreOutputs(artifact: Uint8Array, host: OutputHost, outputs?: 
   leaves no half-written, partially-trusted output tree. An entry is refused
   when its name is absolute or escapes the workspace with `..`, when it is a
   symlink or directory entry (which {@link archiveOutputs} never produces),
-  when it lands under `.git` or `.zuke`, when — given `outputs` — it falls
+  when it lands under `.git` or `.zuke` (`.zuke/tools` aside), when — given
+  `outputs` — it falls
   outside the target's declared outputs, and when the path it would be written
   to passes through, or is, a symlink that already exists on disk.
 
@@ -4315,8 +4317,11 @@ interface OutputHost
 
   readFile(path: string): Promise<Uint8Array | null>
     File contents, or `null` if the path does not exist.
-  stat(path: string): Promise<{ isDirectory: boolean; } | null>
-    Whether a path exists and is a directory, or `null` if it is missing.
+  stat(path: string): Promise<{ isDirectory: boolean; mode?: number; } | null>
+    Whether a path exists and is a directory, or `null` if it is missing. A
+    host that has permission bits reports them as `mode`, so an archived
+    binary is restored executable; one that does not (Windows, a test double)
+    leaves it out and the entry takes the archive's default.
   lstat(path: string): Promise<{ isSymlink: boolean; isDirectory: boolean; } | null>
     Describe a path without following a final symlink, or `null` if it is
     missing. Distinct from {@link OutputHost.stat}, which resolves a link and so
@@ -4324,8 +4329,9 @@ interface OutputHost
     which is a question only an `lstat` can answer.
   readDir(path: string): Promise<string[]>
     The entry names within a directory.
-  writeFile(path: string, bytes: Uint8Array): Promise<void>
-    Write a file, creating parent directories as needed.
+  writeFile(path: string, bytes: Uint8Array, mode?: number): Promise<void>
+    Write a file, creating parent directories as needed, with the permission
+    bits `mode` where the platform has them.
 
 interface OutputMode
   What {@link resolveOutputMode} decides.

@@ -2129,10 +2129,11 @@ true } } })` (the action's
 targets declaring **both** `inputs` and `outputs`. A remote store is best-effort
 — an unreachable one never fails the build. A **restore is confined to the
 target's declared `.outputs(...)`**, and refuses an absolute or `..` path, a
-symlink or directory entry, and anything under `.git`/`.zuke`; a refused archive
-is a cache miss (rebuild + warning), never a build failure, so whoever can write
-the store can neither plant files nor halt the build. `--affected` limits a run
-to targets touched since a git base (great for CI job fan-out).
+symlink or directory entry, and anything under `.git`/`.zuke` (except
+`.zuke/tools`, the toolchain's install root); a refused archive is a cache miss
+(rebuild + warning), never a build failure, so whoever can write the store can
+neither plant files nor halt the build. `--affected` limits a run to targets
+touched since a git base (great for CI job fan-out).
 
 **Telling a client where to authenticate** (`docs/mcp.md`): verifying a token
 only helps a caller that already has one. `override mcpProtectedResource()`

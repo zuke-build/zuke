@@ -151,6 +151,9 @@ Deno.test("a FileSystemCacheStore (env-configured) restores outputs on a fresh c
             async () => {
               log.push("build");
               await Deno.writeTextFile("out.txt", "built");
+              if (Deno.build.os !== "windows") {
+                await Deno.chmod("out.txt", 0o755);
+              }
             },
           );
         }
@@ -168,6 +171,12 @@ Deno.test("a FileSystemCacheStore (env-configured) restores outputs on a fresh c
         assertEquals(second.code, 0);
         assertEquals(log, ["build"]); // restored from the remote store, body not re-run
         assertEquals(await Deno.readTextFile(`${dir}/out.txt`), "built");
+        // A restored binary must still run: the executable bit survived the
+        // archive. Windows has no permission bits to check.
+        if (Deno.build.os !== "windows") {
+          const mode = (await Deno.stat(`${dir}/out.txt`)).mode ?? 0;
+          assertEquals(mode & 0o111, 0o111);
+        }
       } finally {
         if (prevRemote === undefined) {
           Deno.env.delete("ZUKE_REMOTE_CACHE_DIR");

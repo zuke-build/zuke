@@ -196,14 +196,18 @@ export async function writeTextEnsuringDir(
   await Deno.writeTextFile(path, content);
 }
 
-/** Write bytes to `path`, creating its parent directory first. */
+/**
+ * Write bytes to `path`, creating its parent directory first. `mode` sets the
+ * file's permission bits where the platform has them (Windows ignores it).
+ */
 export async function writeFileEnsuringDir(
   path: string,
   bytes: Uint8Array,
+  mode?: number,
 ): Promise<void> {
   const parent = parentOf(path);
   if (parent !== null) await Deno.mkdir(parent, { recursive: true });
-  await Deno.writeFile(path, bytes);
+  await Deno.writeFile(path, bytes, { mode });
 }
 
 /**

@@ -397,10 +397,12 @@ export function untar(archive: Uint8Array): TarEntry[] {
         data: new Uint8Array(0),
       });
     } else if (typeflag === 0x30 || typeflag === 0 || typeflag === 0x37) {
-      // Regular files ('0', legacy NUL, or '7' contiguous) carry data.
+      // Regular files ('0', legacy NUL, or '7' contiguous) carry data. The
+      // permission bits ride along so an extracted binary stays executable.
       entries.push({
         name,
         data: archive.slice(dataStart, dataStart + dataLen),
+        mode: readOctal(archive, header + 100, 8) & 0o7777,
       });
     }
     // Other typeflags (hardlink '1', device/fifo nodes) are not extractable.

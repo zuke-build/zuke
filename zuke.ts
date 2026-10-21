@@ -160,7 +160,14 @@ import {
 } from "./build/plugin_version_check.ts";
 import { actionPin } from "./build/action_pins.ts";
 import { scannerConfigDenial } from "./build/scanner_policy.ts";
-import { actionlintTool, gitleaksTool, zizmorTool } from "./build/scanners.ts";
+import {
+  ACTIONLINT_VERSION,
+  actionlintTool,
+  GITLEAKS_VERSION,
+  gitleaksTool,
+  ZIZMOR_VERSION,
+  zizmorTool,
+} from "./build/scanners.ts";
 import { BOOTSTRAP_ENDPOINTS, githubWorkflows } from "./build/workflows.ts";
 
 /**
@@ -437,6 +444,34 @@ class ZukeBuild extends Build {
       .tool((s) => gitleaksTool(s).destDir(TOOLS_ROOT))
   );
 
+  // The toolchain as a cacheable target, dogfooding the remote cache on the
+  // one thing this build produces that is worth sharing between runs: the
+  // scanner binaries. Keyed by platform and pinned versions, with the binaries
+  // and their checksum markers as outputs, a run on a fresh runner restores
+  // them from the store (the GitHub Actions cache, on CI) and `install()`
+  // reuses them after re-verifying each against its marker. Codecov is not an
+  // output: it is pinned by URL without a checksum, so it is fetched every run.
+  provisionTools = target()
+    .description("Provision the pinned scanner binaries into .zuke/tools")
+    .cacheKey(() =>
+      [
+        Deno.build.os,
+        Deno.build.arch,
+        ZIZMOR_VERSION,
+        ACTIONLINT_VERSION,
+        GITLEAKS_VERSION,
+      ].join(":")
+    )
+    .outputs(
+      ...["zizmor", "actionlint", "gitleaks"].flatMap((name) => {
+        const bin = Deno.build.os === "windows" ? `${name}.exe` : name;
+        return [`.zuke/tools/${bin}`, `.zuke/tools/${bin}.install.json`];
+      }),
+    )
+    .executes(async () => {
+      await this.tools.install();
+    });
+
   // Publish the coverage report to Codecov, dogfooding @zuke/codecov. True to
   // Zuke's model, the build owns its own tooling: it provisions the Codecov CLI
   // from the `tools` toolchain above (no global install, no extra CI step) and
@@ -444,7 +479,7 @@ class ZukeBuild extends Build {
   // `cov.lcov`. Skips with a message when the token is absent (local, fork PRs).
   coverageUpload = target()
     .description("Upload the coverage report to Codecov")
-    .dependsOn(this.coverage)
+    .dependsOn(this.coverage, this.provisionTools)
     .executes(async () => {
       const token = this.codecovToken.value;
       if (token === undefined || token === "") {
@@ -818,6 +853,7 @@ class ZukeBuild extends Build {
   // target fails if any reported issues.
   security = target()
     .description("Run supply-chain security scanners (zuke/security)")
+    .dependsOn(this.provisionTools)
     .executes(async () => {
       const failures: string[] = [];
       const gate = async (name: string, output: Promise<{ code: number }>) => {

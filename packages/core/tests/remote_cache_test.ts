@@ -32,13 +32,22 @@ const dec = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 class MemFs implements OutputHost {
   readonly files = new Map<string, Uint8Array>();
   readonly dirs = new Map<string, string[]>();
+  /** Permission bits by path, for the files that have them. */
+  readonly modes = new Map<string, number>();
 
   readFile(path: string): Promise<Uint8Array | null> {
     return Promise.resolve(this.files.get(path) ?? null);
   }
-  stat(path: string): Promise<{ isDirectory: boolean } | null> {
+  stat(path: string): Promise<{ isDirectory: boolean; mode?: number } | null> {
     if (this.dirs.has(path)) return Promise.resolve({ isDirectory: true });
-    if (this.files.has(path)) return Promise.resolve({ isDirectory: false });
+    if (this.files.has(path)) {
+      const mode = this.modes.get(path);
+      return Promise.resolve(
+        mode === undefined
+          ? { isDirectory: false }
+          : { isDirectory: false, mode },
+      );
+    }
     return Promise.resolve(null);
   }
   /**
@@ -65,8 +74,9 @@ class MemFs implements OutputHost {
   readDir(path: string): Promise<string[]> {
     return Promise.resolve(this.dirs.get(path) ?? []);
   }
-  writeFile(path: string, bytes: Uint8Array): Promise<void> {
+  writeFile(path: string, bytes: Uint8Array, mode?: number): Promise<void> {
     this.files.set(path, bytes);
+    if (mode !== undefined) this.modes.set(path, mode);
     return Promise.resolve();
   }
 }
@@ -88,6 +98,18 @@ Deno.test("archiveOutputs/restoreOutputs round-trip files and directories", asyn
   assertEquals(dec(out.files.get("dist/app.js") ?? enc("")), "built");
   assertEquals(dec(out.files.get("dist/assets/logo.svg") ?? enc("")), "<svg/>");
   assertEquals(dec(out.files.get("README.md") ?? enc("")), "readme");
+});
+
+Deno.test("archiveOutputs/restoreOutputs carry a file's permission bits", async () => {
+  const src = new MemFs();
+  src.files.set("tools/bin", enc("ELF"));
+  src.modes.set("tools/bin", 0o100755); // a stat mode, file type included
+  src.files.set("tools/readme", enc("hi")); // no mode known
+  src.dirs.set("tools", ["bin", "readme"]);
+  const out = new MemFs();
+  await restoreOutputs(await archiveOutputs(["tools"], src), out, ["tools"]);
+  assertEquals(out.modes.get("tools/bin"), 0o755); // permission bits only
+  assertEquals(out.modes.get("tools/readme"), 0o644); // the archive default
 });
 
 Deno.test("restoreOutputs refuses archive entries that escape the workspace", async () => {
@@ -373,6 +395,22 @@ Deno.test("restoreOutputs refuses protected paths whatever the outputs declare",
     assertStringIncludes(err.message, "protected path");
   }
   assertEquals(out.files.size, 0);
+  // The toolchain's install root is the one `.zuke` subtree a restore may
+  // write: a provisioned binary is what a remote cache is for, and the
+  // toolchain re-verifies it against its recorded checksum before reusing it.
+  const tool = await gzip(
+    tar([{ name: ".zuke/tools/zizmor", data: enc("ELF") }]),
+  );
+  assertEquals(await restoreOutputs(tool, out, [".zuke/tools"]), [
+    ".zuke/tools/zizmor",
+  ]);
+  // Only that subtree: the state beside it stays protected, as does a `tools`
+  // nested deeper under something else in `.zuke`.
+  for (const name of [".zuke/runs/tools/x", ".zuke/tools.json"]) {
+    const artifact = await gzip(tar([{ name, data: enc("x") }]));
+    const err = await assertRejects(() => restoreOutputs(artifact, out, ["."]));
+    assertStringIncludes(err.message, "protected path");
+  }
 });
 
 Deno.test("restoreOutputs refuses entry kinds archiveOutputs never produces", async () => {
