@@ -79,6 +79,8 @@ export class ChocolateyPackageSettings {
   licenseUrl_?: string;
   /** The icon's URL. Set by {@link iconUrl}. */
   iconUrl_?: string;
+  /** The copyright notice. Set by {@link copyright}. */
+  copyright_?: string;
   /** Where the package's source lives. Set by {@link packageSourceUrl}. */
   packageSourceUrl_?: string;
   /** The software's documentation. Set by {@link docsUrl}. */
@@ -183,6 +185,16 @@ export class ChocolateyPackageSettings {
   /** Search tags (`<tags>`), each one word; repeatable. */
   tags(...values: string[]): this {
     this.tags_.push(...values);
+    return this;
+  }
+
+  /**
+   * The software's copyright notice (`<copyright>`), one line — e.g. the
+   * line in its LICENSE, `Copyright (c) 2026 Acme`. The community
+   * repository's moderators ask for it whenever the software has one.
+   */
+  copyright(text: string): this {
+    this.copyright_ = text;
     return this;
   }
 
@@ -329,6 +341,7 @@ function nuspecMetadata(settings: ChocolateyPackageSettings): NuspecMetadata {
     authors: settings.authors_,
     projectUrl,
     iconUrl: optionalUrl(settings.iconUrl_, "iconUrl"),
+    copyright: optionalLine(settings.copyright_, "copyright"),
     licenseUrl: optionalUrl(settings.licenseUrl_, "licenseUrl"),
     docsUrl: optionalUrl(settings.docsUrl_, "docsUrl"),
     bugTrackerUrl: optionalUrl(settings.bugTrackerUrl_, "bugTrackerUrl"),

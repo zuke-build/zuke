@@ -26,7 +26,8 @@ import {
 import {
   CHOCOLATEY_OWNER,
   cliChocolateyPackage,
-  ICON_URL,
+  COPYRIGHT,
+  iconUrl,
   publishCliChocolatey,
   verifyCliChocolatey,
 } from "../build/cli_chocolatey.ts";
@@ -52,7 +53,12 @@ Deno.test("cliChocolateyPackage pins the release's Windows zip, and says it is u
   const nuspec = pkg.files["zuke.nuspec"];
   assertStringIncludes(nuspec, "not Authenticode-signed yet");
   assertStringIncludes(nuspec, "releases/tag/cli-v1.15.0");
-  assertStringIncludes(nuspec, `<iconUrl>${ICON_URL}</iconUrl>`);
+  assertStringIncludes(
+    nuspec,
+    "<iconUrl>https://cdn.jsdelivr.net/gh/zuke-build/zuke@cli-v1.15.0/assets/icon.png</iconUrl>",
+  );
+  assertEquals(iconUrl(VERSION).includes("@master"), false);
+  assertStringIncludes(nuspec, `<copyright>${COPYRIGHT}</copyright>`);
   assertStringIncludes(nuspec, `<owners>${CHOCOLATEY_OWNER}</owners>`);
 });
 
@@ -95,4 +101,11 @@ Deno.test("publishCliChocolatey pushes the pinned package with the API key", asy
   assertEquals(seen?.apiKey_, "choco-key");
   assertEquals(seen?.package_?.version, VERSION);
   assertEquals(seen?.source_, "https://push.chocolatey.org/");
+});
+
+Deno.test("the package's copyright is the LICENSE's own line", async () => {
+  const license = await Deno.readTextFile(
+    new URL("../LICENSE", import.meta.url),
+  );
+  assertEquals(license.split("\n").includes(COPYRIGHT), true, COPYRIGHT);
 });

@@ -2121,10 +2121,12 @@ minimal seam — TLS/OAuth/header-stripping is the proxy's job.
 a **remote store** to share results across machines — a fresh CI checkout or a
 teammate's clone restores outputs instead of rebuilding; `--no-remote-cache`
 uses the local cache only. Declare one with `override remoteCache()` on the
-`Build` (returning `FileSystemCacheStore`, `HttpCacheStore` or
-`GitHubActionsCacheStore`), or leave it and the executor falls back to the
-`ZUKE_REMOTE_CACHE_*` environment variables — or, on GitHub Actions, to the
-job's own cache service once
+`Build` (returning `FileSystemCacheStore`, `HttpCacheStore` — bearer token or
+any headers, an Azure SAS URL works as is — `S3CacheStore` for any S3-compatible
+bucket, or `GitHubActionsCacheStore`), or leave it and the executor falls back
+to the `ZUKE_REMOTE_CACHE_*` environment variables (`ZUKE_REMOTE_CACHE_S3_URL`
+plus the `AWS_*` variables for a bucket) — or, on GitHub Actions, to the job's
+own cache service once
 `cicd({ pipeline: { bootstrap: { actionsCache:
 true } } })` (the action's
 `actions-cache` input) exports its credentials to the job; it applies only to

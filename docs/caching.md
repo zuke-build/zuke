@@ -143,14 +143,15 @@ fails a build.
 
 ### Backends
 
-Three dependency-free stores ship, behind one `RemoteCacheStore` interface
+Four dependency-free stores ship, behind one `RemoteCacheStore` interface
 (`get(key)` / `put(key, artifact)`):
 
-| Store                     | Backed by                                                    | Use case                                                                                  |
-| ------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| `FileSystemCacheStore`    | a directory (`<dir>/<key>.tar.gz`)                           | a shared/mounted volume, an NFS path, a self-hosted runner cache                          |
-| `HttpCacheStore`          | `GET`/`PUT <url>/<key>` (+ optional bearer token)            | any object store or cache server behind a URL — an S3/GCS/R2 bucket, or your own endpoint |
-| `GitHubActionsCacheStore` | the GitHub Actions cache service (what `actions/cache` uses) | a workflow on GitHub Actions — no server, no secret beyond the runner's own               |
+| Store                     | Backed by                                                    | Use case                                                                                                    |
+| ------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `FileSystemCacheStore`    | a directory (`<dir>/<key>.tar.gz`)                           | a shared/mounted volume, an NFS path, a self-hosted runner cache                                            |
+| `HttpCacheStore`          | `GET`/`PUT <url>/<key>` (+ bearer token or any headers)      | any cache server behind a URL — an Azure Blob SAS URL, a Gradle-protocol or WebDAV cache, your own endpoint |
+| `S3CacheStore`            | the HTTP store, each request SigV4-signed for `s3`           | S3-compatible object storage — AWS S3, Cloudflare R2, MinIO, B2, Spaces, GCS (HMAC) — on any CI             |
+| `GitHubActionsCacheStore` | the GitHub Actions cache service (what `actions/cache` uses) | a workflow on GitHub Actions — no server, no secret beyond the runner's own                                 |
 
 An artifact is a **gzipped `tar`** of the target's outputs, built with Zuke's
 dependency-free `tar`/`gzip` helpers; each file carries its permission bits, so
@@ -190,20 +191,22 @@ class CI extends Build {
 
 …or from the environment, with no build-file change — the CI-friendly path:
 
-| Variable                                                       | Selects                     |
-| -------------------------------------------------------------- | --------------------------- |
-| `ZUKE_REMOTE_CACHE_URL` (+ optional `ZUKE_REMOTE_CACHE_TOKEN`) | an `HttpCacheStore`         |
-| `ZUKE_REMOTE_CACHE_DIR`                                        | a `FileSystemCacheStore`    |
-| `ACTIONS_RUNTIME_TOKEN` + `ACTIONS_RESULTS_URL`                | a `GitHubActionsCacheStore` |
+| Variable                                                                                                        | Selects                     |
+| --------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| `ZUKE_REMOTE_CACHE_URL` (+ optional `ZUKE_REMOTE_CACHE_TOKEN`)                                                  | an `HttpCacheStore`         |
+| `ZUKE_REMOTE_CACHE_S3_URL` + `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (+ `AWS_SESSION_TOKEN`), `AWS_REGION` | an `S3CacheStore`           |
+| `ZUKE_REMOTE_CACHE_DIR`                                                                                         | a `FileSystemCacheStore`    |
+| `ACTIONS_RUNTIME_TOKEN` + `ACTIONS_RESULTS_URL`                                                                 | a `GitHubActionsCacheStore` |
 
 ```sh
 ZUKE_REMOTE_CACHE_URL=https://cache.example.com ZUKE_REMOTE_CACHE_TOKEN=… ./zuke ci
 ZUKE_REMOTE_CACHE_DIR=/mnt/zuke-cache ./zuke ci
 ```
 
-A URL wins over a directory when both are set, and either wins over the Actions
-credentials. **`--no-remote-cache`** uses the local cache only for a run (it
-skips both restore and upload); **`--no-cache`** still disables _both_ caches.
+That is also the precedence: a plain URL, then an S3 URL, then a directory, then
+the Actions credentials. **`--no-remote-cache`** uses the local cache only for a
+run (it skips both restore and upload); **`--no-cache`** still disables _both_
+caches.
 
 ### On GitHub Actions
 
@@ -243,8 +246,52 @@ from whichever finalized first.
 
 GitLab CI and Azure Pipelines have no equivalent store a job can call: their
 `cache:` keyword and `Cache@2` task are handled by the runner outside the job,
-with no API. On those providers, point `ZUKE_REMOTE_CACHE_URL` at an object
-store or use a `FileSystemCacheStore` on a shared volume.
+with no API. On those providers use an
+[S3-compatible bucket](#s3-compatible-object-storage) or one of the
+[HTTP store's](#the-http-store-beyond-a-bearer-token) servers.
+
+### S3-compatible object storage
+
+`S3CacheStore` is the HTTP store with every request signed (SigV4, service
+`s3`), so it reaches a real bucket with real credentials: AWS S3, Cloudflare R2,
+MinIO, Backblaze B2, DigitalOcean Spaces, and Google Cloud Storage through its
+HMAC interoperability keys. It is the store for any CI without a cache service
+of its own. From the environment it is the bucket URL plus the variables the AWS
+SDKs already read:
+
+```sh
+ZUKE_REMOTE_CACHE_S3_URL=https://my-bucket.s3.eu-west-1.amazonaws.com/zuke-cache \
+AWS_ACCESS_KEY_ID=… AWS_SECRET_ACCESS_KEY=… AWS_REGION=eu-west-1 ./zuke ci
+```
+
+Use the path-style URL and the region `auto` for R2, MinIO and the other
+compatible services (`https://<account>.r2.cloudflarestorage.com/my-bucket`).
+Each request is signed with `x-amz-content-sha256` and the usual
+`Authorization`, and a session token rides along when `AWS_SESSION_TOKEN` is
+set, so temporary credentials from an OIDC exchange work as they are. The caller
+needs `s3:GetObject`, `s3:PutObject` and `s3:ListBucket` — without the last, S3
+answers a missing key with `403` rather than `404`, which Zuke reports as a
+lookup failure instead of a miss. The store never evicts: put a lifecycle rule
+on the prefix.
+
+### The HTTP store beyond a bearer token
+
+`HttpCacheStore` also takes a `headers` map sent on every request, and keeps a
+query string on its base URL, inserting the key before it. That covers servers
+that already speak `GET`/`PUT <url>/<key>` but authenticate differently:
+
+- **Azure Blob Storage with a SAS URL** — the practical remote cache for Azure
+  Pipelines. A container SAS as `ZUKE_REMOTE_CACHE_URL` needs nothing else: the
+  key lands before the `?sv=…`, and every `PUT` carries the
+  `x-ms-blob-type: BlockBlob` header Azure requires (other servers ignore it).
+- **A Gradle-protocol build cache, WebDAV, or an nginx/Caddy directory with
+  `PUT` enabled** — `headers: { Authorization: "Basic …" }` in a `remoteCache()`
+  override.
+- **GitLab's generic package registry** — the URL
+  `$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/zuke-cache/0` with
+  `headers: { "JOB-TOKEN": … }` from `CI_JOB_TOKEN`. It works, but it is a
+  registry rather than a cache: nothing expires unless the project sets a
+  package cleanup policy, so prefer a bucket for large outputs.
 
 ### How a key is derived
 

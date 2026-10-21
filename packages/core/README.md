@@ -378,6 +378,9 @@ function envCacheStore(readEnv: (name: string) => string | undefined): RemoteCac
   Resolve a {@link RemoteCacheStore} from the environment, or `undefined` when
   none is configured. `ZUKE_REMOTE_CACHE_URL` (with an optional
   `ZUKE_REMOTE_CACHE_TOKEN`) selects an {@link HttpCacheStore}; otherwise
+  `ZUKE_REMOTE_CACHE_S3_URL` selects an {@link "./s3_cache.ts".S3CacheStore}
+  signed with `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (and
+  `AWS_SESSION_TOKEN`) in `AWS_REGION` or `AWS_DEFAULT_REGION`; otherwise
   `ZUKE_REMOTE_CACHE_DIR` selects a {@link FileSystemCacheStore}; otherwise,
   on a GitHub Actions job that exposes its `ACTIONS_RUNTIME_TOKEN` and
   `ACTIONS_RESULTS_URL` (the `actions-cache` input of the `zuke-build/zuke`
@@ -1025,6 +1028,10 @@ function signJwtRs256(privateKeyPem: string, claims: Readonly<Record<string, unk
       naming the problem — an empty key, a body that is not
       base64, or one that is not an RSA key — and never quoting the key.
 
+async function signSigV4(request: AwsSignableRequest, credentials: AwsCredentials, region: string, service: string, now: number): Promise<AwsSignature>
+  Sign `request` for `service` in `region` at the instant `now` (epoch ms).
+  Pure apart from WebCrypto: the same inputs give the same signature.
+
 async function syncCiFiles(files: readonly CiFile[], options: CiSyncOptions): Promise<CiSyncResult[]>
   Bring each declared {@link CiFile} on disk in line with its definition. By
   default a changed file is rewritten; in `check` mode it is reported `stale`
@@ -1078,6 +1085,9 @@ async function unzip(archive: Uint8Array): Promise<TarEntry[]>
   out-of-bounds error). Every offset read from the archive is bounds-checked;
   for integrity against a tampered download, pin a `.checksum(...)`, which is
   verified before the archive is ever parsed.
+
+function uriEncode(value: string): string
+  `value` percent-encoded per RFC 3986 (unreserved characters kept).
 
 function validateGraph(targets: Map<string, TargetBuilder>): void
   Validate the whole graph: unknown references first, then cycles.
@@ -2245,6 +2255,24 @@ class RunNotSuspendedError extends Error
   override name: string
     The error name.
 
+class S3CacheStore implements RemoteCacheStore
+  A {@link RemoteCacheStore} over an S3-compatible bucket: the HTTP store's
+  `GET`/`PUT <url>/<key>`, each request carrying `x-amz-content-sha256` and
+  a SigV4 `Authorization` for the service `s3`.
+
+  A miss is a `404`, which S3 answers only to a caller allowed `s3:ListBucket`
+  on the bucket; without it a missing key is a `403`, reported as a lookup
+  failure (and a rebuild) rather than a miss. Grant `s3:GetObject`,
+  `s3:PutObject` and `s3:ListBucket`. Entries are never evicted by the store:
+  put a lifecycle rule on the prefix.
+
+  constructor(options: S3CacheStoreOptions)
+    Build the store from the bucket URL, region, credentials and seams.
+  get(key: string): Promise<Uint8Array | null>
+    Fetch the archived outputs stored under `key`, or `null` if there are none.
+  put(key: string, artifact: Uint8Array): Promise<void>
+    Store `artifact` (a gzipped tar of a target's outputs) under `key`.
+
 class SecretError extends Error
   Raised when a {@link SecretSource} cannot produce a value.
 
@@ -3024,6 +3052,40 @@ interface AnyParameter
     Whether the parameter resolved to a defined value (used by `.requires()`).
   stringValue_(): string | undefined
     The resolved value as a string, or `undefined` if unset (for masking).
+
+interface AwsCredentials
+  An AWS access key, with the session token temporary credentials carry.
+
+  readonly accessKeyId: string
+    The access key id (`AKIA…` long-term, `ASIA…` temporary).
+  readonly secretAccessKey: string
+    The secret access key. Never sent; only used to derive the signing key.
+  readonly sessionToken?: string
+    The session token of temporary credentials.
+
+interface AwsSignableRequest
+  The outgoing request a signature is computed over — exactly what will be
+  sent, so the signature verifies.
+
+  readonly method: string
+    The HTTP method.
+  readonly url: string
+    The absolute URL, including the query string, percent-encoded as sent.
+  readonly headers: Readonly<Record<string, string>>
+    The headers set so far, with lower-case names. Every one of them is
+    signed, so a header added after signing fails the request.
+  readonly body: Uint8Array
+    The exact body bytes; empty for a request without one.
+
+interface AwsSignature
+  What signing produced: the intermediate strings and the headers to add.
+
+  readonly canonicalRequest: string
+    The canonical request (step 1).
+  readonly stringToSign: string
+    The string to sign (step 2).
+  readonly headers: Readonly<Record<string, string>>
+    The headers to add: `x-amz-date`, `x-amz-security-token`, `authorization`.
 
 interface BearerChallenge
   The parts of a `WWW-Authenticate: Bearer` challenge Zuke emits.
@@ -4090,9 +4152,16 @@ interface HttpCacheStoreOptions
   Configuration for an {@link HttpCacheStore}.
 
   url: string
-    The base URL keys are appended to (any trailing slash is ignored).
+    The base URL keys are appended to (any trailing slash is ignored). A query
+    string is kept and the key goes before it, so an Azure Blob container's
+    SAS URL (`https://acct.blob.core.windows.net/container?sv=…`) works as
+    is.
   token?: string
     A bearer token sent as `Authorization: Bearer <token>`, if set.
+  headers?: Record<string, string>
+    Headers sent on every request: basic auth for a Gradle-protocol or WebDAV
+    cache, GitLab's `JOB-TOKEN`, or whatever else a server wants. The store's
+    own headers (the bearer token, the content type) win on a clash.
   fetch?: typeof fetch
     The `fetch` implementation; defaults to the global. Overridable for tests.
   maxArtifactBytes?: number
@@ -4945,6 +5014,27 @@ interface RunningService
     The service's target name, for diagnostics.
   stop(): Promise<void>
     Stop the service; never rejects (failures are the registry's concern).
+
+interface S3CacheStoreOptions
+  Configuration for an {@link S3CacheStore}.
+
+  url: string
+    The bucket URL keys are appended to, with any prefix:
+    `https://my-bucket.s3.eu-west-1.amazonaws.com/zuke-cache` on AWS, or
+    `https://<account>.r2.cloudflarestorage.com/my-bucket` (path-style) on
+    R2, MinIO and the like.
+  region: string
+    The signing region: the bucket's on AWS, `auto` on R2.
+  credentials: AwsCredentials
+    The access key the requests are signed with.
+  fetch?: typeof fetch
+    The `fetch` implementation; defaults to the global. Overridable for tests.
+  now?: () => number
+    The clock the signatures are dated by (epoch ms); defaults to `Date.now`.
+  maxArtifactBytes?: number
+    The most a fetched artifact may weigh on the wire, in bytes, before it is
+    refused. Defaults to 512 MiB — see
+    {@link "./remote_cache.ts".HttpCacheStoreOptions.maxArtifactBytes}.
 
 interface ScheduleEntry
   A scheduled trigger: a 5-field cron expression in an optional IANA timezone.
