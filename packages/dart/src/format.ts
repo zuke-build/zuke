@@ -11,7 +11,11 @@ import type { PathLike } from "@zuke/core/tooling";
 import { pathOperand, wholeNumber } from "./operand.ts";
 import { DartSettings } from "./settings.ts";
 
-/** Settings for `dart format`. */
+/**
+ * Settings for `dart format`. With no `.path()` the current directory is
+ * formatted: `dart format` itself would read stdin instead, and in CI — no
+ * terminal, empty stdin — a `.setExitIfChanged()` check would pass vacuously.
+ */
 export class DartFormatSettings extends DartSettings {
   #paths: string[] = [];
   #flags: string[] = [];
@@ -21,7 +25,7 @@ export class DartFormatSettings extends DartSettings {
     return this;
   }
 
-  /** A file or directory to format (defaults to the current one); repeatable. */
+  /** A file or directory to format (defaults to `.`); repeatable. */
   path(path: PathLike): this {
     this.#paths.push(pathOperand(path));
     return this;
@@ -72,6 +76,10 @@ export class DartFormatSettings extends DartSettings {
 
   /** Assemble the `dart format` argv. */
   protected override buildArgs(): string[] {
-    return ["format", ...this.#flags, ...this.#paths];
+    return [
+      "format",
+      ...this.#flags,
+      ...(this.#paths.length > 0 ? this.#paths : ["."]),
+    ];
   }
 }

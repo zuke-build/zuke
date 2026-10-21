@@ -14,6 +14,7 @@ import {
 import {
   DartAnalyzeSettings,
   DartCompileSettings,
+  type DartCompileTarget,
   DartCreateSettings,
   DartDocSettings,
   DartFixSettings,
@@ -58,8 +59,13 @@ Deno.test("analyze: flags before path operands, dashed paths made safe", () => {
   );
 });
 
-Deno.test("format: every flag renders, then paths", () => {
-  assertEquals(new DartFormatSettings().argv(), ["dart", "format"]);
+Deno.test("format: every flag renders, then paths; no path means the current directory", () => {
+  // Bare `dart format` reads stdin, which in CI is empty and passes vacuously.
+  assertEquals(new DartFormatSettings().argv(), ["dart", "format", "."]);
+  assertEquals(
+    new DartFormatSettings().setExitIfChanged().output("none").argv(),
+    ["dart", "format", "--set-exit-if-changed", "--output", "none", "."],
+  );
   assertEquals(
     new DartFormatSettings().output("none").setExitIfChanged().lineLength(100)
       .show("all").summary("none").followLinks().languageVersion("3.3")
@@ -191,12 +197,9 @@ Deno.test("compile: target, flags, VM flags, then the required entry", () => {
       "build/app.d",
       "--define=ENV=x=1",
       "--enable-asserts",
-      "--enable-experiment",
-      "macros",
-      "--packages",
-      ".packages",
-      "--verbosity",
-      "all",
+      "--enable-experiment=macros",
+      "--packages=.packages",
+      "--verbosity=all",
       "bin/main.dart",
     ],
   );
@@ -226,18 +229,81 @@ Deno.test("compile: target, flags, VM flags, then the required entry", () => {
   );
 });
 
+Deno.test("compile: a setter the target's grammar lacks is refused", () => {
+  // One rejected setter per target, from the SDK's own option tables.
+  const rejected: Array<[DartCompileTarget, (s: DartCompileSettings) => void]> =
+    [
+      ["exe", (s) => s.optimize(2)],
+      ["aot-snapshot", (s) => s.optimize(2)],
+      ["jit-snapshot", (s) => s.targetOs("linux")],
+      ["kernel", (s) => s.enableAsserts()],
+      ["js", (s) => s.depfile("a.d")],
+      ["wasm", (s) => s.verbosity("all")],
+    ];
+  for (const [target, apply] of rejected) {
+    assertThrows(
+      () => apply(new DartCompileSettings(target)),
+      Error,
+      `DartTasks.${TASK_NAME[target]}: .`,
+    );
+  }
+  assertThrows(
+    () => new DartCompileSettings("kernel").saveDebuggingInfo("x"),
+    Error,
+    "DartTasks.compileKernel: .saveDebuggingInfo() is not accepted by dart compile kernel.",
+  );
+  // The same setters are accepted where the grammar has them.
+  assertEquals(
+    new DartCompileSettings("kernel").depfile("a.d").verbosity("info")
+      .entry("a.dart").argv().slice(3),
+    ["--depfile", "a.d", "--verbosity=info", "a.dart"],
+  );
+  assertEquals(
+    new DartCompileSettings("wasm").enableAsserts().depfile("a.d")
+      .entry("a.dart").argv().slice(3),
+    ["--depfile", "a.d", "--enable-asserts", "a.dart"],
+  );
+  assertEquals(
+    new DartCompileSettings("js").enableAsserts().verbosity("error")
+      .enableExperiment("x").packages("p").entry("a.dart").argv().slice(3),
+    [
+      "--enable-asserts",
+      "--verbosity=error",
+      "--enable-experiment=x",
+      "--packages=p",
+      "a.dart",
+    ],
+  );
+});
+
+/** Each target's task name, as the error messages spell it. */
+const TASK_NAME: Record<DartCompileTarget, string> = {
+  exe: "compileExe",
+  "aot-snapshot": "compileAotSnapshot",
+  "jit-snapshot": "compileJitSnapshot",
+  kernel: "compileKernel",
+  js: "compileJs",
+  wasm: "compileWasm",
+};
+
 Deno.test("run: VM flags, then the entry; .args() lands after it", () => {
   assertEquals(new DartRunSettings().argv(), ["dart", "run"]);
+  // --observe and --enable-vm-service take a value, so it is attached with
+  // `=`: a bare flag would consume the entry point as its value.
   assertEquals(
-    new DartRunSettings().observe().enableVmService().define("A", "1")
-      .enableAsserts().entry("build_runner").args("build", "-d").argv(),
+    new DartRunSettings().observe().enableVmService("9000").define("A", "1")
+      .enableAsserts().enableExperiment("macros").packages(".packages")
+      .verbosity("error").entry("build_runner").args("build", "-d").argv(),
     [
       "dart",
       "run",
-      "--observe",
-      "--enable-vm-service",
+      "--observe=8181/localhost",
+      "--enable-vm-service=9000",
       "--define=A=1",
       "--enable-asserts",
+      "--enable-experiment=macros",
+      "--packages=.packages",
+      "--verbosity=error",
       "build_runner",
       "build",
       "-d",
@@ -450,7 +516,7 @@ Deno.test("DartTasks: every task reaches execution with its subcommand", async (
   for (const task of tasks) await assertRejects(task, ToolNotFoundError);
   assertEquals(seen, [
     ["analyze"],
-    ["format"],
+    ["format", "."],
     ["fix"],
     ["test"],
     ["run"],

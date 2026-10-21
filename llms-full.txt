@@ -30041,18 +30041,22 @@ class DartCompileSettings extends DartVmSettings
 
   constructor(target: DartCompileTarget)
     Settings for `dart compile <target>`.
+  override enableAsserts(): this
+    Enable assert statements (`--enable-asserts`); not for `kernel`.
+  override verbosity(level: "error" | "warning" | "info" | "all"): this
+    How much to print (`--verbosity`); not for `wasm`.
   entry(path: PathLike): this
     The Dart entry point to compile; required.
   output(path: PathLike): this
     Where to write the compiled artifact (`--output`).
   targetOs(os: DartTargetOs): this
-    Cross-compile `exe` or `aot-snapshot` for another OS (`--target-os`).
+    Cross-compile for another OS (`--target-os`); `exe` and `aot-snapshot` only.
   saveDebuggingInfo(path: PathLike): this
-    Strip debugging information into a separate file (`--save-debugging-info`).
+    Strip debugging information into a separate file (`--save-debugging-info`); `exe` and `aot-snapshot` only.
   depfile(path: PathLike): this
-    Write a Makefile-style dependency file (`--depfile`).
+    Write a Makefile-style dependency file (`--depfile`); not for `js`.
   optimize(level: number): this
-    The `js` and `wasm` optimization level, `0` to `4` (`-O<level>`).
+    The optimization level, `0` to `4` (`-O<level>`); `js` and `wasm` only.
   override protected buildArgs(): string[]
     Assemble the `dart compile <target>` argv.
 
@@ -30099,10 +30103,12 @@ class DartFixSettings extends DartSettings
     Assemble the `dart fix` argv.
 
 class DartFormatSettings extends DartSettings
-  Settings for `dart format`.
+  Settings for `dart format`. With no `.path()` the current directory is
+  formatted: `dart format` itself would read stdin instead, and in CI — no
+  terminal, empty stdin — a `.setExitIfChanged()` check would pass vacuously.
 
   path(path: PathLike): this
-    A file or directory to format (defaults to the current one); repeatable.
+    A file or directory to format (defaults to `.`); repeatable.
   output(mode: "write" | "show" | "json" | "none"): this
     What to do with formatted code: `write` (default), `show`, `json` or `none` (`--output`).
   setExitIfChanged(): this
@@ -30237,16 +30243,20 @@ class DartPubUpgradeSettings extends DartSettings
 class DartRunSettings extends DartVmSettings
   Settings for `dart run`. The entry point is the last token the settings
   build, so anything passed through `.args()` lands after it and reaches the
-  program, not the VM.
+  program, not the VM — without an `.entry()`, the first `.args()` token is
+  what `dart run` takes as the program, exactly as on the command line.
 
   entry(fileOrTarget: PathLike): this
     The Dart file to run, or a package executable such as `build_runner` or
     `test:test`. Without one, `dart run` runs the current package's own
     executable.
-  observe(): this
-    Start the VM service and pause until a debugger attaches (`--observe`).
-  enableVmService(): this
-    Start the VM service without pausing (`--enable-vm-service`).
+  observe(bind: string): this
+    Start the VM service with the debugging conveniences and pause on start
+    (`--observe=<port>[/<bind-address>]`). The value is attached with `=`
+    because `dart run` reads the option's value from the next token, which
+    would otherwise be the entry point.
+  enableVmService(bind: string): this
+    Start the VM service without pausing (`--enable-vm-service=<port>[/<bind-address>]`).
   override protected buildArgs(): string[]
     Assemble the `dart run` argv.
 
@@ -30312,7 +30322,9 @@ class DartVersionSettings extends DartSettings
 abstract class DartVmSettings extends DartSettings
   Flags shared by the commands that load Dart code into the VM — `compile`
   and `run`: `--define`, `--enable-asserts`, `--enable-experiment`,
-  `--packages` and `--verbosity`.
+  `--packages` and `--verbosity`. Valued options render as `--flag=value`:
+  `dart compile js` hands its argv to dart2js, whose parser accepts only that
+  spelling, and Dart's `args` package accepts it everywhere else.
 
   protected vmFlag(...tokens: string[]): this
     Push the shared flags in call order.
