@@ -1,6 +1,6 @@
 {
-  "packages/core": "1.74.0",
-  "packages/deno": "1.4.2",
+  "packages/core": "1.75.0",
+  "packages/deno": "1.5.0",
   "packages/docs": "1.0.1",
   "packages/npm": "1.3.1",
   "packages/npx": "1.1.0",
@@ -63,9 +63,9 @@
   "packages/ai": "2.12.1",
   "packages/otel": "1.0.2",
   "packages/qr": "1.2.0",
-  "packages/apple": "1.0.0",
+  "packages/apple": "1.1.0",
   "packages/homebrew": "1.0.2",
   "packages/chocolatey": "1.0.0",
   "packages/signpath": "1.0.0",
-  "packages/flutter": "0.0.0"
+  "packages/flutter": "1.0.0"
 }

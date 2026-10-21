@@ -382,7 +382,7 @@ Deno.test("a bad certificate is refused before anything is created, without echo
     [undefined, "no certificate"],
     ["", "not base64"],
     ["not*base64!", "not base64"],
-    ["abcde", "length or padding"],
+    ["abcde", "not base64"],
   ];
   for (const [certificate, message] of cases) {
     const host = new FakeHost();

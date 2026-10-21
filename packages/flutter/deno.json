@@ -1,6 +1,6 @@
 {
   "name": "@zuke/flutter",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "license": "MIT",
   "description": "Typed Flutter CLI task wrappers for Zuke builds — analyze, test, build every artifact, pub dependencies, drive, install, doctor and config via an injection-free settings-lambda API.",
   "exports": {

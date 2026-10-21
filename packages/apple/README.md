@@ -1,9 +1,11 @@
 # @zuke/apple
 
-Typed task wrappers for Apple's code-signing tools in
-[Zuke](https://github.com/zuke-build/zuke#readme) builds — `codesign`,
-`xcrun notarytool`, `security` and `ditto` — in a fluent settings-lambda API.
-Arguments stay a discrete argv array, so command construction is injection-free.
+Typed task wrappers for building, signing and shipping Apple apps in
+[Zuke](https://github.com/zuke-build/zuke#readme) builds — `xcodebuild`,
+`codesign`, `xcrun notarytool`, `xcrun altool`, `security` and `ditto`,
+provisioning profiles, and TestFlight through the App Store Connect API — in a
+fluent settings-lambda API. Arguments stay a discrete argv array, so command
+construction is injection-free.
 
 ```ts
 import {
@@ -33,16 +35,118 @@ const submission = await NotarytoolTasks.submit((s) =>
 
 ## The tools
 
-| Task object       | Binary             | Tasks                                                                                                                                                              |
-| ----------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `CodesignTasks`   | `codesign`         | `sign`, `verify`, `display` (parsed: identifier, team, authorities — read from stderr, where `codesign` writes them)                                               |
-| `NotarytoolTasks` | `xcrun notarytool` | `submit`, `info`, `log`, `history` — each returns the tool's JSON, parsed                                                                                          |
-| `SecurityTasks`   | `security`         | `createKeychain`, `deleteKeychain`, `unlockKeychain`, `setKeychainSettings`, `import`, `setKeyPartitionList`, `listKeychains`, `findIdentity`, `temporaryKeychain` |
-| `DittoTasks`      | `ditto`            | `copy`, `archive` (`-c -k`), `extract` (`-x -k`)                                                                                                                   |
+| Task object                | Binary                | Tasks                                                                                                                                                                              |
+| -------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CodesignTasks`            | `codesign`            | `sign`, `verify`, `display` (parsed: identifier, team, authorities — read from stderr, where `codesign` writes them)                                                               |
+| `NotarytoolTasks`          | `xcrun notarytool`    | `submit`, `info`, `log`, `history` — each returns the tool's JSON, parsed                                                                                                          |
+| `SecurityTasks`            | `security`            | `createKeychain`, `deleteKeychain`, `unlockKeychain`, `setKeychainSettings`, `import`, `setKeyPartitionList`, `listKeychains`, `findIdentity`, `temporaryKeychain`                 |
+| `DittoTasks`               | `ditto`               | `copy`, `archive` (`-c -k`), `extract` (`-x -k`)                                                                                                                                   |
+| `XcodebuildTasks`          | `xcodebuild`          | `build`, `clean`, `analyze`, `buildForTesting`, `test`, `testWithoutBuilding`, `archive`, `exportArchive`, `resolvePackageDependencies`, `showBuildSettings`, `writeExportOptions` |
+| `AltoolTasks`              | `xcrun altool`        | `uploadApp`, `validateApp`                                                                                                                                                         |
+| `ProvisioningProfileTasks` | —                     | `inspect`, `install`, `temporary`                                                                                                                                                  |
+| `TestFlightTasks`          | App Store Connect API | `distribute`                                                                                                                                                                       |
 
 Task and setting names follow the real subcommands and flags:
 `SecurityTasks.setKeyPartitionList` runs `security set-key-partition-list`,
 `.privateKeys()` is its `-s`, `DittoSettings.keepParent()` is `--keepParent`.
+
+## Building an iOS app
+
+`XcodebuildTasks` archives a scheme and exports the archive to an `.ipa`. The
+`ExportOptions.plist` the export needs is written from typed settings by
+`writeExportOptions`, so the build does not keep a hand-edited plist:
+
+```ts
+import { XcodebuildTasks } from "@zuke/apple";
+
+await XcodebuildTasks.archive((s) =>
+  s.workspace("App.xcworkspace").scheme("App").configuration("Release")
+    .destination("generic/platform=iOS").archivePath("build/App.xcarchive")
+    .allowProvisioningUpdates()
+    .authenticationKey("AuthKey_ABC123.p8", "ABC123", issuer)
+);
+await XcodebuildTasks.writeExportOptions(
+  "build/ExportOptions.plist",
+  (o) =>
+    o.method("app-store-connect").teamId("ABCDE12345").destination("upload"),
+);
+await XcodebuildTasks.exportArchive((s) =>
+  s.archivePath("build/App.xcarchive").exportPath("build/ipa")
+    .exportOptionsPlist("build/ExportOptions.plist")
+    .allowProvisioningUpdates()
+    .authenticationKey("AuthKey_ABC123.p8", "ABC123", issuer)
+);
+```
+
+With `.destination("upload")` the export uploads to App Store Connect; with
+`"export"` (the default) it writes the `.ipa` to the export path. Build setting
+overrides go through `.buildSetting(name, value)`, which accepts a condition in
+the name (`CODE_SIGN_IDENTITY[sdk=iphoneos*]`) and refuses anything else.
+
+## Shipping to TestFlight
+
+A release runs in three steps. First, install the provisioning profile for the
+signing steps only. Then archive and export with an upload destination. Last,
+distribute the build once App Store Connect has processed it:
+
+```ts
+import {
+  ProvisioningProfileTasks,
+  TestFlightTasks,
+  XcodebuildTasks,
+} from "@zuke/apple";
+
+await ProvisioningProfileTasks.temporary(
+  (s) => s.base64(profileBase64),
+  async ({ profile }) => {
+    await XcodebuildTasks.archive((s) =>
+      s.workspace("App.xcworkspace").scheme("App").configuration("Release")
+        .destination("generic/platform=iOS").archivePath("build/App.xcarchive")
+    );
+    await XcodebuildTasks.writeExportOptions(
+      "build/ExportOptions.plist",
+      (o) =>
+        o.method("app-store-connect").teamId(profile.teamIds[0])
+          .signingStyle("manual")
+          .provisioningProfile(profile.bundleId, profile.uuid)
+          .destination("upload"),
+    );
+    await XcodebuildTasks.exportArchive((s) =>
+      s.archivePath("build/App.xcarchive").exportPath("build/ipa")
+        .exportOptionsPlist("build/ExportOptions.plist")
+        .authenticationKey("AuthKey_ABC123.p8", "ABC123", issuer)
+    );
+  },
+);
+await TestFlightTasks.distribute((s) =>
+  s.issuerId(issuer).keyId("ABC123").privateKey(p8)
+    .bundleId("com.example.app").buildNumber(buildNumber)
+    .usesNonExemptEncryption(false)
+    .whatToTest("Checkout redesign.").group("QA").submitForBetaReview()
+);
+```
+
+- **Provisioning profiles.** `ProvisioningProfileTasks` reads a
+  `.mobileprovision` from a file or a base64 secret. It reads the profile's
+  UUID, name, team, bundle id, expiry and kind from the plist inside it, on any
+  OS and without running a subprocess. It installs the profile as
+  `<uuid>.mobileprovision` into both directories Xcode reads profiles from. An
+  expired profile is refused. `temporary` always removes the profile again, the
+  same way `SecurityTasks.temporaryKeychain` removes its keychain.
+- **Distribution.** `TestFlightTasks.distribute` signs an ES256 token with the
+  App Store Connect API key. It finds the app by bundle id and waits for the
+  uploaded build to finish processing (`.timeout()`, `.pollInterval()`). A build
+  that comes back `INVALID` or `FAILED` throws a `TestFlightError`. Then it
+  takes only the steps you asked for: the export-compliance answer, without
+  which testers cannot install the build; the "What to Test" notes for each
+  locale; adding the build to beta groups by name; and submitting it for beta
+  review. Errors from the API arrive as an `AppStoreConnectError` that lists
+  each problem the API reported. The private key and the token signed with it
+  never appear in a log or an error.
+- **`altool`.** `AltoolTasks.uploadApp` and `validateApp` wrap `xcrun altool`,
+  which Apple has deprecated. It still works for pipelines that use it.
+  `.appleId(user, password)` passes the app-specific password through an
+  environment variable rather than the command line.
 
 ## A temporary keychain for CI
 
@@ -166,6 +270,12 @@ await NotarytoolTasks.submit((s) =>
 ```
 @module
 
+const APP_STORE_CONNECT_API_URL: "https://api.appstoreconnect.apple.com"
+  The App Store Connect API's base URL.
+
+const AltoolTasks: AltoolTasksApi
+  Typed task functions for `xcrun altool`.
+
 const CodesignTasks: CodesignTasksApi
   Typed task functions for Apple's `codesign`.
 
@@ -175,8 +285,108 @@ const DittoTasks: DittoTasksApi
 const NotarytoolTasks: NotarytoolTasksApi
   Typed task functions for `xcrun notarytool`.
 
+const ProvisioningProfileTasks: ProvisioningProfileTasksApi
+  Read and install provisioning profiles.
+
 const SecurityTasks: SecurityTasksApi
   Typed task functions for macOS `security`.
+
+const TestFlightTasks: TestFlightTasksApi
+  Distribute builds in TestFlight through the App Store Connect API.
+
+const XcodebuildTasks: XcodebuildTasksApi
+  Typed task functions for `xcodebuild`.
+
+class AltoolSettings extends ToolSettings
+  Settings for `xcrun altool --upload-app` and `--validate-app`.
+
+  constructor(operation: AltoolOperation)
+    Settings for `xcrun altool <operation>`.
+  override protected defaultTool(): string
+    The default executable name (`xcrun`), which dispatches to altool.
+  override protected defaultResolution(): ToolResolution
+    Resolve from `PATH` — `xcrun` ships with macOS in `/usr/bin`.
+  file(path: PathLike): this
+    The `.ipa` or `.pkg` to upload or validate (`--file`); required.
+  type(platform: AltoolPlatform): this
+    The app's platform (`--type`); required.
+  apiKey(keyId: string, issuerId: string): this
+    Authenticate with an App Store Connect API key: its key id and issuer id
+    (`--apiKey`, `--apiIssuer`). `altool` finds `AuthKey_<keyId>.p8` in
+    `~/.appstoreconnect/private_keys` and its other search directories, or in
+    {@link apiPrivateKeysDir}.
+  apiPrivateKeysDir(path: PathLike): this
+    The directory holding `AuthKey_<keyId>.p8`, passed to `altool` as
+    `API_PRIVATE_KEYS_DIR`.
+  appleId(username: string, password: string): this
+    Authenticate with an Apple ID and an app-specific password
+    (`--username`, `--password`). The password is handed to `altool` in an
+    environment variable it reads through `@env:`, so it is never on the
+    command line, and it is registered with the run's redactor.
+  override protected buildArgs(): string[]
+    Assemble the `altool` argv; the output is always JSON.
+
+class AppStoreConnectError extends Error
+  Raised when the App Store Connect API answers with an error status. The
+  message names the request and every error the API listed; it never carries
+  the API key or the token signed with it.
+
+  constructor(readonly request: string, readonly status: number, readonly errors: ReadonlyArray<AppStoreConnectErrorDetail>)
+    Build the error from the request, the status and the API's errors.
+  override name: string
+    The error name.
+
+class AppStoreConnectSettings
+  Settings for a task that calls the App Store Connect API with an API key
+  (Users and Access → Integrations in App Store Connect): the issuer id, the
+  key id, and the `AuthKey_<keyId>.p8` private key.
+
+  The private key and every token signed with it stay out of progress lines
+  and errors. Declare them in the build as `parameter(...).secret()` so Zuke
+  masks them in its own output too.
+
+  issuerId_?: string
+    The API key's issuer id (set by {@link issuerId}).
+  keyId_?: string
+    The API key's id (set by {@link keyId}).
+  privateKey_?: string
+    The private key, PEM (set by {@link privateKey}).
+  privateKeyFile_?: string
+    The private key's file (set by {@link privateKeyFile}).
+  apiUrl_: string
+    The API's base URL (set by {@link apiUrl}).
+  fetch_: typeof fetch
+    The `fetch` to use (set by {@link fetch}).
+  readEnv_: (name: string) => string | undefined
+    The environment reader (set by {@link readEnv}).
+  sleep_: (ms: number) => Promise<void>
+    How the task waits between polls (set by {@link sleep}).
+  now_: () => number
+    The clock, in epoch ms (set by {@link now}).
+  log_: (line: string) => void
+    Where progress lines go (set by {@link log}).
+  issuerId(id: string): this
+    The API key's issuer id, a UUID.
+  keyId(id: string): this
+    The API key's id, e.g. `ABC123`.
+  privateKey(pem: string): this
+    The private key, as the PEM text of `AuthKey_<keyId>.p8`.
+  privateKeyFile(path: PathLike): this
+    Read the private key from `AuthKey_<keyId>.p8`.
+  apiUrl(url: string): this
+    The API's base URL, `https://api.appstoreconnect.apple.com` by default.
+    It carries the token, so it must be `https:` unless it is loopback or
+    `ZUKE_ALLOW_INSECURE_URL` is set.
+  fetch(fetcher: typeof fetch): this
+    Send with this `fetch` instead of the global one — the seam tests use.
+  readEnv(reader: (name: string) => string | undefined): this
+    Read environment variables through `reader` instead of `Deno.env`.
+  sleep(sleeper: (ms: number) => Promise<void>): this
+    Wait through `sleeper` instead of a timer — the seam tests use.
+  now(clock: () => number): this
+    Read the time from `clock` (epoch ms) instead of `Date.now`.
+  log(sink: (line: string) => void): this
+    Send progress lines to `sink` instead of `console.log`.
 
 class CodesignDisplaySettings extends CodesignSettings
   Settings for `codesign --display`.
@@ -273,6 +483,41 @@ class DittoSettings extends ToolSettings
     Where to write it (positional). Required.
   override protected buildArgs(): string[]
     Assemble the `ditto` argv: flags, then source and destination.
+
+class ExportOptionsSettings
+  Settings for an `ExportOptions.plist`.
+
+  readonly options_: Map<string, ExportOptionValue>
+    The options set so far, in the order each key was first set; setting a
+    key again replaces its value in place.
+  method(method: ExportMethod): this
+    How the archive is exported (`method`); required.
+  teamId(id: string): this
+    The developer team id (`teamID`).
+  signingStyle(style: ExportSigningStyle): this
+    Automatic or manual signing (`signingStyle`).
+  signingCertificate(name: string): this
+    The certificate to sign with, e.g. `Apple Distribution` (`signingCertificate`).
+  provisioningProfile(bundleId: string, profile: string): this
+    The provisioning profile, by name or UUID, for one bundle identifier
+    (`provisioningProfiles`); repeatable, once per app and extension.
+  destination(destination: ExportDestination): this
+    Export to a directory, or upload to App Store Connect (`destination`).
+  uploadSymbols(enabled: boolean): this
+    Include symbols for crash reports (`uploadSymbols`).
+  manageAppVersionAndBuildNumber(enabled: boolean): this
+    Let App Store Connect manage the version and build number (`manageAppVersionAndBuildNumber`).
+  stripSwiftSymbols(enabled: boolean): this
+    Strip Swift symbols from the binary (`stripSwiftSymbols`).
+  testFlightInternalTestingOnly(enabled: boolean): this
+    Limit a TestFlight upload to internal testers (`testFlightInternalTestingOnly`).
+  render(): string
+    The property list, as `xcodebuild -exportArchive -exportOptionsPlist`
+    reads it. Pure: no I/O.
+
+    @throws {Error}
+        when no {@link method} is set, or a value holds a control
+        character a plist cannot carry.
 
 class KeychainCleanupError extends Error
   Raised by `SecurityTasks.temporaryKeychain` when tearing the keychain down
@@ -431,6 +676,46 @@ class NotarytoolSubmitSettings extends NotarytoolSettings
     `.noThrow()`, since there is then nothing to return.
   override protected subcommandArgs(): string[]
     Assemble the submit arguments.
+
+class ProvisioningProfileError extends Error
+  Raised by `ProvisioningProfileTasks` when a profile cannot be read, is
+  expired, or could not be removed after `temporary`. When the callback had
+  already failed before the removal did, that error is the
+  {@link Error.cause}.
+
+  constructor(message: string, options?: ErrorOptions)
+    Build the error; the message is prefixed with `Provisioning profile:`.
+  override name: string
+    The error name.
+
+class ProvisioningProfileSettings
+  Settings for `ProvisioningProfileTasks`.
+
+  file_?: string
+    The profile file (set by {@link file}).
+  base64_?: string
+    The profile as base64 (set by {@link base64}).
+  directories_: string[]
+    Directories to install into (set by {@link directory}).
+  allowExpired_: boolean
+    Whether an expired profile may be installed (set by {@link allowExpired}).
+  host_: ProvisioningHost
+    The file-system seam (set by {@link host}).
+  now_: () => number
+    The clock, in epoch ms (set by {@link now}).
+  file(path: PathLike): this
+    Read the profile from a `.mobileprovision` file.
+  base64(text: string): this
+    Take the profile as base64 — how a CI secret usually holds it
+    (`base64 -i profile.mobileprovision`).
+  directory(path: PathLike): this
+    Install into this directory instead of Xcode's two defaults; repeatable.
+  allowExpired(): this
+    Install the profile even if it has expired.
+  host(host: ProvisioningHost): this
+    Work through `host` instead of the real file system — the test seam.
+  now(clock: () => number): this
+    Read the time from `clock` (epoch ms) instead of `Date.now`.
 
 class SecurityCreateKeychainSettings extends SecuritySettings
   Settings for `security create-keychain`.
@@ -617,6 +902,204 @@ class TemporaryKeychainSettings
         When any cleanup step failed; the error of
         a failed setup or callback is its `cause`.
 
+class TestFlightError extends Error
+  Raised by `TestFlightTasks.distribute` when the release cannot go ahead:
+  no app has the bundle id, a beta group does not exist, the build finished
+  processing as `INVALID` or `FAILED`, or it had not finished by the timeout.
+
+  override name: string
+    The error name.
+
+class TestFlightSettings extends AppStoreConnectSettings
+  Settings for `TestFlightTasks.distribute`.
+
+  bundleId_?: string
+    The app's bundle id (set by {@link bundleId}).
+  buildNumber_?: string
+    The build number (set by {@link buildNumber}).
+  version_?: string
+    The version (set by {@link version}).
+  platform_?: TestFlightPlatform
+    The platform (set by {@link platform}).
+  timeout_: number
+    The longest wait for processing, in ms (set by {@link timeout}).
+  pollInterval_: number
+    The time between two polls, in ms (set by {@link pollInterval}).
+  usesNonExemptEncryption_?: boolean
+    Export compliance (set by {@link usesNonExemptEncryption}).
+  whatToTest_: Map<string, string>
+    "What to Test" notes by locale (set by {@link whatToTest}).
+  groups_: string[]
+    Beta groups to add the build to (set by {@link group}).
+  submitForBetaReview_: boolean
+    Whether to submit for beta review (set by {@link submitForBetaReview}).
+  bundleId(id: string): this
+    The app's bundle id, e.g. `com.example.app`; required.
+  buildNumber(number: string | number): this
+    The uploaded build's number, `CFBundleVersion`; required.
+  version(version: string): this
+    The uploaded build's version, `CFBundleShortVersionString` — needed when
+    the same build number exists under several versions.
+  platform(platform: TestFlightPlatform): this
+    The build's platform — needed when the app ships on several.
+  timeout(duration: string | number): this
+    The longest wait for the build to finish processing (`"45m"`, or ms); default 30 minutes.
+  pollInterval(duration: string | number): this
+    The time between two looks at the build (`"1m"`, or ms); default 30 seconds.
+  usesNonExemptEncryption(uses: boolean): this
+    Answer the export-compliance question: whether the app uses encryption
+    beyond the exempt kinds. Until it is answered — here, or by
+    `ITSAppUsesNonExemptEncryption` in `Info.plist` — the build sits at
+    Missing Compliance and no tester can install it.
+  whatToTest(text: string, locale: string): this
+    The "What to Test" notes testers see, per locale; default locale `en-US`.
+  group(name: string): this
+    Add the build to this beta group, by name; repeatable.
+  submitForBetaReview(): this
+    Submit the build for beta review, which external testing needs.
+
+class XcodebuildActionSettings extends XcodebuildProjectSettings
+  Settings for `xcodebuild build`, `clean`, `analyze`, `build-for-testing` and
+  `-resolvePackageDependencies`.
+
+  constructor(action: XcodebuildPlainAction)
+    Settings for `xcodebuild <action>`.
+  override protected actionArgs(): string[]
+    The action.
+
+class XcodebuildArchiveSettings extends XcodebuildProjectSettings
+  Settings for `xcodebuild archive`.
+
+  archivePath(path: PathLike): this
+    Where to write the `.xcarchive` (`-archivePath`); required.
+  override protected actionArgs(): string[]
+    `archive -archivePath <path>`.
+
+class XcodebuildExportArchiveSettings extends XcodebuildSettings
+  Settings for `xcodebuild -exportArchive`.
+
+  archivePath(path: PathLike): this
+    The `.xcarchive` to export (`-archivePath`); required.
+  exportPath(path: PathLike): this
+    The directory to write the export to (`-exportPath`); required.
+  exportOptionsPlist(path: PathLike): this
+    The export options (`-exportOptionsPlist`); required. Write one with
+    `XcodebuildTasks.writeExportOptions`.
+  override protected invocationArgs(): string[]
+    `-exportArchive` with its three paths.
+
+abstract class XcodebuildProjectSettings extends XcodebuildSettings
+  The project flags every build action takes. Each action names itself and
+  its own flags; the project flags come first, then the action, then the
+  build settings.
+
+  abstract protected actionArgs(): string[]
+    The action and its own flags, e.g. `["archive", "-archivePath", …]`.
+  workspace(path: PathLike): this
+    The workspace to build, e.g. `App.xcworkspace` (`-workspace`).
+  project(path: PathLike): this
+    The project to build, e.g. `App.xcodeproj` (`-project`).
+  scheme(name: string): this
+    The scheme to build (`-scheme`); required with a workspace. A later call replaces it.
+  configuration(name: string): this
+    The build configuration, e.g. `Release` (`-configuration`). A later call replaces it.
+  sdk(name: string): this
+    The SDK, e.g. `iphoneos` or `iphonesimulator` (`-sdk`). A later call replaces it.
+  destination(specifier: string): this
+    A destination, e.g. `generic/platform=iOS` or
+    `platform=iOS Simulator,name=iPhone 16` (`-destination`); repeatable.
+  derivedDataPath(path: PathLike): this
+    Where intermediate build files go (`-derivedDataPath`).
+  clonedSourcePackagesDirPath(path: PathLike): this
+    Where Swift packages are checked out (`-clonedSourcePackagesDirPath`).
+  resultBundlePath(path: PathLike): this
+    Write an `.xcresult` bundle with the logs and results (`-resultBundlePath`).
+  xcconfig(path: PathLike): this
+    Apply an `.xcconfig` file's settings over every target (`-xcconfig`).
+  buildSetting(name: string, value: string): this
+    Override a build setting for every target, e.g.
+    `("DEVELOPMENT_TEAM", "ABCDE12345")` → `DEVELOPMENT_TEAM=ABCDE12345`;
+    repeatable. A condition goes in the name:
+    `CODE_SIGN_IDENTITY[sdk=iphoneos*]`.
+  override protected invocationArgs(): string[]
+    The project flags, the action, then the build settings.
+
+abstract class XcodebuildSettings extends ToolSettings
+  Base for all `xcodebuild` settings: the binary is `xcodebuild`, on `PATH`.
+
+  override protected defaultTool(): string
+    The default executable name (`xcodebuild`).
+  override protected defaultResolution(): ToolResolution
+    Resolve from `PATH` — `xcodebuild` ships with Xcode in `/usr/bin`.
+  abstract protected invocationArgs(): string[]
+    The invocation's own arguments, placed after the shared flags.
+  quietOutput(): this
+    Print only warnings and errors (`-quiet`).
+  allowProvisioningUpdates(): this
+    Let Xcode create and update provisioning profiles and certificates
+    (`-allowProvisioningUpdates`); on CI, pair it with
+    {@link authenticationKey}.
+  authenticationKey(path: PathLike, keyId: string, issuerId: string): this
+    Sign in to the developer account with an App Store Connect API key
+    instead of an Xcode account: the `AuthKey_<id>.p8` file, its key id and
+    its issuer id (`-authenticationKeyPath`, `-authenticationKeyID`,
+    `-authenticationKeyIssuerID`).
+  override protected buildArgs(): string[]
+    Assemble the argv: the invocation's arguments, then the shared flags.
+
+class XcodebuildShowBuildSettings extends XcodebuildProjectSettings
+  Settings for `xcodebuild -showBuildSettings`.
+
+  json(): this
+    Print the settings as JSON (`-json`).
+  override protected actionArgs(): string[]
+    `-showBuildSettings`, then `-json` when asked for.
+
+class XcodebuildTestSettings extends XcodebuildProjectSettings
+  Settings for `xcodebuild test` and `test-without-building`.
+
+  constructor(action: XcodebuildTestAction)
+    Settings for `xcodebuild <action>`.
+  xctestrun(path: PathLike): this
+    Run the tests a `build-for-testing` run described, from its `.xctestrun`
+    file (`-xctestrun`), instead of a scheme — the usual way to run
+    `test-without-building`.
+  testPlan(name: string): this
+    The test plan to run (`-testPlan`).
+  onlyTesting(identifier: string): this
+    Run only this test target, class or method, e.g. `AppTests/LoginTests`
+    (`-only-testing`); repeatable.
+  skipTesting(identifier: string): this
+    Skip this test target, class or method (`-skip-testing`); repeatable.
+  enableCodeCoverage(enabled: boolean): this
+    Turn code coverage on or off (`-enableCodeCoverage YES|NO`).
+  parallelTestingEnabled(enabled: boolean): this
+    Turn parallel testing on or off (`-parallel-testing-enabled YES|NO`).
+  retryTestsOnFailure(): this
+    Re-run a failed test until it passes, up to the iteration limit (`-retry-tests-on-failure`).
+  testIterations(count: number): this
+    How many times to run each test (`-test-iterations`).
+  override protected actionArgs(): string[]
+    The action and the test flags.
+
+interface AltoolTasksApi
+  The shape of {@link AltoolTasks}.
+
+  uploadApp(configure: Configure<AltoolSettings>): Promise<CommandOutput>
+    Upload an app to App Store Connect: `xcrun altool --upload-app`.
+  validateApp(configure: Configure<AltoolSettings>): Promise<CommandOutput>
+    Validate an app without uploading it: `xcrun altool --validate-app`.
+
+interface AppStoreConnectErrorDetail
+  One entry of an App Store Connect API error response's `errors` list.
+
+  code: string
+    The machine-readable code, e.g. `ENTITY_ERROR.ATTRIBUTE.INVALID`.
+  title: string
+    The short title.
+  detail?: string
+    The explanation, when the API gave one.
+
 interface CodesignDisplay
   A code signature as `codesign --display` describes it.
 
@@ -653,6 +1136,14 @@ interface DittoTasksApi
     Write a zip archive: `ditto -c -k`, then the lambda's settings.
   extract(configure: Configure<DittoSettings>): Promise<CommandOutput>
     Unpack a zip archive: `ditto -x -k`, then the lambda's settings.
+
+interface InstalledProvisioningProfile
+  An installed provisioning profile.
+
+  readonly profile: ProvisioningProfile
+    What the profile says about itself.
+  readonly paths: readonly string[]
+    Every file it was installed as.
 
 interface KeychainCleanupFailure
   One cleanup step of a temporary keychain that threw.
@@ -739,6 +1230,67 @@ interface NotarytoolTasksApi
   history(configure: Configure<NotarytoolHistorySettings>): Promise<NotarytoolSubmission[]>
     List the team's past submissions with `notarytool history`.
 
+interface ProvisioningHost
+  The operations installing a provisioning profile needs.
+
+  readFile(path: string): Promise<Uint8Array>
+    Read a file's bytes.
+  makeDirectory(path: string): Promise<void>
+    Create a directory and its parents, if missing.
+  writeFile(path: string, data: Uint8Array): Promise<void>
+    Write a file, replacing one that exists.
+  remove(path: string): Promise<void>
+    Remove a file.
+  exists(path: string): Promise<boolean>
+    Whether a file exists.
+  home(): string
+    The user's home directory.
+
+interface ProvisioningProfile
+  A provisioning profile's identity, as read from the profile itself.
+
+  readonly uuid: string
+    The profile's UUID — Xcode installs it as `<uuid>.mobileprovision`.
+  readonly name: string
+    The profile's name, as `ExportOptions.plist` can refer to it.
+  readonly teamIds: readonly string[]
+    The team ids it belongs to.
+  readonly teamName: string
+    The team's name.
+  readonly appIdName: string
+    The App ID's name.
+  readonly bundleId: string
+    The bundle identifier it signs, e.g. `com.example.app`, or a wildcard
+    such as `com.example.*` — the `application-identifier` entitlement
+    without its team prefix.
+  readonly platforms: readonly string[]
+    The platforms it is for, e.g. `["iOS"]`.
+  readonly kind: ProvisioningProfileKind
+    How it distributes the app.
+  readonly creationDate: Date
+    When it was created.
+  readonly expirationDate: Date
+    When it expires.
+  readonly xcodeManaged: boolean
+    Whether Xcode created and manages it (automatic signing).
+
+interface ProvisioningProfileTasksApi
+  The shape of {@link ProvisioningProfileTasks}.
+
+  inspect(configure: Configure<ProvisioningProfileSettings>): Promise<ProvisioningProfile>
+    Read what a profile says about itself, without installing it.
+  install(configure: Configure<ProvisioningProfileSettings>): Promise<InstalledProvisioningProfile>
+    Install a profile where Xcode looks for it, named by its UUID. Refuses an
+    expired profile unless `.allowExpired()`.
+  temporary(configure: Configure<ProvisioningProfileSettings>, fn: (installed: InstalledProvisioningProfile) => Promise<T>): Promise<T>
+    Install a profile, run `fn`, then remove every file the install created —
+    even when `fn` throws. A copy that was already installed under the same
+    UUID is left in place. Returns what `fn` returns.
+
+    @throws {ProvisioningProfileError}
+        when a file could not be removed; if
+        `fn` had thrown first, its error is the cause.
+
 interface SecurityIdentity
   A signing identity as `security find-identity` lists it.
 
@@ -781,6 +1333,85 @@ interface TemporaryKeychain
   identity: SecurityIdentity
     The codesigning identity imported into it.
 
+interface TestFlightBuild
+  A build in App Store Connect, once processed.
+
+  readonly id: string
+    The build's App Store Connect id.
+  readonly appId: string
+    The app's App Store Connect id.
+  readonly buildNumber: string
+    The build number, `CFBundleVersion`.
+  readonly processingState: string
+    The processing state: `VALID` once `distribute` returns.
+
+interface TestFlightTasksApi
+  The shape of {@link TestFlightTasks}.
+
+  distribute(configure: Configure<TestFlightSettings>): Promise<TestFlightBuild>
+    Wait for an uploaded build to be processed, then distribute it in
+    TestFlight as configured.
+
+    @throws {TestFlightError}
+        when the app or a beta group is missing, the
+        build fails processing, or it is not processed in time.
+
+    @throws {AppStoreConnectError}
+        when the API refuses a request.
+
+interface XcodebuildTasksApi
+  The shape of {@link XcodebuildTasks}.
+
+  build: XcodebuildActionTask
+    Build a scheme: `xcodebuild build`.
+  clean: XcodebuildActionTask
+    Remove build products: `xcodebuild clean`.
+  analyze: XcodebuildActionTask
+    Run the static analyzer: `xcodebuild analyze`.
+  buildForTesting: XcodebuildActionTask
+    Build for a later test run: `xcodebuild build-for-testing`.
+  resolvePackageDependencies: XcodebuildActionTask
+    Resolve Swift package dependencies: `xcodebuild -resolvePackageDependencies`.
+  test: XcodebuildTestTask
+    Build and run the tests: `xcodebuild test`.
+  testWithoutBuilding: XcodebuildTestTask
+    Run tests already built: `xcodebuild test-without-building`.
+  archive(configure: Configure<XcodebuildArchiveSettings>): Promise<CommandOutput>
+    Build an `.xcarchive`: `xcodebuild archive`.
+  exportArchive(configure: Configure<XcodebuildExportArchiveSettings>): Promise<CommandOutput>
+    Export an archive to an `.ipa`, or upload it: `xcodebuild -exportArchive`.
+  showBuildSettings(configure?: Configure<XcodebuildShowBuildSettings>): Promise<CommandOutput>
+    Print the resolved build settings: `xcodebuild -showBuildSettings`.
+  writeExportOptions(path: PathLike, configure: Configure<ExportOptionsSettings>): Promise<void>
+    Write an `ExportOptions.plist` for {@link exportArchive} to `path`. Runs
+    no subprocess.
+
+type AltoolOperation = "--upload-app" | "--validate-app"
+  The `altool` operations this wrapper runs.
+
+type AltoolPlatform = "ios" | "macos" | "appletvos" | "visionos"
+  The platform of the app being uploaded (`--type`).
+
+type ExportDestination = "export" | "upload"
+  Whether to write the export locally or upload it to App Store Connect (`destination`).
+
+type ExportMethod = "app-store-connect" | "release-testing" | "enterprise" | "debugging" | "developer-id" | "mac-application" | "validation" | "app-store" | "ad-hoc" | "development"
+  How an archive is exported (`method`). Xcode 15.3 renamed three methods:
+  `app-store-connect`, `release-testing` and `debugging` were `app-store`,
+  `ad-hoc` and `development`, which older Xcode versions still require.
+
+type ExportOptionValue = string | boolean | Record<string, string>
+  One value in an `ExportOptions.plist`: a string, a boolean, or a string dictionary.
+
+type ExportSigningStyle = "automatic" | "manual"
+  Whether Xcode or the export options pick the signing assets (`signingStyle`).
+
+type ProvisioningProfileKind = "development" | "ad-hoc" | "enterprise" | "app-store"
+  How a profile distributes the app, as Xcode's Organizer names it:
+  `development` (devices listed, debugging allowed), `ad-hoc` (devices
+  listed), `enterprise` (all devices) or `app-store` (no devices — App Store
+  and TestFlight).
+
 type SecurityDomain = "user" | "system" | "common" | "dynamic"
   A preference domain `security list-keychains` reads or sets (`-d`).
 
@@ -789,6 +1420,21 @@ type SecurityImportFormat = "openssl" | "openssh1" | "openssh2" | "bsafe" | "raw
 
 type SecurityItemType = "pub" | "priv" | "session" | "cert" | "agg"
   An item type `security import` accepts (`-t`).
+
+type TestFlightPlatform = "IOS" | "MAC_OS" | "TV_OS" | "VISION_OS"
+  The platform of a build, as App Store Connect names it.
+
+type XcodebuildActionTask = (configure?: Configure<XcodebuildActionSettings>) => Promise<CommandOutput>
+  A task that runs a flag-free `xcodebuild` action.
+
+type XcodebuildPlainAction = "analyze" | "build" | "build-for-testing" | "clean" | "-resolvePackageDependencies"
+  An `xcodebuild` action that takes no flags of its own.
+
+type XcodebuildTestAction = "test" | "test-without-building"
+  An `xcodebuild` action that runs tests.
+
+type XcodebuildTestTask = (configure?: Configure<XcodebuildTestSettings>) => Promise<CommandOutput>
+  A task that runs an `xcodebuild` test action.
 ````
 
 </details>

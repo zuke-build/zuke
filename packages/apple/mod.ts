@@ -48,11 +48,22 @@ export {
 export type { CodesignDisplay } from "./src/codesign_display.ts";
 export { DittoSettings, DittoTasks, type DittoTasksApi } from "./src/ditto.ts";
 export {
+  type ExportDestination,
+  type ExportMethod,
+  ExportOptionsSettings,
+  type ExportOptionValue,
+  type ExportSigningStyle,
+} from "./src/export_options.ts";
+export {
+  AppStoreConnectError,
+  type AppStoreConnectErrorDetail,
   KeychainCleanupError,
   type KeychainCleanupFailure,
   KeychainError,
   NotarizationError,
   NotarytoolOutputError,
+  ProvisioningProfileError,
+  TestFlightError,
 } from "./src/errors.ts";
 export {
   type TemporaryKeychain,
@@ -93,3 +104,53 @@ export {
   SecurityListKeychainsSettings,
 } from "./src/security_search.ts";
 export { SecuritySettings } from "./src/security_settings.ts";
+export {
+  type XcodebuildActionTask,
+  XcodebuildTasks,
+  type XcodebuildTasksApi,
+  type XcodebuildTestTask,
+} from "./src/xcodebuild.ts";
+export {
+  XcodebuildActionSettings,
+  XcodebuildArchiveSettings,
+  type XcodebuildPlainAction,
+  XcodebuildShowBuildSettings,
+  type XcodebuildTestAction,
+  XcodebuildTestSettings,
+} from "./src/xcodebuild_actions.ts";
+export { XcodebuildExportArchiveSettings } from "./src/xcodebuild_export.ts";
+export {
+  XcodebuildProjectSettings,
+  XcodebuildSettings,
+} from "./src/xcodebuild_settings.ts";
+export {
+  type AltoolOperation,
+  type AltoolPlatform,
+  AltoolSettings,
+  AltoolTasks,
+  type AltoolTasksApi,
+} from "./src/altool.ts";
+export {
+  APP_STORE_CONNECT_API_URL,
+  AppStoreConnectSettings,
+} from "./src/app_store_connect.ts";
+export {
+  type InstalledProvisioningProfile,
+  ProvisioningProfileSettings,
+  ProvisioningProfileTasks,
+  type ProvisioningProfileTasksApi,
+} from "./src/provisioning.ts";
+export type { ProvisioningHost } from "./src/provisioning_host.ts";
+export type {
+  ProvisioningProfile,
+  ProvisioningProfileKind,
+} from "./src/provisioning_profile.ts";
+export {
+  type TestFlightBuild,
+  TestFlightTasks,
+  type TestFlightTasksApi,
+} from "./src/testflight.ts";
+export {
+  type TestFlightPlatform,
+  TestFlightSettings,
+} from "./src/testflight_settings.ts";

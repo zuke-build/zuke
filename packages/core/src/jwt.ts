@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * The one RS256 JSON Web Token signer: a PEM RSA private key (PKCS#1 or
- * PKCS#8) and a claims object in, a compact `header.claims.signature` JWT out,
- * signed with WebCrypto.
+ * The JSON Web Token signers: a PEM private key and a claims object in, a
+ * compact `header.claims.signature` JWT out, signed with WebCrypto — RS256
+ * with an RSA key (PKCS#1 or PKCS#8), ES256 with a P-256 key (PKCS#8).
  *
  * Exported because wrapper packages sign one and a wrapper may depend on core
  * alone: a GitHub App JWT exchanged for an installation token, a Google
- * service-account assertion exchanged for an access token. Two copies of the
- * PEM parsing and the base64url framing would drift apart; one does not.
+ * service-account assertion exchanged for an access token, an App Store
+ * Connect API token. Two copies of the PEM parsing and the base64url framing
+ * would drift apart; one does not.
  *
  * @module
  */
@@ -93,15 +94,48 @@ function pemBody(pem: string): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
-/** Import a PEM RSA key (PKCS#1 or PKCS#8) as an RS256 signing key. */
-async function importSigningKey(pem: string): Promise<CryptoKey> {
+/** What signing differs in between the two algorithms. */
+interface JwtAlgorithm {
+  /** The JWS `alg` header value. */
+  name: "RS256" | "ES256";
+  /** How WebCrypto imports the key. */
+  importParams: RsaHashedImportParams | EcKeyImportParams;
+  /** How WebCrypto signs with it. */
+  signParams: AlgorithmIdentifier | EcdsaParams;
+  /** The key type named in an import failure. */
+  keyKind: string;
+}
+
+const RS256: JwtAlgorithm = {
+  name: "RS256",
+  importParams: { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+  signParams: "RSASSA-PKCS1-v1_5",
+  keyKind: "RSA PEM",
+};
+
+// WebCrypto's ECDSA signature is the raw r‖s pair JWS's ES256 expects
+// (RFC 7518 §3.4), so it needs no DER conversion.
+const ES256: JwtAlgorithm = {
+  name: "ES256",
+  importParams: { name: "ECDSA", namedCurve: "P-256" },
+  signParams: { name: "ECDSA", hash: "SHA-256" },
+  keyKind: "a PKCS#8 P-256 PEM",
+};
+
+/** Import a PEM private key as a signing key for `algorithm`. */
+async function importSigningKey(
+  pem: string,
+  algorithm: JwtAlgorithm,
+): Promise<CryptoKey> {
   const der = pemBody(pem);
+  // Only RS256 keys come in PKCS#1; an EC key under that label would not
+  // import either way.
   const pkcs8 = /BEGIN RSA PRIVATE KEY/.test(pem) ? pkcs1ToPkcs8(der) : der;
   try {
     return await crypto.subtle.importKey(
       "pkcs8",
       pkcs8,
-      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      algorithm.importParams,
       false,
       ["sign"],
     );
@@ -110,9 +144,37 @@ async function importSigningKey(pem: string): Promise<CryptoKey> {
     // a path instead of contents), so name it rather than surface a DataError.
     // WebCrypto's own message never quotes the key material.
     throw new Error(
-      `the private key could not be read as RSA PEM: ${messageOf(error)}`,
+      `the private key could not be read as ${algorithm.keyKind}: ` +
+        messageOf(error),
     );
   }
+}
+
+/** Sign `claims` as a compact JWT with `algorithm`. */
+async function signJwt(
+  algorithm: JwtAlgorithm,
+  privateKeyPem: string,
+  claims: Readonly<Record<string, unknown>>,
+  keyId: string | undefined,
+): Promise<string> {
+  const encoder = new TextEncoder();
+  const header = base64Url(
+    encoder.encode(
+      JSON.stringify(
+        keyId === undefined
+          ? { alg: algorithm.name, typ: "JWT" }
+          : { alg: algorithm.name, typ: "JWT", kid: keyId },
+      ),
+    ),
+  );
+  const body = base64Url(encoder.encode(JSON.stringify(claims)));
+  const key = await importSigningKey(privateKeyPem, algorithm);
+  const signature = await crypto.subtle.sign(
+    algorithm.signParams,
+    key,
+    encoder.encode(`${header}.${body}`),
+  );
+  return `${header}.${body}.${base64Url(new Uint8Array(signature))}`;
 }
 
 /**
@@ -130,27 +192,35 @@ async function importSigningKey(pem: string): Promise<CryptoKey> {
  * @throws {Error} naming the problem — an empty key, a body that is not
  *   base64, or one that is not an RSA key — and never quoting the key.
  */
-export async function signJwtRs256(
+export function signJwtRs256(
   privateKeyPem: string,
   claims: Readonly<Record<string, unknown>>,
   keyId?: string,
 ): Promise<string> {
-  const encoder = new TextEncoder();
-  const header = base64Url(
-    encoder.encode(
-      JSON.stringify(
-        keyId === undefined
-          ? { alg: "RS256", typ: "JWT" }
-          : { alg: "RS256", typ: "JWT", kid: keyId },
-      ),
-    ),
-  );
-  const body = base64Url(encoder.encode(JSON.stringify(claims)));
-  const key = await importSigningKey(privateKeyPem);
-  const signature = await crypto.subtle.sign(
-    "RSASSA-PKCS1-v1_5",
-    key,
-    encoder.encode(`${header}.${body}`),
-  );
-  return `${header}.${body}.${base64Url(new Uint8Array(signature))}`;
+  return signJwt(RS256, privateKeyPem, claims, keyId);
+}
+
+/**
+ * Sign `claims` as a compact ES256 JWT with a PEM P-256 private key in
+ * PKCS#8 — `BEGIN PRIVATE KEY`, as an App Store Connect `AuthKey_<id>.p8`
+ * holds it.
+ *
+ * The header is `{"alg":"ES256","typ":"JWT"}`, plus `"kid"` when `keyId` is
+ * given (App Store Connect requires it). The claims are serialised as given:
+ * the caller sets `iat`, `exp` and the rest. The signature is the raw r‖s
+ * pair ES256 requires.
+ *
+ * ```ts
+ * const jwt = await signJwtEs256(p8, { iss: issuerId, iat, exp: iat + 1200 }, keyId);
+ * ```
+ *
+ * @throws {Error} naming the problem — an empty key, a body that is not
+ *   base64, or one that is not a P-256 key — and never quoting the key.
+ */
+export function signJwtEs256(
+  privateKeyPem: string,
+  claims: Readonly<Record<string, unknown>>,
+  keyId?: string,
+): Promise<string> {
+  return signJwt(ES256, privateKeyPem, claims, keyId);
 }

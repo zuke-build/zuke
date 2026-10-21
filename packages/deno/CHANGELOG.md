@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/zuke-build/zuke/compare/deno-v1.4.2...deno-v1.5.0) (2026-10-21)
+
+
+### Features
+
+* **deno:** add DenoDeployTasks for Deno Deploy ([#864](https://github.com/zuke-build/zuke/issues/864)) ([85eb252](https://github.com/zuke-build/zuke/commit/85eb25274e005765ac12b28abeb10fc187fbd337))
+
 ## [1.4.2](https://github.com/zuke-build/zuke/compare/deno-v1.4.1...deno-v1.4.2) (2026-09-15)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.75.0](https://github.com/zuke-build/zuke/compare/core-v1.74.0...core-v1.75.0) (2026-10-21)
+
+
+### Features
+
+* **core:** add an ES256 JWT signer beside the RS256 one ([#869](https://github.com/zuke-build/zuke/issues/869)) ([7681545](https://github.com/zuke-build/zuke/commit/7681545b12c917debe4ff4e77a2bfe76eeec8dda))
+
 ## [1.74.0](https://github.com/zuke-build/zuke/compare/core-v1.73.0...core-v1.74.0) (2026-10-19)
 
 
