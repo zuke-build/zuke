@@ -34,7 +34,7 @@ import { messageOf } from "./message.ts";
 import { refusedRedirect, scrub as scrubText } from "./scrub.ts";
 import { isRecord, own, readStringArray } from "./shape.ts";
 import type { PrometheusHttpMethod, PrometheusResponse } from "./types.ts";
-import { uriEncode } from "./uri.ts";
+import { uriEncode } from "@zuke/core";
 
 /** One call: the method, the endpoint path, and its parameters in order. */
 export interface PrometheusCall {

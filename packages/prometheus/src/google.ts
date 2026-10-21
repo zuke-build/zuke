@@ -36,7 +36,7 @@ import { externalAccountToken } from "./google_external.ts";
 import type { PrometheusGoogleSettings } from "./google_settings.ts";
 import { isRecord, own, readString } from "./shape.ts";
 import { type Expiring, TokenCache } from "./token_cache.ts";
-import { uriEncode } from "./uri.ts";
+import { uriEncode } from "@zuke/core";
 
 /** Google's OAuth 2.0 token endpoint, when a file names none. */
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";

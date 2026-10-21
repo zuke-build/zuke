@@ -19,7 +19,7 @@
 import { envValue } from "./env.ts";
 import { messageOf } from "./message.ts";
 import type { PrometheusCredentialsContext } from "./credentials.ts";
-import type { AwsCredentials } from "./aws_sigv4.ts";
+import type { AwsCredentials } from "@zuke/core";
 
 /** Profile keys that source credentials in a way this reader does not. */
 const UNSUPPORTED_KEYS = [

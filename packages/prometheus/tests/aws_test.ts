@@ -24,7 +24,7 @@ import {
   PrometheusTasks,
 } from "../mod.ts";
 import { sigv4Credentials } from "../src/aws.ts";
-import { signSigV4 } from "../src/aws_sigv4.ts";
+import { signSigV4 } from "@zuke/core";
 import {
   type Clock,
   context,
