@@ -66,6 +66,8 @@ Deno.test("token: a key that is not a P-256 PKCS #8 PEM is refused unquoted", as
       Error,
     );
     assertEquals(error.message.includes("is not the PEM of an AuthKey"), true);
+    // Core's specific reason stays in the message, so the cases differ.
+    assertEquals(/\): the private key /.test(error.message), true);
     assertEquals(error.message.includes(pem), false);
   }
 });

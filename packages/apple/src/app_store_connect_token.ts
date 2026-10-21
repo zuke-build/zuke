@@ -12,6 +12,7 @@
  */
 
 import { signJwtEs256 } from "@zuke/core";
+import { messageOf } from "./text.ts";
 
 /** How long a token is valid: the API refuses more than 20 minutes. */
 const LIFETIME_SECONDS = 20 * 60;
@@ -48,10 +49,11 @@ export async function signToken(request: TokenRequest): Promise<string> {
       request.keyId,
     );
   } catch (error) {
-    // Core's message names what is wrong with the key and never quotes it.
+    // Core's message names what is wrong with the key and never quotes it,
+    // so it is kept in the message: empty, not base64, or not P-256.
     throw new Error(
       "App Store Connect: the private key is not the PEM of an " +
-        "AuthKey_<keyId>.p8 file (a PKCS #8 P-256 key).",
+        `AuthKey_<keyId>.p8 file (a PKCS #8 P-256 key): ${messageOf(error)}`,
       { cause: error },
     );
   }
