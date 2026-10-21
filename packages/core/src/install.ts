@@ -7,8 +7,9 @@
  * the wrapper at it with `.toolPath(...)`.
  *
  * {@link installRelease} resolves a per-platform URL, downloads it (reusing
- * {@link httpDownload}), unpacks a `.tar.gz` (reusing {@link extractTarGzip}) or
- * a `.zip` (reusing {@link extractZip}) or takes a raw single binary, drops it
+ * {@link httpDownload}), unpacks a `.tar.gz` (reusing {@link extractTarGzip}), a
+ * `.tar.xz` ({@link extractTarXz}) or a `.zip` ({@link extractZip}) or takes a
+ * raw single binary, drops it
  * into a directory, marks it executable, and returns its {@link AbsolutePath}.
  * {@link installTree} is its multi-file sibling: it keeps the whole extracted
  * tree (symlinks included) for a runtime like Node.js that ships several bins.
@@ -34,7 +35,12 @@
  */
 
 import { httpDownload } from "./http.ts";
-import { extractTarGzip, extractZip } from "./compression.ts";
+import {
+  type ExtractOptions,
+  extractTarGzip,
+  extractTarXz,
+  extractZip,
+} from "./compression.ts";
 import { type AbsolutePath, type PathLike, resolveDir } from "./path.ts";
 import { readFileOrNull, sha256Hex, statOrNull } from "./internal.ts";
 import {
@@ -97,7 +103,13 @@ export function hostPlatform(): Platform {
 export type DownloadFn = (url: string, dest: PathLike) => Promise<void>;
 
 /** A packed download format, unpacked after the checksum is verified. */
-export type ArchiveFormat = "tar.gz" | "zip";
+export type ArchiveFormat = "tar.gz" | "tar.xz" | "zip";
+
+/** The extractor for each {@link ArchiveFormat}. */
+const EXTRACTORS: Record<
+  ArchiveFormat,
+  (src: PathLike, destDir: PathLike, options?: ExtractOptions) => Promise<void>
+> = { "tar.gz": extractTarGzip, "tar.xz": extractTarXz, zip: extractZip };
 
 /**
  * How a downloaded artifact is treated: `"raw"` is the binary itself, an
@@ -115,8 +127,8 @@ export interface InstallReleaseOptions {
   destDir: PathLike;
   /**
    * The download format. `"raw"` (default) treats the download as the binary
-   * itself; `"tar.gz"` and `"zip"` unpack it and take {@link binaryPath} from
-   * inside. Many release assets ship one or the other.
+   * itself; `"tar.gz"`, `"tar.xz"` and `"zip"` unpack it and take
+   * {@link binaryPath} from inside. Many release assets ship one or the other.
    *
    * Like {@link url} and {@link checksum} this accepts a resolver, because the
    * format is routinely per-platform: a Go or Rust project typically publishes
@@ -126,7 +138,7 @@ export interface InstallReleaseOptions {
    */
   archive?: DownloadFormat | ((platform: Platform) => DownloadFormat);
   /**
-   * For a `"tar.gz"` or `"zip"` archive, the binary's path within the archive.
+   * For a packed archive, the binary's path within the archive.
    * Defaults to {@link name}.
    *
    * Also resolver-friendly, for the same reason: the same release usually names
@@ -312,7 +324,7 @@ export async function installRelease(
   await Deno.mkdir(String(dir), { recursive: true });
 
   const archive = forPlatform(options.archive ?? "raw", platform);
-  if (archive === "tar.gz" || archive === "zip") {
+  if (archive !== "raw") {
     const scratch = await Deno.makeTempDir();
     try {
       const archivePath = `${scratch}/download.${archive}`;
@@ -325,8 +337,7 @@ export async function installRelease(
         );
       }
       const unpacked = `${scratch}/unpacked`;
-      if (archive === "zip") await extractZip(archivePath, unpacked);
-      else await extractTarGzip(archivePath, unpacked);
+      await EXTRACTORS[archive](archivePath, unpacked);
       const inArchive = forPlatform(
         options.binaryPath ?? options.name,
         platform,
@@ -410,7 +421,8 @@ export interface InstallTreeOptions {
   /**
    * The archive format — a multi-file runtime always ships packed. Accepts a
    * per-platform resolver for the usual `.tar.gz` on Unix / `.zip` on Windows
-   * split (see {@link InstallReleaseOptions.archive}).
+   * split (see {@link InstallReleaseOptions.archive}); `"tar.xz"` covers the
+   * Flutter SDK and Zig, which ship only that.
    */
   archive: ArchiveFormat | ((platform: Platform) => ArchiveFormat);
   /**
@@ -487,8 +499,7 @@ export async function installTree(
     // re-install never collides with leftover files (or symlinks).
     await Deno.remove(String(treeRoot), { recursive: true }).catch(() => {});
     await Deno.mkdir(String(treeRoot), { recursive: true });
-    const extract = archive === "zip" ? extractZip : extractTarGzip;
-    await extract(archivePath, String(treeRoot), { strip: options.strip });
+    await EXTRACTORS[archive](archivePath, treeRoot, { strip: options.strip });
   } finally {
     await Deno.remove(scratch, { recursive: true });
   }

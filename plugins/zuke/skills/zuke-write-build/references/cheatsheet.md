@@ -677,11 +677,13 @@ tools = toolchain((t) =>
 // install() returns Map<name, AbsolutePath>; npm packages need `npm` on PATH.
 ```
 
-`.archive("tar.gz")` or `.archive("zip")` unpacks an archive and copies
-`.binaryPath(...)` (default the name) out — zip reading covers the `stored`/
-`deflate` methods release assets use, rejects encrypted/zip64 archives, and
-blocks zip-slip. `.checksum(sha256)` verifies (the archive's SHA-256 for an
-archive, the binary's for `"raw"`) and doubles as the install cache key.
+`.archive("tar.gz")`, `.archive("tar.xz")` or `.archive("zip")` unpacks an
+archive and copies `.binaryPath(...)` (default the name) out — the xz decoder is
+built in (for `.tar.xz`-only releases such as the Flutter SDK and Zig), zip
+reading covers the `stored`/`deflate` methods release assets use, rejects
+encrypted/zip64 archives, and every format blocks zip-slip. `.checksum(sha256)`
+verifies (the archive's SHA-256 for an archive, the binary's for `"raw"`) and
+doubles as the install cache key.
 
 **Multi-file runtimes (Node.js, a JDK, …)** — `ToolTasks.installTree((s) => …)`
 (or `toolchain().tree((s) => …)`) keeps the _whole_ extracted tree instead of
@@ -2119,10 +2121,12 @@ minimal seam — TLS/OAuth/header-stripping is the proxy's job.
 a **remote store** to share results across machines — a fresh CI checkout or a
 teammate's clone restores outputs instead of rebuilding; `--no-remote-cache`
 uses the local cache only. Declare one with `override remoteCache()` on the
-`Build` (returning `FileSystemCacheStore`, `HttpCacheStore` or
-`GitHubActionsCacheStore`), or leave it and the executor falls back to the
-`ZUKE_REMOTE_CACHE_*` environment variables — or, on GitHub Actions, to the
-job's own cache service once
+`Build` (returning `FileSystemCacheStore`, `HttpCacheStore` — bearer token or
+any headers, an Azure SAS URL works as is — `S3CacheStore` for any S3-compatible
+bucket, or `GitHubActionsCacheStore`), or leave it and the executor falls back
+to the `ZUKE_REMOTE_CACHE_*` environment variables (`ZUKE_REMOTE_CACHE_S3_URL`
+plus the `AWS_*` variables for a bucket) — or, on GitHub Actions, to the job's
+own cache service once
 `cicd({ pipeline: { bootstrap: { actionsCache:
 true } } })` (the action's
 `actions-cache` input) exports its credentials to the job; it applies only to

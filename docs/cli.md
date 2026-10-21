@@ -494,13 +494,17 @@ machine. It applies to targets that declare both `inputs` and `outputs`, and is
 keyed by the same input fingerprint the local cache uses. A store outage is
 never fatal — Zuke logs a warning and falls back to a local rebuild.
 
-Three dependency-free backends ship, behind one `RemoteCacheStore` interface:
+Four dependency-free backends ship, behind one `RemoteCacheStore` interface:
 
 - **`FileSystemCacheStore`** — a shared or mounted directory (an NFS mount, a CI
   volume). Archives are `<dir>/<key>.tar.gz`.
-- **`HttpCacheStore`** — `GET`/`PUT <url>/<key>` with an optional bearer token.
-  Works with any object store or cache server behind a URL (an S3/GCS/R2 bucket,
-  or a self-hosted endpoint).
+- **`HttpCacheStore`** — `GET`/`PUT <url>/<key>` with an optional bearer token
+  or any extra headers, and a base URL that may carry a query string. Works with
+  an Azure Blob SAS URL, a Gradle-protocol or WebDAV cache, or your own
+  endpoint.
+- **`S3CacheStore`** — the HTTP store with each request SigV4-signed for `s3`:
+  AWS S3, Cloudflare R2, MinIO and the other S3-compatible services, from
+  `ZUKE_REMOTE_CACHE_S3_URL` and the `AWS_*` variables.
 - **`GitHubActionsCacheStore`** — the GitHub Actions cache service, with the
   job's own `ACTIONS_RUNTIME_TOKEN` and `ACTIONS_RESULTS_URL`. Picked up
   automatically once the `zuke-build/zuke` action's `actions-cache` input
@@ -528,13 +532,15 @@ Or configure it from the environment (no build-file change) — handy for CI:
 
 ```sh
 ZUKE_REMOTE_CACHE_URL=https://cache.example.com ZUKE_REMOTE_CACHE_TOKEN=… ./zuke ci
+ZUKE_REMOTE_CACHE_S3_URL=https://my-bucket.s3.eu-west-1.amazonaws.com/zuke-cache AWS_REGION=eu-west-1 ./zuke ci   # + AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY
 ZUKE_REMOTE_CACHE_DIR=/mnt/zuke-cache ./zuke ci     # filesystem backend
 ```
 
 Precedence is: an explicit `execute({ remoteCache })` option, then the build's
-`remoteCache()` override, then the `ZUKE_REMOTE_CACHE_*` environment variables,
-then the Actions credentials. `--no-remote-cache` uses the local cache only for
-a run; `--no-cache` disables both.
+`remoteCache()` override, then the `ZUKE_REMOTE_CACHE_*` environment variables
+(a plain URL, then an S3 URL, then a directory), then the Actions credentials.
+`--no-remote-cache` uses the local cache only for a run; `--no-cache` disables
+both.
 
 > **Note:** archive entry names use the POSIX `ustar` format (a 100-byte path
 > limit), so extremely deep output paths are rejected with a clear error.
