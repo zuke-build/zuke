@@ -1557,7 +1557,7 @@
       },
       "packages/apple": {
         "dependencies": [
-          "jsr:@zuke/core@^1.71.0"
+          "jsr:@zuke/core@^1.75.0"
         ]
       },
       "packages/argo-rollouts": {
