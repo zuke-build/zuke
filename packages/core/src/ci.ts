@@ -213,6 +213,13 @@ export interface CiBootstrap {
    * through the `./zuke` launcher (which bootstraps its own).
    */
   denoVersion?: string;
+  /**
+   * Expose the GitHub Actions cache to the build, so `envCacheStore` shares
+   * target outputs through it with no further configuration. The runner hands
+   * the cache service's token and URL to JavaScript actions only; this has the
+   * action export them to the job.
+   */
+  actionsCache?: boolean;
   /** The step name. Defaults to `"Harden and check out with Zuke"`. */
   name?: string;
 }
@@ -844,6 +851,7 @@ function bootstrapStep(
   if (bootstrap.denoVersion !== undefined) {
     inputs["deno-version"] = bootstrap.denoVersion;
   }
+  if (bootstrap.actionsCache) inputs["actions-cache"] = "true";
   return {
     name: bootstrap.name ?? "Harden and check out with Zuke",
     uses: bootstrap.action ?? DEFAULT_ZUKE_ACTION,

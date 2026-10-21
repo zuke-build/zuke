@@ -58,6 +58,10 @@ inputs:
     description: "Install this Deno instead of letting the ./zuke launcher bootstrap one."
     required: false
     default: ""
+  actions-cache:
+    description: "Expose the Actions cache service to the build, so Zuke's remote cache shares target outputs through it (see docs/caching.md)."
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -125,6 +129,20 @@ runs:
       uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
       with:
         deno-version: ${{ inputs.deno-version }}
+
+    # The cache service's token and URL reach a JavaScript action's process and
+    # nothing else — not a `run:` step, and not this composite's own shell — so
+    # one exports them to the job for the build's `envCacheStore` to find (see
+    # GitHubActionsCacheStore in @zuke/core). The token is registered as a
+    # secret first: exporting it puts it where a later `env` dump would print it.
+    - name: Expose the Actions cache to the build
+      if: inputs.actions-cache == 'true'
+      uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+      with:
+        script: |
+          core.setSecret(process.env.ACTIONS_RUNTIME_TOKEN);
+          core.exportVariable("ACTIONS_RUNTIME_TOKEN", process.env.ACTIONS_RUNTIME_TOKEN);
+          core.exportVariable("ACTIONS_RESULTS_URL", process.env.ACTIONS_RESULTS_URL);
 
     # The target rides in through the environment and is quoted in the shell,
     # rather than being interpolated into the script text. Expanding

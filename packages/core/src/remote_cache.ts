@@ -14,9 +14,11 @@
  * the target's outputs (built with the dependency-free {@link "./compression.ts"
  * | tar/gzip} helpers). Two backends ship, both dependency-free:
  * {@link FileSystemCacheStore} (a shared/mounted directory) and
- * {@link HttpCacheStore} (any object store or cache server behind a URL). A
- * build selects one with a typed `remoteCache()` override, or one is picked up
- * from the environment by {@link envCacheStore}.
+ * {@link HttpCacheStore} (any object store or cache server behind a URL), and a
+ * third, {@link "./github_actions_cache.ts".GitHubActionsCacheStore}, uses the
+ * GitHub Actions cache service a job already holds credentials for. A build
+ * selects one with a typed `remoteCache()` override, or one is picked up from
+ * the environment by {@link envCacheStore}.
  *
  * @module
  */
@@ -31,6 +33,7 @@ import {
   type TarEntry,
   untar,
 } from "./compression.ts";
+import { GitHubActionsCacheStore } from "./github_actions_cache.ts";
 import { assertSecureBackendUrl, HttpError } from "./http.ts";
 import { readBytesBounded, readFileOrNull } from "./internal.ts";
 
@@ -443,7 +446,10 @@ export class HttpCacheStore implements RemoteCacheStore {
  * Resolve a {@link RemoteCacheStore} from the environment, or `undefined` when
  * none is configured. `ZUKE_REMOTE_CACHE_URL` (with an optional
  * `ZUKE_REMOTE_CACHE_TOKEN`) selects an {@link HttpCacheStore}; otherwise
- * `ZUKE_REMOTE_CACHE_DIR` selects a {@link FileSystemCacheStore}.
+ * `ZUKE_REMOTE_CACHE_DIR` selects a {@link FileSystemCacheStore}; otherwise,
+ * on a GitHub Actions job that exposes its `ACTIONS_RUNTIME_TOKEN` and
+ * `ACTIONS_RESULTS_URL` (the `actions-cache` input of the `zuke-build/zuke`
+ * action), a {@link "./github_actions_cache.ts".GitHubActionsCacheStore}.
  */
 export function envCacheStore(
   readEnv: (name: string) => string | undefined,
@@ -458,6 +464,15 @@ export function envCacheStore(
   }
   const dir = readEnv("ZUKE_REMOTE_CACHE_DIR");
   if (dir !== undefined && dir !== "") return new FileSystemCacheStore(dir);
+  const token = readEnv("ACTIONS_RUNTIME_TOKEN");
+  const results = readEnv("ACTIONS_RESULTS_URL");
+  if (
+    token !== undefined && token !== "" && results !== undefined &&
+    results !== ""
+  ) {
+    assertSecureBackendUrl(results, "ACTIONS_RESULTS_URL", readEnv);
+    return new GitHubActionsCacheStore({ url: results, token });
+  }
   return undefined;
 }
 

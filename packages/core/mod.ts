@@ -151,6 +151,10 @@ export { logoLines, type LogoOptions, ZUKE_LOGO } from "./src/logo.ts";
 export { VERSION } from "./src/version.ts";
 export type { BuildCache, OpenCacheOptions } from "./src/cache.ts";
 export {
+  GitHubActionsCacheStore,
+  type GitHubActionsCacheStoreOptions,
+} from "./src/github_actions_cache.ts";
+export {
   archiveOutputs,
   envCacheStore,
   FileSystemCacheStore,

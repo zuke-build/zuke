@@ -377,7 +377,10 @@ function envCacheStore(readEnv: (name: string) => string | undefined): RemoteCac
   Resolve a {@link RemoteCacheStore} from the environment, or `undefined` when
   none is configured. `ZUKE_REMOTE_CACHE_URL` (with an optional
   `ZUKE_REMOTE_CACHE_TOKEN`) selects an {@link HttpCacheStore}; otherwise
-  `ZUKE_REMOTE_CACHE_DIR` selects a {@link FileSystemCacheStore}.
+  `ZUKE_REMOTE_CACHE_DIR` selects a {@link FileSystemCacheStore}; otherwise,
+  on a GitHub Actions job that exposes its `ACTIONS_RUNTIME_TOKEN` and
+  `ACTIONS_RESULTS_URL` (the `actions-cache` input of the `zuke-build/zuke`
+  action), a {@link "./github_actions_cache.ts".GitHubActionsCacheStore}.
 
 function envStateStore(readEnv: (name: string) => string | undefined, host: StateHost): StateStore | undefined
   Resolve a {@link StateStore} from the environment, or `undefined` when none is
@@ -1824,6 +1827,24 @@ class ForeignRunError extends Error
   override name: string
     The error name.
 
+class GitHubActionsCacheStore implements RemoteCacheStore
+  A {@link RemoteCacheStore} over the GitHub Actions cache service. A `get`
+  asks the service for the entry's signed download URL and fetches it; a `put`
+  reserves the entry, uploads the archive to the signed upload URL it is given,
+  and finalizes it. A key another job finalized first is left as it is: entries
+  are immutable, and both jobs built the same outputs from the same inputs.
+
+  Restores are subject to the Actions cache's own scoping — a run sees entries
+  written on its branch and on the default branch — and the service's eviction,
+  so a miss after a quiet week is normal and costs one rebuild.
+
+  constructor(options: GitHubActionsCacheStoreOptions)
+    Build the store from the service URL, the runtime token, and the `fetch` seam.
+  async get(key: string): Promise<Uint8Array | null>
+    Fetch the archived outputs stored under `key`, or `null` if there are none.
+  async put(key: string, artifact: Uint8Array): Promise<void>
+    Store `artifact` (a gzipped tar of a target's outputs) under `key`.
+
 class GraphError extends Error
   Raised when the build graph is invalid (cycle or unknown dependency).
 
@@ -3190,6 +3211,11 @@ interface CiBootstrap
   denoVersion?: string
     Install this Deno version, for a job that runs `deno` directly rather than
     through the `./zuke` launcher (which bootstraps its own).
+  actionsCache?: boolean
+    Expose the GitHub Actions cache to the build, so `envCacheStore` shares
+    target outputs through it with no further configuration. The runner hands
+    the cache service's token and URL to JavaScript actions only; this has the
+    action export them to the job.
   name?: string
     The step name. Defaults to `"Harden and check out with Zuke"`.
 
@@ -3990,6 +4016,22 @@ interface ForceResult
     A message naming the target and the rule, suitable for an operator.
   override?: TargetOverride
     The override as recorded, when it was.
+
+interface GitHubActionsCacheStoreOptions
+  Configuration for a {@link GitHubActionsCacheStore}.
+
+  url: string
+    The cache service's base URL: the job's `ACTIONS_RESULTS_URL`.
+  token: string
+    The job's `ACTIONS_RUNTIME_TOKEN`, sent as a bearer token to the service.
+  fetch?: typeof fetch
+    The `fetch` implementation; defaults to the global. Overridable for tests.
+  maxArtifactBytes?: number
+    The most a fetched artifact may weigh on the wire, in bytes, before it is
+    refused. Defaults to 2 GiB — larger than the HTTP store's 512 MiB, because
+    this store is written only by the repository's own workflows and the
+    outputs worth caching here are the big ones (a 1.5 GB SDK). What the bytes
+    decompress to is bounded separately, by `restoreOutputs`.
 
 interface GlobOptions
   Options for {@link glob}.

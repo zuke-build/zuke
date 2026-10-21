@@ -2119,16 +2119,20 @@ minimal seam — TLS/OAuth/header-stripping is the proxy's job.
 a **remote store** to share results across machines — a fresh CI checkout or a
 teammate's clone restores outputs instead of rebuilding; `--no-remote-cache`
 uses the local cache only. Declare one with `override remoteCache()` on the
-`Build` (returning `FileSystemCacheStore` or `HttpCacheStore`), or leave it and
-the executor falls back to the `ZUKE_REMOTE_CACHE_*` environment variables; it
-applies only to targets declaring **both** `inputs` and `outputs`. A remote
-store is best-effort — an unreachable one never fails the build. A **restore is
-confined to the target's declared `.outputs(...)`**, and refuses an absolute or
-`..` path, a symlink or directory entry, and anything under `.git`/`.zuke`; a
-refused archive is a cache miss (rebuild + warning), never a build failure, so
-whoever can write the store can neither plant files nor halt the build.
-`--affected` limits a run to targets touched since a git base (great for CI job
-fan-out).
+`Build` (returning `FileSystemCacheStore`, `HttpCacheStore` or
+`GitHubActionsCacheStore`), or leave it and the executor falls back to the
+`ZUKE_REMOTE_CACHE_*` environment variables — or, on GitHub Actions, to the
+job's own cache service once
+`cicd({ pipeline: { bootstrap: { actionsCache:
+true } } })` (the action's
+`actions-cache` input) exports its credentials to the job; it applies only to
+targets declaring **both** `inputs` and `outputs`. A remote store is best-effort
+— an unreachable one never fails the build. A **restore is confined to the
+target's declared `.outputs(...)`**, and refuses an absolute or `..` path, a
+symlink or directory entry, and anything under `.git`/`.zuke`; a refused archive
+is a cache miss (rebuild + warning), never a build failure, so whoever can write
+the store can neither plant files nor halt the build. `--affected` limits a run
+to targets touched since a git base (great for CI job fan-out).
 
 **Telling a client where to authenticate** (`docs/mcp.md`): verifying a token
 only helps a caller that already has one. `override mcpProtectedResource()`

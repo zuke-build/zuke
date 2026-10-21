@@ -5,6 +5,7 @@ import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
+  assertThrows,
 } from "./_assert.ts";
 import {
   archiveOutputs,
@@ -18,6 +19,7 @@ import {
   restoreOutputs,
 } from "../src/remote_cache.ts";
 import { HttpError } from "../src/http.ts";
+import { GitHubActionsCacheStore } from "../src/github_actions_cache.ts";
 import { gzip, tar } from "../src/compression.ts";
 import { withTemp } from "./_temp.ts";
 import { defaultCacheHost } from "../src/cache.ts";
@@ -231,6 +233,39 @@ Deno.test("envCacheStore selects HTTP, then filesystem, then nothing", () => {
   assertEquals(envCacheStore(() => undefined), undefined);
   // An empty value is treated as unset.
   assertEquals(envCacheStore(env({ ZUKE_REMOTE_CACHE_URL: "" })), undefined);
+});
+
+Deno.test("envCacheStore picks the Actions cache from the job's own credentials", () => {
+  const env =
+    (vars: Record<string, string>) => (name: string): string | undefined =>
+      Object.prototype.hasOwnProperty.call(vars, name) ? vars[name] : undefined;
+  const job = {
+    ACTIONS_RUNTIME_TOKEN: "runtime",
+    ACTIONS_RESULTS_URL: "https://results.test/",
+  };
+  assertEquals(
+    envCacheStore(env(job)) instanceof GitHubActionsCacheStore,
+    true,
+  );
+  // An explicit Zuke store still wins over the ambient one.
+  assertEquals(
+    envCacheStore(env({ ...job, ZUKE_REMOTE_CACHE_DIR: "/tmp/x" })) instanceof
+      FileSystemCacheStore,
+    true,
+  );
+  // Both halves are needed: a token without a service URL is not a store.
+  assertEquals(
+    envCacheStore(env({ ACTIONS_RUNTIME_TOKEN: "runtime" })),
+    undefined,
+  );
+  assertEquals(
+    envCacheStore(env({ ...job, ACTIONS_RUNTIME_TOKEN: "" })),
+    undefined,
+  );
+  // The token is sent to that URL, so it must be a secure one.
+  assertThrows(() =>
+    envCacheStore(env({ ...job, ACTIONS_RESULTS_URL: "http://results.test" }))
+  );
 });
 
 Deno.test("archiveOutputs ignores an entry whose file reads back as null", async () => {
