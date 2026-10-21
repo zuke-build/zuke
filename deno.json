@@ -68,7 +68,8 @@
     "packages/qr",
     "packages/apple",
     "packages/signpath",
-    "packages/flutter"
+    "packages/flutter",
+    "packages/dart"
   ],
   "imports": {
     "@std/yaml": "jsr:@std/yaml@^1.2.0"

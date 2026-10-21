@@ -128,7 +128,7 @@ Three short recipes cover what a small project wants first:
   support — no bespoke DSL. The `$` tagged template from `@zuke/core/shell` runs
   processes with sane defaults and is injection-safe, so it also replaces the
   `scripts/*.sh` nobody dares touch.
-- **A typed wrapper for every tool.** 69 packages: a tiny core, the CLI, and a
+- **A typed wrapper for every tool.** 70 packages: a tiny core, the CLI, and a
   `*Tasks` object per tool — Deno, npm, pnpm, Bun, Docker, Kubernetes,
   Terraform, Vite, Playwright, GitHub, Claude Code, and the rest — whose
   settings lambdas mirror the real flags. See [Packages](./docs/packages.md).
@@ -216,7 +216,7 @@ launcher that uses the Deno on your `PATH` and fails closed without one, for a
 project that must never download a tool from its build entry point.
 
 > [!NOTE]
-> **Maturity.** Every one of the 69 packages is `1.x` and follows full semver —
+> **Maturity.** Every one of the 70 packages is `1.x` and follows full semver —
 > `@zuke/core`, the `@zuke/cli` command, and all the tool wrappers. A minor or
 > patch release never breaks a public symbol; a breaking change bumps the major.
 > See [Versioning & compatibility](./docs/versioning.md). The npm scope `@zuke`
@@ -251,7 +251,7 @@ refused on contributor-controlled events:
 
 ## Packages
 
-Zuke ships as a JSR workspace of 69 packages:
+Zuke ships as a JSR workspace of 70 packages:
 [`@zuke/core`](https://jsr.io/@zuke/core) (the engine, the `$` shell, and the
 tooling base classes), the [`@zuke/cli`](https://jsr.io/@zuke/cli) command, a
 generic [`@zuke/cmd`](https://jsr.io/@zuke/cmd) fallback, plugins such as
@@ -272,6 +272,7 @@ a typed wrapper per tool — [`@zuke/deno`](https://jsr.io/@zuke/deno),
 [`@zuke/terraform`](https://jsr.io/@zuke/terraform),
 [`@zuke/vite`](https://jsr.io/@zuke/vite),
 [`@zuke/flutter`](https://jsr.io/@zuke/flutter),
+[`@zuke/dart`](https://jsr.io/@zuke/dart),
 [`@zuke/playwright`](https://jsr.io/@zuke/playwright), and more.
 
 The full matrix with live JSR badges is in **[Packages](./docs/packages.md)**.

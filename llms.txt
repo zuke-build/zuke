@@ -171,5 +171,6 @@ Full reference: [docs/cli.md](./docs/cli.md).
 - [@zuke/apple](https://jsr.io/@zuke/apple) — typed task wrappers for Apple's code-signing tools in Zuke
 - [@zuke/signpath](https://jsr.io/@zuke/signpath) — Authenticode signing through
 - [@zuke/flutter](https://jsr.io/@zuke/flutter) — typed `FlutterTasks` wrappers for the
+- [@zuke/dart](https://jsr.io/@zuke/dart) — typed `DartTasks` wrappers for the Dart (https://dart.dev)
 - [@zuke/prometheus](https://jsr.io/@zuke/prometheus) — A typed client for the Prometheus HTTP API, for Zuke builds. `PrometheusTasks`
 - [@zuke/canary](https://jsr.io/@zuke/canary) — Canary releases for Zuke builds. `canary(...)` turns a settings lambda into

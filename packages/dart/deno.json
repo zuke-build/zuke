@@ -1,0 +1,17 @@
+{
+  "name": "@zuke/dart",
+  "version": "0.0.0",
+  "license": "MIT",
+  "description": "Typed Dart CLI task wrappers for Zuke builds — analyze, format, fix, test, compile to every target, doc, create, run and pub dependencies via an injection-free settings-lambda API.",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "imports": {
+    "@zuke/core": "jsr:@zuke/core@^1.71.0"
+  },
+  "publish": {
+    "exclude": [
+      "tests/"
+    ]
+  }
+}

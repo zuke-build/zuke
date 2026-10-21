@@ -478,6 +478,16 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   `buildAppBundle((s) => s.release().flavor("prod").buildNumber(n))`,
   `buildIpa`, `buildWeb`, `buildApk`, the desktop builds — plus the `pub*`,
   `drive`, `install`, `doctor` and `config` commands. See the cheatsheet.
+- **Dart packages and CLIs (`@zuke/dart`):** `DartTasks.pubGet()`,
+  `.analyze((s) => s.fatalInfos())`,
+  `.format((s) => s.setExitIfChanged().output("none"))`, `.fix()`,
+  `.test((s) => s.coverage("coverage").reporter("github"))`, `.run()`, and one
+  task per compile target —
+  `compileExe((s) => s.entry("bin/main.dart")
+  .output("build/app"))`,
+  `compileJs`, `compileWasm`, `compileAotSnapshot`, `compileJitSnapshot`,
+  `compileKernel` — plus `doc`, `create`, the `pub*` commands, `info` and
+  `version`. See the cheatsheet.
 - **Windows signing (`@zuke/signpath`):**
   `SignPathTasks.submit((s) =>
   s.organizationId(org).apiToken(token).projectSlug(p).signingPolicySlug(q)

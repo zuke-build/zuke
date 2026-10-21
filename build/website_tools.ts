@@ -45,12 +45,17 @@ export interface CorePackage {
 export const TOOL_GROUPS: ToolGroup[] = [
   {
     category: "Runtimes & package managers",
-    blurb: "Install, run, and publish across every major JS toolchain.",
+    blurb: "Install, run, and publish across every major toolchain.",
     tools: [
       {
         name: "Deno",
         pkg: "@zuke/deno",
         desc: "run, test, check, fmt, lint, coverage, Deno Deploy",
+      },
+      {
+        name: "Dart",
+        pkg: "@zuke/dart",
+        desc: "analyze, format, test, compile, pub",
       },
       {
         name: "Node",

@@ -1638,6 +1638,11 @@
           "jsr:@zuke/core@^1.45.0"
         ]
       },
+      "packages/dart": {
+        "dependencies": [
+          "jsr:@zuke/core@^1.71.0"
+        ]
+      },
       "packages/deno": {
         "dependencies": [
           "jsr:@zuke/core@^1.55.1"
