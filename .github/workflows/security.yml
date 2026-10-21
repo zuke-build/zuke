@@ -14,10 +14,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@2eac30bdd8cdbcc60c208d879f1088a592ea84b4 # v1.0.6
+        uses: zuke-build/zuke@213d5234c03e1fedc314159a77b2f680c2d6c8f5 # v1.0.7
         with:
           egress-policy: audit
           persist-credentials: "false"
           fetch-depth: "0"
+          actions-cache: "true"
       - name: Run security with Zuke
         run: ./zuke security
