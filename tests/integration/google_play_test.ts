@@ -21,7 +21,7 @@ import {
   type PlayCall,
   serviceAccountKey,
 } from "../../packages/google/tests/_play.ts";
-import { runCli } from "./_harness.ts";
+import { runCli, withoutMaskDirectives } from "./_harness.ts";
 
 const KEY = await serviceAccountKey();
 
@@ -90,5 +90,10 @@ Deno.test("a refused commit fails the run with Google's message, deletes the edi
     ":commit failed (HTTP 400): App not yet set up.",
   );
   assertEquals(fake.calls[fake.calls.length - 1].method, "DELETE");
-  assertEquals((out + err).includes(KEY.pem.split("\n")[1]), false);
+  // Under GitHub Actions the run emits `::add-mask::` with the raw key once,
+  // so the runner censors it; that sanctioned line is stripped first.
+  assertEquals(
+    withoutMaskDirectives(out + err).includes(KEY.pem.split("\n")[1]),
+    false,
+  );
 });
