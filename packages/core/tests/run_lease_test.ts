@@ -80,11 +80,26 @@ class LockStore implements StateStore {
   }
 }
 
-/** Give the unref'd heartbeat time to tick at least `ticks` times. */
+/**
+ * Give the unref'd heartbeat time to tick at least `ticks` times. Only for
+ * asserting that something did *not* happen: a late tick can make such an
+ * assertion pass, never fail. Waiting for something to happen uses
+ * {@link until}, because on a loaded runner a tick lands late and a fixed sleep
+ * then asserts one renewal short.
+ */
 function afterTicks(ttlMs: number, ticks: number): Promise<void> {
   return new Promise((resolve) =>
     setTimeout(resolve, Math.max(1000, Math.floor(ttlMs / 2)) * ticks + 60)
   );
+}
+
+/** Poll until `condition` holds, or fail after 15 seconds. */
+async function until(what: string, condition: () => boolean): Promise<void> {
+  const deadline = Date.now() + 15_000;
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
 }
 
 Deno.test("the default TTL leaves room for an ordinary pause", () => {
@@ -125,8 +140,7 @@ Deno.test("an explicit refusal from a renewal is loss", async () => {
   );
   if (lease === null) throw new Error("expected the lease");
   store.renewal = "lost";
-  await afterTicks(ttl, 1);
-  assertEquals(lease.lost.aborted, true);
+  await until("the lease to be lost", () => lease.lost.aborted);
   assertEquals(lease.lost.reason instanceof Error, true);
   // The heartbeat stops once the claim is gone; there is nothing left to renew.
   const seen = store.renewals.length;
@@ -144,10 +158,9 @@ Deno.test("a renewal that throws is not loss", async () => {
   const lease = await acquireLease(store, "zuke-run", "run-1", "me", NOW, ttl);
   if (lease === null) throw new Error("expected the lease");
   store.renewal = "throws";
-  await afterTicks(ttl, 2);
+  // It keeps trying, so a blip that passes is simply survived.
+  await until("two renewals", () => store.renewals.length >= 2);
   assertEquals(lease.lost.aborted, false);
-  // And it keeps trying, so a blip that passes is simply survived.
-  assertEquals(store.renewals.length >= 2, true);
   store.renewal = "held";
   await afterTicks(ttl, 1);
   assertEquals(lease.lost.aborted, false);
