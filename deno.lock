@@ -1703,6 +1703,11 @@
           "jsr:@zuke/core@^1.32.0"
         ]
       },
+      "packages/google": {
+        "dependencies": [
+          "jsr:@zuke/core@^1.75.0"
+        ]
+      },
       "packages/helm": {
         "dependencies": [
           "jsr:@zuke/core@^1.49.0"

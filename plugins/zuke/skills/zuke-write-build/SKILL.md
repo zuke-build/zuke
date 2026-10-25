@@ -455,6 +455,14 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   .bundleId(b).buildNumber(n).usesNonExemptEncryption(false).group("QA"))`
   waits for App Store Connect to process the build and distributes it.
   `AltoolTasks.uploadApp` wraps the deprecated `altool`. See the cheatsheet.
+- **Google Play (`@zuke/google`):**
+  `GooglePlayTasks.upload((s) => s.serviceAccount(keyJson)
+  .packageName(p).bundle(aab).track("internal").status("completed")
+  .releaseNotes(t, "en-US"))`
+  signs in as the service account, uploads the bundle in one edit, releases its
+  `versionCode` on the track and commits (the edit is deleted on failure).
+  `.status("draft")` for an app that has never had a release,
+  `.changesNotSentForReview()` where Google requires it. See the cheatsheet.
 - **Apple signing (`@zuke/apple`):** `CodesignTasks.sign`/`verify`/`display`,
   `DittoTasks.archive` (the zip notarization wants —
   `ditto -c -k

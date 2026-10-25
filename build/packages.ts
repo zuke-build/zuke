@@ -77,6 +77,7 @@ export const PACKAGES = [
   "otel",
   "qr",
   "apple",
+  "google",
   "signpath",
   "flutter",
   "dart",

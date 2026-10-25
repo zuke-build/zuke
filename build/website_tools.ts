@@ -340,6 +340,11 @@ export const TOOL_GROUPS: ToolGroup[] = [
           "xcodebuild, TestFlight, profiles, codesign, notarytool, keychains",
       },
       {
+        name: "Google Play",
+        pkg: "@zuke/google",
+        desc: "upload an app bundle to a Play track",
+      },
+      {
         name: "SignPath",
         pkg: "@zuke/signpath",
         desc: "Authenticode signing, signtool verify",

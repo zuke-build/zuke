@@ -67,6 +67,7 @@
     "packages/otel",
     "packages/qr",
     "packages/apple",
+    "packages/google",
     "packages/signpath",
     "packages/flutter",
     "packages/dart"

@@ -169,6 +169,7 @@ Full reference: [docs/cli.md](./docs/cli.md).
 - [@zuke/otel](https://jsr.io/@zuke/otel) — an OpenTelemetry (OTLP/HTTP JSON) export plugin for Zuke
 - [@zuke/qr](https://jsr.io/@zuke/qr) — QR codes for any data, from a Zuke build, with no dependency
 - [@zuke/apple](https://jsr.io/@zuke/apple) — typed task wrappers for Apple's code-signing tools in Zuke
+- [@zuke/google](https://jsr.io/@zuke/google) — Google Play publishing for Zuke builds, through the Google
 - [@zuke/signpath](https://jsr.io/@zuke/signpath) — Authenticode signing through
 - [@zuke/flutter](https://jsr.io/@zuke/flutter) — typed `FlutterTasks` wrappers for the
 - [@zuke/dart](https://jsr.io/@zuke/dart) — typed `DartTasks` wrappers for the Dart (https://dart.dev)
