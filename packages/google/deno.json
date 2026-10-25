@@ -1,6 +1,6 @@
 {
   "name": "@zuke/google",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "license": "MIT",
   "description": "Google Play publishing for Zuke builds — upload an Android app bundle to a Play track with a release status and notes through the Google Play Developer API, signed in with a service-account key that stays out of every log and error.",
   "exports": {
