@@ -20,7 +20,8 @@
     "build.configure",
     "target.run flaky",
     "target.run flaky",
-    "target.run flaky"
+    "target.run flaky",
+    "run.exit done"
   ],
   "configure": {
     "parameters": {}

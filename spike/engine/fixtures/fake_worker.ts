@@ -14,7 +14,9 @@
  * `target.condition` with and a `cacheKey_answer` to answer `target.cacheKey` with.
  * A `calls` list of `{ method, params }` is issued to the engine after the
  * execs, each answer printed as an `answer:` line for the tests to read back.
- * A top-level `failHook` names the build hook that throws.
+ * A `settings` object answers `target.settings`, a `wait_answer` answers
+ * `wait.check`, and a `validate_fail` names the check that `target.validate`
+ * fails. A top-level `failHook` names the build hook that throws.
  *
  * It prints every call the engine makes as a `call:` line, and the
  * `build.configure` payload as a `configure:` line, on stdout on purpose: a
@@ -37,6 +39,9 @@ interface Script {
   condition: unknown;
   cacheKey: unknown;
   calls: Array<{ method: string; params: Record<string, unknown> }>;
+  settings: unknown;
+  waitAnswer: unknown;
+  validateFail?: string;
 }
 
 const PLAN: unknown = JSON.parse(Deno.env.get("ZUKE_FAKE_PLAN") ?? "{}");
@@ -63,6 +68,11 @@ if (isRecord(PLAN) && Array.isArray(PLAN.targets)) {
           params: isRecord(c.params) ? c.params : {},
         }))
         : [],
+      settings: t.settings ?? {},
+      waitAnswer: t.wait_answer ?? false,
+      validateFail: typeof t.validate_fail === "string"
+        ? t.validate_fail
+        : undefined,
     });
   }
 }
@@ -171,6 +181,32 @@ peer.on("target.cacheKey", (params) => {
   console.log(`call: target.cacheKey ${targetOf(params)}`);
   return script(params).cacheKey;
 });
+peer.on("target.settings", (params) => {
+  console.log(`call: target.settings ${targetOf(params)}`);
+  return script(params).settings;
+});
+peer.on("wait.check", (params) => {
+  console.log(`call: wait.check ${targetOf(params)}`);
+  return script(params).waitAnswer;
+});
+peer.on("target.validate", (params) => {
+  const check = isRecord(params) && typeof params.check === "string"
+    ? params.check
+    : "?";
+  console.log(`call: target.validate ${targetOf(params)} ${check}`);
+  if (script(params).validateFail === check) {
+    throw new RpcFailure(-32000, `check ${check} found a problem`);
+  }
+});
+peer.on("run.exit", (params) => {
+  console.log(
+    `call: run.exit ${
+      isRecord(params) && params.suspended === true ? "suspended" : "done"
+    }`,
+  );
+  peer.close();
+  Deno.exit(0);
+});
 peer.on("build.onStart", hook("onStart", () => ""));
 peer.on("build.onTargetStart", hook("onTargetStart", (p) => ` ${targetOf(p)}`));
 peer.on(
@@ -188,10 +224,6 @@ peer.on(
   hook("onFinish", (p) => ` ${isRecord(p) && p.ok === true ? "ok" : "failed"}`),
 );
 peer.on("run.cancel", () => {});
-peer.on("run.exit", () => {
-  peer.close();
-  Deno.exit(0);
-});
 const serving = peer.serve();
 console.log("fake worker started");
 Deno.env.set("ZUKE_FAKE_ENV_MARK", "from-worker");

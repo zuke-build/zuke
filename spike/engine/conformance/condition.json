@@ -24,7 +24,8 @@
     "build.configure",
     "target.condition on",
     "target.run on",
-    "target.condition gated"
+    "target.condition gated",
+    "run.exit done"
   ],
   "configure": {
     "parameters": {}

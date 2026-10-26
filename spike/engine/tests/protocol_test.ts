@@ -8,14 +8,16 @@ import {
 import { sdkCommand } from "../src/config.ts";
 import {
   isRecord,
+  type ManifestTarget,
+  parseBooleanAnswer,
   parseCacheKey,
-  parseCondition,
   parseExec,
   parseHello,
   parseLog,
   parseManifest,
   parseOutcome,
   parseSecret,
+  parseSettings,
   parseStateRead,
   parseStateWrite,
   parseSummary,
@@ -90,6 +92,9 @@ const BARE_TARGET = {
   onFailure: undefined,
   condition: false,
   cacheKey: false,
+  lock: false,
+  waitsFor: false,
+  validateDuring: false,
 };
 
 const NO_HOOKS = {
@@ -148,6 +153,9 @@ Deno.test("parseManifest carries every target setting, parameter kind, group and
       onFailure: "cancel-run",
       condition: true,
       cacheKey: true,
+      lock: true,
+      waitsFor: true,
+      validateDuring: true,
     }],
     hooks: { onStart: true, onFinish: true },
     parameters: [
@@ -180,6 +188,9 @@ Deno.test("parseManifest carries every target setting, parameter kind, group and
     onFailure: "cancel-run",
     condition: true,
     cacheKey: true,
+    lock: true,
+    waitsFor: true,
+    validateDuring: true,
   });
   assertEquals(full.hooks, { ...NO_HOOKS, onStart: true, onFinish: true });
   assertEquals(full.parameters.map((p) => [p.kind, p.default]), [
@@ -255,11 +266,87 @@ Deno.test("parseManifest names the malformed field", () => {
   }
 });
 
-Deno.test("parseCondition and parseCacheKey accept one type and name the target", () => {
-  assertEquals(parseCondition(true, "a"), true);
+Deno.test("parseSettings takes the declared sections and names what is missing or malformed", () => {
+  const declared = {
+    ...BARE_TARGET,
+    name: "gate",
+    lock: true,
+    waitsFor: true,
+    validateDuring: true,
+  };
+  assertEquals(
+    parseSettings({
+      lock: { key: "k", ttl: "1h", waitUpTo: 5000, pollEvery: "2s" },
+      waitsFor: {
+        on: { kind: "resumeWhen", interval: "1s" },
+        timeout: "72h",
+        onTimeout: "undo",
+      },
+      validateDuring: { every: "5s", checks: ["disk", "mem"] },
+      extra: true,
+    }, declared),
+    {
+      lock: {
+        key: "k",
+        ttl: "1h",
+        waitUpTo: 5000,
+        pollEvery: "2s",
+        holdForRun: false,
+      },
+      waitsFor: {
+        on: { kind: "resumeWhen", interval: "1s" },
+        timeout: "72h",
+        onTimeout: "undo",
+      },
+      validateDuring: { every: "5s", checks: ["disk", "mem"] },
+    },
+  );
+  assertEquals(
+    parseSettings({ lock: "ignored" }, { ...BARE_TARGET, name: "plain" }),
+    {},
+  );
+  const only = (field: "lock" | "waitsFor" | "validateDuring") => ({
+    ...BARE_TARGET,
+    name: "t",
+    [field]: true,
+  });
+  const cases: Array<[unknown, ManifestTarget, string]> = [
+    [{}, only("lock"), '"lock" must be answered, as the target declared it'],
+    [{ lock: { ttl: "1h" } }, only("lock"), 'lock: missing field "key"'],
+    [{ lock: { key: "k", ttl: -1 } }, only("lock"), '"ttl" must be a duration'],
+    [
+      { lock: { key: "k", ttl: true } },
+      only("lock"),
+      '"ttl" must be a duration',
+    ],
+    [{ waitsFor: {} }, only("waitsFor"), '"on" must name the trigger'],
+    [
+      { waitsFor: { on: { kind: "cron" } } },
+      only("waitsFor"),
+      '"kind" must be "externalSignal" or "resumeWhen"',
+    ],
+    [
+      { waitsFor: { on: { kind: "externalSignal" } } },
+      only("waitsFor"),
+      'missing field "name"',
+    ],
+    [
+      { validateDuring: { every: "1s" } },
+      only("validateDuring"),
+      'missing field "checks"',
+    ],
+    [[], only("lock"), 'target.settings: "t": expected an object'],
+  ];
+  for (const [value, target, message] of cases) {
+    assertThrows(() => parseSettings(value, target), Error, message);
+  }
+});
+
+Deno.test("parseBooleanAnswer and parseCacheKey accept one type and name the target", () => {
+  assertEquals(parseBooleanAnswer("wait.check", true, "a"), true);
   assertEquals(parseCacheKey("k", "a"), "k");
   assertThrows(
-    () => parseCondition("yes", "a"),
+    () => parseBooleanAnswer("target.condition", "yes", "a"),
     Error,
     'target.condition: "a" must answer a boolean',
   );

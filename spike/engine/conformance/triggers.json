@@ -20,7 +20,8 @@
   "calls": [
     "build.configure",
     "target.run deploy",
-    "target.run smoke"
+    "target.run smoke",
+    "run.exit done"
   ],
   "configure": {
     "parameters": {}

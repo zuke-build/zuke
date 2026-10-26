@@ -1,7 +1,13 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { discoverParameters, discoverTargets } from "@zuke/core";
+import {
+  discoverParameters,
+  discoverTargets,
+  LockSettings,
+  ValidateDuringSettings,
+  WaitSettings,
+} from "@zuke/core";
 import {
   assertEquals,
   assertRejects,
@@ -28,8 +34,16 @@ function recorder(
       hook: (name, params) => record(`${name} ${JSON.stringify(params)}`),
       condition: (t) => record(`condition ${t}`).then(() => false),
       cacheKey: (t) => record(`cacheKey ${t}`).then(() => "key"),
+      settings: (t) =>
+        record(`settings ${t.name}`).then(() => ({
+          lock: { key: "k", ttl: "1h", holdForRun: true },
+          waitsFor: { on: { kind: "externalSignal", name: "go" } },
+          validateDuring: { every: "5s", checks: ["disk"] },
+        })),
+      waitCheck: (t) => record(`waitCheck ${t}`).then(() => true),
+      validate: (t, check) => record(`validate ${t} ${check}`),
       runTarget: (t) => record(`run ${t}`),
-      finish: (code) => record(`finish ${code}`),
+      finish: (code, suspended) => record(`finish ${code} ${suspended}`),
     },
   };
 }
@@ -139,6 +153,78 @@ Deno.test("materialize wires condition and cacheKey to the worker only when decl
   assertEquals(calls, ["cacheKey gated"]);
 });
 
+Deno.test("late settings are fetched at onStart and feed the deferred lambdas", async () => {
+  const { runner, calls } = recorder();
+  const Remote = materialize(
+    parseManifest({
+      name: "B",
+      targets: [
+        { name: "undo" },
+        { name: "a", lock: true, waitsFor: true, validateDuring: true },
+      ],
+    }),
+    runner,
+  );
+  const build = new Remote();
+  const a = discoverTargets(build).get("a");
+  assertThrows(
+    () => a?.lock_?.(new LockSettings()),
+    Error,
+    'target "a" needs its settings before it runs',
+  );
+  await build.onStart();
+  assertEquals(calls, ["configure {}", "settings a"]);
+  const lock = a?.lock_?.(new LockSettings());
+  assertEquals([lock?.key_, lock?.ttl_, lock?.holdForRun_], ["k", "1h", true]);
+  const wait = a?.waitsFor_?.(new WaitSettings());
+  assertEquals(wait?.trigger_?.descriptor, "signal:go");
+  const during = a?.validateDuring_?.(new ValidateDuringSettings());
+  assertEquals(during?.every_, "5s");
+  await during?.checks_[0]?.validate({ target: "a", redact: (t) => t });
+  assertEquals(calls.at(-1), "validate a disk");
+});
+
+Deno.test("a resumeWhen gate asks the worker, and onTimeout resolves like onFailure", async () => {
+  const { runner, calls } = recorder();
+  runner.settings = () =>
+    Promise.resolve({
+      waitsFor: {
+        on: { kind: "resumeWhen", interval: 500 },
+        timeout: "1h",
+        onTimeout: "undo",
+      },
+    });
+  const Remote = materialize(
+    parseManifest({
+      name: "B",
+      targets: [{ name: "undo" }, { name: "gate", waitsFor: true }],
+    }),
+    runner,
+  );
+  const build = new Remote();
+  await build.onStart();
+  const wait = discoverTargets(build).get("gate")?.waitsFor_?.(
+    new WaitSettings(),
+  );
+  assertEquals(wait?.trigger_?.pollIntervalMs, 500);
+  assertEquals(
+    await wait?.trigger_?.isSatisfied(new Map(), {
+      target: "gate",
+      runId: "r",
+      state: {
+        set: () => Promise.resolve(),
+        trySet: () => Promise.resolve(true),
+        get: () => ({}),
+      },
+    }),
+    true,
+  );
+  assertEquals(calls.at(-1), "waitCheck gate");
+  const timeout = wait?.onTimeout_?.();
+  assertEquals(typeof timeout === "string" ? timeout : timeout?.name_, "undo");
+  assertEquals(wait?.timeout_, "1h");
+});
+
 Deno.test("onStart configures the worker, then the hooks the manifest flags run in order", async () => {
   const { runner, calls } = recorder();
   const Remote = materialize(
@@ -160,14 +246,14 @@ Deno.test("onStart configures the worker, then the hooks the manifest flags run 
   await build.onStart();
   await build.onTargetStart("a");
   await build.onTargetEnd("a", "passed");
-  await build.onFinish({ ok: true, executed: [] });
+  await build.onFinish({ ok: true, executed: [], suspended: true });
   assertEquals(calls, [
     'configure {"tag":"dev"}',
     "onStart {}",
     'onTargetStart {"target":"a"}',
     'onTargetEnd {"target":"a","status":"passed"}',
-    'onFinish {"ok":true}',
-    "finish 0",
+    'onFinish {"ok":true,"suspended":true}',
+    "finish 0 true",
   ]);
 });
 
@@ -186,7 +272,7 @@ Deno.test("an unflagged hook is never called, and an unresolved parameter config
   await build.onTargetStart("a");
   await build.onTargetEnd("a", "failed");
   await build.onFinish({ ok: false, executed: [] });
-  assertEquals(calls, ['configure {"tag":null}', "finish 1"]);
+  assertEquals(calls, ['configure {"tag":null}', "finish 1 false"]);
 });
 
 Deno.test("a throwing onFinish hook still exits the worker, with a failure code", async () => {
@@ -200,7 +286,10 @@ Deno.test("a throwing onFinish hook still exits the worker, with a failure code"
     Error,
     "onFinish refused",
   );
-  assertEquals(calls, ['onFinish {"ok":true}', "finish 1"]);
+  assertEquals(calls, [
+    'onFinish {"ok":true,"suspended":false}',
+    "finish 1 false",
+  ]);
 });
 
 Deno.test("materialize declares each parameter kind as parameter() would", () => {

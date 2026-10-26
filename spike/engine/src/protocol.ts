@@ -64,6 +64,62 @@ export interface ManifestTarget {
   readonly condition: boolean;
   /** Whether the engine must ask `target.cacheKey` when fingerprinting this target. */
   readonly cacheKey: boolean;
+  /** Whether `target.settings` answers a `lock` section for this target. */
+  readonly lock: boolean;
+  /** Whether `target.settings` answers a `waitsFor` section for this target. */
+  readonly waitsFor: boolean;
+  /** Whether `target.settings` answers a `validateDuring` section for this target. */
+  readonly validateDuring: boolean;
+}
+
+/** A duration as the wrappers take it: `"5m"` or milliseconds. */
+export type Duration = string | number;
+
+/** A cross-run lock, as `LockSettings` configures it. */
+export interface LockSpec {
+  /** The lock's key. */
+  readonly key: string;
+  /** How long the lock may be held. */
+  readonly ttl?: Duration;
+  /** How long to wait for a held lock before giving up. */
+  readonly waitUpTo?: Duration;
+  /** How often to poll a held lock. */
+  readonly pollEvery?: Duration;
+  /** Keep the lock until the run ends rather than until the target does. */
+  readonly holdForRun: boolean;
+}
+
+/** What a wait gate waits on. */
+export type WaitTriggerSpec =
+  | { readonly kind: "externalSignal"; readonly name: string }
+  | { readonly kind: "resumeWhen"; readonly interval?: Duration };
+
+/** A wait gate, as `WaitSettings` configures it. */
+export interface WaitSpec {
+  /** The trigger. */
+  readonly on: WaitTriggerSpec;
+  /** How long to wait before the timeout disposition applies. */
+  readonly timeout?: Duration;
+  /** `fail`, `cancel-run`, or a compensation target. */
+  readonly onTimeout?: string;
+}
+
+/** Checks run on an interval while the body runs, as `ValidateDuringSettings` configures them. */
+export interface ValidateDuringSpec {
+  /** The interval. */
+  readonly every?: Duration;
+  /** The checks' names, each answered by `target.validate`. */
+  readonly checks: readonly string[];
+}
+
+/** What `target.settings` answers for one target: the sections it declared. */
+export interface LateSettings {
+  /** The lock, when the target declared one. */
+  readonly lock?: LockSpec;
+  /** The wait gate, when the target declared one. */
+  readonly waitsFor?: WaitSpec;
+  /** The interval checks, when the target declared them. */
+  readonly validateDuring?: ValidateDuringSpec;
 }
 
 /** Which build hooks the worker implements; the engine calls only those. */
@@ -320,6 +376,16 @@ class Fields {
     return this.has(name) ? this.number(name) : undefined;
   }
 
+  durationIfSet(name: string): Duration | undefined {
+    if (!this.has(name)) return undefined;
+    const value = this.object[name];
+    if (typeof value === "string") return value;
+    if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+      return value;
+    }
+    return this.reject(name, "be a duration string or milliseconds");
+  }
+
   booleanOr(name: string, fallback: boolean): boolean {
     if (!this.has(name)) return fallback;
     const value = this.object[name];
@@ -463,6 +529,9 @@ function parseTarget(t: Fields): ManifestTarget {
     onFailure: t.stringIfSet("onFailure"),
     condition: t.booleanOr("condition", false),
     cacheKey: t.booleanOr("cacheKey", false),
+    lock: t.booleanOr("lock", false),
+    waitsFor: t.booleanOr("waitsFor", false),
+    validateDuring: t.booleanOr("validateDuring", false),
   };
 }
 
@@ -544,12 +613,80 @@ function parseHooks(h: Fields): ManifestHooks {
   };
 }
 
-/** Validate a `target.condition` answer. */
-export function parseCondition(value: unknown, target: string): boolean {
+/** Validate a boolean answer to `method` about `target`. */
+export function parseBooleanAnswer(
+  method: string,
+  value: unknown,
+  target: string,
+): boolean {
   if (typeof value !== "boolean") {
-    throw new Error(`target.condition: "${target}" must answer a boolean`);
+    throw new Error(`${method}: "${target}" must answer a boolean`);
   }
   return value;
+}
+
+function parseWaitTrigger(w: Fields): WaitTriggerSpec {
+  const on = w.objectOr("on");
+  if (!w.has("on")) w.reject("on", "name the trigger");
+  const kind = on.string("kind");
+  if (kind === "externalSignal") return { kind, name: on.string("name") };
+  if (kind === "resumeWhen") {
+    return { kind, interval: on.durationIfSet("interval") };
+  }
+  return on.reject("kind", 'be "externalSignal" or "resumeWhen"');
+}
+
+/**
+ * Validate a `target.settings` answer against what the target declared: a
+ * declared section must be present and well-formed; an undeclared one is
+ * ignored.
+ */
+export function parseSettings(
+  value: unknown,
+  target: ManifestTarget,
+): LateSettings {
+  const where = `target.settings: "${target.name}"`;
+  const o = fieldsOf(value, where);
+  const settings: {
+    lock?: LockSpec;
+    waitsFor?: WaitSpec;
+    validateDuring?: ValidateDuringSpec;
+  } = {};
+  if (target.lock) {
+    if (!o.has("lock")) {
+      o.reject("lock", "be answered, as the target declared it");
+    }
+    const l = o.objectOr("lock");
+    settings.lock = {
+      key: l.string("key"),
+      ttl: l.durationIfSet("ttl"),
+      waitUpTo: l.durationIfSet("waitUpTo"),
+      pollEvery: l.durationIfSet("pollEvery"),
+      holdForRun: l.booleanOr("holdForRun", false),
+    };
+  }
+  if (target.waitsFor) {
+    if (!o.has("waitsFor")) {
+      o.reject("waitsFor", "be answered, as the target declared it");
+    }
+    const w = o.objectOr("waitsFor");
+    settings.waitsFor = {
+      on: parseWaitTrigger(w),
+      timeout: w.durationIfSet("timeout"),
+      onTimeout: w.stringIfSet("onTimeout"),
+    };
+  }
+  if (target.validateDuring) {
+    if (!o.has("validateDuring")) {
+      o.reject("validateDuring", "be answered, as the target declared it");
+    }
+    const v = o.objectOr("validateDuring");
+    settings.validateDuring = {
+      every: v.durationIfSet("every"),
+      checks: v.strings("checks"),
+    };
+  }
+  return settings;
 }
 
 /** Validate a `target.cacheKey` answer. */

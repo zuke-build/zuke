@@ -28,7 +28,8 @@
     "build.configure",
     "target.run b",
     "target.run a",
-    "target.run all"
+    "target.run all",
+    "run.exit done"
   ],
   "configure": {
     "parameters": {}

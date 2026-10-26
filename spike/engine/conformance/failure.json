@@ -33,7 +33,8 @@
   "calls": [
     "build.configure",
     "target.run cleanup",
-    "target.run boom"
+    "target.run boom",
+    "run.exit done"
   ],
   "configure": {
     "parameters": {}

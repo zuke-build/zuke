@@ -1,0 +1,31 @@
+{
+  "manifest": {
+    "name": "Lock",
+    "targets": [
+      {
+        "name": "deploy",
+        "lock": true,
+        "settings": {
+          "lock": {
+            "key": "deploy-env",
+            "ttl": "1h",
+            "holdForRun": true
+          }
+        }
+      }
+    ]
+  },
+  "argv": [
+    "deploy"
+  ],
+  "code": 0,
+  "calls": [
+    "build.configure",
+    "target.settings deploy",
+    "target.run deploy",
+    "run.exit done"
+  ],
+  "configure": {
+    "parameters": {}
+  }
+}

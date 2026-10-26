@@ -16,7 +16,8 @@
   "calls": [
     "build.configure",
     "target.cacheKey keyed",
-    "target.run keyed"
+    "target.run keyed",
+    "run.exit done"
   ],
   "configure": {
     "parameters": {}

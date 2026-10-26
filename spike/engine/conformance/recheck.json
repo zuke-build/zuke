@@ -1,0 +1,95 @@
+{
+  "manifest": {
+    "name": "Recheck",
+    "targets": [
+      {
+        "name": "work"
+      },
+      {
+        "name": "gate",
+        "dependsOn": [
+          "work"
+        ],
+        "waitsFor": true,
+        "wait_answer": false,
+        "settings": {
+          "waitsFor": {
+            "on": {
+              "kind": "resumeWhen",
+              "interval": "1s"
+            }
+          }
+        }
+      },
+      {
+        "name": "ship",
+        "dependsOn": [
+          "gate"
+        ]
+      }
+    ]
+  },
+  "argv": [
+    "ship"
+  ],
+  "code": 0,
+  "calls": [
+    "build.configure",
+    "target.settings gate",
+    "target.run work",
+    "wait.check gate",
+    "run.exit suspended"
+  ],
+  "configure": {
+    "parameters": {}
+  },
+  "then": [
+    {
+      "manifest": {
+        "name": "Recheck",
+        "targets": [
+          {
+            "name": "work"
+          },
+          {
+            "name": "gate",
+            "dependsOn": [
+              "work"
+            ],
+            "waitsFor": true,
+            "wait_answer": true,
+            "settings": {
+              "waitsFor": {
+                "on": {
+                  "kind": "resumeWhen",
+                  "interval": "1s"
+                }
+              }
+            }
+          },
+          {
+            "name": "ship",
+            "dependsOn": [
+              "gate"
+            ]
+          }
+        ]
+      },
+      "argv": [
+        "resume",
+        "--check"
+      ],
+      "code": 0,
+      "calls": [
+        "build.configure",
+        "target.settings gate",
+        "wait.check gate",
+        "target.run ship",
+        "run.exit done"
+      ],
+      "configure": {
+        "parameters": {}
+      }
+    }
+  ]
+}

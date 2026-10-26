@@ -27,7 +27,8 @@
     "build.configure",
     "target.run deploy",
     "target.run verify",
-    "target.run rollback"
+    "target.run rollback",
+    "run.exit done"
   ],
   "configure": {
     "parameters": {}

@@ -1,0 +1,73 @@
+{
+  "manifest": {
+    "name": "Suspend",
+    "targets": [
+      {
+        "name": "deploy"
+      },
+      {
+        "name": "gate",
+        "dependsOn": [
+          "deploy"
+        ],
+        "waitsFor": true,
+        "settings": {
+          "waitsFor": {
+            "on": {
+              "kind": "externalSignal",
+              "name": "approved"
+            },
+            "timeout": "72h"
+          }
+        }
+      },
+      {
+        "name": "promote",
+        "dependsOn": [
+          "gate"
+        ],
+        "calls": [
+          {
+            "method": "signals",
+            "params": {}
+          }
+        ]
+      }
+    ]
+  },
+  "argv": [
+    "promote"
+  ],
+  "code": 0,
+  "calls": [
+    "build.configure",
+    "target.settings gate",
+    "target.run deploy",
+    "run.exit suspended"
+  ],
+  "configure": {
+    "parameters": {}
+  },
+  "then": [
+    {
+      "argv": [
+        "resume",
+        "$RUN_ID",
+        "--signal",
+        "approved",
+        "--data",
+        "{\"by\":\"alice\"}"
+      ],
+      "code": 0,
+      "calls": [
+        "build.configure",
+        "target.settings gate",
+        "target.run promote",
+        "run.exit done"
+      ],
+      "configure": {
+        "parameters": {}
+      }
+    }
+  ]
+}

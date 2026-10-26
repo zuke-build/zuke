@@ -35,6 +35,9 @@ interface PlanTarget {
   cacheKey?: boolean;
   cacheKey_answer?: unknown;
   calls?: Array<{ method: string; params: Record<string, unknown> }>;
+  validateDuring?: boolean;
+  settings?: unknown;
+  validate_fail?: string;
 }
 
 /** Start the fake worker on `plan` and materialise its build. */
@@ -274,6 +277,32 @@ Deno.test("a malformed context call is refused naming the field, and the body go
       assertStringIncludes(result.err, 'outcome.of: missing field "of"');
     } finally {
       await host.finish(0);
+    }
+  });
+});
+
+Deno.test("a validateDuring check the worker fails ends the target with its message", async () => {
+  await withStateDir(async () => {
+    const { host, Remote } = await fake([{
+      name: "slow",
+      validateDuring: true,
+      settings: { validateDuring: { every: "50ms", checks: ["disk", "mem"] } },
+      validate_fail: "mem",
+      exec: [evalArgv("await new Promise((r) => setTimeout(r, 5_000))")],
+    }]);
+    try {
+      const result = await runCli(Remote, ["slow"]);
+      assertEquals(result.code, 1);
+      assertStringIncludes(
+        result.out + result.err,
+        "check mem found a problem",
+      );
+      assertStringIncludes(
+        result.err,
+        "worker: call: target.validate slow disk",
+      );
+    } finally {
+      await host.finish(1);
     }
   });
 });

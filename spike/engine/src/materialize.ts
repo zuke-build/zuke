@@ -13,15 +13,26 @@ import {
   type AnyParameter,
   Build,
   type BuildResult,
+  externalSignal,
   group,
+  type LockSettings,
+  type OnTimeout,
   type Parameter,
   parameter,
+  resumeWhen,
   target,
   type TargetBuilder,
   type TargetStatus,
+  type ValidateDuringSettings,
+  type WaitSettings,
 } from "@zuke/core";
 import type { WorkerHost } from "./host.ts";
-import type { Manifest, ManifestParameter } from "./protocol.ts";
+import type {
+  LateSettings,
+  Manifest,
+  ManifestParameter,
+  ManifestTarget,
+} from "./protocol.ts";
 
 /** What a materialised build needs from its host. */
 export interface TargetRunner {
@@ -33,6 +44,12 @@ export interface TargetRunner {
   condition: WorkerHost["condition"];
   /** Ask for a target's extra cache key. */
   cacheKey: WorkerHost["cacheKey"];
+  /** Ask for a target's late settings. */
+  settings: WorkerHost["settings"];
+  /** Ask whether a `resumeWhen` gate holds. */
+  waitCheck: WorkerHost["waitCheck"];
+  /** Run one `validateDuring` check. */
+  validate: WorkerHost["validate"];
   /** Run the named target's body; reject when it fails. */
   runTarget: WorkerHost["runTarget"];
   /** Tell the worker the run is over. */
@@ -88,6 +105,11 @@ class Fields {
   }
 }
 
+/** Whether a target declared any setting fetched by `target.settings`. */
+function hasLateSettings(t: ManifestTarget): boolean {
+  return t.lock || t.waitsFor || t.validateDuring;
+}
+
 /** Look a name up in `known`, naming the manifest field that used it if absent. */
 function lookup<T>(
   known: ReadonlyMap<string, T>,
@@ -116,6 +138,7 @@ export function materialize(
   return class RemoteBuild extends Build {
     readonly #params = new Map<string, AnyParameter>();
     readonly #unforceable: TargetBuilder[];
+    readonly #late = new Map<string, LateSettings>();
 
     constructor() {
       super();
@@ -170,19 +193,27 @@ export function materialize(
             lookup(builders, t.onCancel, `target "${t.name}"'s "onCancel"`),
           );
         }
-        const disposition = t.onFailure;
-        if (disposition === "fail" || disposition === "cancel-run") {
-          builder.onFailure(() => disposition);
-        } else if (disposition !== undefined) {
-          // shortcut: a target literally named "fail" or "cancel-run" cannot be
-          // a compensation; split the field if an SDK ever needs that.
-          const compensation = lookup(
-            builders,
-            disposition,
-            `target "${t.name}"'s "onFailure"`,
-          );
-          builder.onFailure(() => compensation);
+        if (t.onFailure !== undefined) {
+          builder.onFailure(disposition(t.name, "onFailure", t.onFailure));
         }
+        if (hasLateSettings(t)) this.#wireLate(builder, t, disposition);
+      }
+      // A disposition names what a failure or a timeout does: `fail`,
+      // `cancel-run`, or a compensation target.
+      // shortcut: a target literally named "fail" or "cancel-run" cannot be a
+      // compensation; split the field if an SDK ever needs that.
+      function disposition(
+        owner: string,
+        field: string,
+        name: string,
+      ): OnTimeout {
+        if (name === "fail" || name === "cancel-run") return () => name;
+        const compensation = lookup(
+          builders,
+          name,
+          `target "${owner}"'s "${field}"`,
+        );
+        return () => compensation;
       }
       for (const g of manifest.groups) {
         const batch = group();
@@ -204,14 +235,85 @@ export function materialize(
       return this.#unforceable;
     }
 
-    /** Parameters have resolved: configure the worker, then its hook. */
+    /**
+     * Parameters have resolved: configure the worker, fetch the settings that
+     * read them, then run the worker's own hook.
+     */
     override async onStart(): Promise<void> {
       const parameters: Record<string, string | null> = {};
       for (const [name, p] of this.#params) {
         parameters[name] = p.stringValue_() ?? null;
       }
       await runner.configure({ parameters });
+      for (const t of manifest.targets) {
+        if (hasLateSettings(t)) {
+          this.#late.set(t.name, await runner.settings(t));
+        }
+      }
       if (manifest.hooks.onStart) await runner.hook("onStart", {});
+    }
+
+    /** The late settings `onStart` fetched for `name`. */
+    #lateFor(name: string): LateSettings {
+      const late = this.#late.get(name);
+      if (late === undefined) {
+        throw new Error(
+          `manifest: target "${name}" needs its settings before it runs, ` +
+            `but onStart has not fetched them`,
+        );
+      }
+      return late;
+    }
+
+    /** Wire the deferred settings lambdas to the settings fetched at start. */
+    #wireLate(
+      builder: TargetBuilder,
+      t: ManifestTarget,
+      disposition: (owner: string, field: string, name: string) => OnTimeout,
+    ): void {
+      if (t.lock) {
+        builder.lock((s: LockSettings) => {
+          const lock = this.#lateFor(t.name).lock;
+          if (lock === undefined) return s;
+          s.key(lock.key);
+          if (lock.ttl !== undefined) s.withTtl(lock.ttl);
+          if (lock.waitUpTo !== undefined) s.waitUpTo(lock.waitUpTo);
+          if (lock.pollEvery !== undefined) s.pollEvery(lock.pollEvery);
+          if (lock.holdForRun) s.holdForRun();
+          return s;
+        });
+      }
+      if (t.waitsFor) {
+        builder.waitsFor((s: WaitSettings) => {
+          const wait = this.#lateFor(t.name).waitsFor;
+          if (wait === undefined) return s;
+          s.on(
+            wait.on.kind === "externalSignal"
+              ? externalSignal(wait.on.name)
+              : resumeWhen(() => runner.waitCheck(t.name), {
+                interval: wait.on.interval,
+              }),
+          );
+          if (wait.timeout !== undefined) s.timeout(wait.timeout);
+          if (wait.onTimeout !== undefined) {
+            s.onTimeout(disposition(t.name, "onTimeout", wait.onTimeout));
+          }
+          return s;
+        });
+      }
+      if (t.validateDuring) {
+        builder.validateDuring((s: ValidateDuringSettings) => {
+          const during = this.#lateFor(t.name).validateDuring;
+          if (during === undefined) return s;
+          if (during.every !== undefined) s.every(during.every);
+          return s.check(
+            ...during.checks.map((check) => ({
+              name: check,
+              validate: () => runner.validate(t.name, check),
+            })),
+          );
+        });
+      }
     }
 
     override async onTargetStart(name: string): Promise<void> {
@@ -232,15 +334,16 @@ export function materialize(
     /** The worker's hook runs first; `run.exit` follows whatever it did. */
     override async onFinish(result: BuildResult): Promise<void> {
       let code = result.ok ? 0 : 1;
+      const suspended = result.suspended === true;
       try {
         if (manifest.hooks.onFinish) {
-          await runner.hook("onFinish", { ok: result.ok });
+          await runner.hook("onFinish", { ok: result.ok, suspended });
         }
       } catch (error) {
         code = 1;
         throw error;
       } finally {
-        await runner.finish(code);
+        await runner.finish(code, suspended);
       }
     }
   };

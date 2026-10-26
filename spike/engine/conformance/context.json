@@ -70,7 +70,8 @@
   "calls": [
     "build.configure",
     "target.run writer",
-    "target.run reader"
+    "target.run reader",
+    "run.exit done"
   ],
   "configure": {
     "parameters": {}

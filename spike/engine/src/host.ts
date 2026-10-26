@@ -22,15 +22,18 @@ import {
   type ExecRequest,
   type Hello,
   type HookName,
+  type LateSettings,
   type Manifest,
+  type ManifestTarget,
+  parseBooleanAnswer,
   parseCacheKey,
-  parseCondition,
   parseExec,
   parseHello,
   parseLog,
   parseManifest,
   parseOutcome,
   parseSecret,
+  parseSettings,
   parseStateRead,
   parseStateWrite,
   parseSummary,
@@ -243,6 +246,11 @@ export class WorkerHost {
       (p) => ({ target: parseTargeted(p, "plan") }),
       (_, ctx) => planOf(ctx),
     );
+    serve(
+      "signals",
+      (p) => ({ target: parseTargeted(p, "signals") }),
+      (_, ctx) => Object.fromEntries(ctx.signals),
+    );
   }
 
   /** The SDK the worker announced itself as. */
@@ -358,10 +366,33 @@ export class WorkerHost {
 
   /** Ask whether the named target's condition holds. */
   async condition(target: string): Promise<boolean> {
-    return parseCondition(
+    return parseBooleanAnswer(
+      "target.condition",
       await this.#peer.request("target.condition", { target }),
       target,
     );
+  }
+
+  /** Ask for the late settings a target declared, once parameters resolved. */
+  async settings(target: ManifestTarget): Promise<LateSettings> {
+    return parseSettings(
+      await this.#peer.request("target.settings", { target: target.name }),
+      target,
+    );
+  }
+
+  /** Ask whether a `resumeWhen` gate's predicate holds now. */
+  async waitCheck(target: string): Promise<boolean> {
+    return parseBooleanAnswer(
+      "wait.check",
+      await this.#peer.request("wait.check", { target }),
+      target,
+    );
+  }
+
+  /** Run one of a target's `validateDuring` checks; rejects with its message. */
+  async validate(target: string, check: string): Promise<void> {
+    await this.#peer.request("target.validate", { target, check });
   }
 
   /** Ask for the named target's extra cache key. */
@@ -409,9 +440,12 @@ export class WorkerHost {
     }
   }
 
-  /** Tell the worker the run is over, wait for it to exit, release everything. */
-  async finish(code: number): Promise<void> {
-    await this.#peer.notify("run.exit", { code });
+  /**
+   * Tell the worker the run is over, or suspended at a gate, wait for it to
+   * exit, release everything.
+   */
+  async finish(code: number, suspended = false): Promise<void> {
+    await this.#peer.notify("run.exit", { code, suspended });
     this.#peer.close();
     const exited = this.#child.status.then(() => true);
     if (!(await Promise.race([exited, after(this.#graceMs)]))) {

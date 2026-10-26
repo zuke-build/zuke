@@ -32,7 +32,8 @@
     "build.onTargetStart test",
     "target.run test",
     "build.onTargetEnd test passed",
-    "build.onFinish ok"
+    "build.onFinish ok",
+    "run.exit done"
   ],
   "configure": {
     "parameters": {}

@@ -150,7 +150,8 @@
   "code": 0,
   "calls": [
     "build.configure",
-    "target.run show"
+    "target.run show",
+    "run.exit done"
   ],
   "configure": {
     "parameters": {

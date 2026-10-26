@@ -79,7 +79,8 @@
     "build.configure",
     "target.run lint",
     "target.run test",
-    "target.run default"
+    "target.run default",
+    "run.exit done"
   ],
   "configure": {
     "parameters": {}

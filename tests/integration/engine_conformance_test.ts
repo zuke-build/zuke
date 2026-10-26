@@ -8,9 +8,14 @@
  */
 
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import type { Build } from "../../packages/core/mod.ts";
 import { WorkerHost } from "../../spike/engine/src/host.ts";
 import { materialize } from "../../spike/engine/src/materialize.ts";
 import { isRecord } from "../../spike/engine/src/protocol.ts";
+import {
+  defaultStateHost,
+  FileSystemStateStore,
+} from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 
 const CASES = new URL("../../spike/engine/conformance/", import.meta.url);
@@ -18,9 +23,9 @@ const FAKE =
   new URL("../../spike/engine/fixtures/fake_worker.ts", import.meta.url)
     .href;
 
-interface Case {
+/** One run of a case: the first, or a later one under `then`. */
+interface Run {
   readonly manifest: unknown;
-  readonly list?: { targets: unknown; parameters: unknown };
   readonly argv: string[];
   readonly code: number;
   readonly calls: string[];
@@ -28,22 +33,23 @@ interface Case {
   readonly answers?: string[];
 }
 
-function caseOf(value: unknown, file: string): Case {
+interface Case extends Run {
+  readonly list?: { targets: unknown; parameters: unknown };
+  readonly then: Run[];
+}
+
+function runOf(value: unknown, file: string, manifest: unknown): Run {
   if (
     !isRecord(value) || !Array.isArray(value.argv) ||
     typeof value.code !== "number" || !Array.isArray(value.calls) ||
     value.configure === undefined
   ) {
     throw new Error(
-      `${file}: a case needs manifest, argv, code, calls and configure`,
+      `${file}: a run needs argv, code, calls and configure`,
     );
   }
-  const list = isRecord(value.list)
-    ? { targets: value.list.targets, parameters: value.list.parameters }
-    : undefined;
   return {
-    manifest: value.manifest,
-    list,
+    manifest: value.manifest ?? manifest,
     argv: value.argv.map(String),
     code: value.code,
     calls: value.calls.map(String),
@@ -52,6 +58,31 @@ function caseOf(value: unknown, file: string): Case {
       ? value.answers.map(String)
       : undefined,
   };
+}
+
+function caseOf(value: unknown, file: string): Case {
+  if (!isRecord(value) || value.manifest === undefined) {
+    throw new Error(`${file}: a case needs a manifest`);
+  }
+  const list = isRecord(value.list)
+    ? { targets: value.list.targets, parameters: value.list.parameters }
+    : undefined;
+  return {
+    ...runOf(value, file, value.manifest),
+    list,
+    then: Array.isArray(value.then)
+      ? value.then.map((r) => runOf(r, file, value.manifest))
+      : [],
+  };
+}
+
+/** The id of the one run the CLI persisted under `dir`. */
+async function onlyRunId(dir: string): Promise<string> {
+  const runs = await new FileSystemStateStore(dir, defaultStateHost).listRuns(
+    {},
+  );
+  assertEquals(runs.length, 1);
+  return runs[0]?.id ?? "";
 }
 
 /** The `worker: <prefix> …` lines of the log, without the prefix. */
@@ -86,36 +117,56 @@ for await (const entry of Deno.readDir(CASES)) {
 }
 
 async function replay(spec: Case): Promise<void> {
-  await withStateDir(async () => {
-    Deno.env.set("ZUKE_FAKE_PLAN", JSON.stringify(spec.manifest));
-    Deno.env.delete("ZUKE_FAKE_BAD_TOKEN");
-    const host = await WorkerHost.start({
-      command: [Deno.execPath(), "run", "-A", FAKE],
-      cwd: Deno.cwd(),
-      graceMs: 1_000,
+  await withStateDir(async (dir) => {
+    const listed = await withWorker(spec.manifest, async (Remote) => {
+      if (spec.list === undefined) return;
+      const result = await runCli(Remote, ["--list", "--json"]);
+      assertEquals(result.code, 0, result.err);
+      return result.out;
     });
-    try {
-      const Remote = materialize(await host.describe(), host);
-      if (spec.list !== undefined) {
-        const listed = await runCli(Remote, ["--list", "--json"]);
-        assertEquals(listed.code, 0, listed.err);
-        const surface: unknown = JSON.parse(listed.out);
-        const actual = isRecord(surface) ? surface : {};
-        assertEquals(actual.targets, spec.list.targets);
-        assertEquals(actual.parameters, spec.list.parameters);
-      }
-      const result = await runCli(Remote, spec.argv);
-      assertEquals(result.code, spec.code, result.out + result.err);
-      assertEquals(logged(result.err, "call:"), spec.calls);
-      if (spec.answers !== undefined) {
-        assertEquals(logged(result.err, "answer:"), spec.answers);
-      }
-      const [configure] = logged(result.err, "configure:");
-      const sent: unknown = JSON.parse(configure ?? "{}");
-      const { parameters } = isRecord(sent) ? sent : {};
-      assertEquals({ parameters }, spec.configure);
-    } finally {
-      await host.finish(0);
+    if (spec.list !== undefined) {
+      const surface: unknown = JSON.parse(listed ?? "");
+      const actual = isRecord(surface) ? surface : {};
+      assertEquals(actual.targets, spec.list.targets);
+      assertEquals(actual.parameters, spec.list.parameters);
     }
+    await replayRun(spec, undefined);
+    // Every later run is a fresh process with a fresh worker, as `resume` is.
+    for (const run of spec.then) await replayRun(run, await onlyRunId(dir));
+  });
+}
+
+/** Start a fake worker on `manifest`, materialise its build, run `fn`, stop it. */
+async function withWorker<T>(
+  manifest: unknown,
+  fn: (Remote: new () => Build) => Promise<T>,
+): Promise<T> {
+  Deno.env.set("ZUKE_FAKE_PLAN", JSON.stringify(manifest));
+  Deno.env.delete("ZUKE_FAKE_BAD_TOKEN");
+  const host = await WorkerHost.start({
+    command: [Deno.execPath(), "run", "-A", FAKE],
+    cwd: Deno.cwd(),
+    graceMs: 1_000,
+  });
+  try {
+    return await fn(materialize(await host.describe(), host));
+  } finally {
+    await host.finish(0);
+  }
+}
+
+async function replayRun(run: Run, runId: string | undefined): Promise<void> {
+  await withWorker(run.manifest, async (Remote) => {
+    const argv = run.argv.map((a) => a === "$RUN_ID" ? runId ?? a : a);
+    const result = await runCli(Remote, argv);
+    assertEquals(result.code, run.code, result.out + result.err);
+    assertEquals(logged(result.err, "call:"), run.calls);
+    if (run.answers !== undefined) {
+      assertEquals(logged(result.err, "answer:"), run.answers);
+    }
+    const [configure] = logged(result.err, "configure:");
+    const sent: unknown = JSON.parse(configure ?? "{}");
+    const { parameters } = isRecord(sent) ? sent : {};
+    assertEquals({ parameters }, run.configure);
   });
 }
