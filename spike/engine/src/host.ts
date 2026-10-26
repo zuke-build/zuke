@@ -174,9 +174,18 @@ export class WorkerHost {
         timeoutMs,
       );
     });
+    // A worker that dies before connecting fails the start at once, with its
+    // exit code, instead of after the connect timeout.
+    const exited = child.status.then((status) => {
+      throw new Error(
+        `zuke: the worker (${options.command.join(" ")}) exited with code ` +
+          `${status.code} before connecting`,
+      );
+    });
+    exited.catch(() => {}); // Rejects after every normal exit too; raced below.
     let peer: Peer | undefined;
     try {
-      const conn = await Promise.race([listener.accept(), timeout]);
+      const conn = await Promise.race([listener.accept(), timeout, exited]);
       listener.close();
       conn.setNoDelay(true);
       const connected = new Peer(conn);
@@ -193,7 +202,7 @@ export class WorkerHost {
         });
       });
       const serving = connected.serve();
-      const greeted = await Promise.race([hello, timeout]);
+      const greeted = await Promise.race([hello, timeout, exited]);
       return new WorkerHost(
         connected,
         child,

@@ -188,7 +188,16 @@ Deno.test("an exec attributed to a target with no running body is refused", asyn
   });
 });
 
-Deno.test("a worker that never connects, or greets with the wrong token, is reported and killed", async () => {
+Deno.test("a worker that never connects, exits early, or greets with the wrong token, is reported and killed", async () => {
+  await assertRejects(
+    () =>
+      WorkerHost.start({
+        command: evalArgv("Deno.exit(3)"),
+        cwd: Deno.cwd(),
+      }),
+    Error,
+    "exited with code 3 before connecting",
+  );
   await assertRejects(
     () =>
       WorkerHost.start({

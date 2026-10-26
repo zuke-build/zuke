@@ -13,10 +13,11 @@ import {
 } from "../../packages/core/tests/_assert.ts";
 
 const ENGINE = new URL("../../spike/engine/mod.ts", import.meta.url).href;
-const WORKER = new URL(
-  "../../spike/engine/fixtures/worker.py",
-  import.meta.url,
-).pathname;
+// An OS path, not `URL.pathname`: that is `/D:/…` on Windows, which Python
+// cannot open. `import.meta.dirname` is only unset for a remote module.
+const WORKER = `${
+  import.meta.dirname ?? "tests/e2e"
+}/../../spike/engine/fixtures/worker.py`;
 
 function hasPython(): boolean {
   try {
