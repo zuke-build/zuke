@@ -12,6 +12,8 @@
  * retries), an `execAs` name to attribute execs to instead of the target's
  * own (an engine refusal the tests provoke), a `condition_answer` to answer
  * `target.condition` with and a `cacheKey_answer` to answer `target.cacheKey` with.
+ * A `calls` list of `{ method, params }` is issued to the engine after the
+ * execs, each answer printed as an `answer:` line for the tests to read back.
  * A top-level `failHook` names the build hook that throws.
  *
  * It prints every call the engine makes as a `call:` line, and the
@@ -34,6 +36,7 @@ interface Script {
   execAs?: string;
   condition: unknown;
   cacheKey: unknown;
+  calls: Array<{ method: string; params: Record<string, unknown> }>;
 }
 
 const PLAN: unknown = JSON.parse(Deno.env.get("ZUKE_FAKE_PLAN") ?? "{}");
@@ -54,6 +57,12 @@ if (isRecord(PLAN) && Array.isArray(PLAN.targets)) {
       // Answered as given, so a test can hand the engine the wrong type.
       condition: t.condition_answer ?? true,
       cacheKey: t.cacheKey_answer ?? "",
+      calls: Array.isArray(t.calls)
+        ? t.calls.filter(isRecord).map((c) => ({
+          method: String(c.method),
+          params: isRecord(c.params) ? c.params : {},
+        }))
+        : [],
     });
   }
 }
@@ -120,6 +129,21 @@ async function runTarget(peer: Peer, params: unknown): Promise<unknown> {
     throw new Error(
       `expected stdout to contain "${s.expectStdout}", got "${lastStdout.trim()}"`,
     );
+  }
+  for (const call of s.calls) {
+    try {
+      const answer = await peer.request(call.method, {
+        target: name,
+        ...call.params,
+      });
+      console.log(`answer: ${call.method} ${JSON.stringify(answer)}`);
+    } catch (error) {
+      console.log(
+        `answer: ${call.method} error ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
   const attempt = (attempts.get(name) ?? 0) + 1;
   attempts.set(name, attempt);

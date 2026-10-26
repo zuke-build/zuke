@@ -12,8 +12,9 @@
  * @module
  */
 
-import type { TargetContext } from "@zuke/core";
+import type { TargetContext, TargetStateHandle } from "@zuke/core";
 import { Command } from "@zuke/core/shell";
+import { ToolSettings } from "@zuke/core/tooling";
 import { Peer, RpcFailure } from "./peer.ts";
 import {
   CANCELLED,
@@ -26,7 +27,14 @@ import {
   parseCondition,
   parseExec,
   parseHello,
+  parseLog,
   parseManifest,
+  parseOutcome,
+  parseSecret,
+  parseStateRead,
+  parseStateWrite,
+  parseSummary,
+  parseTargeted,
   PROTOCOL_VERSION,
 } from "./protocol.ts";
 
@@ -42,10 +50,48 @@ export interface WorkerOptions {
   readonly graceMs?: number;
 }
 
-/** One `exec` waiting to be run inside its target's body. */
+/** One request waiting to be served inside its target's body. */
 interface Call {
-  readonly request: ExecRequest;
+  readonly run: (ctx: TargetContext) => Promise<unknown>;
   readonly settle: (run: () => Promise<unknown>) => void;
+}
+
+/**
+ * The one public way to register a secret with the run's ambient redactor is
+ * what a tool wrapper does from its settings; this is a settings class that
+ * runs no tool and only registers.
+ */
+class SecretRegistrar extends ToolSettings {
+  protected defaultTool(): string {
+    return "zuke";
+  }
+
+  protected buildArgs(): string[] {
+    return [];
+  }
+
+  /** Redact `value` from everything the run prints or records from now on. */
+  register(value: string): void {
+    this.markSecret(value);
+  }
+}
+
+function stateOf(
+  ctx: TargetContext,
+  of: string | undefined,
+): TargetStateHandle {
+  return of === undefined ? ctx.state : ctx.stateOf(of);
+}
+
+/** The run plan as JSON: the planned targets and each one's dependencies. */
+function planOf(ctx: TargetContext): unknown {
+  const plan = ctx.plan();
+  return {
+    targets: plan.targets,
+    dependencies: Object.fromEntries(
+      plan.targets.map((t) => [t, plan.dependenciesOf(t)]),
+    ),
+  };
 }
 
 /** A queue the socket pushes into and a target body drains. */
@@ -148,7 +194,55 @@ export class WorkerHost {
     this.#hello = hello;
     this.#background = background;
     this.#graceMs = graceMs;
-    peer.on("exec", (params) => this.#enqueue(parseExec(params)));
+    const registrar = new SecretRegistrar();
+    const serve = <R extends { readonly target: string }>(
+      method: string,
+      parse: (params: unknown) => R,
+      run: (request: R, ctx: TargetContext) => Promise<unknown> | unknown,
+    ) =>
+      peer.on(method, (params) => {
+        const request = parse(params);
+        return this.#enqueue(
+          request.target,
+          async (ctx) => await run(request, ctx),
+        );
+      });
+    serve("exec", parseExec, (r, ctx) => this.#exec(r, ctx));
+    serve(
+      "state.get",
+      (p) => parseStateRead(p, "state.get"),
+      (r, ctx) => stateOf(ctx, r.of).get(),
+    );
+    serve(
+      "state.set",
+      (p) => parseStateWrite(p, "state.set"),
+      (r, ctx) => stateOf(ctx, r.of).set(r.patch),
+    );
+    serve(
+      "state.trySet",
+      (p) => parseStateWrite(p, "state.trySet"),
+      async (r, ctx) => ({
+        recorded: await stateOf(ctx, r.of).trySet(r.patch),
+      }),
+    );
+    serve("outcome.of", parseOutcome, (r, ctx) => ctx.outcomeOf(r.of) ?? null);
+    serve(
+      "outcomes",
+      (p) => ({ target: parseTargeted(p, "outcomes") }),
+      (_, ctx) => Object.fromEntries(ctx.outcomes()),
+    );
+    serve(
+      "summary.report",
+      parseSummary,
+      (r, ctx) => ctx.reportSummary(r.pairs),
+    );
+    serve("secret.register", parseSecret, (r) => registrar.register(r.value));
+    serve("log", parseLog, (r) => console.log(r.line));
+    serve(
+      "plan",
+      (p) => ({ target: parseTargeted(p, "plan") }),
+      (_, ctx) => planOf(ctx),
+    );
   }
 
   /** The SDK the worker announced itself as. */
@@ -305,7 +399,7 @@ export class WorkerHost {
       // Each call runs here, inside the body's async context, so the ambient
       // dry-run echo and cancel signal reach the command.
       for await (const call of channel) {
-        call.settle(() => this.#exec(call.request, ctx));
+        call.settle(() => call.run(ctx));
       }
       await finished;
     } finally {
@@ -332,19 +426,16 @@ export class WorkerHost {
     signal(this.#child, "SIGTERM");
   }
 
-  #enqueue(request: ExecRequest): Promise<unknown> {
-    const channel = this.#channels.get(request.target);
+  #enqueue(
+    target: string,
+    run: (ctx: TargetContext) => Promise<unknown>,
+  ): Promise<unknown> {
+    const channel = this.#channels.get(target);
     if (channel === undefined) {
-      throw new RpcFailure(
-        -32000,
-        `exec: target "${request.target}" has no body running`,
-      );
+      throw new RpcFailure(-32000, `target "${target}" has no body running`);
     }
     return new Promise((resolve, reject) => {
-      channel.push({
-        request,
-        settle: (run) => run().then(resolve, reject),
-      });
+      channel.push({ run, settle: (run) => run().then(resolve, reject) });
     });
   }
 

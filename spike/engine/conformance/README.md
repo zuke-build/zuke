@@ -11,6 +11,7 @@ case through the CLI `main()` against the scripted fake worker.
 | `argv`      | The command line of the run.                                                                                                                         |
 | `code`      | The exit code of the run.                                                                                                                            |
 | `calls`     | The engine-to-worker calls the run makes after `build.describe`, in order, as `method [target]`.                                                     |
+| `answers`   | Optional: the answers the engine gives the worker's own `calls` script, in order, as `method json`.                                                  |
 | `configure` | The `parameters` every run's `build.configure` call carries.                                                                                         |
 
 Cases keep their targets sequentially ordered so the transcript is

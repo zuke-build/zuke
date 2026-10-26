@@ -155,7 +155,12 @@ export class Peer {
     try {
       const result = await handler(params);
       if (answer) {
-        await this.#send({ jsonrpc: "2.0", id, result: result ?? {} });
+        // A handler with nothing to say answers `{}`; `null` is an answer.
+        await this.#send({
+          jsonrpc: "2.0",
+          id,
+          result: result === undefined ? {} : result,
+        });
       }
     } catch (error) {
       if (!answer) return;

@@ -25,6 +25,7 @@ interface Case {
   readonly code: number;
   readonly calls: string[];
   readonly configure: unknown;
+  readonly answers?: string[];
 }
 
 function caseOf(value: unknown, file: string): Case {
@@ -47,6 +48,9 @@ function caseOf(value: unknown, file: string): Case {
     code: value.code,
     calls: value.calls.map(String),
     configure: value.configure,
+    answers: Array.isArray(value.answers)
+      ? value.answers.map(String)
+      : undefined,
   };
 }
 
@@ -103,6 +107,9 @@ async function replay(spec: Case): Promise<void> {
       const result = await runCli(Remote, spec.argv);
       assertEquals(result.code, spec.code, result.out + result.err);
       assertEquals(logged(result.err, "call:"), spec.calls);
+      if (spec.answers !== undefined) {
+        assertEquals(logged(result.err, "answer:"), spec.answers);
+      }
       const [configure] = logged(result.err, "configure:");
       const sent: unknown = JSON.parse(configure ?? "{}");
       const { parameters } = isRecord(sent) ? sent : {};

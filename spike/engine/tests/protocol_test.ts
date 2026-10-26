@@ -12,7 +12,14 @@ import {
   parseCondition,
   parseExec,
   parseHello,
+  parseLog,
   parseManifest,
+  parseOutcome,
+  parseSecret,
+  parseStateRead,
+  parseStateWrite,
+  parseSummary,
+  parseTargeted,
 } from "../src/protocol.ts";
 
 const HELLO = {
@@ -261,6 +268,65 @@ Deno.test("parseCondition and parseCacheKey accept one type and name the target"
     Error,
     'target.cacheKey: "a" must answer a string',
   );
+});
+
+Deno.test("the context-call parsers accept their shapes and name the malformed field", () => {
+  assertEquals(parseStateRead({ target: "a" }, "state.get"), {
+    target: "a",
+    of: undefined,
+  });
+  assertEquals(
+    parseStateWrite(
+      { target: "a", of: "b", patch: { n: 1, list: [true, null, "x"] } },
+      "state.set",
+    ),
+    { target: "a", of: "b", patch: { n: 1, list: [true, null, "x"] } },
+  );
+  assertEquals(parseOutcome({ target: "a", of: "b" }), {
+    target: "a",
+    of: "b",
+  });
+  assertEquals(parseSummary({ target: "a", pairs: { Passed: 3, Of: "4" } }), {
+    target: "a",
+    pairs: { Passed: 3, Of: "4" },
+  });
+  assertEquals(parseSecret({ target: "a", value: "s" }), {
+    target: "a",
+    value: "s",
+  });
+  assertEquals(parseLog({ target: "a", line: "hi" }), {
+    target: "a",
+    line: "hi",
+  });
+  assertEquals(parseTargeted({ target: "a" }, "plan"), "a");
+  const cases: Array<[() => unknown, string]> = [
+    [
+      () => parseStateRead({}, "state.get"),
+      'state.get: missing field "target"',
+    ],
+    [
+      () => parseStateWrite({ target: "a", patch: [] }, "state.set"),
+      'state.set: field "patch" must be an object',
+    ],
+    [
+      () =>
+        parseStateWrite({ target: "a", patch: { f: () => 1 } }, "state.set"),
+      'field "patch.f" must be JSON',
+    ],
+    [() => parseOutcome({ target: "a" }), 'outcome.of: missing field "of"'],
+    [
+      () => parseSummary({ target: "a", pairs: { k: true } }),
+      'field "pairs.k" must be a string or a number',
+    ],
+    [
+      () => parseSummary({ target: "a", pairs: 1 }),
+      '"pairs" must be an object',
+    ],
+    [() => parseSecret({ target: "a", value: "" }), "value must not be empty"],
+    [() => parseLog({ target: "a" }), 'log: missing field "line"'],
+    [() => parseTargeted({}, "plan"), 'plan: missing field "target"'],
+  ];
+  for (const [call, message] of cases) assertThrows(call, Error, message);
 });
 
 Deno.test("parseExec requires a target and a non-empty argv", () => {

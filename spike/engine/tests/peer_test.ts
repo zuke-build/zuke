@@ -86,8 +86,10 @@ Deno.test("a request is answered with the handler's result", async () => {
     return Number(params.x) + Number(params.y);
   });
   b.on("nothing", () => undefined);
+  b.on("none", () => null);
   assertEquals(await a.request("add", { x: 1, y: 2 }), 3);
   assertEquals(await a.request("nothing", {}), {});
+  assertEquals(await a.request("none", {}), null);
   await close();
 });
 

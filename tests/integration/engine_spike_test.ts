@@ -34,6 +34,7 @@ interface PlanTarget {
   condition_answer?: unknown;
   cacheKey?: boolean;
   cacheKey_answer?: unknown;
+  calls?: Array<{ method: string; params: Record<string, unknown> }>;
 }
 
 /** Start the fake worker on `plan` and materialise its build. */
@@ -193,6 +194,90 @@ Deno.test("a cache key answered with the wrong type is refused, naming the targe
   });
 });
 
+Deno.test("a registered secret is redacted from the summary the engine renders", async () => {
+  await withStateDir(async () => {
+    const { host, Remote } = await fake([{
+      name: "leaky",
+      calls: [
+        { method: "secret.register", params: { value: "hunter2-secret" } },
+        { method: "log", params: { line: "token is hunter2-secret" } },
+        {
+          method: "summary.report",
+          params: { pairs: { Token: "hunter2-secret" } },
+        },
+      ],
+    }]);
+    try {
+      const result = await runCli(Remote, ["leaky"]);
+      assertEquals(result.code, 0, result.out + result.err);
+      assertStringIncludes(result.out, "Token: [redacted]");
+      // A log line is the worker's print: not redacted, like a body's console.log.
+      assertStringIncludes(result.out, "token is hunter2-secret");
+    } finally {
+      await host.finish(0);
+    }
+  });
+});
+
+Deno.test("a body reads a settled dependency's outcome, null for an unknown target, and the outcomes map", async () => {
+  await withStateDir(async () => {
+    const { host, Remote } = await fake([
+      { name: "dep" },
+      {
+        name: "asker",
+        dependsOn: ["dep"],
+        calls: [
+          { method: "outcome.of", params: { of: "dep" } },
+          { method: "outcome.of", params: { of: "ghost" } },
+          { method: "outcomes", params: {} },
+        ],
+      },
+    ]);
+    try {
+      const result = await runCli(Remote, ["asker"]);
+      assertEquals(result.code, 0, result.out + result.err);
+      const answers = result.err.split("\n").filter((l) =>
+        l.includes("answer: outcome")
+      );
+      assertStringIncludes(answers[0] ?? "", '"status":"succeeded"');
+      assertStringIncludes(answers[1] ?? "", "outcome.of null");
+      assertStringIncludes(answers[2] ?? "", '"dep":{"status":"succeeded"');
+    } finally {
+      await host.finish(0);
+    }
+  });
+});
+
+Deno.test("a malformed context call is refused naming the field, and the body goes on", async () => {
+  await withStateDir(async () => {
+    const { host, Remote } = await fake([{
+      name: "sloppy",
+      calls: [
+        { method: "state.set", params: { patch: "nope" } },
+        { method: "summary.report", params: { pairs: { Count: true } } },
+        { method: "secret.register", params: { value: "" } },
+        { method: "outcome.of", params: {} },
+      ],
+    }]);
+    try {
+      const result = await runCli(Remote, ["sloppy"]);
+      assertEquals(result.code, 0, result.out + result.err);
+      assertStringIncludes(
+        result.err,
+        'answer: state.set error state.set: field "patch" must be an object',
+      );
+      assertStringIncludes(
+        result.err,
+        'field "pairs.Count" must be a string or a number',
+      );
+      assertStringIncludes(result.err, "value must not be empty");
+      assertStringIncludes(result.err, 'outcome.of: missing field "of"');
+    } finally {
+      await host.finish(0);
+    }
+  });
+});
+
 Deno.test("--dry-run never calls a body, so nothing is spawned", async () => {
   await withStateDir(async (dir) => {
     const marker = `${dir}/dry-marker`;
@@ -250,7 +335,7 @@ Deno.test("an exec attributed to a target with no running body is refused", asyn
       assertEquals(result.code, 1);
       assertStringIncludes(
         result.out + result.err,
-        'exec: target "ghost" has no body running',
+        'target "ghost" has no body running',
       );
     } finally {
       await host.finish(1);

@@ -9,6 +9,8 @@
  * @module
  */
 
+import type { JsonValue } from "@zuke/core";
+
 /** The protocol version this engine speaks. */
 export const PROTOCOL_VERSION = 1;
 
@@ -180,6 +182,52 @@ export interface ExecRequest {
   readonly stdin?: string;
 }
 
+/** A durable-state read, for the body's own target or, with `of`, another's. */
+export interface StateRead {
+  /** The target whose body is asking. */
+  readonly target: string;
+  /** The target whose state to read; the body's own when absent. */
+  readonly of?: string;
+}
+
+/** A durable-state write: the patch merged into the state. */
+export interface StateWrite extends StateRead {
+  /** The JSON patch to merge. */
+  readonly patch: Readonly<Record<string, JsonValue>>;
+}
+
+/** Another target's outcome, asked for by a body. */
+export interface OutcomeRequest {
+  /** The target whose body is asking. */
+  readonly target: string;
+  /** The target whose outcome to report. */
+  readonly of: string;
+}
+
+/** Notes for the asking target's summary row. */
+export interface SummaryRequest {
+  /** The target whose body is asking. */
+  readonly target: string;
+  /** The notes, keyed by label. */
+  readonly pairs: Readonly<Record<string, string | number>>;
+}
+
+/** A value the engine must redact from now on. */
+export interface SecretRequest {
+  /** The target whose body is asking. */
+  readonly target: string;
+  /** The secret. */
+  readonly value: string;
+}
+
+/** A log line attributed to the asking target. */
+export interface LogRequest {
+  /** The target whose body is asking. */
+  readonly target: string;
+  /** The line. */
+  readonly line: string;
+}
+
 /** JSON-RPC error code the engine answers a cancelled `exec` with. */
 export const CANCELLED = -32001;
 
@@ -189,6 +237,23 @@ export const INVALID_PARAMS = -32602;
 /** Whether `value` is a plain JSON object. */
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Whether `value` is JSON: what a parsed wire message can hold, nothing else. */
+function isJsonValue(value: unknown): value is JsonValue {
+  if (value === null) return true;
+  switch (typeof value) {
+    case "string":
+    case "number":
+    case "boolean":
+      return true;
+    case "object":
+      return Array.isArray(value)
+        ? value.every(isJsonValue)
+        : Object.values(value).every(isJsonValue);
+    default:
+      return false;
+  }
 }
 
 /** A typed view of one JSON object, naming its location in every error. */
@@ -310,6 +375,38 @@ class Fields {
   /** The raw value, for a field whose type depends on another. */
   raw(name: string): unknown {
     return this.object[name];
+  }
+
+  jsonRecord(name: string): Record<string, JsonValue> {
+    const value = this.required(name);
+    if (!isRecord(value)) {
+      throw new Error(`${this.where}: field "${name}" must be an object`);
+    }
+    const entries: Array<[string, JsonValue]> = [];
+    for (const [key, item] of Object.entries(value)) {
+      if (!isJsonValue(item)) {
+        throw new Error(`${this.where}: field "${name}.${key}" must be JSON`);
+      }
+      entries.push([key, item]);
+    }
+    return Object.fromEntries(entries);
+  }
+
+  summaryPairs(name: string): Record<string, string | number> {
+    const value = this.required(name);
+    if (!isRecord(value)) {
+      throw new Error(`${this.where}: field "${name}" must be an object`);
+    }
+    const entries: Array<[string, string | number]> = [];
+    for (const [key, item] of Object.entries(value)) {
+      if (typeof item !== "string" && typeof item !== "number") {
+        throw new Error(
+          `${this.where}: field "${name}.${key}" must be a string or a number`,
+        );
+      }
+      entries.push([key, item]);
+    }
+    return Object.fromEntries(entries);
   }
 
   reject(name: string, must: string): never {
@@ -461,6 +558,51 @@ export function parseCacheKey(value: unknown, target: string): string {
     throw new Error(`target.cacheKey: "${target}" must answer a string`);
   }
   return value;
+}
+
+/** Validate a `state.get` request's params. */
+export function parseStateRead(value: unknown, method: string): StateRead {
+  const o = fieldsOf(value, method);
+  return { target: o.string("target"), of: o.stringIfSet("of") };
+}
+
+/** Validate a `state.set` or `state.trySet` request's params. */
+export function parseStateWrite(value: unknown, method: string): StateWrite {
+  const o = fieldsOf(value, method);
+  return { ...parseStateRead(value, method), patch: o.jsonRecord("patch") };
+}
+
+/** Validate an `outcome.of` request's params. */
+export function parseOutcome(value: unknown): OutcomeRequest {
+  const o = fieldsOf(value, "outcome.of");
+  return { target: o.string("target"), of: o.string("of") };
+}
+
+/** Validate a `summary.report` request's params. */
+export function parseSummary(value: unknown): SummaryRequest {
+  const o = fieldsOf(value, "summary.report");
+  return { target: o.string("target"), pairs: o.summaryPairs("pairs") };
+}
+
+/** Validate a `secret.register` request's params. */
+export function parseSecret(value: unknown): SecretRequest {
+  const o = fieldsOf(value, "secret.register");
+  const secret = o.string("value");
+  if (secret === "") {
+    throw new Error("secret.register: value must not be empty");
+  }
+  return { target: o.string("target"), value: secret };
+}
+
+/** Validate a `log` request's params. */
+export function parseLog(value: unknown): LogRequest {
+  const o = fieldsOf(value, "log");
+  return { target: o.string("target"), line: o.string("line") };
+}
+
+/** Validate the params of a request that carries only its target. */
+export function parseTargeted(value: unknown, method: string): string {
+  return fieldsOf(value, method).string("target");
 }
 
 /** Validate an `exec` request's params. */

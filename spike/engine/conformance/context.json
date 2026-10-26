@@ -1,0 +1,87 @@
+{
+  "manifest": {
+    "name": "Context",
+    "targets": [
+      {
+        "name": "writer",
+        "calls": [
+          {
+            "method": "state.set",
+            "params": {
+              "patch": {
+                "revision": "r1"
+              }
+            }
+          },
+          {
+            "method": "state.get",
+            "params": {}
+          },
+          {
+            "method": "summary.report",
+            "params": {
+              "pairs": {
+                "Revision": "r1",
+                "Count": 2
+              }
+            }
+          },
+          {
+            "method": "plan",
+            "params": {}
+          }
+        ]
+      },
+      {
+        "name": "reader",
+        "dependsOn": [
+          "writer"
+        ],
+        "calls": [
+          {
+            "method": "state.get",
+            "params": {
+              "of": "writer"
+            }
+          },
+          {
+            "method": "state.trySet",
+            "params": {
+              "of": "writer",
+              "patch": {
+                "seen": true
+              }
+            }
+          },
+          {
+            "method": "log",
+            "params": {
+              "line": "reader is done"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "argv": [
+    "reader"
+  ],
+  "code": 0,
+  "calls": [
+    "build.configure",
+    "target.run writer",
+    "target.run reader"
+  ],
+  "configure": {
+    "parameters": {}
+  },
+  "answers": [
+    "state.set {}",
+    "state.get {\"revision\":\"r1\"}",
+    "summary.report {}",
+    "plan {\"targets\":[\"writer\",\"reader\"],\"dependencies\":{\"writer\":[],\"reader\":[\"writer\"]}}",
+    "state.get {\"revision\":\"r1\"}",
+    "state.trySet {\"recorded\":true}",
+    "log {}"
+  ]
+}
