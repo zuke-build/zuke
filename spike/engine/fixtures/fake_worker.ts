@@ -32,8 +32,8 @@ interface Script {
   fail?: string;
   failTimes: number;
   execAs?: string;
-  condition: boolean;
-  cacheKey: string;
+  condition: unknown;
+  cacheKey: unknown;
 }
 
 const PLAN: unknown = JSON.parse(Deno.env.get("ZUKE_FAKE_PLAN") ?? "{}");
@@ -51,8 +51,9 @@ if (isRecord(PLAN) && Array.isArray(PLAN.targets)) {
       fail: typeof t.fail === "string" ? t.fail : undefined,
       failTimes: typeof t.failTimes === "number" ? t.failTimes : 0,
       execAs: typeof t.execAs === "string" ? t.execAs : undefined,
-      condition: t.condition_answer !== false,
-      cacheKey: typeof t.cacheKey_answer === "string" ? t.cacheKey_answer : "",
+      // Answered as given, so a test can hand the engine the wrong type.
+      condition: t.condition_answer ?? true,
+      cacheKey: t.cacheKey_answer ?? "",
     });
   }
 }
