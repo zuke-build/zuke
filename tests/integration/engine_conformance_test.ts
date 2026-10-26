@@ -24,15 +24,18 @@ interface Case {
   readonly argv: string[];
   readonly code: number;
   readonly calls: string[];
-  readonly configure?: unknown;
+  readonly configure: unknown;
 }
 
 function caseOf(value: unknown, file: string): Case {
   if (
     !isRecord(value) || !Array.isArray(value.argv) ||
-    typeof value.code !== "number" || !Array.isArray(value.calls)
+    typeof value.code !== "number" || !Array.isArray(value.calls) ||
+    value.configure === undefined
   ) {
-    throw new Error(`${file}: a case needs manifest, argv, code and calls`);
+    throw new Error(
+      `${file}: a case needs manifest, argv, code, calls and configure`,
+    );
   }
   const list = isRecord(value.list)
     ? { targets: value.list.targets, parameters: value.list.parameters }
@@ -84,12 +87,10 @@ for await (const entry of Deno.readDir(CASES)) {
         const result = await runCli(Remote, spec.argv);
         assertEquals(result.code, spec.code, result.out + result.err);
         assertEquals(logged(result.err, "call:"), spec.calls);
-        if (spec.configure !== undefined) {
-          const [configure] = logged(result.err, "configure:");
-          const sent: unknown = JSON.parse(configure ?? "{}");
-          const { dryRun, parameters } = isRecord(sent) ? sent : {};
-          assertEquals({ dryRun, parameters }, spec.configure);
-        }
+        const [configure] = logged(result.err, "configure:");
+        const sent: unknown = JSON.parse(configure ?? "{}");
+        const { dryRun, parameters } = isRecord(sent) ? sent : {};
+        assertEquals({ dryRun, parameters }, spec.configure);
       } finally {
         await host.finish(0);
       }

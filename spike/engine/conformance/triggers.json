@@ -21,5 +21,9 @@
     "build.configure",
     "target.run deploy",
     "target.run smoke"
-  ]
+  ],
+  "configure": {
+    "dryRun": false,
+    "parameters": {}
+  }
 }

@@ -29,5 +29,9 @@
     "target.run b",
     "target.run a",
     "target.run all"
-  ]
+  ],
+  "configure": {
+    "dryRun": false,
+    "parameters": {}
+  }
 }
