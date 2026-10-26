@@ -1,0 +1,40 @@
+{
+  "manifest": {
+    "name": "Hooks",
+    "targets": [
+      {
+        "name": "lint"
+      },
+      {
+        "name": "test",
+        "dependsOn": [
+          "lint"
+        ]
+      }
+    ],
+    "hooks": {
+      "onStart": true,
+      "onTargetStart": true,
+      "onTargetEnd": true,
+      "onFinish": true
+    }
+  },
+  "argv": [
+    "test"
+  ],
+  "code": 0,
+  "calls": [
+    "build.configure",
+    "build.onStart",
+    "build.onTargetStart lint",
+    "target.run lint",
+    "build.onTargetEnd lint passed",
+    "build.onTargetStart test",
+    "target.run test",
+    "build.onTargetEnd test passed",
+    "build.onFinish ok"
+  ],
+  "configure": {
+    "parameters": {}
+  }
+}

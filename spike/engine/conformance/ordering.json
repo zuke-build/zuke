@@ -31,7 +31,6 @@
     "target.run all"
   ],
   "configure": {
-    "dryRun": false,
     "parameters": {}
   }
 }

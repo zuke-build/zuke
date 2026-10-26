@@ -18,19 +18,21 @@ import {
   parameter,
   target,
   type TargetBuilder,
-  type TargetContext,
+  type TargetStatus,
 } from "@zuke/core";
 import type { WorkerHost } from "./host.ts";
-import type {
-  ConfigureParams,
-  Manifest,
-  ManifestParameter,
-} from "./protocol.ts";
+import type { Manifest, ManifestParameter } from "./protocol.ts";
 
 /** What a materialised build needs from its host. */
 export interface TargetRunner {
-  /** Tell the worker the run's id, dry-run flag and parameter values. */
+  /** Tell the worker the resolved parameter values. */
   configure: WorkerHost["configure"];
+  /** Call a flagged build hook. */
+  hook: WorkerHost["hook"];
+  /** Ask whether a target's condition holds. */
+  condition: WorkerHost["condition"];
+  /** Ask for a target's extra cache key. */
+  cacheKey: WorkerHost["cacheKey"];
   /** Run the named target's body; reject when it fails. */
   runTarget: WorkerHost["runTarget"];
   /** Tell the worker the run is over. */
@@ -114,7 +116,6 @@ export function materialize(
   return class RemoteBuild extends Build {
     readonly #params = new Map<string, AnyParameter>();
     readonly #unforceable: TargetBuilder[];
-    #configured: Promise<void> | undefined;
 
     constructor() {
       super();
@@ -139,7 +140,9 @@ export function materialize(
         const builder = target().description(t.description).dependsOn(...deps)
           .inputs(...t.inputs).outputs(...t.outputs).produces(...t.produces)
           .retry(t.retry.times, t.retry.delayMs)
-          .executes((ctx) => this.#run(t.name, ctx));
+          .executes((ctx) => runner.runTarget(t.name, ctx));
+        if (t.condition) builder.onlyWhen(() => runner.condition(t.name));
+        if (t.cacheKey) builder.cacheKey(() => runner.cacheKey(t.name));
         if (t.unlisted) builder.unlisted();
         if (t.timeoutMs !== undefined) builder.timeout(t.timeoutMs);
         if (t.proceedAfterFailure) builder.proceedAfterFailure();
@@ -201,23 +204,44 @@ export function materialize(
       return this.#unforceable;
     }
 
-    override onFinish(result: BuildResult): Promise<void> {
-      return runner.finish(result.ok ? 0 : 1);
-    }
-
-    /** Configure the worker once, before the first body, then run the body. */
-    async #run(name: string, ctx: TargetContext): Promise<void> {
-      this.#configured ??= runner.configure(this.#configuration(ctx));
-      await this.#configured;
-      await runner.runTarget(name, ctx);
-    }
-
-    #configuration(ctx: TargetContext): ConfigureParams {
+    /** Parameters have resolved: configure the worker, then its hook. */
+    override async onStart(): Promise<void> {
       const parameters: Record<string, string | null> = {};
       for (const [name, p] of this.#params) {
         parameters[name] = p.stringValue_() ?? null;
       }
-      return { runId: ctx.runId, dryRun: ctx.dryRun, parameters };
+      await runner.configure({ parameters });
+      if (manifest.hooks.onStart) await runner.hook("onStart", {});
+    }
+
+    override async onTargetStart(name: string): Promise<void> {
+      if (manifest.hooks.onTargetStart) {
+        await runner.hook("onTargetStart", { target: name });
+      }
+    }
+
+    override async onTargetEnd(
+      name: string,
+      status: TargetStatus,
+    ): Promise<void> {
+      if (manifest.hooks.onTargetEnd) {
+        await runner.hook("onTargetEnd", { target: name, status });
+      }
+    }
+
+    /** The worker's hook runs first; `run.exit` follows whatever it did. */
+    override async onFinish(result: BuildResult): Promise<void> {
+      let code = result.ok ? 0 : 1;
+      try {
+        if (manifest.hooks.onFinish) {
+          await runner.hook("onFinish", { ok: result.ok });
+        }
+      } catch (error) {
+        code = 1;
+        throw error;
+      } finally {
+        await runner.finish(code);
+      }
     }
   };
 }

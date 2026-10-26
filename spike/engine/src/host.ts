@@ -20,7 +20,10 @@ import {
   type ConfigureParams,
   type ExecRequest,
   type Hello,
+  type HookName,
   type Manifest,
+  parseCacheKey,
+  parseCondition,
   parseExec,
   parseHello,
   parseManifest,
@@ -249,9 +252,30 @@ export class WorkerHost {
     return parseManifest(await this.#peer.request("build.describe", {}));
   }
 
-  /** Tell the worker the run's id, dry-run flag and resolved parameters. */
+  /** Tell the worker the resolved parameters. */
   async configure(params: ConfigureParams): Promise<void> {
     await this.#peer.request("build.configure", params);
+  }
+
+  /** Call a build hook the manifest flagged and wait for it to settle. */
+  async hook(name: HookName, params: unknown): Promise<void> {
+    await this.#peer.request(`build.${name}`, params);
+  }
+
+  /** Ask whether the named target's condition holds. */
+  async condition(target: string): Promise<boolean> {
+    return parseCondition(
+      await this.#peer.request("target.condition", { target }),
+      target,
+    );
+  }
+
+  /** Ask for the named target's extra cache key. */
+  async cacheKey(target: string): Promise<string> {
+    return parseCacheKey(
+      await this.#peer.request("target.cacheKey", { target }),
+      target,
+    );
   }
 
   /**
@@ -262,7 +286,11 @@ export class WorkerHost {
     const channel = new Channel();
     this.#channels.set(name, channel);
     const finished = this.#peer
-      .request("target.run", { target: name, dryRun: ctx.dryRun })
+      .request("target.run", {
+        target: name,
+        runId: ctx.runId,
+        dryRun: ctx.dryRun,
+      })
       .finally(() => channel.close());
     finished.catch(() => {}); // Observed below; never an unhandled rejection.
     let grace: ReturnType<typeof setTimeout> | undefined;

@@ -35,9 +35,16 @@ interface PlanTarget {
 /** Start the fake worker on `plan` and materialise its build. */
 async function fake(
   targets: PlanTarget[],
-  options: { badToken?: string; connectTimeoutMs?: number } = {},
+  options: {
+    badToken?: string;
+    connectTimeoutMs?: number;
+    manifest?: Record<string, unknown>;
+  } = {},
 ): Promise<{ host: WorkerHost; Remote: new () => Build }> {
-  Deno.env.set("ZUKE_FAKE_PLAN", JSON.stringify({ name: "Fake", targets }));
+  Deno.env.set(
+    "ZUKE_FAKE_PLAN",
+    JSON.stringify({ name: "Fake", targets, ...options.manifest }),
+  );
   if (options.badToken !== undefined) {
     Deno.env.set("ZUKE_FAKE_BAD_TOKEN", options.badToken);
   } else Deno.env.delete("ZUKE_FAKE_BAD_TOKEN");
@@ -117,6 +124,28 @@ Deno.test("a body that fails marks its target failed with the worker's message",
       const result = await runCli(Remote, ["after"]);
       assertEquals(result.code, 1);
       assertStringIncludes(result.out + result.err, "the worker said no");
+    } finally {
+      await host.finish(1);
+    }
+  });
+});
+
+Deno.test("a worker hook that throws fails the run with its message", async () => {
+  await withStateDir(async () => {
+    const { host, Remote } = await fake(
+      [{ name: "a" }],
+      {
+        manifest: { hooks: { onTargetStart: true }, failHook: "onTargetStart" },
+      },
+    );
+    try {
+      const result = await runCli(Remote, ["a"]);
+      assertEquals(result.code, 1);
+      assertStringIncludes(
+        result.out + result.err,
+        "the worker's onTargetStart threw",
+      );
+      assertEquals(result.err.includes("worker: call: target.run a"), false);
     } finally {
       await host.finish(1);
     }

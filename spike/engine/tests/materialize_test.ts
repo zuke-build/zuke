@@ -4,22 +4,32 @@
 import { discoverParameters, discoverTargets } from "@zuke/core";
 import {
   assertEquals,
+  assertRejects,
   assertThrows,
 } from "../../../packages/core/tests/_assert.ts";
 import { materialize, type TargetRunner } from "../src/materialize.ts";
 import { parseManifest } from "../src/protocol.ts";
 
-function recorder(): { runner: TargetRunner; finished: number[] } {
-  const finished: number[] = [];
+/** A runner that records every call as one line. */
+function recorder(
+  failing?: string,
+): { runner: TargetRunner; calls: string[] } {
+  const calls: string[] = [];
+  const record = (line: string): Promise<void> => {
+    calls.push(line);
+    return failing === line.split(" ")[0]
+      ? Promise.reject(new Error(`${failing} refused`))
+      : Promise.resolve();
+  };
   return {
-    finished,
+    calls,
     runner: {
-      configure: () => Promise.resolve(),
-      runTarget: () => Promise.resolve(),
-      finish: (code) => {
-        finished.push(code);
-        return Promise.resolve();
-      },
+      configure: (p) => record(`configure ${JSON.stringify(p.parameters)}`),
+      hook: (name, params) => record(`${name} ${JSON.stringify(params)}`),
+      condition: (t) => record(`condition ${t}`).then(() => false),
+      cacheKey: (t) => record(`cacheKey ${t}`).then(() => "key"),
+      runTarget: (t) => record(`run ${t}`),
+      finish: (code) => record(`finish ${code}`),
     },
   };
 }
@@ -110,6 +120,89 @@ Deno.test("materialize applies every target setting, group and config field", ()
   assertEquals(build.unforceable().map((t) => t.name_), ["c"]);
 });
 
+Deno.test("materialize wires condition and cacheKey to the worker only when declared", async () => {
+  const { runner, calls } = recorder();
+  const Remote = materialize(
+    parseManifest({
+      name: "B",
+      targets: [{ name: "gated", condition: true, cacheKey: true }, {
+        name: "plain",
+      }],
+    }),
+    runner,
+  );
+  const targets = discoverTargets(new Remote());
+  assertEquals(targets.get("gated")?.onlyWhen_.length, 1);
+  assertEquals(await targets.get("gated")?.cacheKeys_[0]?.(), "key");
+  assertEquals(targets.get("plain")?.onlyWhen_, []);
+  assertEquals(targets.get("plain")?.cacheKeys_, []);
+  assertEquals(calls, ["cacheKey gated"]);
+});
+
+Deno.test("onStart configures the worker, then the hooks the manifest flags run in order", async () => {
+  const { runner, calls } = recorder();
+  const Remote = materialize(
+    parseManifest({
+      name: "B",
+      targets: [{ name: "a" }],
+      parameters: [{ name: "tag", default: "dev" }],
+      hooks: {
+        onStart: true,
+        onTargetStart: true,
+        onTargetEnd: true,
+        onFinish: true,
+      },
+    }),
+    runner,
+  );
+  const build = new Remote();
+  discoverParameters(build).get("tag")?.resolve_(undefined);
+  await build.onStart();
+  await build.onTargetStart("a");
+  await build.onTargetEnd("a", "passed");
+  await build.onFinish({ ok: true, executed: [] });
+  assertEquals(calls, [
+    'configure {"tag":"dev"}',
+    "onStart {}",
+    'onTargetStart {"target":"a"}',
+    'onTargetEnd {"target":"a","status":"passed"}',
+    'onFinish {"ok":true}',
+    "finish 0",
+  ]);
+});
+
+Deno.test("an unflagged hook is never called, and an unresolved parameter configures as null", async () => {
+  const { runner, calls } = recorder();
+  const Remote = materialize(
+    parseManifest({
+      name: "B",
+      targets: [{ name: "a" }],
+      parameters: [{ name: "tag" }],
+    }),
+    runner,
+  );
+  const build = new Remote();
+  await build.onStart();
+  await build.onTargetStart("a");
+  await build.onTargetEnd("a", "failed");
+  await build.onFinish({ ok: false, executed: [] });
+  assertEquals(calls, ['configure {"tag":null}', "finish 1"]);
+});
+
+Deno.test("a throwing onFinish hook still exits the worker, with a failure code", async () => {
+  const { runner, calls } = recorder("onFinish");
+  const Remote = materialize(
+    parseManifest({ name: "B", targets: [], hooks: { onFinish: true } }),
+    runner,
+  );
+  await assertRejects(
+    async () => await new Remote().onFinish({ ok: true, executed: [] }),
+    Error,
+    "onFinish refused",
+  );
+  assertEquals(calls, ['onFinish {"ok":true}', "finish 1"]);
+});
+
 Deno.test("materialize declares each parameter kind as parameter() would", () => {
   const Remote = remote({
     name: "B",
@@ -192,16 +285,4 @@ Deno.test("materialize refuses a duplicate, a forward dependency, or an undeclar
     { name: "B", targets: [], config: { unforceable: ["x"] } },
     '"unforceable" names "x"',
   );
-});
-
-Deno.test("onFinish tells the host the run's exit code", async () => {
-  const { runner, finished } = recorder();
-  const Remote = materialize(
-    parseManifest({ name: "B", targets: [] }),
-    runner,
-  );
-  const build = new Remote();
-  await build.onFinish({ ok: true, executed: [] });
-  await build.onFinish({ ok: false, executed: [] });
-  assertEquals(finished, [0, 1]);
 });

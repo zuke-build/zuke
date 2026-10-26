@@ -58,6 +58,22 @@ export interface ManifestTarget {
   readonly onCancel?: string;
   /** What this target's failure does: `fail`, `cancel-run`, or a compensation target. */
   readonly onFailure?: string;
+  /** Whether the engine must ask `target.condition` before running this target. */
+  readonly condition: boolean;
+  /** Whether the engine must ask `target.cacheKey` when fingerprinting this target. */
+  readonly cacheKey: boolean;
+}
+
+/** Which build hooks the worker implements; the engine calls only those. */
+export interface ManifestHooks {
+  /** `build.onStart`, before the first target. */
+  readonly onStart: boolean;
+  /** `build.onTargetStart { target }`, before each target. */
+  readonly onTargetStart: boolean;
+  /** `build.onTargetEnd { target, status }`, after each target settles. */
+  readonly onTargetEnd: boolean;
+  /** `build.onFinish { ok }`, before `run.exit`. */
+  readonly onFinish: boolean;
 }
 
 /** What is common to every parameter kind. */
@@ -118,6 +134,8 @@ export interface Manifest {
   readonly parameters: readonly ManifestParameter[];
   /** The groups. */
   readonly groups: readonly ManifestGroup[];
+  /** The hooks the worker implements. */
+  readonly hooks: ManifestHooks;
   /** Build-wide settings. */
   readonly config: ManifestConfig;
 }
@@ -134,15 +152,19 @@ export interface Hello {
   readonly cwd: string;
 }
 
-/** What `build.configure` tells the worker before its first body runs. */
+/**
+ * What `build.configure` tells the worker once the parameters have resolved,
+ * before `build.onStart` and before any body: each parameter's value in its
+ * CLI form, or null when unset. The run's id and dry-run flag travel with
+ * every `target.run` instead, since the build's own `onStart` has neither.
+ */
 export interface ConfigureParams {
-  /** The run's id. */
-  readonly runId: string;
-  /** Whether bodies run under `--dry-run`. */
-  readonly dryRun: boolean;
   /** Each parameter's resolved value in its CLI form, or null when unset. */
   readonly parameters: Readonly<Record<string, string | null>>;
 }
+
+/** The hooks a worker may implement, named as the `build.*` methods are. */
+export type HookName = keyof ManifestHooks;
 
 /** An `exec` request: a subprocess the engine runs on the worker's behalf. */
 export interface ExecRequest {
@@ -342,6 +364,8 @@ function parseTarget(t: Fields): ManifestTarget {
     requires: t.stringsOr("requires", []),
     onCancel: t.stringIfSet("onCancel"),
     onFailure: t.stringIfSet("onFailure"),
+    condition: t.booleanOr("condition", false),
+    cacheKey: t.booleanOr("cacheKey", false),
   };
 }
 
@@ -409,8 +433,34 @@ export function parseManifest(value: unknown): Manifest {
       name: g.string("name"),
       members: g.strings("members"),
     })),
+    hooks: parseHooks(o.objectOr("hooks")),
     config: parseConfig(o.objectOr("config")),
   };
+}
+
+function parseHooks(h: Fields): ManifestHooks {
+  return {
+    onStart: h.booleanOr("onStart", false),
+    onTargetStart: h.booleanOr("onTargetStart", false),
+    onTargetEnd: h.booleanOr("onTargetEnd", false),
+    onFinish: h.booleanOr("onFinish", false),
+  };
+}
+
+/** Validate a `target.condition` answer. */
+export function parseCondition(value: unknown, target: string): boolean {
+  if (typeof value !== "boolean") {
+    throw new Error(`target.condition: "${target}" must answer a boolean`);
+  }
+  return value;
+}
+
+/** Validate a `target.cacheKey` answer. */
+export function parseCacheKey(value: unknown, target: string): string {
+  if (typeof value !== "string") {
+    throw new Error(`target.cacheKey: "${target}" must answer a string`);
+  }
+  return value;
 }
 
 /** Validate an `exec` request's params. */

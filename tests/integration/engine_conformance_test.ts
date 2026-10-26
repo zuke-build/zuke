@@ -89,8 +89,8 @@ for await (const entry of Deno.readDir(CASES)) {
         assertEquals(logged(result.err, "call:"), spec.calls);
         const [configure] = logged(result.err, "configure:");
         const sent: unknown = JSON.parse(configure ?? "{}");
-        const { dryRun, parameters } = isRecord(sent) ? sent : {};
-        assertEquals({ dryRun, parameters }, spec.configure);
+        const { parameters } = isRecord(sent) ? sent : {};
+        assertEquals({ parameters }, spec.configure);
       } finally {
         await host.finish(0);
       }

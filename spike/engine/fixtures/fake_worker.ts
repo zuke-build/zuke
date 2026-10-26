@@ -9,8 +9,10 @@
  * reached the child), a `barrier` name every member must reach before any
  * proceeds (proving the engine ran them concurrently), a `fail` message to end
  * with, a `failTimes` count of attempts to fail before succeeding (proving
- * retries), and an `execAs` name to attribute execs to instead of the target's
- * own (an engine refusal the tests provoke).
+ * retries), an `execAs` name to attribute execs to instead of the target's
+ * own (an engine refusal the tests provoke), a `condition_answer` to answer
+ * `target.condition` with and a `cacheKey_answer` to answer `target.cacheKey` with.
+ * A top-level `failHook` names the build hook that throws.
  *
  * It prints every call the engine makes as a `call:` line, and the
  * `build.configure` payload as a `configure:` line, on stdout on purpose: a
@@ -30,6 +32,8 @@ interface Script {
   fail?: string;
   failTimes: number;
   execAs?: string;
+  condition: boolean;
+  cacheKey: string;
 }
 
 const PLAN: unknown = JSON.parse(Deno.env.get("ZUKE_FAKE_PLAN") ?? "{}");
@@ -47,8 +51,35 @@ if (isRecord(PLAN) && Array.isArray(PLAN.targets)) {
       fail: typeof t.fail === "string" ? t.fail : undefined,
       failTimes: typeof t.failTimes === "number" ? t.failTimes : 0,
       execAs: typeof t.execAs === "string" ? t.execAs : undefined,
+      condition: t.condition_answer !== false,
+      cacheKey: typeof t.cacheKey_answer === "string" ? t.cacheKey_answer : "",
     });
   }
+}
+const FAIL_HOOK = isRecord(PLAN) && typeof PLAN.failHook === "string"
+  ? PLAN.failHook
+  : undefined;
+
+function targetOf(params: unknown): string {
+  return isRecord(params) && typeof params.target === "string"
+    ? params.target
+    : "";
+}
+
+function script(params: unknown): Script {
+  const name = targetOf(params);
+  const found = SCRIPTS.get(name);
+  if (found === undefined) throw new Error(`no such target "${name}"`);
+  return found;
+}
+
+function hook(name: string, detail: (params: unknown) => string) {
+  return (params: unknown) => {
+    console.log(`call: build.${name}${detail(params)}`);
+    if (FAIL_HOOK === name) {
+      throw new RpcFailure(-32000, `the worker's ${name} threw`);
+    }
+  };
 }
 const started = new Set<string>();
 const attempts = new Map<string, number>();
@@ -66,18 +97,15 @@ async function awaitBarrier(name: string): Promise<void> {
 }
 
 async function runTarget(peer: Peer, params: unknown): Promise<unknown> {
-  const name = isRecord(params) && typeof params.target === "string"
-    ? params.target
-    : "";
-  const script = SCRIPTS.get(name);
-  if (script === undefined) throw new Error(`no such target "${name}"`);
+  const name = targetOf(params);
+  const s = script(params);
   console.log(`call: target.run ${name}`);
   started.add(name);
-  if (script.barrier !== undefined) await awaitBarrier(script.barrier);
+  if (s.barrier !== undefined) await awaitBarrier(s.barrier);
   let lastStdout = "";
-  for (const argv of script.exec) {
+  for (const argv of s.exec) {
     const result = await peer.request("exec", {
-      target: script.execAs ?? name,
+      target: s.execAs ?? name,
       argv,
     });
     lastStdout = isRecord(result) && typeof result.stdout === "string"
@@ -85,19 +113,19 @@ async function runTarget(peer: Peer, params: unknown): Promise<unknown> {
       : "";
   }
   if (
-    script.expectStdout !== undefined &&
-    !lastStdout.includes(script.expectStdout)
+    s.expectStdout !== undefined &&
+    !lastStdout.includes(s.expectStdout)
   ) {
     throw new Error(
-      `expected stdout to contain "${script.expectStdout}", got "${lastStdout.trim()}"`,
+      `expected stdout to contain "${s.expectStdout}", got "${lastStdout.trim()}"`,
     );
   }
   const attempt = (attempts.get(name) ?? 0) + 1;
   attempts.set(name, attempt);
-  if (attempt <= script.failTimes) {
+  if (attempt <= s.failTimes) {
     throw new RpcFailure(-32000, `attempt ${attempt} of ${name} failed`);
   }
-  if (script.fail !== undefined) throw new RpcFailure(-32000, script.fail);
+  if (s.fail !== undefined) throw new RpcFailure(-32000, s.fail);
   return {};
 }
 
@@ -110,6 +138,30 @@ peer.on("build.configure", (params) => {
   console.log(`configure: ${JSON.stringify(params)}`);
 });
 peer.on("target.run", (params) => runTarget(peer, params));
+peer.on("target.condition", (params) => {
+  console.log(`call: target.condition ${targetOf(params)}`);
+  return script(params).condition;
+});
+peer.on("target.cacheKey", (params) => {
+  console.log(`call: target.cacheKey ${targetOf(params)}`);
+  return script(params).cacheKey;
+});
+peer.on("build.onStart", hook("onStart", () => ""));
+peer.on("build.onTargetStart", hook("onTargetStart", (p) => ` ${targetOf(p)}`));
+peer.on(
+  "build.onTargetEnd",
+  hook(
+    "onTargetEnd",
+    (p) =>
+      ` ${targetOf(p)} ${
+        isRecord(p) && typeof p.status === "string" ? p.status : "?"
+      }`,
+  ),
+);
+peer.on(
+  "build.onFinish",
+  hook("onFinish", (p) => ` ${isRecord(p) && p.ok === true ? "ok" : "failed"}`),
+);
 peer.on("run.cancel", () => {});
 peer.on("run.exit", () => {
   peer.close();

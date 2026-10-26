@@ -30,7 +30,6 @@
     "target.run rollback"
   ],
   "configure": {
-    "dryRun": false,
     "parameters": {}
   }
 }

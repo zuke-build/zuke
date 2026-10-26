@@ -153,7 +153,6 @@
     "target.run show"
   ],
   "configure": {
-    "dryRun": false,
     "parameters": {
       "tag": "dev",
       "count": "3",

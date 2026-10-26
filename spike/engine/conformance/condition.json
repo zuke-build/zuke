@@ -1,0 +1,32 @@
+{
+  "manifest": {
+    "name": "Condition",
+    "targets": [
+      {
+        "name": "on",
+        "condition": true
+      },
+      {
+        "name": "gated",
+        "dependsOn": [
+          "on"
+        ],
+        "condition": true,
+        "condition_answer": false
+      }
+    ]
+  },
+  "argv": [
+    "gated"
+  ],
+  "code": 0,
+  "calls": [
+    "build.configure",
+    "target.condition on",
+    "target.run on",
+    "target.condition gated"
+  ],
+  "configure": {
+    "parameters": {}
+  }
+}

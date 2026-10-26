@@ -36,7 +36,6 @@
     "target.run boom"
   ],
   "configure": {
-    "dryRun": false,
     "parameters": {}
   }
 }

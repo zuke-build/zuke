@@ -2,12 +2,39 @@
   "manifest": {
     "name": "Graph",
     "targets": [
-      { "name": "lint", "description": "lint it" },
-      { "name": "test", "description": "test it", "dependsOn": ["lint"] },
-      { "name": "hidden", "description": "not listed", "unlisted": true },
-      { "name": "default", "description": "all", "dependsOn": ["test"] }
+      {
+        "name": "lint",
+        "description": "lint it"
+      },
+      {
+        "name": "test",
+        "description": "test it",
+        "dependsOn": [
+          "lint"
+        ]
+      },
+      {
+        "name": "hidden",
+        "description": "not listed",
+        "unlisted": true
+      },
+      {
+        "name": "default",
+        "description": "all",
+        "dependsOn": [
+          "test"
+        ]
+      }
     ],
-    "groups": [{ "name": "verify", "members": ["lint", "test"] }]
+    "groups": [
+      {
+        "name": "verify",
+        "members": [
+          "lint",
+          "test"
+        ]
+      }
+    ]
   },
   "list": {
     "targets": [
@@ -21,7 +48,9 @@
       {
         "name": "test",
         "description": "test it",
-        "dependsOn": ["lint"],
+        "dependsOn": [
+          "lint"
+        ],
         "default": false,
         "unlisted": false
       },
@@ -35,7 +64,9 @@
       {
         "name": "default",
         "description": "all",
-        "dependsOn": ["test"],
+        "dependsOn": [
+          "test"
+        ],
         "default": true,
         "unlisted": false
       }
@@ -50,5 +81,7 @@
     "target.run test",
     "target.run default"
   ],
-  "configure": { "dryRun": false, "parameters": {} }
+  "configure": {
+    "parameters": {}
+  }
 }

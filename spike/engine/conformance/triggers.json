@@ -23,7 +23,6 @@
     "target.run smoke"
   ],
   "configure": {
-    "dryRun": false,
     "parameters": {}
   }
 }

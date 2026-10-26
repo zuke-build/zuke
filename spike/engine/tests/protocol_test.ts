@@ -8,6 +8,8 @@ import {
 import { sdkCommand } from "../src/config.ts";
 import {
   isRecord,
+  parseCacheKey,
+  parseCondition,
   parseExec,
   parseHello,
   parseManifest,
@@ -79,6 +81,15 @@ const BARE_TARGET = {
   requires: [],
   onCancel: undefined,
   onFailure: undefined,
+  condition: false,
+  cacheKey: false,
+};
+
+const NO_HOOKS = {
+  onStart: false,
+  onTargetStart: false,
+  onTargetEnd: false,
+  onFinish: false,
 };
 
 Deno.test("parseManifest fills every default, so a phase 0 manifest still parses", () => {
@@ -102,6 +113,7 @@ Deno.test("parseManifest fills every default, so a phase 0 manifest still parses
       }],
       parameters: [],
       groups: [],
+      hooks: NO_HOOKS,
       config: { deadline: undefined, unforceable: [] },
     },
   );
@@ -127,7 +139,10 @@ Deno.test("parseManifest carries every target setting, parameter kind, group and
       requires: ["tag"],
       onCancel: "undo",
       onFailure: "cancel-run",
+      condition: true,
+      cacheKey: true,
     }],
+    hooks: { onStart: true, onFinish: true },
     parameters: [
       { name: "tag", description: "t", default: "dev", options: ["dev"] },
       { name: "n", kind: "number", default: 3, required: true },
@@ -156,7 +171,10 @@ Deno.test("parseManifest carries every target setting, parameter kind, group and
     requires: ["tag"],
     onCancel: "undo",
     onFailure: "cancel-run",
+    condition: true,
+    cacheKey: true,
   });
+  assertEquals(full.hooks, { ...NO_HOOKS, onStart: true, onFinish: true });
   assertEquals(full.parameters.map((p) => [p.kind, p.default]), [
     ["string", "dev"],
     ["number", 3],
@@ -198,6 +216,16 @@ Deno.test("parseManifest names the malformed field", () => {
     [target({ retry: 3 }), "manifest.targets[0].retry: expected an object"],
     [target({ timeoutMs: "1s" }), '"timeoutMs" must be a non-negative number'],
     [target({ onCancel: 1 }), '"onCancel" must be a string'],
+    [target({ condition: "yes" }), '"condition" must be a boolean'],
+    [target({ cacheKey: "k" }), '"cacheKey" must be a boolean'],
+    [
+      { name: "B", targets: [], hooks: { onStart: 1 } },
+      'manifest.hooks: field "onStart" must be a boolean',
+    ],
+    [
+      { name: "B", targets: [], hooks: [] },
+      "manifest.hooks: expected an object",
+    ],
     [param({ kind: "date" }), '"kind" must be "string", "number" or "boolean"'],
     [param({ default: 1 }), '"default" must be a string'],
     [param({ kind: "number", default: "1" }), '"default" must be a number'],
@@ -218,6 +246,21 @@ Deno.test("parseManifest names the malformed field", () => {
   for (const [input, message] of cases) {
     assertThrows(() => parseManifest(input), Error, message);
   }
+});
+
+Deno.test("parseCondition and parseCacheKey accept one type and name the target", () => {
+  assertEquals(parseCondition(true, "a"), true);
+  assertEquals(parseCacheKey("k", "a"), "k");
+  assertThrows(
+    () => parseCondition("yes", "a"),
+    Error,
+    'target.condition: "a" must answer a boolean',
+  );
+  assertThrows(
+    () => parseCacheKey(1, "a"),
+    Error,
+    'target.cacheKey: "a" must answer a string',
+  );
 });
 
 Deno.test("parseExec requires a target and a non-empty argv", () => {

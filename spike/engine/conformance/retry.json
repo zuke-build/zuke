@@ -23,7 +23,6 @@
     "target.run flaky"
   ],
   "configure": {
-    "dryRun": false,
     "parameters": {}
   }
 }
