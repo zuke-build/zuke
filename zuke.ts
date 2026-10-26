@@ -82,19 +82,28 @@ import {
 } from "./build/cli_compile.ts";
 import { signingCredentials, signMacBinaries } from "./build/cli_sign.ts";
 import {
+  publishCliChocolatey,
+  verifyCliChocolatey,
+} from "./build/cli_chocolatey.ts";
+import {
   publishCliFormula,
   uploadCliRelease,
   verifyCliFormula,
 } from "./build/cli_publish.ts";
 import { writeStepOutputs } from "./build/step_outputs.ts";
 import { mintReleaseToken } from "./build/release_token.ts";
-import { localVersion, PACKAGES } from "./build/packages.ts";
+import {
+  localVersion,
+  PACKAGE_DEPENDENCIES,
+  PACKAGES,
+} from "./build/packages.ts";
 import {
   CODECOV_CLI_VERSION,
   installCli,
-  publishOne,
+  publishAll,
   publishPackage,
   TOOLS_ROOT,
+  waitFor,
 } from "./build/publish.ts";
 import {
   collectDocLintReports,
@@ -135,6 +144,7 @@ import { checkRootLaunchers, syncRootLaunchers } from "./build/launchers.ts";
 import { checkSkillTree } from "./build/skill_check.ts";
 import {
   discoverTestFiles,
+  HERMETIC_ENV,
   partitionShards,
   runShards,
   shardCount,
@@ -151,7 +161,14 @@ import {
 } from "./build/plugin_version_check.ts";
 import { actionPin } from "./build/action_pins.ts";
 import { scannerConfigDenial } from "./build/scanner_policy.ts";
-import { actionlintTool, gitleaksTool, zizmorTool } from "./build/scanners.ts";
+import {
+  ACTIONLINT_VERSION,
+  actionlintTool,
+  GITLEAKS_VERSION,
+  gitleaksTool,
+  ZIZMOR_VERSION,
+  zizmorTool,
+} from "./build/scanners.ts";
 import { BOOTSTRAP_ENDPOINTS, githubWorkflows } from "./build/workflows.ts";
 
 /**
@@ -325,10 +342,10 @@ class ZukeBuild extends Build {
     .description("Run the test suite with coverage")
     .dependsOn(this.check)
     .executes(async () => {
-      // Blank GITHUB_STEP_SUMMARY for the test subprocess: tests that exercise
-      // the job-summary and AI-reviewer/fixer code paths would otherwise append
-      // to the real Actions summary, polluting it. The parent `./zuke ci` run
-      // keeps the env var and still writes the build table and any fixer section.
+      // The test processes get HERMETIC_ENV (see build/test_shards.ts): the
+      // job's step summary and remote cache are blanked for them, so a test
+      // never appends to the real Actions summary or restores outputs from the
+      // job's cache, while the parent `./zuke ci` run keeps both.
       //
       // The files are split across one `deno test` process per CPU (see
       // build/test_shards.ts for why processes rather than `--parallel`), all
@@ -344,8 +361,7 @@ class ZukeBuild extends Build {
         (paths) =>
           DenoTasks.test((s) =>
             s.allowAll().coverage("cov_profile").frozen().noCheck()
-              .paths(...paths).env({ GITHUB_STEP_SUMMARY: "" }).quiet()
-              .noThrow()
+              .paths(...paths).env(HERMETIC_ENV).quiet().noThrow()
           ),
       );
     });
@@ -365,15 +381,15 @@ class ZukeBuild extends Build {
       // instead of silently running nowhere until someone remembers to add it
       // here.
       const paths = await glob("tests/e2e/*_e2e.ts");
-      // Blank GITHUB_STEP_SUMMARY for the suite, as the `test` target does.
-      // These fixtures are whole builds run as real subprocesses, so each one
-      // appends its own result table to the Actions summary — including the
+      // HERMETIC_ENV for the suite, as the `test` target does. These fixtures
+      // are whole builds run as real subprocesses, so each one appends its own
+      // result table to the Actions summary — including the
       // ones that are *meant* to fail or suspend (a target reaped by a timeout,
       // a `waitsFor` gate that never opens). The job then displays a red,
       // half-finished build table while passing, which reads as a broken suite
       // and buries the one table that describes the actual run.
       await DenoTasks.test((s) =>
-        s.allowAll().paths(...paths).env({ GITHUB_STEP_SUMMARY: "" })
+        s.allowAll().paths(...paths).env(HERMETIC_ENV)
       );
     });
 
@@ -428,6 +444,34 @@ class ZukeBuild extends Build {
       .tool((s) => gitleaksTool(s).destDir(TOOLS_ROOT))
   );
 
+  // The toolchain as a cacheable target, dogfooding the remote cache on the
+  // one thing this build produces that is worth sharing between runs: the
+  // scanner binaries. Keyed by platform and pinned versions, with the binaries
+  // and their checksum markers as outputs, a run on a fresh runner restores
+  // them from the store (the GitHub Actions cache, on CI) and `install()`
+  // reuses them after re-verifying each against its marker. Codecov is not an
+  // output: it is pinned by URL without a checksum, so it is fetched every run.
+  provisionTools = target()
+    .description("Provision the pinned scanner binaries into .zuke/tools")
+    .cacheKey(() =>
+      [
+        Deno.build.os,
+        Deno.build.arch,
+        ZIZMOR_VERSION,
+        ACTIONLINT_VERSION,
+        GITLEAKS_VERSION,
+      ].join(":")
+    )
+    .outputs(
+      ...["zizmor", "actionlint", "gitleaks"].flatMap((name) => {
+        const bin = Deno.build.os === "windows" ? `${name}.exe` : name;
+        return [`.zuke/tools/${bin}`, `.zuke/tools/${bin}.install.json`];
+      }),
+    )
+    .executes(async () => {
+      await this.tools.install();
+    });
+
   // Publish the coverage report to Codecov, dogfooding @zuke/codecov. True to
   // Zuke's model, the build owns its own tooling: it provisions the Codecov CLI
   // from the `tools` toolchain above (no global install, no extra CI step) and
@@ -435,7 +479,7 @@ class ZukeBuild extends Build {
   // `cov.lcov`. Skips with a message when the token is absent (local, fork PRs).
   coverageUpload = target()
     .description("Upload the coverage report to Codecov")
-    .dependsOn(this.coverage)
+    .dependsOn(this.coverage, this.provisionTools)
     .executes(async () => {
       const token = this.codecovToken.value;
       if (token === undefined || token === "") {
@@ -450,10 +494,12 @@ class ZukeBuild extends Build {
         throw new Error("codecov was not provisioned by the toolchain.");
       }
       // The token rides through the masked `.env(...)` chainer, never argv;
-      // fail-on-error makes a failed upload loud.
+      // fail-on-error makes a failed upload loud. Telemetry is off so the CLI
+      // never calls Sentry, which the job's blocked egress would refuse anyway.
       await CodecovTasks.upload((s) =>
         s
           .toolPath(bin)
+          .disableTelem()
           .files("cov.lcov")
           .slug("zuke-build/zuke")
           .failOnError()
@@ -807,6 +853,7 @@ class ZukeBuild extends Build {
   // target fails if any reported issues.
   security = target()
     .description("Run supply-chain security scanners (zuke/security)")
+    .dependsOn(this.provisionTools)
     .executes(async () => {
       const failures: string[] = [];
       const gate = async (name: string, output: Promise<{ code: number }>) => {
@@ -1944,25 +1991,22 @@ class ZukeBuild extends Build {
   publishJsr = target()
     .description("Publish new package versions to JSR, core first")
     .executes(async () => {
-      for (const pkg of PACKAGES) {
-        const version = await localVersion(pkg);
-        if (version === "0.0.0") {
-          ConsoleTasks.info(`@zuke/${pkg} has no released version yet.`);
-          continue;
-        }
-        await publishOne(pkg, version, {
-          isPublished,
-          publishPackage,
-          info: ConsoleTasks.info,
-          success: ConsoleTasks.success,
-        });
-      }
+      await publishAll(PACKAGES, PACKAGE_DEPENDENCIES, {
+        versionOf: localVersion,
+        isPublished,
+        publishPackage,
+        info: ConsoleTasks.info,
+        success: ConsoleTasks.success,
+        failed: ConsoleTasks.error,
+        wait: waitFor,
+      });
     });
 
   // The CLI's standalone binaries (#782). Five stages, one CI job each, in
   // the order release.yml runs them: compile on Linux, sign and notarize on
   // macOS, package and upload with an attestation, verify the formula with
-  // the real brew, then update the tap. `cliBinaries` decides whether any of
+  // the real brew, then update the tap. Beside the last two, the Windows
+  // binary's Chocolatey package is verified and pushed the same way (#818). `cliBinaries` decides whether any of
   // it is owed for the current version; the rest run only when it says so.
   cliBinaries = target()
     .description(
@@ -1976,6 +2020,7 @@ class ZukeBuild extends Build {
         version,
         build: String(plan.build),
         tap: String(plan.tap),
+        chocolatey: String(plan.chocolatey),
       });
       if (plan.build) {
         await compileCliBinaries(
@@ -2016,11 +2061,14 @@ class ZukeBuild extends Build {
     });
 
   cliUpload = target()
-    .description("Upload the CLI's archives, attestation and SHA256SUMS")
+    .description(
+      "Attach the CLI's archives, attestation and SHA256SUMS to its draft " +
+        "release, then publish it",
+    )
     .executes(async () => {
-      const token = Deno.env.get("GITHUB_TOKEN");
       const attestation = Deno.env.get("CLI_ATTESTATION_BUNDLE");
-      if (!token || !attestation) {
+      // gh reads GITHUB_TOKEN itself; checked here to fail with a clear message.
+      if (!Deno.env.get("GITHUB_TOKEN") || !attestation) {
         throw new Error(
           "cliUpload needs GITHUB_TOKEN and CLI_ATTESTATION_BUNDLE (the " +
             "attest-build-provenance step's bundle-path) in the env.",
@@ -2030,7 +2078,6 @@ class ZukeBuild extends Build {
         version: await localVersion("cli"),
         dir: CLI_RELEASE_DIR,
         attestation,
-        token,
       });
     });
 
@@ -2058,6 +2105,27 @@ class ZukeBuild extends Build {
         contents: "write",
       });
       await publishCliFormula(await localVersion("cli"), token);
+    });
+
+  cliChocolateyVerify = target()
+    .description("Install the CLI's Chocolatey package with choco and run it")
+    .executes(async () => {
+      await verifyCliChocolatey(await localVersion("cli"));
+    });
+
+  cliChocolatey = target()
+    .description(
+      "Push the CLI's Chocolatey package to the community repository",
+    )
+    .executes(async () => {
+      const apiKey = Deno.env.get("CHOCOLATEY_API_KEY");
+      if (!apiKey) {
+        throw new Error(
+          "cliChocolatey needs CHOCOLATEY_API_KEY: the community " +
+            "repository's API key for the account that owns the package.",
+        );
+      }
+      await publishCliChocolatey(await localVersion("cli"), apiKey);
     });
 
   // `release` (release-please) needs a GITHUB_TOKEN; `publishJsr` needs JSR

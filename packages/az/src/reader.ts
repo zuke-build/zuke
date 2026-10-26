@@ -3,8 +3,8 @@
 
 /**
  * Running a command for a reader. Internal to the package: every reader —
- * the `AzTasks` ones and the canary analysis — runs its command through here,
- * so they agree on three things.
+ * the `AzTasks` ones, the canary analysis and the canary platform — runs its
+ * commands through here, so they agree on three things.
  *
  * - It runs quietly: what a reader reads is not streamed to the build log.
  * - A failed exit is a `CommandError`, even after `.noThrow()`: a reader
@@ -26,11 +26,20 @@ import { type AzSettings, failOnExit } from "./settings.ts";
  */
 export const WHOLE_ANSWER = "@";
 
-/** Run `settings` quietly and insist that it succeeded. */
-async function succeeded(settings: AzSettings) {
-  const output = await settings.quiet().run();
+/**
+ * Run `settings` and insist that it succeeded, whatever `.noThrow()` said:
+ * a caller that goes on as if it had — a reader parsing stdout, a canary
+ * reporting a rollback — must not run on after a failed exit.
+ */
+export async function runChecked(settings: AzSettings) {
+  const output = await settings.run();
   failOnExit(settings, output);
   return output;
+}
+
+/** Run `settings` quietly and insist that it succeeded. */
+function succeeded(settings: AzSettings) {
+  return runChecked(settings.quiet());
 }
 
 /** The one line `settings` print with `--output tsv` and `--query query`. */

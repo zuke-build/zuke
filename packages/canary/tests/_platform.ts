@@ -9,7 +9,13 @@
  * @module
  */
 
-import type { CanaryContext, CanaryPlatform, ExposureKind } from "../mod.ts";
+import type {
+  CanaryAbortContext,
+  CanaryAbortReason,
+  CanaryContext,
+  CanaryPlatform,
+  ExposureKind,
+} from "../mod.ts";
 
 /** The calls a {@link FakePlatform} can be told to fail. */
 export type FakeCall = "stage" | "expose" | "promote" | "abort";
@@ -20,6 +26,8 @@ export class FakePlatform implements CanaryPlatform {
   readonly calls: string[] = [];
   /** The exposure kind it claims. */
   readonly exposure: ExposureKind;
+  /** Why each `abort` ran, in order. */
+  readonly abortReasons: CanaryAbortReason[] = [];
   /** The call to fail, if any. */
   failOn?: FakeCall;
   /** What `expose` reports achieving for a requested percent. */
@@ -58,8 +66,9 @@ export class FakePlatform implements CanaryPlatform {
   }
 
   /** Records the stable revision it returns to. */
-  abort(ctx: CanaryContext): Promise<void> {
+  abort(ctx: CanaryAbortContext): Promise<void> {
     this.calls.push(`abort ${String(ctx.state.get().stable ?? "-")}`);
+    this.abortReasons.push(ctx.reason);
     this.maybeFail("abort");
     return Promise.resolve();
   }

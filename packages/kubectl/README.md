@@ -148,7 +148,9 @@ side, and a step that asks for less than half a replica is refused.
 - **`promote`** sets the staged image on the stable Deployment, scales it to the
   recorded `replicas`, waits, then scales the canary to 0.
 - **`abort`** does the same with the stable image `stage` read. Run by hand, it
-  restores the `.stableImage(...)` image, and refuses without one.
+  restores the `.stableImage(...)` image, and refuses without one. A rollback
+  with no record of a stage runs nothing — nothing was staged, so the stable
+  Deployment is left alone.
 
 `stage` records the Deployments, container and namespace it changed, and
 `expose`, `promote` and `abort` refuse when the lambda now names others: a
@@ -219,7 +221,8 @@ function kubectlCanary(configure: Configure<KubectlCanarySettings>): KubectlCana
   - promote — `set image` the candidate on the stable Deployment, `scale`
     it to the total, `rollout status` it, then `scale` the canary to 0.
   - abort — the same with the stable image: the one `stage` read, or, run
-    by hand, the one set with `.stableImage(...)`.
+    by hand, the one set with `.stableImage(...)`. A rollback with nothing
+    recorded runs nothing: nothing was staged.
 
   `stage` records the Deployments, container and namespace it changed, and
   the later calls refuse a lambda that names others. Keep them — and the kube
@@ -394,8 +397,13 @@ class KubectlCanary
       than `stage` recorded is refused.
     - `stage` failed before the candidate was on record: the canary had
       no replicas and the stable Deployment was not touched, so nothing runs.
-    - Nothing recorded (`rollout.abort` run by hand, a fresh run): the
-      same, with the image set by {@link KubectlCanarySettings.stableImage}.
+    - Nothing recorded, on a rollback (`ctx.reason` is `"rollback"`):
+      nothing was staged, so nothing runs — the stable image is not even
+      read. A marker `stage` never writes is a damaged record, and a
+      rollback refuses it.
+    - Nothing recorded, run by hand (`rollout.abort` on its own, a fresh
+      run, or an engine that names no reason): the same as staged, with the
+      image set by {@link KubectlCanarySettings.stableImage}.
       Without one this refuses: after a promote the stable Deployment runs the
       candidate, and moving replicas alone would report a rollback that
       changed nothing.
@@ -1142,6 +1150,11 @@ interface KubectlCanaryContext
 
   readonly state: TargetStateHandle
     The rollout's durable platform state, shared by every call.
+  readonly reason?: "rollback" | "hand-run"
+    Why `abort` runs: `"rollback"` when the engine undoes a rollout,
+    `"hand-run"` for `rollout.abort` run on its own. An engine older than
+    this field leaves it out, which is treated as a hand run — the behaviour
+    from before the field existed.
   reportSummary(pairs: SummaryPairs): void
     Add key/value pairs to the calling target's row in the build summary.
 

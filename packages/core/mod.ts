@@ -151,9 +151,22 @@ export { logoLines, type LogoOptions, ZUKE_LOGO } from "./src/logo.ts";
 export { VERSION } from "./src/version.ts";
 export type { BuildCache, OpenCacheOptions } from "./src/cache.ts";
 export {
+  GitHubActionsCacheStore,
+  type GitHubActionsCacheStoreOptions,
+} from "./src/github_actions_cache.ts";
+export { S3CacheStore, type S3CacheStoreOptions } from "./src/s3_cache.ts";
+export {
+  type AwsCredentials,
+  type AwsSignableRequest,
+  type AwsSignature,
+  signSigV4,
+} from "./src/aws_sigv4.ts";
+export { uriEncode } from "./src/uri.ts";
+export {
   archiveOutputs,
   envCacheStore,
   FileSystemCacheStore,
+  type FileSystemCacheStoreOptions,
   HttpCacheStore,
   type HttpCacheStoreOptions,
   type OutputHost,
@@ -360,6 +373,7 @@ export {
   createTarGzip,
   type ExtractOptions,
   extractTarGzip,
+  extractTarXz,
   extractZip,
   gunzip,
   gzip,
@@ -367,6 +381,7 @@ export {
   type TarEntry,
   untar,
   unzip,
+  zip,
 } from "./src/compression.ts";
 export {
   type ArchiveFormat,
@@ -446,7 +461,8 @@ export { type RunPlan } from "./src/run_plan.ts";
 // reader the remote cache and the MCP transport already use.
 export { defaultReadEnv, readBytesBounded, sha256Hex } from "./src/internal.ts";
 
-// The one RS256 JWT signer, for a wrapper package that signs a JWT — a GitHub
-// App JWT, a Google service-account assertion — so the PEM parsing and
-// base64url framing exist once rather than once per wrapper.
-export { signJwtRs256 } from "./src/jwt.ts";
+// The JWT signers, RS256 and ES256, for a wrapper package that signs a JWT —
+// a GitHub App JWT, a Google service-account assertion, an App Store Connect
+// token — so the PEM parsing and base64url framing exist once rather than
+// once per wrapper.
+export { signJwtEs256, signJwtRs256 } from "./src/jwt.ts";

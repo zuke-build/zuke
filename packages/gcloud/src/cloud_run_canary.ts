@@ -90,6 +90,13 @@ export interface CloudRunCanaryContext {
   readonly state: TargetStateHandle;
   /** Add key/value pairs to the calling target's row in the build summary. */
   reportSummary(pairs: SummaryPairs): void;
+  /**
+   * Why `abort` runs: `"rollback"` when the engine undoes a rollout,
+   * `"hand-run"` for `rollout.abort` run on its own. An engine older than
+   * this field leaves it out, which is treated as a hand run — the behaviour
+   * from before the field existed.
+   */
+  readonly reason?: "rollback" | "hand-run";
 }
 
 /**
@@ -345,16 +352,23 @@ export class CloudRunCanary {
    * - **`stage` failed before tagging it**: nothing has any traffic to take
    *   back, so nothing runs.
    * - **Any other stage marker**: the record is damaged, and this refuses.
-   * - **Nothing recorded** (`rollout.abort` run by hand, a fresh run): all
-   *   traffic goes to the revision set with
-   *   {@link CloudRunCanarySettings.stable}. Without one this refuses, since
-   *   claiming a rollback it cannot do would be worse.
+   * - **Nothing recorded, on a rollback** (`ctx.reason` is `"rollback"`):
+   *   nothing was staged, so nothing runs — the stable revision is not even
+   *   read.
+   * - **Nothing recorded, run by hand** (`rollout.abort` on its own, a fresh
+   *   run, or an engine that names no reason): all traffic goes to the
+   *   revision set with {@link CloudRunCanarySettings.stable}. Without one
+   *   this refuses, since claiming a rollback it cannot do would be worse.
    */
   async abort(ctx: CloudRunCanaryContext): Promise<void> {
-    const settings = this.#settings();
-    const service = serviceOf(settings);
     const stage = ctx.state.get()[STAGE];
     if (stage === "deploying") return;
+    // A rollback with nothing recorded: nothing was staged. Before the
+    // settings are read, so a stage that failed on its own settings is not
+    // failed a second time by its rollback.
+    if (stage === undefined && ctx.reason === "rollback") return;
+    const settings = this.#settings();
+    const service = serviceOf(settings);
     const identity = identityOf(settings, service);
     if (stage === "tagged") {
       await this.#verified(ctx, settings, identity);
@@ -554,7 +568,8 @@ function serviceOf(settings: CloudRunCanarySettings): string {
  * - **promote** — checks the latest revision is still the candidate, then
  *   `update-traffic --to-latest`.
  * - **abort** — `update-traffic --to-tags canary=0` mid-rollout; run by hand,
- *   `--to-revisions <stable>=100` to the revision set with `.stable(...)`.
+ *   `--to-revisions <stable>=100` to the revision set with `.stable(...)`. A
+ *   rollback with nothing recorded runs nothing: nothing was staged.
  *
  * Every call after `stage` that has its record — expose, promote, and abort
  * mid-rollout — first compares the configured service, region, tag and

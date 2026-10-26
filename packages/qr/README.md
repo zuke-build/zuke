@@ -25,7 +25,7 @@ await run(Release);
 ```
 
 ```
-./zuke qr --url https://zuke.build
+zuke qr --url https://zuke.build
 ```
 
 ## Tasks

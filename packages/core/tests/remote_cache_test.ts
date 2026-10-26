@@ -5,6 +5,7 @@ import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
+  assertThrows,
 } from "./_assert.ts";
 import {
   archiveOutputs,
@@ -18,6 +19,8 @@ import {
   restoreOutputs,
 } from "../src/remote_cache.ts";
 import { HttpError } from "../src/http.ts";
+import { GitHubActionsCacheStore } from "../src/github_actions_cache.ts";
+import { S3CacheStore } from "../src/s3_cache.ts";
 import { gzip, tar } from "../src/compression.ts";
 import { withTemp } from "./_temp.ts";
 import { defaultCacheHost } from "../src/cache.ts";
@@ -30,13 +33,22 @@ const dec = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 class MemFs implements OutputHost {
   readonly files = new Map<string, Uint8Array>();
   readonly dirs = new Map<string, string[]>();
+  /** Permission bits by path, for the files that have them. */
+  readonly modes = new Map<string, number>();
 
   readFile(path: string): Promise<Uint8Array | null> {
     return Promise.resolve(this.files.get(path) ?? null);
   }
-  stat(path: string): Promise<{ isDirectory: boolean } | null> {
+  stat(path: string): Promise<{ isDirectory: boolean; mode?: number } | null> {
     if (this.dirs.has(path)) return Promise.resolve({ isDirectory: true });
-    if (this.files.has(path)) return Promise.resolve({ isDirectory: false });
+    if (this.files.has(path)) {
+      const mode = this.modes.get(path);
+      return Promise.resolve(
+        mode === undefined
+          ? { isDirectory: false }
+          : { isDirectory: false, mode },
+      );
+    }
     return Promise.resolve(null);
   }
   /**
@@ -63,8 +75,9 @@ class MemFs implements OutputHost {
   readDir(path: string): Promise<string[]> {
     return Promise.resolve(this.dirs.get(path) ?? []);
   }
-  writeFile(path: string, bytes: Uint8Array): Promise<void> {
+  writeFile(path: string, bytes: Uint8Array, mode?: number): Promise<void> {
     this.files.set(path, bytes);
+    if (mode !== undefined) this.modes.set(path, mode);
     return Promise.resolve();
   }
 }
@@ -86,6 +99,18 @@ Deno.test("archiveOutputs/restoreOutputs round-trip files and directories", asyn
   assertEquals(dec(out.files.get("dist/app.js") ?? enc("")), "built");
   assertEquals(dec(out.files.get("dist/assets/logo.svg") ?? enc("")), "<svg/>");
   assertEquals(dec(out.files.get("README.md") ?? enc("")), "readme");
+});
+
+Deno.test("archiveOutputs/restoreOutputs carry a file's permission bits", async () => {
+  const src = new MemFs();
+  src.files.set("tools/bin", enc("ELF"));
+  src.modes.set("tools/bin", 0o100755); // a stat mode, file type included
+  src.files.set("tools/readme", enc("hi")); // no mode known
+  src.dirs.set("tools", ["bin", "readme"]);
+  const out = new MemFs();
+  await restoreOutputs(await archiveOutputs(["tools"], src), out, ["tools"]);
+  assertEquals(out.modes.get("tools/bin"), 0o755); // permission bits only
+  assertEquals(out.modes.get("tools/readme"), 0o644); // the archive default
 });
 
 Deno.test("restoreOutputs refuses archive entries that escape the workspace", async () => {
@@ -197,6 +222,99 @@ Deno.test("HttpCacheStore PUT sends the artifact and throws on failure", async (
   assertEquals(err instanceof HttpError, true);
 });
 
+Deno.test("HttpCacheStore sends extra headers and keeps a base URL's query", async () => {
+  const { fetch, calls } = fakeFetch(() => new Response(null, { status: 201 }));
+  // An Azure Blob container's SAS URL: the key goes before the query.
+  const store = new HttpCacheStore({
+    url: "https://acct.blob.core.windows.net/container/?sv=2024&sig=abc",
+    headers: { "x-custom": "1", Authorization: "Basic credentials" },
+    fetch,
+  });
+  await store.put("k", enc("x"));
+  assertEquals(
+    calls[0].url,
+    "https://acct.blob.core.windows.net/container/k?sv=2024&sig=abc",
+  );
+  const headers = new Headers(calls[0].init?.headers);
+  assertEquals(headers.get("x-custom"), "1");
+  assertEquals(headers.get("Authorization"), "Basic credentials");
+  assertEquals(headers.get("x-ms-blob-type"), "BlockBlob");
+  await store.get("k");
+  assertEquals(new Headers(calls[1].init?.headers).get("x-custom"), "1");
+  assertEquals(calls[1].url, calls[0].url);
+
+  // On a clash the store's own headers win, on both paths: the bearer token
+  // over an extra Authorization, and a PUT's content type and blob type over
+  // extras of the same names — so a later refactor of the merge order cannot
+  // quietly send a caller's value for a header the protocol relies on.
+  const bearer = new HttpCacheStore({
+    url: "https://cache.test",
+    token: "t",
+    headers: {
+      Authorization: "Basic x",
+      "content-type": "text/plain",
+      "x-ms-blob-type": "PageBlob",
+    },
+    fetch,
+  });
+  await bearer.get("k");
+  const got = new Headers(calls[2].init?.headers);
+  assertEquals(got.get("Authorization"), "Bearer t");
+  assertEquals(got.get("content-type"), "text/plain"); // nothing of its own on a GET
+  await bearer.put("k", enc("x"));
+  const put = new Headers(calls[3].init?.headers);
+  assertEquals(put.get("Authorization"), "Bearer t");
+  assertEquals(put.get("content-type"), "application/octet-stream");
+  assertEquals(put.get("x-ms-blob-type"), "BlockBlob");
+});
+
+Deno.test("envCacheStore selects an S3 store from the AWS variables", () => {
+  const env =
+    (vars: Record<string, string>) => (name: string): string | undefined =>
+      Object.prototype.hasOwnProperty.call(vars, name) ? vars[name] : undefined;
+  const aws = {
+    ZUKE_REMOTE_CACHE_S3_URL: "https://bucket.s3.amazonaws.com/cache",
+    AWS_ACCESS_KEY_ID: "AKIDEXAMPLE",
+    AWS_SECRET_ACCESS_KEY: "secret",
+    AWS_DEFAULT_REGION: "us-east-1",
+  };
+  assertEquals(envCacheStore(env(aws)) instanceof S3CacheStore, true);
+  assertEquals(
+    envCacheStore(
+      env({ ...aws, AWS_SESSION_TOKEN: "tok", AWS_REGION: "auto" }),
+    ) instanceof
+      S3CacheStore,
+    true,
+  );
+  // A plain URL still wins; the S3 URL wins over a directory.
+  assertEquals(
+    envCacheStore(
+      env({ ...aws, ZUKE_REMOTE_CACHE_URL: "https://c.test" }),
+    ) instanceof
+      HttpCacheStore,
+    true,
+  );
+  assertEquals(
+    envCacheStore(env({ ...aws, ZUKE_REMOTE_CACHE_DIR: "/tmp/x" })) instanceof
+      S3CacheStore,
+    true,
+  );
+  // Misconfiguration names the variable rather than sending an unsigned request.
+  const missing = assertThrows(() =>
+    envCacheStore(env({ ...aws, AWS_DEFAULT_REGION: "" }))
+  );
+  assertStringIncludes(missing.message, "AWS_REGION or AWS_DEFAULT_REGION");
+  const noKey = assertThrows(() =>
+    envCacheStore(env({ ...aws, AWS_ACCESS_KEY_ID: "" }))
+  );
+  assertStringIncludes(noKey.message, "AWS_ACCESS_KEY_ID");
+  assertThrows(() =>
+    envCacheStore(
+      env({ ...aws, ZUKE_REMOTE_CACHE_S3_URL: "http://bucket.test/cache" }),
+    )
+  );
+});
+
 Deno.test("envCacheStore selects HTTP, then filesystem, then nothing", () => {
   const env =
     (vars: Record<string, string>) => (name: string): string | undefined =>
@@ -231,6 +349,39 @@ Deno.test("envCacheStore selects HTTP, then filesystem, then nothing", () => {
   assertEquals(envCacheStore(() => undefined), undefined);
   // An empty value is treated as unset.
   assertEquals(envCacheStore(env({ ZUKE_REMOTE_CACHE_URL: "" })), undefined);
+});
+
+Deno.test("envCacheStore picks the Actions cache from the job's own credentials", () => {
+  const env =
+    (vars: Record<string, string>) => (name: string): string | undefined =>
+      Object.prototype.hasOwnProperty.call(vars, name) ? vars[name] : undefined;
+  const job = {
+    ACTIONS_RUNTIME_TOKEN: "runtime",
+    ACTIONS_RESULTS_URL: "https://results.test/",
+  };
+  assertEquals(
+    envCacheStore(env(job)) instanceof GitHubActionsCacheStore,
+    true,
+  );
+  // An explicit Zuke store still wins over the ambient one.
+  assertEquals(
+    envCacheStore(env({ ...job, ZUKE_REMOTE_CACHE_DIR: "/tmp/x" })) instanceof
+      FileSystemCacheStore,
+    true,
+  );
+  // Both halves are needed: a token without a service URL is not a store.
+  assertEquals(
+    envCacheStore(env({ ACTIONS_RUNTIME_TOKEN: "runtime" })),
+    undefined,
+  );
+  assertEquals(
+    envCacheStore(env({ ...job, ACTIONS_RUNTIME_TOKEN: "" })),
+    undefined,
+  );
+  // The token is sent to that URL, so it must be a secure one.
+  assertThrows(() =>
+    envCacheStore(env({ ...job, ACTIONS_RESULTS_URL: "http://results.test" }))
+  );
 });
 
 Deno.test("archiveOutputs ignores an entry whose file reads back as null", async () => {
@@ -338,6 +489,115 @@ Deno.test("restoreOutputs refuses protected paths whatever the outputs declare",
     assertStringIncludes(err.message, "protected path");
   }
   assertEquals(out.files.size, 0);
+  // The toolchain's install root is the one `.zuke` subtree a restore may
+  // write: a provisioned binary is what a remote cache is for, and the
+  // toolchain re-verifies it against its recorded checksum before reusing it.
+  const tool = await gzip(
+    tar([{ name: ".zuke/tools/zizmor", data: enc("ELF") }]),
+  );
+  assertEquals(await restoreOutputs(tool, out, [".zuke/tools"]), [
+    ".zuke/tools/zizmor",
+  ]);
+  // Only that subtree: the state beside it stays protected, as does a `tools`
+  // nested deeper under something else in `.zuke`.
+  for (const name of [".zuke/runs/tools/x", ".zuke/tools.json"]) {
+    const artifact = await gzip(tar([{ name, data: enc("x") }]));
+    const err = await assertRejects(() => restoreOutputs(artifact, out, ["."]));
+    assertStringIncludes(err.message, "protected path");
+  }
+});
+
+Deno.test("a .git inside .zuke/tools round-trips, and only there", async () => {
+  // An SDK such as Flutter's is a git checkout that runs git on itself.
+  const src = new MemFs();
+  src.dirs.set(".zuke/tools", ["flutter"]);
+  src.dirs.set(".zuke/tools/flutter", [".git", "bin"]);
+  src.dirs.set(".zuke/tools/flutter/.git", ["HEAD"]);
+  src.files.set(".zuke/tools/flutter/.git/HEAD", enc("ref: refs/heads/stable"));
+  src.files.set(".zuke/tools/flutter/bin", enc("flutter"));
+  const out = new MemFs();
+  assertEquals(
+    await restoreOutputs(
+      await archiveOutputs([".zuke/tools"], src),
+      out,
+      [".zuke/tools"],
+    ),
+    [".zuke/tools/flutter/.git/HEAD", ".zuke/tools/flutter/bin"],
+  );
+  // A .git before the tools subtree, or beside it, is still refused.
+  for (
+    const name of [
+      ".git/.zuke/tools/x",
+      "sub/.git/hooks/pre-commit",
+      ".zuke/.git/config",
+      ".zuke/runs/.git/config",
+    ]
+  ) {
+    const artifact = await gzip(tar([{ name, data: enc("x") }]));
+    const err = await assertRejects(() => restoreOutputs(artifact, out, ["."]));
+    assertStringIncludes(err.message, "protected path");
+  }
+});
+
+Deno.test("envCacheStore passes ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES to the store", () => {
+  const env =
+    (vars: Record<string, string>) => (name: string): string | undefined =>
+      Object.prototype.hasOwnProperty.call(vars, name) ? vars[name] : undefined;
+  const limit = { ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES: "4294967296" };
+  const stores: Record<string, string>[] = [
+    { ZUKE_REMOTE_CACHE_URL: "https://c.test" },
+    {
+      ZUKE_REMOTE_CACHE_S3_URL: "https://bucket.s3.amazonaws.com/cache",
+      AWS_ACCESS_KEY_ID: "AKIDEXAMPLE",
+      AWS_SECRET_ACCESS_KEY: "secret",
+      AWS_REGION: "auto",
+    },
+    { ZUKE_REMOTE_CACHE_DIR: "/tmp/x" },
+    { ACTIONS_RUNTIME_TOKEN: "t", ACTIONS_RESULTS_URL: "https://r.test" },
+  ];
+  for (const vars of stores) {
+    assertEquals(
+      envCacheStore(env({ ...vars, ...limit }))?.maxInflatedBytes,
+      4294967296,
+    );
+    assertEquals(envCacheStore(env(vars))?.maxInflatedBytes, undefined);
+  }
+  // Read only once a store is chosen: a bad value cannot fail a build with none.
+  assertEquals(
+    envCacheStore(env({ ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES: "abc" })),
+    undefined,
+  );
+  for (const bad of ["0", "-1", "4GiB", "1e10", "9007199254740993"]) {
+    assertThrows(
+      () =>
+        envCacheStore(
+          env({ ...stores[2], ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES: bad }),
+        ),
+      Error,
+      "ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES",
+    );
+  }
+});
+
+Deno.test("restoreOutputs refuses a bound that is not a positive whole number", async () => {
+  const artifact = await gzip(tar([{ name: "dist/a", data: enc("x") }]));
+  for (const bound of [NaN, 0, -1, 1.5]) {
+    const err = await assertRejects(() =>
+      restoreOutputs(artifact, new MemFs(), ["dist"], bound)
+    );
+    assertStringIncludes(err.message, "maxInflatedBytes");
+  }
+});
+
+Deno.test("restoreOutputs refuses a .git spelled with a trailing dot or space", async () => {
+  // Windows drops both, so either would land in the workspace's real `.git`.
+  for (const name of [".git./hooks/pre-commit", ".git /config", ".zuke. /x"]) {
+    const artifact = await gzip(tar([{ name, data: enc("x") }]));
+    const err = await assertRejects(() =>
+      restoreOutputs(artifact, new MemFs(), ["."])
+    );
+    assertStringIncludes(err.message, "protected path");
+  }
 });
 
 Deno.test("restoreOutputs refuses entry kinds archiveOutputs never produces", async () => {

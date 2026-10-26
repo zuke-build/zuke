@@ -149,6 +149,13 @@ export interface HelmCanaryContext {
   readonly state: TargetStateHandle;
   /** Add key/value pairs to the calling target's row in the build summary. */
   reportSummary(pairs: SummaryPairs): void;
+  /**
+   * Why `abort` runs: `"rollback"` when the engine undoes a rollout,
+   * `"hand-run"` for `rollout.abort` run on its own. An engine older than
+   * this field leaves it out, which is treated as a hand run — the behaviour
+   * from before the field existed.
+   */
+  readonly reason?: "rollback" | "hand-run";
 }
 
 /**
@@ -333,9 +340,13 @@ export class HelmCanary {
    *   touched, so only the canary release is uninstalled.
    * - **Stage failed before the canary install**: nothing changed; nothing
    *   runs.
-   * - **Nothing recorded** (`rollout.abort` run by hand, a fresh run): the
-   *   rollback goes to {@link HelmCanarySettings.stableRevision}. Without one
-   *   this refuses, since claiming a rollback it cannot do would be worse.
+   * - **Nothing recorded, on a rollback** (`ctx.reason` is `"rollback"`):
+   *   nothing was staged, so nothing runs — neither a rollback nor an
+   *   uninstall, and the stable revision is not even read.
+   * - **Nothing recorded, run by hand** (`rollout.abort` on its own, a fresh
+   *   run, or an engine that names no reason): the rollback goes to
+   *   {@link HelmCanarySettings.stableRevision}. Without one this refuses,
+   *   since claiming a rollback it cannot do would be worse.
    * - **A record it does not recognise**: refuses.
    *
    * Staged, or with the install under way, it first reads when the stable
@@ -348,6 +359,7 @@ export class HelmCanary {
     const recorded = ctx.state.get();
     const stage = recorded[STAGE];
     if (stage === "reading") return;
+    if (stage === undefined && ctx.reason === "rollback") return;
     const settings = this.#configure(new HelmCanarySettings());
     const names = checkedReleases(settings);
     const { stable, canary } = names;
@@ -642,7 +654,8 @@ export class HelmCanary {
  * - **promote** — `upgrade <stable> --set replicaCount=<total> --set-string
  *   image.tag=<image> --wait`, then `uninstall <canary> --ignore-not-found`.
  * - **abort** — `rollback <stable> <recorded revision> --wait`, then the same
- *   uninstall; run by hand, the revision set with `.stableRevision(...)`.
+ *   uninstall; run by hand, the revision set with `.stableRevision(...)`. A
+ *   rollback with nothing recorded runs nothing: nothing was staged.
  *
  * Every call after `stage` that has its record first reads the stable
  * release's first-deployed time again and refuses, changing nothing, unless

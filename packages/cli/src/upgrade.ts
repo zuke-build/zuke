@@ -312,12 +312,20 @@ export async function runUpgrade(
         "it. Update it with: brew upgrade zuke",
     );
   }
+  if (source.kind === "chocolatey") {
+    throw new Error(
+      `zuke upgrade: this zuke was installed with Chocolatey ` +
+        `(${source.location}), so reinstalling from JSR would not update ` +
+        "it. Update it with: choco upgrade zuke",
+    );
+  }
   if (source.kind === "binary") {
     throw new Error(
       `zuke upgrade: this zuke is a standalone binary (${source.location}), ` +
         "so reinstalling from JSR would not update it. Replace it with the " +
         `binary from ${RELEASES_URL}, or install with Homebrew (brew install ` +
-        `zuke-build/tap/zuke) or from JSR (deno install -A -g -n zuke ${PACKAGE}).`,
+        "zuke-build/tap/zuke), with Chocolatey (choco install zuke) or from " +
+        `JSR (deno install -A -g -n zuke ${PACKAGE}).`,
     );
   }
   if (source.kind === "source") {

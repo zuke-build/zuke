@@ -8,6 +8,7 @@ import { sha256Hex } from "../src/internal.ts";
 import { makeZip, STORED } from "./_zip.ts";
 import { GNU, longLink, ustarArchive } from "./_tar.ts";
 import { withTemp } from "./_temp.ts";
+import { ESCAPING_TAR_XZ, fixture, FLUTTER_TAR_XZ } from "./_xz.ts";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 const POSIX = Deno.build.os !== "windows";
@@ -270,5 +271,69 @@ Deno.test("installTree without a checksum downloads every time and writes no mar
       ),
       false, // no marker recorded without a checksum
     );
+  });
+});
+
+Deno.test("installTree (tar.xz) verifies the checksum, strips, marks bins and keeps symlinks", async () => {
+  await withTemp(async (dir) => {
+    const bytes = fixture(FLUTTER_TAR_XZ);
+    const counter = { calls: 0 };
+    const options = {
+      name: "flutter",
+      destDir: dir,
+      archive: "tar.xz" as const,
+      strip: 1,
+      bins: POSIX ? ["bin/flutter", "bin/dart"] : ["bin/flutter"],
+      url: () => "https://example.com/flutter_linux_3.47.7-stable.tar.xz",
+      download: fakeDownload(bytes, counter),
+    };
+    // A wrong checksum is refused before anything is unpacked.
+    await assertRejects(
+      () => installTree({ ...options, checksum: "0".repeat(64) }),
+      Error,
+      "checksum",
+    );
+    assertEquals(
+      await Deno.stat(`${dir}/flutter/version`).catch(() => null),
+      null,
+    );
+
+    const checksum = await sha256Hex(bytes);
+    const root = await installTree({ ...options, checksum });
+    assertEquals(await Deno.readTextFile(String(root("version"))), "3.47.7\n");
+    if (POSIX) {
+      const mode = (await Deno.stat(String(root("bin", "flutter")))).mode ?? 0;
+      assertEquals(mode & 0o111, 0o111);
+      // bin/dart is a real symlink into the Dart SDK cache, as Flutter ships it.
+      assertEquals(
+        (await Deno.lstat(String(root("bin", "dart")))).isSymlink,
+        true,
+      );
+      assertEquals(
+        await Deno.readTextFile(String(root("bin", "dart"))),
+        "#!/bin/sh\necho dart\n",
+      );
+    }
+    // A matching prior install is reused without downloading again.
+    await installTree({ ...options, checksum });
+    assertEquals(counter.calls, 2); // the refused attempt, then the real one
+  });
+});
+
+Deno.test("installTree (tar.xz) refuses an archive with a path-traversal entry", async () => {
+  await withTemp(async (dir) => {
+    await assertRejects(
+      () =>
+        installTree({
+          name: "pkg",
+          destDir: `${dir}/tools`,
+          archive: "tar.xz",
+          url: () => "https://example.com/pkg.tar.xz",
+          download: fakeDownload(fixture(ESCAPING_TAR_XZ)),
+        }),
+      Error,
+      "escapes the destination",
+    );
+    assertEquals(await Deno.stat(`${dir}/escape`).catch(() => null), null);
   });
 });

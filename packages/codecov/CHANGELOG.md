@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/zuke-build/zuke/compare/codecov-v1.0.4...codecov-v1.1.0) (2026-10-15)
+
+
+### Features
+
+* **codecov:** opt out of the Codecov CLI's Sentry telemetry ([#833](https://github.com/zuke-build/zuke/issues/833)) ([ab0e707](https://github.com/zuke-build/zuke/commit/ab0e707c65a6266f9b100195abd1ecff206ed682)), closes [#832](https://github.com/zuke-build/zuke/issues/832)
+
 ## [1.0.4](https://github.com/zuke-build/zuke/compare/codecov-v1.0.3...codecov-v1.0.4) (2026-09-14)
 
 

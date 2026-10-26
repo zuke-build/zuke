@@ -14,9 +14,13 @@
  * the target's outputs (built with the dependency-free {@link "./compression.ts"
  * | tar/gzip} helpers). Two backends ship, both dependency-free:
  * {@link FileSystemCacheStore} (a shared/mounted directory) and
- * {@link HttpCacheStore} (any object store or cache server behind a URL). A
- * build selects one with a typed `remoteCache()` override, or one is picked up
- * from the environment by {@link envCacheStore}.
+ * {@link HttpCacheStore} (any object store or cache server behind a URL); a
+ * third, {@link "./s3_cache.ts".S3CacheStore}, signs the HTTP store's requests
+ * for S3-compatible object storage, and a fourth,
+ * {@link "./github_actions_cache.ts".GitHubActionsCacheStore}, uses the
+ * GitHub Actions cache service a job already holds credentials for. A build
+ * selects one with a typed `remoteCache()` override, or one is picked up from
+ * the environment by {@link envCacheStore}.
  *
  * @module
  */
@@ -31,8 +35,11 @@ import {
   type TarEntry,
   untar,
 } from "./compression.ts";
+import { GitHubActionsCacheStore } from "./github_actions_cache.ts";
 import { assertSecureBackendUrl, HttpError } from "./http.ts";
 import { readBytesBounded, readFileOrNull } from "./internal.ts";
+import type { AwsCredentials } from "./aws_sigv4.ts";
+import { S3CacheStore } from "./s3_cache.ts";
 
 /**
  * A content-addressed store for archived target outputs, keyed by
@@ -45,6 +52,13 @@ export interface RemoteCacheStore {
   get(key: string): Promise<Uint8Array | null>;
   /** Store `artifact` (a gzipped tar of a target's outputs) under `key`. */
   put(key: string, artifact: Uint8Array): Promise<void>;
+  /**
+   * The most an artifact from this store may decompress to, in bytes, before
+   * {@link restoreOutputs} refuses it. Defaults to 2 GiB; raise it for a target
+   * whose outputs are genuinely larger, such as a whole SDK. The restore holds
+   * the inflated archive in memory, so the bound is also its memory ceiling.
+   */
+  readonly maxInflatedBytes?: number;
 }
 
 /**
@@ -70,8 +84,13 @@ const DEFAULT_MAX_INFLATED_BYTES = 2 * 1024 * 1024 * 1024;
 export interface OutputHost {
   /** File contents, or `null` if the path does not exist. */
   readFile(path: string): Promise<Uint8Array | null>;
-  /** Whether a path exists and is a directory, or `null` if it is missing. */
-  stat(path: string): Promise<{ isDirectory: boolean } | null>;
+  /**
+   * Whether a path exists and is a directory, or `null` if it is missing. A
+   * host that has permission bits reports them as `mode`, so an archived
+   * binary is restored executable; one that does not (Windows, a test double)
+   * leaves it out and the entry takes the archive's default.
+   */
+  stat(path: string): Promise<{ isDirectory: boolean; mode?: number } | null>;
   /**
    * Describe a path *without* following a final symlink, or `null` if it is
    * missing. Distinct from {@link OutputHost.stat}, which resolves a link and so
@@ -83,8 +102,11 @@ export interface OutputHost {
   ): Promise<{ isSymlink: boolean; isDirectory: boolean } | null>;
   /** The entry names within a directory. */
   readDir(path: string): Promise<string[]>;
-  /** Write a file, creating parent directories as needed. */
-  writeFile(path: string, bytes: Uint8Array): Promise<void>;
+  /**
+   * Write a file, creating parent directories as needed, with the permission
+   * bits `mode` where the platform has them.
+   */
+  writeFile(path: string, bytes: Uint8Array, mode?: number): Promise<void>;
 }
 
 /** Normalise a path for archive entry names: `\`→`/`, drop a leading `./`. */
@@ -114,7 +136,11 @@ async function collectEntries(
     if (info === null) return; // a declared output that isn't there — skip it
     if (!info.isDirectory) {
       const data = await host.readFile(path);
-      if (data !== null) entries.push({ name: normalize(path), data });
+      if (data === null) return;
+      // Permission bits only: the tar header has no room for a file type, and
+      // the executable bit is what a restored binary needs to keep.
+      const mode = info.mode === undefined ? undefined : info.mode & 0o777;
+      entries.push({ name: normalize(path), data, mode });
       return;
     }
     for (const name of (await host.readDir(path)).slice().sort()) {
@@ -127,9 +153,10 @@ async function collectEntries(
 }
 
 /**
- * Archive a target's `outputs` into a gzipped tar of their current contents.
- * A declared output that does not exist is skipped, as is anything under a
- * `.git` or `.zuke` directory.
+ * Archive a target's `outputs` into a gzipped tar of their current contents,
+ * each file with its permission bits so a binary restores executable. A
+ * declared output that does not exist is skipped, as is anything under a
+ * `.git` or `.zuke` directory, other than `.zuke/tools` and whatever it holds.
  */
 export async function archiveOutputs(
   outputs: readonly string[],
@@ -143,9 +170,22 @@ export async function archiveOutputs(
  * as an output. `.git` is the one that turns a poisoned cache into code
  * execution: a restored `.git/hooks/pre-commit` or a rewritten `.git/config`
  * runs on the developer's next ordinary git command. `.zuke` holds the run state
- * and cache index Zuke itself trusts.
+ * and cache index Zuke itself trusts — except its `tools` subtree, where a
+ * build's declared toolchain installs the binaries it provisions. Those are
+ * exactly the outputs a remote cache exists to share (a pinned SDK, a
+ * checksum-verified scanner), and the toolchain re-verifies a restored binary
+ * against its recorded checksum before reusing it.
+ *
+ * A `.git` *inside* that subtree is allowed too: an SDK such as Flutter's is a
+ * git checkout that runs `git` on itself, so it is broken without one. That
+ * grants a store nothing new — it can already replace the SDK's own binaries
+ * and scripts there — and the workspace's own `.git`, or any outside
+ * `.zuke/tools`, stays refused.
  */
 const FORBIDDEN_DIRS = [".git", ".zuke"];
+
+/** The one `.zuke` subtree a restore may write into: see {@link FORBIDDEN_DIRS}. */
+const TOOLS_DIR = "tools";
 
 /**
  * Whether any segment of `name` (already normalised) is a
@@ -154,8 +194,17 @@ const FORBIDDEN_DIRS = [".git", ".zuke"];
  * runs on the same ordinary git command the top-level one would.
  */
 function isForbiddenPath(name: string): boolean {
-  return name.toLowerCase().split("/").some((segment) =>
-    FORBIDDEN_DIRS.includes(segment)
+  // Windows drops a segment's trailing dots and spaces, so `.git.` is `.git`.
+  const segments = name.toLowerCase().split("/").map((segment) =>
+    segment.replace(/[. ]+$/, "")
+  );
+  const tools = segments.findIndex((segment, i) =>
+    segment === ".zuke" && segments[i + 1] === TOOLS_DIR
+  );
+  return segments.some((segment, i) =>
+    FORBIDDEN_DIRS.includes(segment) &&
+    !(segment === ".zuke" && segments[i + 1] === TOOLS_DIR) &&
+    !(segment === ".git" && tools !== -1 && tools < i)
   );
 }
 
@@ -200,7 +249,8 @@ function assertPlainFileEntry(entry: TarEntry): void {
  * leaves no half-written, partially-trusted output tree. An entry is refused
  * when its name is absolute or escapes the workspace with `..`, when it is a
  * symlink or directory entry (which {@link archiveOutputs} never produces),
- * when it lands under `.git` or `.zuke`, when — given `outputs` — it falls
+ * when it lands under `.git` or `.zuke` (`.zuke/tools` aside), when — given
+ * `outputs` — it falls
  * outside the target's declared outputs, and when the path it would be written
  * to passes through, or is, a symlink that already exists on disk.
  *
@@ -213,7 +263,8 @@ function assertPlainFileEntry(entry: TarEntry): void {
  * surprise.
  *
  * @param maxBytes The most the artifact may decompress to before it is refused,
- *   defaulting to 2 GiB. The bound is applied *while* decompressing, so a small
+ *   defaulting to 2 GiB; the executor passes the store's
+ *   {@link RemoteCacheStore.maxInflatedBytes}. The bound is applied *while* decompressing, so a small
  *   archive that expands without limit is refused rather than buffered first.
  *   It is larger than the bound a store puts on the compressed bytes because
  *   outputs compress; both exist to stop memory exhaustion.
@@ -232,6 +283,13 @@ export async function restoreOutputs(
   outputs?: readonly string[],
   maxBytes: number = DEFAULT_MAX_INFLATED_BYTES,
 ): Promise<string[]> {
+  // A NaN bound would disable the check (`total > NaN` is never true).
+  if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
+    throw new Error(
+      `remote cache: maxInflatedBytes must be a positive whole number of ` +
+        `bytes, got ${maxBytes}.`,
+    );
+  }
   const inflated = await gunzipBounded(artifact, maxBytes);
   if (inflated === null) {
     throw new Error(
@@ -246,7 +304,7 @@ export async function restoreOutputs(
   // as it goes and must evict.
   const realDirs = new Set<string>(["."]);
   const probe: LinkProbe = (path) => host.lstat(normalize(path));
-  const validated: { name: string; data: Uint8Array }[] = [];
+  const validated: TarEntry[] = [];
   for (const entry of entries) {
     assertSafeEntryName(entry.name);
     assertPlainFileEntry(entry);
@@ -281,7 +339,7 @@ export async function restoreOutputs(
           `with a real file to cache this target.`,
       );
     }
-    validated.push({ name, data: entry.data });
+    validated.push({ name, data: entry.data, mode: entry.mode });
   }
   // Write the *validated* path rather than the raw entry name. Every check
   // above reasoned about the normalised form, and a name that differs from it
@@ -291,7 +349,7 @@ export async function restoreOutputs(
   // archive Zuke produced the two are the same string.
   const written: string[] = [];
   for (const entry of validated) {
-    await host.writeFile(entry.name, entry.data);
+    await host.writeFile(entry.name, entry.data, entry.mode);
     written.push(entry.name);
   }
   return written;
@@ -306,17 +364,30 @@ export function remoteCacheKey(name: string, fingerprint: string): string {
   return `${safe}-${fingerprint}`;
 }
 
+/** Configuration for a {@link FileSystemCacheStore}. */
+export interface FileSystemCacheStoreOptions {
+  /**
+   * The most a fetched artifact may decompress to, in bytes — see
+   * {@link RemoteCacheStore.maxInflatedBytes}. Defaults to 2 GiB.
+   */
+  maxInflatedBytes?: number;
+}
+
 /** A {@link RemoteCacheStore} backed by a shared or mounted directory. */
 export class FileSystemCacheStore implements RemoteCacheStore {
   readonly #dir: string;
+  /** The most an artifact may decompress to; see {@link RemoteCacheStore.maxInflatedBytes}. */
+  readonly maxInflatedBytes?: number;
 
   /**
    * Build the store over a directory.
    *
    * @param dir The directory archives are read from and written to.
+   * @param options The restore bound.
    */
-  constructor(dir: string) {
+  constructor(dir: string, options: FileSystemCacheStoreOptions = {}) {
     this.#dir = dir;
+    this.maxInflatedBytes = options.maxInflatedBytes;
   }
 
   #path(key: string): string {
@@ -337,10 +408,21 @@ export class FileSystemCacheStore implements RemoteCacheStore {
 
 /** Configuration for an {@link HttpCacheStore}. */
 export interface HttpCacheStoreOptions {
-  /** The base URL keys are appended to (any trailing slash is ignored). */
+  /**
+   * The base URL keys are appended to (any trailing slash is ignored). A query
+   * string is kept and the key goes before it, so an Azure Blob container's
+   * SAS URL (`https://acct.blob.core.windows.net/container?sv=…`) works as
+   * is.
+   */
   url: string;
   /** A bearer token sent as `Authorization: Bearer <token>`, if set. */
   token?: string;
+  /**
+   * Headers sent on every request: basic auth for a Gradle-protocol or WebDAV
+   * cache, GitLab's `JOB-TOKEN`, or whatever else a server wants. The store's
+   * own headers (the bearer token, the content type) win on a clash.
+   */
+  headers?: Record<string, string>;
   /** The `fetch` implementation; defaults to the global. Overridable for tests. */
   fetch?: typeof fetch;
   /**
@@ -351,6 +433,11 @@ export interface HttpCacheStoreOptions {
    * {@link restoreOutputs}.
    */
   maxArtifactBytes?: number;
+  /**
+   * The most a fetched artifact may decompress to, in bytes — see
+   * {@link RemoteCacheStore.maxInflatedBytes}. Defaults to 2 GiB.
+   */
+  maxInflatedBytes?: number;
 }
 
 /**
@@ -374,25 +461,34 @@ export interface HttpCacheStoreOptions {
  */
 export class HttpCacheStore implements RemoteCacheStore {
   readonly #base: string;
+  readonly #query: string;
   readonly #token?: string;
+  readonly #headers: Readonly<Record<string, string>>;
   readonly #fetch: typeof fetch;
   readonly #maxArtifactBytes: number;
+  /** The most an artifact may decompress to; see {@link RemoteCacheStore.maxInflatedBytes}. */
+  readonly maxInflatedBytes?: number;
 
-  /** Build the store from its URL, optional token, size cap, and `fetch` seam. */
+  /** Build the store from its URL, optional token, size caps, and `fetch` seam. */
   constructor(options: HttpCacheStoreOptions) {
-    this.#base = options.url.replace(/\/+$/, "");
+    this.maxInflatedBytes = options.maxInflatedBytes;
+    const at = options.url.indexOf("?");
+    const path = at === -1 ? options.url : options.url.slice(0, at);
+    this.#base = path.replace(/\/+$/, "");
+    this.#query = at === -1 ? "" : options.url.slice(at);
     this.#token = options.token;
+    this.#headers = options.headers ?? {};
     this.#fetch = options.fetch ?? fetch;
     this.#maxArtifactBytes = options.maxArtifactBytes ??
       DEFAULT_MAX_ARTIFACT_BYTES;
   }
 
   #url(key: string): string {
-    return `${this.#base}/${encodeURIComponent(key)}`;
+    return `${this.#base}/${encodeURIComponent(key)}${this.#query}`;
   }
 
-  #headers(extra?: Record<string, string>): Record<string, string> {
-    const headers: Record<string, string> = { ...extra };
+  #requestHeaders(extra?: Record<string, string>): Record<string, string> {
+    const headers: Record<string, string> = { ...this.#headers, ...extra };
     if (this.#token !== undefined && this.#token !== "") {
       headers.Authorization = `Bearer ${this.#token}`;
     }
@@ -402,7 +498,9 @@ export class HttpCacheStore implements RemoteCacheStore {
   /** Fetch the archived outputs stored under `key`, or `null` if there are none. */
   async get(key: string): Promise<Uint8Array | null> {
     const url = this.#url(key);
-    const response = await this.#fetch(url, { headers: this.#headers() });
+    const response = await this.#fetch(url, {
+      headers: this.#requestHeaders(),
+    });
     if (response.status === 404) {
       await response.body?.cancel();
       return null;
@@ -429,7 +527,13 @@ export class HttpCacheStore implements RemoteCacheStore {
     const url = this.#url(key);
     const response = await this.#fetch(url, {
       method: "PUT",
-      headers: this.#headers({ "content-type": "application/octet-stream" }),
+      headers: this.#requestHeaders({
+        "content-type": "application/octet-stream",
+        // Azure Blob Storage refuses a PUT without a blob type; every other
+        // server ignores the header. Stated here so a SAS URL needs nothing
+        // else.
+        "x-ms-blob-type": "BlockBlob",
+      }),
       // Copy into a fresh ArrayBuffer-backed Blob so the body type is unambiguous
       // regardless of the source buffer (e.g. a SharedArrayBuffer).
       body: new Blob([new Uint8Array(artifact)]),
@@ -443,22 +547,108 @@ export class HttpCacheStore implements RemoteCacheStore {
  * Resolve a {@link RemoteCacheStore} from the environment, or `undefined` when
  * none is configured. `ZUKE_REMOTE_CACHE_URL` (with an optional
  * `ZUKE_REMOTE_CACHE_TOKEN`) selects an {@link HttpCacheStore}; otherwise
- * `ZUKE_REMOTE_CACHE_DIR` selects a {@link FileSystemCacheStore}.
+ * `ZUKE_REMOTE_CACHE_S3_URL` selects an {@link "./s3_cache.ts".S3CacheStore}
+ * signed with `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (and
+ * `AWS_SESSION_TOKEN`) in `AWS_REGION` or `AWS_DEFAULT_REGION`; otherwise
+ * `ZUKE_REMOTE_CACHE_DIR` selects a {@link FileSystemCacheStore}; otherwise,
+ * on a GitHub Actions job that exposes its `ACTIONS_RUNTIME_TOKEN` and
+ * `ACTIONS_RESULTS_URL` (the `actions-cache` input of the `zuke-build/zuke`
+ * action), a {@link "./github_actions_cache.ts".GitHubActionsCacheStore}.
+ * Whichever is chosen takes `ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES`, when set,
+ * as its {@link RemoteCacheStore.maxInflatedBytes}.
  */
 export function envCacheStore(
   readEnv: (name: string) => string | undefined,
 ): RemoteCacheStore | undefined {
+  // Read only once a store is chosen, so it cannot fail a build that has none.
+  const limit = () => envInflatedLimit(readEnv);
   const url = readEnv("ZUKE_REMOTE_CACHE_URL");
   if (url !== undefined && url !== "") {
     assertSecureBackendUrl(url, "ZUKE_REMOTE_CACHE_URL", readEnv);
     return new HttpCacheStore({
       url,
       token: readEnv("ZUKE_REMOTE_CACHE_TOKEN"),
+      maxInflatedBytes: limit(),
+    });
+  }
+  const s3 = readEnv("ZUKE_REMOTE_CACHE_S3_URL");
+  if (s3 !== undefined && s3 !== "") {
+    assertSecureBackendUrl(s3, "ZUKE_REMOTE_CACHE_S3_URL", readEnv);
+    return new S3CacheStore({
+      url: s3,
+      ...s3Signing(readEnv),
+      maxInflatedBytes: limit(),
     });
   }
   const dir = readEnv("ZUKE_REMOTE_CACHE_DIR");
-  if (dir !== undefined && dir !== "") return new FileSystemCacheStore(dir);
+  if (dir !== undefined && dir !== "") {
+    return new FileSystemCacheStore(dir, { maxInflatedBytes: limit() });
+  }
+  const token = readEnv("ACTIONS_RUNTIME_TOKEN");
+  const results = readEnv("ACTIONS_RESULTS_URL");
+  if (
+    token !== undefined && token !== "" && results !== undefined &&
+    results !== ""
+  ) {
+    assertSecureBackendUrl(results, "ACTIONS_RESULTS_URL", readEnv);
+    return new GitHubActionsCacheStore({
+      url: results,
+      token,
+      maxInflatedBytes: limit(),
+    });
+  }
   return undefined;
+}
+
+/**
+ * `ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES` as a byte count, or `undefined` when
+ * unset. Anything but a positive whole number is an error naming the variable,
+ * not a silently ignored limit.
+ */
+function envInflatedLimit(
+  readEnv: (name: string) => string | undefined,
+): number | undefined {
+  const name = "ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES";
+  const raw = readEnv(name);
+  if (raw === undefined || raw === "") return undefined;
+  const bytes = Number(raw);
+  if (!/^[1-9][0-9]*$/.test(raw) || !Number.isSafeInteger(bytes)) {
+    throw new Error(
+      `remote cache: ${name} must be a positive whole number of bytes, ` +
+        `got "${raw}".`,
+    );
+  }
+  return bytes;
+}
+
+/**
+ * The signing region and credentials for `ZUKE_REMOTE_CACHE_S3_URL`, from the
+ * variables the AWS SDKs read. Misconfiguration is an error naming the
+ * variable rather than an unsigned request the bucket would refuse.
+ */
+function s3Signing(
+  readEnv: (name: string) => string | undefined,
+): { region: string; credentials: AwsCredentials } {
+  const need = (...names: string[]): string => {
+    for (const name of names) {
+      const value = readEnv(name);
+      if (value !== undefined && value !== "") return value;
+    }
+    throw new Error(
+      `remote cache: ZUKE_REMOTE_CACHE_S3_URL needs ${names.join(" or ")}.`,
+    );
+  };
+  const sessionToken = readEnv("AWS_SESSION_TOKEN");
+  return {
+    region: need("AWS_REGION", "AWS_DEFAULT_REGION"),
+    credentials: {
+      accessKeyId: need("AWS_ACCESS_KEY_ID"),
+      secretAccessKey: need("AWS_SECRET_ACCESS_KEY"),
+      ...(sessionToken === undefined || sessionToken === ""
+        ? {}
+        : { sessionToken }),
+    },
+  };
 }
 
 /**

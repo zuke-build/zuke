@@ -18,6 +18,40 @@
 
 export { DenoTasks, type DenoTasksApi } from "./src/deno.ts";
 export {
+  DenoDeployTasks,
+  type DenoDeployTasksApi,
+} from "./src/deploy_tasks.ts";
+export {
+  DenoDeployAppSettings,
+  DenoDeployCommandSettings,
+  DenoDeployOrgSettings,
+  DenoDeployUploadSettings,
+} from "./src/deploy_settings.ts";
+export {
+  DenoDeployCreateSettings,
+  type DenoDeployRegion,
+  type DenoDeployRuntimeMode,
+  DenoDeploySettings,
+  type DenoDeploySource,
+} from "./src/deploy.ts";
+export {
+  DenoDeployEnvDeleteSettings,
+  DenoDeployEnvListSettings,
+  DenoDeployEnvLoadSettings,
+  DenoDeployEnvUpdateContextsSettings,
+  type DenoDeployEnvValueCommand,
+  DenoDeployEnvValueSettings,
+} from "./src/deploy_env.ts";
+export {
+  DenoDeployAppsGetSettings,
+  DenoDeployAppsListSettings,
+  DenoDeployDeploymentsListSettings,
+  DenoDeployLogsSettings,
+  type DenoDeploymentStatus,
+  type DenoDeployQueryCommand,
+  DenoDeployQuerySettings,
+} from "./src/deploy_query.ts";
+export {
   type DenoPermission,
   DenoPermissionSettings,
   DenoSettings,

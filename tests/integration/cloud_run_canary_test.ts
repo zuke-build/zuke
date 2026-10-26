@@ -23,7 +23,10 @@ import {
   FileSystemStateStore,
   target,
 } from "../../packages/core/mod.ts";
-import { CommandOutput } from "../../packages/core/src/shell.ts";
+import {
+  CommandOutput,
+  splitShellArgs,
+} from "../../packages/core/src/shell.ts";
 import { canary } from "../../packages/canary/mod.ts";
 import { cloudRunCanary } from "../../packages/gcloud/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
@@ -166,14 +169,14 @@ function fresh(): void {
 
 /**
  * The command in backticks after `lead` in `message`, split back into argv
- * the way a shell would: a token in single quotes is one token.
+ * with core's POSIX quoting rules, as the operator's shell would read it.
  */
 function quotedCommand(message: string, lead: string): string[] {
   const at = message.indexOf(lead);
   assertEquals(at === -1, false, `no "${lead}" in: ${message}`);
   const start = message.indexOf("`", at + lead.length) + 1;
   const text = message.slice(start, message.indexOf("`", start));
-  return [...text.matchAll(/'([^']*)'|(\S+)/g)].map((m) => m[1] ?? m[2]);
+  return splitShellArgs(text);
 }
 
 Deno.test("Cloud Run: staged, stepped, parked, and promoted by a later process", async () => {

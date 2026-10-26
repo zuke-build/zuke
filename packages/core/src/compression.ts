@@ -2,22 +2,24 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * Compression helpers for build scripts: gzip/gunzip byte streams, read or write
- * `tar` / `.tar.gz` archives, and read `.zip` archives. Dependency-free — gzip
- * and deflate use the platform `CompressionStream`/`DecompressionStream`, and
- * the tar reader/writer and the zip reader implement the formats directly.
+ * Compression helpers for build scripts: gzip/gunzip byte streams, and read or
+ * write `tar` / `.tar.gz` and `.zip` archives, plus read `.tar.xz`.
+ * Dependency-free — gzip and deflate use the platform
+ * `CompressionStream`/`DecompressionStream`, xz has a built-in LZMA2 decoder,
+ * and the tar and zip readers and writers implement the formats directly.
  *
  * ```ts
- * import { createTarGzip, extractTarGzip, extractZip } from "@zuke/core";
+ * import { createTarGzip, extractTarGzip, extractTarXz, extractZip } from "@zuke/core";
  *
  * await createTarGzip(["dist/app.js", "README.md"], "artifact.tar.gz");
  * await extractTarGzip("artifact.tar.gz", "out");
- * await extractZip("tool.zip", "out"); // read-only: many release assets ship zip
+ * await extractTarXz("flutter.tar.xz", "out", { strip: 1 });
+ * await extractZip("tool.zip", "out");
  * ```
  *
- * `tar` entry names are limited to 100 bytes (the `ustar` name field); longer
- * names throw. Archives are written with a fixed mtime so output is
- * reproducible. Zip reading supports the two methods release assets use —
+ * `tar` writes a name or symlink target past the `ustar` field's 100 bytes as
+ * a pax extended header. Archives are written with a fixed mtime so output is
+ * reproducible, and a zip is written with deflated entries. Zip reading supports the two methods release assets use —
  * `stored` and `deflate` — and rejects encrypted or zip64 archives with a
  * friendly error; every extractor rejects an entry name that would escape the
  * destination directory (a "zip slip").
@@ -26,7 +28,8 @@
  */
 
 import type { PathLike } from "./path.ts";
-import { lstatOrNull, readBytesBounded } from "./internal.ts";
+import { crc32, lstatOrNull, readBytesBounded } from "./internal.ts";
+import { unxz } from "./xz.ts";
 
 /**
  * Reject an archive entry whose name would escape the destination directory — an
@@ -52,9 +55,21 @@ export function assertSafeEntryName(name: string): void {
  * extraction root once resolved against the link's own directory. A file entry's
  * name is bounded by {@link assertSafeEntryName}; a symlink adds a second escape
  * vector (its target), so a poisoned tarball can't plant `bin/x -> ../../etc`.
+ *
+ * A `..` is allowed only before the target's first name: after a name, that
+ * name may itself be a symlink, and `..` would climb from wherever it points —
+ * so a chain such as `up -> ..` then `p -> up/..` could reach outside the root
+ * while every target looked bounded. An empty target, or one holding a NUL, is
+ * refused too.
  */
 export function assertSafeLinkTarget(entryName: string, target: string): void {
   const normalized = target.replace(/\\/g, "/");
+  if (normalized === "" || normalized.includes("\0")) {
+    throw new Error(
+      `archive: refusing a symlink "${entryName}" with an empty or NUL-bearing ` +
+        `target.`,
+    );
+  }
   if (normalized.startsWith("/") || /^[A-Za-z]:/.test(normalized)) {
     throw new Error(
       `archive: refusing a symlink "${entryName}" to an absolute path: ` +
@@ -64,8 +79,15 @@ export function assertSafeLinkTarget(entryName: string, target: string): void {
   // Resolve the target relative to the symlink's own directory; it must never
   // climb above the extraction root.
   const parts = entryName.replace(/\\/g, "/").split("/").slice(0, -1);
+  let named = false;
   for (const segment of normalized.split("/")) {
     if (segment === "" || segment === ".") continue;
+    if (segment === ".." && named) {
+      throw new Error(
+        `archive: refusing a symlink "${entryName}" whose target climbs with ` +
+          `".." after a name, which may itself be a symlink: "${target}".`,
+      );
+    }
     if (segment === "..") {
       if (parts.length === 0) {
         throw new Error(
@@ -75,6 +97,7 @@ export function assertSafeLinkTarget(entryName: string, target: string): void {
       }
       parts.pop();
     } else {
+      named = true;
       parts.push(segment);
     }
   }
@@ -119,19 +142,20 @@ export async function gunzipBounded(
 
 /** A single entry within a tar archive — a regular file or a symbolic link. */
 export interface TarEntry {
-  /** The entry's path inside the archive (≤ 100 bytes). */
+  /** The entry's path inside the archive. */
   name: string;
   /** The file contents (empty for a symlink entry). */
   data: Uint8Array;
   /**
-   * For a symbolic-link entry, its target (≤ 100 bytes); absent for a regular
-   * file. Node's release tarballs, for one, ship `bin/npm`/`bin/npx` as symlinks
+   * For a symbolic-link entry, its target; absent for a regular file. Node's release tarballs, for one, ship `bin/npm`/`bin/npx` as symlinks
    * into `lib/node_modules`, so extracting a runtime tree must preserve them.
    */
   linkname?: string;
   /**
    * A regular file's permission bits, written into its header: `0o755` for an
-   * executable, so a binary shipped in the archive runs once extracted.
+   * executable, so a binary shipped in the archive runs once extracted. The
+   * extractors apply them on POSIX, always owner-readable and -writable and
+   * never group- or world-writable.
    * Defaults to `0o644`. Ignored for a symlink entry, which is always
    * `0o777`.
    */
@@ -163,41 +187,27 @@ function writeOctal(
   writeString(block, offset, text);
 }
 
-/** Build the 512-byte `ustar` header for one entry (a file, or a symlink when
- * `linkname` is given). */
+/**
+ * Build the 512-byte `ustar` header for one member: `name` and `linkname` are
+ * already cut to the field's 100 bytes (a longer value rides in a pax record
+ * before it).
+ */
 function tarHeader(
-  name: string,
+  name: Uint8Array,
   size: number,
-  linkname: string | undefined,
+  typeflag: number,
   mode: number,
+  linkname: Uint8Array,
 ): Uint8Array {
-  const nameBytes = new TextEncoder().encode(name);
-  if (nameBytes.length > 100) {
-    throw new Error(
-      `tar: entry name exceeds 100 bytes (ustar limit): "${name}"`,
-    );
-  }
-  const isLink = linkname !== undefined;
-  if (isLink && new TextEncoder().encode(linkname).length > 100) {
-    throw new Error(
-      `tar: symlink target exceeds 100 bytes (ustar limit): "${linkname}"`,
-    );
-  }
-  if (!Number.isInteger(mode) || mode < 0 || mode > 0o7777) {
-    throw new Error(
-      `tar: mode for "${name}" must be permission bits from 0 to 0o7777, ` +
-        `got ${mode}`,
-    );
-  }
   const header = new Uint8Array(BLOCK);
-  writeString(header, 0, name);
-  writeOctal(header, 100, 7, isLink ? 0o777 : mode); // mode
+  header.set(name, 0);
+  writeOctal(header, 100, 7, mode); // mode
   writeOctal(header, 108, 7, 0); // uid
   writeOctal(header, 116, 7, 0); // gid
-  writeOctal(header, 124, 11, isLink ? 0 : size); // size (a symlink carries none)
+  writeOctal(header, 124, 11, size); // size
   writeOctal(header, 136, 11, 0); // mtime (fixed for reproducibility)
-  header[156] = isLink ? 0x32 : 0x30; // typeflag '2' (symlink) | '0' (file)
-  if (isLink) writeString(header, 157, linkname); // linkname field
+  header[156] = typeflag;
+  header.set(linkname, 157); // linkname field
   writeString(header, 257, "ustar\0"); // magic
   header[263] = 0x30; // version "00"
   header[264] = 0x30;
@@ -211,25 +221,77 @@ function tarHeader(
   return header;
 }
 
-/** Create a `ustar` archive from the given entries (in order). */
+/** The ustar name and linkname field width. */
+const USTAR_FIELD = 100;
+
+/**
+ * One pax extended-header record, `"<len> <key>=<value>\n"`, where `<len>`
+ * counts the whole record in bytes, its own digits included.
+ */
+function paxRecord(key: string, value: string): string {
+  const rest = new TextEncoder().encode(` ${key}=${value}\n`).length;
+  let len = rest + 1;
+  while (len !== rest + String(len).length) len = rest + String(len).length;
+  return `${len} ${key}=${value}\n`;
+}
+
+/**
+ * Create a `ustar` archive from the given entries (in order). A name or
+ * symlink target past ustar's 100 bytes is carried by a pax extended header
+ * (typeflag `'x'`) ahead of its member, which {@link untar} and every modern
+ * `tar` read back.
+ */
 export function tar(entries: TarEntry[]): Uint8Array {
+  const encoder = new TextEncoder();
   const blocks: Uint8Array[] = [];
   let total = 0;
+  const member = (header: Uint8Array, data: Uint8Array) => {
+    const body = new Uint8Array(padded(data.length));
+    body.set(data);
+    blocks.push(header, body);
+    total += BLOCK + body.length;
+  };
   for (const entry of entries) {
-    const header = tarHeader(
-      entry.name,
-      entry.data.length,
-      entry.linkname,
-      entry.mode ?? 0o644,
+    const mode = entry.mode ?? 0o644;
+    if (!Number.isInteger(mode) || mode < 0 || mode > 0o7777) {
+      throw new Error(
+        `tar: mode for "${entry.name}" must be permission bits from 0 to ` +
+          `0o7777, got ${mode}`,
+      );
+    }
+    const name = encoder.encode(entry.name);
+    const link = encoder.encode(entry.linkname ?? "");
+    let records = "";
+    if (name.length > USTAR_FIELD) records += paxRecord("path", entry.name);
+    if (link.length > USTAR_FIELD) {
+      records += paxRecord("linkpath", entry.linkname ?? "");
+    }
+    if (records !== "") {
+      const data = encoder.encode(records);
+      member(
+        tarHeader(
+          encoder.encode("PaxHeader"),
+          data.length,
+          0x78, // typeflag 'x' (pax extended header)
+          0o644,
+          new Uint8Array(0),
+        ),
+        data,
+      );
+    }
+    const isLink = entry.linkname !== undefined;
+    // A symlink carries no data and is always 0o777.
+    const data = isLink ? new Uint8Array(0) : entry.data;
+    member(
+      tarHeader(
+        name.subarray(0, USTAR_FIELD),
+        data.length,
+        isLink ? 0x32 : 0x30, // typeflag '2' (symlink) | '0' (file)
+        isLink ? 0o777 : mode,
+        link.subarray(0, USTAR_FIELD),
+      ),
+      data,
     );
-    blocks.push(header);
-    total += BLOCK;
-    // A symlink entry carries no data blocks; a file's data is block-padded.
-    const size = entry.linkname === undefined ? entry.data.length : 0;
-    const body = new Uint8Array(padded(size));
-    if (entry.linkname === undefined) body.set(entry.data);
-    blocks.push(body);
-    total += body.length;
   }
   // Two zero blocks terminate the archive.
   const trailer = new Uint8Array(BLOCK * 2);
@@ -397,10 +459,12 @@ export function untar(archive: Uint8Array): TarEntry[] {
         data: new Uint8Array(0),
       });
     } else if (typeflag === 0x30 || typeflag === 0 || typeflag === 0x37) {
-      // Regular files ('0', legacy NUL, or '7' contiguous) carry data.
+      // Regular files ('0', legacy NUL, or '7' contiguous) carry data. The
+      // permission bits ride along so an extracted binary stays executable.
       entries.push({
         name,
         data: archive.slice(dataStart, dataStart + dataLen),
+        mode: readOctal(archive, header + 100, 8) & 0o7777,
       });
     }
     // Other typeflags (hardlink '1', device/fifo nodes) are not extractable.
@@ -427,7 +491,7 @@ export async function createTarGzip(
   await Deno.writeFile(String(dest), await gzip(tar(entries)));
 }
 
-/** Options common to {@link extractTarGzip} and {@link extractZip}. */
+/** Options common to {@link extractTarGzip}, {@link extractTarXz} and {@link extractZip}. */
 export interface ExtractOptions {
   /**
    * Drop this many leading path components from every entry (like tar's
@@ -451,6 +515,49 @@ export async function extractTarGzip(
 ): Promise<void> {
   const archive = untar(await gunzip(await Deno.readFile(String(src))));
   await writeEntries(archive, destDir, options);
+}
+
+/**
+ * Read the `.tar.xz` at `src`, decompress and unpack it, and write each entry
+ * under `destDir` exactly as {@link extractTarGzip} does — the same symlink
+ * handling, the same zip-slip guards, the same {@link ExtractOptions.strip}.
+ * The system `xz` decompresses when one is on `PATH`, several times faster
+ * than the built-in decoder this falls back to, which covers the single LZMA2
+ * filter chain `xz` writes by default and verifies each block's check. Either
+ * way Zuke's own tar reader and guards unpack the result.
+ */
+export async function extractTarXz(
+  src: PathLike,
+  destDir: PathLike,
+  options: ExtractOptions = {},
+): Promise<void> {
+  const path = String(src);
+  // `-T0` decodes a multi-block archive on every core (xz 5.4+).
+  const tarball = await decompressWith("xz", ["-dcT0", "--", path]) ??
+    await unxz(await Deno.readFile(path));
+  await writeEntries(untar(tarball), destDir, options);
+}
+
+/**
+ * The standard output of `cmd args`, or `null` when it cannot be spawned (not
+ * installed, no run permission) or exits non-zero, so the caller falls back to
+ * the built-in decoder, whose error names the problem.
+ */
+export async function decompressWith(
+  cmd: string,
+  args: string[],
+): Promise<Uint8Array | null> {
+  try {
+    const out = await new Deno.Command(cmd, {
+      args,
+      stdin: "null",
+      stdout: "piped",
+      stderr: "null",
+    }).output();
+    return out.success ? out.stdout : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Drop the first `n` path components from `name`, returning "" if none remain. */
@@ -601,7 +708,13 @@ async function writeEntries(
       // would get the wrong type — rare (runtimes ship .zip on Windows).
       await Deno.symlink(entry.linkname, path, { type: "file" });
     } else {
-      await Deno.writeFile(path, entry.data);
+      // The archive's permission bits, kept owner-readable and -writable and
+      // never group- or world-writable; Windows ignores the mode.
+      await Deno.writeFile(path, entry.data, {
+        mode: entry.mode === undefined
+          ? undefined
+          : (entry.mode | 0o600) & 0o755,
+      });
     }
   }
 }
@@ -621,6 +734,12 @@ const ZIP_LOCAL_SIG = 0x04034b50;
 const ZIP_STORED = 0;
 /** Compression method: DEFLATE. */
 const ZIP_DEFLATE = 8;
+/** The "version made by" host byte for Unix, whose attributes carry `st_mode`. */
+const ZIP_HOST_UNIX = 3;
+/** The file-type mask of `st_mode`. */
+const S_IFMT = 0o170000;
+/** The `st_mode` file type of a symbolic link. */
+const S_IFLNK = 0o120000;
 /** The 32-bit sentinel a field carries when its real value lives in a zip64 record. */
 const ZIP64_SENTINEL = 0xffffffff;
 
@@ -682,7 +801,9 @@ async function readLocalEntry(
 /**
  * Read the entries of a `.zip` archive, decompressing `stored` and `deflate`
  * members. The central directory is the source of truth. Directory entries (a
- * trailing `/`) are skipped. Encrypted, zip64, or otherwise-compressed entries
+ * trailing `/`) are skipped. An entry from a zip made on Unix keeps its
+ * permission bits as `mode`, and a Unix symlink entry comes back with its
+ * target as `linkname`, so {@link extractZip} recreates it. Encrypted, zip64, or otherwise-compressed entries
  * throw a friendly error naming the offending entry, and a header or data field
  * that runs past the archive is reported as a malformed zip (not a raw
  * out-of-bounds error). Every offset read from the archive is bounds-checked;
@@ -735,21 +856,135 @@ export async function unzip(archive: Uint8Array): Promise<TarEntry[]> {
       throw new Error(`zip: unsupported zip feature (zip64 entry "${name}").`);
     }
     if (!name.endsWith("/")) {
-      entries.push({
+      const data = await readLocalEntry(
+        view,
+        archive,
+        localOffset,
+        compressedSize,
+        method,
         name,
-        data: await readLocalEntry(
-          view,
-          archive,
-          localOffset,
-          compressedSize,
-          method,
+      );
+      // A zip made on Unix (host byte 3) keeps `st_mode` in the high half of
+      // the external attributes: the permission bits, and S_IFLNK for a
+      // symlink, whose data is its target.
+      const unixMode = view.getUint8(p + 5) === ZIP_HOST_UNIX
+        ? view.getUint32(p + 38, true) >>> 16
+        : 0;
+      if ((unixMode & S_IFMT) === S_IFLNK) {
+        entries.push({
           name,
-        ),
-      });
+          data: new Uint8Array(0),
+          linkname: new TextDecoder().decode(data),
+        });
+      } else {
+        const mode = unixMode & 0o7777;
+        entries.push(mode === 0 ? { name, data } : { name, data, mode });
+      }
     }
     p += 46 + nameLen + extraLen + commentLen;
   }
   return entries;
+}
+
+/** Raw-DEFLATE `data` with the platform `CompressionStream`. */
+async function deflateRaw(data: Uint8Array): Promise<Uint8Array> {
+  const stream = new Blob([new Uint8Array(data)]).stream().pipeThrough(
+    new CompressionStream("deflate-raw"),
+  );
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+/** The fixed DOS date every entry is written with: 1980-01-01, zip's epoch. */
+const ZIP_DOS_DATE = (1 << 5) | 1;
+
+/** General-purpose flag bit 11: the entry name is UTF-8. */
+const ZIP_UTF8 = 0x0800;
+
+/**
+ * Create a `.zip` archive from the given entries (in order), each deflated —
+ * the writer {@link unzip} reads. Like {@link tar}, every entry carries a
+ * fixed timestamp, so the bytes depend only on the entries.
+ *
+ * Only regular files are written: an entry with a `linkname` throws, since
+ * zip has no portable symlink, and `mode` is ignored, since zip extractors
+ * do not agree on reading one. An archive that would need zip64 (an entry or
+ * the archive past 4 GiB, or 65535 entries or more) throws too.
+ */
+export async function zip(entries: TarEntry[]): Promise<Uint8Array> {
+  if (entries.length >= 0xffff) {
+    throw new Error(`zip: ${entries.length} entries need zip64 (unsupported).`);
+  }
+  const encoder = new TextEncoder();
+  const locals: Uint8Array[] = [];
+  const centrals: Uint8Array[] = [];
+  let offset = 0;
+  for (const entry of entries) {
+    if (entry.linkname !== undefined) {
+      throw new Error(
+        `zip: "${entry.name}" is a symlink, which zip cannot hold.`,
+      );
+    }
+    const needsZip64 = () =>
+      new Error(`zip: "${entry.name}" needs zip64 (unsupported).`);
+    if (entry.data.length >= ZIP64_SENTINEL || offset >= ZIP64_SENTINEL) {
+      throw needsZip64();
+    }
+    const name = encoder.encode(entry.name);
+    const body = await deflateRaw(entry.data);
+    // Incompressible data can deflate to slightly more than it started as.
+    if (body.length >= ZIP64_SENTINEL) throw needsZip64();
+    // The fields the local header and the central directory share, from
+    // "version needed" to the name length.
+    const shared = new Uint8Array(26);
+    const fields = new DataView(shared.buffer);
+    fields.setUint16(0, 20, true); // version needed: 2.0, for deflate
+    fields.setUint16(2, ZIP_UTF8, true);
+    fields.setUint16(4, ZIP_DEFLATE, true);
+    fields.setUint16(6, 0, true); // time: midnight
+    fields.setUint16(8, ZIP_DOS_DATE, true);
+    fields.setUint32(10, crc32(entry.data), true);
+    fields.setUint32(14, body.length, true);
+    fields.setUint32(18, entry.data.length, true);
+    fields.setUint16(22, name.length, true);
+    // Bytes 24-25 are the extra field's length, 0 in both headers.
+
+    const local = new Uint8Array(30 + name.length + body.length);
+    new DataView(local.buffer).setUint32(0, ZIP_LOCAL_SIG, true);
+    local.set(shared, 4);
+    local.set(name, 30);
+    local.set(body, 30 + name.length);
+    locals.push(local);
+
+    const central = new Uint8Array(46 + name.length);
+    const view = new DataView(central.buffer);
+    view.setUint32(0, ZIP_CD_SIG, true);
+    view.setUint16(4, 20, true); // version made by: 2.0, MS-DOS attributes
+    central.set(shared, 6);
+    // Comment length, disk number and both attribute fields stay 0.
+    view.setUint32(42, offset, true);
+    central.set(name, 46);
+    centrals.push(central);
+
+    offset += local.length;
+  }
+  const directorySize = centrals.reduce((sum, c) => sum + c.length, 0);
+  if (offset >= ZIP64_SENTINEL) {
+    throw new Error("zip: the archive needs zip64 (unsupported).");
+  }
+  const end = new Uint8Array(22);
+  const view = new DataView(end.buffer);
+  view.setUint32(0, ZIP_EOCD_SIG, true);
+  view.setUint16(8, entries.length, true);
+  view.setUint16(10, entries.length, true);
+  view.setUint32(12, directorySize, true);
+  view.setUint32(16, offset, true);
+  const archive = new Uint8Array(offset + directorySize + end.length);
+  let at = 0;
+  for (const part of [...locals, ...centrals, end]) {
+    archive.set(part, at);
+    at += part.length;
+  }
+  return archive;
 }
 
 /**

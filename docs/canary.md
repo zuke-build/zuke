@@ -60,14 +60,14 @@ state disabled is refused when the rollout starts.
 The engine never talks to Cloud Run, Kubernetes or anything else directly. It
 calls a `CanaryPlatform`:
 
-| Member                 | Contract                                                                                                                |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `exposure`             | `"traffic"` (an exact split), `"replicas"` (quantised to whole instances) or `"channel"` (a release channel, no steps). |
-| `describe()`           | A short name for the summary.                                                                                           |
-| `stage(ctx)`           | Candidate in place at 0 %. Record what a rollback needs in `ctx.state`.                                                 |
-| `expose(percent, ctx)` | Set exposure to `percent` (absolute) and return the exposure achieved. Repeating it is harmless.                        |
-| `promote(ctx)`         | Send everything to the candidate. Idempotent.                                                                           |
-| `abort(ctx)`           | Return everything to the stable version. Idempotent, and must cope with empty state (see below).                        |
+| Member                 | Contract                                                                                                                                                |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `exposure`             | `"traffic"` (an exact split), `"replicas"` (quantised to whole instances) or `"channel"` (a release channel, no steps).                                 |
+| `describe()`           | A short name for the summary.                                                                                                                           |
+| `stage(ctx)`           | Candidate in place at 0 %. Record what a rollback needs in `ctx.state`.                                                                                 |
+| `expose(percent, ctx)` | Set exposure to `percent` (absolute) and return the exposure achieved. Repeating it is harmless.                                                        |
+| `promote(ctx)`         | Send everything to the candidate. Idempotent.                                                                                                           |
+| `abort(ctx)`           | Return everything to the stable version. Idempotent, and must cope with empty state; `ctx.reason` says why it runs (see [Rolling back](#rolling-back)). |
 
 Every call gets the same `ctx.state`, the rollout's durable platform state, so
 `abort` can read what `stage` wrote even in another process after a resume.
@@ -76,9 +76,10 @@ Every call gets the same `ctx.state`, the rollout's durable platform state, so
 network calls.
 
 Adapters for specific platforms belong in their wrapper packages; see
-[Cloud Run](#cloud-run), [Kubernetes](#kubernetes), [Helm](#helm) and
-[Docker Compose](#docker-compose) below. Until one exists for yours, a platform
-is a plain object in the build:
+[Cloud Run](#cloud-run), [Kubernetes](#kubernetes), [Helm](#helm),
+[Docker Compose](#docker-compose), [AWS Lambda](#aws-lambda) and
+[Azure Container Apps](#azure-container-apps) below. Until one exists for yours,
+a platform is a plain object in the build:
 
 <!-- check -->
 
@@ -92,8 +93,12 @@ const compose: CanaryPlatform = {
   exposure: "replicas",
   describe: () => "compose service api",
   async stage(ctx) {
+    // Record first: a rollback with nothing recorded changes nothing.
+    const recorded = { stable: "api", candidate: "api-canary" };
+    if (!await ctx.state.trySet(recorded)) {
+      throw new Error("could not record the rollout; nothing was started");
+    }
     await $`docker compose up -d --scale api-canary=1 api-canary`;
-    await ctx.state.set({ stable: "api", candidate: "api-canary" });
   },
   async expose(percent) {
     const canaries = Math.round(percent / 25);
@@ -657,6 +662,237 @@ them. A command that exits non-zero fails the call even under `.noThrow()`, and
 trailing `.args(...)` there are refused, since they would follow the service
 operand of every command — a guard against accidents, not a security boundary.
 
+### AWS Lambda
+
+`lambdaCanary` from `@zuke/aws` is a Lambda **alias** as a platform. The alias
+keeps pointing at the stable version and gives the candidate a share of its
+invocations through weighted routing (`AdditionalVersionWeights`):
+
+<!-- check -->
+
+```ts
+import { Build, parameter, run, target } from "@zuke/core";
+import { canary, httpProbe } from "@zuke/canary";
+import { cloudwatch, lambdaCanary } from "@zuke/aws";
+
+class Deploy extends Build {
+  zip = parameter("Deployment package to roll out").required();
+
+  rollout = canary((c) =>
+    c.platform(
+      lambdaCanary((l) =>
+        l.functionName("api").alias("live").zipFile(this.zip.value)
+          .aws((a) => a.profile("deploy").region("eu-west-1"))
+      ),
+    )
+      .steps(10, 25, 50)
+      .bake("10m")
+      .analysis(httpProbe((h) => h.url("https://api.example.com/healthz")))
+      .analysis(cloudwatch((m) =>
+        m.name("api errors").namespace("AWS/Lambda")
+          .metricName("Errors").dimension("FunctionName", "api")
+          .stat("Sum").window("10m").max(0).missingDataAs(0)
+          .aws((a) => a.profile("deploy").region("eu-west-1"))
+      ))
+  );
+  ship = target().dependsOn(this.rollout.promote).executes(() => {});
+}
+
+await run(Deploy);
+```
+
+Its lambda runs on every call, so it may read resolved parameters. Name the
+candidate once: a code source — `.zipFile(path)`, `.s3Bucket(b).s3Key(k)` or
+`.imageUri(uri)` — which `stage` ships and publishes, or `.version("12")` for a
+version the build already published, for example with
+`AwsTasks.lambdaPublishedVersion`. The `Errors` metric above is the whole
+function's, both versions together; Lambda also publishes it per version under
+the `FunctionName`, `Resource` (`api:live`) and `ExecutedVersion` dimensions,
+which judges the candidate alone once its number is known.
+
+| Call      | aws                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `stage`   | `lambda get-alias`, whose version becomes the stable one, read back with `get-function`; for a code source, `lambda wait function-updated-v2` and `lambda update-function-code --publish`; `get-function --qualifier <candidate>` to read the candidate back; `lambda wait published-version-active`, so a `Pending` version (SnapStart, an image) takes no traffic; then records the rollout. The alias is not changed. |
+| `expose`  | The record check, then `lambda update-alias --routing-config '{"AdditionalVersionWeights":{"<candidate>":<n/100>}}' --revision-id <rev>`. The stable version keeps the rest. `0` clears the routing.                                                                                                                                                                                                                     |
+| `promote` | The record check, then `lambda update-alias --function-version <candidate>` with the routing cleared and `--revision-id`. An alias already on the candidate is left as it is.                                                                                                                                                                                                                                            |
+| `abort`   | Mid-rollout: the identity and ARN checks, then the candidate's weight comes off, keeping any other version's weight — written with `--revision-id` even when the candidate has no share. Run by hand (no recorded state): `update-alias --function-version <stable>` with the routing cleared, to the version set with `.stable(...)`, and it refuses without one.                                                       |
+
+`stage` refuses an alias that already splits its traffic (another rollout, or
+one that left its weights behind), one that points at `$LATEST` (weighted
+routing works only between published versions), and a candidate that is the
+stable version — which is what publishing unchanged code and configuration gives
+back. Lambda also requires the two versions to share an execution role and a
+dead-letter configuration; when they do not, the first `expose` fails and the
+canary rolls back.
+
+A code source becomes the function's `$LATEST` the moment `stage` publishes it,
+and a rollback does not change `$LATEST` back. Only invocations of the alias are
+split: callers of the unqualified function — an event source or trigger wired to
+it — run the candidate from `stage` on, and keep running it after a rollback. If
+anything invokes the function unqualified, publish the version first and roll it
+out with `.version(...)`, which leaves `$LATEST` alone, or point those callers
+at the alias.
+
+The record holds the function, the alias and the global flags `.aws(...)` gives
+every command, plus the alias's ARN, and the stable and candidate versions with
+their `CodeSha256`. The flags are recorded as argv in the rollout's state, which
+is plain JSON, so never pass a secret on the command line through `.aws(...)`.
+The record check, before anything changes:
+
+- compares the configured function, alias and flags with the record, before any
+  command;
+- reads the alias and compares its ARN, which names the account and region — so
+  a changed `AWS_PROFILE` or `AWS_REGION`, which the flags cannot see, is
+  refused;
+- for `expose` and `promote`, checks that the alias still points at the stable
+  version and splits only with the candidate, and that the candidate still has
+  the code hash recorded — a function deleted and created again starts its
+  version numbers over.
+
+Every `update-alias` carries the `--revision-id` the read returned, so a change
+someone makes to the alias between the read and the update fails the update
+rather than being overwritten. The `.aws(...)` lambda runs for each command, and
+a command it gives other flags than the ones the call checked does not run.
+
+The rollback writes the alias even when the candidate holds no share, so an
+`expose` of the same rollout still in flight — a `zuke cancel` from another
+process racing it — fails on the stale revision instead of landing after the
+rollback; a rollback whose own write loses such a race reads the alias again and
+retries, up to five times. An alias that already points at the candidate goes
+back to the stable version, once that version still has the code hash recorded.
+One that points at the candidate and also splits with another version is a newer
+rollout built on this one, and the rollback refuses rather than undo both.
+
+A refusal changes nothing. After an identity or ARN refusal the run stops and
+its rollback refuses the same way, so the candidate keeps the share it had; the
+refusal gives the recovery — a `lambda get-alias` that should print the recorded
+ARN, and the `update-alias` that sends all of the alias's traffic back to the
+recorded stable version, both built from the recorded function, alias and flags.
+After a refusal because the alias no longer splits as the rollout left it, the
+rollback still runs and takes the candidate's weight off, leaving the rest of
+the alias as someone else set it. A hand-run `zuke rollout.abort` with
+`.stable(...)` has no record to check against. After an abort the candidate
+version still exists.
+
+### Azure Container Apps
+
+`containerAppCanary` from `@zuke/az` is an Azure container app as a platform.
+The candidate is a new revision of the app, and its exposure is its share of the
+app's ingress traffic, split between the two revisions by name:
+
+<!-- check -->
+
+```ts
+import { Build, parameter, run, target } from "@zuke/core";
+import { canary, httpProbe } from "@zuke/canary";
+import { azureMonitor, containerAppCanary } from "@zuke/az";
+
+class Deploy extends Build {
+  image = parameter("Container image to roll out").required();
+
+  rollout = canary((c) =>
+    c.platform(
+      containerAppCanary((a) =>
+        a.name("api").resourceGroup("rg-prod").image(this.image.value)
+          .az((z) => z.subscription("prod"))
+      ),
+    )
+      .steps(10, 25, 50)
+      .bake("10m")
+      .analysis(httpProbe((h) => h.url("https://api.example.com/healthz")))
+      .analysis(azureMonitor((m) =>
+        m.name("api 5xx")
+          .resource(
+            "/subscriptions/prod/resourceGroups/rg-prod/providers/" +
+              "Microsoft.App/containerApps/api",
+          )
+          .metric("Requests").aggregation("Total")
+          .dimension("statusCodeCategory", "5xx")
+          .window("10m").max(0).missingDataAs(0)
+          .az((z) => z.subscription("prod"))
+      ))
+  );
+  ship = target().dependsOn(this.rollout.promote).executes(() => {});
+}
+
+await run(Deploy);
+```
+
+The app must already exist, in **multiple-revision mode**
+(`az containerapp
+revision set-mode --mode multiple`), with ingress. Its lambda
+runs on every call, so it may read resolved parameters. `.image(...)` is the
+candidate, which `stage` deploys; `.containerName(...)` picks the container in
+an app with several, and `.revisionSuffix(...)` names the candidate revision
+`<app>--<suffix>`. The `Requests` metric above is the whole app's; it also has a
+`revisionName` dimension, which judges the candidate alone once its name is
+known.
+
+| Call      | az                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stage`   | `containerapp show`, whose one revision taking all traffic becomes the stable one; `ingress traffic set --revision-weight <stable>=100`, which pins that traffic to the stable revision by name, so the new revision cannot inherit traffic that followed "latest"; `containerapp update --image`, which makes the candidate; `containerapp show` and `revision list` to read it back and check it is `Provisioned`; then records the rollout. |
+| `expose`  | The record check, then `ingress traffic set --revision-weight <stable>=<100-n> <candidate>=<n>`. Whole percents only.                                                                                                                                                                                                                                                                                                                          |
+| `promote` | The record check, and that the app's latest revision is still the candidate; then `--revision-weight latest=100` if the traffic followed the latest revision before the rollout — once the candidate is also the newest ready revision, where "latest" sends it — or `<candidate>=100 <stable>=0` if it was pinned by name. An app already serving only the candidate that way is left as it is.                                               |
+| `abort`   | Mid-rollout: the identity and resource-id checks, then `--revision-weight <stable>=100 <candidate>=0`. After a stage that failed: `latest=100`, when the traffic followed the latest revision and it is safe (see below). Run by hand (no recorded state): `<stable>=100` to the revision set with `.stable(...)`, and it refuses without one.                                                                                                 |
+
+`stage` refuses an app in single- or labels-revision mode, one without ingress,
+one whose traffic is already split or carries labels, and one whose traffic
+follows the latest revision while its newest revision has not provisioned —
+traffic that follows "latest" goes to the newest _ready_ revision, so which one
+serves would be in doubt. After the deploy it refuses a deploy that made no new
+revision (Container Apps makes one only when the image or the template changes),
+a latest revision other than `<app>--<suffix>` when `.revisionSuffix(...)` is
+set (another deploy landed in between), and a candidate that did not provision.
+The pin is the one change `stage` makes to traffic, and it does not move any:
+the stable revision had all of it. `stage` records the pin before it makes it,
+so the rollback of a stage that fails hands traffic that followed "latest" back
+to it — once the configuration and the app's resource id match the pin, the
+traffic still goes only to the stable revision, and that revision is still the
+app's newest. When the failed stage did make a revision (one that did not
+provision, say), "latest" could send the traffic elsewhere, so the rollback
+leaves it pinned and the summary reports `Pinned to: <stable>`; hand it back
+with `az containerapp ingress traffic set --revision-weight latest=100` once
+that revision is deactivated.
+
+The record holds the app, the resource group and the global flags `.az(...)`
+gives every command, plus the app's resource id, the stable and candidate
+revisions, when the candidate was created, and whether the traffic followed the
+latest revision. The flags are recorded as argv in the rollout's state, which is
+plain JSON, so never pass a secret on the command line through `.az(...)`. The
+record check, before anything changes:
+
+- compares the configured app, resource group and flags with the record, before
+  any command;
+- reads the app and compares its resource id, which names the subscription — so
+  an `az account set` or another signed-in identity, which the flags cannot see,
+  is refused;
+- for `expose` and `promote`, checks that the traffic still goes only to the
+  stable revision and the candidate, and that the candidate still has the
+  creation time recorded — an app deleted and created again can have a revision
+  of the same name.
+
+Every command a call runs after it has checked the app's resource id carries
+`--subscription` with the subscription that id names, so another job's
+`az account set` landing mid-call cannot redirect a write. The `.az(...)` lambda
+runs for each command, and a command it gives other flags than the ones the call
+checked does not run. The CLI has no conditional update for ingress traffic, so
+a change someone makes between a read and the write that follows it is not
+caught.
+
+A refusal changes nothing. After an identity or resource-id refusal the run
+stops and its rollback refuses the same way, so the candidate keeps the share it
+had; the refusal gives the recovery — a `containerapp show --query=id` that
+should print the recorded resource id, and the `ingress traffic set` that sends
+all of the traffic back to the recorded stable revision, both built from the
+recorded app, resource group and flags. After a refusal because the traffic no
+longer splits as the rollout left it, the rollback still sends the traffic back
+to the stable revision, unless a third revision has a share: that is a newer
+rollout or a change made by hand, and the rollback refuses rather than undo it.
+After a rollback the traffic stays pinned to the stable revision by name, and
+the candidate revision still exists, with no traffic; deactivate it with
+`az containerapp revision deactivate` when it is no longer wanted. A hand-run
+`zuke rollout.abort` with `.stable(...)` has no record to check against.
+
 ## Bakes: inline or durable
 
 By default a bake is **inline**: the bake target sleeps in the process while
@@ -858,23 +1094,19 @@ failure wording as `prometheus(...)`:
 ```ts
 import { Build, parameter, run, target } from "@zuke/core";
 import { canary, httpProbe } from "@zuke/canary";
-import { azureMonitor } from "@zuke/az";
+import { azureMonitor, containerAppCanary } from "@zuke/az";
 
 class Deploy extends Build {
   appInsights = parameter("The Application Insights component's resource id")
     .required();
 
   rollout = canary((c) =>
-    c.platform({
-      exposure: "traffic",
-      describe: () => "Container Apps revision weights",
-      async stage() {},
-      async expose(percent) {
-        return percent;
-      },
-      async promote() {},
-      async abort() {},
-    })
+    c.platform(
+      containerAppCanary((a) =>
+        a.name("api").resourceGroup("rg-prod").image("acr.io/api:2")
+          .az((z) => z.subscription("prod"))
+      ),
+    )
       .steps(10, 50)
       .bake("10m")
       .analysis(httpProbe((h) => h.url("https://api.example.com/health")))
@@ -1023,8 +1255,11 @@ There is one rollback, `rollout.abort`, and every path reaches it:
 | The approval timed out                    | the gate's `.onTimeout("cancel-run")`                       |
 | `zuke cancel <run-id>`                    | the cancellation walk runs `stage`'s compensation           |
 
-When `abort` runs as a rollback, `ctx.state` holds everything `stage` and the
-later calls recorded.
+When `abort` runs as the stage's compensation, `ctx.state` holds everything
+`stage` and the later calls recorded, and `ctx.reason` is `"rollback"`. A
+compensation a build names itself — `.onFailure(() => this.rollout.abort)` on
+another target — gets that target's state instead, still with `"rollback"`;
+after a promotion it changes nothing, as below.
 
 Two cases deliberately **do not** roll back:
 
@@ -1037,9 +1272,22 @@ Two cases deliberately **do not** roll back:
   returning traffic to a version promotion already retired.
 
 **Running `zuke rollout.abort` by hand is different.** It starts a fresh run,
-which has no recorded state from the rollout, so `ctx.state` is empty. That is
-why the platform contract says `abort` must work from its own configuration
-alone. When the rollout declares a lock, a hand-run `abort` takes it too, so it
-is refused while a rollout holds the service. To stop a rollout that is still
-running or parked, use `zuke cancel <run-id>` instead: it rolls back with the
-recorded state, and it releases the rollout's lock.
+which has no recorded state from the rollout, so `ctx.state` is empty and
+`ctx.reason` is `"hand-run"`. That is why the platform contract says `abort`
+must work from its own configuration alone — and only then. A rollback can also
+arrive with empty state: when `stage` failed before it recorded anything, or a
+degraded run record lost the stage's row. A platform that records before it
+changes anything has, in that case, changed nothing, so there is nothing to
+undo. The platform packages above fall back to the stable version they are
+configured with (`.stable(...)`, `.stableImage(...)`, `.stableRevision(...)`)
+only when `ctx.reason` is `"hand-run"`, or absent — an engine older than the
+field names none. So a platform of your own records what a rollback needs before
+it changes anything: write the handles in `stage` first — with
+`ctx.state.trySet(...)`, stopping when it returns `false` — then deploy. Forcing
+`rollout.stage` succeeded with `zuke force` leaves its rollback no record
+either, so a cancel after it changes nothing; roll back with a hand-run
+`zuke rollout.abort` instead. When the rollout declares a lock, a hand-run
+`abort` takes it too, so it is refused while a rollout holds the service. To
+stop a rollout that is still running or parked, use `zuke cancel <run-id>`
+instead: it rolls back with the recorded state, and it releases the rollout's
+lock.

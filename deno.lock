@@ -1557,7 +1557,7 @@
       },
       "packages/apple": {
         "dependencies": [
-          "jsr:@zuke/core@^1.71.0"
+          "jsr:@zuke/core@^1.75.0"
         ]
       },
       "packages/argo-rollouts": {
@@ -1567,12 +1567,12 @@
       },
       "packages/aws": {
         "dependencies": [
-          "jsr:@zuke/core@^1.70.1"
+          "jsr:@zuke/core@^1.74.0"
         ]
       },
       "packages/az": {
         "dependencies": [
-          "jsr:@zuke/core@^1.70.1"
+          "jsr:@zuke/core@^1.74.0"
         ]
       },
       "packages/biome": {
@@ -1638,6 +1638,11 @@
           "jsr:@zuke/core@^1.45.0"
         ]
       },
+      "packages/dart": {
+        "dependencies": [
+          "jsr:@zuke/core@^1.71.0"
+        ]
+      },
       "packages/deno": {
         "dependencies": [
           "jsr:@zuke/core@^1.55.1"
@@ -1673,9 +1678,14 @@
           "jsr:@zuke/core@^1.44.0"
         ]
       },
+      "packages/flutter": {
+        "dependencies": [
+          "jsr:@zuke/core@^1.71.0"
+        ]
+      },
       "packages/gcloud": {
         "dependencies": [
-          "jsr:@zuke/core@^1.58.0"
+          "jsr:@zuke/core@^1.74.0"
         ]
       },
       "packages/gemini": {
@@ -1693,6 +1703,11 @@
           "jsr:@zuke/core@^1.32.0"
         ]
       },
+      "packages/google": {
+        "dependencies": [
+          "jsr:@zuke/core@^1.75.0"
+        ]
+      },
       "packages/helm": {
         "dependencies": [
           "jsr:@zuke/core@^1.49.0"
@@ -1700,7 +1715,7 @@
       },
       "packages/homebrew": {
         "dependencies": [
-          "jsr:@zuke/core@^1.71.0",
+          "jsr:@zuke/core@^1.74.0",
           "jsr:@zuke/gh@^1.15.0"
         ]
       },
@@ -1796,7 +1811,7 @@
       },
       "packages/prometheus": {
         "dependencies": [
-          "jsr:@zuke/core@^1.66.0"
+          "jsr:@zuke/core@^1.76.0"
         ]
       },
       "packages/qr": {

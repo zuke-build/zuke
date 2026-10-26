@@ -45,12 +45,17 @@ export interface CorePackage {
 export const TOOL_GROUPS: ToolGroup[] = [
   {
     category: "Runtimes & package managers",
-    blurb: "Install, run, and publish across every major JS toolchain.",
+    blurb: "Install, run, and publish across every major toolchain.",
     tools: [
       {
         name: "Deno",
         pkg: "@zuke/deno",
-        desc: "run, test, check, fmt, lint, coverage",
+        desc: "run, test, check, fmt, lint, coverage, Deno Deploy",
+      },
+      {
+        name: "Dart",
+        pkg: "@zuke/dart",
+        desc: "analyze, format, test, compile, pub",
       },
       {
         name: "Node",
@@ -123,6 +128,11 @@ export const TOOL_GROUPS: ToolGroup[] = [
     category: "Frameworks & code generation",
     blurb: "Scaffold app frameworks and generate typed clients from a schema.",
     tools: [
+      {
+        name: "Flutter",
+        pkg: "@zuke/flutter",
+        desc: "analyze, test, build apps, pub",
+      },
       {
         name: "Nest",
         pkg: "@zuke/nest",
@@ -326,7 +336,13 @@ export const TOOL_GROUPS: ToolGroup[] = [
       {
         name: "Apple",
         pkg: "@zuke/apple",
-        desc: "codesign, notarytool, keychains, ditto",
+        desc:
+          "xcodebuild, TestFlight, profiles, codesign, notarytool, keychains",
+      },
+      {
+        name: "Google Play",
+        pkg: "@zuke/google",
+        desc: "upload an app bundle to a Play track",
       },
       {
         name: "SignPath",

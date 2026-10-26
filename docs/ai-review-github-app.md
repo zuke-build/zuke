@@ -202,7 +202,7 @@ default for who may start one (`command: (c) => c.role("triage")` or
 Generate the workflow and commit it:
 
 ```sh
-deno run -A zuke.ts generate-ci
+zuke generate-ci
 git add .github/workflows/ai-review.yml
 ```
 

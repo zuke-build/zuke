@@ -7,7 +7,7 @@ points from a dependency to the target that depends on it, so a target runs
 after everything that points at it. This is the same graph `./zuke graph` prints
 as text and `./zuke graph --output=html` renders interactively.
 
-48 target(s), 27 dependency edge(s). Regenerate with `./zuke graphDoc`; the
+51 target(s), 29 dependency edge(s). Regenerate with `./zuke graphDoc`; the
 `graphDocCheck` target in the CI gate fails when this page drifts from the
 build.
 
@@ -22,123 +22,131 @@ flowchart TD
   t6["test"]
   t7["integration"]
   t8["coverage"]
-  t9["coverageUpload"]
-  t10["apiDocs"]
-  t11["apiDocsCheck"]
-  t12["apiReference"]
-  t13["syncWebsite"]
-  t14["docLint"]
-  t15["snippetsCheck"]
-  t16["examplesCheck"]
-  t17["hclGen"]
-  t18["hclSyncCheck"]
-  t19["pluginSync"]
-  t20["pluginSyncCheck"]
-  t21["launcherSync"]
-  t22["launcherSyncCheck"]
-  t23["skillsCheck"]
-  t24["graphDoc"]
-  t25["graphDocCheck"]
-  t26["pluginVersionCheck"]
-  t27["prBodyLint"]
-  t28["coreFloorCheck"]
-  t29["lockCheck"]
-  t30["security"]
-  t31["actionPinCheck"]
-  t32["ci"]
-  t33["scorecard"]
-  t34["codeql"]
-  t35["reviewBase"]
-  t36["review"]
-  t37["release"]
-  t38["actionRelease"]
-  t39["publishJsr"]
-  t40["cliBinaries"]
-  t41["cliSign"]
-  t42["cliPackage"]
-  t43["cliUpload"]
-  t44["cliFormulaVerify"]
-  t45["cliTap"]
-  t46["publish"]
-  t47["default"]
+  t9["provisionTools"]
+  t10["coverageUpload"]
+  t11["apiDocs"]
+  t12["apiDocsCheck"]
+  t13["apiReference"]
+  t14["syncWebsite"]
+  t15["docLint"]
+  t16["snippetsCheck"]
+  t17["examplesCheck"]
+  t18["hclGen"]
+  t19["hclSyncCheck"]
+  t20["pluginSync"]
+  t21["pluginSyncCheck"]
+  t22["launcherSync"]
+  t23["launcherSyncCheck"]
+  t24["skillsCheck"]
+  t25["graphDoc"]
+  t26["graphDocCheck"]
+  t27["pluginVersionCheck"]
+  t28["prBodyLint"]
+  t29["coreFloorCheck"]
+  t30["lockCheck"]
+  t31["security"]
+  t32["actionPinCheck"]
+  t33["ci"]
+  t34["scorecard"]
+  t35["codeql"]
+  t36["reviewBase"]
+  t37["review"]
+  t38["release"]
+  t39["actionRelease"]
+  t40["publishJsr"]
+  t41["cliBinaries"]
+  t42["cliSign"]
+  t43["cliPackage"]
+  t44["cliUpload"]
+  t45["cliFormulaVerify"]
+  t46["cliTap"]
+  t47["cliChocolateyVerify"]
+  t48["cliChocolatey"]
+  t49["publish"]
+  t50["default"]
   t1 --> t5
   t5 --> t6
   t6 --> t8
-  t8 --> t9
-  t2 --> t32
-  t3 --> t32
-  t4 --> t32
-  t8 --> t32
-  t9 --> t32
-  t11 --> t32
-  t14 --> t32
-  t15 --> t32
-  t16 --> t32
-  t18 --> t32
-  t20 --> t32
-  t22 --> t32
-  t23 --> t32
-  t25 --> t32
-  t26 --> t32
-  t27 --> t32
-  t31 --> t32
-  t30 --> t32
-  t29 --> t32
-  t35 --> t36
-  t37 --> t46
-  t39 --> t46
-  t32 --> t47
+  t8 --> t10
+  t9 --> t10
+  t9 --> t31
+  t2 --> t33
+  t3 --> t33
+  t4 --> t33
+  t8 --> t33
+  t10 --> t33
+  t12 --> t33
+  t15 --> t33
+  t16 --> t33
+  t17 --> t33
+  t19 --> t33
+  t21 --> t33
+  t23 --> t33
+  t24 --> t33
+  t26 --> t33
+  t27 --> t33
+  t28 --> t33
+  t32 --> t33
+  t31 --> t33
+  t30 --> t33
+  t36 --> t37
+  t38 --> t49
+  t40 --> t49
+  t33 --> t50
 ```
 
 ## Targets
 
-| Target               | Description                                                              | Depends on                                                                                                                                                                                                                                                                                  |
-| -------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `clean`              | Remove build artifacts                                                   | —                                                                                                                                                                                                                                                                                           |
-| `restore`            | Warm the module cache                                                    | —                                                                                                                                                                                                                                                                                           |
-| `format`             | Check formatting (deno fmt --check)                                      | —                                                                                                                                                                                                                                                                                           |
-| `lint`               | Lint the workspace (deno lint)                                           | —                                                                                                                                                                                                                                                                                           |
-| `spell`              | Spell-check the repository (cspell)                                      | —                                                                                                                                                                                                                                                                                           |
-| `check`              | Type-check the whole workspace                                           | `restore`                                                                                                                                                                                                                                                                                   |
-| `test`               | Run the test suite with coverage                                         | `check`                                                                                                                                                                                                                                                                                     |
-| `integration`        | Run the subprocess e2e suite (real processes, OS matrix)                 | —                                                                                                                                                                                                                                                                                           |
-| `coverage`           | Enforce the 95% coverage gate                                            | `test`                                                                                                                                                                                                                                                                                      |
-| `coverageUpload`     | Upload the coverage report to Codecov                                    | `coverage`                                                                                                                                                                                                                                                                                  |
-| `apiDocs`            | Generate agent-readable API docs (llms.txt, llms-full.txt, READMEs)      | —                                                                                                                                                                                                                                                                                           |
-| `apiDocsCheck`       | Verify the generated API docs are current                                | —                                                                                                                                                                                                                                                                                           |
-| `apiReference`       | Generate the structured API reference (dist/api.json) for the website    | —                                                                                                                                                                                                                                                                                           |
-| `syncWebsite`        | Open and merge a website PR with refreshed llms.txt + api.json           | —                                                                                                                                                                                                                                                                                           |
-| `docLint`            | Fail on missing JSDoc or first-party private-type refs (deno doc --lint) | —                                                                                                                                                                                                                                                                                           |
-| `snippetsCheck`      | Type-check marked doc snippets; ban inline jsr: imports                  | —                                                                                                                                                                                                                                                                                           |
-| `examplesCheck`      | Type-check every example, list its targets, verify its CI                | —                                                                                                                                                                                                                                                                                           |
-| `hclGen`             | Regenerate the Terraform/OpenTofu wrappers from one template             | —                                                                                                                                                                                                                                                                                           |
-| `hclSyncCheck`       | Verify the Terraform/OpenTofu wrappers match their template              | —                                                                                                                                                                                                                                                                                           |
-| `pluginSync`         | Sync plugins/zuke/skills/ from skills/ (real copies, not a symlink)      | —                                                                                                                                                                                                                                                                                           |
-| `pluginSyncCheck`    | Verify plugins/zuke/skills/ matches skills/ (no drift)                   | —                                                                                                                                                                                                                                                                                           |
-| `launcherSync`       | Regenerate ./zuke and zuke.ps1 from @zuke/cli's launcher template        | —                                                                                                                                                                                                                                                                                           |
-| `launcherSyncCheck`  | Verify ./zuke and zuke.ps1 match @zuke/cli's launcher template           | —                                                                                                                                                                                                                                                                                           |
-| `skillsCheck`        | Validate skills/ against the Agent Skills spec (frontmatter, names)      | —                                                                                                                                                                                                                                                                                           |
-| `graphDoc`           | Regenerate docs/graph.md — this build's graph as a Mermaid page          | —                                                                                                                                                                                                                                                                                           |
-| `graphDocCheck`      | Verify docs/graph.md matches the current build graph                     | —                                                                                                                                                                                                                                                                                           |
-| `pluginVersionCheck` | Verify a skills change also bumped the plugin version                    | —                                                                                                                                                                                                                                                                                           |
-| `prBodyLint`         | Fail if the PR body has code release-please's parser can't handle        | —                                                                                                                                                                                                                                                                                           |
-| `coreFloorCheck`     | Type-check every package against the @zuke/core version it declares      | —                                                                                                                                                                                                                                                                                           |
-| `lockCheck`          | Verify the run did not rewrite deno.lock                                 | —                                                                                                                                                                                                                                                                                           |
-| `security`           | Run supply-chain security scanners (zuke/security)                       | —                                                                                                                                                                                                                                                                                           |
-| `actionPinCheck`     | Verify the workflows only use inputs the released action has             | —                                                                                                                                                                                                                                                                                           |
-| `ci`                 | Full pre-commit / CI gate                                                | `format`, `lint`, `spell`, `coverage`, `coverageUpload`, `apiDocsCheck`, `docLint`, `snippetsCheck`, `examplesCheck`, `hclSyncCheck`, `pluginSyncCheck`, `launcherSyncCheck`, `skillsCheck`, `graphDocCheck`, `pluginVersionCheck`, `prBodyLint`, `actionPinCheck`, `security`, `lockCheck` |
-| `scorecard`          | OpenSSF Scorecard (runs in CI via scorecard.yml)                         | —                                                                                                                                                                                                                                                                                           |
-| `codeql`             | CodeQL static analysis (runs in CI via codeql.yml)                       | —                                                                                                                                                                                                                                                                                           |
-| `reviewBase`         | Fetch the base branch the AI review diffs against                        | —                                                                                                                                                                                                                                                                                           |
-| `review`             | AI review of the diff (security + code quality)                          | `reviewBase`                                                                                                                                                                                                                                                                                |
-| `release`            | Maintain release PRs and GitHub releases (release-please)                | —                                                                                                                                                                                                                                                                                           |
-| `actionRelease`      | Tag a new version of the Marketplace action when it changed              | —                                                                                                                                                                                                                                                                                           |
-| `publishJsr`         | Publish new package versions to JSR, core first                          | —                                                                                                                                                                                                                                                                                           |
-| `cliBinaries`        | Compile the CLI's standalone binaries when its release lacks them        | —                                                                                                                                                                                                                                                                                           |
-| `cliSign`            | Sign and notarize the CLI's macOS binaries (macOS only)                  | —                                                                                                                                                                                                                                                                                           |
-| `cliPackage`         | Pack the CLI's binaries into release archives and SHA256SUMS             | —                                                                                                                                                                                                                                                                                           |
-| `cliUpload`          | Upload the CLI's archives, attestation and SHA256SUMS                    | —                                                                                                                                                                                                                                                                                           |
-| `cliFormulaVerify`   | Install the CLI's formula with the real brew and test it                 | —                                                                                                                                                                                                                                                                                           |
-| `cliTap`             | Publish the CLI's formula to the Homebrew tap                            | —                                                                                                                                                                                                                                                                                           |
-| `publish`            | Release then publish new versions to JSR                                 | `release`, `publishJsr`                                                                                                                                                                                                                                                                     |
-| `default`            | Default: run the full CI gate                                            | `ci`                                                                                                                                                                                                                                                                                        |
+| Target                | Description                                                                                 | Depends on                                                                                                                                                                                                                                                                                  |
+| --------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `clean`               | Remove build artifacts                                                                      | —                                                                                                                                                                                                                                                                                           |
+| `restore`             | Warm the module cache                                                                       | —                                                                                                                                                                                                                                                                                           |
+| `format`              | Check formatting (deno fmt --check)                                                         | —                                                                                                                                                                                                                                                                                           |
+| `lint`                | Lint the workspace (deno lint)                                                              | —                                                                                                                                                                                                                                                                                           |
+| `spell`               | Spell-check the repository (cspell)                                                         | —                                                                                                                                                                                                                                                                                           |
+| `check`               | Type-check the whole workspace                                                              | `restore`                                                                                                                                                                                                                                                                                   |
+| `test`                | Run the test suite with coverage                                                            | `check`                                                                                                                                                                                                                                                                                     |
+| `integration`         | Run the subprocess e2e suite (real processes, OS matrix)                                    | —                                                                                                                                                                                                                                                                                           |
+| `coverage`            | Enforce the 95% coverage gate                                                               | `test`                                                                                                                                                                                                                                                                                      |
+| `provisionTools`      | Provision the pinned scanner binaries into .zuke/tools                                      | —                                                                                                                                                                                                                                                                                           |
+| `coverageUpload`      | Upload the coverage report to Codecov                                                       | `coverage`, `provisionTools`                                                                                                                                                                                                                                                                |
+| `apiDocs`             | Generate agent-readable API docs (llms.txt, llms-full.txt, READMEs)                         | —                                                                                                                                                                                                                                                                                           |
+| `apiDocsCheck`        | Verify the generated API docs are current                                                   | —                                                                                                                                                                                                                                                                                           |
+| `apiReference`        | Generate the structured API reference (dist/api.json) for the website                       | —                                                                                                                                                                                                                                                                                           |
+| `syncWebsite`         | Open and merge a website PR with refreshed llms.txt + api.json                              | —                                                                                                                                                                                                                                                                                           |
+| `docLint`             | Fail on missing JSDoc or first-party private-type refs (deno doc --lint)                    | —                                                                                                                                                                                                                                                                                           |
+| `snippetsCheck`       | Type-check marked doc snippets; ban inline jsr: imports                                     | —                                                                                                                                                                                                                                                                                           |
+| `examplesCheck`       | Type-check every example, list its targets, verify its CI                                   | —                                                                                                                                                                                                                                                                                           |
+| `hclGen`              | Regenerate the Terraform/OpenTofu wrappers from one template                                | —                                                                                                                                                                                                                                                                                           |
+| `hclSyncCheck`        | Verify the Terraform/OpenTofu wrappers match their template                                 | —                                                                                                                                                                                                                                                                                           |
+| `pluginSync`          | Sync plugins/zuke/skills/ from skills/ (real copies, not a symlink)                         | —                                                                                                                                                                                                                                                                                           |
+| `pluginSyncCheck`     | Verify plugins/zuke/skills/ matches skills/ (no drift)                                      | —                                                                                                                                                                                                                                                                                           |
+| `launcherSync`        | Regenerate ./zuke and zuke.ps1 from @zuke/cli's launcher template                           | —                                                                                                                                                                                                                                                                                           |
+| `launcherSyncCheck`   | Verify ./zuke and zuke.ps1 match @zuke/cli's launcher template                              | —                                                                                                                                                                                                                                                                                           |
+| `skillsCheck`         | Validate skills/ against the Agent Skills spec (frontmatter, names)                         | —                                                                                                                                                                                                                                                                                           |
+| `graphDoc`            | Regenerate docs/graph.md — this build's graph as a Mermaid page                             | —                                                                                                                                                                                                                                                                                           |
+| `graphDocCheck`       | Verify docs/graph.md matches the current build graph                                        | —                                                                                                                                                                                                                                                                                           |
+| `pluginVersionCheck`  | Verify a skills change also bumped the plugin version                                       | —                                                                                                                                                                                                                                                                                           |
+| `prBodyLint`          | Fail if the PR body has code release-please's parser can't handle                           | —                                                                                                                                                                                                                                                                                           |
+| `coreFloorCheck`      | Type-check every package against the @zuke/core version it declares                         | —                                                                                                                                                                                                                                                                                           |
+| `lockCheck`           | Verify the run did not rewrite deno.lock                                                    | —                                                                                                                                                                                                                                                                                           |
+| `security`            | Run supply-chain security scanners (zuke/security)                                          | `provisionTools`                                                                                                                                                                                                                                                                            |
+| `actionPinCheck`      | Verify the workflows only use inputs the released action has                                | —                                                                                                                                                                                                                                                                                           |
+| `ci`                  | Full pre-commit / CI gate                                                                   | `format`, `lint`, `spell`, `coverage`, `coverageUpload`, `apiDocsCheck`, `docLint`, `snippetsCheck`, `examplesCheck`, `hclSyncCheck`, `pluginSyncCheck`, `launcherSyncCheck`, `skillsCheck`, `graphDocCheck`, `pluginVersionCheck`, `prBodyLint`, `actionPinCheck`, `security`, `lockCheck` |
+| `scorecard`           | OpenSSF Scorecard (runs in CI via scorecard.yml)                                            | —                                                                                                                                                                                                                                                                                           |
+| `codeql`              | CodeQL static analysis (runs in CI via codeql.yml)                                          | —                                                                                                                                                                                                                                                                                           |
+| `reviewBase`          | Fetch the base branch the AI review diffs against                                           | —                                                                                                                                                                                                                                                                                           |
+| `review`              | AI review of the diff (security + code quality)                                             | `reviewBase`                                                                                                                                                                                                                                                                                |
+| `release`             | Maintain release PRs and GitHub releases (release-please)                                   | —                                                                                                                                                                                                                                                                                           |
+| `actionRelease`       | Tag a new version of the Marketplace action when it changed                                 | —                                                                                                                                                                                                                                                                                           |
+| `publishJsr`          | Publish new package versions to JSR, core first                                             | —                                                                                                                                                                                                                                                                                           |
+| `cliBinaries`         | Compile the CLI's standalone binaries when its release lacks them                           | —                                                                                                                                                                                                                                                                                           |
+| `cliSign`             | Sign and notarize the CLI's macOS binaries (macOS only)                                     | —                                                                                                                                                                                                                                                                                           |
+| `cliPackage`          | Pack the CLI's binaries into release archives and SHA256SUMS                                | —                                                                                                                                                                                                                                                                                           |
+| `cliUpload`           | Attach the CLI's archives, attestation and SHA256SUMS to its draft release, then publish it | —                                                                                                                                                                                                                                                                                           |
+| `cliFormulaVerify`    | Install the CLI's formula with the real brew and test it                                    | —                                                                                                                                                                                                                                                                                           |
+| `cliTap`              | Publish the CLI's formula to the Homebrew tap                                               | —                                                                                                                                                                                                                                                                                           |
+| `cliChocolateyVerify` | Install the CLI's Chocolatey package with choco and run it                                  | —                                                                                                                                                                                                                                                                                           |
+| `cliChocolatey`       | Push the CLI's Chocolatey package to the community repository                               | —                                                                                                                                                                                                                                                                                           |
+| `publish`             | Release then publish new versions to JSR                                                    | `release`, `publishJsr`                                                                                                                                                                                                                                                                     |
+| `default`             | Default: run the full CI gate                                                               | `ci`                                                                                                                                                                                                                                                                                        |

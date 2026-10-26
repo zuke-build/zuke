@@ -28,8 +28,8 @@ whole thing to **AI agents** as typed tools. Inspired by
 
 ## Five minutes to a typed build
 
-**1. Install the CLI** — pick one. Both are the same CLI and fully supported;
-the Homebrew binary needs no Deno up front. See [Install](#install).
+**1. Install the CLI** — pick one. Every route is the same CLI and fully
+supported; the binaries need no Deno up front. See [Install](#install).
 
 From JSR (any OS, with Deno):
 
@@ -43,11 +43,17 @@ With Homebrew (macOS, Linux):
 brew install zuke-build/tap/zuke
 ```
 
+With Chocolatey (Windows):
+
+```powershell
+choco install zuke
+```
+
 **2. Set up a project and run it**, whichever way you installed:
 
 ```sh
 zuke setup         # scaffold zuke.ts + the ./zuke launcher
-zuke               # run it (or ./zuke — no install needed)
+zuke               # run the build
 zuke generate-ci   # write .github/workflows/ci.yml from the build
 ```
 
@@ -75,10 +81,10 @@ class MyBuild extends Build {
 await run(MyBuild);
 ```
 
-`./zuke test` runs `lint` then `test`. `./zuke --list` prints every target with
-its description and dependencies. `./zuke graph --output=html` draws the graph.
-And the workflow file is regenerated on every run and verified on CI, so the
-YAML can never drift from the build.
+`zuke test` runs `lint` then `test`. `zuke --list` prints every target with its
+description and dependencies. `zuke graph --output=html` draws the graph. And
+the workflow file is regenerated on every run and verified on CI, so the YAML
+can never drift from the build.
 
 <p align="center">
   <img src="https://github.com/zuke-build/zuke/raw/master/assets/demo.svg" alt="Zuke in action: scaffold a build, list targets, run the gate" width="760" />
@@ -88,10 +94,11 @@ Already have `package.json` scripts or a `Makefile`? `zuke import` turns them
 into a `zuke.ts` with a target per script. Details, the launcher, and a longer
 first build: **[Getting started](./docs/getting-started.md)**.
 
-Prefer to poke at something real? [`examples/`](./examples) holds five cloneable
+Prefer to poke at something real? [`examples/`](./examples) holds six cloneable
 projects — a Deno library gate, a generated-CI-only project, a Node app, a
-library release routine, and a shell script turned into targets — each runnable
-from its own folder with `deno run -A zuke.ts`.
+library release routine, a shell script turned into targets, and a canary
+rollout that runs locally — each runnable from its own folder with the `zuke`
+CLI.
 
 Three short recipes cover what a small project wants first:
 [replace your shell scripts](./docs/recipes/replace-shell-scripts.md),
@@ -109,19 +116,19 @@ Three short recipes cover what a small project wants first:
   `fanOut: true` turns every target into its own job wired by `needs:` edges
   that mirror `dependsOn`. It is regenerated on every run, and
   `generate-ci --check` fails CI when the committed file has drifted. You run
-  the exact same targets locally with `./zuke ci` before you push.
-- **Let your agent run the build.** `./zuke mcp` serves the build over the
+  the exact same targets locally with `zuke ci` before you push.
+- **Let your agent run the build.** `zuke mcp` serves the build over the
   [Model Context Protocol](./docs/mcp.md): an agent lists the targets, reads the
   graph, and runs one with typed parameters, instead of guessing
   `npm run what?`. `zuke setup --mcp` writes the client registration on day one.
-  `./zuke --list --json` and the generated [`llms.txt`](./llms.txt) are the
-  static counterparts, and the [agent skills](./docs/agent-skills.md) teach
-  Claude Code, Codex, and Gemini CLI to write a `zuke.ts` the right way.
+  `zuke --list --json` and the generated [`llms.txt`](./llms.txt) are the static
+  counterparts, and the [agent skills](./docs/agent-skills.md) teach Claude
+  Code, Codex, and Gemini CLI to write a `zuke.ts` the right way.
 - **Just TypeScript.** Build logic is ordinary async functions with full editor
   support — no bespoke DSL. The `$` tagged template from `@zuke/core/shell` runs
   processes with sane defaults and is injection-safe, so it also replaces the
   `scripts/*.sh` nobody dares touch.
-- **A typed wrapper for every tool.** 68 packages: a tiny core, the CLI, and a
+- **A typed wrapper for every tool.** 71 packages: a tiny core, the CLI, and a
   `*Tasks` object per tool — Deno, npm, pnpm, Bun, Docker, Kubernetes,
   Terraform, Vite, Playwright, GitHub, Claude Code, and the rest — whose
   settings lambdas mirror the real flags. See [Packages](./docs/packages.md).
@@ -150,7 +157,7 @@ Teams running Zuke in production:
 ## Install
 
 The `zuke` CLI scaffolds a project, migrates an existing one, and runs its
-build. It ships two ways, built from the same release: pick the one that suits
+build. It ships three ways, built from the same release: pick the one that suits
 the machine. `zuke --version` tells you which one you are running.
 
 ### From JSR (any OS, with Deno)
@@ -174,6 +181,19 @@ build-provenance attestation you can verify. Upgrade with `brew upgrade zuke`.
 See [installing](./docs/install.md) for how to check a download, and for the
 [code signing policy](./docs/install.md#code-signing-policy).
 
+### With Chocolatey (Windows)
+
+```powershell
+choco install zuke
+```
+
+A standalone binary: no Deno needed. The executable is **not Authenticode-signed
+yet**, so SmartScreen may warn on first run; until it is, the archive it is
+installed from carries the same SHA-256 pin and build-provenance attestation as
+the others. Upgrade with `choco upgrade zuke`. See
+[installing](./docs/install.md#with-chocolatey-windows) for how to check a
+download.
+
 ### Set up a project
 
 The same steps, however you installed the CLI:
@@ -182,7 +202,7 @@ The same steps, however you installed the CLI:
 zuke setup          # scaffold zuke.ts, zuke.json and the ./zuke launcher
 zuke setup --mcp    # …and register the build's MCP server for your agent
 zuke import         # or migrate package.json scripts / a Makefile instead
-zuke                # run the default target; any other command runs the build, like ./zuke ci
+zuke                # run the default target; any other command runs the build, like zuke ci
 zuke add docker     # add @zuke/docker to the project (also: remove, cache, relock)
 ```
 
@@ -196,7 +216,7 @@ launcher that uses the Deno on your `PATH` and fails closed without one, for a
 project that must never download a tool from its build entry point.
 
 > [!NOTE]
-> **Maturity.** Every one of the 68 packages is `1.x` and follows full semver —
+> **Maturity.** Every one of the 71 packages is `1.x` and follows full semver —
 > `@zuke/core`, the `@zuke/cli` command, and all the tool wrappers. A minor or
 > patch release never breaks a public symbol; a breaking change bumps the major.
 > See [Versioning & compatibility](./docs/versioning.md). The npm scope `@zuke`
@@ -231,7 +251,7 @@ refused on contributor-controlled events:
 
 ## Packages
 
-Zuke ships as a JSR workspace of 68 packages:
+Zuke ships as a JSR workspace of 71 packages:
 [`@zuke/core`](https://jsr.io/@zuke/core) (the engine, the `$` shell, and the
 tooling base classes), the [`@zuke/cli`](https://jsr.io/@zuke/cli) command, a
 generic [`@zuke/cmd`](https://jsr.io/@zuke/cmd) fallback, plugins such as
@@ -251,6 +271,8 @@ a typed wrapper per tool — [`@zuke/deno`](https://jsr.io/@zuke/deno),
 [`@zuke/kubectl`](https://jsr.io/@zuke/kubectl),
 [`@zuke/terraform`](https://jsr.io/@zuke/terraform),
 [`@zuke/vite`](https://jsr.io/@zuke/vite),
+[`@zuke/flutter`](https://jsr.io/@zuke/flutter),
+[`@zuke/dart`](https://jsr.io/@zuke/dart),
 [`@zuke/playwright`](https://jsr.io/@zuke/playwright), and more.
 
 The full matrix with live JSR badges is in **[Packages](./docs/packages.md)**.

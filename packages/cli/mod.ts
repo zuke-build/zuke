@@ -397,7 +397,7 @@ async function commandSetup(
     return 1;
   }
   host.log(paint.ok(
-    `Done — ${written} file(s) written. Next: ./${launcherName ?? "zuke"}`,
+    `Done — ${written} file(s) written. Next: zuke`,
   ));
   if (interactive) {
     await promptStar(host, prompter, starActions);
@@ -513,7 +513,7 @@ async function commandImport(
   }
   host.log(paint.ok(
     `Done — imported ${result.taskCount} task(s) from ${result.source}; ` +
-      `${written} file(s) written. Next: ./zuke`,
+      `${written} file(s) written. Next: zuke`,
   ));
   return 0;
 }

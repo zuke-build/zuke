@@ -5,11 +5,17 @@
  * What the `zuke` CLI's standalone release is made of, and when one is owed.
  *
  * Besides JSR, each `@zuke/cli` release ships as `deno compile` binaries on
- * its GitHub release (`cli-v<version>`) and through the Homebrew tap. This
+ * its GitHub release (`cli-v<version>`), through the Homebrew tap, and, for
+ * Windows, through Chocolatey. This
  * module is the vocabulary every stage shares — the targets, the archive and
  * checksum names, where a published asset lives, the formula — so the
  * stages, which run as separate CI jobs on separate machines, cannot disagree
  * about any of it.
+ *
+ * Releases are immutable once published, so release-please cuts the CLI's
+ * release as a draft: the pipeline attaches the binaries, checksums and
+ * attestation to the draft and only then publishes it, which locks the
+ * release with everything already inside.
  *
  * Every stage is idempotent, and {@link planCliRelease} is what makes the
  * pipeline so: it asks what is already published, so a run that failed half
@@ -49,8 +55,8 @@ export interface CliTarget {
 }
 
 /**
- * The platforms Homebrew runs on. Windows is not one, so it gets no binary
- * here: a Windows build would ship through another channel.
+ * The platforms Homebrew runs on. Windows is not one: its binary is
+ * {@link WINDOWS_TRIPLE}, shipped as a zip through Chocolatey.
  */
 export const CLI_TARGETS: readonly CliTarget[] = [
   { triple: "aarch64-apple-darwin", os: "macos", arch: "arm" },
@@ -63,6 +69,12 @@ export const CLI_TARGETS: readonly CliTarget[] = [
 export const MACOS_TARGETS: readonly CliTarget[] = CLI_TARGETS.filter((t) =>
   t.os === "macos"
 );
+
+/** The Windows target, whose `zuke.exe` ships in a zip for Chocolatey. */
+export const WINDOWS_TRIPLE: DenoCompileTarget = "x86_64-pc-windows-msvc";
+
+/** The Chocolatey package id the Windows binary is published under. */
+export const CHOCOLATEY_ID = "zuke";
 
 /**
  * The first CLI version that ships as a standalone binary.
@@ -82,6 +94,11 @@ export function cliReleaseTag(version: string): string {
 /** The archive a target's binary ships in: `zuke-1.14.0-aarch64-apple-darwin.tar.gz`. */
 export function archiveName(version: string, target: CliTarget): string {
   return `${CLI_BINARY}-${version}-${target.triple}.tar.gz`;
+}
+
+/** The archive the Windows binary ships in: `zuke-1.15.0-x86_64-pc-windows-msvc.zip`. */
+export function windowsArchiveName(version: string): string {
+  return `${CLI_BINARY}-${version}-${WINDOWS_TRIPLE}.zip`;
 }
 
 /** The provenance attestation bundle published beside the archives. */
@@ -186,20 +203,29 @@ export function cliFormula(
 
 /** What {@link planCliRelease} asks about the published state. */
 export interface CliReleaseProbe {
-  /** Whether the GitHub release for the version exists yet. */
-  releaseExists(): Promise<boolean>;
+  /**
+   * Whether the GitHub release for the version is published. A draft is not:
+   * it is invisible without a token, and still takes assets.
+   */
+  releasePublished(): Promise<boolean>;
   /** Whether that release already carries its {@link CHECKSUMS}. */
   checksumsPublished(): Promise<boolean>;
   /** The tap's current formula source, or `undefined` when it has none. */
   tapFormula(): Promise<string | undefined>;
+  /** Whether that release carries the Windows zip, which older ones lack. */
+  windowsArchivePublished(): Promise<boolean>;
+  /** Whether Chocolatey has the version, approved or still in moderation. */
+  chocolateyPublished(): Promise<boolean>;
 }
 
 /** What a release run still has to do for a version. */
 export interface CliReleasePlan {
-  /** Build, sign and upload the binaries. */
+  /** Build, sign and upload the binaries, then publish the release. */
   readonly build: boolean;
   /** Verify the formula and publish it to the tap. */
   readonly tap: boolean;
+  /** Verify the Chocolatey package and push it. */
+  readonly chocolatey: boolean;
   /** Why, in a sentence for the log. */
   readonly reason: string;
 }
@@ -208,12 +234,20 @@ export interface CliReleasePlan {
  * What is owed for `version`, from what is already published.
  *
  * - Older than {@link FIRST_BINARY_VERSION}: nothing, ever.
- * - No GitHub release yet: nothing. Release-please has not cut this version,
- *   and the binaries go on its release.
- * - A release without {@link CHECKSUMS}: everything. The manifest is uploaded
- *   last, so its absence means the binaries are missing or incomplete.
+ * - The release is not published: everything. Release-please cut it as a
+ *   draft, and it is published only once the binaries are attached, so an
+ *   unpublished release means they are still owed. (A version release-please
+ *   has not cut at all fails at the upload, which finds no draft: the
+ *   version in the checkout only moves when a release PR merges.)
+ * - Published without {@link CHECKSUMS}: nothing, and the reason says why. A
+ *   published release is immutable, so nothing can be added to it; the next
+ *   CLI release ships the binaries. Only a release published before the
+ *   draft flow can be in this state.
  * - Binaries published but the tap's formula does not point at them: only the
  *   tap, which a failed verify or publish leaves behind.
+ * - Binaries published, with the Windows zip, but Chocolatey lacks the
+ *   version: the Chocolatey package, which a failed verify or push leaves
+ *   behind. A release without the zip predates the Windows binary.
  * - Otherwise nothing: the run is a push that released no CLI.
  */
 export async function planCliRelease(
@@ -225,34 +259,66 @@ export async function planCliRelease(
     return {
       build: false,
       tap: false,
+      chocolatey: false,
       reason: `${tag} predates the first binary release ` +
         `(${FIRST_BINARY_VERSION}), so it ships from JSR only.`,
     };
   }
-  if (!(await probe.releaseExists())) {
-    return { build: false, tap: false, reason: `${tag} is not released yet.` };
-  }
-  if (!(await probe.checksumsPublished())) {
+  if (!(await probe.releasePublished())) {
     return {
       build: true,
       tap: true,
-      reason: `${tag} has no ${CHECKSUMS}, so its binaries are owed.`,
+      chocolatey: true,
+      reason: `${tag} is not published yet, so its binaries are owed; the ` +
+        "release is published once they are attached.",
+    };
+  }
+  if (!(await probe.checksumsPublished())) {
+    return {
+      build: false,
+      tap: false,
+      chocolatey: false,
+      reason: `${tag} was published without its binaries, and a published ` +
+        "release is immutable, so they cannot be added; the next CLI " +
+        "release ships them.",
     };
   }
   const formula = await probe.tapFormula();
+  const chocolatey = await probe.windowsArchivePublished() &&
+    !(await chocolateyHas(probe));
+  const also = chocolatey ? " Its Chocolatey package is owed." : "";
   if (formula === undefined || !formula.includes(`/${tag}/`)) {
     return {
       build: false,
       tap: true,
+      chocolatey,
       reason: `${tag}'s binaries are published, but the tap's formula ` +
-        "does not point at them yet.",
+        `does not point at them yet.${also}`,
     };
   }
   return {
     build: false,
     tap: false,
-    reason: `${tag} is published, and the tap's formula points at it.`,
+    chocolatey,
+    reason: `${tag} is published, and the tap's formula points at it.${also}`,
   };
+}
+
+/**
+ * Whether Chocolatey has the version. A Chocolatey that cannot be asked (a
+ * challenge, a rate limit, an outage) reads as "no": the package's own jobs
+ * then fail visibly, while the tap, planned beside it, is not held up.
+ */
+async function chocolateyHas(probe: CliReleaseProbe): Promise<boolean> {
+  try {
+    return await probe.chocolateyPublished();
+  } catch (error) {
+    console.warn(
+      `Could not ask Chocolatey whether it has the version, so the package ` +
+        `is planned: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return false;
+  }
 }
 
 /** Where {@link httpCliReleaseProbe} sends its requests: `fetch`, or a fake. */
@@ -278,9 +344,18 @@ export function httpCliReleaseProbe(
     throw new Error(`HEAD ${url} answered ${response.status}`);
   };
   return {
-    releaseExists: () =>
+    // Anonymous, so a draft answers 404 like a missing release.
+    releasePublished: () =>
       present(`https://github.com/${CLI_REPO}/releases/tag/${tag}`),
     checksumsPublished: () => present(releaseAssetUrl(version, CHECKSUMS)),
+    windowsArchivePublished: () =>
+      present(releaseAssetUrl(version, windowsArchiveName(version))),
+    // The package page answers for a version in moderation too, so a pushed
+    // package is not pushed again while it waits for approval.
+    chocolateyPublished: () =>
+      present(
+        `https://community.chocolatey.org/packages/${CHOCOLATEY_ID}/${version}`,
+      ),
     tapFormula: async () => {
       const url = `https://raw.githubusercontent.com/${CLI_TAP.repo}/` +
         `${CLI_TAP.branch}/Formula/${CLI_BINARY}.rb`;

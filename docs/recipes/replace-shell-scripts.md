@@ -131,12 +131,12 @@ await run(Release);
 ```
 
 ```sh
-./zuke tag --release-version 1.1.0   # clean → test → tag, and stop there
-./zuke --list                # every step, with its description
+zuke tag --release-version 1.1.0   # clean → test → tag, and stop there
+zuke --list                        # every step, with its description
 ```
 
 The git steps moved from `$` to the typed `GitTasks` wrapper, where the flags
-are methods and a typo is a compile error. `./zuke --list`, `graph`,
-`--parallel` and `./zuke mcp` come with the targets for free. All three versions
-of this script, side by side, are in
+are methods and a typo is a compile error. `zuke --list`, `graph`, `--parallel`
+and `zuke mcp` come with the targets for free. All three versions of this
+script, side by side, are in
 [`examples/scripts-to-zuke`](../../examples/scripts-to-zuke).

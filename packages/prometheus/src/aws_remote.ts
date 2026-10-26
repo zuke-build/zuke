@@ -23,7 +23,7 @@ import {
   type PlaintextAllowance,
   readAuthFile,
 } from "./auth_http.ts";
-import type { AwsCredentials } from "./aws_sigv4.ts";
+import type { AwsCredentials } from "@zuke/core";
 import type { PrometheusCredentialsContext } from "./credentials.ts";
 import { own } from "./shape.ts";
 import type { Expiring } from "./token_cache.ts";

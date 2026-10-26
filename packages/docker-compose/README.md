@@ -132,7 +132,9 @@ when `n` is not 0:
   created ones included (`ps -a`), keeps them; none running brings the stable
   service up first; and anything else surges, since a scale that keeps them
   would start a stopped one on another image as stable. It refuses without one.
-  After a `stage` that changed nothing, nothing runs.
+  After a `stage` that changed nothing, nothing runs — nor on a rollback the
+  engine runs with no record at all: nothing was staged, so the running
+  containers are left alone.
 
 **The project is part of the record.** Service names mean something only inside
 a Compose project, so `stage` records the global flags `.compose(...)` gives
@@ -291,7 +293,8 @@ function dockerComposeCanary(configure: Configure<DockerComposeCanarySettings>):
     replica on the stable image, then the stable service recreated on it.
     The stable replicas are then read again and must be on the stable
     image, before the canary service goes to none. Run by hand, the stable
-    image is the one set with `.stable(...)`.
+    image is the one set with `.stable(...)`. A rollback with nothing
+    recorded runs nothing: nothing was staged.
 
   The stable service's `scale:` in the Compose file must equal
   `.replicas(...)`, and Compose 2.21 or later (`docker compose`) is
@@ -431,10 +434,13 @@ class DockerComposeCanary
       `d.stable('sha256:<the recorded stable image ID>')`.
     - `stage` failed before recording them: nothing had changed, so
       nothing runs — and the settings are not even read.
-    - Nothing recorded (`rollout.abort` run by hand, a fresh run): the
-      settings, with the image set by
-      {@link DockerComposeCanarySettings.stable}. Without one this refuses,
-      since claiming a rollback it cannot do would be worse.
+    - Nothing recorded, on a rollback (`ctx.reason` is `"rollback"`):
+      nothing was staged, so nothing runs — no container is read or scaled,
+      and the settings are not even read.
+    - Nothing recorded, run by hand (`rollout.abort` on its own, a fresh
+      run, or an engine that names no reason): the settings, with the image
+      set by {@link DockerComposeCanarySettings.stable}. Without one this
+      refuses, since claiming a rollback it cannot do would be worse.
 
     Every command sets the stable variable to the image ID `stage` recorded,
     not to the reference, so a tag moved since cannot bring in an image
@@ -541,8 +547,9 @@ class DockerComposeCanarySettings
     by hand — a reference with no whitespace or control characters. Such a
     run is fresh, with no record of a rollout, so it has nothing else to go
     on — and the release it is undoing has usually been promoted already. A
-    rollback the engine runs mid-rollout does not use it: that one returns to
-    the image ID `stage` saw the stable replicas running.
+    rollback the engine runs does not use it: mid-rollout it returns to the
+    image ID `stage` saw the stable replicas running, and with nothing
+    recorded it runs nothing, since nothing was staged.
   compose(configure: Configure<DockerComposeSettings>): this
     Global flags for every Compose command the platform runs —
     `(s) => s.file("compose.yml").projectName("shop")`, or `.usePlugin()` to
@@ -1097,6 +1104,11 @@ interface DockerComposeCanaryContext
 
   readonly state: TargetStateHandle
     The rollout's durable platform state, shared by every call.
+  readonly reason?: "rollback" | "hand-run"
+    Why `abort` runs: `"rollback"` when the engine undoes a rollout,
+    `"hand-run"` for `rollout.abort` run on its own. An engine older than
+    this field leaves it out, which is treated as a hand run — the behaviour
+    from before the field existed.
   reportSummary(pairs: SummaryPairs): void
     Add key/value pairs to the calling target's row in the build summary.
 

@@ -1,6 +1,6 @@
 {
   "name": "@zuke/chocolatey",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "license": "MIT",
   "description": "Ship a prebuilt Windows binary through Chocolatey from a Zuke build — a typed choco CLI wrapper, an injection-safe package renderer for a release-hosted zip, local-source install verification, masked-key publishing, and its Windows CI job.",
   "exports": {

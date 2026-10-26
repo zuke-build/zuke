@@ -219,6 +219,33 @@ Deno.test("the remote store restores outputs on a local miss", async () => {
   assertEquals(dec(host.files.get("dist/app.js") ?? enc("")), "built"); // written back
 });
 
+Deno.test("a restore honours the store's maxInflatedBytes", async () => {
+  const host = new MemHost();
+  host.files.set("in.txt", enc("v1"));
+  host.dirs.set("dist", ["app.js"]);
+  host.files.set("dist/app.js", enc("built"));
+  const t = buildTarget();
+  const fp = await fingerprint(t, host);
+  // The archive inflates past 64 bytes (a tar header alone is 512).
+  class TinyStore extends MemCacheStore {
+    readonly maxInflatedBytes = 64;
+  }
+  const store = new TinyStore();
+  store.map.set(
+    remoteCacheKey("build", fp),
+    await archiveOutputs(["dist"], host),
+  );
+  host.dirs.delete("dist");
+  host.files.delete("dist/app.js");
+  const warnings: string[] = [];
+  const cache = await openCache(STORE, host, {
+    remote: store,
+    warn: (message) => warnings.push(message),
+  });
+  assertEquals(await cache.upToDate(t), false); // refused: a rebuild
+  assertEquals(warnings.some((w) => w.includes("more than 64 bytes")), true);
+});
+
 Deno.test("a successful run uploads outputs to the remote store", async () => {
   const host = new MemHost();
   host.files.set("in.txt", enc("v1"));

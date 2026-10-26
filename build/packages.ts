@@ -77,7 +77,10 @@ export const PACKAGES = [
   "otel",
   "qr",
   "apple",
+  "google",
   "signpath",
+  "flutter",
+  "dart",
   "prometheus",
   // After prometheus, which it depends on (PACKAGE_DEPENDENCIES).
   "canary",

@@ -68,7 +68,7 @@ function requirePacked(name: string, format: DownloadFormat): ArchiveFormat {
   if (format === "raw") {
     throw new Error(
       `tool "${name}": a tree install needs an archive ` +
-        `("tar.gz" or "zip"), not "raw".`,
+        `("tar.gz", "tar.xz" or "zip"), not "raw".`,
     );
   }
   return format;
@@ -121,8 +121,8 @@ export class ToolInstallSettings {
   }
 
   /**
-   * Treat the download as a `"tar.gz"` or `"zip"` to unpack (default `"raw"`,
-   * the bare binary). Pair with {@link binaryPath} for the binary inside. Pass a
+   * Treat the download as a `"tar.gz"`, `"tar.xz"` or `"zip"` to unpack
+   * (default `"raw"`, the bare binary). Pair with {@link binaryPath} for the binary inside. Pass a
    * `(platform) => format` resolver when the format is per-platform, as it is
    * for most Go and Rust releases — `.tar.gz` on Linux and macOS, `.zip` on
    * Windows (see {@link InstallReleaseOptions.archive}).
@@ -156,7 +156,9 @@ export class ToolInstallSettings {
 
   /**
    * For a tree install, the paths (relative to the stripped root) to mark
-   * executable on POSIX — a runtime's `bin/node`, `bin/npm`, … Ignored by a
+   * executable on POSIX — a runtime's `bin/node`, `bin/npm`, … Extraction
+   * already keeps the archive's mode bits, so this is a fallback for an
+   * archive that ships them without the executable bit. Ignored by a
    * single-binary install.
    */
   bins(...paths: string[]): this {

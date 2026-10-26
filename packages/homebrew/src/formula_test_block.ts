@@ -9,20 +9,8 @@
  * @module
  */
 
+import { joinShellArgs } from "@zuke/core/shell";
 import { rubyString } from "./ruby.ts";
-
-/** A shell word that needs no quoting. */
-const PLAIN_WORD = /^[A-Za-z0-9_@%+=:,./-]+$/;
-
-/**
- * Quote `word` for the POSIX shell `shell_output` runs its command through: a
- * plain word as it is, anything else in single quotes, with each embedded `'`
- * written as `'\''`. Nothing a single-quoted word holds is special to the
- * shell, so an argument can never become a second command.
- */
-function shellWord(word: string): string {
-  return PLAIN_WORD.test(word) ? word : `'${word.replaceAll("'", "'\\''")}'`;
-}
 
 /** What a formula test checks the command printed: the version, or a text. */
 export type FormulaTestExpectation = { kind: "version" } | {
@@ -100,7 +88,9 @@ export class FormulaTestSettings {
           .join(", "),
       ];
     }
-    const line = [binary, ...this.args_].map(shellWord).join(" ");
+    // `shell_output` runs its command through a POSIX shell, so every word is
+    // quoted for it: an argument can never become a second command.
+    const line = joinShellArgs([binary, ...this.args_]);
     // `#{bin}` is the one interpolation, written here rather than passed
     // through the escaper — which would, correctly, neutralise it.
     const command = `"#{bin}/${rubyString(line).slice(1)}`;

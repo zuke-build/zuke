@@ -14,6 +14,7 @@ import { sha256Hex } from "../src/internal.ts";
 import { createTarGzip } from "../src/compression.ts";
 import { makeZip, STORED } from "./_zip.ts";
 import { withTemp } from "./_temp.ts";
+import { fixture, FLUTTER_TAR_XZ } from "./_xz.ts";
 
 /**
  * The suffix `installRelease` adds to the installed filename for the host
@@ -158,6 +159,24 @@ Deno.test("installRelease (tar.gz) unpacks and installs the inner binary", async
     assertEquals(bin.path.endsWith(`/mytool${EXE}`), true);
     const contents = new TextDecoder().decode(await Deno.readFile(String(bin)));
     assertEquals(contents, "tarred-binary");
+  });
+});
+
+Deno.test("installRelease (tar.xz) unpacks and installs the inner binary", async () => {
+  await withTemp(async (root) => {
+    const bin = await installRelease({
+      name: "flutter",
+      destDir: `${root}/install`,
+      archive: "tar.xz",
+      binaryPath: "flutter/bin/flutter",
+      url: () => "https://example.com/flutter.tar.xz",
+      download: fakeDownload(fixture(FLUTTER_TAR_XZ)),
+    });
+    assertEquals(bin.path.endsWith(`/flutter${EXE}`), true);
+    assertEquals(
+      new TextDecoder().decode(await Deno.readFile(String(bin))),
+      "#!/bin/sh\necho flutter\n",
+    );
   });
 });
 

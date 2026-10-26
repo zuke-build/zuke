@@ -1,5 +1,53 @@
 # Changelog
 
+## [1.77.0](https://github.com/zuke-build/zuke/compare/core-v1.76.0...core-v1.77.0) (2026-10-21)
+
+
+### Features
+
+* **core:** cache SDK outputs with their .git, long paths and a raised size limit ([#893](https://github.com/zuke-build/zuke/issues/893)) ([216de10](https://github.com/zuke-build/zuke/commit/216de102ae73c5c43794bf1e1f2822697313d114))
+* **core:** keep tar and zip file modes and zip symlinks on extraction ([#891](https://github.com/zuke-build/zuke/issues/891)) ([a9d3933](https://github.com/zuke-build/zuke/commit/a9d3933c2111768c81312f076af24f101442b117))
+
+
+### Bug Fixes
+
+* **core:** speed up tar.xz extraction with the system xz ([#892](https://github.com/zuke-build/zuke/issues/892)) ([f86689d](https://github.com/zuke-build/zuke/commit/f86689d8d7398a5f4bc98ad6f5e87b45f2335b14))
+
+## [1.76.0](https://github.com/zuke-build/zuke/compare/core-v1.75.0...core-v1.76.0) (2026-10-21)
+
+
+### Features
+
+* **core:** remote cache store backed by the GitHub Actions cache ([#877](https://github.com/zuke-build/zuke/issues/877)) ([213d523](https://github.com/zuke-build/zuke/commit/213d5234c03e1fedc314159a77b2f680c2d6c8f5))
+* **core:** S3-compatible remote cache store and HTTP store headers ([#883](https://github.com/zuke-build/zuke/issues/883)) ([b3f6ddb](https://github.com/zuke-build/zuke/commit/b3f6ddbb93144d43ca2719a43745a4da12c9cbc8))
+* **core:** support tar.xz archives in installRelease and installTree ([#878](https://github.com/zuke-build/zuke/issues/878)) ([88c76a5](https://github.com/zuke-build/zuke/commit/88c76a5e46abcfb33636a4bfabe95d0b7d9118a7))
+
+## [1.75.0](https://github.com/zuke-build/zuke/compare/core-v1.74.0...core-v1.75.0) (2026-10-21)
+
+
+### Features
+
+* **core:** add an ES256 JWT signer beside the RS256 one ([#869](https://github.com/zuke-build/zuke/issues/869)) ([7681545](https://github.com/zuke-build/zuke/commit/7681545b12c917debe4ff4e77a2bfe76eeec8dda))
+
+## [1.74.0](https://github.com/zuke-build/zuke/compare/core-v1.73.0...core-v1.74.0) (2026-10-19)
+
+
+### Features
+
+* **core:** render an argv as a paste-able shell command line ([#847](https://github.com/zuke-build/zuke/issues/847)) ([12c43b4](https://github.com/zuke-build/zuke/commit/12c43b4e70a32a2e5ceb08f6ab766fc0aebba724))
+
+## [1.73.0](https://github.com/zuke-build/zuke/compare/core-v1.72.0...core-v1.73.0) (2026-10-14)
+
+
+### Features
+
+* **cli:** publish the Windows binary to Chocolatey, unsigned until Authenticode lands ([#819](https://github.com/zuke-build/zuke/issues/819)) ([60e24a8](https://github.com/zuke-build/zuke/commit/60e24a814f15ee9603cfc9ebf34f49e7c5e37b7e))
+
+
+### Bug Fixes
+
+* **core:** wait on a mutex marker Windows reports as access denied ([#822](https://github.com/zuke-build/zuke/issues/822)) ([159da36](https://github.com/zuke-build/zuke/commit/159da364ce6a918672fff8cb05461b284f11ee36)), closes [#821](https://github.com/zuke-build/zuke/issues/821)
+
 ## [1.72.0](https://github.com/zuke-build/zuke/compare/core-v1.71.0...core-v1.72.0) (2026-10-12)
 
 

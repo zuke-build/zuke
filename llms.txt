@@ -25,8 +25,8 @@ await run(CI);
 
 ## CLI
 
-Run a build with the `zuke` command — `deno run -A zuke.ts <target>` (or
-the `./zuke` launcher). The CLI is self-describing:
+Run a build with the `zuke` command (`deno install -A -g -n zuke
+jsr:@zuke/cli`), from anywhere inside the project. It is self-describing:
 
 ```sh
 zuke <target> [--skip <dep>] [--parallel[=N]]    # run a target and its deps
@@ -150,8 +150,8 @@ Full reference: [docs/cli.md](./docs/cli.md).
 - [@zuke/node](https://jsr.io/@zuke/node) — typed Node.js task wrappers for Zuke builds
 - [@zuke/dprint](https://jsr.io/@zuke/dprint) — typed `dprint` task wrappers for Zuke builds
 - [@zuke/gcloud](https://jsr.io/@zuke/gcloud) — typed Google Cloud tooling for Zuke builds: the `gcloud`
-- [@zuke/aws](https://jsr.io/@zuke/aws) — typed AWS CLI tasks for Zuke builds, readers and a canary analysis
-- [@zuke/az](https://jsr.io/@zuke/az) — typed Azure CLI tasks for Zuke builds, readers and a canary analysis
+- [@zuke/aws](https://jsr.io/@zuke/aws) — typed AWS CLI tasks, readers, and a canary platform and analysis
+- [@zuke/az](https://jsr.io/@zuke/az) — typed Azure CLI tasks, readers, and a canary platform and analysis
 - [@zuke/git](https://jsr.io/@zuke/git) — typed `git` task wrappers for Zuke builds
 - [@zuke/gh](https://jsr.io/@zuke/gh) — typed GitHub tooling for Zuke builds: the `gh` (GitHub CLI) task
 - [@zuke/chocolatey](https://jsr.io/@zuke/chocolatey) — ship a prebuilt Windows binary through
@@ -169,6 +169,9 @@ Full reference: [docs/cli.md](./docs/cli.md).
 - [@zuke/otel](https://jsr.io/@zuke/otel) — an OpenTelemetry (OTLP/HTTP JSON) export plugin for Zuke
 - [@zuke/qr](https://jsr.io/@zuke/qr) — QR codes for any data, from a Zuke build, with no dependency
 - [@zuke/apple](https://jsr.io/@zuke/apple) — typed task wrappers for Apple's code-signing tools in Zuke
+- [@zuke/google](https://jsr.io/@zuke/google) — Google Play publishing for Zuke builds, through the Google
 - [@zuke/signpath](https://jsr.io/@zuke/signpath) — Authenticode signing through
+- [@zuke/flutter](https://jsr.io/@zuke/flutter) — typed `FlutterTasks` wrappers for the
+- [@zuke/dart](https://jsr.io/@zuke/dart) — typed `DartTasks` wrappers for the Dart (https://dart.dev)
 - [@zuke/prometheus](https://jsr.io/@zuke/prometheus) — A typed client for the Prometheus HTTP API, for Zuke builds. `PrometheusTasks`
 - [@zuke/canary](https://jsr.io/@zuke/canary) — Canary releases for Zuke builds. `canary(...)` turns a settings lambda into

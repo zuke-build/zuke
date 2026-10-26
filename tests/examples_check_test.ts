@@ -167,6 +167,7 @@ Deno.test("the shipped examples are discovered and pass the real gate", async ()
   assertEquals(
     all.map((e) => e.dir.replace(/^.*[\\/]/, "")),
     [
+      "canary-release",
       "ci-only",
       "deno-library",
       "node-app",

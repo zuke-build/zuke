@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.4.2](https://github.com/zuke-build/zuke/compare/gcloud-v1.4.1...gcloud-v1.4.2) (2026-10-20)
+
+
+### Bug Fixes
+
+* **gcloud,aws,az,homebrew:** quote recovery commands with the core shell quoter ([#851](https://github.com/zuke-build/zuke/issues/851)) ([62d1623](https://github.com/zuke-build/zuke/commit/62d162367dff7a02b2ac8f639a6644ab61d2c0a4))
+
+## [1.4.1](https://github.com/zuke-build/zuke/compare/gcloud-v1.4.0...gcloud-v1.4.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* **canary:** tell abort whether it is a rollback or a hand run ([#846](https://github.com/zuke-build/zuke/issues/846)) ([6186b80](https://github.com/zuke-build/zuke/commit/6186b8015dba2c06d0591152c2ebbf3ae1e98377))
+
 ## [1.4.0](https://github.com/zuke-build/zuke/compare/gcloud-v1.3.1...gcloud-v1.4.0) (2026-10-08)
 
 

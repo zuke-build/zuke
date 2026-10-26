@@ -47,6 +47,8 @@ export {
   type ThresholdBounds,
 } from "./src/threshold.ts";
 export type {
+  CanaryAbortContext,
+  CanaryAbortReason,
   CanaryAnalysis,
   CanaryAnalysisContext,
   CanaryContext,

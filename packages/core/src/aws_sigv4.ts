@@ -2,20 +2,21 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * AWS Signature Version 4, over the exact request the transport sends, with
- * WebCrypto's HMAC-SHA256 — the signing half of the AWS credential source.
+ * AWS Signature Version 4, over the exact request a transport sends, with
+ * WebCrypto's HMAC-SHA256. Shared by every package that talks to an AWS API
+ * directly: the {@link "./s3_cache.ts" | S3 cache store} here, and the
+ * Amazon Managed Prometheus credential source in `@zuke/prometheus`.
  *
  * Built step by step as the IAM user guide's "Create a signed AWS API
- * request" describes it — the path handled as botocore's `SigV4Auth` does
- * for a non-S3 service — and checked against the AWS SigV4 test suite:
+ * request" describes it, and checked against the AWS SigV4 test suite:
  *
- * 1. the canonical request — method, canonical URI (the path as sent,
- *    normalised — dot segments and empty segments removed — and then
- *    percent-encoded again, so `%20` on the wire is `%2520` here, as every
- *    service but S3 expects), canonical query (each name and value decoded
- *    and re-encoded, sorted by name then value), canonical
- *    headers (lower-case names, trimmed values, sorted), the signed-header
- *    list, and the hex SHA-256 of the body;
+ * 1. the canonical request — method, canonical URI (for every service but
+ *    S3, the path as sent, normalised — dot segments and empty segments
+ *    removed — and then percent-encoded again, so `%20` on the wire is
+ *    `%2520` here, as botocore's `SigV4Auth` does; for S3, the path exactly
+ *    as sent), canonical query (each name and value decoded and re-encoded,
+ *    sorted by name then value), canonical headers (lower-case names, trimmed
+ *    values, sorted), the signed-header list, and the hex SHA-256 of the body;
  * 2. the string to sign — `AWS4-HMAC-SHA256`, the `x-amz-date`, the
  *    credential scope `<date>/<region>/<service>/aws4_request`, and the hex
  *    SHA-256 of the canonical request;
@@ -29,8 +30,7 @@
  * @module
  */
 
-import { sha256Hex } from "@zuke/core";
-import type { PrometheusOutgoingRequest } from "./credentials.ts";
+import { sha256Hex } from "./internal.ts";
 import { uriEncode } from "./uri.ts";
 
 /** An AWS access key, with the session token temporary credentials carry. */
@@ -43,8 +43,26 @@ export interface AwsCredentials {
   readonly sessionToken?: string;
 }
 
+/**
+ * The outgoing request a signature is computed over — exactly what will be
+ * sent, so the signature verifies.
+ */
+export interface AwsSignableRequest {
+  /** The HTTP method. */
+  readonly method: string;
+  /** The absolute URL, including the query string, percent-encoded as sent. */
+  readonly url: string;
+  /**
+   * The headers set so far, with lower-case names. Every one of them is
+   * signed, so a header added after signing fails the request.
+   */
+  readonly headers: Readonly<Record<string, string>>;
+  /** The exact body bytes; empty for a request without one. */
+  readonly body: Uint8Array;
+}
+
 /** What signing produced: the intermediate strings and the headers to add. */
-interface SigV4Signature {
+export interface AwsSignature {
   /** The canonical request (step 1). */
   readonly canonicalRequest: string;
   /** The string to sign (step 2). */
@@ -93,14 +111,17 @@ function decode(component: string): string {
 }
 
 /**
- * The canonical URI: the path exactly as sent (already percent-encoded),
- * normalised, then each segment percent-encoded once more — the double
- * encoding SigV4 requires of every service except S3. The URL parser has
- * already resolved dot segments (`.`, `..`, and their `%2E` spellings), so
- * normalising is dropping empty segments (`//`). A trailing `/` is kept.
+ * The canonical URI. For S3 it is the path exactly as sent: S3 neither
+ * normalises nor re-encodes it (botocore's `S3SigV4Auth`). For every other
+ * service it is the path (already percent-encoded) normalised, then each
+ * segment percent-encoded once more — the double encoding SigV4 requires.
+ * The URL parser has already resolved dot segments (`.`, `..`, and their
+ * `%2E` spellings), so normalising is dropping empty segments (`//`). A
+ * trailing `/` is kept.
  */
-function canonicalUri(url: URL): string {
+function canonicalUri(url: URL, service: string): string {
   const path = url.pathname;
+  if (service === "s3") return path;
   const segments = path.split("/").filter((segment) => segment !== "")
     .map(uriEncode);
   const last = path.endsWith("/") && segments.length > 0 ? "/" : "";
@@ -109,8 +130,8 @@ function canonicalUri(url: URL): string {
 
 /**
  * The canonical query string: each parameter's name and value decoded (a
- * `+` read as a space, as Prometheus reads it), RFC 3986 encoded, and sorted
- * by name, then value.
+ * `+` read as a space, as a form-encoding client writes it), RFC 3986 encoded,
+ * and sorted by name, then value.
  */
 function canonicalQuery(url: URL): string {
   const pairs = url.search.slice(1).split("&").filter((pair) => pair !== "")
@@ -144,12 +165,12 @@ function amzDate(now: number): string {
  * Pure apart from WebCrypto: the same inputs give the same signature.
  */
 export async function signSigV4(
-  request: PrometheusOutgoingRequest,
+  request: AwsSignableRequest,
   credentials: AwsCredentials,
   region: string,
   service: string,
   now: number,
-): Promise<SigV4Signature> {
+): Promise<AwsSignature> {
   const url = new URL(request.url);
   const date = amzDate(now);
   const day = date.slice(0, 8);
@@ -171,7 +192,7 @@ export async function signSigV4(
   const signedHeaders = names.join(";");
   const canonicalRequest = [
     request.method,
-    canonicalUri(url),
+    canonicalUri(url, service),
     canonicalQuery(url),
     names.map((name) => `${name}:${headers.get(name)}\n`).join(""),
     signedHeaders,

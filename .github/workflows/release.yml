@@ -18,7 +18,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@2478fa5a69fb4f16540e54959c98cd976ec3f075 # v1.0.5
+        uses: zuke-build/zuke@213d5234c03e1fedc314159a77b2f680c2d6c8f5 # v1.0.7
         with:
           egress-policy: audit
           persist-credentials: "false"
@@ -39,7 +39,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@2478fa5a69fb4f16540e54959c98cd976ec3f075 # v1.0.5
+        uses: zuke-build/zuke@213d5234c03e1fedc314159a77b2f680c2d6c8f5 # v1.0.7
         with:
           egress-policy: block
           persist-credentials: "false"
@@ -58,10 +58,10 @@ jobs:
       id-token: write
     needs:
       - release
-    timeout-minutes: 30
+    timeout-minutes: 90
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@2478fa5a69fb4f16540e54959c98cd976ec3f075 # v1.0.5
+        uses: zuke-build/zuke@213d5234c03e1fedc314159a77b2f680c2d6c8f5 # v1.0.7
         with:
           egress-policy: audit
           persist-credentials: "false"
@@ -77,7 +77,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@2478fa5a69fb4f16540e54959c98cd976ec3f075 # v1.0.5
+        uses: zuke-build/zuke@213d5234c03e1fedc314159a77b2f680c2d6c8f5 # v1.0.7
         with:
           egress-policy: block
           persist-credentials: "false"
@@ -99,9 +99,10 @@ jobs:
       version: "${{ steps.plan.outputs.version }}"
       build: "${{ steps.plan.outputs.build }}"
       tap: "${{ steps.plan.outputs.tap }}"
+      chocolatey: "${{ steps.plan.outputs.chocolatey }}"
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@2478fa5a69fb4f16540e54959c98cd976ec3f075 # v1.0.5
+        uses: zuke-build/zuke@213d5234c03e1fedc314159a77b2f680c2d6c8f5 # v1.0.7
         with:
           egress-policy: audit
           persist-credentials: "false"
@@ -128,7 +129,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@2478fa5a69fb4f16540e54959c98cd976ec3f075 # v1.0.5
+        uses: zuke-build/zuke@213d5234c03e1fedc314159a77b2f680c2d6c8f5 # v1.0.7
         with:
           egress-policy: audit
           persist-credentials: "false"
@@ -166,7 +167,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@2478fa5a69fb4f16540e54959c98cd976ec3f075 # v1.0.5
+        uses: zuke-build/zuke@213d5234c03e1fedc314159a77b2f680c2d6c8f5 # v1.0.7
         with:
           egress-policy: audit
           persist-credentials: "false"
@@ -188,6 +189,7 @@ jobs:
         with:
           subject-path: |
             dist/cli/release/*.tar.gz
+            dist/cli/release/*.zip
             dist/cli/release/SHA256SUMS
       - name: Upload to the release
         run: ./zuke cliUpload
@@ -212,7 +214,7 @@ jobs:
           - ubuntu-latest
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@2478fa5a69fb4f16540e54959c98cd976ec3f075 # v1.0.5
+        uses: zuke-build/zuke@213d5234c03e1fedc314159a77b2f680c2d6c8f5 # v1.0.7
         with:
           egress-policy: audit
           persist-credentials: "false"
@@ -233,7 +235,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@2478fa5a69fb4f16540e54959c98cd976ec3f075 # v1.0.5
+        uses: zuke-build/zuke@213d5234c03e1fedc314159a77b2f680c2d6c8f5 # v1.0.7
         with:
           egress-policy: block
           persist-credentials: "false"
@@ -243,3 +245,47 @@ jobs:
         env:
           ZUKE_BUILD_APP_ID: "${{ secrets.ZUKE_BUILD_APP_ID }}"
           ZUKE_BUILD_APP_KEY: "${{ secrets.ZUKE_BUILD_APP_KEY }}"
+  cliChocolateyVerify:
+    name: "Verify Chocolatey package (${{ matrix.os }})"
+    runs-on: "${{ matrix.os }}"
+    permissions:
+      contents: read
+    needs:
+      - cliBinaries
+      - cliUpload
+    if: "${{ !cancelled() && needs.cliBinaries.outputs.chocolatey == 'true' && (needs.cliBinaries.outputs.build != 'true' || needs.cliUpload.result == 'success') }}"
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-latest
+    steps:
+      - name: Harden and check out with Zuke
+        uses: zuke-build/zuke@213d5234c03e1fedc314159a77b2f680c2d6c8f5 # v1.0.7
+        with:
+          egress-policy: audit
+          persist-credentials: "false"
+      - name: Run cliChocolateyVerify with Zuke
+        run: ./zuke cliChocolateyVerify
+  cliChocolatey:
+    name: "CLI binaries: push the Chocolatey package"
+    runs-on: windows-latest
+    environment: chocolatey
+    permissions:
+      contents: read
+    needs:
+      - cliBinaries
+      - cliChocolateyVerify
+    if: "${{ !cancelled() && needs.cliChocolateyVerify.result == 'success' && vars.CHOCOLATEY_PUSH == 'enabled' }}"
+    timeout-minutes: 15
+    steps:
+      - name: Harden and check out with Zuke
+        uses: zuke-build/zuke@213d5234c03e1fedc314159a77b2f680c2d6c8f5 # v1.0.7
+        with:
+          egress-policy: audit
+          persist-credentials: "false"
+      - name: Run cliChocolatey with Zuke
+        run: ./zuke cliChocolatey
+        env:
+          CHOCOLATEY_API_KEY: "${{ secrets.CHOCOLATEY_API_KEY }}"

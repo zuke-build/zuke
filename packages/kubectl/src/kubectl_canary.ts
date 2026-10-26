@@ -159,6 +159,13 @@ export interface KubectlCanaryContext {
   readonly state: TargetStateHandle;
   /** Add key/value pairs to the calling target's row in the build summary. */
   reportSummary(pairs: SummaryPairs): void;
+  /**
+   * Why `abort` runs: `"rollback"` when the engine undoes a rollout,
+   * `"hand-run"` for `rollout.abort` run on its own. An engine older than
+   * this field leaves it out, which is treated as a hand run — the behaviour
+   * from before the field existed.
+   */
+  readonly reason?: "rollback" | "hand-run";
 }
 
 /**
@@ -497,15 +504,28 @@ export class KubectlCanary {
    *   than `stage` recorded is refused.
    * - **`stage` failed before the candidate was on record**: the canary had
    *   no replicas and the stable Deployment was not touched, so nothing runs.
-   * - **Nothing recorded** (`rollout.abort` run by hand, a fresh run): the
-   *   same, with the image set by {@link KubectlCanarySettings.stableImage}.
+   * - **Nothing recorded, on a rollback** (`ctx.reason` is `"rollback"`):
+   *   nothing was staged, so nothing runs — the stable image is not even
+   *   read. A marker `stage` never writes is a damaged record, and a
+   *   rollback refuses it.
+   * - **Nothing recorded, run by hand** (`rollout.abort` on its own, a fresh
+   *   run, or an engine that names no reason): the same as staged, with the
+   *   image set by {@link KubectlCanarySettings.stableImage}.
    *   Without one this refuses: after a promote the stable Deployment runs the
    *   candidate, and moving replicas alone would report a rollback that
    *   changed nothing.
    */
   async abort(ctx: KubectlCanaryContext): Promise<void> {
     const state = ctx.state.get();
-    if (state[STAGE] === "deploying") return;
+    const stage = state[STAGE];
+    if (stage === "deploying") return;
+    if (ctx.reason === "rollback" && stage !== "staged") {
+      // With no marker nothing was staged. Any other marker is one `stage`
+      // never writes: the record is damaged, and a rollback refuses it rather
+      // than guess.
+      if (stage === undefined) return;
+      throw damagedMarker(stage);
+    }
     const r = this.#resolve();
     const image = rollbackImage(state, r);
     const total = recordedTotal(state, r.settings, r.stable);
@@ -874,6 +894,16 @@ function notStaged(call: string): Error {
   );
 }
 
+/** The error for a rollback whose stage marker is one `stage` never writes. */
+function damagedMarker(stage: unknown): Error {
+  return new Error(
+    `${CALLER}: the record of this rollout is damaged — its stage marker is ` +
+      `${JSON.stringify(stage)}, which stage never writes — so this rollback ` +
+      "cannot tell what was staged and changed nothing. Check both " +
+      "Deployments by hand.",
+  );
+}
+
 /**
  * The error for a staged rollout whose record does not say `missing` — a
  * value `stage` always writes, so the record was damaged.
@@ -918,7 +948,8 @@ function durationMs(text: string): number {
  * - **promote** — `set image` the candidate on the stable Deployment, `scale`
  *   it to the total, `rollout status` it, then `scale` the canary to 0.
  * - **abort** — the same with the stable image: the one `stage` read, or, run
- *   by hand, the one set with `.stableImage(...)`.
+ *   by hand, the one set with `.stableImage(...)`. A rollback with nothing
+ *   recorded runs nothing: nothing was staged.
  *
  * `stage` records the Deployments, container and namespace it changed, and
  * the later calls refuse a lambda that names others. Keep them — and the kube

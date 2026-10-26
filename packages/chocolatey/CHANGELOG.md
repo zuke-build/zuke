@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/zuke-build/zuke/compare/chocolatey-v1.0.0...chocolatey-v1.1.0) (2026-10-21)
+
+
+### Features
+
+* **chocolatey:** render a package copyright, and pin the zuke icon to its release ([#885](https://github.com/zuke-build/zuke/issues/885)) ([a15e772](https://github.com/zuke-build/zuke/commit/a15e772963e40775cc0b23aafb686b63b12f8567))
+
 ## 1.0.0 (2026-10-12)
 
 

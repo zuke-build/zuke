@@ -67,12 +67,14 @@ import {
   AwsEcsWaitServicesStableSettings,
 } from "./ecs.ts";
 import {
+  AwsLambdaGetAliasSettings,
   AwsLambdaGetFunctionSettings,
   AwsLambdaInvokeSettings,
   AwsLambdaPublishVersionSettings,
   AwsLambdaUpdateAliasSettings,
   AwsLambdaUpdateFunctionCodeSettings,
   AwsLambdaUpdateFunctionConfigurationSettings,
+  AwsLambdaWaitSettings,
   FUNCTION_VERSION_QUERY,
 } from "./lambda.ts";
 import {
@@ -257,9 +259,19 @@ export interface AwsTasksApi {
     configure?: Configure<AwsLambdaUpdateAliasSettings>,
   ): Promise<CommandOutput>;
 
+  /** Describe an alias: `aws lambda get-alias`. */
+  lambdaGetAlias(
+    configure?: Configure<AwsLambdaGetAliasSettings>,
+  ): Promise<CommandOutput>;
+
   /** Describe a function: `aws lambda get-function`. */
   lambdaGetFunction(
     configure?: Configure<AwsLambdaGetFunctionSettings>,
+  ): Promise<CommandOutput>;
+
+  /** Wait for a function or version to reach a state: `aws lambda wait`. */
+  lambdaWait(
+    configure?: Configure<AwsLambdaWaitSettings>,
   ): Promise<CommandOutput>;
 
   /** Invoke a function: `aws lambda invoke`. */
@@ -480,7 +492,9 @@ export const AwsTasks: AwsTasksApi = {
       "version number",
     ),
   lambdaUpdateAlias: (c) => runSettings(new AwsLambdaUpdateAliasSettings(), c),
+  lambdaGetAlias: (c) => runSettings(new AwsLambdaGetAliasSettings(), c),
   lambdaGetFunction: (c) => runSettings(new AwsLambdaGetFunctionSettings(), c),
+  lambdaWait: (c) => runSettings(new AwsLambdaWaitSettings(), c),
   lambdaInvoke: (c) => runSettings(new AwsLambdaInvokeSettings(), c),
 
   cloudformationDeploy: (c) =>

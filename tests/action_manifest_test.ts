@@ -258,3 +258,17 @@ Deno.test("running a target checks for the launcher it needs", () => {
   // launcher anyway, which is the failure it exists to replace.
   assertStringIncludes(MANIFEST, "exit 1");
 });
+
+Deno.test("the actions-cache input exports the cache service to the job", () => {
+  // The runner hands `ACTIONS_RUNTIME_TOKEN` and `ACTIONS_RESULTS_URL` to a
+  // JavaScript action's process only, so the build's `envCacheStore` can see
+  // them only if a JavaScript step exports them — and only when asked, since
+  // a token exported to the job is a token every later step can read.
+  assertStringIncludes(MANIFEST, "if: inputs.actions-cache == 'true'");
+  assertStringIncludes(
+    MANIFEST,
+    "core.setSecret(process.env.ACTIONS_RUNTIME_TOKEN)",
+  );
+  assertStringIncludes(MANIFEST, 'core.exportVariable("ACTIONS_RUNTIME_TOKEN"');
+  assertStringIncludes(MANIFEST, 'core.exportVariable("ACTIONS_RESULTS_URL"');
+});

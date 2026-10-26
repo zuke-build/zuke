@@ -6,9 +6,9 @@
  * is now something you can run on its own, see in `--list`, and depend on —
  * and the two git steps use the typed wrapper instead of `$`.
  *
- *   deno run -A zuke.ts --release-version 1.1.0   # clean → test → tag → push
- *   deno run -A zuke.ts tag --release-version 1.1.0  # stop after the tag
- *   deno run -A zuke.ts --list
+ *   zuke --release-version 1.1.0     # clean → test → tag → push
+ *   zuke tag --release-version 1.1.0 # stop after the tag
+ *   zuke --list
  */
 import { Build, parameter, run, target } from "jsr:@zuke/core@^1";
 import { $ } from "jsr:@zuke/core@^1/shell";

@@ -109,8 +109,10 @@ it cannot answer "does one exist for this tool?"; only the catalogue
    methods (cheatsheet → `deno doc` / `llms-full.txt`).
 3. Add or edit the target field. Place it **below** every target it depends on.
    Wire dependencies with `this.<field>`.
-4. Validate: `./zuke --list` shows it; `./zuke <target> --dry-run` previews the
-   plan; `./zuke <target>` runs it.
+4. Validate with the `zuke` command (it works from any directory inside the
+   project; install it with `deno install -A -g -n zuke jsr:@zuke/cli` if it is
+   missing): `zuke --list` shows it; `zuke <target> --dry-run` previews the
+   plan; `zuke <target>` runs it.
 
 ## Common building blocks (see the cheatsheet for details)
 
@@ -192,10 +194,9 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   counts. Not retried by `.retry`; not run under `--dry-run`.
 - A `Validation` may carry an optional `preflight(ctx)` — called for every
   validation in the plan before any target, dependencies included, starts; a
-  throw refuses the whole run. `./zuke <target> --preflight` runs only that
-  phase (no target executes, missing parameters tolerated), which is how the
-  AI-review command job checks who may start a review before any secret is in
-  reach.
+  throw refuses the whole run. `zuke <target> --preflight` runs only that phase
+  (no target executes, missing parameters tolerated), which is how the AI-review
+  command job checks who may start a review before any secret is in reach.
 - **External-event waits:**
   `.waitsFor((s) => s.on(externalSignal("approved")).timeout("72h"))` makes a
   target a **gate** with no body: the run proceeds past it only when the trigger
@@ -363,7 +364,13 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   from `@zuke/helm`, and Docker Compose:
   `dockerComposeCanary((d) => d.service(…).canaryService(…).replicas(…)
   .image(…))`
-  from `@zuke/docker-compose`. See the cheatsheet.
+  from `@zuke/docker-compose`, and AWS Lambda:
+  `lambdaCanary((l) => l.functionName(…).alias("live")
+  .zipFile(…).aws((a) => a.region(…)))`
+  from `@zuke/aws`, and Azure Container Apps:
+  `containerAppCanary((a) => a.name(…).resourceGroup(…)
+  .image(…).az((z) => z.subscription(…)))`
+  from `@zuke/az`. See the cheatsheet.
 - **Prometheus (`@zuke/prometheus`):** read a metric instead of hand-rolling the
   HTTP call —
   `PrometheusTasks.value(await PrometheusTasks.query((s) =>
@@ -428,6 +435,34 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   `azureMonitor((m) => m.resource(id).metric(…).aggregation("Count")
   .max(5))`
   is an analysis. See the cheatsheet.
+- **iOS app builds (`@zuke/apple`):**
+  `XcodebuildTasks.archive((s) =>
+  s.workspace(w).scheme(scheme).configuration("Release")
+  .destination("generic/platform=iOS").archivePath(a))`,
+  then
+  `writeExportOptions(plist, (o) => o.method("app-store-connect").teamId(t))`
+  and
+  `exportArchive((s) => s.archivePath(a).exportPath(dir)
+  .exportOptionsPlist(plist))`;
+  `.destination("upload")` in the export options uploads to App Store Connect.
+  Also `build`, `test`, `clean`, `resolvePackageDependencies`,
+  `showBuildSettings`. Wrap the signing steps in
+  `ProvisioningProfileTasks.temporary((s) => s.base64(profile),
+  async ({ profile }) => …)`
+  to install the profile and always remove it (`profile.uuid`/`bundleId` feed
+  the export options), then
+  `TestFlightTasks.distribute((s) => s.issuerId(i).keyId(k).privateKey(p8)
+  .bundleId(b).buildNumber(n).usesNonExemptEncryption(false).group("QA"))`
+  waits for App Store Connect to process the build and distributes it.
+  `AltoolTasks.uploadApp` wraps the deprecated `altool`. See the cheatsheet.
+- **Google Play (`@zuke/google`):**
+  `GooglePlayTasks.upload((s) => s.serviceAccount(keyJson)
+  .packageName(p).bundle(aab).track("internal").status("completed")
+  .releaseNotes(t, "en-US"))`
+  signs in as the service account, uploads the bundle in one edit, releases its
+  `versionCode` on the track and commits (the edit is deleted on failure).
+  `.status("draft")` for an app that has never had a release,
+  `.changesNotSentForReview()` where Google requires it. See the cheatsheet.
 - **Apple signing (`@zuke/apple`):** `CodesignTasks.sign`/`verify`/`display`,
   `DittoTasks.archive` (the zip notarization wants —
   `ditto -c -k
@@ -440,6 +475,27 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   it creates, unlocks and imports into a throwaway keychain and always deletes
   it and restores the search list, even when the callback throws. Passwords are
   masked in every rendering and error. See the cheatsheet.
+- **Deno Deploy (`@zuke/deno`):**
+  `DenoDeployTasks.deploy((s) =>
+  s.token(t).org(o).app(a).prod().json().nonInteractive())`;
+  `create`, the `env*` tasks (`envAdd((s) => s.variable("K").secretValue(v))`),
+  `logs` (`.once()`), `deploymentsList`, `appsGet`, `whoami`. The token goes in
+  `DENO_DEPLOY_TOKEN`, never the argv. See the cheatsheet.
+- **Flutter apps (`@zuke/flutter`):** `FlutterTasks.pubGet()`, `.analyze()`,
+  `.test((s) => s.coverage())`, and one task per artifact —
+  `buildAppBundle((s) => s.release().flavor("prod").buildNumber(n))`,
+  `buildIpa`, `buildWeb`, `buildApk`, the desktop builds — plus the `pub*`,
+  `drive`, `install`, `doctor` and `config` commands. See the cheatsheet.
+- **Dart packages and CLIs (`@zuke/dart`):** `DartTasks.pubGet()`,
+  `.analyze((s) => s.fatalInfos())`,
+  `.format((s) => s.setExitIfChanged().output("none"))`, `.fix()`,
+  `.test((s) => s.coverage("coverage").reporter("github"))`, `.run()`, and one
+  task per compile target —
+  `compileExe((s) => s.entry("bin/main.dart")
+  .output("build/app"))`,
+  `compileJs`, `compileWasm`, `compileAotSnapshot`, `compileJitSnapshot`,
+  `compileKernel` — plus `doc`, `create`, the `pub*` commands, `info` and
+  `version`. See the cheatsheet.
 - **Windows signing (`@zuke/signpath`):**
   `SignPathTasks.submit((s) =>
   s.organizationId(org).apiToken(token).projectSlug(p).signingPolicySlug(q)

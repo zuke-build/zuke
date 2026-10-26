@@ -19,8 +19,8 @@
  * (botocore's `SigV4Auth`); that rule is tested on its own below.
  */
 
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
-import { sha256Hex } from "@zuke/core";
+import { assertEquals, assertRejects } from "./_assert.ts";
+import { sha256Hex } from "../src/internal.ts";
 import { signSigV4 } from "../src/aws_sigv4.ts";
 
 /** The suite's example credentials. */
@@ -263,5 +263,26 @@ Deno.test("SigV4 refuses a query that is not valid percent-encoding", async () =
       ),
     Error,
     "the URL's query is not valid percent-encoding",
+  );
+});
+
+Deno.test("SigV4 for S3 signs the path exactly as sent", async () => {
+  // S3 neither normalises nor re-encodes the path (botocore's S3SigV4Auth):
+  // an `%20` on the wire is `%20` in the canonical request, not `%2520`.
+  const signed = await signSigV4(
+    {
+      method: "GET",
+      url: "https://bucket.s3.amazonaws.com/zuke-cache/build%20x//a",
+      headers: {},
+      body: new Uint8Array(0),
+    },
+    KEY,
+    "us-east-1",
+    "s3",
+    NOW,
+  );
+  assertEquals(
+    signed.canonicalRequest.split("\n")[1],
+    "/zuke-cache/build%20x//a",
   );
 });

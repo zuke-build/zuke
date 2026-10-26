@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/zuke-build/zuke/compare/docker-compose-v1.3.0...docker-compose-v1.3.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* **canary:** tell abort whether it is a rollback or a hand run ([#846](https://github.com/zuke-build/zuke/issues/846)) ([6186b80](https://github.com/zuke-build/zuke/commit/6186b8015dba2c06d0591152c2ebbf3ae1e98377))
+
 ## [1.3.0](https://github.com/zuke-build/zuke/compare/docker-compose-v1.2.0...docker-compose-v1.3.0) (2026-10-06)
 
 

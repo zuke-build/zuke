@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.2.1](https://github.com/zuke-build/zuke/compare/aws-v1.2.0...aws-v1.2.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* **gcloud,aws,az,homebrew:** quote recovery commands with the core shell quoter ([#851](https://github.com/zuke-build/zuke/issues/851)) ([62d1623](https://github.com/zuke-build/zuke/commit/62d162367dff7a02b2ac8f639a6644ab61d2c0a4))
+
+## [1.2.0](https://github.com/zuke-build/zuke/compare/aws-v1.1.1...aws-v1.2.0) (2026-10-19)
+
+
+### Features
+
+* **aws:** Lambda alias platform for @zuke/canary ([#838](https://github.com/zuke-build/zuke/issues/838)) ([ad72394](https://github.com/zuke-build/zuke/commit/ad72394e73ad1da143172965f782b5e52882e35f))
+
+
+### Bug Fixes
+
+* **canary:** tell abort whether it is a rollback or a hand run ([#846](https://github.com/zuke-build/zuke/issues/846)) ([6186b80](https://github.com/zuke-build/zuke/commit/6186b8015dba2c06d0591152c2ebbf3ae1e98377))
+
 ## [1.1.1](https://github.com/zuke-build/zuke/compare/aws-v1.1.0...aws-v1.1.1) (2026-10-08)
 
 

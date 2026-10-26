@@ -35,7 +35,7 @@ import {
   AWS_PROMETHEUS_SERVICE,
   type PrometheusAwsSettings,
 } from "./aws_settings.ts";
-import { type AwsCredentials, signSigV4 } from "./aws_sigv4.ts";
+import { type AwsCredentials, signSigV4 } from "@zuke/core";
 import type {
   PrometheusCredentials,
   PrometheusCredentialsContext,

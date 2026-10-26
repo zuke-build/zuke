@@ -68,6 +68,20 @@ export function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** The CRC-32 lookup table (reflected polynomial `0xedb88320`). */
+const CRC_TABLE = Uint32Array.from({ length: 256 }, (_, n) => {
+  let c = n;
+  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  return c >>> 0;
+});
+
+/** The CRC-32 of `data` — what zip headers and xz block checks carry. */
+export function crc32(data: Uint8Array): number {
+  let c = 0xffffffff;
+  for (const byte of data) c = CRC_TABLE[(c ^ byte) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
 /** Shared encoder for {@link sha256Hex} (a `TextEncoder` is stateless and reusable). */
 const encoder = new TextEncoder();
 
@@ -196,14 +210,18 @@ export async function writeTextEnsuringDir(
   await Deno.writeTextFile(path, content);
 }
 
-/** Write bytes to `path`, creating its parent directory first. */
+/**
+ * Write bytes to `path`, creating its parent directory first. `mode` sets the
+ * file's permission bits where the platform has them (Windows ignores it).
+ */
 export async function writeFileEnsuringDir(
   path: string,
   bytes: Uint8Array,
+  mode?: number,
 ): Promise<void> {
   const parent = parentOf(path);
   if (parent !== null) await Deno.mkdir(parent, { recursive: true });
-  await Deno.writeFile(path, bytes);
+  await Deno.writeFile(path, bytes, { mode });
 }
 
 /**

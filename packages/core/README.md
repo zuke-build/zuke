@@ -141,9 +141,10 @@ function appendJobSummary(markdown: string): boolean
   that produced it — the build's own result is the signal that matters.
 
 async function archiveOutputs(outputs: readonly string[], host: OutputHost): Promise<Uint8Array>
-  Archive a target's `outputs` into a gzipped tar of their current contents.
-  A declared output that does not exist is skipped, as is anything under a
-  `.git` or `.zuke` directory.
+  Archive a target's `outputs` into a gzipped tar of their current contents,
+  each file with its permission bits so a binary restores executable. A
+  declared output that does not exist is skipped, as is anything under a
+  `.git` or `.zuke` directory, other than `.zuke/tools` and whatever it holds.
 
 function assert(condition: unknown, message: string): asserts condition
   Assert that `condition` is truthy, narrowing it for the rest of the scope.
@@ -174,6 +175,12 @@ function assertSafeLinkTarget(entryName: string, target: string): void
   extraction root once resolved against the link's own directory. A file entry's
   name is bounded by {@link assertSafeEntryName}; a symlink adds a second escape
   vector (its target), so a poisoned tarball can't plant `bin/x -> ../../etc`.
+
+  A `..` is allowed only before the target's first name: after a name, that
+  name may itself be a symlink, and `..` would climb from wherever it points —
+  so a chain such as `up -> ..` then `p -> up/..` could reach outside the root
+  while every target looked bounded. An empty target, or one holding a NUL, is
+  refused too.
 
 function assertSecureBackendUrl(raw: string, what: string, readEnv: (name: string) => string | undefined): void
   Refuse a plaintext URL for a backend Zuke both authenticates to and trusts
@@ -377,7 +384,15 @@ function envCacheStore(readEnv: (name: string) => string | undefined): RemoteCac
   Resolve a {@link RemoteCacheStore} from the environment, or `undefined` when
   none is configured. `ZUKE_REMOTE_CACHE_URL` (with an optional
   `ZUKE_REMOTE_CACHE_TOKEN`) selects an {@link HttpCacheStore}; otherwise
-  `ZUKE_REMOTE_CACHE_DIR` selects a {@link FileSystemCacheStore}.
+  `ZUKE_REMOTE_CACHE_S3_URL` selects an {@link "./s3_cache.ts".S3CacheStore}
+  signed with `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (and
+  `AWS_SESSION_TOKEN`) in `AWS_REGION` or `AWS_DEFAULT_REGION`; otherwise
+  `ZUKE_REMOTE_CACHE_DIR` selects a {@link FileSystemCacheStore}; otherwise,
+  on a GitHub Actions job that exposes its `ACTIONS_RUNTIME_TOKEN` and
+  `ACTIONS_RESULTS_URL` (the `actions-cache` input of the `zuke-build/zuke`
+  action), a {@link "./github_actions_cache.ts".GitHubActionsCacheStore}.
+  Whichever is chosen takes `ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES`, when set,
+  as its {@link RemoteCacheStore.maxInflatedBytes}.
 
 function envStateStore(readEnv: (name: string) => string | undefined, host: StateHost): StateStore | undefined
   Resolve a {@link StateStore} from the environment, or `undefined` when none is
@@ -421,6 +436,15 @@ async function extractTarGzip(src: PathLike, destDir: PathLike, options: Extract
   `destDir` (creating parent directories as needed). Symlink entries are
   recreated as symlinks and directory entries as directories; pass
   {@link ExtractOptions.strip} to drop leading path components.
+
+async function extractTarXz(src: PathLike, destDir: PathLike, options: ExtractOptions): Promise<void>
+  Read the `.tar.xz` at `src`, decompress and unpack it, and write each entry
+  under `destDir` exactly as {@link extractTarGzip} does — the same symlink
+  handling, the same zip-slip guards, the same {@link ExtractOptions.strip}.
+  The system `xz` decompresses when one is on `PATH`, several times faster
+  than the built-in decoder this falls back to, which covers the single LZMA2
+  filter chain `xz` writes by default and verifies each block's check. Either
+  way Zuke's own tar reader and guards unpack the result.
 
 async function extractZip(src: PathLike, destDir: PathLike, options: ExtractOptions): Promise<void>
   Read the `.zip` at `src`, unpack it, and write each entry under `destDir`
@@ -584,8 +608,9 @@ async function installTree(options: InstallTreeOptions): Promise<AbsolutePath>
 
   Because {@link AbsolutePath} is callable, the root doubles as an accessor:
   `root("bin", "node")` is the node binary and `root("bin")` is the directory to
-  put on `PATH` (with `prependPath`). Declared {@link InstallTreeOptions.bins}
-  are marked executable on POSIX. With a {@link InstallTreeOptions.checksum} the
+  put on `PATH` (with `prependPath`). Files keep the archive's permission bits;
+  declared {@link InstallTreeOptions.bins} are also marked executable on POSIX,
+  as a fallback. With a {@link InstallTreeOptions.checksum} the
   archive is verified before unpacking and a matching prior install is reused.
 
 function isCI(env: (name: string) => string | undefined): boolean
@@ -882,7 +907,8 @@ async function restoreOutputs(artifact: Uint8Array, host: OutputHost, outputs?: 
   leaves no half-written, partially-trusted output tree. An entry is refused
   when its name is absolute or escapes the workspace with `..`, when it is a
   symlink or directory entry (which {@link archiveOutputs} never produces),
-  when it lands under `.git` or `.zuke`, when — given `outputs` — it falls
+  when it lands under `.git` or `.zuke` (`.zuke/tools` aside), when — given
+  `outputs` — it falls
   outside the target's declared outputs, and when the path it would be written
   to passes through, or is, a symlink that already exists on disk.
 
@@ -896,7 +922,8 @@ async function restoreOutputs(artifact: Uint8Array, host: OutputHost, outputs?: 
 
   @param maxBytes
       The most the artifact may decompress to before it is refused,
-      defaulting to 2 GiB. The bound is applied while decompressing, so a small
+      defaulting to 2 GiB; the executor passes the store's
+      {@link RemoteCacheStore.maxInflatedBytes}. The bound is applied while decompressing, so a small
       archive that expands without limit is refused rather than buffered first.
       It is larger than the bound a store puts on the compressed bytes because
       outputs compress; both exist to stop memory exhaustion.
@@ -979,7 +1006,25 @@ async function sha256Hex(data: string | Uint8Array): Promise<string>
   type is unambiguous whatever buffer the source view sits on (e.g. a
   `SharedArrayBuffer`).
 
-async function signJwtRs256(privateKeyPem: string, claims: Readonly<Record<string, unknown>>, keyId?: string): Promise<string>
+function signJwtEs256(privateKeyPem: string, claims: Readonly<Record<string, unknown>>, keyId?: string): Promise<string>
+  Sign `claims` as a compact ES256 JWT with a PEM P-256 private key in
+  PKCS#8 — `BEGIN PRIVATE KEY`, as an App Store Connect `AuthKey_<id>.p8`
+  holds it.
+
+  The header is `{"alg":"ES256","typ":"JWT"}`, plus `"kid"` when `keyId` is
+  given (App Store Connect requires it). The claims are serialised as given:
+  the caller sets `iat`, `exp` and the rest. The signature is the raw r‖s
+  pair ES256 requires.
+
+  ```ts
+  const jwt = await signJwtEs256(p8, { iss: issuerId, iat, exp: iat + 1200 }, keyId);
+  ```
+
+  @throws {Error}
+      naming the problem — an empty key, a body that is not
+      base64, or one that is not a P-256 key — and never quoting the key.
+
+function signJwtRs256(privateKeyPem: string, claims: Readonly<Record<string, unknown>>, keyId?: string): Promise<string>
   Sign `claims` as a compact RS256 JWT with a PEM RSA private key —
   `BEGIN RSA PRIVATE KEY` (PKCS#1) or `BEGIN PRIVATE KEY` (PKCS#8).
 
@@ -995,13 +1040,20 @@ async function signJwtRs256(privateKeyPem: string, claims: Readonly<Record<strin
       naming the problem — an empty key, a body that is not
       base64, or one that is not an RSA key — and never quoting the key.
 
+async function signSigV4(request: AwsSignableRequest, credentials: AwsCredentials, region: string, service: string, now: number): Promise<AwsSignature>
+  Sign `request` for `service` in `region` at the instant `now` (epoch ms).
+  Pure apart from WebCrypto: the same inputs give the same signature.
+
 async function syncCiFiles(files: readonly CiFile[], options: CiSyncOptions): Promise<CiSyncResult[]>
   Bring each declared {@link CiFile} on disk in line with its definition. By
   default a changed file is rewritten; in `check` mode it is reported `stale`
   instead (so CI can fail when the committed config has drifted).
 
 function tar(entries: TarEntry[]): Uint8Array
-  Create a `ustar` archive from the given entries (in order).
+  Create a `ustar` archive from the given entries (in order). A name or
+  symlink target past ustar's 100 bytes is carried by a pax extended header
+  (typeflag `'x'`) ahead of its member, which {@link untar} and every modern
+  `tar` read back.
 
 function target(): TargetBuilder
   Create a new, empty target builder.
@@ -1042,18 +1094,33 @@ function untar(archive: Uint8Array): TarEntry[]
 async function unzip(archive: Uint8Array): Promise<TarEntry[]>
   Read the entries of a `.zip` archive, decompressing `stored` and `deflate`
   members. The central directory is the source of truth. Directory entries (a
-  trailing `/`) are skipped. Encrypted, zip64, or otherwise-compressed entries
+  trailing `/`) are skipped. An entry from a zip made on Unix keeps its
+  permission bits as `mode`, and a Unix symlink entry comes back with its
+  target as `linkname`, so {@link extractZip} recreates it. Encrypted, zip64, or otherwise-compressed entries
   throw a friendly error naming the offending entry, and a header or data field
   that runs past the archive is reported as a malformed zip (not a raw
   out-of-bounds error). Every offset read from the archive is bounds-checked;
   for integrity against a tampered download, pin a `.checksum(...)`, which is
   verified before the archive is ever parsed.
 
+function uriEncode(value: string): string
+  `value` percent-encoded per RFC 3986 (unreserved characters kept).
+
 function validateGraph(targets: Map<string, TargetBuilder>): void
   Validate the whole graph: unknown references first, then cycles.
 
   @throws {GraphError}
       with a descriptive message including the cycle path.
+
+async function zip(entries: TarEntry[]): Promise<Uint8Array>
+  Create a `.zip` archive from the given entries (in order), each deflated —
+  the writer {@link unzip} reads. Like {@link tar}, every entry carries a
+  fixed timestamp, so the bytes depend only on the entries.
+
+  Only regular files are written: an entry with a `linkname` throws, since
+  zip has no portable symlink, and `mode` is ignored, since zip extractors
+  do not agree on reading one. An archive that would need zip64 (an entry or
+  the archive past 4 GiB, or 65535 entries or more) throws too.
 
 const ALLOW_INSECURE_ENV: "ZUKE_ALLOW_INSECURE_URL"
   The environment variable that opts a deployment out of {@link
@@ -1702,12 +1769,17 @@ class FileSystemBuildRegistry implements BuildRegistry
 class FileSystemCacheStore implements RemoteCacheStore
   A {@link RemoteCacheStore} backed by a shared or mounted directory.
 
-  constructor(dir: string)
+  constructor(dir: string, options: FileSystemCacheStoreOptions)
     Build the store over a directory.
 
     @param dir
         The directory archives are read from and written to.
 
+    @param options
+        The restore bound.
+
+  readonly maxInflatedBytes?: number
+    The most an artifact may decompress to; see {@link RemoteCacheStore.maxInflatedBytes}.
   get(key: string): Promise<Uint8Array | null>
     Fetch the archived outputs stored under `key`, or `null` if there are none.
   async put(key: string, artifact: Uint8Array): Promise<void>
@@ -1796,6 +1868,26 @@ class ForeignRunError extends Error
   override name: string
     The error name.
 
+class GitHubActionsCacheStore implements RemoteCacheStore
+  A {@link RemoteCacheStore} over the GitHub Actions cache service. A `get`
+  asks the service for the entry's signed download URL and fetches it; a `put`
+  reserves the entry, uploads the archive to the signed upload URL it is given,
+  and finalizes it. A key another job finalized first is left as it is: entries
+  are immutable, and both jobs built the same outputs from the same inputs.
+
+  Restores are subject to the Actions cache's own scoping — a run sees entries
+  written on its branch and on the default branch — and the service's eviction,
+  so a miss after a quiet week is normal and costs one rebuild.
+
+  constructor(options: GitHubActionsCacheStoreOptions)
+    Build the store from the service URL, the runtime token, and the `fetch` seam.
+  readonly maxInflatedBytes?: number
+    The most an artifact may decompress to; see {@link RemoteCacheStore.maxInflatedBytes}.
+  async get(key: string): Promise<Uint8Array | null>
+    Fetch the archived outputs stored under `key`, or `null` if there are none.
+  async put(key: string, artifact: Uint8Array): Promise<void>
+    Store `artifact` (a gzipped tar of a target's outputs) under `key`.
+
 class GraphError extends Error
   Raised when the build graph is invalid (cycle or unknown dependency).
 
@@ -1853,7 +1945,9 @@ class HttpCacheStore implements RemoteCacheStore
   decompresses to.
 
   constructor(options: HttpCacheStoreOptions)
-    Build the store from its URL, optional token, size cap, and `fetch` seam.
+    Build the store from its URL, optional token, size caps, and `fetch` seam.
+  readonly maxInflatedBytes?: number
+    The most an artifact may decompress to; see {@link RemoteCacheStore.maxInflatedBytes}.
   async get(key: string): Promise<Uint8Array | null>
     Fetch the archived outputs stored under `key`, or `null` if there are none.
   async put(key: string, artifact: Uint8Array): Promise<void>
@@ -2186,6 +2280,26 @@ class RunNotSuspendedError extends Error
     Build the error from the run id and the status found instead.
   override name: string
     The error name.
+
+class S3CacheStore implements RemoteCacheStore
+  A {@link RemoteCacheStore} over an S3-compatible bucket: the HTTP store's
+  `GET`/`PUT <url>/<key>`, each request carrying `x-amz-content-sha256` and
+  a SigV4 `Authorization` for the service `s3`.
+
+  A miss is a `404`, which S3 answers only to a caller allowed `s3:ListBucket`
+  on the bucket; without it a missing key is a `403`, reported as a lookup
+  failure (and a rebuild) rather than a miss. Grant `s3:GetObject`,
+  `s3:PutObject` and `s3:ListBucket`. Entries are never evicted by the store:
+  put a lifecycle rule on the prefix.
+
+  constructor(options: S3CacheStoreOptions)
+    Build the store from the bucket URL, region, credentials and seams.
+  readonly maxInflatedBytes?: number
+    The most an artifact may decompress to; see {@link RemoteCacheStore.maxInflatedBytes}.
+  get(key: string): Promise<Uint8Array | null>
+    Fetch the archived outputs stored under `key`, or `null` if there are none.
+  put(key: string, artifact: Uint8Array): Promise<void>
+    Store `artifact` (a gzipped tar of a target's outputs) under `key`.
 
 class SecretError extends Error
   Raised when a {@link SecretSource} cannot produce a value.
@@ -2744,8 +2858,8 @@ class ToolInstallSettings
   destDir(dir: PathLike): this
     The directory to install the binary into (created if missing).
   archive(format: DownloadFormat | ((platform: Platform) => DownloadFormat)): this
-    Treat the download as a `"tar.gz"` or `"zip"` to unpack (default `"raw"`,
-    the bare binary). Pair with {@link binaryPath} for the binary inside. Pass a
+    Treat the download as a `"tar.gz"`, `"tar.xz"` or `"zip"` to unpack
+    (default `"raw"`, the bare binary). Pair with {@link binaryPath} for the binary inside. Pass a
     `(platform) => format` resolver when the format is per-platform, as it is
     for most Go and Rust releases — `.tar.gz` on Linux and macOS, `.zip` on
     Windows (see {@link InstallReleaseOptions.archive}).
@@ -2759,7 +2873,9 @@ class ToolInstallSettings
     release tarball's `tool-v1.2.3/` directory. Ignored by a single-binary install.
   bins(...paths: string[]): this
     For a tree install, the paths (relative to the stripped root) to mark
-    executable on POSIX — a runtime's `bin/node`, `bin/npm`, … Ignored by a
+    executable on POSIX — a runtime's `bin/node`, `bin/npm`, … Extraction
+    already keeps the archive's mode bits, so this is a fallback for an
+    archive that ships them without the executable bit. Ignored by a
     single-binary install.
   checksum(sha256: string | ((platform: Platform) => string)): this
     The expected SHA-256 (hex) of the downloaded artifact — verifies and caches
@@ -2967,6 +3083,40 @@ interface AnyParameter
   stringValue_(): string | undefined
     The resolved value as a string, or `undefined` if unset (for masking).
 
+interface AwsCredentials
+  An AWS access key, with the session token temporary credentials carry.
+
+  readonly accessKeyId: string
+    The access key id (`AKIA…` long-term, `ASIA…` temporary).
+  readonly secretAccessKey: string
+    The secret access key. Never sent; only used to derive the signing key.
+  readonly sessionToken?: string
+    The session token of temporary credentials.
+
+interface AwsSignableRequest
+  The outgoing request a signature is computed over — exactly what will be
+  sent, so the signature verifies.
+
+  readonly method: string
+    The HTTP method.
+  readonly url: string
+    The absolute URL, including the query string, percent-encoded as sent.
+  readonly headers: Readonly<Record<string, string>>
+    The headers set so far, with lower-case names. Every one of them is
+    signed, so a header added after signing fails the request.
+  readonly body: Uint8Array
+    The exact body bytes; empty for a request without one.
+
+interface AwsSignature
+  What signing produced: the intermediate strings and the headers to add.
+
+  readonly canonicalRequest: string
+    The canonical request (step 1).
+  readonly stringToSign: string
+    The string to sign (step 2).
+  readonly headers: Readonly<Record<string, string>>
+    The headers to add: `x-amz-date`, `x-amz-security-token`, `authorization`.
+
 interface BearerChallenge
   The parts of a `WWW-Authenticate: Bearer` challenge Zuke emits.
 
@@ -3162,6 +3312,11 @@ interface CiBootstrap
   denoVersion?: string
     Install this Deno version, for a job that runs `deno` directly rather than
     through the `./zuke` launcher (which bootstraps its own).
+  actionsCache?: boolean
+    Expose the GitHub Actions cache to the build, so `envCacheStore` shares
+    target outputs through it with no further configuration. The runner hands
+    the cache service's token and URL to JavaScript actions only; this has the
+    action export them to the job.
   name?: string
     The step name. Defaults to `"Harden and check out with Zuke"`.
 
@@ -3829,7 +3984,7 @@ interface ExecuteOptions
     `resumeRun`.
 
 interface ExtractOptions
-  Options common to {@link extractTarGzip} and {@link extractZip}.
+  Options common to {@link extractTarGzip}, {@link extractTarXz} and {@link extractZip}.
 
   strip?: number
     Drop this many leading path components from every entry (like tar's
@@ -3858,6 +4013,13 @@ interface FanOutOptions
     Include targets hidden from `--list` via `.unlisted()`. Defaults to false.
   env?: Record<string, string>
     Environment variables set on every job (e.g. the remote-cache config).
+
+interface FileSystemCacheStoreOptions
+  Configuration for a {@link FileSystemCacheStore}.
+
+  maxInflatedBytes?: number
+    The most a fetched artifact may decompress to, in bytes — see
+    {@link RemoteCacheStore.maxInflatedBytes}. Defaults to 2 GiB.
 
 interface FileTasksApi
   The shape of {@link FileTasks}.
@@ -3963,6 +4125,25 @@ interface ForceResult
   override?: TargetOverride
     The override as recorded, when it was.
 
+interface GitHubActionsCacheStoreOptions
+  Configuration for a {@link GitHubActionsCacheStore}.
+
+  url: string
+    The cache service's base URL: the job's `ACTIONS_RESULTS_URL`.
+  token: string
+    The job's `ACTIONS_RUNTIME_TOKEN`, sent as a bearer token to the service.
+  fetch?: typeof fetch
+    The `fetch` implementation; defaults to the global. Overridable for tests.
+  maxArtifactBytes?: number
+    The most a fetched artifact may weigh on the wire, in bytes, before it is
+    refused. Defaults to 2 GiB — larger than the HTTP store's 512 MiB, because
+    this store is written only by the repository's own workflows and the
+    outputs worth caching here are the big ones (a 1.5 GB SDK). What the bytes
+    decompress to is bounded separately, by `restoreOutputs`.
+  maxInflatedBytes?: number
+    The most a fetched artifact may decompress to, in bytes — see
+    {@link RemoteCacheStore.maxInflatedBytes}. Defaults to 2 GiB.
+
 interface GlobOptions
   Options for {@link glob}.
 
@@ -4011,9 +4192,16 @@ interface HttpCacheStoreOptions
   Configuration for an {@link HttpCacheStore}.
 
   url: string
-    The base URL keys are appended to (any trailing slash is ignored).
+    The base URL keys are appended to (any trailing slash is ignored). A query
+    string is kept and the key goes before it, so an Azure Blob container's
+    SAS URL (`https://acct.blob.core.windows.net/container?sv=…`) works as
+    is.
   token?: string
     A bearer token sent as `Authorization: Bearer <token>`, if set.
+  headers?: Record<string, string>
+    Headers sent on every request: basic auth for a Gradle-protocol or WebDAV
+    cache, GitLab's `JOB-TOKEN`, or whatever else a server wants. The store's
+    own headers (the bearer token, the content type) win on a clash.
   fetch?: typeof fetch
     The `fetch` implementation; defaults to the global. Overridable for tests.
   maxArtifactBytes?: number
@@ -4022,6 +4210,9 @@ interface HttpCacheStoreOptions
     outputs are genuinely larger; a refusal is a warned rebuild, not a build
     failure. What the bytes decompress to is bounded separately, by
     {@link restoreOutputs}.
+  maxInflatedBytes?: number
+    The most a fetched artifact may decompress to, in bytes — see
+    {@link RemoteCacheStore.maxInflatedBytes}. Defaults to 2 GiB.
 
 interface HttpOptions
   Options shared by the HTTP helpers.
@@ -4074,8 +4265,8 @@ interface InstallReleaseOptions
     The directory to install the binary into (created if missing).
   archive?: DownloadFormat | ((platform: Platform) => DownloadFormat)
     The download format. `"raw"` (default) treats the download as the binary
-    itself; `"tar.gz"` and `"zip"` unpack it and take {@link binaryPath} from
-    inside. Many release assets ship one or the other.
+    itself; `"tar.gz"`, `"tar.xz"` and `"zip"` unpack it and take
+    {@link binaryPath} from inside. Many release assets ship one or the other.
 
     Like {@link url} and {@link checksum} this accepts a resolver, because the
     format is routinely per-platform: a Go or Rust project typically publishes
@@ -4083,7 +4274,7 @@ interface InstallReleaseOptions
     `(p) => p.os === "windows" ? "zip" : "tar.gz"` rather than declaring one
     format that is wrong on a third of the platforms.
   binaryPath?: string | ((platform: Platform) => string)
-    For a `"tar.gz"` or `"zip"` archive, the binary's path within the archive.
+    For a packed archive, the binary's path within the archive.
     Defaults to {@link name}.
 
     Also resolver-friendly, for the same reason: the same release usually names
@@ -4122,16 +4313,18 @@ interface InstallTreeOptions
   archive: ArchiveFormat | ((platform: Platform) => ArchiveFormat)
     The archive format — a multi-file runtime always ships packed. Accepts a
     per-platform resolver for the usual `.tar.gz` on Unix / `.zip` on Windows
-    split (see {@link InstallReleaseOptions.archive}).
+    split (see {@link InstallReleaseOptions.archive}); `"tar.xz"` covers the
+    Flutter SDK and Zig, which ship only that.
   strip?: number
     Leading path components to drop while unpacking (tar's `--strip-components`).
     A release tarball wraps everything in a `tool-v1.2.3/` directory, so `1`
     unwraps it; {@link bins} and the returned tree root are then relative to the
     stripped tree. Defaults to `0`.
   bins?: readonly string[]
-    Paths (relative to the stripped tree root) to mark executable on POSIX — the
-    tar reader does not preserve mode bits, so a runtime's `bin/node`,
-    `bin/npm`, … need it. Chmod follows a symlink to its real target, so listing
+    Paths (relative to the stripped tree root) to mark executable on POSIX — a
+    runtime's `bin/node`, `bin/npm`, … Extraction keeps the archive's mode
+    bits, so this is a fallback for an archive that ships a binary without the
+    executable bit. Chmod follows a symlink to its real target, so listing
     a symlinked bin makes the script it points at executable too.
   platform?: InstallPlatform
     The platform to resolve for. Defaults to {@link hostPlatform}.
@@ -4299,8 +4492,11 @@ interface OutputHost
 
   readFile(path: string): Promise<Uint8Array | null>
     File contents, or `null` if the path does not exist.
-  stat(path: string): Promise<{ isDirectory: boolean; } | null>
-    Whether a path exists and is a directory, or `null` if it is missing.
+  stat(path: string): Promise<{ isDirectory: boolean; mode?: number; } | null>
+    Whether a path exists and is a directory, or `null` if it is missing. A
+    host that has permission bits reports them as `mode`, so an archived
+    binary is restored executable; one that does not (Windows, a test double)
+    leaves it out and the entry takes the archive's default.
   lstat(path: string): Promise<{ isSymlink: boolean; isDirectory: boolean; } | null>
     Describe a path without following a final symlink, or `null` if it is
     missing. Distinct from {@link OutputHost.stat}, which resolves a link and so
@@ -4308,8 +4504,9 @@ interface OutputHost
     which is a question only an `lstat` can answer.
   readDir(path: string): Promise<string[]>
     The entry names within a directory.
-  writeFile(path: string, bytes: Uint8Array): Promise<void>
-    Write a file, creating parent directories as needed.
+  writeFile(path: string, bytes: Uint8Array, mode?: number): Promise<void>
+    Write a file, creating parent directories as needed, with the permission
+    bits `mode` where the platform has them.
 
 interface OutputMode
   What {@link resolveOutputMode} decides.
@@ -4444,6 +4641,11 @@ interface RemoteCacheStore
   point of view: the executor never fails a build because the store is
   unreachable — it just rebuilds and, where it can, re-uploads.
 
+  readonly maxInflatedBytes?: number
+    The most an artifact from this store may decompress to, in bytes, before
+    {@link restoreOutputs} refuses it. Defaults to 2 GiB; raise it for a target
+    whose outputs are genuinely larger, such as a whole SDK. The restore holds
+    the inflated archive in memory, so the bound is also its memory ceiling.
   get(key: string): Promise<Uint8Array | null>
     Fetch the archived outputs stored under `key`, or `null` if there are none.
   put(key: string, artifact: Uint8Array): Promise<void>
@@ -4862,6 +5064,30 @@ interface RunningService
   stop(): Promise<void>
     Stop the service; never rejects (failures are the registry's concern).
 
+interface S3CacheStoreOptions
+  Configuration for an {@link S3CacheStore}.
+
+  url: string
+    The bucket URL keys are appended to, with any prefix:
+    `https://my-bucket.s3.eu-west-1.amazonaws.com/zuke-cache` on AWS, or
+    `https://<account>.r2.cloudflarestorage.com/my-bucket` (path-style) on
+    R2, MinIO and the like.
+  region: string
+    The signing region: the bucket's on AWS, `auto` on R2.
+  credentials: AwsCredentials
+    The access key the requests are signed with.
+  fetch?: typeof fetch
+    The `fetch` implementation; defaults to the global. Overridable for tests.
+  now?: () => number
+    The clock the signatures are dated by (epoch ms); defaults to `Date.now`.
+  maxArtifactBytes?: number
+    The most a fetched artifact may weigh on the wire, in bytes, before it is
+    refused. Defaults to 512 MiB — see
+    {@link "./remote_cache.ts".HttpCacheStoreOptions.maxArtifactBytes}.
+  maxInflatedBytes?: number
+    The most a fetched artifact may decompress to, in bytes — see
+    {@link RemoteCacheStore.maxInflatedBytes}. Defaults to 2 GiB.
+
 interface ScheduleEntry
   A scheduled trigger: a 5-field cron expression in an optional IANA timezone.
 
@@ -4989,16 +5215,17 @@ interface TarEntry
   A single entry within a tar archive — a regular file or a symbolic link.
 
   name: string
-    The entry's path inside the archive (≤ 100 bytes).
+    The entry's path inside the archive.
   data: Uint8Array
     The file contents (empty for a symlink entry).
   linkname?: string
-    For a symbolic-link entry, its target (≤ 100 bytes); absent for a regular
-    file. Node's release tarballs, for one, ship `bin/npm`/`bin/npx` as symlinks
+    For a symbolic-link entry, its target; absent for a regular file. Node's release tarballs, for one, ship `bin/npm`/`bin/npx` as symlinks
     into `lib/node_modules`, so extracting a runtime tree must preserve them.
   mode?: number
     A regular file's permission bits, written into its header: `0o755` for an
-    executable, so a binary shipped in the archive runs once extracted.
+    executable, so a binary shipped in the archive runs once extracted. The
+    extractors apply them on POSIX, always owner-readable and -writable and
+    never group- or world-writable.
     Defaults to `0o644`. Ignored for a symlink entry, which is always
     `0o777`.
 
@@ -5375,7 +5602,7 @@ type AnnouncementLevel = "success" | "failure" | "warning" | "info"
 type Architecture = "x86_64" | "aarch64"
   The CPU architectures Zuke recognises.
 
-type ArchiveFormat = "tar.gz" | "zip"
+type ArchiveFormat = "tar.gz" | "tar.xz" | "zip"
   A packed download format, unpacked after the checksum is verified.
 
 type BuildLocation = { kind: "module"; module: string; cwd: string; repo?: string; } | { kind: "command"; command: string[]; cwd: string; repo?: string; }
@@ -5602,6 +5829,37 @@ function $(strings: TemplateStringsArray, ...values: Interpolatable[]): Command
 
   @example
       `await $\`deno test -A``
+
+function joinShellArgs(argv: readonly string[]): string
+  Render `argv` as a single command line a POSIX shell parses back into
+  exactly the same argv — for showing an operator a command to paste, or for
+  handing a command to something that runs it through `sh`.
+
+  Each token is written as it is when it holds only characters no shell treats
+  specially (letters, digits and `_@%+=:,./-`). Anything else — an empty token,
+  whitespace, a newline, `$`, a backtick, a quote, a glob character — is
+  wrapped in single quotes, with each embedded `'` written as `'\''`. Nothing
+  inside single quotes is special to the shell, so a token can never expand a
+  variable, substitute a command, or become a second command. Tokens are
+  joined by single spaces.
+
+  ```ts
+  joinShellArgs(["gcloud", "run", "services", "describe", "my svc"]);
+  // gcloud run services describe 'my svc'
+  joinShellArgs(["echo", "it's", ""]);
+  // echo 'it'\''s' ''
+  ```
+
+  The output round-trips through {@link splitShellArgs}. The quoting governs
+  how each token is split and expanded, not the grammar of the command
+  position: the first token should be the program to run, since a shell reads
+  a leading `NAME=value` as an assignment and a leading `if` as a keyword.
+
+  @param argv
+      The tokens to render, in order.
+
+  @return
+      The command line; an empty string for an empty argv.
 
 function splitShellArgs(input: string): string[]
   Split `input` into argv the way a POSIX shell would, honouring the quoting

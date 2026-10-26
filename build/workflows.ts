@@ -21,8 +21,23 @@
  */
 
 import { cicd, type CiFile, type TargetBuilder } from "@zuke/core";
+import { ChocolateyTasks } from "@zuke/chocolatey";
 import { HomebrewTasks } from "@zuke/homebrew";
 import { actionPin } from "./action_pins.ts";
+import { ACTION_PIN } from "./action_release.ts";
+
+/**
+ * Share the build's cacheable outputs (the provisioned toolchain) through the
+ * GitHub Actions cache. The prelude action's `actions-cache` input exports the
+ * cache service's credentials to the job, and `envCacheStore` does the rest.
+ *
+ * Gated on the released action accepting the input rather than switched on
+ * outright: `actionPinCheck` refuses a workflow that passes the pinned release
+ * an input it does not have, and the release that adds one is cut from master
+ * after the change lands. So the first regeneration after the pin moves turns
+ * this on, with nothing to remember.
+ */
+const ACTIONS_CACHE = ACTION_PIN.inputs.includes("actions-cache");
 
 /**
  * The targets the workflows invoke.
@@ -58,6 +73,10 @@ export interface WorkflowTargets {
   cliFormulaVerify: TargetBuilder;
   /** Publishes the CLI's formula to the Homebrew tap. */
   cliTap: TargetBuilder;
+  /** Verifies the CLI's Chocolatey package with the real choco. */
+  cliChocolateyVerify: TargetBuilder;
+  /** Pushes the CLI's Chocolatey package to the community repository. */
+  cliChocolatey: TargetBuilder;
   /** The supply-chain scanners. */
   security: TargetBuilder;
   /** CodeQL static analysis, run entirely by the marketplace actions. */
@@ -200,6 +219,7 @@ export function githubWorkflows(
           group: "ci-${{ github.workflow }}-${{ github.ref }}",
           cancelInProgress: true,
         },
+        bootstrap: { actionsCache: ACTIONS_CACHE },
       },
       invokes: [
         {
@@ -388,8 +408,11 @@ export function githubWorkflows(
           // only read access to contents — so the publishing credential is
           // isolated from release-please's write scopes.
           permissions: { contents: "read", "id-token": "write" },
-          // Backstop: publishJsr already times out a stalled publish per package.
-          timeoutMinutes: 30,
+          // Backstop: publishJsr bounds each package itself — three attempts,
+          // each a 3-minute upload and up to 5 minutes waiting for JSR to
+          // finish processing it (#855) — and a version whose dependency did
+          // not land is skipped at once, so this only stops a runaway job.
+          timeoutMinutes: 90,
         },
         {
           target: targets.syncWebsite,
@@ -428,6 +451,7 @@ export function githubWorkflows(
             version: "${{ steps.plan.outputs.version }}",
             build: "${{ steps.plan.outputs.build }}",
             tap: "${{ steps.plan.outputs.tap }}",
+            chocolatey: "${{ steps.plan.outputs.chocolatey }}",
           },
           steps: [
             {
@@ -517,7 +541,8 @@ export function githubWorkflows(
               uses: actionPin("actions/attest-build-provenance"),
               with: {
                 "subject-path":
-                  "dist/cli/release/*.tar.gz\ndist/cli/release/SHA256SUMS",
+                  "dist/cli/release/*.tar.gz\ndist/cli/release/*.zip\n" +
+                  "dist/cli/release/SHA256SUMS",
               },
             },
             {
@@ -556,6 +581,39 @@ export function githubWorkflows(
             ZUKE_BUILD_APP_KEY: "${{ secrets.ZUKE_BUILD_APP_KEY }}",
           },
         },
+        // The Windows binary's Chocolatey package, beside the tap: verified
+        // with the real choco, then pushed. Not Authenticode-signed yet (#793).
+        {
+          ...ChocolateyTasks.verifyJob((s) =>
+            s.target(targets.cliChocolateyVerify)
+          ),
+          after: [targets.cliBinaries, targets.cliUpload],
+          if: `\${{ !cancelled() && ${CLI_PLAN}.chocolatey == 'true' && ` +
+            `${CLI_UPLOAD_SETTLED} }}`,
+          permissions: { contents: "read" },
+          timeoutMinutes: 30,
+        },
+        {
+          target: targets.cliChocolatey,
+          name: "CLI binaries: push the Chocolatey package",
+          after: [targets.cliBinaries, targets.cliChocolateyVerify],
+          // Paused until the repository variable CHOCOLATEY_PUSH is
+          // `enabled`: the package's first version is still in community
+          // moderation, and pushing another until it is approved is refused
+          // with a 403 that would fail every release (#855). The package is
+          // still built and verified above on every release.
+          if: "${{ !cancelled() && " +
+            "needs.cliChocolateyVerify.result == 'success' && " +
+            "vars.CHOCOLATEY_PUSH == 'enabled' }}",
+          // choco is what pushes, and GitHub's Windows runners ship it.
+          runsOn: "windows-latest",
+          // The community repository's API key lives in this environment, so
+          // a deployment rule can require approval before a push.
+          environment: "chocolatey",
+          permissions: { contents: "read" },
+          timeoutMinutes: 15,
+          env: { CHOCOLATEY_API_KEY: "${{ secrets.CHOCOLATEY_API_KEY }}" },
+        },
       ],
     }),
 
@@ -576,6 +634,7 @@ export function githubWorkflows(
           // master and the weekly run still walk the whole history.
           fetchDepth: 0,
         },
+        bootstrap: { actionsCache: ACTIONS_CACHE },
       },
       // The scanners come from the build's declared toolchain — pinned,
       // checksum-verified, cached — so there is no install step, and the findings

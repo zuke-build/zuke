@@ -25,7 +25,7 @@ import {
   compileCliBinaries,
 } from "../build/cli_compile.ts";
 import { binaryPath } from "../build/cli_package.ts";
-import { CLI_TARGETS } from "../build/cli_release.ts";
+import { CLI_TARGETS, WINDOWS_TRIPLE } from "../build/cli_release.ts";
 
 /** The running deno, as the absolute path the smoke check takes. */
 const deno = absolutePath(Deno.execPath());
@@ -47,7 +47,8 @@ Deno.test("compileCliBinaries compiles every target with -A into its own directo
     // Written as `absolutePath` normalises it, so the argv compares on Windows.
     const bin = absolutePath(dir, "bin");
     const compiles: string[][] = [];
-    const host = CLI_TARGETS.find((t) => t.triple === Deno.build.target);
+    const triples = [...CLI_TARGETS.map((t) => t.triple), WINDOWS_TRIPLE];
+    const host = triples.find((triple) => triple === Deno.build.target);
     const expected = host === undefined ? "1.14.0" : await denoVersionLine();
     await compileCliBinaries(
       expected,
@@ -56,16 +57,17 @@ Deno.test("compileCliBinaries compiles every target with -A into its own directo
         const settings = configure(new DenoCompileSettings());
         compiles.push(settings.argv());
         // Stand in for the binary built for this machine with the running
-        // deno, whose --version the check then reads.
+        // deno, whose --version the check then reads. Copied, not linked:
+        // a symlink needs privileges on Windows, which is a host too.
         const target = settings.argv()[settings.argv().indexOf("--target") + 1];
-        if (target === host?.triple) {
-          await Deno.symlink(Deno.execPath(), binaryPath(bin.path, target));
+        if (target === host) {
+          await Deno.copyFile(Deno.execPath(), binaryPath(bin.path, target));
         }
       },
     );
-    assertEquals(compiles.length, CLI_TARGETS.length);
+    assertEquals(compiles.length, triples.length);
     for (const [i, argv] of compiles.entries()) {
-      const target = CLI_TARGETS[i].triple;
+      const target = triples[i];
       assertEquals(argv.includes("--allow-all"), true, argv.join(" "));
       assertEquals(argv[argv.indexOf("--target") + 1], target);
       assertEquals(

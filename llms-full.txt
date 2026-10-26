@@ -87,9 +87,10 @@ function appendJobSummary(markdown: string): boolean
   that produced it — the build's own result is the signal that matters.
 
 async function archiveOutputs(outputs: readonly string[], host: OutputHost): Promise<Uint8Array>
-  Archive a target's `outputs` into a gzipped tar of their current contents.
-  A declared output that does not exist is skipped, as is anything under a
-  `.git` or `.zuke` directory.
+  Archive a target's `outputs` into a gzipped tar of their current contents,
+  each file with its permission bits so a binary restores executable. A
+  declared output that does not exist is skipped, as is anything under a
+  `.git` or `.zuke` directory, other than `.zuke/tools` and whatever it holds.
 
 function assert(condition: unknown, message: string): asserts condition
   Assert that `condition` is truthy, narrowing it for the rest of the scope.
@@ -120,6 +121,12 @@ function assertSafeLinkTarget(entryName: string, target: string): void
   extraction root once resolved against the link's own directory. A file entry's
   name is bounded by {@link assertSafeEntryName}; a symlink adds a second escape
   vector (its target), so a poisoned tarball can't plant `bin/x -> ../../etc`.
+
+  A `..` is allowed only before the target's first name: after a name, that
+  name may itself be a symlink, and `..` would climb from wherever it points —
+  so a chain such as `up -> ..` then `p -> up/..` could reach outside the root
+  while every target looked bounded. An empty target, or one holding a NUL, is
+  refused too.
 
 function assertSecureBackendUrl(raw: string, what: string, readEnv: (name: string) => string | undefined): void
   Refuse a plaintext URL for a backend Zuke both authenticates to and trusts
@@ -323,7 +330,15 @@ function envCacheStore(readEnv: (name: string) => string | undefined): RemoteCac
   Resolve a {@link RemoteCacheStore} from the environment, or `undefined` when
   none is configured. `ZUKE_REMOTE_CACHE_URL` (with an optional
   `ZUKE_REMOTE_CACHE_TOKEN`) selects an {@link HttpCacheStore}; otherwise
-  `ZUKE_REMOTE_CACHE_DIR` selects a {@link FileSystemCacheStore}.
+  `ZUKE_REMOTE_CACHE_S3_URL` selects an {@link "./s3_cache.ts".S3CacheStore}
+  signed with `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (and
+  `AWS_SESSION_TOKEN`) in `AWS_REGION` or `AWS_DEFAULT_REGION`; otherwise
+  `ZUKE_REMOTE_CACHE_DIR` selects a {@link FileSystemCacheStore}; otherwise,
+  on a GitHub Actions job that exposes its `ACTIONS_RUNTIME_TOKEN` and
+  `ACTIONS_RESULTS_URL` (the `actions-cache` input of the `zuke-build/zuke`
+  action), a {@link "./github_actions_cache.ts".GitHubActionsCacheStore}.
+  Whichever is chosen takes `ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES`, when set,
+  as its {@link RemoteCacheStore.maxInflatedBytes}.
 
 function envStateStore(readEnv: (name: string) => string | undefined, host: StateHost): StateStore | undefined
   Resolve a {@link StateStore} from the environment, or `undefined` when none is
@@ -367,6 +382,15 @@ async function extractTarGzip(src: PathLike, destDir: PathLike, options: Extract
   `destDir` (creating parent directories as needed). Symlink entries are
   recreated as symlinks and directory entries as directories; pass
   {@link ExtractOptions.strip} to drop leading path components.
+
+async function extractTarXz(src: PathLike, destDir: PathLike, options: ExtractOptions): Promise<void>
+  Read the `.tar.xz` at `src`, decompress and unpack it, and write each entry
+  under `destDir` exactly as {@link extractTarGzip} does — the same symlink
+  handling, the same zip-slip guards, the same {@link ExtractOptions.strip}.
+  The system `xz` decompresses when one is on `PATH`, several times faster
+  than the built-in decoder this falls back to, which covers the single LZMA2
+  filter chain `xz` writes by default and verifies each block's check. Either
+  way Zuke's own tar reader and guards unpack the result.
 
 async function extractZip(src: PathLike, destDir: PathLike, options: ExtractOptions): Promise<void>
   Read the `.zip` at `src`, unpack it, and write each entry under `destDir`
@@ -530,8 +554,9 @@ async function installTree(options: InstallTreeOptions): Promise<AbsolutePath>
 
   Because {@link AbsolutePath} is callable, the root doubles as an accessor:
   `root("bin", "node")` is the node binary and `root("bin")` is the directory to
-  put on `PATH` (with `prependPath`). Declared {@link InstallTreeOptions.bins}
-  are marked executable on POSIX. With a {@link InstallTreeOptions.checksum} the
+  put on `PATH` (with `prependPath`). Files keep the archive's permission bits;
+  declared {@link InstallTreeOptions.bins} are also marked executable on POSIX,
+  as a fallback. With a {@link InstallTreeOptions.checksum} the
   archive is verified before unpacking and a matching prior install is reused.
 
 function isCI(env: (name: string) => string | undefined): boolean
@@ -828,7 +853,8 @@ async function restoreOutputs(artifact: Uint8Array, host: OutputHost, outputs?: 
   leaves no half-written, partially-trusted output tree. An entry is refused
   when its name is absolute or escapes the workspace with `..`, when it is a
   symlink or directory entry (which {@link archiveOutputs} never produces),
-  when it lands under `.git` or `.zuke`, when — given `outputs` — it falls
+  when it lands under `.git` or `.zuke` (`.zuke/tools` aside), when — given
+  `outputs` — it falls
   outside the target's declared outputs, and when the path it would be written
   to passes through, or is, a symlink that already exists on disk.
 
@@ -842,7 +868,8 @@ async function restoreOutputs(artifact: Uint8Array, host: OutputHost, outputs?: 
 
   @param maxBytes
       The most the artifact may decompress to before it is refused,
-      defaulting to 2 GiB. The bound is applied while decompressing, so a small
+      defaulting to 2 GiB; the executor passes the store's
+      {@link RemoteCacheStore.maxInflatedBytes}. The bound is applied while decompressing, so a small
       archive that expands without limit is refused rather than buffered first.
       It is larger than the bound a store puts on the compressed bytes because
       outputs compress; both exist to stop memory exhaustion.
@@ -925,7 +952,25 @@ async function sha256Hex(data: string | Uint8Array): Promise<string>
   type is unambiguous whatever buffer the source view sits on (e.g. a
   `SharedArrayBuffer`).
 
-async function signJwtRs256(privateKeyPem: string, claims: Readonly<Record<string, unknown>>, keyId?: string): Promise<string>
+function signJwtEs256(privateKeyPem: string, claims: Readonly<Record<string, unknown>>, keyId?: string): Promise<string>
+  Sign `claims` as a compact ES256 JWT with a PEM P-256 private key in
+  PKCS#8 — `BEGIN PRIVATE KEY`, as an App Store Connect `AuthKey_<id>.p8`
+  holds it.
+
+  The header is `{"alg":"ES256","typ":"JWT"}`, plus `"kid"` when `keyId` is
+  given (App Store Connect requires it). The claims are serialised as given:
+  the caller sets `iat`, `exp` and the rest. The signature is the raw r‖s
+  pair ES256 requires.
+
+  ```ts
+  const jwt = await signJwtEs256(p8, { iss: issuerId, iat, exp: iat + 1200 }, keyId);
+  ```
+
+  @throws {Error}
+      naming the problem — an empty key, a body that is not
+      base64, or one that is not a P-256 key — and never quoting the key.
+
+function signJwtRs256(privateKeyPem: string, claims: Readonly<Record<string, unknown>>, keyId?: string): Promise<string>
   Sign `claims` as a compact RS256 JWT with a PEM RSA private key —
   `BEGIN RSA PRIVATE KEY` (PKCS#1) or `BEGIN PRIVATE KEY` (PKCS#8).
 
@@ -941,13 +986,20 @@ async function signJwtRs256(privateKeyPem: string, claims: Readonly<Record<strin
       naming the problem — an empty key, a body that is not
       base64, or one that is not an RSA key — and never quoting the key.
 
+async function signSigV4(request: AwsSignableRequest, credentials: AwsCredentials, region: string, service: string, now: number): Promise<AwsSignature>
+  Sign `request` for `service` in `region` at the instant `now` (epoch ms).
+  Pure apart from WebCrypto: the same inputs give the same signature.
+
 async function syncCiFiles(files: readonly CiFile[], options: CiSyncOptions): Promise<CiSyncResult[]>
   Bring each declared {@link CiFile} on disk in line with its definition. By
   default a changed file is rewritten; in `check` mode it is reported `stale`
   instead (so CI can fail when the committed config has drifted).
 
 function tar(entries: TarEntry[]): Uint8Array
-  Create a `ustar` archive from the given entries (in order).
+  Create a `ustar` archive from the given entries (in order). A name or
+  symlink target past ustar's 100 bytes is carried by a pax extended header
+  (typeflag `'x'`) ahead of its member, which {@link untar} and every modern
+  `tar` read back.
 
 function target(): TargetBuilder
   Create a new, empty target builder.
@@ -988,18 +1040,33 @@ function untar(archive: Uint8Array): TarEntry[]
 async function unzip(archive: Uint8Array): Promise<TarEntry[]>
   Read the entries of a `.zip` archive, decompressing `stored` and `deflate`
   members. The central directory is the source of truth. Directory entries (a
-  trailing `/`) are skipped. Encrypted, zip64, or otherwise-compressed entries
+  trailing `/`) are skipped. An entry from a zip made on Unix keeps its
+  permission bits as `mode`, and a Unix symlink entry comes back with its
+  target as `linkname`, so {@link extractZip} recreates it. Encrypted, zip64, or otherwise-compressed entries
   throw a friendly error naming the offending entry, and a header or data field
   that runs past the archive is reported as a malformed zip (not a raw
   out-of-bounds error). Every offset read from the archive is bounds-checked;
   for integrity against a tampered download, pin a `.checksum(...)`, which is
   verified before the archive is ever parsed.
 
+function uriEncode(value: string): string
+  `value` percent-encoded per RFC 3986 (unreserved characters kept).
+
 function validateGraph(targets: Map<string, TargetBuilder>): void
   Validate the whole graph: unknown references first, then cycles.
 
   @throws {GraphError}
       with a descriptive message including the cycle path.
+
+async function zip(entries: TarEntry[]): Promise<Uint8Array>
+  Create a `.zip` archive from the given entries (in order), each deflated —
+  the writer {@link unzip} reads. Like {@link tar}, every entry carries a
+  fixed timestamp, so the bytes depend only on the entries.
+
+  Only regular files are written: an entry with a `linkname` throws, since
+  zip has no portable symlink, and `mode` is ignored, since zip extractors
+  do not agree on reading one. An archive that would need zip64 (an entry or
+  the archive past 4 GiB, or 65535 entries or more) throws too.
 
 const ALLOW_INSECURE_ENV: "ZUKE_ALLOW_INSECURE_URL"
   The environment variable that opts a deployment out of {@link
@@ -1648,12 +1715,17 @@ class FileSystemBuildRegistry implements BuildRegistry
 class FileSystemCacheStore implements RemoteCacheStore
   A {@link RemoteCacheStore} backed by a shared or mounted directory.
 
-  constructor(dir: string)
+  constructor(dir: string, options: FileSystemCacheStoreOptions)
     Build the store over a directory.
 
     @param dir
         The directory archives are read from and written to.
 
+    @param options
+        The restore bound.
+
+  readonly maxInflatedBytes?: number
+    The most an artifact may decompress to; see {@link RemoteCacheStore.maxInflatedBytes}.
   get(key: string): Promise<Uint8Array | null>
     Fetch the archived outputs stored under `key`, or `null` if there are none.
   async put(key: string, artifact: Uint8Array): Promise<void>
@@ -1742,6 +1814,26 @@ class ForeignRunError extends Error
   override name: string
     The error name.
 
+class GitHubActionsCacheStore implements RemoteCacheStore
+  A {@link RemoteCacheStore} over the GitHub Actions cache service. A `get`
+  asks the service for the entry's signed download URL and fetches it; a `put`
+  reserves the entry, uploads the archive to the signed upload URL it is given,
+  and finalizes it. A key another job finalized first is left as it is: entries
+  are immutable, and both jobs built the same outputs from the same inputs.
+
+  Restores are subject to the Actions cache's own scoping — a run sees entries
+  written on its branch and on the default branch — and the service's eviction,
+  so a miss after a quiet week is normal and costs one rebuild.
+
+  constructor(options: GitHubActionsCacheStoreOptions)
+    Build the store from the service URL, the runtime token, and the `fetch` seam.
+  readonly maxInflatedBytes?: number
+    The most an artifact may decompress to; see {@link RemoteCacheStore.maxInflatedBytes}.
+  async get(key: string): Promise<Uint8Array | null>
+    Fetch the archived outputs stored under `key`, or `null` if there are none.
+  async put(key: string, artifact: Uint8Array): Promise<void>
+    Store `artifact` (a gzipped tar of a target's outputs) under `key`.
+
 class GraphError extends Error
   Raised when the build graph is invalid (cycle or unknown dependency).
 
@@ -1799,7 +1891,9 @@ class HttpCacheStore implements RemoteCacheStore
   decompresses to.
 
   constructor(options: HttpCacheStoreOptions)
-    Build the store from its URL, optional token, size cap, and `fetch` seam.
+    Build the store from its URL, optional token, size caps, and `fetch` seam.
+  readonly maxInflatedBytes?: number
+    The most an artifact may decompress to; see {@link RemoteCacheStore.maxInflatedBytes}.
   async get(key: string): Promise<Uint8Array | null>
     Fetch the archived outputs stored under `key`, or `null` if there are none.
   async put(key: string, artifact: Uint8Array): Promise<void>
@@ -2132,6 +2226,26 @@ class RunNotSuspendedError extends Error
     Build the error from the run id and the status found instead.
   override name: string
     The error name.
+
+class S3CacheStore implements RemoteCacheStore
+  A {@link RemoteCacheStore} over an S3-compatible bucket: the HTTP store's
+  `GET`/`PUT <url>/<key>`, each request carrying `x-amz-content-sha256` and
+  a SigV4 `Authorization` for the service `s3`.
+
+  A miss is a `404`, which S3 answers only to a caller allowed `s3:ListBucket`
+  on the bucket; without it a missing key is a `403`, reported as a lookup
+  failure (and a rebuild) rather than a miss. Grant `s3:GetObject`,
+  `s3:PutObject` and `s3:ListBucket`. Entries are never evicted by the store:
+  put a lifecycle rule on the prefix.
+
+  constructor(options: S3CacheStoreOptions)
+    Build the store from the bucket URL, region, credentials and seams.
+  readonly maxInflatedBytes?: number
+    The most an artifact may decompress to; see {@link RemoteCacheStore.maxInflatedBytes}.
+  get(key: string): Promise<Uint8Array | null>
+    Fetch the archived outputs stored under `key`, or `null` if there are none.
+  put(key: string, artifact: Uint8Array): Promise<void>
+    Store `artifact` (a gzipped tar of a target's outputs) under `key`.
 
 class SecretError extends Error
   Raised when a {@link SecretSource} cannot produce a value.
@@ -2690,8 +2804,8 @@ class ToolInstallSettings
   destDir(dir: PathLike): this
     The directory to install the binary into (created if missing).
   archive(format: DownloadFormat | ((platform: Platform) => DownloadFormat)): this
-    Treat the download as a `"tar.gz"` or `"zip"` to unpack (default `"raw"`,
-    the bare binary). Pair with {@link binaryPath} for the binary inside. Pass a
+    Treat the download as a `"tar.gz"`, `"tar.xz"` or `"zip"` to unpack
+    (default `"raw"`, the bare binary). Pair with {@link binaryPath} for the binary inside. Pass a
     `(platform) => format` resolver when the format is per-platform, as it is
     for most Go and Rust releases — `.tar.gz` on Linux and macOS, `.zip` on
     Windows (see {@link InstallReleaseOptions.archive}).
@@ -2705,7 +2819,9 @@ class ToolInstallSettings
     release tarball's `tool-v1.2.3/` directory. Ignored by a single-binary install.
   bins(...paths: string[]): this
     For a tree install, the paths (relative to the stripped root) to mark
-    executable on POSIX — a runtime's `bin/node`, `bin/npm`, … Ignored by a
+    executable on POSIX — a runtime's `bin/node`, `bin/npm`, … Extraction
+    already keeps the archive's mode bits, so this is a fallback for an
+    archive that ships them without the executable bit. Ignored by a
     single-binary install.
   checksum(sha256: string | ((platform: Platform) => string)): this
     The expected SHA-256 (hex) of the downloaded artifact — verifies and caches
@@ -2913,6 +3029,40 @@ interface AnyParameter
   stringValue_(): string | undefined
     The resolved value as a string, or `undefined` if unset (for masking).
 
+interface AwsCredentials
+  An AWS access key, with the session token temporary credentials carry.
+
+  readonly accessKeyId: string
+    The access key id (`AKIA…` long-term, `ASIA…` temporary).
+  readonly secretAccessKey: string
+    The secret access key. Never sent; only used to derive the signing key.
+  readonly sessionToken?: string
+    The session token of temporary credentials.
+
+interface AwsSignableRequest
+  The outgoing request a signature is computed over — exactly what will be
+  sent, so the signature verifies.
+
+  readonly method: string
+    The HTTP method.
+  readonly url: string
+    The absolute URL, including the query string, percent-encoded as sent.
+  readonly headers: Readonly<Record<string, string>>
+    The headers set so far, with lower-case names. Every one of them is
+    signed, so a header added after signing fails the request.
+  readonly body: Uint8Array
+    The exact body bytes; empty for a request without one.
+
+interface AwsSignature
+  What signing produced: the intermediate strings and the headers to add.
+
+  readonly canonicalRequest: string
+    The canonical request (step 1).
+  readonly stringToSign: string
+    The string to sign (step 2).
+  readonly headers: Readonly<Record<string, string>>
+    The headers to add: `x-amz-date`, `x-amz-security-token`, `authorization`.
+
 interface BearerChallenge
   The parts of a `WWW-Authenticate: Bearer` challenge Zuke emits.
 
@@ -3108,6 +3258,11 @@ interface CiBootstrap
   denoVersion?: string
     Install this Deno version, for a job that runs `deno` directly rather than
     through the `./zuke` launcher (which bootstraps its own).
+  actionsCache?: boolean
+    Expose the GitHub Actions cache to the build, so `envCacheStore` shares
+    target outputs through it with no further configuration. The runner hands
+    the cache service's token and URL to JavaScript actions only; this has the
+    action export them to the job.
   name?: string
     The step name. Defaults to `"Harden and check out with Zuke"`.
 
@@ -3775,7 +3930,7 @@ interface ExecuteOptions
     `resumeRun`.
 
 interface ExtractOptions
-  Options common to {@link extractTarGzip} and {@link extractZip}.
+  Options common to {@link extractTarGzip}, {@link extractTarXz} and {@link extractZip}.
 
   strip?: number
     Drop this many leading path components from every entry (like tar's
@@ -3804,6 +3959,13 @@ interface FanOutOptions
     Include targets hidden from `--list` via `.unlisted()`. Defaults to false.
   env?: Record<string, string>
     Environment variables set on every job (e.g. the remote-cache config).
+
+interface FileSystemCacheStoreOptions
+  Configuration for a {@link FileSystemCacheStore}.
+
+  maxInflatedBytes?: number
+    The most a fetched artifact may decompress to, in bytes — see
+    {@link RemoteCacheStore.maxInflatedBytes}. Defaults to 2 GiB.
 
 interface FileTasksApi
   The shape of {@link FileTasks}.
@@ -3909,6 +4071,25 @@ interface ForceResult
   override?: TargetOverride
     The override as recorded, when it was.
 
+interface GitHubActionsCacheStoreOptions
+  Configuration for a {@link GitHubActionsCacheStore}.
+
+  url: string
+    The cache service's base URL: the job's `ACTIONS_RESULTS_URL`.
+  token: string
+    The job's `ACTIONS_RUNTIME_TOKEN`, sent as a bearer token to the service.
+  fetch?: typeof fetch
+    The `fetch` implementation; defaults to the global. Overridable for tests.
+  maxArtifactBytes?: number
+    The most a fetched artifact may weigh on the wire, in bytes, before it is
+    refused. Defaults to 2 GiB — larger than the HTTP store's 512 MiB, because
+    this store is written only by the repository's own workflows and the
+    outputs worth caching here are the big ones (a 1.5 GB SDK). What the bytes
+    decompress to is bounded separately, by `restoreOutputs`.
+  maxInflatedBytes?: number
+    The most a fetched artifact may decompress to, in bytes — see
+    {@link RemoteCacheStore.maxInflatedBytes}. Defaults to 2 GiB.
+
 interface GlobOptions
   Options for {@link glob}.
 
@@ -3957,9 +4138,16 @@ interface HttpCacheStoreOptions
   Configuration for an {@link HttpCacheStore}.
 
   url: string
-    The base URL keys are appended to (any trailing slash is ignored).
+    The base URL keys are appended to (any trailing slash is ignored). A query
+    string is kept and the key goes before it, so an Azure Blob container's
+    SAS URL (`https://acct.blob.core.windows.net/container?sv=…`) works as
+    is.
   token?: string
     A bearer token sent as `Authorization: Bearer <token>`, if set.
+  headers?: Record<string, string>
+    Headers sent on every request: basic auth for a Gradle-protocol or WebDAV
+    cache, GitLab's `JOB-TOKEN`, or whatever else a server wants. The store's
+    own headers (the bearer token, the content type) win on a clash.
   fetch?: typeof fetch
     The `fetch` implementation; defaults to the global. Overridable for tests.
   maxArtifactBytes?: number
@@ -3968,6 +4156,9 @@ interface HttpCacheStoreOptions
     outputs are genuinely larger; a refusal is a warned rebuild, not a build
     failure. What the bytes decompress to is bounded separately, by
     {@link restoreOutputs}.
+  maxInflatedBytes?: number
+    The most a fetched artifact may decompress to, in bytes — see
+    {@link RemoteCacheStore.maxInflatedBytes}. Defaults to 2 GiB.
 
 interface HttpOptions
   Options shared by the HTTP helpers.
@@ -4020,8 +4211,8 @@ interface InstallReleaseOptions
     The directory to install the binary into (created if missing).
   archive?: DownloadFormat | ((platform: Platform) => DownloadFormat)
     The download format. `"raw"` (default) treats the download as the binary
-    itself; `"tar.gz"` and `"zip"` unpack it and take {@link binaryPath} from
-    inside. Many release assets ship one or the other.
+    itself; `"tar.gz"`, `"tar.xz"` and `"zip"` unpack it and take
+    {@link binaryPath} from inside. Many release assets ship one or the other.
 
     Like {@link url} and {@link checksum} this accepts a resolver, because the
     format is routinely per-platform: a Go or Rust project typically publishes
@@ -4029,7 +4220,7 @@ interface InstallReleaseOptions
     `(p) => p.os === "windows" ? "zip" : "tar.gz"` rather than declaring one
     format that is wrong on a third of the platforms.
   binaryPath?: string | ((platform: Platform) => string)
-    For a `"tar.gz"` or `"zip"` archive, the binary's path within the archive.
+    For a packed archive, the binary's path within the archive.
     Defaults to {@link name}.
 
     Also resolver-friendly, for the same reason: the same release usually names
@@ -4068,16 +4259,18 @@ interface InstallTreeOptions
   archive: ArchiveFormat | ((platform: Platform) => ArchiveFormat)
     The archive format — a multi-file runtime always ships packed. Accepts a
     per-platform resolver for the usual `.tar.gz` on Unix / `.zip` on Windows
-    split (see {@link InstallReleaseOptions.archive}).
+    split (see {@link InstallReleaseOptions.archive}); `"tar.xz"` covers the
+    Flutter SDK and Zig, which ship only that.
   strip?: number
     Leading path components to drop while unpacking (tar's `--strip-components`).
     A release tarball wraps everything in a `tool-v1.2.3/` directory, so `1`
     unwraps it; {@link bins} and the returned tree root are then relative to the
     stripped tree. Defaults to `0`.
   bins?: readonly string[]
-    Paths (relative to the stripped tree root) to mark executable on POSIX — the
-    tar reader does not preserve mode bits, so a runtime's `bin/node`,
-    `bin/npm`, … need it. Chmod follows a symlink to its real target, so listing
+    Paths (relative to the stripped tree root) to mark executable on POSIX — a
+    runtime's `bin/node`, `bin/npm`, … Extraction keeps the archive's mode
+    bits, so this is a fallback for an archive that ships a binary without the
+    executable bit. Chmod follows a symlink to its real target, so listing
     a symlinked bin makes the script it points at executable too.
   platform?: InstallPlatform
     The platform to resolve for. Defaults to {@link hostPlatform}.
@@ -4245,8 +4438,11 @@ interface OutputHost
 
   readFile(path: string): Promise<Uint8Array | null>
     File contents, or `null` if the path does not exist.
-  stat(path: string): Promise<{ isDirectory: boolean; } | null>
-    Whether a path exists and is a directory, or `null` if it is missing.
+  stat(path: string): Promise<{ isDirectory: boolean; mode?: number; } | null>
+    Whether a path exists and is a directory, or `null` if it is missing. A
+    host that has permission bits reports them as `mode`, so an archived
+    binary is restored executable; one that does not (Windows, a test double)
+    leaves it out and the entry takes the archive's default.
   lstat(path: string): Promise<{ isSymlink: boolean; isDirectory: boolean; } | null>
     Describe a path without following a final symlink, or `null` if it is
     missing. Distinct from {@link OutputHost.stat}, which resolves a link and so
@@ -4254,8 +4450,9 @@ interface OutputHost
     which is a question only an `lstat` can answer.
   readDir(path: string): Promise<string[]>
     The entry names within a directory.
-  writeFile(path: string, bytes: Uint8Array): Promise<void>
-    Write a file, creating parent directories as needed.
+  writeFile(path: string, bytes: Uint8Array, mode?: number): Promise<void>
+    Write a file, creating parent directories as needed, with the permission
+    bits `mode` where the platform has them.
 
 interface OutputMode
   What {@link resolveOutputMode} decides.
@@ -4390,6 +4587,11 @@ interface RemoteCacheStore
   point of view: the executor never fails a build because the store is
   unreachable — it just rebuilds and, where it can, re-uploads.
 
+  readonly maxInflatedBytes?: number
+    The most an artifact from this store may decompress to, in bytes, before
+    {@link restoreOutputs} refuses it. Defaults to 2 GiB; raise it for a target
+    whose outputs are genuinely larger, such as a whole SDK. The restore holds
+    the inflated archive in memory, so the bound is also its memory ceiling.
   get(key: string): Promise<Uint8Array | null>
     Fetch the archived outputs stored under `key`, or `null` if there are none.
   put(key: string, artifact: Uint8Array): Promise<void>
@@ -4808,6 +5010,30 @@ interface RunningService
   stop(): Promise<void>
     Stop the service; never rejects (failures are the registry's concern).
 
+interface S3CacheStoreOptions
+  Configuration for an {@link S3CacheStore}.
+
+  url: string
+    The bucket URL keys are appended to, with any prefix:
+    `https://my-bucket.s3.eu-west-1.amazonaws.com/zuke-cache` on AWS, or
+    `https://<account>.r2.cloudflarestorage.com/my-bucket` (path-style) on
+    R2, MinIO and the like.
+  region: string
+    The signing region: the bucket's on AWS, `auto` on R2.
+  credentials: AwsCredentials
+    The access key the requests are signed with.
+  fetch?: typeof fetch
+    The `fetch` implementation; defaults to the global. Overridable for tests.
+  now?: () => number
+    The clock the signatures are dated by (epoch ms); defaults to `Date.now`.
+  maxArtifactBytes?: number
+    The most a fetched artifact may weigh on the wire, in bytes, before it is
+    refused. Defaults to 512 MiB — see
+    {@link "./remote_cache.ts".HttpCacheStoreOptions.maxArtifactBytes}.
+  maxInflatedBytes?: number
+    The most a fetched artifact may decompress to, in bytes — see
+    {@link RemoteCacheStore.maxInflatedBytes}. Defaults to 2 GiB.
+
 interface ScheduleEntry
   A scheduled trigger: a 5-field cron expression in an optional IANA timezone.
 
@@ -4935,16 +5161,17 @@ interface TarEntry
   A single entry within a tar archive — a regular file or a symbolic link.
 
   name: string
-    The entry's path inside the archive (≤ 100 bytes).
+    The entry's path inside the archive.
   data: Uint8Array
     The file contents (empty for a symlink entry).
   linkname?: string
-    For a symbolic-link entry, its target (≤ 100 bytes); absent for a regular
-    file. Node's release tarballs, for one, ship `bin/npm`/`bin/npx` as symlinks
+    For a symbolic-link entry, its target; absent for a regular file. Node's release tarballs, for one, ship `bin/npm`/`bin/npx` as symlinks
     into `lib/node_modules`, so extracting a runtime tree must preserve them.
   mode?: number
     A regular file's permission bits, written into its header: `0o755` for an
-    executable, so a binary shipped in the archive runs once extracted.
+    executable, so a binary shipped in the archive runs once extracted. The
+    extractors apply them on POSIX, always owner-readable and -writable and
+    never group- or world-writable.
     Defaults to `0o644`. Ignored for a symlink entry, which is always
     `0o777`.
 
@@ -5321,7 +5548,7 @@ type AnnouncementLevel = "success" | "failure" | "warning" | "info"
 type Architecture = "x86_64" | "aarch64"
   The CPU architectures Zuke recognises.
 
-type ArchiveFormat = "tar.gz" | "zip"
+type ArchiveFormat = "tar.gz" | "tar.xz" | "zip"
   A packed download format, unpacked after the checksum is verified.
 
 type BuildLocation = { kind: "module"; module: string; cwd: string; repo?: string; } | { kind: "command"; command: string[]; cwd: string; repo?: string; }
@@ -5548,6 +5775,37 @@ function $(strings: TemplateStringsArray, ...values: Interpolatable[]): Command
 
   @example
       `await $\`deno test -A``
+
+function joinShellArgs(argv: readonly string[]): string
+  Render `argv` as a single command line a POSIX shell parses back into
+  exactly the same argv — for showing an operator a command to paste, or for
+  handing a command to something that runs it through `sh`.
+
+  Each token is written as it is when it holds only characters no shell treats
+  specially (letters, digits and `_@%+=:,./-`). Anything else — an empty token,
+  whitespace, a newline, `$`, a backtick, a quote, a glob character — is
+  wrapped in single quotes, with each embedded `'` written as `'\''`. Nothing
+  inside single quotes is special to the shell, so a token can never expand a
+  variable, substitute a command, or become a second command. Tokens are
+  joined by single spaces.
+
+  ```ts
+  joinShellArgs(["gcloud", "run", "services", "describe", "my svc"]);
+  // gcloud run services describe 'my svc'
+  joinShellArgs(["echo", "it's", ""]);
+  // echo 'it'\''s' ''
+  ```
+
+  The output round-trips through {@link splitShellArgs}. The quoting governs
+  how each token is split and expanded, not the grammar of the command
+  position: the first token should be the program to run, since a shell reads
+  a leading `NAME=value` as an assignment and a leading `if` as a keyword.
+
+  @param argv
+      The tokens to render, in order.
+
+  @return
+      The command line; an empty string for an empty argv.
 
 function splitShellArgs(input: string): string[]
   Split `input` into argv the way a POSIX shell would, honouring the quoting
@@ -6490,6 +6748,9 @@ function parseModuleGraph(stdout: string): DenoModuleGraph
   Entries without a specifier are skipped rather than guessed at: a module
   deno could not name is not a module a build can act on.
 
+const DenoDeployTasks: DenoDeployTasksApi
+  Typed task functions for `deno deploy`.
+
 const DenoTasks: DenoTasksApi
   Typed task functions for the `deno` CLI.
 
@@ -6777,6 +7038,244 @@ class DenoCoverageSettings extends DenoSettings
     The `--output` file path, if {@link output} was set; read by the task.
   override protected buildArgs(): string[]
     Assemble the `deno coverage` argv.
+
+abstract class DenoDeployAppSettings extends DenoDeployOrgSettings
+  Base for the `deno deploy` commands scoped to an application.
+
+  app(name: string): this
+    The application (`--app`).
+
+class DenoDeployAppsGetSettings extends DenoDeployAppSettings
+  Settings for `deno deploy apps get`: an application, with its URLs.
+
+  override protected commandPath(): string[]
+    `deno deploy apps get`.
+  override protected commandArgs(): string[]
+    No arguments of its own.
+
+class DenoDeployAppsListSettings extends DenoDeployOrgSettings
+  Settings for `deno deploy apps list`.
+
+  limit(count: number): this
+    At most this many applications (`--limit`).
+  override protected commandPath(): string[]
+    `deno deploy apps list`.
+  override protected commandArgs(): string[]
+    `--limit`, when set.
+
+abstract class DenoDeployCommandSettings extends DenoSettings
+  Base for all `deno deploy` settings. Each subcommand names its command path
+  and its own arguments; the shared flags go between them.
+
+  abstract protected commandPath(): string[]
+    The command path after `deploy`, e.g. `["env", "add"]`.
+  abstract protected commandArgs(): string[]
+    The subcommand's own flags and operands.
+  token(value: string): this
+    The Deno Deploy access token. It is passed in the `DENO_DEPLOY_TOKEN`
+    environment variable rather than on the command line, so it never shows
+    in a process listing or an error's command line, and it is registered
+    with the run's redactor. Without it, the CLI reads `DENO_DEPLOY_TOKEN`
+    from the build's own environment.
+  config(path: PathLike): this
+    The config file to read and write the org and app from (`--config`).
+  json(): this
+    Print one JSON object on stdout instead of human-readable output (`--json`).
+  nonInteractive(): this
+    Fail instead of prompting, taking every value from flags or the
+    environment (`--non-interactive`). Use it in CI, where nothing can answer
+    a prompt.
+  quietOutput(): this
+    Suppress non-essential output (`--quiet`).
+  protected shared(...tokens: string[]): this
+    Append flags to the shared ones, which precede the command's own.
+  override protected buildArgs(): string[]
+    Assemble the `deno deploy …` argv.
+
+class DenoDeployCreateSettings extends DenoDeployUploadSettings
+  Settings for `deno deploy create`: create an application.
+
+  dryRun(): this
+    Validate the flags without creating the application (`--dry-run`).
+  source(source: DenoDeploySource): this
+    Where the source comes from (`--source`).
+  repository(owner: string, repo: string): this
+    A GitHub source repository: `--owner` and `--repo`.
+  appDirectory(path: PathLike): this
+    The application's directory inside the source (`--app-directory`).
+  doNotUseDetectedBuildConfig(): this
+    Ignore the detected build configuration (`--do-not-use-detected-build-config`).
+  frameworkPreset(preset: string): this
+    The framework preset, e.g. `fresh` or `astro` (`--framework-preset`).
+  installCommand(command: string): this
+    The install command (`--install-command`).
+  buildCommand(command: string): this
+    The build command (`--build-command`).
+  preDeployCommand(command: string): this
+    The command run before each deployment (`--pre-deploy-command`).
+  runtimeMode(mode: DenoDeployRuntimeMode): this
+    Whether the application is a server or static files (`--runtime-mode`).
+  entrypoint(path: PathLike): this
+    A dynamic application's entrypoint (`--entrypoint`).
+  argument(value: string): this
+    An argument for a dynamic application's entrypoint (`--arguments`); repeatable.
+  workingDirectory(path: PathLike): this
+    A dynamic application's working directory (`--working-directory`).
+  staticDir(path: PathLike): this
+    The directory a static application is served from (`--static-dir`).
+  singlePageApp(): this
+    Serve `index.html` for every path without a file (`--single-page-app`).
+  buildTimeout(duration: string | number): this
+    The build timeout, e.g. `10m` or `600s` (`--build-timeout`).
+  buildMemoryLimit(megabytes: number): this
+    The build memory limit in megabytes (`--build-memory-limit`).
+  region(region: DenoDeployRegion): this
+    The region to deploy to (`--region`).
+  override protected commandPath(): string[]
+    `deno deploy create`.
+  override protected commandArgs(): string[]
+    The create flags, then the upload flags and the root directory.
+
+class DenoDeployDeploymentsListSettings extends DenoDeployAppSettings
+  Settings for `deno deploy deployments list`.
+
+  limit(count: number): this
+    At most this many deployments (`--limit`).
+  cursor(cursor: string): this
+    Continue from a previous `--json` page's cursor (`--cursor`).
+  status(status: DenoDeploymentStatus): this
+    Only deployments with this status (`--status`).
+  override protected commandPath(): string[]
+    `deno deploy deployments list`.
+  override protected commandArgs(): string[]
+    The paging and filter flags.
+
+class DenoDeployEnvDeleteSettings extends DenoDeployAppSettings
+  Settings for `deno deploy env delete`.
+
+  variable(name: string): this
+    The variable to delete; required.
+  override protected commandPath(): string[]
+    `deno deploy env delete`.
+  override protected commandArgs(): string[]
+    The variable.
+
+class DenoDeployEnvListSettings extends DenoDeployAppSettings
+  Settings for `deno deploy env list`.
+
+  override protected commandPath(): string[]
+    `deno deploy env list`.
+  override protected commandArgs(): string[]
+    No arguments of its own.
+
+class DenoDeployEnvLoadSettings extends DenoDeployAppSettings
+  Settings for `deno deploy env load`: load variables from a `.env` file.
+
+  file(path: PathLike): this
+    The `.env` file to load; required.
+  nonSecret(key: string): this
+    A key in the file to store as a plain value, not a secret (`--non-secrets`); repeatable.
+  replace(): this
+    Replace variables that already exist (`--replace`).
+  skipExisting(): this
+    Keep variables that already exist (`--skip-existing`).
+  override protected commandPath(): string[]
+    `deno deploy env load`.
+  override protected commandArgs(): string[]
+    The file, the flags, then `--non-secrets` and its keys last: the option
+    takes every argument after it, so anything placed after it would be read
+    as one more key.
+
+class DenoDeployEnvUpdateContextsSettings extends DenoDeployAppSettings
+  Settings for `deno deploy env update-contexts`.
+
+  variable(name: string): this
+    The variable to update; required.
+  context(name: string): this
+    A context the variable applies in, e.g. `production`; repeatable.
+  override protected commandPath(): string[]
+    `deno deploy env update-contexts`.
+  override protected commandArgs(): string[]
+    The variable, then its contexts.
+
+class DenoDeployEnvValueSettings extends DenoDeployAppSettings
+  Settings for `deno deploy env add` and `deno deploy env update-value`.
+
+  The value is a positional argument, so one that starts with `-` would be
+  read as a flag and is refused; load such a value from a file with
+  `DenoDeployTasks.envLoad` instead.
+
+  constructor(command: DenoDeployEnvValueCommand)
+    Settings for `deno deploy env <command>`.
+  variable(name: string): this
+    The variable to set; required.
+  value(value: string): this
+    The variable's value; required, unless set by {@link secretValue}.
+  secretValue(value: string): this
+    A secret value: masked in the build's logs and errors, and for `add`
+    stored as a secret (`--secret`).
+  override protected commandPath(): string[]
+    `deno deploy env add|update-value`.
+  override protected commandArgs(): string[]
+    `--secret` for a secret `add`, then the variable and its value.
+
+class DenoDeployLogsSettings extends DenoDeployAppSettings
+  Settings for `deno deploy logs`.
+
+  start(timestamp: string | Date): this
+    Logs from this timestamp on, e.g. `2026-01-01T00:00:00Z` (`--start`).
+  end(timestamp: string | Date): this
+    Logs up to this timestamp; needs {@link start} (`--end`).
+  once(): this
+    Print the logs available now and exit, instead of following them
+    (`--once`). Without it the command streams until stopped, so a build
+    almost always wants this.
+  override protected commandPath(): string[]
+    `deno deploy logs`.
+  override protected commandArgs(): string[]
+    The time-range flags.
+
+abstract class DenoDeployOrgSettings extends DenoDeployCommandSettings
+  Base for the `deno deploy` commands scoped to an organization.
+
+  org(name: string): this
+    The organization (`--org`).
+
+class DenoDeployQuerySettings extends DenoDeployCommandSettings
+  Settings for `deno deploy orgs list` and `deno deploy whoami`, which take
+  neither an organization nor an application.
+
+  constructor(command: DenoDeployQueryCommand)
+    Settings for `deno deploy <command>`.
+  override protected commandPath(): string[]
+    The command's path, e.g. `orgs list`.
+  override protected commandArgs(): string[]
+    No arguments of its own.
+
+class DenoDeploySettings extends DenoDeployUploadSettings
+  Settings for `deno deploy`: upload a directory to an application.
+
+  prod(): this
+    Deploy straight to production rather than as a preview (`--prod`).
+  override protected commandPath(): string[]
+    `deno deploy` has no subcommand.
+  override protected commandArgs(): string[]
+    `--prod`, then the upload flags and the root directory.
+
+abstract class DenoDeployUploadSettings extends DenoDeployAppSettings
+  The flags shared by the commands that upload source from a local directory:
+  `deno deploy` and `deno deploy create`.
+
+  root(path: PathLike): this
+    The directory to upload (defaults to the working directory).
+  ignore(path: PathLike): this
+    Leave a path out of the upload (`--ignore`); repeatable.
+  allowNodeModules(): this
+    Include the `node_modules` directory in the upload (`--allow-node-modules`).
+  noWait(): this
+    Return once uploaded, without waiting for the build (`--no-wait`).
+  protected uploadArgs(): string[]
+    The upload flags, then the root directory last.
 
 class DenoDocSettings extends DenoSettings
   Settings for `deno doc`.
@@ -7595,6 +8094,38 @@ interface DenoCacheInfo
   originStorage?: string
     Where origin-bound storage (`localStorage`) is kept.
 
+interface DenoDeployTasksApi
+  The shape of {@link DenoDeployTasks}.
+
+  deploy(configure?: Configure<DenoDeploySettings>): Promise<CommandOutput>
+    Deploy a directory to an application: `deno deploy`.
+  create(configure?: Configure<DenoDeployCreateSettings>): Promise<CommandOutput>
+    Create an application: `deno deploy create`.
+  envList(configure?: Configure<DenoDeployEnvListSettings>): Promise<CommandOutput>
+    List an application's variables: `deno deploy env list`.
+  envAdd(configure: Configure<DenoDeployEnvValueSettings>): Promise<CommandOutput>
+    Add a variable: `deno deploy env add`.
+  envUpdateValue(configure: Configure<DenoDeployEnvValueSettings>): Promise<CommandOutput>
+    Change a variable's value: `deno deploy env update-value`.
+  envUpdateContexts(configure: Configure<DenoDeployEnvUpdateContextsSettings>): Promise<CommandOutput>
+    Change the contexts a variable applies in: `deno deploy env update-contexts`.
+  envDelete(configure: Configure<DenoDeployEnvDeleteSettings>): Promise<CommandOutput>
+    Delete a variable: `deno deploy env delete`.
+  envLoad(configure: Configure<DenoDeployEnvLoadSettings>): Promise<CommandOutput>
+    Load variables from a `.env` file: `deno deploy env load`.
+  logs(configure?: Configure<DenoDeployLogsSettings>): Promise<CommandOutput>
+    Print an application's logs: `deno deploy logs`.
+  deploymentsList(configure?: Configure<DenoDeployDeploymentsListSettings>): Promise<CommandOutput>
+    List an application's deployments: `deno deploy deployments list`.
+  appsList(configure?: Configure<DenoDeployAppsListSettings>): Promise<CommandOutput>
+    List an organization's applications: `deno deploy apps list`.
+  appsGet(configure?: Configure<DenoDeployAppsGetSettings>): Promise<CommandOutput>
+    Show an application, with its production URL: `deno deploy apps get`.
+  orgsList(configure?: Configure<DenoDeployQuerySettings>): Promise<CommandOutput>
+    List the organizations the token reaches: `deno deploy orgs list`.
+  whoami(configure?: Configure<DenoDeployQuerySettings>): Promise<CommandOutput>
+    Check the token: `deno deploy whoami`.
+
 interface DenoModule
   One module in the graph {@link parseModuleGraph} returns.
 
@@ -7704,6 +8235,24 @@ type DenoCompileTarget = "x86_64-unknown-linux-gnu" | "aarch64-unknown-linux-gnu
   A target triple `deno compile` can cross-compile to, as listed by
   `deno compile --help`. Typed as a union so a typo in a release matrix is a
   compile-time error rather than a build that fails minutes into CI.
+
+type DenoDeployEnvValueCommand = "add" | "update-value"
+  The `deno deploy env` subcommands that set a variable's value.
+
+type DenoDeployQueryCommand = "orgs list" | "whoami"
+  A read-only `deno deploy` command scoped to the token alone.
+
+type DenoDeployRegion = "us" | "eu" | "global"
+  Where a new application is deployed (`--region`).
+
+type DenoDeployRuntimeMode = "dynamic" | "static"
+  How a new application runs (`--runtime-mode`).
+
+type DenoDeploySource = "local" | "github"
+  Where a new application's source comes from (`--source`).
+
+type DenoDeploymentStatus = "skipped" | "queued" | "building" | "succeeded" | "failed"
+  A deployment's build status, for filtering (`--status`).
 
 type DenoPermission = "read" | "write" | "net" | "env" | "run" | "sys" | "ffi" | "import"
   A Deno permission domain, as used by `--allow-*` flags.
@@ -10152,7 +10701,8 @@ function dockerComposeCanary(configure: Configure<DockerComposeCanarySettings>):
     replica on the stable image, then the stable service recreated on it.
     The stable replicas are then read again and must be on the stable
     image, before the canary service goes to none. Run by hand, the stable
-    image is the one set with `.stable(...)`.
+    image is the one set with `.stable(...)`. A rollback with nothing
+    recorded runs nothing: nothing was staged.
 
   The stable service's `scale:` in the Compose file must equal
   `.replicas(...)`, and Compose 2.21 or later (`docker compose`) is
@@ -10292,10 +10842,13 @@ class DockerComposeCanary
       `d.stable('sha256:<the recorded stable image ID>')`.
     - `stage` failed before recording them: nothing had changed, so
       nothing runs — and the settings are not even read.
-    - Nothing recorded (`rollout.abort` run by hand, a fresh run): the
-      settings, with the image set by
-      {@link DockerComposeCanarySettings.stable}. Without one this refuses,
-      since claiming a rollback it cannot do would be worse.
+    - Nothing recorded, on a rollback (`ctx.reason` is `"rollback"`):
+      nothing was staged, so nothing runs — no container is read or scaled,
+      and the settings are not even read.
+    - Nothing recorded, run by hand (`rollout.abort` on its own, a fresh
+      run, or an engine that names no reason): the settings, with the image
+      set by {@link DockerComposeCanarySettings.stable}. Without one this
+      refuses, since claiming a rollback it cannot do would be worse.
 
     Every command sets the stable variable to the image ID `stage` recorded,
     not to the reference, so a tag moved since cannot bring in an image
@@ -10402,8 +10955,9 @@ class DockerComposeCanarySettings
     by hand — a reference with no whitespace or control characters. Such a
     run is fresh, with no record of a rollout, so it has nothing else to go
     on — and the release it is undoing has usually been promoted already. A
-    rollback the engine runs mid-rollout does not use it: that one returns to
-    the image ID `stage` saw the stable replicas running.
+    rollback the engine runs does not use it: mid-rollout it returns to the
+    image ID `stage` saw the stable replicas running, and with nothing
+    recorded it runs nothing, since nothing was staged.
   compose(configure: Configure<DockerComposeSettings>): this
     Global flags for every Compose command the platform runs —
     `(s) => s.file("compose.yml").projectName("shop")`, or `.usePlugin()` to
@@ -10958,6 +11512,11 @@ interface DockerComposeCanaryContext
 
   readonly state: TargetStateHandle
     The rollout's durable platform state, shared by every call.
+  readonly reason?: "rollback" | "hand-run"
+    Why `abort` runs: `"rollback"` when the engine undoes a rollout,
+    `"hand-run"` for `rollout.abort` run on its own. An engine older than
+    this field leaves it out, which is treated as a hand run — the behaviour
+    from before the field existed.
   reportSummary(pairs: SummaryPairs): void
     Add key/value pairs to the calling target's row in the build summary.
 
@@ -11110,7 +11669,8 @@ function kubectlCanary(configure: Configure<KubectlCanarySettings>): KubectlCana
   - promote — `set image` the candidate on the stable Deployment, `scale`
     it to the total, `rollout status` it, then `scale` the canary to 0.
   - abort — the same with the stable image: the one `stage` read, or, run
-    by hand, the one set with `.stableImage(...)`.
+    by hand, the one set with `.stableImage(...)`. A rollback with nothing
+    recorded runs nothing: nothing was staged.
 
   `stage` records the Deployments, container and namespace it changed, and
   the later calls refuse a lambda that names others. Keep them — and the kube
@@ -11285,8 +11845,13 @@ class KubectlCanary
       than `stage` recorded is refused.
     - `stage` failed before the candidate was on record: the canary had
       no replicas and the stable Deployment was not touched, so nothing runs.
-    - Nothing recorded (`rollout.abort` run by hand, a fresh run): the
-      same, with the image set by {@link KubectlCanarySettings.stableImage}.
+    - Nothing recorded, on a rollback (`ctx.reason` is `"rollback"`):
+      nothing was staged, so nothing runs — the stable image is not even
+      read. A marker `stage` never writes is a damaged record, and a
+      rollback refuses it.
+    - Nothing recorded, run by hand (`rollout.abort` on its own, a fresh
+      run, or an engine that names no reason): the same as staged, with the
+      image set by {@link KubectlCanarySettings.stableImage}.
       Without one this refuses: after a promote the stable Deployment runs the
       candidate, and moving replicas alone would report a rollback that
       changed nothing.
@@ -12033,6 +12598,11 @@ interface KubectlCanaryContext
 
   readonly state: TargetStateHandle
     The rollout's durable platform state, shared by every call.
+  readonly reason?: "rollback" | "hand-run"
+    Why `abort` runs: `"rollback"` when the engine undoes a rollout,
+    `"hand-run"` for `rollout.abort` run on its own. An engine older than
+    this field leaves it out, which is treated as a hand run — the behaviour
+    from before the field existed.
   reportSummary(pairs: SummaryPairs): void
     Add key/value pairs to the calling target's row in the build summary.
 
@@ -12255,7 +12825,8 @@ function helmCanary(configure: Configure<HelmCanarySettings>): HelmCanary
     (waiting), then on the stable release with the remainder.
   - promote — `upgrade <stable> --set replicaCount=<total> --set-string image.tag=<image> --wait`, then `uninstall <canary> --ignore-not-found`.
   - abort — `rollback <stable> <recorded revision> --wait`, then the same
-    uninstall; run by hand, the revision set with `.stableRevision(...)`.
+    uninstall; run by hand, the revision set with `.stableRevision(...)`. A
+    rollback with nothing recorded runs nothing: nothing was staged.
 
   Every call after `stage` that has its record first reads the stable
   release's first-deployed time again and refuses, changing nothing, unless
@@ -12308,9 +12879,13 @@ class HelmCanary
       touched, so only the canary release is uninstalled.
     - Stage failed before the canary install: nothing changed; nothing
       runs.
-    - Nothing recorded (`rollout.abort` run by hand, a fresh run): the
-      rollback goes to {@link HelmCanarySettings.stableRevision}. Without one
-      this refuses, since claiming a rollback it cannot do would be worse.
+    - Nothing recorded, on a rollback (`ctx.reason` is `"rollback"`):
+      nothing was staged, so nothing runs — neither a rollback nor an
+      uninstall, and the stable revision is not even read.
+    - Nothing recorded, run by hand (`rollout.abort` on its own, a fresh
+      run, or an engine that names no reason): the rollback goes to
+      {@link HelmCanarySettings.stableRevision}. Without one this refuses,
+      since claiming a rollback it cannot do would be worse.
     - A record it does not recognise: refuses.
 
     Staged, or with the install under way, it first reads when the stable
@@ -12408,8 +12983,9 @@ class HelmCanarySettings
     The stable release's revision to roll back to when `rollout.abort` is run
     by hand — the one `helm history <stable>` lists from before the rollout.
     Such a run is fresh, with no record of a rollout, so it has nothing else
-    to go on. A rollback the engine runs mid-rollout does not use it: that one
-    returns to the revision `stage` recorded.
+    to go on. A rollback the engine runs does not use it: mid-rollout it
+    returns to the revision `stage` recorded, and with nothing recorded it
+    runs nothing, since nothing was staged.
   helm(configure: Configure<HelmSettings>): this
     Global flags for every helm command the platform runs —
     `(s) => s.kubeContext("prod").kubeconfig("~/.kube/prod")`, or a
@@ -12617,6 +13193,11 @@ interface HelmCanaryContext
 
   readonly state: TargetStateHandle
     The rollout's durable platform state, shared by every call.
+  readonly reason?: "rollback" | "hand-run"
+    Why `abort` runs: `"rollback"` when the engine undoes a rollout,
+    `"hand-run"` for `rollout.abort` run on its own. An engine older than
+    this field leaves it out, which is treated as a hand run — the behaviour
+    from before the field existed.
   reportSummary(pairs: SummaryPairs): void
     Add key/value pairs to the calling target's row in the build summary.
 
@@ -15359,7 +15940,8 @@ function cloudRunCanary(configure: Configure<CloudRunCanarySettings>): CloudRunC
   - promote — checks the latest revision is still the candidate, then
     `update-traffic --to-latest`.
   - abort — `update-traffic --to-tags canary=0` mid-rollout; run by hand,
-    `--to-revisions <stable>=100` to the revision set with `.stable(...)`.
+    `--to-revisions <stable>=100` to the revision set with `.stable(...)`. A
+    rollback with nothing recorded runs nothing: nothing was staged.
 
   Every call after `stage` that has its record — expose, promote, and abort
   mid-rollout — first compares the configured service, region, tag and
@@ -15652,10 +16234,13 @@ class CloudRunCanary
     - `stage` failed before tagging it: nothing has any traffic to take
       back, so nothing runs.
     - Any other stage marker: the record is damaged, and this refuses.
-    - Nothing recorded (`rollout.abort` run by hand, a fresh run): all
-      traffic goes to the revision set with
-      {@link CloudRunCanarySettings.stable}. Without one this refuses, since
-      claiming a rollback it cannot do would be worse.
+    - Nothing recorded, on a rollback (`ctx.reason` is `"rollback"`):
+      nothing was staged, so nothing runs — the stable revision is not even
+      read.
+    - Nothing recorded, run by hand (`rollout.abort` on its own, a fresh
+      run, or an engine that names no reason): all traffic goes to the
+      revision set with {@link CloudRunCanarySettings.stable}. Without one
+      this refuses, since claiming a rollback it cannot do would be worse.
 
 class CloudRunCanarySettings
   How {@link cloudRunCanary} reaches the service, configured through its
@@ -16467,6 +17052,11 @@ interface CloudRunCanaryContext
 
   readonly state: TargetStateHandle
     The rollout's durable platform state, shared by every call.
+  readonly reason?: "rollback" | "hand-run"
+    Why `abort` runs: `"rollback"` when the engine undoes a rollout,
+    `"hand-run"` for `rollout.abort` run on its own. An engine older than
+    this field leaves it out, which is treated as a hand run — the behaviour
+    from before the field existed.
   reportSummary(pairs: SummaryPairs): void
     Add key/value pairs to the calling target's row in the build summary.
 
@@ -16693,12 +17283,13 @@ type GcloudSettingsRunner = (settings: GcloudSettings) => Promise<CommandOutput>
 # @zuke/aws
 ========================================================================
 
-`@zuke/aws` — typed AWS CLI tasks for Zuke builds, readers and a canary analysis.
+`@zuke/aws` — typed AWS CLI tasks, readers, and a canary platform and analysis.
 
 The `aws` CLI wrapper has typed settings for the deploy path (STS, S3, ECR,
 ECS, Lambda, CloudFormation, Secrets Manager, SSM, EKS), CloudWatch and
-CloudWatch Logs monitoring, readers that return a value, and a
-`cloudwatch(...)` analysis for `@zuke/canary` rollouts.
+CloudWatch Logs monitoring, readers that return a value, and for
+`@zuke/canary` rollouts a `lambdaCanary(...)` platform — a Lambda alias's
+weighted routing — and a `cloudwatch(...)` analysis.
 
 ```ts
 import { AwsTasks, cloudwatch } from "@zuke/aws";
@@ -16728,6 +17319,45 @@ function cloudwatch(configure: Configure<AwsCloudwatchAnalysisSettings>): AwsClo
   The lambda runs on each check, so it may read resolved parameters, and
   every failure message — one from the lambda included — passes through the
   run's redactor.
+
+function lambdaCanary(configure: Configure<AwsLambdaCanarySettings>): AwsLambdaCanary
+  A Lambda alias as a canary platform, for `@zuke/canary`:
+
+  ```ts
+  c.platform(lambdaCanary((l) =>
+    l.functionName("api").alias("live").zipFile("dist/api.zip")
+      .aws((a) => a.profile("deploy").region("eu-west-1"))
+  ))
+  ```
+
+  The lambda runs on every call, so it may read resolved parameters.
+
+  - stage — reads the alias (`get-alias`), whose version becomes the
+    stable one; waits out an update in progress (`wait function-updated-v2`)
+    and publishes the candidate with `update-function-code --publish`, or
+    takes `.version(...)`; reads it back with `get-function`; waits for it
+    to be `Active` (`wait published-version-active`); records the rollout.
+    The alias is not changed.
+  - expose — `update-alias --routing-config AdditionalVersionWeights={"<candidate>": <n/100>} --revision-id <rev>`.
+  - promote — `update-alias --function-version <candidate>` with the
+    routing cleared.
+  - abort — takes the candidate's weight off mid-rollout; run by hand,
+    `--function-version <stable>` with the routing cleared. A rollback with
+    nothing recorded runs nothing: nothing was staged.
+
+  Every call after `stage` that has its record — expose, promote, and abort
+  mid-rollout — compares the configured function, alias and AWS flags with
+  the record, reads the alias and checks its ARN (which names the account and
+  region), and refuses on any difference before changing anything. Expose and
+  promote also check that the alias splits only as the rollout left it and
+  that the candidate still has the code staged. Each `update-alias` carries
+  the alias's `--revision-id`, so a change made between the read and the
+  update fails it. A hand-run abort has no record and uses the configuration
+  as it is.
+
+  Lambda's weighted routing needs the two versions to share an execution role
+  and a dead-letter configuration; the update fails, and the canary rolls
+  back, when they do not.
 
 const AwsTasks: AwsTasksApi
   Typed task functions for the `aws` CLI.
@@ -17214,6 +17844,147 @@ class AwsEksUpdateKubeconfigSettings extends AwsSettings
   override protected leadingTokens(): string[]
     Emit `eks update-kubeconfig` with its options.
 
+class AwsLambdaCanary
+  A Lambda alias as a canary platform. Create one with {@link lambdaCanary};
+  hand it to `@zuke/canary`'s `c.platform(...)`.
+
+  Exposure is a share of the alias's invocations, set exactly.
+
+  constructor(configure: Configure<AwsLambdaCanarySettings>)
+    A platform whose settings `configure` produces, afresh on every call.
+  readonly exposure: "traffic"
+    The alias splits invocations, so exposure is a traffic share.
+  describe(): string
+    `"Lambda alias api:live"`, for the build summary.
+  async stage(ctx: AwsLambdaCanaryContext): Promise<void>
+    Read the alias and its stable version, publish the candidate (or take the
+    version given) and wait for it to be `Active`, then record the rollout:
+    the function, alias and AWS flags every later call is checked against,
+    the alias's ARN, the stable version and the candidate with their code
+    hashes. The alias itself is not changed, so the candidate takes no
+    traffic yet — though publishing a code source does make it the
+    function's `$LATEST`.
+
+    Refuses an alias that already splits its traffic — another rollout, or
+    one left behind — and one that points at `$LATEST`, which weighted
+    routing does not allow; and a candidate that is the stable version, which
+    is what publishing unchanged code and configuration gives back. A stage
+    run again over a record of the same rollout checks it and changes
+    nothing.
+  async expose(percent: number, ctx: AwsLambdaCanaryContext): Promise<number>
+    Send `percent` of the alias's invocations to the candidate, as its
+    additional weight; the stable version keeps the rest. First the
+    configuration is compared with the record; then the alias is read, and
+    this refuses — changing nothing — unless it is still the alias staged,
+    still points at the stable version, and splits only with the candidate,
+    and unless the candidate still has the code staged. The update carries
+    the alias's revision, so a change made in between fails it.
+  async promote(ctx: AwsLambdaCanaryContext): Promise<void>
+    Point the alias at the candidate and clear its routing, so the candidate
+    takes every invocation. Before that, the same checks as
+    {@link expose}: the record, the alias's ARN, that it still splits only
+    between the stable version and the candidate, and the candidate's code.
+    An alias already pointing at the candidate with no routing is left as it
+    is, so a promote run again changes nothing.
+  async abort(ctx: AwsLambdaCanaryContext): Promise<void>
+    Take the candidate's traffic back. Idempotent. What it does depends on
+    what this rollout recorded:
+
+    - The rollout is staged (a rollback mid-rollout): once the
+      configuration and the alias's ARN match the record, the candidate's
+      weight comes off the alias, leaving any other weight as it is. The
+      update is written even when the candidate has no share, so an expose
+      of this rollout still in flight — a `zuke cancel` from another process
+      races it — fails on the revision instead of landing afterwards; a
+      write that loses such a race reads the alias again and retries. An
+      alias already pointing at the candidate — promoted, or moved there —
+      goes back to the stable version, once that version still has the code
+      recorded; one that also splits with another version is a newer rollout
+      built on the candidate, and this refuses rather than undo it too.
+    - `stage` failed before recording it: the alias was never changed,
+      so nothing runs.
+    - Any other stage marker: the record is damaged, and this refuses.
+    - Nothing recorded, on a rollback (`ctx.reason` is `"rollback"`):
+      nothing was staged, so nothing runs — the stable version is not even
+      read.
+    - Nothing recorded, run by hand (`rollout.abort` on its own, a fresh
+      run, or an engine that names no reason): the alias goes to the version
+      set with {@link AwsLambdaCanarySettings.stable} and its routing is
+      cleared. Without one this refuses, since claiming a rollback it cannot
+      do would be worse.
+
+class AwsLambdaCanarySettings
+  How {@link lambdaCanary} reaches the alias and finds the candidate,
+  configured through its lambda.
+
+  functionName_?: string
+    The function's name or ARN (set by {@link functionName}).
+  alias_?: string
+    The alias whose traffic is split (set by {@link alias}).
+  zipFile_?: string
+    The deployment package on disk (set by {@link zipFile}).
+  s3Bucket_?: string
+    The bucket holding the package (set by {@link s3Bucket}).
+  s3Key_?: string
+    The package's key in that bucket (set by {@link s3Key}).
+  s3ObjectVersion_?: string
+    The package object's version (set by {@link s3ObjectVersion}).
+  imageUri_?: string
+    The container image (set by {@link imageUri}).
+  version_?: string
+    An already published candidate version (set by {@link version}).
+  stable_?: string
+    The version a hand-run rollback returns to (set by {@link stable}).
+  aws_: Configure<AwsSettings>
+    Global options for every command (set by {@link aws}).
+  functionName(name: string): this
+    The function to roll out — its name, partial ARN or ARN.
+  alias(name: string): this
+    The alias whose traffic the canary splits, e.g. `"live"`. It must
+    already exist and point at a published version: that version is the
+    stable one.
+  zipFile(path: string): this
+    The candidate's deployment package on disk, shipped and published by
+    `stage` (`update-function-code --zip-file --publish`). Name one code
+    source — this, {@link s3Bucket} with {@link s3Key}, or {@link imageUri} —
+    or a {@link version} instead.
+  s3Bucket(name: string): this
+    The bucket holding the candidate's package (`--s3-bucket`).
+  s3Key(key: string): this
+    The candidate package's key in that bucket (`--s3-key`).
+  s3ObjectVersion(version: string): this
+    The candidate package object's version (`--s3-object-version`).
+  imageUri(uri: string): this
+    The candidate's container image, for an image function (`--image-uri`).
+  version(number: string): this
+    An already published version to roll out — one the build published
+    itself, for example with `AwsTasks.lambdaPublishedVersion`. Use this or a
+    code source, not both. Unlike a code source it leaves the function's
+    `$LATEST` as it is.
+  stable(number: string): this
+    The version to send all traffic back to when `rollout.abort` is run by
+    hand. Such a run is fresh, with no record of a rollout, so it has nothing
+    else to go on — and the release it is undoing has usually been promoted
+    already. A rollback the engine runs mid-rollout does not use it: that one
+    takes the candidate's weight off the alias instead.
+  aws(configure: Configure<AwsSettings>): this
+    Global options for every command the platform runs —
+    `(a) => a.profile("deploy").region("eu-west-1")`, a `.toolPath(...)`, or
+    a `.runner(...)`, the seam a test answers through. The flags it gives are
+    recorded in the rollout's state, which is plain JSON: never pass a secret
+    on the command line here. A reader's `--output` and `--query` are its own
+    and are set after it.
+
+class AwsLambdaGetAliasSettings extends AwsSettings
+  Settings for `aws lambda get-alias`.
+
+  functionName(name: string): this
+    The function's name or ARN (`--function-name`).
+  name(alias: string): this
+    The alias to describe (`--name`), e.g. `"live"`.
+  override protected leadingTokens(): string[]
+    Emit `lambda get-alias` with its options.
+
 class AwsLambdaGetFunctionSettings extends AwsSettings
   Settings for `aws lambda get-function`.
 
@@ -17278,6 +18049,10 @@ class AwsLambdaUpdateAliasSettings extends AwsSettings
     Send a share of the alias's traffic to another version
     (`--routing-config AdditionalVersionWeights`), as a fraction from 0 to 1;
     repeatable. The rest goes to {@link functionVersion}.
+  revisionId(id: string): this
+    Update only if the alias is still at this revision (`--revision-id`) — the
+    `RevisionId` a `get-alias` read, so a change made in between fails the
+    update instead of being overwritten.
   clearRouting(): this
     Clear the alias's weighted routing, sending all traffic to its version
     (`--routing-config` with no additional weights).
@@ -17338,6 +18113,20 @@ class AwsLambdaUpdateFunctionConfigurationSettings extends AwsSettings
     The layers to attach, by version ARN (`--layers`); replaces the set.
   override protected leadingTokens(): string[]
     Emit `lambda update-function-configuration` with its options.
+
+class AwsLambdaWaitSettings extends AwsSettings
+  Settings for `aws lambda wait`: poll the function until it reaches the
+  state named, exiting non-zero — a `CommandError` — when it fails or the
+  waiter gives up.
+
+  waiter(name: AwsLambdaWaiter): this
+    The state to wait for, e.g. `"published-version-active"`.
+  functionName(name: string): this
+    The function's name or ARN (`--function-name`).
+  qualifier(value: string): this
+    The version or alias to wait on (`--qualifier`).
+  override protected leadingTokens(): string[]
+    Emit `lambda wait <waiter>` with its options.
 
 class AwsLogsFilterLogEventsSettings extends AwsSettings
   Settings for `aws logs filter-log-events`.
@@ -17827,6 +18616,21 @@ interface AwsCloudwatchAnalysisContext
   redact(text: string): string
     Mask every resolved `secret` parameter in `text`.
 
+interface AwsLambdaCanaryContext
+  The part of the canary engine's context the Lambda platform uses: the
+  rollout's durable state, where the staged versions are recorded, and the
+  build summary. The engine hands a richer context; this is the narrow view.
+
+  readonly state: TargetStateHandle
+    The rollout's durable platform state, shared by every call.
+  readonly reason?: "rollback" | "hand-run"
+    Why `abort` runs: `"rollback"` when the engine undoes a rollout,
+    `"hand-run"` for `rollout.abort` run on its own. An engine older than
+    this field leaves it out, which is treated as a hand run — the behaviour
+    from before the field existed.
+  reportSummary(pairs: SummaryPairs): void
+    Add key/value pairs to the calling target's row in the build summary.
+
 interface AwsTasksApi
   The shape of {@link AwsTasks}.
 
@@ -17888,8 +18692,12 @@ interface AwsTasksApi
     `--query Version --output text`. Not a lookup: every call publishes.
   lambdaUpdateAlias(configure?: Configure<AwsLambdaUpdateAliasSettings>): Promise<CommandOutput>
     Move an alias: `aws lambda update-alias`.
+  lambdaGetAlias(configure?: Configure<AwsLambdaGetAliasSettings>): Promise<CommandOutput>
+    Describe an alias: `aws lambda get-alias`.
   lambdaGetFunction(configure?: Configure<AwsLambdaGetFunctionSettings>): Promise<CommandOutput>
     Describe a function: `aws lambda get-function`.
+  lambdaWait(configure?: Configure<AwsLambdaWaitSettings>): Promise<CommandOutput>
+    Wait for a function or version to reach a state: `aws lambda wait`.
   lambdaInvoke(configure?: Configure<AwsLambdaInvokeSettings>): Promise<CommandOutput>
     Invoke a function: `aws lambda invoke`.
   cloudformationDeploy(configure?: Configure<AwsCloudformationDeploySettings>): Promise<CommandOutput>
@@ -17964,6 +18772,12 @@ type AwsCloudwatchStatistic = "SampleCount" | "Average" | "Sum" | "Minimum" | "M
   mean `IQM`, or a percentile (`p99`, `p99.9`) or other extended statistic
   (`tm90`, `TM(10%:90%)`, `PR(100:2000)`, …).
 
+type AwsLambdaWaiter = "function-active" | "function-active-v2" | "function-exists" | "function-updated" | "function-updated-v2" | "published-version-active"
+  The states `aws lambda wait` can wait for. `function-updated-v2` waits for
+  an update in progress to finish; `published-version-active` for a version
+  just published to leave `Pending` — SnapStart and image functions take a
+  while, and Lambda fails invocations of a version until it is `Active`.
+
 type AwsLogsInsightsRow = Record<string, string>
   One row of a Logs Insights result: each field the query returned, by name.
 
@@ -17988,13 +18802,14 @@ type AwsTime = Date | string
 # @zuke/az
 ========================================================================
 
-`@zuke/az` — typed Azure CLI tasks for Zuke builds, readers and a canary analysis.
+`@zuke/az` — typed Azure CLI tasks, readers, and a canary platform and analysis.
 
 The `az` CLI wrapper has typed settings for the deploy path (login,
 account, resource groups, ACR, AKS, Container Apps, App Service, Functions,
 Key Vault, deployments, blob storage), Azure Monitor metrics and Log
-Analytics, readers that return a value, and an `azureMonitor(...)` analysis
-for `@zuke/canary` rollouts.
+Analytics, readers that return a value, and for `@zuke/canary` rollouts a
+`containerAppCanary(...)` platform — a container app's revision traffic
+weights — and an `azureMonitor(...)` analysis.
 
 ```ts
 import { AzTasks, azureMonitor } from "@zuke/az";
@@ -18023,6 +18838,43 @@ function azureMonitor(configure: Configure<AzMonitorAnalysisSettings>): AzMonito
   The lambda runs on each check, so it may read resolved parameters, and
   every failure message — one from the lambda included — passes through the
   run's redactor.
+
+function containerAppCanary(configure: Configure<AzContainerAppCanarySettings>): AzContainerAppCanary
+  An Azure container app as a canary platform, for `@zuke/canary`:
+
+  ```ts
+  c.platform(containerAppCanary((a) =>
+    a.name("api").resourceGroup("rg-prod").image(this.image.value)
+      .az((z) => z.subscription("prod"))
+  ))
+  ```
+
+  The lambda runs on every call, so it may read resolved parameters. The app
+  must be in multiple-revision mode, with ingress.
+
+  - stage — reads the app (`containerapp show`); pins all traffic to the
+    serving revision by name (`ingress traffic set --revision-weight <stable>=100`); deploys the image (`containerapp update`), which makes
+    the candidate revision; checks it is `Provisioned`; records the rollout.
+  - expose — `ingress traffic set --revision-weight <stable>=<100-n> <candidate>=<n>`.
+  - promote — checks the latest revision is still the candidate, then
+    `--revision-weight latest=100` when traffic followed the latest revision
+    before (once the candidate is also the newest ready revision), or
+    `<candidate>=100 <stable>=0` otherwise.
+  - abort — `--revision-weight <stable>=100 <candidate>=0` mid-rollout;
+    run by hand, `<stable>=100` to the revision set with `.stable(...)`. A
+    rollback with nothing recorded runs nothing: nothing was staged.
+
+  Every call after `stage` that has its record — expose, promote, and abort
+  mid-rollout — compares the configured app, resource group and `az` flags
+  with the record, reads the app and checks its resource id (which names the
+  subscription), and refuses on any difference before changing anything.
+  Expose and promote also check that the traffic still goes only to the
+  stable revision and the candidate, and that the candidate is the revision
+  staged. Every command after the check carries `--subscription` with the
+  subscription the checked id names, so a default subscription that changes
+  in the meantime cannot redirect it. The CLI has no conditional update for
+  ingress traffic, so a change landing between a read and the write that
+  follows it is not caught.
 
 const AzTasks: AzTasksApi
   Typed task functions for the `az` CLI.
@@ -18203,6 +19055,121 @@ class AzAksShowSettings extends AzResourceSettings
 
   override protected leadingTokens(): string[]
     Emit `aks show`.
+
+class AzContainerAppCanary
+  An Azure container app as a canary platform. Create one with
+  {@link containerAppCanary}; hand it to `@zuke/canary`'s `c.platform(...)`.
+
+  Exposure is a share of the app's ingress traffic, set exactly, in whole
+  percents.
+
+  constructor(configure: Configure<AzContainerAppCanarySettings>)
+    A platform whose settings `configure` produces, afresh on every call.
+  readonly exposure: "traffic"
+    Container Apps splits requests, so exposure is a traffic share.
+  describe(): string
+    `"container app api"`, for the build summary.
+  async stage(ctx: AzContainerAppCanaryContext): Promise<void>
+    Read the app, pin all of its traffic to the revision serving it by name
+    — so the new revision cannot inherit "latest" routing — deploy the
+    candidate image as a new revision, and record the rollout: the app,
+    resource group and `az` flags every later call is checked against, the
+    app's resource id, the stable and candidate revisions, and whether the
+    traffic followed the latest revision before.
+
+    Before the pin it records the app, resource group and flags, the app's
+    id, the stable revision and whether the traffic followed the latest
+    revision, so a stage run again checks against them, and the rollback of
+    a stage that fails can hand the traffic back to "latest".
+
+    Refuses an app that is not in multiple-revision mode, one without
+    ingress, one whose traffic is already split or carries labels, one whose
+    traffic follows the latest revision while its newest revision has not
+    provisioned, a deploy that made no new revision, a latest revision other
+    than the one `.revisionSuffix(...)` names, and a candidate that did not
+    provision. A stage run again over a record of the same rollout checks it
+    and changes nothing.
+  async expose(percent: number, ctx: AzContainerAppCanaryContext): Promise<number>
+    Send `percent` of the app's traffic to the candidate revision and the
+    rest to the stable one, by name. First the configuration is compared
+    with the record; then the app is read, and this refuses — changing
+    nothing — unless it is still the app staged, its traffic still goes only
+    to the stable revision and the candidate, and the candidate is still the
+    revision staged.
+  async promote(ctx: AzContainerAppCanaryContext): Promise<void>
+    Send all traffic to the candidate — after checking, as {@link expose}
+    does, the record, the app's id, the split and the candidate, and that
+    the candidate is still the app's latest revision. Traffic that followed
+    the latest revision before the rollout is handed back to "latest";
+    otherwise the candidate is pinned by name. An app already serving only
+    the candidate that way is left as it is, so a promote run again changes
+    nothing.
+  async abort(ctx: AzContainerAppCanaryContext): Promise<void>
+    Send all traffic back to the stable revision, by name. Idempotent. What
+    it does depends on what this rollout recorded:
+
+    - The rollout is staged (a rollback mid-rollout, or after a promote):
+      once the configuration and the app's id match the record, the stable
+      revision gets 100 % and the candidate 0 %. Traffic that also goes to a
+      third revision is a newer rollout, and this refuses rather than undo it
+      too. The traffic stays pinned to the stable revision by name, even if it
+      followed "latest" before: the latest revision is the candidate now.
+    - `stage` failed before recording it: the candidate never had any
+      traffic. Traffic that followed the latest revision and was pinned to
+      the stable one by name is handed back to "latest" — once the
+      configuration and the app's id match the pin, the traffic still goes
+      only to the stable revision, and that is still the newest revision.
+      Otherwise it is left pinned, and the summary says so.
+    - Any other stage marker: the record is damaged, and this refuses.
+    - Nothing recorded, on a rollback (`ctx.reason` is `"rollback"`):
+      nothing was staged, so nothing runs — the stable revision is not even
+      read.
+    - Nothing recorded, run by hand (`rollout.abort` on its own, a fresh
+      run, or an engine that names no reason): all traffic goes to the
+      revision set with {@link AzContainerAppCanarySettings.stable}. Without
+      one this refuses.
+
+class AzContainerAppCanarySettings
+  How {@link containerAppCanary} reaches the app and deploys the candidate,
+  configured through its lambda.
+
+  name_?: string
+    The container app (set by {@link name}).
+  resourceGroup_?: string
+    Its resource group (set by {@link resourceGroup}).
+  image_?: string
+    The candidate's container image (set by {@link image}).
+  containerName_?: string
+    The container the image is for (set by {@link containerName}).
+  revisionSuffix_?: string
+    A suffix for the candidate revision's name (set by {@link revisionSuffix}).
+  stable_?: string
+    The revision a hand-run rollback returns to (set by {@link stable}).
+  az_: Configure<AzSettings>
+    Global options for every command (set by {@link az}).
+  name(name: string): this
+    The container app to roll out to. It must already exist.
+  resourceGroup(name: string): this
+    The resource group the app is in.
+  image(reference: string): this
+    The candidate's container image, deployed by `stage`.
+  containerName(name: string): this
+    The container the image is for, when the app has several (`--container-name`).
+  revisionSuffix(suffix: string): this
+    A suffix for the candidate revision's name (`--revision-suffix`), so it is
+    `<app>--<suffix>`. It must be new to the app.
+  stable(revision: string): this
+    The revision to send all traffic to when `rollout.abort` is run by hand.
+    Such a run is fresh, with no record of a rollout, so it has nothing else
+    to go on. A rollback the engine runs mid-rollout does not use it: that
+    one returns the traffic to the revision `stage` recorded.
+  az(configure: Configure<AzSettings>): this
+    Global options for every command the platform runs —
+    `(z) => z.subscription("prod")`, a `.toolPath(...)`, or a `.runner(...)`,
+    the seam a test answers through. The flags it gives are recorded in the
+    rollout's state, which is plain JSON: never pass a secret on the command
+    line here. A reader's `--output` and `--query` are its own and are set
+    after it.
 
 class AzContainerappIngressTrafficSetSettings extends AzResourceSettings
   Settings for `az containerapp ingress traffic set`: the share of traffic
@@ -19001,6 +19968,22 @@ class AzWebappShowSettings extends AzResourceSettings
     A slot instead of production (`--slot`).
   override protected leadingTokens(): string[]
     Emit `webapp show` with its options.
+
+interface AzContainerAppCanaryContext
+  The part of the canary engine's context the Container Apps platform uses:
+  the rollout's durable state, where the staged revisions are recorded, and
+  the build summary. The engine hands a richer context; this is the narrow
+  view.
+
+  readonly state: TargetStateHandle
+    The rollout's durable platform state, shared by every call.
+  readonly reason?: "rollback" | "hand-run"
+    Why `abort` runs: `"rollback"` when the engine undoes a rollout,
+    `"hand-run"` for `rollout.abort` run on its own. An engine older than
+    this field leaves it out, which is treated as a hand run — the behaviour
+    from before the field existed.
+  reportSummary(pairs: SummaryPairs): void
+    Add key/value pairs to the calling target's row in the build summary.
 
 interface AzMonitorAnalysis
   A health check run against a canary, in the shape `@zuke/canary`'s
@@ -23928,6 +24911,8 @@ class ChocolateyPackageSettings
     The license's URL. Set by {@link licenseUrl}.
   iconUrl_?: string
     The icon's URL. Set by {@link iconUrl}.
+  copyright_?: string
+    The copyright notice. Set by {@link copyright}.
   packageSourceUrl_?: string
     Where the package's source lives. Set by {@link packageSourceUrl}.
   docsUrl_?: string
@@ -23976,6 +24961,10 @@ class ChocolateyPackageSettings
     The software's issue tracker (`<bugTrackerUrl>`, `https`).
   tags(...values: string[]): this
     Search tags (`<tags>`), each one word; repeatable.
+  copyright(text: string): this
+    The software's copyright notice (`<copyright>`), one line — e.g. the
+    line in its LICENSE, `Copyright (c) 2026 Acme`. The community
+    repository's moderators ask for it whenever the software has one.
   summary(text: string): this
     A one-line summary (`<summary>`).
   description(text: string): this
@@ -24974,6 +25963,9 @@ class CodecovUploadSettings extends ToolSettings
     Root folder used to resolve report file paths (`--network-root-folder`).
   reportType(value: string): this
     Report kind: `coverage` (default) or `test_results` (`--report-type`).
+  disableTelem(): this
+    Keep the CLI from reporting its own errors to Codecov's Sentry
+    (`--disable-telem`). A global flag, so it is emitted before the subcommand.
   disableSearch(): this
     Upload only the named files, skipping the auto-search (`--disable-search`).
   handleNoReportsFound(): this
@@ -27188,6 +28180,12 @@ await NotarytoolTasks.submit((s) =>
 ```
 @module
 
+const APP_STORE_CONNECT_API_URL: "https://api.appstoreconnect.apple.com"
+  The App Store Connect API's base URL.
+
+const AltoolTasks: AltoolTasksApi
+  Typed task functions for `xcrun altool`.
+
 const CodesignTasks: CodesignTasksApi
   Typed task functions for Apple's `codesign`.
 
@@ -27197,8 +28195,108 @@ const DittoTasks: DittoTasksApi
 const NotarytoolTasks: NotarytoolTasksApi
   Typed task functions for `xcrun notarytool`.
 
+const ProvisioningProfileTasks: ProvisioningProfileTasksApi
+  Read and install provisioning profiles.
+
 const SecurityTasks: SecurityTasksApi
   Typed task functions for macOS `security`.
+
+const TestFlightTasks: TestFlightTasksApi
+  Distribute builds in TestFlight through the App Store Connect API.
+
+const XcodebuildTasks: XcodebuildTasksApi
+  Typed task functions for `xcodebuild`.
+
+class AltoolSettings extends ToolSettings
+  Settings for `xcrun altool --upload-app` and `--validate-app`.
+
+  constructor(operation: AltoolOperation)
+    Settings for `xcrun altool <operation>`.
+  override protected defaultTool(): string
+    The default executable name (`xcrun`), which dispatches to altool.
+  override protected defaultResolution(): ToolResolution
+    Resolve from `PATH` — `xcrun` ships with macOS in `/usr/bin`.
+  file(path: PathLike): this
+    The `.ipa` or `.pkg` to upload or validate (`--file`); required.
+  type(platform: AltoolPlatform): this
+    The app's platform (`--type`); required.
+  apiKey(keyId: string, issuerId: string): this
+    Authenticate with an App Store Connect API key: its key id and issuer id
+    (`--apiKey`, `--apiIssuer`). `altool` finds `AuthKey_<keyId>.p8` in
+    `~/.appstoreconnect/private_keys` and its other search directories, or in
+    {@link apiPrivateKeysDir}.
+  apiPrivateKeysDir(path: PathLike): this
+    The directory holding `AuthKey_<keyId>.p8`, passed to `altool` as
+    `API_PRIVATE_KEYS_DIR`.
+  appleId(username: string, password: string): this
+    Authenticate with an Apple ID and an app-specific password
+    (`--username`, `--password`). The password is handed to `altool` in an
+    environment variable it reads through `@env:`, so it is never on the
+    command line, and it is registered with the run's redactor.
+  override protected buildArgs(): string[]
+    Assemble the `altool` argv; the output is always JSON.
+
+class AppStoreConnectError extends Error
+  Raised when the App Store Connect API answers with an error status. The
+  message names the request and every error the API listed; it never carries
+  the API key or the token signed with it.
+
+  constructor(readonly request: string, readonly status: number, readonly errors: ReadonlyArray<AppStoreConnectErrorDetail>)
+    Build the error from the request, the status and the API's errors.
+  override name: string
+    The error name.
+
+class AppStoreConnectSettings
+  Settings for a task that calls the App Store Connect API with an API key
+  (Users and Access → Integrations in App Store Connect): the issuer id, the
+  key id, and the `AuthKey_<keyId>.p8` private key.
+
+  The private key and every token signed with it stay out of progress lines
+  and errors. Declare them in the build as `parameter(...).secret()` so Zuke
+  masks them in its own output too.
+
+  issuerId_?: string
+    The API key's issuer id (set by {@link issuerId}).
+  keyId_?: string
+    The API key's id (set by {@link keyId}).
+  privateKey_?: string
+    The private key, PEM (set by {@link privateKey}).
+  privateKeyFile_?: string
+    The private key's file (set by {@link privateKeyFile}).
+  apiUrl_: string
+    The API's base URL (set by {@link apiUrl}).
+  fetch_: typeof fetch
+    The `fetch` to use (set by {@link fetch}).
+  readEnv_: (name: string) => string | undefined
+    The environment reader (set by {@link readEnv}).
+  sleep_: (ms: number) => Promise<void>
+    How the task waits between polls (set by {@link sleep}).
+  now_: () => number
+    The clock, in epoch ms (set by {@link now}).
+  log_: (line: string) => void
+    Where progress lines go (set by {@link log}).
+  issuerId(id: string): this
+    The API key's issuer id, a UUID.
+  keyId(id: string): this
+    The API key's id, e.g. `ABC123`.
+  privateKey(pem: string): this
+    The private key, as the PEM text of `AuthKey_<keyId>.p8`.
+  privateKeyFile(path: PathLike): this
+    Read the private key from `AuthKey_<keyId>.p8`.
+  apiUrl(url: string): this
+    The API's base URL, `https://api.appstoreconnect.apple.com` by default.
+    It carries the token, so it must be `https:` unless it is loopback or
+    `ZUKE_ALLOW_INSECURE_URL` is set.
+  fetch(fetcher: typeof fetch): this
+    Send with this `fetch` instead of the global one — the seam tests use.
+  readEnv(reader: (name: string) => string | undefined): this
+    Read environment variables through `reader` instead of `Deno.env`.
+  sleep(sleeper: (ms: number) => Promise<void>): this
+    Wait through `sleeper` instead of a timer — the seam tests use.
+  now(clock: () => number): this
+    Read the time from `clock` (epoch ms) instead of `Date.now`.
+  log(sink: (line: string) => void): this
+    Send progress lines to `sink` instead of `console.log`.
 
 class CodesignDisplaySettings extends CodesignSettings
   Settings for `codesign --display`.
@@ -27295,6 +28393,41 @@ class DittoSettings extends ToolSettings
     Where to write it (positional). Required.
   override protected buildArgs(): string[]
     Assemble the `ditto` argv: flags, then source and destination.
+
+class ExportOptionsSettings
+  Settings for an `ExportOptions.plist`.
+
+  readonly options_: Map<string, ExportOptionValue>
+    The options set so far, in the order each key was first set; setting a
+    key again replaces its value in place.
+  method(method: ExportMethod): this
+    How the archive is exported (`method`); required.
+  teamId(id: string): this
+    The developer team id (`teamID`).
+  signingStyle(style: ExportSigningStyle): this
+    Automatic or manual signing (`signingStyle`).
+  signingCertificate(name: string): this
+    The certificate to sign with, e.g. `Apple Distribution` (`signingCertificate`).
+  provisioningProfile(bundleId: string, profile: string): this
+    The provisioning profile, by name or UUID, for one bundle identifier
+    (`provisioningProfiles`); repeatable, once per app and extension.
+  destination(destination: ExportDestination): this
+    Export to a directory, or upload to App Store Connect (`destination`).
+  uploadSymbols(enabled: boolean): this
+    Include symbols for crash reports (`uploadSymbols`).
+  manageAppVersionAndBuildNumber(enabled: boolean): this
+    Let App Store Connect manage the version and build number (`manageAppVersionAndBuildNumber`).
+  stripSwiftSymbols(enabled: boolean): this
+    Strip Swift symbols from the binary (`stripSwiftSymbols`).
+  testFlightInternalTestingOnly(enabled: boolean): this
+    Limit a TestFlight upload to internal testers (`testFlightInternalTestingOnly`).
+  render(): string
+    The property list, as `xcodebuild -exportArchive -exportOptionsPlist`
+    reads it. Pure: no I/O.
+
+    @throws {Error}
+        when no {@link method} is set, or a value holds a control
+        character a plist cannot carry.
 
 class KeychainCleanupError extends Error
   Raised by `SecurityTasks.temporaryKeychain` when tearing the keychain down
@@ -27453,6 +28586,46 @@ class NotarytoolSubmitSettings extends NotarytoolSettings
     `.noThrow()`, since there is then nothing to return.
   override protected subcommandArgs(): string[]
     Assemble the submit arguments.
+
+class ProvisioningProfileError extends Error
+  Raised by `ProvisioningProfileTasks` when a profile cannot be read, is
+  expired, or could not be removed after `temporary`. When the callback had
+  already failed before the removal did, that error is the
+  {@link Error.cause}.
+
+  constructor(message: string, options?: ErrorOptions)
+    Build the error; the message is prefixed with `Provisioning profile:`.
+  override name: string
+    The error name.
+
+class ProvisioningProfileSettings
+  Settings for `ProvisioningProfileTasks`.
+
+  file_?: string
+    The profile file (set by {@link file}).
+  base64_?: string
+    The profile as base64 (set by {@link base64}).
+  directories_: string[]
+    Directories to install into (set by {@link directory}).
+  allowExpired_: boolean
+    Whether an expired profile may be installed (set by {@link allowExpired}).
+  host_: ProvisioningHost
+    The file-system seam (set by {@link host}).
+  now_: () => number
+    The clock, in epoch ms (set by {@link now}).
+  file(path: PathLike): this
+    Read the profile from a `.mobileprovision` file.
+  base64(text: string): this
+    Take the profile as base64 — how a CI secret usually holds it
+    (`base64 -i profile.mobileprovision`).
+  directory(path: PathLike): this
+    Install into this directory instead of Xcode's two defaults; repeatable.
+  allowExpired(): this
+    Install the profile even if it has expired.
+  host(host: ProvisioningHost): this
+    Work through `host` instead of the real file system — the test seam.
+  now(clock: () => number): this
+    Read the time from `clock` (epoch ms) instead of `Date.now`.
 
 class SecurityCreateKeychainSettings extends SecuritySettings
   Settings for `security create-keychain`.
@@ -27639,6 +28812,204 @@ class TemporaryKeychainSettings
         When any cleanup step failed; the error of
         a failed setup or callback is its `cause`.
 
+class TestFlightError extends Error
+  Raised by `TestFlightTasks.distribute` when the release cannot go ahead:
+  no app has the bundle id, a beta group does not exist, the build finished
+  processing as `INVALID` or `FAILED`, or it had not finished by the timeout.
+
+  override name: string
+    The error name.
+
+class TestFlightSettings extends AppStoreConnectSettings
+  Settings for `TestFlightTasks.distribute`.
+
+  bundleId_?: string
+    The app's bundle id (set by {@link bundleId}).
+  buildNumber_?: string
+    The build number (set by {@link buildNumber}).
+  version_?: string
+    The version (set by {@link version}).
+  platform_?: TestFlightPlatform
+    The platform (set by {@link platform}).
+  timeout_: number
+    The longest wait for processing, in ms (set by {@link timeout}).
+  pollInterval_: number
+    The time between two polls, in ms (set by {@link pollInterval}).
+  usesNonExemptEncryption_?: boolean
+    Export compliance (set by {@link usesNonExemptEncryption}).
+  whatToTest_: Map<string, string>
+    "What to Test" notes by locale (set by {@link whatToTest}).
+  groups_: string[]
+    Beta groups to add the build to (set by {@link group}).
+  submitForBetaReview_: boolean
+    Whether to submit for beta review (set by {@link submitForBetaReview}).
+  bundleId(id: string): this
+    The app's bundle id, e.g. `com.example.app`; required.
+  buildNumber(number: string | number): this
+    The uploaded build's number, `CFBundleVersion`; required.
+  version(version: string): this
+    The uploaded build's version, `CFBundleShortVersionString` — needed when
+    the same build number exists under several versions.
+  platform(platform: TestFlightPlatform): this
+    The build's platform — needed when the app ships on several.
+  timeout(duration: string | number): this
+    The longest wait for the build to finish processing (`"45m"`, or ms); default 30 minutes.
+  pollInterval(duration: string | number): this
+    The time between two looks at the build (`"1m"`, or ms); default 30 seconds.
+  usesNonExemptEncryption(uses: boolean): this
+    Answer the export-compliance question: whether the app uses encryption
+    beyond the exempt kinds. Until it is answered — here, or by
+    `ITSAppUsesNonExemptEncryption` in `Info.plist` — the build sits at
+    Missing Compliance and no tester can install it.
+  whatToTest(text: string, locale: string): this
+    The "What to Test" notes testers see, per locale; default locale `en-US`.
+  group(name: string): this
+    Add the build to this beta group, by name; repeatable.
+  submitForBetaReview(): this
+    Submit the build for beta review, which external testing needs.
+
+class XcodebuildActionSettings extends XcodebuildProjectSettings
+  Settings for `xcodebuild build`, `clean`, `analyze`, `build-for-testing` and
+  `-resolvePackageDependencies`.
+
+  constructor(action: XcodebuildPlainAction)
+    Settings for `xcodebuild <action>`.
+  override protected actionArgs(): string[]
+    The action.
+
+class XcodebuildArchiveSettings extends XcodebuildProjectSettings
+  Settings for `xcodebuild archive`.
+
+  archivePath(path: PathLike): this
+    Where to write the `.xcarchive` (`-archivePath`); required.
+  override protected actionArgs(): string[]
+    `archive -archivePath <path>`.
+
+class XcodebuildExportArchiveSettings extends XcodebuildSettings
+  Settings for `xcodebuild -exportArchive`.
+
+  archivePath(path: PathLike): this
+    The `.xcarchive` to export (`-archivePath`); required.
+  exportPath(path: PathLike): this
+    The directory to write the export to (`-exportPath`); required.
+  exportOptionsPlist(path: PathLike): this
+    The export options (`-exportOptionsPlist`); required. Write one with
+    `XcodebuildTasks.writeExportOptions`.
+  override protected invocationArgs(): string[]
+    `-exportArchive` with its three paths.
+
+abstract class XcodebuildProjectSettings extends XcodebuildSettings
+  The project flags every build action takes. Each action names itself and
+  its own flags; the project flags come first, then the action, then the
+  build settings.
+
+  abstract protected actionArgs(): string[]
+    The action and its own flags, e.g. `["archive", "-archivePath", …]`.
+  workspace(path: PathLike): this
+    The workspace to build, e.g. `App.xcworkspace` (`-workspace`).
+  project(path: PathLike): this
+    The project to build, e.g. `App.xcodeproj` (`-project`).
+  scheme(name: string): this
+    The scheme to build (`-scheme`); required with a workspace. A later call replaces it.
+  configuration(name: string): this
+    The build configuration, e.g. `Release` (`-configuration`). A later call replaces it.
+  sdk(name: string): this
+    The SDK, e.g. `iphoneos` or `iphonesimulator` (`-sdk`). A later call replaces it.
+  destination(specifier: string): this
+    A destination, e.g. `generic/platform=iOS` or
+    `platform=iOS Simulator,name=iPhone 16` (`-destination`); repeatable.
+  derivedDataPath(path: PathLike): this
+    Where intermediate build files go (`-derivedDataPath`).
+  clonedSourcePackagesDirPath(path: PathLike): this
+    Where Swift packages are checked out (`-clonedSourcePackagesDirPath`).
+  resultBundlePath(path: PathLike): this
+    Write an `.xcresult` bundle with the logs and results (`-resultBundlePath`).
+  xcconfig(path: PathLike): this
+    Apply an `.xcconfig` file's settings over every target (`-xcconfig`).
+  buildSetting(name: string, value: string): this
+    Override a build setting for every target, e.g.
+    `("DEVELOPMENT_TEAM", "ABCDE12345")` → `DEVELOPMENT_TEAM=ABCDE12345`;
+    repeatable. A condition goes in the name:
+    `CODE_SIGN_IDENTITY[sdk=iphoneos*]`.
+  override protected invocationArgs(): string[]
+    The project flags, the action, then the build settings.
+
+abstract class XcodebuildSettings extends ToolSettings
+  Base for all `xcodebuild` settings: the binary is `xcodebuild`, on `PATH`.
+
+  override protected defaultTool(): string
+    The default executable name (`xcodebuild`).
+  override protected defaultResolution(): ToolResolution
+    Resolve from `PATH` — `xcodebuild` ships with Xcode in `/usr/bin`.
+  abstract protected invocationArgs(): string[]
+    The invocation's own arguments, placed after the shared flags.
+  quietOutput(): this
+    Print only warnings and errors (`-quiet`).
+  allowProvisioningUpdates(): this
+    Let Xcode create and update provisioning profiles and certificates
+    (`-allowProvisioningUpdates`); on CI, pair it with
+    {@link authenticationKey}.
+  authenticationKey(path: PathLike, keyId: string, issuerId: string): this
+    Sign in to the developer account with an App Store Connect API key
+    instead of an Xcode account: the `AuthKey_<id>.p8` file, its key id and
+    its issuer id (`-authenticationKeyPath`, `-authenticationKeyID`,
+    `-authenticationKeyIssuerID`).
+  override protected buildArgs(): string[]
+    Assemble the argv: the invocation's arguments, then the shared flags.
+
+class XcodebuildShowBuildSettings extends XcodebuildProjectSettings
+  Settings for `xcodebuild -showBuildSettings`.
+
+  json(): this
+    Print the settings as JSON (`-json`).
+  override protected actionArgs(): string[]
+    `-showBuildSettings`, then `-json` when asked for.
+
+class XcodebuildTestSettings extends XcodebuildProjectSettings
+  Settings for `xcodebuild test` and `test-without-building`.
+
+  constructor(action: XcodebuildTestAction)
+    Settings for `xcodebuild <action>`.
+  xctestrun(path: PathLike): this
+    Run the tests a `build-for-testing` run described, from its `.xctestrun`
+    file (`-xctestrun`), instead of a scheme — the usual way to run
+    `test-without-building`.
+  testPlan(name: string): this
+    The test plan to run (`-testPlan`).
+  onlyTesting(identifier: string): this
+    Run only this test target, class or method, e.g. `AppTests/LoginTests`
+    (`-only-testing`); repeatable.
+  skipTesting(identifier: string): this
+    Skip this test target, class or method (`-skip-testing`); repeatable.
+  enableCodeCoverage(enabled: boolean): this
+    Turn code coverage on or off (`-enableCodeCoverage YES|NO`).
+  parallelTestingEnabled(enabled: boolean): this
+    Turn parallel testing on or off (`-parallel-testing-enabled YES|NO`).
+  retryTestsOnFailure(): this
+    Re-run a failed test until it passes, up to the iteration limit (`-retry-tests-on-failure`).
+  testIterations(count: number): this
+    How many times to run each test (`-test-iterations`).
+  override protected actionArgs(): string[]
+    The action and the test flags.
+
+interface AltoolTasksApi
+  The shape of {@link AltoolTasks}.
+
+  uploadApp(configure: Configure<AltoolSettings>): Promise<CommandOutput>
+    Upload an app to App Store Connect: `xcrun altool --upload-app`.
+  validateApp(configure: Configure<AltoolSettings>): Promise<CommandOutput>
+    Validate an app without uploading it: `xcrun altool --validate-app`.
+
+interface AppStoreConnectErrorDetail
+  One entry of an App Store Connect API error response's `errors` list.
+
+  code: string
+    The machine-readable code, e.g. `ENTITY_ERROR.ATTRIBUTE.INVALID`.
+  title: string
+    The short title.
+  detail?: string
+    The explanation, when the API gave one.
+
 interface CodesignDisplay
   A code signature as `codesign --display` describes it.
 
@@ -27675,6 +29046,14 @@ interface DittoTasksApi
     Write a zip archive: `ditto -c -k`, then the lambda's settings.
   extract(configure: Configure<DittoSettings>): Promise<CommandOutput>
     Unpack a zip archive: `ditto -x -k`, then the lambda's settings.
+
+interface InstalledProvisioningProfile
+  An installed provisioning profile.
+
+  readonly profile: ProvisioningProfile
+    What the profile says about itself.
+  readonly paths: readonly string[]
+    Every file it was installed as.
 
 interface KeychainCleanupFailure
   One cleanup step of a temporary keychain that threw.
@@ -27761,6 +29140,67 @@ interface NotarytoolTasksApi
   history(configure: Configure<NotarytoolHistorySettings>): Promise<NotarytoolSubmission[]>
     List the team's past submissions with `notarytool history`.
 
+interface ProvisioningHost
+  The operations installing a provisioning profile needs.
+
+  readFile(path: string): Promise<Uint8Array>
+    Read a file's bytes.
+  makeDirectory(path: string): Promise<void>
+    Create a directory and its parents, if missing.
+  writeFile(path: string, data: Uint8Array): Promise<void>
+    Write a file, replacing one that exists.
+  remove(path: string): Promise<void>
+    Remove a file.
+  exists(path: string): Promise<boolean>
+    Whether a file exists.
+  home(): string
+    The user's home directory.
+
+interface ProvisioningProfile
+  A provisioning profile's identity, as read from the profile itself.
+
+  readonly uuid: string
+    The profile's UUID — Xcode installs it as `<uuid>.mobileprovision`.
+  readonly name: string
+    The profile's name, as `ExportOptions.plist` can refer to it.
+  readonly teamIds: readonly string[]
+    The team ids it belongs to.
+  readonly teamName: string
+    The team's name.
+  readonly appIdName: string
+    The App ID's name.
+  readonly bundleId: string
+    The bundle identifier it signs, e.g. `com.example.app`, or a wildcard
+    such as `com.example.*` — the `application-identifier` entitlement
+    without its team prefix.
+  readonly platforms: readonly string[]
+    The platforms it is for, e.g. `["iOS"]`.
+  readonly kind: ProvisioningProfileKind
+    How it distributes the app.
+  readonly creationDate: Date
+    When it was created.
+  readonly expirationDate: Date
+    When it expires.
+  readonly xcodeManaged: boolean
+    Whether Xcode created and manages it (automatic signing).
+
+interface ProvisioningProfileTasksApi
+  The shape of {@link ProvisioningProfileTasks}.
+
+  inspect(configure: Configure<ProvisioningProfileSettings>): Promise<ProvisioningProfile>
+    Read what a profile says about itself, without installing it.
+  install(configure: Configure<ProvisioningProfileSettings>): Promise<InstalledProvisioningProfile>
+    Install a profile where Xcode looks for it, named by its UUID. Refuses an
+    expired profile unless `.allowExpired()`.
+  temporary(configure: Configure<ProvisioningProfileSettings>, fn: (installed: InstalledProvisioningProfile) => Promise<T>): Promise<T>
+    Install a profile, run `fn`, then remove every file the install created —
+    even when `fn` throws. A copy that was already installed under the same
+    UUID is left in place. Returns what `fn` returns.
+
+    @throws {ProvisioningProfileError}
+        when a file could not be removed; if
+        `fn` had thrown first, its error is the cause.
+
 interface SecurityIdentity
   A signing identity as `security find-identity` lists it.
 
@@ -27803,6 +29243,85 @@ interface TemporaryKeychain
   identity: SecurityIdentity
     The codesigning identity imported into it.
 
+interface TestFlightBuild
+  A build in App Store Connect, once processed.
+
+  readonly id: string
+    The build's App Store Connect id.
+  readonly appId: string
+    The app's App Store Connect id.
+  readonly buildNumber: string
+    The build number, `CFBundleVersion`.
+  readonly processingState: string
+    The processing state: `VALID` once `distribute` returns.
+
+interface TestFlightTasksApi
+  The shape of {@link TestFlightTasks}.
+
+  distribute(configure: Configure<TestFlightSettings>): Promise<TestFlightBuild>
+    Wait for an uploaded build to be processed, then distribute it in
+    TestFlight as configured.
+
+    @throws {TestFlightError}
+        when the app or a beta group is missing, the
+        build fails processing, or it is not processed in time.
+
+    @throws {AppStoreConnectError}
+        when the API refuses a request.
+
+interface XcodebuildTasksApi
+  The shape of {@link XcodebuildTasks}.
+
+  build: XcodebuildActionTask
+    Build a scheme: `xcodebuild build`.
+  clean: XcodebuildActionTask
+    Remove build products: `xcodebuild clean`.
+  analyze: XcodebuildActionTask
+    Run the static analyzer: `xcodebuild analyze`.
+  buildForTesting: XcodebuildActionTask
+    Build for a later test run: `xcodebuild build-for-testing`.
+  resolvePackageDependencies: XcodebuildActionTask
+    Resolve Swift package dependencies: `xcodebuild -resolvePackageDependencies`.
+  test: XcodebuildTestTask
+    Build and run the tests: `xcodebuild test`.
+  testWithoutBuilding: XcodebuildTestTask
+    Run tests already built: `xcodebuild test-without-building`.
+  archive(configure: Configure<XcodebuildArchiveSettings>): Promise<CommandOutput>
+    Build an `.xcarchive`: `xcodebuild archive`.
+  exportArchive(configure: Configure<XcodebuildExportArchiveSettings>): Promise<CommandOutput>
+    Export an archive to an `.ipa`, or upload it: `xcodebuild -exportArchive`.
+  showBuildSettings(configure?: Configure<XcodebuildShowBuildSettings>): Promise<CommandOutput>
+    Print the resolved build settings: `xcodebuild -showBuildSettings`.
+  writeExportOptions(path: PathLike, configure: Configure<ExportOptionsSettings>): Promise<void>
+    Write an `ExportOptions.plist` for {@link exportArchive} to `path`. Runs
+    no subprocess.
+
+type AltoolOperation = "--upload-app" | "--validate-app"
+  The `altool` operations this wrapper runs.
+
+type AltoolPlatform = "ios" | "macos" | "appletvos" | "visionos"
+  The platform of the app being uploaded (`--type`).
+
+type ExportDestination = "export" | "upload"
+  Whether to write the export locally or upload it to App Store Connect (`destination`).
+
+type ExportMethod = "app-store-connect" | "release-testing" | "enterprise" | "debugging" | "developer-id" | "mac-application" | "validation" | "app-store" | "ad-hoc" | "development"
+  How an archive is exported (`method`). Xcode 15.3 renamed three methods:
+  `app-store-connect`, `release-testing` and `debugging` were `app-store`,
+  `ad-hoc` and `development`, which older Xcode versions still require.
+
+type ExportOptionValue = string | boolean | Record<string, string>
+  One value in an `ExportOptions.plist`: a string, a boolean, or a string dictionary.
+
+type ExportSigningStyle = "automatic" | "manual"
+  Whether Xcode or the export options pick the signing assets (`signingStyle`).
+
+type ProvisioningProfileKind = "development" | "ad-hoc" | "enterprise" | "app-store"
+  How a profile distributes the app, as Xcode's Organizer names it:
+  `development` (devices listed, debugging allowed), `ad-hoc` (devices
+  listed), `enterprise` (all devices) or `app-store` (no devices — App Store
+  and TestFlight).
+
 type SecurityDomain = "user" | "system" | "common" | "dynamic"
   A preference domain `security list-keychains` reads or sets (`-d`).
 
@@ -27811,6 +29330,153 @@ type SecurityImportFormat = "openssl" | "openssh1" | "openssh2" | "bsafe" | "raw
 
 type SecurityItemType = "pub" | "priv" | "session" | "cert" | "agg"
   An item type `security import` accepts (`-t`).
+
+type TestFlightPlatform = "IOS" | "MAC_OS" | "TV_OS" | "VISION_OS"
+  The platform of a build, as App Store Connect names it.
+
+type XcodebuildActionTask = (configure?: Configure<XcodebuildActionSettings>) => Promise<CommandOutput>
+  A task that runs a flag-free `xcodebuild` action.
+
+type XcodebuildPlainAction = "analyze" | "build" | "build-for-testing" | "clean" | "-resolvePackageDependencies"
+  An `xcodebuild` action that takes no flags of its own.
+
+type XcodebuildTestAction = "test" | "test-without-building"
+  An `xcodebuild` action that runs tests.
+
+type XcodebuildTestTask = (configure?: Configure<XcodebuildTestSettings>) => Promise<CommandOutput>
+  A task that runs an `xcodebuild` test action.
+
+========================================================================
+# @zuke/google
+========================================================================
+
+`@zuke/google` — Google Play publishing for Zuke builds, through the Google
+Play Developer API. The counterpart of `@zuke/apple`'s `TestFlightTasks`.
+
+```ts
+import { GooglePlayTasks } from "@zuke/google";
+
+await GooglePlayTasks.upload((s) =>
+  s.serviceAccount(keyJson)
+    .packageName("com.example.app")
+    .bundle("build/app/outputs/bundle/release/app-release.aab")
+    .track("internal")
+    .releaseNotes("What changed.", "en-US")
+);
+```
+@module
+
+const GOOGLE_PLAY_API_URL: "https://androidpublisher.googleapis.com"
+  The Google Play Developer API's base URL.
+
+const GooglePlayTasks: GooglePlayTasksApi
+  Publish to Google Play through the Google Play Developer API.
+
+class GooglePlayError extends Error
+  Raised by `GooglePlayTasks.upload`. The message names the step and, for a
+  refused request, Google's own error message; it never carries the
+  service-account key or an access token.
+
+  constructor(message: string, readonly status?: number)
+    Build the error from its message and, for a refused request, the HTTP status.
+  override name: string
+    The error name.
+
+class GooglePlaySettings
+  Settings for `GooglePlayTasks.upload`.
+
+  The service-account key and every token signed with it stay out of progress
+  lines and errors. Declare the key in the build as `parameter(...).secret()`
+  so Zuke masks it in its own output too.
+
+  serviceAccount_?: string
+    The service-account key's JSON text (set by {@link serviceAccount}).
+  packageName_?: string
+    The app's package name (set by {@link packageName}).
+  bundle_?: string
+    The app bundle's path (set by {@link bundle}).
+  track_: string
+    The track (set by {@link track}).
+  status_: GooglePlayReleaseStatus
+    The release status (set by {@link status}).
+  releaseNotes_: Map<string, string>
+    Release notes by language (set by {@link releaseNotes}).
+  changesNotSentForReview_: boolean
+    Whether the commit skips review (set by {@link changesNotSentForReview}).
+  timeout_: number
+    The longest the whole upload may take, in ms (set by {@link timeout}).
+  apiUrl_: string
+    The API's base URL (set by {@link apiUrl}).
+  fetch_: typeof fetch
+    The `fetch` to use (set by {@link fetch}).
+  readEnv_: (name: string) => string | undefined
+    The environment reader (set by {@link readEnv}).
+  now_: () => number
+    The clock, in epoch ms (set by {@link now}).
+  log_: (line: string) => void
+    Where progress lines go (set by {@link log}).
+  serviceAccount(json: string): this
+    The service account's key, as the text of the JSON file the Play Console
+    (or Google Cloud) downloaded; required. The account needs the Release
+    apps to testing tracks (or Release to production) permission on the
+    app.
+  packageName(name: string): this
+    The app's package name, e.g. `com.example.app`; required.
+  bundle(path: PathLike): this
+    The Android app bundle (`.aab`) to upload; required.
+  track(name: string): this
+    The track to release on: `internal` (the default), `alpha`, `beta`,
+    `production`, or the name of a closed testing track.
+  status(status: GooglePlayReleaseStatus): this
+    The release's status; default `completed`.
+  releaseNotes(text: string, language: string): this
+    The release notes users see, per BCP-47 language (`"en-US"`, `"bg"`);
+    repeatable, one call per language. Default language `en-US`.
+  changesNotSentForReview(): this
+    Commit without sending the changes for review, so an app with managed
+    publishing or a release that review would otherwise hold can go out as
+    Google allows it to.
+  timeout(duration: string | number): this
+    The longest the whole upload may take (`"30m"`, or ms); default 15 minutes.
+  apiUrl(url: string): this
+    The API's base URL, `https://androidpublisher.googleapis.com` by default.
+    It carries the access token, so it must be `https:` unless it is loopback
+    or `ZUKE_ALLOW_INSECURE_URL` is set.
+  fetch(fetcher: typeof fetch): this
+    Send with this `fetch` instead of the global one — the seam tests use.
+  readEnv(reader: (name: string) => string | undefined): this
+    Read environment variables through `reader` instead of `Deno.env`.
+  now(clock: () => number): this
+    Read the time from `clock` (epoch ms) instead of `Date.now`.
+  log(sink: (line: string) => void): this
+    Send progress lines to `sink` instead of `console.log`.
+
+interface GooglePlayTasksApi
+  The shape of {@link GooglePlayTasks}.
+
+  upload(configure: Configure<GooglePlaySettings>): Promise<GooglePlayUpload>
+    Upload an app bundle and release it on a track, in one committed edit.
+
+    @throws {GooglePlayError}
+        when the service account cannot sign in, the
+        API refuses a step, or the upload runs out of time.
+
+interface GooglePlayUpload
+  What `GooglePlayTasks.upload` released.
+
+  readonly packageName: string
+    The app's package name.
+  readonly versionCode: number
+    The uploaded bundle's version code, as Google Play read it.
+  readonly track: string
+    The track the release went to.
+  readonly status: GooglePlayReleaseStatus
+    The release's status.
+
+type GooglePlayReleaseStatus = "completed" | "draft"
+  A release's status on its track. `completed` makes it live for the track's
+  testers or users; `draft` saves it to publish from the Play Console — the
+  only status Google accepts for an app that has never had a release.
 
 ========================================================================
 # @zuke/signpath
@@ -28283,6 +29949,796 @@ interface SigntoolTasksApi
 
 type SigntoolHashAlgorithm = "SHA1" | "SHA256"
   The digest algorithms `/hash` accepts.
+
+========================================================================
+# @zuke/flutter
+========================================================================
+
+`@zuke/flutter` — typed `FlutterTasks` wrappers for the
+Flutter (https://flutter.dev) CLI, for use in Zuke builds: analyze, test,
+build every artifact, manage pub dependencies, and drive devices and the SDK.
+
+```ts
+import { FlutterTasks } from "@zuke/flutter";
+
+await FlutterTasks.pubGet((s) => s.enforceLockfile());
+await FlutterTasks.analyze();
+await FlutterTasks.test((s) => s.coverage());
+await FlutterTasks.buildAppBundle((s) =>
+  s.release().flavor("prod").buildNumber(42)
+);
+```
+@module
+
+const FlutterTasks: FlutterTasksApi
+  Typed task functions for the `flutter` CLI.
+
+class FlutterAnalyzeSettings extends FlutterSettings
+  Settings for `flutter analyze`.
+
+  path(path: PathLike): this
+    A file or directory to analyze (defaults to the project); repeatable.
+  noFatalInfos(): this
+    Do not fail on info-level issues (`--no-fatal-infos`).
+  noFatalWarnings(): this
+    Do not fail on warnings (`--no-fatal-warnings`).
+  write(path: PathLike): this
+    Also write the analysis results to a file (`--write`).
+  override protected buildArgs(): string[]
+    Assemble the `flutter analyze` argv.
+
+abstract class FlutterAppSettings extends FlutterCompileSettings
+  Compile flags plus the build mode and the entry point (`--target`), shared by
+  `flutter build` and `flutter drive`.
+
+  mode(mode: FlutterBuildMode): this
+    The build mode (`--debug`, `--profile` or `--release`).
+  release(): this
+    Build in release mode (`--release`).
+  target(path: PathLike): this
+    The main entry-point file, instead of `lib/main.dart` (`--target`).
+  protected appArgs(): string[]
+    The mode and entry point, then the shared compile flags.
+
+class FlutterBuildSettings extends FlutterAppSettings
+  Settings for `flutter build <target>`. Flags that only one target accepts say
+  so; `flutter` rejects them for the others.
+
+  constructor(kind: FlutterBuildTarget)
+    Settings for `flutter build <kind>`.
+  buildName(name: string): this
+    The version name, e.g. `1.4.0` (`--build-name`).
+  buildNumber(number: string | number): this
+    The build number, e.g. the CI run number (`--build-number`).
+  obfuscate(): this
+    Obfuscate Dart symbols (`--obfuscate`); needs {@link splitDebugInfo}.
+  splitDebugInfo(dir: PathLike): this
+    Write split debug symbols to a directory (`--split-debug-info`).
+  noTreeShakeIcons(): this
+    Keep every icon font glyph (`--no-tree-shake-icons`).
+  targetPlatform(platform: string): this
+    The platform to build for (`--target-platform`). Android takes several ABIs,
+    e.g. `android-arm64`, joined into one list; `linux` and `windows` take one,
+    e.g. `linux-arm64`.
+  splitPerAbi(): this
+    `apk`: one APK per ABI (`--split-per-abi`).
+  noCodesign(): this
+    `ios`: build without code signing (`--no-codesign`).
+  exportMethod(method: string): this
+    `ipa`: the export method, e.g. `app-store` or `ad-hoc` (`--export-method`).
+  exportOptionsPlist(path: PathLike): this
+    `ipa`: the export options plist (`--export-options-plist`).
+  baseHref(href: string): this
+    `web`: the base href of the app, e.g. `/app/` (`--base-href`).
+  wasm(): this
+    `web`: compile to WebAssembly (`--wasm`).
+  sourceMaps(): this
+    `web`: emit source maps (`--source-maps`).
+  output(dir: PathLike): this
+    `web`: the output directory, instead of `build/web` (`--output`).
+  override protected buildArgs(): string[]
+    Assemble the `flutter build <target>` argv.
+
+class FlutterCommandSettings extends FlutterSettings
+  Settings for a flagless command: `flutter clean`, or `flutter gen-l10n`
+  (configured by `l10n.yaml`). Extra flags go through `.args()`.
+
+  constructor(command: FlutterPlainCommand)
+    Settings for `flutter <command>`.
+  override protected buildArgs(): string[]
+    Assemble the `flutter <command>` argv.
+
+abstract class FlutterCompileSettings extends FlutterSettings
+  Flags shared by the commands that compile Dart code: `--no-pub`,
+  `--dart-define`, `--dart-define-from-file` and `--flavor`.
+
+  noPub(): this
+    Skip the implicit `flutter pub get` (`--no-pub`).
+  dartDefine(name: string, value: string): this
+    Define a compile-time constant (`--dart-define=name=value`); repeatable.
+  dartDefineFromFile(path: PathLike): this
+    Read compile-time constants from a JSON or `.env` file (`--dart-define-from-file`); repeatable.
+  flavor(name: string): this
+    The build flavor, for apps with product flavors or schemes (`--flavor`).
+  protected compileArgs(): string[]
+    The shared compile flags, in a stable order.
+
+class FlutterConfigSettings extends FlutterSettings
+  Settings for `flutter config`.
+
+  enable(feature: string): this
+    Turn a feature on, e.g. `web` → `--enable-web`; repeatable.
+  disable(feature: string): this
+    Turn a feature off, e.g. `web` → `--no-enable-web`; repeatable.
+  androidSdk(dir: PathLike): this
+    The Android SDK directory (`--android-sdk`).
+  noAnalytics(): this
+    Turn analytics reporting off (`--no-analytics`).
+  clearFeatures(): this
+    Reset every feature flag to its default (`--clear-features`).
+  override protected buildArgs(): string[]
+    Assemble the `flutter config` argv.
+
+class FlutterCreateSettings extends FlutterSettings
+  Settings for `flutter create`.
+
+  dir(path: PathLike): this
+    The directory to create the project in; required.
+  org(org: string): this
+    The reverse-domain organization, e.g. `com.example` (`--org`).
+  projectName(name: string): this
+    The Dart package name, instead of the directory's (`--project-name`).
+  description(text: string): this
+    The project description (`--description`).
+  template(name: string): this
+    The template: `app`, `module`, `package`, `plugin`, … (`--template`).
+  platform(name: string): this
+    A platform to scaffold, e.g. `android` or `web` (`--platforms`); repeatable.
+  empty(): this
+    Scaffold a minimal app without the counter sample (`--empty`).
+  override protected buildArgs(): string[]
+    Assemble the `flutter create` argv.
+
+class FlutterDevicesSettings extends FlutterSettings
+  Settings for `flutter devices`.
+
+  machine(): this
+    Print the devices as JSON (`--machine`).
+  override protected buildArgs(): string[]
+    Assemble the `flutter devices` argv.
+
+class FlutterDoctorSettings extends FlutterSettings
+  Settings for `flutter doctor`.
+
+  verbose(): this
+    Show full details for every check (`--verbose`).
+  override protected buildArgs(): string[]
+    Assemble the `flutter doctor` argv.
+
+class FlutterDriveSettings extends FlutterAppSettings
+  Settings for `flutter drive`, which runs integration tests on a device.
+
+  driver(path: PathLike): this
+    The test driver file, e.g. `test_driver/integration_test.dart` (`--driver`).
+  deviceId(id: string): this
+    The device to run on, e.g. `chrome` or an emulator id (`--device-id`).
+  screenshot(dir: PathLike): this
+    Save a screenshot to this directory if the run fails (`--screenshot`).
+  override protected buildArgs(): string[]
+    Assemble the `flutter drive` argv.
+
+class FlutterInstallSettings extends FlutterSettings
+  Settings for `flutter install`, which installs a built app on a device.
+
+  mode(mode: FlutterBuildMode): this
+    Install the build of this mode (`--debug`, `--profile` or `--release`).
+  flavor(name: string): this
+    Install this build flavor (`--flavor`).
+  deviceId(id: string): this
+    The device to install on (`--device-id`).
+  useApplicationBinary(path: PathLike): this
+    Install this prebuilt binary instead (`--use-application-binary`).
+  uninstallOnly(): this
+    Only uninstall the app (`--uninstall-only`).
+  override protected buildArgs(): string[]
+    Assemble the `flutter install` argv.
+
+class FlutterPrecacheSettings extends FlutterSettings
+  Settings for `flutter precache`, which downloads platform artifacts.
+
+  platform(name: string): this
+    Fetch a platform's artifacts, e.g. `android` → `--android`; repeatable.
+  force(): this
+    Re-download even when cached (`--force`).
+  override protected buildArgs(): string[]
+    Assemble the `flutter precache` argv.
+
+class FlutterPubDepsSettings extends FlutterSettings
+  Settings for `flutter pub deps`.
+
+  json(): this
+    Print the dependency graph as JSON (`--json`).
+  override protected buildArgs(): string[]
+    Assemble the `flutter pub deps` argv.
+
+class FlutterPubGetSettings extends FlutterSettings
+  Settings for `flutter pub get`.
+
+  offline(): this
+    Resolve from the local pub cache only (`--offline`).
+  enforceLockfile(): this
+    Fail rather than change `pubspec.lock` (`--enforce-lockfile`).
+  override protected buildArgs(): string[]
+    Assemble the `flutter pub get` argv.
+
+class FlutterPubOutdatedSettings extends FlutterSettings
+  Settings for `flutter pub outdated`.
+
+  json(): this
+    Print machine-readable JSON (`--json`).
+  showAll(): this
+    Include packages that are already up to date (`--show-all`).
+  override protected buildArgs(): string[]
+    Assemble the `flutter pub outdated` argv.
+
+class FlutterPubPackagesSettings extends FlutterSettings
+  Settings for `flutter pub add` and `flutter pub remove`.
+
+  constructor(verb: "add" | "remove")
+    Settings for `flutter pub <verb>`.
+  package(spec: string): this
+    A package to add or remove; repeatable, at least one is required. For
+    `add` it takes pub's descriptor syntax: `http`, `http:^1.2.0`, or
+    `dev:mocktail` for a dev dependency.
+  override protected buildArgs(): string[]
+    Assemble the `flutter pub add|remove` argv.
+
+class FlutterPubUpgradeSettings extends FlutterSettings
+  Settings for `flutter pub upgrade`.
+
+  package(name: string): this
+    Upgrade only this package (defaults to all); repeatable.
+  majorVersions(): this
+    Also raise constraints in `pubspec.yaml` across majors (`--major-versions`).
+  tighten(): this
+    Raise lower bounds in `pubspec.yaml` to the resolved versions (`--tighten`).
+  override protected buildArgs(): string[]
+    Assemble the `flutter pub upgrade` argv.
+
+abstract class FlutterSettings extends ToolSettings
+  Base for all `flutter` settings: the binary is `flutter`, found on `PATH`.
+
+  override protected defaultTool(): string
+    The binary these settings invoke: `flutter`.
+  override protected defaultResolution(): ToolResolution
+    Resolve from `PATH` — the Flutter SDK is installed natively.
+
+class FlutterTestSettings extends FlutterCompileSettings
+  Settings for `flutter test`.
+
+  path(path: PathLike): this
+    A test file or directory to run (defaults to `test/`); repeatable.
+  coverage(): this
+    Collect coverage into `coverage/lcov.info` (`--coverage`).
+  coveragePath(path: PathLike): this
+    Where to write the lcov coverage report (`--coverage-path`).
+  mergeCoverage(): this
+    Merge with the existing coverage report (`--merge-coverage`).
+  name(pattern: string): this
+    Run only tests whose name matches a regular expression (`--name`); repeatable.
+  plainName(text: string): this
+    Run only tests whose name contains a string (`--plain-name`); repeatable.
+  tags(expression: string): this
+    Run only tests with a tag expression (`--tags`).
+  excludeTags(expression: string): this
+    Skip tests matching a tag expression (`--exclude-tags`).
+  concurrency(count: number): this
+    How many test suites to run at once (`--concurrency`).
+  reporter(name: string): this
+    The console reporter: `compact`, `expanded`, `github`, `json`, … (`--reporter`).
+  fileReporter(spec: string): this
+    Also write a reporter's output to a file, e.g. `json:report.json` (`--file-reporter`).
+  updateGoldens(): this
+    Rewrite golden files instead of comparing against them (`--update-goldens`).
+  platform(name: string): this
+    Run on a platform other than the VM, e.g. `chrome` (`--platform`).
+  randomizeOrderingSeed(seed: string | number): this
+    Shuffle test order with a seed, or `random` (`--test-randomize-ordering-seed`).
+  timeout(value: string): this
+    The default per-test timeout, e.g. `30s` or `2x` (`--timeout`).
+  shard(index: number, total: number): this
+    Run one shard of the suite: `shard(index, total)` renders
+    `--total-shards total --shard-index index`, with `index` from 0.
+  override protected buildArgs(): string[]
+    Assemble the `flutter test` argv.
+
+class FlutterVersionSettings extends FlutterSettings
+  Settings for `flutter --version`.
+
+  machine(): this
+    Print the versions as JSON (`--machine`).
+  override protected buildArgs(): string[]
+    Assemble the `flutter --version` argv.
+
+interface FlutterTasksApi
+  The shape of {@link FlutterTasks}.
+
+  buildAar: FlutterBuildTask
+    Build an Android library: `flutter build aar`. It builds the debug, profile
+    and release variants unless told not to, so a single mode needs the others
+    turned off through `.args("--no-debug", "--no-profile")`.
+  buildApk: FlutterBuildTask
+    Build an Android APK: `flutter build apk`.
+  buildAppBundle: FlutterBuildTask
+    Build an Android App Bundle: `flutter build appbundle`.
+  buildIos: FlutterBuildTask
+    Build the iOS app: `flutter build ios`.
+  buildIpa: FlutterBuildTask
+    Build an iOS archive and IPA: `flutter build ipa`.
+  buildLinux: FlutterBuildTask
+    Build the Linux desktop app: `flutter build linux`.
+  buildMacos: FlutterBuildTask
+    Build the macOS desktop app: `flutter build macos`.
+  buildWeb: FlutterBuildTask
+    Build the web app: `flutter build web`.
+  buildWindows: FlutterBuildTask
+    Build the Windows desktop app: `flutter build windows`.
+  analyze(configure?: Configure<FlutterAnalyzeSettings>): Promise<CommandOutput>
+    Analyze the project's Dart code: `flutter analyze`.
+  test(configure?: Configure<FlutterTestSettings>): Promise<CommandOutput>
+    Run the unit and widget tests: `flutter test`.
+  pubGet(configure?: Configure<FlutterPubGetSettings>): Promise<CommandOutput>
+    Resolve dependencies: `flutter pub get`.
+  pubUpgrade(configure?: Configure<FlutterPubUpgradeSettings>): Promise<CommandOutput>
+    Upgrade dependencies: `flutter pub upgrade`.
+  pubOutdated(configure?: Configure<FlutterPubOutdatedSettings>): Promise<CommandOutput>
+    List outdated dependencies: `flutter pub outdated`.
+  pubDeps(configure?: Configure<FlutterPubDepsSettings>): Promise<CommandOutput>
+    Print the dependency graph: `flutter pub deps`.
+  pubAdd(configure: Configure<FlutterPubPackagesSettings>): Promise<CommandOutput>
+    Add dependencies to `pubspec.yaml`: `flutter pub add`.
+  pubRemove(configure: Configure<FlutterPubPackagesSettings>): Promise<CommandOutput>
+    Remove dependencies from `pubspec.yaml`: `flutter pub remove`.
+  clean(configure?: Configure<FlutterCommandSettings>): Promise<CommandOutput>
+    Delete the build and `.dart_tool` directories: `flutter clean`.
+  create(configure: Configure<FlutterCreateSettings>): Promise<CommandOutput>
+    Scaffold a project: `flutter create`.
+  genL10n(configure?: Configure<FlutterCommandSettings>): Promise<CommandOutput>
+    Generate localizations from `l10n.yaml`: `flutter gen-l10n`.
+  drive(configure?: Configure<FlutterDriveSettings>): Promise<CommandOutput>
+    Run integration tests on a device: `flutter drive`.
+  install(configure?: Configure<FlutterInstallSettings>): Promise<CommandOutput>
+    Install a built app on a device: `flutter install`.
+  devices(configure?: Configure<FlutterDevicesSettings>): Promise<CommandOutput>
+    List connected devices: `flutter devices`.
+  doctor(configure?: Configure<FlutterDoctorSettings>): Promise<CommandOutput>
+    Check the toolchain: `flutter doctor`.
+  precache(configure?: Configure<FlutterPrecacheSettings>): Promise<CommandOutput>
+    Download platform artifacts: `flutter precache`.
+  config(configure?: Configure<FlutterConfigSettings>): Promise<CommandOutput>
+    Change SDK settings: `flutter config`.
+  version(configure?: Configure<FlutterVersionSettings>): Promise<CommandOutput>
+    Print the Flutter, Dart and engine versions: `flutter --version`.
+
+type FlutterBuildMode = "debug" | "profile" | "release"
+  A Flutter build mode, rendered as `--debug`, `--profile` or `--release`.
+
+type FlutterBuildTarget = "aar" | "apk" | "appbundle" | "ios" | "ipa" | "linux" | "macos" | "web" | "windows"
+  The artifact `flutter build` produces — its subcommand.
+
+type FlutterBuildTask = (configure?: Configure<FlutterBuildSettings>) => Promise<CommandOutput>
+  A task that runs `flutter build <target>`.
+
+type FlutterPlainCommand = "clean" | "gen-l10n"
+  A `flutter` command that a build runs without flags.
+
+========================================================================
+# @zuke/dart
+========================================================================
+
+`@zuke/dart` — typed `DartTasks` wrappers for the Dart (https://dart.dev)
+CLI, for use in Zuke builds: analyze, format, fix and test Dart code,
+compile it to every target, generate docs, scaffold and run programs, and
+manage pub dependencies.
+
+```ts
+import { DartTasks } from "@zuke/dart";
+
+await DartTasks.pubGet((s) => s.enforceLockfile());
+await DartTasks.analyze((s) => s.fatalInfos());
+await DartTasks.format((s) => s.setExitIfChanged().output("none"));
+await DartTasks.test((s) => s.coverage("coverage").reporter("github"));
+await DartTasks.compileExe((s) =>
+  s.entry("bin/main.dart").output("build/app")
+);
+```
+@module
+
+const DartTasks: DartTasksApi
+  Typed task functions for the `dart` CLI.
+
+class DartAnalyzeSettings extends DartSettings
+  Settings for `dart analyze`.
+
+  path(path: PathLike): this
+    A file or directory to analyze (defaults to the current one); repeatable.
+  fatalInfos(): this
+    Treat info-level issues as fatal (`--fatal-infos`).
+  noFatalWarnings(): this
+    Do not fail on warnings (`--no-fatal-warnings`).
+  format(name: "default" | "json" | "machine"): this
+    The output format: `default`, `json` or `machine` (`--format`).
+  packages(path: PathLike): this
+    The package resolution file to use (`--packages`).
+  override protected buildArgs(): string[]
+    Assemble the `dart analyze` argv.
+
+class DartCompileSettings extends DartVmSettings
+  Settings for `dart compile <target>`.
+
+  constructor(target: DartCompileTarget)
+    Settings for `dart compile <target>`.
+  override enableAsserts(): this
+    Enable assert statements (`--enable-asserts`); not for `kernel`.
+  override verbosity(level: "error" | "warning" | "info" | "all"): this
+    How much to print (`--verbosity`); not for `wasm`.
+  entry(path: PathLike): this
+    The Dart entry point to compile; required.
+  output(path: PathLike): this
+    Where to write the compiled artifact (`--output`).
+  targetOs(os: DartTargetOs): this
+    Cross-compile for another OS (`--target-os`); `exe` and `aot-snapshot` only.
+  saveDebuggingInfo(path: PathLike): this
+    Strip debugging information into a separate file (`--save-debugging-info`); `exe` and `aot-snapshot` only.
+  depfile(path: PathLike): this
+    Write a Makefile-style dependency file (`--depfile`); not for `js`.
+  optimize(level: number): this
+    The optimization level, `0` to `4` (`-O<level>`); `js` and `wasm` only.
+  override protected buildArgs(): string[]
+    Assemble the `dart compile <target>` argv.
+
+class DartCreateSettings extends DartSettings
+  Settings for `dart create`.
+
+  dir(path: PathLike): this
+    The directory to create the project in; required.
+  template(name: DartCreateTemplate): this
+    The project template, instead of `console` (`--template`).
+  noPub(): this
+    Skip the implicit `dart pub get` (`--no-pub`).
+  force(): this
+    Create into a directory that already exists (`--force`).
+  override protected buildArgs(): string[]
+    Assemble the `dart create` argv.
+
+class DartDocSettings extends DartSettings
+  Settings for `dart doc`.
+
+  dir(path: PathLike): this
+    The package directory to document (defaults to the current one).
+  output(path: PathLike): this
+    Where to write the generated docs, instead of `doc/api` (`--output`).
+  validateLinks(): this
+    Check the generated docs for broken links (`--validate-links`).
+  dryRun(): this
+    Report what would be documented without writing files (`--dry-run`).
+  override protected buildArgs(): string[]
+    Assemble the `dart doc` argv.
+
+class DartFixSettings extends DartSettings
+  Settings for `dart fix`.
+
+  dir(path: PathLike): this
+    The directory to fix (defaults to the current one).
+  apply(): this
+    Apply the proposed fixes (`--apply`). Without it or `.dryRun()`, `dart fix` only prints usage.
+  dryRun(): this
+    List the proposed fixes without applying them (`--dry-run`).
+  code(code: string): this
+    Apply only the fix for one diagnostic code (`--code`); repeatable.
+  override protected buildArgs(): string[]
+    Assemble the `dart fix` argv.
+
+class DartFormatSettings extends DartSettings
+  Settings for `dart format`. With no `.path()` the current directory is
+  formatted: `dart format` itself would read stdin instead, and in CI — no
+  terminal, empty stdin — a `.setExitIfChanged()` check would pass vacuously.
+
+  path(path: PathLike): this
+    A file or directory to format (defaults to `.`); repeatable.
+  output(mode: "write" | "show" | "json" | "none"): this
+    What to do with formatted code: `write` (default), `show`, `json` or `none` (`--output`).
+  setExitIfChanged(): this
+    Exit with code 1 when any file would change — the CI check (`--set-exit-if-changed`).
+  lineLength(columns: number): this
+    Wrap lines longer than this (`--line-length`).
+  show(which: "all" | "changed" | "none"): this
+    Which files to list: `all`, `changed` (default) or `none` (`--show`).
+  summary(kind: "line" | "profile" | "none"): this
+    The summary to print: `line` (default), `profile` or `none` (`--summary`).
+  followLinks(): this
+    Follow symbolic links into directories (`--follow-links`).
+  languageVersion(version: string): this
+    The language version to parse as, e.g. `3.3` (`--language-version`).
+  enableExperiment(name: string): this
+    Enable an experimental language feature (`--enable-experiment`); repeatable.
+  override protected buildArgs(): string[]
+    Assemble the `dart format` argv.
+
+class DartInfoSettings extends DartSettings
+  Settings for `dart info`, which prints diagnostic details about the SDK.
+
+  noRemoveFilePaths(): this
+    Keep file paths in the output instead of redacting them (`--no-remove-file-paths`).
+  override protected buildArgs(): string[]
+    Assemble the `dart info` argv.
+
+class DartPubDepsSettings extends DartSettings
+  Settings for `dart pub deps`.
+
+  style(name: "compact" | "tree" | "list"): this
+    The layout: `compact`, `tree` (default) or `list` (`--style`).
+  noDev(): this
+    Leave dev dependencies out (`--no-dev`).
+  executables(): this
+    List the executables the dependencies expose instead (`--executables`).
+  json(): this
+    Print the dependency graph as JSON (`--json`).
+  override protected buildArgs(): string[]
+    Assemble the `dart pub deps` argv.
+
+class DartPubDowngradeSettings extends DartSettings
+  Settings for `dart pub downgrade`.
+
+  package(name: string): this
+    Downgrade only this package (defaults to all); repeatable.
+  offline(): this
+    Resolve from the local pub cache only (`--offline`).
+  dryRun(): this
+    Report what would change without changing it (`--dry-run`).
+  tighten(): this
+    Lower the constraints in `pubspec.yaml` to the resolved versions (`--tighten`).
+  override protected buildArgs(): string[]
+    Assemble the `dart pub downgrade` argv.
+
+class DartPubGetSettings extends DartSettings
+  Settings for `dart pub get`.
+
+  offline(): this
+    Resolve from the local pub cache only (`--offline`).
+  enforceLockfile(): this
+    Fail rather than change `pubspec.lock` (`--enforce-lockfile`).
+  dryRun(): this
+    Report what would change without changing it (`--dry-run`).
+  noPrecompile(): this
+    Skip precompiling executables (`--no-precompile`).
+  override protected buildArgs(): string[]
+    Assemble the `dart pub get` argv.
+
+class DartPubOutdatedSettings extends DartSettings
+  Settings for `dart pub outdated`.
+
+  json(): this
+    Print machine-readable JSON (`--json`).
+  showAll(): this
+    Include packages that are already up to date (`--show-all`).
+  noDevDependencies(): this
+    Leave dev dependencies out (`--no-dev-dependencies`).
+  noTransitive(): this
+    Leave transitive dependencies out (`--no-transitive`).
+  prereleases(): this
+    Include prereleases when looking for newer versions (`--prereleases`).
+  override protected buildArgs(): string[]
+    Assemble the `dart pub outdated` argv.
+
+class DartPubPackagesSettings extends DartSettings
+  Settings for `dart pub add` and `dart pub remove`.
+
+  constructor(verb: "add" | "remove")
+    Settings for `dart pub <verb>`.
+  package(spec: string): this
+    A package to add or remove; repeatable, at least one is required. For
+    `add` it takes pub's descriptor syntax: `http`, `http:^1.2.0`, or
+    `dev:mocktail` for a dev dependency.
+  offline(): this
+    Resolve from the local pub cache only (`--offline`).
+  dryRun(): this
+    Report what would change without changing it (`--dry-run`).
+  override protected buildArgs(): string[]
+    Assemble the `dart pub add|remove` argv.
+
+class DartPubPublishSettings extends DartSettings
+  Settings for `dart pub publish`.
+
+  dryRun(): this
+    Validate the package without uploading it (`--dry-run`).
+  force(): this
+    Publish without the confirmation prompt — what CI needs (`--force`).
+  skipValidation(): this
+    Publish even when validation reports warnings (`--skip-validation`).
+  override protected buildArgs(): string[]
+    Assemble the `dart pub publish` argv.
+
+class DartPubUpgradeSettings extends DartSettings
+  Settings for `dart pub upgrade`.
+
+  package(name: string): this
+    Upgrade only this package (defaults to all); repeatable.
+  offline(): this
+    Resolve from the local pub cache only (`--offline`).
+  dryRun(): this
+    Report what would change without changing it (`--dry-run`).
+  majorVersions(): this
+    Also raise constraints in `pubspec.yaml` across majors (`--major-versions`).
+  tighten(): this
+    Raise lower bounds in `pubspec.yaml` to the resolved versions (`--tighten`).
+  unlockTransitive(): this
+    Also upgrade the transitive dependencies of the named packages (`--unlock-transitive`).
+  override protected buildArgs(): string[]
+    Assemble the `dart pub upgrade` argv.
+
+class DartRunSettings extends DartVmSettings
+  Settings for `dart run`. The entry point is the last token the settings
+  build, so anything passed through `.args()` lands after it and reaches the
+  program, not the VM — without an `.entry()`, the first `.args()` token is
+  what `dart run` takes as the program, exactly as on the command line.
+
+  entry(fileOrTarget: PathLike): this
+    The Dart file to run, or a package executable such as `build_runner` or
+    `test:test`. Without one, `dart run` runs the current package's own
+    executable.
+  observe(bind: string): this
+    Start the VM service with the debugging conveniences and pause on start
+    (`--observe=<port>[/<bind-address>]`). The value is attached with `=`
+    because `dart run` reads the option's value from the next token, which
+    would otherwise be the entry point.
+  enableVmService(bind: string): this
+    Start the VM service without pausing (`--enable-vm-service=<port>[/<bind-address>]`).
+  override protected buildArgs(): string[]
+    Assemble the `dart run` argv.
+
+abstract class DartSettings extends ToolSettings
+  Base for all `dart` settings: the binary is `dart`, found on `PATH`.
+
+  override protected defaultTool(): string
+    The binary these settings invoke: `dart`.
+  override protected defaultResolution(): ToolResolution
+    Resolve from `PATH` — the Dart SDK is installed natively.
+
+class DartTestSettings extends DartSettings
+  Settings for `dart test`.
+
+  path(path: PathLike): this
+    A test file or directory to run (defaults to `test/`); repeatable.
+  name(pattern: string): this
+    Run only tests whose name matches a regular expression (`--name`); repeatable.
+  plainName(text: string): this
+    Run only tests whose name contains a string (`--plain-name`); repeatable.
+  tags(expression: string): this
+    Run only tests with a tag expression (`--tags`).
+  excludeTags(expression: string): this
+    Skip tests matching a tag expression (`--exclude-tags`).
+  preset(name: string): this
+    Apply a preset from `dart_test.yaml` (`--preset`); repeatable.
+  runSkipped(): this
+    Run skipped tests too (`--run-skipped`).
+  failFast(): this
+    Stop after the first failure (`--fail-fast`).
+  platform(name: string): this
+    Run on a platform, e.g. `vm`, `chrome` or `node` (`--platform`); repeatable.
+  compiler(name: string): this
+    The compiler for a platform, e.g. `dart2js`, `dart2wasm` or `kernel` (`--compiler`); repeatable.
+  concurrency(count: number): this
+    How many test suites to run at once (`--concurrency`).
+  timeout(value: string): this
+    The default per-test timeout, e.g. `30s` or `2x` (`--timeout`).
+  coverage(dir: PathLike): this
+    Collect coverage into a directory of JSON reports (`--coverage`).
+  reporter(name: string): this
+    The console reporter: `compact`, `expanded`, `failures-only`, `github`, `json` or `silent` (`--reporter`).
+  fileReporter(spec: string): this
+    Also write a reporter's output to a file, e.g. `json:report.json` (`--file-reporter`).
+  randomizeOrderingSeed(seed: string | number): this
+    Shuffle test order with a seed, or `random` (`--test-randomize-ordering-seed`).
+  ignoreTimeouts(): this
+    Do not stop a test at its timeout (`--ignore-timeouts`).
+  noColor(): this
+    Print stack traces without colour codes (`--no-color`).
+  shard(index: number, total: number): this
+    Run one shard of the suite: `shard(index, total)` renders
+    `--total-shards total --shard-index index`, with `index` from 0.
+  override protected buildArgs(): string[]
+    Assemble the `dart test` argv.
+
+class DartVersionSettings extends DartSettings
+  Settings for `dart --version`.
+
+  override protected buildArgs(): string[]
+    Assemble the `dart --version` argv.
+
+abstract class DartVmSettings extends DartSettings
+  Flags shared by the commands that load Dart code into the VM — `compile`
+  and `run`: `--define`, `--enable-asserts`, `--enable-experiment`,
+  `--packages` and `--verbosity`. Valued options render as `--flag=value`:
+  `dart compile js` hands its argv to dart2js, whose parser accepts only that
+  spelling, and Dart's `args` package accepts it everywhere else.
+
+  protected vmFlag(...tokens: string[]): this
+    Push the shared flags in call order.
+  define(name: string, value: string): this
+    Define an environment declaration (`--define=name=value`); repeatable.
+  enableAsserts(): this
+    Enable assert statements (`--enable-asserts`).
+  enableExperiment(name: string): this
+    Enable an experimental language feature (`--enable-experiment`); repeatable.
+  packages(path: PathLike): this
+    The package resolution file to use (`--packages`).
+  verbosity(level: "error" | "warning" | "info" | "all"): this
+    How much to print: `error`, `warning`, `info` or `all` (`--verbosity`).
+  protected vmArgs(): string[]
+    The shared VM flags, in call order.
+
+interface DartTasksApi
+  The shape of {@link DartTasks}.
+
+  compileExe: DartCompileTask
+    Compile to a self-contained executable: `dart compile exe`.
+  compileAotSnapshot: DartCompileTask
+    Compile to an AOT snapshot for `dartaotruntime`: `dart compile aot-snapshot`.
+  compileJitSnapshot: DartCompileTask
+    Compile to a JIT snapshot: `dart compile jit-snapshot`.
+  compileKernel: DartCompileTask
+    Compile to a kernel binary: `dart compile kernel`.
+  compileJs: DartCompileTask
+    Compile to JavaScript: `dart compile js`.
+  compileWasm: DartCompileTask
+    Compile to WebAssembly: `dart compile wasm`.
+  analyze(configure?: Configure<DartAnalyzeSettings>): Promise<CommandOutput>
+    Analyze the project's Dart code: `dart analyze`.
+  format(configure?: Configure<DartFormatSettings>): Promise<CommandOutput>
+    Format Dart code, or check it with `.setExitIfChanged()`: `dart format`.
+  fix(configure?: Configure<DartFixSettings>): Promise<CommandOutput>
+    Apply analyzer fixes: `dart fix`.
+  test(configure?: Configure<DartTestSettings>): Promise<CommandOutput>
+    Run the tests: `dart test`.
+  run(configure?: Configure<DartRunSettings>): Promise<CommandOutput>
+    Run a Dart program or package executable: `dart run`.
+  doc(configure?: Configure<DartDocSettings>): Promise<CommandOutput>
+    Generate API documentation: `dart doc`.
+  create(configure: Configure<DartCreateSettings>): Promise<CommandOutput>
+    Scaffold a project: `dart create`.
+  pubGet(configure?: Configure<DartPubGetSettings>): Promise<CommandOutput>
+    Resolve dependencies: `dart pub get`.
+  pubUpgrade(configure?: Configure<DartPubUpgradeSettings>): Promise<CommandOutput>
+    Upgrade dependencies: `dart pub upgrade`.
+  pubDowngrade(configure?: Configure<DartPubDowngradeSettings>): Promise<CommandOutput>
+    Downgrade dependencies to their lowest allowed versions: `dart pub downgrade`.
+  pubOutdated(configure?: Configure<DartPubOutdatedSettings>): Promise<CommandOutput>
+    List outdated dependencies: `dart pub outdated`.
+  pubDeps(configure?: Configure<DartPubDepsSettings>): Promise<CommandOutput>
+    Print the dependency graph: `dart pub deps`.
+  pubAdd(configure: Configure<DartPubPackagesSettings>): Promise<CommandOutput>
+    Add dependencies to `pubspec.yaml`: `dart pub add`.
+  pubRemove(configure: Configure<DartPubPackagesSettings>): Promise<CommandOutput>
+    Remove dependencies from `pubspec.yaml`: `dart pub remove`.
+  pubPublish(configure?: Configure<DartPubPublishSettings>): Promise<CommandOutput>
+    Publish the package to pub.dev: `dart pub publish`.
+  info(configure?: Configure<DartInfoSettings>): Promise<CommandOutput>
+    Print diagnostic details about the SDK: `dart info`.
+  version(configure?: Configure<DartVersionSettings>): Promise<CommandOutput>
+    Print the Dart SDK version: `dart --version`.
+
+type DartCompileTarget = "aot-snapshot" | "exe" | "jit-snapshot" | "js" | "kernel" | "wasm"
+  A `dart compile` target: what the entry point is compiled to.
+
+type DartCompileTask = (configure: Configure<DartCompileSettings>) => Promise<CommandOutput>
+  A task that runs `dart compile <target>`; `.entry()` is required.
+
+type DartCreateTemplate = "cli" | "console" | "package" | "server-shelf" | "web"
+  A `dart create` template (`--template`).
+
+type DartTargetOs = "android" | "fuchsia" | "ios" | "linux" | "macos" | "windows"
+  An operating system `dart compile exe|aot-snapshot` can target (`--target-os`).
 
 ========================================================================
 # @zuke/prometheus
@@ -29470,6 +31926,12 @@ interface Canary
     The single phase of a canary with no steps, when it bakes or analyses.
   [step: `step${number}`]: CanaryPhaseTargets
 
+interface CanaryAbortContext extends CanaryContext
+  What the engine hands {@link CanaryPlatform.abort}: the context, and why.
+
+  readonly reason: CanaryAbortReason
+    Why `abort` runs — see {@link CanaryAbortReason}.
+
 interface CanaryAnalysis
   A health check run against a canary: throw to fail it, which rolls the
   rollout back. Any core `Validation` is one, since a function that accepts a
@@ -29534,7 +31996,12 @@ interface CanaryPlatform
   - `abort` must also work with empty state. A rollback reads the state
     `stage` wrote, but `zuke <rollout>.abort` run by hand is a fresh run that
     has none, so `abort` falls back to what its own configuration says the
-    stable version is.
+    stable version is. It does so only when `ctx.reason` is `"hand-run"`: a
+    `"rollback"` with empty state means nothing was staged, and moving
+    traffic to the configured stable version would change a service no
+    rollout touched. So `stage` records what a rollback needs before it
+    changes anything — with `ctx.state.trySet(...)`, stopping when it returns
+    `false` — or a rollback after a lost write would find nothing to undo.
 
   readonly exposure: ExposureKind
     How this platform measures exposure.
@@ -29546,7 +32013,7 @@ interface CanaryPlatform
     Set exposure to `percent` (0–100) and return the exposure achieved.
   promote(ctx: CanaryContext): Promise<void>
     Send all traffic to the candidate and retire the old version.
-  abort(ctx: CanaryContext): Promise<void>
+  abort(ctx: CanaryAbortContext): Promise<void>
     Return all traffic to the stable version and remove the candidate.
 
 interface ThresholdBounds
@@ -29556,6 +32023,16 @@ interface ThresholdBounds
     The lowest acceptable value, if any.
   max?: number
     The highest acceptable value, if any.
+
+type CanaryAbortReason = "rollback" | "hand-run"
+  Why `abort` runs:
+
+  - `"rollback"` — the engine is undoing this rollout: a stage that failed or
+    was cancelled, a failed step, `zuke cancel`. With nothing in `state`,
+    nothing was staged, so there is nothing to undo.
+  - `"hand-run"` — `rollout.abort` was run on its own, outside any rollout.
+    With nothing in `state`, the platform falls back to the stable version
+    its own configuration names.
 
 type ExposureKind = "traffic" | "replicas" | "channel"
   How a platform exposes a candidate:

@@ -119,6 +119,7 @@
     "packages/cli": {
       "component": "cli",
       "changelog-path": "CHANGELOG.md",
+      "draft": true,
       "extra-files": [
         {
           "type": "json",
@@ -744,8 +745,41 @@
         }
       ]
     },
+    "packages/google": {
+      "component": "google",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
     "packages/signpath": {
       "component": "signpath",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
+    "packages/flutter": {
+      "component": "flutter",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
+    "packages/dart": {
+      "component": "dart",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {

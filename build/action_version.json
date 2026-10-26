@@ -1,6 +1,6 @@
 {
-  "ref": "zuke-build/zuke@2478fa5a69fb4f16540e54959c98cd976ec3f075",
-  "version": "v1.0.5",
+  "ref": "zuke-build/zuke@213d5234c03e1fedc314159a77b2f680c2d6c8f5",
+  "version": "v1.0.7",
   "inputs": [
     "target",
     "egress-policy",
@@ -8,7 +8,8 @@
     "persist-credentials",
     "fetch-depth",
     "ref",
-    "deno-version"
+    "deno-version",
+    "actions-cache"
   ],
-  "digest": "e9912a9492014fb3c38cf2c5657845386a688628041f8bd3c985ad9b0aaf3f7a"
+  "digest": "dbcd55a76b79c51b4dfd680859189329d162bb0720c58faef0f2b1727bdec56d"
 }

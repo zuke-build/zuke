@@ -82,10 +82,10 @@ whether the run may happen at all. The executor calls it once per run, for every
 validation in the plan, **before any target starts** — a dependency included —
 and before the run record exists; a throw refuses the run and nothing executes.
 Most validations have nothing to decide that early; it is the seam for gates
-such as who may start a comment-triggered run. `./zuke <target> --preflight`
-runs only this phase and executes no target, so a workflow can ask "may this
-run?" in a step that holds no secrets — missing parameters do not fail it —
-before the step that does. A dry run skips it.
+such as who may start a comment-triggered run. `zuke <target> --preflight` runs
+only this phase and executes no target, so a workflow can ask "may this run?" in
+a step that holds no secrets — missing parameters do not fail it — before the
+step that does. A dry run skips it.
 
 A before or after validation also gets **`ctx.peers`**: the whole list it was
 attached in, in the order it runs, itself included. Validations that publish
@@ -532,8 +532,9 @@ Pack build artifacts without any dependency. `gzip(bytes)`/`gunzip(bytes)` wrap
 the platform `CompressionStream`; `tar(entries)`/`untar(archive)` read and write
 the POSIX `ustar` format in memory; and the file helpers
 `createTarGzip(files, dest, { cwd })` / `extractTarGzip(src, destDir)` produce
-and unpack `.tar.gz` archives. Entry names are limited to 100 bytes and archives
-use a fixed mtime, so output is reproducible.
+and unpack `.tar.gz` archives, and `extractTarXz(src, destDir)` unpacks a
+`.tar.xz` with a built-in LZMA2 decoder. Entry names are limited to 100 bytes
+and archives use a fixed mtime, so output is reproducible.
 
 <!-- check -->
 

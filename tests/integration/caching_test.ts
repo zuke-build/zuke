@@ -151,6 +151,9 @@ Deno.test("a FileSystemCacheStore (env-configured) restores outputs on a fresh c
             async () => {
               log.push("build");
               await Deno.writeTextFile("out.txt", "built");
+              if (Deno.build.os !== "windows") {
+                await Deno.chmod("out.txt", 0o755);
+              }
             },
           );
         }
@@ -168,12 +171,82 @@ Deno.test("a FileSystemCacheStore (env-configured) restores outputs on a fresh c
         assertEquals(second.code, 0);
         assertEquals(log, ["build"]); // restored from the remote store, body not re-run
         assertEquals(await Deno.readTextFile(`${dir}/out.txt`), "built");
+        // A restored binary must still run: the executable bit survived the
+        // archive. Windows has no permission bits to check.
+        if (Deno.build.os !== "windows") {
+          const mode = (await Deno.stat(`${dir}/out.txt`)).mode ?? 0;
+          assertEquals(mode & 0o111, 0o111);
+        }
       } finally {
         if (prevRemote === undefined) {
           Deno.env.delete("ZUKE_REMOTE_CACHE_DIR");
         } else {
           Deno.env.set("ZUKE_REMOTE_CACHE_DIR", prevRemote);
         }
+        await Deno.remove(remoteDir, { recursive: true });
+      }
+    });
+  });
+});
+
+Deno.test("an SDK under .zuke/tools caches with its .git and long paths, within the configured limit", async () => {
+  await withStateDir(async () => {
+    await withTempCwd(async (dir) => {
+      const remoteDir = await Deno.makeTempDir({ prefix: "zuke-it-remote-" });
+      const vars = [
+        "ZUKE_REMOTE_CACHE_DIR",
+        "ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES",
+      ];
+      const prev = vars.map((name) => Deno.env.get(name));
+      Deno.env.set("ZUKE_REMOTE_CACHE_DIR", remoteDir);
+      Deno.env.set("ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES", "1048576");
+      const sdk = ".zuke/tools/sdk";
+      // Past ustar's 100-byte name field, so it rides in a pax header.
+      const deep = `${sdk}/${"packages/".repeat(12)}lib.dart`;
+      try {
+        await Deno.writeTextFile(`${dir}/input.txt`, "v1");
+        const log: string[] = [];
+        class B extends Build {
+          sdk = target().inputs("input.txt").outputs(sdk).executes(
+            async () => {
+              log.push("install");
+              await Deno.mkdir(`${sdk}/.git`, { recursive: true });
+              await Deno.writeTextFile(`${sdk}/.git/HEAD`, "ref: stable\n");
+              await Deno.mkdir(deep.slice(0, deep.lastIndexOf("/")), {
+                recursive: true,
+              });
+              await Deno.writeTextFile(deep, "library sdk;\n");
+            },
+          );
+        }
+        assertEquals((await runCli(B, ["sdk"])).code, 0);
+        // A fresh checkout: the local cache and the SDK both gone.
+        await Deno.remove(`${dir}/.zuke`, { recursive: true });
+        assertEquals((await runCli(B, ["sdk"])).code, 0);
+        assertEquals(log, ["install"]); // restored, not reinstalled
+        assertEquals(
+          await Deno.readTextFile(`${dir}/${sdk}/.git/HEAD`),
+          "ref: stable\n",
+        );
+        assertEquals(
+          await Deno.readTextFile(`${dir}/${deep}`),
+          "library sdk;\n",
+        );
+
+        // Below what the artifact inflates to, the restore is refused and
+        // the target rebuilds rather than failing.
+        Deno.env.set("ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES", "1024");
+        await Deno.remove(`${dir}/.zuke`, { recursive: true });
+        const refused = await runCli(B, ["sdk"]);
+        assertEquals(refused.code, 0);
+        assertEquals(log, ["install", "install"]);
+        assertStringIncludes(refused.err + refused.out, "more than 1024 bytes");
+      } finally {
+        vars.forEach((name, i) => {
+          const value = prev[i];
+          if (value === undefined) Deno.env.delete(name);
+          else Deno.env.set(name, value);
+        });
         await Deno.remove(remoteDir, { recursive: true });
       }
     });

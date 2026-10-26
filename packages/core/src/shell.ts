@@ -38,6 +38,13 @@ import {
  */
 export { ShellArgsError, splitShellArgs } from "./split_args.ts";
 
+/**
+ * Render an argv as one POSIX shell command line that parses back into the
+ * same argv — the inverse of `splitShellArgs`, for a command an operator pastes
+ * or a script runs through `sh`.
+ */
+export { joinShellArgs } from "./join_args.ts";
+
 /** A value that may be interpolated into a `$` template. */
 export type Interpolatable =
   | string

@@ -20,14 +20,14 @@ jobs:
       security-events: write
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@2478fa5a69fb4f16540e54959c98cd976ec3f075 # v1.0.5
+        uses: zuke-build/zuke@213d5234c03e1fedc314159a77b2f680c2d6c8f5 # v1.0.7
         with:
           egress-policy: audit
           persist-credentials: "false"
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           languages: "javascript-typescript,actions"
           build-mode: none
       - name: Analyze
-        uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0

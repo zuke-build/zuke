@@ -1,6 +1,6 @@
 # Releasing
 
-Zuke publishes 68 packages to [JSR](https://jsr.io/@zuke) from a single
+Zuke publishes 71 packages to [JSR](https://jsr.io/@zuke) from a single
 workspace — `@zuke/core`, the `@zuke/cli` command, a generic `@zuke/cmd`
 fallback, and 50+ typed tool wrappers and plugins (`@zuke/deno`, `@zuke/npm`,
 `@zuke/ai`, …). Releases are automated end to end; you only ever merge a pull
@@ -53,18 +53,28 @@ request.
    which left the repository's "Latest release" pointer on a package release and
    stopped the Gemini extension archive refreshing, with every run green.
 
-   The one step that stays manual is ticking **Publish this Action to the GitHub
-   Marketplace**, which GitHub gates behind a 2FA confirmation no token can
-   perform. It affects the Marketplace listing only: `uses: zuke-build/zuke@v1`
-   resolves through the tag and never consults it.
+   Nothing is left to do by hand. The Marketplace listing reads the repository's
+   "Latest release" pointer, which that published release sets, so the new
+   version shows there on its own. Ticking **Publish this Action to the GitHub
+   Marketplace** — the step GitHub gates behind a 2FA confirmation — was needed
+   once to create the listing and is only needed again to re-create one that was
+   taken down. `uses: zuke-build/zuke@v1` never consults the listing either way:
+   it resolves through the tag.
 
 5. **`publishJsr` pushes to JSR.** The `publishJsr` target walks the packages
    **core first** (so the workspace's `jsr:@zuke/core` dependency resolves) and
    publishes each one whose `deno.json` version is **not yet on JSR** — it
    queries each package's JSR `meta.json` first, so it is idempotent and a no-op
-   on pushes that didn't release anything. Authentication is OIDC — the JSR
-   package ↔ repo link means **no tokens or secrets** are required; the workflow
-   just grants `id-token: write`.
+   on pushes that didn't release anything. JSR keeps processing an upload after
+   `deno publish` gives up on it, and its queue has taken the better part of an
+   hour, so each version gets up to three attempts: after one times out, the job
+   checks JSR every 30 seconds for five minutes before trying again (after one
+   fails outright, for a minute). A package that still does not land fails the
+   job, but only after the walk has tried every other package: the ones that do
+   not depend on it still publish, and the job's error names every version that
+   is missing. Re-run the job once the cause is fixed. Authentication is OIDC —
+   the JSR package ↔ repo link means **no tokens or secrets** are required; the
+   workflow just grants `id-token: write`.
 
 So the steady-state flow is: merge conventional commits → merge the release PR →
 the packages publish themselves.
@@ -105,24 +115,46 @@ the packages publish themselves.
 From `@zuke/cli` 1.14.0, every CLI release also ships `deno compile` binaries
 for macOS and Linux on its `cli-v<version>` GitHub release, and through the
 Homebrew tap
-[`zuke-build/homebrew-tap`](https://github.com/zuke-build/homebrew-tap). Five
-jobs in `release.yml` do it after `publishJsr`, each running a `cli*` target in
-`zuke.ts` (the code is in `build/cli_*.ts`):
+[`zuke-build/homebrew-tap`](https://github.com/zuke-build/homebrew-tap); from
+1.15.1, a Windows binary too, through Chocolatey.
+
+Releases are **immutable**: once published, nothing can be added to one or
+changed. So release-please cuts the CLI's release as a **draft**
+(`"draft": true` for `packages/cli` in `.release-please-config.json`), the
+pipeline attaches everything to the draft, and publishing it is the last step,
+which locks the release with its binaries already inside. The jobs in
+`release.yml` run after `publishJsr`, each running a `cli*` target in `zuke.ts`
+(the code is in `build/cli_*.ts`):
 
 1. `cliBinaries` decides what the current CLI version owes from what is
-   published — nothing before its release exists, everything while the release
-   lacks `SHA256SUMS`, only the tap while the formula points elsewhere — and,
-   when binaries are owed, compiles them from the published
+   published — everything while its release is unpublished, only the tap or the
+   Chocolatey package while either lags behind a published release — and, when
+   binaries are owed, compiles them from the published
    `jsr:@zuke/cli@<version>`.
 2. `cliSign` signs the macOS binaries with the Developer ID under the hardened
    runtime and notarizes them, on a macOS runner in the `cli-signing`
    environment. Missing credentials fail it: nothing is published unsigned.
-3. `cliUpload` packs the archives, attests their build provenance, and uploads
-   them, the attestation bundle, and `SHA256SUMS` last.
+3. `cliUpload` packs the archives, attests their build provenance, attaches
+   them, the attestation bundle and `SHA256SUMS` to the draft with
+   `gh release upload --clobber`, then publishes it with
+   `gh release edit --draft=false --latest=false` (the "Latest release" pointer
+   stays on the Marketplace action's release).
 4. `cliFormulaVerify` installs the formula built from the published `SHA256SUMS`
    with the real `brew` on macOS and Linux, runs its test, and checks the macOS
    signatures.
 5. `cliTap` commits the formula to the tap with the app's token.
+6. `cliChocolateyVerify` installs the Chocolatey package built from the
+   published `SHA256SUMS` with the real `choco` on Windows and runs it.
+7. `cliChocolatey` pushes the package to the community repository with
+   `CHOCOLATEY_API_KEY`, held in the `chocolatey` environment. The Windows
+   executable is not Authenticode-signed yet (#793). The push runs only while
+   the repository variable `CHOCOLATEY_PUSH` is `enabled`. It is paused while
+   the package's first version waits in community moderation, because until that
+   version is approved a new push is refused with a 403 that would fail every
+   release (#855). The package is still built and verified on every release.
+   Once the moderators approve it, set the variable under Settings → Secrets and
+   variables → Actions → Variables, and the next release pushes whatever version
+   is owed.
 
 Every stage is idempotent, so a run that fails part way is finished by the next
 push to master. How users verify a download is in
@@ -140,14 +172,15 @@ push to master. How users verify a download is in
   with no rules at all, so configure it before the first run.
 - The `ZUKE_BUILD_APP_*` app installed on `zuke-build/homebrew-tap` with
   contents write access.
-- Releases left mutable: assets are attached after release-please publishes a
-  release, which an immutable release refuses.
+- A `chocolatey` environment holding `CHOCOLATEY_API_KEY`, with the same
+  deployment branch rule.
 
-**Recovering a bad release.** Once `SHA256SUMS` is on a release, the binaries
-count as published and are not rebuilt. If one turns out to be broken — the
-verify job fails on every push — delete `SHA256SUMS` from that release; the next
-run rebuilds, re-signs and re-uploads everything, then verifies and republishes
-the formula.
+**Recovering a bad release.** Until the release is published, every push to
+master retries: the draft takes the assets again, replacing what is there. Once
+it is published it cannot change, so a broken binary is fixed by the next CLI
+release, not by editing this one. A release published without its binaries
+(`cli-v1.15.0`, cut before the draft flow) is skipped with a note in the log,
+for the same reason.
 
 ## Manual trigger
 

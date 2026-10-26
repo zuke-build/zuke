@@ -61,8 +61,8 @@ export function cliReference(build: Build): string {
     items: ReadonlyArray<{ name: string; description: string }>,
   ) => items.map((i) => `- \`${i.name}\` — ${i.description}`);
   return [
-    "Run a build with the `zuke` command — `deno run -A zuke.ts <target>` (or",
-    "the `./zuke` launcher). The CLI is self-describing:",
+    "Run a build with the `zuke` command (`deno install -A -g -n zuke",
+    "jsr:@zuke/cli`), from anywhere inside the project. It is self-describing:",
     "",
     "```sh",
     "zuke <target> [--skip <dep>] [--parallel[=N]]    # run a target and its deps",

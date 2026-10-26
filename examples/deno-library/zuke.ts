@@ -5,9 +5,9 @@
  * The everyday gate for a Deno library: format, lint, type-check, test, and a
  * coverage threshold — the pipeline you want on every pull request.
  *
- *   deno run -A zuke.ts            # the whole gate (the default target)
- *   deno run -A zuke.ts test       # one target and what it depends on
- *   deno run -A zuke.ts --list     # every target, with descriptions
+ *   zuke        # the whole gate (the default target)
+ *   zuke test   # one target and what it depends on
+ *   zuke --list # every target, with descriptions
  */
 import { Build, run, target } from "jsr:@zuke/core@^1";
 import { DenoTasks } from "jsr:@zuke/deno@^1";

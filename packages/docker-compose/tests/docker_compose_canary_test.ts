@@ -187,7 +187,7 @@ function fakeCompose(fake: Fake = {}): {
   return { runner, calls, world, tags, serving, stableServed };
 }
 
-function context() {
+function context(reason?: "rollback" | "hand-run") {
   const summary: Record<string, string | number> = {};
   return {
     state: memoryState(),
@@ -195,6 +195,7 @@ function context() {
     reportSummary: (pairs: Record<string, string | number>) => {
       Object.assign(summary, pairs);
     },
+    reason,
   };
 }
 
@@ -762,6 +763,48 @@ Deno.test("a hand-run abort after a promotion surges the canary on the stable im
     app: ["app:v1", "app:v1", "app:v1", "app:v1"],
     "app-canary": [],
   });
+});
+
+Deno.test("a rollback with nothing recorded reads and changes no container, even with a stable image set", async () => {
+  // A degraded run record, or a stage whose first state write was rejected:
+  // nothing was staged, so putting the stable service on the configured image
+  // would change a project no rollout touched — here, undo a promotion.
+  const { runner, calls, world } = fakeCompose({
+    world: {
+      app: ["app:v2", "app:v2", "app:v2", "app:v2"],
+      "app-canary": [],
+    },
+  });
+  const ctx = context("rollback");
+  await platform(runner, (d) => d.stable("app:v1")).abort(ctx);
+  // Nor does it need a stable image to do nothing.
+  await platform(runner).abort(context("rollback"));
+  assertEquals(calls, []);
+  assertEquals(ctx.summary, {});
+  assertEquals(world, {
+    app: ["app:v2", "app:v2", "app:v2", "app:v2"],
+    "app-canary": [],
+  });
+});
+
+Deno.test("a hand-run abort, named or from an engine that names no reason, falls back alike", async () => {
+  for (const reason of ["hand-run", undefined] as const) {
+    const { runner, calls } = fakeCompose({
+      world: { app: ["app:v1", "app:v1"], "app-canary": ["app:v2", "app:v2"] },
+    });
+    const ctx = context(reason);
+    await platform(runner, (d) => d.stable("app:v1")).abort(ctx);
+    assertEquals(calls, [
+      { argv: ps("app"), env: ALL_V1_TAG },
+      { argv: psAll("app"), env: ALL_V1_TAG },
+      { argv: scale("app", 4, true, false), env: ALL_V1_TAG },
+      { argv: ps("app"), env: ALL_V1_TAG },
+      { argv: scale("app-canary", 0, false, false), env: ALL_V1_TAG },
+    ]);
+    assertEquals(ctx.summary, {
+      Persist: "set APP_IMAGE=app:v1 and keep scale: 4",
+    });
+  }
 });
 
 Deno.test("a hand-run abort with no usable stable image refuses rather than claim a rollback", async () => {

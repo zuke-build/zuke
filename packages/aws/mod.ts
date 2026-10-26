@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * `@zuke/aws` — typed AWS CLI tasks for Zuke builds, readers and a canary analysis.
+ * `@zuke/aws` — typed AWS CLI tasks, readers, and a canary platform and analysis.
  *
  * The `aws` CLI wrapper has typed settings for the deploy path (STS, S3, ECR,
  * ECS, Lambda, CloudFormation, Secrets Manager, SSM, EKS), CloudWatch and
- * CloudWatch Logs monitoring, readers that return a value, and a
- * `cloudwatch(...)` analysis for `@zuke/canary` rollouts.
+ * CloudWatch Logs monitoring, readers that return a value, and for
+ * `@zuke/canary` rollouts a `lambdaCanary(...)` platform — a Lambda alias's
+ * weighted routing — and a `cloudwatch(...)` analysis.
  *
  * ```ts
  * import { AwsTasks, cloudwatch } from "@zuke/aws";
@@ -65,12 +66,15 @@ export {
   AwsEcsWaitServicesStableSettings,
 } from "./src/ecs.ts";
 export {
+  AwsLambdaGetAliasSettings,
   AwsLambdaGetFunctionSettings,
   AwsLambdaInvokeSettings,
   AwsLambdaPublishVersionSettings,
   AwsLambdaUpdateAliasSettings,
   AwsLambdaUpdateFunctionCodeSettings,
   AwsLambdaUpdateFunctionConfigurationSettings,
+  type AwsLambdaWaiter,
+  AwsLambdaWaitSettings,
 } from "./src/lambda.ts";
 export {
   AwsCloudformationDeleteStackSettings,
@@ -123,3 +127,9 @@ export {
   AwsCloudwatchAnalysisSettings,
   cloudwatch,
 } from "./src/cloudwatch_canary.ts";
+export {
+  AwsLambdaCanary,
+  type AwsLambdaCanaryContext,
+  AwsLambdaCanarySettings,
+  lambdaCanary,
+} from "./src/lambda_canary.ts";

@@ -362,6 +362,8 @@ class ChocolateyPackageSettings
     The license's URL. Set by {@link licenseUrl}.
   iconUrl_?: string
     The icon's URL. Set by {@link iconUrl}.
+  copyright_?: string
+    The copyright notice. Set by {@link copyright}.
   packageSourceUrl_?: string
     Where the package's source lives. Set by {@link packageSourceUrl}.
   docsUrl_?: string
@@ -410,6 +412,10 @@ class ChocolateyPackageSettings
     The software's issue tracker (`<bugTrackerUrl>`, `https`).
   tags(...values: string[]): this
     Search tags (`<tags>`), each one word; repeatable.
+  copyright(text: string): this
+    The software's copyright notice (`<copyright>`), one line — e.g. the
+    line in its LICENSE, `Copyright (c) 2026 Acme`. The community
+    repository's moderators ask for it whenever the software has one.
   summary(text: string): this
     A one-line summary (`<summary>`).
   description(text: string): this

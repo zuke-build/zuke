@@ -176,8 +176,9 @@ export class HelmCanarySettings {
    * The stable release's revision to roll back to when `rollout.abort` is run
    * by hand — the one `helm history <stable>` lists from before the rollout.
    * Such a run is fresh, with no record of a rollout, so it has nothing else
-   * to go on. A rollback the engine runs mid-rollout does not use it: that one
-   * returns to the revision `stage` recorded.
+   * to go on. A rollback the engine runs does not use it: mid-rollout it
+   * returns to the revision `stage` recorded, and with nothing recorded it
+   * runs nothing, since nothing was staged.
    */
   stableRevision(revision: number): this {
     this.stableRevision_ = revision;

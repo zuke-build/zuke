@@ -37,6 +37,13 @@ export interface DockerComposeCanaryContext {
   readonly state: TargetStateHandle;
   /** Add key/value pairs to the calling target's row in the build summary. */
   reportSummary(pairs: SummaryPairs): void;
+  /**
+   * Why `abort` runs: `"rollback"` when the engine undoes a rollout,
+   * `"hand-run"` for `rollout.abort` run on its own. An engine older than
+   * this field leaves it out, which is treated as a hand run — the behaviour
+   * from before the field existed.
+   */
+  readonly reason?: "rollback" | "hand-run";
 }
 
 /**
@@ -134,8 +141,9 @@ export class DockerComposeCanarySettings {
    * by hand — a reference with no whitespace or control characters. Such a
    * run is fresh, with no record of a rollout, so it has nothing else to go
    * on — and the release it is undoing has usually been promoted already. A
-   * rollback the engine runs mid-rollout does not use it: that one returns to
-   * the image ID `stage` saw the stable replicas running.
+   * rollback the engine runs does not use it: mid-rollout it returns to the
+   * image ID `stage` saw the stable replicas running, and with nothing
+   * recorded it runs nothing, since nothing was staged.
    */
   stable(image: string): this {
     this.stable_ = image;
