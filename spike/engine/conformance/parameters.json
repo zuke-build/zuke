@@ -1,0 +1,167 @@
+{
+  "manifest": {
+    "name": "Params",
+    "targets": [
+      {
+        "name": "show",
+        "requires": [
+          "env"
+        ]
+      }
+    ],
+    "parameters": [
+      {
+        "name": "tag",
+        "description": "image tag",
+        "default": "dev"
+      },
+      {
+        "name": "count",
+        "kind": "number"
+      },
+      {
+        "name": "verbose",
+        "kind": "boolean"
+      },
+      {
+        "name": "env",
+        "options": [
+          "dev",
+          "prod"
+        ],
+        "required": true
+      },
+      {
+        "name": "tags",
+        "array": true
+      },
+      {
+        "name": "token",
+        "secret": true,
+        "env": "MY_TOKEN"
+      },
+      {
+        "name": "skipE2e",
+        "kind": "boolean",
+        "flag": "skip-e2e",
+        "default": true
+      }
+    ]
+  },
+  "list": {
+    "targets": [
+      {
+        "name": "show",
+        "description": "",
+        "dependsOn": [],
+        "default": false,
+        "unlisted": false
+      }
+    ],
+    "parameters": [
+      {
+        "name": "tag",
+        "flag": "tag",
+        "description": "image tag",
+        "required": false,
+        "kind": "string",
+        "boolean": false,
+        "array": false,
+        "options": [],
+        "default": "dev"
+      },
+      {
+        "name": "count",
+        "flag": "count",
+        "description": "",
+        "required": false,
+        "kind": "number",
+        "boolean": false,
+        "array": false,
+        "options": []
+      },
+      {
+        "name": "verbose",
+        "flag": "verbose",
+        "description": "",
+        "required": false,
+        "kind": "boolean",
+        "boolean": true,
+        "array": false,
+        "options": [],
+        "default": "false"
+      },
+      {
+        "name": "env",
+        "flag": "env",
+        "description": "",
+        "required": true,
+        "kind": "string",
+        "boolean": false,
+        "array": false,
+        "options": [
+          "dev",
+          "prod"
+        ]
+      },
+      {
+        "name": "tags",
+        "flag": "tags",
+        "description": "",
+        "required": false,
+        "kind": "string",
+        "boolean": false,
+        "array": true,
+        "options": []
+      },
+      {
+        "name": "token",
+        "flag": "token",
+        "description": "",
+        "required": false,
+        "kind": "string",
+        "boolean": false,
+        "array": false,
+        "options": []
+      },
+      {
+        "name": "skipE2e",
+        "flag": "skip-e2e",
+        "description": "",
+        "required": false,
+        "kind": "boolean",
+        "boolean": true,
+        "array": false,
+        "options": [],
+        "default": "true"
+      }
+    ]
+  },
+  "argv": [
+    "show",
+    "--count",
+    "3",
+    "--env",
+    "prod",
+    "--tags",
+    "a,b",
+    "--verbose"
+  ],
+  "code": 0,
+  "calls": [
+    "build.configure",
+    "target.run show"
+  ],
+  "configure": {
+    "dryRun": false,
+    "parameters": {
+      "tag": "dev",
+      "count": "3",
+      "verbose": "true",
+      "env": "prod",
+      "tags": "a,b",
+      "token": null,
+      "skipE2e": "true"
+    }
+  }
+}

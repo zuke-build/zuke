@@ -1,0 +1,23 @@
+{
+  "manifest": {
+    "name": "Compensation",
+    "targets": [
+      { "name": "deploy", "onCancel": "rollback" },
+      {
+        "name": "verify",
+        "dependsOn": ["deploy"],
+        "onFailure": "cancel-run",
+        "fail": "unhealthy"
+      },
+      { "name": "rollback" }
+    ]
+  },
+  "argv": ["verify"],
+  "code": 1,
+  "calls": [
+    "build.configure",
+    "target.run deploy",
+    "target.run verify",
+    "target.run rollback"
+  ]
+}

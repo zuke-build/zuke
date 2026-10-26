@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * Phase 0 spike of the engine/worker split: run a build that another process
- * describes over a loopback socket, on the unmodified `@zuke/core` engine.
+ * The engine/worker split, unreleased while it grows (#903): run a build that
+ * another process describes over a loopback socket, on the unmodified
+ * `@zuke/core` engine.
  *
  *   deno run -A spike/engine/mod.ts --list
  *   deno run -A spike/engine/mod.ts <target>

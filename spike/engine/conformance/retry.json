@@ -1,0 +1,20 @@
+{
+  "manifest": {
+    "name": "Retry",
+    "targets": [
+      {
+        "name": "flaky",
+        "retry": { "times": 2, "delayMs": 10 },
+        "failTimes": 2
+      }
+    ]
+  },
+  "argv": ["flaky"],
+  "code": 0,
+  "calls": [
+    "build.configure",
+    "target.run flaky",
+    "target.run flaky",
+    "target.run flaky"
+  ]
+}

@@ -99,7 +99,7 @@ Deno.test("the engine runs the graph, spawns each exec itself with the worker's 
       const result = await runCli(Remote, ["all", "--parallel"]);
       assertEquals(result.code, 0, result.out + result.err);
       assertEquals(await Deno.readTextFile(marker), "1");
-      assertStringIncludes(result.err, "worker: fake worker running a");
+      assertStringIncludes(result.err, "worker: call: target.run a");
       assertStringIncludes(result.out, "all succeeded");
     } finally {
       await host.finish(0);

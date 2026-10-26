@@ -17,6 +17,7 @@ import { Command } from "@zuke/core/shell";
 import { Peer, RpcFailure } from "./peer.ts";
 import {
   CANCELLED,
+  type ConfigureParams,
   type ExecRequest,
   type Hello,
   type Manifest,
@@ -246,6 +247,11 @@ export class WorkerHost {
   /** Ask the worker to describe its build. */
   async describe(): Promise<Manifest> {
     return parseManifest(await this.#peer.request("build.describe", {}));
+  }
+
+  /** Tell the worker the run's id, dry-run flag and resolved parameters. */
+  async configure(params: ConfigureParams): Promise<void> {
+    await this.#peer.request("build.configure", params);
   }
 
   /**

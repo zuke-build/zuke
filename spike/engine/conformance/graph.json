@@ -1,0 +1,54 @@
+{
+  "manifest": {
+    "name": "Graph",
+    "targets": [
+      { "name": "lint", "description": "lint it" },
+      { "name": "test", "description": "test it", "dependsOn": ["lint"] },
+      { "name": "hidden", "description": "not listed", "unlisted": true },
+      { "name": "default", "description": "all", "dependsOn": ["test"] }
+    ],
+    "groups": [{ "name": "verify", "members": ["lint", "test"] }]
+  },
+  "list": {
+    "targets": [
+      {
+        "name": "lint",
+        "description": "lint it",
+        "dependsOn": [],
+        "default": false,
+        "unlisted": false
+      },
+      {
+        "name": "test",
+        "description": "test it",
+        "dependsOn": ["lint"],
+        "default": false,
+        "unlisted": false
+      },
+      {
+        "name": "hidden",
+        "description": "not listed",
+        "dependsOn": [],
+        "default": false,
+        "unlisted": true
+      },
+      {
+        "name": "default",
+        "description": "all",
+        "dependsOn": ["test"],
+        "default": true,
+        "unlisted": false
+      }
+    ],
+    "parameters": []
+  },
+  "argv": [],
+  "code": 0,
+  "calls": [
+    "build.configure",
+    "target.run lint",
+    "target.run test",
+    "target.run default"
+  ],
+  "configure": { "dryRun": false, "parameters": {} }
+}

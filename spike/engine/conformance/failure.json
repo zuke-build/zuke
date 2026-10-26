@@ -1,0 +1,38 @@
+{
+  "manifest": {
+    "name": "Failure",
+    "targets": [
+      {
+        "name": "boom",
+        "proceedAfterFailure": true,
+        "fail": "nope"
+      },
+      {
+        "name": "after",
+        "dependsOn": [
+          "boom"
+        ]
+      },
+      {
+        "name": "cleanup",
+        "always": true
+      },
+      {
+        "name": "all",
+        "dependsOn": [
+          "after",
+          "cleanup"
+        ]
+      }
+    ]
+  },
+  "argv": [
+    "all"
+  ],
+  "code": 1,
+  "calls": [
+    "build.configure",
+    "target.run cleanup",
+    "target.run boom"
+  ]
+}

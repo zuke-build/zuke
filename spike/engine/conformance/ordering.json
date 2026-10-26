@@ -1,0 +1,33 @@
+{
+  "manifest": {
+    "name": "Ordering",
+    "targets": [
+      {
+        "name": "a",
+        "after": [
+          "b"
+        ]
+      },
+      {
+        "name": "b"
+      },
+      {
+        "name": "all",
+        "dependsOn": [
+          "a",
+          "b"
+        ]
+      }
+    ]
+  },
+  "argv": [
+    "all"
+  ],
+  "code": 0,
+  "calls": [
+    "build.configure",
+    "target.run b",
+    "target.run a",
+    "target.run all"
+  ]
+}
