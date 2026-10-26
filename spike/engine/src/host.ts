@@ -101,6 +101,28 @@ function after(ms: number): Promise<false> {
   return new Promise((resolve) => setTimeout(() => resolve(false), ms));
 }
 
+function signal(child: Deno.ChildProcess, name: Deno.Signal): void {
+  try {
+    child.kill(name);
+  } catch {
+    // Already exited: nothing left to signal.
+  }
+}
+
+/**
+ * Stop the worker and wait for it, bounded: SIGTERM, then SIGKILL after the
+ * grace period, so a worker that ignores the first never stalls the caller.
+ */
+async function stopChild(
+  child: Deno.ChildProcess,
+  graceMs: number,
+): Promise<void> {
+  const exited = child.status.then(() => true);
+  signal(child, "SIGTERM");
+  if (!(await Promise.race([exited, after(graceMs)]))) signal(child, "SIGKILL");
+  await exited;
+}
+
 /** The worker host. Start one with {@link WorkerHost.start}. */
 export class WorkerHost {
   readonly #peer: Peer;
@@ -213,12 +235,7 @@ export class WorkerHost {
     } catch (error) {
       if (peer === undefined) listener.close();
       else peer.close();
-      try {
-        child.kill();
-      } catch {
-        // Already gone: the error below is the one worth reporting.
-      }
-      await child.status;
+      await stopChild(child, options.graceMs ?? 5_000);
       await forwarding;
       throw error;
     } finally {
@@ -269,19 +286,16 @@ export class WorkerHost {
     await this.#peer.notify("run.exit", { code });
     this.#peer.close();
     const exited = this.#child.status.then(() => true);
-    if (!(await Promise.race([exited, after(this.#graceMs)]))) this.kill();
-    await exited;
+    if (!(await Promise.race([exited, after(this.#graceMs)]))) {
+      await stopChild(this.#child, this.#graceMs);
+    }
     await this.#background.catch(() => {});
   }
 
   /** Kill the worker outright. */
   kill(): void {
     this.#peer.close();
-    try {
-      this.#child.kill();
-    } catch {
-      // Already exited.
-    }
+    signal(this.#child, "SIGTERM");
   }
 
   #enqueue(request: ExecRequest): Promise<unknown> {

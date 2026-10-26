@@ -188,6 +188,30 @@ Deno.test("an exec attributed to a target with no running body is refused", asyn
   });
 });
 
+Deno.test({
+  name:
+    "a worker that ignores SIGTERM is killed within the grace period on a failed start",
+  ignore: Deno.build.os === "windows", // No SIGTERM listener there; kill is final.
+  async fn() {
+    const started = Date.now();
+    await assertRejects(
+      () =>
+        WorkerHost.start({
+          command: evalArgv(
+            "Deno.addSignalListener('SIGTERM', () => {}); " +
+              "await new Promise((r) => setTimeout(r, 60_000))",
+          ),
+          cwd: Deno.cwd(),
+          connectTimeoutMs: 300,
+          graceMs: 300,
+        }),
+      Error,
+      "did not connect within 300ms",
+    );
+    assertEquals(Date.now() - started < 10_000, true);
+  },
+});
+
 Deno.test("a worker that never connects, exits early, or greets with the wrong token, is reported and killed", async () => {
   await assertRejects(
     () =>
