@@ -31,6 +31,7 @@ interface Run {
   readonly calls: string[];
   readonly configure: unknown;
   readonly answers?: string[];
+  readonly files: string[];
 }
 
 interface Case extends Run {
@@ -57,6 +58,7 @@ function runOf(value: unknown, file: string, manifest: unknown): Run {
     answers: Array.isArray(value.answers)
       ? value.answers.map(String)
       : undefined,
+    files: Array.isArray(value.files) ? value.files.map(String) : [],
   };
 }
 
@@ -164,9 +166,13 @@ async function replayRun(run: Run, runId: string | undefined): Promise<void> {
     if (run.answers !== undefined) {
       assertEquals(logged(result.err, "answer:"), run.answers);
     }
+    // A command that never runs the build configures nothing.
     const [configure] = logged(result.err, "configure:");
     const sent: unknown = JSON.parse(configure ?? "{}");
     const { parameters } = isRecord(sent) ? sent : {};
-    assertEquals({ parameters }, run.configure);
+    assertEquals(configure === undefined ? {} : { parameters }, run.configure);
+    for (const file of run.files) {
+      assertEquals((await Deno.stat(file)).isFile, true, file);
+    }
   });
 }

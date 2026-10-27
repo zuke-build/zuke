@@ -1,0 +1,83 @@
+{
+  "manifest": {
+    "name": "Ci",
+    "targets": [
+      {
+        "name": "lint",
+        "description": "lint it"
+      },
+      {
+        "name": "test",
+        "description": "test it",
+        "dependsOn": [
+          "lint"
+        ]
+      }
+    ],
+    "ci": [
+      {
+        "name": "gateWorkflow",
+        "pipeline": {
+          "name": "Gate",
+          "triggers": {
+            "push": [
+              "main"
+            ],
+            "pullRequest": [
+              "main"
+            ]
+          }
+        },
+        "invokes": [
+          "lint",
+          {
+            "target": "test",
+            "after": [
+              "lint"
+            ],
+            "matrix": {
+              "os": [
+                "ubuntu-latest",
+                "windows-latest"
+              ]
+            }
+          }
+        ],
+        "pins": {
+          "zuke-build/zuke": {
+            "ref": "zuke-build/zuke@0000000000000000000000000000000000000000",
+            "version": "v1.0.0"
+          },
+          "step-security/harden-runner": "step-security/harden-runner@0000000000000000000000000000000000000000",
+          "actions/checkout": "actions/checkout@0000000000000000000000000000000000000000"
+        }
+      },
+      {
+        "name": "release",
+        "provider": "gitlab",
+        "pipeline": {
+          "jobs": [
+            {
+              "id": "publish",
+              "steps": [
+                {
+                  "run": "./zuke publish"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "argv": [
+    "generate-ci"
+  ],
+  "code": 0,
+  "calls": [],
+  "configure": {},
+  "files": [
+    ".github/workflows/gate.yml",
+    ".gitlab-ci.yml"
+  ]
+}

@@ -7,14 +7,23 @@
  * unmodified engine, with every subprocess spawned by the engine.
  */
 
-import { Build, target } from "../../packages/core/mod.ts";
+import {
+  Build,
+  cicd,
+  FileSystemBuildRegistry,
+  parameter,
+  target,
+} from "../../packages/core/mod.ts";
+import { McpServer } from "../../packages/core/src/mcp/server.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
 } from "../../packages/core/tests/_assert.ts";
+import { FakeGraphHost } from "../../packages/core/tests/_fakes.ts";
 import { WorkerHost } from "../../spike/engine/src/host.ts";
 import { materialize } from "../../spike/engine/src/materialize.ts";
+import { isRecord } from "../../spike/engine/src/protocol.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 
 const FAKE =
@@ -559,4 +568,227 @@ Deno.test("a worker that never connects, exits early, or greets with the wrong t
     Error,
     "token mismatch",
   );
+});
+
+/** Run `fn` with the process cwd in a fresh temp dir, removed afterwards. */
+async function inTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
+  const dir = await Deno.makeTempDir({ prefix: "zuke-engine-" });
+  const prev = Deno.cwd();
+  Deno.chdir(dir);
+  try {
+    return await fn(dir);
+  } finally {
+    Deno.chdir(prev);
+    await Deno.remove(dir, { recursive: true });
+  }
+}
+
+/** Run `fn` with `name` set in the environment, restoring it afterwards. */
+async function withEnv<T>(
+  name: string,
+  value: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const prev = Deno.env.get(name);
+  Deno.env.set(name, value);
+  try {
+    return await fn();
+  } finally {
+    if (prev === undefined) Deno.env.delete(name);
+    else Deno.env.set(name, prev);
+  }
+}
+
+Deno.test("graph, its HTML page and the completion script for a worker-described build match the twin's", async () => {
+  class Twin extends Build {
+    lint = target().description("lint it");
+    test = target().description("test it").dependsOn(this.lint);
+    default = target().description("all").dependsOn(this.test);
+  }
+  const { host, Remote } = await fake([
+    { name: "lint", description: "lint it" },
+    { name: "test", description: "test it", dependsOn: ["lint"] },
+    { name: "default", description: "all", dependsOn: ["test"] },
+  ], { manifest: { name: "Twin" } });
+  try {
+    for (
+      const argv of [["graph"], ["completions", "print", "bash"], ["--help"]]
+    ) {
+      const remote = await runCli(Remote, argv);
+      const twin = await runCli(Twin, argv);
+      assertEquals(remote.code, 0, remote.err);
+      assertEquals(remote.out, twin.out, argv.join(" "));
+    }
+    const page = async (B: new () => Build) => {
+      const graphHost = new FakeGraphHost("/repo", ["/repo/zuke.json"]);
+      const result = await runCli(B, ["graph", "--output=html", "--no-open"], {
+        graphHost,
+      });
+      assertEquals(result.code, 0, result.err);
+      return graphHost.files.get("/repo/.zuke/graph.html") ?? "";
+    };
+    const html = await page(Remote);
+    assertStringIncludes(html, "<html");
+    assertEquals(html, await page(Twin));
+  } finally {
+    await host.finish(0);
+  }
+});
+
+Deno.test("generate-ci writes for a worker-described build the files its twin declares, byte for byte", async () => {
+  const pin = (action: string) =>
+    `${action}@0000000000000000000000000000000000000000`;
+  const gate = {
+    name: "Gate",
+    triggers: { push: ["main"], pullRequest: ["main"] },
+    permissions: { contents: "read", "pull-requests": "write" },
+  };
+  const matrix = { os: ["ubuntu-latest", "windows-latest"] };
+  const publish = {
+    jobs: [{ id: "publish", steps: [{ run: "./zuke publish" }] }],
+  };
+  class Twin extends Build {
+    lint = target().description("lint it");
+    test = target().description("test it").dependsOn(this.lint);
+    gateWorkflow = cicd({
+      pipeline: gate,
+      invokes: [this.lint, {
+        target: this.test,
+        after: [this.lint],
+        matrix,
+        env: { CI: "1" },
+      }],
+      pins: pin,
+    });
+    release = cicd({ provider: "gitlab", pipeline: publish });
+  }
+  const paths = [".github/workflows/gate.yml", ".gitlab-ci.yml"];
+  const generated = (B: new () => Build) =>
+    inTempDir(async (dir) => {
+      const result = await runCli(B, ["generate-ci"]);
+      assertEquals(result.code, 0, result.out + result.err);
+      return await Promise.all(
+        paths.map((path) => Deno.readTextFile(`${dir}/${path}`)),
+      );
+    });
+  const { host, Remote } = await fake([
+    { name: "lint", description: "lint it" },
+    { name: "test", description: "test it", dependsOn: ["lint"] },
+  ], {
+    manifest: {
+      ci: [
+        {
+          name: "gateWorkflow",
+          pipeline: gate,
+          invokes: ["lint", {
+            target: "test",
+            after: ["lint"],
+            matrix,
+            env: { CI: "1" },
+          }],
+          pins: Object.fromEntries(
+            [
+              "zuke-build/zuke",
+              "step-security/harden-runner",
+              "actions/checkout",
+            ]
+              .map((action) => [action, pin(action)]),
+          ),
+        },
+        { name: "release", provider: "gitlab", pipeline: publish },
+      ],
+    },
+  });
+  try {
+    const [workflow, pipeline] = await generated(Remote);
+    assertStringIncludes(workflow, "windows-latest");
+    assertStringIncludes(workflow, "./zuke test");
+    assertStringIncludes(pipeline, "./zuke publish");
+    assertEquals([workflow, pipeline], await generated(Twin));
+  } finally {
+    await host.finish(0);
+  }
+});
+
+Deno.test("register writes for a worker-described build the descriptor its twin writes", async () => {
+  class Twin extends Build {
+    apiToken = parameter("api token").secret();
+    lint = target().description("lint it");
+    build = target().description("build it").dependsOn(this.lint);
+  }
+  const { host, Remote } = await fake([
+    { name: "lint", description: "lint it" },
+    { name: "build", description: "build it", dependsOn: ["lint"] },
+  ], {
+    manifest: {
+      name: "Twin",
+      parameters: [{
+        name: "apiToken",
+        description: "api token",
+        secret: true,
+      }],
+    },
+  });
+  const registered = (B: new () => Build) =>
+    inTempDir((dir) =>
+      withEnv("ZUKE_REGISTRY_DIR", dir, async () => {
+        const result = await runCli(B, ["register"]);
+        assertEquals(result.code, 0, result.out + result.err);
+        assertStringIncludes(result.out, 'Registered build "Twin"');
+        const loaded = await new FileSystemBuildRegistry(dir).getBuild("Twin");
+        if (loaded === null) throw new Error("not registered");
+        // The timestamps and the temp cwd are the run's; the rest is the build's.
+        const { createdAt: _c, updatedAt: _u, location, ...descriptor } =
+          loaded.descriptor;
+        assertEquals(location.kind, "module");
+        return descriptor;
+      })
+    );
+  try {
+    const remote = await registered(Remote);
+    assertEquals(remote.surface.targets.map((t) => t.name), ["lint", "build"]);
+    assertEquals(remote.surface.parameters, []); // the secret stays out
+    assertEquals(remote, await registered(Twin));
+  } finally {
+    await host.finish(0);
+  }
+});
+
+Deno.test("an MCP server lists the twin's tools for a worker-described build, and every run it serves gets a worker", async () => {
+  await withStateDir(async () => {
+    class Twin extends Build {
+      a = target().description("A").executes(() => {});
+      b = target().description("B").dependsOn(this.a).executes(() => {});
+    }
+    const { Remote } = await fake([
+      { name: "a", description: "A" },
+      { name: "b", description: "B", dependsOn: ["a"] },
+    ], { manifest: { name: "Twin" } });
+    const tools = (B: new () => Build) =>
+      new McpServer(new B(), { allowRun: true }).handleMessage({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list",
+        params: {},
+      });
+    assertEquals(
+      JSON.stringify(await tools(Remote)),
+      JSON.stringify(await tools(Twin)),
+    );
+    // The first run's `run.exit` ends the worker; the second run is served by
+    // a fresh one, described and configured again, in the same server.
+    const server = new McpServer(new Remote(), { allowRun: true });
+    for (const id of [1, 2]) {
+      const response = await server.handleMessage({
+        jsonrpc: "2.0",
+        id,
+        method: "tools/call",
+        params: { name: "run:b", arguments: {} },
+      });
+      const result = isRecord(response) ? response.result : undefined;
+      const text = JSON.stringify(result);
+      assertEquals(isRecord(result) && result.isError === true, false, text);
+      assertStringIncludes(text, "b succeeded");
+    }
+  });
 });

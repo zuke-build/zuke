@@ -14,6 +14,7 @@ case through the CLI `main()` against the scripted fake worker.
 | `answers`   | Optional: the answers the engine gives the worker's own `calls` script, in order, as `method json`.                                                                                                    |
 | `then`      | Optional: further runs in the same state directory, each a fresh worker, with `argv`, `code`, `calls`, `configure`, optional `answers` and `manifest`; `$RUN_ID` in an argv is the persisted run's id. |
 | `configure` | The `parameters` every run's `build.configure` call carries.                                                                                                                                           |
+| `files`     | Optional: paths, relative to the case's working directory, the run must have written (what `generate-ci` renders from the manifest's `ci` list).                                                       |
 
 Cases keep their targets sequentially ordered so the transcript is
 deterministic; concurrency is proved by the integration tests instead.

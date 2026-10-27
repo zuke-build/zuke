@@ -27,6 +27,7 @@ import {
   type ValidateDuringSettings,
   type WaitSettings,
 } from "@zuke/core";
+import { ciFileOf } from "./ci.ts";
 import type { WorkerHost } from "./host.ts";
 import type {
   LateSettings,
@@ -162,7 +163,9 @@ export function materialize(
   manifest: Manifest,
   runner: TargetRunner,
 ): new () => Build {
-  return class RemoteBuild extends Build {
+  // Named after the manifest, as the run record, the registry descriptor and
+  // every message that says `build "X"` take the class's name.
+  const RemoteBuild = class extends Build {
     readonly #params = new Map<string, AnyParameter>();
     readonly #unforceable: TargetBuilder[];
     readonly #late = new Map<string, LateSettings>();
@@ -252,6 +255,12 @@ export function materialize(
           lookup(builders, m, `group "${g.name}"`).partOf(batch);
         }
         fields.define(g.name, batch);
+      }
+      for (const c of manifest.ci) {
+        fields.define(
+          c.name,
+          ciFileOf(c, (n, where) => lookup(builders, n, where)),
+        );
       }
       this.#unforceable = manifest.config.unforceable.map((n) =>
         lookup(builders, n, '"unforceable"')
@@ -378,4 +387,6 @@ export function materialize(
       }
     }
   };
+  Object.defineProperty(RemoteBuild, "name", { value: manifest.name });
+  return RemoteBuild;
 }

@@ -423,7 +423,7 @@ export class WorkerHost {
     // The socket's end is seen before the exit code lands; either means the
     // worker is gone.
     const gone = this.#dead !== undefined || this.#worker.peer.closed;
-    if (gone && !this.#finished) {
+    if (gone) {
       this.#replacing ??= this.#respawn().finally(() => {
         this.#replacing = undefined;
       });
@@ -463,6 +463,7 @@ export class WorkerHost {
   async #respawn(): Promise<void> {
     const worker = await spawn(this.#options);
     this.#dead = undefined;
+    this.#finished = false;
     this.#worker = this.#adopt(worker);
     const manifest = JSON.stringify(
       parseManifest(await worker.peer.request("build.describe", {})),
@@ -504,6 +505,9 @@ export class WorkerHost {
 
   /** Tell the worker the resolved parameters; a replacement gets the same. */
   async configure(params: ConfigureParams): Promise<void> {
+    // A worker spawned for this call is configured by the call, not replayed
+    // into first: the next run after a finished one starts here.
+    await this.#live();
     this.#configured = params;
     await this.#ask("build.configure", params);
   }
@@ -646,10 +650,13 @@ export class WorkerHost {
 
   /**
    * Tell the worker the run is over, or suspended at a gate, wait for it to
-   * exit, release everything.
+   * exit, release everything. The run ends, not the host: the next request
+   * (an MCP server runs build after build in one process) spawns a fresh
+   * worker, described and configured anew.
    */
   async finish(code: number, suspended = false): Promise<void> {
     this.#finished = true;
+    this.#configured = undefined;
     const worker = this.#worker;
     await worker.peer.notify("run.exit", { code, suspended });
     worker.peer.close();

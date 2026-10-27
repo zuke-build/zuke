@@ -10,6 +10,10 @@
  */
 
 import type { JsonValue } from "@zuke/core";
+import { type ManifestCi, parseCi } from "./ci.ts";
+import { type Fields, fieldsOf, isRecord } from "./fields.ts";
+
+export { isRecord } from "./fields.ts";
 
 /** The protocol version this engine speaks. */
 export const PROTOCOL_VERSION = 1;
@@ -202,6 +206,8 @@ export interface Manifest {
   readonly hooks: ManifestHooks;
   /** Build-wide settings. */
   readonly config: ManifestConfig;
+  /** The CI files the build declares, for `generate-ci`. */
+  readonly ci: readonly ManifestCi[];
 }
 
 /** The worker's first message, authenticating and describing its process. */
@@ -295,201 +301,6 @@ export const CANCELLED = -32001;
 
 /** JSON-RPC error code the engine answers a malformed request with. */
 export const INVALID_PARAMS = -32602;
-
-/** Whether `value` is a plain JSON object. */
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/** Whether `value` is JSON: what a parsed wire message can hold, nothing else. */
-function isJsonValue(value: unknown): value is JsonValue {
-  if (value === null) return true;
-  switch (typeof value) {
-    case "string":
-    case "number":
-    case "boolean":
-      return true;
-    case "object":
-      return Array.isArray(value)
-        ? value.every(isJsonValue)
-        : Object.values(value).every(isJsonValue);
-    default:
-      return false;
-  }
-}
-
-/** A typed view of one JSON object, naming its location in every error. */
-class Fields {
-  constructor(
-    private readonly object: Record<string, unknown>,
-    private readonly where: string,
-  ) {}
-
-  /** Whether the field is present. */
-  has(name: string): boolean {
-    return this.object[name] !== undefined;
-  }
-
-  required(name: string): unknown {
-    const value = this.object[name];
-    if (value === undefined) {
-      throw new Error(`${this.where}: missing field "${name}"`);
-    }
-    return value;
-  }
-
-  string(name: string): string {
-    const value = this.required(name);
-    if (typeof value !== "string") {
-      throw new Error(`${this.where}: field "${name}" must be a string`);
-    }
-    return value;
-  }
-
-  stringOr(name: string, fallback: string): string {
-    return this.has(name) ? this.string(name) : fallback;
-  }
-
-  stringIfSet(name: string): string | undefined {
-    return this.has(name) ? this.string(name) : undefined;
-  }
-
-  strings(name: string): string[] {
-    const value = this.required(name);
-    if (!Array.isArray(value) || !value.every((v) => typeof v === "string")) {
-      throw new Error(
-        `${this.where}: field "${name}" must be an array of strings`,
-      );
-    }
-    return value;
-  }
-
-  stringsOr(name: string, fallback: string[]): string[] {
-    return this.has(name) ? this.strings(name) : fallback;
-  }
-
-  number(name: string): number {
-    const value = this.required(name);
-    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-      throw new Error(
-        `${this.where}: field "${name}" must be a non-negative number`,
-      );
-    }
-    return value;
-  }
-
-  numberIfSet(name: string): number | undefined {
-    return this.has(name) ? this.number(name) : undefined;
-  }
-
-  durationIfSet(name: string): Duration | undefined {
-    if (!this.has(name)) return undefined;
-    const value = this.object[name];
-    if (typeof value === "string") return value;
-    if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
-      return value;
-    }
-    return this.reject(name, "be a duration string or milliseconds");
-  }
-
-  booleanOr(name: string, fallback: boolean): boolean {
-    if (!this.has(name)) return fallback;
-    const value = this.object[name];
-    if (typeof value !== "boolean") {
-      throw new Error(`${this.where}: field "${name}" must be a boolean`);
-    }
-    return value;
-  }
-
-  stringMap(name: string): Record<string, string> {
-    const value = this.required(name);
-    if (
-      !isRecord(value) ||
-      !Object.values(value).every((v) => typeof v === "string")
-    ) {
-      throw new Error(
-        `${this.where}: field "${name}" must map strings to strings`,
-      );
-    }
-    return Object.fromEntries(
-      Object.entries(value).filter((e): e is [string, string] =>
-        typeof e[1] === "string"
-      ),
-    );
-  }
-
-  stringMapIfSet(name: string): Record<string, string> | undefined {
-    return this.has(name) ? this.stringMap(name) : undefined;
-  }
-
-  /** The objects in an array field, each viewed at `where.name[i]`. */
-  objects(name: string): Fields[] {
-    const value = this.required(name);
-    if (!Array.isArray(value)) {
-      throw new Error(`${this.where}: field "${name}" must be an array`);
-    }
-    return value.map((item, i) =>
-      fieldsOf(item, `${this.where}.${name}[${i}]`)
-    );
-  }
-
-  objectsOr(name: string): Fields[] {
-    return this.has(name) ? this.objects(name) : [];
-  }
-
-  /** The nested object field, viewed at `where.name`, or an empty one. */
-  objectOr(name: string): Fields {
-    return this.has(name)
-      ? fieldsOf(this.required(name), `${this.where}.${name}`)
-      : new Fields({}, `${this.where}.${name}`);
-  }
-
-  /** The raw value, for a field whose type depends on another. */
-  raw(name: string): unknown {
-    return this.object[name];
-  }
-
-  jsonRecord(name: string): Record<string, JsonValue> {
-    const value = this.required(name);
-    if (!isRecord(value)) {
-      throw new Error(`${this.where}: field "${name}" must be an object`);
-    }
-    const entries: Array<[string, JsonValue]> = [];
-    for (const [key, item] of Object.entries(value)) {
-      if (!isJsonValue(item)) {
-        throw new Error(`${this.where}: field "${name}.${key}" must be JSON`);
-      }
-      entries.push([key, item]);
-    }
-    return Object.fromEntries(entries);
-  }
-
-  summaryPairs(name: string): Record<string, string | number> {
-    const value = this.required(name);
-    if (!isRecord(value)) {
-      throw new Error(`${this.where}: field "${name}" must be an object`);
-    }
-    const entries: Array<[string, string | number]> = [];
-    for (const [key, item] of Object.entries(value)) {
-      if (typeof item !== "string" && typeof item !== "number") {
-        throw new Error(
-          `${this.where}: field "${name}.${key}" must be a string or a number`,
-        );
-      }
-      entries.push([key, item]);
-    }
-    return Object.fromEntries(entries);
-  }
-
-  reject(name: string, must: string): never {
-    throw new Error(`${this.where}: field "${name}" must ${must}`);
-  }
-}
-
-function fieldsOf(value: unknown, where: string): Fields {
-  if (!isRecord(value)) throw new Error(`${where}: expected an object`);
-  return new Fields(value, where);
-}
 
 /** Validate a `hello` payload, checking its token against `expected`. */
 export function parseHello(value: unknown, expected: string): Hello {
@@ -614,6 +425,7 @@ export function parseManifest(value: unknown): Manifest {
     })),
     hooks: parseHooks(o.objectOr("hooks")),
     config: parseConfig(o.objectOr("config")),
+    ci: o.objectsOr("ci").map(parseCi),
   };
 }
 

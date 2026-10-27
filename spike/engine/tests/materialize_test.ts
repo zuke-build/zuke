@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import {
+  discoverCiFiles,
   discoverParameters,
   discoverTargets,
   LockSettings,
@@ -407,5 +408,60 @@ Deno.test("materialize refuses a duplicate, a forward dependency, or an undeclar
   refuse(
     { name: "B", targets: [], config: { unforceable: ["x"] } },
     '"unforceable" names "x"',
+  );
+});
+
+Deno.test("materialize declares a CiFile per ci entry, named after the manifest's build", () => {
+  const Remote = remote({
+    name: "Pipeline",
+    targets: [{ name: "lint" }, { name: "test", dependsOn: ["lint"] }],
+    ci: [
+      {
+        name: "ciWorkflow",
+        invokes: ["lint", { target: "test", after: ["lint"] }],
+      },
+      {
+        name: "release",
+        provider: "gitlab",
+        pipeline: { jobs: [{ id: "publish" }] },
+      },
+    ],
+  });
+  assertEquals(Remote.name, "Pipeline");
+  const build = new Remote();
+  assertEquals(build.constructor.name, "Pipeline");
+  const files = discoverCiFiles(build);
+  assertEquals(files.map((f) => [f.provider, f.path]), [
+    ["github", ".github/workflows/ci.yml"],
+    ["gitlab", ".gitlab-ci.yml"],
+  ]);
+  const targets = discoverTargets(build);
+  const jobs = files[0].pipelineFor(targets).jobs ?? [];
+  assertEquals(jobs.map((j) => [j.id, j.needs ?? []]), [
+    ["lint", []],
+    ["test", ["lint"]],
+  ]);
+  assertEquals(files[1].render().includes("publish:"), true);
+  // The CI fields are not targets, and a target may not share a name with one.
+  assertEquals([...targets.keys()], ["lint", "test"]);
+  assertThrows(
+    () =>
+      new (remote({
+        name: "B",
+        targets: [{ name: "a" }],
+        ci: [{ name: "a" }],
+      }))(),
+    Error,
+    '"a" is declared twice',
+  );
+  assertThrows(
+    () =>
+      new (remote({
+        name: "B",
+        targets: [{ name: "a" }],
+        ci: [{ name: "ci", invokes: ["x"] }],
+      }))(),
+    Error,
+    'manifest: ci "ci" names "x", which is not declared',
   );
 });

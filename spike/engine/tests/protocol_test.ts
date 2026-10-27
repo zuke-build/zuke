@@ -131,6 +131,7 @@ Deno.test("parseManifest fills every default, so a phase 0 manifest still parses
       groups: [],
       hooks: NO_HOOKS,
       config: { deadline: undefined, unforceable: [] },
+      ci: [],
     },
   );
 });
