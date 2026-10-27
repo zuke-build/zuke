@@ -38,6 +38,10 @@ interface PlanTarget {
   validateDuring?: boolean;
   settings?: unknown;
   validate_fail?: string;
+  kind?: "target" | "service";
+  ready?: boolean;
+  readyTimeoutMs?: number;
+  ready_answers?: boolean[];
 }
 
 /** Start the fake worker on `plan` and materialise its build. */
@@ -301,6 +305,61 @@ Deno.test("a validateDuring check the worker fails ends the target with its mess
         result.err,
         "worker: call: target.validate slow disk",
       );
+    } finally {
+      await host.finish(1);
+    }
+  });
+});
+
+Deno.test("a service's start phase execs through the engine, and a body-only call is refused by name", async () => {
+  await withStateDir(async (dir) => {
+    const marker = `${dir}/service-marker`;
+    const { host, Remote } = await fake([
+      {
+        name: "db",
+        kind: "service",
+        exec: [
+          evalArgv(`Deno.writeTextFileSync(${JSON.stringify(marker)}, "up")`),
+        ],
+        calls: [{ method: "state.get", params: {} }],
+      },
+      { name: "test", dependsOn: ["db"] },
+    ]);
+    try {
+      const result = await runCli(Remote, ["test"]);
+      assertEquals(result.code, 0, result.out + result.err);
+      assertEquals(await Deno.readTextFile(marker), "up");
+      assertStringIncludes(
+        result.err,
+        "answer: state.get error state.get: a service phase has no body",
+      );
+      assertStringIncludes(result.err, "worker: call: service.stop db h1");
+    } finally {
+      await host.finish(0);
+    }
+  });
+});
+
+Deno.test("a service whose probe never turns true fails the run with core's timeout", async () => {
+  await withStateDir(async () => {
+    const { host, Remote } = await fake([
+      {
+        name: "db",
+        kind: "service",
+        ready: true,
+        readyTimeoutMs: 300,
+        ready_answers: [false],
+      },
+      { name: "test", dependsOn: ["db"] },
+    ]);
+    try {
+      const result = await runCli(Remote, ["test"]);
+      assertEquals(result.code, 1);
+      assertStringIncludes(
+        result.out + result.err,
+        'Service "db" was not ready within 300ms',
+      );
+      assertEquals(result.err.includes("worker: call: target.run test"), false);
     } finally {
       await host.finish(1);
     }

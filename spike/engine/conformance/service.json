@@ -1,0 +1,40 @@
+{
+  "manifest": {
+    "name": "Service",
+    "targets": [
+      {
+        "name": "db",
+        "kind": "service",
+        "ready": true,
+        "readyTimeoutMs": 5000,
+        "ready_answers": [
+          false,
+          true
+        ],
+        "service_handle": "pg-1"
+      },
+      {
+        "name": "test",
+        "dependsOn": [
+          "db"
+        ]
+      }
+    ]
+  },
+  "argv": [
+    "test"
+  ],
+  "code": 0,
+  "calls": [
+    "build.configure",
+    "service.start db",
+    "service.ready db pg-1",
+    "service.ready db pg-1",
+    "target.run test",
+    "service.stop db pg-1",
+    "run.exit done"
+  ],
+  "configure": {
+    "parameters": {}
+  }
+}

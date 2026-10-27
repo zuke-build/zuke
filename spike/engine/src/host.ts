@@ -28,6 +28,7 @@ import {
   parseBooleanAnswer,
   parseCacheKey,
   parseExec,
+  parseHandle,
   parseHello,
   parseLog,
   parseManifest,
@@ -53,10 +54,27 @@ export interface WorkerOptions {
   readonly graceMs?: number;
 }
 
-/** One request waiting to be served inside its target's body. */
+/**
+ * What a worker request is served with: the body's context while a body
+ * runs, or only a cancel signal during a service phase, which has no body.
+ */
+interface Scope {
+  readonly signal: AbortSignal;
+  readonly ctx?: TargetContext;
+}
+
+/** One request waiting to be served inside its target's scope. */
 interface Call {
-  readonly run: (ctx: TargetContext) => Promise<unknown>;
+  readonly run: (scope: Scope) => Promise<unknown>;
   readonly settle: (run: () => Promise<unknown>) => void;
+}
+
+/** The body context of `scope`, refused by name during a service phase. */
+function bodyOf(scope: Scope, method: string): TargetContext {
+  if (scope.ctx === undefined) {
+    throw new RpcFailure(-32000, `${method}: a service phase has no body`);
+  }
+  return scope.ctx;
 }
 
 /**
@@ -184,6 +202,8 @@ export class WorkerHost {
   readonly #graceMs: number;
   readonly #background: Promise<unknown>;
   readonly #channels = new Map<string, Channel>();
+  /** Aborted when the host is killed: the signal a service phase's execs get. */
+  readonly #aborter = new AbortController();
 
   private constructor(
     peer: Peer,
@@ -201,52 +221,58 @@ export class WorkerHost {
     const serve = <R extends { readonly target: string }>(
       method: string,
       parse: (params: unknown) => R,
-      run: (request: R, ctx: TargetContext) => Promise<unknown> | unknown,
+      run: (request: R, scope: Scope) => Promise<unknown> | unknown,
     ) =>
       peer.on(method, (params) => {
         const request = parse(params);
         return this.#enqueue(
           request.target,
-          async (ctx) => await run(request, ctx),
+          async (scope) => await run(request, scope),
         );
       });
-    serve("exec", parseExec, (r, ctx) => this.#exec(r, ctx));
-    serve(
+    // A call a body makes: refused by name during a service phase.
+    const inBody = <R extends { readonly target: string }>(
+      method: string,
+      parse: (params: unknown) => R,
+      run: (request: R, ctx: TargetContext) => Promise<unknown> | unknown,
+    ) => serve(method, parse, (r, scope) => run(r, bodyOf(scope, method)));
+    serve("exec", parseExec, (r, scope) => this.#exec(r, scope.signal));
+    serve("secret.register", parseSecret, (r) => registrar.register(r.value));
+    serve("log", parseLog, (r) => console.log(r.line));
+    inBody(
       "state.get",
       (p) => parseStateRead(p, "state.get"),
       (r, ctx) => stateOf(ctx, r.of).get(),
     );
-    serve(
+    inBody(
       "state.set",
       (p) => parseStateWrite(p, "state.set"),
       (r, ctx) => stateOf(ctx, r.of).set(r.patch),
     );
-    serve(
+    inBody(
       "state.trySet",
       (p) => parseStateWrite(p, "state.trySet"),
       async (r, ctx) => ({
         recorded: await stateOf(ctx, r.of).trySet(r.patch),
       }),
     );
-    serve("outcome.of", parseOutcome, (r, ctx) => ctx.outcomeOf(r.of) ?? null);
-    serve(
+    inBody("outcome.of", parseOutcome, (r, ctx) => ctx.outcomeOf(r.of) ?? null);
+    inBody(
       "outcomes",
       (p) => ({ target: parseTargeted(p, "outcomes") }),
       (_, ctx) => Object.fromEntries(ctx.outcomes()),
     );
-    serve(
+    inBody(
       "summary.report",
       parseSummary,
       (r, ctx) => ctx.reportSummary(r.pairs),
     );
-    serve("secret.register", parseSecret, (r) => registrar.register(r.value));
-    serve("log", parseLog, (r) => console.log(r.line));
-    serve(
+    inBody(
       "plan",
       (p) => ({ target: parseTargeted(p, "plan") }),
       (_, ctx) => planOf(ctx),
     );
-    serve(
+    inBody(
       "signals",
       (p) => ({ target: parseTargeted(p, "signals") }),
       (_, ctx) => Object.fromEntries(ctx.signals),
@@ -404,38 +430,91 @@ export class WorkerHost {
   }
 
   /**
-   * Run one target's body in the worker, serving the `exec` calls it makes
-   * until it settles. Rejects with the worker's message when the body fails.
+   * Run one target's body in the worker, serving the calls it makes until it
+   * settles. Rejects with the worker's message when the body fails.
    */
   async runTarget(name: string, ctx: TargetContext): Promise<void> {
-    const channel = new Channel();
-    this.#channels.set(name, channel);
-    const finished = this.#peer
-      .request("target.run", {
-        target: name,
-        runId: ctx.runId,
-        dryRun: ctx.dryRun,
-      })
-      .finally(() => channel.close());
-    finished.catch(() => {}); // Observed below; never an unhandled rejection.
     let grace: ReturnType<typeof setTimeout> | undefined;
     const onAbort = () => {
       void this.#peer.notify("run.cancel", { target: name });
       // A body that ignores the cancel is cut off after the grace period; the
-      // closed peer then rejects `finished`, so the loop below cannot hang.
+      // closed peer then rejects the request, so the loop cannot hang.
       grace = setTimeout(() => this.kill(), this.#graceMs);
     };
     ctx.signal.addEventListener("abort", onAbort, { once: true });
     try {
-      // Each call runs here, inside the body's async context, so the ambient
-      // dry-run echo and cancel signal reach the command.
-      for await (const call of channel) {
-        call.settle(() => call.run(ctx));
-      }
-      await finished;
+      await this.#attend(
+        name,
+        { signal: ctx.signal, ctx },
+        () =>
+          this.#peer.request("target.run", {
+            target: name,
+            runId: ctx.runId,
+            dryRun: ctx.dryRun,
+          }),
+      );
     } finally {
       clearTimeout(grace);
       ctx.signal.removeEventListener("abort", onAbort);
+    }
+  }
+
+  /** Start a service in the worker; its start phase may `exec`. */
+  async serviceStart(target: string): Promise<string> {
+    return parseHandle(
+      await this.#phase(
+        target,
+        () => this.#peer.request("service.start", { target }),
+      ),
+      target,
+    );
+  }
+
+  /** Ask whether a started service is ready. */
+  async serviceReady(target: string, handle: string): Promise<boolean> {
+    return parseBooleanAnswer(
+      "service.ready",
+      await this.#phase(
+        target,
+        () => this.#peer.request("service.ready", { target, handle }),
+      ),
+      target,
+    );
+  }
+
+  /** Stop a started service; its stop phase may `exec`. */
+  async serviceStop(target: string, handle: string): Promise<void> {
+    await this.#phase(
+      target,
+      () => this.#peer.request("service.stop", { target, handle }),
+    );
+  }
+
+  /** A service phase: served like a body, with no body context. */
+  #phase(target: string, request: () => Promise<unknown>): Promise<unknown> {
+    return this.#attend(target, { signal: this.#aborter.signal }, request);
+  }
+
+  /**
+   * Make `request` and, until it settles, serve the calls the worker makes for
+   * `name` inside `scope`: each runs here, in this async context, so the
+   * ambient dry-run echo, cancel signal and redactor reach it.
+   */
+  async #attend(
+    name: string,
+    scope: Scope,
+    request: () => Promise<unknown>,
+  ): Promise<unknown> {
+    const channel = new Channel();
+    this.#channels.set(name, channel);
+    const finished = request().finally(() => channel.close());
+    finished.catch(() => {}); // Observed below; never an unhandled rejection.
+    try {
+      for await (const call of channel) {
+        call.settle(() => call.run(scope));
+      }
+      return await finished;
+    } finally {
       this.#channels.delete(name);
     }
   }
@@ -454,15 +533,16 @@ export class WorkerHost {
     await this.#background.catch(() => {});
   }
 
-  /** Kill the worker outright. */
+  /** Kill the worker outright, and whatever its service phases spawned. */
   kill(): void {
+    this.#aborter.abort();
     this.#peer.close();
     signal(this.#child, "SIGTERM");
   }
 
   #enqueue(
     target: string,
-    run: (ctx: TargetContext) => Promise<unknown>,
+    run: (scope: Scope) => Promise<unknown>,
   ): Promise<unknown> {
     const channel = this.#channels.get(target);
     if (channel === undefined) {
@@ -473,7 +553,7 @@ export class WorkerHost {
     });
   }
 
-  async #exec(request: ExecRequest, ctx: TargetContext): Promise<unknown> {
+  async #exec(request: ExecRequest, signal: AbortSignal): Promise<unknown> {
     // shortcut: the engine's own environment is not cleared, so a variable the
     // worker lacks but the engine has still reaches the child; add clearEnv
     // once a worker needs an exact environment.
@@ -481,10 +561,10 @@ export class WorkerHost {
       .cwd(request.cwd ?? this.#hello.cwd)
       .env({ ...this.#hello.env, ...request.env })
       .noThrow()
-      .signal(ctx.signal);
+      .signal(signal);
     if (request.stdin !== undefined) command = command.stdin(request.stdin);
     const output = await command;
-    if (ctx.signal.aborted) throw new RpcFailure(CANCELLED, "cancelled");
+    if (signal.aborted) throw new RpcFailure(CANCELLED, "cancelled");
     return { code: output.code, stdout: output.stdout, stderr: output.stderr };
   }
 }

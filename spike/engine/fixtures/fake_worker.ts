@@ -16,7 +16,10 @@
  * execs, each answer printed as an `answer:` line for the tests to read back.
  * A `settings` object answers `target.settings`, a `wait_answer` answers
  * `wait.check`, and a `validate_fail` names the check that `target.validate`
- * fails. A top-level `failHook` names the build hook that throws.
+ * fails. A service target answers `service.start` with `service_handle`
+ * after running its `exec` list, `service.ready` with the next of
+ * `ready_answers` (the last one repeats), and `service.stop` with nothing.
+ * A top-level `failHook` names the build hook that throws.
  *
  * It prints every call the engine makes as a `call:` line, and the
  * `build.configure` payload as a `configure:` line, on stdout on purpose: a
@@ -42,6 +45,8 @@ interface Script {
   settings: unknown;
   waitAnswer: unknown;
   validateFail?: string;
+  serviceHandle: unknown;
+  readyAnswers: unknown[];
 }
 
 const PLAN: unknown = JSON.parse(Deno.env.get("ZUKE_FAKE_PLAN") ?? "{}");
@@ -73,6 +78,8 @@ if (isRecord(PLAN) && Array.isArray(PLAN.targets)) {
       validateFail: typeof t.validate_fail === "string"
         ? t.validate_fail
         : undefined,
+      serviceHandle: t.service_handle ?? "h1",
+      readyAnswers: Array.isArray(t.ready_answers) ? t.ready_answers : [true],
     });
   }
 }
@@ -116,30 +123,8 @@ async function awaitBarrier(name: string): Promise<void> {
   }
 }
 
-async function runTarget(peer: Peer, params: unknown): Promise<unknown> {
-  const name = targetOf(params);
-  const s = script(params);
-  console.log(`call: target.run ${name}`);
-  started.add(name);
-  if (s.barrier !== undefined) await awaitBarrier(s.barrier);
-  let lastStdout = "";
-  for (const argv of s.exec) {
-    const result = await peer.request("exec", {
-      target: s.execAs ?? name,
-      argv,
-    });
-    lastStdout = isRecord(result) && typeof result.stdout === "string"
-      ? result.stdout
-      : "";
-  }
-  if (
-    s.expectStdout !== undefined &&
-    !lastStdout.includes(s.expectStdout)
-  ) {
-    throw new Error(
-      `expected stdout to contain "${s.expectStdout}", got "${lastStdout.trim()}"`,
-    );
-  }
+/** Issue the script's calls to the engine, printing each answer. */
+async function callAll(peer: Peer, name: string, s: Script): Promise<void> {
   for (const call of s.calls) {
     try {
       const answer = await peer.request(call.method, {
@@ -155,6 +140,39 @@ async function runTarget(peer: Peer, params: unknown): Promise<unknown> {
       );
     }
   }
+}
+
+/** Run the script's execs through the engine; the last one's stdout. */
+async function execAll(peer: Peer, name: string, s: Script): Promise<string> {
+  let lastStdout = "";
+  for (const argv of s.exec) {
+    const result = await peer.request("exec", {
+      target: s.execAs ?? name,
+      argv,
+    });
+    lastStdout = isRecord(result) && typeof result.stdout === "string"
+      ? result.stdout
+      : "";
+  }
+  return lastStdout;
+}
+
+async function runTarget(peer: Peer, params: unknown): Promise<unknown> {
+  const name = targetOf(params);
+  const s = script(params);
+  console.log(`call: target.run ${name}`);
+  started.add(name);
+  if (s.barrier !== undefined) await awaitBarrier(s.barrier);
+  const lastStdout = await execAll(peer, name, s);
+  if (
+    s.expectStdout !== undefined &&
+    !lastStdout.includes(s.expectStdout)
+  ) {
+    throw new Error(
+      `expected stdout to contain "${s.expectStdout}", got "${lastStdout.trim()}"`,
+    );
+  }
+  await callAll(peer, name, s);
   const attempt = (attempts.get(name) ?? 0) + 1;
   attempts.set(name, attempt);
   if (attempt <= s.failTimes) {
@@ -180,6 +198,23 @@ peer.on("target.condition", (params) => {
 peer.on("target.cacheKey", (params) => {
   console.log(`call: target.cacheKey ${targetOf(params)}`);
   return script(params).cacheKey;
+});
+peer.on("service.start", async (params) => {
+  const name = targetOf(params);
+  console.log(`call: service.start ${name}`);
+  await execAll(peer, name, script(params));
+  await callAll(peer, name, script(params));
+  return { handle: script(params).serviceHandle };
+});
+peer.on("service.ready", (params) => {
+  const s = script(params);
+  const handle = isRecord(params) ? params.handle : undefined;
+  console.log(`call: service.ready ${targetOf(params)} ${String(handle)}`);
+  return s.readyAnswers.length > 1 ? s.readyAnswers.shift() : s.readyAnswers[0];
+});
+peer.on("service.stop", (params) => {
+  const handle = isRecord(params) ? params.handle : undefined;
+  console.log(`call: service.stop ${targetOf(params)} ${String(handle)}`);
 });
 peer.on("target.settings", (params) => {
   console.log(`call: target.settings ${targetOf(params)}`);

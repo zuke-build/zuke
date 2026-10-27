@@ -12,6 +12,7 @@ import {
   parseBooleanAnswer,
   parseCacheKey,
   parseExec,
+  parseHandle,
   parseHello,
   parseLog,
   parseManifest,
@@ -71,8 +72,11 @@ Deno.test("parseHello rejects a wrong token, protocol, or shape", () => {
   );
 });
 
-const BARE_TARGET = {
+const BARE_TARGET: ManifestTarget = {
   name: "a",
+  kind: "target",
+  ready: false,
+  readyTimeoutMs: undefined,
   description: "",
   dependsOn: [],
   unlisted: false,
@@ -169,6 +173,9 @@ Deno.test("parseManifest carries every target setting, parameter kind, group and
   });
   assertEquals(full.targets[0], {
     name: "a",
+    kind: "target",
+    ready: false,
+    readyTimeoutMs: undefined,
     description: "",
     dependsOn: [],
     unlisted: true,
@@ -340,6 +347,35 @@ Deno.test("parseSettings takes the declared sections and names what is missing o
   for (const [value, target, message] of cases) {
     assertThrows(() => parseSettings(value, target), Error, message);
   }
+});
+
+Deno.test("a service target carries its kind, probe flag and timeout, and refuses another kind", () => {
+  const [db] = parseManifest({
+    name: "B",
+    targets: [{
+      name: "db",
+      kind: "service",
+      ready: true,
+      readyTimeoutMs: 100,
+    }],
+  }).targets;
+  assertEquals([db?.kind, db?.ready, db?.readyTimeoutMs], [
+    "service",
+    true,
+    100,
+  ]);
+  assertThrows(
+    () => parseManifest({ name: "B", targets: [{ name: "x", kind: "job" }] }),
+    Error,
+    '"kind" must be "target" or "service"',
+  );
+  assertEquals(parseHandle({ handle: "pg-1" }, "db"), "pg-1");
+  assertThrows(
+    () => parseHandle({ handle: "" }, "db"),
+    Error,
+    'service.start: "db" must answer a handle',
+  );
+  assertThrows(() => parseHandle(null, "db"), Error, "must answer a handle");
 });
 
 Deno.test("parseBooleanAnswer and parseCacheKey accept one type and name the target", () => {

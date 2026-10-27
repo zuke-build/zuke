@@ -26,6 +26,12 @@ export interface ManifestRetry {
 export interface ManifestTarget {
   /** The target's name, also its CLI name. */
   readonly name: string;
+  /** A plain target with a body, or a service the engine starts and stops. */
+  readonly kind: "target" | "service";
+  /** Whether the worker answers `service.ready` for this service. */
+  readonly ready: boolean;
+  /** How long the readiness probe may take before the service fails. */
+  readonly readyTimeoutMs?: number;
   /** The `--list` description. */
   readonly description: string;
   /** Names of targets this one depends on; each must be declared earlier. */
@@ -505,8 +511,15 @@ export function parseHello(value: unknown, expected: string): Hello {
 
 function parseTarget(t: Fields): ManifestTarget {
   const retry = t.objectOr("retry");
+  const kind = t.stringOr("kind", "target");
+  if (kind !== "target" && kind !== "service") {
+    t.reject("kind", 'be "target" or "service"');
+  }
   return {
     name: t.string("name"),
+    kind,
+    ready: t.booleanOr("ready", false),
+    readyTimeoutMs: t.numberIfSet("readyTimeoutMs"),
     description: t.stringOr("description", ""),
     dependsOn: t.stringsOr("dependsOn", []),
     unlisted: t.booleanOr("unlisted", false),
@@ -687,6 +700,15 @@ export function parseSettings(
     };
   }
   return settings;
+}
+
+/** Validate a `service.start` answer: the handle the worker chose. */
+export function parseHandle(value: unknown, target: string): string {
+  const handle = isRecord(value) ? value.handle : undefined;
+  if (typeof handle !== "string" || handle === "") {
+    throw new Error(`service.start: "${target}" must answer a handle`);
+  }
+  return handle;
 }
 
 /** Validate a `target.cacheKey` answer. */

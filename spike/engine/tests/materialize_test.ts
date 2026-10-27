@@ -5,6 +5,7 @@ import {
   discoverParameters,
   discoverTargets,
   LockSettings,
+  ServiceBuilder,
   ValidateDuringSettings,
   WaitSettings,
 } from "@zuke/core";
@@ -42,6 +43,9 @@ function recorder(
         })),
       waitCheck: (t) => record(`waitCheck ${t}`).then(() => true),
       validate: (t, check) => record(`validate ${t} ${check}`),
+      serviceStart: (t) => record(`serviceStart ${t}`).then(() => "h1"),
+      serviceReady: (t, h) => record(`serviceReady ${t} ${h}`).then(() => true),
+      serviceStop: (t, h) => record(`serviceStop ${t} ${h}`),
       runTarget: (t) => record(`run ${t}`),
       finish: (code, suspended) => record(`finish ${code} ${suspended}`),
     },
@@ -223,6 +227,36 @@ Deno.test("a resumeWhen gate asks the worker, and onTimeout resolves like onFail
   const timeout = wait?.onTimeout_?.();
   assertEquals(typeof timeout === "string" ? timeout : timeout?.name_, "undo");
   assertEquals(wait?.timeout_, "1h");
+});
+
+Deno.test("a service target starts, probes and stops in the worker with its handle", async () => {
+  const { runner, calls } = recorder();
+  const Remote = materialize(
+    parseManifest({
+      name: "B",
+      targets: [
+        { name: "db", kind: "service", ready: true, readyTimeoutMs: 250 },
+        { name: "quiet", kind: "service" },
+      ],
+    }),
+    runner,
+  );
+  const targets = discoverTargets(new Remote());
+  const db = targets.get("db");
+  assertEquals(db instanceof ServiceBuilder, true);
+  if (!(db instanceof ServiceBuilder)) return;
+  const running = await db.launch_("db");
+  await running.stop();
+  const quiet = targets.get("quiet");
+  if (!(quiet instanceof ServiceBuilder)) return;
+  await (await quiet.launch_("quiet")).stop();
+  assertEquals(calls, [
+    "serviceStart db",
+    "serviceReady db h1",
+    "serviceStop db h1",
+    "serviceStart quiet",
+    "serviceStop quiet h1",
+  ]);
 });
 
 Deno.test("onStart configures the worker, then the hooks the manifest flags run in order", async () => {

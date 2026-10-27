@@ -20,6 +20,7 @@ import {
   type Parameter,
   parameter,
   resumeWhen,
+  service,
   target,
   type TargetBuilder,
   type TargetStatus,
@@ -50,6 +51,12 @@ export interface TargetRunner {
   waitCheck: WorkerHost["waitCheck"];
   /** Run one `validateDuring` check. */
   validate: WorkerHost["validate"];
+  /** Start a service; answers its handle. */
+  serviceStart: WorkerHost["serviceStart"];
+  /** Ask whether a service is ready. */
+  serviceReady: WorkerHost["serviceReady"];
+  /** Stop a service. */
+  serviceStop: WorkerHost["serviceStop"];
   /** Run the named target's body; reject when it fails. */
   runTarget: WorkerHost["runTarget"];
   /** Tell the worker the run is over. */
@@ -103,6 +110,26 @@ class Fields {
       configurable: true,
     });
   }
+}
+
+/** A service whose start, readiness and stop live in the worker. */
+function serviceOf(t: ManifestTarget, runner: TargetRunner): TargetBuilder {
+  let handle: string | undefined;
+  const builder = service().start(async () => {
+    handle = await runner.serviceStart(t.name);
+    const started = handle;
+    return { stop: () => runner.serviceStop(t.name, started) };
+  });
+  if (t.ready) {
+    builder.readyWhen(() => {
+      if (handle === undefined) {
+        throw new Error(`service "${t.name}": ready was asked before start`);
+      }
+      return runner.serviceReady(t.name, handle);
+    });
+  }
+  if (t.readyTimeoutMs !== undefined) builder.readyTimeout(t.readyTimeoutMs);
+  return builder;
 }
 
 /** Whether a target declared any setting fetched by `target.settings`. */
@@ -160,10 +187,14 @@ export function materialize(
           }
           return builder;
         });
-        const builder = target().description(t.description).dependsOn(...deps)
+        const builder = (t.kind === "service"
+          ? serviceOf(t, runner)
+          : target().executes((ctx) =>
+            runner.runTarget(t.name, ctx)
+          ))
+          .description(t.description).dependsOn(...deps)
           .inputs(...t.inputs).outputs(...t.outputs).produces(...t.produces)
-          .retry(t.retry.times, t.retry.delayMs)
-          .executes((ctx) => runner.runTarget(t.name, ctx));
+          .retry(t.retry.times, t.retry.delayMs);
         if (t.condition) builder.onlyWhen(() => runner.condition(t.name));
         if (t.cacheKey) builder.cacheKey(() => runner.cacheKey(t.name));
         if (t.unlisted) builder.unlisted();
