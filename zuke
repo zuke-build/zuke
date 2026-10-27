@@ -177,16 +177,24 @@ fi
 export PATH="$(dirname "$deno_bin"):$PATH"
 
 # No build file: zuke.json describes a build another SDK hosts, run by the
-# @zuke/engine release it names. No lockfile notice here — such a project has
-# no Deno config for Deno to write one into.
+# @zuke/engine release it names. The lock is named explicitly, since Deno looks
+# for one only beside a Deno config, which such a project has no reason to
+# keep; with no lock there is none to write, so no notice either.
 if [ ! -f zuke.ts ]; then
-  engine_version="$(sed -n 's/.*"engine"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' zuke.json)"
+  # sed, not a JSON parser: the first exact version under an "engine" key on
+  # one line, which a zuke.json has one of.
+  engine_version="$(sed -n 's/^.*"engine"[[:space:]]*:[[:space:]]*"\([^"]*\)".*$/\1/p' zuke.json 2>/dev/null || true)"
   if [ -z "$engine_version" ]; then
     echo "zuke: no zuke.ts here, and zuke.json names no 'engine' version to run its 'sdk' build with" >&2
     exit 1
   fi
+  engine_version_pattern='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
+  if ! [[ "$engine_version" =~ $engine_version_pattern ]]; then
+    echo "zuke: zuke.json names 'engine': '$engine_version', which is not an exact version like 1.2.3" >&2
+    exit 1
+  fi
   if [ -f deno.lock ]; then
-    exec "$deno_bin" run -A --frozen "jsr:@zuke/engine@$engine_version" "$@"
+    exec "$deno_bin" run -A --lock=deno.lock --frozen "jsr:@zuke/engine@$engine_version" "$@"
   fi
   exec "$deno_bin" run -A "jsr:@zuke/engine@$engine_version" "$@"
 fi

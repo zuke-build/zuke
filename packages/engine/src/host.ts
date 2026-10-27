@@ -20,7 +20,7 @@
 import type { TargetContext, TargetStateHandle } from "@zuke/core";
 import { Command } from "@zuke/core/shell";
 import { ToolSettings } from "@zuke/core/tooling";
-import { Peer, RpcFailure } from "./peer.ts";
+import { MAX_LINE, Peer, RpcFailure } from "./peer.ts";
 import {
   CANCELLED,
   type ConfigureParams,
@@ -165,12 +165,22 @@ function forwardLines(
         const lines = buffered.split("\n");
         buffered = lines.pop() ?? "";
         for (const line of lines) write(line);
+        // A print with no newline in sight is still output: pass it on in
+        // bounded pieces rather than hold it whole.
+        if (buffered.length > MAX_LINE) {
+          write(buffered);
+          buffered = "";
+        }
       },
       close() {
         if (buffered !== "") write(buffered);
       },
     }),
   );
+}
+
+function reasonOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function after(ms: number): Promise<false> {
@@ -307,7 +317,7 @@ export class WorkerHost {
   readonly #graceMs: number;
   readonly #channels = new Map<string, Channel>();
   /** Aborted when the host is killed: the signal a service phase's execs get. */
-  readonly #aborter = new AbortController();
+  #aborter = new AbortController();
   readonly #registrar = new SecretRegistrar();
   #worker: Worker;
   /** The exit code the current worker died with, until it is replaced. */
@@ -461,24 +471,55 @@ export class WorkerHost {
   }
 
   async #respawn(): Promise<void> {
+    // The worker being replaced may still be running with its socket gone
+    // (it closed the connection, or shrugged off kill()'s SIGTERM): stop it,
+    // so no worker outlives the run that spawned it.
+    await this.#stop(this.#worker);
     const worker = await spawn(this.#options);
-    this.#dead = undefined;
-    this.#finished = false;
-    this.#worker = this.#adopt(worker);
-    const manifest = JSON.stringify(
-      parseManifest(await worker.peer.request("build.describe", {})),
-    );
-    if (this.#manifest !== undefined && manifest !== this.#manifest) {
-      this.#fatal = new Error(
-        `zuke: the replacement worker (${this.#options.command.join(" ")}) ` +
-          `described a different build; a worker spawned again for the same ` +
-          `run must describe the build the first one did`,
-      );
+    try {
+      await this.#takeOver(worker);
+    } catch (error) {
+      // A replacement that cannot take over is the last one tried for the run; the
+      // worker is adopted only once it has, so nothing is ever served by one
+      // that is not configured.
+      this.#fatal = error instanceof Error ? error : new Error(String(error));
       await this.#stop(worker);
       throw this.#fatal;
     }
-    if (this.#configured !== undefined) {
+    this.#dead = undefined;
+    this.#finished = false;
+    this.#worker = this.#adopt(worker);
+  }
+
+  /** Have `worker` describe the build the first worker did, then configure it as the first was. */
+  async #takeOver(worker: Worker): Promise<void> {
+    const command = this.#options.command.join(" ");
+    let manifest: string;
+    try {
+      manifest = JSON.stringify(
+        parseManifest(await worker.peer.request("build.describe", {})),
+      );
+    } catch (error) {
+      throw new Error(
+        `zuke: the replacement worker (${command}) could not describe the ` +
+          `build: ${reasonOf(error)}`,
+      );
+    }
+    if (this.#manifest !== undefined && manifest !== this.#manifest) {
+      throw new Error(
+        `zuke: the replacement worker (${command}) described a different ` +
+          `build; a worker spawned again for the same run must describe the ` +
+          `build the first one did`,
+      );
+    }
+    if (this.#configured === undefined) return;
+    try {
       await worker.peer.request("build.configure", this.#configured);
+    } catch (error) {
+      throw new Error(
+        `zuke: the replacement worker (${command}) refused build.configure: ` +
+          reasonOf(error),
+      );
     }
   }
 
@@ -670,6 +711,8 @@ export class WorkerHost {
   /** Kill the worker outright, and whatever its service phases spawned. */
   kill(): void {
     this.#aborter.abort();
+    // This run's phases are done; the next run's get a live signal.
+    this.#aborter = new AbortController();
     this.#worker.peer.close();
     signal(this.#worker.child, "SIGTERM");
   }

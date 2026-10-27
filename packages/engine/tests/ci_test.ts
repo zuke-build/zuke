@@ -132,6 +132,7 @@ Deno.test("parseCi carries every field of a cicd spec, with targets as names", (
 Deno.test("parseCi names the malformed field", () => {
   const refuse = (entry: Record<string, unknown>, message: string) =>
     assertThrows(() => parsed([{ name: "ci", ...entry }]), Error, message);
+  refuse({ name: "a b" }, '"name" must be an identifier');
   refuse(
     { provider: "jenkins" },
     'manifest.ci[0]: field "provider" must be one of github, gitlab, azure, bitbucket',

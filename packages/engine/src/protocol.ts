@@ -326,8 +326,11 @@ function parseTarget(t: Fields): ManifestTarget {
   if (kind !== "target" && kind !== "service") {
     t.reject("kind", 'be "target" or "service"');
   }
+  if (kind === "target" && (t.has("ready") || t.has("readyTimeoutMs"))) {
+    t.reject("ready", 'be absent on a "target"; only a service is probed');
+  }
   return {
-    name: t.string("name"),
+    name: t.identifier("name"),
     kind,
     ready: t.booleanOr("ready", false),
     readyTimeoutMs: t.numberIfSet("readyTimeoutMs"),
@@ -361,7 +364,7 @@ function parseTarget(t: Fields): ManifestTarget {
 
 function parseParameter(p: Fields): ManifestParameter {
   const base: ManifestParameterBase = {
-    name: p.string("name"),
+    name: p.identifier("name"),
     description: p.stringOr("description", ""),
     required: p.booleanOr("required", false),
     array: p.booleanOr("array", false),
@@ -375,8 +378,11 @@ function parseParameter(p: Fields): ManifestParameter {
     p.reject("default", "be absent on an array parameter");
   }
   if (kind === "number") {
-    if (fallback !== undefined && typeof fallback !== "number") {
-      p.reject("default", "be a number");
+    if (
+      fallback !== undefined &&
+      (typeof fallback !== "number" || !Number.isFinite(fallback))
+    ) {
+      p.reject("default", "be a finite number");
     }
     return { ...base, kind, default: fallback };
   }
@@ -402,25 +408,21 @@ function parseParameter(p: Fields): ManifestParameter {
 }
 
 function parseConfig(c: Fields): ManifestConfig {
-  const deadline = c.raw("deadline");
-  if (
-    deadline !== undefined && typeof deadline !== "string" &&
-    typeof deadline !== "number"
-  ) {
-    c.reject("deadline", "be a duration string or milliseconds");
-  }
-  return { deadline, unforceable: c.stringsOr("unforceable", []) };
+  return {
+    deadline: c.durationIfSet("deadline"),
+    unforceable: c.stringsOr("unforceable", []),
+  };
 }
 
 /** Validate a `build.describe` result. */
 export function parseManifest(value: unknown): Manifest {
   const o = fieldsOf(value, "manifest");
   return {
-    name: o.string("name"),
+    name: o.identifier("name"),
     targets: o.objects("targets").map(parseTarget),
     parameters: o.objectsOr("parameters").map(parseParameter),
     groups: o.objectsOr("groups").map((g) => ({
-      name: g.string("name"),
+      name: g.identifier("name"),
       members: g.strings("members"),
     })),
     hooks: parseHooks(o.objectOr("hooks")),

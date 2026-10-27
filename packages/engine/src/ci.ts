@@ -351,7 +351,7 @@ function pins(c: Fields): Record<string, CiUses> | undefined {
 /** Parse one `ci` entry of the manifest. */
 export function parseCi(c: Fields): ManifestCi {
   return {
-    name: c.string("name"),
+    name: c.identifier("name"),
     ...opt("provider", oneOf(c, "provider", PROVIDERS)),
     ...opt("path", c.stringIfSet("path")),
     ...opt(

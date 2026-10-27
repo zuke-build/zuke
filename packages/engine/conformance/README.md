@@ -1,8 +1,10 @@
 # Engine conformance cases
 
 Each `*.json` file is one case an SDK's worker must satisfy and the engine must
-drive the same way. `tests/integration/engine_conformance_test.ts` replays every
-case through the CLI `main()` against the scripted fake worker.
+drive the same way.
+[`tests/integration/engine_conformance_test.ts`](https://github.com/zuke-build/zuke/blob/master/tests/integration/engine_conformance_test.ts)
+in the Zuke repository replays every case through the CLI `main()` against the
+scripted fake worker.
 
 | Field       | Meaning                                                                                                                                                                                                |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

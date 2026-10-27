@@ -19,7 +19,9 @@
  * fails. A service target answers `service.start` with `service_handle`
  * after running its `exec` list, `service.ready` with the next of
  * `ready_answers` (the last one repeats), and `service.stop` with nothing.
- * A `crash_exit` code ends the worker process from inside the body, for the
+ * A `hangup` closes the connection from inside the body and keeps the
+ * process alive until the engine stops it, which `ZUKE_FAKE_HANGUP_FILE`
+ * records. A `crash_exit` code ends the worker process from inside the body, for the
  * engine's respawn. A top-level `failHook` names the build hook that throws.
  * With `ZUKE_FAKE_GENERATION_FILE` set, a worker that finds the file is a
  * replacement and describes `ZUKE_FAKE_RESPAWN_PLAN` when that is set.
@@ -51,6 +53,7 @@ interface Script {
   serviceHandle: unknown;
   readyAnswers: unknown[];
   crashExit?: number;
+  hangup: boolean;
 }
 
 const GENERATION_FILE = Deno.env.get("ZUKE_FAKE_GENERATION_FILE");
@@ -98,6 +101,7 @@ if (isRecord(PLAN) && Array.isArray(PLAN.targets)) {
       serviceHandle: t.service_handle ?? "h1",
       readyAnswers: Array.isArray(t.ready_answers) ? t.ready_answers : [true],
       crashExit: typeof t.crash_exit === "number" ? t.crash_exit : undefined,
+      hangup: t.hangup === true,
     });
   }
 }
@@ -192,6 +196,13 @@ async function runTarget(peer: Peer, params: unknown): Promise<unknown> {
   }
   await callAll(peer, name, s);
   if (s.crashExit !== undefined) Deno.exit(s.crashExit);
+  if (s.hangup) {
+    // The socket goes, the process stays: what the engine must stop itself.
+    hangingUp = true;
+    setInterval(() => {}, 1_000); // keeps the process alive once serve() ends
+    peer.close();
+    await new Promise(() => {});
+  }
   const attempt = (attempts.get(name) ?? 0) + 1;
   attempts.set(name, attempt);
   if (attempt <= s.failTimes) {
@@ -199,6 +210,17 @@ async function runTarget(peer: Peer, params: unknown): Promise<unknown> {
   }
   if (s.fail !== undefined) throw new RpcFailure(-32000, s.fail);
   return {};
+}
+
+/** Set by a `hangup` body: the connection ends but the process must not. */
+let hangingUp = false;
+const HANGUP_FILE = Deno.env.get("ZUKE_FAKE_HANGUP_FILE");
+if (HANGUP_FILE !== undefined && Deno.build.os !== "windows") {
+  // Record that the engine stopped this process, then go.
+  Deno.addSignalListener("SIGTERM", () => {
+    Deno.writeTextFileSync(HANGUP_FILE, "terminated");
+    Deno.exit(0);
+  });
 }
 
 const [hostname, port] = (Deno.env.get("ZUKE_ENGINE_ADDR") ?? "").split(":");
@@ -292,6 +314,7 @@ try {
   });
   await serving;
 } finally {
-  // An engine that hangs up, as it does on a refused greeting, is the end.
-  Deno.exit(0);
+  // An engine that hangs up, as it does on a refused greeting, is the end,
+  // unless this worker is the one that hung up and is to be stopped.
+  if (!hangingUp) Deno.exit(0);
 }

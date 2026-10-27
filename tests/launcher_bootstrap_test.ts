@@ -281,8 +281,21 @@ Deno.test("a scaffolded launcher runs the engine release zuke.json names when th
         await Deno.remove(`${dir}/deno.lock`);
       }
     })();
-    assertEquals(frozen.out.split("\n")[2], "--frozen");
+    // Deno finds a lock only beside a config, so a hosted build names it.
+    assertEquals(frozen.out.split("\n").slice(2, 4), [
+      "--lock=deno.lock",
+      "--frozen",
+    ]);
     assertEquals(frozen.err, ""); // no lockfile notice for a hosted build
+
+    const range = await launch('{ "engine": "^1" }\n');
+    assertEquals(range.code, 1);
+    assertEquals(range.out, "");
+    assertEquals(
+      range.err.includes("names 'engine': '^1', which is not an exact version"),
+      true,
+      range.err,
+    );
 
     const bare = await launch('{ "name": "Hosted" }\n');
     assertEquals(bare.code, 1);

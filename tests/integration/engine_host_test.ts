@@ -54,6 +54,7 @@ interface PlanTarget {
   onCancel?: string;
   onFailure?: string;
   crash_exit?: number;
+  hangup?: boolean;
 }
 
 /** Start the fake worker on `plan` and materialise its build. */
@@ -791,4 +792,95 @@ Deno.test("an MCP server lists the twin's tools for a worker-described build, an
       assertStringIncludes(text, "b succeeded");
     }
   });
+});
+
+Deno.test("a replacement worker that cannot describe the build ends the run, naming why, and serves nothing", async () => {
+  await withStateDir(async (dir) => {
+    Deno.env.set("ZUKE_FAKE_GENERATION_FILE", `${dir}/generation`);
+    Deno.env.set("ZUKE_FAKE_RESPAWN_PLAN", JSON.stringify({ name: 5 }));
+    try {
+      const { host, Remote } = await fake([
+        { name: "deploy", onCancel: "rollback" },
+        {
+          name: "verify",
+          dependsOn: ["deploy"],
+          onFailure: "cancel-run",
+          crash_exit: 3,
+        },
+        { name: "rollback" },
+      ]);
+      try {
+        const result = await runCli(Remote, ["verify"]);
+        assertEquals(result.code, 1);
+        assertStringIncludes(
+          result.out + result.err,
+          'could not describe the build: manifest: field "name" must be a string',
+        );
+        assertEquals(result.err.includes("call: target.run rollback"), false);
+      } finally {
+        await host.finish(1);
+      }
+    } finally {
+      Deno.env.delete("ZUKE_FAKE_GENERATION_FILE");
+      Deno.env.delete("ZUKE_FAKE_RESPAWN_PLAN");
+    }
+  });
+});
+
+Deno.test("kill() ends one run's phases without poisoning the next run's service phases", async () => {
+  await withStateDir(async (dir) => {
+    const marker = `${dir}/service-marker`;
+    const { host, Remote } = await fake([
+      {
+        name: "db",
+        kind: "service",
+        exec: [
+          evalArgv(`Deno.writeTextFileSync(${JSON.stringify(marker)}, "up")`),
+        ],
+      },
+      { name: "test", dependsOn: ["db"] },
+    ]);
+    // The host outlives a kill, as it does in an MCP server: the next run gets
+    // a fresh worker, and its service's exec a live signal.
+    host.kill();
+    const result = await runCli(Remote, ["test"]);
+    assertEquals(result.code, 0, result.out + result.err);
+    assertEquals(await Deno.readTextFile(marker), "up");
+    assertStringIncludes(result.err, "worker: call: service.stop db h1");
+  });
+});
+
+Deno.test({
+  name:
+    "a worker that hangs up but keeps running is stopped before its replacement serves the compensation",
+  ignore: Deno.build.os === "windows", // the fake records SIGTERM, which Windows has no listener for
+  fn: async () => {
+    await withStateDir(async (dir) => {
+      const hangup = `${dir}/hangup`;
+      Deno.env.set("ZUKE_FAKE_HANGUP_FILE", hangup);
+      try {
+        const { host, Remote } = await fake([
+          { name: "deploy", onCancel: "rollback" },
+          {
+            name: "verify",
+            dependsOn: ["deploy"],
+            onFailure: "cancel-run",
+            hangup: true,
+          },
+          { name: "rollback" },
+        ]);
+        try {
+          const result = await runCli(Remote, ["verify"]);
+          assertEquals(result.code, 1);
+          assertStringIncludes(result.err, "worker: call: target.run rollback");
+          // The first worker was told to stop before the second one started.
+          assertEquals(await Deno.readTextFile(hangup), "terminated");
+        } finally {
+          await host.finish(1);
+        }
+      } finally {
+        Deno.env.delete("ZUKE_FAKE_HANGUP_FILE");
+      }
+    });
+  },
 });

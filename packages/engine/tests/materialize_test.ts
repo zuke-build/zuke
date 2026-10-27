@@ -381,6 +381,17 @@ Deno.test("materialize refuses a duplicate, a forward dependency, or an undeclar
     { name: "B", targets: [{ name: "a" }], parameters: [{ name: "a" }] },
     '"a" is declared twice',
   );
+  // A name every build already has would shadow what core calls by name.
+  for (const member of ["onStart", "deadline", "constructor", "toString"]) {
+    refuse(
+      { name: "B", targets: [{ name: member }] },
+      `"${member}" cannot be declared; every build already has a member`,
+    );
+  }
+  refuse(
+    { name: "B", targets: [{ name: "a" }], parameters: [{ name: "registry" }] },
+    '"registry" cannot be declared',
+  );
   refuse(
     { name: "B", targets: [{ name: "a", dependsOn: ["b"] }, { name: "b" }] },
     'target "a" depends on "b", which is not declared before it',

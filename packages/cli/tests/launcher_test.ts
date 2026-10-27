@@ -1,13 +1,16 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
+// cspell:ignore notmatch
 
 import {
   assertEquals,
   assertStringIncludes,
 } from "../../core/tests/_assert.ts";
 import {
+  badEngineNotice,
   DENO_INSTALL_DOCS,
   ENGINE_FIELD,
+  ENGINE_VERSION_ERE,
   launcherBash,
   launcherPwsh,
   noEngineNotice,
@@ -214,13 +217,26 @@ Deno.test("a root without zuke.ts runs the engine release its zuke.json names", 
     const branch = bash.indexOf("if [ ! -f zuke.ts ]; then");
     assertEquals(branch > 0, true);
     const tail = bash.slice(branch, bash.indexOf("# The first run"));
-    assertStringIncludes(tail, `'s/.*"${ENGINE_FIELD}"`);
-    assertStringIncludes(tail, 'zuke.json)"');
+    assertStringIncludes(tail, `'s/^.*"${ENGINE_FIELD}"`);
+    assertStringIncludes(tail, 'zuke.json 2>/dev/null || true)"');
     assertStringIncludes(tail, `echo "${noEngineNotice()}" >&2`);
     assertStringIncludes(tail, "exit 1");
     assertStringIncludes(
       tail,
-      `exec "$deno_bin" run -A --frozen "jsr:@zuke/engine@$engine_version" "$@"`,
+      `exec "$deno_bin" run -A --lock=deno.lock --frozen "jsr:@zuke/engine@$engine_version" "$@"`,
+    );
+    // The value must be one exact release, by the pattern all three readers share.
+    assertStringIncludes(
+      tail,
+      `engine_version_pattern='${ENGINE_VERSION_ERE}'`,
+    );
+    assertStringIncludes(
+      tail,
+      `[[ "$engine_version" =~ $engine_version_pattern ]]`,
+    );
+    assertStringIncludes(
+      tail,
+      `echo "${badEngineNotice("$engine_version")}" >&2`,
     );
     assertStringIncludes(
       tail,
@@ -236,9 +252,12 @@ Deno.test("a root without zuke.ts runs the engine release its zuke.json names", 
       `$ownBuild = Test-Path (Join-Path $dir "zuke.ts")`,
     );
     assertStringIncludes(pwsh, `ConvertFrom-Json).${ENGINE_FIELD}`);
-    assertStringIncludes(pwsh, `Write-Error "${noEngineNotice()}"`);
+    assertStringIncludes(pwsh, `throw "${noEngineNotice()}"`);
     assertEquals(noEngineNotice().includes('"'), false); // verbatim in both
     assertStringIncludes(pwsh, `$build = "jsr:@zuke/engine@$engineVersion"`);
+    assertStringIncludes(pwsh, `-notmatch '${ENGINE_VERSION_ERE}'`);
+    assertStringIncludes(pwsh, `throw "${badEngineNotice("$engineVersion")}"`);
+    assertStringIncludes(pwsh, `$denoArgs += "--lock=deno.lock"`);
     // The lockfile warning is the build file's alone.
     assertStringIncludes(pwsh, "} elseif ($ownBuild) {\n  Write-Warning");
   }

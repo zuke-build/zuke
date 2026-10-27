@@ -551,9 +551,29 @@ Deno.test("a root without zuke.ts runs the engine release its zuke.json names", 
     "jsr:@zuke/engine@1.2.3",
     "--list",
   ]);
+  // Deno finds a lock only beside a config, so the engine route names it.
   assertEquals(
     buildRunArgs({ ...location, frozen: true }, ["ci"]),
-    ["run", "-A", "--frozen", "jsr:@zuke/engine@1.2.3", "ci"],
+    [
+      "run",
+      "-A",
+      "--lock=deno.lock",
+      "--frozen",
+      "jsr:@zuke/engine@1.2.3",
+      "ci",
+    ],
+  );
+  await assertRejects(
+    () =>
+      locateBuild(
+        "/app",
+        probe({
+          present: ["/app/zuke.json"],
+          texts: { "/app/zuke.json": '{ "engine": "^1" }' },
+        }),
+      ),
+    Error,
+    "zuke: zuke.json names 'engine': '^1', which is not an exact version like 1.2.3",
   );
   // A root with its own build file never reads the field.
   const own = await locateBuild(

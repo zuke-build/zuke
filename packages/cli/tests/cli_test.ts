@@ -744,6 +744,30 @@ Deno.test("main warns on stderr when forwarding without a lockfile", async () =>
   assertEquals(host.logs, []);
 });
 
+Deno.test("main says nothing about a lockfile for a hosted build, as the launchers do", async () => {
+  const host = new FakeHost();
+  let seen: string[] = [];
+  const err = await capturingErr(async () => {
+    await main(
+      ["build"],
+      host,
+      defaultPrompter,
+      undefined,
+      undefined,
+      (_root, args) => {
+        seen = args;
+        return Promise.resolve(0);
+      },
+      {
+        ...probeAt(["zuke.json"]),
+        readText: () => Promise.resolve('{ "engine": "1.2.3" }'),
+      },
+    );
+  });
+  assertEquals(err, []);
+  assertEquals(seen, ["run", "-A", "jsr:@zuke/engine@1.2.3", "build"]);
+});
+
 Deno.test("main propagates the build's exit code and forwards flags verbatim", async () => {
   const host = new FakeHost();
   let seen: string[] = [];

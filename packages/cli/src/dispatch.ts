@@ -39,7 +39,11 @@
  */
 
 import { type AbsolutePath, absolutePath, CONFIG_FILE } from "@zuke/core";
-import { ENGINE_FIELD } from "./launcher.ts";
+import {
+  badEngineNotice,
+  ENGINE_FIELD,
+  ENGINE_VERSION_ERE,
+} from "./launcher.ts";
 import { exists } from "./fs.ts";
 import { noLockNotice } from "./launcher.ts";
 import { QUIET_DENO_ENV, spawnDeno } from "./deno_path.ts";
@@ -355,13 +359,16 @@ async function assertFilesOwned(
   }
 }
 
+/** The exact-version rule the launchers apply, as a JavaScript pattern. */
+const ENGINE_VERSION = new RegExp(ENGINE_VERSION_ERE);
+
 /**
  * The `engine` field of the root's `zuke.json`: the `@zuke/engine` release
  * that runs a build with no `zuke.ts`, as the launchers read it, or `null`
  * when the file names none — the run then asks Deno for the build file, which
  * reports it missing.
  *
- * @throws when the file is not JSON, saying which.
+ * @throws when the file is not JSON or the version is not exact, saying which.
  */
 async function engineVersion(
   root: AbsolutePath,
@@ -382,7 +389,9 @@ async function engineVersion(
       ENGINE_FIELD in config
     ? config[ENGINE_FIELD]
     : undefined;
-  return typeof engine === "string" && engine !== "" ? engine : null;
+  if (typeof engine !== "string" || engine === "") return null;
+  if (!ENGINE_VERSION.test(engine)) throw new Error(badEngineNotice(engine));
+  return engine;
 }
 
 /** What a forwarded command runs: the build file, or the engine release for a root without one. */
@@ -400,10 +409,14 @@ export function buildRunArgs(
   location: BuildLocation,
   args: string[],
 ): string[] {
+  // Deno finds a lock only beside a Deno config, which a hosted build has no
+  // reason to keep, so the engine route names it; the build file's lock sits
+  // beside its config as always.
+  const lock = location.engine === null ? [] : [`--lock=${LOCK_FILE}`];
   return [
     "run",
     "-A",
-    ...(location.frozen ? ["--frozen"] : []),
+    ...(location.frozen ? [...lock, "--frozen"] : []),
     buildModule(location),
     ...args,
   ];

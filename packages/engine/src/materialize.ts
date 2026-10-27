@@ -103,6 +103,14 @@ class Fields {
     if (this.#declared.has(name)) {
       throw new Error(`manifest: "${name}" is declared twice`);
     }
+    // A field named after a member every build has (`onStart`, `deadline`,
+    // `constructor`, …) would shadow it, and core calls those by name.
+    if (name in this.build) {
+      throw new Error(
+        `manifest: "${name}" cannot be declared; every build already has a ` +
+          `member of that name`,
+      );
+    }
     this.#declared.add(name);
     Object.defineProperty(this.build, name, {
       value,
