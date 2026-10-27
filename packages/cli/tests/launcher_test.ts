@@ -10,6 +10,7 @@ import {
   badEngineNotice,
   DENO_INSTALL_DOCS,
   ENGINE_FIELD,
+  ENGINE_READ,
   ENGINE_VERSION_ERE,
   launcherBash,
   launcherPwsh,
@@ -217,8 +218,15 @@ Deno.test("a root without zuke.ts runs the engine release its zuke.json names", 
     const branch = bash.indexOf("if [ ! -f zuke.ts ]; then");
     assertEquals(branch > 0, true);
     const tail = bash.slice(branch, bash.indexOf("# The first run"));
-    assertStringIncludes(tail, `'s/^.*"${ENGINE_FIELD}"`);
-    assertStringIncludes(tail, 'zuke.json 2>/dev/null || true)"');
+    // Parsed as JSON by the resolved Deno, as the other two readers parse it.
+    assertStringIncludes(
+      tail,
+      `"$deno_bin" eval '${ENGINE_READ}' 2>/dev/null || true`,
+    );
+    assertStringIncludes(
+      ENGINE_READ,
+      'JSON.parse(Deno.readTextFileSync("zuke.json"))',
+    );
     assertStringIncludes(tail, `echo "${noEngineNotice()}" >&2`);
     assertStringIncludes(tail, "exit 1");
     assertStringIncludes(

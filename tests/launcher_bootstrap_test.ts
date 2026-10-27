@@ -233,9 +233,12 @@ Deno.test("both launchers pin the same default Deno version", async () => {
 async function denoShim(dir: string): Promise<string> {
   const bin = `${dir}/bin`;
   await Deno.mkdir(bin);
+  // An `eval`, which the launcher uses to read zuke.json, goes to the real
+  // Deno; anything else is printed back.
   await Deno.writeTextFile(
     `${bin}/deno`,
-    "#!/bin/sh\nprintf '%s\\n' \"$@\"\n",
+    `#!/bin/sh\nif [ "$1" = eval ]; then exec "${Deno.execPath()}" "$@"; fi\n` +
+      "printf '%s\\n' \"$@\"\n",
     { mode: 0o755 },
   );
   return bin;

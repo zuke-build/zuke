@@ -338,6 +338,15 @@ export const ENGINE_VERSION_ERE =
   "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$";
 
 /**
+ * The JavaScript the bash launcher runs under `deno eval` to read the field:
+ * the string value of `engine` in `zuke.json`, or nothing when it is absent,
+ * not a string, or the file is not there to read.
+ */
+export const ENGINE_READ =
+  `const c = JSON.parse(Deno.readTextFileSync("zuke.json")); ` +
+  `console.log(typeof c.${ENGINE_FIELD} === "string" ? c.${ENGINE_FIELD} : "")`;
+
+/**
  * The launchers' message when the engine field is not an exact version.
  * `value` is the text as read, or a shell variable the script expands.
  */
@@ -358,9 +367,9 @@ function bashEngineRun(): string {
 # for one only beside a Deno config, which such a project has no reason to
 # keep; with no lock there is none to write, so no notice either.
 if [ ! -f zuke.ts ]; then
-  # sed, not a JSON parser: the first exact version under an "engine" key on
-  # one line, which a zuke.json has one of.
-  engine_version="$(sed -n 's/^.*"${ENGINE_FIELD}"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*$/\\1/p' zuke.json 2>/dev/null || true)"
+  # Read with the Deno just resolved, so the field is parsed as JSON here
+  # exactly as the PowerShell launcher and the zuke command parse it.
+  engine_version="$("$deno_bin" eval '${ENGINE_READ}' 2>/dev/null || true)"
   if [ -z "$engine_version" ]; then
     echo "${noEngineNotice()}" >&2
     exit 1
