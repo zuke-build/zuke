@@ -19,7 +19,10 @@
  * fails. A service target answers `service.start` with `service_handle`
  * after running its `exec` list, `service.ready` with the next of
  * `ready_answers` (the last one repeats), and `service.stop` with nothing.
- * A top-level `failHook` names the build hook that throws.
+ * A `crash_exit` code ends the worker process from inside the body, for the
+ * engine's respawn. A top-level `failHook` names the build hook that throws.
+ * With `ZUKE_FAKE_GENERATION_FILE` set, a worker that finds the file is a
+ * replacement and describes `ZUKE_FAKE_RESPAWN_PLAN` when that is set.
  *
  * It prints every call the engine makes as a `call:` line, and the
  * `build.configure` payload as a `configure:` line, on stdout on purpose: a
@@ -47,9 +50,23 @@ interface Script {
   validateFail?: string;
   serviceHandle: unknown;
   readyAnswers: unknown[];
+  crashExit?: number;
 }
 
-const PLAN: unknown = JSON.parse(Deno.env.get("ZUKE_FAKE_PLAN") ?? "{}");
+const GENERATION_FILE = Deno.env.get("ZUKE_FAKE_GENERATION_FILE");
+let replacement = false;
+if (GENERATION_FILE !== undefined) {
+  try {
+    Deno.statSync(GENERATION_FILE);
+    replacement = true;
+  } catch {
+    Deno.writeTextFileSync(GENERATION_FILE, "started");
+  }
+}
+const PLAN: unknown = JSON.parse(
+  (replacement ? Deno.env.get("ZUKE_FAKE_RESPAWN_PLAN") : undefined) ??
+    Deno.env.get("ZUKE_FAKE_PLAN") ?? "{}",
+);
 const SCRIPTS = new Map<string, Script>();
 if (isRecord(PLAN) && Array.isArray(PLAN.targets)) {
   for (const t of PLAN.targets.filter(isRecord)) {
@@ -80,6 +97,7 @@ if (isRecord(PLAN) && Array.isArray(PLAN.targets)) {
         : undefined,
       serviceHandle: t.service_handle ?? "h1",
       readyAnswers: Array.isArray(t.ready_answers) ? t.ready_answers : [true],
+      crashExit: typeof t.crash_exit === "number" ? t.crash_exit : undefined,
     });
   }
 }
@@ -173,6 +191,7 @@ async function runTarget(peer: Peer, params: unknown): Promise<unknown> {
     );
   }
   await callAll(peer, name, s);
+  if (s.crashExit !== undefined) Deno.exit(s.crashExit);
   const attempt = (attempts.get(name) ?? 0) + 1;
   attempts.set(name, attempt);
   if (attempt <= s.failTimes) {

@@ -134,6 +134,16 @@ Deno.test("a notification reaches its handler and expects no answer", async () =
   await close();
 });
 
+Deno.test("close(reason) rejects what is pending with that reason", async () => {
+  const { a, b, close } = await pair();
+  b.on("slow", () => new Promise(() => {}));
+  const pending = a.request("slow", {});
+  a.close("the worker exited with code 7");
+  const failure = await assertRejects(() => pending, RpcFailure);
+  assertEquals(failure.message, "the worker exited with code 7");
+  await close();
+});
+
 Deno.test("close() rejects every pending request and makes later sends no-ops", async () => {
   const { a, b, close } = await pair();
   b.on("hang", () => new Promise(() => {}));

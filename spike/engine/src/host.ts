@@ -9,6 +9,11 @@
  * the executor's ambient dry-run echo, cancel signal and redactor apply to it
  * exactly as they apply to a `$` call in a TypeScript build.
  *
+ * A worker that dies mid-run fails whatever it was asked at the time with its
+ * exit code; the next request spawns a replacement, which must describe the
+ * same build, is configured as the first was, and serves everything from
+ * then on, the compensations the run still owes included.
+ *
  * @module
  */
 
@@ -194,30 +199,151 @@ async function stopChild(
   await exited;
 }
 
+/** One spawned worker: its process, connection and greeting. */
+interface Worker {
+  readonly child: Deno.ChildProcess;
+  readonly peer: Peer;
+  readonly hello: Hello;
+  readonly background: Promise<unknown>;
+  /** The exit code, once the process has ended. */
+  readonly exited: Promise<number>;
+}
+
+/**
+ * Listen on loopback, spawn the worker with the address and a fresh token in
+ * its environment, and wait for its `hello`. The listener accepts exactly one
+ * connection and closes.
+ */
+async function spawn(options: WorkerOptions): Promise<Worker> {
+  const [program, ...args] = options.command;
+  if (program === undefined) {
+    throw new Error("zuke: sdk.command in zuke.json must not be empty");
+  }
+  const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
+  const token = crypto.randomUUID();
+  const child = new Deno.Command(program, {
+    args,
+    cwd: options.cwd,
+    env: {
+      ZUKE_ENGINE_ADDR: `127.0.0.1:${listener.addr.port}`,
+      ZUKE_ENGINE_TOKEN: token,
+      ZUKE_PROTOCOL: String(PROTOCOL_VERSION),
+    },
+    stdin: "null",
+    stdout: "piped",
+    stderr: "piped",
+  }).spawn();
+  // The worker's own output is the build's log, never the protocol, and it
+  // goes to stderr so `--list --json` on stdout stays machine-readable.
+  const forwarding = Promise.all([
+    forwardLines(child.stdout, (l) => console.error(`worker: ${l}`)),
+    forwardLines(child.stderr, (l) => console.error(`worker: ${l}`)),
+  ]);
+  const exited = child.status.then((status) => status.code);
+  const timeoutMs = options.connectTimeoutMs ?? 10_000;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new Error(
+            `zuke: the worker (${options.command.join(" ")}) did not ` +
+              `connect within ${timeoutMs}ms`,
+          ),
+        ),
+      timeoutMs,
+    );
+  });
+  // A worker that dies before connecting fails the start at once, with its
+  // exit code, instead of after the connect timeout.
+  const died = exited.then((code) => {
+    throw new Error(
+      `zuke: the worker (${options.command.join(" ")}) exited with code ` +
+        `${code} before connecting`,
+    );
+  });
+  died.catch(() => {}); // Rejects after every normal exit too; raced below.
+  let peer: Peer | undefined;
+  try {
+    const conn = await Promise.race([listener.accept(), timeout, died]);
+    listener.close();
+    conn.setNoDelay(true);
+    const connected = new Peer(conn);
+    peer = connected;
+    const hello = new Promise<Hello>((resolve, reject) => {
+      connected.on("hello", (params) => {
+        try {
+          resolve(parseHello(params, token));
+          return {};
+        } catch (error) {
+          reject(error instanceof Error ? error : new Error(String(error)));
+          throw error;
+        }
+      });
+    });
+    const serving = connected.serve();
+    const greeted = await Promise.race([hello, timeout, died]);
+    return {
+      child,
+      peer: connected,
+      hello: greeted,
+      background: Promise.all([serving, forwarding]),
+      exited,
+    };
+  } catch (error) {
+    if (peer === undefined) listener.close();
+    else peer.close();
+    await stopChild(child, options.graceMs ?? 5_000);
+    await forwarding;
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** The worker host. Start one with {@link WorkerHost.start}. */
 export class WorkerHost {
-  readonly #peer: Peer;
-  readonly #child: Deno.ChildProcess;
-  readonly #hello: Hello;
+  readonly #options: WorkerOptions;
   readonly #graceMs: number;
-  readonly #background: Promise<unknown>;
   readonly #channels = new Map<string, Channel>();
   /** Aborted when the host is killed: the signal a service phase's execs get. */
   readonly #aborter = new AbortController();
+  readonly #registrar = new SecretRegistrar();
+  #worker: Worker;
+  /** The exit code the current worker died with, until it is replaced. */
+  #dead: number | undefined;
+  /** Why no replacement will be spawned, once one was refused. */
+  #fatal: Error | undefined;
+  #finished = false;
+  #replacing: Promise<void> | undefined;
+  /** The first worker's manifest, as JSON, which every replacement must match. */
+  #manifest: string | undefined;
+  #configured: ConfigureParams | undefined;
 
-  private constructor(
-    peer: Peer,
-    child: Deno.ChildProcess,
-    hello: Hello,
-    background: Promise<unknown>,
-    graceMs: number,
-  ) {
-    this.#peer = peer;
-    this.#child = child;
-    this.#hello = hello;
-    this.#background = background;
-    this.#graceMs = graceMs;
-    const registrar = new SecretRegistrar();
+  private constructor(options: WorkerOptions, worker: Worker) {
+    this.#options = options;
+    this.#graceMs = options.graceMs ?? 5_000;
+    this.#worker = this.#adopt(worker);
+  }
+
+  /** Take `worker` as the current one: serve its calls, watch its exit. */
+  #adopt(worker: Worker): Worker {
+    this.#install(worker.peer);
+    worker.exited.then((code) => {
+      if (this.#worker !== worker || this.#finished) return;
+      this.#dead = code;
+      worker.peer.close(
+        `the worker (${
+          this.#options.command.join(" ")
+        }) exited with code ${code}`,
+      );
+    });
+    return worker;
+  }
+
+  /** Register the handlers for the calls a worker makes. */
+  #install(peer: Peer): void {
+    const registrar = this.#registrar;
     const serve = <R extends { readonly target: string }>(
       method: string,
       parse: (params: unknown) => R,
@@ -281,120 +407,118 @@ export class WorkerHost {
 
   /** The SDK the worker announced itself as. */
   get sdk(): string {
-    return this.#hello.sdk;
+    return this.#worker.hello.sdk;
   }
 
   /**
-   * Listen on loopback, spawn the worker with the address and a fresh token in
-   * its environment, and wait for its `hello`. The listener accepts exactly one
-   * connection and closes.
+   * The live worker's peer: the current one, or, when it died mid-run, a
+   * replacement that describes the same build and is configured as the first
+   * was. One replacement is spawned at a time, however many calls wait.
    */
-  static async start(options: WorkerOptions): Promise<WorkerHost> {
-    const [program, ...args] = options.command;
-    if (program === undefined) {
-      throw new Error("zuke: sdk.command in zuke.json must not be empty");
-    }
-    const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
-    const token = crypto.randomUUID();
-    const child = new Deno.Command(program, {
-      args,
-      cwd: options.cwd,
-      env: {
-        ZUKE_ENGINE_ADDR: `127.0.0.1:${listener.addr.port}`,
-        ZUKE_ENGINE_TOKEN: token,
-        ZUKE_PROTOCOL: String(PROTOCOL_VERSION),
-      },
-      stdin: "null",
-      stdout: "piped",
-      stderr: "piped",
-    }).spawn();
-    // The worker's own output is the build's log, never the protocol, and it
-    // goes to stderr so `--list --json` on stdout stays machine-readable.
-    const forwarding = Promise.all([
-      forwardLines(child.stdout, (l) => console.error(`worker: ${l}`)),
-      forwardLines(child.stderr, (l) => console.error(`worker: ${l}`)),
-    ]);
-    const timeoutMs = options.connectTimeoutMs ?? 10_000;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(
-        () =>
-          reject(
-            new Error(
-              `zuke: the worker (${options.command.join(" ")}) did not ` +
-                `connect within ${timeoutMs}ms`,
-            ),
-          ),
-        timeoutMs,
-      );
-    });
-    // A worker that dies before connecting fails the start at once, with its
-    // exit code, instead of after the connect timeout.
-    const exited = child.status.then((status) => {
-      throw new Error(
-        `zuke: the worker (${options.command.join(" ")}) exited with code ` +
-          `${status.code} before connecting`,
-      );
-    });
-    exited.catch(() => {}); // Rejects after every normal exit too; raced below.
-    let peer: Peer | undefined;
-    try {
-      const conn = await Promise.race([listener.accept(), timeout, exited]);
-      listener.close();
-      conn.setNoDelay(true);
-      const connected = new Peer(conn);
-      peer = connected;
-      const hello = new Promise<Hello>((resolve, reject) => {
-        connected.on("hello", (params) => {
-          try {
-            resolve(parseHello(params, token));
-            return {};
-          } catch (error) {
-            reject(error instanceof Error ? error : new Error(String(error)));
-            throw error;
-          }
-        });
+  async #live(): Promise<Worker> {
+    if (this.#fatal !== undefined) throw this.#fatal;
+    // The socket's end is seen before the exit code lands; either means the
+    // worker is gone.
+    const gone = this.#dead !== undefined || this.#worker.peer.closed;
+    if (gone && !this.#finished) {
+      this.#replacing ??= this.#respawn().finally(() => {
+        this.#replacing = undefined;
       });
-      const serving = connected.serve();
-      const greeted = await Promise.race([hello, timeout, exited]);
-      return new WorkerHost(
-        connected,
-        child,
-        greeted,
-        Promise.all([serving, forwarding]),
-        options.graceMs ?? 5_000,
-      );
+      await this.#replacing;
+    }
+    return this.#worker;
+  }
+
+  /** Make one request of the live worker, naming its exit if it died on it. */
+  async #ask(method: string, params: unknown): Promise<unknown> {
+    const worker = await this.#live();
+    try {
+      return await worker.peer.request(method, params);
     } catch (error) {
-      if (peer === undefined) listener.close();
-      else peer.close();
-      await stopChild(child, options.graceMs ?? 5_000);
-      await forwarding;
-      throw error;
-    } finally {
-      clearTimeout(timer);
+      throw await this.#explain(error, worker, method);
     }
   }
 
-  /** Ask the worker to describe its build. */
-  async describe(): Promise<Manifest> {
-    return parseManifest(await this.#peer.request("build.describe", {}));
+  /**
+   * The socket's end is seen before the exit code lands, so a request a dying
+   * worker leaves unanswered rejects as a closed connection; its exit code is
+   * the error the run should carry.
+   */
+  async #explain(
+    error: unknown,
+    worker: Worker,
+    method: string,
+  ): Promise<unknown> {
+    if (
+      !(error instanceof RpcFailure) || error.message !== "connection closed"
+    ) {
+      return error;
+    }
+    const code = await Promise.race([worker.exited, after(this.#graceMs)]);
+    return code === false ? error : new Error(
+      `the worker (${this.#options.command.join(" ")}) exited with code ` +
+        `${code} while the engine was waiting on ${method}`,
+    );
   }
 
-  /** Tell the worker the resolved parameters. */
+  async #respawn(): Promise<void> {
+    const worker = await spawn(this.#options);
+    this.#dead = undefined;
+    this.#worker = this.#adopt(worker);
+    const manifest = JSON.stringify(
+      parseManifest(await worker.peer.request("build.describe", {})),
+    );
+    if (this.#manifest !== undefined && manifest !== this.#manifest) {
+      this.#fatal = new Error(
+        `zuke: the replacement worker (${this.#options.command.join(" ")}) ` +
+          `described a different build; a worker spawned again for the same ` +
+          `run must describe the build the first one did`,
+      );
+      await this.#stop(worker);
+      throw this.#fatal;
+    }
+    if (this.#configured !== undefined) {
+      await worker.peer.request("build.configure", this.#configured);
+    }
+  }
+
+  /** Stop `worker` and release it, bounded by the grace period. */
+  async #stop(worker: Worker): Promise<void> {
+    worker.peer.close();
+    await stopChild(worker.child, this.#graceMs);
+    await worker.background.catch(() => {});
+  }
+
+  /** Spawn the worker and wait for its `hello`. */
+  static async start(options: WorkerOptions): Promise<WorkerHost> {
+    return new WorkerHost(options, await spawn(options));
+  }
+
+  /** Ask the worker to describe its build; a replacement must match it. */
+  async describe(): Promise<Manifest> {
+    const manifest = parseManifest(
+      await this.#ask("build.describe", {}),
+    );
+    this.#manifest ??= JSON.stringify(manifest);
+    return manifest;
+  }
+
+  /** Tell the worker the resolved parameters; a replacement gets the same. */
   async configure(params: ConfigureParams): Promise<void> {
-    await this.#peer.request("build.configure", params);
+    this.#configured = params;
+    await this.#ask("build.configure", params);
   }
 
   /** Call a build hook the manifest flagged and wait for it to settle. */
   async hook(name: HookName, params: unknown): Promise<void> {
-    await this.#peer.request(`build.${name}`, params);
+    await this.#ask(`build.${name}`, params);
   }
 
   /** Ask whether the named target's condition holds. */
   async condition(target: string): Promise<boolean> {
     return parseBooleanAnswer(
       "target.condition",
-      await this.#peer.request("target.condition", { target }),
+      await this.#ask("target.condition", { target }),
       target,
     );
   }
@@ -402,7 +526,9 @@ export class WorkerHost {
   /** Ask for the late settings a target declared, once parameters resolved. */
   async settings(target: ManifestTarget): Promise<LateSettings> {
     return parseSettings(
-      await this.#peer.request("target.settings", { target: target.name }),
+      await this.#ask("target.settings", {
+        target: target.name,
+      }),
       target,
     );
   }
@@ -411,20 +537,20 @@ export class WorkerHost {
   async waitCheck(target: string): Promise<boolean> {
     return parseBooleanAnswer(
       "wait.check",
-      await this.#peer.request("wait.check", { target }),
+      await this.#ask("wait.check", { target }),
       target,
     );
   }
 
   /** Run one of a target's `validateDuring` checks; rejects with its message. */
   async validate(target: string, check: string): Promise<void> {
-    await this.#peer.request("target.validate", { target, check });
+    await this.#ask("target.validate", { target, check });
   }
 
   /** Ask for the named target's extra cache key. */
   async cacheKey(target: string): Promise<string> {
     return parseCacheKey(
-      await this.#peer.request("target.cacheKey", { target }),
+      await this.#ask("target.cacheKey", { target }),
       target,
     );
   }
@@ -436,7 +562,7 @@ export class WorkerHost {
   async runTarget(name: string, ctx: TargetContext): Promise<void> {
     let grace: ReturnType<typeof setTimeout> | undefined;
     const onAbort = () => {
-      void this.#peer.notify("run.cancel", { target: name });
+      void this.#worker.peer.notify("run.cancel", { target: name });
       // A body that ignores the cancel is cut off after the grace period; the
       // closed peer then rejects the request, so the loop cannot hang.
       grace = setTimeout(() => this.kill(), this.#graceMs);
@@ -447,7 +573,7 @@ export class WorkerHost {
         name,
         { signal: ctx.signal, ctx },
         () =>
-          this.#peer.request("target.run", {
+          this.#ask("target.run", {
             target: name,
             runId: ctx.runId,
             dryRun: ctx.dryRun,
@@ -464,7 +590,7 @@ export class WorkerHost {
     return parseHandle(
       await this.#phase(
         target,
-        () => this.#peer.request("service.start", { target }),
+        () => this.#ask("service.start", { target }),
       ),
       target,
     );
@@ -476,7 +602,7 @@ export class WorkerHost {
       "service.ready",
       await this.#phase(
         target,
-        () => this.#peer.request("service.ready", { target, handle }),
+        () => this.#ask("service.ready", { target, handle }),
       ),
       target,
     );
@@ -486,7 +612,7 @@ export class WorkerHost {
   async serviceStop(target: string, handle: string): Promise<void> {
     await this.#phase(
       target,
-      () => this.#peer.request("service.stop", { target, handle }),
+      () => this.#ask("service.stop", { target, handle }),
     );
   }
 
@@ -524,20 +650,22 @@ export class WorkerHost {
    * exit, release everything.
    */
   async finish(code: number, suspended = false): Promise<void> {
-    await this.#peer.notify("run.exit", { code, suspended });
-    this.#peer.close();
-    const exited = this.#child.status.then(() => true);
+    this.#finished = true;
+    const worker = this.#worker;
+    await worker.peer.notify("run.exit", { code, suspended });
+    worker.peer.close();
+    const exited = worker.exited.then(() => true);
     if (!(await Promise.race([exited, after(this.#graceMs)]))) {
-      await stopChild(this.#child, this.#graceMs);
+      await stopChild(worker.child, this.#graceMs);
     }
-    await this.#background.catch(() => {});
+    await worker.background.catch(() => {});
   }
 
   /** Kill the worker outright, and whatever its service phases spawned. */
   kill(): void {
     this.#aborter.abort();
-    this.#peer.close();
-    signal(this.#child, "SIGTERM");
+    this.#worker.peer.close();
+    signal(this.#worker.child, "SIGTERM");
   }
 
   #enqueue(
@@ -558,8 +686,8 @@ export class WorkerHost {
     // worker lacks but the engine has still reaches the child; add clearEnv
     // once a worker needs an exact environment.
     let command = new Command([...request.argv])
-      .cwd(request.cwd ?? this.#hello.cwd)
-      .env({ ...this.#hello.env, ...request.env })
+      .cwd(request.cwd ?? this.#worker.hello.cwd)
+      .env({ ...this.#worker.hello.env, ...request.env })
       .noThrow()
       .signal(signal);
     if (request.stdin !== undefined) command = command.stdin(request.stdin);

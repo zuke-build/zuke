@@ -1,0 +1,37 @@
+{
+  "manifest": {
+    "name": "Respawn",
+    "targets": [
+      {
+        "name": "deploy",
+        "onCancel": "rollback"
+      },
+      {
+        "name": "verify",
+        "dependsOn": [
+          "deploy"
+        ],
+        "onFailure": "cancel-run",
+        "crash_exit": 7
+      },
+      {
+        "name": "rollback"
+      }
+    ]
+  },
+  "argv": [
+    "verify"
+  ],
+  "code": 1,
+  "calls": [
+    "build.configure",
+    "target.run deploy",
+    "target.run verify",
+    "build.configure",
+    "target.run rollback",
+    "run.exit done"
+  ],
+  "configure": {
+    "parameters": {}
+  }
+}

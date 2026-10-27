@@ -46,6 +46,11 @@ export class Peer {
     this.#conn = conn;
   }
 
+  /** Whether the connection has been closed, by either side. */
+  get closed(): boolean {
+    return this.#closed;
+  }
+
   /** Register the handler for `method`. */
   on(method: string, handler: RpcHandler): this {
     this.#handlers.set(method, handler);
@@ -92,8 +97,8 @@ export class Peer {
     }
   }
 
-  /** Close the connection; every pending request rejects. */
-  close(): void {
+  /** Close the connection; every pending request rejects with `reason`. */
+  close(reason = "connection closed"): void {
     if (this.#closed) return;
     this.#closed = true;
     // A pending read on a closed connection never settles; cancelling the
@@ -106,7 +111,7 @@ export class Peer {
     }
     for (const [id, pending] of this.#pending) {
       this.#pending.delete(id);
-      pending.reject(new RpcFailure(-32000, "connection closed"));
+      pending.reject(new RpcFailure(-32000, reason));
     }
   }
 

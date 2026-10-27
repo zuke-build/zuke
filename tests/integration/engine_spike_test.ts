@@ -42,6 +42,9 @@ interface PlanTarget {
   ready?: boolean;
   readyTimeoutMs?: number;
   ready_answers?: boolean[];
+  onCancel?: string;
+  onFailure?: string;
+  crash_exit?: number;
 }
 
 /** Start the fake worker on `plan` and materialise its build. */
@@ -362,6 +365,82 @@ Deno.test("a service whose probe never turns true fails the run with core's time
       assertEquals(result.err.includes("worker: call: target.run test"), false);
     } finally {
       await host.finish(1);
+    }
+  });
+});
+
+Deno.test("a worker that dies mid-body fails the target with its exit code, and the compensation runs in a fresh worker", async () => {
+  await withStateDir(async () => {
+    const { host, Remote } = await fake([
+      { name: "deploy", onCancel: "rollback" },
+      {
+        name: "verify",
+        dependsOn: ["deploy"],
+        onFailure: "cancel-run",
+        crash_exit: 7,
+      },
+      { name: "rollback" },
+    ]);
+    try {
+      const result = await runCli(Remote, ["verify"]);
+      assertEquals(result.code, 1);
+      assertStringIncludes(result.out + result.err, "exited with code 7");
+      assertStringIncludes(result.err, "worker: call: target.run rollback");
+      // The replacement greets and is configured again; the first worker's
+      // greeting predates the run's capture.
+      assertStringIncludes(result.err, "worker: fake worker started");
+      assertEquals(
+        result.err.split("worker: call: build.configure").length - 1,
+        2,
+      );
+    } finally {
+      await host.finish(1);
+    }
+  });
+});
+
+Deno.test("a replacement worker that describes a different build is refused", async () => {
+  await withStateDir(async (dir) => {
+    Deno.env.set("ZUKE_FAKE_GENERATION_FILE", `${dir}/generation`);
+    Deno.env.set(
+      "ZUKE_FAKE_RESPAWN_PLAN",
+      JSON.stringify({
+        name: "Fake",
+        targets: [
+          { name: "deploy" },
+          { name: "verify" },
+          { name: "rollback" },
+          {
+            name: "extra",
+          },
+        ],
+      }),
+    );
+    try {
+      const { host, Remote } = await fake([
+        { name: "deploy", onCancel: "rollback" },
+        {
+          name: "verify",
+          dependsOn: ["deploy"],
+          onFailure: "cancel-run",
+          crash_exit: 3,
+        },
+        { name: "rollback" },
+      ]);
+      try {
+        const result = await runCli(Remote, ["verify"]);
+        assertEquals(result.code, 1);
+        assertStringIncludes(
+          result.out + result.err,
+          "described a different build",
+        );
+        assertEquals(result.err.includes("call: target.run rollback"), false);
+      } finally {
+        await host.finish(1);
+      }
+    } finally {
+      Deno.env.delete("ZUKE_FAKE_GENERATION_FILE");
+      Deno.env.delete("ZUKE_FAKE_RESPAWN_PLAN");
     }
   });
 });
