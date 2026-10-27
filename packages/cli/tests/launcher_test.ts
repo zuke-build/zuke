@@ -216,10 +216,7 @@ Deno.test("a root without zuke.ts runs the engine release its zuke.json names", 
     const tail = bash.slice(branch, bash.indexOf("# The first run"));
     assertStringIncludes(tail, `'s/.*"${ENGINE_FIELD}"`);
     assertStringIncludes(tail, 'zuke.json)"');
-    assertStringIncludes(
-      tail,
-      `echo "${noEngineNotice().replace(/"/g, '\\"')}" >&2`,
-    );
+    assertStringIncludes(tail, `echo "${noEngineNotice()}" >&2`);
     assertStringIncludes(tail, "exit 1");
     assertStringIncludes(
       tail,
@@ -239,7 +236,8 @@ Deno.test("a root without zuke.ts runs the engine release its zuke.json names", 
       `$ownBuild = Test-Path (Join-Path $dir "zuke.ts")`,
     );
     assertStringIncludes(pwsh, `ConvertFrom-Json).${ENGINE_FIELD}`);
-    assertStringIncludes(pwsh, noEngineNotice().replace(/"/g, '`"'));
+    assertStringIncludes(pwsh, `Write-Error "${noEngineNotice()}"`);
+    assertEquals(noEngineNotice().includes('"'), false); // verbatim in both
     assertStringIncludes(pwsh, `$build = "jsr:@zuke/engine@$engineVersion"`);
     // The lockfile warning is the build file's alone.
     assertStringIncludes(pwsh, "} elseif ($ownBuild) {\n  Write-Warning");

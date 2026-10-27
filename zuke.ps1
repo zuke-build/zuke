@@ -156,7 +156,7 @@ if ($ownBuild) {
   # @zuke/engine release it names.
   $engineVersion = (Get-Content (Join-Path $dir "zuke.json") -Raw | ConvertFrom-Json).engine
   if (-not $engineVersion) {
-    Write-Error "zuke: no zuke.ts here, and zuke.json names no `"engine`" version to run its `"sdk`" build with"
+    Write-Error "zuke: no zuke.ts here, and zuke.json names no 'engine' version to run its 'sdk' build with"
     exit 1
   }
   $build = "jsr:@zuke/engine@$engineVersion"

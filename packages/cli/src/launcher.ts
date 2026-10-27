@@ -319,10 +319,14 @@ fi
 /** The field of `zuke.json` naming the `@zuke/engine` release that runs a build with no `zuke.ts`. */
 export const ENGINE_FIELD = "engine";
 
-/** The launchers' message when a root has neither a `zuke.ts` nor an engine version. */
+/**
+ * The launchers' message when a root has neither a `zuke.ts` nor an engine
+ * version. Single quotes inside, so it sits verbatim in a double-quoted shell
+ * or PowerShell string with no escaping to get wrong.
+ */
 export function noEngineNotice(): string {
-  return `zuke: no zuke.ts here, and zuke.json names no "${ENGINE_FIELD}" ` +
-    `version to run its "sdk" build with`;
+  return `zuke: no zuke.ts here, and zuke.json names no '${ENGINE_FIELD}' ` +
+    `version to run its 'sdk' build with`;
 }
 
 /**
@@ -338,7 +342,7 @@ function bashEngineRun(): string {
 if [ ! -f zuke.ts ]; then
   engine_version="$(sed -n 's/.*"${ENGINE_FIELD}"[[:space:]]*:[[:space:]]*"\\([^"]*\\)".*/\\1/p' zuke.json)"
   if [ -z "$engine_version" ]; then
-    echo "${noEngineNotice().replace(/"/g, '\\"')}" >&2
+    echo "${noEngineNotice()}" >&2
     exit 1
   fi
   if [ -f deno.lock ]; then
@@ -530,7 +534,7 @@ if ($ownBuild) {
   # @zuke/engine release it names.
   $engineVersion = (Get-Content (Join-Path $dir "zuke.json") -Raw | ConvertFrom-Json).${ENGINE_FIELD}
   if (-not $engineVersion) {
-    Write-Error "${noEngineNotice().replace(/"/g, '`"')}"
+    Write-Error "${noEngineNotice()}"
     exit 1
   }
   $build = "jsr:@zuke/engine@$engineVersion"

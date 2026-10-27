@@ -288,7 +288,7 @@ Deno.test("a scaffolded launcher runs the engine release zuke.json names when th
     assertEquals(bare.code, 1);
     assertEquals(bare.out, "");
     assertEquals(
-      bare.err.includes('zuke.json names no "engine" version'),
+      bare.err.includes("zuke.json names no 'engine' version"),
       true,
       bare.err,
     );
