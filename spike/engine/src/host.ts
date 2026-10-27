@@ -329,6 +329,9 @@ export class WorkerHost {
   /** Take `worker` as the current one: serve its calls, watch its exit. */
   #adopt(worker: Worker): Worker {
     this.#install(worker.peer);
+    // A replaced worker's streams settle unobserved; never an unhandled
+    // rejection.
+    worker.background.catch(() => {});
     worker.exited.then((code) => {
       if (this.#worker !== worker || this.#finished) return;
       this.#dead = code;
@@ -441,19 +444,15 @@ export class WorkerHost {
 
   /**
    * The socket's end is seen before the exit code lands, so a request a dying
-   * worker leaves unanswered rejects as a closed connection; its exit code is
-   * the error the run should carry.
+   * worker leaves unanswered rejects with the connection's end; its exit code
+   * is the error the run should carry.
    */
   async #explain(
     error: unknown,
     worker: Worker,
     method: string,
   ): Promise<unknown> {
-    if (
-      !(error instanceof RpcFailure) || error.message !== "connection closed"
-    ) {
-      return error;
-    }
+    if (!(error instanceof RpcFailure) || !worker.peer.closed) return error;
     const code = await Promise.race([worker.exited, after(this.#graceMs)]);
     return code === false ? error : new Error(
       `the worker (${this.#options.command.join(" ")}) exited with code ` +

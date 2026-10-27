@@ -91,7 +91,12 @@ export class Peer {
         }
       }
     } catch (error) {
-      if (!this.#closed) throw error; // A read after close() is the close.
+      // A read after close() is the close. A read error otherwise is the
+      // remote vanishing: Windows reports a peer that died as a reset, not
+      // an end of stream, and either way nothing is left to read.
+      if (!this.#closed) {
+        this.close(error instanceof Error ? error.message : String(error));
+      }
     } finally {
       this.close();
     }
