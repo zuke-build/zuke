@@ -69,7 +69,7 @@ runs:
     # First, before any other step: the point of an egress policy is to be in
     # place before anything it governs runs.
     - name: Harden the runner
-      uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+      uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
       with:
         egress-policy: ${{ inputs.egress-policy }}
         allowed-endpoints: ${{ inputs.allowed-endpoints }}
@@ -137,7 +137,7 @@ runs:
     # secret first: exporting it puts it where a later `env` dump would print it.
     - name: Expose the Actions cache to the build
       if: inputs.actions-cache == 'true'
-      uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
       with:
         script: |
           core.setSecret(process.env.ACTIONS_RUNTIME_TOKEN);
