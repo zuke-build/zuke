@@ -10,9 +10,9 @@ request.
 
 1. **Conventional commits drive versions.** Land work on `master` with
    Conventional Commits (`feat:`, `fix:`, `feat!:` / `BREAKING CHANGE:`).
-   Versions are per-package, and every package is `1.x` on full semver: a
-   breaking change bumps the **major** version. `bump-minor-pre-major` is
-   **off**, so a breaking change is never absorbed into a minor bump.
+   Versions are per-package, and every package is at `1.0` or past it on full
+   semver: a breaking change bumps the **major** version. `bump-minor-pre-major`
+   is **off**, so a breaking change is never absorbed into a minor bump.
 
    A **new package** is registered at `0.0.0` (manifest and `deno.json`), and
    its first release is `1.0.0`. release-please treats any other manifest

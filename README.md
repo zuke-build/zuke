@@ -216,11 +216,12 @@ launcher that uses the Deno on your `PATH` and fails closed without one, for a
 project that must never download a tool from its build entry point.
 
 > [!NOTE]
-> **Maturity.** Every one of the 72 packages is `1.x` and follows full semver —
-> `@zuke/core`, the `@zuke/cli` command, and all the tool wrappers. A minor or
-> patch release never breaks a public symbol; a breaking change bumps the major.
-> See [Versioning & compatibility](./docs/versioning.md). The npm scope `@zuke`
-> is not controlled by this project — install from JSR, not npm.
+> **Maturity.** Every one of the 72 packages is at `1.0` or past it and follows
+> full semver — `@zuke/core`, the `@zuke/cli` command, and all the tool
+> wrappers. A minor or patch release never breaks a public symbol; a breaking
+> change bumps the major. See
+> [Versioning & compatibility](./docs/versioning.md). The npm scope `@zuke` is
+> not controlled by this project — install from JSR, not npm.
 
 > [!NOTE]
 > **Built with AI.** Much of Zuke — code, tests, and docs — was written with AI

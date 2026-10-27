@@ -2,8 +2,9 @@
 
 Zuke ships as a JSR workspace: a tiny core plus a typed wrapper per tool. Every
 package is versioned and published independently — the badges below track the
-latest release on JSR. All of them are `1.x` and follow full semver; see
-[Versioning & compatibility](./versioning.md) for the pinning guidance.
+latest release on JSR. All of them are at `1.0` or past it and follow full
+semver; see [Versioning & compatibility](./versioning.md) for the pinning
+guidance.
 
 > **Looking for the exact API (humans and agents)?** Don't guess and don't shell
 > out — every tool is a typed wrapper. The complete, typed surface of every
