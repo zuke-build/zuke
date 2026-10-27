@@ -183,7 +183,7 @@ export PATH="$(dirname "$deno_bin"):$PATH"
 if [ ! -f zuke.ts ]; then
   # Read with the Deno just resolved, so the field is parsed as JSON here
   # exactly as the PowerShell launcher and the zuke command parse it.
-  engine_version="$("$deno_bin" eval 'const c = JSON.parse(Deno.readTextFileSync("zuke.json")); console.log(typeof c.engine === "string" ? c.engine : "")' 2>/dev/null || true)"
+  engine_version="$("$deno_bin" eval 'const c = JSON.parse(Deno.readTextFileSync("zuke.json")); Deno.stdout.writeSync(new TextEncoder().encode(typeof c.engine === "string" ? c.engine : ""))' 2>/dev/null || true)"
   if [ -z "$engine_version" ]; then
     echo "zuke: no zuke.ts here, and zuke.json names no 'engine' version to run its 'sdk' build with" >&2
     exit 1

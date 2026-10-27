@@ -344,7 +344,8 @@ export const ENGINE_VERSION_ERE =
  */
 export const ENGINE_READ =
   `const c = JSON.parse(Deno.readTextFileSync("zuke.json")); ` +
-  `console.log(typeof c.${ENGINE_FIELD} === "string" ? c.${ENGINE_FIELD} : "")`;
+  `Deno.stdout.writeSync(new TextEncoder().encode(` +
+  `typeof c.${ENGINE_FIELD} === "string" ? c.${ENGINE_FIELD} : ""))`;
 
 /**
  * The launchers' message when the engine field is not an exact version.
