@@ -2,6 +2,7 @@
   "packages/core": "1.77.0",
   "packages/deno": "1.5.0",
   "packages/docs": "1.0.1",
+  "packages/engine": "0.0.0",
   "packages/npm": "1.3.1",
   "packages/npx": "1.1.0",
   "packages/bun": "1.3.0",

@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * The engine/worker spike, driven through the real CLI `main()`: a build the
+ * The engine's host mode, driven through the real CLI `main()`: a build the
  * scripted fake worker describes over the loopback socket runs on the
- * unmodified engine, with every subprocess spawned by the engine.
+ * unmodified core engine, with every subprocess spawned by the engine.
  */
 
 import {
@@ -21,13 +21,13 @@ import {
   assertStringIncludes,
 } from "../../packages/core/tests/_assert.ts";
 import { FakeGraphHost } from "../../packages/core/tests/_fakes.ts";
-import { WorkerHost } from "../../spike/engine/src/host.ts";
-import { materialize } from "../../spike/engine/src/materialize.ts";
-import { isRecord } from "../../spike/engine/src/protocol.ts";
+import { WorkerHost } from "../../packages/engine/src/host.ts";
+import { materialize } from "../../packages/engine/src/materialize.ts";
+import { isRecord } from "../../packages/engine/src/protocol.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 
 const FAKE =
-  new URL("../../spike/engine/fixtures/fake_worker.ts", import.meta.url)
+  new URL("../../packages/engine/tests/_fake_worker.ts", import.meta.url)
     .href;
 
 interface PlanTarget {

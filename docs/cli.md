@@ -30,6 +30,14 @@ beside it. Either way stdio is inherited so `zuke mcp` and prompts work, and the
 command exits with the build's code. A bare `zuke` inside a project runs the
 default target.
 
+A root with no `zuke.ts` holds a build another SDK hosts: its `zuke.json` names
+the worker to start under `sdk` (`{ "command": ["uv", "run", "build.py"] }`)
+and, under `engine`, the exact [`@zuke/engine`](https://jsr.io/@zuke/engine)
+release that runs it. The launchers and the forwarding then run
+`deno run -A jsr:@zuke/engine@<version> <command>` in place of `zuke.ts`, under
+the same `--frozen` rule; the launchers refuse with a message naming the missing
+field when `zuke.json` carries no `engine`.
+
 `--help`/`-h` shows **both** surfaces inside a project, under headings that say
 which is which: the global CLI's own commands, which work anywhere, and then the
 build's — its commands, options, live targets and parameters. The build's half

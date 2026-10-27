@@ -14,7 +14,7 @@ import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../../packages/core/tests/_assert.ts";
+} from "../../core/tests/_assert.ts";
 import { materialize, type TargetRunner } from "../src/materialize.ts";
 import { parseManifest } from "../src/protocol.ts";
 

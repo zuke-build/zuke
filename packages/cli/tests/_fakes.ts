@@ -168,4 +168,5 @@ export const noProjectProbe: BuildProbe = {
   realPath: (path) => Promise.resolve(path),
   readLink: () => Promise.resolve(null),
   uid: () => null,
+  readText: () => Promise.resolve("{}"),
 };

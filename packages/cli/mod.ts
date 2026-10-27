@@ -578,7 +578,7 @@ async function forwardToBuild(
     // Discovery ran something the caller never named: say which, unless it
     // is the build right here, where `./zuke` would have been the same act.
     if (location.root !== absolutePath(cwd).path) {
-      output.error(runningNotice(location.root));
+      output.error(runningNotice(location));
     }
     // A launcher has its own lockfile story to tell; only the bare `deno run`
     // it stands in for is this notice's to report.

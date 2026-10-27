@@ -7,8 +7,10 @@ import {
 } from "../../core/tests/_assert.ts";
 import {
   DENO_INSTALL_DOCS,
+  ENGINE_FIELD,
   launcherBash,
   launcherPwsh,
+  noEngineNotice,
 } from "../src/launcher.ts";
 import {
   DENO_PIN,
@@ -200,5 +202,46 @@ Deno.test("the bash launcher execs Deno so the script is not read after it start
     const bash = launcherBash(options);
     assertStringIncludes(bash, `exec "$deno_bin" run -A --frozen zuke.ts "$@"`);
     assertStringIncludes(bash, `exec "$deno_bin" run -A zuke.ts "$@"`);
+  }
+});
+
+Deno.test("a root without zuke.ts runs the engine release its zuke.json names", () => {
+  // A project another SDK hosts has no build file: both launchers read the
+  // `engine` field and run that `@zuke/engine` release, refusing when the
+  // field is missing rather than handing Deno a module that is not there.
+  for (const options of [BOOTSTRAP, PLAIN]) {
+    const bash = launcherBash(options);
+    const branch = bash.indexOf("if [ ! -f zuke.ts ]; then");
+    assertEquals(branch > 0, true);
+    const tail = bash.slice(branch, bash.indexOf("# The first run"));
+    assertStringIncludes(tail, `'s/.*"${ENGINE_FIELD}"`);
+    assertStringIncludes(tail, 'zuke.json)"');
+    assertStringIncludes(
+      tail,
+      `echo "${noEngineNotice().replace(/"/g, '\\"')}" >&2`,
+    );
+    assertStringIncludes(tail, "exit 1");
+    assertStringIncludes(
+      tail,
+      `exec "$deno_bin" run -A --frozen "jsr:@zuke/engine@$engine_version" "$@"`,
+    );
+    assertStringIncludes(
+      tail,
+      `exec "$deno_bin" run -A "jsr:@zuke/engine@$engine_version" "$@"`,
+    );
+    // The engine branch comes first, and only it runs the engine.
+    assertEquals(branch < bash.indexOf("if [ -f deno.lock ]; then"), true);
+    assertEquals(bash.split("jsr:@zuke/engine@").length - 1, 2);
+
+    const pwsh = launcherPwsh(options);
+    assertStringIncludes(
+      pwsh,
+      `$ownBuild = Test-Path (Join-Path $dir "zuke.ts")`,
+    );
+    assertStringIncludes(pwsh, `ConvertFrom-Json).${ENGINE_FIELD}`);
+    assertStringIncludes(pwsh, noEngineNotice().replace(/"/g, '`"'));
+    assertStringIncludes(pwsh, `$build = "jsr:@zuke/engine@$engineVersion"`);
+    // The lockfile warning is the build file's alone.
+    assertStringIncludes(pwsh, "} elseif ($ownBuild) {\n  Write-Warning");
   }
 });

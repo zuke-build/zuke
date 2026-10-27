@@ -39,6 +39,17 @@
         }
       ]
     },
+    "packages/engine": {
+      "component": "engine",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
     "packages/npm": {
       "component": "npm",
       "changelog-path": "CHANGELOG.md",

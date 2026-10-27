@@ -2,25 +2,25 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * Replay every case under `spike/engine/conformance/` through the real CLI
+ * Replay every case under `packages/engine/conformance/` through the real CLI
  * `main()`: the fake worker answers the case's manifest, and the run must make
  * exactly the calls the case lists, exit as it says, and list what it says.
  */
 
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import type { Build } from "../../packages/core/mod.ts";
-import { WorkerHost } from "../../spike/engine/src/host.ts";
-import { materialize } from "../../spike/engine/src/materialize.ts";
-import { isRecord } from "../../spike/engine/src/protocol.ts";
+import { WorkerHost } from "../../packages/engine/src/host.ts";
+import { materialize } from "../../packages/engine/src/materialize.ts";
+import { isRecord } from "../../packages/engine/src/protocol.ts";
 import {
   defaultStateHost,
   FileSystemStateStore,
 } from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 
-const CASES = new URL("../../spike/engine/conformance/", import.meta.url);
+const CASES = new URL("../../packages/engine/conformance/", import.meta.url);
 const FAKE =
-  new URL("../../spike/engine/fixtures/fake_worker.ts", import.meta.url)
+  new URL("../../packages/engine/tests/_fake_worker.ts", import.meta.url)
     .href;
 
 /** One run of a case: the first, or a later one under `then`. */

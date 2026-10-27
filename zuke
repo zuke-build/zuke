@@ -176,6 +176,21 @@ fi
 # bootstrapped to a non-PATH location (e.g. ~/.deno/bin).
 export PATH="$(dirname "$deno_bin"):$PATH"
 
+# No build file: zuke.json describes a build another SDK hosts, run by the
+# @zuke/engine release it names. No lockfile notice here — such a project has
+# no Deno config for Deno to write one into.
+if [ ! -f zuke.ts ]; then
+  engine_version="$(sed -n 's/.*"engine"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' zuke.json)"
+  if [ -z "$engine_version" ]; then
+    echo "zuke: no zuke.ts here, and zuke.json names no \"engine\" version to run its \"sdk\" build with" >&2
+    exit 1
+  fi
+  if [ -f deno.lock ]; then
+    exec "$deno_bin" run -A --frozen "jsr:@zuke/engine@$engine_version" "$@"
+  fi
+  exec "$deno_bin" run -A "jsr:@zuke/engine@$engine_version" "$@"
+fi
+
 # The first run has no lockfile to verify against, so let Deno write one; from
 # then on --frozen fails the build if the module graph changed. Say so when
 # skipping, so a deleted lockfile downgrades verification visibly instead of

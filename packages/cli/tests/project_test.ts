@@ -34,6 +34,7 @@ const projectProbe: BuildProbe = {
   realPath: (path) => Promise.resolve(path),
   readLink: () => Promise.resolve(null),
   uid: () => null,
+  readText: () => Promise.resolve("{}"),
 };
 
 /** A lock resolving `@zuke/core` to `version`. */

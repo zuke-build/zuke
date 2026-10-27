@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 import { CiFile, target } from "@zuke/core";
-import {
-  assertEquals,
-  assertThrows,
-} from "../../../packages/core/tests/_assert.ts";
+import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
 import { ciFileOf, type ManifestCi } from "../src/ci.ts";
 import { parseManifest } from "../src/protocol.ts";
 

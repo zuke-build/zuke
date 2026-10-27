@@ -1,10 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import {
-  assertEquals,
-  assertRejects,
-} from "../../../packages/core/tests/_assert.ts";
+import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { Peer, RpcFailure } from "../src/peer.ts";
 import { INVALID_PARAMS, isRecord } from "../src/protocol.ts";
 

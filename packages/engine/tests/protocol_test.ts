@@ -1,10 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import {
-  assertEquals,
-  assertThrows,
-} from "../../../packages/core/tests/_assert.ts";
+import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
 import { sdkCommand } from "../src/config.ts";
 import {
   isRecord,

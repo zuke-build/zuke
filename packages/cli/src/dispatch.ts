@@ -39,6 +39,7 @@
  */
 
 import { type AbsolutePath, absolutePath, CONFIG_FILE } from "@zuke/core";
+import { ENGINE_FIELD } from "./launcher.ts";
 import { exists } from "./fs.ts";
 import { noLockNotice } from "./launcher.ts";
 import { QUIET_DENO_ENV, spawnDeno } from "./deno_path.ts";
@@ -76,6 +77,12 @@ export interface BuildLocation {
    * reports no file mode to tell (Windows).
    */
   launcher: string | null;
+  /**
+   * The `@zuke/engine` release that runs the build when the root has no
+   * `zuke.ts`: the `engine` field of its `zuke.json`, which then describes a
+   * build another SDK hosts. `null` when the root has its own build file.
+   */
+  engine: string | null;
 }
 
 /** What the trust gate needs to know about a filesystem entry. */
@@ -107,6 +114,8 @@ export interface BuildProbe {
   readLink(path: string): Promise<string | null>;
   /** The current user's numeric id, or `null` where the platform has none. */
   uid(): number | null;
+  /** The text of a file. */
+  readText(path: string): Promise<string>;
 }
 
 /**
@@ -139,6 +148,9 @@ export const defaultBuildProbe: BuildProbe = {
   },
   uid(): number | null {
     return Deno.uid();
+  },
+  readText(path: string): Promise<string> {
+    return Deno.readTextFile(path);
   },
 };
 
@@ -295,6 +307,9 @@ export async function locateBuild(
         root: dir.path,
         frozen: await probe.exists(dir(LOCK_FILE).path),
         launcher: await launcherAt(dir, probe),
+        engine: await probe.exists(dir(BUILD_FILE).path)
+          ? null
+          : await engineVersion(dir, probe),
       };
     }
     if (dir.isRoot) return null;
@@ -341,6 +356,43 @@ async function assertFilesOwned(
 }
 
 /**
+ * The `engine` field of the root's `zuke.json`: the `@zuke/engine` release
+ * that runs a build with no `zuke.ts`, as the launchers read it, or `null`
+ * when the file names none — the run then asks Deno for the build file, which
+ * reports it missing.
+ *
+ * @throws when the file is not JSON, saying which.
+ */
+async function engineVersion(
+  root: AbsolutePath,
+  probe: BuildProbe,
+): Promise<string | null> {
+  const path = root(CONFIG_FILE).path;
+  let config: unknown;
+  try {
+    config = JSON.parse(await probe.readText(path));
+  } catch (error) {
+    throw new Error(
+      `zuke: ${path} is not valid JSON: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  const engine = typeof config === "object" && config !== null &&
+      ENGINE_FIELD in config
+    ? config[ENGINE_FIELD]
+    : undefined;
+  return typeof engine === "string" && engine !== "" ? engine : null;
+}
+
+/** What a forwarded command runs: the build file, or the engine release for a root without one. */
+function buildModule(location: BuildLocation): string {
+  return location.engine === null
+    ? BUILD_FILE
+    : `jsr:@zuke/engine@${location.engine}`;
+}
+
+/**
  * The `deno` argv for a forwarded command — the launchers' invocation, with
  * `--frozen` only when the location has a lockfile to verify against. Pure.
  */
@@ -352,7 +404,7 @@ export function buildRunArgs(
     "run",
     "-A",
     ...(location.frozen ? ["--frozen"] : []),
-    BUILD_FILE,
+    buildModule(location),
     ...args,
   ];
 }
@@ -381,8 +433,12 @@ export const NO_LOCK_NOTICE: string = noLockNotice("—");
  * that build is not in the working directory — so a run that discovery chose
  * is never silent about what it chose.
  */
-export function runningNotice(root: string): string {
-  return `zuke: running ${root}/${BUILD_FILE}`;
+export function runningNotice(location: BuildLocation): string {
+  return location.engine === null
+    ? `zuke: running ${location.root}/${BUILD_FILE}`
+    : `zuke: running ${location.root}/${CONFIG_FILE} with ${
+      buildModule(location)
+    }`;
 }
 
 /**
