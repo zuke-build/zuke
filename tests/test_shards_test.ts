@@ -19,6 +19,7 @@ import {
   discoverTestFiles,
   HERMETIC_ENV,
   partitionShards,
+  pruneEmptyProfiles,
   runShards,
   shardCount,
   type ShardOutput,
@@ -258,4 +259,17 @@ Deno.test("the hermetic env blanks the job's summary and remote cache", () => {
   const hermetic = { ...job, ...HERMETIC_ENV };
   assertEquals(envCacheStore(readEnv(hermetic)), undefined);
   assertEquals(hermetic.GITHUB_STEP_SUMMARY, "");
+});
+
+Deno.test("pruneEmptyProfiles: drops the zero-byte profiles and keeps the rest", async () => {
+  await withTemp(async (dir) => {
+    await Deno.writeTextFile(`${dir}/full.json`, "{}");
+    await Deno.writeTextFile(`${dir}/cut-off.json`, "");
+    await Deno.mkdir(`${dir}/nested`);
+    assertEquals(await pruneEmptyProfiles(dir), 1);
+    const left = [];
+    for await (const entry of Deno.readDir(dir)) left.push(entry.name);
+    assertEquals(left.sort(), ["full.json", "nested"]);
+    assertEquals(await pruneEmptyProfiles(dir), 0);
+  });
 });

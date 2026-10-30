@@ -1,11 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import {
-  assertEquals,
-  assertRejects,
-} from "../../../packages/core/tests/_assert.ts";
-import { Peer, RpcFailure } from "../src/peer.ts";
+import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { MAX_LINE, Peer, RpcFailure } from "../src/peer.ts";
 import { INVALID_PARAMS, isRecord } from "../src/protocol.ts";
 
 /** The RPC code of a rejection, or NaN when it was not an RpcFailure. */
@@ -190,5 +187,35 @@ Deno.test("the remote side closing ends serve() and rejects what is pending", as
   await readLine(raw);
   raw.close();
   await assertRejects(() => pending, RpcFailure, "connection closed");
+  await close();
+});
+
+Deno.test("a request made after close() rejects at once with the close reason", async () => {
+  const { a, b, close } = await pair();
+  a.close("the worker exited with code 7");
+  const error = await assertRejects(
+    () => a.request("target.run", {}),
+    RpcFailure,
+    "the worker exited with code 7",
+  );
+  assertEquals(codeOf(error), -32000);
+  b.close();
+  await close();
+});
+
+Deno.test("a line longer than the cap closes the connection instead of growing the buffer", async () => {
+  const { a, b, close } = await pair();
+  // One notification well over the cap: b's serve() sees the unfinished
+  // line outgrow the cap before its newline arrives and closes b, naming why.
+  await a.notify("fill", "x".repeat(MAX_LINE * 2));
+  for (let waited = 0; !b.closed && waited < 200; waited++) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  assertEquals(b.closed, true);
+  await assertRejects(
+    () => b.request("ping", {}),
+    RpcFailure,
+    `a message longer than ${MAX_LINE} characters`,
+  );
   await close();
 });

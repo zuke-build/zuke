@@ -4,11 +4,11 @@ Zuke exists for the build that has outgrown a list of commands: a real
 dependency graph, typed inputs, external tools driven through checked argv, and
 pipelines that have to survive waiting for something outside the build.
 
-It is also a **single-maintainer project**. All 71 JSR packages are `1.x` and
-follow full semver (see [Versioning & compatibility](./versioning.md) for what
-that promises). The package a consumer actually installs is the `@zuke/cli`
-command — `1.x` too, and the front door to the `mcp`, `resume` and `cancel`
-surface below.
+It is also a **single-maintainer project**. All 72 JSR packages are at `1.0` or
+past it and follow full semver (see
+[Versioning & compatibility](./versioning.md) for what that promises). The
+package a consumer actually installs is the `@zuke/cli` command — on the same
+terms, and the front door to the `mcp`, `resume` and `cancel` surface below.
 
 **Scope:** tools a JavaScript or TypeScript team would realistically choose, on
 the capabilities Zuke was built to provide. [NUKE](https://nuke.build/) is

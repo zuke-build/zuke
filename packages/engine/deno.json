@@ -1,0 +1,17 @@
+{
+  "name": "@zuke/engine",
+  "version": "0.0.0",
+  "license": "MIT",
+  "description": "The Zuke engine for builds another SDK hosts — runs the worker a zuke.json names on the @zuke/core engine, over the worker protocol.",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "imports": {
+    "@zuke/core": "jsr:@zuke/core@^1.77.0"
+  },
+  "publish": {
+    "exclude": [
+      "tests/"
+    ]
+  }
+}

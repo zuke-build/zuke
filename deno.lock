@@ -1673,6 +1673,11 @@
           "jsr:@zuke/core@^1.44.0"
         ]
       },
+      "packages/engine": {
+        "dependencies": [
+          "jsr:@zuke/core@^1.77.0"
+        ]
+      },
       "packages/eslint": {
         "dependencies": [
           "jsr:@zuke/core@^1.44.0"

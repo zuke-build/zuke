@@ -19,10 +19,16 @@
  * fails. A service target answers `service.start` with `service_handle`
  * after running its `exec` list, `service.ready` with the next of
  * `ready_answers` (the last one repeats), and `service.stop` with nothing.
- * A `crash_exit` code ends the worker process from inside the body, for the
+ * A `hangup` closes the connection from inside the body and keeps the
+ * process alive until the engine stops it, which `ZUKE_FAKE_HANGUP_FILE`
+ * records. A `crash_exit` code ends the worker process from inside the body, for the
  * engine's respawn. A top-level `failHook` names the build hook that throws.
  * With `ZUKE_FAKE_GENERATION_FILE` set, a worker that finds the file is a
- * replacement and describes `ZUKE_FAKE_RESPAWN_PLAN` when that is set.
+ * replacement and describes `ZUKE_FAKE_RESPAWN_PLAN` when that is set. A
+ * `sleep_ms` holds the body that long before its execs, for a test that must
+ * catch it mid-body. Every start appends the process id to
+ * `ZUKE_FAKE_STARTED_FILE`, and an exit on the connection's end writes
+ * `ZUKE_FAKE_EXIT_FILE`, so a test can count workers and see one go.
  *
  * It prints every call the engine makes as a `call:` line, and the
  * `build.configure` payload as a `configure:` line, on stdout on purpose: a
@@ -51,6 +57,8 @@ interface Script {
   serviceHandle: unknown;
   readyAnswers: unknown[];
   crashExit?: number;
+  hangup: boolean;
+  sleepMs: number;
 }
 
 const GENERATION_FILE = Deno.env.get("ZUKE_FAKE_GENERATION_FILE");
@@ -80,6 +88,7 @@ if (isRecord(PLAN) && Array.isArray(PLAN.targets)) {
       barrier: typeof t.barrier === "string" ? t.barrier : undefined,
       fail: typeof t.fail === "string" ? t.fail : undefined,
       failTimes: typeof t.failTimes === "number" ? t.failTimes : 0,
+      sleepMs: typeof t.sleep_ms === "number" ? t.sleep_ms : 0,
       execAs: typeof t.execAs === "string" ? t.execAs : undefined,
       // Answered as given, so a test can hand the engine the wrong type.
       condition: t.condition_answer ?? true,
@@ -98,6 +107,7 @@ if (isRecord(PLAN) && Array.isArray(PLAN.targets)) {
       serviceHandle: t.service_handle ?? "h1",
       readyAnswers: Array.isArray(t.ready_answers) ? t.ready_answers : [true],
       crashExit: typeof t.crash_exit === "number" ? t.crash_exit : undefined,
+      hangup: t.hangup === true,
     });
   }
 }
@@ -181,6 +191,7 @@ async function runTarget(peer: Peer, params: unknown): Promise<unknown> {
   console.log(`call: target.run ${name}`);
   started.add(name);
   if (s.barrier !== undefined) await awaitBarrier(s.barrier);
+  if (s.sleepMs > 0) await new Promise((r) => setTimeout(r, s.sleepMs));
   const lastStdout = await execAll(peer, name, s);
   if (
     s.expectStdout !== undefined &&
@@ -192,6 +203,13 @@ async function runTarget(peer: Peer, params: unknown): Promise<unknown> {
   }
   await callAll(peer, name, s);
   if (s.crashExit !== undefined) Deno.exit(s.crashExit);
+  if (s.hangup) {
+    // The socket goes, the process stays: what the engine must stop itself.
+    hangingUp = true;
+    setInterval(() => {}, 1_000); // keeps the process alive once serve() ends
+    peer.close();
+    await new Promise(() => {});
+  }
   const attempt = (attempts.get(name) ?? 0) + 1;
   attempts.set(name, attempt);
   if (attempt <= s.failTimes) {
@@ -199,6 +217,17 @@ async function runTarget(peer: Peer, params: unknown): Promise<unknown> {
   }
   if (s.fail !== undefined) throw new RpcFailure(-32000, s.fail);
   return {};
+}
+
+/** Set by a `hangup` body: the connection ends but the process must not. */
+let hangingUp = false;
+const HANGUP_FILE = Deno.env.get("ZUKE_FAKE_HANGUP_FILE");
+if (HANGUP_FILE !== undefined && Deno.build.os !== "windows") {
+  // Record that the engine stopped this process, then go.
+  Deno.addSignalListener("SIGTERM", () => {
+    Deno.writeTextFileSync(HANGUP_FILE, "terminated");
+    Deno.exit(0);
+  });
 }
 
 const [hostname, port] = (Deno.env.get("ZUKE_ENGINE_ADDR") ?? "").split(":");
@@ -279,6 +308,15 @@ peer.on(
 );
 peer.on("run.cancel", () => {});
 const serving = peer.serve();
+const EXIT_FILE = Deno.env.get("ZUKE_FAKE_EXIT_FILE");
+/** Record how far this worker's end has got, for a test watching it go. */
+function stage(what: string): void {
+  if (EXIT_FILE !== undefined) Deno.writeTextFileSync(EXIT_FILE, what);
+}
+const STARTED_FILE = Deno.env.get("ZUKE_FAKE_STARTED_FILE");
+if (STARTED_FILE !== undefined) {
+  Deno.writeTextFileSync(STARTED_FILE, `${Deno.pid}\n`, { append: true });
+}
 console.log("fake worker started");
 Deno.env.set("ZUKE_FAKE_ENV_MARK", "from-worker");
 try {
@@ -290,8 +328,14 @@ try {
     env: Deno.env.toObject(),
     cwd: Deno.cwd(),
   });
+  stage("serving");
   await serving;
+  stage("serve ended");
 } finally {
-  // An engine that hangs up, as it does on a refused greeting, is the end.
-  Deno.exit(0);
+  // An engine that hangs up, as it does on a refused greeting or by dying, is
+  // the end, unless this worker is the one that hung up and is to be stopped.
+  if (!hangingUp) {
+    stage("exited");
+    Deno.exit(0);
+  }
 }

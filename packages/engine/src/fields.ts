@@ -9,7 +9,7 @@
  * @module
  */
 
-import type { JsonValue } from "@zuke/core";
+import { type JsonValue, parseDuration } from "@zuke/core";
 import type { Duration } from "./protocol.ts";
 
 /** Whether `value` is a plain JSON object. */
@@ -33,6 +33,9 @@ function isJsonValue(value: unknown): value is JsonValue {
       return false;
   }
 }
+
+/** The shape of a field name a `zuke.ts` build declares. */
+const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
 /**
  * A view of one untrusted object at `where`, whose readers name the field
@@ -106,14 +109,30 @@ export class Fields {
     return this.has(name) ? this.number(name) : undefined;
   }
 
+  /** A duration core can parse, refused here rather than when it is used. */
   durationIfSet(name: string): Duration | undefined {
     if (!this.has(name)) return undefined;
     const value = this.object[name];
-    if (typeof value === "string") return value;
-    if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
-      return value;
+    if (typeof value !== "string" && typeof value !== "number") {
+      return this.reject(name, "be a duration string or milliseconds");
     }
-    return this.reject(name, "be a duration string or milliseconds");
+    try {
+      parseDuration(value);
+    } catch {
+      return this.reject(name, 'be a duration such as "5m" or milliseconds');
+    }
+    return value;
+  }
+
+  /**
+   * A name usable as a build's field: what `zuke.ts` can declare, and what
+   * the CLI can derive a flag from.
+   */
+  identifier(name: string): string {
+    const value = this.string(name);
+    return IDENTIFIER.test(value)
+      ? value
+      : this.reject(name, "be an identifier, as a build's field name is");
   }
 
   booleanOr(name: string, fallback: boolean): boolean {

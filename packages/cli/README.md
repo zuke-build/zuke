@@ -63,6 +63,10 @@ interface BuildLocation
     The absolute path of the executable `zuke` launcher at the root, run in
     place of `deno run` — or `null` when there is none, or the platform
     reports no file mode to tell (Windows).
+  engine: string | null
+    The `@zuke/engine` release that runs the build when the root has no
+    `zuke.ts`: the `engine` field of its `zuke.json`, which then describes a
+    build another SDK hosts. `null` when the root has its own build file.
 
 interface BuildProbe
   The filesystem questions discovery asks, injectable so the walk and its
@@ -80,6 +84,8 @@ interface BuildProbe
     relative to the link's directory), or `null` when `path` is not a link.
   uid(): number | null
     The current user's numeric id, or `null` where the platform has none.
+  readText(path: string): Promise<string>
+    The text of a file.
 
 interface ImportFlags extends SetupFlags
   Flags accepted by `zuke import` — the setup flags plus `--from`.

@@ -146,6 +146,7 @@ import {
   discoverTestFiles,
   HERMETIC_ENV,
   partitionShards,
+  pruneEmptyProfiles,
   runShards,
   shardCount,
 } from "./build/test_shards.ts";
@@ -401,6 +402,12 @@ class ZukeBuild extends Build {
       // package can't hide inside the average. The floor (50%) sits well below
       // the current lowest src file (~82%), so it flags only a genuinely
       // neglected file rather than churning on the existing spread.
+      // A worker cut off mid-dump leaves an empty profile the report would
+      // refuse (see pruneEmptyProfiles); it carries nothing, so it goes.
+      const pruned = await pruneEmptyProfiles("cov_profile");
+      if (pruned > 0) {
+        ConsoleTasks.warn(`${pruned} empty coverage profile(s) dropped.`);
+      }
       await DenoTasks.coverage((s) =>
         s.dir("cov_profile").exclude("tests/").output("cov.lcov")
           .threshold(95).perFileThreshold(50)

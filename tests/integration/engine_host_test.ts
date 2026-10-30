@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * The engine/worker spike, driven through the real CLI `main()`: a build the
+ * The engine's host mode, driven through the real CLI `main()`: a build the
  * scripted fake worker describes over the loopback socket runs on the
- * unmodified engine, with every subprocess spawned by the engine.
+ * unmodified core engine, with every subprocess spawned by the engine.
  */
 
 import {
@@ -21,13 +21,13 @@ import {
   assertStringIncludes,
 } from "../../packages/core/tests/_assert.ts";
 import { FakeGraphHost } from "../../packages/core/tests/_fakes.ts";
-import { WorkerHost } from "../../spike/engine/src/host.ts";
-import { materialize } from "../../spike/engine/src/materialize.ts";
-import { isRecord } from "../../spike/engine/src/protocol.ts";
+import { WorkerHost } from "../../packages/engine/src/host.ts";
+import { materialize } from "../../packages/engine/src/materialize.ts";
+import { isRecord } from "../../packages/engine/src/protocol.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 
 const FAKE =
-  new URL("../../spike/engine/fixtures/fake_worker.ts", import.meta.url)
+  new URL("../../packages/engine/tests/_fake_worker.ts", import.meta.url)
     .href;
 
 interface PlanTarget {
@@ -54,6 +54,7 @@ interface PlanTarget {
   onCancel?: string;
   onFailure?: string;
   crash_exit?: number;
+  hangup?: boolean;
 }
 
 /** Start the fake worker on `plan` and materialise its build. */
@@ -63,6 +64,7 @@ async function fake(
     badToken?: string;
     connectTimeoutMs?: number;
     manifest?: Record<string, unknown>;
+    prewarm?: boolean;
   } = {},
 ): Promise<{ host: WorkerHost; Remote: new () => Build }> {
   Deno.env.set(
@@ -77,6 +79,7 @@ async function fake(
     cwd: Deno.cwd(),
     connectTimeoutMs: options.connectTimeoutMs,
     graceMs: 1_000,
+    prewarm: options.prewarm,
   });
   return { host, Remote: materialize(await host.describe(), host) };
 }
@@ -789,6 +792,175 @@ Deno.test("an MCP server lists the twin's tools for a worker-described build, an
       const text = JSON.stringify(result);
       assertEquals(isRecord(result) && result.isError === true, false, text);
       assertStringIncludes(text, "b succeeded");
+    }
+  });
+});
+
+Deno.test("a replacement worker that cannot describe the build ends the run, naming why, and serves nothing", async () => {
+  await withStateDir(async (dir) => {
+    Deno.env.set("ZUKE_FAKE_GENERATION_FILE", `${dir}/generation`);
+    Deno.env.set("ZUKE_FAKE_RESPAWN_PLAN", JSON.stringify({ name: 5 }));
+    try {
+      const { host, Remote } = await fake([
+        { name: "deploy", onCancel: "rollback" },
+        {
+          name: "verify",
+          dependsOn: ["deploy"],
+          onFailure: "cancel-run",
+          crash_exit: 3,
+        },
+        { name: "rollback" },
+      ]);
+      try {
+        const result = await runCli(Remote, ["verify"]);
+        assertEquals(result.code, 1);
+        assertStringIncludes(
+          result.out + result.err,
+          'could not describe the build: manifest: field "name" must be a string',
+        );
+        assertEquals(result.err.includes("call: target.run rollback"), false);
+      } finally {
+        await host.finish(1);
+      }
+    } finally {
+      Deno.env.delete("ZUKE_FAKE_GENERATION_FILE");
+      Deno.env.delete("ZUKE_FAKE_RESPAWN_PLAN");
+    }
+  });
+});
+
+Deno.test("kill() ends one run's phases without poisoning the next run's service phases", async () => {
+  await withStateDir(async (dir) => {
+    const marker = `${dir}/service-marker`;
+    const { host, Remote } = await fake([
+      {
+        name: "db",
+        kind: "service",
+        exec: [
+          evalArgv(`Deno.writeTextFileSync(${JSON.stringify(marker)}, "up")`),
+        ],
+      },
+      { name: "test", dependsOn: ["db"] },
+    ]);
+    // The host outlives a kill, as it does in an MCP server: the next run gets
+    // a fresh worker, and its service's exec a live signal.
+    host.kill();
+    const result = await runCli(Remote, ["test"]);
+    assertEquals(result.code, 0, result.out + result.err);
+    assertEquals(await Deno.readTextFile(marker), "up");
+    assertStringIncludes(result.err, "worker: call: service.stop db h1");
+  });
+});
+
+Deno.test({
+  name:
+    "a worker that hangs up but keeps running is stopped before its replacement serves the compensation",
+  ignore: Deno.build.os === "windows", // the fake records SIGTERM, which Windows has no listener for
+  fn: async () => {
+    await withStateDir(async (dir) => {
+      const hangup = `${dir}/hangup`;
+      Deno.env.set("ZUKE_FAKE_HANGUP_FILE", hangup);
+      try {
+        const { host, Remote } = await fake([
+          { name: "deploy", onCancel: "rollback" },
+          {
+            name: "verify",
+            dependsOn: ["deploy"],
+            onFailure: "cancel-run",
+            hangup: true,
+          },
+          { name: "rollback" },
+        ]);
+        try {
+          const result = await runCli(Remote, ["verify"]);
+          assertEquals(result.code, 1);
+          assertStringIncludes(result.err, "worker: call: target.run rollback");
+          // The first worker was told to stop before the second one started.
+          assertEquals(await Deno.readTextFile(hangup), "terminated");
+        } finally {
+          await host.finish(1);
+        }
+      } finally {
+        Deno.env.delete("ZUKE_FAKE_HANGUP_FILE");
+      }
+    });
+  },
+});
+
+/** How many workers `file` records as started, zero before the first. */
+async function workersStarted(file: string): Promise<number> {
+  return await Deno.readTextFile(file).then(
+    (t) => t.split("\n").filter((l) => l !== "").length,
+    () => 0,
+  );
+}
+
+Deno.test("a pre-warming host has the next worker up before the next run asks", async () => {
+  await withStateDir(async (dir) => {
+    const started = `${dir}/started`;
+    Deno.env.set("ZUKE_FAKE_STARTED_FILE", started);
+    try {
+      // `count` runs in the engine, inside the second run's body: at that
+      // moment the only workers ever started must be the first and the
+      // pre-warmed one, so a lazy spawn for the second run would show as a
+      // third line and fail the body's expectation.
+      const { host, Remote } = await fake([
+        { name: "work" },
+        {
+          name: "count",
+          exec: [
+            evalArgv(
+              `console.log(Deno.readTextFileSync(${
+                JSON.stringify(started)
+              }).trim().split("\\n").length)`,
+            ),
+          ],
+          expectStdout: "2",
+        },
+      ], { prewarm: true });
+      const first = await runCli(Remote, ["work"]);
+      assertEquals(first.code, 0, first.err);
+      const deadline = Date.now() + 10_000;
+      while (await workersStarted(started) < 2 && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      assertEquals(await workersStarted(started), 2);
+      const second = await runCli(Remote, ["count"]);
+      assertEquals(second.code, 0, second.err);
+      await host.close();
+    } finally {
+      Deno.env.delete("ZUKE_FAKE_STARTED_FILE");
+    }
+  });
+});
+
+Deno.test("a pre-warm that fails is the next run's to meet, not the finished run's", async () => {
+  await withStateDir(async (dir) => {
+    Deno.env.set("ZUKE_FAKE_GENERATION_FILE", `${dir}/generation`);
+    Deno.env.set(
+      "ZUKE_FAKE_RESPAWN_PLAN",
+      JSON.stringify({ name: "Fake", targets: [{ name: "other" }] }),
+    );
+    try {
+      const { host, Remote } = await fake([{ name: "work" }], {
+        prewarm: true,
+      });
+      try {
+        const first = await runCli(Remote, ["work"]);
+        assertEquals(first.code, 0, first.err);
+        // The next run spawns its own replacement and meets the refusal where
+        // a run without pre-warming would: configuring its worker.
+        await assertRejects(
+          () => runCli(Remote, ["work"]),
+          Error,
+          "described a different build",
+        );
+      } finally {
+        await host.close();
+      }
+    } finally {
+      Deno.env.delete("ZUKE_FAKE_GENERATION_FILE");
+      Deno.env.delete("ZUKE_FAKE_RESPAWN_PLAN");
     }
   });
 });

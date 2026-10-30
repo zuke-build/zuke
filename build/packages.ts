@@ -11,6 +11,7 @@ import { FileTasks } from "@zuke/core";
 /** Workspace packages, in dependency order: core must publish before the rest. */
 export const PACKAGES = [
   "core",
+  "engine",
   "deno",
   "docs",
   "npm",

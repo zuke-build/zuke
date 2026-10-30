@@ -105,6 +105,7 @@ Full reference: [docs/cli.md](./docs/cli.md).
 ## Packages
 
 - [@zuke/core](https://jsr.io/@zuke/core) — a code-first, strongly-typed build automation system for Deno
+- [@zuke/engine](https://jsr.io/@zuke/engine) — the engine for a build another process hosts. An SDK in
 - [@zuke/deno](https://jsr.io/@zuke/deno) — typed `DenoTasks` wrappers for the `deno` CLI, for use in
 - [@zuke/docs](https://jsr.io/@zuke/docs) — typed tasks that turn already-generated API documentation into
 - [@zuke/npm](https://jsr.io/@zuke/npm) — typed `NpmTasks` wrappers for the `npm` CLI, for use in Zuke

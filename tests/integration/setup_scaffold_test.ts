@@ -68,7 +68,12 @@ Deno.test("zuke setup scaffolds a project whose first run has no lockfile to fre
   // asks for --frozen when there is a lockfile to verify.
   const bash = await read("zuke");
   assertEquals(bash.includes("if [ -f deno.lock ]; then"), true);
-  assertEquals(bash.split("run -A --frozen").length - 1, 1);
+  // One frozen run per lockfile check: the build file's and the engine's.
+  assertEquals(bash.split("run -A --frozen zuke.ts").length - 1, 1);
+  assertEquals(
+    bash.split('--lock=deno.lock --frozen "jsr:@zuke/engine@').length - 1,
+    1,
+  );
   assertEquals(bash.split(`run -A zuke.ts "$@"`).length - 1, 1);
 
   // The PowerShell launcher agrees.

@@ -1,10 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import {
-  assertEquals,
-  assertThrows,
-} from "../../../packages/core/tests/_assert.ts";
+import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
 import { sdkCommand } from "../src/config.ts";
 import {
   isRecord,
@@ -233,6 +230,27 @@ Deno.test("parseManifest names the malformed field", () => {
   const cases: Array<[unknown, string]> = [
     [null, "manifest: expected an object"],
     [{ targets: [] }, 'manifest: missing field "name"'],
+    [{ name: "", targets: [] }, '"name" must be an identifier'],
+    [target({ name: "a b" }), '"name" must be an identifier'],
+    [target({ name: "a-b" }), '"name" must be an identifier'],
+    [
+      target({ ready: true }),
+      'be absent on a "target"; only a service is probed',
+    ],
+    [target({ readyTimeoutMs: 5 }), 'be absent on a "target"'],
+    [param({ name: "my param" }), '"name" must be an identifier'],
+    [
+      param({ kind: "number", default: Infinity }),
+      '"default" must be a finite number',
+    ],
+    [
+      { name: "B", targets: [], groups: [{ name: "x y", members: [] }] },
+      '"name" must be an identifier',
+    ],
+    [
+      { name: "B", targets: [], config: { deadline: "abc" } },
+      '"deadline" must be a duration such as "5m" or milliseconds',
+    ],
     [{ name: "B", targets: {} }, '"targets" must be an array'],
     [{ name: "B", targets: [1] }, "manifest.targets[0]: expected an object"],
     [target({ dependsOn: [1] }), '"dependsOn" must be an array of strings'],
@@ -254,7 +272,10 @@ Deno.test("parseManifest names the malformed field", () => {
     ],
     [param({ kind: "date" }), '"kind" must be "string", "number" or "boolean"'],
     [param({ default: 1 }), '"default" must be a string'],
-    [param({ kind: "number", default: "1" }), '"default" must be a number'],
+    [
+      param({ kind: "number", default: "1" }),
+      '"default" must be a finite number',
+    ],
     [param({ kind: "boolean", default: "y" }), '"default" must be a boolean'],
     [param({ array: true, default: "a" }), "be absent on an array parameter"],
     [

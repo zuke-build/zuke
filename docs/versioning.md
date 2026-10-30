@@ -1,28 +1,29 @@
 # Versioning & compatibility
 
-Zuke publishes 71 independent JSR packages from one workspace. They don't all
+Zuke publishes 72 independent JSR packages from one workspace. They don't all
 move at the same speed, and knowing which promise each package makes — and how
 they interlock — is what keeps an upgrade from surprising you at runtime instead
 of at `deno check` time.
 
 ## One tier: every package follows full semver
 
-**All 71 packages are `1.x`.** `@zuke/core`, the `@zuke/cli` command, and every
-tool wrapper make the same promise: a `1.x` release never breaks a public
-symbol, so a minor or patch upgrade is safe to take without reading the diff,
-and a breaking change bumps the **major** version. Depend on `jsr:@zuke/core@^1`
-(and `jsr:@zuke/deno@^1`, …) and let minors resolve.
+**All 72 packages are at `1.0` or past it.** `@zuke/core`, the `@zuke/cli`
+command, and every tool wrapper make the same promise: within a major, a release
+never breaks a public symbol, so a minor or patch upgrade is safe to take
+without reading the diff, and a breaking change bumps the **major** version.
+Depend on the caret of the major you use — `jsr:@zuke/core@^1`,
+`jsr:@zuke/cli@^2`, `jsr:@zuke/deno@^1`, … — and let minors resolve.
 
 `release-please`'s `bump-minor-pre-major` is off, so nothing silently ships a
 breaking change under a minor bump. Read a package's `CHANGELOG.md` when its
 major moves — that is the only release that can require a code change on your
 side.
 
-What a wrapper's `1.x` promise does **not** cover is the upstream CLI it drives:
-its flags track a tool that can rename or drop one. When upstream changes, the
-wrapper keeps the old method working (deprecated) or bumps its major — the
-promise is about the wrapper's own typed surface, not about upstream's
-stability.
+What a wrapper's semver promise does **not** cover is the upstream CLI it
+drives: its flags track a tool that can rename or drop one. When upstream
+changes, the wrapper keeps the old method working (deprecated) or bumps its
+major — the promise is about the wrapper's own typed surface, not about
+upstream's stability.
 
 Check a specific package's current version from its badge on the
 [Packages table](../README.md#packages) or its JSR page — score and version are

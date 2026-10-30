@@ -1,7 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import {
   BUILD_FILE,
   type BuildProbe,
@@ -26,6 +26,8 @@ import { withEnv } from "../../core/tests/_env.ts";
 interface Fixture {
   /** Paths that exist (for `exists`, the `zuke.json`/`deno.lock` probes). */
   present?: string[];
+  /** File contents by path, for `readText`; an unlisted path reads as `{}`. */
+  texts?: Record<string, string>;
   /** Ownership answers by path; a path not listed reports `null` (absent). */
   owned?: Record<string, Ownership>;
   /** What `uid()` reports (`null`: a platform without user ids). */
@@ -49,9 +51,21 @@ function probe(fixture: Fixture): BuildProbe & { asked: string[] } {
   const present = new Set(fixture.present ?? []);
   const owned = fixture.owned ?? {};
   const asked: string[] = [];
+  // Every root has its own build file, except the ones whose zuke.json text
+  // the fixture spells out: those are the SDK roots the engine cases describe.
+  const sdkRoots = new Set(
+    Object.keys(fixture.texts ?? {}).map((p) =>
+      p.slice(0, -"/zuke.json".length)
+    ),
+  );
+  const buildFileAt = (path: string): boolean => {
+    if (!path.endsWith("/zuke.ts")) return false;
+    const root = path.slice(0, -"/zuke.ts".length);
+    return present.has(`${root}/zuke.json`) && !sdkRoots.has(root);
+  };
   return {
     asked,
-    exists: (path) => Promise.resolve(present.has(path)),
+    exists: (path) => Promise.resolve(present.has(path) || buildFileAt(path)),
     ownership: (path) => {
       asked.push(path);
       return Promise.resolve(owned[path] ?? null);
@@ -62,6 +76,7 @@ function probe(fixture: Fixture): BuildProbe & { asked: string[] } {
         fixture.written?.[path] ?? fixture.links?.[path] ?? null,
       ),
     uid: () => fixture.uid ?? null,
+    readText: (path) => Promise.resolve(fixture.texts?.[path] ?? "{}"),
   };
 }
 
@@ -84,7 +99,12 @@ Deno.test("locateBuild finds zuke.json in the cwd itself", async () => {
     "/repo",
     probe({ present: ["/repo/zuke.json"] }),
   );
-  assertEquals(found, { root: "/repo", frozen: false, launcher: null });
+  assertEquals(found, {
+    root: "/repo",
+    frozen: false,
+    launcher: null,
+    engine: null,
+  });
 });
 
 Deno.test("locateBuild walks up to the nearest ancestor holding zuke.json", async () => {
@@ -102,7 +122,12 @@ Deno.test("locateBuild reports a lockfile beside the config as frozen", async ()
     "/repo/src",
     probe({ present: ["/repo/zuke.json", "/repo/deno.lock"] }),
   );
-  assertEquals(found, { root: "/repo", frozen: true, launcher: null });
+  assertEquals(found, {
+    root: "/repo",
+    frozen: true,
+    launcher: null,
+    engine: null,
+  });
   // A lockfile elsewhere on the walk does not count: only the root's does.
   const elsewhere = await locateBuild(
     "/repo/src",
@@ -124,6 +149,7 @@ Deno.test("locateBuild returns null when no ancestor has zuke.json", async () =>
     realPath: (path) => Promise.resolve(path),
     readLink: () => Promise.resolve(null),
     uid: () => null,
+    readText: () => Promise.resolve("{}"),
   });
   assertEquals(found, null);
   assertEquals(probed, ["/a/b/zuke.json", "/a/zuke.json", "/zuke.json"]);
@@ -147,7 +173,12 @@ Deno.test("the trust gate accepts a root the current user owns", async () => {
       uid: 1000,
     }),
   );
-  assertEquals(found, { root: "/home/me/app", frozen: false, launcher: null });
+  assertEquals(found, {
+    root: "/home/me/app",
+    frozen: false,
+    launcher: null,
+    engine: null,
+  });
 });
 
 Deno.test("the trust gate refuses a root owned by another user", async () => {
@@ -301,23 +332,32 @@ Deno.test("the trust gate is inert where ownership cannot be compared", async ()
 
 Deno.test("buildRunArgs mirrors the launcher: --frozen only with a lockfile", () => {
   assertEquals(
-    buildRunArgs({ root: "/repo", frozen: true, launcher: null }, [
-      "ci",
-      "--parallel",
-    ]),
+    buildRunArgs(
+      { root: "/repo", frozen: true, launcher: null, engine: null },
+      [
+        "ci",
+        "--parallel",
+      ],
+    ),
     ["run", "-A", "--frozen", BUILD_FILE, "ci", "--parallel"],
   );
   assertEquals(
-    buildRunArgs({ root: "/repo", frozen: false, launcher: null }, [
-      "--list",
-      "--json",
-    ]),
+    buildRunArgs(
+      { root: "/repo", frozen: false, launcher: null, engine: null },
+      [
+        "--list",
+        "--json",
+      ],
+    ),
     ["run", "-A", BUILD_FILE, "--list", "--json"],
   );
   // The argument list is forwarded verbatim — nothing is parsed or reordered,
   // so the build's own CLI sees exactly what the user typed.
   assertEquals(
-    buildRunArgs({ root: "/repo", frozen: false, launcher: null }, []),
+    buildRunArgs(
+      { root: "/repo", frozen: false, launcher: null, engine: null },
+      [],
+    ),
     ["run", "-A", BUILD_FILE],
   );
 });
@@ -336,7 +376,12 @@ Deno.test("locateBuild reports an executable launcher at the root", async () => 
       uid: 1000,
     }),
   );
-  assertEquals(found, { root: "/repo", frozen: false, launcher: "/repo/zuke" });
+  assertEquals(found, {
+    root: "/repo",
+    frozen: false,
+    launcher: "/repo/zuke",
+    engine: null,
+  });
 });
 
 Deno.test("locateBuild resolves a symlinked launcher and judges its directory", async () => {
@@ -438,21 +483,21 @@ Deno.test("runBuild runs the launcher with the bare args, else Deno", async () =
   assertEquals(
     await runBuild(
       runner,
-      { root: "/repo", frozen: true, launcher: "/repo/zuke" },
+      { root: "/repo", frozen: true, launcher: "/repo/zuke", engine: null },
       ["ci"],
     ),
     3,
   );
   await runBuild(
     runner,
-    { root: "/repo", frozen: true, launcher: null },
+    { root: "/repo", frozen: true, launcher: null, engine: null },
     ["ci"],
   );
   // A launcher's own call to the global `zuke` gets Deno, not itself again.
   await withEnv({ [FORWARDED_ENV]: "1" }, async () => {
     await runBuild(
       runner,
-      { root: "/repo", frozen: false, launcher: "/repo/zuke" },
+      { root: "/repo", frozen: false, launcher: "/repo/zuke", engine: null },
       ["ci"],
     );
   });
@@ -463,10 +508,104 @@ Deno.test("runBuild runs the launcher with the bare args, else Deno", async () =
   ]);
 });
 
-Deno.test("the running notice names the build file at the root", () => {
+Deno.test("the running notice names the build file at the root, or the engine release", () => {
   assertEquals(
-    runningNotice("/home/me/app"),
+    runningNotice({
+      root: "/home/me/app",
+      frozen: false,
+      launcher: null,
+      engine: null,
+    }),
     "zuke: running /home/me/app/zuke.ts",
+  );
+  assertEquals(
+    runningNotice({
+      root: "/home/me/app",
+      frozen: false,
+      launcher: null,
+      engine: "1.2.3",
+    }),
+    "zuke: running /home/me/app/zuke.json with jsr:@zuke/engine@1.2.3",
+  );
+});
+
+Deno.test("a root without zuke.ts runs the engine release its zuke.json names", async () => {
+  const sdk = {
+    present: ["/app/zuke.json"],
+    texts: {
+      "/app/zuke.json":
+        '{ "sdk": { "command": ["python3"] }, "engine": "1.2.3" }',
+    },
+  };
+  const location = await locateBuild("/app/src", probe(sdk));
+  assertEquals(location, {
+    root: "/app",
+    frozen: false,
+    launcher: null,
+    engine: "1.2.3",
+  });
+  if (location === null) throw new Error("unreachable");
+  assertEquals(buildRunArgs(location, ["--list"]), [
+    "run",
+    "-A",
+    "jsr:@zuke/engine@1.2.3",
+    "--list",
+  ]);
+  // Deno finds a lock only beside a config, so the engine route names it.
+  assertEquals(
+    buildRunArgs({ ...location, frozen: true }, ["ci"]),
+    [
+      "run",
+      "-A",
+      "--lock=deno.lock",
+      "--frozen",
+      "jsr:@zuke/engine@1.2.3",
+      "ci",
+    ],
+  );
+  await assertRejects(
+    () =>
+      locateBuild(
+        "/app",
+        probe({
+          present: ["/app/zuke.json"],
+          texts: { "/app/zuke.json": '{ "engine": "^1" }' },
+        }),
+      ),
+    Error,
+    "zuke: zuke.json names 'engine': '^1', which is not an exact version like 1.2.3",
+  );
+  // A root with its own build file never reads the field.
+  const own = await locateBuild(
+    "/repo",
+    probe({ present: ["/repo/zuke.json"] }),
+  );
+  assertEquals(own?.engine, null);
+});
+
+Deno.test("a root without zuke.ts and without an engine version keeps the build file, and bad JSON is named", async () => {
+  // The launchers refuse such a root with a message; the forwarding leaves it
+  // to Deno, which reports the missing build file.
+  for (
+    const text of ['{ "sdk": { "command": ["python3"] } }', '{ "engine": "" }']
+  ) {
+    const location = await locateBuild(
+      "/app",
+      probe({ present: ["/app/zuke.json"], texts: { "/app/zuke.json": text } }),
+    );
+    assertEquals(location?.engine, null);
+  }
+  await assertRejects(
+    () =>
+      locateBuild(
+        "/app",
+        probe({
+          present: ["/app/zuke.json"],
+          texts: { "/app/zuke.json": "{ nope" },
+        }),
+      ),
+    Error,
+    "zuke: /app/zuke.json is not valid JSON",
   );
 });
 
@@ -478,6 +617,7 @@ Deno.test("defaultBuildProbe answers from the real filesystem", async () => {
   await withTemp(async (dir) => {
     await Deno.writeTextFile(`${dir}/zuke.json`, "{}\n");
     assertEquals(await defaultBuildProbe.exists(`${dir}/zuke.json`), true);
+    assertEquals(await defaultBuildProbe.readText(`${dir}/zuke.json`), "{}\n");
     assertEquals(await defaultBuildProbe.exists(`${dir}/deno.lock`), false);
     // A directory this process just created is owned by this process's user
     // — or both sides are null where the platform has no ownership (Windows),
@@ -662,13 +802,28 @@ Deno.test("runBuild hands an env to the runner on both the launcher and the Deno
   };
   const env = { ZUKE_PLAIN: "1" };
   await withEnv({ [FORWARDED_ENV]: undefined }, async () => {
-    await runBuild(runner, { root: "/r", frozen: false, launcher: "/r/zuke" }, [
+    await runBuild(runner, {
+      root: "/r",
+      frozen: false,
+      launcher: "/r/zuke",
+      engine: null,
+    }, [
       "--help",
     ], env);
-    await runBuild(runner, { root: "/r", frozen: false, launcher: null }, [
+    await runBuild(runner, {
+      root: "/r",
+      frozen: false,
+      launcher: null,
+      engine: null,
+    }, [
       "--help",
     ], env);
-    await runBuild(runner, { root: "/r", frozen: false, launcher: null }, [
+    await runBuild(runner, {
+      root: "/r",
+      frozen: false,
+      launcher: null,
+      engine: null,
+    }, [
       "--help",
     ]);
   });

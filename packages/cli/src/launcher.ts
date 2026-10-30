@@ -302,6 +302,7 @@ cd "$dir"
 
 ${bashResolveDeno(options, pin)}
 
+${bashEngineRun()}
 # The first run has no lockfile to verify against, so let Deno write one; from
 # then on --frozen fails the build if the module graph changed. Say so when
 # skipping, so a deleted lockfile downgrades verification visibly instead of
@@ -311,6 +312,78 @@ if [ -f deno.lock ]; then
 else
   echo "${noLockNotice("—")}" >&2
   exec "$deno_bin" run -A zuke.ts "$@"
+fi
+`;
+}
+
+/** The field of `zuke.json` naming the `@zuke/engine` release that runs a build with no `zuke.ts`. */
+export const ENGINE_FIELD = "engine";
+
+/**
+ * The launchers' message when a root has neither a `zuke.ts` nor an engine
+ * version. Single quotes inside, so it sits verbatim in a double-quoted shell
+ * or PowerShell string with no escaping to get wrong.
+ */
+export function noEngineNotice(): string {
+  return `zuke: no zuke.ts here, and zuke.json names no '${ENGINE_FIELD}' ` +
+    `version to run its 'sdk' build with`;
+}
+
+/**
+ * What an `engine` value must look like: one exact release, as a POSIX
+ * extended regular expression that bash, PowerShell and JavaScript all read
+ * the same way. A range would float the engine between runs.
+ */
+export const ENGINE_VERSION_ERE =
+  "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$";
+
+/**
+ * The JavaScript the bash launcher runs under `deno eval` to read the field:
+ * the string value of `engine` in `zuke.json`, or nothing when it is absent,
+ * not a string, or the file is not there to read.
+ */
+export const ENGINE_READ =
+  `const c = JSON.parse(Deno.readTextFileSync("zuke.json")); ` +
+  `Deno.stdout.writeSync(new TextEncoder().encode(` +
+  `typeof c.${ENGINE_FIELD} === "string" ? c.${ENGINE_FIELD} : ""))`;
+
+/**
+ * The launchers' message when the engine field is not an exact version.
+ * `value` is the text as read, or a shell variable the script expands.
+ */
+export function badEngineNotice(value: string): string {
+  return `zuke: zuke.json names '${ENGINE_FIELD}': '${value}', which is not ` +
+    `an exact version like 1.2.3`;
+}
+
+/**
+ * The bash launcher's engine branch: a root with no `zuke.ts` describes, in
+ * `zuke.json`, a build another SDK hosts, and the launcher runs the
+ * `@zuke/engine` release that file names. The lockfile notice is not printed
+ * here: such a project has no Deno config for Deno to write a lock into.
+ */
+function bashEngineRun(): string {
+  return `# No build file: zuke.json describes a build another SDK hosts, run by the
+# @zuke/engine release it names. The lock is named explicitly, since Deno looks
+# for one only beside a Deno config, which such a project has no reason to
+# keep; with no lock there is none to write, so no notice either.
+if [ ! -f zuke.ts ]; then
+  # Read with the Deno just resolved, so the field is parsed as JSON here
+  # exactly as the PowerShell launcher and the zuke command parse it.
+  engine_version="$("$deno_bin" eval '${ENGINE_READ}' 2>/dev/null || true)"
+  if [ -z "$engine_version" ]; then
+    echo "${noEngineNotice()}" >&2
+    exit 1
+  fi
+  engine_version_pattern='${ENGINE_VERSION_ERE}'
+  if ! [[ "$engine_version" =~ $engine_version_pattern ]]; then
+    echo "${badEngineNotice("$engine_version")}" >&2
+    exit 1
+  fi
+  if [ -f deno.lock ]; then
+    exec "$deno_bin" run -A --lock=deno.lock --frozen "jsr:@zuke/engine@$engine_version" "$@"
+  fi
+  exec "$deno_bin" run -A "jsr:@zuke/engine@$engine_version" "$@"
 fi
 `;
 }
@@ -488,13 +561,35 @@ ${pwshResolveDeno(options, pin)}
 # then on --frozen fails the build if the module graph changed. Say so when
 # skipping, so a deleted lockfile downgrades verification visibly instead of
 # silently.
+$ownBuild = Test-Path (Join-Path $dir "zuke.ts")
+if ($ownBuild) {
+  $build = (Join-Path $dir "zuke.ts")
+} else {
+  # No build file: zuke.json describes a build another SDK hosts, run by the
+  # @zuke/engine release it names.
+  $engineVersion = ""
+  if (Test-Path (Join-Path $dir "zuke.json")) {
+    $engineVersion = [string](Get-Content (Join-Path $dir "zuke.json") -Raw | ConvertFrom-Json).${ENGINE_FIELD}
+  }
+  if (-not $engineVersion) {
+    throw "${noEngineNotice()}"
+  }
+  if ($engineVersion -notmatch '${ENGINE_VERSION_ERE}') {
+    throw "${badEngineNotice("$engineVersion")}"
+  }
+  $build = "jsr:@zuke/engine@$engineVersion"
+}
 $denoArgs = @("run", "-A")
 if (Test-Path (Join-Path $dir "deno.lock")) {
+  # Deno finds a lock only beside a Deno config; a hosted build names it.
+  if (-not $ownBuild) {
+    $denoArgs += "--lock=deno.lock"
+  }
   $denoArgs += "--frozen"
-} else {
+} elseif ($ownBuild) {
   Write-Warning "${noLockNotice("-")}"
 }
-$denoArgs += (Join-Path $dir "zuke.ts")
+$denoArgs += $build
 & $deno @denoArgs @args
 exit $LASTEXITCODE
 `;

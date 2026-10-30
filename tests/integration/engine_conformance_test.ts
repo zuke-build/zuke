@@ -2,26 +2,34 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * Replay every case under `spike/engine/conformance/` through the real CLI
+ * Replay every case under `packages/engine/conformance/` through the real CLI
  * `main()`: the fake worker answers the case's manifest, and the run must make
  * exactly the calls the case lists, exit as it says, and list what it says.
  */
 
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import type { Build } from "../../packages/core/mod.ts";
-import { WorkerHost } from "../../spike/engine/src/host.ts";
-import { materialize } from "../../spike/engine/src/materialize.ts";
-import { isRecord } from "../../spike/engine/src/protocol.ts";
+import { WorkerHost } from "../../packages/engine/src/host.ts";
+import { materialize } from "../../packages/engine/src/materialize.ts";
+import { isRecord } from "../../packages/engine/src/protocol.ts";
 import {
   defaultStateHost,
   FileSystemStateStore,
 } from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 
-const CASES = new URL("../../spike/engine/conformance/", import.meta.url);
+const CASES = new URL("../../packages/engine/conformance/", import.meta.url);
 const FAKE =
-  new URL("../../spike/engine/fixtures/fake_worker.ts", import.meta.url)
+  new URL("../../packages/engine/tests/_fake_worker.ts", import.meta.url)
     .href;
+/** The engine entrypoint, run as a process for the engine-death case. */
+const ENGINE = new URL("../../packages/engine/mod.ts", import.meta.url).href;
+/**
+ * The workspace config, which a run from a temp directory would not find. The
+ * flag takes an OS path, never a URL, so it is built from the module's
+ * directory as the OS names it.
+ */
+const CONFIG = `${import.meta.dirname ?? "."}/../../deno.json`;
 
 /** One run of a case: the first, or a later one under `then`. */
 interface Run {
@@ -37,6 +45,34 @@ interface Run {
 interface Case extends Run {
   readonly list?: { targets: unknown; parameters: unknown };
   readonly then: Run[];
+}
+
+/** A case where the engine dies mid-run: the worker must exit on its own. */
+interface EngineDeath {
+  readonly manifest: unknown;
+  readonly argv: string[];
+  readonly after: string;
+  readonly workerExitsWithinMs: number;
+}
+
+function engineDeathOf(value: unknown, file: string): EngineDeath | undefined {
+  if (!isRecord(value) || !isRecord(value.engineDies)) return undefined;
+  const { after, workerExitsWithinMs } = value.engineDies;
+  if (
+    value.manifest === undefined || !Array.isArray(value.argv) ||
+    typeof after !== "string" || typeof workerExitsWithinMs !== "number"
+  ) {
+    throw new Error(
+      `${file}: an engineDies case needs manifest, argv, engineDies.after ` +
+        "and engineDies.workerExitsWithinMs",
+    );
+  }
+  return {
+    manifest: value.manifest,
+    argv: value.argv.map(String),
+    after,
+    workerExitsWithinMs,
+  };
 }
 
 function runOf(value: unknown, file: string, manifest: unknown): Run {
@@ -98,10 +134,11 @@ function logged(err: string, prefix: string): string[] {
 
 for await (const entry of Deno.readDir(CASES)) {
   if (!entry.name.endsWith(".json")) continue;
-  const spec = caseOf(
-    JSON.parse(await Deno.readTextFile(new URL(entry.name, CASES))),
-    entry.name,
+  const raw: unknown = JSON.parse(
+    await Deno.readTextFile(new URL(entry.name, CASES)),
   );
+  const death = engineDeathOf(raw, entry.name);
+  const spec = death === undefined ? caseOf(raw, entry.name) : undefined;
   Deno.test(`conformance: ${entry.name}`, async () => {
     // Each case runs from its own empty directory: the incremental cache
     // lives under the working directory's `.zuke/`, so a repeat of the
@@ -110,7 +147,8 @@ for await (const entry of Deno.readDir(CASES)) {
     const previous = Deno.cwd();
     Deno.chdir(dir);
     try {
-      await replay(spec);
+      if (death !== undefined) await replayEngineDeath(death);
+      if (spec !== undefined) await replay(spec);
     } finally {
       Deno.chdir(previous);
       await Deno.remove(dir, { recursive: true });
@@ -173,6 +211,102 @@ async function replayRun(run: Run, runId: string | undefined): Promise<void> {
     assertEquals(configure === undefined ? {} : { parameters }, run.configure);
     for (const file of run.files) {
       assertEquals((await Deno.stat(file)).isFile, true, file);
+    }
+  });
+}
+
+/**
+ * Read `reader` until what was read holds `marker`, or to its end when none is
+ * given: whether the marker was seen, and the text read.
+ */
+async function readUntil(
+  reader: ReadableStreamDefaultReader<string>,
+  marker?: string,
+): Promise<{ seen: boolean; text: string }> {
+  let text = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) return { seen: false, text };
+    text += value;
+    if (marker !== undefined && text.includes(marker)) {
+      return { seen: true, text };
+    }
+  }
+}
+
+/** The OS's listing of process `pid`, empty once it is gone. */
+async function processListing(pid: string): Promise<string> {
+  const listing = Deno.build.os === "windows"
+    ? ["tasklist", "/NH", "/FO", "CSV", "/FI", `PID eq ${pid}`]
+    : ["ps", "-p", pid, "-o", "pid=,stat=,args="];
+  const [program, ...args] = listing;
+  const out = await new Deno.Command(program ?? "ps", { args }).output();
+  const text = new TextDecoder().decode(out.stdout).trim();
+  // tasklist answers a miss with an INFO line, never with the pid.
+  return text.includes(`"${pid}"`) || text.startsWith(pid) ? text : "";
+}
+
+/**
+ * Run the real engine entrypoint on the fake worker, kill the engine with
+ * SIGKILL once the named call is logged, and require the worker to exit on its
+ * own within the bound. Its connection ended with no `run.exit` and no signal,
+ * which is all a worker ever sees of an engine that died, and a worker that
+ * stays is an orphan every cancelled job would leave behind.
+ */
+async function replayEngineDeath(spec: EngineDeath): Promise<void> {
+  await withStateDir(async () => {
+    const exitFile = `${Deno.cwd()}/worker-exit`;
+    const startedFile = `${Deno.cwd()}/worker-started`;
+    await Deno.writeTextFile(
+      "zuke.json",
+      JSON.stringify({
+        sdk: { command: [Deno.execPath(), "run", "-A", FAKE] },
+      }),
+    );
+    const engine = new Deno.Command(Deno.execPath(), {
+      args: ["run", "-A", "--config", CONFIG, ENGINE, ...spec.argv],
+      env: {
+        ZUKE_FAKE_PLAN: JSON.stringify(spec.manifest),
+        ZUKE_FAKE_EXIT_FILE: exitFile,
+        ZUKE_FAKE_STARTED_FILE: startedFile,
+      },
+      stdin: "null",
+      stdout: "null",
+      stderr: "piped",
+    }).spawn();
+    const log = engine.stderr.pipeThrough(new TextDecoderStream()).getReader();
+    const marker = `worker: call: ${spec.after}`;
+    const { seen, text } = await readUntil(log, marker);
+    if (!seen) {
+      // The log ended, so the engine did: its last words say why.
+      const status = await engine.status;
+      throw new Error(
+        `the engine exited with code ${status.code} before logging ` +
+          `"${marker}":\n${text}`,
+      );
+    }
+    engine.kill("SIGKILL");
+    await engine.status;
+    await readUntil(log);
+    // The property is that no worker outlives a dead engine, so the worker's
+    // process is what is watched. On Linux and macOS the worker sees its
+    // connection end and exits on its own, and the exit file says so; on
+    // Windows a Deno child ends with the process that spawned it, so the
+    // worker is taken down before it can run its own exit.
+    const pid = (await Deno.readTextFile(startedFile).catch(() => "")).trim();
+    assertEquals(pid === "", false, "the worker never recorded its start");
+    const deadline = Date.now() + spec.workerExitsWithinMs;
+    let listed = await processListing(pid);
+    while (listed !== "" && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 50));
+      listed = await processListing(pid);
+    }
+    if (listed !== "") {
+      const stage = await Deno.readTextFile(exitFile).catch(() => "(no file)");
+      throw new Error(
+        `the worker was still there ${spec.workerExitsWithinMs}ms after the ` +
+          `engine's death; its last stage: ${stage}; listed as: ${listed}`,
+      );
     }
   });
 }

@@ -16,7 +16,7 @@ const COPYRIGHT = "Copyright (c) ";
 const SPDX = "SPDX-License-Identifier: MIT";
 
 /** Directories whose `.ts` files are all subject to the header requirement. */
-const TS_ROOTS = ["packages", "build", "tests", "examples", "spike"];
+const TS_ROOTS = ["packages", "build", "tests", "examples"];
 
 /** Every `.ts` file under `dir`, recursively. */
 async function tsFiles(dir: string): Promise<string[]> {

@@ -1,6 +1,7 @@
 {
   "workspace": [
     "packages/core",
+    "packages/engine",
     "packages/cmd",
     "packages/console",
     "packages/deno",
@@ -95,7 +96,6 @@
       "tests/",
       "packages/",
       "examples/",
-      "spike/",
       "docs/",
       "skills/",
       ".github/",
@@ -115,8 +115,7 @@
       "build/",
       "tests/",
       "packages/",
-      "examples/",
-      "spike/"
+      "examples/"
     ],
     "rules": {
       "tags": [

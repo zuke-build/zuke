@@ -14,7 +14,7 @@ import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../../packages/core/tests/_assert.ts";
+} from "../../core/tests/_assert.ts";
 import { materialize, type TargetRunner } from "../src/materialize.ts";
 import { parseManifest } from "../src/protocol.ts";
 
@@ -380,6 +380,17 @@ Deno.test("materialize refuses a duplicate, a forward dependency, or an undeclar
   refuse(
     { name: "B", targets: [{ name: "a" }], parameters: [{ name: "a" }] },
     '"a" is declared twice',
+  );
+  // A name every build already has would shadow what core calls by name.
+  for (const member of ["onStart", "deadline", "constructor", "toString"]) {
+    refuse(
+      { name: "B", targets: [{ name: member }] },
+      `"${member}" cannot be declared; every build already has a member`,
+    );
+  }
+  refuse(
+    { name: "B", targets: [{ name: "a" }], parameters: [{ name: "registry" }] },
+    '"registry" cannot be declared',
   );
   refuse(
     { name: "B", targets: [{ name: "a", dependsOn: ["b"] }, { name: "b" }] },

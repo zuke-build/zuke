@@ -220,6 +220,7 @@ function confinedTo(dir: string): BuildProbe {
     realPath: (path) => defaultBuildProbe.realPath(path),
     readLink: (path) => defaultBuildProbe.readLink(path),
     uid: () => defaultBuildProbe.uid(),
+    readText: (path) => defaultBuildProbe.readText(path),
   };
 }
 

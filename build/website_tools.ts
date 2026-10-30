@@ -376,6 +376,11 @@ export const CORE_PACKAGES: CorePackage[] = [
       "the global zuke command: setup, run targets, --list, graph, generate-ci",
   },
   {
+    name: "@zuke/engine",
+    desc:
+      "the engine for builds another SDK hosts — runs a zuke.json's sdk worker on core",
+  },
+  {
     name: "@zuke/cmd",
     desc: "the typed process layer the wrappers are built on",
   },

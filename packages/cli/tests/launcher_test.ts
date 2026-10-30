@@ -1,14 +1,20 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
+// cspell:ignore notmatch
 
 import {
   assertEquals,
   assertStringIncludes,
 } from "../../core/tests/_assert.ts";
 import {
+  badEngineNotice,
   DENO_INSTALL_DOCS,
+  ENGINE_FIELD,
+  ENGINE_READ,
+  ENGINE_VERSION_ERE,
   launcherBash,
   launcherPwsh,
+  noEngineNotice,
 } from "../src/launcher.ts";
 import {
   DENO_PIN,
@@ -200,5 +206,67 @@ Deno.test("the bash launcher execs Deno so the script is not read after it start
     const bash = launcherBash(options);
     assertStringIncludes(bash, `exec "$deno_bin" run -A --frozen zuke.ts "$@"`);
     assertStringIncludes(bash, `exec "$deno_bin" run -A zuke.ts "$@"`);
+  }
+});
+
+Deno.test("a root without zuke.ts runs the engine release its zuke.json names", () => {
+  // A project another SDK hosts has no build file: both launchers read the
+  // `engine` field and run that `@zuke/engine` release, refusing when the
+  // field is missing rather than handing Deno a module that is not there.
+  for (const options of [BOOTSTRAP, PLAIN]) {
+    const bash = launcherBash(options);
+    const branch = bash.indexOf("if [ ! -f zuke.ts ]; then");
+    assertEquals(branch > 0, true);
+    const tail = bash.slice(branch, bash.indexOf("# The first run"));
+    // Parsed as JSON by the resolved Deno, as the other two readers parse it.
+    assertStringIncludes(
+      tail,
+      `"$deno_bin" eval '${ENGINE_READ}' 2>/dev/null || true`,
+    );
+    assertStringIncludes(
+      ENGINE_READ,
+      'JSON.parse(Deno.readTextFileSync("zuke.json"))',
+    );
+    assertStringIncludes(tail, `echo "${noEngineNotice()}" >&2`);
+    assertStringIncludes(tail, "exit 1");
+    assertStringIncludes(
+      tail,
+      `exec "$deno_bin" run -A --lock=deno.lock --frozen "jsr:@zuke/engine@$engine_version" "$@"`,
+    );
+    // The value must be one exact release, by the pattern all three readers share.
+    assertStringIncludes(
+      tail,
+      `engine_version_pattern='${ENGINE_VERSION_ERE}'`,
+    );
+    assertStringIncludes(
+      tail,
+      `[[ "$engine_version" =~ $engine_version_pattern ]]`,
+    );
+    assertStringIncludes(
+      tail,
+      `echo "${badEngineNotice("$engine_version")}" >&2`,
+    );
+    assertStringIncludes(
+      tail,
+      `exec "$deno_bin" run -A "jsr:@zuke/engine@$engine_version" "$@"`,
+    );
+    // The engine branch comes first, and only it runs the engine.
+    assertEquals(branch < bash.indexOf("if [ -f deno.lock ]; then"), true);
+    assertEquals(bash.split("jsr:@zuke/engine@").length - 1, 2);
+
+    const pwsh = launcherPwsh(options);
+    assertStringIncludes(
+      pwsh,
+      `$ownBuild = Test-Path (Join-Path $dir "zuke.ts")`,
+    );
+    assertStringIncludes(pwsh, `ConvertFrom-Json).${ENGINE_FIELD}`);
+    assertStringIncludes(pwsh, `throw "${noEngineNotice()}"`);
+    assertEquals(noEngineNotice().includes('"'), false); // verbatim in both
+    assertStringIncludes(pwsh, `$build = "jsr:@zuke/engine@$engineVersion"`);
+    assertStringIncludes(pwsh, `-notmatch '${ENGINE_VERSION_ERE}'`);
+    assertStringIncludes(pwsh, `throw "${badEngineNotice("$engineVersion")}"`);
+    assertStringIncludes(pwsh, `$denoArgs += "--lock=deno.lock"`);
+    // The lockfile warning is the build file's alone.
+    assertStringIncludes(pwsh, "} elseif ($ownBuild) {\n  Write-Warning");
   }
 });

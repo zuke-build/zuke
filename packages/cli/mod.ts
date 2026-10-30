@@ -578,11 +578,16 @@ async function forwardToBuild(
     // Discovery ran something the caller never named: say which, unless it
     // is the build right here, where `./zuke` would have been the same act.
     if (location.root !== absolutePath(cwd).path) {
-      output.error(runningNotice(location.root));
+      output.error(runningNotice(location));
     }
     // A launcher has its own lockfile story to tell; only the bare `deno run`
     // it stands in for is this notice's to report.
-    if (location.launcher === null && !location.frozen) {
+    // A hosted build has no Deno config for Deno to write a lock into, so
+    // the launchers say nothing there, and neither does this.
+    if (
+      location.launcher === null && !location.frozen &&
+      location.engine === null
+    ) {
       output.error(NO_LOCK_NOTICE);
     }
     return await runBuild(runner, location, args);

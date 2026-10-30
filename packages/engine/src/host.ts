@@ -20,7 +20,7 @@
 import type { TargetContext, TargetStateHandle } from "@zuke/core";
 import { Command } from "@zuke/core/shell";
 import { ToolSettings } from "@zuke/core/tooling";
-import { Peer, RpcFailure } from "./peer.ts";
+import { MAX_LINE, Peer, RpcFailure } from "./peer.ts";
 import {
   CANCELLED,
   type ConfigureParams,
@@ -57,6 +57,14 @@ export interface WorkerOptions {
   readonly connectTimeoutMs?: number;
   /** How long a cancelled body may take to settle before the worker is killed. */
   readonly graceMs?: number;
+  /**
+   * Spawn and describe the next worker as soon as a run ends, so the next run
+   * of a long-lived host (the MCP server, which runs build after build in one
+   * process) finds one up instead of paying the spawn inside its request. Off
+   * by default: a one-shot run has no next run. A pre-warm that fails is
+   * dropped, and the next run spawns its own worker and meets the error.
+   */
+  readonly prewarm?: boolean;
 }
 
 /**
@@ -165,12 +173,22 @@ function forwardLines(
         const lines = buffered.split("\n");
         buffered = lines.pop() ?? "";
         for (const line of lines) write(line);
+        // A print with no newline in sight is still output: pass it on in
+        // bounded pieces rather than hold it whole.
+        if (buffered.length > MAX_LINE) {
+          write(buffered);
+          buffered = "";
+        }
       },
       close() {
         if (buffered !== "") write(buffered);
       },
     }),
   );
+}
+
+function reasonOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function after(ms: number): Promise<false> {
@@ -307,7 +325,7 @@ export class WorkerHost {
   readonly #graceMs: number;
   readonly #channels = new Map<string, Channel>();
   /** Aborted when the host is killed: the signal a service phase's execs get. */
-  readonly #aborter = new AbortController();
+  #aborter = new AbortController();
   readonly #registrar = new SecretRegistrar();
   #worker: Worker;
   /** The exit code the current worker died with, until it is replaced. */
@@ -315,6 +333,8 @@ export class WorkerHost {
   /** Why no replacement will be spawned, once one was refused. */
   #fatal: Error | undefined;
   #finished = false;
+  /** Set by {@link close}: no worker is pre-warmed after it. */
+  #closed = false;
   #replacing: Promise<void> | undefined;
   /** The first worker's manifest, as JSON, which every replacement must match. */
   #manifest: string | undefined;
@@ -421,9 +441,10 @@ export class WorkerHost {
   async #live(): Promise<Worker> {
     if (this.#fatal !== undefined) throw this.#fatal;
     // The socket's end is seen before the exit code lands; either means the
-    // worker is gone.
-    const gone = this.#dead !== undefined || this.#worker.peer.closed;
-    if (gone) {
+    // worker is gone. A pre-warm in flight is awaited like a replacement; one
+    // that failed left the finished worker in place, so the loop goes round
+    // again and spawns a replacement after it.
+    while (this.#dead !== undefined || this.#worker.peer.closed) {
       this.#replacing ??= this.#respawn().finally(() => {
         this.#replacing = undefined;
       });
@@ -461,24 +482,75 @@ export class WorkerHost {
   }
 
   async #respawn(): Promise<void> {
+    // The worker being replaced may still be running with its socket gone
+    // (it closed the connection, or shrugged off kill()'s SIGTERM): stop it,
+    // so no worker outlives the run that spawned it.
+    await this.#stop(this.#worker);
     const worker = await spawn(this.#options);
+    try {
+      await this.#adoptReplacement(worker);
+    } catch (error) {
+      // A replacement that cannot take over is the last one tried for the run.
+      this.#fatal = error instanceof Error ? error : new Error(String(error));
+      throw this.#fatal;
+    }
+  }
+
+  /**
+   * Have `worker` take over and adopt it, or stop it and rethrow: a worker is
+   * adopted only once it has taken over, so nothing is ever served by one that
+   * is not configured.
+   */
+  async #adoptReplacement(worker: Worker): Promise<void> {
+    try {
+      await this.#takeOver(worker);
+    } catch (error) {
+      await this.#stop(worker);
+      throw error;
+    }
     this.#dead = undefined;
     this.#finished = false;
     this.#worker = this.#adopt(worker);
-    const manifest = JSON.stringify(
-      parseManifest(await worker.peer.request("build.describe", {})),
-    );
-    if (this.#manifest !== undefined && manifest !== this.#manifest) {
-      this.#fatal = new Error(
-        `zuke: the replacement worker (${this.#options.command.join(" ")}) ` +
-          `described a different build; a worker spawned again for the same ` +
-          `run must describe the build the first one did`,
-      );
-      await this.#stop(worker);
-      throw this.#fatal;
+  }
+
+  /** Spawn and describe the next worker ahead of the next run ({@link WorkerOptions.prewarm}). */
+  async #prewarm(): Promise<void> {
+    try {
+      await this.#adoptReplacement(await spawn(this.#options));
+    } catch {
+      // The next run spawns its own worker and meets the error itself.
     }
-    if (this.#configured !== undefined) {
+  }
+
+  /** Have `worker` describe the build the first worker did, then configure it as the first was. */
+  async #takeOver(worker: Worker): Promise<void> {
+    const command = this.#options.command.join(" ");
+    let manifest: string;
+    try {
+      manifest = JSON.stringify(
+        parseManifest(await worker.peer.request("build.describe", {})),
+      );
+    } catch (error) {
+      throw new Error(
+        `zuke: the replacement worker (${command}) could not describe the ` +
+          `build: ${reasonOf(error)}`,
+      );
+    }
+    if (this.#manifest !== undefined && manifest !== this.#manifest) {
+      throw new Error(
+        `zuke: the replacement worker (${command}) described a different ` +
+          `build; a worker spawned again for the same run must describe the ` +
+          `build the first one did`,
+      );
+    }
+    if (this.#configured === undefined) return;
+    try {
       await worker.peer.request("build.configure", this.#configured);
+    } catch (error) {
+      throw new Error(
+        `zuke: the replacement worker (${command}) refused build.configure: ` +
+          reasonOf(error),
+      );
     }
   }
 
@@ -665,11 +737,29 @@ export class WorkerHost {
       await stopChild(worker.child, this.#graceMs);
     }
     await worker.background.catch(() => {});
+    if (this.#options.prewarm && !this.#closed) {
+      this.#replacing ??= this.#prewarm().finally(() => {
+        this.#replacing = undefined;
+      });
+    }
+  }
+
+  /**
+   * End the host for good: a pre-warm in flight is awaited and its worker
+   * stopped with the current one, and none is spawned after. A one-shot run
+   * needs no call; it ends with its process.
+   */
+  async close(): Promise<void> {
+    this.#closed = true;
+    await this.#replacing?.catch(() => {});
+    await this.#stop(this.#worker);
   }
 
   /** Kill the worker outright, and whatever its service phases spawned. */
   kill(): void {
     this.#aborter.abort();
+    // This run's phases are done; the next run's get a live signal.
+    this.#aborter = new AbortController();
     this.#worker.peer.close();
     signal(this.#worker.child, "SIGTERM");
   }

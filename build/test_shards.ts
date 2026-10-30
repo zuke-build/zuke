@@ -200,3 +200,28 @@ export async function runShards(
   }
   return counts;
 }
+
+/**
+ * Drop the empty profiles from the coverage directory and say how many went.
+ *
+ * Deno hands `DENO_COVERAGE_DIR` to every `deno` child a test spawns (the
+ * engine's workers above all), so each child writes a profile per loaded
+ * module as it exits, creating each file and then filling it. The engine stops
+ * a worker with SIGTERM the moment it closes the connection, and a worker that
+ * is already exiting on its own is cut off wherever its dump has reached: the
+ * file it had just created stays at zero bytes, and `deno coverage` then
+ * refuses the whole directory over that one file. An empty profile carries
+ * nothing, so dropping it loses nothing.
+ */
+export async function pruneEmptyProfiles(dir: string): Promise<number> {
+  let pruned = 0;
+  for await (const entry of Deno.readDir(dir)) {
+    if (!entry.isFile) continue;
+    const path = `${dir}/${entry.name}`;
+    if ((await Deno.stat(path)).size === 0) {
+      await Deno.remove(path);
+      pruned++;
+    }
+  }
+  return pruned;
+}

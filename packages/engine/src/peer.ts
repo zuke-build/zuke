@@ -30,6 +30,12 @@ interface Pending {
 
 const encoder = new TextEncoder();
 
+/**
+ * The longest line a peer buffers, in UTF-16 units: a worker that never
+ * sends a newline ends the connection rather than the engine's heap.
+ */
+export const MAX_LINE = 16 * 1024 * 1024;
+
 /** The JSON-RPC peer. Call {@link serve} once to start reading. */
 export class Peer {
   #conn: Deno.Conn;
@@ -38,6 +44,8 @@ export class Peer {
   #handlers = new Map<string, RpcHandler>();
   #writes: Promise<void> = Promise.resolve();
   #closed = false;
+  /** Why the connection closed: what a request made afterwards rejects with. */
+  #closeReason = "connection closed";
   #reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   #decoder = new TextDecoder();
 
@@ -57,8 +65,11 @@ export class Peer {
     return this;
   }
 
-  /** Send a request and await its result. */
+  /** Send a request and await its result; a closed connection answers at once. */
   request(method: string, params: unknown): Promise<unknown> {
+    if (this.#closed) {
+      return Promise.reject(new RpcFailure(-32000, this.#closeReason));
+    }
     const id = this.#next++;
     const result = new Promise<unknown>((resolve, reject) => {
       this.#pending.set(id, { resolve, reject });
@@ -89,6 +100,10 @@ export class Peer {
           if (line !== "") this.#dispatch(line);
           newline = buffered.indexOf("\n");
         }
+        if (buffered.length > MAX_LINE) {
+          this.close(`a message longer than ${MAX_LINE} characters`);
+          break;
+        }
       }
     } catch (error) {
       // A read after close() is the close. A read error otherwise is the
@@ -106,14 +121,20 @@ export class Peer {
   close(reason = "connection closed"): void {
     if (this.#closed) return;
     this.#closed = true;
-    // A pending read on a closed connection never settles; cancelling the
-    // reader is what ends serve().
+    this.#closeReason = reason;
+    // Deno holds a socket's close back while a read is pending on it, so the
+    // other side would never see the end: shut the write half first, which
+    // sends it at once, and release the socket once that is done. Cancelling
+    // the reader is what ends serve().
+    const conn = this.#conn;
+    conn.closeWrite().catch(() => {}).finally(() => {
+      try {
+        conn.close();
+      } catch {
+        // Already closed by the other side: nothing left to release.
+      }
+    });
     void this.#reader?.cancel().catch(() => {});
-    try {
-      this.#conn.close();
-    } catch {
-      // Already closed by the other side: nothing left to release.
-    }
     for (const [id, pending] of this.#pending) {
       this.#pending.delete(id);
       pending.reject(new RpcFailure(-32000, reason));

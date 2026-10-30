@@ -176,6 +176,29 @@ fi
 # bootstrapped to a non-PATH location (e.g. ~/.deno/bin).
 export PATH="$(dirname "$deno_bin"):$PATH"
 
+# No build file: zuke.json describes a build another SDK hosts, run by the
+# @zuke/engine release it names. The lock is named explicitly, since Deno looks
+# for one only beside a Deno config, which such a project has no reason to
+# keep; with no lock there is none to write, so no notice either.
+if [ ! -f zuke.ts ]; then
+  # Read with the Deno just resolved, so the field is parsed as JSON here
+  # exactly as the PowerShell launcher and the zuke command parse it.
+  engine_version="$("$deno_bin" eval 'const c = JSON.parse(Deno.readTextFileSync("zuke.json")); Deno.stdout.writeSync(new TextEncoder().encode(typeof c.engine === "string" ? c.engine : ""))' 2>/dev/null || true)"
+  if [ -z "$engine_version" ]; then
+    echo "zuke: no zuke.ts here, and zuke.json names no 'engine' version to run its 'sdk' build with" >&2
+    exit 1
+  fi
+  engine_version_pattern='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
+  if ! [[ "$engine_version" =~ $engine_version_pattern ]]; then
+    echo "zuke: zuke.json names 'engine': '$engine_version', which is not an exact version like 1.2.3" >&2
+    exit 1
+  fi
+  if [ -f deno.lock ]; then
+    exec "$deno_bin" run -A --lock=deno.lock --frozen "jsr:@zuke/engine@$engine_version" "$@"
+  fi
+  exec "$deno_bin" run -A "jsr:@zuke/engine@$engine_version" "$@"
+fi
+
 # The first run has no lockfile to verify against, so let Deno write one; from
 # then on --frozen fails the build if the module graph changed. Say so when
 # skipping, so a deleted lockfile downgrades verification visibly instead of

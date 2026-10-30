@@ -128,7 +128,7 @@ Three short recipes cover what a small project wants first:
   support — no bespoke DSL. The `$` tagged template from `@zuke/core/shell` runs
   processes with sane defaults and is injection-safe, so it also replaces the
   `scripts/*.sh` nobody dares touch.
-- **A typed wrapper for every tool.** 71 packages: a tiny core, the CLI, and a
+- **A typed wrapper for every tool.** 72 packages: a tiny core, the CLI, and a
   `*Tasks` object per tool — Deno, npm, pnpm, Bun, Docker, Kubernetes,
   Terraform, Vite, Playwright, GitHub, Claude Code, and the rest — whose
   settings lambdas mirror the real flags. See [Packages](./docs/packages.md).
@@ -216,11 +216,12 @@ launcher that uses the Deno on your `PATH` and fails closed without one, for a
 project that must never download a tool from its build entry point.
 
 > [!NOTE]
-> **Maturity.** Every one of the 71 packages is `1.x` and follows full semver —
-> `@zuke/core`, the `@zuke/cli` command, and all the tool wrappers. A minor or
-> patch release never breaks a public symbol; a breaking change bumps the major.
-> See [Versioning & compatibility](./docs/versioning.md). The npm scope `@zuke`
-> is not controlled by this project — install from JSR, not npm.
+> **Maturity.** Every one of the 72 packages is at `1.0` or past it and follows
+> full semver — `@zuke/core`, the `@zuke/cli` command, and all the tool
+> wrappers. A minor or patch release never breaks a public symbol; a breaking
+> change bumps the major. See
+> [Versioning & compatibility](./docs/versioning.md). The npm scope `@zuke` is
+> not controlled by this project — install from JSR, not npm.
 
 > [!NOTE]
 > **Built with AI.** Much of Zuke — code, tests, and docs — was written with AI
@@ -251,7 +252,7 @@ refused on contributor-controlled events:
 
 ## Packages
 
-Zuke ships as a JSR workspace of 71 packages:
+Zuke ships as a JSR workspace of 72 packages:
 [`@zuke/core`](https://jsr.io/@zuke/core) (the engine, the `$` shell, and the
 tooling base classes), the [`@zuke/cli`](https://jsr.io/@zuke/cli) command, a
 generic [`@zuke/cmd`](https://jsr.io/@zuke/cmd) fallback, plugins such as

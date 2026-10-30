@@ -225,3 +225,88 @@ Deno.test("both launchers pin the same default Deno version", async () => {
     "zuke and zuke.ps1 must pin the same default Deno version",
   );
 });
+
+/**
+ * A `deno` on `PATH` that prints its argv and exits, so a launcher's
+ * invocation can be read back without running anything.
+ */
+async function denoShim(dir: string): Promise<string> {
+  const bin = `${dir}/bin`;
+  await Deno.mkdir(bin);
+  // An `eval`, which the launcher uses to read zuke.json, goes to the real
+  // Deno; anything else is printed back.
+  await Deno.writeTextFile(
+    `${bin}/deno`,
+    `#!/bin/sh\nif [ "$1" = eval ]; then exec "${Deno.execPath()}" "$@"; fi\n` +
+      "printf '%s\\n' \"$@\"\n",
+    { mode: 0o755 },
+  );
+  return bin;
+}
+
+Deno.test("a scaffolded launcher runs the engine release zuke.json names when there is no zuke.ts", async () => {
+  // A project another SDK hosts has no build file. The launcher reads the
+  // `engine` field and runs that release; without the field it refuses and
+  // names what is missing, instead of handing Deno a module that is not there.
+  if (Deno.build.os === "windows") return; // the generated bash launcher
+  await withTemp(async (dir) => {
+    await runSetup(
+      { dir, force: false, name: "Hosted", bootstrapDeno: false },
+      { ...defaultHost, log: () => {} },
+    );
+    await Deno.remove(`${dir}/zuke.ts`);
+    const bin = await denoShim(dir);
+    const launch = async (config: string) => {
+      await Deno.writeTextFile(`${dir}/zuke.json`, config);
+      const { code, stdout, stderr } = await new Deno.Command("/bin/bash", {
+        args: [`${dir}/zuke`, "--list", "--json"],
+        clearEnv: true,
+        env: { PATH: `${bin}:/usr/bin:/bin`, HOME: dir },
+      }).output();
+      const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
+      return { code, out: decode(stdout), err: decode(stderr) };
+    };
+    const hosted = await launch(
+      '{\n  "name": "Hosted",\n  "sdk": { "command": ["python3", "build.py"] },\n  "engine": "1.2.3"\n}\n',
+    );
+    assertEquals(hosted.code, 0, hosted.err);
+    assertEquals(
+      hosted.out,
+      ["run", "-A", "jsr:@zuke/engine@1.2.3", "--list", "--json", ""].join(
+        "\n",
+      ),
+    );
+    const frozen = await (async () => {
+      await Deno.writeTextFile(`${dir}/deno.lock`, "{}\n");
+      try {
+        return await launch('{ "engine": "1.2.3" }\n');
+      } finally {
+        await Deno.remove(`${dir}/deno.lock`);
+      }
+    })();
+    // Deno finds a lock only beside a config, so a hosted build names it.
+    assertEquals(frozen.out.split("\n").slice(2, 4), [
+      "--lock=deno.lock",
+      "--frozen",
+    ]);
+    assertEquals(frozen.err, ""); // no lockfile notice for a hosted build
+
+    const range = await launch('{ "engine": "^1" }\n');
+    assertEquals(range.code, 1);
+    assertEquals(range.out, "");
+    assertEquals(
+      range.err.includes("names 'engine': '^1', which is not an exact version"),
+      true,
+      range.err,
+    );
+
+    const bare = await launch('{ "name": "Hosted" }\n');
+    assertEquals(bare.code, 1);
+    assertEquals(bare.out, "");
+    assertEquals(
+      bare.err.includes("zuke.json names no 'engine' version"),
+      true,
+      bare.err,
+    );
+  }, { prefix: "zuke-scaffold-" });
+});

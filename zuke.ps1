@@ -148,12 +148,34 @@ $env:PATH = (Split-Path -Parent $deno) + [IO.Path]::PathSeparator + $env:PATH
 # then on --frozen fails the build if the module graph changed. Say so when
 # skipping, so a deleted lockfile downgrades verification visibly instead of
 # silently.
+$ownBuild = Test-Path (Join-Path $dir "zuke.ts")
+if ($ownBuild) {
+  $build = (Join-Path $dir "zuke.ts")
+} else {
+  # No build file: zuke.json describes a build another SDK hosts, run by the
+  # @zuke/engine release it names.
+  $engineVersion = ""
+  if (Test-Path (Join-Path $dir "zuke.json")) {
+    $engineVersion = [string](Get-Content (Join-Path $dir "zuke.json") -Raw | ConvertFrom-Json).engine
+  }
+  if (-not $engineVersion) {
+    throw "zuke: no zuke.ts here, and zuke.json names no 'engine' version to run its 'sdk' build with"
+  }
+  if ($engineVersion -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$') {
+    throw "zuke: zuke.json names 'engine': '$engineVersion', which is not an exact version like 1.2.3"
+  }
+  $build = "jsr:@zuke/engine@$engineVersion"
+}
 $denoArgs = @("run", "-A")
 if (Test-Path (Join-Path $dir "deno.lock")) {
+  # Deno finds a lock only beside a Deno config; a hosted build names it.
+  if (-not $ownBuild) {
+    $denoArgs += "--lock=deno.lock"
+  }
   $denoArgs += "--frozen"
-} else {
+} elseif ($ownBuild) {
   Write-Warning "zuke: no deno.lock here yet - running without lockfile verification so Deno can write one."
 }
-$denoArgs += (Join-Path $dir "zuke.ts")
+$denoArgs += $build
 & $deno @denoArgs @args
 exit $LASTEXITCODE
