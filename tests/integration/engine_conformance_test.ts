@@ -23,10 +23,13 @@ const FAKE =
   new URL("../../packages/engine/tests/_fake_worker.ts", import.meta.url)
     .href;
 /** The engine entrypoint, run as a process for the engine-death case. */
-const ENGINE =
-  new URL("../../packages/engine/mod.ts", import.meta.url).pathname;
-/** The workspace config, which a run from a temp directory would not find. */
-const CONFIG = new URL("../../deno.json", import.meta.url).pathname;
+const ENGINE = new URL("../../packages/engine/mod.ts", import.meta.url).href;
+/**
+ * The workspace config, which a run from a temp directory would not find. The
+ * flag takes an OS path, never a URL, so it is built from the module's
+ * directory as the OS names it.
+ */
+const CONFIG = `${import.meta.dirname ?? "."}/../../deno.json`;
 
 /** One run of a case: the first, or a later one under `then`. */
 interface Run {
@@ -212,17 +215,22 @@ async function replayRun(run: Run, runId: string | undefined): Promise<void> {
   });
 }
 
-/** Read `reader` until a chunk holds `marker`, or to its end when none is given. */
+/**
+ * Read `reader` until what was read holds `marker`, or to its end when none is
+ * given: whether the marker was seen, and the text read.
+ */
 async function readUntil(
   reader: ReadableStreamDefaultReader<string>,
   marker?: string,
-): Promise<boolean> {
-  let buffered = "";
+): Promise<{ seen: boolean; text: string }> {
+  let text = "";
   while (true) {
     const { value, done } = await reader.read();
-    if (done) return false;
-    buffered += value;
-    if (marker !== undefined && buffered.includes(marker)) return true;
+    if (done) return { seen: false, text };
+    text += value;
+    if (marker !== undefined && text.includes(marker)) {
+      return { seen: true, text };
+    }
   }
 }
 
@@ -254,9 +262,15 @@ async function replayEngineDeath(spec: EngineDeath): Promise<void> {
     }).spawn();
     const log = engine.stderr.pipeThrough(new TextDecoderStream()).getReader();
     const marker = `worker: call: ${spec.after}`;
-    const seen = await readUntil(log, marker);
-    if (!seen) engine.kill("SIGKILL");
-    assertEquals(seen, true, `the engine never logged "${marker}"`);
+    const { seen, text } = await readUntil(log, marker);
+    if (!seen) {
+      // The log ended, so the engine did: its last words say why.
+      const status = await engine.status;
+      throw new Error(
+        `the engine exited with code ${status.code} before logging ` +
+          `"${marker}":\n${text}`,
+      );
+    }
     engine.kill("SIGKILL");
     await engine.status;
     await readUntil(log);
