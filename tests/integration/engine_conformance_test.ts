@@ -234,15 +234,16 @@ async function readUntil(
   }
 }
 
-/** What the OS says about process `pid`: its listing, or that it is gone. */
-async function processAlive(pid: string): Promise<string> {
+/** The OS's listing of process `pid`, empty once it is gone. */
+async function processListing(pid: string): Promise<string> {
   const listing = Deno.build.os === "windows"
-    ? ["tasklist", "/FI", `PID eq ${pid}`]
+    ? ["tasklist", "/NH", "/FO", "CSV", "/FI", `PID eq ${pid}`]
     : ["ps", "-p", pid, "-o", "pid=,stat=,args="];
   const [program, ...args] = listing;
   const out = await new Deno.Command(program ?? "ps", { args }).output();
   const text = new TextDecoder().decode(out.stdout).trim();
-  return text === "" ? "is gone" : `is listed as: ${text}`;
+  // tasklist answers a miss with an INFO line, never with the pid.
+  return text.includes(`"${pid}"`) || text.startsWith(pid) ? text : "";
 }
 
 /**
@@ -287,23 +288,24 @@ async function replayEngineDeath(spec: EngineDeath): Promise<void> {
     engine.kill("SIGKILL");
     await engine.status;
     await readUntil(log);
+    // The property is that no worker outlives a dead engine, so the worker's
+    // process is what is watched. On Linux and macOS the worker sees its
+    // connection end and exits on its own, and the exit file says so; on
+    // Windows a Deno child ends with the process that spawned it, so the
+    // worker is taken down before it can run its own exit.
+    const pid = (await Deno.readTextFile(startedFile).catch(() => "")).trim();
+    assertEquals(pid === "", false, "the worker never recorded its start");
     const deadline = Date.now() + spec.workerExitsWithinMs;
-    let exited = false;
-    while (!exited && Date.now() < deadline) {
-      exited = await Deno.readTextFile(exitFile).then(
-        (t) => t === "exited",
-        () => false,
-      );
-      if (!exited) await new Promise((r) => setTimeout(r, 50));
+    let listed = await processListing(pid);
+    while (listed !== "" && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 50));
+      listed = await processListing(pid);
     }
-    if (!exited) {
-      // Say how far the worker got, and whether it is still there.
+    if (listed !== "") {
       const stage = await Deno.readTextFile(exitFile).catch(() => "(no file)");
-      const pid = (await Deno.readTextFile(startedFile).catch(() => "")).trim();
-      const alive = await processAlive(pid);
       throw new Error(
-        `the worker did not exit within ${spec.workerExitsWithinMs}ms of the ` +
-          `engine's death; its last stage: ${stage}; pid ${pid} ${alive}`,
+        `the worker was still there ${spec.workerExitsWithinMs}ms after the ` +
+          `engine's death; its last stage: ${stage}; listed as: ${listed}`,
       );
     }
   });
