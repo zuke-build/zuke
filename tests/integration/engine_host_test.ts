@@ -64,6 +64,7 @@ async function fake(
     badToken?: string;
     connectTimeoutMs?: number;
     manifest?: Record<string, unknown>;
+    prewarm?: boolean;
   } = {},
 ): Promise<{ host: WorkerHost; Remote: new () => Build }> {
   Deno.env.set(
@@ -78,6 +79,7 @@ async function fake(
     cwd: Deno.cwd(),
     connectTimeoutMs: options.connectTimeoutMs,
     graceMs: 1_000,
+    prewarm: options.prewarm,
   });
   return { host, Remote: materialize(await host.describe(), host) };
 }
@@ -883,4 +885,82 @@ Deno.test({
       }
     });
   },
+});
+
+/** How many workers `file` records as started, zero before the first. */
+async function workersStarted(file: string): Promise<number> {
+  return await Deno.readTextFile(file).then(
+    (t) => t.split("\n").filter((l) => l !== "").length,
+    () => 0,
+  );
+}
+
+Deno.test("a pre-warming host has the next worker up before the next run asks", async () => {
+  await withStateDir(async (dir) => {
+    const started = `${dir}/started`;
+    Deno.env.set("ZUKE_FAKE_STARTED_FILE", started);
+    try {
+      // `count` runs in the engine, inside the second run's body: at that
+      // moment the only workers ever started must be the first and the
+      // pre-warmed one, so a lazy spawn for the second run would show as a
+      // third line and fail the body's expectation.
+      const { host, Remote } = await fake([
+        { name: "work" },
+        {
+          name: "count",
+          exec: [
+            evalArgv(
+              `console.log(Deno.readTextFileSync(${
+                JSON.stringify(started)
+              }).trim().split("\\n").length)`,
+            ),
+          ],
+          expectStdout: "2",
+        },
+      ], { prewarm: true });
+      const first = await runCli(Remote, ["work"]);
+      assertEquals(first.code, 0, first.err);
+      const deadline = Date.now() + 10_000;
+      while (await workersStarted(started) < 2 && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      assertEquals(await workersStarted(started), 2);
+      const second = await runCli(Remote, ["count"]);
+      assertEquals(second.code, 0, second.err);
+      await host.close();
+    } finally {
+      Deno.env.delete("ZUKE_FAKE_STARTED_FILE");
+    }
+  });
+});
+
+Deno.test("a pre-warm that fails is the next run's to meet, not the finished run's", async () => {
+  await withStateDir(async (dir) => {
+    Deno.env.set("ZUKE_FAKE_GENERATION_FILE", `${dir}/generation`);
+    Deno.env.set(
+      "ZUKE_FAKE_RESPAWN_PLAN",
+      JSON.stringify({ name: "Fake", targets: [{ name: "other" }] }),
+    );
+    try {
+      const { host, Remote } = await fake([{ name: "work" }], {
+        prewarm: true,
+      });
+      try {
+        const first = await runCli(Remote, ["work"]);
+        assertEquals(first.code, 0, first.err);
+        // The next run spawns its own replacement and meets the refusal where
+        // a run without pre-warming would: configuring its worker.
+        await assertRejects(
+          () => runCli(Remote, ["work"]),
+          Error,
+          "described a different build",
+        );
+      } finally {
+        await host.close();
+      }
+    } finally {
+      Deno.env.delete("ZUKE_FAKE_GENERATION_FILE");
+      Deno.env.delete("ZUKE_FAKE_RESPAWN_PLAN");
+    }
+  });
 });

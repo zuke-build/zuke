@@ -57,6 +57,14 @@ export interface WorkerOptions {
   readonly connectTimeoutMs?: number;
   /** How long a cancelled body may take to settle before the worker is killed. */
   readonly graceMs?: number;
+  /**
+   * Spawn and describe the next worker as soon as a run ends, so the next run
+   * of a long-lived host (the MCP server, which runs build after build in one
+   * process) finds one up instead of paying the spawn inside its request. Off
+   * by default: a one-shot run has no next run. A pre-warm that fails is
+   * dropped, and the next run spawns its own worker and meets the error.
+   */
+  readonly prewarm?: boolean;
 }
 
 /**
@@ -325,6 +333,8 @@ export class WorkerHost {
   /** Why no replacement will be spawned, once one was refused. */
   #fatal: Error | undefined;
   #finished = false;
+  /** Set by {@link close}: no worker is pre-warmed after it. */
+  #closed = false;
   #replacing: Promise<void> | undefined;
   /** The first worker's manifest, as JSON, which every replacement must match. */
   #manifest: string | undefined;
@@ -431,9 +441,10 @@ export class WorkerHost {
   async #live(): Promise<Worker> {
     if (this.#fatal !== undefined) throw this.#fatal;
     // The socket's end is seen before the exit code lands; either means the
-    // worker is gone.
-    const gone = this.#dead !== undefined || this.#worker.peer.closed;
-    if (gone) {
+    // worker is gone. A pre-warm in flight is awaited like a replacement; one
+    // that failed left the finished worker in place, so the loop goes round
+    // again and spawns a replacement after it.
+    while (this.#dead !== undefined || this.#worker.peer.closed) {
       this.#replacing ??= this.#respawn().finally(() => {
         this.#replacing = undefined;
       });
@@ -477,18 +488,38 @@ export class WorkerHost {
     await this.#stop(this.#worker);
     const worker = await spawn(this.#options);
     try {
+      await this.#adoptReplacement(worker);
+    } catch (error) {
+      // A replacement that cannot take over is the last one tried for the run.
+      this.#fatal = error instanceof Error ? error : new Error(String(error));
+      throw this.#fatal;
+    }
+  }
+
+  /**
+   * Have `worker` take over and adopt it, or stop it and rethrow: a worker is
+   * adopted only once it has taken over, so nothing is ever served by one that
+   * is not configured.
+   */
+  async #adoptReplacement(worker: Worker): Promise<void> {
+    try {
       await this.#takeOver(worker);
     } catch (error) {
-      // A replacement that cannot take over is the last one tried for the run; the
-      // worker is adopted only once it has, so nothing is ever served by one
-      // that is not configured.
-      this.#fatal = error instanceof Error ? error : new Error(String(error));
       await this.#stop(worker);
-      throw this.#fatal;
+      throw error;
     }
     this.#dead = undefined;
     this.#finished = false;
     this.#worker = this.#adopt(worker);
+  }
+
+  /** Spawn and describe the next worker ahead of the next run ({@link WorkerOptions.prewarm}). */
+  async #prewarm(): Promise<void> {
+    try {
+      await this.#adoptReplacement(await spawn(this.#options));
+    } catch {
+      // The next run spawns its own worker and meets the error itself.
+    }
   }
 
   /** Have `worker` describe the build the first worker did, then configure it as the first was. */
@@ -706,6 +737,22 @@ export class WorkerHost {
       await stopChild(worker.child, this.#graceMs);
     }
     await worker.background.catch(() => {});
+    if (this.#options.prewarm && !this.#closed) {
+      this.#replacing ??= this.#prewarm().finally(() => {
+        this.#replacing = undefined;
+      });
+    }
+  }
+
+  /**
+   * End the host for good: a pre-warm in flight is awaited and its worker
+   * stopped with the current one, and none is spawned after. A one-shot run
+   * needs no call; it ends with its process.
+   */
+  async close(): Promise<void> {
+    this.#closed = true;
+    await this.#replacing?.catch(() => {});
+    await this.#stop(this.#worker);
   }
 
   /** Kill the worker outright, and whatever its service phases spawned. */

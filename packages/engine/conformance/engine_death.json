@@ -1,0 +1,18 @@
+{
+  "manifest": {
+    "name": "EngineDeath",
+    "targets": [
+      {
+        "name": "work",
+        "sleep_ms": 30000
+      }
+    ]
+  },
+  "argv": [
+    "work"
+  ],
+  "engineDies": {
+    "after": "target.run work",
+    "workerExitsWithinMs": 5000
+  }
+}

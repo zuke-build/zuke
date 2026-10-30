@@ -66,6 +66,10 @@ if (import.meta.main) {
   const host = await WorkerHost.start({
     command: sdkCommand(await Deno.readTextFile(config), config),
     cwd: root.path,
+    // The MCP server runs build after build in one process, so the next
+    // worker is spawned as each run ends; core names the command the same way,
+    // by any bare `mcp` argument.
+    prewarm: Deno.args.includes("mcp"),
   });
   await run(materialize(await host.describe(), host));
 }

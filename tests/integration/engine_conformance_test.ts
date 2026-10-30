@@ -22,6 +22,11 @@ const CASES = new URL("../../packages/engine/conformance/", import.meta.url);
 const FAKE =
   new URL("../../packages/engine/tests/_fake_worker.ts", import.meta.url)
     .href;
+/** The engine entrypoint, run as a process for the engine-death case. */
+const ENGINE =
+  new URL("../../packages/engine/mod.ts", import.meta.url).pathname;
+/** The workspace config, which a run from a temp directory would not find. */
+const CONFIG = new URL("../../deno.json", import.meta.url).pathname;
 
 /** One run of a case: the first, or a later one under `then`. */
 interface Run {
@@ -37,6 +42,34 @@ interface Run {
 interface Case extends Run {
   readonly list?: { targets: unknown; parameters: unknown };
   readonly then: Run[];
+}
+
+/** A case where the engine dies mid-run: the worker must exit on its own. */
+interface EngineDeath {
+  readonly manifest: unknown;
+  readonly argv: string[];
+  readonly after: string;
+  readonly workerExitsWithinMs: number;
+}
+
+function engineDeathOf(value: unknown, file: string): EngineDeath | undefined {
+  if (!isRecord(value) || !isRecord(value.engineDies)) return undefined;
+  const { after, workerExitsWithinMs } = value.engineDies;
+  if (
+    value.manifest === undefined || !Array.isArray(value.argv) ||
+    typeof after !== "string" || typeof workerExitsWithinMs !== "number"
+  ) {
+    throw new Error(
+      `${file}: an engineDies case needs manifest, argv, engineDies.after ` +
+        "and engineDies.workerExitsWithinMs",
+    );
+  }
+  return {
+    manifest: value.manifest,
+    argv: value.argv.map(String),
+    after,
+    workerExitsWithinMs,
+  };
 }
 
 function runOf(value: unknown, file: string, manifest: unknown): Run {
@@ -98,10 +131,11 @@ function logged(err: string, prefix: string): string[] {
 
 for await (const entry of Deno.readDir(CASES)) {
   if (!entry.name.endsWith(".json")) continue;
-  const spec = caseOf(
-    JSON.parse(await Deno.readTextFile(new URL(entry.name, CASES))),
-    entry.name,
+  const raw: unknown = JSON.parse(
+    await Deno.readTextFile(new URL(entry.name, CASES)),
   );
+  const death = engineDeathOf(raw, entry.name);
+  const spec = death === undefined ? caseOf(raw, entry.name) : undefined;
   Deno.test(`conformance: ${entry.name}`, async () => {
     // Each case runs from its own empty directory: the incremental cache
     // lives under the working directory's `.zuke/`, so a repeat of the
@@ -110,7 +144,8 @@ for await (const entry of Deno.readDir(CASES)) {
     const previous = Deno.cwd();
     Deno.chdir(dir);
     try {
-      await replay(spec);
+      if (death !== undefined) await replayEngineDeath(death);
+      if (spec !== undefined) await replay(spec);
     } finally {
       Deno.chdir(previous);
       await Deno.remove(dir, { recursive: true });
@@ -174,5 +209,71 @@ async function replayRun(run: Run, runId: string | undefined): Promise<void> {
     for (const file of run.files) {
       assertEquals((await Deno.stat(file)).isFile, true, file);
     }
+  });
+}
+
+/** Read `reader` until a chunk holds `marker`, or to its end when none is given. */
+async function readUntil(
+  reader: ReadableStreamDefaultReader<string>,
+  marker?: string,
+): Promise<boolean> {
+  let buffered = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) return false;
+    buffered += value;
+    if (marker !== undefined && buffered.includes(marker)) return true;
+  }
+}
+
+/**
+ * Run the real engine entrypoint on the fake worker, kill the engine with
+ * SIGKILL once the named call is logged, and require the worker to exit on its
+ * own within the bound. Its connection ended with no `run.exit` and no signal,
+ * which is all a worker ever sees of an engine that died, and a worker that
+ * stays is an orphan every cancelled job would leave behind.
+ */
+async function replayEngineDeath(spec: EngineDeath): Promise<void> {
+  await withStateDir(async () => {
+    const exitFile = `${Deno.cwd()}/worker-exit`;
+    await Deno.writeTextFile(
+      "zuke.json",
+      JSON.stringify({
+        sdk: { command: [Deno.execPath(), "run", "-A", FAKE] },
+      }),
+    );
+    const engine = new Deno.Command(Deno.execPath(), {
+      args: ["run", "-A", "--config", CONFIG, ENGINE, ...spec.argv],
+      env: {
+        ZUKE_FAKE_PLAN: JSON.stringify(spec.manifest),
+        ZUKE_FAKE_EXIT_FILE: exitFile,
+      },
+      stdin: "null",
+      stdout: "null",
+      stderr: "piped",
+    }).spawn();
+    const log = engine.stderr.pipeThrough(new TextDecoderStream()).getReader();
+    const marker = `worker: call: ${spec.after}`;
+    const seen = await readUntil(log, marker);
+    if (!seen) engine.kill("SIGKILL");
+    assertEquals(seen, true, `the engine never logged "${marker}"`);
+    engine.kill("SIGKILL");
+    await engine.status;
+    await readUntil(log);
+    const deadline = Date.now() + spec.workerExitsWithinMs;
+    let exited = false;
+    while (!exited && Date.now() < deadline) {
+      exited = await Deno.readTextFile(exitFile).then(
+        (t) => t === "exited",
+        () => false,
+      );
+      if (!exited) await new Promise((r) => setTimeout(r, 50));
+    }
+    assertEquals(
+      exited,
+      true,
+      `the worker did not exit within ${spec.workerExitsWithinMs}ms of the ` +
+        "engine's death",
+    );
   });
 }

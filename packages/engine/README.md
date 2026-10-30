@@ -113,6 +113,10 @@ class WorkerHost
     exit, release everything. The run ends, not the host: the next request
     (an MCP server runs build after build in one process) spawns a fresh
     worker, described and configured anew.
+  async close(): Promise<void>
+    End the host for good: a pre-warm in flight is awaited and its worker
+    stopped with the current one, and none is spawned after. A one-shot run
+    needs no call; it ends with its process.
   kill(): void
     Kill the worker outright, and whatever its service phases spawned.
 
@@ -361,6 +365,12 @@ interface WorkerOptions
     How long to wait for the worker's `hello` before giving up.
   readonly graceMs?: number
     How long a cancelled body may take to settle before the worker is killed.
+  readonly prewarm?: boolean
+    Spawn and describe the next worker as soon as a run ends, so the next run
+    of a long-lived host (the MCP server, which runs build after build in one
+    process) finds one up instead of paying the spawn inside its request. Off
+    by default: a one-shot run has no next run. A pre-warm that fails is
+    dropped, and the next run spawns its own worker and meets the error.
 
 type Duration = string | number
   A duration as the wrappers take it: `"5m"` or milliseconds.
