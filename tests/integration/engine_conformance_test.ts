@@ -234,6 +234,17 @@ async function readUntil(
   }
 }
 
+/** What the OS says about process `pid`: its listing, or that it is gone. */
+async function processAlive(pid: string): Promise<string> {
+  const listing = Deno.build.os === "windows"
+    ? ["tasklist", "/FI", `PID eq ${pid}`]
+    : ["ps", "-p", pid, "-o", "pid=,stat=,args="];
+  const [program, ...args] = listing;
+  const out = await new Deno.Command(program ?? "ps", { args }).output();
+  const text = new TextDecoder().decode(out.stdout).trim();
+  return text === "" ? "is gone" : `is listed as: ${text}`;
+}
+
 /**
  * Run the real engine entrypoint on the fake worker, kill the engine with
  * SIGKILL once the named call is logged, and require the worker to exit on its
@@ -244,6 +255,7 @@ async function readUntil(
 async function replayEngineDeath(spec: EngineDeath): Promise<void> {
   await withStateDir(async () => {
     const exitFile = `${Deno.cwd()}/worker-exit`;
+    const startedFile = `${Deno.cwd()}/worker-started`;
     await Deno.writeTextFile(
       "zuke.json",
       JSON.stringify({
@@ -255,6 +267,7 @@ async function replayEngineDeath(spec: EngineDeath): Promise<void> {
       env: {
         ZUKE_FAKE_PLAN: JSON.stringify(spec.manifest),
         ZUKE_FAKE_EXIT_FILE: exitFile,
+        ZUKE_FAKE_STARTED_FILE: startedFile,
       },
       stdin: "null",
       stdout: "null",
@@ -283,11 +296,15 @@ async function replayEngineDeath(spec: EngineDeath): Promise<void> {
       );
       if (!exited) await new Promise((r) => setTimeout(r, 50));
     }
-    assertEquals(
-      exited,
-      true,
-      `the worker did not exit within ${spec.workerExitsWithinMs}ms of the ` +
-        "engine's death",
-    );
+    if (!exited) {
+      // Say how far the worker got, and whether it is still there.
+      const stage = await Deno.readTextFile(exitFile).catch(() => "(no file)");
+      const pid = (await Deno.readTextFile(startedFile).catch(() => "")).trim();
+      const alive = await processAlive(pid);
+      throw new Error(
+        `the worker did not exit within ${spec.workerExitsWithinMs}ms of the ` +
+          `engine's death; its last stage: ${stage}; pid ${pid} ${alive}`,
+      );
+    }
   });
 }

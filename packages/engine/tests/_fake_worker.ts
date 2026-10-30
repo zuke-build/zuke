@@ -308,6 +308,11 @@ peer.on(
 );
 peer.on("run.cancel", () => {});
 const serving = peer.serve();
+const EXIT_FILE = Deno.env.get("ZUKE_FAKE_EXIT_FILE");
+/** Record how far this worker's end has got, for a test watching it go. */
+function stage(what: string): void {
+  if (EXIT_FILE !== undefined) Deno.writeTextFileSync(EXIT_FILE, what);
+}
 const STARTED_FILE = Deno.env.get("ZUKE_FAKE_STARTED_FILE");
 if (STARTED_FILE !== undefined) {
   Deno.writeTextFileSync(STARTED_FILE, `${Deno.pid}\n`, { append: true });
@@ -323,13 +328,14 @@ try {
     env: Deno.env.toObject(),
     cwd: Deno.cwd(),
   });
+  stage("serving");
   await serving;
+  stage("serve ended");
 } finally {
   // An engine that hangs up, as it does on a refused greeting or by dying, is
   // the end, unless this worker is the one that hung up and is to be stopped.
   if (!hangingUp) {
-    const exitFile = Deno.env.get("ZUKE_FAKE_EXIT_FILE");
-    if (exitFile !== undefined) Deno.writeTextFileSync(exitFile, "exited");
+    stage("exited");
     Deno.exit(0);
   }
 }
