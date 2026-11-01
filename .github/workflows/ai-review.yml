@@ -20,7 +20,7 @@ jobs:
       cancel-in-progress: true
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@213d5234c03e1fedc314159a77b2f680c2d6c8f5 # v1.0.7
+        uses: zuke-build/zuke@b0832247daa16321be405a10b71c022317d2c5a4 # v1.0.8
         with:
           egress-policy: block
           persist-credentials: "false"
@@ -45,7 +45,7 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@213d5234c03e1fedc314159a77b2f680c2d6c8f5 # v1.0.7
+        uses: zuke-build/zuke@b0832247daa16321be405a10b71c022317d2c5a4 # v1.0.8
         with:
           egress-policy: block
           persist-credentials: "false"
