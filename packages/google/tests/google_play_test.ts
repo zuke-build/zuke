@@ -340,26 +340,60 @@ Deno.test("an error body that is not JSON still names the status", async () => {
   );
 });
 
+/**
+ * A fetch that never answers the bundle upload until its signal aborts, and
+ * answers everything else from `fake` after `delayMs`. Like the real fetch,
+ * a signal that has already aborted rejects at once: the upload's timer starts
+ * before the token and edit calls, so on a slow machine it can fire before the
+ * bundle request is ever made, and a listener alone would then wait forever.
+ */
+function hangingBundles(
+  fake: { fetch: typeof fetch },
+  delayMs = 0,
+): typeof fetch {
+  return async (input, init) => {
+    if (String(input).includes("/bundles?")) {
+      const signal = init?.signal;
+      if (signal?.aborted) throw signal.reason;
+      return await new Promise((_, reject) =>
+        signal?.addEventListener("abort", () => reject(signal.reason))
+      );
+    }
+    if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));
+    return await fake.fetch(input, init);
+  };
+}
+
 Deno.test("an upload that outlives .timeout() is aborted, and the edit deleted", async () => {
   const seen: string[] = [];
   const fake = google((call) => {
     seen.push(call.method);
     return undefined;
   });
-  const hanging: typeof fetch = (input, init) => {
-    if (String(input).includes("/bundles?")) {
-      return new Promise((_, reject) =>
-        init?.signal?.addEventListener(
-          "abort",
-          () => reject(init.signal?.reason),
-        )
-      );
-    }
-    return fake.fetch(input, init);
-  };
   await assertRejects(
     () =>
-      GooglePlayTasks.upload((s) => against(fake)(s).fetch(hanging).timeout(5)),
+      GooglePlayTasks.upload((s) =>
+        against(fake)(s).fetch(hangingBundles(fake)).timeout(5)
+      ),
+    GooglePlayError,
+    `uploading ${BUNDLE} took longer than 0s; raise .timeout()`,
+  );
+  assertEquals(seen, ["POST", "POST", "DELETE"]);
+});
+
+Deno.test("a timer that fires before the bundle request still aborts the upload and deletes the edit", async () => {
+  const seen: string[] = [];
+  const fake = google((call) => {
+    seen.push(call.method);
+    return undefined;
+  });
+  // The token and edit calls each take longer than the whole timeout, so the
+  // bundle request is made with a signal that has already aborted.
+  await assertRejects(
+    () =>
+      GooglePlayTasks.upload((s) =>
+        against(fake)(s).fetch(hangingBundles(fake, 20)).timeout(5)
+      ),
     GooglePlayError,
     `uploading ${BUNDLE} took longer than 0s; raise .timeout()`,
   );
