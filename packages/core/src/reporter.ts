@@ -12,11 +12,7 @@
  * @module
  */
 
-import {
-  ambientOutput,
-  type ByteWriter,
-  type OutputSink,
-} from "./ambient_output.ts";
+import type { ByteWriter, OutputSink } from "./ambient_output.ts";
 import type { Redactor } from "./redact.ts";
 import { detectCiHost } from "./host.ts";
 import { escapeLine, escapeLineIf } from "./render.ts";
@@ -177,8 +173,8 @@ export function safeReporter(inner: Reporter): Reporter {
  * `output` buffers the live stdout/stderr of the commands the target runs (see
  * {@link "./ambient_output.ts".withAmbientOutput}), interleaved with the lines
  * in the order they arrived. On flush the lines go to `to` and the raw bytes to
- * `raw` — by default the ambient sink, which is the enclosing target's buffer
- * for a fan-out item and the process's own stdout/stderr otherwise.
+ * `raw`: the enclosing target's buffer for a fan-out item, the process's own
+ * stdout/stderr otherwise.
  *
  * A flush drains the buffer, so flushing twice never prints anything twice, and
  * it seals it: anything written afterwards — a command that outlived a timed-out
@@ -188,7 +184,7 @@ export function safeReporter(inner: Reporter): Reporter {
 export function bufferReporter(): {
   reporter: Reporter;
   output: OutputSink;
-  flush: (to: Reporter, raw?: OutputSink) => void;
+  flush: (to: Reporter, raw: OutputSink) => void;
 } {
   type Entry =
     | { kind: "info" | "error"; text: string }
@@ -219,7 +215,7 @@ export function bufferReporter(): {
       error: (text) => add({ kind: "error", text }),
     },
     output: { stdout: writer("stdout"), stderr: writer("stderr") },
-    flush: (to, raw = ambientOutput()) => {
+    flush: (to, raw) => {
       sealed = { to, raw };
       for (const entry of entries.splice(0)) emit(entry, to, raw);
     },

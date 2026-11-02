@@ -104,15 +104,3 @@ Deno.test("bufferReporter: writes after a flush pass straight through", () => {
   assertEquals(out.text(), "late\n");
   assertEquals(lines, ["late line"]);
 });
-
-Deno.test("bufferReporter: flushes into the ambient sink by default", async () => {
-  const outer = recorder();
-  const buffer = bufferReporter();
-  buffer.output.stdout.writeSync(encoder.encode("item\n"));
-  // A fan-out item's block flushes inside its parent's buffered scope.
-  await withAmbientOutput({ stdout: outer, stderr: recorder() }, () => {
-    buffer.flush({ info: () => {}, error: () => {} });
-    return Promise.resolve();
-  });
-  assertEquals(outer.text(), "item\n");
-});

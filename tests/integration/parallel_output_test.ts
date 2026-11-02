@@ -202,3 +202,37 @@ Deno.test("integration: a forced exit prints what a hung target had written", as
   // Flushed once: the block is not printed again when the target settles.
   assertEquals(lines.filter((l) => l === "BEFORE-HANG").length, 1);
 });
+
+class HungItemBuild extends Build {
+  seen = "";
+  checks = group();
+  fan = target().partOf(this.checks).forEach(
+    () => ["a", "b"],
+    (item: string) => ({
+      run: target().executes(async () => {
+        await echoLater(`ITEM-${item}`, 0);
+        // The forced exit runs outside every target's async context, but each
+        // block must still go to the sink bound when its target launched.
+        if (item === "a") {
+          flushInFlightOutput();
+          this.seen = printed.join("");
+        }
+      }),
+    }),
+  );
+  other = target().partOf(this.checks).executes(() => {});
+}
+
+Deno.test("integration: a forced exit flushes a fan-out item to the sink it launched with", async () => {
+  let build: HungItemBuild | undefined;
+  class Probe extends HungItemBuild {
+    constructor() {
+      super();
+      build = this;
+    }
+  }
+  const { code, lines } = await transcript(Probe, ["fan", "other", "--plain"]);
+  assertEquals(code === 0, true, lines.join("\n"));
+  assertEquals(build?.seen.includes("ITEM-a"), true, build?.seen);
+  assertEquals(lines.filter((l) => l === "ITEM-a").length, 1);
+});

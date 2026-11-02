@@ -28,7 +28,7 @@ import {
   type TargetOutcome,
 } from "./run_support.ts";
 import { withAmbientEcho } from "./ambient_echo.ts";
-import { withAmbientOutput } from "./ambient_output.ts";
+import { ambientOutput, withAmbientOutput } from "./ambient_output.ts";
 import {
   type DuringChecks,
   resolveDuringChecks,
@@ -930,6 +930,10 @@ export async function runSequential(
  * Flushes for the buffered blocks of targets still in flight, so a forced exit
  * (a second Ctrl-C) can print what a hung target had written before the process
  * goes — the output that explains the hang.
+ *
+ * Process-wide on purpose: a forced exit ends every run in the process, so each
+ * one's pending block is flushed — to that run's own reporter and that target's
+ * own byte sink, both bound when the target launched.
  */
 const inFlightFlushes = new Set<() => void>();
 
@@ -1077,7 +1081,11 @@ export async function runScheduled(
         runningSet.add(t);
         const buffered = mayOverlap.has(t);
         const buffer = bufferReporter();
-        const flushNow = () => buffer.flush(reporter);
+        // Bound now, not at flush time: a forced exit flushes from a signal
+        // handler, where the ambient sink is the terminal rather than the
+        // enclosing fan-out's buffer this target's bytes belong in.
+        const sink = ambientOutput();
+        const flushNow = () => buffer.flush(reporter, sink);
         if (buffered) inFlightFlushes.add(flushNow);
         const launch = () =>
           runTarget(
@@ -1112,7 +1120,7 @@ export async function runScheduled(
               if (printed) {
                 if (buffered) {
                   if (!style.github && flushed > 0) reporter.info("");
-                  buffer.flush(reporter);
+                  flushNow();
                 }
                 flushed++;
               }
@@ -1159,7 +1167,7 @@ export async function runScheduled(
             // What the target printed before the rejection is still its own.
             if (buffered) {
               if (!style.github && flushed > 0) reporter.info("");
-              buffer.flush(reporter);
+              flushNow();
             }
             failTarget(reporter, renderer, style, targetName, 0, error);
             flushed++;
