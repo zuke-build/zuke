@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.78.0](https://github.com/zuke-build/zuke/compare/core-v1.77.1...core-v1.78.0) (2026-11-02)
+
+
+### Features
+
+* **core:** keep relative symlinks inside declared outputs in the remote cache ([#935](https://github.com/zuke-build/zuke/issues/935)) ([ed3022d](https://github.com/zuke-build/zuke/commit/ed3022dd300fd2a873b4d052484634751d50b779))
+
 ## [1.77.1](https://github.com/zuke-build/zuke/compare/core-v1.77.0...core-v1.77.1) (2026-11-02)
 
 
