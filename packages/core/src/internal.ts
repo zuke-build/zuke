@@ -194,7 +194,7 @@ export async function readBytesBounded(
  * The parent directory of a `/`- or `\`-separated path, or `null` when the path
  * has no parent to create (a bare name, or a root-level entry).
  */
-function parentOf(path: string): string | null {
+export function parentOf(path: string): string | null {
   const slashed = path.replace(/\\/g, "/");
   const slash = slashed.lastIndexOf("/");
   return slash > 0 ? path.slice(0, slash) : null;

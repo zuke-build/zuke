@@ -189,6 +189,54 @@ Deno.test("a FileSystemCacheStore (env-configured) restores outputs on a fresh c
   });
 });
 
+Deno.test("a node_modules output restores its .bin links as links, so tools still resolve", async () => {
+  if (Deno.build.os === "windows") return; // npm writes .cmd shims there, not links
+  await withStateDir(async () => {
+    await withTempCwd(async (dir) => {
+      const remoteDir = await Deno.makeTempDir({ prefix: "zuke-it-remote-" });
+      const prevRemote = Deno.env.get("ZUKE_REMOTE_CACHE_DIR");
+      Deno.env.set("ZUKE_REMOTE_CACHE_DIR", remoteDir);
+      try {
+        await Deno.writeTextFile(`${dir}/package-lock.json`, "{}");
+        const log: string[] = [];
+        class B extends Build {
+          deps = target().inputs("package-lock.json").outputs("node_modules")
+            .executes(async () => {
+              log.push("npm ci");
+              await Deno.mkdir("node_modules/.bin", { recursive: true });
+              await Deno.mkdir("node_modules/tool/dist", { recursive: true });
+              await Deno.writeTextFile(
+                "node_modules/tool/cli.mjs",
+                "import './dist/x.js';\n",
+              );
+              await Deno.writeTextFile("node_modules/tool/dist/x.js", "\n");
+              await Deno.symlink("../tool/cli.mjs", "node_modules/.bin/tool");
+            });
+        }
+        assertEquals((await runCli(B, ["deps"])).code, 0);
+
+        // A fresh runner: no local cache, no node_modules.
+        await Deno.remove(`${dir}/.zuke`, { recursive: true });
+        await Deno.remove(`${dir}/node_modules`, { recursive: true });
+        const second = await runCli(B, ["deps"]);
+        assertEquals(second.code, 0);
+        assertEquals(log, ["npm ci"]); // restored, not reinstalled
+        assertEquals(
+          await Deno.readLink(`${dir}/node_modules/.bin/tool`),
+          "../tool/cli.mjs",
+        );
+      } finally {
+        if (prevRemote === undefined) {
+          Deno.env.delete("ZUKE_REMOTE_CACHE_DIR");
+        } else {
+          Deno.env.set("ZUKE_REMOTE_CACHE_DIR", prevRemote);
+        }
+        await Deno.remove(remoteDir, { recursive: true });
+      }
+    });
+  });
+});
+
 Deno.test("an SDK under .zuke/tools caches with its .git and long paths, within the configured limit", async () => {
   await withStateDir(async () => {
     await withTempCwd(async (dir) => {
