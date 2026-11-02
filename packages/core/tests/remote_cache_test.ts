@@ -82,6 +82,34 @@ class MemFs implements OutputHost {
   }
 }
 
+/** A {@link MemFs} that can also read and create symlinks, by raw target. */
+class LinkFs extends MemFs {
+  /** Each link's raw target, keyed by its path. */
+  readonly links = new Map<string, string>();
+  /** The `type` each created link was given. */
+  readonly linkTypes = new Map<string, "file" | "dir">();
+
+  readLink(path: string): Promise<string> {
+    return Promise.resolve(this.links.get(path) ?? "");
+  }
+  symlink(target: string, path: string, type: "file" | "dir"): Promise<void> {
+    this.links.set(path, target);
+    this.symlinks.add(path);
+    this.linkTypes.set(path, type);
+    return Promise.resolve();
+  }
+}
+
+/** A gzipped tar holding `entries`, each link given as `name -> target`. */
+async function archive(...entries: string[]): Promise<Uint8Array> {
+  return await gzip(tar(entries.map((entry) => {
+    const [name, linkname] = entry.split(" -> ");
+    return linkname === undefined
+      ? { name, data: enc("x") }
+      : { name, data: new Uint8Array(0), linkname };
+  })));
+}
+
 Deno.test("archiveOutputs/restoreOutputs round-trip files and directories", async () => {
   const src = new MemFs();
   src.files.set("dist/app.js", enc("built"));
@@ -142,9 +170,12 @@ Deno.test("archiveOutputs skips a declared output that is missing", async () => 
 Deno.test("remoteCacheKey sanitises the name and carries the fingerprint", () => {
   assertEquals(
     remoteCacheKey("release.publish", "abc123"),
-    "release.publish-abc123",
+    "v2-release.publish-abc123",
   );
-  assertEquals(remoteCacheKey("weird name/slash", "ff"), "weird_name_slash-ff");
+  assertEquals(
+    remoteCacheKey("weird name/slash", "ff"),
+    "v2-weird_name_slash-ff",
+  );
 });
 
 Deno.test("FileSystemCacheStore stores and retrieves artifacts", async () => {
@@ -602,15 +633,6 @@ Deno.test("restoreOutputs refuses a .git spelled with a trailing dot or space", 
 
 Deno.test("restoreOutputs refuses entry kinds archiveOutputs never produces", async () => {
   const out = new MemFs();
-  // A symlink is how a *later* entry writes through a name the checks approved.
-  const link = await gzip(
-    tar([{ name: "dist/link", data: new Uint8Array(0), linkname: "target" }]),
-  );
-  const linkErr = await assertRejects(() =>
-    restoreOutputs(link, out, ["dist"])
-  );
-  assertStringIncludes(linkErr.message, "symlink");
-
   const dir = await gzip(tar([{ name: "dist/sub/", data: new Uint8Array(0) }]));
   const dirErr = await assertRejects(() => restoreOutputs(dir, out, ["dist"]));
   assertStringIncludes(dirErr.message, "directory entry");
@@ -833,4 +855,316 @@ Deno.test("the inflated bound is not tied to the on-the-wire bound", async () =>
   const out = new MemFs();
   assertEquals(await restoreOutputs(artifact, out, ["dist"]), ["dist/big.bin"]);
   assertEquals(out.files.get("dist/big.bin")?.byteLength, 4 * 1024 * 1024);
+});
+
+Deno.test("archiveOutputs/restoreOutputs keep a relative link inside its output", async () => {
+  const src = new LinkFs();
+  src.dirs.set("node_modules", [".bin", "vitest"]);
+  src.dirs.set("node_modules/.bin", ["vitest"]);
+  src.dirs.set("node_modules/vitest", ["vitest.mjs"]);
+  src.files.set(
+    "node_modules/vitest/vitest.mjs",
+    enc("import './dist/cli.js'"),
+  );
+  src.symlinks.add("node_modules/.bin/vitest");
+  src.links.set("node_modules/.bin/vitest", "../vitest/vitest.mjs");
+
+  const out = new LinkFs();
+  const written = await restoreOutputs(
+    await archiveOutputs(["node_modules"], src),
+    out,
+    ["node_modules"],
+  );
+  // Files first, then links, so no write passes through a planted link.
+  assertEquals(written, [
+    "node_modules/vitest/vitest.mjs",
+    "node_modules/.bin/vitest",
+  ]);
+  assertEquals(
+    out.links.get("node_modules/.bin/vitest"),
+    "../vitest/vitest.mjs",
+  );
+  assertEquals(out.files.has("node_modules/.bin/vitest"), false);
+  assertEquals(out.linkTypes.get("node_modules/.bin/vitest"), "file");
+});
+
+Deno.test("archiveOutputs copies a link that leaves its output, as before", async () => {
+  const src = new LinkFs();
+  src.dirs.set("dist", ["out", "abs", "up"]);
+  // \`stat\` follows a link, so each reads back as the file it names.
+  for (
+    const [name, target] of [
+      ["dist/out", "../shared.js"],
+      ["dist/abs", "/etc/hostname"],
+      ["dist/up", "sub/../../x"],
+    ]
+  ) {
+    src.symlinks.add(name);
+    src.links.set(name, target);
+    src.files.set(name, enc(`copy of ${target}`));
+  }
+  const out = new LinkFs();
+  assertEquals(
+    await restoreOutputs(await archiveOutputs(["dist"], src), out, ["dist"]),
+    ["dist/abs", "dist/out", "dist/up"],
+  );
+  assertEquals(out.links.size, 0);
+  assertEquals(
+    dec(out.files.get("dist/out") ?? enc("")),
+    "copy of ../shared.js",
+  );
+});
+
+Deno.test("archiveOutputs copies a link into a protected path rather than linking it", async () => {
+  const src = new LinkFs();
+  src.dirs.set("out", ["hook"]);
+  src.symlinks.add("out/hook");
+  src.links.set("out/hook", ".git/hooks/pre-commit");
+  src.files.set("out/hook", enc("#!/bin/sh"));
+  const out = new LinkFs();
+  await restoreOutputs(await archiveOutputs(["out"], src), out, ["out"]);
+  assertEquals(out.links.size, 0);
+  assertEquals(out.files.has("out/hook"), true);
+});
+
+Deno.test("restoreOutputs types a link to a directory as one", async () => {
+  const out = new LinkFs();
+  out.dirs.set("node_modules/.pnpm/a@1", []);
+  await restoreOutputs(
+    await archive("node_modules/a -> .pnpm/a@1"),
+    out,
+    ["node_modules"],
+  );
+  assertEquals(out.linkTypes.get("node_modules/a"), "dir");
+});
+
+Deno.test("restoreOutputs accepts a workspace-relative link with no declared outputs", async () => {
+  const out = new LinkFs();
+  assertEquals(
+    await restoreOutputs(await archive("bin/tool -> ../lib/t"), out),
+    [
+      "bin/tool",
+    ],
+  );
+});
+
+Deno.test("restoreOutputs refuses a link that leaves its output or reaches a protected path", async () => {
+  const cases: [string, string][] = [
+    ["dist/l -> /etc/passwd", "absolute path"],
+    ["dist/l -> C:/Windows", "absolute path"],
+    ["dist/l -> ../secret", "escapes the destination"],
+    ["dist/l -> ..\\secret", "escapes the destination"],
+    ["dist/l -> sub/../../x", 'climbs with ".." after a name'],
+    ["dist/l -> ", "empty or NUL-bearing"],
+    ["dist/l -> .git/config", "protected path"],
+    ["dist/l -> ../other/x", "escapes the destination"],
+  ];
+  for (const [entry, message] of cases) {
+    const out = new LinkFs();
+    const err = await assertRejects(async () =>
+      restoreOutputs(await archive(entry), out, ["dist", "other"])
+    );
+    assertStringIncludes(err.message, message);
+    assertEquals(out.links.size, 0);
+  }
+});
+
+Deno.test("restoreOutputs refuses a link outside every declared output", async () => {
+  const err = await assertRejects(async () =>
+    restoreOutputs(await archive("dist/l -> x"), new LinkFs(), ["other"])
+  );
+  assertStringIncludes(err.message, "outside the target's declared outputs");
+});
+
+Deno.test("restoreOutputs refuses an entry under, or on top of, a link from the archive", async () => {
+  const cases: [string[], string][] = [
+    [["dist/l -> sub", "dist/l/x.js"], 'under the symlink "dist/l"'],
+    [["dist/l -> sub", "dist/l -> other"], "twice"],
+    [["dist/l -> sub", "dist/l"], "both a file and a symlink"],
+    [["dist/l", "dist/l -> sub"], "both a file and a symlink"],
+  ];
+  for (const [entries, message] of cases) {
+    const out = new LinkFs();
+    const err = await assertRejects(async () =>
+      restoreOutputs(await archive(...entries), out, ["dist"])
+    );
+    assertStringIncludes(err.message, message);
+    // Validation runs before any write.
+    assertEquals(out.files.size + out.links.size, 0);
+  }
+});
+
+Deno.test("restoreOutputs refuses links on a host that cannot create them", async () => {
+  const out = new MemFs();
+  const err = await assertRejects(async () =>
+    restoreOutputs(await archive("dist/a.js", "dist/l -> a.js"), out, ["dist"])
+  );
+  assertStringIncludes(err.message, "cannot create them");
+  assertEquals(out.files.size, 0);
+});
+
+Deno.test("defaultCacheHost round-trips a node_modules .bin link on the real filesystem", async () => {
+  if (Deno.build.os === "windows") return; // symlink creation is privileged there
+  await withTemp(async (dir) => {
+    const cwd = Deno.cwd();
+    try {
+      await Deno.mkdir(`${dir}/src/node_modules/.bin`, { recursive: true });
+      await Deno.mkdir(`${dir}/src/node_modules/vitest/dist`, {
+        recursive: true,
+      });
+      await Deno.writeTextFile(
+        `${dir}/src/node_modules/vitest/vitest.mjs`,
+        "import './dist/cli.js';\n",
+      );
+      await Deno.writeTextFile(
+        `${dir}/src/node_modules/vitest/dist/cli.js`,
+        "globalThis.ran = true;\n",
+      );
+      await Deno.symlink(
+        "../vitest/vitest.mjs",
+        `${dir}/src/node_modules/.bin/vitest`,
+      );
+      Deno.chdir(`${dir}/src`);
+      const artifact = await archiveOutputs(["node_modules"], defaultCacheHost);
+
+      await Deno.mkdir(`${dir}/dst`);
+      Deno.chdir(`${dir}/dst`);
+      await restoreOutputs(artifact, defaultCacheHost, ["node_modules"]);
+      assertEquals(
+        await Deno.readLink("node_modules/.bin/vitest"),
+        "../vitest/vitest.mjs",
+      );
+      // The relative import resolves from the link's target, as after npm ci.
+      await import(`file://${dir}/dst/node_modules/.bin/vitest`);
+      assertEquals(Reflect.get(globalThis, "ran"), true);
+    } finally {
+      Deno.chdir(cwd);
+      Reflect.deleteProperty(globalThis, "ran");
+    }
+  });
+});
+
+Deno.test("archiveOutputs copies an output that is itself a link, never links it", async () => {
+  // \`dist -> build\` resolves to "build", outside the output "dist": keeping it
+  // as a link would let a restore point a declared output anywhere.
+  const src = new LinkFs();
+  src.symlinks.add("dist");
+  src.links.set("dist", "build");
+  src.dirs.set("dist", ["app.js"]);
+  src.files.set("dist/app.js", enc("built"));
+  const out = new LinkFs();
+  assertEquals(
+    await restoreOutputs(await archiveOutputs(["dist"], src), out, ["dist"]),
+    ["dist/app.js"],
+  );
+  assertEquals(out.links.size, 0);
+
+  // ...and a restore refuses an archive that carries one anyway.
+  const err = await assertRejects(async () =>
+    restoreOutputs(await archive("dist -> build"), new LinkFs(), ["dist"])
+  );
+  assertStringIncludes(err.message, "is the output itself");
+});
+
+Deno.test("archiveOutputs keeps one entry for a link reached through nested outputs", async () => {
+  const src = new LinkFs();
+  src.dirs.set("node_modules", [".bin", "tool.js"]);
+  src.dirs.set("node_modules/.bin", ["tool"]);
+  src.files.set("node_modules/tool.js", enc("tool"));
+  src.symlinks.add("node_modules/.bin/tool");
+  src.links.set("node_modules/.bin/tool", "../tool.js");
+  src.files.set("node_modules/.bin/tool", enc("tool")); // stat follows it
+  // Under "node_modules/.bin" the link leaves its root and would be a copy;
+  // under "node_modules" it stays a link. The link wins, in either order.
+  for (
+    const outputs of [
+      ["node_modules", "node_modules/.bin"],
+      ["node_modules/.bin", "node_modules"],
+    ]
+  ) {
+    const out = new LinkFs();
+    await restoreOutputs(await archiveOutputs(outputs, src), out, outputs);
+    assertEquals(out.links.get("node_modules/.bin/tool"), "../tool.js");
+    assertEquals(out.files.has("node_modules/.bin/tool"), false);
+  }
+});
+
+Deno.test("restoreOutputs counts a link's depth the way the filesystem does", async () => {
+  // The filesystem collapses empty and `.` segments, so `dist///x` is
+  // `dist/x`: counting it three levels deep would let `../..` leave the
+  // workspace, and a second entry would then be created through it.
+  const cases: [string[], string[] | undefined][] = [
+    [["dist///x -> ../.."], ["dist"]],
+    [["dist//x -> .."], ["dist"]],
+    [["dist/././w -> ../.."], ["dist"]],
+    [["a//b -> ../.."], undefined],
+    [["dist///x -> ../..", "dist/x/pwned -> evil"], ["dist"]],
+  ];
+  for (const [entries, outputs] of cases) {
+    const out = new LinkFs();
+    await assertRejects(async () =>
+      restoreOutputs(await archive(...entries), out, outputs)
+    );
+    assertEquals(out.links.size, 0);
+  }
+  // ...and once canonical, the same name is checked under the link it aliases.
+  const err = await assertRejects(async () =>
+    restoreOutputs(
+      await archive("dist/x -> sub", "dist//x/y -> ../z"),
+      new LinkFs(),
+      ["dist"],
+    )
+  );
+  assertStringIncludes(err.message, 'under the symlink "dist/x"');
+});
+
+Deno.test("archiveOutputs names entries canonically for a trailing-slash or `.` output", async () => {
+  const src = new LinkFs();
+  src.dirs.set("out", ["k"]);
+  src.dirs.set(".", ["out"]);
+  src.symlinks.add("out/k");
+  src.links.set("out/k", "..");
+  src.files.set("out/k", enc("followed"));
+  // `out/` must not name the link `out//k`, whose extra level would let `..`
+  // stay "inside" — it leaves the output, so it is copied.
+  for (const outputs of [["out/"], ["./out"]]) {
+    const out = new LinkFs();
+    assertEquals(
+      await restoreOutputs(await archiveOutputs(outputs, src), out, outputs),
+      ["out/k"],
+    );
+    assertEquals(out.links.size, 0);
+  }
+  // The whole workspace as `.`: `out/k -> ..` stays inside it, as a link.
+  const out = new LinkFs();
+  await restoreOutputs(await archiveOutputs(["."], src), out, ["."]);
+  assertEquals(out.links.get("out/k"), "..");
+});
+
+/** A {@link LinkFs} whose `lstat` folds case, as macOS and Windows do. */
+class CaseFoldingFs extends LinkFs {
+  override lstat(
+    path: string,
+  ): Promise<{ isSymlink: boolean; isDirectory: boolean } | null> {
+    for (const link of this.symlinks) {
+      if (link.toLowerCase() === path.toLowerCase()) {
+        return Promise.resolve({ isSymlink: true, isDirectory: false });
+      }
+    }
+    return super.lstat(path);
+  }
+}
+
+Deno.test("restoreOutputs re-checks the live filesystem before each link", async () => {
+  // `out/s/h` is not under `out/S` by name, but on a case-insensitive
+  // filesystem it is: once `out/S -> .` exists, `../x` from `out/s` climbs out.
+  const out = new CaseFoldingFs();
+  out.dirs.set("out", []); // the directory the first link lands in
+  const err = await assertRejects(async () =>
+    restoreOutputs(await archive("out/S -> .", "out/s/h -> ../x"), out, [
+      "out",
+    ])
+  );
+  assertStringIncludes(err.message, 'through the symlink "out/s"');
+  assertEquals(out.links.has("out/s/h"), false);
 });

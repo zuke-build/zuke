@@ -737,8 +737,9 @@ function redactUrls(text: string): string
   it. Everything outside a URL is left as written.
 
 function remoteCacheKey(name: string, fingerprint: string): string
-  The store key for a target's outputs: its name and input `fingerprint`. The
-  name is sanitised so the key is safe as a filename and a URL path segment.
+  The store key for a target's outputs: its name and input `fingerprint`,
+  behind the {@link ARCHIVE_FORMAT} version. The name is sanitised so the key
+  is safe as a filename and a URL path segment.
 
 function repoRoot(...segments: string[]): AbsolutePath
   The absolute path of the repository root — the directory containing
@@ -852,14 +853,20 @@ async function restoreOutputs(artifact: Uint8Array, host: OutputHost, outputs?: 
   Every entry is validated before anything is written, so a rejected archive
   leaves no half-written, partially-trusted output tree. An entry is refused
   when its name is absolute or escapes the workspace with `..`, when it is a
-  symlink or directory entry (which {@link archiveOutputs} never produces),
-  when it lands under `.git` or `.zuke` (`.zuke/tools` aside), when — given
-  `outputs` — it falls
-  outside the target's declared outputs, and when the path it would be written
-  to passes through, or is, a symlink that already exists on disk.
+  directory entry (which {@link archiveOutputs} never produces), when it lands
+  under `.git` or `.zuke` (`.zuke/tools` aside), when — given `outputs` — it
+  falls outside the target's declared outputs, and when the path it would be
+  written to passes through, or is, a symlink that already exists on disk.
 
-  That last refusal is what makes the confinement real rather than lexical. The
-  archive cannot plant a link, but a workspace can already hold one at a
+  A symlink entry is restored only when its target is relative, stays inside
+  a declared output root that holds the link (with `..` only before the
+  target's first name), and does not resolve into `.git` or `.zuke`; when no
+  other entry shares its name or sits under it; and when the host can create
+  links at all. Links are created after every file is written, so no write can
+  pass through one.
+
+  The on-disk refusal is what makes the confinement real rather than lexical.
+  The archive cannot plant a link that a write follows, but a workspace can already hold one at a
   declared output — `dist -> /tmp/build`, a checked-out `bazel-bin`, a Windows
   junction — and `writeFile` follows it. Such a workspace no longer restores
   from the remote cache and rebuilds instead; the link is left alone, because
@@ -4453,6 +4460,14 @@ interface OutputHost
   writeFile(path: string, bytes: Uint8Array, mode?: number): Promise<void>
     Write a file, creating parent directories as needed, with the permission
     bits `mode` where the platform has them.
+  readLink?(path: string): Promise<string>
+    The raw target of the symlink at `path`. A host without it archives every
+    link as a copy of what it points at, as older Zuke releases did.
+  symlink?(target: string, path: string, type: "file" | "dir"): Promise<void>
+    Create a symlink at `path` pointing at `target`, creating parent
+    directories as needed. `type` is what Windows needs to know and POSIX
+    ignores. A host without it refuses an archive that carries a link, so the
+    target rebuilds.
 
 interface OutputMode
   What {@link resolveOutputMode} decides.

@@ -27,6 +27,7 @@
 
 import {
   assertSafeEntryName,
+  assertSafeLinkTarget,
   findSymlinkAncestor,
   gunzipBounded,
   gzip,
@@ -37,7 +38,7 @@ import {
 } from "./compression.ts";
 import { GitHubActionsCacheStore } from "./github_actions_cache.ts";
 import { assertSecureBackendUrl, HttpError } from "./http.ts";
-import { readBytesBounded, readFileOrNull } from "./internal.ts";
+import { messageOf, readBytesBounded, readFileOrNull } from "./internal.ts";
 import type { AwsCredentials } from "./aws_sigv4.ts";
 import { S3CacheStore } from "./s3_cache.ts";
 
@@ -107,13 +108,71 @@ export interface OutputHost {
    * bits `mode` where the platform has them.
    */
   writeFile(path: string, bytes: Uint8Array, mode?: number): Promise<void>;
+  /**
+   * The raw target of the symlink at `path`. A host without it archives every
+   * link as a copy of what it points at, as older Zuke releases did.
+   */
+  readLink?(path: string): Promise<string>;
+  /**
+   * Create a symlink at `path` pointing at `target`, creating parent
+   * directories as needed. `type` is what Windows needs to know and POSIX
+   * ignores. A host without it refuses an archive that carries a link, so the
+   * target rebuilds.
+   */
+  symlink?(target: string, path: string, type: "file" | "dir"): Promise<void>;
 }
 
 /** Normalise a path for archive entry names: `\`→`/`, drop a leading `./`. */
 function normalize(path: string): string {
-  let p = path.replace(/\\/g, "/");
-  while (p.startsWith("./")) p = p.slice(2);
-  return p;
+  // Empty and `.` segments are dropped, not kept: the filesystem collapses
+  // them, so a check that counted `dist//x` as two levels deep would let a
+  // link's `..` climb one level further than it allows.
+  const segments = path.replace(/\\/g, "/").split("/").filter((segment) =>
+    segment !== "" && segment !== "."
+  );
+  return segments.length === 0 ? "." : segments.join("/");
+}
+
+/** A declared output as the root its entries are confined to: `.` for the workspace. */
+function outputRoot(output: string): string {
+  return normalize(output);
+}
+
+/** The workspace path a relative link `target` at `name` resolves to, lexically. */
+function resolveLink(name: string, target: string): string {
+  const parts = name.split("/").slice(0, -1);
+  for (const segment of target.replace(/\\/g, "/").split("/")) {
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") parts.pop();
+    else parts.push(segment);
+  }
+  return parts.length === 0 ? "." : parts.join("/");
+}
+
+/**
+ * Why the link at `name` (normalised) to `target` may not be kept as a link
+ * inside the output `root`, or `null` when it may: its target must be relative,
+ * stay inside `root` ({@link assertSafeLinkTarget}, applied with `root` as the
+ * extraction root, so `..` may not follow a name), and not resolve through a
+ * {@link FORBIDDEN_DIRS} directory. The one rule both sides apply, so an archive
+ * never carries a link its own restore would refuse.
+ */
+function linkRefusal(
+  name: string,
+  target: string,
+  root: string,
+): string | null {
+  // A link that *is* the output root points away from it, wherever it points.
+  if (name === root) return `the symlink "${name}" is the output itself.`;
+  const relative = root === "." ? name : name.slice(root.length + 1);
+  try {
+    assertSafeLinkTarget(relative, target);
+  } catch (error) {
+    return messageOf(error);
+  }
+  return isForbiddenPath(resolveLink(name, target))
+    ? `the symlink "${name}" points into a protected path: "${target}".`
+    : null;
 }
 
 /**
@@ -121,17 +180,38 @@ function normalize(path: string): string {
  * entries named by their normalised path, sorted so the archive is reproducible.
  * Paths through a {@link FORBIDDEN_DIRS} directory are skipped, mirroring what
  * {@link restoreOutputs} refuses to write back.
+ *
+ * A symlink whose relative target stays inside the declared output it was found
+ * under ({@link linkRefusal}) is archived as a link, so `node_modules/.bin/tsc
+ * -> ../typescript/bin/tsc` keeps resolving its relative imports after a
+ * restore. Any other link is archived as a copy of what it points at.
  */
 async function collectEntries(
   outputs: readonly string[],
   host: OutputHost,
 ): Promise<TarEntry[]> {
-  const entries: TarEntry[] = [];
-  const walk = async (path: string): Promise<void> => {
+  // By name: nested outputs reach the same path twice, and a link kept under
+  // one root must not also arrive as a copy from the other — restore refuses a
+  // name that is both.
+  const byName = new Map<string, TarEntry>();
+  const add = (entry: TarEntry): void => {
+    if (byName.get(entry.name)?.linkname === undefined) {
+      byName.set(entry.name, entry);
+    }
+  };
+  const walk = async (raw: string, root: string): Promise<void> => {
+    const path = normalize(raw);
     // Never archive what restore would refuse to write back (see
     // {@link FORBIDDEN_DIRS}): uploading a `.git` to a shared store would leak
     // its history and leave the target permanently un-restorable.
-    if (isForbiddenPath(normalize(path))) return;
+    if (isForbiddenPath(path)) return;
+    if (host.readLink !== undefined && (await host.lstat(path))?.isSymlink) {
+      const target = (await host.readLink(path)).replace(/\\/g, "/");
+      if (linkRefusal(path, target, root) === null) {
+        add({ name: path, data: new Uint8Array(0), linkname: target });
+        return;
+      }
+    }
     const info = await host.stat(path);
     if (info === null) return; // a declared output that isn't there — skip it
     if (!info.isDirectory) {
@@ -140,16 +220,19 @@ async function collectEntries(
       // Permission bits only: the tar header has no room for a file type, and
       // the executable bit is what a restored binary needs to keep.
       const mode = info.mode === undefined ? undefined : info.mode & 0o777;
-      entries.push({ name: normalize(path), data, mode });
+      add({ name: path, data, mode });
       return;
     }
     for (const name of (await host.readDir(path)).slice().sort()) {
-      await walk(`${path}/${name}`);
+      await walk(`${path}/${name}`, root);
     }
   };
-  for (const output of outputs) await walk(normalize(output));
-  entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-  return entries;
+  for (const output of outputs) {
+    await walk(output, outputRoot(output));
+  }
+  return [...byName.values()].sort((a, b) =>
+    a.name < b.name ? -1 : a.name > b.name ? 1 : 0
+  );
 }
 
 /**
@@ -214,26 +297,45 @@ function isForbiddenPath(name: string): boolean {
  * what declaring it asked for.
  */
 function isDeclaredOutput(name: string, outputs: readonly string[]): boolean {
-  return outputs.some((output) => {
-    const root = normalize(output).replace(/\/+$/, "");
-    if (root === "" || root === ".") return true;
-    return name === root || name.startsWith(`${root}/`);
-  });
+  return outputs.some((output) => isUnder(name, outputRoot(output)));
+}
+
+/** Whether `name` is `root` or nested under it; everything is under `.`. */
+function isUnder(name: string, root: string): boolean {
+  return root === "." || name === root || name.startsWith(`${root}/`);
+}
+
+/**
+ * Reject a symlink entry {@link archiveOutputs} could not have produced: one
+ * whose target leaves every declared output root that holds it (the whole
+ * workspace when `outputs` is not given), or resolves into a protected path.
+ */
+function assertKeepableLink(
+  name: string,
+  target: string,
+  outputs: readonly string[] | undefined,
+): void {
+  const roots = (outputs ?? ["."]).map(outputRoot).filter((root) =>
+    isUnder(name, root)
+  );
+  let refusal = "it is outside the declared outputs.";
+  for (const root of roots) {
+    const reason = linkRefusal(name, target, root);
+    if (reason === null) return;
+    refusal = reason;
+  }
+  throw new Error(
+    `remote cache: refusing to restore the symlink "${name}": ${refusal}`,
+  );
 }
 
 /**
  * Reject an archive entry that a legitimate {@link archiveOutputs} could not
- * have produced: a symlink or a directory entry. Neither is ever archived —
- * {@link collectEntries} emits regular files only — so their presence means the
- * archive was built by something else, and restoring a symlink is how a later
- * entry writes through it to a path the name checks approved.
+ * have produced: a directory entry. {@link collectEntries} emits regular files
+ * and symlinks only; a symlink is checked on its own by
+ * {@link assertKeepableLink}.
  */
-function assertPlainFileEntry(entry: TarEntry): void {
-  if (entry.linkname !== undefined) {
-    throw new Error(
-      `remote cache: refusing to restore a symlink from an archive: "${entry.name}".`,
-    );
-  }
+function assertNoDirectoryEntry(entry: TarEntry): void {
   if (entry.name.endsWith("/")) {
     throw new Error(
       `remote cache: refusing to restore a directory entry from an archive: "${entry.name}".`,
@@ -248,14 +350,20 @@ function assertPlainFileEntry(entry: TarEntry): void {
  * Every entry is validated before anything is written, so a rejected archive
  * leaves no half-written, partially-trusted output tree. An entry is refused
  * when its name is absolute or escapes the workspace with `..`, when it is a
- * symlink or directory entry (which {@link archiveOutputs} never produces),
- * when it lands under `.git` or `.zuke` (`.zuke/tools` aside), when — given
- * `outputs` — it falls
- * outside the target's declared outputs, and when the path it would be written
- * to passes through, or is, a symlink that already exists on disk.
+ * directory entry (which {@link archiveOutputs} never produces), when it lands
+ * under `.git` or `.zuke` (`.zuke/tools` aside), when — given `outputs` — it
+ * falls outside the target's declared outputs, and when the path it would be
+ * written to passes through, or is, a symlink that already exists on disk.
  *
- * That last refusal is what makes the confinement real rather than lexical. The
- * archive cannot plant a link, but a workspace can already hold one at a
+ * A symlink entry is restored only when its target is relative, stays inside
+ * a declared output root that holds the link (with `..` only before the
+ * target's first name), and does not resolve into `.git` or `.zuke`; when no
+ * other entry shares its name or sits under it; and when the host can create
+ * links at all. Links are created after every file is written, so no write can
+ * pass through one.
+ *
+ * The on-disk refusal is what makes the confinement real rather than lexical.
+ * The archive cannot plant a link that a write follows, but a workspace can already hold one at a
  * declared output — `dist -> /tmp/build`, a checked-out `bazel-bin`, a Windows
  * junction — and `writeFile` follows it. Such a workspace no longer restores
  * from the remote cache and rebuilds instead; the link is left alone, because
@@ -307,7 +415,7 @@ export async function restoreOutputs(
   const validated: TarEntry[] = [];
   for (const entry of entries) {
     assertSafeEntryName(entry.name);
-    assertPlainFileEntry(entry);
+    assertNoDirectoryEntry(entry);
     const name = normalize(entry.name);
     if (isForbiddenPath(name)) {
       throw new Error(
@@ -339,7 +447,23 @@ export async function restoreOutputs(
           `with a real file to cache this target.`,
       );
     }
-    validated.push({ name, data: entry.data, mode: entry.mode });
+    if (entry.linkname === undefined) {
+      validated.push({ name, data: entry.data, mode: entry.mode });
+    } else {
+      const linkname = entry.linkname.replace(/\\/g, "/");
+      assertKeepableLink(name, linkname, outputs);
+      validated.push({ name, data: entry.data, linkname });
+    }
+  }
+  assertNothingUnderALink(validated);
+  if (
+    host.symlink === undefined &&
+    validated.some((e) => e.linkname !== undefined)
+  ) {
+    throw new Error(
+      `remote cache: refusing an archive with symlinks: this host cannot ` +
+        `create them.`,
+    );
   }
   // Write the *validated* path rather than the raw entry name. Every check
   // above reasoned about the normalised form, and a name that differs from it
@@ -347,22 +471,97 @@ export async function restoreOutputs(
   // checked at one path and written at another, which is exactly the gap a
   // guard must not have. `archiveOutputs` normalises on the way in, so for an
   // archive Zuke produced the two are the same string.
+  // Every file before any link, so no write can pass through a link the
+  // archive planted — on top of {@link assertNothingUnderALink}, which already
+  // refuses an entry nested under one.
   const written: string[] = [];
   for (const entry of validated) {
+    if (entry.linkname !== undefined) continue;
     await host.writeFile(entry.name, entry.data, entry.mode);
+    written.push(entry.name);
+  }
+  for (const entry of validated) {
+    if (entry.linkname === undefined || host.symlink === undefined) continue;
+    // Ask the live filesystem again, now that earlier links exist: on a
+    // case-insensitive one, `out/s/h` passes through a just-created `out/S`
+    // that no name comparison could see.
+    const through = await findSymlinkAncestor(
+      probe,
+      ".",
+      entry.name,
+      new Set(["."]),
+    );
+    if (through !== null) {
+      throw new Error(
+        `remote cache: refusing to create the symlink "${entry.name}" ` +
+          `through the symlink "${through}".`,
+      );
+    }
+    // shortcut: a link to a link not yet created is typed "file"; only Windows
+    // cares, and npm writes `.cmd` shims there rather than links.
+    const resolved = await host.stat(resolveLink(entry.name, entry.linkname));
+    await host.symlink(
+      entry.linkname,
+      entry.name,
+      resolved?.isDirectory === true ? "dir" : "file",
+    );
     written.push(entry.name);
   }
   return written;
 }
 
 /**
- * The store key for a target's outputs: its name and input `fingerprint`. The
- * name is sanitised so the key is safe as a filename and a URL path segment.
+ * Refuse a link that shares its name with another entry, or that another entry
+ * sits under: either would have a write land through, or on top of, a link the
+ * archive planted. {@link collectEntries} never produces either.
+ */
+function assertNothingUnderALink(entries: readonly TarEntry[]): void {
+  const links = new Set<string>();
+  for (const entry of entries) {
+    if (entry.linkname === undefined) continue;
+    if (links.has(entry.name)) {
+      throw new Error(
+        `remote cache: refusing an archive with the symlink "${entry.name}" twice.`,
+      );
+    }
+    links.add(entry.name);
+  }
+  for (const entry of entries) {
+    const parts = entry.name.split("/");
+    for (let i = 1; i < parts.length; i++) {
+      const ancestor = parts.slice(0, i).join("/");
+      if (links.has(ancestor)) {
+        throw new Error(
+          `remote cache: refusing to restore "${entry.name}" under the ` +
+            `symlink "${ancestor}" from the same archive.`,
+        );
+      }
+    }
+    if (entry.linkname === undefined && links.has(entry.name)) {
+      throw new Error(
+        `remote cache: refusing an archive with "${entry.name}" as both a ` +
+          `file and a symlink.`,
+      );
+    }
+  }
+}
+
+/**
+ * The store key for a target's outputs: its name and input `fingerprint`,
+ * behind the {@link ARCHIVE_FORMAT} version. The name is sanitised so the key
+ * is safe as a filename and a URL path segment.
  */
 export function remoteCacheKey(name: string, fingerprint: string): string {
   const safe = name.replace(/[^A-Za-z0-9._-]/g, "_");
-  return `${safe}-${fingerprint}`;
+  return `${ARCHIVE_FORMAT}-${safe}-${fingerprint}`;
 }
+
+/**
+ * The archive format in every {@link remoteCacheKey}. Bumped when an archive
+ * gains something an older restore refuses — `v2` added symlink entries — so
+ * an older Zuke misses and rebuilds instead of fetching what it cannot restore.
+ */
+const ARCHIVE_FORMAT = "v2";
 
 /** Configuration for a {@link FileSystemCacheStore}. */
 export interface FileSystemCacheStoreOptions {

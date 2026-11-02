@@ -324,11 +324,11 @@ target:
 - **Restore is confined to the target's declared outputs.** Every archive entry
   is validated before anything is written, so a rejected archive leaves no
   half-written tree. An entry is refused when it is an **absolute path** or
-  contains a **`..`** segment; when it is a **symlink or directory entry**
-  (which archiving never produces, so its presence means something else built
-  the archive); when it lands under **`.git` or `.zuke`** — a restored git hook
-  runs on the next ordinary git command — with `.zuke/tools` the one exception,
-  since a provisioned toolchain is what a remote cache is for and the toolchain
+  contains a **`..`** segment; when it is a **directory entry** (which archiving
+  never produces, so its presence means something else built the archive); when
+  it lands under **`.git` or `.zuke`** — a restored git hook runs on the next
+  ordinary git command — with `.zuke/tools` the one exception, since a
+  provisioned toolchain is what a remote cache is for and the toolchain
   re-verifies a restored binary against its recorded checksum before reusing it.
   A `.git` _inside_ `.zuke/tools` is allowed too, because an SDK such as
   Flutter's is a git checkout that runs `git` on itself; a store that could
@@ -336,12 +336,26 @@ target:
   **outside the paths the target declared with `.outputs(...)`**. That last one
   is what stops an innocuous-looking `deno.json` or lockfile riding along in an
   otherwise valid artifact.
+- **Relative links inside an output stay links.** A symlink whose target is
+  relative and, resolved from the link's own directory, stays inside the
+  declared output it was found under is archived as a link — so
+  `node_modules/.bin/vitest -> ../vitest/vitest.mjs` still resolves its relative
+  imports after a restore, and a `deps` target can declare
+  `.outputs("node_modules")`. Any other link (absolute, or leaving the output)
+  is archived as a copy of what it points at, as before. A restore accepts a
+  link entry only when its target is relative, stays inside a declared output
+  root that holds it, may use `..` only before its first name, and does not
+  resolve into `.git` or `.zuke`; when no other entry shares its name or sits
+  under it; and it creates every link only after every file is written. A link
+  that cannot be created (Windows without the privilege) fails the restore, and
+  the target rebuilds. The archive format is part of the store key, so an older
+  Zuke never fetches an archive holding links: upgrading misses the cache once.
 - **A restore never writes through a symbolic link.** The checks above are
-  lexical — they reason about the entry's _name_. An archive cannot carry a
-  link, but a workspace can already hold one at a declared output, and writing a
-  file follows it. So before anything is written, each destination and every
-  directory above it is checked against what is actually on disk, and a link
-  anywhere on that path refuses the restore.
+  lexical — they reason about the entry's _name_. A link the archive carries is
+  created only after every file, but a workspace can already hold one at a
+  declared output, and writing a file follows it. So before anything is written,
+  each destination and every directory above it is checked against what is
+  actually on disk, and a link anywhere on that path refuses the restore.
 
   The link is **left alone** rather than replaced: the workspace's layout
   belongs to whoever set it up, and silently unlinking it would be its own

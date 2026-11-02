@@ -20,6 +20,7 @@ import type { TargetBuilder } from "./target.ts";
 import {
   lstatOrNull,
   messageOf,
+  parentOf,
   readFileOrNull,
   readTextOrNull,
   sha256Hex,
@@ -81,6 +82,16 @@ export const defaultCacheHost: CacheHost = {
     return names;
   },
   writeFile: writeFileEnsuringDir,
+  readLink: Deno.readLink,
+  async symlink(
+    target: string,
+    path: string,
+    type: "file" | "dir",
+  ): Promise<void> {
+    const parent = parentOf(path);
+    if (parent !== null) await Deno.mkdir(parent, { recursive: true });
+    await Deno.symlink(target, path, { type });
+  },
   readStore: readTextOrNull,
   writeStore: writeTextEnsuringDir,
 };
