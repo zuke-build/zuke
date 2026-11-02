@@ -120,6 +120,13 @@ export interface OutputHost {
    * target rebuilds.
    */
   symlink?(target: string, path: string, type: "file" | "dir"): Promise<void>;
+  /**
+   * The canonical path of `path`, every symlink resolved. Lets the archive walk
+   * notice a directory link that loops back to a directory it is already
+   * inside; a host without it cannot, and such a loop recurses until the OS
+   * refuses the path.
+   */
+  realPath?(path: string): Promise<string>;
 }
 
 /** Normalise a path for archive entry names: `\`→`/`, drop a leading `./`. */
@@ -199,6 +206,9 @@ async function collectEntries(
       byName.set(entry.name, entry);
     }
   };
+  // The real directories on the current walk path — only the path, so two
+  // links to one directory are still both copied, as without a loop.
+  const onPath = new Set<string>();
   const walk = async (raw: string, root: string): Promise<void> => {
     const path = normalize(raw);
     // Never archive what restore would refuse to write back (see
@@ -223,9 +233,15 @@ async function collectEntries(
       add({ name: path, data, mode });
       return;
     }
+    // A copied directory link can lead back to a directory this walk is
+    // already inside; entering it again would copy the tree once per level.
+    const real = await host.realPath?.(path);
+    if (real !== undefined && onPath.has(real)) return;
+    if (real !== undefined) onPath.add(real);
     for (const name of (await host.readDir(path)).slice().sort()) {
       await walk(`${path}/${name}`, root);
     }
+    if (real !== undefined) onPath.delete(real);
   };
   for (const output of outputs) {
     await walk(output, outputRoot(output));

@@ -83,6 +83,7 @@ export const defaultCacheHost: CacheHost = {
   },
   writeFile: writeFileEnsuringDir,
   readLink: Deno.readLink,
+  realPath: Deno.realPath,
   async symlink(
     target: string,
     path: string,

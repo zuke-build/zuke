@@ -342,14 +342,16 @@ target:
   `node_modules/.bin/vitest -> ../vitest/vitest.mjs` still resolves its relative
   imports after a restore, and a `deps` target can declare
   `.outputs("node_modules")`. Any other link (absolute, or leaving the output)
-  is archived as a copy of what it points at, as before. A restore accepts a
-  link entry only when its target is relative, stays inside a declared output
-  root that holds it, may use `..` only before its first name, and does not
-  resolve into `.git` or `.zuke`; when no other entry shares its name or sits
-  under it; and it creates every link only after every file is written. A link
-  that cannot be created (Windows without the privilege) fails the restore, and
-  the target rebuilds. The archive format is part of the store key, so an older
-  Zuke never fetches an archive holding links: upgrading misses the cache once.
+  is archived as a copy of what it points at, as before. A copied directory link
+  that leads back to a directory the archive is already inside is skipped, so a
+  loop cannot copy the tree once per level. A restore accepts a link entry only
+  when its target is relative, stays inside a declared output root that holds
+  it, may use `..` only before its first name, and does not resolve into `.git`
+  or `.zuke`; when no other entry shares its name or sits under it; and it
+  creates every link only after every file is written. A link that cannot be
+  created (Windows without the privilege) fails the restore, and the target
+  rebuilds. The archive format is part of the store key, so an older Zuke never
+  fetches an archive holding links: upgrading misses the cache once.
 - **A restore never writes through a symbolic link.** The checks above are
   lexical — they reason about the entry's _name_. A link the archive carries is
   created only after every file, but a workspace can already hold one at a

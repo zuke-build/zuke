@@ -4522,6 +4522,11 @@ interface OutputHost
     directories as needed. `type` is what Windows needs to know and POSIX
     ignores. A host without it refuses an archive that carries a link, so the
     target rebuilds.
+  realPath?(path: string): Promise<string>
+    The canonical path of `path`, every symlink resolved. Lets the archive walk
+    notice a directory link that loops back to a directory it is already
+    inside; a host without it cannot, and such a loop recurses until the OS
+    refuses the path.
 
 interface OutputMode
   What {@link resolveOutputMode} decides.
