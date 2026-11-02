@@ -60,10 +60,10 @@ function lineOf(lines: string[], re: RegExp): number {
 
 /** A child that prints `text` after `ms` milliseconds. */
 function echoLater(text: string, ms: number) {
-  const code = `await new Promise((r) => setTimeout(r, ${ms})); console.log(${
-    JSON.stringify(text)
-  });`;
-  return $`${Deno.execPath()} eval ${code}`;
+  // Values go in as argv, so the evaluated code is a constant.
+  const code =
+    `await new Promise((r) => setTimeout(r, Number(Deno.args[1]))); console.log(Deno.args[0]);`;
+  return $`${Deno.execPath()} eval ${code} ${text} ${String(ms)}`;
 }
 
 class GroupedBuild extends Build {
