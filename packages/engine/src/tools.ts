@@ -15,7 +15,7 @@
  */
 
 import type { JsonValue } from "@zuke/core";
-import { RpcFailure } from "./peer.ts";
+import { MAX_LINE, RpcFailure } from "./peer.ts";
 import { INVALID_PARAMS, isRecord, type ToolCall } from "./protocol.ts";
 
 /** Resolves a wrapper release to its module: what `tool.call` imports. */
@@ -145,11 +145,22 @@ function answerOf(result: unknown, where: string): unknown {
   ) {
     return { code: result.code, stdout: result.stdout, stderr: result.stderr };
   }
+  let text: string;
   try {
-    return JSON.parse(JSON.stringify(result));
+    text = JSON.stringify(result);
   } catch {
     throw new RpcFailure(FAILED, `${where}: the task's result is not JSON`);
   }
+  // One answer is one line of the protocol: a result past the line bound is
+  // refused here, by name, rather than ending the worker's connection there.
+  if (text.length > MAX_LINE) {
+    throw new RpcFailure(
+      FAILED,
+      `${where}: the task's result is ${text.length} characters, over the ` +
+        `${MAX_LINE} one answer carries`,
+    );
+  }
+  return JSON.parse(text);
 }
 
 /**

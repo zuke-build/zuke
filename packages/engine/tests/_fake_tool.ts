@@ -85,6 +85,8 @@ export const FakeTasks = {
   nothing: (): void => {},
   /** A task whose result JSON cannot carry. */
   huge: (): bigint => 1n,
+  /** A task whose result is longer than one answer may be. */
+  vast: (): string => "x".repeat(16 * 1024 * 1024),
   /** A task configured through settings that run nothing. */
   tune: (configure: Configure<Tuning>): number =>
     configure(new Tuning()).level_,

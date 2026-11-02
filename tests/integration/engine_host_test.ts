@@ -1074,6 +1074,7 @@ Deno.test("a malformed or unknown tool.call is refused by name, and the body goe
         toolCall("echo", "not a list"),
         toolCall("echo", [{ configure: [["exits", [2]]] }]),
         toolCall("huge", []),
+        toolCall("vast", []),
       ],
     }], {
       tools: (pkg, version) => {
@@ -1099,6 +1100,7 @@ Deno.test("a malformed or unknown tool.call is refused by name, and the body goe
         'field "args" must be a list',
         "FakeTasks.echo: ",
         "the task's result is not JSON",
+        "over the 16777216 one answer carries",
       ];
       assertEquals(answers.length, expected.length, result.err);
       expected.forEach((text, i) => {
