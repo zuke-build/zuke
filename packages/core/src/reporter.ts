@@ -12,6 +12,7 @@
  * @module
  */
 
+import type { ByteWriter, OutputSink } from "./ambient_output.ts";
 import type { Redactor } from "./redact.ts";
 import { detectCiHost } from "./host.ts";
 import { escapeLine, escapeLineIf } from "./render.ts";
@@ -166,22 +167,65 @@ export function safeReporter(inner: Reporter): Reporter {
   };
 }
 
-/** A reporter that buffers lines so a target's block can flush atomically. */
+/**
+ * A reporter that buffers lines so a target's block can flush atomically.
+ *
+ * `output` buffers the live stdout/stderr of the commands the target runs (see
+ * {@link "./ambient_output.ts".withAmbientOutput}), interleaved with the lines
+ * in the order they arrived. On flush the lines go to `to` and the raw bytes to
+ * `raw`: the enclosing target's buffer for a fan-out item, the process's own
+ * stdout/stderr otherwise.
+ *
+ * A flush drains the buffer, so flushing twice never prints anything twice, and
+ * it seals it: anything written afterwards — a command that outlived a timed-out
+ * target, or one started without `await` — passes straight through instead of
+ * waiting for a flush that will never come.
+ */
 export function bufferReporter(): {
   reporter: Reporter;
-  flush: (to: Reporter) => void;
+  output: OutputSink;
+  flush: (to: Reporter, raw: OutputSink) => void;
 } {
-  const lines: Array<{ error: boolean; text: string }> = [];
+  type Entry =
+    | { kind: "info" | "error"; text: string }
+    | { kind: "stdout" | "stderr"; bytes: Uint8Array };
+  // shortcut: a target's command output is held in memory until it settles;
+  // spill to a temp file if a build ever streams more than memory allows.
+  const entries: Entry[] = [];
+  let sealed: { to: Reporter; raw: OutputSink } | undefined;
+  const emit = (entry: Entry, to: Reporter, raw: OutputSink): void => {
+    if ("bytes" in entry) writeAll(raw[entry.kind], entry.bytes);
+    else if (entry.kind === "info") to.info(entry.text);
+    else to.error(entry.text);
+  };
+  const add = (entry: Entry): void => {
+    if (sealed === undefined) entries.push(entry);
+    else emit(entry, sealed.to, sealed.raw);
+  };
+  const writer = (kind: "stdout" | "stderr"): ByteWriter => ({
+    writeSync: (p) => {
+      // Copied: the stream may reuse the chunk's memory for its next read.
+      add({ kind, bytes: p.slice() });
+      return p.length;
+    },
+  });
   return {
     reporter: {
-      info: (text) => void lines.push({ error: false, text }),
-      error: (text) => void lines.push({ error: true, text }),
+      info: (text) => add({ kind: "info", text }),
+      error: (text) => add({ kind: "error", text }),
     },
-    flush: (to) => {
-      for (const line of lines) {
-        if (line.error) to.error(line.text);
-        else to.info(line.text);
-      }
+    output: { stdout: writer("stdout"), stderr: writer("stderr") },
+    flush: (to, raw) => {
+      sealed = { to, raw };
+      for (const entry of entries.splice(0)) emit(entry, to, raw);
     },
   };
+}
+
+/** Write every byte of `bytes`; `writeSync` may write fewer than asked. */
+function writeAll(to: ByteWriter, bytes: Uint8Array): void {
+  let written = 0;
+  while (written < bytes.length) {
+    written += to.writeSync(bytes.subarray(written));
+  }
 }

@@ -28,6 +28,7 @@ import {
   type TargetOutcome,
 } from "./run_support.ts";
 import { withAmbientEcho } from "./ambient_echo.ts";
+import { ambientOutput, withAmbientOutput } from "./ambient_output.ts";
 import {
   type DuringChecks,
   resolveDuringChecks,
@@ -926,14 +927,34 @@ export async function runSequential(
 }
 
 /**
+ * Flushes for the buffered blocks of targets still in flight, so a forced exit
+ * (a second Ctrl-C) can print what a hung target had written before the process
+ * goes — the output that explains the hang.
+ *
+ * Process-wide on purpose: a forced exit ends every run in the process, so each
+ * one's pending block is flushed — to that run's own reporter and that target's
+ * own byte sink, both bound when the target launched.
+ */
+const inFlightFlushes = new Set<() => void>();
+
+/** Flush every in-flight target's buffered block; called just before a forced exit. */
+export function flushInFlightOutput(): void {
+  for (const flush of inFlightFlushes) flush();
+  inFlightFlushes.clear();
+}
+
+/**
  * Run the plan with up to `limit` targets in flight, respecting dependencies.
  * `canOverlap` decides which ready targets may run at the same time: with
  * global parallelism it is always true; otherwise only members of the same
  * {@link group} overlap, keeping ungrouped targets serialized.
  *
- * Each target's framework output is buffered and flushed as a contiguous block
- * on completion, so concurrent runs don't interleave their banners. A failure
- * stops new launches; in-flight targets settle and the rest are skipped.
+ * A target that may overlap another buffers its output — framework lines and
+ * the live output of its commands alike — and flushes it as one contiguous
+ * block on completion, so concurrent targets never interleave. A target that
+ * can overlap nothing always runs alone, so it writes straight through and its
+ * commands stream live. A failure stops new launches; in-flight targets settle
+ * and the rest are skipped.
  */
 export async function runScheduled(
   ctx: RunContext,
@@ -1009,6 +1030,12 @@ export async function runScheduled(
     );
   const overlaps = (t: TargetBuilder): boolean =>
     [...runningSet].every((r) => canOverlap(t, r));
+  // The targets that may ever share the console with another one.
+  const mayOverlap = new Set(
+    limit > 1
+      ? order.filter((a) => order.some((b) => b !== a && canOverlap(a, b)))
+      : [],
+  );
 
   /** Settle a target this run will never launch, so its dependents can proceed. */
   const abandon = (t: TargetBuilder): void => {
@@ -1052,10 +1079,24 @@ export async function runScheduled(
         }
         started.add(t);
         runningSet.add(t);
+        const buffered = mayOverlap.has(t);
         const buffer = bufferReporter();
-        runTarget({ ...ctx, reporter: buffer.reporter }, t, flushed)
+        // Bound now, not at flush time: a forced exit flushes from a signal
+        // handler, where the ambient sink is the terminal rather than the
+        // enclosing fan-out's buffer this target's bytes belong in.
+        const sink = ambientOutput();
+        const flushNow = () => buffer.flush(reporter, sink);
+        if (buffered) inFlightFlushes.add(flushNow);
+        const launch = () =>
+          runTarget(
+            { ...ctx, reporter: buffered ? buffer.reporter : reporter },
+            t,
+            flushed,
+          );
+        (buffered ? withAmbientOutput(buffer.output, launch) : launch())
           .then(
             async (outcome) => {
+              inFlightFlushes.delete(flushNow);
               await life.targetEnd(
                 t.name_ ?? "<unnamed>",
                 outcome.status,
@@ -1077,8 +1118,10 @@ export async function runScheduled(
               const printed = outcome.status === "passed" ||
                 outcome.status === "failed" || outcome.status === "waiting";
               if (printed) {
-                if (!style.github && flushed > 0) reporter.info("");
-                buffer.flush(reporter);
+                if (buffered) {
+                  if (!style.github && flushed > 0) reporter.info("");
+                  flushNow();
+                }
                 flushed++;
               }
               outcomes.set(t, outcome);
@@ -1120,7 +1163,14 @@ export async function runScheduled(
             anyFailed = true;
             failure ??= error;
             if (!t.proceedAfterFailure_) halted = true;
+            inFlightFlushes.delete(flushNow);
+            // What the target printed before the rejection is still its own.
+            if (buffered) {
+              if (!style.github && flushed > 0) reporter.info("");
+              flushNow();
+            }
             failTarget(reporter, renderer, style, targetName, 0, error);
+            flushed++;
             settleTarget(env, targetName, "failed", error);
             pump();
           });
