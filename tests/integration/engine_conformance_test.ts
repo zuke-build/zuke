@@ -30,6 +30,21 @@ const ENGINE = new URL("../../packages/engine/mod.ts", import.meta.url).href;
  * directory as the OS names it.
  */
 const CONFIG = `${import.meta.dirname ?? "."}/../../deno.json`;
+/**
+ * The workspace `@zuke/deno` release the `tool_*` cases call: the engine's
+ * default resolver imports it locally at this exact version, so a case names
+ * it through `$ZUKE_DENO_VERSION` rather than pinning a number a release moves.
+ */
+const ZUKE_DENO_VERSION = await (async () => {
+  const manifest: unknown = JSON.parse(
+    await Deno.readTextFile(
+      new URL("../../packages/deno/deno.json", import.meta.url),
+    ),
+  );
+  return isRecord(manifest) && typeof manifest.version === "string"
+    ? manifest.version
+    : "";
+})();
 
 /** One run of a case: the first, or a later one under `then`. */
 interface Run {
@@ -135,7 +150,10 @@ function logged(err: string, prefix: string): string[] {
 for await (const entry of Deno.readDir(CASES)) {
   if (!entry.name.endsWith(".json")) continue;
   const raw: unknown = JSON.parse(
-    await Deno.readTextFile(new URL(entry.name, CASES)),
+    (await Deno.readTextFile(new URL(entry.name, CASES)))
+      .replaceAll("$ZUKE_DENO_VERSION", ZUKE_DENO_VERSION)
+      // The path as JSON holds it, so a Windows backslash stays escaped.
+      .replaceAll("$DENO", JSON.stringify(Deno.execPath()).slice(1, -1)),
   );
   const death = engineDeathOf(raw, entry.name);
   const spec = death === undefined ? caseOf(raw, entry.name) : undefined;
@@ -200,9 +218,9 @@ async function replayRun(run: Run, runId: string | undefined): Promise<void> {
     const argv = run.argv.map((a) => a === "$RUN_ID" ? runId ?? a : a);
     const result = await runCli(Remote, argv);
     assertEquals(result.code, run.code, result.out + result.err);
-    assertEquals(logged(result.err, "call:"), run.calls);
+    assertEquals(logged(result.err, "call:"), run.calls, result.err);
     if (run.answers !== undefined) {
-      assertEquals(logged(result.err, "answer:"), run.answers);
+      assertEquals(logged(result.err, "answer:"), run.answers, result.err);
     }
     // A command that never runs the build configures nothing.
     const [configure] = logged(result.err, "configure:");

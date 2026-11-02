@@ -290,7 +290,7 @@ Deno.test("a malformed context call is refused naming the field, and the body go
       assertEquals(result.code, 0, result.out + result.err);
       assertStringIncludes(
         result.err,
-        'answer: state.set error state.set: field "patch" must be an object',
+        'answer: state.set error -32602 state.set: field "patch" must be an object',
       );
       assertStringIncludes(
         result.err,
@@ -350,7 +350,7 @@ Deno.test("a service's start phase execs through the engine, and a body-only cal
       assertEquals(await Deno.readTextFile(marker), "up");
       assertStringIncludes(
         result.err,
-        "answer: state.get error state.get: a service phase has no body",
+        "answer: state.get error -32000 state.get: a service phase has no body",
       );
       assertStringIncludes(result.err, "worker: call: service.stop db h1");
     } finally {
@@ -1149,6 +1149,10 @@ Deno.test("a cancel mid-tool.call ends the wrapper's command, and the body as ca
       });
       assertEquals(result.code !== 0, true, result.out + result.err);
       assertStringIncludes((result.out + result.err).toLowerCase(), "cancel");
+      assertStringIncludes(
+        result.err,
+        "answer: tool.call error -32001 cancelled",
+      );
       assertEquals(Date.now() - started < 20_000, true);
     } finally {
       await host.finish(1);

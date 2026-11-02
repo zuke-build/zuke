@@ -13,7 +13,8 @@
  * own (an engine refusal the tests provoke), a `condition_answer` to answer
  * `target.condition` with and a `cacheKey_answer` to answer `target.cacheKey` with.
  * A `calls` list of `{ method, params }` is issued to the engine after the
- * execs, each answer printed as an `answer:` line for the tests to read back.
+ * execs, each answer printed as an `answer:` line for the tests to read back,
+ * an error as `error <code> <message>`.
  * A `settings` object answers `target.settings`, a `wait_answer` answers
  * `wait.check`, and a `validate_fail` names the check that `target.validate`
  * fails. A service target answers `service.start` with `service_handle`
@@ -161,8 +162,9 @@ async function callAll(peer: Peer, name: string, s: Script): Promise<void> {
       });
       console.log(`answer: ${call.method} ${JSON.stringify(answer)}`);
     } catch (error) {
+      const code = error instanceof RpcFailure ? `${error.code} ` : "";
       console.log(
-        `answer: ${call.method} error ${
+        `answer: ${call.method} error ${code}${
           error instanceof Error ? error.message : String(error)
         }`,
       );

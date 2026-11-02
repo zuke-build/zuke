@@ -359,6 +359,8 @@ export class WorkerHost {
   /** Why no replacement will be spawned, once one was refused. */
   #fatal: Error | undefined;
   #finished = false;
+  /** The worker's calls being served, answered before `run.exit` goes out. */
+  #serving = new Set<Promise<unknown>>();
   /** Set by {@link close}: no worker is pre-warmed after it. */
   #closed = false;
   #replacing: Promise<void> | undefined;
@@ -761,6 +763,14 @@ export class WorkerHost {
     this.#finished = true;
     this.#configured = undefined;
     const worker = this.#worker;
+    // A call still being served, one the run's cancel cut short say, gets its
+    // answer before the worker is told the run is over; the grace bounds it.
+    if (this.#serving.size > 0) {
+      await Promise.race([
+        Promise.allSettled([...this.#serving]),
+        after(this.#graceMs),
+      ]);
+    }
     await worker.peer.notify("run.exit", { code, suspended });
     worker.peer.close();
     const exited = worker.exited.then(() => true);
@@ -803,9 +813,12 @@ export class WorkerHost {
     if (channel === undefined) {
       throw new RpcFailure(-32000, `target "${target}" has no body running`);
     }
-    return new Promise((resolve, reject) => {
+    const served = new Promise((resolve, reject) => {
       channel.push({ run, settle: (run) => run().then(resolve, reject) });
     });
+    this.#serving.add(served);
+    served.finally(() => this.#serving.delete(served)).catch(() => {});
+    return served;
   }
 
   /** The worker's environment and directory, the base of every spawn for it. */
@@ -830,7 +843,15 @@ export class WorkerHost {
         }`,
       );
     }
-    const answer = await callTool(module, request, this.#base());
+    let answer: unknown;
+    try {
+      answer = await callTool(module, request, this.#base());
+    } catch (error) {
+      // A wrapper whose command the cancel killed throws its own failure;
+      // the cancel is the cause, and the answer the worker gets, as for exec.
+      if (signal.aborted) throw new RpcFailure(CANCELLED, "cancelled");
+      throw error;
+    }
     if (signal.aborted) throw new RpcFailure(CANCELLED, "cancelled");
     return answer;
   }

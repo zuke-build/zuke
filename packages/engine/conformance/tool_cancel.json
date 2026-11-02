@@ -1,0 +1,69 @@
+{
+  "manifest": {
+    "name": "ToolCancel",
+    "targets": [
+      {
+        "name": "slow",
+        "calls": [
+          {
+            "method": "tool.call",
+            "params": {
+              "package": "deno",
+              "version": "$ZUKE_DENO_VERSION",
+              "tasks": "DenoTasks",
+              "task": "eval",
+              "args": [
+                {
+                  "configure": [
+                    [
+                      "toolPath",
+                      [
+                        "$DENO"
+                      ]
+                    ],
+                    [
+                      "code",
+                      [
+                        "await new Promise((r) => setTimeout(r, 30000))"
+                      ]
+                    ]
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "trip",
+        "onFailure": "cancel-run",
+        "sleep_ms": 500,
+        "fail": "tripped"
+      },
+      {
+        "name": "both",
+        "dependsOn": [
+          "slow",
+          "trip"
+        ]
+      }
+    ]
+  },
+  "argv": [
+    "both",
+    "--parallel"
+  ],
+  "code": 1,
+  "calls": [
+    "build.configure",
+    "target.run trip",
+    "target.run slow",
+    "run.exit done"
+  ],
+  "configure": {
+    "parameters": {}
+  },
+  "answers": [
+    "tool.call error -32001 cancelled"
+  ]
+}
