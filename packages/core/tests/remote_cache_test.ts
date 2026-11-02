@@ -1088,3 +1088,83 @@ Deno.test("archiveOutputs keeps one entry for a link reached through nested outp
     assertEquals(out.files.has("node_modules/.bin/tool"), false);
   }
 });
+
+Deno.test("restoreOutputs counts a link's depth the way the filesystem does", async () => {
+  // The filesystem collapses empty and `.` segments, so `dist///x` is
+  // `dist/x`: counting it three levels deep would let `../..` leave the
+  // workspace, and a second entry would then be created through it.
+  const cases: [string[], string[] | undefined][] = [
+    [["dist///x -> ../.."], ["dist"]],
+    [["dist//x -> .."], ["dist"]],
+    [["dist/././w -> ../.."], ["dist"]],
+    [["a//b -> ../.."], undefined],
+    [["dist///x -> ../..", "dist/x/pwned -> evil"], ["dist"]],
+  ];
+  for (const [entries, outputs] of cases) {
+    const out = new LinkFs();
+    await assertRejects(async () =>
+      restoreOutputs(await archive(...entries), out, outputs)
+    );
+    assertEquals(out.links.size, 0);
+  }
+  // ...and once canonical, the same name is checked under the link it aliases.
+  const err = await assertRejects(async () =>
+    restoreOutputs(
+      await archive("dist/x -> sub", "dist//x/y -> ../z"),
+      new LinkFs(),
+      ["dist"],
+    )
+  );
+  assertStringIncludes(err.message, 'under the symlink "dist/x"');
+});
+
+Deno.test("archiveOutputs names entries canonically for a trailing-slash or `.` output", async () => {
+  const src = new LinkFs();
+  src.dirs.set("out", ["k"]);
+  src.dirs.set(".", ["out"]);
+  src.symlinks.add("out/k");
+  src.links.set("out/k", "..");
+  src.files.set("out/k", enc("followed"));
+  // `out/` must not name the link `out//k`, whose extra level would let `..`
+  // stay "inside" — it leaves the output, so it is copied.
+  for (const outputs of [["out/"], ["./out"]]) {
+    const out = new LinkFs();
+    assertEquals(
+      await restoreOutputs(await archiveOutputs(outputs, src), out, outputs),
+      ["out/k"],
+    );
+    assertEquals(out.links.size, 0);
+  }
+  // The whole workspace as `.`: `out/k -> ..` stays inside it, as a link.
+  const out = new LinkFs();
+  await restoreOutputs(await archiveOutputs(["."], src), out, ["."]);
+  assertEquals(out.links.get("out/k"), "..");
+});
+
+/** A {@link LinkFs} whose `lstat` folds case, as macOS and Windows do. */
+class CaseFoldingFs extends LinkFs {
+  override lstat(
+    path: string,
+  ): Promise<{ isSymlink: boolean; isDirectory: boolean } | null> {
+    for (const link of this.symlinks) {
+      if (link.toLowerCase() === path.toLowerCase()) {
+        return Promise.resolve({ isSymlink: true, isDirectory: false });
+      }
+    }
+    return super.lstat(path);
+  }
+}
+
+Deno.test("restoreOutputs re-checks the live filesystem before each link", async () => {
+  // `out/s/h` is not under `out/S` by name, but on a case-insensitive
+  // filesystem it is: once `out/S -> .` exists, `../x` from `out/s` climbs out.
+  const out = new CaseFoldingFs();
+  out.dirs.set("out", []); // the directory the first link lands in
+  const err = await assertRejects(async () =>
+    restoreOutputs(await archive("out/S -> .", "out/s/h -> ../x"), out, [
+      "out",
+    ])
+  );
+  assertStringIncludes(err.message, 'through the symlink "out/s"');
+  assertEquals(out.links.has("out/s/h"), false);
+});

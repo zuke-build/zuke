@@ -124,15 +124,18 @@ export interface OutputHost {
 
 /** Normalise a path for archive entry names: `\`→`/`, drop a leading `./`. */
 function normalize(path: string): string {
-  let p = path.replace(/\\/g, "/");
-  while (p.startsWith("./")) p = p.slice(2);
-  return p;
+  // Empty and `.` segments are dropped, not kept: the filesystem collapses
+  // them, so a check that counted `dist//x` as two levels deep would let a
+  // link's `..` climb one level further than it allows.
+  const segments = path.replace(/\\/g, "/").split("/").filter((segment) =>
+    segment !== "" && segment !== "."
+  );
+  return segments.length === 0 ? "." : segments.join("/");
 }
 
 /** A declared output as the root its entries are confined to: `.` for the workspace. */
 function outputRoot(output: string): string {
-  const root = normalize(output).replace(/\/+$/, "");
-  return root === "" ? "." : root;
+  return normalize(output);
 }
 
 /** The workspace path a relative link `target` at `name` resolves to, lexically. */
@@ -196,11 +199,12 @@ async function collectEntries(
       byName.set(entry.name, entry);
     }
   };
-  const walk = async (path: string, root: string): Promise<void> => {
+  const walk = async (raw: string, root: string): Promise<void> => {
+    const path = normalize(raw);
     // Never archive what restore would refuse to write back (see
     // {@link FORBIDDEN_DIRS}): uploading a `.git` to a shared store would leak
     // its history and leave the target permanently un-restorable.
-    if (isForbiddenPath(normalize(path))) return;
+    if (isForbiddenPath(path)) return;
     if (host.readLink !== undefined && (await host.lstat(path))?.isSymlink) {
       const target = (await host.readLink(path)).replace(/\\/g, "/");
       if (linkRefusal(path, target, root) === null) {
@@ -216,7 +220,7 @@ async function collectEntries(
       // Permission bits only: the tar header has no room for a file type, and
       // the executable bit is what a restored binary needs to keep.
       const mode = info.mode === undefined ? undefined : info.mode & 0o777;
-      add({ name: normalize(path), data, mode });
+      add({ name: path, data, mode });
       return;
     }
     for (const name of (await host.readDir(path)).slice().sort()) {
@@ -224,7 +228,7 @@ async function collectEntries(
     }
   };
   for (const output of outputs) {
-    await walk(normalize(output), outputRoot(output));
+    await walk(output, outputRoot(output));
   }
   return [...byName.values()].sort((a, b) =>
     a.name < b.name ? -1 : a.name > b.name ? 1 : 0
@@ -478,6 +482,21 @@ export async function restoreOutputs(
   }
   for (const entry of validated) {
     if (entry.linkname === undefined || host.symlink === undefined) continue;
+    // Ask the live filesystem again, now that earlier links exist: on a
+    // case-insensitive one, `out/s/h` passes through a just-created `out/S`
+    // that no name comparison could see.
+    const through = await findSymlinkAncestor(
+      probe,
+      ".",
+      entry.name,
+      new Set(["."]),
+    );
+    if (through !== null) {
+      throw new Error(
+        `remote cache: refusing to create the symlink "${entry.name}" ` +
+          `through the symlink "${through}".`,
+      );
+    }
     // shortcut: a link to a link not yet created is typed "file"; only Windows
     // cares, and npm writes `.cmd` shims there rather than links.
     const resolved = await host.stat(resolveLink(entry.name, entry.linkname));
