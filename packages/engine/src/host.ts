@@ -27,6 +27,7 @@ import {
   type ExecRequest,
   type Hello,
   type HookName,
+  INVALID_PARAMS,
   type LateSettings,
   type Manifest,
   type ManifestTarget,
@@ -44,8 +45,16 @@ import {
   parseStateWrite,
   parseSummary,
   parseTargeted,
+  parseToolCall,
   PROTOCOL_VERSION,
+  type ToolCall,
 } from "./protocol.ts";
+import {
+  callTool,
+  importTool,
+  type SpawnBase,
+  type ToolResolver,
+} from "./tools.ts";
 
 /** How the host starts its worker. */
 export interface WorkerOptions {
@@ -65,7 +74,24 @@ export interface WorkerOptions {
    * dropped, and the next run spawns its own worker and meets the error.
    */
   readonly prewarm?: boolean;
+  /**
+   * How a `tool.call` finds the wrapper release it names: a dynamic import of
+   * `jsr:@zuke/<package>@<version>` by default, which the workspace resolves
+   * locally for a member's own version. A test hands in a module of its own.
+   */
+  readonly tools?: ToolResolver;
 }
+
+/**
+ * The variables the engine sets for the worker alone. The worker's environment
+ * is the base of every spawn, so they are taken back out of it: a command a
+ * body runs is not the engine's worker, and must not hold the run's token.
+ */
+const ENGINE_VARIABLES = [
+  "ZUKE_ENGINE_ADDR",
+  "ZUKE_ENGINE_TOKEN",
+  "ZUKE_PROTOCOL",
+];
 
 /**
  * What a worker request is served with: the body's context while a body
@@ -386,6 +412,11 @@ export class WorkerHost {
       run: (request: R, ctx: TargetContext) => Promise<unknown> | unknown,
     ) => serve(method, parse, (r, scope) => run(r, bodyOf(scope, method)));
     serve("exec", parseExec, (r, scope) => this.#exec(r, scope.signal));
+    serve(
+      "tool.call",
+      parseToolCall,
+      (r, scope) => this.#tool(r, scope.signal),
+    );
     serve("secret.register", parseSecret, (r) => registrar.register(r.value));
     serve("log", parseLog, (r) => console.log(r.line));
     inBody(
@@ -777,13 +808,41 @@ export class WorkerHost {
     });
   }
 
+  /** The worker's environment and directory, the base of every spawn for it. */
+  #base(): SpawnBase {
+    const env = { ...this.#worker.hello.env };
+    for (const name of ENGINE_VARIABLES) delete env[name];
+    return { env, cwd: this.#worker.hello.cwd };
+  }
+
+  async #tool(request: ToolCall, signal: AbortSignal): Promise<unknown> {
+    let module: Record<string, unknown>;
+    try {
+      module = await (this.#options.tools ?? importTool)(
+        request.package,
+        request.version,
+      );
+    } catch (error) {
+      throw new RpcFailure(
+        INVALID_PARAMS,
+        `tool.call: no @zuke/${request.package}@${request.version}: ${
+          reasonOf(error)
+        }`,
+      );
+    }
+    const answer = await callTool(module, request, this.#base());
+    if (signal.aborted) throw new RpcFailure(CANCELLED, "cancelled");
+    return answer;
+  }
+
   async #exec(request: ExecRequest, signal: AbortSignal): Promise<unknown> {
     // shortcut: the engine's own environment is not cleared, so a variable the
     // worker lacks but the engine has still reaches the child; add clearEnv
     // once a worker needs an exact environment.
+    const base = this.#base();
     let command = new Command([...request.argv])
-      .cwd(request.cwd ?? this.#worker.hello.cwd)
-      .env({ ...this.#worker.hello.env, ...request.env })
+      .cwd(request.cwd ?? base.cwd)
+      .env({ ...base.env, ...request.env })
       .noThrow()
       .signal(signal);
     if (request.stdin !== undefined) command = command.stdin(request.stdin);

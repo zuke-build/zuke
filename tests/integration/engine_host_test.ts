@@ -24,6 +24,7 @@ import { FakeGraphHost } from "../../packages/core/tests/_fakes.ts";
 import { WorkerHost } from "../../packages/engine/src/host.ts";
 import { materialize } from "../../packages/engine/src/materialize.ts";
 import { isRecord } from "../../packages/engine/src/protocol.ts";
+import type { ToolResolver } from "../../packages/engine/src/tools.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 
 const FAKE =
@@ -55,6 +56,7 @@ interface PlanTarget {
   onFailure?: string;
   crash_exit?: number;
   hangup?: boolean;
+  dryRunnable?: boolean;
 }
 
 /** Start the fake worker on `plan` and materialise its build. */
@@ -65,6 +67,7 @@ async function fake(
     connectTimeoutMs?: number;
     manifest?: Record<string, unknown>;
     prewarm?: boolean;
+    tools?: ToolResolver;
   } = {},
 ): Promise<{ host: WorkerHost; Remote: new () => Build }> {
   Deno.env.set(
@@ -80,6 +83,7 @@ async function fake(
     connectTimeoutMs: options.connectTimeoutMs,
     graceMs: 1_000,
     prewarm: options.prewarm,
+    tools: options.tools,
   });
   return { host, Remote: materialize(await host.describe(), host) };
 }
@@ -961,6 +965,232 @@ Deno.test("a pre-warm that fails is the next run's to meet, not the finished run
     } finally {
       Deno.env.delete("ZUKE_FAKE_GENERATION_FILE");
       Deno.env.delete("ZUKE_FAKE_RESPAWN_PLAN");
+    }
+  });
+});
+
+const FAKE_TOOL =
+  new URL("../../packages/engine/tests/_fake_tool.ts", import.meta.url).href;
+
+/** A worker call of the fake wrapper's task with `args`. */
+function toolCall(
+  task: string,
+  args: unknown,
+  overrides: Record<string, unknown> = {},
+): { method: string; params: Record<string, unknown> } {
+  return {
+    method: "tool.call",
+    params: {
+      package: "fake",
+      version: "1.0.0",
+      tasks: "FakeTasks",
+      task,
+      args,
+      ...overrides,
+    },
+  };
+}
+
+/** The fake wrapper, for any release asked. */
+const fakeTools = (pkg: string, version: string) => {
+  assertEquals([pkg, version], ["fake", "1.0.0"]);
+  return import(FAKE_TOOL);
+};
+
+/** The `answer: tool.call` lines of a run, in order. */
+function toolAnswers(err: string): string[] {
+  return err.split("\n").filter((l) => l.includes("answer: tool.call"));
+}
+
+Deno.test("tool.call runs a wrapper's task with the worker's environment and directory under its settings", async () => {
+  await withStateDir(async () => {
+    const { host, Remote } = await fake([{
+      name: "caller",
+      calls: [
+        toolCall("echo", [{
+          configure: [["prints", ["hi"]], ["printsEnv", [
+            "ZUKE_FAKE_ENV_MARK",
+          ]]],
+        }]),
+        toolCall("echo", [{
+          configure: [["printsEnv", ["ZUKE_ENGINE_TOKEN"]], ["printsCwd", []]],
+        }]),
+        toolCall("add", [2, 3]),
+        toolCall("nothing", []),
+        toolCall("tune", [{
+          configure: [["level", [3]], ["reset", []], ["level", [5]]],
+        }]),
+      ],
+    }], { tools: fakeTools });
+    try {
+      const result = await runCli(Remote, ["caller"]);
+      assertEquals(result.code, 0, result.out + result.err);
+      const answers = toolAnswers(result.err);
+      assertStringIncludes(answers[0] ?? "", '"stdout":"hi\\nfrom-worker\\n"');
+      assertStringIncludes(
+        answers[1] ?? "",
+        `"stdout":"undefined\\n${JSON.stringify(Deno.cwd()).slice(1, -1)}\\n"`,
+      );
+      assertStringIncludes(answers[2] ?? "", "answer: tool.call 5");
+      assertStringIncludes(answers[3] ?? "", "answer: tool.call {}");
+      assertStringIncludes(answers[4] ?? "", "answer: tool.call 5");
+    } finally {
+      await host.finish(0);
+    }
+  });
+});
+
+Deno.test("exec no longer hands a command the engine's own variables", async () => {
+  await withStateDir(async () => {
+    const { host, Remote } = await fake([{
+      name: "peek",
+      exec: [
+        evalArgv(`console.log(String(Deno.env.get("ZUKE_ENGINE_TOKEN")))`),
+      ],
+      expectStdout: "undefined",
+    }], { tools: fakeTools });
+    try {
+      const result = await runCli(Remote, ["peek"]);
+      assertEquals(result.code, 0, result.out + result.err);
+    } finally {
+      await host.finish(0);
+    }
+  });
+});
+
+Deno.test("a malformed or unknown tool.call is refused by name, and the body goes on", async () => {
+  await withStateDir(async () => {
+    const { host, Remote } = await fake([{
+      name: "sloppy",
+      calls: [
+        toolCall("echo", [], { package: "Docker!" }),
+        toolCall("echo", [], { version: "latest" }),
+        toolCall("echo", [], { package: "nope" }),
+        toolCall("echo", [], { tasks: "NotTasks" }),
+        toolCall("missing", []),
+        toolCall("echo", [{ configure: [["nope", []]] }]),
+        toolCall("echo", [{ configure: [["run", []]] }]),
+        toolCall("echo", [{ configure: ["prints"] }]),
+        toolCall("echo", "not a list"),
+        toolCall("echo", [{ configure: [["exits", [2]]] }]),
+        toolCall("huge", []),
+        toolCall("vast", []),
+      ],
+    }], {
+      tools: (pkg, version) => {
+        if (pkg !== "fake") {
+          throw new Error(`no such release ${pkg}@${version}`);
+        }
+        return import(FAKE_TOOL);
+      },
+    });
+    try {
+      const result = await runCli(Remote, ["sloppy"]);
+      assertEquals(result.code, 0, result.out + result.err);
+      const answers = toolAnswers(result.err);
+      const expected = [
+        'field "package" must be a wrapper\'s name after @zuke/',
+        'field "version" must be an exact release such as 1.4.0',
+        "no @zuke/nope@1.0.0: no such release nope@1.0.0",
+        '@zuke/fake@1.0.0 exports no "NotTasks"',
+        '"FakeTasks" has no task "missing"',
+        '"nope" is not a setter of the task\'s settings',
+        '"run" is not a setter of the task\'s settings',
+        "each configure entry must be a [setter, [arguments]] pair",
+        'field "args" must be a list',
+        "FakeTasks.echo: ",
+        "the task's result is not JSON",
+        "over the 16777216 one answer carries",
+      ];
+      assertEquals(answers.length, expected.length, result.err);
+      expected.forEach((text, i) => {
+        assertStringIncludes(answers[i] ?? "", "error");
+        assertStringIncludes(answers[i] ?? "", text);
+      });
+      assertStringIncludes(answers[9] ?? "", "exit");
+    } finally {
+      await host.finish(0);
+    }
+  });
+});
+
+Deno.test("under --dry-run a dryRunnable body's tool.call echoes the command and spawns nothing", async () => {
+  await withStateDir(async () => {
+    const { host, Remote } = await fake([{
+      name: "echoing",
+      dryRunnable: true,
+      calls: [
+        toolCall("echo", [{ configure: [["prints", ["never printed"]]] }]),
+      ],
+    }], { tools: fakeTools });
+    try {
+      const result = await runCli(Remote, ["echoing", "--dry-run"]);
+      assertEquals(result.code, 0, result.out + result.err);
+      assertStringIncludes(toolAnswers(result.err)[0] ?? "", '"stdout":""');
+      assertStringIncludes(result.out + result.err, "never printed");
+    } finally {
+      await host.finish(0);
+    }
+  });
+});
+
+Deno.test("a cancel mid-tool.call ends the wrapper's command, and the body as cancelled", async () => {
+  await withStateDir(async () => {
+    const { host, Remote } = await fake([{
+      name: "slow",
+      calls: [toolCall("echo", [{ configure: [["sleeps", [30_000]]] }])],
+    }], { tools: fakeTools });
+    const controller = new AbortController();
+    const started = Date.now();
+    try {
+      setTimeout(() => controller.abort(), 500);
+      const result = await runCli(Remote, ["slow"], {
+        signal: controller.signal,
+      });
+      assertEquals(result.code !== 0, true, result.out + result.err);
+      assertStringIncludes((result.out + result.err).toLowerCase(), "cancel");
+      assertEquals(Date.now() - started < 20_000, true);
+    } finally {
+      await host.finish(1);
+    }
+  });
+});
+
+Deno.test("the default resolver finds a workspace wrapper at its own version", async () => {
+  await withStateDir(async () => {
+    const version: unknown = JSON.parse(
+      await Deno.readTextFile("packages/deno/deno.json"),
+    );
+    const denoVersion = isRecord(version) && typeof version.version === "string"
+      ? version.version
+      : "";
+    const { host, Remote } = await fake([{
+      name: "real",
+      calls: [{
+        method: "tool.call",
+        params: {
+          package: "deno",
+          version: denoVersion,
+          tasks: "DenoTasks",
+          task: "eval",
+          args: [{
+            configure: [["code", ["console.log(40 + 2)"]], [
+              "toolPath",
+              [Deno.execPath()],
+            ]],
+          }],
+        },
+      }],
+    }]);
+    try {
+      const result = await runCli(Remote, ["real"]);
+      assertEquals(result.code, 0, result.out + result.err);
+      assertStringIncludes(
+        toolAnswers(result.err)[0] ?? "",
+        '"stdout":"42\\n"',
+      );
+    } finally {
+      await host.finish(0);
     }
   });
 });

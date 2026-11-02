@@ -36,6 +36,7 @@ import { materialize } from "./src/materialize.ts";
 export { sdkCommand } from "./src/config.ts";
 export { WorkerHost, type WorkerOptions } from "./src/host.ts";
 export { materialize, type TargetRunner } from "./src/materialize.ts";
+export { importTool, type SpawnBase, type ToolResolver } from "./src/tools.ts";
 export type { ManifestCi, ManifestCiInvocation } from "./src/ci.ts";
 export {
   type ConfigureParams,
@@ -52,7 +53,9 @@ export {
   type ManifestRetry,
   type ManifestTarget,
   parseManifest,
+  parseToolCall,
   PROTOCOL_VERSION,
+  type ToolCall,
   type ValidateDuringSpec,
   type WaitSpec,
   type WaitTriggerSpec,

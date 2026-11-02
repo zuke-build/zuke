@@ -211,6 +211,21 @@ export class Fields {
     return Object.fromEntries(entries);
   }
 
+  jsonList(name: string): JsonValue[] {
+    const value = this.required(name);
+    if (!Array.isArray(value)) {
+      throw new Error(`${this.where}: field "${name}" must be a list`);
+    }
+    return value.map((item, index) => {
+      if (!isJsonValue(item)) {
+        throw new Error(
+          `${this.where}: field "${name}[${index}]" must be JSON`,
+        );
+      }
+      return item;
+    });
+  }
+
   summaryPairs(name: string): Record<string, string | number> {
     const value = this.required(name);
     if (!isRecord(value)) {

@@ -24,7 +24,12 @@ engine's, with the worker serving the bodies.
 
 The protocol is newline-delimited JSON-RPC 2.0 over loopback TCP; the engine
 hands the worker its address and a per-run token in `ZUKE_ENGINE_ADDR`,
-`ZUKE_ENGINE_TOKEN` and `ZUKE_PROTOCOL`. The cases under
+`ZUKE_ENGINE_TOKEN` and `ZUKE_PROTOCOL`. A body runs commands through the
+engine's `exec`, and reaches every typed wrapper through `tool.call`: it names a
+wrapper release, its task object and task, and the arguments as JSON, with a
+settings lambda sent as the list of setter calls it would make, and the engine
+imports the release and runs the task with the worker's environment and
+directory under its settings. The cases under
 [`conformance/`](./conformance/README.md) are the contract an SDK's worker must
 satisfy, replayed here against a scripted worker.
 
@@ -60,6 +65,10 @@ and speaks the protocol, {@link materialize} turns its manifest into a
 `Build` subclass `run` accepts.
 @module
 
+async function importTool(pkg: string, version: string): Promise<Record<string, unknown>>
+  The default {@link ToolResolver}: a dynamic import of the release from JSR,
+  or from the workspace when it holds that version of the package.
+
 function materialize(manifest: Manifest, runner: TargetRunner): new () => Build
   Build the class. Dependencies must be declared before the targets that use
   them, mirroring the forward-reference rule of a `zuke.ts` build; a violation
@@ -68,6 +77,9 @@ function materialize(manifest: Manifest, runner: TargetRunner): new () => Build
 
 function parseManifest(value: unknown): Manifest
   Validate a `build.describe` result.
+
+function parseToolCall(value: unknown): ToolCall
+  Validate a `tool.call` request's params.
 
 function sdkCommand(configText: string, where: string): string[]
   Read `sdk.command` from the `zuke.json` text, naming what is wrong if not.
@@ -308,6 +320,14 @@ interface ManifestTarget
   readonly validateDuring: boolean
     Whether `target.settings` answers a `validateDuring` section for this target.
 
+interface SpawnBase
+  The worker's environment and working directory: the base of every spawn.
+
+  readonly env: Readonly<Record<string, string>>
+    The environment the wrapper's command inherits, under the caller's overrides.
+  readonly cwd: string
+    The working directory the command runs in, unless a setter moves it.
+
 interface TargetRunner
   What a materialised build needs from its host.
 
@@ -335,6 +355,25 @@ interface TargetRunner
     Run the named target's body; reject when it fails.
   finish: WorkerHost["finish"]
     Tell the worker the run is over.
+
+interface ToolCall
+  A `tool.call` request: a wrapper's task the engine runs on the worker's
+  behalf, with the worker's environment and directory under its settings.
+
+  readonly target: string
+    The target whose body or phase is asking, for attribution and cancellation.
+  readonly package: string
+    The wrapper's name after `@zuke/`, e.g. `docker`.
+  readonly version: string
+    The wrapper's exact release, e.g. `1.4.0`.
+  readonly tasks: string
+    The task object the wrapper exports, e.g. `DockerTasks`.
+  readonly task: string
+    The task on it, e.g. `build`.
+  readonly args: readonly JsonValue[]
+    The task's arguments as JSON. An argument that is an object with a single
+    `configure` key is a settings lambda as data: an ordered list of
+    `[setter, [arguments]]` pairs the engine applies to the task's settings.
 
 interface ValidateDuringSpec
   Checks run on an interval while the body runs, as `ValidateDuringSettings` configures them.
@@ -371,6 +410,10 @@ interface WorkerOptions
     process) finds one up instead of paying the spawn inside its request. Off
     by default: a one-shot run has no next run. A pre-warm that fails is
     dropped, and the next run spawns its own worker and meets the error.
+  readonly tools?: ToolResolver
+    How a `tool.call` finds the wrapper release it names: a dynamic import of
+    `jsr:@zuke/<package>@<version>` by default, which the workspace resolves
+    locally for a member's own version. A test hands in a module of its own.
 
 type Duration = string | number
   A duration as the wrappers take it: `"5m"` or milliseconds.
@@ -380,6 +423,9 @@ type HookName = keyof ManifestHooks
 
 type ManifestParameter = ManifestParameterBase & ({ readonly kind: "string"; readonly default?: string; readonly options: readonly string[]; } | { readonly kind: "number"; readonly default?: number; } | { readonly kind: "boolean"; readonly default?: boolean; })
   One build parameter as the worker describes it, by kind.
+
+type ToolResolver = (pkg: string, version: string) => Promise<Record<string, unknown>>
+  Resolves a wrapper release to its module: what `tool.call` imports.
 
 type WaitTriggerSpec = { readonly kind: "externalSignal"; readonly name: string; } | { readonly kind: "resumeWhen"; readonly interval?: Duration; }
   What a wait gate waits on.
