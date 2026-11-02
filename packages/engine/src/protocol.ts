@@ -296,6 +296,29 @@ export interface LogRequest {
   readonly line: string;
 }
 
+/**
+ * A `tool.call` request: a wrapper's task the engine runs on the worker's
+ * behalf, with the worker's environment and directory under its settings.
+ */
+export interface ToolCall {
+  /** The target whose body or phase is asking, for attribution and cancellation. */
+  readonly target: string;
+  /** The wrapper's name after `@zuke/`, e.g. `docker`. */
+  readonly package: string;
+  /** The wrapper's exact release, e.g. `1.4.0`. */
+  readonly version: string;
+  /** The task object the wrapper exports, e.g. `DockerTasks`. */
+  readonly tasks: string;
+  /** The task on it, e.g. `build`. */
+  readonly task: string;
+  /**
+   * The task's arguments as JSON. An argument that is an object with a single
+   * `configure` key is a settings lambda as data: an ordered list of
+   * `[setter, [arguments]]` pairs the engine applies to the task's settings.
+   */
+  readonly args: readonly JsonValue[];
+}
+
 /** JSON-RPC error code the engine answers a cancelled `exec` with. */
 export const CANCELLED = -32001;
 
@@ -576,6 +599,33 @@ export function parseLog(value: unknown): LogRequest {
 /** Validate the params of a request that carries only its target. */
 export function parseTargeted(value: unknown, method: string): string {
   return fieldsOf(value, method).string("target");
+}
+
+/** The shape of a wrapper's name after `@zuke/`. */
+const PACKAGE = /^[a-z][a-z0-9-]*$/;
+
+/** The shape of an exact release, as `zuke.json` pins the engine itself. */
+const VERSION = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
+
+/** Validate a `tool.call` request's params. */
+export function parseToolCall(value: unknown): ToolCall {
+  const o = fieldsOf(value, "tool.call");
+  const pkg = o.string("package");
+  if (!PACKAGE.test(pkg)) {
+    o.reject("package", "be a wrapper's name after @zuke/, such as docker");
+  }
+  const version = o.string("version");
+  if (!VERSION.test(version)) {
+    o.reject("version", "be an exact release such as 1.4.0");
+  }
+  return {
+    target: o.string("target"),
+    package: pkg,
+    version,
+    tasks: o.identifier("tasks"),
+    task: o.identifier("task"),
+    args: o.jsonList("args"),
+  };
 }
 
 /** Validate an `exec` request's params. */
