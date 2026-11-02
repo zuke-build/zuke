@@ -25,6 +25,10 @@ import { WorkerHost } from "../../packages/engine/src/host.ts";
 import { materialize } from "../../packages/engine/src/materialize.ts";
 import { isRecord } from "../../packages/engine/src/protocol.ts";
 import type { ToolResolver } from "../../packages/engine/src/tools.ts";
+import {
+  ambientEcho,
+  type EchoSink,
+} from "../../packages/core/src/ambient_echo.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 
 const FAKE =
@@ -290,7 +294,7 @@ Deno.test("a malformed context call is refused naming the field, and the body go
       assertEquals(result.code, 0, result.out + result.err);
       assertStringIncludes(
         result.err,
-        'answer: state.set error state.set: field "patch" must be an object',
+        'answer: state.set error -32602 state.set: field "patch" must be an object',
       );
       assertStringIncludes(
         result.err,
@@ -350,7 +354,7 @@ Deno.test("a service's start phase execs through the engine, and a body-only cal
       assertEquals(await Deno.readTextFile(marker), "up");
       assertStringIncludes(
         result.err,
-        "answer: state.get error state.get: a service phase has no body",
+        "answer: state.get error -32000 state.get: a service phase has no body",
       );
       assertStringIncludes(result.err, "worker: call: service.stop db h1");
     } finally {
@@ -1134,6 +1138,32 @@ Deno.test("under --dry-run a dryRunnable body's tool.call echoes the command and
   });
 });
 
+Deno.test("a wrapper's module is imported outside the body's scope, so a dry run's echo cannot outlive it", async () => {
+  await withStateDir(async () => {
+    // Deno keeps the context a module was first imported in alive past the
+    // import: resolved inside the body, a dry run's echo sink would reach every
+    // later run in this process. The resolver must see no sink.
+    const seen: Array<EchoSink | undefined> = [];
+    const { host, Remote } = await fake([{
+      name: "echoing",
+      dryRunnable: true,
+      calls: [toolCall("nothing", [])],
+    }], {
+      tools: () => {
+        seen.push(ambientEcho());
+        return import(FAKE_TOOL);
+      },
+    });
+    try {
+      const result = await runCli(Remote, ["echoing", "--dry-run"]);
+      assertEquals(result.code, 0, result.out + result.err);
+      assertEquals(seen, [undefined]);
+    } finally {
+      await host.finish(0);
+    }
+  });
+});
+
 Deno.test("a cancel mid-tool.call ends the wrapper's command, and the body as cancelled", async () => {
   await withStateDir(async () => {
     const { host, Remote } = await fake([{
@@ -1149,6 +1179,10 @@ Deno.test("a cancel mid-tool.call ends the wrapper's command, and the body as ca
       });
       assertEquals(result.code !== 0, true, result.out + result.err);
       assertStringIncludes((result.out + result.err).toLowerCase(), "cancel");
+      assertStringIncludes(
+        result.err,
+        "answer: tool.call error -32001 cancelled",
+      );
       assertEquals(Date.now() - started < 20_000, true);
     } finally {
       await host.finish(1);

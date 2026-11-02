@@ -1,0 +1,37 @@
+{
+  "manifest": {
+    "name": "ToolSetter",
+    "targets": [
+      {
+        "name": "caller",
+        "calls": [
+          {
+            "method": "tool.call",
+            "params": {
+              "package": "deno",
+              "version": "$ZUKE_DENO_VERSION",
+              "tasks": "DenoTasks",
+              "task": "eval",
+              "args": [
+                {
+                  "configure": [
+                    ["toolPath", ["$DENO"]],
+                    ["code", ["1"]],
+                    ["nope", []]
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "argv": ["caller"],
+  "code": 0,
+  "calls": ["build.configure", "target.run caller", "run.exit done"],
+  "configure": { "parameters": {} },
+  "answers": [
+    "tool.call error -32602 tool.call: @zuke/deno@$ZUKE_DENO_VERSION: DenoTasks.eval: \"nope\" is not a setter of the task's settings"
+  ]
+}

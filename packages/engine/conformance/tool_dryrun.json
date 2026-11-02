@@ -1,0 +1,56 @@
+{
+  "manifest": {
+    "name": "ToolDryRun",
+    "targets": [
+      {
+        "name": "echoing",
+        "dryRunnable": true,
+        "calls": [
+          {
+            "method": "tool.call",
+            "params": {
+              "package": "deno",
+              "version": "$ZUKE_DENO_VERSION",
+              "tasks": "DenoTasks",
+              "task": "eval",
+              "args": [
+                {
+                  "configure": [
+                    [
+                      "toolPath",
+                      [
+                        "$DENO"
+                      ]
+                    ],
+                    [
+                      "code",
+                      [
+                        "console.log(\"never printed\")"
+                      ]
+                    ]
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "argv": [
+    "echoing",
+    "--dry-run"
+  ],
+  "code": 0,
+  "calls": [
+    "build.configure",
+    "target.run echoing",
+    "run.exit done"
+  ],
+  "configure": {
+    "parameters": {}
+  },
+  "answers": [
+    "tool.call {\"code\":0,\"stdout\":\"\",\"stderr\":\"\"}"
+  ]
+}

@@ -29,7 +29,10 @@ engine's `exec`, and reaches every typed wrapper through `tool.call`: it names a
 wrapper release, its task object and task, and the arguments as JSON, with a
 settings lambda sent as the list of setter calls it would make, and the engine
 imports the release and runs the task with the worker's environment and
-directory under its settings. The cases under
+directory under its settings. A call of the wrong shape, or a release, export,
+task or setter the engine cannot find, is refused with `-32602` naming it; a
+task that throws fails the call with `-32000` and its message, and one the run's
+cancel cuts short answers `-32001`. The cases under
 [`conformance/`](./conformance/README.md) are the contract an SDK's worker must
 satisfy, replayed here against a scripted worker.
 
