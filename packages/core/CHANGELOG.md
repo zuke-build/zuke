@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.77.1](https://github.com/zuke-build/zuke/compare/core-v1.77.0...core-v1.77.1) (2026-11-02)
+
+
+### Bug Fixes
+
+* **core:** keep a concurrent target's command output inside its own block ([#929](https://github.com/zuke-build/zuke/issues/929)) ([e751a8c](https://github.com/zuke-build/zuke/commit/e751a8c4e8ba0f501d08db5a8fb5ea1e93e900fc))
+
 ## [1.77.0](https://github.com/zuke-build/zuke/compare/core-v1.76.0...core-v1.77.0) (2026-10-21)
 
 
