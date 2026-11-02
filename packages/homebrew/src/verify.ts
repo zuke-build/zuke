@@ -18,7 +18,10 @@
  * with `brew tap-new --no-git`, the same thing the tap-new docs suggest — and
  * installed by its tap-qualified name:
  *
- * 1. `brew tap-new --no-git zuke-verify/verify-<random>`
+ * 1. `brew tap-new --no-git zuke-verify/verify-<random>`, then
+ *    `brew trust --tap` on it: current Homebrew loads a non-official tap's
+ *    formulae only once the tap is trusted, and an older brew, which has no
+ *    `trust` command and needs none, is let refuse the call
  * 2. copy the file to `<tap directory>/Formula/<name>.rb` (the directory comes
  *    from `brew --repository <tap>`)
  * 3. `brew install --formula zuke-verify/verify-<random>/<name>`
@@ -135,6 +138,9 @@ export async function verifyFormula(
   const qualified = `${tap}/${name}`;
 
   await BrewTasks.tapNew((s) => brew(s).name(tap).noGit());
+  // Not thrown on: an older brew without `trust` answers "Unknown command",
+  // and on a newer one an untrusted tap still fails the install by name.
+  await BrewTasks.trust((s) => brew(s).noThrow().tap().targets(tap));
   let installed = false;
   await runAll([
     async () => {

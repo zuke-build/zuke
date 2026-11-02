@@ -38,6 +38,7 @@ export {
   BrewTapNewSettings,
   BrewTapSettings,
   BrewTestSettings,
+  BrewTrustSettings,
   BrewUninstallSettings,
   BrewUntapSettings,
 } from "./src/brew_commands.ts";

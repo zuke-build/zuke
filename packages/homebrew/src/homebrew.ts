@@ -38,9 +38,9 @@ export interface HomebrewTasksApi {
     configure: Configure<HomebrewPublishSettings>,
   ): Promise<HomebrewPublishResult>;
   /**
-   * Install a formula file through a throwaway local tap, run its test, then
-   * uninstall it and remove the tap — the cleanup runs whether or not the
-   * install and test succeeded.
+   * Install a formula file through a throwaway local tap, trusted first, run
+   * its test, then uninstall it and remove the tap — the cleanup runs whether
+   * or not the install and test succeeded.
    */
   verify(configure: Configure<HomebrewVerifySettings>): Promise<void>;
   /**

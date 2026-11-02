@@ -30,6 +30,7 @@ import {
   BrewTapSettings,
   BrewTasks,
   BrewTestSettings,
+  BrewTrustSettings,
   BrewUninstallSettings,
   BrewUntapSettings,
 } from "../mod.ts";
@@ -128,6 +129,26 @@ Deno.test("brew tap, untap, tap-new and --repository", () => {
     new BrewTapNewSettings().name("me/tmp").branch("trunk").argv(),
     ["brew", "tap-new", "--branch=trunk", "me/tmp"],
   );
+  assertEquals(
+    new BrewTrustSettings().tap().targets("me/tmp").argv(),
+    ["brew", "trust", "--tap", "me/tmp"],
+  );
+  assertEquals(
+    new BrewTrustSettings().formula().targets("me/tmp/app", "b").argv(),
+    ["brew", "trust", "--formula", "me/tmp/app", "b"],
+  );
+  assertEquals(
+    new BrewTrustSettings().cask().targets("x").argv(),
+    ["brew", "trust", "--cask", "x"],
+  );
+  assertEquals(
+    new BrewTrustSettings().externalCommand().targets("x").argv(),
+    ["brew", "trust", "--command", "x"],
+  );
+  assertEquals(
+    new BrewTrustSettings().targets("me/tmp").argv(),
+    ["brew", "trust", "me/tmp"],
+  );
   assertEquals(new BrewRepositorySettings().argv(), ["brew", "--repository"]);
   assertEquals(
     new BrewRepositorySettings().tap("me/tmp").argv(),
@@ -168,6 +189,7 @@ Deno.test("brew: a command that needs a name refuses to run without one", () => 
     [() => new BrewTapSettings().argv(), "brew tap requires .name"],
     [() => new BrewUntapSettings().argv(), "brew untap requires .taps"],
     [() => new BrewTapNewSettings().argv(), "brew tap-new requires .name"],
+    [() => new BrewTrustSettings().argv(), "brew trust requires .targets"],
   ];
   for (const [build, message] of cases) {
     assertThrows(build, Error, message);
@@ -201,6 +223,7 @@ Deno.test("brew: every task reaches execution", async () => {
     () => BrewTasks.tap((s) => missingTool(s).name("a/b")),
     () => BrewTasks.untap((s) => missingTool(s).taps("a/b")),
     () => BrewTasks.tapNew((s) => missingTool(s).name("a/b")),
+    () => BrewTasks.trust((s) => missingTool(s).targets("a/b")),
     () => BrewTasks.repository((s) => missingTool(s)),
     () => BrewTasks.info((s) => missingTool(s).formulae("app")),
   ];

@@ -32,7 +32,8 @@ function verbs(calls: Array<{ args: string[] }>): string[] {
 }
 
 Deno.test({
-  name: "verify: tap-new, install, test, uninstall, untap — in that order",
+  name:
+    "verify: tap-new, trust, install, test, uninstall, untap — in that order",
   ignore: FAKE_BREW_UNSUPPORTED,
   async fn() {
     const brew = fakeBrew();
@@ -48,6 +49,7 @@ Deno.test({
       const calls = brew.calls();
       assertEquals(verbs(calls), [
         "tap-new",
+        "trust",
         "--repository",
         "install",
         "test",
@@ -57,15 +59,16 @@ Deno.test({
       const tap = calls[0].args[2];
       assertEquals(/^zuke-verify\/verify-[0-9a-f]{12}$/.test(tap), true, tap);
       assertEquals(calls[0].args, ["tap-new", "--no-git", tap]);
-      assertEquals(calls[2].args, ["install", "--formula", `${tap}/app`]);
-      assertEquals(calls[3].args, ["test", `${tap}/app`]);
-      assertEquals(calls[4].args, [
+      assertEquals(calls[1].args, ["trust", "--tap", tap]);
+      assertEquals(calls[3].args, ["install", "--formula", `${tap}/app`]);
+      assertEquals(calls[4].args, ["test", `${tap}/app`]);
+      assertEquals(calls[5].args, [
         "uninstall",
         "--formula",
         "--force",
         `${tap}/app`,
       ]);
-      assertEquals(calls[5].args, ["untap", "--force", tap]);
+      assertEquals(calls[6].args, ["untap", "--force", tap]);
       // Every call skips the auto-update.
       assertEquals(calls.every((call) => call.autoUpdate === "1"), true);
       // The formula was copied into the tap the install read it from.
@@ -73,6 +76,35 @@ Deno.test({
         Deno.readTextFileSync(`${brew.root}/${tap}/Formula/app.rb`),
         "class App < Formula\nend\n",
       );
+    } finally {
+      brew.dispose();
+    }
+  },
+});
+
+Deno.test({
+  name: "verify: a brew without `trust` is let refuse it, and the rest goes on",
+  ignore: FAKE_BREW_UNSUPPORTED,
+  async fn() {
+    const brew = fakeBrew(["trust"]);
+    const file = formulaFile();
+    try {
+      await withEnv(
+        brew.env,
+        () =>
+          HomebrewTasks.verify((s) =>
+            s.formulaFile(file).name("app").toolPath(brew.brew)
+          ),
+      );
+      assertEquals(verbs(brew.calls()), [
+        "tap-new",
+        "trust",
+        "--repository",
+        "install",
+        "test",
+        "uninstall",
+        "untap",
+      ]);
     } finally {
       brew.dispose();
     }
@@ -99,6 +131,7 @@ Deno.test({
       });
       assertEquals(verbs(brew.calls()), [
         "tap-new",
+        "trust",
         "--repository",
         "install",
         "test",
@@ -131,6 +164,7 @@ Deno.test({
       });
       assertEquals(verbs(brew.calls()), [
         "tap-new",
+        "trust",
         "--repository",
         "install",
         "untap",
