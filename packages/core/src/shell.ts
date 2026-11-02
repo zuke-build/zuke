@@ -22,6 +22,7 @@
 import type { AbsolutePath, PathLike } from "./path.ts";
 import { ambientSignal } from "./ambient_signal.ts";
 import { ambientEcho } from "./ambient_echo.ts";
+import { ambientOutput } from "./ambient_output.ts";
 import { redactLine } from "./ambient_redactor.ts";
 import { terminateProcess, TERMINATION_GRACE_MS } from "./terminate.ts";
 import {
@@ -363,13 +364,16 @@ export class Command implements PromiseLike<CommandOutput> {
       // Capture is bounded (per stream) so a runaway child cannot grow the buffer
       // until the run dies; the tee to the terminal above stays unbounded.
       const cap = this.#maxCapturedBytes;
+      // The terminal, or the target's own buffer when targets run concurrently,
+      // so this output stays inside its target's block.
+      const out = ambientOutput();
       // Written *concurrently* with the captures, not before them. A child that
       // writes more than a pipe buffer holds before reading its input would
       // block on its own output while this blocked on the write, and neither
       // side would ever move.
       const [stdout, stderr] = await Promise.all([
-        captureStream(child.stdout, streamStdout ? Deno.stdout : null, cap),
-        captureStream(child.stderr, streamStderr ? Deno.stderr : null, cap),
+        captureStream(child.stdout, streamStdout ? out.stdout : null, cap),
+        captureStream(child.stderr, streamStderr ? out.stderr : null, cap),
         this.#writeStdin(child),
       ]);
       const status = await child.status;

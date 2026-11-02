@@ -15,6 +15,8 @@
  * @module
  */
 
+import type { ByteWriter } from "./ambient_output.ts";
+
 /** The default capture cap per stream, in bytes (8 MiB). */
 export const DEFAULT_MAX_CAPTURED_BYTES = 8 * 1024 * 1024;
 
@@ -86,7 +88,7 @@ export function checkMaxCapturedBytes(bytes: number): void {
  */
 export async function captureStream(
   stream: ReadableStream<Uint8Array>,
-  sink: { writeSync(p: Uint8Array): number } | null,
+  sink: ByteWriter | null,
   maxBytes: number,
 ): Promise<Captured> {
   const reader = stream.getReader();

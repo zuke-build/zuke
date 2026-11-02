@@ -8,6 +8,7 @@
 
 import { type Build, discoverGroups, discoverTargets } from "./build.ts";
 import { cliReporter, printJson } from "./reporter.ts";
+import { flushInFlightOutput } from "./scheduler.ts";
 import { discoverCiFiles, syncCiFiles } from "./ci.ts";
 import { isEntryModule } from "./entry.ts";
 import { messageOf } from "./internal.ts";
@@ -1727,7 +1728,10 @@ async function runCommand(
 function installCancelSignals(controller: AbortController): () => void {
   let cancelling = false;
   const onSignal = () => {
-    if (cancelling) Deno.exit(130);
+    if (cancelling) {
+      flushInFlightOutput();
+      Deno.exit(130);
+    }
     cancelling = true;
     controller.abort();
   };
