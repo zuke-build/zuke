@@ -237,6 +237,52 @@ Deno.test("a node_modules output restores its .bin links as links, so tools stil
   });
 });
 
+Deno.test("an output with a looping directory link uploads and restores", async () => {
+  if (Deno.build.os === "windows") return; // symlink creation is privileged there
+  await withStateDir(async () => {
+    await withTempCwd(async (dir) => {
+      const remoteDir = await Deno.makeTempDir({ prefix: "zuke-it-remote-" });
+      const prevRemote = Deno.env.get("ZUKE_REMOTE_CACHE_DIR");
+      Deno.env.set("ZUKE_REMOTE_CACHE_DIR", remoteDir);
+      try {
+        await Deno.writeTextFile(`${dir}/input.txt`, "v1");
+        const log: string[] = [];
+        class B extends Build {
+          build = target().inputs("input.txt").outputs("dist").executes(
+            async () => {
+              log.push("build");
+              await Deno.mkdir("dist", { recursive: true });
+              await Deno.writeTextFile("dist/app.js", "built");
+              // Absolute, so it is copied rather than kept — and it loops.
+              await Deno.symlink(
+                `${await Deno.realPath(".")}/dist`,
+                "dist/self",
+              );
+            },
+          );
+        }
+        const first = await runCli(B, ["build"]);
+        assertEquals(first.code, 0);
+        // The upload used to descend until ELOOP and fail with a warning.
+        assertEquals((first.err + first.out).includes("upload"), false);
+
+        await Deno.remove(`${dir}/.zuke`, { recursive: true });
+        await Deno.remove(`${dir}/dist`, { recursive: true });
+        assertEquals((await runCli(B, ["build"])).code, 0);
+        assertEquals(log, ["build"]); // restored, not rebuilt
+        assertEquals(await Deno.readTextFile(`${dir}/dist/app.js`), "built");
+      } finally {
+        if (prevRemote === undefined) {
+          Deno.env.delete("ZUKE_REMOTE_CACHE_DIR");
+        } else {
+          Deno.env.set("ZUKE_REMOTE_CACHE_DIR", prevRemote);
+        }
+        await Deno.remove(remoteDir, { recursive: true });
+      }
+    });
+  });
+});
+
 Deno.test("an SDK under .zuke/tools caches with its .git and long paths, within the configured limit", async () => {
   await withStateDir(async () => {
     await withTempCwd(async (dir) => {

@@ -88,6 +88,12 @@ class LinkFs extends MemFs {
   readonly links = new Map<string, string>();
   /** The `type` each created link was given. */
   readonly linkTypes = new Map<string, "file" | "dir">();
+  /** Canonical paths that differ from `/w/<path>`, as a followed link's do. */
+  readonly realPaths = new Map<string, string>();
+
+  realPath(path: string): Promise<string> {
+    return Promise.resolve(this.realPaths.get(path) ?? `/w/${path}`);
+  }
 
   readLink(path: string): Promise<string> {
     return Promise.resolve(this.links.get(path) ?? "");
@@ -1167,4 +1173,72 @@ Deno.test("restoreOutputs re-checks the live filesystem before each link", async
   );
   assertStringIncludes(err.message, 'through the symlink "out/s"');
   assertEquals(out.links.has("out/s/h"), false);
+});
+
+Deno.test("archiveOutputs does not re-enter a directory a link loops back to", async () => {
+  // `dist/loop` and `dist/again` are both copied links back to `dist`; real
+  // paths tell the walk it is already inside it.
+  const src = new LinkFs();
+  src.realPaths.set("dist/loop", "/w/dist");
+  src.realPaths.set("dist/again", "/w/dist");
+  src.dirs.set("dist", ["again", "app.js", "loop"]);
+  src.files.set("dist/app.js", enc("built"));
+  for (const link of ["dist/loop", "dist/again"]) {
+    src.symlinks.add(link);
+    src.links.set(link, "/w/dist");
+    src.dirs.set(link, ["app.js"]); // what `stat` and `readDir` see through it
+    src.files.set(`${link}/app.js`, enc("built"));
+  }
+  const out = new LinkFs();
+  assertEquals(
+    await restoreOutputs(await archiveOutputs(["dist"], src), out, ["dist"]),
+    ["dist/app.js"],
+  );
+});
+
+Deno.test("archiveOutputs still copies two links to one directory outside the walk", async () => {
+  const src = new LinkFs();
+  src.realPaths.set("dist/a", "/w/shared");
+  src.realPaths.set("dist/b", "/w/shared");
+  src.dirs.set("dist", ["a", "b"]);
+  for (const link of ["dist/a", "dist/b"]) {
+    src.symlinks.add(link);
+    src.links.set(link, "/w/shared");
+    src.dirs.set(link, ["x.js"]);
+    src.files.set(`${link}/x.js`, enc("shared"));
+  }
+  assertEquals(
+    await restoreOutputs(await archiveOutputs(["dist"], src), new LinkFs(), [
+      "dist",
+    ]),
+    ["dist/a/x.js", "dist/b/x.js"],
+  );
+});
+
+Deno.test("defaultCacheHost archives an output holding a looping directory link", async () => {
+  if (Deno.build.os === "windows") return; // symlink creation is privileged there
+  await withTemp(async (dir) => {
+    const cwd = Deno.cwd();
+    try {
+      Deno.chdir(dir);
+      await Deno.mkdir("dist");
+      await Deno.writeTextFile("dist/app.js", "built");
+      // Absolute: descended until ELOOP, then the upload threw.
+      await Deno.symlink(`${await Deno.realPath(dir)}/dist`, "dist/abs");
+      // Relative, out and back in: copied once, leaving a dangling link.
+      await Deno.symlink("../dist", "dist/rel");
+      const out = new LinkFs();
+      assertEquals(
+        await restoreOutputs(
+          await archiveOutputs(["dist"], defaultCacheHost),
+          out,
+          ["dist"],
+        ),
+        ["dist/app.js"],
+      );
+      assertEquals(out.links.size, 0);
+    } finally {
+      Deno.chdir(cwd);
+    }
+  });
 });
