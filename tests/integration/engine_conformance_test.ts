@@ -41,9 +41,10 @@ const ZUKE_DENO_VERSION = await (async () => {
       new URL("../../packages/deno/deno.json", import.meta.url),
     ),
   );
-  return isRecord(manifest) && typeof manifest.version === "string"
-    ? manifest.version
-    : "";
+  if (!isRecord(manifest) || typeof manifest.version !== "string") {
+    throw new Error("packages/deno/deno.json names no version");
+  }
+  return manifest.version;
 })();
 
 /** One run of a case: the first, or a later one under `then`. */
@@ -147,17 +148,21 @@ function logged(err: string, prefix: string): string[] {
   );
 }
 
+// In name order, so the suite runs the same way on every filesystem.
+const names: string[] = [];
 for await (const entry of Deno.readDir(CASES)) {
-  if (!entry.name.endsWith(".json")) continue;
+  if (entry.name.endsWith(".json")) names.push(entry.name);
+}
+for (const name of names.sort()) {
   const raw: unknown = JSON.parse(
-    (await Deno.readTextFile(new URL(entry.name, CASES)))
+    (await Deno.readTextFile(new URL(name, CASES)))
       .replaceAll("$ZUKE_DENO_VERSION", ZUKE_DENO_VERSION)
       // The path as JSON holds it, so a Windows backslash stays escaped.
       .replaceAll("$DENO", JSON.stringify(Deno.execPath()).slice(1, -1)),
   );
-  const death = engineDeathOf(raw, entry.name);
-  const spec = death === undefined ? caseOf(raw, entry.name) : undefined;
-  Deno.test(`conformance: ${entry.name}`, async () => {
+  const death = engineDeathOf(raw, name);
+  const spec = death === undefined ? caseOf(raw, name) : undefined;
+  Deno.test(`conformance: ${name}`, async () => {
     // Each case runs from its own empty directory: the incremental cache
     // lives under the working directory's `.zuke/`, so a repeat of the
     // cache-key case in the repository would be a cache hit, not a run.

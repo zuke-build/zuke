@@ -17,6 +17,7 @@
  * @module
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { TargetContext, TargetStateHandle } from "@zuke/core";
 import { Command } from "@zuke/core/shell";
 import { ToolSettings } from "@zuke/core/tooling";
@@ -344,6 +345,16 @@ async function spawn(options: WorkerOptions): Promise<Worker> {
     clearTimeout(timer);
   }
 }
+
+/**
+ * The async context the engine started in, under no run's ambient signal, echo
+ * sink or redactor: where a wrapper's module is imported. Deno runs a module's
+ * first dynamic import in the importer's `AsyncLocalStorage` context and that
+ * context outlives the import, so one made inside a dry-run body would leave
+ * every later run in this process, a test file's or an MCP server's, under its
+ * echo sink, spawning nothing. Seen in Deno 2.8.
+ */
+const outsideRuns = AsyncLocalStorage.snapshot();
 
 /** The worker host. Start one with {@link WorkerHost.start}. */
 export class WorkerHost {
@@ -831,9 +842,8 @@ export class WorkerHost {
   async #tool(request: ToolCall, signal: AbortSignal): Promise<unknown> {
     let module: Record<string, unknown>;
     try {
-      module = await (this.#options.tools ?? importTool)(
-        request.package,
-        request.version,
+      module = await outsideRuns(() =>
+        (this.#options.tools ?? importTool)(request.package, request.version)
       );
     } catch (error) {
       throw new RpcFailure(
