@@ -298,6 +298,27 @@ const PLAIN_FLAG = "--plain";
 /** The `upgrade` flag that moves a project's engine pin instead of the CLI. */
 const ENGINE_FLAG = "--engine";
 
+/**
+ * The arguments `zuke upgrade --engine` parses when `args` carries the flag,
+ * as a bare `--engine` or as `--engine=<version>`, with the flag taken out
+ * and an inline version left as its own argument; `null` when the command is
+ * the CLI's own reinstall. An exact token match: nothing else is read as the
+ * flag.
+ */
+function enginePinArgs(args: readonly string[]): string[] | null {
+  const inline = `${ENGINE_FLAG}=`;
+  if (!args.some((arg) => arg === ENGINE_FLAG || arg.startsWith(inline))) {
+    return null;
+  }
+  return args.flatMap((arg) =>
+    arg === ENGINE_FLAG
+      ? []
+      : arg.startsWith(inline)
+      ? [arg.slice(inline.length)]
+      : [arg]
+  );
+}
+
 /** The environment that asks a spawned build for plain output. */
 const PLAIN_ENV: Readonly<Record<string, string>> = { ZUKE_PLAIN: "1" };
 
@@ -942,9 +963,10 @@ export async function main(
       return await commandDoc(rest, host, docRunner);
     }
     if (command === "upgrade") {
-      if (rest.includes(ENGINE_FLAG)) {
+      const engineArgs = enginePinArgs(rest);
+      if (engineArgs !== null) {
         return await runEnginePin(
-          rest.filter((arg) => arg !== ENGINE_FLAG),
+          engineArgs,
           (line) => host.log(line),
           {
             readText: (path) => projectHost.readText(path),

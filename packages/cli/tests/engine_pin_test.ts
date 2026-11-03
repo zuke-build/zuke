@@ -128,6 +128,28 @@ Deno.test("zuke upgrade --engine <version> pins that release, and --dry-run only
   assertEquals(changed.written, ['{\n  "engine": "1.5.0"\n}\n']);
 });
 
+Deno.test("zuke upgrade --engine=<version> is the inline spelling of the same pin", async () => {
+  const files = fileHost(PINNED);
+  const host = new FakeHost();
+  const code = await main(
+    ["upgrade", "--engine=1.5.0", "--dry-run"],
+    host,
+    defaultPrompter,
+    undefined,
+    undefined,
+    undefined,
+    projectAt(["zuke.json"], PINNED),
+    engineRegistry(META),
+    files,
+  );
+  assertEquals(code, 0);
+  assertStringIncludes(
+    host.logs.join("\n"),
+    "Would move engine from 1.2.0 to 1.5.0",
+  );
+  assertEquals(files.written, []);
+});
+
 Deno.test("zuke upgrade --engine says when the pin is already there, and writes nothing", async () => {
   const files = fileHost(PINNED);
   const latest = await pin([], projectAt(["zuke.json"], PINNED), files, {
