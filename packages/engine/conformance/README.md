@@ -31,12 +31,13 @@ of its release, the `tasks` object the module exports, the `task` on it and the
 `args` as JSON, where an argument that is an object with the single key
 `configure` is a settings lambda as data: an ordered list of `[setter, [args]]`
 pairs, applied to the task's settings after the worker's environment and
-directory. The answer is the command output's `code`, `stdout` and `stderr`, the
-JSON of any other result, or `{}` for none. A call of the wrong shape, or a
-release, export, task or setter the engine cannot find, is refused with `-32602`
-naming it; a task that throws fails the call with `-32000` and its message, as
-does a result longer than one line of the protocol; a call the run's cancel cuts
-short answers `-32001` `cancelled`.
+directory; a setter's argument of the same form is a nested lambda, applied to
+the settings that setter hands it. The answer is the command output's `code`,
+`stdout` and `stderr`, the JSON of any other result, or `{}` for none. A call of
+the wrong shape, or a release, export, task or setter the engine cannot find, is
+refused with `-32602` naming it; a task that throws fails the call with `-32000`
+and its message, as does a result longer than one line of the protocol; a call
+the run's cancel cuts short answers `-32001` `cancelled`.
 
 The `tool_*.json` cases call the workspace `@zuke/deno` wrapper's `eval` task on
 the running Deno, so nothing is fetched. Two placeholders keep them static:

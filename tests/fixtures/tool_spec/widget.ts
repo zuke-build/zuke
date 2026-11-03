@@ -5,9 +5,10 @@
  * A command wrapper of every shape the tool spec must read:
  * settings on core's base with its inherited setters, a kind-changing setter,
  * a literal union behind a type alias, a rest parameter, an optional one, a
- * union of keywords, a date, a setter of plain data, setters of a callback, a
- * signal and a host the spec must leave out, a protected member, and a task
- * object declared through an interface.
+ * union of keywords, a date, a setter of plain data, a setter taking a nested
+ * lambda, a union of a host and a string where the string is kept, setters of a
+ * callback, a bigint, a signal and a host the spec must leave out, a protected
+ * member, and a task object declared through an interface.
  *
  * @module
  */
@@ -32,12 +33,28 @@ export interface WidgetHost {
   now(): Date;
 }
 
+/** How hard `widget` tries: what `WidgetSettings.tuning` configures. */
+export class WidgetTuning {
+  #speed = 1;
+
+  /** The speed, 1 to 9. */
+  speed(n: number): this {
+    this.#speed = n;
+    return this;
+  }
+
+  /** The speed set. */
+  get speed_(): number {
+    return this.#speed;
+  }
+}
+
 /** Settings for `widget build`. */
 export class WidgetSettings extends ToolSettings {
   #name?: string;
   #level = 0;
   #verbose = false;
-  #tags: string[] = [];
+  #tags: Array<string | number> = [];
   #format?: WidgetFormat;
   #limit?: string | number;
   #strict = false;
@@ -53,7 +70,7 @@ export class WidgetSettings extends ToolSettings {
     if (this.#name !== undefined) argv.push(this.#name);
     if (this.#level > 0) argv.push(`--level=${this.#level}`);
     if (this.#verbose) argv.push("--verbose");
-    for (const tag of this.#tags) argv.push("--tag", tag);
+    for (const tag of this.#tags) argv.push("--tag", String(tag));
     if (this.#format !== undefined) argv.push(`--format=${this.#format}`);
     if (this.#limit !== undefined) argv.push(`--limit=${this.#limit}`);
     if (this.#strict) argv.push("--strict");
@@ -82,8 +99,8 @@ export class WidgetSettings extends ToolSettings {
     return this;
   }
 
-  /** Tags to attach (`--tag`); repeatable. */
-  tags(...values: string[]): this {
+  /** Tags to attach (`--tag`); repeatable, written as a generic array. */
+  tags(...values: Array<string | number>): this {
     this.#tags.push(...values);
     return this;
   }
@@ -118,6 +135,20 @@ export class WidgetSettings extends ToolSettings {
     return this;
   }
 
+  /** Tune the build through a nested lambda: the spec carries it as a `configure`. */
+  tuning(configure: Configure<WidgetTuning>): this {
+    this.#level = configure(new WidgetTuning()).speed_;
+    return this;
+  }
+
+  /** The clock to read, a host or a fixed ISO string: the spec keeps the string. */
+  clock(source: WidgetHost | string): this {
+    this.#since = typeof source === "string"
+      ? source
+      : source.now().toISOString();
+    return this;
+  }
+
   /** A byte budget as a bigint: JSON has none, so the spec leaves it out. */
   budget(bytes: bigint): this {
     this.#level = Number(bytes);
@@ -145,6 +176,11 @@ export class WidgetSettings extends ToolSettings {
   /** Inspect instead of build: the inspect settings carry what is set so far. */
   inspecting(): WidgetInspectSettings {
     return new WidgetInspectSettings().tags(...this.#tags);
+  }
+
+  /** Run a probe: an async method is never a setter, so the spec leaves it out. */
+  async probe(): Promise<void> {
+    await Promise.resolve();
   }
 
   /** Whether a name was set; a query, not a setter. */

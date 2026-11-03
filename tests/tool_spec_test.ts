@@ -90,6 +90,13 @@ Deno.test("specType: keywords, literals, unions, arrays, records and references"
     [{ kind: "union", value: [keyword("string"), keyword("object")] }, {
       kind: "unknown",
     }],
+    // A member JSON cannot carry is left out; a union of none is unknown.
+    [{ kind: "union", value: [ref("Host"), keyword("string")] }, {
+      kind: "string",
+    }],
+    [{ kind: "union", value: [ref("Host"), { kind: "fnOrConstructor" }] }, {
+      kind: "unknown",
+    }],
     [{ kind: "union", value: undefined }, { kind: "unknown" }],
     [{ kind: "parenthesized", value: keyword("boolean") }, {
       kind: "boolean",

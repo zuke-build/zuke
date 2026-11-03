@@ -710,6 +710,9 @@ async function readBytesBounded(body: ReadableStream<Uint8Array> | null, limit: 
   archive that decompresses to gigabytes — is never buffered whole just to be
   rejected. A `null` body reads as empty.
 
+function redactLine(line: string): string
+  Mask every registered secret in `line`, or return it unchanged if none.
+
 function redactUrl(raw: string): string
   Strip userinfo (`user:pass@`) and mask every credential-bearing parameter so
   a URL is safe to put in an error message or a log:
@@ -7085,6 +7088,8 @@ interface ToolCall
     The task's arguments as JSON. An argument that is an object with a single
     `configure` key is a settings lambda as data: an ordered list of
     `[setter, [arguments]]` pairs the engine applies to the task's settings.
+    A setter's argument of the same form is a nested lambda, applied to the
+    settings that setter hands it.
 
 interface ValidateDuringSpec
   Checks run on an interval while the body runs, as `ValidateDuringSettings` configures them.
@@ -27352,6 +27357,9 @@ function suppressions(configure?: Configure<Suppressions>): Suppressions
   file and inline fingerprints can be set inline — e.g.
   `suppressions((s) => s.file(".zuke/suppress.json").add("abc"))`.
 
+const AiTasks: AiTasksApi
+  Typed task functions over the reviewers, for a build that calls rather than declares them.
+
 class AgentFixer implements Remediation
   A fluent agent fixer. Construct one via {@link agentFixer} with a runner, and
   attach it to a target with `.recoverWith(...)`. Diagnose/report defaults are
@@ -27803,6 +27811,27 @@ class ReviewCommandSettings
     contributor the project trusts, say. Checked before the collaborators API
     is asked.
 
+class ReviewSettings
+  The reviewers one `AiTasks.review` runs, as `.validateBefore(a, b)` would
+  run them, and the target they review for.
+
+  target(name: string): this
+    The target the reviewers are attached to, named in their output; `review` by default.
+  generic(configure?: Configure<Reviewer>): this
+    Add a code-quality reviewer, as {@link genericReviewer} makes it.
+  security(configure?: Configure<Reviewer>): this
+    Add a security reviewer, as {@link securityReviewer} makes it.
+  secrets(configure?: Configure<Reviewer>): this
+    Add a leaked-secrets reviewer, as {@link secretsReviewer} makes it.
+  correctness(configure?: Configure<Reviewer>): this
+    Add a correctness reviewer, as {@link correctnessReviewer} makes it.
+  license(configure?: Configure<Reviewer>): this
+    Add a license reviewer, as {@link licenseReviewer} makes it.
+  get target_(): string
+    The target name.
+  get reviewers_(): readonly Reviewer[]
+    The reviewers, in the order they were added.
+
 class Reviewer implements Validation
   A fluent AI reviewer. Construct one via {@link securityReviewer} (and the
   sibling factories), configure it, and attach it to a target with
@@ -28161,6 +28190,16 @@ interface AiReviewWorkflowSpec
       command: (c) => c.text("@zuke-build review"),
     });
     ```
+
+interface AiTasksApi
+  The tasks of {@link AiTasks}.
+
+  review(configure: Configure<ReviewSettings>): Promise<void>
+    Run the configured reviewers as peers of one target, in order. Throws when
+    a reviewer's gate trips, as the target it guards would fail.
+  preflight(configure: Configure<ReviewSettings>): Promise<void>
+    Run the reviewers' preflight: on a comment-started run, refuse a commenter
+    who may not start a review. A no-op on any other run.
 
 interface Assessment
   The structured result of a review.

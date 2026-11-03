@@ -1,6 +1,6 @@
 {
   "name": "widget",
-  "summary": "A command wrapper of every shape the tool spec must read: settings on core's base with its inherited setters, a kind-changing setter, a literal union behind a type alias, a rest parameter, an optional one, a union of keywords, a date, a setter of plain data, setters of a callback, a signal and a host the spec must leave out, a protected member, and a task object declared through an interface.",
+  "summary": "A command wrapper of every shape the tool spec must read: settings on core's base with its inherited setters, a kind-changing setter, a literal union behind a type alias, a rest parameter, an optional one, a union of keywords, a date, a setter of plain data, a setter taking a nested lambda, a union of a host and a string where the string is kept, setters of a callback, a bigint, a signal and a host the spec must leave out, a protected member, and a task object declared through an interface.",
   "tasks": [
     {
       "name": "WidgetTasks",
@@ -73,6 +73,30 @@
   ],
   "settings": [
     {
+      "name": "WidgetTuning",
+      "doc": "How hard `widget` tries: what `WidgetSettings.tuning` configures.",
+      "extends": null,
+      "setters": [
+        {
+          "name": "speed",
+          "doc": "The speed, 1 to 9.",
+          "params": [
+            {
+              "name": "n",
+              "type": {
+                "kind": "number"
+              },
+              "rest": false,
+              "optional": false
+            }
+          ],
+          "returns": {
+            "kind": "self"
+          }
+        }
+      ]
+    },
+    {
       "name": "WidgetSettings",
       "doc": "Settings for `widget build`.",
       "extends": "ToolSettings",
@@ -121,12 +145,20 @@
         },
         {
           "name": "tags",
-          "doc": "Tags to attach (`--tag`); repeatable.",
+          "doc": "Tags to attach (`--tag`); repeatable, written as a generic array.",
           "params": [
             {
               "name": "values",
               "type": {
-                "kind": "string"
+                "kind": "union",
+                "members": [
+                  {
+                    "kind": "string"
+                  },
+                  {
+                    "kind": "number"
+                  }
+                ]
               },
               "rest": true,
               "optional": false
@@ -231,6 +263,41 @@
               "type": {
                 "kind": "object",
                 "name": "WidgetOptions"
+              },
+              "rest": false,
+              "optional": false
+            }
+          ],
+          "returns": {
+            "kind": "self"
+          }
+        },
+        {
+          "name": "tuning",
+          "doc": "Tune the build through a nested lambda: the spec carries it as a `configure`.",
+          "params": [
+            {
+              "name": "configure",
+              "type": {
+                "kind": "configure",
+                "settings": "WidgetTuning"
+              },
+              "rest": false,
+              "optional": false
+            }
+          ],
+          "returns": {
+            "kind": "self"
+          }
+        },
+        {
+          "name": "clock",
+          "doc": "The clock to read, a host or a fixed ISO string: the spec keeps the string.",
+          "params": [
+            {
+              "name": "source",
+              "type": {
+                "kind": "string"
               },
               "rest": false,
               "optional": false

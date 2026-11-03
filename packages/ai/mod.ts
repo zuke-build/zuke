@@ -72,3 +72,4 @@ export {
   type ReviewSecret,
 } from "./src/workflow.ts";
 export type { CommandRole } from "./src/callers.ts";
+export { AiTasks, type AiTasksApi, ReviewSettings } from "./src/tasks.ts";

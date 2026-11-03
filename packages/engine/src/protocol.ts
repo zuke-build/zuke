@@ -315,6 +315,8 @@ export interface ToolCall {
    * The task's arguments as JSON. An argument that is an object with a single
    * `configure` key is a settings lambda as data: an ordered list of
    * `[setter, [arguments]]` pairs the engine applies to the task's settings.
+   * A setter's argument of the same form is a nested lambda, applied to the
+   * settings that setter hands it.
    */
   readonly args: readonly JsonValue[];
 }

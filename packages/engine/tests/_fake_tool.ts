@@ -50,6 +50,12 @@ export class FakeSettings extends ToolSettings {
     return this;
   }
 
+  /** Print the level a nested lambda tunes: a setter taking a settings lambda. */
+  tuned(configure: Configure<Tuning>): this {
+    this.#prints.push(JSON.stringify(String(configure(new Tuning()).level_)));
+    return this;
+  }
+
   /** Wait `ms` before exiting, for a test that must catch the command running. */
   sleeps(ms: number): this {
     this.#prints.push(`await new Promise((r) => setTimeout(r, ${ms})), ""`);

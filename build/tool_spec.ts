@@ -160,7 +160,7 @@ function one(
   return Array.isArray(value) ? undefined : value;
 }
 
-/** Fold a union's members: duplicates dropped, a lone member unwrapped. */
+/** Fold a union's members: duplicates dropped, a lone member unwrapped, none `unknown`. */
 function unionOf(members: readonly SpecType[]): SpecType {
   const unique: SpecType[] = [];
   const seen = new Set<string>();
@@ -171,7 +171,9 @@ function unionOf(members: readonly SpecType[]): SpecType {
       unique.push(member);
     }
   }
-  if (unique.some((m) => m.kind === "unknown")) return UNKNOWN;
+  if (unique.length === 0 || unique.some((m) => m.kind === "unknown")) {
+    return UNKNOWN;
+  }
   const [only] = unique;
   return unique.length === 1 && only !== undefined
     ? only
@@ -255,8 +257,14 @@ export function specType(
       return UNKNOWN;
     }
     case "union":
+      // The members JSON carries: a setter taking a parameter or a string is
+      // reached with the string.
       return Array.isArray(value)
-        ? unionOf(value.map((m) => specType(m, scope, depth + 1)))
+        ? unionOf(
+          value.filter((m) => jsonCarries(m, scope, depth + 1)).map((m) =>
+            specType(m, scope, depth + 1)
+          ),
+        )
         : UNKNOWN;
     case "parenthesized":
       return specType(one(value), scope, depth + 1);
@@ -290,7 +298,10 @@ function jsonCarries(
     // JSON has no bigint: a number would reach a setter expecting one.
     case "keyword":
       return t.repr !== "bigint";
+    // A union is reached through any member JSON carries.
     case "union":
+      return !Array.isArray(value) ||
+        value.some((m) => jsonCarries(m, scope, depth + 1));
     case "intersection":
       return !Array.isArray(value) ||
         value.every((m) => jsonCarries(m, scope, depth + 1));
@@ -320,8 +331,13 @@ function paramOf(p: DocParam, scope: Scope): SpecParam | undefined {
   const optional = p.kind === "assign" || p.optional === true ||
     p.left?.optional === true;
   // A rest parameter's documented type is the array; each element is one.
-  const element = rest ? one(tsType?.value) : tsType;
+  const element = rest ? elementOf(tsType) : tsType;
   return { name, type: specType(element, scope), rest, optional };
+}
+
+/** The element type of an array, written `T[]` or `Array<T>`. */
+function elementOf(t: DocTsType | undefined): DocTsType | undefined {
+  return t?.kind === "array" ? one(t.value) : one(t?.value)?.typeParams?.[0];
 }
 
 /** Read every parameter, or nothing when one of them cannot be carried. */
@@ -515,10 +531,10 @@ function setterOf(
     name.startsWith("_") || seen.has(name)
   ) return undefined;
   const fn = m.functionDef ?? m;
+  // A setter is synchronous: an async method is a hook or a run, never one.
+  if (one(fn.returnType?.value)?.typeName === "Promise") return undefined;
   const params = paramsOf(fn.params ?? [], scope);
-  if (params === undefined || params.some((p) => p.type.kind === "configure")) {
-    return undefined;
-  }
+  if (params === undefined) return undefined;
   const returns = specType(fn.returnType, scope);
   // A setter answers its settings, another settings class, or nothing.
   if (!["self", "settings", "null"].includes(returns.kind)) return undefined;
@@ -559,7 +575,7 @@ function tasksObjectOf(info: TasksInfo, scope: Scope): SpecTasks | undefined {
     : { name: info.name, doc: docOf(info.doc), tasks };
 }
 
-/** The settings classes a package's tasks reach: through `Configure`, bases and kind-changing setters. */
+/** The settings classes a package's tasks reach: through a `Configure`, a task's or a setter's, bases and kind-changing setters. */
 function reachableClasses(
   tasks: readonly TasksInfo[],
   classes: ReadonlyMap<string, ClassInfo>,
@@ -572,20 +588,24 @@ function reachableClasses(
     reached.add(name);
     visit(info.base);
     for (const m of info.methods) {
-      const returns = (m.functionDef ?? m).returnType;
+      const fn = m.functionDef ?? m;
+      const returns = fn.returnType;
       if (returns?.kind === "typeRef") visit(one(returns.value)?.typeName);
+      visitConfigured(fn.params ?? []);
+    }
+  };
+  // The settings class each `Configure` parameter names.
+  const visitConfigured = (params: readonly DocParam[]) => {
+    for (const p of params) {
+      const type = p.tsType ?? p.left?.tsType;
+      const value = one(type?.value);
+      if (type?.kind === "typeRef" && value?.typeName === "Configure") {
+        visit(one(value.typeParams?.[0]?.value)?.typeName);
+      }
     }
   };
   for (const object of tasks) {
-    for (const task of object.tasks) {
-      for (const p of task.params) {
-        const type = p.tsType ?? p.left?.tsType;
-        const value = one(type?.value);
-        if (type?.kind === "typeRef" && value?.typeName === "Configure") {
-          visit(one(value.typeParams?.[0]?.value)?.typeName);
-        }
-      }
-    }
+    for (const task of object.tasks) visitConfigured(task.params);
   }
   return reached;
 }

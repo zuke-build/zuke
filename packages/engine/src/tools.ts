@@ -71,7 +71,7 @@ export const RESERVED: ReadonlySet<string> = new Set([
   "markSecretsInOutput",
 ]);
 
-/** A settings lambda as data: the object with one `configure` key. */
+/** A settings lambda as data: the object with one `configure` key, at any depth. */
 function configureOf(arg: JsonValue): readonly JsonValue[] | undefined {
   if (!isRecord(arg) || Object.keys(arg).length !== 1) return undefined;
   const calls = arg.configure;
@@ -96,8 +96,22 @@ function setterOf(
 }
 
 /**
+ * One argument of a setter call: as given, unless it is a settings lambda as
+ * data, which becomes the lambda a setter such as `.diff((d) => d.base(...))`
+ * takes, replaying the recorded calls on whatever settings the setter hands it.
+ */
+function argumentOf(arg: JsonValue, where: string): unknown {
+  const calls = configureOf(arg);
+  return calls === undefined
+    ? arg
+    : (settings: unknown) => applySettings(settings, calls, where);
+}
+
+/**
  * Apply `calls` to `settings` in order, each a public setter of it. A name that
  * is not one, or that is a hook of the settings base class, is refused by name.
+ * A setter's argument of the one-key `configure` form is a nested settings
+ * lambda, applied the same way to the settings the setter passes it.
  */
 export function applySettings(
   settings: unknown,
@@ -119,7 +133,11 @@ export function applySettings(
         `${where}: "${name}" is not a setter of the task's settings`,
       );
     }
-    const out: unknown = Reflect.apply(member, current, [...args]);
+    const out: unknown = Reflect.apply(
+      member,
+      current,
+      args.map((arg) => argumentOf(arg, `${where}.${name}`)),
+    );
     // A setter answers its settings, which a kind-changing one replaces.
     if (typeof out === "object" && out !== null) current = out;
   }
