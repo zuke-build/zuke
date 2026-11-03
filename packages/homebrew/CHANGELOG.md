@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/zuke-build/zuke/compare/homebrew-v1.0.2...homebrew-v1.1.0) (2026-11-03)
+
+
+### Features
+
+* **homebrew:** trust the throwaway tap a verification installs from ([#945](https://github.com/zuke-build/zuke/issues/945)) ([698e7b7](https://github.com/zuke-build/zuke/commit/698e7b7cc9c4d94f92e97aedf2da490aa7a4f00e))
+
 ## [1.0.2](https://github.com/zuke-build/zuke/compare/homebrew-v1.0.1...homebrew-v1.0.2) (2026-10-20)
 
 
