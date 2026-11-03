@@ -22,7 +22,7 @@
 import type { AbsolutePath, PathLike } from "./path.ts";
 import { ambientSignal } from "./ambient_signal.ts";
 import { ambientEcho } from "./ambient_echo.ts";
-import { ambientOutput } from "./ambient_output.ts";
+import { ambientOutput, scopedOutput } from "./ambient_output.ts";
 import { redactLine } from "./ambient_redactor.ts";
 import { terminateProcess, TERMINATION_GRACE_MS } from "./terminate.ts";
 import {
@@ -129,7 +129,9 @@ export class CommandOutput {
  * {@link Command}, spawning does not wait for the process to exit; call
  * {@link SpawnedProcess.stop} to terminate it (which is also the default
  * service teardown). Its stdout/stderr are inherited so the process's own
- * output is visible.
+ * output is visible, except while its target runs alongside others: then the
+ * output goes to that target's block, and passes through live once the block
+ * has been printed.
  */
 export class SpawnedProcess {
   /** The child, or `undefined` for a no-op stub (a deep-dry-run echo). */
@@ -466,7 +468,12 @@ export class Command implements PromiseLike<CommandOutput> {
    * exit, returning a {@link SpawnedProcess} handle. Use this for a service —
    * a dev server, a database, `docker compose up` — that must keep running
    * while other targets execute; stop it with {@link SpawnedProcess.stop}.
-   * stdout/stderr are inherited so the process's output is visible.
+   * stdout/stderr are inherited so the process's output is visible. Inside a
+   * target that runs alongside others they are piped into that target's block
+   * instead, so the service's output does not land in another target's block.
+   * A piped service is not attached to a terminal, so it may drop colours or
+   * buffer its output, and one still running when the build exits loses its
+   * output stream: stop it in teardown rather than leaving it behind.
    */
   spawn(): SpawnedProcess {
     const [cmd, ...args] = this.#argv;
@@ -478,14 +485,34 @@ export class Command implements PromiseLike<CommandOutput> {
       echo(this.commandLine);
       return new SpawnedProcess(undefined, this.commandLine);
     }
+    // Inherited unless a concurrent target's buffer is in effect, so a lone
+    // service keeps the terminal (and its colours) as it always has.
+    const sink = scopedOutput();
+    const stdio = sink === undefined ? "inherit" : "piped";
     const child = new Deno.Command(cmd, {
       args,
       cwd: this.#cwd,
       env: this.#env,
-      stdout: "inherit",
-      stderr: "inherit",
+      stdout: stdio,
+      stderr: stdio,
       signal: this.#signal ?? ambientSignal(),
     }).spawn();
+    if (sink !== undefined) {
+      // Nothing is kept (a cap of 0): the pump only forwards. If the sink
+      // fails (a closed terminal), cancel the stream so the service gets a
+      // broken pipe, as it would writing to that terminal, rather than blocking
+      // on a pipe nobody reads.
+      for (
+        const [stream, writer] of [[child.stdout, sink.stdout], [
+          child.stderr,
+          sink.stderr,
+        ]] as const
+      ) {
+        void captureStream(stream, writer, 0).catch(() =>
+          stream.cancel().catch(() => {})
+        );
+      }
+    }
     return new SpawnedProcess(child, this.commandLine);
   }
 }

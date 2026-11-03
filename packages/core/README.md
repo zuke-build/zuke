@@ -6025,7 +6025,12 @@ class Command implements PromiseLike<CommandOutput>
     exit, returning a {@link SpawnedProcess} handle. Use this for a service —
     a dev server, a database, `docker compose up` — that must keep running
     while other targets execute; stop it with {@link SpawnedProcess.stop}.
-    stdout/stderr are inherited so the process's output is visible.
+    stdout/stderr are inherited so the process's output is visible. Inside a
+    target that runs alongside others they are piped into that target's block
+    instead, so the service's output does not land in another target's block.
+    A piped service is not attached to a terminal, so it may drop colours or
+    buffer its output, and one still running when the build exits loses its
+    output stream: stop it in teardown rather than leaving it behind.
 
 class CommandError extends Error
   Raised when a command exits non-zero and throwing was not suppressed.
@@ -6070,7 +6075,9 @@ class SpawnedProcess
   {@link Command}, spawning does not wait for the process to exit; call
   {@link SpawnedProcess.stop} to terminate it (which is also the default
   service teardown). Its stdout/stderr are inherited so the process's own
-  output is visible.
+  output is visible, except while its target runs alongside others: then the
+  output goes to that target's block, and passes through live once the block
+  has been printed.
 
   constructor(child: Deno.ChildProcess | undefined, readonly commandLine: string)
     Wrap a spawned child process (or none, for a stub) and its command line.

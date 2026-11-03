@@ -13,7 +13,8 @@
 
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { Build, group, target } from "../../packages/core/mod.ts";
-import { main } from "../../packages/core/src/cli.ts";
+import { main, type MainOptions } from "../../packages/core/src/cli.ts";
+import type { Plugin } from "../../packages/core/src/plugin.ts";
 import { flushInFlightOutput } from "../../packages/core/src/scheduler.ts";
 import { $ } from "../../packages/core/src/shell.ts";
 
@@ -24,6 +25,7 @@ const printed: string[] = [];
 async function transcript(
   BuildClass: new () => Build,
   args: string[],
+  options: MainOptions = {},
 ): Promise<{ code: number; lines: string[] }> {
   const parts = printed;
   parts.length = 0;
@@ -41,7 +43,7 @@ async function transcript(
   Deno.stdout.writeSync = raw;
   Deno.stderr.writeSync = raw;
   try {
-    const code = await main(BuildClass, args);
+    const code = await main(BuildClass, args, options);
     return { code, lines: parts.join("").split("\n") };
   } finally {
     console.log = origLog;
@@ -235,4 +237,94 @@ Deno.test("integration: a forced exit flushes a fan-out item to the sink it laun
   assertEquals(code === 0, true, lines.join("\n"));
   assertEquals(build?.seen.includes("ITEM-a"), true, build?.seen);
   assertEquals(lines.filter((l) => l === "ITEM-a").length, 1);
+});
+
+class ConsoleAndServiceBuild extends Build {
+  checks = group();
+  slow = target().partOf(this.checks).executes(async () => {
+    console.log("SLOW-LOG");
+    const code = `console.log("SVC-OUT");`;
+    const service = $`${Deno.execPath()} eval ${code}`.spawn();
+    await service.status;
+    await new Promise((r) => setTimeout(r, 400));
+  });
+  fast = target().partOf(this.checks).executes(() => {
+    console.log("FAST-LOG");
+  });
+  ci = target().dependsOn(this.checks).executes(() => {});
+}
+
+Deno.test("integration: a concurrent target's console and service output stay in its block", async () => {
+  const { code, lines } = await transcript(ConsoleAndServiceBuild, [
+    "ci",
+    "--plain",
+  ]);
+  assertEquals(code === 0, true, lines.join("\n"));
+  const fastHeader = lineOf(lines, /\bfast\b/);
+  const fastLog = lineOf(lines, /^FAST-LOG$/);
+  const slowHeader = lineOf(lines, /\bslow\b/);
+  const slowLog = lineOf(lines, /^SLOW-LOG$/);
+  const svcOut = lineOf(lines, /^SVC-OUT$/);
+  // `fast` settles first, so its block comes first, its log inside it.
+  assertEquals(fastHeader < fastLog, true, lines.join("\n"));
+  assertEquals(fastLog < slowHeader, true, lines.join("\n"));
+  // `slow` logged and started its service before `fast` printed anything, yet
+  // both lines wait for its own header.
+  assertEquals(slowHeader < slowLog, true, lines.join("\n"));
+  assertEquals(slowLog < svcOut, true, lines.join("\n"));
+});
+
+class SkippedLogBuild extends Build {
+  checks = group();
+  slow = target().partOf(this.checks).executes(async () => {
+    await new Promise((r) => setTimeout(r, 200));
+  });
+  gated = target().partOf(this.checks).onlyWhen(() => {
+    console.log("GATE-SAYS-SKIP");
+    return false;
+  }).executes(() => {});
+  ci = target().dependsOn(this.checks).executes(() => {});
+}
+
+Deno.test("integration: a skipped concurrent target still prints what its onlyWhen logged", async () => {
+  const { code, lines } = await transcript(SkippedLogBuild, ["ci", "--plain"]);
+  assertEquals(code === 0, true, lines.join("\n"));
+  lineOf(lines, /^GATE-SAYS-SKIP$/);
+});
+
+class HookedBuild extends Build {
+  checks = group();
+  slow = target().partOf(this.checks).executes(async () => {
+    await new Promise((r) => setTimeout(r, 200));
+  });
+  fast = target().partOf(this.checks).executes(() => {});
+  ci = target().dependsOn(this.checks).executes(() => {});
+}
+
+Deno.test("integration: a plugin's start and end lines stay inside the target's block", async () => {
+  const plugin: Plugin = {
+    name: "probe",
+    onTargetStart: (target) => console.log(`START-${target}`),
+    onTargetEnd: (target) => console.log(`END-${target}`),
+  };
+  const { code, lines } = await transcript(HookedBuild, ["ci", "--plain"], {
+    plugins: [plugin],
+  });
+  assertEquals(code === 0, true, lines.join("\n"));
+  const fastHeader = lineOf(lines, /\bfast\b/);
+  const slowHeader = lineOf(lines, /\bslow\b/);
+  const fastEnd = lineOf(lines, /^END-fast$/);
+  // `fast` settles first: its whole block, both hook lines included, comes
+  // before the slow target's header.
+  assertEquals(
+    fastHeader < lineOf(lines, /^START-fast$/),
+    true,
+    lines.join("\n"),
+  );
+  assertEquals(fastEnd < slowHeader, true, lines.join("\n"));
+  assertEquals(
+    slowHeader < lineOf(lines, /^END-slow$/),
+    true,
+    lines.join("\n"),
+  );
 });

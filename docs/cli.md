@@ -473,14 +473,16 @@ By default targets run one at a time in a deterministic order. `--parallel` runs
 independent targets concurrently while still completing every dependency before
 its dependents; `--parallel=N` caps the number in flight (the default is the
 host's CPU count). A target that may run alongside another buffers its whole
-block — its header, the output of the commands it runs, and its result — and
-prints it as a unit when it finishes, so concurrent targets never interleave.
-The trade-off is that such a target's output appears when it ends rather than
-live; a second Ctrl-C prints what in-flight targets had written before the
-process exits. A target that can never overlap another streams live. Services
-started with `.spawn()` write to the terminal directly. The first failure stops
-new launches; targets already running finish, and the rest are reported as
-skipped. The build summary stays in declaration order regardless.
+block — its header, the output of the commands it runs, what it logs to the
+console, and its result — and prints it as a unit when it finishes, so
+concurrent targets never interleave. The trade-off is that such a target's
+output appears when it ends rather than live; a second Ctrl-C prints what
+in-flight targets had written before the process exits. A target that can never
+overlap another streams live. A service started with `.spawn()` in such a target
+writes into its block, then straight to the terminal once the block is printed.
+The first failure stops new launches; targets already running finish, and the
+rest are reported as skipped. The build summary stays in declaration order
+regardless.
 
 Programmatic callers get the same behaviour via
 `execute(build, target, { parallel: true })` (or a number) — see the

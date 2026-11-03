@@ -104,3 +104,106 @@ Deno.test("bufferReporter: writes after a flush pass straight through", () => {
   assertEquals(out.text(), "late\n");
   assertEquals(lines, ["late line"]);
 });
+
+/** Poll until `done()` holds, so a test can wait on a pump nobody awaits. */
+async function until(done: () => boolean, ms = 5000): Promise<void> {
+  const deadline = Date.now() + ms;
+  while (!done() && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 10));
+  }
+}
+
+Deno.test("withAmbientOutput: console output inside the scope goes to the sink", async () => {
+  const origLog = console.log;
+  const origError = console.error;
+  const direct: string[] = [];
+  console.log = (...data: unknown[]) =>
+    void direct.push(`log:${data.join(" ")}`);
+  console.error = (...data: unknown[]) =>
+    void direct.push(`error:${data.join(" ")}`);
+  try {
+    const stdout = recorder();
+    const stderr = recorder();
+    await withAmbientOutput({ stdout, stderr }, () => {
+      console.log("hello %s", "world", 42);
+      console.error("oops");
+      return Promise.resolve();
+    });
+    // A second scope must not wrap the wrapper: outside, one call is one line.
+    await withAmbientOutput({ stdout, stderr }, () => {
+      console.log("again");
+      return Promise.resolve();
+    });
+    console.log("outside");
+    console.error("outside err");
+    assertEquals(stdout.text(), "hello world 42\nagain\n");
+    assertEquals(stderr.text(), "oops\n");
+    assertEquals(direct, ["log:outside", "error:outside err"]);
+  } finally {
+    console.log = origLog;
+    console.error = origError;
+  }
+});
+
+Deno.test("withAmbientOutput: a console replaced after the first wrap is wrapped too", async () => {
+  const origLog = console.log;
+  try {
+    // Wrap whatever is installed now.
+    await withAmbientOutput(
+      { stdout: recorder(), stderr: recorder() },
+      () => Promise.resolve(),
+    );
+    const direct: string[] = [];
+    console.log = (...data: unknown[]) => void direct.push(data.join(" "));
+    const stdout = recorder();
+    await withAmbientOutput({ stdout, stderr: recorder() }, () => {
+      console.log("routed");
+      return Promise.resolve();
+    });
+    console.log("direct");
+    assertEquals(stdout.text(), "routed\n");
+    assertEquals(direct, ["direct"]);
+  } finally {
+    console.log = origLog;
+  }
+});
+
+Deno.test("withAmbientOutput: a spawned process's output goes to the sink", async () => {
+  const stdout = recorder();
+  const stderr = recorder();
+  const code = `console.log("svc-out"); console.error("svc-err");`;
+  const proc = await withAmbientOutput(
+    { stdout, stderr },
+    () => Promise.resolve($`${Deno.execPath()} eval ${code}`.spawn()),
+  );
+  assertEquals((await proc.status).code, 0);
+  await until(() => stdout.text() !== "" && stderr.text() !== "");
+  assertEquals(stdout.text(), "svc-out\n");
+  assertEquals(stderr.text(), "svc-err\n");
+});
+
+Deno.test("withAmbientOutput: a spawned process does not hang when the sink fails", async () => {
+  const broken: ByteWriter = {
+    writeSync: () => {
+      throw new Deno.errors.BrokenPipe("terminal closed");
+    },
+  };
+  // Far more than a pipe buffer holds, so an undrained pipe would block it.
+  const code = `const line = "x".repeat(1023) + "\\n";
+for (let i = 0; i < 512; i++) console.log(line);`;
+  const proc = await withAmbientOutput(
+    { stdout: broken, stderr: recorder() },
+    () => Promise.resolve($`${Deno.execPath()} eval ${code}`.spawn()),
+  );
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const hung = new Promise<"hung">((r) => {
+    timer = setTimeout(() => r("hung"), 10_000);
+  });
+  try {
+    const result = await Promise.race([proc.status, hung]);
+    assertEquals(result === "hung", false, "the service blocked on its pipe");
+  } finally {
+    clearTimeout(timer);
+    await proc.stop();
+  }
+});

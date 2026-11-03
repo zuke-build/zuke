@@ -12,7 +12,11 @@
  * @module
  */
 
-import type { ByteWriter, OutputSink } from "./ambient_output.ts";
+import {
+  type ByteWriter,
+  type OutputSink,
+  writeAll,
+} from "./ambient_output.ts";
 import type { Redactor } from "./redact.ts";
 import { detectCiHost } from "./host.ts";
 import { escapeLine, escapeLineIf } from "./render.ts";
@@ -220,12 +224,4 @@ export function bufferReporter(): {
       for (const entry of entries.splice(0)) emit(entry, to, raw);
     },
   };
-}
-
-/** Write every byte of `bytes`; `writeSync` may write fewer than asked. */
-function writeAll(to: ByteWriter, bytes: Uint8Array): void {
-  let written = 0;
-  while (written < bytes.length) {
-    written += to.writeSync(bytes.subarray(written));
-  }
 }
