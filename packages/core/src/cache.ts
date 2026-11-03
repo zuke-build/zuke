@@ -28,12 +28,14 @@ import {
   writeFileEnsuringDir,
   writeTextEnsuringDir,
 } from "./internal.ts";
+import { byteStream } from "./compression.ts";
 import {
   archiveOutputs,
+  archiveStream,
   type OutputHost,
   remoteCacheKey,
   type RemoteCacheStore,
-  restoreOutputs,
+  restoreFrom,
 } from "./remote_cache.ts";
 
 /** The cache store file name within the `.zuke/` artifact directory. */
@@ -49,6 +51,22 @@ export interface CacheHost extends OutputHost {
   readStore(path: string): Promise<string | null>;
   /** Write the cache store text, creating parent directories. */
   writeStore(path: string, content: string): Promise<void>;
+  /**
+   * Park a downloaded artifact somewhere it can be read back more than once —
+   * a temporary file — so the restore never holds it in memory. A host
+   * without it reads the artifact into memory through the store's `get`.
+   */
+  spool?(artifact: ReadableStream<Uint8Array<ArrayBuffer>>): Promise<
+    SpooledArtifact
+  >;
+}
+
+/** An artifact {@link CacheHost.spool} has parked, read back once per restore pass. */
+export interface SpooledArtifact {
+  /** A fresh stream of the artifact's bytes, from the start. */
+  open(): Promise<ReadableStream<Uint8Array<ArrayBuffer>>>;
+  /** Delete it. Never throws: a temporary file left behind must not fail a build. */
+  remove(): Promise<void>;
 }
 
 /** The real, `Deno`-backed {@link CacheHost}. */
@@ -82,6 +100,27 @@ export const defaultCacheHost: CacheHost = {
     return names;
   },
   writeFile: writeFileEnsuringDir,
+  async spool(
+    artifact: ReadableStream<Uint8Array<ArrayBuffer>>,
+  ): Promise<SpooledArtifact> {
+    let path: string;
+    try {
+      path = await Deno.makeTempFile({ prefix: "zuke-artifact-" });
+    } catch (error) {
+      // Nothing will read the download now: release its connection.
+      await artifact.cancel().catch(() => {});
+      throw error;
+    }
+    // Best-effort: the file is in the system temp directory either way.
+    const remove = () => Deno.remove(path).catch(() => {});
+    try {
+      await Deno.writeFile(path, artifact);
+    } catch (error) {
+      await remove();
+      throw error;
+    }
+    return { open: async () => (await Deno.open(path)).readable, remove };
+  },
   readLink: Deno.readLink,
   realPath: Deno.realPath,
   async symlink(
@@ -228,9 +267,9 @@ class FsCache implements BuildCache {
     // the remote store. A store error is non-fatal — fall through to a rebuild.
     if (this.#remote !== undefined && target.outputs_.length > 0) {
       const key = remoteCacheKey(name, fp);
-      let artifact: Uint8Array | null = null;
+      let artifact: SpooledArtifact | null = null;
       try {
-        artifact = await this.#remote.get(key);
+        artifact = await this.#fetch(this.#remote, key);
       } catch (error) {
         this.#warn?.(
           `remote cache lookup for "${name}" failed: ${messageOf(error)}`,
@@ -245,8 +284,8 @@ class FsCache implements BuildCache {
         // Throwing instead would let anyone who can write the store halt every
         // build that reads it, and the store is documented as best-effort.
         try {
-          await restoreOutputs(
-            artifact,
+          await restoreFrom(
+            artifact.open,
             this.#host,
             target.outputs_,
             this.#remote.maxInflatedBytes,
@@ -258,6 +297,8 @@ class FsCache implements BuildCache {
             }`,
           );
           return false;
+        } finally {
+          await artifact.remove();
         }
         this.#store[name] = fp;
         this.#dirty = true;
@@ -266,6 +307,27 @@ class FsCache implements BuildCache {
       }
     }
     return false;
+  }
+
+  /**
+   * The artifact under `key`, or `null` on a miss: streamed to the host's
+   * spool when both sides can, so it is never held in memory, and otherwise
+   * read whole through `get`.
+   */
+  async #fetch(
+    remote: RemoteCacheStore,
+    key: string,
+  ): Promise<SpooledArtifact | null> {
+    const host = this.#host;
+    if (remote.getStream !== undefined && host.spool !== undefined) {
+      const stream = await remote.getStream(key);
+      return stream === null ? null : await host.spool(stream);
+    }
+    const bytes = await remote.get(key);
+    return bytes === null ? null : {
+      open: () => Promise.resolve(byteStream(bytes)),
+      remove: () => Promise.resolve(),
+    };
   }
 
   async record(target: TargetBuilder): Promise<void> {
@@ -284,8 +346,18 @@ class FsCache implements BuildCache {
       !this.#restored.has(target)
     ) {
       try {
-        const artifact = await archiveOutputs(target.outputs_, this.#host);
-        await this.#remote.put(remoteCacheKey(name, fp), artifact);
+        const key = remoteCacheKey(name, fp);
+        if (this.#remote.putStream !== undefined) {
+          await this.#remote.putStream(
+            key,
+            await archiveStream(target.outputs_, this.#host),
+          );
+        } else {
+          await this.#remote.put(
+            key,
+            await archiveOutputs(target.outputs_, this.#host),
+          );
+        }
       } catch (error) {
         this.#warn?.(
           `remote cache upload for "${name}" failed: ${messageOf(error)}`,

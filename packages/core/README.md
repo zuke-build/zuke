@@ -1793,8 +1793,14 @@ class FileSystemCacheStore implements RemoteCacheStore
     The most an artifact may decompress to; see {@link RemoteCacheStore.maxInflatedBytes}.
   get(key: string): Promise<Uint8Array | null>
     Fetch the archived outputs stored under `key`, or `null` if there are none.
-  async put(key: string, artifact: Uint8Array): Promise<void>
+  async getStream(key: string): Promise<ReadableStream<Uint8Array<ArrayBuffer>> | null>
+    The archive stored under `key` as a stream, or `null` if there is none.
+  put(key: string, artifact: Uint8Array): Promise<void>
     Store `artifact` (a gzipped tar of a target's outputs) under `key`.
+  async putStream(key: string, artifact: ReadableStream<Uint8Array<ArrayBuffer>>): Promise<void>
+    Store the archive `artifact` streams under `key`. It is written under a
+    temporary name and renamed into place, so a reader on another machine
+    never sees a half-written archive.
 
 class FileSystemStateStore implements StateStore
   A {@link StateStore} that writes one `<id>.json` file per run under a
@@ -1896,6 +1902,8 @@ class GitHubActionsCacheStore implements RemoteCacheStore
     The most an artifact may decompress to; see {@link RemoteCacheStore.maxInflatedBytes}.
   async get(key: string): Promise<Uint8Array | null>
     Fetch the archived outputs stored under `key`, or `null` if there are none.
+  async getStream(key: string): Promise<ReadableStream<Uint8Array<ArrayBuffer>> | null>
+    The archive stored under `key` as a stream, or `null` if there is none.
   async put(key: string, artifact: Uint8Array): Promise<void>
     Store `artifact` (a gzipped tar of a target's outputs) under `key`.
 
@@ -1961,6 +1969,11 @@ class HttpCacheStore implements RemoteCacheStore
     The most an artifact may decompress to; see {@link RemoteCacheStore.maxInflatedBytes}.
   async get(key: string): Promise<Uint8Array | null>
     Fetch the archived outputs stored under `key`, or `null` if there are none.
+  async getStream(key: string): Promise<ReadableStream<Uint8Array<ArrayBuffer>> | null>
+    The archive stored under `key` as a stream, or `null` if there is none.
+    It is bounded as it arrives rather than measured after: a store that
+    answers with an endless body would otherwise exhaust memory or disk
+    before there was anything to reject.
   async put(key: string, artifact: Uint8Array): Promise<void>
     Store `artifact` (a gzipped tar of a target's outputs) under `key`.
 
@@ -2309,6 +2322,8 @@ class S3CacheStore implements RemoteCacheStore
     The most an artifact may decompress to; see {@link RemoteCacheStore.maxInflatedBytes}.
   get(key: string): Promise<Uint8Array | null>
     Fetch the archived outputs stored under `key`, or `null` if there are none.
+  getStream(key: string): Promise<ReadableStream<Uint8Array<ArrayBuffer>> | null>
+    The archive stored under `key` as a stream, or `null` if there is none.
   put(key: string, artifact: Uint8Array): Promise<void>
     Store `artifact` (a gzipped tar of a target's outputs) under `key`.
 
@@ -4670,11 +4685,20 @@ interface RemoteCacheStore
     {@link restoreOutputs} refuses it. Defaults to 2 GiB; raise it for a target
     whose outputs are genuinely larger, such as a whole SDK. The restore streams
     the inflated archive rather than holding it, so raising the bound does not
-    raise its memory use: that is the compressed artifact plus one file.
+    raise its memory use.
   get(key: string): Promise<Uint8Array | null>
     Fetch the archived outputs stored under `key`, or `null` if there are none.
   put(key: string, artifact: Uint8Array): Promise<void>
     Store `artifact` (a gzipped tar of a target's outputs) under `key`.
+  getStream?(key: string): Promise<ReadableStream<Uint8Array<ArrayBuffer>> | null>
+    {@link RemoteCacheStore.get} as a stream, or `null` if there is nothing
+    under `key`: the executor writes it straight to a temporary file and
+    restores from there, so a large artifact is never held in memory. A store
+    without it is read with `get`.
+  putStream?(key: string, artifact: ReadableStream<Uint8Array<ArrayBuffer>>): Promise<void>
+    {@link RemoteCacheStore.put} from a stream, so the archive is written as
+    it is compressed rather than buffered first. A store without it is given
+    the whole artifact through `put`.
 
 interface RemoveOptions
   Options for {@link FileTasksApi.remove}.

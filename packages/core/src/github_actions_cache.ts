@@ -22,8 +22,8 @@
  * @module
  */
 
-import { HttpError } from "./http.ts";
-import { readBytesBounded, sha256Hex } from "./internal.ts";
+import { artifactBody, HttpError } from "./http.ts";
+import { sha256Hex } from "./internal.ts";
 import type { RemoteCacheStore } from "./remote_cache.ts";
 
 /** Configuration for a {@link GitHubActionsCacheStore}. */
@@ -136,6 +136,16 @@ export class GitHubActionsCacheStore implements RemoteCacheStore {
 
   /** Fetch the archived outputs stored under `key`, or `null` if there are none. */
   async get(key: string): Promise<Uint8Array | null> {
+    const stream = await this.getStream(key);
+    return stream === null
+      ? null
+      : new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+
+  /** The archive stored under `key` as a stream, or `null` if there is none. */
+  async getStream(
+    key: string,
+  ): Promise<ReadableStream<Uint8Array<ArrayBuffer>> | null> {
     let entry: Record<string, unknown>;
     try {
       entry = await this.#call("GetCacheEntryDownloadURL", {
@@ -155,23 +165,16 @@ export class GitHubActionsCacheStore implements RemoteCacheStore {
     if (entry.ok !== true || url === undefined) return null;
     // The signed URL carries its own credential, so the bearer token stays
     // with the service it was issued for.
-    const response = await this.#fetch(url);
-    if (response.status === 404) {
-      await response.body?.cancel();
-      return null;
-    }
-    if (!response.ok) {
-      await response.body?.cancel();
-      throw new HttpError(response.status, url);
-    }
-    const bytes = await readBytesBounded(response.body, this.#maxArtifactBytes);
-    if (bytes === null) {
-      throw new Error(
-        `remote cache: refusing an artifact larger than ` +
-          `${this.#maxArtifactBytes} bytes from the GitHub Actions cache.`,
-      );
-    }
-    return bytes;
+    return await artifactBody(
+      await this.#fetch(url),
+      url,
+      this.#maxArtifactBytes,
+      () =>
+        new Error(
+          `remote cache: refusing an artifact larger than ` +
+            `${this.#maxArtifactBytes} bytes from the GitHub Actions cache.`,
+        ),
+    );
   }
 
   /** Store `artifact` (a gzipped tar of a target's outputs) under `key`. */

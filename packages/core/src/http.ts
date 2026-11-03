@@ -21,6 +21,7 @@
  */
 
 import type { PathLike } from "./path.ts";
+import { limitBytes } from "./internal.ts";
 import { redactUrl } from "./redact_url.ts";
 
 /**
@@ -198,4 +199,29 @@ export async function httpJson<T = unknown>(
 ): Promise<T> {
   const response = await request(url, options);
   return await response.json() as T;
+}
+
+/**
+ * The body of a fetched cache artifact as a stream bounded to `limit` bytes,
+ * or `null` for a `404`. Any other non-`2xx` status throws an
+ * {@link HttpError}. The bound is applied as the bytes arrive, so a store
+ * that answers with an endless body fails the read instead of filling memory
+ * or disk first.
+ */
+export async function artifactBody(
+  response: Response,
+  url: string,
+  limit: number,
+  tooLarge: () => Error,
+): Promise<ReadableStream<Uint8Array<ArrayBuffer>> | null> {
+  if (response.status === 404) {
+    await response.body?.cancel();
+    return null;
+  }
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new HttpError(response.status, url);
+  }
+  return (response.body ?? ReadableStream.from<Uint8Array<ArrayBuffer>>([]))
+    .pipeThrough(limitBytes(limit, tooLarge));
 }
