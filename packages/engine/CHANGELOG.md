@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/zuke-build/zuke/compare/engine-v1.1.0...engine-v1.1.1) (2026-11-03)
+
+
+### Bug Fixes
+
+* **engine:** answer a tool.call the cancel cut short as cancelled, with its conformance cases ([#941](https://github.com/zuke-build/zuke/issues/941)) ([e401c4e](https://github.com/zuke-build/zuke/commit/e401c4e6a9e52c40ad70a162e35311db33e5b4bc))
+
 ## [1.1.0](https://github.com/zuke-build/zuke/compare/engine-v1.0.0...engine-v1.1.0) (2026-11-02)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.78.1](https://github.com/zuke-build/zuke/compare/core-v1.78.0...core-v1.78.1) (2026-11-03)
+
+
+### Bug Fixes
+
+* **core:** stop the remote cache walk re-entering a looping directory link ([#940](https://github.com/zuke-build/zuke/issues/940)) ([117bf48](https://github.com/zuke-build/zuke/commit/117bf48a089b6794535f176fe6d615b540ca60a2))
+
 ## [1.78.0](https://github.com/zuke-build/zuke/compare/core-v1.77.1...core-v1.78.0) (2026-11-02)
 
 
