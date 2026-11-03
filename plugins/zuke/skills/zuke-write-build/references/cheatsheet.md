@@ -2093,10 +2093,10 @@ exactly, never by basename, since the descriptor picks the program string; `*`
 allows any), because the registry writer chooses the program _and its arguments_
 — audited `launch_command_not_allowed`. Listing a program does not license it to
 fetch: a remote argument still has to pass `ZUKE_REGISTRY_LAUNCH_HOSTS`. Prefer
-absolute paths: a relative program resolves against the descriptor's own cwd.
-A UNC path (`//host/…`, `\\host\…`) or a `file:` URL with a host other than
-`localhost` counts as remote, origin = that host. A local module, and the
-launch cwd, must also lie inside `ZUKE_REGISTRY_LAUNCH_DIRS` (absolute dirs,
+absolute paths: a relative program resolves against the descriptor's own cwd. A
+UNC path (`//host/…`, `\\host\…`) or a `file:` URL with a host other than
+`localhost` counts as remote, origin = that host. A local module, and the launch
+cwd, must also lie inside `ZUKE_REGISTRY_LAUNCH_DIRS` (absolute dirs,
 comma/newline-separated; default the server's own project root; `*` disables),
 compared after resolving symlinks — audited `launch_dir_not_allowed`. A server
 launching builds registered from other checkouts must list their roots.

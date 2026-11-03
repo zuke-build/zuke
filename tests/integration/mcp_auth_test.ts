@@ -216,7 +216,11 @@ Deno.test("in registry mode the caller's kind and roles reach the spawned build"
     await silence(async () => {
       const code = await registerCommand(new Fleet(), {
         registry,
-        location: { kind: "module", module: "file:///r/fleet.ts", cwd: "/r" },
+        location: {
+          kind: "module",
+          module: `${Deno.cwd()}/fleet.ts`,
+          cwd: Deno.cwd(),
+        },
         readEnv: () => undefined,
         now: () => "2026-01-01T00:00:00.000Z",
       });
