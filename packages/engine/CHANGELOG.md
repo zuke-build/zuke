@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/zuke-build/zuke/compare/engine-v1.2.0...engine-v1.2.1) (2026-11-03)
+
+
+### Bug Fixes
+
+* **core:** harden secret redaction, the remote cache, registry launches and the release pipeline ([#966](https://github.com/zuke-build/zuke/issues/966)) ([cd1d3cb](https://github.com/zuke-build/zuke/commit/cd1d3cba395f1e03d9123a4ca3b7a1cd3a3b4c8c))
+
 ## [1.2.0](https://github.com/zuke-build/zuke/compare/engine-v1.1.1...engine-v1.2.0) (2026-11-03)
 
 
