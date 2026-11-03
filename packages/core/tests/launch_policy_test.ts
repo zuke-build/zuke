@@ -465,6 +465,32 @@ Deno.test("a command location is refused unless its program is allow-listed", ()
   );
 });
 
+Deno.test("an allow-listed command's working directory is confined like a module's", () => {
+  // `make` run from a writer-chosen directory reads that directory's Makefile,
+  // so naming the program does not let the registry choose where it runs.
+  const allowed = env({ [LAUNCH_COMMANDS_ENV]: "make" });
+  const at = (cwd: string): BuildLocation => ({
+    kind: "command",
+    command: ["make"],
+    cwd,
+  });
+  for (const cwd of ["/tmp/evil", "/work/link", "relative/dir"]) {
+    assertEquals(
+      deny(at(cwd), allowed, fakeFs({ "/work/link": "/tmp/evil" }))?.reason,
+      "launch_dir_not_allowed",
+      cwd,
+    );
+  }
+  assertEquals(deny(at("/work/sub"), allowed), null);
+  assertEquals(
+    deny(
+      at("/tmp/evil"),
+      env({ [LAUNCH_COMMANDS_ENV]: "make", [LAUNCH_DIRS_ENV]: "/tmp" }),
+    ),
+    null,
+  );
+});
+
 Deno.test("the command allow-list matches the program exactly", () => {
   // An entry admits the exact string the descriptor wrote, and nothing else.
   assertEquals(

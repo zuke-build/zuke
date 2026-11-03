@@ -322,14 +322,23 @@ the job's credentials. The key a target's artifact is stored under is derived
 from public inputs, so it is no secret.
 
 - **Set `ZUKE_REMOTE_CACHE_SIGNING_KEY`** to a secret only your builds hold.
-  Each upload is then stored with an HMAC-SHA256 signature over its store key
-  and archive (a sibling `<key>.sig` entry in the same store), and an artifact
-  whose signature is missing or does not verify is refused — a warned rebuild —
-  so write access to the store alone no longer chooses what is restored. Every
-  producer and consumer must hold the same key. Artifacts uploaded before the
-  key was set are unsigned and are rebuilt rather than restored; a store whose
-  entries cannot be overwritten (the GitHub Actions cache) keeps missing on
-  those until it evicts them.
+  Each upload is then stored with an HMAC-SHA256 over its store key and archive,
+  appended to the archive as a 32-byte trailer — one entry, written by one put,
+  so a store that keeps its first write (the GitHub Actions cache) can never
+  pair an archive with another upload's MAC. An artifact whose MAC is missing,
+  short, or does not verify is refused — a warned rebuild — so write access to
+  the store alone no longer chooses what is restored. Every producer and
+  consumer must hold the same key. Signed artifacts live under their own key
+  (`<key>.signed`), so turning the key on starts from a cold cache: what was
+  uploaded before is never read, and cannot block the signed upload either. A
+  job without the key (a fork's pull request, say) reads and writes only the
+  unsigned entries, unauthenticated as before, and never sees a signed one.
+- **Without a signing key, a writable store can roll you back.** The
+  `FileSystemCacheStore` check below refuses an entry another user _created_,
+  but another user who can write the store directory can still rename one of
+  your own older artifacts onto a newer key, and it passes as yours: an outdated
+  build output restored as current. Only a signing key prevents that, because
+  its MAC binds the store key the artifact was uploaded under.
 - **A `FileSystemCacheStore` entry is refused unless the current user owns it
   and neither its group nor others may write it** (POSIX; Windows has no such
   bits). Another local user who can write the shared directory cannot plant an

@@ -286,12 +286,13 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   `ZUKE_REGISTRY_LAUNCH_HOSTS`, and a `command` location is refused unless its
   program is in `ZUKE_REGISTRY_LAUNCH_COMMANDS` (the registry writer picks the
   program and its arguments). A UNC path or `file://host/` module counts as
-  remote. A **local** module, and the launch cwd, must also lie inside
-  `ZUKE_REGISTRY_LAUNCH_DIRS` (default: the server's own project root; `*`
-  disables), so a server launching builds registered from other checkouts must
-  list their roots. For a shared, multi-user endpoint, `override mcpAuth()`
-  authenticates a **trusted** caller per request — an async `authenticate(ctx)`
-  returning `{ actor, kind?, roles?, via? }` or an `McpAuthReject`
+  remote. A **local** module, and the launch cwd of either kind (module or
+  command), must also lie inside `ZUKE_REGISTRY_LAUNCH_DIRS` (default: the
+  server's own project root; `*` disables), so a server launching builds
+  registered from other checkouts must list their roots. For a shared,
+  multi-user endpoint, `override mcpAuth()` authenticates a **trusted** caller
+  per request — an async `authenticate(ctx)` returning
+  `{ actor, kind?, roles?, via? }` or an `McpAuthReject`
   (`{ status, error, detail?, challenge? }`), so a refused HTTP request answers
   that status with `WWW-Authenticate` instead of a `200`.
   `override mcpIdentity()` is the sugar for the proxy-header case (a sync hook

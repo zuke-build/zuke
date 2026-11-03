@@ -433,12 +433,13 @@ class ZukeBuild extends Build {
   // pinned checksum.
   tools = buildToolchain(TOOLS_ROOT);
 
-  // The toolchain as a cacheable target, dogfooding the remote cache on the
-  // one thing this build produces that is worth sharing between runs: the
-  // pinned binaries. Keyed by platform and pinned versions, with the binaries
-  // and their checksum markers as outputs, a run on a fresh runner restores
-  // them from the store (the GitHub Actions cache, on CI) and `install()`
-  // reuses them after re-verifying each against its marker.
+  // The toolchain as a cacheable target, keyed by platform and pinned
+  // versions, with the binaries and their checksum markers as outputs, so a
+  // warm checkout skips it. The markers never travel through the remote cache
+  // — archiving leaves them out and restore refuses them, since a marker would
+  // vouch for whatever binary it was restored beside — so on a fresh runner
+  // the restored binaries carry no marker and `install()` downloads and
+  // verifies each afresh.
   provisionTools = target()
     .description("Provision the pinned scanner binaries into .zuke/tools")
     .cacheKey(() =>

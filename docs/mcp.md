@@ -657,10 +657,13 @@ zuke mcp --registry --allow-run
   both, so the ordinary setup needs nothing. Paths are compared segment by
   segment after every symlink is resolved, so `/repo-evil` is not inside `/repo`
   and a link under the root pointing elsewhere does not carry its target in. The
-  working directory is confined for an allow-listed remote module too. A refusal
-  is a structured `launch_dir_not_allowed` error, audited as `denied`. A listed
-  directory — and a filesystem registry directory (`ZUKE_REGISTRY_DIR`) — must
-  not be writable by anyone you would not let run code as the server's user.
+  working directory is confined for an allow-listed remote module and for a
+  `command` location too, since an allowed program run from a writer-chosen
+  directory still reads that directory's `deno.json`, `package.json` or
+  `Makefile`. A refusal is a structured `launch_dir_not_allowed` error, audited
+  as `denied`. A listed directory — and a filesystem registry directory
+  (`ZUKE_REGISTRY_DIR`) — must not be writable by anyone you would not let run
+  code as the server's user.
 - **A `command` location is gated the same way.** Its argv is not "code already
   on the machine" the way a local module path is: whoever wrote the entry chose
   the program **and its arguments**, so
@@ -674,12 +677,13 @@ zuke mcp --registry --allow-run
   because an operator wrote `make` would point a trusted name at a file of the
   writer's own. A refusal names the exact string to add. Two consequences are
   the operator's call: a **relative** program resolves against the descriptor's
-  own working directory, which the same writer chooses, so prefer an absolute
-  path; and listing a shell or interpreter hands over anything reachable
-  locally, since `sh -c` needs no fetch at all. Listing a program does **not**
-  license it to fetch, though: every argument naming a remote specifier still
-  has to pass `ZUKE_REGISTRY_LAUNCH_HOSTS`, so `deno run -A https://…` is
-  refused by origin exactly as the module form is. The refusal is a structured
+  own working directory, which the same writer chooses (inside
+  `ZUKE_REGISTRY_LAUNCH_DIRS`), so prefer an absolute path; and listing a shell
+  or interpreter hands over anything reachable locally, since `sh -c` needs no
+  fetch at all. Listing a program does **not** license it to fetch, though:
+  every argument naming a remote specifier still has to pass
+  `ZUKE_REGISTRY_LAUNCH_HOSTS`, so `deno run -A https://…` is refused by origin
+  exactly as the module form is. The refusal is a structured
   `launch_command_not_allowed` error, audited as `denied`, before the
   confirmation prompt, with nothing spawned. `zuke register` writes a module
   location, so this only bites a hand-authored or second-party entry.

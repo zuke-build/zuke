@@ -509,14 +509,20 @@ Deno.test("with a signing key, a store writer's swapped artifact is rebuilt, not
         assertEquals((await runCli(B, ["build"])).code, 0);
         const entries: string[] = [];
         for await (const e of Deno.readDir(remoteDir)) entries.push(e.name);
-        const artifact = entries.find((n) => !n.includes(".sig"));
-        assertEquals(entries.some((n) => n.includes(".sig")), true);
+        // One entry: the archive with its MAC trailer, under the signed key.
+        assertEquals(entries.length, 1);
+        const artifact = entries[0];
+        assertStringIncludes(artifact, ".signed");
 
-        // The store writer replaces the archive; the signature stays.
+        // The store writer replaces the archive and keeps the old trailer.
         await fresh();
+        const genuine = await Deno.readFile(`${remoteDir}/${artifact}`);
         await Deno.writeFile(
           `${remoteDir}/${artifact}`,
-          await gzip(tar([{ name: "out.txt", data: enc("evil") }])),
+          new Uint8Array([
+            ...await gzip(tar([{ name: "out.txt", data: enc("evil") }])),
+            ...genuine.slice(-32),
+          ]),
         );
         if (Deno.build.os !== "windows") {
           await Deno.chmod(`${remoteDir}/${artifact}`, 0o644);

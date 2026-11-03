@@ -439,8 +439,9 @@ function assertNoDirectoryEntry(entry: TarEntry): void {
  * when its name is absolute or escapes the workspace with `..`, when it is a
  * directory entry (which {@link archiveOutputs} never produces), when it lands
  * under `.git` or `.zuke` (`.zuke/tools` aside), when it is an install marker
- * ({@link isInstallMarker}), when — given `outputs` — it
- * falls outside the target's declared outputs, and when the path it would be
+ * ({@link isInstallMarker}), when it holds a colon (which names an NTFS
+ * alternate data stream, so `marker.json::$DATA` would write the marker), when
+ * — given `outputs` — it falls outside the target's declared outputs, and when the path it would be
  * written to passes through, or is, a symlink that already exists on disk.
  *
  * A symlink entry is restored only when its target is relative, stays inside
@@ -539,6 +540,14 @@ export async function restoreFrom(
     if (isInstallMarker(name)) {
       throw new Error(
         `remote cache: refusing to restore the install marker "${entry.name}".`,
+      );
+    }
+    // On NTFS `marker.json::$DATA` writes `marker.json` itself, so a colon
+    // would slip a name past every check above; restore never writes one.
+    if (name.includes(":")) {
+      throw new Error(
+        `remote cache: refusing to restore "${entry.name}": a colon names an ` +
+          `alternate data stream on Windows.`,
       );
     }
     if (outputs !== undefined && !isDeclaredOutput(name, outputs)) {

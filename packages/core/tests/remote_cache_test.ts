@@ -1398,6 +1398,26 @@ Deno.test("restoreOutputs refuses an install marker riding in an artifact", asyn
   assertEquals(out.files.size, 0);
 });
 
+// On NTFS `name::$DATA` writes `name` itself, so a stream suffix would carry a
+// marker past the name checks.
+Deno.test("restoreOutputs refuses an entry naming an alternate data stream", async () => {
+  const out = new MemFs();
+  for (
+    const name of [
+      ".zuke/tools/node.tree.json::$DATA",
+      "bin/x.install.json:$DATA",
+      "bin/app.js:hidden",
+    ]
+  ) {
+    const artifact = await gzip(tar([{ name, data: enc("{}") }]));
+    const err = await assertRejects(() =>
+      restoreOutputs(artifact, out, [".zuke/tools", "bin"])
+    );
+    assertStringIncludes(err.message, "alternate data stream");
+  }
+  assertEquals(out.files.size, 0);
+});
+
 Deno.test("archiveOutputs leaves install markers out of the archive", async () => {
   const fs = new MemFs();
   fs.dirs.set(".zuke/tools", ["helm", "helm.install.json", "sdk.tree.json"]);

@@ -259,13 +259,36 @@ Deno.test("a registered command location is refused by the run tool, not spawned
     assertStringIncludes(denied.text, "launch_command_not_allowed");
     assertEquals(calls.length, 0);
 
-    // The same descriptor runs once the operator names the program.
-    const allowed = callResult(
+    // Naming the program is not enough: the working directory is confined
+    // like a module's, and this temp directory is outside the default root.
+    const commandOnly = callResult(
       await new RegistryMcpServer(registry, {
         allowRun: true,
         runner,
         readEnv: (name) =>
           name === "ZUKE_REGISTRY_LAUNCH_COMMANDS" ? "/bin/sh" : undefined,
+      }).handleMessage({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/call",
+        params: { name: "run:Deploy:deploy", arguments: {} },
+      }),
+    );
+    assertEquals(commandOnly.isError, true);
+    assertStringIncludes(commandOnly.text, "launch_dir_not_allowed");
+    assertEquals(calls.length, 0);
+
+    // The same descriptor runs once the operator names the program and its
+    // directory.
+    const allowed = callResult(
+      await new RegistryMcpServer(registry, {
+        allowRun: true,
+        runner,
+        readEnv: (name) =>
+          ({
+            ZUKE_REGISTRY_LAUNCH_COMMANDS: "/bin/sh",
+            ZUKE_REGISTRY_LAUNCH_DIRS: dir,
+          })[name],
       }).handleMessage({
         jsonrpc: "2.0",
         id: 2,

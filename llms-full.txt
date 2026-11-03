@@ -862,8 +862,9 @@ async function restoreOutputs(artifact: Uint8Array, host: OutputHost, outputs?: 
   when its name is absolute or escapes the workspace with `..`, when it is a
   directory entry (which {@link archiveOutputs} never produces), when it lands
   under `.git` or `.zuke` (`.zuke/tools` aside), when it is an install marker
-  ({@link isInstallMarker}), when — given `outputs` — it
-  falls outside the target's declared outputs, and when the path it would be
+  ({@link isInstallMarker}), when it holds a colon (which names an NTFS
+  alternate data stream, so `marker.json::$DATA` would write the marker), when
+  — given `outputs` — it falls outside the target's declared outputs, and when the path it would be
   written to passes through, or is, a symlink that already exists on disk.
 
   A symlink entry is restored only when its target is relative, stays inside
@@ -4476,9 +4477,11 @@ interface OpenCacheOptions
   signingKey?: string
     A secret that authenticates the remote store's artifacts — the executor
     passes `ZUKE_REMOTE_CACHE_SIGNING_KEY`. With it, each upload is stored
-    with an HMAC-SHA256 signature, and an artifact whose signature is missing
-    or wrong is refused and rebuilt, so writing to the store no longer chooses
-    what a restore writes. Without it, anything in the store is restored.
+    with an HMAC-SHA256 trailer under a key of its own (`<key>.signed`), and
+    an artifact whose MAC is missing or wrong is refused and rebuilt, so
+    writing to the store no longer chooses what a restore writes. Without it,
+    anything under the plain key is restored, and signed artifacts are never
+    read.
 
 interface OutputHost
   Filesystem effects used to archive and restore a target's outputs.

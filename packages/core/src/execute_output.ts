@@ -151,7 +151,8 @@ export class ActionsMaskingRedactor extends Redactor {
       // first line and print every line after it as ordinary log output — the
       // call meant to protect the secret would be the thing that leaked it.
       // maskPatterns already contributes each line separately.
-      if (pattern.includes("\n")) continue;
+      // The runner ends a line at a lone `\r` as well as at `\n`.
+      if (/[\r\n]/.test(pattern)) continue;
       const before = this.size;
       super.add(pattern);
       if (this.size > before) this.#mask.info(`::add-mask::${pattern}`);

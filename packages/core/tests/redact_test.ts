@@ -140,6 +140,17 @@ Deno.test("ActionsMaskingRedactor emits one single-line directive per secret lin
   }
 });
 
+// The runner also ends a line at a lone `\r`, so a CR-separated secret must be
+// split there too, or its directive masks only the part before the `\r`.
+Deno.test("ActionsMaskingRedactor splits a secret on a lone carriage return", () => {
+  const { r, lines } = masking();
+  r.add("first-line-secret\rsecond-line-secret");
+  assertEquals(lines, [
+    "::add-mask::first-line-secret",
+    "::add-mask::second-line-secret",
+  ]);
+});
+
 Deno.test("ActionsMaskingRedactor still emits a single-line secret unchanged", () => {
   const { r, lines } = masking();
   r.add("hunter2");

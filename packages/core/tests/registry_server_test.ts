@@ -473,10 +473,14 @@ Deno.test("a command location spawns the command; an empty one errors", async ()
   const server = new RegistryMcpServer(registry, {
     allowRun: true,
     runner,
-    // The operator names the program a command location may spawn; see the
-    // launch-policy tests below for the refusal when they have not.
+    // The operator names the program a command location may spawn, and lifts
+    // the working-directory confinement for the made-up `/w`; see the
+    // launch-policy tests below for the refusals when they have not.
     readEnv: (name) =>
-      name === "ZUKE_REGISTRY_LAUNCH_COMMANDS" ? "make" : undefined,
+      ({
+        ZUKE_REGISTRY_LAUNCH_COMMANDS: "make",
+        ZUKE_REGISTRY_LAUNCH_DIRS: "*",
+      })[name],
   });
 
   await call(server, "run:Api:deploy");

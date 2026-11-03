@@ -36,7 +36,9 @@
  * "https://attacker.example/x.ts"]` is the refused module case spelled as a
  * command, and `["/bin/sh", "-c", …]` is arbitrary code with no fetch at all.
  * Naming a program is the operator's statement that this registry may pass it
- * arguments.
+ * arguments. Its working directory is confined to {@link LAUNCH_DIRS_ENV} like
+ * a module's: an allowed program run from a writer-chosen directory still
+ * picks up that directory's `deno.json`, `package.json` or `Makefile`.
  *
  * @module
  */
@@ -92,7 +94,7 @@ export const LAUNCH_HOSTS_ENV = "ZUKE_REGISTRY_LAUNCH_HOSTS";
 export const LAUNCH_COMMANDS_ENV = "ZUKE_REGISTRY_LAUNCH_COMMANDS";
 
 /**
- * The environment variable listing the directories a `module` location may be
+ * The environment variable listing the directories a registered build may be
  * launched from — comma-separated (`ZUKE_REGISTRY_LAUNCH_DIRS="/srv/builds,
  * /home/ci/repo"`), with newlines accepted too, since a path may contain a
  * space. Each entry must be absolute; a relative one matches nothing. A lone
@@ -104,7 +106,8 @@ export const LAUNCH_COMMANDS_ENV = "ZUKE_REGISTRY_LAUNCH_COMMANDS";
  * where `zuke register` run in the same checkout puts both the module and the
  * working directory.
  *
- * The entry module and the working directory must each lie inside a listed
+ * The working directory of either location kind, and a local entry module,
+ * must each lie inside a listed
  * directory, compared segment by segment after every symlink is resolved, so
  * `/repo-evil` is not inside `/repo` and a link under `/repo` pointing at
  * `/tmp` does not carry `/tmp` inside. The listed directories themselves must
@@ -259,23 +262,24 @@ const PATH_SEPARATOR = /[,\n\r]+/;
  * A `command` location must name a program the operator listed in
  * {@link LAUNCH_COMMANDS_ENV}; an empty command is left to the caller, which
  * reports a build with nothing to launch rather than spawning anything. A
- * `module` location must name an allowed origin when remote, and its working
- * directory — and, when local, the module itself — must lie inside
- * {@link LAUNCH_DIRS_ENV}, resolved through `fs`.
+ * `module` location must name an allowed origin when remote. Either kind's
+ * working directory — and, for a local module, the module itself — must lie
+ * inside {@link LAUNCH_DIRS_ENV}, resolved through `fs`.
  */
 export function launchDenial(
   location: BuildLocation,
   readEnv: (name: string) => string | undefined,
   fs: LaunchFileSystem,
 ): LaunchDenial | null {
-  if (location.kind === "command") {
-    return commandDenial(location.command, readEnv);
-  }
-  const target = classifyModule(location.module);
-  if ("origin" in target) {
-    const denial = originDenial(target, "entry module", readEnv);
-    if (denial !== null) return denial;
-  }
+  const target = location.kind === "module"
+    ? classifyModule(location.module)
+    : undefined;
+  const denial = location.kind === "command"
+    ? commandDenial(location.command, readEnv)
+    : target !== undefined && "origin" in target
+    ? originDenial(target, "entry module", readEnv)
+    : null;
+  if (denial !== null) return denial;
   const dirs = listEntries(LAUNCH_DIRS_ENV, readEnv, PATH_SEPARATOR);
   if (dirs.includes("*")) return null;
   const roots = (dirs.length > 0 ? dirs : [fs.defaultDir])
@@ -291,7 +295,7 @@ export function launchDenial(
   }
   const cwd = absolutePath(slashed);
   const confined: [string, string][] = [["working directory", cwd.path]];
-  if ("path" in target) {
+  if (target !== undefined && "path" in target) {
     const module = target.path.replace(/\\/g, "/");
     confined.push([
       "entry module",
@@ -307,7 +311,7 @@ export function launchDenial(
   return null;
 }
 
-/** The refusal for a module launch whose `what` lies at `path`, outside every allowed directory. */
+/** The refusal for a launch whose `what` lies at `path`, outside every allowed directory. */
 function dirDenial(what: string, path: string): LaunchDenial {
   return {
     reason: "launch_dir_not_allowed",

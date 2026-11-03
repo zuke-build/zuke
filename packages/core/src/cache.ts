@@ -29,7 +29,12 @@ import {
   writeTextEnsuringDir,
 } from "./internal.ts";
 import { byteStream } from "./compression.ts";
-import { signArtifact, signatureKey, verifyArtifact } from "./cache_signing.ts";
+import {
+  signedKey,
+  signingStream,
+  verifySigned,
+  withoutTrailer,
+} from "./cache_signing.ts";
 import { redactUrls } from "./redact_url.ts";
 import {
   archiveOutputs,
@@ -225,9 +230,11 @@ export interface OpenCacheOptions {
   /**
    * A secret that authenticates the remote store's artifacts — the executor
    * passes `ZUKE_REMOTE_CACHE_SIGNING_KEY`. With it, each upload is stored
-   * with an HMAC-SHA256 signature, and an artifact whose signature is missing
-   * or wrong is refused and rebuilt, so writing to the store no longer chooses
-   * what a restore writes. Without it, anything in the store is restored.
+   * with an HMAC-SHA256 trailer under a key of its own (`<key>.signed`), and
+   * an artifact whose MAC is missing or wrong is refused and rebuilt, so
+   * writing to the store no longer chooses what a restore writes. Without it,
+   * anything under the plain key is restored, and signed artifacts are never
+   * read.
    */
   signingKey?: string;
 }
@@ -283,7 +290,7 @@ class FsCache implements BuildCache {
     // A local miss on a target that produces outputs: try to restore them from
     // the remote store. A store error is non-fatal — fall through to a rebuild.
     if (this.#remote !== undefined && target.outputs_.length > 0) {
-      const key = remoteCacheKey(name, fp);
+      const key = this.#storeKey(name, fp);
       let artifact: SpooledArtifact | null = null;
       try {
         artifact = await this.#fetch(this.#remote, key);
@@ -301,11 +308,20 @@ class FsCache implements BuildCache {
         // Throwing instead would let anyone who can write the store halt every
         // build that reads it, and the store is documented as best-effort.
         try {
-          if (this.#signingKey !== undefined) {
-            await assertSigned(this.#remote, key, artifact, this.#signingKey);
+          const secret = this.#signingKey;
+          let open = artifact.open;
+          if (secret !== undefined) {
+            if (!await verifySigned(secret, key, await open())) {
+              throw new Error(
+                `remote cache: the artifact's signature is missing or does ` +
+                  `not match the signing key.`,
+              );
+            }
+            const signed = open;
+            open = async () => withoutTrailer(await signed());
           }
           await restoreFrom(
-            artifact.open,
+            open,
             this.#host,
             target.outputs_,
             this.#remote.maxInflatedBytes,
@@ -327,6 +343,16 @@ class FsCache implements BuildCache {
       }
     }
     return false;
+  }
+
+  /**
+   * The store key for `name` at `fp`: a signed artifact is kept apart from an
+   * unsigned one, so neither can occupy the other's slot in a store that keeps
+   * its first write.
+   */
+  #storeKey(name: string, fp: string): string {
+    const key = remoteCacheKey(name, fp);
+    return this.#signingKey === undefined ? key : signedKey(key);
   }
 
   /**
@@ -366,32 +392,28 @@ class FsCache implements BuildCache {
       !this.#restored.has(target)
     ) {
       try {
-        const key = remoteCacheKey(name, fp);
+        const key = this.#storeKey(name, fp);
         const secret = this.#signingKey;
-        let signature: Uint8Array | undefined;
+        // The MAC rides as a trailer in the same put, so the stored archive and
+        // its MAC cannot come from two different uploads.
         if (this.#remote.putStream !== undefined) {
           const stream = await archiveStream(target.outputs_, this.#host);
-          if (secret === undefined) {
-            await this.#remote.putStream(key, stream);
-          } else {
-            // Both branches read together, so the tee never holds the archive.
-            const [upload, signed] = stream.tee();
-            [, signature] = await Promise.all([
-              this.#remote.putStream(key, upload),
-              signArtifact(secret, key, signed),
-            ]);
-          }
+          await this.#remote.putStream(
+            key,
+            secret === undefined
+              ? stream
+              : stream.pipeThrough(signingStream(secret, key)),
+          );
         } else {
           const artifact = await archiveOutputs(target.outputs_, this.#host);
-          await this.#remote.put(key, artifact);
-          if (secret !== undefined) {
-            signature = await signArtifact(secret, key, byteStream(artifact));
-          }
-        }
-        // After the artifact: a reader racing the two puts sees a mismatch,
-        // which is a warned miss, never a restore of unsigned bytes.
-        if (signature !== undefined) {
-          await this.#remote.put(signatureKey(key), signature);
+          await this.#remote.put(
+            key,
+            secret === undefined ? artifact : new Uint8Array(
+              await new Response(
+                byteStream(artifact).pipeThrough(signingStream(secret, key)),
+              ).arrayBuffer(),
+            ),
+          );
         }
       } catch (error) {
         this.#warn?.(
@@ -406,29 +428,6 @@ class FsCache implements BuildCache {
     await this.#host.writeStore(
       this.#storePath,
       `${JSON.stringify(this.#store, null, 2)}\n`,
-    );
-  }
-}
-
-/**
- * Throw unless the store holds a signature for the artifact under `key` that
- * verifies against `secret` — see {@link OpenCacheOptions.signingKey}.
- */
-async function assertSigned(
-  remote: RemoteCacheStore,
-  key: string,
-  artifact: SpooledArtifact,
-  secret: string,
-): Promise<void> {
-  const signature = await remote.get(signatureKey(key));
-  if (signature === null) {
-    throw new Error(
-      `remote cache: the artifact is unsigned, and a signing key is set.`,
-    );
-  }
-  if (!await verifyArtifact(secret, key, await artifact.open(), signature)) {
-    throw new Error(
-      `remote cache: the artifact's signature does not match the signing key.`,
     );
   }
 }

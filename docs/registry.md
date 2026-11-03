@@ -84,9 +84,12 @@ The **location** is one of two forms:
 > compared segment by segment after every symlink is resolved, so `/repo-evil`
 > is not inside `/repo` and a link under the root pointing elsewhere does not
 > carry its target in. The working directory is confined for an allow-listed
-> remote module too. A refusal is an audited `launch_dir_not_allowed` event. The
-> listed directories, and a filesystem registry directory itself, must not be
-> writable by any user you would not let run code as the server's user.
+> remote module and for a `command` location too, since an allowed program run
+> from a writer-chosen directory still reads that directory's `deno.json`,
+> `package.json` or `Makefile`. A refusal is an audited `launch_dir_not_allowed`
+> event. The listed directories, and a filesystem registry directory itself,
+> must not be writable by any user you would not let run code as the server's
+> user.
 >
 > **A `command` location is refused the same way**, unless its program is named
 > in `ZUKE_REGISTRY_LAUNCH_COMMANDS` (comma-separated, since a program path may
