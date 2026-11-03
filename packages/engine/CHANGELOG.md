@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.2](https://github.com/zuke-build/zuke/compare/engine-v1.2.1...engine-v1.2.2) (2026-11-03)
+
+
+### Bug Fixes
+
+* **engine:** the tool spec carries the tasks a task interface inherits ([#973](https://github.com/zuke-build/zuke/issues/973)) ([981db21](https://github.com/zuke-build/zuke/commit/981db2184c86b7f7189b2cddf4ec48c9809f4d18))
+
 ## [1.2.1](https://github.com/zuke-build/zuke/compare/engine-v1.2.0...engine-v1.2.1) (2026-11-03)
 
 
