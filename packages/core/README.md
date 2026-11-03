@@ -2983,8 +2983,6 @@ interface AbsolutePath
   yields the path string, so an `AbsolutePath` can be interpolated into the
   `$` shell helper and passed straight to tool `args()`.
 
-  (...segments: string[]): AbsolutePath
-    Append path segments, returning a new path (the callable form of {@link join}).
   readonly path: string
     The normalised path string (forward slashes, `.`/`..` resolved).
   readonly name: string
