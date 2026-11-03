@@ -24,6 +24,8 @@ import { ConsoleTasks } from "@zuke/console";
 import { gunzip, untar } from "@zuke/core";
 import {
   type GhReleaseEditSettings,
+  type GhReleaseEntry,
+  type GhReleaseListSettings,
   type GhReleaseUploadSettings,
   GhTasks,
 } from "@zuke/gh";
@@ -44,6 +46,7 @@ import {
   releaseAssetUrl,
   windowsArchiveName,
 } from "./cli_release.ts";
+import { isNewerSemver } from "./semver.ts";
 
 /** What {@link uploadCliRelease} needs to write to the release. */
 export interface UploadOptions {
@@ -104,6 +107,65 @@ export async function uploadCliRelease(options: UploadOptions): Promise<void> {
     s.tag(tag).flag("draft=false").flag("latest=false").repo(CLI_REPO)
   );
   ConsoleTasks.info(`${tag}: published.`);
+}
+
+/** The `gh release` commands {@link publishStrandedCliDrafts} runs, injectable for tests. */
+export interface DraftTools {
+  /** List the releases, drafts included (`gh release list`). */
+  list(
+    configure: (s: GhReleaseListSettings) => GhReleaseListSettings,
+  ): Promise<GhReleaseEntry[]>;
+  /** Edit a release (`gh release edit`). */
+  edit(
+    configure: (s: GhReleaseEditSettings) => GhReleaseEditSettings,
+  ): Promise<unknown>;
+}
+
+/** The real {@link DraftTools}: `@zuke/gh`'s `GhTasks`. */
+export const GH_DRAFTS: DraftTools = {
+  list: (configure) => GhTasks.releaseListEntries(configure),
+  edit: (configure) => GhTasks.releaseEdit(configure),
+};
+
+/**
+ * Publish, without binaries, every CLI draft release older than `current`,
+ * and answer their tags.
+ *
+ * A CLI release stays a draft until its binaries are attached, and the
+ * pipeline only ever builds the version in the checkout. When a run fails
+ * before the binaries and the next CLI release merges before it is re-run,
+ * the older draft is stranded: nothing will attach to it again, it has no
+ * tag (a draft's tag is created when it is published), and the next
+ * version's changelog compares against that missing tag. Release runs are
+ * serialised, so by the time a run gets here every older draft belongs to a
+ * finished run. Publishing creates the tag at the release commit
+ * release-please recorded, and leaves the "Latest release" pointer alone;
+ * the newer release ships the binaries. `token` must be allowed to create a
+ * tag whose tree differs from master's workflow files, which the app's
+ * release token is and `GITHUB_TOKEN` is not.
+ */
+export async function publishStrandedCliDrafts(
+  current: string,
+  token: string,
+  gh: DraftTools = GH_DRAFTS,
+): Promise<string[]> {
+  const auth = { GH_TOKEN: token };
+  const prefix = cliReleaseTag("");
+  const releases = await gh.list((s) => s.limit(1000).repo(CLI_REPO).env(auth));
+  const stranded = releases.flatMap(({ tagName, isDraft }) =>
+    isDraft === true && tagName?.startsWith(prefix) === true &&
+      isNewerSemver(current, tagName.slice(prefix.length))
+      ? [tagName]
+      : []
+  );
+  for (const tag of stranded) {
+    await gh.edit((s) =>
+      s.tag(tag).flag("draft=false").flag("latest=false").repo(CLI_REPO)
+        .env(auth)
+    );
+    ConsoleTasks.info(`${tag}: a stranded draft, published without binaries.`);
+  }
+  return stranded;
 }
 
 /** Write `version`'s formula, from its published checksums, to `path`. */

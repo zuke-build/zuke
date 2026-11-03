@@ -23,9 +23,16 @@ import {
   CodesignVerifySettings,
 } from "@zuke/apple";
 import { HomebrewVerifySettings } from "@zuke/homebrew";
-import { GhReleaseEditSettings, GhReleaseUploadSettings } from "@zuke/gh";
 import {
+  GhReleaseEditSettings,
+  type GhReleaseEntry,
+  GhReleaseListSettings,
+  GhReleaseUploadSettings,
+} from "@zuke/gh";
+import {
+  type DraftTools,
   publishCliFormula,
+  publishStrandedCliDrafts,
   type ReleaseTools,
   type SignatureTools,
   uploadCliRelease,
@@ -163,6 +170,100 @@ Deno.test("uploadCliRelease leaves the release a draft when the upload fails", a
     // Nothing was published: the next run attaches to the draft again.
     assertEquals(argvs.map((a) => a[1]), ["upload"]);
   });
+});
+
+/** Edit settings that also record the environment each call is given. */
+class EnvEditSettings extends GhReleaseEditSettings {
+  /** The records passed to `env`, in order. */
+  envs: Record<string, string>[] = [];
+  /** Record, then merge as the base does. */
+  override env(record: Record<string, string>): this {
+    this.envs.push(record);
+    return super.env(record);
+  }
+}
+
+/** List settings that also record the environment each call is given. */
+class EnvListSettings extends GhReleaseListSettings {
+  /** The records passed to `env`, in order. */
+  envs: Record<string, string>[] = [];
+  /** Record, then merge as the base does. */
+  override env(record: Record<string, string>): this {
+    this.envs.push(record);
+    return super.env(record);
+  }
+}
+
+/** A {@link DraftTools} listing `releases` and recording every argv and env. */
+function draftsGh(
+  releases: GhReleaseEntry[],
+  argvs: string[][],
+  envs: Record<string, string>[][],
+): DraftTools {
+  return {
+    list: (configure) => {
+      const s = new EnvListSettings();
+      configure(s);
+      argvs.push(s.argv().slice(1));
+      envs.push(s.envs);
+      return Promise.resolve(releases);
+    },
+    edit: (configure) => {
+      const s = new EnvEditSettings();
+      configure(s);
+      argvs.push(s.argv().slice(1));
+      envs.push(s.envs);
+      return Promise.resolve();
+    },
+  };
+}
+
+Deno.test("publishStrandedCliDrafts publishes only the CLI drafts older than the current version", async () => {
+  const argvs: string[][] = [];
+  const envs: Record<string, string>[][] = [];
+  const published = await publishStrandedCliDrafts(
+    "2.2.0",
+    "app-token",
+    draftsGh(
+      [
+        { tagName: "cli-v2.2.0", isDraft: true },
+        { tagName: "cli-v2.1.1", isDraft: false },
+        { tagName: "cli-v1.16.0", isDraft: true },
+        { tagName: "cli-v3.0.0", isDraft: true },
+        { tagName: "core-v1.0.0", isDraft: true },
+        { tagName: "cli-v-latest", isDraft: true },
+        { isDraft: true },
+      ],
+      argvs,
+      envs,
+    ),
+  );
+  assertEquals(published, ["cli-v1.16.0"]);
+  const [list, edit, ...rest] = argvs;
+  assertEquals(rest, []);
+  assertEquals(list.slice(0, 2), ["release", "list"]);
+  assertEquals(list[list.indexOf("--limit") + 1], "1000");
+  assertEquals(list[list.indexOf("--repo") + 1], "zuke-build/zuke");
+  assertEquals(edit.slice(0, 3), ["release", "edit", "cli-v1.16.0"]);
+  for (const flag of ["--draft=false", "--latest=false"]) {
+    assertEquals(edit.includes(flag), true, flag);
+  }
+  assertEquals(edit[edit.indexOf("--repo") + 1], "zuke-build/zuke");
+  // Both calls run as the token that may create the tag.
+  assertEquals(envs, [[{ GH_TOKEN: "app-token" }], [{
+    GH_TOKEN: "app-token",
+  }]]);
+});
+
+Deno.test("publishStrandedCliDrafts edits nothing when no older CLI draft exists", async () => {
+  const argvs: string[][] = [];
+  const published = await publishStrandedCliDrafts(
+    "2.2.0",
+    "app-token",
+    draftsGh([{ tagName: "cli-v2.2.0", isDraft: true }], argvs, []),
+  );
+  assertEquals(published, []);
+  assertEquals(argvs.map((a) => a[1]), ["list"]);
 });
 
 /** A fetch serving the release's published manifest. */
