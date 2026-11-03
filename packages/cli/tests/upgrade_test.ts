@@ -102,6 +102,10 @@ class FakeUpgradeHost implements UpgradeHost {
       : Promise.resolve(this.metaDoc);
   }
 
+  engineMeta(): Promise<unknown> {
+    return Promise.resolve({ latest: "1.0.0", versions: { "1.0.0": {} } });
+  }
+
   install(denoArgs: string[]): Promise<number> {
     this.installs.push(denoArgs);
     return Promise.resolve(this.exit);

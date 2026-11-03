@@ -49,9 +49,11 @@ stdio MCP client — can list and run the targets through typed calls;
 `--launcher-name
 <name>` (write the launcher under a different name when a
 `zuke/` directory already occupies it — a directory collision now fails with an
-actionable error instead of silently skipping the launcher). With `--mcp`, an
-MCP client lists and runs the targets through typed calls; without it, the build
-is still discoverable through `zuke --list --json`.
+actionable error instead of silently skipping the launcher), `--sdk python`
+(scaffold a Python build instead — see below) and `--engine <version>` (the
+`@zuke/engine` release that build pins; JSR's latest when omitted). With
+`--mcp`, an MCP client lists and runs the targets through typed calls; without
+it, the build is still discoverable through `zuke --list --json`.
 
 Running as an agent, always pass `--yes`: it skips every interactive question,
 including the closing "star the Zuke repository?" prompt — that question is for
@@ -61,6 +63,23 @@ the user's behalf.
 To read a `@zuke/*` package's API without a Node repo's `@types/node` noise, run
 `zuke doc <package>` (e.g. `zuke doc core`) — it runs `deno doc` in an isolated
 directory.
+
+### A Python project: `zuke setup --sdk python`
+
+A build can be written in Python with the `zuke` package from PyPI and run on
+`@zuke/engine`, which hosts it as a worker. `zuke setup --sdk python --yes`
+writes a starter `build.py` in place of `zuke.ts`, a `zuke.json` with the worker
+command (`uv run build.py`) and the exact engine release, the launchers and
+`.gitignore`, and no `deno.json`. The engine release is read from JSR;
+`--engine <version>` pins one with no network. The `build.py` opens with inline
+script metadata naming `zuke` as its dependency, so `uv run` provides the SDK
+without a project file; a project that already manages its environment can drop
+that block and add `zuke` to its dev dependencies instead. Every other `setup`
+flag applies; `--mcp` registers the engine's MCP server
+(`deno run -A jsr:@zuke/engine@<version> mcp`). Later,
+`zuke upgrade --engine [<version>]` moves the pin, with `--dry-run`. Author the
+targets with the Python SDK's own documentation; the TypeScript authoring skill
+does not apply to a `build.py`.
 
 ### Migrating an existing project: `zuke import`
 
@@ -125,7 +144,9 @@ wrappers.
   is kept — that is how a pin or a local checkout survives — with a note saying
   so. `--mcp` that cannot register into an unparseable `.mcp.json` is reported
   the same way, as a note.
-- **`zuke.json`** — `{ "name": "..." }`, which marks the repo root.
+- **`zuke.json`** — `{ "name": "..." }`, which marks the repo root. With
+  `--sdk python` it also carries `sdk.command` and `engine`, and `build.py`
+  replaces `zuke.ts` while `deno.json` is not written.
 - **`.gitignore`** — created or appended so `.zuke/` is ignored (the cache and
   durable run state live there); untouched if it already covers it.
 - **`.mcp.json`** (with `--mcp`) — `mcpServers.zuke` launching

@@ -50,6 +50,30 @@ Already have a `@zuke/*` package's API in hand? `zuke doc <package>` prints it
 directory so a surrounding Node project's `@types/node` resolution doesn't drown
 the output.
 
+## Scaffold a Python project with `zuke setup --sdk python`
+
+A build can be written in Python with the
+[`zuke` package](https://github.com/zuke-build/zuke-python) and run on
+`@zuke/engine`, which hosts it as a worker. The same wizard scaffolds that
+shape:
+
+```sh
+zuke setup --sdk python                     # in your project
+zuke                                        # run the build
+```
+
+It writes a starter `build.py` (with inline script metadata, so
+`uv run
+build.py` installs the SDK by itself), a `zuke.json` naming the worker
+command and the exact `@zuke/engine` release to run it on, the launchers and a
+`.gitignore`, and no `deno.json`. The engine release is JSR's latest at setup
+time; `--engine <version>` pins one without touching the network. The launchers
+and the `zuke` command run `jsr:@zuke/engine@<version>` when there is no
+`zuke.ts`, so a clone still needs nothing installed first: Deno is bootstrapped
+as for a TypeScript build, and uv provides the Python side. Move the pin later
+with `zuke upgrade --engine [<version>]`. The other `setup` flags apply as they
+do for a TypeScript build; `--mcp` registers the engine's MCP server.
+
 ## Migrate an existing project with `zuke import`
 
 Already have `package.json` scripts or a `Makefile`? `zuke import` reads them

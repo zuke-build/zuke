@@ -24,6 +24,7 @@ import {
   defaultHost,
   type McpSetupOptions,
   runSetup,
+  type SdkSetupOptions,
   type SetupHost,
   type SetupResult,
 } from "./src/setup.ts";
@@ -55,9 +56,13 @@ import { runDenoIsolated } from "./src/deno_isolated.ts";
 import { defaultDenoHost, firstSet } from "./src/deno_path.ts";
 import {
   defaultUpgradeHost,
+  ENGINE_PACKAGE,
+  registryMeta,
+  resolveRelease,
   runUpgrade,
   type UpgradeHost,
 } from "./src/upgrade.ts";
+import { runEnginePin } from "./src/engine_pin.ts";
 import { neutralise, output } from "./src/output.ts";
 import { runRelock } from "./src/relock.ts";
 import { runCache } from "./src/cache.ts";
@@ -70,6 +75,7 @@ import {
   lockedCoreVersions,
   projectConfigText,
   projectLockPath,
+  VERSION_PATTERN,
 } from "./src/version_report.ts";
 
 export type { SetupHost } from "./src/setup.ts";
@@ -77,6 +83,8 @@ export type { ImportSource } from "./src/import.ts";
 export type { StarActions } from "./src/star.ts";
 export type { InstallHost } from "./src/install_source.ts";
 export type { UpgradeHost } from "./src/upgrade.ts";
+export type { EnginePinHost } from "./src/engine_pin.ts";
+export type { SdkSetupOptions } from "./src/setup.ts";
 export type { ProjectHost } from "./src/project.ts";
 export type {
   BuildLocation,
@@ -139,6 +147,16 @@ export interface SetupFlags {
    * ask when interactive, else take the default (bootstrap).
    */
   bootstrapDeno?: boolean;
+  /**
+   * The SDK whose build to scaffold (`--sdk python`): a `build.py` the engine
+   * runs, in place of a `zuke.ts`. Unset: a TypeScript build.
+   */
+  sdk?: string;
+  /**
+   * The exact `@zuke/engine` release to pin for an SDK build (`--engine`).
+   * Unset: the latest release, read from JSR at setup time.
+   */
+  engine?: string;
 }
 
 /** Parse the argument list following `zuke setup`. */
@@ -187,9 +205,65 @@ export function parseSetupFlags(args: string[]): SetupFlags {
       }
     } else if (arg.startsWith("--launcher-name=")) {
       flags.launcherName = arg.slice("--launcher-name=".length);
+    } else if (arg === "--sdk") {
+      if (i + 1 < args.length) {
+        i++;
+        flags.sdk = args[i];
+      }
+    } else if (arg.startsWith("--sdk=")) {
+      flags.sdk = arg.slice("--sdk=".length);
+    } else if (arg === "--engine") {
+      if (i + 1 < args.length) {
+        i++;
+        flags.engine = args[i];
+      }
+    } else if (arg.startsWith("--engine=")) {
+      flags.engine = arg.slice("--engine=".length);
     }
   }
   return flags;
+}
+
+/** The SDKs `--sdk` accepts: the ones whose build `@zuke/engine` can host. */
+const SDKS = new Set(["python"]);
+
+/**
+ * What `--sdk` asks `setup` to scaffold against: the engine release to pin,
+ * named by `--engine` (taken as given, so a pin needs no network) or read
+ * from JSR as the latest. `undefined` without `--sdk`, for a TypeScript
+ * build.
+ *
+ * @throws {Error} naming an SDK the engine cannot host, an `--engine` that
+ * is not an exact version, or a registry that cannot be read.
+ */
+async function sdkOption(
+  flags: SetupFlags,
+  upgradeHost: UpgradeHost,
+): Promise<SdkSetupOptions | undefined> {
+  if (flags.sdk === undefined) return undefined;
+  if (!SDKS.has(flags.sdk)) {
+    throw new Error(
+      `zuke setup: unknown --sdk "${flags.sdk}" — the engine hosts a build ` +
+        `in: ${[...SDKS].join(", ")}.`,
+    );
+  }
+  if (flags.engine !== undefined) {
+    if (!VERSION_PATTERN.test(flags.engine)) {
+      throw new Error(
+        `zuke setup: --engine "${flags.engine}" is not an exact version — ` +
+          "name a release such as 1.2.0.",
+      );
+    }
+    return { engine: flags.engine };
+  }
+  const meta = await registryMeta(
+    () => upgradeHost.engineMeta(),
+    ENGINE_PACKAGE,
+    "zuke setup",
+  );
+  return {
+    engine: resolveRelease(meta, undefined, ENGINE_PACKAGE, "zuke setup"),
+  };
 }
 
 /** The `.mcp.json` request the flags make, or `undefined` for none. */
@@ -220,6 +294,30 @@ function resolveBootstrapDeno(
 
 /** The flag that asks for plain output, read here for the CLI's own commands. */
 const PLAIN_FLAG = "--plain";
+
+/** The `upgrade` flag that moves a project's engine pin instead of the CLI. */
+const ENGINE_FLAG = "--engine";
+
+/**
+ * The arguments `zuke upgrade --engine` parses when `args` carries the flag,
+ * as a bare `--engine` or as `--engine=<version>`, with the flag taken out
+ * and an inline version left as its own argument; `null` when the command is
+ * the CLI's own reinstall. An exact token match: nothing else is read as the
+ * flag.
+ */
+function enginePinArgs(args: readonly string[]): string[] | null {
+  const inline = `${ENGINE_FLAG}=`;
+  if (!args.some((arg) => arg === ENGINE_FLAG || arg.startsWith(inline))) {
+    return null;
+  }
+  return args.flatMap((arg) =>
+    arg === ENGINE_FLAG
+      ? []
+      : arg.startsWith(inline)
+      ? [arg.slice(inline.length)]
+      : [arg]
+  );
+}
 
 /** The environment that asks a spawned build for plain output. */
 const PLAIN_ENV: Readonly<Record<string, string>> = { ZUKE_PLAIN: "1" };
@@ -267,6 +365,7 @@ Zuke commands (available anywhere):
   doc <package>           Show a @zuke/* package's API docs (isolated resolution)
   upgrade [<version>]     Reinstall this CLI at the latest (or given) JSR release
                           (Homebrew installs: brew upgrade zuke)
+  upgrade --engine [<v>]  Move this project's @zuke/engine pin to the latest (or given) release
   add <package...>        Add packages to this project's deno.json (docker = @zuke/docker)
   remove <package...>     Remove packages from this project's deno.json
   cache [<entry>...]      Fetch everything the build imports, keeping the lock
@@ -278,6 +377,8 @@ Setup options:
   --dir <path>            Directory to scaffold into (default: .)
   --name <Class>          Build class name for zuke.ts (default: MyBuild)
   --launcher-name <name>  Launcher base name when a zuke/ directory is in the way
+  --sdk python            Scaffold a build.py the Python SDK describes and @zuke/engine runs
+  --engine <version>      The @zuke/engine release to pin with --sdk (default: JSR's latest)
   --mcp                   Also write .mcp.json registering the build's MCP server
   --allow-run             …with --allow-run, so an agent may execute targets (implies --mcp)
   --bootstrap-deno        Launchers install a pinned, checksum-verified Deno when none is on PATH (default)
@@ -299,6 +400,7 @@ Import options:
 Upgrade options:
   --dry-run               Say what would be installed, and install nothing
   --force, -f             Reinstall even when already on that version
+  --engine                Move the engine pin in zuke.json instead (takes --dry-run)
 
 Cache and relock options:
   --min-dep-age <age>     Only resolve releases at least this old (0 for the newest)
@@ -367,8 +469,12 @@ async function commandSetup(
   prompter: Prompter,
   starActions: StarActions,
   paint: CliPaint,
+  upgradeHost: UpgradeHost,
 ): Promise<number> {
   const flags = parseSetupFlags(args);
+  // Resolved before any question is asked, so an unknown SDK or an
+  // unreachable registry stops the run before the wizard starts.
+  const sdk = await sdkOption(flags, upgradeHost);
   let name = flags.name ?? "MyBuild";
   let force = flags.force;
   const dir = flags.dir ?? ".";
@@ -387,7 +493,15 @@ async function commandSetup(
   host.log(`Scaffolding Zuke into ${where}:`);
   const launcherName = flags.launcherName;
   const result = await runSetup(
-    { dir, force, name, launcherName, mcp: mcpOption(flags), bootstrapDeno },
+    {
+      dir,
+      force,
+      name,
+      launcherName,
+      mcp: mcpOption(flags),
+      bootstrapDeno,
+      sdk,
+    },
     host,
   );
   const written = result.files.filter((f) => f.status !== "skipped").length;
@@ -833,7 +947,14 @@ export async function main(
   }
   try {
     if (command === "setup") {
-      return await commandSetup(rest, host, prompter, starActions, paint);
+      return await commandSetup(
+        rest,
+        host,
+        prompter,
+        starActions,
+        paint,
+        upgradeHost,
+      );
     }
     if (command === "import") {
       return await commandImport(rest, host, prompter, paint);
@@ -842,6 +963,21 @@ export async function main(
       return await commandDoc(rest, host, docRunner);
     }
     if (command === "upgrade") {
+      const engineArgs = enginePinArgs(rest);
+      if (engineArgs !== null) {
+        return await runEnginePin(
+          engineArgs,
+          (line) => host.log(line),
+          {
+            readText: (path) => projectHost.readText(path),
+            writeText: (path, text) => projectHost.writeText(path, text),
+            engineMeta: () => upgradeHost.engineMeta(),
+          },
+          paint,
+          Deno.cwd(),
+          buildProbe,
+        );
+      }
       return await runUpgrade(
         rest,
         (line) => host.log(line),

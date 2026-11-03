@@ -55,8 +55,16 @@ import {
 /** Where the compiled binaries are published. */
 const RELEASES_URL = `${ZUKE_REPO_URL}/releases`;
 
-/** The registry document listing every published version and the latest. */
-const META_URL = "https://jsr.io/@zuke/cli/meta.json";
+/** The registry document listing every published version of `pkg` and the latest. */
+function metaUrl(pkg: string): string {
+  return `https://jsr.io/${pkg}/meta.json`;
+}
+
+/** The CLI's own package, as the registry names it. */
+const CLI_PACKAGE = "@zuke/cli";
+
+/** The package whose pin `zuke setup --sdk` writes and `zuke upgrade --engine` moves. */
+export const ENGINE_PACKAGE = "@zuke/engine";
 
 /**
  * What `zuke upgrade` reaches outside the process, injectable so the
@@ -75,6 +83,11 @@ export interface UpgradeHost extends InstallHost {
   windows(): boolean;
   /** Fetch and parse `@zuke/cli`'s JSR `meta.json`. */
   meta(): Promise<unknown>;
+  /**
+   * Fetch and parse `@zuke/engine`'s JSR `meta.json`: the release
+   * `zuke setup --sdk` pins and `zuke upgrade --engine` moves a pin to.
+   */
+  engineMeta(): Promise<unknown>;
   /** Run `deno <denoArgs>` to reinstall, returning its exit code. */
   install(denoArgs: string[]): Promise<number>;
   /**
@@ -112,7 +125,8 @@ export const defaultUpgradeHost: UpgradeHost = {
     }
   },
   windows: () => defaultDenoHost.windows(),
-  meta: () => httpJson<unknown>(META_URL),
+  meta: () => httpJson<unknown>(metaUrl(CLI_PACKAGE)),
+  engineMeta: () => httpJson<unknown>(metaUrl(ENGINE_PACKAGE)),
   install: (denoArgs) => runDenoIsolated(denoArgs, "zuke-upgrade-"),
   denoVersion: () => Deno.version.deno,
   readText: (path) => Deno.readTextFile(path),
@@ -173,33 +187,59 @@ function field(value: unknown, name: string): unknown {
 }
 
 /**
- * The release `flags` asks for, checked against the registry's `meta`.
+ * The release of `pkg` that `version` asks for, or its latest when none is
+ * named, checked against the registry's `meta`. Errors open with `command`,
+ * the `zuke` command asking.
  *
  * @throws {Error} when the document has no latest, or the requested version
  * is unpublished or yanked.
  */
-function resolveTarget(meta: unknown, flags: UpgradeFlags): string {
+export function resolveRelease(
+  meta: unknown,
+  version: string | undefined,
+  pkg: string,
+  command: string,
+): string {
   const latest = field(meta, "latest");
   if (typeof latest !== "string") {
     throw new Error(
-      "zuke upgrade: JSR's metadata for @zuke/cli names no latest version.",
+      `${command}: JSR's metadata for ${pkg} names no latest version.`,
     );
   }
-  if (flags.version === undefined) return latest;
-  const entry = field(field(meta, "versions"), flags.version);
+  if (version === undefined) return latest;
+  const entry = field(field(meta, "versions"), version);
   if (entry === null || typeof entry !== "object") {
     throw new Error(
-      `zuke upgrade: @zuke/cli ${flags.version} is not published on JSR ` +
+      `${command}: ${pkg} ${version} is not published on JSR ` +
         `(latest is ${latest}).`,
     );
   }
   if (field(entry, "yanked") === true) {
     throw new Error(
-      `zuke upgrade: @zuke/cli ${flags.version} has been yanked from JSR ` +
+      `${command}: ${pkg} ${version} has been yanked from JSR ` +
         `(latest is ${latest}).`,
     );
   }
-  return flags.version;
+  return version;
+}
+
+/**
+ * `meta` read through `read`, with a failure to reach the registry reported
+ * as the `zuke` `command`'s own error.
+ */
+export async function registryMeta(
+  read: () => Promise<unknown>,
+  pkg: string,
+  command: string,
+): Promise<unknown> {
+  try {
+    return await read();
+  } catch (error) {
+    throw new Error(
+      `${command}: could not read ${pkg}'s versions from JSR: ` +
+        (error instanceof Error ? error.message : String(error)),
+    );
+  }
 }
 
 /**
@@ -348,16 +388,17 @@ export async function runUpgrade(
         ". Install it with: deno install -A -g -n zuke " + PACKAGE,
     );
   }
-  let meta: unknown;
-  try {
-    meta = await host.meta();
-  } catch (error) {
-    throw new Error(
-      "zuke upgrade: could not read @zuke/cli's versions from JSR: " +
-        (error instanceof Error ? error.message : String(error)),
-    );
-  }
-  const target = resolveTarget(meta, flags);
+  const meta = await registryMeta(
+    () => host.meta(),
+    CLI_PACKAGE,
+    "zuke upgrade",
+  );
+  const target = resolveRelease(
+    meta,
+    flags.version,
+    CLI_PACKAGE,
+    "zuke upgrade",
+  );
   if (target === VERSION && !flags.force) {
     log(paint.ok(
       `zuke ${VERSION} is already ${

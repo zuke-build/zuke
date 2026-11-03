@@ -394,11 +394,16 @@ async function engineVersion(
   return engine;
 }
 
+/** The module that runs a build another SDK hosts: `@zuke/engine` at `version`. */
+export function engineSpecifier(version: string): string {
+  return `jsr:@zuke/engine@${version}`;
+}
+
 /** What a forwarded command runs: the build file, or the engine release for a root without one. */
 function buildModule(location: BuildLocation): string {
   return location.engine === null
     ? BUILD_FILE
-    : `jsr:@zuke/engine@${location.engine}`;
+    : engineSpecifier(location.engine);
 }
 
 /**

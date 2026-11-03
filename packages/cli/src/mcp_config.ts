@@ -26,7 +26,11 @@ export const MCP_SERVER_NAME = "zuke";
 export interface McpServerEntry {
   /** The executable — always `deno`, which is the same on every platform. */
   command: string;
-  /** The arguments: `run -A zuke.ts mcp`, plus `--allow-run` when asked for. */
+  /**
+   * The arguments: `run -A zuke.ts mcp`, plus `--allow-run` when asked for;
+   * `jsr:@zuke/engine@<version>` in place of `zuke.ts` for a build another
+   * SDK hosts.
+   */
   args: string[];
 }
 
@@ -35,10 +39,13 @@ export interface McpServerEntry {
  * agent can inspect the build but not execute targets until `allowRun` opts
  * in, mirroring `zuke mcp --allow-run`.
  */
-export function mcpServerEntry(allowRun: boolean): McpServerEntry {
+export function mcpServerEntry(
+  allowRun: boolean,
+  build: string = "zuke.ts",
+): McpServerEntry {
   return {
     command: "deno",
-    args: ["run", "-A", "zuke.ts", "mcp", ...(allowRun ? ["--allow-run"] : [])],
+    args: ["run", "-A", build, "mcp", ...(allowRun ? ["--allow-run"] : [])],
   };
 }
 
@@ -101,10 +108,11 @@ export function parseMcpConfig(text: string): McpConfig {
 export function mergeMcpConfig(
   document: Record<string, unknown>,
   allowRun: boolean,
+  build?: string,
 ): string {
   const servers: Record<string, unknown> = isRecord(document.mcpServers)
     ? { ...document.mcpServers }
     : {};
-  servers[MCP_SERVER_NAME] = mcpServerEntry(allowRun);
+  servers[MCP_SERVER_NAME] = mcpServerEntry(allowRun, build);
   return `${JSON.stringify({ ...document, mcpServers: servers }, null, 2)}\n`;
 }

@@ -69,3 +69,64 @@ await run(${name});
 export function starterConfig(name: string): string {
   return `${JSON.stringify({ name }, null, 2)}\n`;
 }
+
+/** The build file `zuke setup --sdk python` writes, which `sdk.command` runs. */
+export const PYTHON_BUILD_FILE = "build.py";
+
+/**
+ * The `sdk.command` a Python scaffold's `zuke.json` names: `uv run` reads the
+ * inline script metadata atop {@link starterPythonBuild} and provides the
+ * `zuke` package, so the build runs with no project file of its own.
+ */
+export const PYTHON_SDK_COMMAND: readonly string[] = [
+  "uv",
+  "run",
+  PYTHON_BUILD_FILE,
+];
+
+/**
+ * The starter `build.py`, the Python SDK's shape of {@link starterBuild}: the
+ * build class named `name`, a sample target and a `default`. The script
+ * metadata block makes `uv run build.py` install the SDK by itself.
+ */
+export function starterPythonBuild(name: string): string {
+  return `# /// script
+# requires-python = ">=3.12"
+# dependencies = ["zuke"]
+# ///
+"""Your project's build. Run a target with ./zuke <target>."""
+
+from zuke import Build, run, target
+
+
+class ${name}(Build):
+    """The targets of this project."""
+
+    hello = (
+        target()
+        .description("A sample target, replace me with real work")
+        .executes(lambda ctx: ctx.log("Hello from Zuke!"))
+    )
+
+    # Convention: default runs when no target is named.
+    default = target().description("Default target").depends_on(hello)
+
+
+run(${name})
+`;
+}
+
+/**
+ * The `zuke.json` of a build another SDK hosts: {@link starterConfig}'s
+ * `name`, the `sdk.command` that starts the worker, and the exact
+ * `@zuke/engine` release the launchers and the `zuke` command run it on.
+ */
+export function starterSdkConfig(name: string, engine: string): string {
+  return `${
+    JSON.stringify(
+      { name, sdk: { command: PYTHON_SDK_COMMAND }, engine },
+      null,
+      2,
+    )
+  }\n`;
+}

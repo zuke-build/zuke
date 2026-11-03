@@ -16,9 +16,12 @@ import {
   runSetup,
 } from "../src/setup.ts";
 import {
+  PYTHON_SDK_COMMAND,
   STARTER_IMPORTS,
   starterBuild,
   starterConfig,
+  starterPythonBuild,
+  starterSdkConfig,
   zukeDependency,
 } from "../src/starter.ts";
 import { FakeHost } from "./_fakes.ts";
@@ -60,6 +63,109 @@ Deno.test("starterConfig records the build name as JSON", () => {
   const parsed: unknown = JSON.parse(starterConfig("Acme"));
   assertEquals(isRecord(parsed) && parsed.name === "Acme", true);
   assertEquals(starterConfig("Acme").endsWith("\n"), true);
+});
+
+Deno.test("starterPythonBuild names the class, depends on the SDK and ends in run", () => {
+  const out = starterPythonBuild("Acme");
+  // The inline metadata is what lets `uv run build.py` provide the SDK.
+  assertEquals(out.startsWith("# /// script\n"), true);
+  assertStringIncludes(out, '# dependencies = ["zuke"]');
+  assertStringIncludes(out, "from zuke import Build, run, target");
+  assertStringIncludes(out, "class Acme(Build):");
+  assertEquals(out.endsWith("run(Acme)\n"), true);
+});
+
+Deno.test("starterSdkConfig records the name, the worker command and the engine pin", () => {
+  const parsed: unknown = JSON.parse(starterSdkConfig("Acme", "1.2.0"));
+  assertEquals(parsed, {
+    name: "Acme",
+    sdk: { command: PYTHON_SDK_COMMAND },
+    engine: "1.2.0",
+  });
+  assertEquals(PYTHON_SDK_COMMAND, ["uv", "run", "build.py"]);
+});
+
+Deno.test("runSetup --sdk python writes build.py and the SDK config, and no deno.json", async () => {
+  const host = new FakeHost();
+  const result = await runSetup(
+    { dir: ".", force: false, name: "Acme", sdk: { engine: "1.2.0" } },
+    host,
+  );
+  assertEquals(
+    result.files.map((f) => f.path),
+    ["build.py", "zuke", "zuke.ps1", "zuke.json", ".gitignore"],
+  );
+  assertEquals(result.manualSteps, []);
+  assertEquals(host.files.has("zuke.ts"), false);
+  assertEquals(host.files.has("deno.json"), false);
+  assertStringIncludes(host.files.get("build.py") ?? "", "class Acme(Build):");
+  assertEquals(
+    JSON.parse(host.files.get("zuke.json") ?? ""),
+    { name: "Acme", sdk: { command: PYTHON_SDK_COMMAND }, engine: "1.2.0" },
+  );
+  // The launchers run the pinned engine when there is no zuke.ts.
+  assertStringIncludes(host.files.get("zuke") ?? "", "jsr:@zuke/engine@");
+  assertEquals(host.chmods, [["zuke", 0o755]]);
+});
+
+Deno.test("runSetup --sdk python --mcp registers the engine's MCP server", async () => {
+  const host = new FakeHost();
+  await runSetup(
+    {
+      dir: "app",
+      force: false,
+      name: "Acme",
+      sdk: { engine: "1.2.0" },
+      mcp: { allowRun: true },
+    },
+    host,
+  );
+  const config = JSON.parse(host.files.get("app/.mcp.json") ?? "{}");
+  assertEquals(config.mcpServers.zuke.args, [
+    "run",
+    "-A",
+    "jsr:@zuke/engine@1.2.0",
+    "mcp",
+    "--allow-run",
+  ]);
+});
+
+Deno.test("runSetup --sdk python reserves build.py, and leaves a deno.json directory alone", async () => {
+  const host = new FakeHost();
+  // Not a scaffold name for an SDK build, so not a collision.
+  host.directories.add("deno.json");
+  host.directories.add("build.py");
+  await assertRejects(
+    () =>
+      runSetup(
+        { dir: ".", force: false, name: "Acme", sdk: { engine: "1.2.0" } },
+        host,
+      ),
+    Error,
+    'cannot write "build.py"',
+  );
+  host.directories.delete("build.py");
+  const result = await runSetup(
+    { dir: ".", force: false, name: "Acme", sdk: { engine: "1.2.0" } },
+    host,
+  );
+  assertEquals(result.files.length, 5);
+  // The launcher cannot take the build file's name either.
+  await assertRejects(
+    () =>
+      runSetup(
+        {
+          dir: ".",
+          force: true,
+          name: "Acme",
+          sdk: { engine: "1.2.0" },
+          launcherName: "build.py",
+        },
+        host,
+      ),
+    Error,
+    "would overwrite a file setup writes",
+  );
 });
 
 Deno.test("mergeDenoJson seeds tasks and imports from scratch", () => {
