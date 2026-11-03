@@ -78,6 +78,7 @@ import {
 import { binaryPath, packageCliArchives } from "./build/cli_package.ts";
 import {
   assertReportsVersion,
+  awaitJsrListing,
   compileCliBinaries,
 } from "./build/cli_compile.ts";
 import { signingCredentials, signMacBinaries } from "./build/cli_sign.ts";
@@ -2062,6 +2063,8 @@ class ZukeBuild extends Build {
         chocolatey: String(plan.chocolatey),
       });
       if (plan.build) {
+        // The publish job this follows finishes before JSR lists the release.
+        await awaitJsrListing(version);
         await compileCliBinaries(
           version,
           absolutePath(Deno.cwd(), CLI_BIN_DIR),

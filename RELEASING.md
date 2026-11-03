@@ -130,7 +130,9 @@ which locks the release with its binaries already inside. The jobs in
    published — everything while its release is unpublished, only the tap or the
    Chocolatey package while either lags behind a published release — and, when
    binaries are owed, compiles them from the published
-   `jsr:@zuke/cli@<version>`.
+   `jsr:@zuke/cli@<version>`, after waiting, for up to three minutes, for JSR's
+   `meta.json` to list that version: `publishJsr` finishes seconds before the
+   registry shows what it accepted.
 2. `cliSign` signs the macOS binaries with the Developer ID under the hardened
    runtime and notarizes them, on a macOS runner in the `cli-signing`
    environment. Missing credentials fail it: nothing is published unsigned.
