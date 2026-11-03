@@ -78,6 +78,7 @@ Deno.test({
       const verbs = brew.calls().map((call) => call.args[0]);
       assertEquals(verbs, [
         "tap-new",
+        "trust",
         "--repository",
         "install",
         "test",

@@ -109,12 +109,15 @@ Current Homebrew refuses to install a formula from a file path ("Homebrew
 requires formulae to be in a tap"; `HOMEBREW_FORBID_PACKAGES_FROM_PATHS` is on
 unless `HOMEBREW_DEVELOPER` is set). So `verify` installs it the way a user
 would, from a tap: it creates a throwaway local tap with
-`brew tap-new --no-git`, copies the file into its `Formula/` directory (found
-with `brew --repository <tap>`), then runs `brew install --formula <tap>/<name>`
-and `brew test <tap>/<name>`. The uninstall and `brew untap --force` always run
-— whether or not the install and test passed — and an error in the cleanup is
-raised alongside the one that caused it, never instead of it. Every call runs
-with `HOMEBREW_NO_AUTO_UPDATE=1`.
+`brew tap-new --no-git`, trusts it with `brew trust --tap` (current Homebrew
+loads a non-official tap's formulae only once the tap is trusted; an older brew
+without the command is let refuse), copies the file into its `Formula/`
+directory (found with `brew --repository <tap>`), then runs
+`brew install --formula <tap>/<name>` and `brew test <tap>/<name>`. The
+uninstall and `brew untap --force` always run — whether or not the install and
+test passed — and an error in the cleanup is raised alongside the one that
+caused it, never instead of it. Every call runs with
+`HOMEBREW_NO_AUTO_UPDATE=1`.
 
 `verifyJob` returns a plain `CiInvocation` for `cicd({ invokes: [...] })`: a
 `macos-latest` + `ubuntu-latest` matrix (`.runners(...)` to change it) that lets
@@ -345,6 +348,26 @@ class BrewTestSettings extends BrewCommandSettings
     The subcommand: `test`.
   protected commandFlags(): string[]
     The flags set, in brew's manual order.
+
+class BrewTrustSettings extends BrewCommandSettings
+  Settings for `brew trust`, which lets Homebrew load a non-official tap's
+  formulae, casks or commands. Current Homebrew refuses to load them from a tap
+  it has not been told to trust.
+
+  targets(...names: string[]): this
+    What to trust: taps, formulae, casks or commands by name; repeatable.
+  tap(): this
+    The names are taps (`--tap`).
+  formula(): this
+    The names are formulae (`--formula`).
+  cask(): this
+    The names are casks (`--cask`).
+  externalCommand(): this
+    The names are external commands (`--command`).
+  protected verb(): string
+    The subcommand: `trust`.
+  protected commandFlags(): string[]
+    The flags set.
 
 class BrewUninstallSettings extends BrewCommandSettings
   Settings for `brew uninstall`.
@@ -636,6 +659,8 @@ interface BrewTasksApi
     Remove taps (`brew untap`).
   tapNew(configure: Configure<BrewTapNewSettings>): Promise<CommandOutput>
     Generate a new local tap (`brew tap-new`).
+  trust(configure: Configure<BrewTrustSettings>): Promise<CommandOutput>
+    Trust a non-official tap's formulae, casks or commands (`brew trust`).
   repository(configure?: Configure<BrewRepositorySettings>): Promise<string>
     The directory of Homebrew's repository, or of a tap
     (`brew --repository [tap]`), as a path with the trailing newline removed.
@@ -684,9 +709,9 @@ interface HomebrewTasksApi
     alone — reporting `unchanged` — when the tap already holds exactly that
     source.
   verify(configure: Configure<HomebrewVerifySettings>): Promise<void>
-    Install a formula file through a throwaway local tap, run its test, then
-    uninstall it and remove the tap — the cleanup runs whether or not the
-    install and test succeeded.
+    Install a formula file through a throwaway local tap, trusted first, run
+    its test, then uninstall it and remove the tap — the cleanup runs whether
+    or not the install and test succeeded.
   verifyJob(configure: Configure<HomebrewVerifyJobSettings>): CiInvocation
     The CI job that runs a verifying target across macOS and Linux runners,
     ready to list in `cicd({ invokes: [...] })`.

@@ -32,6 +32,7 @@ import {
   BrewTapNewSettings,
   BrewTapSettings,
   BrewTestSettings,
+  BrewTrustSettings,
   BrewUninstallSettings,
   BrewUntapSettings,
 } from "./brew_commands.ts";
@@ -63,6 +64,8 @@ export interface BrewTasksApi {
   untap(configure: Configure<BrewUntapSettings>): Promise<CommandOutput>;
   /** Generate a new local tap (`brew tap-new`). */
   tapNew(configure: Configure<BrewTapNewSettings>): Promise<CommandOutput>;
+  /** Trust a non-official tap's formulae, casks or commands (`brew trust`). */
+  trust(configure: Configure<BrewTrustSettings>): Promise<CommandOutput>;
   /**
    * The directory of Homebrew's repository, or of a tap
    * (`brew --repository [tap]`), as a path with the trailing newline removed.
@@ -110,6 +113,9 @@ export const BrewTasks: BrewTasksApi = {
   },
   tapNew(configure: Configure<BrewTapNewSettings>): Promise<CommandOutput> {
     return runSettings(new BrewTapNewSettings(), configure);
+  },
+  trust(configure: Configure<BrewTrustSettings>): Promise<CommandOutput> {
+    return runSettings(new BrewTrustSettings(), configure);
   },
   async repository(
     configure?: Configure<BrewRepositorySettings>,

@@ -4,7 +4,7 @@
 /**
  * The typed `brew` subcommands that act on formulae and taps: `install`,
  * `uninstall`, `test`, `audit`, `style`, `livecheck`, `tap`, `untap`,
- * `tap-new` and `--repository`. Each setter is named after the flag it
+ * `tap-new`, `trust` and `--repository`. Each setter is named after the flag it
  * renders, so the settings read like brew's own manual.
  *
  * @module
@@ -406,6 +406,56 @@ export class BrewTapNewSettings extends BrewCommandSettings {
     flagIf(argv, this.#noGit, "--no-git");
     if (this.#branch !== undefined) argv.push(`--branch=${this.#branch}`);
     return argv;
+  }
+}
+
+/**
+ * Settings for `brew trust`, which lets Homebrew load a non-official tap's
+ * formulae, casks or commands. Current Homebrew refuses to load them from a tap
+ * it has not been told to trust.
+ */
+export class BrewTrustSettings extends BrewCommandSettings {
+  #kind?: "--tap" | "--formula" | "--cask" | "--command";
+
+  /** What to trust: taps, formulae, casks or commands by name; repeatable. */
+  targets(...names: string[]): this {
+    this.addOperands(names);
+    return this;
+  }
+
+  /** The names are taps (`--tap`). */
+  tap(): this {
+    this.#kind = "--tap";
+    return this;
+  }
+
+  /** The names are formulae (`--formula`). */
+  formula(): this {
+    this.#kind = "--formula";
+    return this;
+  }
+
+  /** The names are casks (`--cask`). */
+  cask(): this {
+    this.#kind = "--cask";
+    return this;
+  }
+
+  /** The names are external commands (`--command`). */
+  externalCommand(): this {
+    this.#kind = "--command";
+    return this;
+  }
+
+  /** The subcommand: `trust`. */
+  protected verb(): string {
+    return "trust";
+  }
+
+  /** The flags set. */
+  protected commandFlags(): string[] {
+    requireOperand(this.operands, "trust", "targets");
+    return this.#kind === undefined ? [] : [this.#kind];
   }
 }
 
