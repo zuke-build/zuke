@@ -767,13 +767,15 @@ export class FileSystemCacheStore implements RemoteCacheStore {
       // The open handle's stat, so the file checked is the file read.
       const info = await file.stat();
       const uid = this.#uid();
+      // No uid means no POSIX permissions (Windows): Deno reports every
+      // writable file there as mode 666, so neither check means anything.
       if (uid !== null && info.uid !== null && info.uid !== uid) {
         throw new Error(
           `remote cache: refusing "${key}", which is owned by another user ` +
             `(uid ${info.uid}).`,
         );
       }
-      if (info.mode !== null && (info.mode & 0o022) !== 0) {
+      if (uid !== null && info.mode !== null && (info.mode & 0o022) !== 0) {
         throw new Error(
           `remote cache: refusing "${key}", which other users can write ` +
             `(mode ${(info.mode & 0o777).toString(8)}).`,

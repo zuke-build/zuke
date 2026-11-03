@@ -30,7 +30,7 @@ import {
   type EchoSink,
 } from "../../packages/core/src/ambient_echo.ts";
 import { withEnv as withEnvs } from "../../packages/core/tests/_env.ts";
-import { runCli, withStateDir } from "./_harness.ts";
+import { runCli, withoutMaskDirectives, withStateDir } from "./_harness.ts";
 
 const FAKE =
   new URL("../../packages/engine/tests/_fake_worker.ts", import.meta.url)
@@ -244,7 +244,12 @@ Deno.test("a registered secret is redacted from the summary the engine renders",
       assertStringIncludes(result.out, "Token: [redacted]");
       // A log line goes through the run's redactor before the engine prints it.
       assertStringIncludes(result.out, "token is [redacted]");
-      assertEquals((result.out + result.err).includes("hunter2-secret"), false);
+      assertEquals(
+        withoutMaskDirectives(result.out + result.err).includes(
+          "hunter2-secret",
+        ),
+        false,
+      );
     } finally {
       await host.finish(0);
     }
@@ -277,7 +282,8 @@ Deno.test("a secret parameter and a registered secret never reach the log throug
         "--token",
         "param-s3cr3t-value",
       ]);
-      const all = result.out + result.err;
+      // Under Actions the raw values are add-masked on purpose; nowhere else.
+      const all = withoutMaskDirectives(result.out + result.err);
       assertEquals(result.code, 0, all);
       // The worker printed the configure payload, carrying the parameter, and
       // the state it read back, carrying the registered value — both redacted.

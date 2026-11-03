@@ -1440,10 +1440,14 @@ Deno.test("FileSystemCacheStore refuses an entry other users could have written"
   });
 });
 
-Deno.test("FileSystemCacheStore skips the owner check where there is no uid", async () => {
+Deno.test("FileSystemCacheStore skips the owner and mode checks where there is no uid", async () => {
   await withTemp(async (dir) => {
     const store = new FileSystemCacheStore(dir, { uid: () => null });
     await store.put("k", enc("payload"));
+    assertEquals(dec((await store.get("k")) ?? enc("")), "payload");
+    // Windows reports every writable file as mode 666; with no uid that is
+    // not a refusal.
+    await Deno.chmod(`${dir}/k.tar.gz`, 0o666).catch(() => {});
     assertEquals(dec((await store.get("k")) ?? enc("")), "payload");
   });
 });
