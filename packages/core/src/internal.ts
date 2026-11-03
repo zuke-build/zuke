@@ -191,6 +191,26 @@ export async function readBytesBounded(
 }
 
 /**
+ * A pass-through that fails with `tooLarge()` once more than `limit` bytes
+ * have flowed through it. The streaming counterpart of
+ * {@link readBytesBounded}: it bounds a body without buffering it, so the
+ * bytes can go on to a file or a decompressor as they arrive.
+ */
+export function limitBytes(
+  limit: number,
+  tooLarge: () => Error,
+): TransformStream<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>> {
+  let total = 0;
+  return new TransformStream({
+    transform(chunk, controller) {
+      total += chunk.byteLength;
+      if (total > limit) throw tooLarge();
+      controller.enqueue(chunk);
+    },
+  });
+}
+
+/**
  * The parent directory of a `/`- or `\`-separated path, or `null` when the path
  * has no parent to create (a bare name, or a root-level entry).
  */

@@ -28,7 +28,7 @@
  */
 
 import type { PathLike } from "./path.ts";
-import { crc32, lstatOrNull } from "./internal.ts";
+import { crc32, limitBytes, lstatOrNull } from "./internal.ts";
 import { unxz } from "./xz.ts";
 
 /**
@@ -121,7 +121,7 @@ export async function gunzip(data: Uint8Array): Promise<Uint8Array> {
 }
 
 /**
- * Gunzip `data` as a stream that fails with `tooLarge()` once the
+ * Gunzip `source` as a stream that fails with `tooLarge()` once the
  * *decompressed* bytes pass `limit`.
  *
  * {@link gunzip} buffers whatever the stream produces, so a small archive that
@@ -132,29 +132,27 @@ export async function gunzip(data: Uint8Array): Promise<Uint8Array> {
  * chunk in flight, so a reader that consumes as it goes holds one chunk.
  */
 export function gunzipStreamBounded(
-  data: Uint8Array,
+  source: ReadableStream<Uint8Array<ArrayBuffer>>,
   limit: number,
   tooLarge: () => Error,
-): ReadableStream<Uint8Array> {
-  let total = 0;
-  // Fed in slices: a slice owns a plain `ArrayBuffer`, which the decompressor
-  // requires, without copying the whole artifact up front.
-  function* slices(): Generator<BufferSource> {
+): ReadableStream<Uint8Array<ArrayBuffer>> {
+  return source.pipeThrough(new DecompressionStream("gzip"))
+    .pipeThrough(limitBytes(limit, tooLarge));
+}
+
+/**
+ * `data` as a stream, fed in slices: a slice owns a plain `ArrayBuffer`, which
+ * a decompressor requires, without copying the whole of `data` up front.
+ */
+export function byteStream(
+  data: Uint8Array,
+): ReadableStream<Uint8Array<ArrayBuffer>> {
+  function* slices(): Generator<Uint8Array<ArrayBuffer>> {
     for (let i = 0; i < data.length; i += STREAM_SLICE) {
       yield data.slice(i, i + STREAM_SLICE);
     }
   }
-  return ReadableStream.from(slices())
-    .pipeThrough(new DecompressionStream("gzip"))
-    .pipeThrough(
-      new TransformStream<Uint8Array, Uint8Array>({
-        transform(chunk, controller) {
-          total += chunk.byteLength;
-          if (total > limit) throw tooLarge();
-          controller.enqueue(chunk);
-        },
-      }),
-    );
+  return ReadableStream.from(slices());
 }
 
 /** How many bytes of an in-memory archive are fed to a stream at a time. */
@@ -275,24 +273,23 @@ export function tar(entries: TarEntry[]): Uint8Array {
 }
 
 /**
- * Gzip a `ustar` archive of `entries`, pulling each entry only when the
- * compressor is ready for it. The bytes are the same as {@link gzip} of
+ * Gzip a `ustar` archive of `entries` as a stream, pulling each entry only
+ * when the compressor is ready for it. Inflated, the bytes are those of
  * {@link tar}, but only one member is uncompressed in memory at a time, so a
  * source that reads each file as it is asked for keeps a large tree from being
- * held whole.
+ * held whole — and a consumer that writes the stream out holds none of it.
  */
-export async function gzipTar(
+export function gzipTarStream(
   entries: AsyncIterable<TarEntry>,
-): Promise<Uint8Array> {
+): ReadableStream<Uint8Array<ArrayBuffer>> {
   // `BufferSource`, the compressor's input type, so it accepts the stream.
   async function* blocks(): AsyncGenerator<BufferSource> {
     for await (const entry of entries) yield* tarMember(entry);
     yield tarTrailer();
   }
-  const stream = ReadableStream.from(blocks()).pipeThrough(
+  return ReadableStream.from(blocks()).pipeThrough(
     new CompressionStream("gzip"),
   );
-  return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
 /** The two zero blocks that terminate an archive. */

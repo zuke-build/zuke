@@ -158,7 +158,10 @@ dependency-free `tar`/`gzip` helpers; each file carries its permission bits, so
 a restored binary is still executable. Entry names use the POSIX `ustar`
 format's 100-byte path limit, so an extremely deep output path is rejected with
 a clear error rather than silently truncated. You can implement
-`RemoteCacheStore` yourself for any other backend.
+`RemoteCacheStore` yourself for any other backend. It may also implement the
+optional `getStream(key)` and `putStream(key, artifact)`. The executor then
+streams the artifact to and from a temporary file instead of holding it in
+memory, which is what every built-in store does for downloads.
 
 ### Configuring it
 
@@ -376,11 +379,14 @@ target:
   GiB and is `maxInflatedBytes` on every built-in store, or
   `ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES` (a byte count) for an env-selected one.
   Raise it to cache a larger output such as a whole SDK. Raising it costs no
-  memory: archiving reads each file only as it is compressed, and restoring
-  streams the inflated archive twice — once to validate every entry, once to
-  write — so either side holds the compressed artifact plus one file, not the
-  whole tree. Because a tar entry costs at least its 512-byte header, bounding
-  bytes bounds entry count too.
+  memory. Archiving reads each file only as it is compressed. A download is
+  streamed to a temporary file, bounded as it arrives, and the restore reads
+  that file twice — once to validate every entry, once to write — holding one
+  file at a time; the temporary file is deleted afterwards. The filesystem store
+  streams uploads too; the HTTP, S3 and GitHub Actions stores hold the
+  compressed archive while uploading it, because S3 and Azure Blob refuse a
+  streamed upload without a known length. Because a tar entry costs at least its
+  512-byte header, bounding bytes bounds entry count too.
 - **A refused archive is a cache miss, not a build failure.** The target
   rebuilds and the refusal is reported as a warning — so whoever can write the
   store cannot halt every build that reads it. That covers every refusal above,

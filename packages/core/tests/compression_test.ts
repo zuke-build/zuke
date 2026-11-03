@@ -10,6 +10,7 @@ import {
 import {
   assertSafeEntryName,
   assertSafeLinkTarget,
+  byteStream,
   createTarGzip,
   decompressWith,
   extractTarGzip,
@@ -18,7 +19,7 @@ import {
   gunzip,
   gunzipStreamBounded,
   gzip,
-  gzipTar,
+  gzipTarStream,
   tar,
   type TarEntry,
   untar,
@@ -1059,7 +1060,11 @@ async function inflateBounded(
   try {
     return new Uint8Array(
       await new Response(
-        gunzipStreamBounded(data, limit, () => new Error("too large")),
+        gunzipStreamBounded(
+          byteStream(data),
+          limit,
+          () => new Error("too large"),
+        ),
       ).arrayBuffer(),
     );
   } catch (error) {
@@ -1092,7 +1097,7 @@ Deno.test("gunzipStreamBounded counts decompressed bytes, not compressed ones", 
   assertEquals(await inflateBounded(archive, 4095) instanceof Error, true);
 });
 
-Deno.test("gunzipStreamBounded feeds an artifact larger than one slice", async () => {
+Deno.test("byteStream feeds an artifact larger than one slice", async () => {
   // Past the 64 KiB feed slice, so the artifact arrives in several pieces.
   const payload = crypto.getRandomValues(new Uint8Array(60_000));
   const big = new Uint8Array(200_000);
@@ -1237,15 +1242,23 @@ async function collect<T>(items: AsyncIterable<T>): Promise<T[]> {
   return out;
 }
 
-Deno.test("gzipTar produces exactly gzip(tar(...)) once inflated", async () => {
+/** Read a byte stream to its end. */
+async function drain(stream: ReadableStream<Uint8Array>): Promise<Uint8Array> {
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+Deno.test("gzipTarStream produces exactly gzip(tar(...)) once inflated", async () => {
   const entries = varietyEntries();
   async function* source(): AsyncGenerator<TarEntry> {
     yield* entries;
   }
-  assertEquals(await gunzip(await gzipTar(source())), tar(entries));
+  assertEquals(
+    await gunzip(await drain(gzipTarStream(source()))),
+    tar(entries),
+  );
 });
 
-Deno.test("gzipTar pulls each entry only when it is needed", async () => {
+Deno.test("gzipTarStream pulls each entry only when it is needed", async () => {
   // A source that records how far it has been read: the whole archive is not
   // materialised first, so the reads interleave with compression.
   const pulled: string[] = [];
@@ -1255,7 +1268,7 @@ Deno.test("gzipTar pulls each entry only when it is needed", async () => {
       yield { name, data: enc(name) };
     }
   }
-  const archive = await gzipTar(source());
+  const archive = await drain(gzipTarStream(source()));
   assertEquals(pulled, ["one", "two"]);
   assertEquals(untar(await gunzip(archive)).map((e) => e.name), ["one", "two"]);
 });

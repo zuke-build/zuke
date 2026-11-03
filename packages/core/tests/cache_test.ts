@@ -1,16 +1,21 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import {
+  assertEquals,
+  assertRejects,
+  assertStringIncludes,
+} from "./_assert.ts";
 import { target } from "../src/target.ts";
 import {
   type CacheHost,
   defaultCacheHost,
   fingerprint,
   openCache,
+  type SpooledArtifact,
 } from "../src/cache.ts";
 import { archiveOutputs, remoteCacheKey } from "../src/remote_cache.ts";
-import { gzip, tar } from "../src/compression.ts";
+import { byteStream, gzip, tar } from "../src/compression.ts";
 import { withTemp } from "./_temp.ts";
 import { MemCacheStore } from "./_fakes.ts";
 
@@ -363,3 +368,203 @@ Deno.test("a poisoned remote archive is a cache miss and a warning, never a rest
   assertEquals(host.files.has("deno.json"), false);
   assertEquals(host.files.has("dist/app.js"), false);
 });
+
+/** A {@link MemCacheStore} that also streams, recording which form was used. */
+class StreamingStore extends MemCacheStore {
+  /** Keys passed to {@link getStream}, in order. */
+  readonly streamGets: string[] = [];
+  /** Keys passed to {@link putStream}, in order. */
+  readonly streamPuts: string[] = [];
+
+  getStream(
+    key: string,
+  ): Promise<ReadableStream<Uint8Array<ArrayBuffer>> | null> {
+    this.streamGets.push(key);
+    const bytes = this.map.get(key);
+    return Promise.resolve(bytes === undefined ? null : byteStream(bytes));
+  }
+  async putStream(
+    key: string,
+    artifact: ReadableStream<Uint8Array<ArrayBuffer>>,
+  ): Promise<void> {
+    this.streamPuts.push(key);
+    this.map.set(
+      key,
+      new Uint8Array(await new Response(artifact).arrayBuffer()),
+    );
+  }
+}
+
+/** A {@link MemHost} with an in-memory spool that records its use. */
+class SpoolingHost extends MemHost {
+  /** How many times a spooled artifact was opened, and removed. */
+  opens = 0;
+  removes = 0;
+
+  async spool(
+    artifact: ReadableStream<Uint8Array<ArrayBuffer>>,
+  ): Promise<SpooledArtifact> {
+    const bytes = new Uint8Array(await new Response(artifact).arrayBuffer());
+    return {
+      open: () => {
+        this.opens++;
+        return Promise.resolve(byteStream(bytes));
+      },
+      remove: () => {
+        this.removes++;
+        return Promise.resolve();
+      },
+    };
+  }
+}
+
+/** A host holding `dist/app.js`, a store seeded with its archive, and the target. */
+async function seeded(
+  host: MemHost,
+  store: MemCacheStore,
+): Promise<{ t: ReturnType<typeof buildTarget>; key: string }> {
+  host.files.set("in.txt", enc("v1"));
+  host.dirs.set("dist", ["app.js"]);
+  host.files.set("dist/app.js", enc("built"));
+  const t = buildTarget();
+  const key = remoteCacheKey("build", await fingerprint(t, host));
+  store.map.set(key, await archiveOutputs(["dist"], host));
+  host.dirs.delete("dist");
+  host.files.delete("dist/app.js");
+  return { t, key };
+}
+
+Deno.test("a streaming store restores through the host's spool, then removes it", async () => {
+  const host = new SpoolingHost();
+  const store = new StreamingStore();
+  const { t, key } = await seeded(host, store);
+  const cache = await openCache(STORE, host, { remote: store });
+  assertEquals(await cache.upToDate(t), true);
+  assertEquals(store.streamGets, [key]);
+  assertEquals(store.gets, []); // never buffered whole
+  assertEquals(host.opens, 2); // one validation pass, one write pass
+  assertEquals(host.removes, 1);
+  assertEquals(dec(host.files.get("dist/app.js") ?? enc("")), "built");
+});
+
+Deno.test("a refused spooled restore still removes the spool", async () => {
+  const host = new SpoolingHost();
+  const store = new StreamingStore();
+  const { t, key } = await seeded(host, store);
+  store.map.set(key, await gzip(tar([{ name: "../evil", data: enc("x") }])));
+  const warnings: string[] = [];
+  const cache = await openCache(STORE, host, {
+    remote: store,
+    warn: (message) => warnings.push(message),
+  });
+  assertEquals(await cache.upToDate(t), false);
+  assertEquals(host.removes, 1);
+  assertEquals(warnings.some((w) => w.includes("was refused")), true);
+});
+
+Deno.test("a streaming store misses without spooling anything", async () => {
+  const host = new SpoolingHost();
+  const store = new StreamingStore();
+  const { t, key } = await seeded(host, store);
+  store.map.delete(key);
+  const cache = await openCache(STORE, host, { remote: store });
+  assertEquals(await cache.upToDate(t), false);
+  assertEquals(host.opens + host.removes, 0);
+});
+
+Deno.test("a host without a spool reads a streaming store whole", async () => {
+  const host = new MemHost();
+  const store = new StreamingStore();
+  const { t, key } = await seeded(host, store);
+  const cache = await openCache(STORE, host, { remote: store });
+  assertEquals(await cache.upToDate(t), true);
+  assertEquals(store.gets, [key]);
+  assertEquals(store.streamGets, []);
+});
+
+Deno.test("an upload streams to a store that takes a stream", async () => {
+  const host = new MemHost();
+  host.files.set("in.txt", enc("v1"));
+  host.dirs.set("dist", ["app.js"]);
+  host.files.set("dist/app.js", enc("built"));
+  const t = buildTarget();
+  const store = new StreamingStore();
+  const cache = await openCache(STORE, host, { remote: store });
+  await cache.record(t);
+  const key = remoteCacheKey("build", await fingerprint(t, host));
+  assertEquals(store.streamPuts, [key]);
+  assertEquals(store.puts, []);
+  assertEquals(store.map.get(key), await archiveOutputs(["dist"], host));
+});
+
+Deno.test("defaultCacheHost spools to a temporary file it can reopen and remove", async () => {
+  await withTemp(async (dir) => {
+    // So the spool's file is the only one here.
+    await withTempDirEnv(dir, async () => {
+      const spooled = await defaultCacheHost.spool?.(
+        byteStream(enc("artifact bytes")),
+      );
+      if (spooled === undefined) throw new Error("the default host spools");
+      for (let pass = 0; pass < 2; pass++) {
+        const bytes = await new Response(await spooled.open()).arrayBuffer();
+        assertEquals(dec(new Uint8Array(bytes)), "artifact bytes");
+      }
+      assertEquals([...Deno.readDirSync(dir)].length, 1);
+      await spooled.remove();
+      await spooled.remove(); // already gone: still no throw
+      assertEquals([...Deno.readDirSync(dir)].length, 0);
+
+      // A download that fails part-way leaves no file behind.
+      const failing = new ReadableStream<Uint8Array<ArrayBuffer>>({
+        pull(controller) {
+          controller.error(new Error("connection reset"));
+        },
+      });
+      const err = await assertRejects(() =>
+        defaultCacheHost.spool?.(failing) ?? Promise.resolve()
+      );
+      assertStringIncludes(err.message, "connection reset");
+      assertEquals([...Deno.readDirSync(dir)].length, 0);
+    });
+  });
+});
+
+Deno.test("defaultCacheHost cancels the download when it cannot make a spool file", async () => {
+  await withTemp(async (dir) => {
+    let cancelled = false;
+    const download = new ReadableStream<Uint8Array<ArrayBuffer>>({
+      cancel() {
+        cancelled = true;
+      },
+    });
+    // No such directory, so no temporary file can be made.
+    await withTempDirEnv(`${dir}/missing`, async () => {
+      await assertRejects(() =>
+        defaultCacheHost.spool?.(download) ?? Promise.resolve()
+      );
+    });
+    assertEquals(cancelled, true);
+  });
+});
+
+/**
+ * Run `fn` with the system temporary directory pointed at `dir`: `TMPDIR` on
+ * POSIX, `TMP`/`TEMP` on Windows, all three restored afterwards.
+ */
+async function withTempDirEnv(
+  dir: string,
+  fn: () => Promise<void>,
+): Promise<void> {
+  const names = ["TMPDIR", "TMP", "TEMP"];
+  const previous = names.map((name) => Deno.env.get(name));
+  for (const name of names) Deno.env.set(name, dir);
+  try {
+    await fn();
+  } finally {
+    names.forEach((name, i) => {
+      const value = previous[i];
+      if (value === undefined) Deno.env.delete(name);
+      else Deno.env.set(name, value);
+    });
+  }
+}
