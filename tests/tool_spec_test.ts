@@ -3,7 +3,7 @@
 
 /**
  * Tests for the tool spec (`build/tool_spec.ts`): the type reader is checked
- * directly; the two fixture wrappers, of different shapes, read to their
+ * directly; the fixture wrappers, of different shapes, read to their
  * committed golden parts; the tooling base carries core's public setters and
  * not its reserved members; and the workspace spec reads the real packages.
  *
@@ -153,7 +153,7 @@ Deno.test("docOf: links unwrapped, trailing space and blank ends trimmed", () =>
 
 Deno.test("packageOf: the fixture wrappers read to their golden parts", async () => {
   const tooling = await docRootOf([TOOLING_ENTRYPOINT]);
-  for (const name of ["widget", "tally"]) {
+  for (const name of ["widget", "tally", "relay"]) {
     const root = await docRootOf([`${FIXTURES}/${name}.ts`]);
     assertEquals(packageOf(name, root, tooling), await golden(name), name);
   }
@@ -166,6 +166,46 @@ Deno.test("packageOf: a root without tasks is no part of the spec", async () => 
     undefined,
   );
   assertEquals(firstSentence({ version: 1, nodes: {} }), "");
+});
+
+Deno.test("packageOf: an extends entry that names no interface it can read adds nothing", async () => {
+  const tooling = await docRootOf([TOOLING_ENTRYPOINT]);
+  const method = (name: string) => ({
+    name,
+    kind: "method",
+    params: [],
+    returnType: keyword("void"),
+  });
+  const root = {
+    version: 1,
+    nodes: {
+      "file:///odd.ts": {
+        symbols: [
+          {
+            name: "OddApi",
+            declarations: [{
+              kind: "interface",
+              def: {
+                // Not a type node, a type node without a name, and an
+                // interface the root does not declare.
+                extends: ["Text", { kind: "typeRef", value: {} }, ref("Gone")],
+                methods: [method("stop")],
+              },
+            }],
+          },
+          {
+            name: "OddTasks",
+            declarations: [{
+              kind: "variable",
+              def: { tsType: ref("OddApi") },
+            }],
+          },
+        ],
+      },
+    },
+  };
+  const odd = packageOf("odd", root, tooling);
+  assertEquals(odd?.tasks.map((t) => t.tasks.map((m) => m.name)), [["stop"]]);
 });
 
 Deno.test("toolingOf: the base settings, their public setters, no reserved member", async () => {

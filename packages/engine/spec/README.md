@@ -24,12 +24,14 @@ vendors the spec from.
 | `packages` | One entry per wrapper package that exports a task the spec carries, in publish order: `name` after `@zuke/`, `summary`, `tasks`, `settings`. |
 
 A `tasks` entry is one `*Tasks` object: its `name`, `doc` and `tasks`, each a
-member. A `settings` entry is one settings class a task's `Configure` reaches,
-directly, through its base, or through a setter that answers another class: its
-`name`, `doc`, `extends` (another entry's name, a `tooling` class, or `null`)
-and `setters`, each a member. A member has a `name`, a `doc`, `params` (each
-`name`, `type`, `optional`, `rest`) and `returns`. A setter's `returns` is
-`self`, the `settings` class it switches to, or `null`.
+member. An object typed by an interface carries the tasks that interface
+inherits through `extends` as well as its own, the inherited ones first. A
+`settings` entry is one settings class a task's `Configure` reaches, directly,
+through its base, or through a setter that answers another class: its `name`,
+`doc`, `extends` (another entry's name, a `tooling` class, or `null`) and
+`setters`, each a member. A member has a `name`, a `doc`, `params` (each `name`,
+`type`, `optional`, `rest`) and `returns`. A setter's `returns` is `self`, the
+`settings` class it switches to, or `null`.
 
 A `type` is one of:
 

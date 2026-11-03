@@ -452,6 +452,38 @@ function aliasesOf(root: DocRoot): Map<string, DocTsType> {
   return aliases;
 }
 
+/**
+ * An interface's methods, the ones it inherits through `extends` included:
+ * `GhTasksApi` declares two of its own and takes the rest from twenty
+ * interfaces it extends. The bases come first, in the order they are listed,
+ * and a method the interface redeclares replaces the inherited one in place.
+ */
+function interfaceMethods(
+  name: string,
+  interfaces: ReadonlyMap<string, DocSymbol>,
+  seen: Set<string>,
+): DocMethod[] {
+  if (seen.has(name)) return [];
+  seen.add(name);
+  const def = interfaces.get(name)?.declarations?.[0]?.def;
+  const bases = Array.isArray(def?.extends) ? def.extends : [];
+  const methods = new Map<string, DocMethod>();
+  for (const base of bases) {
+    const typeName = isDocTsType(base) ? one(base.value)?.typeName : undefined;
+    if (typeName === undefined) continue;
+    for (const m of interfaceMethods(typeName, interfaces, seen)) {
+      methods.set(m.name ?? "", m);
+    }
+  }
+  for (const m of def?.methods ?? []) methods.set(m.name ?? "", m);
+  return [...methods.values()];
+}
+
+/** Whether a `deno doc` value is a type node, as an `extends` entry is. */
+function isDocTsType(value: unknown): value is DocTsType {
+  return typeof value === "object" && value !== null && "kind" in value;
+}
+
 /** The tasks of a task object's type: an interface's methods, or a literal's. */
 function tasksOfType(
   type: DocTsType | undefined,
@@ -459,8 +491,7 @@ function tasksOfType(
 ): TaskInfo[] {
   const value = one(type?.value);
   if (type?.kind === "typeRef" && value?.typeName !== undefined) {
-    const decl = interfaces.get(value.typeName)?.declarations?.[0];
-    return (decl?.def?.methods ?? []).map((m) => ({
+    return interfaceMethods(value.typeName, interfaces, new Set()).map((m) => ({
       name: m.name ?? "",
       doc: m.jsDoc?.doc,
       params: m.params ?? m.functionDef?.params ?? [],
