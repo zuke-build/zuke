@@ -111,6 +111,11 @@ import {
   docsOptions,
 } from "./build/docs.ts";
 import { writeApiJson } from "./build/api_reference.ts";
+import {
+  checkToolSpec,
+  TOOL_SPEC_PATH,
+  writeToolSpec,
+} from "./build/tool_spec.ts";
 import { runWebsiteSync } from "./build/website_sync.ts";
 import {
   gitleaksSummary,
@@ -643,6 +648,32 @@ class ZukeBuild extends Build {
       );
     });
 
+  toolSpec = target()
+    .description(
+      "Regenerate packages/engine/spec/tools.json — every wrapper's tasks and settings, for SDK generators",
+    )
+    .executes(async () => {
+      const changed = await writeToolSpec();
+      ConsoleTasks.info(
+        changed
+          ? `Regenerated ${TOOL_SPEC_PATH}.`
+          : `${TOOL_SPEC_PATH} already up to date.`,
+      );
+    });
+
+  toolSpecCheck = target()
+    .description("Verify packages/engine/spec/tools.json matches the wrappers")
+    .executes(async () => {
+      const stale = await checkToolSpec();
+      if (stale !== undefined) {
+        throw new Error(
+          `The tool spec is out of date: ${stale}\n` +
+            "Run `./zuke toolSpec` and commit the result.",
+        );
+      }
+      ConsoleTasks.info(`${TOOL_SPEC_PATH} matches the wrappers.`);
+    });
+
   hclGen = target()
     .description("Regenerate the Terraform/OpenTofu wrappers from one template")
     .executes(async () => {
@@ -1038,6 +1069,7 @@ class ZukeBuild extends Build {
       this.launcherSyncCheck,
       this.skillsCheck,
       this.graphDocCheck,
+      this.toolSpecCheck,
       this.pluginVersionCheck,
       this.prBodyLint,
       this.actionPinCheck,

@@ -106,7 +106,8 @@
       "packages/*/CHANGELOG.md",
       "examples/*/.github/",
       "examples/*/*.yml",
-      "examples/*/package-lock.json"
+      "examples/*/package-lock.json",
+      "packages/engine/spec/tools.json"
     ]
   },
   "lint": {
