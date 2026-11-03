@@ -1024,6 +1024,10 @@ Deno.test("tool.call runs a wrapper's task with the worker's environment and dir
         toolCall("tune", [{
           configure: [["level", [3]], ["reset", []], ["level", [5]]],
         }]),
+        // A setter's argument of the configure form is a nested lambda.
+        toolCall("echo", [{
+          configure: [["tuned", [{ configure: [["level", [7]]] }]]],
+        }]),
       ],
     }], { tools: fakeTools });
     try {
@@ -1038,6 +1042,7 @@ Deno.test("tool.call runs a wrapper's task with the worker's environment and dir
       assertStringIncludes(answers[2] ?? "", "answer: tool.call 5");
       assertStringIncludes(answers[3] ?? "", "answer: tool.call {}");
       assertStringIncludes(answers[4] ?? "", "answer: tool.call 5");
+      assertStringIncludes(answers[5] ?? "", '"stdout":"7\\n"');
     } finally {
       await host.finish(0);
     }

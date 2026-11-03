@@ -136,7 +136,15 @@
             {
               "name": "extra",
               "type": {
-                "kind": "unknown"
+                "kind": "union",
+                "members": [
+                  {
+                    "kind": "string"
+                  },
+                  {
+                    "kind": "number"
+                  }
+                ]
               },
               "rest": true,
               "optional": false
@@ -160,7 +168,15 @@
             {
               "name": "values",
               "type": {
-                "kind": "unknown"
+                "kind": "union",
+                "members": [
+                  {
+                    "kind": "string"
+                  },
+                  {
+                    "kind": "number"
+                  }
+                ]
               },
               "rest": true,
               "optional": false
@@ -234,7 +250,15 @@
             {
               "name": "parts",
               "type": {
-                "kind": "unknown"
+                "kind": "union",
+                "members": [
+                  {
+                    "kind": "string"
+                  },
+                  {
+                    "kind": "number"
+                  }
+                ]
               },
               "rest": true,
               "optional": false
@@ -2182,7 +2206,15 @@
                 {
                   "name": "args",
                   "type": {
-                    "kind": "unknown"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "number"
+                      }
+                    ]
                   },
                   "rest": true,
                   "optional": false
@@ -2713,7 +2745,15 @@
                 {
                   "name": "args",
                   "type": {
-                    "kind": "unknown"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "number"
+                      }
+                    ]
                   },
                   "rest": true,
                   "optional": false
@@ -2829,7 +2869,15 @@
                 {
                   "name": "args",
                   "type": {
-                    "kind": "unknown"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "number"
+                      }
+                    ]
                   },
                   "rest": true,
                   "optional": false
@@ -5505,7 +5553,15 @@
                 {
                   "name": "args",
                   "type": {
-                    "kind": "unknown"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "number"
+                      }
+                    ]
                   },
                   "rest": true,
                   "optional": false
@@ -6541,7 +6597,15 @@
                 {
                   "name": "args",
                   "type": {
-                    "kind": "unknown"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "number"
+                      }
+                    ]
                   },
                   "rest": true,
                   "optional": false
@@ -8669,7 +8733,15 @@
                 {
                   "name": "args",
                   "type": {
-                    "kind": "unknown"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "number"
+                      }
+                    ]
                   },
                   "rest": true,
                   "optional": false
@@ -8693,7 +8765,15 @@
                 {
                   "name": "args",
                   "type": {
-                    "kind": "unknown"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "number"
+                      }
+                    ]
                   },
                   "rest": true,
                   "optional": false
@@ -8767,7 +8847,15 @@
                 {
                   "name": "args",
                   "type": {
-                    "kind": "unknown"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "number"
+                      }
+                    ]
                   },
                   "rest": true,
                   "optional": false
@@ -9671,7 +9759,15 @@
                 {
                   "name": "args",
                   "type": {
-                    "kind": "unknown"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "number"
+                      }
+                    ]
                   },
                   "rest": true,
                   "optional": false
@@ -10080,7 +10176,15 @@
                 {
                   "name": "args",
                   "type": {
-                    "kind": "unknown"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "number"
+                      }
+                    ]
                   },
                   "rest": true,
                   "optional": false
@@ -10352,7 +10456,15 @@
                 {
                   "name": "args",
                   "type": {
-                    "kind": "unknown"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "number"
+                      }
+                    ]
                   },
                   "rest": true,
                   "optional": false
@@ -10433,7 +10545,15 @@
                 {
                   "name": "args",
                   "type": {
-                    "kind": "unknown"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "number"
+                      }
+                    ]
                   },
                   "rest": true,
                   "optional": false
@@ -10667,7 +10787,15 @@
                 {
                   "name": "args",
                   "type": {
-                    "kind": "unknown"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "number"
+                      }
+                    ]
                   },
                   "rest": true,
                   "optional": false
@@ -10847,7 +10975,15 @@
                 {
                   "name": "args",
                   "type": {
-                    "kind": "unknown"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "number"
+                      }
+                    ]
                   },
                   "rest": true,
                   "optional": false
@@ -11055,7 +11191,15 @@
                 {
                   "name": "args",
                   "type": {
-                    "kind": "unknown"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "number"
+                      }
+                    ]
                   },
                   "rest": true,
                   "optional": false
@@ -11143,7 +11287,15 @@
                 {
                   "name": "args",
                   "type": {
-                    "kind": "unknown"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "number"
+                      }
+                    ]
                   },
                   "rest": true,
                   "optional": false
@@ -14242,7 +14394,15 @@
                 {
                   "name": "args",
                   "type": {
-                    "kind": "unknown"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "number"
+                      }
+                    ]
                   },
                   "rest": true,
                   "optional": false
@@ -17455,7 +17615,15 @@
                 {
                   "name": "args",
                   "type": {
-                    "kind": "unknown"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "number"
+                      }
+                    ]
                   },
                   "rest": true,
                   "optional": false
@@ -17751,7 +17919,15 @@
                 {
                   "name": "args",
                   "type": {
-                    "kind": "unknown"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "number"
+                      }
+                    ]
                   },
                   "rest": true,
                   "optional": false
@@ -21322,7 +21498,15 @@
                 {
                   "name": "args",
                   "type": {
-                    "kind": "unknown"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "number"
+                      }
+                    ]
                   },
                   "rest": true,
                   "optional": false
@@ -29533,7 +29717,15 @@
                 {
                   "name": "args",
                   "type": {
-                    "kind": "unknown"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "number"
+                      }
+                    ]
                   },
                   "rest": true,
                   "optional": false
@@ -31585,7 +31777,15 @@
                 {
                   "name": "args",
                   "type": {
-                    "kind": "unknown"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "number"
+                      }
+                    ]
                   },
                   "rest": true,
                   "optional": false
@@ -36641,6 +36841,24 @@
               "returns": {
                 "kind": "self"
               }
+            },
+            {
+              "name": "gcloud",
+              "doc": "Global gcloud flags for the default token read,\n`gcloud auth print-access-token` — `(g) => g.account(\"ci@p.iam…\")`, or a\n`.runner(...)`, the seam a test answers through. Unused when a\ntoken or tokenProvider is set.",
+              "params": [
+                {
+                  "name": "configure",
+                  "type": {
+                    "kind": "configure",
+                    "settings": "GcloudSettings"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
             }
           ]
         },
@@ -41138,6 +41356,66 @@
           "extends": "AwsSettings",
           "setters": [
             {
+              "name": "metricStat",
+              "doc": "Add a metric to the request, under `id`, configured by `configure`.",
+              "params": [
+                {
+                  "name": "id",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                },
+                {
+                  "name": "configure",
+                  "type": {
+                    "kind": "configure",
+                    "settings": "AwsCloudwatchMetricStatSettings"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "expression",
+              "doc": "Add a metric-math expression over the request's other ids, e.g.\n`(\"ratio\", \"100 * errors / requests\")`.",
+              "params": [
+                {
+                  "name": "id",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                },
+                {
+                  "name": "expression",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                },
+                {
+                  "name": "configure",
+                  "type": {
+                    "kind": "configure",
+                    "settings": "AwsCloudwatchExpressionSettings"
+                  },
+                  "rest": false,
+                  "optional": true
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
               "name": "startTime",
               "doc": "The start of the range (`--start-time`).",
               "params": [
@@ -41405,7 +41683,29 @@
                 {
                   "name": "values",
                   "type": {
-                    "kind": "unknown"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "literal",
+                        "value": "SampleCount"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "Average"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "Sum"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "Minimum"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "Maximum"
+                      }
+                    ]
                   },
                   "rest": true,
                   "optional": false
@@ -41440,6 +41740,241 @@
                   "name": "value",
                   "type": {
                     "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            }
+          ]
+        },
+        {
+          "name": "AwsCloudwatchExpressionSettings",
+          "doc": "Settings for one metric-math expression in a `get-metric-data` request.",
+          "extends": null,
+          "setters": [
+            {
+              "name": "label",
+              "doc": "A label for the series in the response.",
+              "params": [
+                {
+                  "name": "text",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "period",
+              "doc": "The period in seconds, for an expression that has no metric to take it from.",
+              "params": [
+                {
+                  "name": "seconds",
+                  "type": {
+                    "kind": "number"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "returnData",
+              "doc": "Whether the response carries this series (default `true`).",
+              "params": [
+                {
+                  "name": "value",
+                  "type": {
+                    "kind": "boolean"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            }
+          ]
+        },
+        {
+          "name": "AwsCloudwatchMetricStatSettings",
+          "doc": "Settings for one metric in a `get-metric-data` request (a `MetricStat` query).",
+          "extends": null,
+          "setters": [
+            {
+              "name": "namespace",
+              "doc": "The metric's namespace, e.g. `\"AWS/ApplicationELB\"`.",
+              "params": [
+                {
+                  "name": "value",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "metricName",
+              "doc": "The metric's name, e.g. `\"HTTPCode_Target_5XX_Count\"`.",
+              "params": [
+                {
+                  "name": "value",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "dimension",
+              "doc": "A dimension that picks the series, e.g. `(\"LoadBalancer\", \"app/web/1f2e\")`; repeatable.",
+              "params": [
+                {
+                  "name": "name",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                },
+                {
+                  "name": "value",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "period",
+              "doc": "The aggregation period in seconds (default 60). CloudWatch accepts 1, 5,\n10, 20, 30, or a multiple of 60.",
+              "params": [
+                {
+                  "name": "seconds",
+                  "type": {
+                    "kind": "number"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "stat",
+              "doc": "The statistic: `\"Sum\"`, `\"Average\"`, `\"Maximum\"`, `\"p99\"`, …",
+              "params": [
+                {
+                  "name": "value",
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "literal",
+                        "value": "SampleCount"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "Average"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "Sum"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "Minimum"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "Maximum"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "IQM"
+                      }
+                    ]
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "unit",
+              "doc": "Only datapoints published in this unit, e.g. `\"Count\"`.",
+              "params": [
+                {
+                  "name": "value",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "label",
+              "doc": "A label for the series in the response.",
+              "params": [
+                {
+                  "name": "text",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "returnData",
+              "doc": "Whether the response carries this series (default `true`). Pass `false`\nfor a metric that only feeds an expression.",
+              "params": [
+                {
+                  "name": "value",
+                  "type": {
+                    "kind": "boolean"
                   },
                   "rest": false,
                   "optional": false
@@ -42158,6 +42693,24 @@
                         "kind": "number"
                       }
                     ]
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "aws",
+              "doc": "Global options for every command the query runs —\n`(a) => a.profile(\"prod\").region(\"eu-west-1\")`, a `.toolPath(...)`, or a\n`.runner(...)`.",
+              "params": [
+                {
+                  "name": "configure",
+                  "type": {
+                    "kind": "configure",
+                    "settings": "AwsSettings"
                   },
                   "rest": false,
                   "optional": false
@@ -51563,7 +52116,15 @@
                 {
                   "name": "parts",
                   "type": {
-                    "kind": "unknown"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "number"
+                      }
+                    ]
                   },
                   "rest": true,
                   "optional": false
@@ -56105,6 +56666,24 @@
               }
             },
             {
+              "name": "binary",
+              "doc": "Add a prebuilt archive for one OS and CPU family. Call once per platform;\nat least one is required, and each OS/arch pair at most once.",
+              "params": [
+                {
+                  "name": "configure",
+                  "type": {
+                    "kind": "configure",
+                    "settings": "FormulaBinarySettings"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
               "name": "install",
               "doc": "Files from the archive to place in the formula's `bin` (`bin.install`);\nat least one is required. Plain file names only — no directory part.",
               "params": [
@@ -56124,6 +56703,185 @@
             {
               "name": "caveats",
               "doc": "Text Homebrew prints after installing (`def caveats`).",
+              "params": [
+                {
+                  "name": "text",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "test",
+              "doc": "The formula's `test do` block, which `brew test` runs. Without one,\n`brew test` (and so `HomebrewTasks.verify`) fails.",
+              "params": [
+                {
+                  "name": "configure",
+                  "type": {
+                    "kind": "configure",
+                    "settings": "FormulaTestSettings"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            }
+          ]
+        },
+        {
+          "name": "FormulaBinarySettings",
+          "doc": "Settings for one prebuilt binary of a formula, rendered as\n`on_<os> do on_<arch> do url \"…\" sha256 \"…\" end end`.\n\n```ts\ns.binary((b) =>\n  b.os(\"macos\").arch(\"arm\").url(\"https://…/app-aarch64-apple-darwin.tar.gz\")\n    .sha256(\"…\")\n)\n```",
+          "extends": null,
+          "setters": [
+            {
+              "name": "os",
+              "doc": "The operating system the archive runs on (required).",
+              "params": [
+                {
+                  "name": "value",
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "literal",
+                        "value": "macos"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "linux"
+                      }
+                    ]
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "arch",
+              "doc": "The CPU family the archive runs on (required).",
+              "params": [
+                {
+                  "name": "value",
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "literal",
+                        "value": "arm"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "intel"
+                      }
+                    ]
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "url",
+              "doc": "Where Homebrew downloads the archive (required; must be `https`).",
+              "params": [
+                {
+                  "name": "value",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "sha256",
+              "doc": "The archive's SHA-256 (required; 64 lowercase hex digits).",
+              "params": [
+                {
+                  "name": "value",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            }
+          ]
+        },
+        {
+          "name": "FormulaTestSettings",
+          "doc": "Settings for the formula's `test do` block.\n\n```ts\ns.test((t) => t.command(\"--version\").expectVersion())\n// test do\n//   assert_match version.to_s, shell_output(\"#{bin}/app --version\")\n// end\n```\n\nWithout an expectation the command only has to succeed, and is run with\n`system` and an argv — no shell at all.",
+          "extends": null,
+          "setters": [
+            {
+              "name": "binary",
+              "doc": "Which installed binary to run. Defaults to the first one the formula\ninstalls; it must be one of them.",
+              "params": [
+                {
+                  "name": "name",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "command",
+              "doc": "The arguments to run the binary with, e.g. `\"--version\"`.",
+              "params": [
+                {
+                  "name": "args",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": true,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "expectVersion",
+              "doc": "Require the output to contain the formula's version.",
+              "params": [],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "expectOutput",
+              "doc": "Require the output to contain `text`.",
               "params": [
                 {
                   "name": "text",
@@ -59636,6 +60394,836 @@
                   },
                   "rest": false,
                   "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ai",
+      "summary": "`@zuke/ai` — AI-powered code review for Zuke builds.",
+      "tasks": [
+        {
+          "name": "AiTasks",
+          "doc": "Typed task functions over the reviewers, for a build that calls rather than declares them.",
+          "tasks": [
+            {
+              "name": "review",
+              "doc": "Run the configured reviewers as peers of one target, in order. Throws when\na reviewer's gate trips, as the target it guards would fail.",
+              "params": [
+                {
+                  "name": "configure",
+                  "type": {
+                    "kind": "configure",
+                    "settings": "ReviewSettings"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "null"
+              }
+            },
+            {
+              "name": "preflight",
+              "doc": "Run the reviewers' preflight: on a comment-started run, refuse a commenter\nwho may not start a review. A no-op on any other run.",
+              "params": [
+                {
+                  "name": "configure",
+                  "type": {
+                    "kind": "configure",
+                    "settings": "ReviewSettings"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "null"
+              }
+            }
+          ]
+        }
+      ],
+      "settings": [
+        {
+          "name": "DiffSettings",
+          "doc": "Fluent diff source configuration passed to \"./reviewer.ts\".Reviewer.diff.",
+          "extends": null,
+          "setters": [
+            {
+              "name": "base",
+              "doc": "Review the diff against `ref` (e.g. `\"origin/main\"`).",
+              "params": [
+                {
+                  "name": "ref",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "staged",
+              "doc": "Review the staged changes (`git diff --cached`).",
+              "params": [],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "text",
+              "doc": "Review a diff supplied directly, bypassing `git` (useful in tests).",
+              "params": [
+                {
+                  "name": "diff",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "fetchBase",
+              "doc": "Fetch the base branch (a shallow, tag-less `git fetch`) before diffing, and\ndiff against it — so CI needs no manual `git fetch` step. With no `branch`,\nthe base is auto-detected from the CI environment (GitHub's `GITHUB_BASE_REF`\n— the pull request's base branch). Honoured by the \"./fixer.ts\".AiFixer; if the fetch fails it falls back to the working-tree\ndiff.",
+              "params": [
+                {
+                  "name": "branch",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": true
+                },
+                {
+                  "name": "remote",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": true
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GateSettings",
+          "doc": "Fluent gate configuration passed to \"./reviewer.ts\".Reviewer.failWhen.",
+          "extends": null,
+          "setters": [
+            {
+              "name": "scoreAbove",
+              "doc": "Fail when the assessed risk score is strictly above `value` (0–10).",
+              "params": [
+                {
+                  "name": "value",
+                  "type": {
+                    "kind": "number"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "severityAtLeast",
+              "doc": "Fail when the overall severity is at least `value`.",
+              "params": [
+                {
+                  "name": "value",
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "literal",
+                        "value": "none"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "low"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "medium"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "high"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "critical"
+                      }
+                    ]
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            }
+          ]
+        },
+        {
+          "name": "DiscussionSettings",
+          "doc": "Fluent settings for \"./reviewer.ts\".Reviewer.discussion — who the\nreviewer listens to on the PR thread, and how much of it the model may see.",
+          "extends": null,
+          "setters": [
+            {
+              "name": "trustAssociations",
+              "doc": "Replace the trusted `author_association` set (default `OWNER`, `MEMBER`,\n`COLLABORATOR`). Comments from authors outside it (and outside\ntrustAuthors) are dropped before the model sees them.",
+              "params": [
+                {
+                  "name": "associations",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": true,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "trustAuthors",
+              "doc": "Trust these author logins in addition to the association rule — e.g. an\noutside collaborator whose review the project wants the reviewer to\nengage with.",
+              "params": [
+                {
+                  "name": "logins",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": true,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "maxCommentTokens",
+              "doc": "Cap the total comment text sent to the model at roughly this many tokens\n(default 4000), newest comments kept first — so a wall of text cannot\ncrowd the diff and the rubric out of the context window.",
+              "params": [
+                {
+                  "name": "tokens",
+                  "type": {
+                    "kind": "number"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "threads",
+              "doc": "Also anchor each finding to a file/line **review thread** on the pull\nrequest, so a maintainer contests it by replying in that thread instead of\nquoting its id somewhere on the PR.\n\nThe summary comment is posted either way and stays the one source of\ntruth: it lists every finding — anchored or not — and carries the state\nblock, so a thread that cannot be posted never hides a finding. The\nreviewer replies into the thread with the outcome and resolves it once the\nfinding is fixed or dismissed. GitHub only; on other hosts the reviewer\nnotes that and posts the summary alone.",
+              "params": [],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "commands",
+              "doc": "Take commands from maintainers, addressed to `mention` — e.g.\n`\"@zuke-build\"`, the account the workflow's comment command is addressed\nto, so one handle serves both.\n\nWith it set, every review comment carries a collapsed **Commands** panel\nlisting what a maintainer can say, and a trusted comment starting with\n`<mention> accept <id> <reason>` **accepts** the finding: it is recorded as\naccepted for this pull request without adjudication, answered in its\nthread and the thread resolved, and never re-raised on the pull request\nby any reviewer, however it is reworded, moved or escalated. In a\nfinding's own thread the id may be left out. The trust gate is the one\nrebuttals pass — trustAssociations and trustAuthors,\ndecided in code from the host's author metadata — so a stranger's\n`accept` is dropped before anything reads it. Unlike a rebuttal, an\nacceptance is **one key**: no adjudicator weighs it. On a host where the\ndefault associations admit accounts that should not decide for the\nproject (GitHub's `MEMBER` and `COLLABORATOR` include read-only ones),\nnarrow the gate with trustAssociations or trustAuthors\nbefore turning commands on.\n\nThe panel also lists `<mention> review`, the workflow's comment command\nthat runs the review on demand; pair this with `aiReviewWorkflow`'s\n`command` so that both are true.",
+              "params": [
+                {
+                  "name": "mention",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reviewer",
+          "doc": "A fluent AI reviewer. Construct one via securityReviewer (and the\nsibling factories), configure it, and attach it to a target with\n`.validateBefore(...)` / `.validateAfter(...)`. `.provider(...)` and\n`.apiKey(...)` are required; everything else has a default.",
+          "extends": null,
+          "setters": [
+            {
+              "name": "provider",
+              "doc": "Set the model provider (required).",
+              "params": [
+                {
+                  "name": "provider",
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "literal",
+                        "value": "claude"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "openai"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "gemini"
+                      }
+                    ]
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "apiKey",
+              "doc": "Set the API key, from a secret parameter or a literal string (required).",
+              "params": [
+                {
+                  "name": "apiKey",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "model",
+              "doc": "Override the model (default: the provider's recommended model).",
+              "params": [
+                {
+                  "name": "model",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "effort",
+              "doc": "Set the thinking-effort hint (honoured by Claude; ignored elsewhere).",
+              "params": [
+                {
+                  "name": "effort",
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "literal",
+                        "value": "low"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "medium"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "high"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "xhigh"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "max"
+                      }
+                    ]
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "criteria",
+              "doc": "Optional project-specific notes appended above the diff in the user prompt\n— framing that fine-tunes the built-in rubric (e.g. \"strict TypeScript,\nno `any`/`as`\"). Works for every reviewer; the assessment's own system\nprompt already covers what to look for, so this is purely additive.\n\nThese notes are **read from the head under review**, and cannot be\nanything else: they are build code, evaluated by the very build the\npull request changed, so there is no base copy to read short of running\nthe base's build. A branch can therefore widen what its own review\noverlooks, which is real but bounded — the change is first-party code in\nthe diff a maintainer reads, and a build that could not configure its own\nreviewer from its own source would be a different feature.\nReviewer.criteriaFile is the base-anchored form for notes that\nshould not be editable by the change they judge.",
+              "params": [
+                {
+                  "name": "criteria",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "diff",
+              "doc": "Configure the diff source (default: the working-tree diff, `git diff`).",
+              "params": [
+                {
+                  "name": "configure",
+                  "type": {
+                    "kind": "configure",
+                    "settings": "DiffSettings"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "include",
+              "doc": "Only review files matching these globs (default: all files).",
+              "params": [
+                {
+                  "name": "globs",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": true,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "exclude",
+              "doc": "Exclude files matching these globs (in addition to lockfiles).",
+              "params": [
+                {
+                  "name": "globs",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": true,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "maxDiffTokens",
+              "doc": "Cap the diff at roughly this many tokens, truncating the rest.",
+              "params": [
+                {
+                  "name": "tokens",
+                  "type": {
+                    "kind": "number"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "failWhen",
+              "doc": "Choose the gate that breaks the build (default: score above 7).",
+              "params": [
+                {
+                  "name": "configure",
+                  "type": {
+                    "kind": "configure",
+                    "settings": "GateSettings"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "onError",
+              "doc": "What to do when the review itself fails (API error, refusal, bad JSON):\n`\"fail\"` breaks the build (default), `\"warn\"` logs and passes.",
+              "params": [
+                {
+                  "name": "mode",
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "literal",
+                        "value": "fail"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "warn"
+                      }
+                    ]
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "skipIfKeyMissing",
+              "doc": "Skip the review (instead of failing) when the API key is missing — handy\nwhen the key is a CI-only secret. The skip is announced on the console and\nin the job summary so the gap is visible.",
+              "params": [],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "comment",
+              "doc": "Also post the review to the pull/merge request as a comment. Works on\nevery supported CI host — GitHub Actions, GitLab CI, Azure Pipelines,\nBitbucket Pipelines — dispatched at runtime by detectCiHost. A\nno-op outside a PR context (e.g. local runs). On each host the workflow\nmust grant the right scope: GitHub `pull-requests: write`, GitLab a token\nwith the `api` scope, Azure `System.AccessToken`, Bitbucket an app\npassword.\n\n`mode` chooses how re-runs post: `\"update\"` (default) keeps a single\ncomment per reviewer, edited in place; `\"append\"` posts a fresh comment\nevery run, so earlier assessments — and their finding ids — stay on the\nthread as history. The discussion feature works with both: its state block\nrides on every comment, and the newest one is read back.\n\nReviewers attached side by side to one target —\n`.validateBefore(security, quality)` — post **one** comment between them\nrather than one each: a table of every reviewer's verdict, the findings of\nall of them in one table with a column naming the reviewer (and its\nbadge) that raised each, and each reviewer's full report folded\nunderneath. Every one of them runs even when an earlier one fails its\ngate; the target then fails with all of their reasons. The comment is\nposted by the last of them, with its token, and appended when any of\nthem appends. Each reviewer's discussion state rides in it under the\nreviewer's name, and a reviewer that used to post alone still reads its\nold comment. Another validation between two reviewers splits them, and a\nreviewer alone posts its own comment as before.",
+              "params": [
+                {
+                  "name": "mode",
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "literal",
+                        "value": "update"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "append"
+                      }
+                    ]
+                  },
+                  "rest": false,
+                  "optional": true
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "commentToken",
+              "doc": "The token used to post the PR/MR comment. Defaults to the active host's\nconventional env var: `GITHUB_TOKEN` (GitHub), `GITLAB_TOKEN` (GitLab),\n`SYSTEM_ACCESSTOKEN` (Azure), `BITBUCKET_TOKEN` (Bitbucket).\n\nA function is called each time a post needs the token — for a token that\ndoes not exist until the build mints it, such as a GitHub App installation\ntoken narrowed to `pull_requests: write`, which makes the comments the\napp's rather than `github-actions[bot]`'s. A function that mints should\nremember its result, since a review posts more than once. The generated\nworkflow cannot name a secret for a function, so it passes the host's\ndefault token alongside, for the function to fall back to.",
+              "params": [
+                {
+                  "name": "token",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "githubToken",
+              "doc": "Backwards-compatible alias for commentToken.",
+              "params": [
+                {
+                  "name": "token",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "reactions",
+              "doc": "Whether the reviewer reacts on the pull request to show its progress (on\nby default, whenever `.comment()` is set). On the description: 👀 while\nit runs, then 👍 when it passes clean, 🎉 when it passes clean where the\nprevious run failed, 🤏 when it has findings under the failing threshold\n(😕 on GitHub, whose reaction set has no 🤏), 👎 when it fails. On the\ncomment that started a comment-started run: 👍 as it starts, 😕 when the\nrun could not review. On a trusted maintainer's reply: 👀 once read, ❤️\nwhen it decided a finding. The reviewers on one pull request share the\nreactions, so the verdict shown is the worst of a run's. GitHub and\nGitLab have the reactions; on Azure DevOps and Bitbucket this is a no-op.\n`false` turns all of it off, as does `.quiet()`, under which the reviewer\ndoes not speak on the pull request.",
+              "params": [
+                {
+                  "name": "enabled",
+                  "type": {
+                    "kind": "boolean"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "badge",
+              "doc": "The emoji that marks this reviewer's findings — in the combined comment\nthe reviewers of one target share (see comment), and on the review\nthreads it opens. Defaults by kind: 🛡️ security, 🧹 code quality\n(`genericReviewer`), 🔑 secrets, 🐛 correctness, ⚖️ license. Set one when\ntwo reviewers of a kind review side by side — and give one of them a\nname of its own, which is what the comment tells them apart by.",
+              "params": [
+                {
+                  "name": "emoji",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "quiet",
+              "doc": "Suppress the findings printout and the job-summary section.",
+              "params": [],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "conventionsFile",
+              "doc": "Feed the project's conventions document (e.g. `AGENTS.md`) to the model as\nreference material, so the review judges the change against the project's\ndocumented rules instead of generic taste. When the diff has a base ref\n(`.diff((d) => d.base(...))` or a successful `.fetchBase()`), the file is\nread from that **base** via `git show` — never from the head under review,\nso a pull request cannot rewrite the rules it is judged by. Without a base\n(a local working-tree review) it is read from disk. Truncated at roughly\n`maxTokens` (default 8000).",
+              "params": [
+                {
+                  "name": "path",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                },
+                {
+                  "name": "maxTokens",
+                  "type": {
+                    "kind": "number"
+                  },
+                  "rest": false,
+                  "optional": true
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "criteriaFile",
+              "doc": "Project-specific notes read from a **file**, appended to whatever\nReviewer.criteria set inline — the base-anchored half of the same\nslot.\n\nRead exactly as Reviewer.conventionsFile is: from the diff's base\nref via `git show` when there is one, from disk otherwise, truncated at\nroughly `maxTokens` (default 8000). That is the point of it. A note that\ntells the reviewer a design is accepted — and so suppresses the findings\nthat restate it — is a rule the review is judged by, and a pull request\nshould not be able to add one to its own run. Keeping it in a file the\nbase supplies costs one merge of lag, which is the same lag the\nconventions document already accepts, and is arguably the point: a newly\naccepted design should be agreed before it starts muting findings.\n\nUse it for what a branch should not be able to widen; keep\nReviewer.criteria for the framing that travels with the build.\n\nWhat it does not buy: the build still decides *whether* to read a criteria\ndocument at all, and that decision is head code, so a branch can drop the\ncall as easily as it can edit a string. This bounds what a change can add\nto the rules of its own review, not whether the reviewer is configured —\nthe same limit Reviewer.conventionsFile has, and the reason the\ndiff a maintainer reads remains the control that matters.",
+              "params": [
+                {
+                  "name": "path",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                },
+                {
+                  "name": "maxTokens",
+                  "type": {
+                    "kind": "number"
+                  },
+                  "rest": false,
+                  "optional": true
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "fileContext",
+              "doc": "Also send the full post-image contents of the changed files (read via\n`git show HEAD:<path>`), bounded at roughly `maxTokens` (default 12000) —\nso the model can check a finding against the surrounding code (an existing\nguard, a validation a few lines away) instead of judging hunks in\nisolation. Skipped silently for a literal `.diff((d) => d.text(...))`\nsource with no repository behind it.",
+              "params": [
+                {
+                  "name": "maxTokens",
+                  "type": {
+                    "kind": "number"
+                  },
+                  "rest": false,
+                  "optional": true
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "verify",
+              "doc": "Add an adversarial verification pass: after the review produces candidate\nfindings, a second model call re-checks each against the diff (and the\nfileContext, when enabled) and refutes any whose failure path it\ncannot concretely trace. Refuted candidates are listed in the report but\nneither posted as findings nor gated on. Costs one extra API call per\nreview with findings; if the pass itself errors, the unverified findings\nare kept (fail toward reporting, never toward silence).",
+              "params": [],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "discussion",
+              "doc": "Engage with the pull-request discussion instead of repeating findings: the\nreviewer reads the PR's comments, and when a **trusted** commenter (by the\nhost's own author metadata — see DiscussionSettings) contests a\nfinding by quoting its ID, an adjudication pass weighs the rebuttal on\ntechnical merit and either upholds the finding (with the gap named) or\ndismisses it. Dismissals persist across runs in a state block inside the\nreviewer's own PR comment, so a dismissed finding — or a rewording of it —\ndoes not resurface without new evidence. Requires comment (the\ncomment is where state lives) and a host that can list comments (GitHub\ncurrently); elsewhere the discussion is skipped with a console note.\n\nUntrusted comments are dropped in code before any prompt is built — the\nmodel never sees them, so a drive-by \"the maintainer approved this\"\ncomment cannot influence the review.",
+              "params": [
+                {
+                  "name": "configure",
+                  "type": {
+                    "kind": "configure",
+                    "settings": "DiscussionSettings"
+                  },
+                  "rest": false,
+                  "optional": true
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            }
+          ]
+        },
+        {
+          "name": "ReviewSettings",
+          "doc": "The reviewers one `AiTasks.review` runs, as `.validateBefore(a, b)` would\nrun them, and the target they review for.",
+          "extends": null,
+          "setters": [
+            {
+              "name": "target",
+              "doc": "The target the reviewers are attached to, named in their output; `review` by default.",
+              "params": [
+                {
+                  "name": "name",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "generic",
+              "doc": "Add a code-quality reviewer, as genericReviewer makes it.",
+              "params": [
+                {
+                  "name": "configure",
+                  "type": {
+                    "kind": "configure",
+                    "settings": "Reviewer"
+                  },
+                  "rest": false,
+                  "optional": true
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "security",
+              "doc": "Add a security reviewer, as securityReviewer makes it.",
+              "params": [
+                {
+                  "name": "configure",
+                  "type": {
+                    "kind": "configure",
+                    "settings": "Reviewer"
+                  },
+                  "rest": false,
+                  "optional": true
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "secrets",
+              "doc": "Add a leaked-secrets reviewer, as secretsReviewer makes it.",
+              "params": [
+                {
+                  "name": "configure",
+                  "type": {
+                    "kind": "configure",
+                    "settings": "Reviewer"
+                  },
+                  "rest": false,
+                  "optional": true
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "correctness",
+              "doc": "Add a correctness reviewer, as correctnessReviewer makes it.",
+              "params": [
+                {
+                  "name": "configure",
+                  "type": {
+                    "kind": "configure",
+                    "settings": "Reviewer"
+                  },
+                  "rest": false,
+                  "optional": true
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "license",
+              "doc": "Add a license reviewer, as licenseReviewer makes it.",
+              "params": [
+                {
+                  "name": "configure",
+                  "type": {
+                    "kind": "configure",
+                    "settings": "Reviewer"
+                  },
+                  "rest": false,
+                  "optional": true
                 }
               ],
               "returns": {
@@ -63252,6 +64840,114 @@
           ]
         },
         {
+          "name": "SignPathGitHubOriginSettings",
+          "doc": "Where the artifact to sign lives in GitHub Actions. Only the artifact id is\nrequired: the run, repository and token default to the workflow's own\nenvironment (`GITHUB_RUN_ID`, `GITHUB_REPOSITORY`, `GITHUB_TOKEN`).\n\n```ts\nawait SignPathTasks.submit((s) =>\n  s.projectSlug(\"zuke\").signingPolicySlug(\"release-signing\")\n    .gitHubOrigin((g) => g.artifactId(artifactId).token(githubToken))\n    .output(\"dist/signed/zuke.zip\")\n);\n```",
+          "extends": null,
+          "setters": [
+            {
+              "name": "artifactId",
+              "doc": "The id of the artifact `actions/upload-artifact` (v4 or later) uploaded —\nits `artifact-id` step output. Required.",
+              "params": [
+                {
+                  "name": "id",
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "number"
+                      }
+                    ]
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "runId",
+              "doc": "The workflow run the artifact belongs to; defaults to `GITHUB_RUN_ID`.",
+              "params": [
+                {
+                  "name": "id",
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "kind": "number"
+                      }
+                    ]
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "repository",
+              "doc": "The repository, `owner/name`; defaults to `GITHUB_REPOSITORY`.",
+              "params": [
+                {
+                  "name": "name",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "token",
+              "doc": "The GitHub token the connector reads the run and downloads the artifact\nwith — the workflow's `GITHUB_TOKEN` (with `actions: read` and\n`contents: read`) is enough. Defaults to the `GITHUB_TOKEN` environment\nvariable. It is masked out of every message, like the API token.\n\nThe workflow's own token stops working when the workflow ends, so the\ntask must wait for SignPath to fetch the artifact; `submit` always waits.",
+              "params": [
+                {
+                  "name": "value",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "connectorUrl",
+              "doc": "The SignPath GitHub connector to submit through; SignPath's hosted\nGitHub.com one by default. Only a self-hosted GitHub Enterprise Server\nneeds another. It carries the API token, so it must be `https:`.",
+              "params": [
+                {
+                  "name": "url",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            }
+          ]
+        },
+        {
           "name": "SigntoolVerifySettings",
           "doc": "Settings for `signtool verify`.",
           "extends": "ToolSettings",
@@ -63532,6 +65228,24 @@
                   "name": "path",
                   "type": {
                     "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "gitHubOrigin",
+              "doc": "Have SignPath fetch the artifact from a GitHub Actions workflow run and\nverify its origin. Exactly one of artifact and `gitHubOrigin` is\nrequired.",
+              "params": [
+                {
+                  "name": "configure",
+                  "type": {
+                    "kind": "configure",
+                    "settings": "SignPathGitHubOriginSettings"
                   },
                   "rest": false,
                   "optional": false
@@ -66875,6 +68589,206 @@
       ],
       "settings": [
         {
+          "name": "PrometheusAwsSettings",
+          "doc": "Settings for `PrometheusConnectionSettings.sigv4(...)`.",
+          "extends": null,
+          "setters": [
+            {
+              "name": "region",
+              "doc": "The workspace's region, such as `us-east-1`; defaults to `AWS_REGION`,\nthen `AWS_DEFAULT_REGION`.",
+              "params": [
+                {
+                  "name": "region",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "profile",
+              "doc": "Read static keys from this profile of the shared credentials and config\nfiles (`~/.aws/credentials`, `~/.aws/config`) instead of searching the\ndefault chain.",
+              "params": [
+                {
+                  "name": "name",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "accessKey",
+              "doc": "Sign with this access key instead of searching the default chain.",
+              "params": [
+                {
+                  "name": "accessKeyId",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                },
+                {
+                  "name": "secretAccessKey",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                },
+                {
+                  "name": "sessionToken",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": true
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            }
+          ]
+        },
+        {
+          "name": "PrometheusAzureSettings",
+          "doc": "Settings for `PrometheusConnectionSettings.azure(...)`.",
+          "extends": null,
+          "setters": [
+            {
+              "name": "scope",
+              "doc": "The scope to request, replacing `https://prometheus.monitor.azure.com/.default`.",
+              "params": [
+                {
+                  "name": "scope",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "tenantId",
+              "doc": "The Microsoft Entra tenant (directory) id; defaults to `AZURE_TENANT_ID`.",
+              "params": [
+                {
+                  "name": "id",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "clientId",
+              "doc": "The application's client id — or, for a user-assigned managed identity,\nthe identity's; defaults to `AZURE_CLIENT_ID`.",
+              "params": [
+                {
+                  "name": "id",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "authorityHost",
+              "doc": "The Microsoft Entra authority, such as `https://login.microsoftonline.us`\nfor Azure Government; defaults to `AZURE_AUTHORITY_HOST`, then\n`https://login.microsoftonline.com`.",
+              "params": [
+                {
+                  "name": "url",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "clientSecret",
+              "doc": "Use a service principal's client secret (the client-credentials grant).\nThe secret defaults to `AZURE_CLIENT_SECRET`.",
+              "params": [
+                {
+                  "name": "secret",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": true
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "workloadIdentity",
+              "doc": "Use workload identity federation: the Kubernetes service-account token\nin `tokenFile` (default `AZURE_FEDERATED_TOKEN_FILE`) is the client\nassertion, read afresh on every token request since it is rotated.",
+              "params": [
+                {
+                  "name": "tokenFile",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": true
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "managedIdentity",
+              "doc": "Use the managed identity of the VM, App Service or Functions app the\nbuild runs on. Pass a user-assigned identity's client id, or leave it\nout for `clientId(...)` / `AZURE_CLIENT_ID`, and failing those the\nsystem-assigned identity.",
+              "params": [
+                {
+                  "name": "clientId",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": true
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            }
+          ]
+        },
+        {
           "name": "PrometheusConnectionSettings",
           "doc": "The connection half of every Prometheus call's settings.",
           "extends": null,
@@ -66989,6 +68903,60 @@
               }
             },
             {
+              "name": "google",
+              "doc": "Authenticate to Google Cloud Managed Service for Prometheus with an\nOAuth access token from Application Default Credentials — no `gcloud`\nneeded. The search order is `credentialsFile(...)`, else the file\n`GOOGLE_APPLICATION_CREDENTIALS` names; then gcloud's\n`application_default_credentials.json`; then the GCE / GKE metadata\nserver. A file may be a `service_account` key, an `authorized_user`\ngcloud login, or an `external_account` workload identity federation\nconfiguration with a `file` or `url` subject-token source. The scope\ndefaults to `monitoring.read`; the token is cached until shortly before\nit expires.\n\n```ts\ns.url(\"https://monitoring.googleapis.com/v1/projects/my-project/location/global/prometheus\")\n  .google()\n```",
+              "params": [
+                {
+                  "name": "configure",
+                  "type": {
+                    "kind": "configure",
+                    "settings": "PrometheusGoogleSettings"
+                  },
+                  "rest": false,
+                  "optional": true
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "azure",
+              "doc": "Authenticate to Azure Monitor managed service for Prometheus with a\nMicrosoft Entra ID token for\n`https://prometheus.monitor.azure.com/.default` — no `az` needed. Unless\na credential is chosen, the first the environment configures is used:\nclient secret (`AZURE_TENANT_ID`, `AZURE_CLIENT_ID`,\n`AZURE_CLIENT_SECRET`), then workload identity (`AZURE_TENANT_ID`,\n`AZURE_CLIENT_ID`, `AZURE_FEDERATED_TOKEN_FILE`), then managed identity\n(App Service's `IDENTITY_ENDPOINT`, else the VM's IMDS). The token is\ncached until shortly before it expires.\n\n```ts\ns.url(\"https://my-amw.eastus.prometheus.monitor.azure.com\")\n  .azure((a) => a.managedIdentity(clientId))\n```",
+              "params": [
+                {
+                  "name": "configure",
+                  "type": {
+                    "kind": "configure",
+                    "settings": "PrometheusAzureSettings"
+                  },
+                  "rest": false,
+                  "optional": true
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "sigv4",
+              "doc": "Sign every request with AWS Signature Version 4 for Amazon Managed\nService for Prometheus (service `aps`) — no `aws` CLI needed. The region\nis `region(...)`, else `AWS_REGION` / `AWS_DEFAULT_REGION`. Credentials\ncome from `accessKey(...)` or `profile(...)` when set, else the chain:\nthe `AWS_ACCESS_KEY_ID` environment, the shared files' profile, web\nidentity (`AWS_WEB_IDENTITY_TOKEN_FILE` + `AWS_ROLE_ARN`), the ECS / EKS\nPod Identity container endpoint, then EC2 IMDSv2. Configure it after any\nother source, so it signs the headers they add.\n\n```ts\ns.url(\"https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-1234\")\n  .sigv4((a) => a.region(\"us-east-1\"))\n```",
+              "params": [
+                {
+                  "name": "configure",
+                  "type": {
+                    "kind": "configure",
+                    "settings": "PrometheusAwsSettings"
+                  },
+                  "rest": false,
+                  "optional": true
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
               "name": "requestTimeout",
               "doc": "How long the call may take, end to end (`\"10s\"`, or ms; default 30 s).\nClient-side: the query's own `timeout` parameter is separate.",
               "params": [
@@ -67021,6 +68989,64 @@
                   "name": "bytes",
                   "type": {
                     "kind": "number"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            }
+          ]
+        },
+        {
+          "name": "PrometheusGoogleSettings",
+          "doc": "Settings for `PrometheusConnectionSettings.google(...)`.",
+          "extends": null,
+          "setters": [
+            {
+              "name": "scopes",
+              "doc": "The OAuth scopes to request, replacing the default\n`https://www.googleapis.com/auth/monitoring.read`. A gcloud user\ncredential (`authorized_user`) carries the scopes it was granted at\n`gcloud auth application-default login` and ignores these.",
+              "params": [
+                {
+                  "name": "scopes",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": true,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "credentialsFile",
+              "doc": "Read this credentials file — a service-account key, a gcloud user\ncredential, or a workload identity federation configuration — instead of\nsearching Application Default Credentials.",
+              "params": [
+                {
+                  "name": "path",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "quotaProject",
+              "doc": "The project charged for the request's quota, sent as\n`x-goog-user-project`. Defaults to the credentials file's\n`quota_project_id`, which `gcloud auth application-default\nset-quota-project` writes.",
+              "params": [
+                {
+                  "name": "project",
+                  "type": {
+                    "kind": "string"
                   },
                   "rest": false,
                   "optional": false

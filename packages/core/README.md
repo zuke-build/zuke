@@ -764,6 +764,9 @@ async function readBytesBounded(body: ReadableStream<Uint8Array> | null, limit: 
   archive that decompresses to gigabytes — is never buffered whole just to be
   rejected. A `null` body reads as empty.
 
+function redactLine(line: string): string
+  Mask every registered secret in `line`, or return it unchanged if none.
+
 function redactUrl(raw: string): string
   Strip userinfo (`user:pass@`) and mask every credential-bearing parameter so
   a URL is safe to put in an error message or a log:

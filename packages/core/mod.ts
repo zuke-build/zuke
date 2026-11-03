@@ -301,6 +301,7 @@ export {
   type SecretSource,
 } from "./src/secret.ts";
 export { REDACTED, Redactor } from "./src/redact.ts";
+export { redactLine } from "./src/ambient_redactor.ts";
 export {
   DEFAULT_POLL_INTERVAL_MS,
   DEFAULT_READY_TIMEOUT_MS,
