@@ -23,6 +23,7 @@ import {
 } from "../../packages/aws/mod.ts";
 import { canary } from "../../packages/canary/mod.ts";
 import { FakePlatform } from "../../packages/canary/tests/_platform.ts";
+import { withEnv } from "../../packages/core/tests/_env.ts";
 import { runCli, withoutMaskDirectives, withStateDir } from "./_harness.ts";
 
 /** The datapoints the fake CloudWatch answers with; set per test. */
@@ -106,10 +107,32 @@ Deno.test("a secret read through AwsTasks is masked in the build's output", asyn
   const { code, out, err } = await runCli(Leaky, ["leak"]);
   assertEquals(code, 1);
   assertStringIncludes(out + err, "could not connect with");
-  // Under Actions the raw value is printed in `::add-mask::` on purpose, so
-  // the runner censors it; everything else must not carry it.
+  // Under Actions the run's redactor prints the raw value in `::add-mask::`
+  // as the wrapper registers it, on purpose, so the runner censors it in a
+  // child's own output too; everything else must not carry it.
   assertEquals(withoutMaskDirectives(out + err).includes(SECRET), false);
   assertEquals(calls[0].slice(1, 3), ["secretsmanager", "get-secret-value"]);
+});
+
+// A credential a wrapper registers mid-run is not a `secret()` parameter, so
+// only the redactor knows it; the runner must still be told to mask it, or a
+// later child that echoes it prints it in the clear in the Actions log.
+Deno.test("a secret read through AwsTasks is add-masked under GitHub Actions", async () => {
+  calls = [];
+  await withEnv(
+    { CI: "true", GITHUB_ACTIONS: "true", GITHUB_STEP_SUMMARY: undefined },
+    async () => {
+      const { code, out, err } = await runCli(Leaky, ["leak"]);
+      assertEquals(code, 1);
+      const lines = out.split("\n");
+      assertEquals(
+        lines.filter((l) => l === `::add-mask::${SECRET}`).length,
+        1,
+        out,
+      );
+      assertEquals(withoutMaskDirectives(out + err).includes(SECRET), false);
+    },
+  );
 });
 
 /** The platform the canary below drives; reset per test. */

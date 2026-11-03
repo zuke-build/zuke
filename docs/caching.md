@@ -208,6 +208,9 @@ ZUKE_REMOTE_CACHE_DIR=/mnt/zuke-cache ./zuke ci
 
 `ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES` raises the 2 GiB bound on what a fetched
 artifact may decompress to, for whichever store the variables select.
+`ZUKE_REMOTE_CACHE_SIGNING_KEY` signs and authenticates every artifact, for any
+store, the env-selected ones and a `remoteCache()` override alike — see
+[Security](#security).
 
 That is also the precedence: a plain URL, then an S3 URL, then a directory, then
 the Actions credentials. **`--no-remote-cache`** uses the local cache only for a
@@ -312,7 +315,27 @@ re-uploads.
 
 The store `url` and `token` are **trusted configuration** — outputs are uploaded
 to that host and archives are extracted from it — so treat them like a deploy
-target:
+target. **Without a signing key the store is a code-execution boundary:**
+whoever can write to it chooses the files a restore puts in the declared outputs
+(a `node_modules`, a `dist`, a provisioned SDK), which later targets run with
+the job's credentials. The key a target's artifact is stored under is derived
+from public inputs, so it is no secret.
+
+- **Set `ZUKE_REMOTE_CACHE_SIGNING_KEY`** to a secret only your builds hold.
+  Each upload is then stored with an HMAC-SHA256 signature over its store key
+  and archive (a sibling `<key>.sig` entry in the same store), and an artifact
+  whose signature is missing or does not verify is refused — a warned rebuild —
+  so write access to the store alone no longer chooses what is restored. Every
+  producer and consumer must hold the same key. Artifacts uploaded before the
+  key was set are unsigned and are rebuilt rather than restored; a store whose
+  entries cannot be overwritten (the GitHub Actions cache) keeps missing on
+  those until it evicts them.
+- **A `FileSystemCacheStore` entry is refused unless the current user owns it
+  and neither its group nor others may write it** (POSIX; Windows has no such
+  bits). Another local user who can write the shared directory cannot plant an
+  archive — and so the directory store is for one user (a CI runner's account, a
+  mount only it writes). Several users sharing one should each use their own, or
+  an HTTP/S3 store with a signing key.
 
 - Point them only at a cache **you control**, and prefer a
   [secret parameter](./parameters.md) or an environment variable over a
@@ -331,14 +354,19 @@ target:
   never produces, so its presence means something else built the archive); when
   it lands under **`.git` or `.zuke`** — a restored git hook runs on the next
   ordinary git command — with `.zuke/tools` the one exception, since a
-  provisioned toolchain is what a remote cache is for and the toolchain
-  re-verifies a restored binary against its recorded checksum before reusing it.
-  A `.git` _inside_ `.zuke/tools` is allowed too, because an SDK such as
-  Flutter's is a git checkout that runs `git` on itself; a store that could
-  write there could already replace the SDK's binaries; and when it falls
-  **outside the paths the target declared with `.outputs(...)`**. That last one
-  is what stops an innocuous-looking `deno.json` or lockfile riding along in an
-  otherwise valid artifact.
+  provisioned toolchain is what a remote cache is for. A restored binary is
+  **not** re-verified against its pinned checksum: the provisioning target is
+  skipped as a cache hit, so only a signing key authenticates it. What restore
+  does refuse is an install marker (`<name>.install.json`, `<name>.tree.json`,
+  `.zuke-npm-tool.json`) — archiving skips them too — so a later
+  `installRelease`/`installTree`/`installNpmTool` finds no marker vouching for a
+  restored binary and downloads and verifies it afresh. A `.git` _inside_
+  `.zuke/tools` is allowed too, because an SDK such as Flutter's is a git
+  checkout that runs `git` on itself; a store that could write there could
+  already replace the SDK's binaries; and when it falls **outside the paths the
+  target declared with `.outputs(...)`**. That last one is what stops an
+  innocuous-looking `deno.json` or lockfile riding along in an otherwise valid
+  artifact.
 - **Relative links inside an output stay links.** A symlink whose target is
   relative and, resolved from the link's own directory, stays inside the
   declared output it was found under is archived as a link — so

@@ -8,6 +8,7 @@ import {
 } from "./_assert.ts";
 import { target } from "../src/target.ts";
 import {
+  type BuildCache,
   type CacheHost,
   defaultCacheHost,
   fingerprint,
@@ -18,6 +19,7 @@ import { archiveOutputs, remoteCacheKey } from "../src/remote_cache.ts";
 import { byteStream, gzip, tar } from "../src/compression.ts";
 import { withTemp } from "./_temp.ts";
 import { MemCacheStore } from "./_fakes.ts";
+import { signArtifact } from "../src/cache_signing.ts";
 
 const enc = (text: string) => new TextEncoder().encode(text);
 const dec = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
@@ -568,3 +570,130 @@ async function withTempDirEnv(
     });
   }
 }
+
+Deno.test("a store error quoting a credentialed URL is redacted in the warning", async () => {
+  const host = new MemHost();
+  const store = new MemCacheStore();
+  const { t } = await seeded(host, store);
+  store.get = () =>
+    Promise.reject(
+      new Error("refusing an artifact from https://c.example/k?sv=1&sig=abc"),
+    );
+  const warnings: string[] = [];
+  const cache = await openCache(STORE, host, {
+    remote: store,
+    warn: (m) => warnings.push(m),
+  });
+  assertEquals(await cache.upToDate(t), false);
+  assertEquals(warnings.join("\n").includes("sig=abc"), false);
+  assertStringIncludes(warnings.join("\n"), "c.example");
+});
+
+const SECRET = "build-signing-secret";
+
+/** Upload `dist` through a signing cache, then wipe it as a fresh checkout. */
+async function signedUpload(
+  host: MemHost,
+  store: MemCacheStore,
+): Promise<{ t: ReturnType<typeof buildTarget>; key: string }> {
+  host.files.set("in.txt", enc("v1"));
+  host.dirs.set("dist", ["app.js"]);
+  host.files.set("dist/app.js", enc("built"));
+  const t = buildTarget();
+  const producer = await openCache(STORE, host, {
+    remote: store,
+    signingKey: SECRET,
+  });
+  await producer.record(t);
+  host.dirs.delete("dist");
+  host.files.delete("dist/app.js");
+  return { t, key: remoteCacheKey("build", await fingerprint(t, host)) };
+}
+
+/** Open a consumer cache with `signingKey`, recording warnings. */
+async function consumer(
+  host: MemHost,
+  store: MemCacheStore,
+  signingKey: string | undefined,
+): Promise<{ cache: BuildCache; warnings: string[] }> {
+  const warnings: string[] = [];
+  const cache = await openCache(STORE, host, {
+    remote: store,
+    warn: (m) => warnings.push(m),
+    signingKey,
+  });
+  return { cache, warnings };
+}
+
+Deno.test("a signed artifact is restored by a consumer holding the key", async () => {
+  for (const store of [new MemCacheStore(), new StreamingStore()]) {
+    const host = new SpoolingHost();
+    const { t, key } = await signedUpload(host, store);
+    assertEquals(store.map.has(`${key}.sig`), true);
+    const { cache, warnings } = await consumer(host, store, SECRET);
+    assertEquals(await cache.upToDate(t), true);
+    assertEquals(warnings, []);
+    assertEquals(dec(host.files.get("dist/app.js") ?? enc("")), "built");
+  }
+});
+
+Deno.test("an unsigned artifact is refused when a signing key is set", async () => {
+  const host = new MemHost();
+  const store = new MemCacheStore();
+  const { t } = await seeded(host, store); // uploaded with no signature
+  const { cache, warnings } = await consumer(host, store, SECRET);
+  assertEquals(await cache.upToDate(t), false);
+  assertStringIncludes(warnings.join("\n"), "unsigned");
+  assertEquals(host.files.has("dist/app.js"), false);
+});
+
+Deno.test("an artifact with a wrong signature is refused", async () => {
+  const host = new MemHost();
+  const store = new MemCacheStore();
+  const { t, key } = await signedUpload(host, store);
+  const poisoned = await gzip(
+    tar([{ name: "dist/app.js", data: enc("evil") }]),
+  );
+  const cases: Array<[string, Uint8Array]> = [
+    // A store writer swaps the archive and keeps the old signature…
+    ["kept", store.map.get(`${key}.sig`) ?? new Uint8Array()],
+    // …signs it with a key of its own…
+    ["own key", await signArtifact("attacker", key, byteStream(poisoned))],
+    // …or plants a signature that is not even the right length.
+    ["short", new Uint8Array(3)],
+  ];
+  for (const [label, sig] of cases) {
+    store.map.set(key, poisoned);
+    store.map.set(`${key}.sig`, sig);
+    const { cache, warnings } = await consumer(host, store, SECRET);
+    assertEquals(await cache.upToDate(t), false, label);
+    assertStringIncludes(warnings.join("\n"), "does not match");
+  }
+  assertEquals(host.files.has("dist/app.js"), false);
+});
+
+Deno.test("a signature does not carry over to another target's key", async () => {
+  const host = new MemHost();
+  const store = new MemCacheStore();
+  const { key } = await signedUpload(host, store);
+  // Replay `build`'s signed artifact under a second target's key.
+  host.files.set("in.txt", enc("v1"));
+  const other = target().inputs("in.txt").outputs("dist");
+  other.name_ = "other";
+  const otherKey = remoteCacheKey("other", await fingerprint(other, host));
+  store.map.set(otherKey, store.map.get(key) ?? new Uint8Array());
+  store.map.set(`${otherKey}.sig`, store.map.get(`${key}.sig`) ?? enc(""));
+  const { cache } = await consumer(host, store, SECRET);
+  assertEquals(await cache.upToDate(other), false);
+});
+
+Deno.test("without a signing key nothing is signed or checked", async () => {
+  const host = new MemHost();
+  const store = new MemCacheStore();
+  const { t, key } = await seeded(host, store);
+  const { cache } = await consumer(host, store, undefined);
+  assertEquals(await cache.upToDate(t), true);
+  assertEquals(store.gets, [key]); // no signature lookup
+  await cache.record(target().inputs("in.txt").outputs("dist"));
+  assertEquals([...store.map.keys()].some((k) => k.endsWith(".sig")), false);
+});

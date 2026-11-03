@@ -50,11 +50,13 @@ export function resolveStyle(
 
 /** The reporting surface a run writes through, composed once per run. */
 export interface RunOutput {
-  /** The caller's (or default) sink, unwrapped — only the mask directives use it. */
-  baseReporter: Reporter;
   /** The redaction- and failure-wrapped reporter every run message goes through. */
   reporter: Reporter;
-  /** Masks each resolved `secret` parameter in everything the run prints. */
+  /**
+   * Masks each resolved `secret` parameter, and every value registered at run
+   * time, in everything the run prints — and under GitHub Actions on the real
+   * console emits `::add-mask::` for each (see {@link ActionsMaskingRedactor}).
+   */
   redactor: Redactor;
   /** Whether output reaches the real console (not silenced, not redirected). */
   writesToConsole: boolean;
@@ -80,22 +82,27 @@ export function composeOutput(opts: {
   // resolved value of each `secret` parameter. The redactor is populated later,
   // during parameter resolution (see `./execute_plan.ts`); since nothing
   // meaningful is reported before then, wrapping the reporter up-front is safe.
-  const redactor = new Redactor();
-  // …and every write is best-effort (see safeReporter): a throwing sink (a buggy
-  // custom reporter, or EPIPE on a piped stdout) must never escape `failTarget`
-  // and reject out of a scheduler, which would strand the run record `running`.
-  const reporter = safeReporter(redactingReporter(baseReporter, redactor));
-  // The GitHub job summary is a real-world output side effect (it appends to a
-  // shared file named by GITHUB_STEP_SUMMARY). Only write it when output goes to
-  // the default console — i.e. neither silenced nor redirected to a custom
-  // reporter. This keeps embedded/test runs (a build's own test suite calls
-  // `execute` with `silent`/a custom reporter) from polluting the workflow
-  // summary, while a normal CLI run still writes it.
+  //
+  // Under GitHub Actions, writing to the real console, the redactor also emits
+  // `::add-mask::` for every value it learns. Gated on `writesToConsole`: when
+  // a custom reporter is supplied it *is* the base reporter, so an embedded
+  // `execute()` must never be handed the raw secret. The same gate keeps the
+  // job summary — a real-world side effect appended to the shared file named by
+  // GITHUB_STEP_SUMMARY — out of embedded and test runs (a build's own test
+  // suite calls `execute` with `silent`/a custom reporter), while a normal CLI
+  // run still writes it.
   const writesToConsole = opts.reporter === undefined && !opts.silent;
   // The same question `detectCiHost` already answers, asked through it rather
   // than through a second reader of GITHUB_ACTIONS — the private copy this
   // replaces tested the identical variable for the identical value.
   const github = opts.github ?? detectCiHost() === "github";
+  const redactor = github && writesToConsole
+    ? new ActionsMaskingRedactor(baseReporter)
+    : new Redactor();
+  // …and every write is best-effort (see safeReporter): a throwing sink (a buggy
+  // custom reporter, or EPIPE on a piped stdout) must never escape `failTarget`
+  // and reject out of a scheduler, which would strand the run record `running`.
+  const reporter = safeReporter(redactingReporter(baseReporter, redactor));
   const style = resolveStyle(
     github,
     opts.color,
@@ -104,7 +111,6 @@ export function composeOutput(opts: {
   );
   const renderer = opts.renderer ?? defaultRenderer;
   return {
-    baseReporter,
     reporter,
     redactor,
     writesToConsole,
@@ -114,21 +120,31 @@ export function composeOutput(opts: {
 }
 
 /**
- * Emit `::add-mask::` for each secret so the Actions runner masks it too.
+ * A {@link Redactor} that also asks the GitHub Actions runner to mask each
+ * pattern the moment it is registered, by printing `::add-mask::` to the real
+ * console.
  *
- * Under GitHub Actions, also emit `::add-mask::` with the real value so the
- * runner masks it in its own logs. This goes through the base reporter, which
- * is not wrapped in the redactor — a masked directive would hide nothing. Gate
- * it on `writesToConsole` too: when a custom reporter is supplied it *is* the
- * base reporter, so an embedded `execute()` must never be handed the raw
- * secret — only the real runner stdout should receive the directive.
+ * Every route into the run's redactor — a `secret()` parameter, a wrapper's
+ * `markSecret` or `markSecretsInOutput`, the engine's `secret.register` — ends
+ * in {@link Redactor.add}, so emitting here covers them all from one place. The
+ * redactor masks only what Zuke prints; the directive is what makes the runner
+ * mask the value in a subprocess's own output too.
+ *
+ * The directive goes to `baseReporter`, which is not wrapped in the redactor —
+ * a masked directive would hide nothing — and best-effort, so an EPIPE here
+ * never aborts the run. A pattern already registered is not emitted again.
  */
-export function emitActionsMasks(
-  values: Iterable<string>,
-  baseReporter: Reporter,
-): void {
-  const maskReporter = safeReporter(baseReporter);
-  for (const value of values) {
+export class ActionsMaskingRedactor extends Redactor {
+  readonly #mask: Reporter;
+
+  /** Emit each newly registered pattern's directive to `baseReporter`. */
+  constructor(baseReporter: Reporter) {
+    super();
+    this.#mask = safeReporter(baseReporter);
+  }
+
+  /** Register `value` and emit `::add-mask::` for each of its new patterns. */
+  override add(value: string): void {
     for (const pattern of maskPatterns(value)) {
       // Never emit a pattern that spans lines. The runner reads the directive
       // to the end of the *line*, so a multi-line value would mask only its
@@ -136,10 +152,12 @@ export function emitActionsMasks(
       // call meant to protect the secret would be the thing that leaked it.
       // maskPatterns already contributes each line separately.
       if (pattern.includes("\n")) continue;
-      // Straight to the base reporter (not redacted, so the directive works),
-      // but best-effort: an EPIPE here must not abort the run either.
-      maskReporter.info(`::add-mask::${pattern}`);
+      const before = this.size;
+      super.add(pattern);
+      if (this.size > before) this.#mask.info(`::add-mask::${pattern}`);
     }
+    // The whole multi-line value, for the redactor alone; its lines are known.
+    super.add(value);
   }
 }
 

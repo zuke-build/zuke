@@ -527,8 +527,7 @@ Deno.test("restoreOutputs refuses protected paths whatever the outputs declare",
   }
   assertEquals(out.files.size, 0);
   // The toolchain's install root is the one `.zuke` subtree a restore may
-  // write: a provisioned binary is what a remote cache is for, and the
-  // toolchain re-verifies it against its recorded checksum before reusing it.
+  // write: a provisioned binary is what a remote cache is for.
   const tool = await gzip(
     tar([{ name: ".zuke/tools/zizmor", data: enc("ELF") }]),
   );
@@ -1361,4 +1360,90 @@ Deno.test("HttpCacheStore reads a body-less success as an empty artifact", async
     fetch: fakeFetch(() => new Response(null, { status: 200 })).fetch,
   });
   assertEquals(await store.get("k"), new Uint8Array(0));
+});
+
+Deno.test("HttpCacheStore's size-cap refusal masks a SAS query in the URL", async () => {
+  const store = new HttpCacheStore({
+    url: "https://acct.blob.core.windows.net/c/?sv=2024&sig=abc",
+    maxArtifactBytes: 16,
+    fetch: () =>
+      Promise.resolve(new Response(new Uint8Array(32), { status: 200 })),
+  });
+  const message = messageOf(await assertRejects(() => store.get("k")));
+  assertStringIncludes(message, "refusing an artifact larger than 16 bytes");
+  assertStringIncludes(message, "acct.blob.core.windows.net");
+  assertEquals(message.includes("sig=abc"), false);
+});
+
+Deno.test("restoreOutputs refuses an install marker riding in an artifact", async () => {
+  const out = new MemFs();
+  for (
+    const name of [
+      ".zuke/tools/helm.install.json",
+      "bin/sdk.tree.json",
+      ".zuke/tools/node/.zuke-npm-tool.json",
+      // Windows resolves a trailing dot and any case to the same file.
+      ".zuke/tools/HELM.Install.json.",
+    ]
+  ) {
+    const artifact = await gzip(tar([
+      { name: ".zuke/tools/helm", data: enc("#!/bin/sh\necho pwned\n") },
+      { name, data: enc('{"checksum":"a","binary":"b"}') },
+    ]));
+    const err = await assertRejects(() =>
+      restoreOutputs(artifact, out, [".zuke/tools", "bin"])
+    );
+    assertStringIncludes(err.message, "install marker");
+  }
+  assertEquals(out.files.size, 0);
+});
+
+Deno.test("archiveOutputs leaves install markers out of the archive", async () => {
+  const fs = new MemFs();
+  fs.dirs.set(".zuke/tools", ["helm", "helm.install.json", "sdk.tree.json"]);
+  fs.files.set(".zuke/tools/helm", enc("ELF"));
+  fs.files.set(".zuke/tools/helm.install.json", enc("{}"));
+  fs.files.set(".zuke/tools/sdk.tree.json", enc("{}"));
+  const out = new MemFs();
+  assertEquals(
+    await restoreOutputs(await archiveOutputs([".zuke/tools"], fs), out, [
+      ".zuke/tools",
+    ]),
+    [".zuke/tools/helm"],
+  );
+});
+
+Deno.test("FileSystemCacheStore refuses an entry other users could have written", async () => {
+  if (Deno.build.os === "windows") return; // no owner or mode bits to check
+  await withTemp(async (dir) => {
+    const own = Deno.uid();
+    const store = new FileSystemCacheStore(dir, { uid: () => own });
+    await store.put("k", enc("payload"));
+    // Written as the store writes it, whatever the umask: accepted.
+    assertEquals(dec((await store.get("k")) ?? enc("")), "payload");
+    // Owned by someone else (simulated through the uid seam): refused.
+    const foreign = new FileSystemCacheStore(dir, {
+      uid: () => (own ?? 0) + 1,
+    });
+    assertStringIncludes(
+      messageOf(await assertRejects(() => foreign.getStream("k"))),
+      "owned by another user",
+    );
+    // Group- or world-writable: refused, by get as well as getStream.
+    for (const mode of [0o664, 0o646]) {
+      await Deno.chmod(`${dir}/k.tar.gz`, mode);
+      assertStringIncludes(
+        messageOf(await assertRejects(() => store.get("k"))),
+        "other users can write",
+      );
+    }
+  });
+});
+
+Deno.test("FileSystemCacheStore skips the owner check where there is no uid", async () => {
+  await withTemp(async (dir) => {
+    const store = new FileSystemCacheStore(dir, { uid: () => null });
+    await store.put("k", enc("payload"));
+    assertEquals(dec((await store.get("k")) ?? enc("")), "payload");
+  });
 });

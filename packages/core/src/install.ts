@@ -210,11 +210,14 @@ function parseMarker(text: string | null): InstallMarker | null {
  * must have satisfied the same checksum (so a version bump misses), **and** the
  * binary on disk must still hash to what was installed — so a swapped or
  * corrupted binary in a shared cache directory is re-downloaded, never silently
- * reused.
+ * reused. For a `raw` download the checksum *is* the binary's hash, so the
+ * binary is compared with the declared checksum rather than with the marker,
+ * which anyone who can swap the binary can rewrite too.
  */
 async function cachedInstall(
   target: AbsolutePath,
   checksum: string,
+  raw: boolean,
 ): Promise<boolean> {
   const recorded = await readFileOrNull(markerPath(target));
   const marker = parseMarker(
@@ -223,7 +226,7 @@ async function cachedInstall(
   if (marker === null || marker.checksum !== checksum) return false;
   const binary = await readFileOrNull(String(target));
   if (binary === null) return false;
-  return await sha256Hex(binary) === marker.binary;
+  return await sha256Hex(binary) === (raw ? checksum : marker.binary);
 }
 
 /** Record a verified install so {@link cachedInstall} can re-check it later. */
@@ -315,15 +318,18 @@ export async function installRelease(
     : options.name;
   const target = dir(fileName);
 
+  const archive = forPlatform(options.archive ?? "raw", platform);
   // Cache hit: a prior install verified against the same checksum is reused.
-  if (checksum !== undefined && await cachedInstall(target, checksum)) {
+  if (
+    checksum !== undefined &&
+    await cachedInstall(target, checksum, archive === "raw")
+  ) {
     return target;
   }
 
   const url = options.url(platform);
   await Deno.mkdir(String(dir), { recursive: true });
 
-  const archive = forPlatform(options.archive ?? "raw", platform);
   if (archive !== "raw") {
     const scratch = await Deno.makeTempDir();
     try {

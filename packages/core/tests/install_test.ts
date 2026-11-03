@@ -453,6 +453,38 @@ Deno.test("installRelease re-downloads when the cached binary was tampered with"
   });
 });
 
+Deno.test("installRelease re-downloads a raw binary whose marker was swapped with it", async () => {
+  await withTemp(async (dir) => {
+    const body = "trusted-binary";
+    let calls = 0;
+    const counting: DownloadFn = async (_url, dest) => {
+      calls++;
+      await Deno.writeFile(String(dest), new TextEncoder().encode(body));
+    };
+    const checksum = await sha256Hex(body);
+    const spec = {
+      name: "swapped",
+      destDir: dir,
+      url: () => "https://example.com/swapped",
+      download: counting,
+      checksum,
+    };
+    const bin = await installRelease(spec);
+    // Whoever swaps the binary rewrites the marker to vouch for it too.
+    await Deno.writeTextFile(String(bin), "evil-binary");
+    await Deno.writeTextFile(
+      `${bin}.install.json`,
+      JSON.stringify({ checksum, binary: await sha256Hex("evil-binary") }),
+    );
+    await installRelease(spec);
+    assertEquals(calls, 2); // the pinned checksum, not the marker, decides
+    assertEquals(
+      new TextDecoder().decode(await Deno.readFile(String(bin))),
+      body,
+    );
+  });
+});
+
 Deno.test("installRelease re-downloads when the cache marker is corrupt", async () => {
   await withTemp(async (dir) => {
     const body = "payload";

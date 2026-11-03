@@ -29,6 +29,8 @@ import {
   writeTextEnsuringDir,
 } from "./internal.ts";
 import { byteStream } from "./compression.ts";
+import { signArtifact, signatureKey, verifyArtifact } from "./cache_signing.ts";
+import { redactUrls } from "./redact_url.ts";
 import {
   archiveOutputs,
   archiveStream,
@@ -220,6 +222,19 @@ export interface OpenCacheOptions {
   remote?: RemoteCacheStore;
   /** Report a non-fatal remote-cache error (a get/put failure never fails the build). */
   warn?: (message: string) => void;
+  /**
+   * A secret that authenticates the remote store's artifacts — the executor
+   * passes `ZUKE_REMOTE_CACHE_SIGNING_KEY`. With it, each upload is stored
+   * with an HMAC-SHA256 signature, and an artifact whose signature is missing
+   * or wrong is refused and rebuilt, so writing to the store no longer chooses
+   * what a restore writes. Without it, anything in the store is restored.
+   */
+  signingKey?: string;
+}
+
+/** A store error message with any credential in a URL it quotes masked. */
+function storeMessage(error: unknown): string {
+  return redactUrls(messageOf(error));
 }
 
 /** Filesystem-backed {@link BuildCache}, optionally backed by a remote store. */
@@ -231,6 +246,7 @@ class FsCache implements BuildCache {
   readonly #restored = new Set<TargetBuilder>();
   readonly #remote?: RemoteCacheStore;
   readonly #warn?: (message: string) => void;
+  readonly #signingKey?: string;
   #dirty = false;
 
   constructor(
@@ -244,6 +260,7 @@ class FsCache implements BuildCache {
     this.#store = store;
     this.#remote = options.remote;
     this.#warn = options.warn;
+    this.#signingKey = options.signingKey;
   }
 
   /** Whether every declared output of `target` still exists on disk. */
@@ -272,7 +289,7 @@ class FsCache implements BuildCache {
         artifact = await this.#fetch(this.#remote, key);
       } catch (error) {
         this.#warn?.(
-          `remote cache lookup for "${name}" failed: ${messageOf(error)}`,
+          `remote cache lookup for "${name}" failed: ${storeMessage(error)}`,
         );
         return false;
       }
@@ -284,6 +301,9 @@ class FsCache implements BuildCache {
         // Throwing instead would let anyone who can write the store halt every
         // build that reads it, and the store is documented as best-effort.
         try {
+          if (this.#signingKey !== undefined) {
+            await assertSigned(this.#remote, key, artifact, this.#signingKey);
+          }
           await restoreFrom(
             artifact.open,
             this.#host,
@@ -293,7 +313,7 @@ class FsCache implements BuildCache {
         } catch (error) {
           this.#warn?.(
             `remote cache restore for "${name}" was refused, rebuilding: ${
-              messageOf(error)
+              storeMessage(error)
             }`,
           );
           return false;
@@ -347,20 +367,35 @@ class FsCache implements BuildCache {
     ) {
       try {
         const key = remoteCacheKey(name, fp);
+        const secret = this.#signingKey;
+        let signature: Uint8Array | undefined;
         if (this.#remote.putStream !== undefined) {
-          await this.#remote.putStream(
-            key,
-            await archiveStream(target.outputs_, this.#host),
-          );
+          const stream = await archiveStream(target.outputs_, this.#host);
+          if (secret === undefined) {
+            await this.#remote.putStream(key, stream);
+          } else {
+            // Both branches read together, so the tee never holds the archive.
+            const [upload, signed] = stream.tee();
+            [, signature] = await Promise.all([
+              this.#remote.putStream(key, upload),
+              signArtifact(secret, key, signed),
+            ]);
+          }
         } else {
-          await this.#remote.put(
-            key,
-            await archiveOutputs(target.outputs_, this.#host),
-          );
+          const artifact = await archiveOutputs(target.outputs_, this.#host);
+          await this.#remote.put(key, artifact);
+          if (secret !== undefined) {
+            signature = await signArtifact(secret, key, byteStream(artifact));
+          }
+        }
+        // After the artifact: a reader racing the two puts sees a mismatch,
+        // which is a warned miss, never a restore of unsigned bytes.
+        if (signature !== undefined) {
+          await this.#remote.put(signatureKey(key), signature);
         }
       } catch (error) {
         this.#warn?.(
-          `remote cache upload for "${name}" failed: ${messageOf(error)}`,
+          `remote cache upload for "${name}" failed: ${storeMessage(error)}`,
         );
       }
     }
@@ -371,6 +406,29 @@ class FsCache implements BuildCache {
     await this.#host.writeStore(
       this.#storePath,
       `${JSON.stringify(this.#store, null, 2)}\n`,
+    );
+  }
+}
+
+/**
+ * Throw unless the store holds a signature for the artifact under `key` that
+ * verifies against `secret` — see {@link OpenCacheOptions.signingKey}.
+ */
+async function assertSigned(
+  remote: RemoteCacheStore,
+  key: string,
+  artifact: SpooledArtifact,
+  secret: string,
+): Promise<void> {
+  const signature = await remote.get(signatureKey(key));
+  if (signature === null) {
+    throw new Error(
+      `remote cache: the artifact is unsigned, and a signing key is set.`,
+    );
+  }
+  if (!await verifyArtifact(secret, key, await artifact.open(), signature)) {
+    throw new Error(
+      `remote cache: the artifact's signature does not match the signing key.`,
     );
   }
 }
