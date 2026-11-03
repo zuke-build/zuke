@@ -28,7 +28,7 @@
  */
 
 import type { PathLike } from "./path.ts";
-import { crc32, lstatOrNull, readBytesBounded } from "./internal.ts";
+import { crc32, lstatOrNull } from "./internal.ts";
 import { unxz } from "./xz.ts";
 
 /**
@@ -121,24 +121,44 @@ export async function gunzip(data: Uint8Array): Promise<Uint8Array> {
 }
 
 /**
- * Gunzip-decompress `data`, or return `null` once the *decompressed* stream
- * exceeds `limit` bytes.
+ * Gunzip `data` as a stream that fails with `tooLarge()` once the
+ * *decompressed* bytes pass `limit`.
  *
  * {@link gunzip} buffers whatever the stream produces, so a small archive that
  * expands to gigabytes exhausts memory before anything can inspect it. Counting
  * while decompressing is the only point at which it can still be refused, and
  * it bounds what follows too: a tar entry costs at least its 512-byte header,
- * so a byte cap is also an entry-count cap.
+ * so a byte cap is also an entry-count cap. Nothing is buffered beyond the
+ * chunk in flight, so a reader that consumes as it goes holds one chunk.
  */
-export async function gunzipBounded(
+export function gunzipStreamBounded(
   data: Uint8Array,
   limit: number,
-): Promise<Uint8Array | null> {
-  const stream = new Blob([new Uint8Array(data)]).stream().pipeThrough(
-    new DecompressionStream("gzip"),
-  );
-  return await readBytesBounded(stream, limit);
+  tooLarge: () => Error,
+): ReadableStream<Uint8Array> {
+  let total = 0;
+  // Fed in slices: a slice owns a plain `ArrayBuffer`, which the decompressor
+  // requires, without copying the whole artifact up front.
+  function* slices(): Generator<BufferSource> {
+    for (let i = 0; i < data.length; i += STREAM_SLICE) {
+      yield data.slice(i, i + STREAM_SLICE);
+    }
+  }
+  return ReadableStream.from(slices())
+    .pipeThrough(new DecompressionStream("gzip"))
+    .pipeThrough(
+      new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, controller) {
+          total += chunk.byteLength;
+          if (total > limit) throw tooLarge();
+          controller.enqueue(chunk);
+        },
+      }),
+    );
 }
+
+/** How many bytes of an in-memory archive are fed to a stream at a time. */
+const STREAM_SLICE = 64 * 1024;
 
 /** A single entry within a tar archive — a regular file or a symbolic link. */
 export interface TarEntry {
@@ -198,7 +218,7 @@ function tarHeader(
   typeflag: number,
   mode: number,
   linkname: Uint8Array,
-): Uint8Array {
+): Uint8Array<ArrayBuffer> {
   const header = new Uint8Array(BLOCK);
   header.set(name, 0);
   writeOctal(header, 100, 7, mode); // mode
@@ -242,69 +262,97 @@ function paxRecord(key: string, value: string): string {
  * `tar` read back.
  */
 export function tar(entries: TarEntry[]): Uint8Array {
-  const encoder = new TextEncoder();
-  const blocks: Uint8Array[] = [];
-  let total = 0;
-  const member = (header: Uint8Array, data: Uint8Array) => {
-    const body = new Uint8Array(padded(data.length));
-    body.set(data);
-    blocks.push(header, body);
-    total += BLOCK + body.length;
-  };
-  for (const entry of entries) {
-    const mode = entry.mode ?? 0o644;
-    if (!Number.isInteger(mode) || mode < 0 || mode > 0o7777) {
-      throw new Error(
-        `tar: mode for "${entry.name}" must be permission bits from 0 to ` +
-          `0o7777, got ${mode}`,
-      );
-    }
-    const name = encoder.encode(entry.name);
-    const link = encoder.encode(entry.linkname ?? "");
-    let records = "";
-    if (name.length > USTAR_FIELD) records += paxRecord("path", entry.name);
-    if (link.length > USTAR_FIELD) {
-      records += paxRecord("linkpath", entry.linkname ?? "");
-    }
-    if (records !== "") {
-      const data = encoder.encode(records);
-      member(
-        tarHeader(
-          encoder.encode("PaxHeader"),
-          data.length,
-          0x78, // typeflag 'x' (pax extended header)
-          0o644,
-          new Uint8Array(0),
-        ),
-        data,
-      );
-    }
-    const isLink = entry.linkname !== undefined;
-    // A symlink carries no data and is always 0o777.
-    const data = isLink ? new Uint8Array(0) : entry.data;
-    member(
-      tarHeader(
-        name.subarray(0, USTAR_FIELD),
-        data.length,
-        isLink ? 0x32 : 0x30, // typeflag '2' (symlink) | '0' (file)
-        isLink ? 0o777 : mode,
-        link.subarray(0, USTAR_FIELD),
-      ),
-      data,
-    );
-  }
-  // Two zero blocks terminate the archive.
-  const trailer = new Uint8Array(BLOCK * 2);
-  blocks.push(trailer);
-  total += trailer.length;
-
-  const out = new Uint8Array(total);
+  const blocks = [...entries.flatMap(tarMember), tarTrailer()];
+  const out = new Uint8Array(
+    blocks.reduce((total, block) => total + block.length, 0),
+  );
   let offset = 0;
   for (const block of blocks) {
     out.set(block, offset);
     offset += block.length;
   }
   return out;
+}
+
+/**
+ * Gzip a `ustar` archive of `entries`, pulling each entry only when the
+ * compressor is ready for it. The bytes are the same as {@link gzip} of
+ * {@link tar}, but only one member is uncompressed in memory at a time, so a
+ * source that reads each file as it is asked for keeps a large tree from being
+ * held whole.
+ */
+export async function gzipTar(
+  entries: AsyncIterable<TarEntry>,
+): Promise<Uint8Array> {
+  // `BufferSource`, the compressor's input type, so it accepts the stream.
+  async function* blocks(): AsyncGenerator<BufferSource> {
+    for await (const entry of entries) yield* tarMember(entry);
+    yield tarTrailer();
+  }
+  const stream = ReadableStream.from(blocks()).pipeThrough(
+    new CompressionStream("gzip"),
+  );
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+/** The two zero blocks that terminate an archive. */
+function tarTrailer(): Uint8Array<ArrayBuffer> {
+  return new Uint8Array(BLOCK * 2);
+}
+
+/**
+ * The blocks of one archive member: a pax extended header first when its name
+ * or link target is past ustar's 100 bytes, then its header and padded data.
+ */
+function tarMember(entry: TarEntry): Uint8Array<ArrayBuffer>[] {
+  const encoder = new TextEncoder();
+  const blocks: Uint8Array<ArrayBuffer>[] = [];
+  const member = (header: Uint8Array<ArrayBuffer>, data: Uint8Array) => {
+    const body = new Uint8Array(padded(data.length));
+    body.set(data);
+    blocks.push(header, body);
+  };
+  const mode = entry.mode ?? 0o644;
+  if (!Number.isInteger(mode) || mode < 0 || mode > 0o7777) {
+    throw new Error(
+      `tar: mode for "${entry.name}" must be permission bits from 0 to ` +
+        `0o7777, got ${mode}`,
+    );
+  }
+  const name = encoder.encode(entry.name);
+  const link = encoder.encode(entry.linkname ?? "");
+  let records = "";
+  if (name.length > USTAR_FIELD) records += paxRecord("path", entry.name);
+  if (link.length > USTAR_FIELD) {
+    records += paxRecord("linkpath", entry.linkname ?? "");
+  }
+  if (records !== "") {
+    const data = encoder.encode(records);
+    member(
+      tarHeader(
+        encoder.encode("PaxHeader"),
+        data.length,
+        0x78, // typeflag 'x' (pax extended header)
+        0o644,
+        new Uint8Array(0),
+      ),
+      data,
+    );
+  }
+  const isLink = entry.linkname !== undefined;
+  // A symlink carries no data and is always 0o777.
+  const data = isLink ? new Uint8Array(0) : entry.data;
+  member(
+    tarHeader(
+      name.subarray(0, USTAR_FIELD),
+      data.length,
+      isLink ? 0x32 : 0x30, // typeflag '2' (symlink) | '0' (file)
+      isLink ? 0o777 : mode,
+      link.subarray(0, USTAR_FIELD),
+    ),
+    data,
+  );
+  return blocks;
 }
 
 /** Parse octal digits from a header field, ignoring NUL/space padding. */
@@ -325,16 +373,8 @@ function readString(block: Uint8Array, offset: number, width: number): string {
   return new TextDecoder().decode(block.subarray(offset, end));
 }
 
-/** Whether the 512-byte block at `offset` is entirely zero (archive trailer). */
-function isZeroBlock(archive: Uint8Array, offset: number): boolean {
-  for (let i = offset; i < offset + BLOCK; i++) {
-    if (archive[i] !== 0) return false;
-  }
-  return true;
-}
-
 /**
- * The full path of the `ustar` header at `offset`. A path longer than the
+ * The full path a `ustar` header names. A path longer than the
  * 100-byte `name` field is stored by POSIX tar **split** across a 155-byte
  * `prefix` field (bytes 345-499); the real path is `prefix + "/" + name`.
  * Reading only `name` — as this reader once did — truncated long paths to their
@@ -346,10 +386,10 @@ function isZeroBlock(archive: Uint8Array, offset: number): boolean {
  * `readString` there yields `"ustar "` (trailing space), not `"ustar"`, and the
  * prefix is skipped.
  */
-function entryName(archive: Uint8Array, offset: number): string {
-  const name = readString(archive, offset, 100);
-  if (readString(archive, offset + 257, 6) !== "ustar") return name;
-  const prefix = readString(archive, offset + 345, 155);
+function entryName(header: Uint8Array): string {
+  const name = readString(header, 0, 100);
+  if (readString(header, 257, 6) !== "ustar") return name;
+  const prefix = readString(header, 345, 155);
   return prefix === "" ? name : `${prefix}/${name}`;
 }
 
@@ -398,55 +438,174 @@ function parsePaxOverrides(
  * wins over the header's own fields.
  */
 export function untar(archive: Uint8Array): TarEntry[] {
-  const entries: TarEntry[] = [];
-  let offset = 0;
-  let longName: string | undefined; // GNU 'L'
-  let longLinkname: string | undefined; // GNU 'K'
-  let paxPath: string | undefined; // pax 'x'/'g' path=
-  let paxLinkpath: string | undefined; // pax 'x'/'g' linkpath=
-  while (offset + BLOCK <= archive.length) {
-    if (isZeroBlock(archive, offset)) break;
-    const header = offset;
-    // Read the full 12-byte size field; the trailing byte is a NUL terminator.
-    const size = readOctal(archive, header + 124, 12);
-    const typeflag = archive[header + 156];
-    const dataStart = header + BLOCK;
-    // Clamp the data window so a malformed (huge) size can neither scan past the
-    // archive nor be used to slice out of bounds.
-    const dataLen = Math.min(size, Math.max(0, archive.length - dataStart));
-    offset = dataStart + padded(size);
+  const reader = new TarReader(true);
+  return [...reader.push(archive), ...reader.end()];
+}
+
+/**
+ * Read `stream`, a tar archive, entry by entry as its bytes arrive — the
+ * streaming form of {@link untar}, reading the same members the same way. With
+ * `keepData` false a regular file's bytes are skipped and its `data` is empty,
+ * so a pass that only inspects names and links holds no file contents at all;
+ * with it true, only the entry being read is in memory.
+ */
+export async function* untarStream(
+  stream: ReadableStream<Uint8Array>,
+  keepData: boolean,
+): AsyncGenerator<TarEntry> {
+  const reader = new TarReader(keepData);
+  for await (const chunk of stream) yield* reader.push(chunk);
+  yield* reader.end();
+}
+
+/** The member a {@link TarReader} is part-way through. */
+interface PendingMember {
+  /** Its 512-byte header. */
+  header: Uint8Array;
+  /** The data size its header declares. */
+  size: number;
+  /** How much of the data has arrived. */
+  received: number;
+  /** The padding still to skip once the data is in. */
+  padding: number;
+  /** The data received so far, when it is being kept. */
+  parts: Uint8Array[] | null;
+}
+
+/**
+ * A tar parser fed in chunks of any size: the one reader behind both
+ * {@link untar} (one chunk, the whole archive) and {@link untarStream}, so the
+ * long-name forms {@link untar} describes are handled in exactly one place.
+ */
+class TarReader {
+  readonly #keepData: boolean;
+  /** The bytes of a header still being assembled across chunks. */
+  #headerBytes: Uint8Array = new Uint8Array(0);
+  #member: PendingMember | null = null;
+  /** Set at the first zero block: the archive's end. */
+  #done = false;
+  #longName: string | undefined; // GNU 'L'
+  #longLinkname: string | undefined; // GNU 'K'
+  #paxPath: string | undefined; // pax 'x'/'g' path=
+  #paxLinkpath: string | undefined; // pax 'x'/'g' linkpath=
+
+  constructor(keepData: boolean) {
+    this.#keepData = keepData;
+  }
+
+  /** Feed the next bytes; returns the entries they completed, in order. */
+  push(chunk: Uint8Array): TarEntry[] {
+    const entries: TarEntry[] = [];
+    let pos = 0;
+    while (!this.#done) {
+      const member = this.#member;
+      if (member !== null) {
+        const take = Math.min(
+          member.size - member.received,
+          chunk.length - pos,
+        );
+        member.parts?.push(chunk.subarray(pos, pos + take));
+        member.received += take;
+        pos += take;
+        const skip = Math.min(member.padding, chunk.length - pos);
+        member.padding -= skip;
+        pos += skip;
+        if (member.received < member.size || member.padding > 0) break;
+        this.#finish(member, entries);
+        continue;
+      }
+      if (pos >= chunk.length) break;
+      const take = Math.min(
+        BLOCK - this.#headerBytes.length,
+        chunk.length - pos,
+      );
+      this.#headerBytes = concat([
+        this.#headerBytes,
+        chunk.subarray(pos, pos + take),
+      ]);
+      pos += take;
+      if (this.#headerBytes.length < BLOCK) break;
+      const header = this.#headerBytes;
+      this.#headerBytes = new Uint8Array(0);
+      if (header.every((byte) => byte === 0)) {
+        this.#done = true;
+        break;
+      }
+      // Read the full 12-byte size field; the trailing byte is a NUL terminator.
+      const size = readOctal(header, 124, 12);
+      // A negative or non-numeric size would walk the reader backwards onto
+      // the same header forever, so a corrupt one ends the read instead.
+      if (!Number.isSafeInteger(size) || size < 0) {
+        throw new Error(
+          `tar: refusing a member whose size field is not a byte count.`,
+        );
+      }
+      const typeflag = header[156];
+      // A file's bytes are dropped unless asked for; the long-name
+      // pseudo-entries are always kept, because they name the next member.
+      const keep = this.#keepData || !isFileType(typeflag);
+      this.#member = {
+        header,
+        size,
+        received: 0,
+        padding: padded(size) - size,
+        parts: keep ? [] : null,
+      };
+    }
+    return entries;
+  }
+
+  /**
+   * Finish the archive. A member cut short by the end of the input is still
+   * returned with the data that did arrive, as a truncated archive always
+   * has been read; a partial header is ignored.
+   */
+  end(): TarEntry[] {
+    const entries: TarEntry[] = [];
+    if (this.#member !== null && !this.#done) {
+      this.#finish(this.#member, entries);
+    }
+    return entries;
+  }
+
+  /** Turn a fully read member into an entry, or into pending overrides. */
+  #finish(member: PendingMember, entries: TarEntry[]): void {
+    this.#member = null;
+    const { header } = member;
+    const data = member.parts === null
+      ? new Uint8Array(0)
+      : concat(member.parts);
+    const typeflag = header[156];
     if (typeflag === 0x4c || typeflag === 0x4b) {
       // GNU 'L'/'K': the data block is the next member's full, NUL-terminated
       // name / link target; the header's own name is the placeholder
       // "././@LongLink". An empty value is ignored, not stored (so it can't
       // blank the following name via the `??` below).
-      const value = readString(archive, dataStart, dataLen);
+      const value = readString(data, 0, data.length);
       if (value !== "") {
-        if (typeflag === 0x4c) longName = value;
-        else longLinkname = value;
+        if (typeflag === 0x4c) this.#longName = value;
+        else this.#longLinkname = value;
       }
-      continue;
+      return;
     }
     if (typeflag === 0x78 || typeflag === 0x67) {
       // pax 'x' (per-file) / 'g' (global) extended header. Accumulate its
       // path/linkpath overrides WITHOUT clearing a pending GNU long name, so
       // L/K/x headers stack onto the same member (as real tar does).
-      const p = parsePaxOverrides(
-        archive.subarray(dataStart, dataStart + dataLen),
-      );
-      if (p.path !== undefined) paxPath = p.path;
-      if (p.linkpath !== undefined) paxLinkpath = p.linkpath;
-      continue;
+      const p = parsePaxOverrides(data);
+      if (p.path !== undefined) this.#paxPath = p.path;
+      if (p.linkpath !== undefined) this.#paxLinkpath = p.linkpath;
+      return;
     }
     // A real member consumes every pending override (pax wins over GNU wins over
     // the header) and resets them, so nothing leaks onto a later member.
-    const name = paxPath ?? longName ?? entryName(archive, header);
-    const linkname = paxLinkpath ?? longLinkname ??
-      readString(archive, header + 157, 100);
-    longName =
-      longLinkname =
-      paxPath =
-      paxLinkpath =
+    const name = this.#paxPath ?? this.#longName ?? entryName(header);
+    const linkname = this.#paxLinkpath ?? this.#longLinkname ??
+      readString(header, 157, 100);
+    this.#longName =
+      this.#longLinkname =
+      this.#paxPath =
+      this.#paxLinkpath =
         undefined;
     if (typeflag === 0x32) {
       // '2' → a symbolic link: the target is the linkname; it carries no data.
@@ -458,18 +617,30 @@ export function untar(archive: Uint8Array): TarEntry[] {
         name: name.endsWith("/") ? name : `${name}/`,
         data: new Uint8Array(0),
       });
-    } else if (typeflag === 0x30 || typeflag === 0 || typeflag === 0x37) {
-      // Regular files ('0', legacy NUL, or '7' contiguous) carry data. The
-      // permission bits ride along so an extracted binary stays executable.
-      entries.push({
-        name,
-        data: archive.slice(dataStart, dataStart + dataLen),
-        mode: readOctal(archive, header + 100, 8) & 0o7777,
-      });
+    } else if (isFileType(typeflag)) {
+      // The permission bits ride along so an extracted binary stays executable.
+      entries.push({ name, data, mode: readOctal(header, 100, 8) & 0o7777 });
     }
     // Other typeflags (hardlink '1', device/fifo nodes) are not extractable.
   }
-  return entries;
+}
+
+/** Regular files: `'0'`, legacy NUL, or `'7'` contiguous — the ones carrying data. */
+function isFileType(typeflag: number): boolean {
+  return typeflag === 0x30 || typeflag === 0 || typeflag === 0x37;
+}
+
+/** Join `parts` into one fresh array. */
+function concat(parts: readonly Uint8Array[]): Uint8Array {
+  const out = new Uint8Array(
+    parts.reduce((total, part) => total + part.length, 0),
+  );
+  let offset = 0;
+  for (const part of parts) {
+    out.set(part, offset);
+    offset += part.length;
+  }
+  return out;
 }
 
 /**

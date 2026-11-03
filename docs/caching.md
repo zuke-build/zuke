@@ -375,10 +375,12 @@ target:
   is `maxArtifactBytes` on `HttpCacheStore`; the inflated bound defaults to 2
   GiB and is `maxInflatedBytes` on every built-in store, or
   `ZUKE_REMOTE_CACHE_MAX_INFLATED_BYTES` (a byte count) for an env-selected one.
-  Raise it to cache a larger output such as a whole SDK; the restore holds the
-  inflated archive in memory, so it is also the memory ceiling. Because a tar
-  entry costs at least its 512-byte header, bounding bytes bounds entry count
-  too.
+  Raise it to cache a larger output such as a whole SDK. Raising it costs no
+  memory: archiving reads each file only as it is compressed, and restoring
+  streams the inflated archive twice — once to validate every entry, once to
+  write — so either side holds the compressed artifact plus one file, not the
+  whole tree. Because a tar entry costs at least its 512-byte header, bounding
+  bytes bounds entry count too.
 - **A refused archive is a cache miss, not a build failure.** The target
   rebuilds and the refusal is reported as a warning — so whoever can write the
   store cannot halt every build that reads it. That covers every refusal above,

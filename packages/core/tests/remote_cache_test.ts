@@ -1242,3 +1242,44 @@ Deno.test("defaultCacheHost archives an output holding a looping directory link"
     }
   });
 });
+
+Deno.test("restoreOutputs writes nothing when a late entry is refused", async () => {
+  // Restore streams the archive twice; the refusal comes from the first pass,
+  // after valid entries have already been read, and still nothing is written.
+  const out = new LinkFs();
+  const err = await assertRejects(async () =>
+    restoreOutputs(
+      await archive("dist/a.js", "dist/b.js", "dist/l -> ../../x"),
+      out,
+      ["dist"],
+    )
+  );
+  assertStringIncludes(err.message, "escapes the destination");
+  assertEquals(out.files.size + out.links.size, 0);
+});
+
+Deno.test("restoreOutputs writes each file from the second pass, in order", async () => {
+  const src = new MemFs();
+  src.dirs.set("dist", ["a.js", "big.bin"]);
+  src.files.set("dist/a.js", enc("a"));
+  // Larger than one inflated chunk, so its bytes span several reads.
+  const big = Uint8Array.from({ length: 300_000 }, (_, i) => (i * 7) % 253);
+  src.files.set("dist/big.bin", big);
+  const out = new MemFs();
+  assertEquals(
+    await restoreOutputs(await archiveOutputs(["dist"], src), out, ["dist"]),
+    ["dist/a.js", "dist/big.bin"],
+  );
+  assertEquals(out.files.get("dist/big.bin"), big);
+});
+
+Deno.test("restoreOutputs refuses a corrupt size field rather than hanging", async () => {
+  const archive = tar([{ name: "dist/a.js", data: enc("0123456789") }]);
+  archive.set(enc(" -1750\0\0\0\0\0\0"), 124); // octal -1000
+  const out = new MemFs();
+  const err = await assertRejects(async () =>
+    restoreOutputs(await gzip(archive), out, ["dist"])
+  );
+  assertStringIncludes(err.message, "size field");
+  assertEquals(out.files.size, 0);
+});

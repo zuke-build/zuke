@@ -1,7 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects, assertThrows } from "./_assert.ts";
+import {
+  assertEquals,
+  assertRejects,
+  assertStringIncludes,
+  assertThrows,
+} from "./_assert.ts";
 import {
   assertSafeEntryName,
   assertSafeLinkTarget,
@@ -11,11 +16,13 @@ import {
   extractTarXz,
   extractZip,
   gunzip,
-  gunzipBounded,
+  gunzipStreamBounded,
   gzip,
+  gzipTar,
   tar,
   type TarEntry,
   untar,
+  untarStream,
   unzip,
   zip,
 } from "../src/compression.ts";
@@ -1044,27 +1051,56 @@ Deno.test("assertSafeEntryName accepts safe names and rejects escapes", () => {
   );
 });
 
-Deno.test("gunzipBounded returns the bytes when they fit under the limit", async () => {
+/** Read a {@link gunzipStreamBounded} stream to its end, or its error. */
+async function inflateBounded(
+  data: Uint8Array,
+  limit: number,
+): Promise<Uint8Array | Error> {
+  try {
+    return new Uint8Array(
+      await new Response(
+        gunzipStreamBounded(data, limit, () => new Error("too large")),
+      ).arrayBuffer(),
+    );
+  } catch (error) {
+    return error instanceof Error ? error : new Error(String(error));
+  }
+}
+
+Deno.test("gunzipStreamBounded yields the bytes when they fit under the limit", async () => {
   const data = new TextEncoder().encode("hello");
-  assertEquals(await gunzipBounded(await gzip(data), 1024), data);
+  assertEquals(await inflateBounded(await gzip(data), 1024), data);
 });
 
-Deno.test("gunzipBounded refuses a stream that expands past the limit", async () => {
+Deno.test("gunzipStreamBounded fails a stream that expands past the limit", async () => {
   // A zip bomb in miniature: highly compressible input whose *decompressed*
   // size is what has to be caught. The compressed artifact is tiny, so any cap
   // applied to the archive rather than to the inflating stream would pass it.
   const bomb = await gzip(new Uint8Array(1024 * 1024)); // 1 MiB of zeroes
   assertEquals(bomb.byteLength < 8192, true); // compresses to almost nothing
-  assertEquals(await gunzipBounded(bomb, 64 * 1024), null);
+  const result = await inflateBounded(bomb, 64 * 1024);
+  assertEquals(result instanceof Error ? result.message : "", "too large");
 });
 
-Deno.test("gunzipBounded counts decompressed bytes, not compressed ones", async () => {
+Deno.test("gunzipStreamBounded counts decompressed bytes, not compressed ones", async () => {
   // The same bytes pass under a limit above their inflated size and fail under
   // one below it, which is what makes the bound meaningful.
   const payload = new Uint8Array(4096);
   const archive = await gzip(payload);
-  assertEquals((await gunzipBounded(archive, 4096))?.byteLength, 4096);
-  assertEquals(await gunzipBounded(archive, 4095), null);
+  const fits = await inflateBounded(archive, 4096);
+  assertEquals(fits instanceof Error ? -1 : fits.byteLength, 4096);
+  assertEquals(await inflateBounded(archive, 4095) instanceof Error, true);
+});
+
+Deno.test("gunzipStreamBounded feeds an artifact larger than one slice", async () => {
+  // Past the 64 KiB feed slice, so the artifact arrives in several pieces.
+  const payload = crypto.getRandomValues(new Uint8Array(60_000));
+  const big = new Uint8Array(200_000);
+  big.set(payload, 0);
+  big.set(payload, 100_000);
+  const compressed = await gzip(big);
+  assertEquals(compressed.byteLength > 64 * 1024, true);
+  assertEquals(await inflateBounded(compressed, big.length), big);
 });
 
 Deno.test("zip writes entries unzip reads back, in order", async () => {
@@ -1162,4 +1198,134 @@ Deno.test("decompressWith returns stdout, or null on a failed or missing command
   assertEquals(out === null ? null : [...out], [1, 2, 3]);
   assertEquals(await decompressWith(deno, ["eval", "Deno.exit(3)"]), null);
   assertEquals(await decompressWith("zuke-no-such-xz", ["-dc"]), null);
+});
+
+/** Entries that exercise every member shape `tar` writes. */
+function varietyEntries(): TarEntry[] {
+  return [
+    { name: "a.txt", data: enc("alpha") },
+    { name: "empty", data: new Uint8Array(0) },
+    { name: "exactly-one-block", data: new Uint8Array(512).fill(7) },
+    { name: "bin/tool", data: enc("#!/bin/sh\n"), mode: 0o755 },
+    { name: `${"deep/".repeat(30)}file.js`, data: enc("long name") },
+    {
+      name: "link",
+      data: new Uint8Array(0),
+      linkname: `../${"t".repeat(120)}`,
+    },
+    // Past one 64 KiB chunk, in a pattern that does not compress away.
+    {
+      name: "big",
+      data: Uint8Array.from({ length: 70_000 }, (_, i) => (i * 31) % 251),
+    },
+  ];
+}
+
+/** Stream `bytes` in fixed-size chunks. */
+function chunked(bytes: Uint8Array, size: number): ReadableStream<Uint8Array> {
+  const chunks: Uint8Array[] = [];
+  for (let i = 0; i < bytes.length; i += size) {
+    chunks.push(bytes.slice(i, i + size));
+  }
+  return ReadableStream.from(chunks);
+}
+
+/** Collect an async iterable. */
+async function collect<T>(items: AsyncIterable<T>): Promise<T[]> {
+  const out: T[] = [];
+  for await (const item of items) out.push(item);
+  return out;
+}
+
+Deno.test("gzipTar produces exactly gzip(tar(...)) once inflated", async () => {
+  const entries = varietyEntries();
+  async function* source(): AsyncGenerator<TarEntry> {
+    yield* entries;
+  }
+  assertEquals(await gunzip(await gzipTar(source())), tar(entries));
+});
+
+Deno.test("gzipTar pulls each entry only when it is needed", async () => {
+  // A source that records how far it has been read: the whole archive is not
+  // materialised first, so the reads interleave with compression.
+  const pulled: string[] = [];
+  async function* source(): AsyncGenerator<TarEntry> {
+    for (const name of ["one", "two"]) {
+      pulled.push(name);
+      yield { name, data: enc(name) };
+    }
+  }
+  const archive = await gzipTar(source());
+  assertEquals(pulled, ["one", "two"]);
+  assertEquals(untar(await gunzip(archive)).map((e) => e.name), ["one", "two"]);
+});
+
+Deno.test("untarStream reads the same entries as untar, whatever the chunk size", async () => {
+  const gnu = ustarArchive([
+    longLink(`${"g".repeat(120)}/name.js`),
+    { name: "g".repeat(100), prefix: "", data: enc("gnu"), magic: GNU },
+    longLink(`../${"k".repeat(110)}`, 0x4b),
+    {
+      name: "bin/npm",
+      prefix: "",
+      data: new Uint8Array(0),
+      magic: GNU,
+      typeflag: 0x32,
+    },
+    { name: "x.js", prefix: "pre/fix", data: enc("split") },
+  ]);
+  for (const archive of [tar(varietyEntries()), gnu]) {
+    const whole = untar(archive);
+    for (const size of [1, 7, 511, 512, 513, 4096, archive.length]) {
+      assertEquals(
+        await collect(untarStream(chunked(archive, size), true)),
+        whole,
+      );
+    }
+  }
+});
+
+Deno.test("untarStream without data keeps names, links and modes but no file bytes", async () => {
+  const entries = await collect(
+    untarStream(chunked(tar(varietyEntries()), 100), false),
+  );
+  const whole = untar(tar(varietyEntries()));
+  assertEquals(
+    entries.map((e) => [e.name, e.linkname, e.mode, e.data.length]),
+    whole.map((e) => [e.name, e.linkname, e.mode, 0]),
+  );
+});
+
+Deno.test("untarStream reads a truncated archive as untar does", async () => {
+  const archive = tar([
+    { name: "whole", data: enc("complete") },
+    { name: "cut", data: new Uint8Array(2000).fill(1) },
+  ]);
+  for (const cut of [700, 1100, 1536 + 1000]) {
+    const truncated = archive.slice(0, cut);
+    assertEquals(
+      await collect(untarStream(chunked(truncated, 300), true)),
+      untar(truncated),
+    );
+  }
+});
+
+/** A one-file archive whose header size field reads `field` (12 bytes). */
+function withSizeField(field: string): Uint8Array {
+  const archive = tar([{ name: "a.js", data: enc("0123456789") }]);
+  archive.set(enc(field.padEnd(12, "\0")), 124);
+  return archive;
+}
+
+Deno.test("untar refuses a negative or non-numeric size instead of looping", async () => {
+  // " -1750" is octal -1000: the reader used to step back onto the same
+  // header and append entries until memory ran out.
+  for (const field of [" -1750", "zz"]) {
+    const archive = withSizeField(field);
+    assertThrows(() => untar(archive), Error, "size field");
+    const err = await assertRejects(() =>
+      collect(untarStream(chunked(archive, 7), true))
+    );
+    assertStringIncludes(err.message, "size field");
+  }
 });
