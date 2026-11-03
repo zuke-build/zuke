@@ -565,3 +565,58 @@ Deno.test("relock in a workspace member does not claim to restore what was never
   assertEquals(logs.includes("restored"), false);
   assertStringIncludes(logs, "workspace root");
 });
+
+/** A probe that finds a build another SDK hosts at {@link ROOT}, on engine 1.2.0. */
+const hostedProbe: BuildProbe = {
+  ...projectProbe,
+  readText: () => Promise.resolve('{ "engine": "1.2.0" }'),
+};
+
+Deno.test("the project commands refuse a build another SDK hosts, running nothing", async () => {
+  const host = new FakeProjectHost();
+  const commands: Array<
+    [string, (log: (line: string) => void) => Promise<number>]
+  > = [
+    ["cache", (log) => runCache([], log, host, PLAIN_PAINT, ROOT, hostedProbe)],
+    [
+      "relock",
+      (log) => runRelock([], log, host, PLAIN_PAINT, ROOT, hostedProbe),
+    ],
+    [
+      "add",
+      (log) =>
+        runDependencies(
+          "add",
+          ["docker"],
+          log,
+          host,
+          PLAIN_PAINT,
+          ROOT,
+          hostedProbe,
+        ),
+    ],
+    [
+      "remove",
+      (log) =>
+        runDependencies(
+          "remove",
+          ["docker"],
+          log,
+          host,
+          PLAIN_PAINT,
+          ROOT,
+          hostedProbe,
+        ),
+    ],
+  ];
+  for (const [name, run] of commands) {
+    await assertRejects(
+      () => run(() => {}),
+      Error,
+      `zuke ${name}: the project at ${ROOT} is a build another SDK hosts, ` +
+        "run on @zuke/engine 1.2.0",
+    );
+  }
+  assertEquals(host.runs, []);
+  assertEquals(host.files.size, 0);
+});

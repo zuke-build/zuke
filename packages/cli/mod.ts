@@ -42,6 +42,8 @@ import {
 } from "./src/install_source.ts";
 import { DENO_PIN } from "./src/deno_pin.ts";
 import {
+  buildLabel,
+  type BuildLocation,
   type BuildProbe,
   type BuildRunner,
   defaultBuildProbe,
@@ -431,8 +433,8 @@ function helpText(paint: CliPaint): string {
  * then a line naming the build. Painted as a section heading when output is
  * rich; plain output is the text it always was.
  */
-function buildHelpHeading(root: string, paint: CliPaint): string {
-  const title = `This project's build (${root}/zuke.ts) — ` +
+function buildHelpHeading(location: BuildLocation, paint: CliPaint): string {
+  const title = `This project's build (${buildLabel(location)}) — ` +
     `run as \`zuke <target>\` or \`./zuke <target>\`:`;
   return `\n${paint.muted("─".repeat(72))}\n${paint.heading(title)}\n`;
 }
@@ -761,7 +763,7 @@ async function commandHelp(
     host.log(NO_BUILD_NOTICE);
     return 0;
   }
-  host.log(buildHelpHeading(location.root, paint));
+  host.log(buildHelpHeading(location, paint));
   try {
     // The runner *returns* the build's exit code rather than throwing on one,
     // so a build whose `--help` runs and fails is reported here too — not
@@ -841,6 +843,7 @@ async function commandVersion(
     ];
     if (location !== null) {
       if (core.length > 0) rows.push(["core", core.join(", ")]);
+      if (location.engine !== null) rows.push(["engine", location.engine]);
       rows.push(["project", display(location.root)]);
     }
     rows.push(["deno", Deno.version.deno]);
@@ -856,14 +859,14 @@ async function commandVersion(
     // always had, so a script reading the second line still finds it.
     if (!paint.rich) {
       host.log(
-        `\nThis project's build (${location.root}/zuke.ts) runs on Zuke:`,
+        `\nThis project's build (${buildLabel(location)}) runs on Zuke:`,
       );
       host.log(core.join(", "));
     }
     return 0;
   }
   // No lock to read, or none naming core: ask the build itself, as before.
-  host.log(`\nThis project's build (${location.root}/zuke.ts) runs on Zuke:`);
+  host.log(`\nThis project's build (${buildLabel(location)}) runs on Zuke:`);
   try {
     // Asked plainly whatever this invocation is, so the answer is the bare
     // version under the heading — never a second panel under the first.

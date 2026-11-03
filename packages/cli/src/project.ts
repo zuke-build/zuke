@@ -55,8 +55,13 @@ export const defaultProjectHost: ProjectHost = {
 /**
  * The root of the project at or above `cwd`, through the trust gate.
  *
- * @throws {Error} naming `command` when there is no project, or when the
- * trust gate refuses the one there is.
+ * Every caller works on the project's own Deno code — its `zuke.ts`, its
+ * `deno.json` and the lock beside them — so a build another SDK hosts, which
+ * has neither, is refused by name rather than handed to a `deno` command
+ * that fails on a missing `zuke.ts` or writes a `deno.json` nothing reads.
+ *
+ * @throws {Error} naming `command` when there is no project, when the trust
+ * gate refuses the one there is, or when it is a build another SDK hosts.
  */
 export async function projectRoot(
   cwd: string,
@@ -68,6 +73,15 @@ export async function projectRoot(
     throw new Error(
       `zuke ${command}: no zuke.json in this directory or any parent, so ` +
         "there is no project to work on.",
+    );
+  }
+  if (location.engine !== null) {
+    throw new Error(
+      `zuke ${command}: the project at ${location.root} is a build another ` +
+        `SDK hosts, run on @zuke/engine ${location.engine}, with no ` +
+        `${BUILD_FILE} or deno.json of its own to work on. Its tool ` +
+        "wrappers come with the SDK (zuke.tools in Python), and " +
+        "zuke upgrade --engine moves the engine it runs on.",
     );
   }
   return location.root;

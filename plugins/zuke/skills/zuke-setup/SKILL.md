@@ -77,9 +77,13 @@ without a project file; a project that already manages its environment can drop
 that block and add `zuke` to its dev dependencies instead. Every other `setup`
 flag applies; `--mcp` registers the engine's MCP server
 (`deno run -A jsr:@zuke/engine@<version> mcp`). Later,
-`zuke upgrade --engine [<version>]` moves the pin, with `--dry-run`. Author the
-targets with the Python SDK's own documentation; the TypeScript authoring skill
-does not apply to a `build.py`.
+`zuke upgrade --engine [<version>]` moves the pin, with `--dry-run`. With the
+CLI installed, run the build exactly as a TypeScript one, no launcher needed:
+`zuke <target>`, `zuke --list`, `zuke generate-ci`, `zuke mcp`; the launchers
+are for CI runners without the CLI. `zuke add`, `remove`, `cache` and `relock`
+refuse a Python build, whose wrappers come with the SDK as `zuke.tools`. Author
+the targets with the Python SDK's own documentation; the TypeScript authoring
+skill does not apply to a `build.py`.
 
 ### Migrating an existing project: `zuke import`
 

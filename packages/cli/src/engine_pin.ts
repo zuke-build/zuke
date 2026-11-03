@@ -14,7 +14,12 @@
  * @module
  */
 
-import { BUILD_FILE, type BuildProbe, locateBuild } from "./dispatch.ts";
+import {
+  BUILD_FILE,
+  type BuildProbe,
+  locateBuild,
+  LOCK_FILE,
+} from "./dispatch.ts";
 import { ENGINE_FIELD } from "./launcher.ts";
 import type { CliPaint } from "./paint.ts";
 import { isRecord } from "./records.ts";
@@ -137,5 +142,14 @@ export async function runEnginePin(
   log(paint.ok(
     `Moved ${ENGINE_FIELD} from ${location.engine} to ${target} in ${path}.`,
   ));
+  if (location.frozen) {
+    // The launchers and the zuke command run a hosted build frozen against
+    // its deno.lock, which pins the engine it was written for.
+    log(
+      `  note     ${location.root}/${LOCK_FILE} pins @zuke/engine ` +
+        `${location.engine}, so the next run refuses it: regenerate it with ` +
+        "your build's lock target, or remove it to run unlocked.",
+    );
+  }
   return 0;
 }
