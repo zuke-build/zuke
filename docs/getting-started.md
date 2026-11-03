@@ -74,6 +74,15 @@ as for a TypeScript build, and uv provides the Python side. Move the pin later
 with `zuke upgrade --engine [<version>]`. The other `setup` flags apply as they
 do for a TypeScript build; `--mcp` registers the engine's MCP server.
 
+With the `zuke` command installed, a Python build is driven exactly as a
+TypeScript one, from anywhere inside the project and with no launcher:
+`zuke <target>`, `zuke --list`, `zuke graph`, `zuke generate-ci`, `zuke mcp`,
+and `zuke --version`, which names the `zuke.json` and the engine release it
+runs. The launchers are for a machine without the CLI, such as a CI runner.
+`zuke add`, `remove`, `cache` and `relock` work on a project's own Deno code, so
+they refuse a Python build: its tool wrappers come with the SDK, as
+`zuke.tools`.
+
 ## Migrate an existing project with `zuke import`
 
 Already have `package.json` scripts or a `Makefile`? `zuke import` reads them

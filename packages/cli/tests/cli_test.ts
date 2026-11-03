@@ -1455,6 +1455,53 @@ Deno.test("--version reads the project's core from deno.lock, running nothing", 
   assertEquals(host.logs[2], "1.42.0");
 });
 
+Deno.test("--version and --help name a hosted build by its zuke.json and engine", async () => {
+  const hosted: BuildProbe = {
+    ...probeAt(["zuke.json"]),
+    readText: () => Promise.resolve('{ "engine": "1.2.0" }'),
+  };
+  const label = `${atCwd("zuke.json")}, on @zuke/engine 1.2.0`;
+  for (const args of [["--version"], ["--help"]]) {
+    const host = new FakeHost();
+    const forwarded: string[][] = [];
+    const code = await main(
+      args,
+      host,
+      defaultPrompter,
+      undefined,
+      undefined,
+      (_root, denoArgs) => {
+        forwarded.push(denoArgs);
+        return Promise.resolve(0);
+      },
+      hosted,
+    );
+    assertEquals(code, 0);
+    const logs = host.logs.join("\n");
+    assertStringIncludes(logs, `This project's build (${label})`);
+    // The CLI's own half mentions zuke.ts for setup; the build's never does.
+    assertEquals(logs.includes(`${atCwd("zuke.ts")}`), false);
+    // The build answers through the engine it pins, not a zuke.ts.
+    assertEquals(forwarded, [["run", "-A", "jsr:@zuke/engine@1.2.0", ...args]]);
+  }
+  // A rich panel names the engine as its own row.
+  const host = new FakeHost();
+  host.terminal = true;
+  await main(
+    ["--version"],
+    host,
+    defaultPrompter,
+    undefined,
+    undefined,
+    () => Promise.resolve(0),
+    hosted,
+  );
+  assertEquals(
+    host.logs.some((line) => /engine\s+1\.2\.0/.test(stripAnsi(line))),
+    true,
+  );
+});
+
 Deno.test("--version still asks the build when the lock names no core", async () => {
   const host = new FakeHost({
     [atCwd("deno.lock")]: JSON.stringify({ specifiers: {} }),

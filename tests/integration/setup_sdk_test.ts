@@ -102,6 +102,41 @@ Deno.test("zuke setup --sdk python scaffolds a project the zuke command runs on 
       ["run", "-A", "jsr:@zuke/engine@1.2.0", "--list"],
       undefined,
     ]);
+
+    // The rest of the zuke command treats it as the Python build it is: the
+    // version names zuke.json and the engine, and the Deno-project commands
+    // refuse it rather than writing a deno.json into it.
+    const report: string[] = [];
+    await withEnv({ ZUKE_FORWARDED: "1" }, async () => {
+      await main(
+        ["--version"],
+        quietHost(report),
+        defaultPrompter,
+        undefined,
+        undefined,
+        () => Promise.resolve(0),
+        defaultBuildProbe,
+      );
+    });
+    assertStringIncludes(
+      report.join("\n"),
+      "zuke.json, on @zuke/engine 1.2.0",
+    );
+    const refused: string[] = [];
+    const added = await main(
+      ["add", "docker"],
+      quietHost(refused),
+      defaultPrompter,
+      undefined,
+      undefined,
+      undefined,
+      defaultBuildProbe,
+      undefined,
+      defaultProjectHost,
+    );
+    assertEquals(added, 1);
+    assertStringIncludes(refused.join("\n"), "is a build another SDK hosts");
+    assertEquals(await Deno.stat(`${dir}/deno.json`).catch(() => null), null);
   });
 });
 

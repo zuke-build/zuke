@@ -114,6 +114,27 @@ Deno.test("zuke upgrade --engine moves the pin to the latest release, keeping th
   ]);
 });
 
+Deno.test("zuke upgrade --engine notes a deno.lock that pins the old engine", async () => {
+  const files = fileHost(PINNED);
+  const { code, log } = await pin(
+    [],
+    projectAt(["zuke.json", "deno.lock"], PINNED),
+    files,
+  );
+  assertEquals(code, 0);
+  assertStringIncludes(
+    log,
+    `${ROOT}/deno.lock pins @zuke/engine 1.2.0, so the next run refuses it`,
+  );
+  // Without a lock there is nothing to say.
+  const unlocked = await pin(
+    [],
+    projectAt(["zuke.json"], PINNED),
+    fileHost(PINNED),
+  );
+  assertEquals(unlocked.log.includes("deno.lock"), false);
+});
+
 Deno.test("zuke upgrade --engine <version> pins that release, and --dry-run only says so", async () => {
   const files = fileHost(PINNED);
   const probe = projectAt(["zuke.json"], PINNED);

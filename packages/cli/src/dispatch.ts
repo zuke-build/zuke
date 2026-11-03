@@ -394,6 +394,17 @@ async function engineVersion(
   return engine;
 }
 
+/**
+ * The build `location` runs, as the CLI names it to a person: the root's
+ * `zuke.ts`, or for a build another SDK hosts its `zuke.json` and the engine
+ * release that file pins.
+ */
+export function buildLabel(location: BuildLocation): string {
+  return location.engine === null
+    ? `${location.root}/${BUILD_FILE}`
+    : `${location.root}/${CONFIG_FILE}, on @zuke/engine ${location.engine}`;
+}
+
 /** The module that runs a build another SDK hosts: `@zuke/engine` at `version`. */
 export function engineSpecifier(version: string): string {
   return `jsr:@zuke/engine@${version}`;
