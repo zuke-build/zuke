@@ -38,6 +38,7 @@ async function allSources(): Promise<string[]> {
     "zuke",
     "zuke.ps1",
     "internal/hcl_tool.ts.tmpl",
+    "internal/python_facade.py.tmpl",
     "examples/scripts-to-zuke/scripts/release.sh",
   );
   return files.sort();

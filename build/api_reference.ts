@@ -19,12 +19,22 @@ import { localVersion, packageEntrypoints, PACKAGES } from "./packages.ts";
  * object (its own `typeName`/`typeParams` fields), for `array` it is the
  * element type, and for `union`/`intersection` it is the member list.
  */
-interface DocTsType {
+export interface DocTsType {
   kind?: string;
   repr?: string;
   value?: DocTsType | DocTsType[];
   typeName?: string;
   typeParams?: DocTsType[];
+  /** A `typeLiteral`'s members, on its `value`. */
+  properties?: DocProperty[];
+  methods?: DocMethod[];
+  /** A `fnOrConstructor`'s signature, on its `value`: the params and the return type. */
+  params?: DocParam[];
+  tsType?: DocTsType;
+  /** A `literal`'s payload, on its `value`. */
+  string?: string;
+  number?: number;
+  boolean?: boolean;
 }
 
 /**
@@ -32,7 +42,7 @@ interface DocTsType {
  * `rest` carries the name under `arg` (and the array type at top level);
  * `assign` (a defaulted param) carries name/type under `left` and is optional.
  */
-interface DocParam {
+export interface DocParam {
   kind?: string;
   name?: string;
   optional?: boolean;
@@ -42,7 +52,7 @@ interface DocParam {
 }
 
 /** The callable shape shared by function defs and (class) method defs. */
-interface DocFunctionDef {
+export interface DocFunctionDef {
   params?: DocParam[];
   returnType?: DocTsType;
   isAsync?: boolean;
@@ -53,10 +63,11 @@ interface DocFunctionDef {
  * `functionDef`; interface methods carry `params`/`returnType` at the top
  * level — hence both are declared optional here and read with a fallback.
  */
-interface DocMethod {
+export interface DocMethod {
   name?: string;
   kind?: string;
   optional?: boolean;
+  isStatic?: boolean;
   accessibility?: string;
   jsDoc?: DocJsDoc;
   functionDef?: DocFunctionDef;
@@ -65,7 +76,7 @@ interface DocMethod {
 }
 
 /** A class or interface property. */
-interface DocProperty {
+export interface DocProperty {
   name?: string;
   optional?: boolean;
   accessibility?: string;
@@ -78,7 +89,7 @@ interface DocProperty {
  * field is present only for the relevant kind). `extends` is `unknown` because it may
  * be a string or a type node; it is narrowed with `typeof` at the use site.
  */
-interface DocDef {
+export interface DocDef {
   params?: DocParam[];
   returnType?: DocTsType;
   isAsync?: boolean;
@@ -89,32 +100,32 @@ interface DocDef {
 }
 
 /** A JSDoc block: its markdown body plus any structured tags. */
-interface DocJsDoc {
+export interface DocJsDoc {
   doc?: string;
   tags?: { kind?: string }[];
 }
 
 /** One declaration of a symbol (a function may have several — overloads). */
-interface DocDeclaration {
+export interface DocDeclaration {
   kind?: string;
   jsDoc?: DocJsDoc;
   def?: DocDef;
 }
 
 /** A documented symbol and its declaration(s). */
-interface DocSymbol {
+export interface DocSymbol {
   name: string;
   declarations?: DocDeclaration[];
 }
 
 /** A documented module (one entrypoint file). */
-interface DocNode {
+export interface DocNode {
   module_doc?: { doc?: string };
   symbols?: DocSymbol[];
 }
 
 /** The root of `deno doc --json` output (schema v2). */
-interface DocRoot {
+export interface DocRoot {
   version?: number;
   nodes?: Record<string, DocNode>;
 }

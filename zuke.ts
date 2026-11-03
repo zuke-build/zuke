@@ -111,6 +111,7 @@ import {
   docsOptions,
 } from "./build/docs.ts";
 import { writeApiJson } from "./build/api_reference.ts";
+import { generatePythonFacades } from "./build/python_facades.ts";
 import { runWebsiteSync } from "./build/website_sync.ts";
 import {
   gitleaksSummary,
@@ -641,6 +642,20 @@ class ZukeBuild extends Build {
         `${examples.length} example(s) type-check, list their targets, and ` +
           "carry up-to-date pipeline files.",
       );
+    });
+
+  pythonFacadesOut = parameter(
+    "Directory the Python SDK's facades are written to",
+  ).flag("out").default("dist/python-facades");
+
+  pythonFacades = target()
+    .description(
+      "Generate the Python SDK's facades over every wrapper from deno doc (--out <dir>)",
+    )
+    .executes(async () => {
+      const out = this.pythonFacadesOut.value;
+      const written = await generatePythonFacades(out);
+      ConsoleTasks.info(`Wrote ${written.length} module(s) under ${out}.`);
     });
 
   hclGen = target()

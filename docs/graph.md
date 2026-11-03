@@ -7,7 +7,7 @@ points from a dependency to the target that depends on it, so a target runs
 after everything that points at it. This is the same graph `./zuke graph` prints
 as text and `./zuke graph --output=html` renders interactively.
 
-51 target(s), 29 dependency edge(s). Regenerate with `./zuke graphDoc`; the
+52 target(s), 29 dependency edge(s). Regenerate with `./zuke graphDoc`; the
 `graphDocCheck` target in the CI gate fails when this page drifts from the
 build.
 
@@ -31,68 +31,69 @@ flowchart TD
   t15["docLint"]
   t16["snippetsCheck"]
   t17["examplesCheck"]
-  t18["hclGen"]
-  t19["hclSyncCheck"]
-  t20["pluginSync"]
-  t21["pluginSyncCheck"]
-  t22["launcherSync"]
-  t23["launcherSyncCheck"]
-  t24["skillsCheck"]
-  t25["graphDoc"]
-  t26["graphDocCheck"]
-  t27["pluginVersionCheck"]
-  t28["prBodyLint"]
-  t29["coreFloorCheck"]
-  t30["lockCheck"]
-  t31["security"]
-  t32["actionPinCheck"]
-  t33["ci"]
-  t34["scorecard"]
-  t35["codeql"]
-  t36["reviewBase"]
-  t37["review"]
-  t38["release"]
-  t39["actionRelease"]
-  t40["publishJsr"]
-  t41["cliBinaries"]
-  t42["cliSign"]
-  t43["cliPackage"]
-  t44["cliUpload"]
-  t45["cliFormulaVerify"]
-  t46["cliTap"]
-  t47["cliChocolateyVerify"]
-  t48["cliChocolatey"]
-  t49["publish"]
-  t50["default"]
+  t18["pythonFacades"]
+  t19["hclGen"]
+  t20["hclSyncCheck"]
+  t21["pluginSync"]
+  t22["pluginSyncCheck"]
+  t23["launcherSync"]
+  t24["launcherSyncCheck"]
+  t25["skillsCheck"]
+  t26["graphDoc"]
+  t27["graphDocCheck"]
+  t28["pluginVersionCheck"]
+  t29["prBodyLint"]
+  t30["coreFloorCheck"]
+  t31["lockCheck"]
+  t32["security"]
+  t33["actionPinCheck"]
+  t34["ci"]
+  t35["scorecard"]
+  t36["codeql"]
+  t37["reviewBase"]
+  t38["review"]
+  t39["release"]
+  t40["actionRelease"]
+  t41["publishJsr"]
+  t42["cliBinaries"]
+  t43["cliSign"]
+  t44["cliPackage"]
+  t45["cliUpload"]
+  t46["cliFormulaVerify"]
+  t47["cliTap"]
+  t48["cliChocolateyVerify"]
+  t49["cliChocolatey"]
+  t50["publish"]
+  t51["default"]
   t1 --> t5
   t5 --> t6
   t6 --> t8
   t8 --> t10
   t9 --> t10
-  t9 --> t31
-  t2 --> t33
-  t3 --> t33
-  t4 --> t33
-  t8 --> t33
-  t10 --> t33
-  t12 --> t33
-  t15 --> t33
-  t16 --> t33
-  t17 --> t33
-  t19 --> t33
-  t21 --> t33
-  t23 --> t33
-  t24 --> t33
-  t26 --> t33
-  t27 --> t33
-  t28 --> t33
-  t32 --> t33
-  t31 --> t33
-  t30 --> t33
-  t36 --> t37
-  t38 --> t49
-  t40 --> t49
-  t33 --> t50
+  t9 --> t32
+  t2 --> t34
+  t3 --> t34
+  t4 --> t34
+  t8 --> t34
+  t10 --> t34
+  t12 --> t34
+  t15 --> t34
+  t16 --> t34
+  t17 --> t34
+  t20 --> t34
+  t22 --> t34
+  t24 --> t34
+  t25 --> t34
+  t27 --> t34
+  t28 --> t34
+  t29 --> t34
+  t33 --> t34
+  t32 --> t34
+  t31 --> t34
+  t37 --> t38
+  t39 --> t50
+  t41 --> t50
+  t34 --> t51
 ```
 
 ## Targets
@@ -117,6 +118,7 @@ flowchart TD
 | `docLint`             | Fail on missing JSDoc or first-party private-type refs (deno doc --lint)                    | —                                                                                                                                                                                                                                                                                           |
 | `snippetsCheck`       | Type-check marked doc snippets; ban inline jsr: imports                                     | —                                                                                                                                                                                                                                                                                           |
 | `examplesCheck`       | Type-check every example, list its targets, verify its CI                                   | —                                                                                                                                                                                                                                                                                           |
+| `pythonFacades`       | Generate the Python SDK's facades over every wrapper from deno doc (--out <dir>)            | —                                                                                                                                                                                                                                                                                           |
 | `hclGen`              | Regenerate the Terraform/OpenTofu wrappers from one template                                | —                                                                                                                                                                                                                                                                                           |
 | `hclSyncCheck`        | Verify the Terraform/OpenTofu wrappers match their template                                 | —                                                                                                                                                                                                                                                                                           |
 | `pluginSync`          | Sync plugins/zuke/skills/ from skills/ (real copies, not a symlink)                         | —                                                                                                                                                                                                                                                                                           |
