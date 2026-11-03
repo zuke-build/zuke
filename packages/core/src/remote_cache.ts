@@ -29,12 +29,11 @@ import {
   assertSafeEntryName,
   assertSafeLinkTarget,
   findSymlinkAncestor,
-  gunzipBounded,
-  gzip,
+  gunzipStreamBounded,
+  gzipTar,
   type LinkProbe,
-  tar,
   type TarEntry,
-  untar,
+  untarStream,
 } from "./compression.ts";
 import { GitHubActionsCacheStore } from "./github_actions_cache.ts";
 import { assertSecureBackendUrl, HttpError } from "./http.ts";
@@ -56,8 +55,9 @@ export interface RemoteCacheStore {
   /**
    * The most an artifact from this store may decompress to, in bytes, before
    * {@link restoreOutputs} refuses it. Defaults to 2 GiB; raise it for a target
-   * whose outputs are genuinely larger, such as a whole SDK. The restore holds
-   * the inflated archive in memory, so the bound is also its memory ceiling.
+   * whose outputs are genuinely larger, such as a whole SDK. The restore streams
+   * the inflated archive rather than holding it, so raising the bound does not
+   * raise its memory use: that is the compressed artifact plus one file.
    */
   readonly maxInflatedBytes?: number;
 }
@@ -182,9 +182,14 @@ function linkRefusal(
     : null;
 }
 
+/** An archive entry before its file is read: a file's name and mode, or a link. */
+type PlannedEntry = Omit<TarEntry, "data">;
+
 /**
- * Collect every file under `outputs` (directories walked recursively) as tar
- * entries named by their normalised path, sorted so the archive is reproducible.
+ * List every file under `outputs` (directories walked recursively) as archive
+ * entries named by their normalised path, sorted so the archive is
+ * reproducible. Files are listed, not read: {@link archiveOutputs} reads each
+ * one only as it is streamed into the archive.
  * Paths through a {@link FORBIDDEN_DIRS} directory are skipped, mirroring what
  * {@link restoreOutputs} refuses to write back.
  *
@@ -196,12 +201,12 @@ function linkRefusal(
 async function collectEntries(
   outputs: readonly string[],
   host: OutputHost,
-): Promise<TarEntry[]> {
+): Promise<PlannedEntry[]> {
   // By name: nested outputs reach the same path twice, and a link kept under
   // one root must not also arrive as a copy from the other — restore refuses a
   // name that is both.
-  const byName = new Map<string, TarEntry>();
-  const add = (entry: TarEntry): void => {
+  const byName = new Map<string, PlannedEntry>();
+  const add = (entry: PlannedEntry): void => {
     if (byName.get(entry.name)?.linkname === undefined) {
       byName.set(entry.name, entry);
     }
@@ -218,19 +223,17 @@ async function collectEntries(
     if (host.readLink !== undefined && (await host.lstat(path))?.isSymlink) {
       const target = (await host.readLink(path)).replace(/\\/g, "/");
       if (linkRefusal(path, target, root) === null) {
-        add({ name: path, data: new Uint8Array(0), linkname: target });
+        add({ name: path, linkname: target });
         return;
       }
     }
     const info = await host.stat(path);
     if (info === null) return; // a declared output that isn't there — skip it
     if (!info.isDirectory) {
-      const data = await host.readFile(path);
-      if (data === null) return;
       // Permission bits only: the tar header has no room for a file type, and
       // the executable bit is what a restored binary needs to keep.
       const mode = info.mode === undefined ? undefined : info.mode & 0o777;
-      add({ name: path, data, mode });
+      add({ name: path, mode });
       return;
     }
     // A copied directory link can lead back to a directory this walk is
@@ -256,12 +259,28 @@ async function collectEntries(
  * each file with its permission bits so a binary restores executable. A
  * declared output that does not exist is skipped, as is anything under a
  * `.git` or `.zuke` directory, other than `.zuke/tools` and whatever it holds.
+ *
+ * Each file is read only when the compressor asks for it, so what is held in
+ * memory is the compressed archive plus the one file being added — not the
+ * whole tree, which for a `node_modules` runs to gigabytes.
  */
 export async function archiveOutputs(
   outputs: readonly string[],
   host: OutputHost,
 ): Promise<Uint8Array> {
-  return await gzip(tar(await collectEntries(outputs, host)));
+  const planned = await collectEntries(outputs, host);
+  async function* read(): AsyncGenerator<TarEntry> {
+    for (const entry of planned) {
+      if (entry.linkname !== undefined) {
+        yield { ...entry, data: new Uint8Array(0) };
+        continue;
+      }
+      const data = await host.readFile(entry.name);
+      // Gone since the walk listed it: skipped, as a missing output is.
+      if (data !== null) yield { ...entry, data };
+    }
+  }
+  return await gzipTar(read());
 }
 
 /**
@@ -414,14 +433,21 @@ export async function restoreOutputs(
         `bytes, got ${maxBytes}.`,
     );
   }
-  const inflated = await gunzipBounded(artifact, maxBytes);
-  if (inflated === null) {
-    throw new Error(
-      `remote cache: refusing an artifact that decompresses to more than ` +
-        `${maxBytes} bytes.`,
+  // Inflated twice, as a stream each time, so the decompressed archive is never
+  // held whole: the first pass reads only headers and validates every entry,
+  // the second writes them one file at a time. Writing nothing until all of
+  // it is validated is what keeps a refused archive from leaving a
+  // half-written, partially-trusted output tree.
+  const inflate = () =>
+    gunzipStreamBounded(
+      artifact,
+      maxBytes,
+      () =>
+        new Error(
+          `remote cache: refusing an artifact that decompresses to more than ` +
+            `${maxBytes} bytes.`,
+        ),
     );
-  }
-  const entries = untar(inflated);
   // Every ancestor confirmed to be a plain directory, so a deep output tree is
   // not re-probed once per file. Restore writes nothing during this pass, so
   // nothing can invalidate an entry in it — unlike the extractor, which creates
@@ -429,7 +455,7 @@ export async function restoreOutputs(
   const realDirs = new Set<string>(["."]);
   const probe: LinkProbe = (path) => host.lstat(normalize(path));
   const validated: TarEntry[] = [];
-  for (const entry of entries) {
+  for await (const entry of untarStream(inflate(), false)) {
     assertSafeEntryName(entry.name);
     assertNoDirectoryEntry(entry);
     const name = normalize(entry.name);
@@ -490,10 +516,25 @@ export async function restoreOutputs(
   // Every file before any link, so no write can pass through a link the
   // archive planted — on top of {@link assertNothingUnderALink}, which already
   // refuses an entry nested under one.
+  // Each file the second pass reads is written under the name, and with the
+  // mode, the first pass validated — looked up by name, not by position, so
+  // the write never depends on the two passes reading in lockstep.
+  const files = new Map(
+    validated.filter((entry) => entry.linkname === undefined).map((
+      entry,
+    ) => [entry.name, entry]),
+  );
   const written: string[] = [];
-  for (const entry of validated) {
-    if (entry.linkname !== undefined) continue;
-    await host.writeFile(entry.name, entry.data, entry.mode);
+  for await (const read of untarStream(inflate(), true)) {
+    if (read.linkname !== undefined) continue;
+    const entry = files.get(normalize(read.name));
+    if (entry === undefined) {
+      throw new Error(
+        `remote cache: refusing "${read.name}", which the validation pass ` +
+          `did not see.`,
+      );
+    }
+    await host.writeFile(entry.name, read.data, entry.mode);
     written.push(entry.name);
   }
   for (const entry of validated) {

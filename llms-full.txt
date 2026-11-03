@@ -92,6 +92,10 @@ async function archiveOutputs(outputs: readonly string[], host: OutputHost): Pro
   declared output that does not exist is skipped, as is anything under a
   `.git` or `.zuke` directory, other than `.zuke/tools` and whatever it holds.
 
+  Each file is read only when the compressor asks for it, so what is held in
+  memory is the compressed archive plus the one file being added — not the
+  whole tree, which for a `node_modules` runs to gigabytes.
+
 function assert(condition: unknown, message: string): asserts condition
   Assert that `condition` is truthy, narrowing it for the rest of the scope.
   Throws an {@link AssertionError} with `message` otherwise.
@@ -4610,8 +4614,9 @@ interface RemoteCacheStore
   readonly maxInflatedBytes?: number
     The most an artifact from this store may decompress to, in bytes, before
     {@link restoreOutputs} refuses it. Defaults to 2 GiB; raise it for a target
-    whose outputs are genuinely larger, such as a whole SDK. The restore holds
-    the inflated archive in memory, so the bound is also its memory ceiling.
+    whose outputs are genuinely larger, such as a whole SDK. The restore streams
+    the inflated archive rather than holding it, so raising the bound does not
+    raise its memory use: that is the compressed artifact plus one file.
   get(key: string): Promise<Uint8Array | null>
     Fetch the archived outputs stored under `key`, or `null` if there are none.
   put(key: string, artifact: Uint8Array): Promise<void>
