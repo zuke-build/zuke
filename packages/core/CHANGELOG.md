@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.79.0](https://github.com/zuke-build/zuke/compare/core-v1.78.1...core-v1.79.0) (2026-11-03)
+
+
+### Features
+
+* **core:** stream remote cache archives so memory stays near the compressed size ([#949](https://github.com/zuke-build/zuke/issues/949)) ([1091043](https://github.com/zuke-build/zuke/commit/1091043dfd27996da60ce0cd39212cf88dc7a334))
+
 ## [1.78.1](https://github.com/zuke-build/zuke/compare/core-v1.78.0...core-v1.78.1) (2026-11-03)
 
 
