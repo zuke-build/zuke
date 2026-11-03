@@ -96,7 +96,7 @@ const PROTOCOL_VERSION: 1
 class WorkerHost
   The worker host. Start one with {@link WorkerHost.start}.
 
-  private constructor(options: WorkerOptions, worker: Worker)
+  private constructor(options: WorkerOptions, output: WorkerOutput, worker: Worker)
   get sdk(): string
     The SDK the worker announced itself as.
   static async start(options: WorkerOptions): Promise<WorkerHost>
