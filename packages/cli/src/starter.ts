@@ -85,16 +85,23 @@ export const PYTHON_SDK_COMMAND: readonly string[] = [
 ];
 
 /**
+ * The inline script metadata (PEP 723) every scaffolded `build.py` opens with,
+ * which makes `uv run build.py` install the `zuke` SDK by itself. Shared by
+ * {@link starterPythonBuild} and `zuke import`'s generated build.
+ */
+export const PYTHON_SCRIPT_METADATA = `# /// script
+# requires-python = ">=3.12"
+# dependencies = ["zuke"]
+# ///
+`;
+
+/**
  * The starter `build.py`, the Python SDK's shape of {@link starterBuild}: the
  * build class named `name`, a sample target and a `default`. The script
  * metadata block makes `uv run build.py` install the SDK by itself.
  */
 export function starterPythonBuild(name: string): string {
-  return `# /// script
-# requires-python = ">=3.12"
-# dependencies = ["zuke"]
-# ///
-"""Your project's build. Run a target with ./zuke <target>."""
+  return `${PYTHON_SCRIPT_METADATA}"""Your project's build. Run a target with ./zuke <target>."""
 
 from zuke import Build, run, target
 

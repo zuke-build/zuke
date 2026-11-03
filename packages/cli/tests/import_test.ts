@@ -6,7 +6,12 @@ import {
   assertRejects,
   assertStringIncludes,
 } from "../../core/tests/_assert.ts";
-import { FakeHost, FakePrompter, noProjectProbe } from "./_fakes.ts";
+import {
+  engineRegistry,
+  FakeHost,
+  FakePrompter,
+  noProjectProbe,
+} from "./_fakes.ts";
 import { main, parseImportFlags } from "../mod.ts";
 import {
   generateBuild,
@@ -16,6 +21,10 @@ import {
   toIdentifier,
   translateCommand,
 } from "../src/import.ts";
+
+/** An engine resolver for imports that must never reach the registry. */
+const noEngine = () =>
+  Promise.reject(new Error("the engine must not be resolved for this source"));
 
 // --- parsePackageJson ---
 
@@ -261,6 +270,19 @@ Deno.test("generateBuild breaks a dependency cycle with a note", () => {
     { name: "b", command: "", deps: ["a"] },
   ]);
   assertStringIncludes(out, "dependency cycle");
+  // The dropped edge is only in the note: `b` is declared first, so a live
+  // `.dependsOn(this.a)` on it would be a forward reference to `undefined`.
+  const b = out.slice(out.indexOf("b = target()"), out.indexOf("a = target()"));
+  assertEquals(b.includes("    .dependsOn(this.a)"), false);
+  assertStringIncludes(out, "    .dependsOn(this.b)");
+});
+
+Deno.test("translateCommand keeps a multi-line script for a human", () => {
+  // A newline separates two commands; read as whitespace it would have
+  // become one command with the second's words as its arguments.
+  const [item] = translateCommand("echo one\necho two");
+  assertEquals(item.runnable, false);
+  assertStringIncludes(item.code, "echo one echo two");
 });
 
 Deno.test("generateBuild de-duplicates colliding identifiers", () => {
@@ -297,7 +319,7 @@ Deno.test("runImport auto-detects package.json and scaffolds", async () => {
     "package.json": JSON.stringify({ scripts: { build: "tsc" } }),
   });
   const result = await runImport(
-    { dir: ".", force: true, name: "MyBuild" },
+    { dir: ".", force: true, name: "MyBuild", engine: noEngine },
     host,
   );
   assertEquals(result.source, "package.json");
@@ -312,7 +334,12 @@ Deno.test("runImport keeps a Windows-style script path intact in the scaffold", 
       scripts: { build: String.raw`node scripts\build.js` },
     }),
   });
-  const result = await runImport({ dir: ".", force: true, name: "B" }, host);
+  const result = await runImport({
+    dir: ".",
+    force: true,
+    name: "B",
+    engine: noEngine,
+  }, host);
   assertEquals(result.taskCount, 1);
   const zuke = host.files.get("zuke.ts") ?? "";
   // The path separator survives into the generated file, flagged for a human,
@@ -324,7 +351,12 @@ Deno.test("runImport keeps a Windows-style script path intact in the scaffold", 
 
 Deno.test("runImport falls back to a Makefile", async () => {
   const host = new FakeHost({ "Makefile": "build:\n\tgo build\n" });
-  const result = await runImport({ dir: ".", force: true, name: "B" }, host);
+  const result = await runImport({
+    dir: ".",
+    force: true,
+    name: "B",
+    engine: noEngine,
+  }, host);
   assertEquals(result.source, "Makefile");
   assertEquals(result.taskCount, 1);
 });
@@ -335,7 +367,7 @@ Deno.test("runImport honours an explicit --from source", async () => {
     "Makefile": "b:\n\ty\n",
   });
   const result = await runImport(
-    { dir: ".", force: true, name: "B", from: "Makefile" },
+    { dir: ".", force: true, name: "B", from: "Makefile", engine: noEngine },
     host,
   );
   assertEquals(result.source, "Makefile");
@@ -344,7 +376,12 @@ Deno.test("runImport honours an explicit --from source", async () => {
 
 Deno.test("runImport reports when there is nothing to import", async () => {
   const host = new FakeHost({});
-  const result = await runImport({ dir: ".", force: true, name: "B" }, host);
+  const result = await runImport({
+    dir: ".",
+    force: true,
+    name: "B",
+    engine: noEngine,
+  }, host);
   assertEquals(result.source, null);
   assertEquals(result.taskCount, 0);
   assertEquals(host.files.has("zuke.ts"), false); // wrote nothing
@@ -436,14 +473,164 @@ Deno.test("import refuses a symlinked source file rather than reading through it
   // `Makefile` / `package.json` are names import chooses, so a repository that
   // ships a link at one decides what gets read — and what is read is parsed
   // into the build file import then writes back into that repository.
-  for (const file of ["package.json", "Makefile"]) {
+  for (const file of ["package.json", "Makefile", "pyproject.toml"]) {
     const host = new FakeHost();
     host.symlinks.add(file);
     await assertRejects(
-      () => runImport({ dir: ".", force: false, name: "Acme" }, host),
+      () =>
+        runImport(
+          { dir: ".", force: false, name: "Acme", engine: noEngine },
+          host,
+        ),
       Error,
       "symbolic link",
     );
     assertEquals(host.files.size, 0);
   }
+});
+
+// --- pyproject.toml ---
+
+/** A poe-flavoured pyproject.toml with one plain and one sequence task. */
+const PYPROJECT = `[project]
+name = "app"
+
+[tool.poe.tasks]
+lint = "ruff check ."
+ci.sequence = ["lint", "pytest -q"]
+`;
+
+Deno.test("runImport scaffolds a Python build from pyproject.toml, last in precedence", async () => {
+  const host = new FakeHost({ "pyproject.toml": PYPROJECT });
+  let asked = 0;
+  const result = await runImport({
+    dir: ".",
+    force: true,
+    name: "App",
+    engine: () => {
+      asked++;
+      return Promise.resolve("1.4.0");
+    },
+  }, host);
+  assertEquals(result.source, "pyproject.toml");
+  assertEquals(result.taskCount, 2);
+  assertEquals(asked, 1);
+  const build = host.files.get("build.py") ?? "";
+  assertStringIncludes(build, "class App(Build):");
+  assertStringIncludes(build, 'await ctx.sh("ruff", "check", ".")');
+  assertStringIncludes(build, ".depends_on(lint)");
+  // The project `setup --sdk python` makes: no zuke.ts, no deno.json.
+  assertEquals(host.files.has("zuke.ts"), false);
+  assertEquals(host.files.has("deno.json"), false);
+  assertEquals(JSON.parse(host.files.get("zuke.json") ?? "{}"), {
+    name: "App",
+    sdk: { command: ["uv", "run", "build.py"] },
+    engine: "1.4.0",
+  });
+
+  // package.json keeps precedence, and never asks for an engine.
+  const both = new FakeHost({
+    "pyproject.toml": PYPROJECT,
+    "package.json": JSON.stringify({ scripts: { a: "x" } }),
+  });
+  const first = await runImport(
+    { dir: ".", force: true, name: "B", engine: noEngine },
+    both,
+  );
+  assertEquals(first.source, "package.json");
+  assertEquals(both.files.has("build.py"), false);
+});
+
+Deno.test("runImport writes nothing when the engine cannot be resolved", async () => {
+  const host = new FakeHost({ "pyproject.toml": PYPROJECT });
+  await assertRejects(
+    () =>
+      runImport({ dir: ".", force: true, name: "B", engine: noEngine }, host),
+    Error,
+    "must not be resolved",
+  );
+  assertEquals([...host.files.keys()], ["pyproject.toml"]);
+});
+
+Deno.test("runImport names the line of a pyproject.toml it cannot read", async () => {
+  const host = new FakeHost({ "pyproject.toml": "[tool]\nx = 1979-05-27\n" });
+  await assertRejects(
+    () =>
+      runImport({ dir: ".", force: true, name: "B", engine: noEngine }, host),
+    Error,
+    "cannot read pyproject.toml — line 2:",
+  );
+});
+
+Deno.test("parseImportFlags reads --from pyproject", () => {
+  assertEquals(
+    parseImportFlags(["--from", "pyproject"]).from,
+    "pyproject.toml",
+  );
+  assertEquals(
+    parseImportFlags(["--from=pyproject.toml"]).from,
+    "pyproject.toml",
+  );
+});
+
+Deno.test("main import pins --engine for a pyproject.toml without the registry", async () => {
+  const host = new FakeHost({ "pyproject.toml": PYPROJECT });
+  const code = await main(
+    ["import", "--yes", "--from", "pyproject", "--engine", "1.2.0"],
+    host,
+    new FakePrompter(false),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    engineRegistry(new Error("offline")),
+  );
+  assertEquals(code, 0, host.logs.join("\n"));
+  assertStringIncludes(host.files.get("zuke.json") ?? "", '"engine": "1.2.0"');
+  assertStringIncludes(
+    host.logs.join("\n"),
+    "imported 2 task(s) from pyproject.toml",
+  );
+});
+
+Deno.test("main import reads the engine from the registry, and rejects a loose --engine", async () => {
+  const registry = engineRegistry({
+    latest: "1.5.0",
+    versions: { "1.5.0": {} },
+  });
+  const host = new FakeHost({ "pyproject.toml": PYPROJECT });
+  assertEquals(
+    await main(
+      ["import", "--yes"],
+      host,
+      new FakePrompter(false),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      registry,
+    ),
+    0,
+  );
+  assertStringIncludes(host.files.get("zuke.json") ?? "", '"engine": "1.5.0"');
+
+  const loose = new FakeHost({ "pyproject.toml": PYPROJECT });
+  assertEquals(
+    await main(
+      ["import", "--yes", "--engine", "^1"],
+      loose,
+      new FakePrompter(false),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      registry,
+    ),
+    1,
+  );
+  assertStringIncludes(
+    loose.logs.join("\n"),
+    'zuke import: --engine "^1" is not an exact version',
+  );
+  assertEquals(loose.files.has("build.py"), false);
 });

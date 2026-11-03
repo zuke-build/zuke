@@ -249,23 +249,37 @@ async function sdkOption(
         `in: ${[...SDKS].join(", ")}.`,
     );
   }
+  return { engine: await engineRelease(flags, upgradeHost, "zuke setup") };
+}
+
+/**
+ * The `@zuke/engine` release an SDK build pins: `--engine` taken as given (so
+ * a pin needs no network), or JSR's latest. `command` names the caller in
+ * its errors.
+ *
+ * @throws {Error} naming an `--engine` that is not an exact version, or a
+ * registry that cannot be read.
+ */
+async function engineRelease(
+  flags: SetupFlags,
+  upgradeHost: UpgradeHost,
+  command: string,
+): Promise<string> {
   if (flags.engine !== undefined) {
     if (!VERSION_PATTERN.test(flags.engine)) {
       throw new Error(
-        `zuke setup: --engine "${flags.engine}" is not an exact version — ` +
+        `${command}: --engine "${flags.engine}" is not an exact version — ` +
           "name a release such as 1.2.0.",
       );
     }
-    return { engine: flags.engine };
+    return flags.engine;
   }
   const meta = await registryMeta(
     () => upgradeHost.engineMeta(),
     ENGINE_PACKAGE,
-    "zuke setup",
+    command,
   );
-  return {
-    engine: resolveRelease(meta, undefined, ENGINE_PACKAGE, "zuke setup"),
-  };
+  return resolveRelease(meta, undefined, ENGINE_PACKAGE, command);
 }
 
 /** The `.mcp.json` request the flags make, or `undefined` for none. */
@@ -363,7 +377,7 @@ Usage:
 
 Zuke commands (available anywhere):
   setup [options]         Scaffold Zuke into a directory
-  import [options]        Generate a build from package.json scripts or a Makefile
+  import [options]        Generate a build from package.json scripts, a Makefile or pyproject.toml tasks
   doc <package>           Show a @zuke/* package's API docs (isolated resolution)
   upgrade [<version>]     Reinstall this CLI at the latest (or given) JSR release
                           (Homebrew installs: brew upgrade zuke)
@@ -390,8 +404,9 @@ Setup options:
 
 Import options:
   --dir <path>            Directory to read from and scaffold into (default: .)
-  --name <Class>          Build class name for zuke.ts (default: MyBuild)
-  --from <source>         Force a source: package.json or makefile (default: auto-detect)
+  --name <Class>          Build class name (default: MyBuild)
+  --from <source>         Force a source: package.json, makefile or pyproject (default: auto-detect)
+  --engine <version>      The @zuke/engine release a pyproject.toml import pins (default: JSR's latest)
   --mcp                   Also write .mcp.json registering the build's MCP server
   --allow-run             …with --allow-run, so an agent may execute targets (implies --mcp)
   --bootstrap-deno        Launchers install a pinned, checksum-verified Deno when none is on PATH (default)
@@ -549,7 +564,10 @@ function reportManualSteps(
 
 /** Flags accepted by `zuke import` — the setup flags plus `--from`. */
 export interface ImportFlags extends SetupFlags {
-  /** Force a source (`package.json` or `makefile`); auto-detected when unset. */
+  /**
+   * Force a source (`package.json`, `makefile` or `pyproject`); auto-detected
+   * when unset.
+   */
   from?: ImportSource;
 }
 
@@ -558,6 +576,9 @@ function parseSource(value: string): ImportSource | undefined {
   const lower = value.toLowerCase();
   if (lower === "package.json" || lower === "package") return "package.json";
   if (lower === "makefile") return "Makefile";
+  if (lower === "pyproject.toml" || lower === "pyproject") {
+    return "pyproject.toml";
+  }
   return undefined;
 }
 
@@ -581,6 +602,7 @@ async function commandImport(
   host: SetupHost,
   prompter: Prompter,
   paint: CliPaint,
+  upgradeHost: UpgradeHost,
 ): Promise<number> {
   const flags = parseImportFlags(args);
   let name = flags.name ?? "MyBuild";
@@ -605,12 +627,13 @@ async function commandImport(
       from: flags.from,
       mcp: mcpOption(flags),
       bootstrapDeno,
+      engine: () => engineRelease(flags, upgradeHost, "zuke import"),
     },
     host,
   );
   if (result.source === null) {
     host.log(paint.fail(
-      "Nothing to import: no package.json scripts or Makefile found" +
+      "Nothing to import: no package.json, Makefile or pyproject.toml found" +
         (flags.from ? ` for --from ${flags.from}` : "") + ".",
     ));
     return 1;
@@ -960,7 +983,7 @@ export async function main(
       );
     }
     if (command === "import") {
-      return await commandImport(rest, host, prompter, paint);
+      return await commandImport(rest, host, prompter, paint, upgradeHost);
     }
     if (command === "doc") {
       return await commandDoc(rest, host, docRunner);

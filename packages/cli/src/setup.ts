@@ -295,8 +295,10 @@ export interface SetupOptions {
    */
   launcherName?: string;
   /**
-   * The `zuke.ts` contents to write. Defaults to {@link starterBuild}; `zuke
-   * import` passes a build generated from an existing project's tasks instead.
+   * The build file's contents: the `zuke.ts`, or with {@link SetupOptions.sdk}
+   * the `build.py`. Defaults to {@link starterBuild} (or
+   * {@link starterPythonBuild}); `zuke import` passes a build generated from
+   * an existing project's tasks instead.
    */
   buildContent?: string;
   /**
@@ -450,7 +452,10 @@ export async function runSetup(
         name: "zuke.ts",
         content: options.buildContent ?? starterBuild(options.name),
       }
-      : { name: PYTHON_BUILD_FILE, content: starterPythonBuild(options.name) },
+      : {
+        name: PYTHON_BUILD_FILE,
+        content: options.buildContent ?? starterPythonBuild(options.name),
+      },
     {
       name: launcher,
       content: launcherBash(variant),
