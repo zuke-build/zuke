@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.13.0](https://github.com/zuke-build/zuke/compare/ai-v2.12.1...ai-v2.13.0) (2026-11-03)
+
+
+### Features
+
+* **ai:** AiTasks, the reviewers as a task a worker reaches through tool.call ([#959](https://github.com/zuke-build/zuke/issues/959)) ([f87a916](https://github.com/zuke-build/zuke/commit/f87a916d28a4102de9e72a410b732331b67c025b))
+
 ## [2.12.1](https://github.com/zuke-build/zuke/compare/ai-v2.12.0...ai-v2.12.1) (2026-10-06)
 
 

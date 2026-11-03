@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.80.0](https://github.com/zuke-build/zuke/compare/core-v1.79.0...core-v1.80.0) (2026-11-03)
+
+
+### Features
+
+* **ai:** AiTasks, the reviewers as a task a worker reaches through tool.call ([#959](https://github.com/zuke-build/zuke/issues/959)) ([f87a916](https://github.com/zuke-build/zuke/commit/f87a916d28a4102de9e72a410b732331b67c025b))
+* **core:** stream remote cache downloads through a temporary file ([#953](https://github.com/zuke-build/zuke/issues/953)) ([a936c0d](https://github.com/zuke-build/zuke/commit/a936c0df4a5f5290436b520ec99eb58b58701b66))
+
+
+### Bug Fixes
+
+* **core:** keep a concurrent target's console and service output inside its block ([#958](https://github.com/zuke-build/zuke/issues/958)) ([6e9e5db](https://github.com/zuke-build/zuke/commit/6e9e5dba9ea9bb977d6f2768fc862783ec9d85a8))
+
 ## [1.79.0](https://github.com/zuke-build/zuke/compare/core-v1.78.1...core-v1.79.0) (2026-11-03)
 
 
