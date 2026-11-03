@@ -1329,3 +1329,15 @@ Deno.test("untar refuses a negative or non-numeric size instead of looping", asy
     assertStringIncludes(err.message, "size field");
   }
 });
+
+Deno.test("untarStream ignores empty chunks between and inside members", async () => {
+  const archive = tar(varietyEntries());
+  const chunks: Uint8Array[] = [new Uint8Array(0)];
+  for (let i = 0; i < archive.length; i += 300) {
+    chunks.push(archive.slice(i, i + 300), new Uint8Array(0));
+  }
+  assertEquals(
+    await collect(untarStream(ReadableStream.from(chunks), true)),
+    untar(archive),
+  );
+});

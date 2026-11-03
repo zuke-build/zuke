@@ -516,14 +516,25 @@ export async function restoreOutputs(
   // Every file before any link, so no write can pass through a link the
   // archive planted — on top of {@link assertNothingUnderALink}, which already
   // refuses an entry nested under one.
-  // The second pass reads the same bytes, so its entries arrive in the order
-  // the first validated them.
+  // Each file the second pass reads is written under the name, and with the
+  // mode, the first pass validated — looked up by name, not by position, so
+  // the write never depends on the two passes reading in lockstep.
+  const files = new Map(
+    validated.filter((entry) => entry.linkname === undefined).map((
+      entry,
+    ) => [entry.name, entry]),
+  );
   const written: string[] = [];
-  let index = 0;
-  for await (const { data } of untarStream(inflate(), true)) {
-    const entry = validated[index++];
-    if (entry.linkname !== undefined) continue;
-    await host.writeFile(entry.name, data, entry.mode);
+  for await (const read of untarStream(inflate(), true)) {
+    if (read.linkname !== undefined) continue;
+    const entry = files.get(normalize(read.name));
+    if (entry === undefined) {
+      throw new Error(
+        `remote cache: refusing "${read.name}", which the validation pass ` +
+          `did not see.`,
+      );
+    }
+    await host.writeFile(entry.name, read.data, entry.mode);
     written.push(entry.name);
   }
   for (const entry of validated) {
