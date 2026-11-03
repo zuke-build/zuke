@@ -41897,7 +41897,33 @@
                 {
                   "name": "value",
                   "type": {
-                    "kind": "unknown"
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "literal",
+                        "value": "SampleCount"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "Average"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "Sum"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "Minimum"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "Maximum"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "IQM"
+                      }
+                    ]
                   },
                   "rest": false,
                   "optional": false
@@ -60689,7 +60715,7 @@
                 {
                   "name": "apiKey",
                   "type": {
-                    "kind": "unknown"
+                    "kind": "string"
                   },
                   "rest": false,
                   "optional": false
@@ -60928,7 +60954,7 @@
                 {
                   "name": "token",
                   "type": {
-                    "kind": "unknown"
+                    "kind": "string"
                   },
                   "rest": false,
                   "optional": false
@@ -60945,7 +60971,7 @@
                 {
                   "name": "token",
                   "type": {
-                    "kind": "unknown"
+                    "kind": "string"
                   },
                   "rest": false,
                   "optional": false

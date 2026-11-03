@@ -12,9 +12,10 @@ The spec carries only what `tool.call` carries. A task or setter taking a
 function, a host, a stream, a signal, a bigint or an instance of the package's
 own classes is left out, and a type JSON flattens is spelled as what travels: a
 `Date`, a `URL` and a path are `string`, and a union keeps the members JSON
-carries, so a setter taking a parameter or a string is reached with the string.
-The wrappers' release versions are not in it; a wrapper's release is whatever
-its `deno.json` says at the engine tag the SDK vendors the spec from.
+carries and the spec can name, so a setter taking a parameter object or a string
+is declared with the string. The wrappers' release versions are not in it; a
+wrapper's release is whatever its `deno.json` says at the engine tag the SDK
+vendors the spec from.
 
 | Field      | Meaning                                                                                                                                      |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------- |

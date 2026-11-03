@@ -160,7 +160,11 @@ function one(
   return Array.isArray(value) ? undefined : value;
 }
 
-/** Fold a union's members: duplicates dropped, a lone member unwrapped, none `unknown`. */
+/**
+ * Fold a union's members: duplicates dropped, a lone member unwrapped, and a
+ * member the spec cannot name dropped beside ones it can, so a setter taking a
+ * parameter object or a string is declared with the string.
+ */
 function unionOf(members: readonly SpecType[]): SpecType {
   const unique: SpecType[] = [];
   const seen = new Set<string>();
@@ -171,13 +175,10 @@ function unionOf(members: readonly SpecType[]): SpecType {
       unique.push(member);
     }
   }
-  if (unique.length === 0 || unique.some((m) => m.kind === "unknown")) {
-    return UNKNOWN;
-  }
-  const [only] = unique;
-  return unique.length === 1 && only !== undefined
-    ? only
-    : { kind: "union", members: unique };
+  const named = unique.filter((m) => m.kind !== "unknown");
+  const [only] = named;
+  if (only === undefined) return UNKNOWN;
+  return named.length === 1 ? only : { kind: "union", members: named };
 }
 
 /** Read a `typeRef` node: the wrappers' generic shapes, aliases and classes. */

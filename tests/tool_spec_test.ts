@@ -87,7 +87,11 @@ Deno.test("specType: keywords, literals, unions, arrays, records and references"
       kind: "union",
       members: [{ kind: "literal", value: "a" }, { kind: "null" }],
     }],
+    // A member the spec cannot name is dropped beside ones it can.
     [{ kind: "union", value: [keyword("string"), keyword("object")] }, {
+      kind: "string",
+    }],
+    [{ kind: "union", value: [keyword("object"), ref("Elsewhere")] }, {
       kind: "unknown",
     }],
     // A member JSON cannot carry is left out; a union of none is unknown.
