@@ -92,8 +92,8 @@ If the project already has `package.json` scripts or a `Makefile`, prefer
 target per task, a working starting point instead of a blank build:
 
 ```sh
-zuke import                  # auto-detects package.json, then a Makefile
-zuke import --from makefile   # or pin the source (package.json | makefile)
+zuke import                  # auto-detects package.json, then a Makefile, then pyproject.toml
+zuke import --from makefile   # or pin the source (package.json | makefile | pyproject)
 ```
 
 Each script/target becomes a `target()`; a command maps to `CmdTasks.exec(...)`
@@ -111,6 +111,18 @@ behind a `// TODO` so the file still compiles. It scaffolds the launchers and
 `--allow-run` flags. Afterwards, use the **zuke-write-build** skill to finish
 replacing any remaining generated `CmdTasks.exec` calls with typed `*Tasks`
 wrappers.
+
+A Python project's `pyproject.toml` imports too: the first task table it carries
+(`[tool.poe.tasks]`, `[tool.pdm.scripts]`, `[tool.hatch.envs.default.scripts]`,
+`[tool.taskipy.tasks]` or `[tool.rye.scripts]`) becomes a **Python** build — the
+project `zuke setup --sdk python` makes, with a generated `build.py` whose
+targets run each command through `await ctx.sh("prog", "arg", …)` and whose
+leading sequence steps naming another task become `.depends_on(...)` (one after
+a command stays a `# TODO` in place, since a dependency runs first). Python
+`call`/`script` entries, `expr`, `{args}` placeholders and shell-specific
+commands are kept as `# TODO` comments. `--engine <version>` pins the engine
+(default: JSR's latest), as for `setup --sdk python`; there is no `deno.json`
+and no `CmdTasks`.
 
 ### What `zuke setup` writes
 

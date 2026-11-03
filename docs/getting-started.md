@@ -90,7 +90,7 @@ and generates a `zuke.ts` with a target per task — a working starting point yo
 then refine into typed wrappers, instead of a blank page:
 
 ```sh
-zuke import                 # auto-detects package.json, then a Makefile
+zuke import                 # auto-detects package.json, then a Makefile, then pyproject.toml
 zuke import --from makefile  # or pin the source
 ```
 
@@ -100,9 +100,14 @@ Makefile prerequisite) becomes `.dependsOn(...)`, and a command too
 shell-specific to translate (pipes, redirects, env assignments) is preserved
 behind a `// TODO` so the file still compiles and the tricky bits are flagged.
 It also scaffolds the launchers and `deno.json`, exactly like `zuke setup`.
-Flags: `--from
-<package.json|makefile>`, plus the same `--dir`, `--name`,
-`--force`, `--yes`.
+Flags: `--from <package.json|makefile|pyproject>`, plus the same `--dir`,
+`--name`, `--force`, `--yes`.
+
+A Python project's `pyproject.toml` (poe, pdm, hatch, taskipy or rye tasks) is
+read last, and becomes a `build.py` scaffolded as `zuke setup --sdk python`
+does, each command run through `await ctx.sh(...)`; `--engine <version>` pins
+the engine it runs on. See
+[the CLI reference](./cli.md#the-global-zuke-cli-jsrzukecli).
 
 ## Run it yourself
 

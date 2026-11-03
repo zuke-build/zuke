@@ -90,9 +90,10 @@ can never drift from the build.
   <img src="https://github.com/zuke-build/zuke/raw/master/assets/demo.svg" alt="Zuke in action: scaffold a build, list targets, run the gate" width="760" />
 </p>
 
-Already have `package.json` scripts or a `Makefile`? `zuke import` turns them
-into a `zuke.ts` with a target per script. Details, the launcher, and a longer
-first build: **[Getting started](./docs/getting-started.md)**.
+Already have `package.json` scripts, a `Makefile` or `pyproject.toml` tasks?
+`zuke import` turns them into a build (`zuke.ts`, or `build.py` for Python) with
+a target per task. Details, the launcher, and a longer first build:
+**[Getting started](./docs/getting-started.md)**.
 
 Prefer to poke at something real? [`examples/`](./examples) holds six cloneable
 projects — a Deno library gate, a generated-CI-only project, a Node app, a
@@ -201,7 +202,7 @@ The same steps, however you installed the CLI:
 ```sh
 zuke setup          # scaffold zuke.ts, zuke.json and the ./zuke launcher
 zuke setup --mcp    # …and register the build's MCP server for your agent
-zuke import         # or migrate package.json scripts / a Makefile instead
+zuke import         # or migrate package.json scripts / a Makefile / pyproject.toml tasks instead
 zuke                # run the default target; any other command runs the build, like zuke ci
 zuke add docker     # add @zuke/docker to the project (also: remove, cache, relock)
 ```
