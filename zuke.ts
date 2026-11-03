@@ -88,6 +88,7 @@ import {
 } from "./build/cli_chocolatey.ts";
 import {
   publishCliFormula,
+  publishStrandedCliDrafts,
   uploadCliRelease,
   verifyCliFormula,
 } from "./build/cli_publish.ts";
@@ -1573,6 +1574,28 @@ class ZukeBuild extends Build {
         apply(s);
         return s.token(releaseToken);
       });
+
+      // A CLI draft an earlier run never attached binaries to, because the
+      // next CLI release merged before that run was retried, is published
+      // here so it gets its tag (see `publishStrandedCliDrafts`). Best-effort,
+      // like the steps below: a throw would redden the job after the releases
+      // exist and skip the JSR publish that `needs` it; the next run retries.
+      try {
+        const published = await publishStrandedCliDrafts(
+          await localVersion("cli"),
+          releaseToken,
+        );
+        if (published.length === 0) {
+          ConsoleTasks.info("No stranded CLI drafts.");
+        }
+      } catch (error) {
+        ConsoleTasks.warn(
+          "Publishing stranded CLI drafts failed — the next release run " +
+            `retries: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+        );
+      }
 
       // Keep the repository's "Latest release" pointer on the Marketplace
       // action's own release. GitHub surfaces that pointer well beyond the
