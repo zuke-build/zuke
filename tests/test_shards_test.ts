@@ -79,7 +79,17 @@ const DENO_DEFAULT_TEST = /^(?:.*[_.])?test\.(?:ts|tsx|mts|js|mjs|jsx)$/;
 /** Every file under `dir` deno's default discovery would run, skipping `.git` and `node_modules`. */
 async function denoDiscoverable(dir: string): Promise<string[]> {
   const found: string[] = [];
-  for await (const entry of Deno.readDir(dir)) {
+  let entries: Deno.DirEntry[];
+  try {
+    entries = await Array.fromAsync(Deno.readDir(dir));
+  } catch (error) {
+    // A gate target's scratch directory in the repository root, such as
+    // snippetsCheck's `.snippets-*`, can be gone between the listing that
+    // found it and this read; it held no test either way.
+    if (error instanceof Deno.errors.NotFound) return found;
+    throw error;
+  }
+  for (const entry of entries) {
     const path = dir === "." ? entry.name : `${dir}/${entry.name}`;
     if (entry.isDirectory) {
       if (entry.name !== ".git" && entry.name !== "node_modules") {
@@ -91,6 +101,12 @@ async function denoDiscoverable(dir: string): Promise<string[]> {
   }
   return found;
 }
+
+Deno.test("discover: a directory gone before it is read holds no test", async () => {
+  const dir = await Deno.makeTempDir();
+  await Deno.remove(dir);
+  assertEquals(await denoDiscoverable(dir), []);
+});
 
 Deno.test("discover: no file deno would run as a test is left out of the shards", async () => {
   // The shards run explicit file lists, so a test module named another way
