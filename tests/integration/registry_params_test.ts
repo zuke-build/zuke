@@ -73,7 +73,13 @@ Deno.test("a registered build's parameters flow into the registry run tool", asy
     await silence(async () => {
       const code = await registerCommand(new Deploy(), {
         registry,
-        location: { kind: "module", module: "file:///r/deploy.ts", cwd: "/r" },
+        // Inside the server's project root, where a module launch is confined
+        // by default — as `zuke register` in this checkout would write it.
+        location: {
+          kind: "module",
+          module: `${Deno.cwd()}/deploy.ts`,
+          cwd: Deno.cwd(),
+        },
         readEnv: () => undefined,
         now: () => "2026-01-01T00:00:00.000Z",
       });
@@ -159,7 +165,7 @@ Deno.test("a registered remote entry module is refused by the run tool, not spaw
         location: {
           kind: "module",
           module: "https://attacker.example/x.ts",
-          cwd: "/r",
+          cwd: Deno.cwd(),
         },
         readEnv: () => undefined,
         now: () => "2026-01-01T00:00:00.000Z",
@@ -271,4 +277,67 @@ Deno.test("a registered command location is refused by the run tool, not spawned
     assertEquals(calls.length, 1);
     assertEquals(calls[0][0], "/bin/sh");
   }, { prefix: "zuke-it-registry-command-" });
+});
+
+Deno.test("a registered local module is confined to the allowed directories", async () => {
+  if (Deno.build.os === "windows") return; // symlink creation is privileged there
+  await withTemp(async (dir) => {
+    const root = await Deno.realPath(dir);
+    const registry = new FileSystemBuildRegistry(`${root}/registry`);
+    await Deno.mkdir(`${root}/repo`);
+    await Deno.mkdir(`${root}/outside`);
+    // A link inside the allowed directory to a file a second party planted.
+    await Deno.writeTextFile(`${root}/outside/evil.ts`, "");
+    await Deno.symlink(`${root}/outside`, `${root}/repo/link`);
+
+    const register = async (id: string, module: string, cwd: string) => {
+      await silence(async () => {
+        const code = await registerCommand(new Deploy(), {
+          registry,
+          id,
+          location: { kind: "module", module, cwd },
+          readEnv: () => undefined,
+          now: () => "2026-01-01T00:00:00.000Z",
+        });
+        assertEquals(code, 0);
+      });
+    };
+    await register("Inside", `file://${root}/repo/zuke.ts`, `${root}/repo`);
+    await register("Planted", `${root}/outside/evil.ts`, `${root}/repo`);
+    await register("Linked", `${root}/repo/link/evil.ts`, `${root}/repo`);
+    await register("Elsewhere", `${root}/repo/zuke.ts`, `${root}/outside`);
+    await register("Prefix", `${root}/repo-evil/zuke.ts`, `${root}/repo`);
+    await register("Unc", "//attacker.example/share/x.ts", `${root}/repo`);
+
+    const calls: string[][] = [];
+    const runner: RegistryRunner = (argv) => {
+      calls.push([...argv]);
+      return Promise.resolve({ code: 0, stdout: "ok", stderr: "" });
+    };
+    const server = new RegistryMcpServer(registry, {
+      allowRun: true,
+      runner,
+      readEnv: (name) =>
+        name === "ZUKE_REGISTRY_LAUNCH_DIRS" ? `${root}/repo` : undefined,
+    });
+    const run = async (id: string) =>
+      callResult(
+        await server.handleMessage({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: { name: `run:${id}:deploy`, arguments: {} },
+        }),
+      );
+
+    assertEquals((await run("Inside")).isError, false);
+    assertEquals(calls.length, 1);
+    for (const id of ["Planted", "Linked", "Elsewhere", "Prefix"]) {
+      const denied = await run(id);
+      assertEquals(denied.isError, true, id);
+      assertStringIncludes(denied.text, "launch_dir_not_allowed");
+    }
+    assertStringIncludes((await run("Unc")).text, "launch_origin_not_allowed");
+    assertEquals(calls.length, 1); // nothing outside was spawned
+  }, { prefix: "zuke-it-registry-dirs-" });
 });

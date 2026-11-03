@@ -60,8 +60,10 @@ The **location** is one of two forms:
 
 > **A location is a launch command, so whoever writes the registry chooses what
 > `zuke mcp --registry` spawns.** A **remote** entry module — anything that is
-> not a local path or a `file:` URL, so `https:`, `jsr:`, `npm:`, `data:` — is
-> therefore **refused** unless the operator names its origin in
+> not a local path or a `file:` URL, so `https:`, `jsr:`, `npm:`, `data:`, and
+> also a UNC path (`\\host\share\x.ts`, `//host/x.ts`) or a `file:` URL whose
+> host is not `localhost`, which Windows fetches over SMB — is therefore
+> **refused** unless the operator names its origin in
 > `ZUKE_REGISTRY_LAUNCH_HOSTS` (comma- or space-separated; `*` allows any).
 > Otherwise a registry entry would be enough to run attacker-chosen code with
 > `deno run -A` in the operator's workspace. The allow-list token is the
@@ -69,7 +71,22 @@ The **location** is one of two forms:
 > allow-listed `http:` origin additionally needs `ZUKE_ALLOW_INSECURE_URL=1`,
 > and loopback needs no such opt-out. A refused launch is a structured tool
 > error and an audited `launch_origin_not_allowed` event — nothing is spawned.
-> Local modules, which is what `zuke register` writes, are unaffected.
+>
+> **A local module is confined by location**, because local is not the same as
+> trusted: on a shared host a registry writer can plant `/tmp/evil.ts` and name
+> it. The entry module and the working directory must both lie inside a
+> directory listed in `ZUKE_REGISTRY_LAUNCH_DIRS` (absolute paths,
+> comma-separated, since a path may contain a space; `*` turns the check off).
+> Unset, it is the serving `zuke mcp --registry`'s project root — the nearest
+> `zuke.json` above its working directory — which is where `zuke register` in
+> the same checkout writes both, so the ordinary setup needs nothing; a server
+> launching builds registered from other checkouts lists their roots. Paths are
+> compared segment by segment after every symlink is resolved, so `/repo-evil`
+> is not inside `/repo` and a link under the root pointing elsewhere does not
+> carry its target in. The working directory is confined for an allow-listed
+> remote module too. A refusal is an audited `launch_dir_not_allowed` event. The
+> listed directories, and a filesystem registry directory itself, must not be
+> writable by any user you would not let run code as the server's user.
 >
 > **A `command` location is refused the same way**, unless its program is named
 > in `ZUKE_REGISTRY_LAUNCH_COMMANDS` (comma-separated, since a program path may
@@ -99,6 +116,8 @@ Writes one `<id>.json` file per build under a directory (default
 `<repo root>/.zuke/builds`, a sibling of `.zuke/runs` — never colliding).
 Compare-and-swap uses an `O_EXCL` lock marker plus an atomic temp-file rename,
 so two processes registering at once cannot tear a write. Single-host by design.
+Whoever can write the directory chooses what `zuke mcp --registry` launches, so
+it must not be writable by other users.
 
 ### `HttpBuildRegistry` — hosted service
 

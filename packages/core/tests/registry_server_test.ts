@@ -73,7 +73,9 @@ function descriptor(
     id,
     name: id,
     location: location ??
-      { kind: "module", module: `file:///r/${id}.ts`, cwd: "/r" },
+      // Inside the server's project root (this checkout), which is where the
+      // launch policy confines a module launch by default.
+      { kind: "module", module: `${Deno.cwd()}/${id}.ts`, cwd: Deno.cwd() },
     surface: {
       commands: [],
       flags: [],
@@ -281,7 +283,7 @@ Deno.test("a run tool spawns the descriptor's module location", async () => {
   assertEquals(calls[0].argv.slice(1), [
     "run",
     "-A",
-    "file:///r/Api.ts",
+    `${Deno.cwd()}/Api.ts`,
     "deploy",
   ]);
 });
@@ -1267,12 +1269,60 @@ Deno.test("a descriptor pointing at a remote entry module is refused, not spawne
   );
 });
 
+Deno.test("a descriptor pointing at a local module outside the allowed directories is refused, not spawned", async () => {
+  // Local is not the same as trusted: on a shared host a registry writer can
+  // plant /tmp/evil.ts and name it. The default confinement is the server's
+  // project root, which this checkout's temp directory is not inside.
+  const outside = await Deno.makeTempDir();
+  try {
+    const registry = new FakeRegistry();
+    registry.add(descriptor("Api", ["deploy"], {
+      kind: "module",
+      module: `${outside}/evil.ts`,
+      cwd: outside,
+    }));
+    const store = new FileSystemStateStore("/state", new FakeStateHost());
+    const { runner, calls } = recordingRunner();
+    const server = new RegistryMcpServer(registry, {
+      allowRun: true,
+      stateStore: store,
+      runner,
+      readEnv: () => undefined,
+    });
+
+    const result = await call(server, "run:Api:deploy");
+    assertEquals(result.isError, true);
+    assertStringIncludes(result.text, "launch_dir_not_allowed");
+    assertStringIncludes(result.text, "ZUKE_REGISTRY_LAUNCH_DIRS");
+    assertEquals(calls.length, 0);
+    const audit = await store.getRun("mcp-audit");
+    assertEquals(
+      (audit?.record.events ?? []).some((e) =>
+        e.outcome === "denied" && e.detail === "launch_dir_not_allowed"
+      ),
+      true,
+    );
+
+    // Naming the directory is the operator's decision to run code from it.
+    const allowed = new RegistryMcpServer(registry, {
+      allowRun: true,
+      runner,
+      readEnv: (name) =>
+        name === "ZUKE_REGISTRY_LAUNCH_DIRS" ? outside : undefined,
+    });
+    assertEquals((await call(allowed, "run:Api:deploy")).isError, false);
+    assertEquals(calls.length, 1);
+  } finally {
+    await Deno.remove(outside, { recursive: true });
+  }
+});
+
 Deno.test("an allow-listed remote entry module spawns", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"], {
     kind: "module",
     module: "https://builds.example.com/zuke.ts",
-    cwd: "/r",
+    cwd: Deno.cwd(),
   }));
   const { runner, calls } = recordingRunner();
   const server = new RegistryMcpServer(registry, {

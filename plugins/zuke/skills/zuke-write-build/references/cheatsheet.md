@@ -2094,8 +2094,12 @@ allows any), because the registry writer chooses the program _and its arguments_
 — audited `launch_command_not_allowed`. Listing a program does not license it to
 fetch: a remote argument still has to pass `ZUKE_REGISTRY_LAUNCH_HOSTS`. Prefer
 absolute paths: a relative program resolves against the descriptor's own cwd.
-`zuke register` writes a local `file:` module, so both only bite a hand-authored
-or second-party registry entry.
+A UNC path (`//host/…`, `\\host\…`) or a `file:` URL with a host other than
+`localhost` counts as remote, origin = that host. A local module, and the
+launch cwd, must also lie inside `ZUKE_REGISTRY_LAUNCH_DIRS` (absolute dirs,
+comma/newline-separated; default the server's own project root; `*` disables),
+compared after resolving symlinks — audited `launch_dir_not_allowed`. A server
+launching builds registered from other checkouts must list their roots.
 
 **Authorization by role** (`docs/mcp.md`): once the server authenticates its
 callers, `target().requiresRole("operator")` raises the bar for one target and

