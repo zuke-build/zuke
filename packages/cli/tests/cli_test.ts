@@ -16,6 +16,7 @@ import { defaultUpgradeHost } from "../src/upgrade.ts";
 import { VERSION } from "../src/version.ts";
 import { DENO_PIN } from "../src/deno_pin.ts";
 import {
+  engineRegistry,
   FakeHost,
   FakePrompter,
   FakeStarActions,
@@ -88,6 +89,101 @@ Deno.test("parseSetupFlags reads every flag form", () => {
     parseSetupFlags(["--bootstrap-deno", "--no-bootstrap-deno"]).bootstrapDeno,
     false,
   );
+  assertEquals(parseSetupFlags(["--sdk", "python"]).sdk, "python");
+  assertEquals(parseSetupFlags(["--sdk=python"]).sdk, "python");
+  assertEquals(parseSetupFlags(["--sdk"]).sdk, undefined);
+  assertEquals(parseSetupFlags(["--engine", "1.2.0"]).engine, "1.2.0");
+  assertEquals(parseSetupFlags(["--engine=1.2.0"]).engine, "1.2.0");
+  assertEquals(parseSetupFlags(["--engine"]).engine, undefined);
+});
+
+/** The registry document every published engine release test reads. */
+const ENGINE_META = { latest: "1.5.0", versions: { "1.5.0": {} } };
+
+/** Run `zuke setup` non-interactively against `registry`, returning the code. */
+function setupSdk(
+  host: FakeHost,
+  args: string[],
+  registry: unknown = ENGINE_META,
+): Promise<number> {
+  return main(
+    ["setup", "--yes", "--sdk", "python", ...args],
+    host,
+    new FakePrompter(false),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    engineRegistry(registry),
+  );
+}
+
+Deno.test("main setup --sdk python --engine pins that release without the registry", async () => {
+  const host = new FakeHost();
+  const code = await setupSdk(
+    host,
+    ["--engine", "1.2.0", "--name", "Acme"],
+    new Error("offline"),
+  );
+  assertEquals(code, 0);
+  assertEquals(JSON.parse(host.files.get("zuke.json") ?? ""), {
+    name: "Acme",
+    sdk: { command: ["uv", "run", "build.py"] },
+    engine: "1.2.0",
+  });
+  assertEquals(host.files.has("build.py"), true);
+  assertEquals(host.files.has("zuke.ts"), false);
+  assertEquals(host.files.has("deno.json"), false);
+  assertEquals(host.logs.some((l) => l.endsWith("Next: zuke")), true);
+});
+
+Deno.test("main setup --sdk python pins JSR's latest engine release", async () => {
+  const host = new FakeHost();
+  assertEquals(await setupSdk(host, ["--mcp"]), 0);
+  const config: unknown = JSON.parse(host.files.get("zuke.json") ?? "");
+  assertEquals(Reflect.get(Object(config), "engine"), "1.5.0");
+  const mcp = JSON.parse(host.files.get(".mcp.json") ?? "{}");
+  assertEquals(mcp.mcpServers.zuke.args, [
+    "run",
+    "-A",
+    "jsr:@zuke/engine@1.5.0",
+    "mcp",
+  ]);
+});
+
+Deno.test("main setup --sdk refuses what it cannot scaffold, before writing anything", async () => {
+  const cases: Array<[string[], unknown, string]> = [
+    [["--sdk", "rust"], ENGINE_META, 'unknown --sdk "rust"'],
+    [["--engine", "latest"], ENGINE_META, "not an exact version"],
+    [[], new Error("offline"), "could not read @zuke/engine's versions"],
+    [[], {}, "names no latest version"],
+  ];
+  for (const [args, registry, message] of cases) {
+    const host = new FakeHost();
+    const code = await setupSdk(host, args, registry);
+    assertEquals(code, 1, args.join(" "));
+    assertEquals(host.logs.some((l) => l.includes(message)), true, message);
+    assertEquals(host.files.size, 0, args.join(" "));
+  }
+});
+
+Deno.test("main --help documents --sdk and upgrade --engine", async () => {
+  // Outside any project, so the help is the CLI's own and runs no build.
+  const host = new FakeHost();
+  const code = await main(
+    ["--help"],
+    host,
+    defaultPrompter,
+    undefined,
+    undefined,
+    undefined,
+    noProjectProbe,
+  );
+  assertEquals(code, 0);
+  const help = host.logs.join("\n");
+  assertStringIncludes(help, "--sdk python");
+  assertStringIncludes(help, "--engine <version>");
+  assertStringIncludes(help, "upgrade --engine [<v>]");
 });
 
 Deno.test("main setup --yes scaffolds the bootstrapping launchers by default", async () => {

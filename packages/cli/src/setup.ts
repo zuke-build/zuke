@@ -19,8 +19,16 @@ import {
 import { isRecord } from "./records.ts";
 import { launcherBash, launcherPwsh } from "./launcher.ts";
 import { exists, lstatOrNull } from "./fs.ts";
+import { engineSpecifier } from "./dispatch.ts";
 import { output } from "./output.ts";
-import { STARTER_IMPORTS, starterBuild, starterConfig } from "./starter.ts";
+import {
+  PYTHON_BUILD_FILE,
+  STARTER_IMPORTS,
+  starterBuild,
+  starterConfig,
+  starterPythonBuild,
+  starterSdkConfig,
+} from "./starter.ts";
 
 // Re-exported so the merge guard keeps its historical home for importers.
 export { isRecord };
@@ -312,6 +320,20 @@ export interface SetupOptions {
    * inspect them. Omitted: no file is written.
    */
   mcp?: McpSetupOptions;
+  /**
+   * Scaffold a build the Python SDK describes and `@zuke/engine` runs
+   * (`--sdk python`): a starter `build.py` in place of `zuke.ts`, a
+   * `zuke.json` naming `sdk.command` and the `engine` release, and no
+   * `deno.json`, since the project has no Deno code of its own. The launchers
+   * run that engine when there is no `zuke.ts`. Omitted: a TypeScript build.
+   */
+  sdk?: SdkSetupOptions;
+}
+
+/** What `--sdk python` scaffolds against. */
+export interface SdkSetupOptions {
+  /** The exact `@zuke/engine` release `zuke.json` pins. */
+  engine: string;
 }
 
 /** What `--mcp` writes into `.mcp.json`. */
@@ -372,6 +394,7 @@ export const DEFAULT_LAUNCHER = "zuke";
 /** Scaffold file names a launcher must not shadow (the build file and config). */
 const RESERVED_NON_LAUNCHER = new Set([
   "zuke.ts",
+  PYTHON_BUILD_FILE,
   "zuke.json",
   "deno.json",
   ".gitignore",
@@ -420,11 +443,14 @@ export async function runSetup(
   assertLauncherName(launcher);
   const variant = { bootstrapDeno: options.bootstrapDeno ?? true };
 
+  const sdk = options.sdk;
   const scaffold: readonly ScaffoldFile[] = [
-    {
-      name: "zuke.ts",
-      content: options.buildContent ?? starterBuild(options.name),
-    },
+    sdk === undefined
+      ? {
+        name: "zuke.ts",
+        content: options.buildContent ?? starterBuild(options.name),
+      }
+      : { name: PYTHON_BUILD_FILE, content: starterPythonBuild(options.name) },
     {
       name: launcher,
       content: launcherBash(variant),
@@ -432,7 +458,12 @@ export async function runSetup(
       launcher: true,
     },
     { name: `${launcher}.ps1`, content: launcherPwsh(variant), launcher: true },
-    { name: "zuke.json", content: starterConfig(options.name) },
+    {
+      name: "zuke.json",
+      content: sdk === undefined
+        ? starterConfig(options.name)
+        : starterSdkConfig(options.name, sdk.engine),
+    },
   ];
 
   // Fail before writing anything if a target name is occupied by a directory —
@@ -441,7 +472,7 @@ export async function runSetup(
   // setup writes, including the separately-written deno.json and .gitignore.
   const collisionTargets: ReadonlyArray<{ name: string; launcher: boolean }> = [
     ...scaffold.map((s) => ({ name: s.name, launcher: s.launcher === true })),
-    { name: "deno.json", launcher: false },
+    ...(sdk === undefined ? [{ name: "deno.json", launcher: false }] : []),
     { name: ".gitignore", launcher: false },
     ...(options.mcp ? [{ name: MCP_CONFIG_FILE, launcher: false }] : []),
   ];
@@ -496,15 +527,17 @@ export async function runSetup(
     files.push({ path: item.name, status });
   }
 
-  files.push(
-    await setupDenoJson(
-      options.dir,
-      options.imports ?? STARTER_IMPORTS,
-      host,
-      manualSteps,
-      notes,
-    ),
-  );
+  if (sdk === undefined) {
+    files.push(
+      await setupDenoJson(
+        options.dir,
+        options.imports ?? STARTER_IMPORTS,
+        host,
+        manualSteps,
+        notes,
+      ),
+    );
+  }
   files.push(await setupGitignore(options.dir, host));
   if (options.mcp) {
     files.push(
@@ -514,6 +547,7 @@ export async function runSetup(
         options.force,
         host,
         notes,
+        sdk === undefined ? undefined : engineSpecifier(sdk.engine),
       ),
     );
   }
@@ -533,11 +567,12 @@ async function setupMcpConfig(
   force: boolean,
   host: SetupHost,
   notes: string[],
+  build?: string,
 ): Promise<FileResult> {
   const name = MCP_CONFIG_FILE;
   const path = joinPath(dir, name);
   if (!(await host.exists(path))) {
-    await host.writeText(path, mergeMcpConfig({}, mcp.allowRun));
+    await host.writeText(path, mergeMcpConfig({}, mcp.allowRun, build));
     host.log(`  create   ${name}`);
     return { path: name, status: "created" };
   }
@@ -559,7 +594,10 @@ async function setupMcpConfig(
     host.log(`  skip     ${name}  (zuke server already registered)`);
     return { path: name, status: "skipped" };
   }
-  await host.writeText(path, mergeMcpConfig(config.document, mcp.allowRun));
+  await host.writeText(
+    path,
+    mergeMcpConfig(config.document, mcp.allowRun, build),
+  );
   host.log(`  update   ${name}`);
   return { path: name, status: "overwritten" };
 }

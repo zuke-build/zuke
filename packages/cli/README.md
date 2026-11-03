@@ -6,7 +6,9 @@ The `zuke` command-line tool — scaffold
 ```sh
 deno install -A -g -n zuke jsr:@zuke/cli
 zuke setup
-zuke upgrade        # later: move the installed CLI to the latest release
+zuke setup --sdk python   # a build.py the Python SDK describes, run on @zuke/engine
+zuke upgrade              # later: move the installed CLI to the latest release
+zuke upgrade --engine     # or a Python project's @zuke/engine pin
 ```
 
 The same CLI also ships as a standalone binary that needs no Deno up front:
@@ -87,6 +89,16 @@ interface BuildProbe
   readText(path: string): Promise<string>
     The text of a file.
 
+interface EnginePinHost
+  What moving the pin reaches outside the process, injectable for tests.
+
+  readText(path: string): Promise<string>
+    Read a text file, rejecting when it cannot be read.
+  writeText(path: string, text: string): Promise<void>
+    Write a text file, replacing what is there.
+  engineMeta(): Promise<unknown>
+    Fetch and parse `@zuke/engine`'s JSR `meta.json`.
+
 interface ImportFlags extends SetupFlags
   Flags accepted by `zuke import` — the setup flags plus `--from`.
 
@@ -140,6 +152,12 @@ interface Prompter
   confirm(question: string): boolean
     Ask a yes/no question.
 
+interface SdkSetupOptions
+  What `--sdk python` scaffolds against.
+
+  engine: string
+    The exact `@zuke/engine` release `zuke.json` pins.
+
 interface SetupFlags
   Flags accepted by `zuke setup`.
 
@@ -162,6 +180,12 @@ interface SetupFlags
     install a pinned, checksum-verified Deno when none is on `PATH`, `false`
     (`--no-bootstrap-deno`) for ones that require it and fail closed. Unset:
     ask when interactive, else take the default (bootstrap).
+  sdk?: string
+    The SDK whose build to scaffold (`--sdk python`): a `build.py` the engine
+    runs, in place of a `zuke.ts`. Unset: a TypeScript build.
+  engine?: string
+    The exact `@zuke/engine` release to pin for an SDK build (`--engine`).
+    Unset: the latest release, read from JSR at setup time.
 
 interface SetupHost
   Injected side effects, so {@link runSetup} is unit-testable.
@@ -231,6 +255,9 @@ interface UpgradeHost extends InstallHost
     Whether this is Windows, where the running shim is a `.cmd` file.
   meta(): Promise<unknown>
     Fetch and parse `@zuke/cli`'s JSR `meta.json`.
+  engineMeta(): Promise<unknown>
+    Fetch and parse `@zuke/engine`'s JSR `meta.json`: the release
+    `zuke setup --sdk` pins and `zuke upgrade --engine` moves a pin to.
   install(denoArgs: string[]): Promise<number>
     Run `deno <denoArgs>` to reinstall, returning its exit code.
   denoVersion(): string

@@ -4,7 +4,21 @@
 /** Test doubles for the CLI's injectable seams. */
 
 import type { SetupHost } from "../src/setup.ts";
-import type { BuildProbe, Prompter } from "../mod.ts";
+import type { BuildProbe, Prompter, UpgradeHost } from "../mod.ts";
+import { defaultUpgradeHost } from "../src/upgrade.ts";
+
+/**
+ * An {@link UpgradeHost} whose engine registry answers `doc` (or rejects with
+ * it): what `setup --sdk` and `upgrade --engine` read. Everything else is the
+ * real host, which those commands never reach.
+ */
+export function engineRegistry(doc: unknown): UpgradeHost {
+  return {
+    ...defaultUpgradeHost,
+    engineMeta: () =>
+      doc instanceof Error ? Promise.reject(doc) : Promise.resolve(doc),
+  };
+}
 
 /** An in-memory {@link SetupHost} that records writes, chmods, and logs. */
 export class FakeHost implements SetupHost {
