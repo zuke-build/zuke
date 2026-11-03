@@ -1097,11 +1097,15 @@ export async function runScheduled(
           .then(
             async (outcome) => {
               inFlightFlushes.delete(flushNow);
-              await life.targetEnd(
-                t.name_ ?? "<unnamed>",
-                outcome.status,
-                outcome.ms,
-              );
+              // Inside the target's buffer, like `targetStart`, so a hook's
+              // output stays in the block it describes.
+              const end = () =>
+                life.targetEnd(
+                  t.name_ ?? "<unnamed>",
+                  outcome.status,
+                  outcome.ms,
+                );
+              await (buffered ? withAmbientOutput(buffer.output, end) : end());
               // A waiting gate already recorded its `waitingFor` via
               // markTargetWaiting; settling it here would clobber that.
               if (outcome.status !== "waiting") {
@@ -1123,6 +1127,10 @@ export async function runScheduled(
                   flushNow();
                 }
                 flushed++;
+              } else if (buffered) {
+                // A skipped or cached target prints no block, but what its
+                // `onlyWhen` or `cacheKey` logged must still reach the terminal.
+                flushNow();
               }
               outcomes.set(t, outcome);
               runningSet.delete(t);
