@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * Tasks of the other shapes the Python facade generator must read: an object
+ * Tasks of the other shapes the tool spec must read: an object
  * literal rather than an interface, positional JSON arguments with JSON
  * results, an optional argument, a task named by a Python keyword, settings
  * that run no command, and a setter that answers nothing.

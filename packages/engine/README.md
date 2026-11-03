@@ -35,6 +35,9 @@ task that throws fails the call with `-32000` and its message, and one the run's
 cancel cuts short answers `-32001`. The cases under
 [`conformance/`](./conformance/README.md) are the contract an SDK's worker must
 satisfy, replayed here against a scripted worker.
+[`spec/tools.json`](./spec/README.md) describes every wrapper's tasks and
+settings, so an SDK generates its typed facades over `tool.call` rather than
+writing them by hand.
 
 <!-- ZUKE:API:START -->
 

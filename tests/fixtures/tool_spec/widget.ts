@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * A command wrapper of every shape the Python facade generator must read:
+ * A command wrapper of every shape the tool spec must read:
  * settings on core's base with its inherited setters, a kind-changing setter,
  * a literal union behind a type alias, a rest parameter, an optional one, a
  * union of keywords, a date, a setter of plain data, setters of a callback, a
- * signal and a host the facade must leave out, a protected member, and a task
+ * signal and a host the spec must leave out, a protected member, and a task
  * object declared through an interface.
  *
  * @module

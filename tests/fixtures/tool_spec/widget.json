@@ -1,0 +1,279 @@
+{
+  "name": "widget",
+  "summary": "A command wrapper of every shape the tool spec must read: settings on core's base with its inherited setters, a kind-changing setter, a literal union behind a type alias, a rest parameter, an optional one, a union of keywords, a date, a setter of plain data, setters of a callback, a signal and a host the spec must leave out, a protected member, and a task object declared through an interface.",
+  "tasks": [
+    {
+      "name": "WidgetTasks",
+      "doc": "Typed task functions for the widget CLI.",
+      "tasks": [
+        {
+          "name": "build",
+          "doc": "Build a widget: `widget build`.",
+          "params": [
+            {
+              "name": "configure",
+              "type": {
+                "kind": "configure",
+                "settings": "WidgetSettings"
+              },
+              "rest": false,
+              "optional": true
+            }
+          ],
+          "returns": {
+            "kind": "output"
+          }
+        },
+        {
+          "name": "inspect",
+          "doc": "Inspect a widget by name: `widget inspect <name>`; answers its report.",
+          "params": [
+            {
+              "name": "name",
+              "type": {
+                "kind": "string"
+              },
+              "rest": false,
+              "optional": false
+            },
+            {
+              "name": "configure",
+              "type": {
+                "kind": "configure",
+                "settings": "WidgetInspectSettings"
+              },
+              "rest": false,
+              "optional": false
+            }
+          ],
+          "returns": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "clean",
+          "doc": "Remove a widget's build output: `widget clean`.",
+          "params": [
+            {
+              "name": "configure",
+              "type": {
+                "kind": "configure",
+                "settings": "WidgetSettings"
+              },
+              "rest": false,
+              "optional": true
+            }
+          ],
+          "returns": {
+            "kind": "null"
+          }
+        }
+      ]
+    }
+  ],
+  "settings": [
+    {
+      "name": "WidgetSettings",
+      "doc": "Settings for `widget build`.",
+      "extends": "ToolSettings",
+      "setters": [
+        {
+          "name": "name",
+          "doc": "The widget to build (required).",
+          "params": [
+            {
+              "name": "value",
+              "type": {
+                "kind": "string"
+              },
+              "rest": false,
+              "optional": false
+            }
+          ],
+          "returns": {
+            "kind": "self"
+          }
+        },
+        {
+          "name": "level",
+          "doc": "How much to say, 0 to 3 (`--level`).",
+          "params": [
+            {
+              "name": "n",
+              "type": {
+                "kind": "number"
+              },
+              "rest": false,
+              "optional": false
+            }
+          ],
+          "returns": {
+            "kind": "self"
+          }
+        },
+        {
+          "name": "verbose",
+          "doc": "Say everything (`--verbose`).",
+          "params": [],
+          "returns": {
+            "kind": "self"
+          }
+        },
+        {
+          "name": "tags",
+          "doc": "Tags to attach (`--tag`); repeatable.",
+          "params": [
+            {
+              "name": "values",
+              "type": {
+                "kind": "string"
+              },
+              "rest": true,
+              "optional": false
+            }
+          ],
+          "returns": {
+            "kind": "self"
+          }
+        },
+        {
+          "name": "format",
+          "doc": "The output format (`--format`).",
+          "params": [
+            {
+              "name": "kind",
+              "type": {
+                "kind": "union",
+                "members": [
+                  {
+                    "kind": "literal",
+                    "value": "text"
+                  },
+                  {
+                    "kind": "literal",
+                    "value": "json"
+                  }
+                ]
+              },
+              "rest": false,
+              "optional": false
+            }
+          ],
+          "returns": {
+            "kind": "self"
+          }
+        },
+        {
+          "name": "limit",
+          "doc": "Stop after this long, a duration or milliseconds (`--limit`).",
+          "params": [
+            {
+              "name": "value",
+              "type": {
+                "kind": "union",
+                "members": [
+                  {
+                    "kind": "string"
+                  },
+                  {
+                    "kind": "number"
+                  }
+                ]
+              },
+              "rest": false,
+              "optional": false
+            }
+          ],
+          "returns": {
+            "kind": "self"
+          }
+        },
+        {
+          "name": "strict",
+          "doc": "Refuse a widget with warnings (`--strict`), on by default.",
+          "params": [
+            {
+              "name": "on",
+              "type": {
+                "kind": "boolean"
+              },
+              "rest": false,
+              "optional": true
+            }
+          ],
+          "returns": {
+            "kind": "self"
+          }
+        },
+        {
+          "name": "since",
+          "doc": "Only changes after this time (`--since`), a date or its ISO string.",
+          "params": [
+            {
+              "name": "time",
+              "type": {
+                "kind": "string"
+              },
+              "rest": false,
+              "optional": false
+            }
+          ],
+          "returns": {
+            "kind": "self"
+          }
+        },
+        {
+          "name": "options",
+          "doc": "The build's options, as plain data.",
+          "params": [
+            {
+              "name": "value",
+              "type": {
+                "kind": "object",
+                "name": "WidgetOptions"
+              },
+              "rest": false,
+              "optional": false
+            }
+          ],
+          "returns": {
+            "kind": "self"
+          }
+        },
+        {
+          "name": "inspecting",
+          "doc": "Inspect instead of build: the inspect settings carry what is set so far.",
+          "params": [],
+          "returns": {
+            "kind": "settings",
+            "name": "WidgetInspectSettings"
+          }
+        }
+      ]
+    },
+    {
+      "name": "WidgetInspectSettings",
+      "doc": "Settings for `widget inspect`.",
+      "extends": "WidgetSettings",
+      "setters": [
+        {
+          "name": "fields",
+          "doc": "The fields to show (`--field`); all when none is named.",
+          "params": [
+            {
+              "name": "names",
+              "type": {
+                "kind": "string"
+              },
+              "rest": true,
+              "optional": false
+            }
+          ],
+          "returns": {
+            "kind": "self"
+          }
+        }
+      ]
+    }
+  ]
+}

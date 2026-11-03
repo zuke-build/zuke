@@ -111,7 +111,11 @@ import {
   docsOptions,
 } from "./build/docs.ts";
 import { writeApiJson } from "./build/api_reference.ts";
-import { generatePythonFacades } from "./build/python_facades.ts";
+import {
+  checkToolSpec,
+  TOOL_SPEC_PATH,
+  writeToolSpec,
+} from "./build/tool_spec.ts";
 import { runWebsiteSync } from "./build/website_sync.ts";
 import {
   gitleaksSummary,
@@ -644,18 +648,30 @@ class ZukeBuild extends Build {
       );
     });
 
-  pythonFacadesOut = parameter(
-    "Directory the Python SDK's facades are written to",
-  ).flag("out").default("dist/python-facades");
-
-  pythonFacades = target()
+  toolSpec = target()
     .description(
-      "Generate the Python SDK's facades over every wrapper from deno doc (--out <dir>)",
+      "Regenerate packages/engine/spec/tools.json — every wrapper's tasks and settings, for SDK generators",
     )
     .executes(async () => {
-      const out = this.pythonFacadesOut.value;
-      const written = await generatePythonFacades(out);
-      ConsoleTasks.info(`Wrote ${written.length} module(s) under ${out}.`);
+      const changed = await writeToolSpec();
+      ConsoleTasks.info(
+        changed
+          ? `Regenerated ${TOOL_SPEC_PATH}.`
+          : `${TOOL_SPEC_PATH} already up to date.`,
+      );
+    });
+
+  toolSpecCheck = target()
+    .description("Verify packages/engine/spec/tools.json matches the wrappers")
+    .executes(async () => {
+      const stale = await checkToolSpec();
+      if (stale !== undefined) {
+        throw new Error(
+          `The tool spec is out of date: ${stale}\n` +
+            "Run `./zuke toolSpec` and commit the result.",
+        );
+      }
+      ConsoleTasks.info(`${TOOL_SPEC_PATH} matches the wrappers.`);
     });
 
   hclGen = target()
@@ -1053,6 +1069,7 @@ class ZukeBuild extends Build {
       this.launcherSyncCheck,
       this.skillsCheck,
       this.graphDocCheck,
+      this.toolSpecCheck,
       this.pluginVersionCheck,
       this.prBodyLint,
       this.actionPinCheck,
