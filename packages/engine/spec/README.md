@@ -9,11 +9,11 @@ file ships with `@zuke/engine`, so a release's spec is at
 `https://jsr.io/@zuke/engine/<version>/spec/tools.json`.
 
 The spec carries only what `tool.call` carries. A task or setter taking a
-function, a host, a stream, a signal or an instance of the package's own classes
-is left out, and a type JSON flattens is spelled as what travels: a `Date`, a
-`URL` and a path are `string`. The wrappers' release versions are not in it; a
-wrapper's release is whatever its `deno.json` says at the engine tag the SDK
-vendors the spec from.
+function, a host, a stream, a signal, a bigint or an instance of the package's
+own classes is left out, and a type JSON flattens is spelled as what travels: a
+`Date`, a `URL` and a path are `string`. The wrappers' release versions are not
+in it; a wrapper's release is whatever its `deno.json` says at the engine tag
+the SDK vendors the spec from.
 
 | Field      | Meaning                                                                                                                                      |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------- |

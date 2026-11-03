@@ -67,7 +67,7 @@ Deno.test("specType: keywords, literals, unions, arrays, records and references"
   const s = scope();
   const cases: [DocTsType, SpecType][] = [
     [keyword("string"), { kind: "string" }],
-    [keyword("bigint"), { kind: "number" }],
+    [keyword("bigint"), { kind: "unknown" }],
     [keyword("void"), { kind: "null" }],
     [keyword("object"), { kind: "unknown" }],
     [literal("x"), { kind: "literal", value: "x" }],

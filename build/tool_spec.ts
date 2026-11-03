@@ -10,9 +10,9 @@
  * is documented in `packages/engine/spec/README.md`.
  *
  * The spec carries only what `tool.call` carries: a task or setter taking a
- * function, a host, a stream or an instance of the package's own classes is
- * left out, and a type JSON flattens (a date, a path, a URL) is spelled as
- * what travels. Versions are not in it; a wrapper's release is whatever the
+ * function, a host, a stream, a bigint or an instance of the package's own
+ * classes is left out, and a type JSON flattens (a date, a path, a URL) is
+ * spelled as what travels. Versions are not in it; a wrapper's release is whatever the
  * checkout's `deno.json` says, which release-please moves without touching
  * this file.
  *
@@ -145,7 +145,6 @@ const NOT_JSON: ReadonlySet<string> = new Set([
 const KEYWORDS: ReadonlyMap<string, SpecType> = new Map([
   ["string", { kind: "string" }],
   ["number", { kind: "number" }],
-  ["bigint", { kind: "number" }],
   ["boolean", { kind: "boolean" }],
   ["void", { kind: "null" }],
   ["undefined", { kind: "null" }],
@@ -288,6 +287,9 @@ function jsonCarries(
     case "fnOrConstructor":
     case "typeQuery":
       return false;
+    // JSON has no bigint: a number would reach a setter expecting one.
+    case "keyword":
+      return t.repr !== "bigint";
     case "union":
     case "intersection":
       return !Array.isArray(value) ||

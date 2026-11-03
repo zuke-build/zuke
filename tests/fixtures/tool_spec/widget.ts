@@ -118,6 +118,12 @@ export class WidgetSettings extends ToolSettings {
     return this;
   }
 
+  /** A byte budget as a bigint: JSON has none, so the spec leaves it out. */
+  budget(bytes: bigint): this {
+    this.#level = Number(bytes);
+    return this;
+  }
+
   /** Stop when the signal fires: no facade carries a signal. */
   signal(signal: AbortSignal): this {
     signal.throwIfAborted();
