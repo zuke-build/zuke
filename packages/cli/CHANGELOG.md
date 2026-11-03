@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.0](https://github.com/zuke-build/zuke/compare/cli-v2.0.0...cli-v2.1.0) (2026-11-03)
+
+
+### Features
+
+* **cli:** zuke setup --sdk python scaffolds an engine-hosted build, and zuke upgrade --engine moves its pin ([#961](https://github.com/zuke-build/zuke/issues/961)) ([1f4d52c](https://github.com/zuke-build/zuke/commit/1f4d52c7eb9406e68a71e5ea5d3022225246ac74))
+
 ## [2.0.0](https://github.com/zuke-build/zuke/compare/cli-v1.17.0...cli-v2.0.0) (2026-11-01)
 
 
