@@ -3,7 +3,7 @@
 
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { REDACTED, Redactor } from "../src/redact.ts";
-import { emitActionsMasks } from "../src/execute_output.ts";
+import { ActionsMaskingRedactor } from "../src/execute_output.ts";
 
 Deno.test("Redactor masks a registered secret anywhere in a line", () => {
   const r = new Redactor();
@@ -114,12 +114,19 @@ Deno.test("Redactor does not register a trivially short line as its own pattern"
 // reads `::add-mask::` to the end of the line, so emitting a multi-line value
 // as one directive masks only its first line — and prints every line after it
 // as ordinary log output. The call meant to protect the secret becomes the leak.
-Deno.test("emitActionsMasks emits one single-line directive per secret line", () => {
+/** An {@link ActionsMaskingRedactor} and the directives it printed. */
+function masking(): { r: ActionsMaskingRedactor; lines: string[] } {
   const lines: string[] = [];
-  emitActionsMasks([MULTI_LINE], {
+  const r = new ActionsMaskingRedactor({
     info: (l) => void lines.push(l),
     error: () => {},
   });
+  return { r, lines };
+}
+
+Deno.test("ActionsMaskingRedactor emits one single-line directive per secret line", () => {
+  const { r, lines } = masking();
+  r.add(MULTI_LINE);
   assertEquals(lines.length > 0, true);
   for (const line of lines) {
     assertStringIncludes(line, "::add-mask::");
@@ -133,11 +140,49 @@ Deno.test("emitActionsMasks emits one single-line directive per secret line", ()
   }
 });
 
-Deno.test("emitActionsMasks still emits a single-line secret unchanged", () => {
-  const lines: string[] = [];
-  emitActionsMasks(["hunter2"], {
-    info: (l) => void lines.push(l),
+// The runner also ends a line at a lone `\r`, so a CR-separated secret must be
+// split there too, or its directive masks only the part before the `\r`.
+Deno.test("ActionsMaskingRedactor splits a secret on a lone carriage return", () => {
+  const { r, lines } = masking();
+  r.add("first-line-secret\rsecond-line-secret");
+  assertEquals(lines, [
+    "::add-mask::first-line-secret",
+    "::add-mask::second-line-secret",
+  ]);
+});
+
+Deno.test("ActionsMaskingRedactor still emits a single-line secret unchanged", () => {
+  const { r, lines } = masking();
+  r.add("hunter2");
+  assertEquals(lines, ["::add-mask::hunter2"]);
+  // It is still a redactor: the value is masked in what Zuke prints.
+  assertEquals(r.redact("pw hunter2"), `pw ${REDACTED}`);
+});
+
+// Every route into the run's redactor — a parameter, a wrapper's markSecret, the
+// engine's secret.register — ends in add(), so a value is announced once however
+// many routes register it, and only once it is new.
+Deno.test("ActionsMaskingRedactor emits a pattern once, and nothing for an empty value", () => {
+  const { r, lines } = masking();
+  r.add("");
+  r.add("hunter2");
+  r.add("hunter2");
+  r.add(MULTI_LINE);
+  const count = lines.length;
+  r.add(MULTI_LINE);
+  assertEquals(lines.length, count);
+  assertEquals(lines.filter((l) => l === "::add-mask::hunter2").length, 1);
+  // The whole multi-line value is still registered for the redactor itself.
+  assertEquals(r.redact(MULTI_LINE), REDACTED);
+});
+
+Deno.test("ActionsMaskingRedactor survives a throwing sink", () => {
+  const r = new ActionsMaskingRedactor({
+    info: () => {
+      throw new Error("EPIPE");
+    },
     error: () => {},
   });
-  assertEquals(lines, ["::add-mask::hunter2"]);
+  r.add("hunter2");
+  assertEquals(r.redact("hunter2"), REDACTED);
 });

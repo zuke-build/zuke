@@ -110,8 +110,11 @@ publish — and it does three jobs at once:
    **cache hit that skips the download** only when the pin matches _and_ the
    binary on disk still hashes to what was installed — so a swapped or corrupted
    binary (e.g. in a cache directory shared across trust boundaries) is
-   re-downloaded and re-verified, never silently reused. Bumping the checksum
-   for a new version is a natural miss that re-fetches.
+   re-downloaded and re-verified, never silently reused. For a `raw` download
+   the binary is compared with the pinned checksum itself, not with the marker's
+   copy of its hash. Bumping the checksum for a new version is a natural miss
+   that re-fetches. The marker is local evidence: the
+   [remote cache](./caching.md#security) never archives or restores one.
 
 What the checksum covers depends on the format: for an archive it's the SHA-256
 of the **archive** (what projects list in their `checksums.txt`/`sha256sum`

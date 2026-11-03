@@ -37,7 +37,10 @@ import type { RunEvent, RunEventOutcome } from "../state/types.ts";
 import type { StateStore } from "../state/store.ts";
 import type { CliParameterInfo, CliTargetInfo } from "../describe.ts";
 import type { BuildLocation } from "../registry/descriptor.ts";
-import { launchDenial } from "../registry/launch_policy.ts";
+import {
+  hostLaunchFileSystem,
+  launchDenial,
+} from "../registry/launch_policy.ts";
 import type { BuildRegistry } from "../registry/registry.ts";
 import { AUDIT_SAFE_KEYS, auditText, AuditTrail } from "./audit.ts";
 import { operatorTokenDenial, targetMatcher } from "./authz.ts";
@@ -689,10 +692,15 @@ export class RegistryMcpServer {
 
     // Where the descriptor says the build lives is as much an authorization
     // question as which target it names: a registry a second party can write to
-    // could point the launch at code fetched from the network. Checked before
+    // could point the launch at code fetched from the network, or at a file
+    // outside every directory a build may run from. Checked before
     // the confirmation prompt, so a refused location fails fast rather than
     // asking the operator to confirm a spawn that will never happen.
-    const denial = launchDenial(loaded.descriptor.location, this.#readEnv);
+    const denial = launchDenial(
+      loaded.descriptor.location,
+      this.#readEnv,
+      hostLaunchFileSystem(),
+    );
     if (denial !== null) {
       await this.#audit(
         runName,

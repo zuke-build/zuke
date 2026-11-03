@@ -18,7 +18,11 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { TargetContext, TargetStateHandle } from "@zuke/core";
+import {
+  redactLine,
+  type TargetContext,
+  type TargetStateHandle,
+} from "@zuke/core";
 import { Command } from "@zuke/core/shell";
 import { ToolSettings } from "@zuke/core/tooling";
 import { MAX_LINE, Peer, RpcFailure } from "./peer.ts";
@@ -244,6 +248,30 @@ async function stopChild(
   await exited;
 }
 
+/**
+ * Where a worker's own stdout and stderr go: the engine's stderr, through the
+ * redactor of the run that last configured the worker.
+ *
+ * The lines are read outside any run's async context, so the ambient redactor
+ * a body's calls see is not in scope here; {@link WorkerOutput.adopt} captures
+ * the run's context when it configures the worker, and every line is redacted
+ * inside it. That redactor is the run's own, so a value registered later with
+ * `secret.register` is masked from then on too.
+ */
+class WorkerOutput {
+  #inRun: <R>(fn: () => R) => R = (fn) => fn();
+
+  /** Redact from now on with the redactor of the caller's run. */
+  adopt(): void {
+    this.#inRun = AsyncLocalStorage.snapshot();
+  }
+
+  /** Print one line of the worker's output, redacted. */
+  write(line: string): void {
+    console.error(`worker: ${this.#inRun(() => redactLine(line))}`);
+  }
+}
+
 /** One spawned worker: its process, connection and greeting. */
 interface Worker {
   readonly child: Deno.ChildProcess;
@@ -259,7 +287,10 @@ interface Worker {
  * its environment, and wait for its `hello`. The listener accepts exactly one
  * connection and closes.
  */
-async function spawn(options: WorkerOptions): Promise<Worker> {
+async function spawn(
+  options: WorkerOptions,
+  output: WorkerOutput,
+): Promise<Worker> {
   const [program, ...args] = options.command;
   if (program === undefined) {
     throw new Error("zuke: sdk.command in zuke.json must not be empty");
@@ -280,9 +311,10 @@ async function spawn(options: WorkerOptions): Promise<Worker> {
   }).spawn();
   // The worker's own output is the build's log, never the protocol, and it
   // goes to stderr so `--list --json` on stdout stays machine-readable.
+  const write = (line: string) => output.write(line);
   const forwarding = Promise.all([
-    forwardLines(child.stdout, (l) => console.error(`worker: ${l}`)),
-    forwardLines(child.stderr, (l) => console.error(`worker: ${l}`)),
+    forwardLines(child.stdout, write),
+    forwardLines(child.stderr, write),
   ]);
   const exited = child.status.then((status) => status.code);
   const timeoutMs = options.connectTimeoutMs ?? 10_000;
@@ -364,6 +396,7 @@ export class WorkerHost {
   /** Aborted when the host is killed: the signal a service phase's execs get. */
   #aborter = new AbortController();
   readonly #registrar = new SecretRegistrar();
+  readonly #output: WorkerOutput;
   #worker: Worker;
   /** The exit code the current worker died with, until it is replaced. */
   #dead: number | undefined;
@@ -379,8 +412,13 @@ export class WorkerHost {
   #manifest: string | undefined;
   #configured: ConfigureParams | undefined;
 
-  private constructor(options: WorkerOptions, worker: Worker) {
+  private constructor(
+    options: WorkerOptions,
+    output: WorkerOutput,
+    worker: Worker,
+  ) {
     this.#options = options;
+    this.#output = output;
     this.#graceMs = options.graceMs ?? 5_000;
     this.#worker = this.#adopt(worker);
   }
@@ -431,7 +469,8 @@ export class WorkerHost {
       (r, scope) => this.#tool(r, scope.signal),
     );
     serve("secret.register", parseSecret, (r) => registrar.register(r.value));
-    serve("log", parseLog, (r) => console.log(r.line));
+    // Served inside the body's async context, so the run's redactor applies.
+    serve("log", parseLog, (r) => console.log(redactLine(r.line)));
     inBody(
       "state.get",
       (p) => parseStateRead(p, "state.get"),
@@ -530,7 +569,7 @@ export class WorkerHost {
     // (it closed the connection, or shrugged off kill()'s SIGTERM): stop it,
     // so no worker outlives the run that spawned it.
     await this.#stop(this.#worker);
-    const worker = await spawn(this.#options);
+    const worker = await spawn(this.#options, this.#output);
     try {
       await this.#adoptReplacement(worker);
     } catch (error) {
@@ -560,7 +599,7 @@ export class WorkerHost {
   /** Spawn and describe the next worker ahead of the next run ({@link WorkerOptions.prewarm}). */
   async #prewarm(): Promise<void> {
     try {
-      await this.#adoptReplacement(await spawn(this.#options));
+      await this.#adoptReplacement(await spawn(this.#options, this.#output));
     } catch {
       // The next run spawns its own worker and meets the error itself.
     }
@@ -607,7 +646,8 @@ export class WorkerHost {
 
   /** Spawn the worker and wait for its `hello`. */
   static async start(options: WorkerOptions): Promise<WorkerHost> {
-    return new WorkerHost(options, await spawn(options));
+    const output = new WorkerOutput();
+    return new WorkerHost(options, output, await spawn(options, output));
   }
 
   /** Ask the worker to describe its build; a replacement must match it. */
@@ -624,6 +664,9 @@ export class WorkerHost {
     // A worker spawned for this call is configured by the call, not replayed
     // into first: the next run after a finished one starts here.
     await this.#live();
+    // Configured inside the run, so the worker's own output is redacted with
+    // the run's redactor from here on.
+    this.#output.adopt();
     this.#configured = params;
     await this.#ask("build.configure", params);
   }

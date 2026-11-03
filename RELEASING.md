@@ -188,6 +188,11 @@ for the same reason.
 
 `release.yml` also has a `workflow_dispatch` trigger, so you can run
 release-please on demand from the Actions tab without waiting for a push.
+Dispatch it on `master`: in CI, `release`, `publishJsr`, `syncWebsite` and
+`cliTap` refuse any other ref (`GITHUB_REF` must be `refs/heads/master`), since
+they hold JSR's publishing identity or the app's key. That guard stops a
+mistaken dispatch; it is not a control against someone with write access, whose
+branch runs its own copy of the build. Run locally, the targets skip it.
 
 ## Running the build locally
 

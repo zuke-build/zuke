@@ -36,7 +36,7 @@ import {
   defaultKeychainHost,
   type KeychainHost,
 } from "../../packages/apple/src/keychain_host.ts";
-import { runCli } from "./_harness.ts";
+import { runCli, withoutMaskDirectives } from "./_harness.ts";
 
 const LOGIN = "/Users/ci/Library/Keychains/login.keychain-db";
 const HASH = "0123456789ABCDEF0123456789ABCDEF01234567";
@@ -122,7 +122,10 @@ Deno.test("a target signs from a temporary keychain that is gone afterwards", as
       await exists(seen.keychain.slice(0, seen.keychain.lastIndexOf("/"))),
       false,
     );
-    assertEquals(`${out}${err}`.includes(P12_PASSWORD), false);
+    assertEquals(
+      withoutMaskDirectives(`${out}${err}`).includes(P12_PASSWORD),
+      false,
+    );
   });
 });
 

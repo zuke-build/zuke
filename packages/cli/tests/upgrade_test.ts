@@ -198,6 +198,7 @@ Deno.test("installArgs keeps the documented unversioned spec for latest, pins ot
     "--global",
     "--force",
     "--allow-all",
+    "--no-config",
     "--minimum-dependency-age=0",
     "--name",
     "zuke",
@@ -209,6 +210,7 @@ Deno.test("installArgs keeps the documented unversioned spec for latest, pins ot
     "--global",
     "--force",
     "--allow-all",
+    "--no-config",
     "--minimum-dependency-age=0",
     "--name",
     "zuke",
@@ -456,6 +458,7 @@ Deno.test("zuke upgrade on Windows refuses to pin a version, but moves to latest
   assertStringIncludes(
     refused.logs.join("\n"),
     "from another shell instead: deno install --global --force --allow-all " +
+      "--no-config " +
       "--minimum-dependency-age=0 --name zuke jsr:@zuke/cli@1.0.0",
   );
   assertEquals(pinned.installs, []);

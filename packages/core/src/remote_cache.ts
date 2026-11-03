@@ -38,7 +38,8 @@ import {
 } from "./compression.ts";
 import { GitHubActionsCacheStore } from "./github_actions_cache.ts";
 import { artifactBody, assertSecureBackendUrl, HttpError } from "./http.ts";
-import { messageOf, readFileOrNull } from "./internal.ts";
+import { messageOf } from "./internal.ts";
+import { redactUrl } from "./redact_url.ts";
 import type { AwsCredentials } from "./aws_sigv4.ts";
 import { S3CacheStore } from "./s3_cache.ts";
 
@@ -238,7 +239,7 @@ async function collectEntries(
     // Never archive what restore would refuse to write back (see
     // {@link FORBIDDEN_DIRS}): uploading a `.git` to a shared store would leak
     // its history and leave the target permanently un-restorable.
-    if (isForbiddenPath(path)) return;
+    if (isForbiddenPath(path) || isInstallMarker(path)) return;
     if (host.readLink !== undefined && (await host.lstat(path))?.isSymlink) {
       const target = (await host.readLink(path)).replace(/\\/g, "/");
       if (linkRefusal(path, target, root) === null) {
@@ -323,8 +324,12 @@ export async function archiveStream(
  * and cache index Zuke itself trusts — except its `tools` subtree, where a
  * build's declared toolchain installs the binaries it provisions. Those are
  * exactly the outputs a remote cache exists to share (a pinned SDK, a
- * checksum-verified scanner), and the toolchain re-verifies a restored binary
- * against its recorded checksum before reusing it.
+ * checksum-verified scanner). A restored binary is trusted as the store
+ * delivered it — the provisioning target that would have verified it is
+ * skipped as a cache hit — so only a signing key
+ * (`ZUKE_REMOTE_CACHE_SIGNING_KEY`) authenticates it. The install markers that
+ * let a later install skip its download are never archived or restored
+ * ({@link isInstallMarker}), so they cannot vouch for a restored binary.
  *
  * A `.git` *inside* that subtree is allowed too: an SDK such as Flutter's is a
  * git checkout that runs `git` on itself, so it is broken without one. That
@@ -356,6 +361,21 @@ function isForbiddenPath(name: string): boolean {
     !(segment === ".zuke" && segments[i + 1] === TOOLS_DIR) &&
     !(segment === ".git" && tools !== -1 && tools < i)
   );
+}
+
+/**
+ * Whether `name` (normalised) is an install marker — `<bin>.install.json`,
+ * `<tree>.tree.json` or `.zuke-npm-tool.json` — the local record that lets an
+ * install skip its download. A marker is evidence only when this machine wrote
+ * it after verifying the download, so one is never archived, and one in an
+ * archive is refused: restored beside a swapped binary it would vouch for it.
+ */
+function isInstallMarker(name: string): boolean {
+  // Lowercased and trailing dots/spaces dropped, as Windows resolves the name.
+  const base = name.slice(name.lastIndexOf("/") + 1).toLowerCase()
+    .replace(/[. ]+$/, "");
+  return base.endsWith(".install.json") || base.endsWith(".tree.json") ||
+    base === ".zuke-npm-tool.json";
 }
 
 /**
@@ -418,8 +438,10 @@ function assertNoDirectoryEntry(entry: TarEntry): void {
  * leaves no half-written, partially-trusted output tree. An entry is refused
  * when its name is absolute or escapes the workspace with `..`, when it is a
  * directory entry (which {@link archiveOutputs} never produces), when it lands
- * under `.git` or `.zuke` (`.zuke/tools` aside), when — given `outputs` — it
- * falls outside the target's declared outputs, and when the path it would be
+ * under `.git` or `.zuke` (`.zuke/tools` aside), when it is an install marker
+ * ({@link isInstallMarker}), when it holds a colon (which names an NTFS
+ * alternate data stream, so `marker.json::$DATA` would write the marker), when
+ * — given `outputs` — it falls outside the target's declared outputs, and when the path it would be
  * written to passes through, or is, a symlink that already exists on disk.
  *
  * A symlink entry is restored only when its target is relative, stays inside
@@ -513,6 +535,19 @@ export async function restoreFrom(
     if (isForbiddenPath(name)) {
       throw new Error(
         `remote cache: refusing to restore into a protected path: "${entry.name}".`,
+      );
+    }
+    if (isInstallMarker(name)) {
+      throw new Error(
+        `remote cache: refusing to restore the install marker "${entry.name}".`,
+      );
+    }
+    // On NTFS `marker.json::$DATA` writes `marker.json` itself, so a colon
+    // would slip a name past every check above; restore never writes one.
+    if (name.includes(":")) {
+      throw new Error(
+        `remote cache: refusing to restore "${entry.name}": a colon names an ` +
+          `alternate data stream on Windows.`,
       );
     }
     if (outputs !== undefined && !isDeclaredOutput(name, outputs)) {
@@ -678,11 +713,24 @@ export interface FileSystemCacheStoreOptions {
    * {@link RemoteCacheStore.maxInflatedBytes}. Defaults to 2 GiB.
    */
   maxInflatedBytes?: number;
+  /**
+   * The current user's id, or `null` where the platform has none (Windows).
+   * Defaults to `Deno.uid`; overridable for tests.
+   */
+  uid?: () => number | null;
 }
 
-/** A {@link RemoteCacheStore} backed by a shared or mounted directory. */
+/**
+ * A {@link RemoteCacheStore} backed by a shared or mounted directory.
+ *
+ * On POSIX an entry is refused (a warned rebuild) unless the current user owns
+ * it and neither its group nor others may write it: anyone who can replace an
+ * archive chooses files a later target runs. Windows has no such bits, so the
+ * check is skipped there.
+ */
 export class FileSystemCacheStore implements RemoteCacheStore {
   readonly #dir: string;
+  readonly #uid: () => number | null;
   /** The most an artifact may decompress to; see {@link RemoteCacheStore.maxInflatedBytes}. */
   readonly maxInflatedBytes?: number;
 
@@ -695,6 +743,7 @@ export class FileSystemCacheStore implements RemoteCacheStore {
   constructor(dir: string, options: FileSystemCacheStoreOptions = {}) {
     this.#dir = dir;
     this.maxInflatedBytes = options.maxInflatedBytes;
+    this.#uid = options.uid ?? Deno.uid;
   }
 
   #path(key: string): string {
@@ -702,20 +751,50 @@ export class FileSystemCacheStore implements RemoteCacheStore {
   }
 
   /** Fetch the archived outputs stored under `key`, or `null` if there are none. */
-  get(key: string): Promise<Uint8Array | null> {
-    return readFileOrNull(this.#path(key));
+  async get(key: string): Promise<Uint8Array | null> {
+    const stream = await this.getStream(key);
+    return stream === null
+      ? null
+      : new Uint8Array(await new Response(stream).arrayBuffer());
   }
 
-  /** The archive stored under `key` as a stream, or `null` if there is none. */
+  /**
+   * The archive stored under `key` as a stream, or `null` if there is none.
+   * Refused when another user owns it or it is group- or world-writable.
+   */
   async getStream(
     key: string,
   ): Promise<ReadableStream<Uint8Array<ArrayBuffer>> | null> {
+    let file: Deno.FsFile;
     try {
-      return (await Deno.open(this.#path(key))).readable;
+      file = await Deno.open(this.#path(key));
     } catch (error) {
       if (error instanceof Deno.errors.NotFound) return null;
       throw error;
     }
+    try {
+      // The open handle's stat, so the file checked is the file read.
+      const info = await file.stat();
+      const uid = this.#uid();
+      // No uid means no POSIX permissions (Windows): Deno reports every
+      // writable file there as mode 666, so neither check means anything.
+      if (uid !== null && info.uid !== null && info.uid !== uid) {
+        throw new Error(
+          `remote cache: refusing "${key}", which is owned by another user ` +
+            `(uid ${info.uid}).`,
+        );
+      }
+      if (uid !== null && info.mode !== null && (info.mode & 0o022) !== 0) {
+        throw new Error(
+          `remote cache: refusing "${key}", which other users can write ` +
+            `(mode ${(info.mode & 0o777).toString(8)}).`,
+        );
+      }
+    } catch (error) {
+      file.close();
+      throw error;
+    }
+    return file.readable;
   }
 
   /** Store `artifact` (a gzipped tar of a target's outputs) under `key`. */
@@ -736,6 +815,8 @@ export class FileSystemCacheStore implements RemoteCacheStore {
     const partial = `${this.#path(key)}.${crypto.randomUUID()}.partial`;
     try {
       await Deno.writeFile(partial, artifact);
+      // Not group-writable whatever the umask, so getStream accepts it.
+      if (Deno.build.os !== "windows") await Deno.chmod(partial, 0o644);
       await Deno.rename(partial, this.#path(key));
     } catch (error) {
       await Deno.remove(partial).catch(() => {}); // already gone is fine
@@ -795,7 +876,9 @@ export interface HttpCacheStoreOptions {
  * cannot write outside the workspace (see {@link restoreOutputs}). An artifact
  * larger than {@link HttpCacheStoreOptions.maxArtifactBytes} is refused before
  * it is buffered, and {@link restoreOutputs} separately bounds what it
- * decompresses to.
+ * decompresses to. Within the declared outputs, though, a store writer
+ * chooses what is restored unless `ZUKE_REMOTE_CACHE_SIGNING_KEY` is set
+ * ({@link "./cache.ts".OpenCacheOptions.signingKey}).
  */
 export class HttpCacheStore implements RemoteCacheStore {
   readonly #base: string;
@@ -861,7 +944,7 @@ export class HttpCacheStore implements RemoteCacheStore {
       () =>
         new Error(
           `remote cache: refusing an artifact larger than ` +
-            `${this.#maxArtifactBytes} bytes from ${url}.`,
+            `${this.#maxArtifactBytes} bytes from ${redactUrl(url)}.`,
         ),
     );
   }

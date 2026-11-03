@@ -286,13 +286,17 @@ export function writesInstallLock(version: string): boolean {
  * release, and a pinned one fails to resolve at all. Upgrading is an explicit
  * choice of a specific published release, so the window does not apply. The
  * flag only steers resolution and is not written into the shim.
+ *
+ * `--no-config` keeps any discovered config out of the install, the isolated
+ * directory's own included (which would otherwise draw a "discovered config
+ * file will be ignored" warning); the install still writes its lock.
  */
 export function installArgs(
   target: string,
   latest: boolean,
   denoVersion: string,
 ): string[] {
-  const args = ["install", "--global", "--force", "--allow-all"];
+  const args = ["install", "--global", "--force", "--allow-all", "--no-config"];
   if (acceptsMinimumDependencyAge(denoVersion)) {
     args.push("--minimum-dependency-age=0");
   }

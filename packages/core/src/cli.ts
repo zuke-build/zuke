@@ -1277,10 +1277,17 @@ export type DocRunner = (spec: string) => Promise<number>;
  * That isolation is the whole point — run from a Node repo, `deno doc` otherwise
  * resolves the repo's `node_modules/@types/*` and buries the API under dozens of
  * "Failed resolving types" warnings; an empty cwd has nothing to resolve.
+ *
+ * The temp dir's ancestors (`/tmp`) are shared, and any local user can plant
+ * a `deno.json` there whose import map Deno would honour. `deno doc` has no
+ * `--no-config`, so the dir gets its own memberless workspace-root config,
+ * which stops Deno's walk up (a plain `{}` would join an ancestor workspace).
+ * `@zuke/cli`'s `runDenoIsolated` writes the same file.
  */
 const defaultDocRunner: DocRunner = async (spec) => {
   const cwd = await Deno.makeTempDir({ prefix: "zuke-doc-" });
   try {
+    await Deno.writeTextFile(`${cwd}/deno.json`, '{ "workspace": [] }\n');
     const command = new Deno.Command(denoExecutable(), {
       args: ["doc", spec],
       cwd,

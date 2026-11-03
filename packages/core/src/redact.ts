@@ -62,8 +62,9 @@ export function maskPatterns(value: string): string[] {
   // A Set, so a secret of many lines is deduplicated in linear time.
   const patterns = new Set<string>();
   if (value.length > 0) patterns.add(value);
-  if (!value.includes("\n")) return [...patterns];
-  for (const line of value.split(/\r?\n/)) {
+  if (!/[\r\n]/.test(value)) return [...patterns];
+  // A lone `\r` ends a line too: the Actions runner splits its log on it.
+  for (const line of value.split(/\r\n|\r|\n/)) {
     const trimmed = line.trim();
     if (trimmed.length >= MIN_DERIVED_LENGTH) patterns.add(trimmed);
   }

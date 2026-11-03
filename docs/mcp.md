@@ -637,16 +637,33 @@ zuke mcp --registry --allow-run
 - **Where it spawns from is checked too.** The registry names the launch
   location, so a registry a second party can write to would otherwise be enough
   to run attacker-chosen code. A **remote** entry module (anything that is not a
-  local path or `file:` URL — `https:`, `jsr:`, `npm:`, `data:`) is refused
-  unless its origin appears in `ZUKE_REGISTRY_LAUNCH_HOSTS` (comma- or
-  space-separated; `*` allows any; the token is the hostname, or the scheme when
-  the specifier carries none, like `jsr:`). An allow-listed `http:` origin
-  additionally needs `ZUKE_ALLOW_INSECURE_URL=1`; loopback does not. The check
-  runs **before** the `--confirm-destructive` prompt, so a refused location
-  fails fast: the call returns a structured `launch_origin_not_allowed` (or
-  `insecure_launch_url`) error and is audited as `denied`, with nothing spawned.
-  Locations `zuke register` writes are local, so this is invisible to the
-  ordinary setup.
+  local path or `file:` URL — `https:`, `jsr:`, `npm:`, `data:`, and also a UNC
+  path such as `\\host\share\x.ts` or `//host/x.ts` and a `file:` URL with a
+  host other than `localhost`, which Windows fetches over SMB) is refused unless
+  its origin appears in `ZUKE_REGISTRY_LAUNCH_HOSTS` (comma- or space-separated;
+  `*` allows any; the token is the hostname, or the scheme when the specifier
+  carries none, like `jsr:`). An allow-listed `http:` origin additionally needs
+  `ZUKE_ALLOW_INSECURE_URL=1`; loopback does not. The check runs **before** the
+  `--confirm-destructive` prompt, so a refused location fails fast: the call
+  returns a structured `launch_origin_not_allowed` (or `insecure_launch_url`)
+  error and is audited as `denied`, with nothing spawned.
+- **A local module is confined by location.** Local is not the same as trusted:
+  on a shared host a registry writer can plant `/tmp/evil.ts` and name it. So
+  the entry module and the working directory of a module location must both lie
+  inside a directory listed in `ZUKE_REGISTRY_LAUNCH_DIRS` (absolute paths,
+  comma-separated, since a path may contain a space; `*` turns the check off).
+  Unset, it is the server's own project root — the nearest `zuke.json` above its
+  working directory — which is where `zuke register` in the same checkout writes
+  both, so the ordinary setup needs nothing. Paths are compared segment by
+  segment after every symlink is resolved, so `/repo-evil` is not inside `/repo`
+  and a link under the root pointing elsewhere does not carry its target in. The
+  working directory is confined for an allow-listed remote module and for a
+  `command` location too, since an allowed program run from a writer-chosen
+  directory still reads that directory's `deno.json`, `package.json` or
+  `Makefile`. A refusal is a structured `launch_dir_not_allowed` error, audited
+  as `denied`. A listed directory — and a filesystem registry directory
+  (`ZUKE_REGISTRY_DIR`) — must not be writable by anyone you would not let run
+  code as the server's user.
 - **A `command` location is gated the same way.** Its argv is not "code already
   on the machine" the way a local module path is: whoever wrote the entry chose
   the program **and its arguments**, so
@@ -660,12 +677,13 @@ zuke mcp --registry --allow-run
   because an operator wrote `make` would point a trusted name at a file of the
   writer's own. A refusal names the exact string to add. Two consequences are
   the operator's call: a **relative** program resolves against the descriptor's
-  own working directory, which the same writer chooses, so prefer an absolute
-  path; and listing a shell or interpreter hands over anything reachable
-  locally, since `sh -c` needs no fetch at all. Listing a program does **not**
-  license it to fetch, though: every argument naming a remote specifier still
-  has to pass `ZUKE_REGISTRY_LAUNCH_HOSTS`, so `deno run -A https://…` is
-  refused by origin exactly as the module form is. The refusal is a structured
+  own working directory, which the same writer chooses (inside
+  `ZUKE_REGISTRY_LAUNCH_DIRS`), so prefer an absolute path; and listing a shell
+  or interpreter hands over anything reachable locally, since `sh -c` needs no
+  fetch at all. Listing a program does **not** license it to fetch, though:
+  every argument naming a remote specifier still has to pass
+  `ZUKE_REGISTRY_LAUNCH_HOSTS`, so `deno run -A https://…` is refused by origin
+  exactly as the module form is. The refusal is a structured
   `launch_command_not_allowed` error, audited as `denied`, before the
   confirmation prompt, with nothing spawned. `zuke register` writes a module
   location, so this only bites a hand-authored or second-party entry.

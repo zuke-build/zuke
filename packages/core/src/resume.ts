@@ -32,7 +32,8 @@ import { acquireLease, RUN_LEASE_PREFIX } from "./state/run_lease.ts";
 import type { JsonValue, TargetBuilder } from "./target.ts";
 import type { StateStore } from "./state/store.ts";
 import { resolveRunStore } from "./run_store.ts";
-import { resolveActor } from "./state/record.ts";
+import { replayableParams, resolveActor } from "./state/record.ts";
+import { discoverParameters } from "./params.ts";
 import {
   type ReclaimedLocks,
   reclaimRunLocks,
@@ -306,7 +307,12 @@ export async function resumeRun(
   try {
     return await execute(build, root, {
       stateStore: store,
-      params: { ...record.params, ...(options.params ?? {}) },
+      // Only the record's non-secret values replay: a secret re-resolves from
+      // the environment even when a crafted record names it.
+      params: {
+        ...replayableParams(record.params, discoverParameters(build)),
+        ...(options.params ?? {}),
+      },
       readEnv,
       actor: resumerActor,
       silent: options.silent,

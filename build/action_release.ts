@@ -24,6 +24,7 @@
  * @module
  */
 
+import { isCI } from "@zuke/core";
 import { parse as parseYaml } from "@std/yaml";
 
 import actionVersion from "./action_version.json" with { type: "json" };
@@ -377,6 +378,59 @@ export interface RepositoryState {
 export const RELEASE_BRANCH = "master";
 
 /**
+ * Refuse to `action` unless `branch` is {@link RELEASE_BRANCH}, saying `why` it
+ * matters. `undefined` is a detached HEAD, or a CI ref that names no branch.
+ *
+ * @throws naming the branch, the action and the reason.
+ */
+export function assertReleaseBranch(
+  branch: string | undefined,
+  action: string,
+  why: string,
+): void {
+  if (branch === RELEASE_BRANCH) return;
+  throw new Error(
+    `refusing to ${action} from ${branch ?? "a detached HEAD"}: ${why}, ` +
+      `so it may only run from ${RELEASE_BRANCH}.`,
+  );
+}
+
+/** Where a run is, as {@link assertCiOnReleaseBranch} reads it. */
+export interface RunRef {
+  /** Whether the run is in CI. */
+  ci: boolean;
+  /** `GITHUB_REF`, e.g. `refs/heads/master`. */
+  ref?: string;
+}
+
+/**
+ * In CI, refuse to `action` unless the run is on {@link RELEASE_BRANCH}.
+ *
+ * `release.yml` can be dispatched by hand on any branch, and the jobs that
+ * publish to JSR or hold the app's key would then run that branch's
+ * unreviewed code with those credentials. Locally the check is skipped: a
+ * maintainer's own run holds only their own credentials. This stops a
+ * mistaken dispatch; it cannot stop a branch that edits the check out, which
+ * runs its own copy of this file.
+ *
+ * @throws when `run.ci` and `run.ref` is not `refs/heads/<RELEASE_BRANCH>`.
+ */
+export function assertCiOnReleaseBranch(
+  action: string,
+  why: string,
+  run: RunRef = { ci: isCI(), ref: Deno.env.get("GITHUB_REF") },
+): void {
+  if (!run.ci) return;
+  const heads = "refs/heads/";
+  // Anything but a branch ref (a tag, a PR merge ref, unset) is refused under
+  // its own name, never matched as a bare branch.
+  const branch = run.ref?.startsWith(heads)
+    ? run.ref.slice(heads.length)
+    : `ref ${run.ref ?? "(unset)"}`;
+  assertReleaseBranch(branch, action, why);
+}
+
+/**
  * Refuse to release from a state that would publish the wrong commit.
  *
  * @throws if HEAD is not {@link RELEASE_BRANCH}, the tree is dirty, or the
@@ -387,14 +441,11 @@ export const RELEASE_BRANCH = "master";
  * the next run diffs against it and cuts another.
  */
 export function assertReleasable(state: RepositoryState): void {
-  if (state.branch !== RELEASE_BRANCH) {
-    throw new Error(
-      `refusing to release the action from ${
-        state.branch ?? "a detached HEAD"
-      }: the tag moves for every consumer of \`${ACTION_SLUG}@v1\`, so it may ` +
-        `only be cut from ${RELEASE_BRANCH}.`,
-    );
-  }
+  assertReleaseBranch(
+    state.branch,
+    "release the action",
+    `the tag moves for every consumer of \`${ACTION_SLUG}@v1\``,
+  );
   if (state.dirty) {
     throw new Error(
       `refusing to release the action from a dirty working tree: the tag ` +

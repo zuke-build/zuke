@@ -915,8 +915,10 @@ async function restoreOutputs(artifact: Uint8Array, host: OutputHost, outputs?: 
   leaves no half-written, partially-trusted output tree. An entry is refused
   when its name is absolute or escapes the workspace with `..`, when it is a
   directory entry (which {@link archiveOutputs} never produces), when it lands
-  under `.git` or `.zuke` (`.zuke/tools` aside), when — given `outputs` — it
-  falls outside the target's declared outputs, and when the path it would be
+  under `.git` or `.zuke` (`.zuke/tools` aside), when it is an install marker
+  ({@link isInstallMarker}), when it holds a colon (which names an NTFS
+  alternate data stream, so `marker.json::$DATA` would write the marker), when
+  — given `outputs` — it falls outside the target's declared outputs, and when the path it would be
   written to passes through, or is, a symlink that already exists on disk.
 
   A symlink entry is restored only when its target is relative, stays inside
@@ -1783,6 +1785,11 @@ class FileSystemBuildRegistry implements BuildRegistry
 class FileSystemCacheStore implements RemoteCacheStore
   A {@link RemoteCacheStore} backed by a shared or mounted directory.
 
+  On POSIX an entry is refused (a warned rebuild) unless the current user owns
+  it and neither its group nor others may write it: anyone who can replace an
+  archive chooses files a later target runs. Windows has no such bits, so the
+  check is skipped there.
+
   constructor(dir: string, options: FileSystemCacheStoreOptions)
     Build the store over a directory.
 
@@ -1794,10 +1801,11 @@ class FileSystemCacheStore implements RemoteCacheStore
 
   readonly maxInflatedBytes?: number
     The most an artifact may decompress to; see {@link RemoteCacheStore.maxInflatedBytes}.
-  get(key: string): Promise<Uint8Array | null>
+  async get(key: string): Promise<Uint8Array | null>
     Fetch the archived outputs stored under `key`, or `null` if there are none.
   async getStream(key: string): Promise<ReadableStream<Uint8Array<ArrayBuffer>> | null>
     The archive stored under `key` as a stream, or `null` if there is none.
+    Refused when another user owns it or it is group- or world-writable.
   put(key: string, artifact: Uint8Array): Promise<void>
     Store `artifact` (a gzipped tar of a target's outputs) under `key`.
   async putStream(key: string, artifact: ReadableStream<Uint8Array<ArrayBuffer>>): Promise<void>
@@ -1964,7 +1972,9 @@ class HttpCacheStore implements RemoteCacheStore
   cannot write outside the workspace (see {@link restoreOutputs}). An artifact
   larger than {@link HttpCacheStoreOptions.maxArtifactBytes} is refused before
   it is buffered, and {@link restoreOutputs} separately bounds what it
-  decompresses to.
+  decompresses to. Within the declared outputs, though, a store writer
+  chooses what is restored unless `ZUKE_REMOTE_CACHE_SIGNING_KEY` is set
+  ({@link "./cache.ts".OpenCacheOptions.signingKey}).
 
   constructor(options: HttpCacheStoreOptions)
     Build the store from its URL, optional token, size caps, and `fetch` seam.
@@ -4049,6 +4059,9 @@ interface FileSystemCacheStoreOptions
   maxInflatedBytes?: number
     The most a fetched artifact may decompress to, in bytes — see
     {@link RemoteCacheStore.maxInflatedBytes}. Defaults to 2 GiB.
+  uid?: () => number | null
+    The current user's id, or `null` where the platform has none (Windows).
+    Defaults to `Deno.uid`; overridable for tests.
 
 interface FileTasksApi
   The shape of {@link FileTasks}.
@@ -4515,6 +4528,14 @@ interface OpenCacheOptions
     declare {@link TargetBuilder.outputs}.
   warn?: (message: string) => void
     Report a non-fatal remote-cache error (a get/put failure never fails the build).
+  signingKey?: string
+    A secret that authenticates the remote store's artifacts — the executor
+    passes `ZUKE_REMOTE_CACHE_SIGNING_KEY`. With it, each upload is stored
+    with an HMAC-SHA256 trailer under a key of its own (`<key>.signed`), and
+    an artifact whose MAC is missing or wrong is refused and rebuilt, so
+    writing to the store no longer chooses what a restore writes. Without it,
+    anything under the plain key is restored, and signed artifacts are never
+    read.
 
 interface OutputHost
   Filesystem effects used to archive and restore a target's outputs.
@@ -6293,6 +6314,9 @@ abstract class ToolSettings
     settings — the wrapper is what knows which of its fields is a credential.
     A build marks its own values by declaring them with
     {@link "./params.ts".parameter} and `.secret()`, which is the same redactor.
+    Under GitHub Actions, on the real console, registering a value also prints
+    `::add-mask::` for it, as a `.secret()` parameter's value is, so the runner
+    masks it in a later command's own output as well.
 
     Does nothing outside a run, where there is no redactor to register with —
     a wrapper used standalone in a script still works, it simply has nothing

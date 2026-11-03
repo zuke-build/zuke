@@ -218,10 +218,10 @@ Resuming:
    resumed by …`) and exits non-zero — safe to run the
    same resume from a retrying cron.
 2. **Re-instantiates the build**, re-resolves parameters from the record (CLI
-   may override non-secret ones; secrets re-resolve from the environment), and
-   **verifies the graph still matches** the suspended run — a changed graph
-   (added/removed/re-wired targets) is a hard error unless you pass
-   `--force-graph`.
+   may override non-secret ones; secrets re-resolve from the environment, and a
+   record's value for a secret parameter is ignored), and **verifies the graph
+   still matches** the suspended run — a changed graph (added/removed/re-wired
+   targets) is a hard error unless you pass `--force-graph`.
 3. **Re-runs only what hadn't succeeded.** Targets recorded `succeeded` are
    seeded as done and skipped; the wait re-evaluates its trigger (now satisfied)
    and the run continues — possibly suspending again at a later wait.

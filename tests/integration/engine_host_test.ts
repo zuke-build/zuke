@@ -29,7 +29,8 @@ import {
   ambientEcho,
   type EchoSink,
 } from "../../packages/core/src/ambient_echo.ts";
-import { runCli, withStateDir } from "./_harness.ts";
+import { withEnv as withEnvs } from "../../packages/core/tests/_env.ts";
+import { runCli, withoutMaskDirectives, withStateDir } from "./_harness.ts";
 
 const FAKE =
   new URL("../../packages/engine/tests/_fake_worker.ts", import.meta.url)
@@ -241,8 +242,86 @@ Deno.test("a registered secret is redacted from the summary the engine renders",
       const result = await runCli(Remote, ["leaky"]);
       assertEquals(result.code, 0, result.out + result.err);
       assertStringIncludes(result.out, "Token: [redacted]");
-      // A log line is the worker's print: not redacted, like a body's console.log.
-      assertStringIncludes(result.out, "token is hunter2-secret");
+      // A log line goes through the run's redactor before the engine prints it.
+      assertStringIncludes(result.out, "token is [redacted]");
+      assertEquals(
+        withoutMaskDirectives(result.out + result.err).includes(
+          "hunter2-secret",
+        ),
+        false,
+      );
+    } finally {
+      await host.finish(0);
+    }
+  });
+});
+
+Deno.test("a secret parameter and a registered secret never reach the log through a worker's log call or its own stdout", async () => {
+  await withStateDir(async () => {
+    const { host, Remote } = await fake([{
+      name: "leaky",
+      calls: [
+        {
+          method: "log",
+          params: { line: "deploying with param-s3cr3t-value" },
+        },
+        { method: "secret.register", params: { value: "registered-s3cr3t" } },
+        // The worker prints every answer on its own stdout: the state read
+        // hands the registered value back for it to print.
+        { method: "state.set", params: { patch: { k: "registered-s3cr3t" } } },
+        { method: "state.get", params: {} },
+      ],
+    }], {
+      manifest: {
+        parameters: [{ name: "token", description: "token", secret: true }],
+      },
+    });
+    try {
+      const result = await runCli(Remote, [
+        "leaky",
+        "--token",
+        "param-s3cr3t-value",
+      ]);
+      // Under Actions the raw values are add-masked on purpose; nowhere else.
+      const all = withoutMaskDirectives(result.out + result.err);
+      assertEquals(result.code, 0, all);
+      // The worker printed the configure payload, carrying the parameter, and
+      // the state it read back, carrying the registered value — both redacted.
+      assertStringIncludes(result.err, "worker: configure:");
+      assertStringIncludes(
+        result.err,
+        'worker: answer: state.get {"k":"[redacted]"}',
+      );
+      assertStringIncludes(result.out, "deploying with [redacted]");
+      assertEquals(all.includes("param-s3cr3t-value"), false, all);
+      assertEquals(all.includes("registered-s3cr3t"), false, all);
+    } finally {
+      await host.finish(0);
+    }
+  });
+});
+
+Deno.test("under GitHub Actions a secret a worker registers is add-masked once", async () => {
+  await withStateDir(async () => {
+    const { host, Remote } = await fake([{
+      name: "leaky",
+      calls: [
+        { method: "secret.register", params: { value: "registered-s3cr3t" } },
+        { method: "secret.register", params: { value: "registered-s3cr3t" } },
+      ],
+    }]);
+    try {
+      await withEnvs(
+        { GITHUB_ACTIONS: "true", GITHUB_STEP_SUMMARY: undefined },
+        async () => {
+          const result = await runCli(Remote, ["leaky"]);
+          assertEquals(result.code, 0, result.out + result.err);
+          const masks = result.out.split("\n").filter((l) =>
+            l === "::add-mask::registered-s3cr3t"
+          );
+          assertEquals(masks.length, 1, result.out);
+        },
+      );
     } finally {
       await host.finish(0);
     }

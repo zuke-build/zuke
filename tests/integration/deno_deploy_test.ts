@@ -22,7 +22,7 @@ import {
 } from "../../packages/core/tests/_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { DenoDeployTasks } from "../../packages/deno/mod.ts";
-import { runCli } from "./_harness.ts";
+import { runCli, withoutMaskDirectives } from "./_harness.ts";
 
 const TOKEN = "ddp_integration_token_never_printed";
 const SECRET = "sk-integration-secret-never-printed";
@@ -111,7 +111,7 @@ Deno.test({
     });
     assertEquals(result.code, 1);
     assertEquals(printed, []);
-    const shown = result.out + result.err;
+    const shown = withoutMaskDirectives(result.out + result.err);
     assertStringIncludes(shown, "API_KEY [redacted]");
     assertEquals(shown.includes(SECRET), false);
   },

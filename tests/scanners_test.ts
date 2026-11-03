@@ -20,6 +20,9 @@ import { assertEquals, assertThrows } from "../packages/core/tests/_assert.ts";
 import {
   ACTIONLINT_VERSION,
   actionlintTool,
+  buildToolchain,
+  CODECOV_CLI_VERSION,
+  codecovTool,
   GITLEAKS_VERSION,
   gitleaksTool,
   ZIZMOR_VERSION,
@@ -117,7 +120,33 @@ Deno.test("gitleaks spells x86-64 x64, unlike actionlint's amd64", () => {
   );
 });
 
-Deno.test("every scanner pins a 64-hex SHA-256 for each supported platform", () => {
+Deno.test("codecov resolves its per-OS binary on Codecov's CDN", () => {
+  const linux = resolve(codecovTool, LINUX);
+  assertEquals(
+    linux.url,
+    `https://cli.codecov.io/${CODECOV_CLI_VERSION}/linux/codecov`,
+  );
+  assertEquals(linux.archive, "raw");
+  assertEquals(
+    resolve(codecovTool, WINDOWS).url,
+    `https://cli.codecov.io/${CODECOV_CLI_VERSION}/windows/codecov.exe`,
+  );
+  assertEquals(
+    resolve(codecovTool, MAC_ARM).url,
+    `https://cli.codecov.io/${CODECOV_CLI_VERSION}/macos/codecov`,
+  );
+});
+
+Deno.test("every tool the build provisions pins a 64-hex SHA-256 for each supported platform", () => {
+  // The toolchain zuke.ts installs, so a tool added there without a checksum
+  // — downloaded and run unverified, never cached — fails here.
+  const chain = buildToolchain(".tools");
+  assertEquals(chain.trees.length, 0, "check the trees' checksums here too");
+  assertEquals(chain.npmTools.length, 0, "npm tools pin no SHA-256");
+  assertEquals(
+    chain.tools.map((t) => t.options_(".tools").name),
+    ["codecov", "zizmor", "actionlint", "gitleaks"],
+  );
   const platforms: InstallPlatform[] = [
     { os: "linux", arch: "x86_64" },
     { os: "linux", arch: "aarch64" },
@@ -125,9 +154,9 @@ Deno.test("every scanner pins a 64-hex SHA-256 for each supported platform", () 
     { os: "macos", arch: "aarch64" },
     { os: "windows", arch: "x86_64" },
   ];
-  for (const declare of [zizmorTool, actionlintTool, gitleaksTool]) {
+  for (const settings of chain.tools) {
     for (const platform of platforms) {
-      const { checksum } = resolve(declare, platform);
+      const { checksum } = resolve(() => settings, platform);
       assertEquals(
         /^[0-9a-f]{64}$/.test(checksum),
         true,

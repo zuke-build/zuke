@@ -131,8 +131,9 @@ Deno.test("a secret read through AzTasks is masked in the build's output", async
   const { code, out, err } = await runCli(Leaky, ["leak"]);
   assertEquals(code, 1);
   assertStringIncludes(out + err, "could not connect with");
-  // Under Actions the raw value is printed in `::add-mask::` on purpose, so
-  // the runner censors it; everything else must not carry it.
+  // Under Actions the run's redactor prints the raw value in `::add-mask::`
+  // as the wrapper registers it, on purpose, so the runner censors it in a
+  // child's own output too; everything else must not carry it.
   assertEquals(withoutMaskDirectives(out + err).includes(SECRET), false);
   assertEquals(calls[0].slice(1, 4), ["keyvault", "secret", "show"]);
 });

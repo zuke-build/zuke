@@ -49,7 +49,7 @@ value wherever it prints:
   the line is built rather than at the reporter. The argv handed to the
   operating system is unchanged — the command still works.
 - Under GitHub Actions, Zuke additionally emits `::add-mask::<value>` so the
-  runner masks the value in its own log stream.
+  runner masks the value in its own log stream (see below for which values).
 
 The mask is the literal text `[redacted]`. Matching is a plain substring
 replace, never a regular expression, so a secret containing regex-significant
@@ -82,9 +82,23 @@ runs echoes the secret to _its own_ stdout/stderr, that output streams straight
 to the terminal without passing through Zuke's reporter. Two mitigations apply:
 
 - Under GitHub Actions, the `::add-mask::` directive Zuke emits makes the runner
-  mask the value in subprocess output too.
+  mask the value in subprocess output too, from the moment it is emitted. Every
+  value that enters the run's redactor gets one, once: each `secret()`
+  parameter's value, a credential a tool wrapper registers at run time (an STS
+  session token, a Key Vault secret, a registry password — any wrapper that
+  calls `markSecret` or `markSecretsInOutput`), and a value a hosted build
+  (zuke-python's `ctx.secret()`) registers through the engine. The directive is
+  printed only when the run writes to the real console; an embedded `execute()`
+  with its own reporter, or a silent one, never receives the raw value.
 - As a rule, don't pass secrets as command-line arguments (they show up in
   process listings) or echo them; pass them through the environment or stdin.
+
+A build hosted by the engine (zuke-python) is covered the same way: the lines
+its body logs, and its worker process's own stdout and stderr, pass through the
+run's redactor before the engine prints them. That masks only the values the run
+knows — the secret parameters and whatever the body registered with
+`ctx.secret()` — and a worker's output from before the run configured it is
+forwarded as it is.
 
 ## Secret sources
 

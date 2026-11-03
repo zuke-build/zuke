@@ -5,6 +5,7 @@ import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { absolutePath, Build, target } from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
 import { withTemp } from "../../packages/core/tests/_temp.ts";
+import { withEnv } from "../../packages/core/tests/_env.ts";
 import { VERSION } from "../../packages/core/src/version.ts";
 
 // The `doc` command is build-independent; any build serves to reach it.
@@ -28,6 +29,28 @@ Deno.test("zuke doc runs deno doc for a local module in an isolated cwd", async 
     // A spec deno doc cannot resolve fails, and that failure is propagated.
     const missing = await runCli(Noop, ["doc", `${dir}/does-not-exist.ts`]);
     assertEquals(missing.code !== 0, true);
+  }, { prefix: "zuke-doc-it-" });
+});
+
+Deno.test("zuke doc ignores a deno.json planted above its isolated temp dir", async () => {
+  // The isolated cwd sits under the shared temp dir, whose ancestors any local
+  // user can seed. Deno would honour a config found there — here one that is
+  // not even JSON, which fails the run if Deno reads it. The runner's own
+  // workspace-root config stops the walk.
+  await withTemp(async (dir) => {
+    const shared = `${dir}/shared`;
+    await Deno.mkdir(shared);
+    await Deno.writeTextFile(
+      `${shared}/deno.json`,
+      '{ "workspace": ["./*"], ',
+    );
+    const mod = `${dir}/lib.ts`;
+    await Deno.writeTextFile(mod, "/** Kept. */\nexport const kept = 1;\n");
+    let code = -1;
+    await withEnv({ TMPDIR: shared, TMP: shared, TEMP: shared }, async () => {
+      code = (await runCli(Noop, ["doc", mod])).code;
+    });
+    assertEquals(code, 0);
   }, { prefix: "zuke-doc-it-" });
 });
 

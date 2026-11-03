@@ -1675,7 +1675,7 @@
       },
       "packages/engine": {
         "dependencies": [
-          "jsr:@zuke/core@^1.77.0"
+          "jsr:@zuke/core@^1.80.0"
         ]
       },
       "packages/eslint": {

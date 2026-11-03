@@ -130,11 +130,6 @@ export interface RunRecordInput {
 }
 
 /**
- * Build the initial {@link RunRecord} for a run: status `running`, a graph-shape
- * snapshot in declaration order, resolved non-secret parameters, and every
- * planned target seeded `pending`.
- */
-/**
  * The parameters a run record carries: every resolved, **non-secret** value,
  * keyed by property name.
  *
@@ -149,7 +144,7 @@ export function recordedParams(
 ): Record<string, string> {
   const recorded: Record<string, string> = {};
   for (const parameter of params) {
-    if (parameter.secret_ || !parameter.isSet_()) continue;
+    if (!recordable(parameter) || !parameter.isSet_()) continue;
     const value = parameter.stringValue_();
     if (parameter.name_ !== undefined && value !== undefined) {
       recorded[parameter.name_] = value;
@@ -158,6 +153,41 @@ export function recordedParams(
   return recorded;
 }
 
+/**
+ * The parameters a resume or a cancellation may replay from a stored
+ * {@link RunRecord.params}: only the keys naming a parameter `params` declares
+ * as recordable — the same rule {@link recordedParams} writes by.
+ *
+ * The record is read back from the store, so it is only as trustworthy as
+ * whoever can write there. A key naming a `.secret()` parameter can never have
+ * been written by this build, and replaying it would let the record outrank the
+ * environment, so it is dropped and the secret re-resolves from the environment.
+ * A key the build does not declare is dropped as well.
+ */
+export function replayableParams(
+  recorded: Record<string, string>,
+  params: ReadonlyMap<string, AnyParameter>,
+): Record<string, string> {
+  const replayable: Record<string, string> = {};
+  for (const [name, value] of Object.entries(recorded)) {
+    const parameter = params.get(name);
+    if (parameter !== undefined && recordable(parameter)) {
+      replayable[name] = value;
+    }
+  }
+  return replayable;
+}
+
+/** Whether a parameter's value may be stored in, and replayed from, a record. */
+function recordable(parameter: AnyParameter): boolean {
+  return !parameter.secret_;
+}
+
+/**
+ * Build the initial {@link RunRecord} for a run: status `running`, a graph-shape
+ * snapshot in declaration order, resolved non-secret parameters, and every
+ * planned target seeded `pending`.
+ */
 export function buildRunRecord(input: RunRecordInput): RunRecord {
   const graph = input.order.map((t) => ({
     name: t.name_ ?? "",

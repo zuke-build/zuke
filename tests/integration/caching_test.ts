@@ -481,3 +481,71 @@ Deno.test("a cancelled run does not leave its targets recorded as up to date", a
     });
   });
 });
+
+Deno.test("with a signing key, a store writer's swapped artifact is rebuilt, not restored", async () => {
+  await withStateDir(async () => {
+    await withTempCwd(async (dir) => {
+      const remoteDir = await Deno.makeTempDir({ prefix: "zuke-it-signed-" });
+      const names = ["ZUKE_REMOTE_CACHE_DIR", "ZUKE_REMOTE_CACHE_SIGNING_KEY"];
+      const prev = names.map((name) => Deno.env.get(name));
+      Deno.env.set("ZUKE_REMOTE_CACHE_DIR", remoteDir);
+      Deno.env.set("ZUKE_REMOTE_CACHE_SIGNING_KEY", "it-secret");
+      try {
+        await Deno.writeTextFile(`${dir}/input.txt`, "v1");
+        const log: string[] = [];
+        class B extends Build {
+          build = target().inputs("input.txt").outputs("out.txt").executes(
+            async () => {
+              log.push("build");
+              await Deno.writeTextFile("out.txt", "built");
+            },
+          );
+        }
+        const fresh = async () => {
+          await Deno.remove(`${dir}/.zuke`, { recursive: true });
+          await Deno.remove(`${dir}/out.txt`);
+        };
+
+        assertEquals((await runCli(B, ["build"])).code, 0);
+        const entries: string[] = [];
+        for await (const e of Deno.readDir(remoteDir)) entries.push(e.name);
+        // One entry: the archive with its MAC trailer, under the signed key.
+        assertEquals(entries.length, 1);
+        const artifact = entries[0];
+        assertStringIncludes(artifact, ".signed");
+
+        // The store writer replaces the archive and keeps the old trailer.
+        await fresh();
+        const genuine = await Deno.readFile(`${remoteDir}/${artifact}`);
+        await Deno.writeFile(
+          `${remoteDir}/${artifact}`,
+          new Uint8Array([
+            ...await gzip(tar([{ name: "out.txt", data: enc("evil") }])),
+            ...genuine.slice(-32),
+          ]),
+        );
+        if (Deno.build.os !== "windows") {
+          await Deno.chmod(`${remoteDir}/${artifact}`, 0o644);
+        }
+        const poisoned = await runCli(B, ["build"]);
+        assertEquals(poisoned.code, 0);
+        assertEquals(log, ["build", "build"]); // refused, so rebuilt
+        assertEquals(await Deno.readTextFile(`${dir}/out.txt`), "built");
+        assertStringIncludes(poisoned.out + poisoned.err, "does not match");
+
+        // The rebuild re-signed what it uploaded, so the next checkout restores.
+        await fresh();
+        assertEquals((await runCli(B, ["build"])).code, 0);
+        assertEquals(log, ["build", "build"]);
+        assertEquals(await Deno.readTextFile(`${dir}/out.txt`), "built");
+      } finally {
+        names.forEach((name, i) => {
+          const value = prev[i];
+          if (value === undefined) Deno.env.delete(name);
+          else Deno.env.set(name, value);
+        });
+        await Deno.remove(remoteDir, { recursive: true });
+      }
+    });
+  });
+});

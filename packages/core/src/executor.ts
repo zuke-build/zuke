@@ -25,11 +25,7 @@ import { defaultReadEnv, messageOf } from "./internal.ts";
 import { resolveOutputMode } from "./output_mode.ts";
 import { escapingReporter, type Reporter } from "./reporter.ts";
 export type { Reporter } from "./reporter.ts";
-import {
-  composeOutput,
-  emitActionsMasks,
-  writeJobSummary,
-} from "./execute_output.ts";
+import { composeOutput, writeJobSummary } from "./execute_output.ts";
 import { buildRunPlan } from "./run_plan.ts";
 import {
   applyAffectedSkips,
@@ -268,7 +264,6 @@ export async function execute(
   options: ExecuteOptions = {},
 ): Promise<BuildResult> {
   const {
-    baseReporter,
     reporter,
     redactor,
     writesToConsole,
@@ -295,16 +290,8 @@ export async function execute(
     options.prompt ?? defaultPrompt,
     redactor,
   );
-  // Gated on `writesToConsole` so an embedded `execute()` is never handed a raw
-  // secret — see emitActionsMasks for why the directive bypasses the redactor.
-  if (style.github && writesToConsole) {
-    const secrets: string[] = [];
-    for (const p of params.values()) {
-      const value = p.secret_ ? p.stringValue_() : undefined;
-      if (value !== undefined && value !== "") secrets.push(value);
-    }
-    emitActionsMasks(secrets, baseReporter);
-  }
+  // Under GitHub Actions the redactor itself emits `::add-mask::` for each
+  // secret as it is registered — see ActionsMaskingRedactor in execute_output.
   // A preflight-only run is how a workflow asks "may this run?" in a step that
   // deliberately holds no secrets, so the parameters those secrets fill are
   // missing by design there. Nothing runs that would read them; a preflight
@@ -836,9 +823,11 @@ async function resolveCache(
   const root = findConfigDir(Deno.cwd(), pathExists) ?? Deno.cwd();
   const storePath = absolutePath(root)(ARTIFACT_DIR, CACHE_FILE).path;
   const remote = resolveRemoteStore(remoteOption, build.remoteCache(), readEnv);
+  const signingKey = readEnv("ZUKE_REMOTE_CACHE_SIGNING_KEY");
   return await openCache(storePath, defaultCacheHost, {
     remote,
     warn: (message) => reporter.info(message),
+    signingKey: signingKey === "" ? undefined : signingKey,
   });
 }
 

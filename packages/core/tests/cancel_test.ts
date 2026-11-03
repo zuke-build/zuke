@@ -640,6 +640,54 @@ Deno.test("a secret in a compensation failure message is redacted", async () => 
   });
 });
 
+Deno.test("a stored record cannot supply a secret parameter to a compensation", async () => {
+  // The record is read back from the store, so whoever can write there could
+  // name a secret in `params`. Secrets re-resolve from the environment; a key
+  // the build does not declare is ignored, and a non-secret one still replays.
+  await withTempStore(async (store) => {
+    const seen: (string | undefined)[] = [];
+    const makeBuild = () => {
+      class B extends Build {
+        token = parameter("api token").secret();
+        env = parameter("target env");
+        deploy = target().executes(() => {}).onCancel(() => this.rollback);
+        rollback = target().executes(() => {
+          seen.push(this.token.value, this.env.value);
+        });
+        gate = target()
+          .dependsOn(this.deploy)
+          .waitsFor((s) => s.on(externalSignal("x")));
+      }
+      const build = new B();
+      discoverTargets(build);
+      return build;
+    };
+    const readEnv = (name: string) =>
+      name === "TOKEN" ? "from-env" : name === "ENV" ? "sit" : undefined;
+    const a = makeBuild();
+    await execute(a, a.gate, { silent: true, stateStore: store, readEnv });
+    const id = (await store.listRuns({}))[0].id;
+    const stored = await store.getRun(id);
+    if (stored === null) throw new Error("run missing");
+    assertEquals(stored.record.params, { env: "sit" });
+    await store.putRun(
+      {
+        ...stored.record,
+        params: { env: "prod", token: "from-record", ghost: "x" },
+      },
+      stored.version,
+    );
+
+    await cancelRun(makeBuild(), {
+      runId: id,
+      stateStore: store,
+      silent: true,
+      readEnv,
+    });
+    assertEquals(seen, ["from-env", "prod"]);
+  });
+});
+
 Deno.test("an in-process cancellation records a cancel audit event", async () => {
   await withTempStore(async (store) => {
     let started: () => void = () => {};

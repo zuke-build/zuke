@@ -137,8 +137,9 @@ Every published `@zuke/*` version can be verified against this repository:
   the distribution site. To verify, open the version on
   [jsr.io](https://jsr.io/@zuke/core) and check its **provenance** panel: it
   names this repository, the exact commit, and the workflow run that published
-  it. A version without provenance, or with provenance naming another
-  repository, should be treated as compromised and reported (see above).
+  it. A version without provenance, or with provenance naming another repository
+  or a commit that is not on `master`, should be treated as compromised and
+  reported (see above).
 - **Source equality.** The published artifacts are the committed source files
   (there is no build/compile step), so a version's contents can be diffed
   directly against its provenance-named commit.

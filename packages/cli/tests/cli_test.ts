@@ -467,6 +467,44 @@ Deno.test("main doc propagates a non-zero exit from the real runner", async () =
   assertEquals(code !== 0, true);
 });
 
+Deno.test("main doc's real runner ignores a deno.json planted above its temp dir", async () => {
+  // The isolated directory sits under the shared temp dir, whose ancestors
+  // any local user can seed. A planted import map there — even one claiming
+  // every subdirectory as a workspace member — must not steer what is
+  // documented. With TMPDIR pointed at a parent holding such a config, the
+  // remapped module's symbol must not appear.
+  await withTemp(async (dir) => {
+    const shared = `${dir}/shared`;
+    await Deno.mkdir(shared);
+    await Deno.writeTextFile(
+      `${dir}/evil.ts`,
+      "/** Planted. */\nexport const PLANTED_REMAP = 1;\n",
+    );
+    await Deno.writeTextFile(
+      `${shared}/deno.json`,
+      JSON.stringify({
+        workspace: ["./*"],
+        imports: { planted: "../evil.ts" },
+      }),
+    );
+    const fixture = `${dir}/lib.ts`;
+    await Deno.writeTextFile(
+      fixture,
+      '/** Kept. */\nexport const kept = 1;\nexport * from "planted";\n',
+    );
+    const run = await capture(async () => {
+      let exit = 0;
+      await withEnv({ TMPDIR: shared, TMP: shared, TEMP: shared }, async () => {
+        exit = await main(["doc", fixture], new FakeHost());
+      });
+      return exit;
+    });
+    const all = [...run.out, ...run.err].join("\n");
+    assertStringIncludes(all, "kept");
+    assertEquals(all.includes("PLANTED_REMAP"), false, all);
+  });
+});
+
 Deno.test("main setup honours --dir", async () => {
   const host = new FakeHost();
   const code = await main(

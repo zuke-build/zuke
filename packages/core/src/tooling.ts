@@ -237,6 +237,9 @@ export abstract class ToolSettings {
    * settings — the wrapper is what knows which of its fields is a credential.
    * A build marks its own values by declaring them with
    * {@link "./params.ts".parameter} and `.secret()`, which is the same redactor.
+   * Under GitHub Actions, on the real console, registering a value also prints
+   * `::add-mask::` for it, as a `.secret()` parameter's value is, so the runner
+   * masks it in a later command's own output as well.
    *
    * Does nothing outside a run, where there is no redactor to register with —
    * a wrapper used standalone in a script still works, it simply has nothing

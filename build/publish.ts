@@ -17,14 +17,6 @@ import { DenoRunSettings, DenoTasks } from "@zuke/deno";
  */
 export const TOOLS_ROOT: AbsolutePath = repoRoot(".zuke", "tools");
 
-/**
- * The pinned Codecov CLI version `coverageUpload` downloads. Pinned (never
- * `latest`) so the build is reproducible and fetches a fixed artifact rather
- * than a moving target; bump it deliberately. Codecov serves versioned binaries
- * at `cli.codecov.io/v<semver>/<platform>/codecov`.
- */
-export const CODECOV_CLI_VERSION = "v11.2.8";
-
 /** How long to wait for one `deno publish` before treating it as stalled. */
 export const PUBLISH_TIMEOUT_MS = 180_000;
 
