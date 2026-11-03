@@ -499,9 +499,8 @@ Deno.test("an upload streams to a store that takes a stream", async () => {
 
 Deno.test("defaultCacheHost spools to a temporary file it can reopen and remove", async () => {
   await withTemp(async (dir) => {
-    const previous = Deno.env.get("TMPDIR");
-    Deno.env.set("TMPDIR", dir); // so the spool's file is the only one here
-    try {
+    // So the spool's file is the only one here.
+    await withTempDirEnv(dir, async () => {
       const spooled = await defaultCacheHost.spool?.(
         byteStream(enc("artifact bytes")),
       );
@@ -526,31 +525,46 @@ Deno.test("defaultCacheHost spools to a temporary file it can reopen and remove"
       );
       assertStringIncludes(err.message, "connection reset");
       assertEquals([...Deno.readDirSync(dir)].length, 0);
-    } finally {
-      if (previous === undefined) Deno.env.delete("TMPDIR");
-      else Deno.env.set("TMPDIR", previous);
-    }
+    });
   });
 });
 
 Deno.test("defaultCacheHost cancels the download when it cannot make a spool file", async () => {
   await withTemp(async (dir) => {
-    const previous = Deno.env.get("TMPDIR");
-    Deno.env.set("TMPDIR", `${dir}/missing`); // no such directory
     let cancelled = false;
     const download = new ReadableStream<Uint8Array<ArrayBuffer>>({
       cancel() {
         cancelled = true;
       },
     });
-    try {
+    // No such directory, so no temporary file can be made.
+    await withTempDirEnv(`${dir}/missing`, async () => {
       await assertRejects(() =>
         defaultCacheHost.spool?.(download) ?? Promise.resolve()
       );
-      assertEquals(cancelled, true);
-    } finally {
-      if (previous === undefined) Deno.env.delete("TMPDIR");
-      else Deno.env.set("TMPDIR", previous);
-    }
+    });
+    assertEquals(cancelled, true);
   });
 });
+
+/**
+ * Run `fn` with the system temporary directory pointed at `dir`: `TMPDIR` on
+ * POSIX, `TMP`/`TEMP` on Windows, all three restored afterwards.
+ */
+async function withTempDirEnv(
+  dir: string,
+  fn: () => Promise<void>,
+): Promise<void> {
+  const names = ["TMPDIR", "TMP", "TEMP"];
+  const previous = names.map((name) => Deno.env.get(name));
+  for (const name of names) Deno.env.set(name, dir);
+  try {
+    await fn();
+  } finally {
+    names.forEach((name, i) => {
+      const value = previous[i];
+      if (value === undefined) Deno.env.delete(name);
+      else Deno.env.set(name, value);
+    });
+  }
+}
