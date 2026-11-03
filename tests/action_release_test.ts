@@ -22,6 +22,7 @@ import {
   actionDigest,
   type ActionPinFile,
   type ActionRelease,
+  assertCiOnReleaseBranch,
   assertReleasable,
   assertWorkflowInputsAvailable,
   declaredInputs,
@@ -242,6 +243,39 @@ Deno.test("a release is refused from anywhere but a clean, synced master", () =>
   assertThrows(() => assertReleasable({ ...ok, dirty: true }));
   // A diverged branch names a commit nobody else has.
   assertThrows(() => assertReleasable({ ...ok, syncedWithRemote: false }));
+});
+
+Deno.test("a credentialed release job refuses any CI ref but master", () => {
+  // release.yml can be dispatched on any branch; publishJsr, release,
+  // syncWebsite and cliTap would then run its unreviewed code with JSR's
+  // OIDC identity or the app key.
+  const guard = (ref: string | undefined) => () =>
+    assertCiOnReleaseBranch("publish to JSR", "why", { ci: true, ref });
+  guard("refs/heads/master")();
+  assertThrows(
+    guard("refs/heads/feat/x"),
+    Error,
+    "refusing to publish to JSR from feat/x: why, so it may only run from master",
+  );
+  // A tag, a PR merge ref, an unset ref, or a bare name that only looks like
+  // the branch is not a branch ref, and is refused under its own name.
+  assertThrows(guard("refs/tags/v1.0.0"), Error, "from ref refs/tags/v1.0.0");
+  assertThrows(guard("refs/pull/7/merge"), Error, "from ref refs/pull/7/merge");
+  assertThrows(guard(undefined), Error, "from ref (unset)");
+  assertThrows(guard("master"), Error, "from ref master");
+  // A branch merely named like master is not master.
+  assertThrows(guard("refs/heads/master-evil"));
+  assertThrows(guard("refs/heads/feat/refs/heads/master"));
+});
+
+Deno.test("the CI release guard leaves a local run alone", () => {
+  // Locally there is no OIDC identity or app key to protect: a maintainer's
+  // run holds only their own credentials, on whatever branch they are on.
+  assertCiOnReleaseBranch("publish to JSR", "why", {
+    ci: false,
+    ref: "refs/heads/feat/x",
+  });
+  assertCiOnReleaseBranch("publish to JSR", "why", { ci: false });
 });
 
 Deno.test("the guards run before anything is written", async () => {

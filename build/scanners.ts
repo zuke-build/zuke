@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * The supply-chain scanners behind the `security` target, declared as pinned
+ * The build's toolchain: the supply-chain scanners behind the `security`
+ * target and the Codecov CLI behind `coverageUpload`, declared as pinned
  * toolchain entries so the build provisions them itself.
  *
  * This exists so the security workflow needs **no install step**. It used to
@@ -21,7 +22,19 @@
  * @module
  */
 
-import type { Platform, ToolInstallSettings } from "@zuke/core";
+import {
+  type PathLike,
+  type Platform,
+  type Toolchain,
+  toolchain,
+  type ToolInstallSettings,
+} from "@zuke/core";
+
+/**
+ * The pinned Codecov CLI version `coverageUpload` runs. Codecov serves
+ * versioned binaries at `cli.codecov.io/<version>/<os>/codecov`.
+ */
+export const CODECOV_CLI_VERSION = "v11.2.8";
 
 /** The pinned `zizmor` version (GitHub Actions workflow static analysis). */
 export const ZIZMOR_VERSION = "1.25.2";
@@ -85,6 +98,17 @@ const GITLEAKS_SHA256: Record<string, string> = {
     "d29144deff3a68aa93ced33dddf84b7fdc26070add4aa0f4513094c8332afc4e",
   windows_arm64:
     "b95f5e4f5c425cedca7ee203d9afd29597e692c4924a12ed42f970537c72cc0f",
+};
+
+/**
+ * SHA-256 of each pinned Codecov CLI binary, keyed by Codecov's OS directory
+ * (one binary per OS), from `cli.codecov.io/<version>/<os>/codecov.SHA256SUM`
+ * (`codecov.exe.SHA256SUM` on Windows).
+ */
+const CODECOV_SHA256: Record<string, string> = {
+  linux: "8930c4bb30254a42f3d8c340706b1be340885e20c0df5160a24efa2e030e662b",
+  macos: "ff380d049c376134c35fecedc10d620e5c54f3f2ee8068e6dd994dc4784619df",
+  windows: "1e9f7798cb16fc5b3bea0cbba1e71c6ecbd79e9fb98c2650add8a8c397f06557",
 };
 
 /**
@@ -186,4 +210,37 @@ export function gitleaksTool(s: ToolInstallSettings): ToolInstallSettings {
         slug(p)
       }.${packedAsZip(p)}`
     );
+}
+
+/**
+ * Declare the Codecov CLI on a toolchain: one raw binary per OS on Codecov's
+ * own CDN, whose directory names (`linux`/`macos`/`windows`) are exactly
+ * Zuke's `os`.
+ */
+export function codecovTool(s: ToolInstallSettings): ToolInstallSettings {
+  return s
+    .name("codecov")
+    .checksum((p) => pinned("codecov", CODECOV_SHA256, p.os))
+    .url((p) =>
+      `https://cli.codecov.io/${CODECOV_CLI_VERSION}/${p.os}/codecov${
+        p.os === "windows" ? ".exe" : ""
+      }`
+    );
+}
+
+/**
+ * Every external binary the build provisions, installed into `destDir`. Kept
+ * here rather than inline in `zuke.ts` so a test can check that each one pins
+ * a checksum: a tool added without one would be fetched and run unverified.
+ */
+export function buildToolchain(destDir: PathLike): Toolchain {
+  return toolchain((t) =>
+    t.tool((s) => codecovTool(s).destDir(destDir))
+      // The security target's scanners. Declaring them here is what lets the
+      // security workflow drop its install step — and what makes
+      // `./zuke security` runnable on a laptop with nothing installed.
+      .tool((s) => zizmorTool(s).destDir(destDir))
+      .tool((s) => actionlintTool(s).destDir(destDir))
+      .tool((s) => gitleaksTool(s).destDir(destDir))
+  );
 }

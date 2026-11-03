@@ -31,7 +31,6 @@ import {
   repoRoot,
   run,
   target,
-  toolchain,
 } from "@zuke/core";
 import { GitTasks } from "@zuke/git";
 import { GhTasks } from "@zuke/gh";
@@ -59,6 +58,7 @@ import {
   ACTION_PIN,
   ACTION_SLUG,
   ACTION_VERSION_FILE,
+  assertCiOnReleaseBranch,
   assertWorkflowInputsAvailable,
   pinBody,
   pinBranch,
@@ -99,7 +99,6 @@ import {
   PACKAGES,
 } from "./build/packages.ts";
 import {
-  CODECOV_CLI_VERSION,
   installCli,
   publishAll,
   publishPackage,
@@ -170,11 +169,10 @@ import { actionPin } from "./build/action_pins.ts";
 import { scannerConfigDenial } from "./build/scanner_policy.ts";
 import {
   ACTIONLINT_VERSION,
-  actionlintTool,
+  buildToolchain,
+  CODECOV_CLI_VERSION,
   GITLEAKS_VERSION,
-  gitleaksTool,
   ZIZMOR_VERSION,
-  zizmorTool,
 } from "./build/scanners.ts";
 import { BOOTSTRAP_ENDPOINTS, githubWorkflows } from "./build/workflows.ts";
 
@@ -429,54 +427,32 @@ class ZukeBuild extends Build {
 
   // The build's external CLIs, declared with `toolchain()` so the build file
   // describes the environment it needs — dogfooding the toolchain provisioner.
-  // `install()` fetches each on demand (concurrently), caches it, and returns
-  // its path for a wrapper's `.toolPath(...)`. Codecov publishes a rolling
-  // artifact per version, so no `checksum` is pinned here; when a tool ships a
-  // stable per-platform hash, add
-  // `.checksum(({ os, arch }) => sums[`${os}-${arch}`])` to verify and cache it
-  // (see docs/installing-tools.md).
-  tools = toolchain((t) =>
-    t.tool((s) =>
-      s
-        .name("codecov")
-        .destDir(TOOLS_ROOT)
-        // Codecov ships a standalone CLI binary per platform, on its own CDN.
-        // Its directory names (macos/linux/windows) are exactly Zuke's `os`.
-        .url((p) =>
-          `https://cli.codecov.io/${CODECOV_CLI_VERSION}/${p.os}/codecov${
-            p.os === "windows" ? ".exe" : ""
-          }`
-        )
-    )
-      // The three scanners the `security` target drives, pinned and
-      // checksum-verified in build/scanners.ts. Declaring them here is what
-      // lets the security workflow drop its install step — and what makes
-      // `./zuke security` runnable on a laptop with nothing installed.
-      .tool((s) => zizmorTool(s).destDir(TOOLS_ROOT))
-      .tool((s) => actionlintTool(s).destDir(TOOLS_ROOT))
-      .tool((s) => gitleaksTool(s).destDir(TOOLS_ROOT))
-  );
+  // `install()` fetches each on demand (concurrently), verifies it against the
+  // SHA-256 pinned in build/scanners.ts, caches it, and returns its path for a
+  // wrapper's `.toolPath(...)`. Declared there so a test holds every tool to a
+  // pinned checksum.
+  tools = buildToolchain(TOOLS_ROOT);
 
   // The toolchain as a cacheable target, dogfooding the remote cache on the
   // one thing this build produces that is worth sharing between runs: the
-  // scanner binaries. Keyed by platform and pinned versions, with the binaries
+  // pinned binaries. Keyed by platform and pinned versions, with the binaries
   // and their checksum markers as outputs, a run on a fresh runner restores
   // them from the store (the GitHub Actions cache, on CI) and `install()`
-  // reuses them after re-verifying each against its marker. Codecov is not an
-  // output: it is pinned by URL without a checksum, so it is fetched every run.
+  // reuses them after re-verifying each against its marker.
   provisionTools = target()
     .description("Provision the pinned scanner binaries into .zuke/tools")
     .cacheKey(() =>
       [
         Deno.build.os,
         Deno.build.arch,
+        CODECOV_CLI_VERSION,
         ZIZMOR_VERSION,
         ACTIONLINT_VERSION,
         GITLEAKS_VERSION,
       ].join(":")
     )
     .outputs(
-      ...["zizmor", "actionlint", "gitleaks"].flatMap((name) => {
+      ...["codecov", "zizmor", "actionlint", "gitleaks"].flatMap((name) => {
         const bin = Deno.build.os === "windows" ? `${name}.exe` : name;
         return [`.zuke/tools/${bin}`, `.zuke/tools/${bin}.install.json`];
       }),
@@ -567,6 +543,10 @@ class ZukeBuild extends Build {
       "Open and merge a website PR with refreshed llms.txt + api.json",
     )
     .executes(async () => {
+      assertCiOnReleaseBranch(
+        "sync the website",
+        "it hands the build the app's private key",
+      );
       await runWebsiteSync(this);
     });
 
@@ -1537,6 +1517,10 @@ class ZukeBuild extends Build {
   release = target()
     .description("Maintain release PRs and GitHub releases (release-please)")
     .executes(async () => {
+      assertCiOnReleaseBranch(
+        "cut releases",
+        "it mints the app's release token",
+      );
       const token = Deno.env.get("GITHUB_TOKEN");
       const repo = Deno.env.get("GITHUB_REPOSITORY");
       if (token === undefined || repo === undefined) {
@@ -2031,6 +2015,12 @@ class ZukeBuild extends Build {
   publishJsr = target()
     .description("Publish new package versions to JSR, core first")
     .executes(async () => {
+      // JSR's trusted publishing accepts any branch of this repository, so a
+      // dispatch on a feature branch would publish its unreviewed code.
+      assertCiOnReleaseBranch(
+        "publish to JSR",
+        "the publish carries provenance every consumer trusts",
+      );
       await publishAll(PACKAGES, PACKAGE_DEPENDENCIES, {
         versionOf: localVersion,
         isPublished,
@@ -2133,6 +2123,10 @@ class ZukeBuild extends Build {
   cliTap = target()
     .description("Publish the CLI's formula to the Homebrew tap")
     .executes(async () => {
+      assertCiOnReleaseBranch(
+        "publish the formula",
+        "it mints a token that writes the tap",
+      );
       const credentials = resolveAppCredentials({
         appId: Deno.env.get("ZUKE_BUILD_APP_ID"),
         privateKey: Deno.env.get("ZUKE_BUILD_APP_KEY"),

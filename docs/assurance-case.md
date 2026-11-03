@@ -85,7 +85,10 @@ against public CI.
   coverage gate fails the build below threshold rather than warning.
 - **Complete mediation.** One gate (`./zuke ci`) stands in front of every merge
   — the same gate locally and in CI, so there is no unchecked path to `master`;
-  releases are cut only from `master`.
+  releases are cut only from `master`: in CI, the release, JSR publish, website
+  sync and tap targets refuse any other ref. That refusal guards against a
+  mistaken dispatch of `release.yml`, not against a write-access account, whose
+  branch runs its own copy of the build.
 - **Economy of mechanism.** Zero runtime dependencies and a single toolchain
   (Deno) keep the attack surface enumerable: what ships is only this
   repository's source.
@@ -93,8 +96,11 @@ against public CI.
   `build/workflows.ts`), the scanners, and this assurance case are all public;
   nothing relies on secrecy.
 - **Separation of privilege.** Publishing requires the release pipeline's OIDC
-  identity — a stolen personal token cannot produce a provenance-valid release,
-  and provenance names the workflow and commit for anyone to check.
+  identity — a stolen token without write access cannot produce a
+  provenance-valid release, and provenance names the workflow, ref and commit
+  for anyone to check. A token with write access can run a workflow on a branch
+  of its own, so a release whose provenance names a ref other than `master` is
+  not one this project cut.
 
 ## Common implementation weaknesses countered
 
