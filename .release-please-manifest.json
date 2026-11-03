@@ -1,5 +1,5 @@
 {
-  "packages/core": "1.78.1",
+  "packages/core": "1.79.0",
   "packages/deno": "1.5.0",
   "packages/docs": "1.0.1",
   "packages/engine": "1.1.1",
