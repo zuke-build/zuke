@@ -325,6 +325,22 @@ const store = new HttpStateStore({ url: "https://zuke-state.internal", token });
 > there is no path to sit on — and a deliberate plaintext endpoint elsewhere is
 > reachable with `ZUKE_ALLOW_INSECURE_URL=1`. The same rule and the same opt-out
 > apply to `ZUKE_REGISTRY_URL` and `ZUKE_REMOTE_CACHE_URL`.
+>
+> **Write access to the store is the power to run the build.** A run record is
+> not only a log: `zuke resume`, `resume --check`, `zuke cancel` and the reap
+> sweep read it back as their instructions. Whoever can write a build's records
+> can therefore make its next resume run the build's real target bodies with
+> **any non-secret parameter values** they choose, and can mark an approval gate
+> `succeeded` (or its signal delivered) so the human gate is skipped. The
+> record's `buildId` is a self-asserted string, not an authenticated identity.
+> What a record **cannot** supply is a `.secret()` value: a resume and a
+> cancellation ignore any `params` key naming a secret parameter (or no declared
+> parameter at all), so secrets always re-resolve from the environment. Grant
+> write access to the store exactly as you would grant the right to run the
+> build, and on a pooled HTTP service **scope each bearer token to one build's
+> URL prefix** — a token that can write another build's prefix can drive that
+> build's resumes. (Zuke does not yet carry a build identity in the protocol or
+> sign records, so this scoping is the server's job.)
 
 ## Concurrency & compare-and-swap
 

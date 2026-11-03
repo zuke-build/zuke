@@ -60,7 +60,7 @@ import type { StateStore } from "./state/store.ts";
 import { resolveRunStore } from "./run_store.ts";
 import { acquireCancelLock } from "./state/cancel_lock.ts";
 import { acquireLease, RUN_LEASE_PREFIX } from "./state/run_lease.ts";
-import { resolveActor } from "./state/record.ts";
+import { replayableParams, resolveActor } from "./state/record.ts";
 import { settleUnreachedTargets } from "./state/settle.ts";
 import {
   isTerminalRunStatus,
@@ -911,15 +911,17 @@ export async function settleExternally(
     const record = reread?.record ?? transitioned.record;
 
     // Resolve compensation targets by reference, and make `this.<param>.value`
-    // available to their bodies (from the record's non-secret params; secrets
-    // re-resolve from the environment, exactly as a resume does). Retain the
-    // seeded redactor so a compensation's failure message can't leak a secret.
+    // available to their bodies (from the record's non-secret params, filtered
+    // by `replayableParams` so a stored key naming a secret is ignored and
+    // secrets re-resolve from the environment, exactly as a resume does).
+    // Retain the seeded redactor so a compensation's failure message can't
+    // leak a secret.
     const targets = discoverTargets(build);
     const params = discoverParameters(build);
     const redactor = new Redactor();
     await resolveParameters(
       params,
-      record.params,
+      replayableParams(record.params, params),
       readEnv,
       () => undefined,
       redactor,

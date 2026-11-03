@@ -4,6 +4,7 @@
 import { assertEquals, assertRejects, messageOf } from "./_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target } from "../src/target.ts";
+import { parameter } from "../src/params.ts";
 import { execute } from "../src/executor.ts";
 import {
   AlreadyResumedError,
@@ -1175,5 +1176,58 @@ Deno.test("a record's root target cannot forge a command during a sweep", async 
       errors[0].split(NL).some((l) => l.startsWith("::stop-commands::")),
       false,
     );
+  });
+});
+
+Deno.test("a stored record cannot supply a secret parameter to a resume", async () => {
+  // Secrets are never written into a record, so a record naming one was
+  // crafted by whoever can write to the store. The resume must take the
+  // secret from the environment, while a recorded non-secret value replays.
+  await withTempStore(async (store) => {
+    const seen: (string | undefined)[] = [];
+    const makeBuild = () => {
+      class CD extends Build {
+        token = parameter("deploy token").secret();
+        env = parameter("target env");
+        deploy = target().executes(() => {});
+        gate = target()
+          .dependsOn(this.deploy)
+          .waitsFor((s) => s.on(externalSignal("approved")));
+        promote = target().dependsOn(this.gate).executes(() => {
+          seen.push(this.token.value, this.env.value);
+        });
+      }
+      const build = new CD();
+      discoverTargets(build);
+      return build;
+    };
+    const a = makeBuild();
+    await execute(a, a.promote, {
+      silent: true,
+      stateStore: store,
+      readEnv: (name) =>
+        name === "TOKEN" ? "launch-env" : name === "ENV" ? "sit" : undefined,
+    });
+    const runId = (await store.listRuns({}))[0].id;
+    const stored = await store.getRun(runId);
+    if (stored === null) throw new Error("run missing");
+    assertEquals(stored.record.params, { env: "sit" });
+    await store.putRun(
+      {
+        ...stored.record,
+        params: { env: "prod", token: "from-record", ghost: "x" },
+      },
+      stored.version,
+    );
+
+    const result = await resumeRun(makeBuild(), {
+      runId,
+      signal: "approved",
+      silent: true,
+      stateStore: store,
+      readEnv: (name) => name === "TOKEN" ? "resume-env" : undefined,
+    });
+    assertEquals(result.ok, true);
+    assertEquals(seen, ["resume-env", "prod"]);
   });
 });

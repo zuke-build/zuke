@@ -189,6 +189,13 @@ the [filesystem state store](./state.md) (`.zuke/runs`) **by default** — no
 is authoritative for expiry, which side-steps client clock skew. A build that
 declares `.lock()` with state explicitly disabled fails with a friendly error.
 
+A lock is only as exclusive as the store's access control: anyone who can write
+the store can release or take over a lock, and can write the run records a
+resume acts on — the power to run the build with chosen non-secret parameters
+and satisfied approval gates. On a shared HTTP service, scope each bearer token
+to one build's URL prefix
+([state.md](./state.md#httpstatestore--hosted-service-for-production)).
+
 ## Concurrency guarantee
 
 Acquisition is atomic. Two runs racing for the same free key → **exactly one**

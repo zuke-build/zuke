@@ -256,8 +256,18 @@ client validates every summary and does not re-sort.
   the minimum; a store that already does optimistic concurrency (e.g. a
   k8s-annotation store with resource versions) maps onto it directly.
 - **Secrets.** Records never contain secret parameters (Zuke excludes them
-  before sending), but treat the store as sensitive: it holds non-secret
-  parameters, target metadata, and actor identity.
+  before sending, and ignores a record's value for one when it reads the record
+  back), but treat the store as sensitive: it holds non-secret parameters,
+  target metadata, and actor identity.
+- **Write access is execution control.** A resume or cancellation acts on what
+  the record says: its non-secret parameter values, which targets already
+  succeeded, and which signals were delivered. A client that can write a build's
+  records can make that build's next resume run with chosen non-secret
+  parameters and with its approval gates satisfied. On a service shared by
+  several builds, **scope each bearer token to one build's URL prefix**; one
+  token across all of them lets any build drive another's resumes. See
+  [state.md](./state.md#httpstatestore--hosted-service-for-production) for the
+  full statement.
 - **Transport security.** Terminate TLS and enforce authn/authz in front of the
   service as you would any internal API; the client provides the bridge, not a
   gateway.
