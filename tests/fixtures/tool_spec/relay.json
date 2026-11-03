@@ -1,0 +1,83 @@
+{
+  "name": "relay",
+  "summary": "A task object typed by an interface that takes its tasks from the ones it extends, the shape `GhTasks` has: the inherited tasks come first, in the order the bases are listed, one a base shares is read once, and a task the interface redeclares keeps its inherited place with the new signature.",
+  "tasks": [
+    {
+      "name": "RelayTasks",
+      "doc": "Tasks reached only through `extends`.",
+      "tasks": [
+        {
+          "name": "ping",
+          "doc": "Answer the name back.",
+          "params": [
+            {
+              "name": "name",
+              "type": {
+                "kind": "string"
+              },
+              "rest": false,
+              "optional": false
+            }
+          ],
+          "returns": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "send",
+          "doc": "Send a message, to a channel.",
+          "params": [
+            {
+              "name": "message",
+              "type": {
+                "kind": "string"
+              },
+              "rest": false,
+              "optional": false
+            },
+            {
+              "name": "channel",
+              "type": {
+                "kind": "string"
+              },
+              "rest": false,
+              "optional": true
+            }
+          ],
+          "returns": {
+            "kind": "boolean"
+          }
+        },
+        {
+          "name": "receive",
+          "doc": "Receive up to `limit` messages.",
+          "params": [
+            {
+              "name": "limit",
+              "type": {
+                "kind": "number"
+              },
+              "rest": false,
+              "optional": false
+            }
+          ],
+          "returns": {
+            "kind": "array",
+            "element": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "stop",
+          "doc": "Stop the relay.",
+          "params": [],
+          "returns": {
+            "kind": "null"
+          }
+        }
+      ]
+    }
+  ],
+  "settings": []
+}
