@@ -22,11 +22,71 @@ import { type DenoCompileSettings, DenoTasks } from "@zuke/deno";
 import { type AbsolutePath, absolutePath } from "@zuke/core";
 import { $ } from "@zuke/core/shell";
 import { binaryPath } from "./cli_package.ts";
-import { CLI_TARGETS, WINDOWS_TRIPLE } from "./cli_release.ts";
+import { CLI_TARGETS, type Fetch, WINDOWS_TRIPLE } from "./cli_release.ts";
 
 /** The published package a release's binaries are compiled from. */
 export function cliSpecifier(version: string): string {
   return `jsr:@zuke/cli@${version}`;
+}
+
+/** The registry document `deno compile` resolves {@link cliSpecifier} against. */
+export const CLI_META_URL = "https://jsr.io/@zuke/cli/meta.json";
+
+/** How often {@link awaitJsrListing} asks again, and for how long in all. */
+const LISTING_POLL_MS = 5_000;
+const LISTING_DEADLINE_MS = 180_000;
+
+/** Pause for `ms`, the default clock of {@link awaitJsrListing}. */
+function pause(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Wait until JSR lists `version` of `@zuke/cli`, polling {@link CLI_META_URL}
+ * every few seconds for up to three minutes.
+ *
+ * The publish job finishes seconds before the registry's metadata shows the
+ * release it accepted, and `deno compile` resolves the specifier against that
+ * metadata: the first CLI release compiled right after its publish failed
+ * with "Could not find version". `fetcher` and `wait` are injectable so the
+ * wait is testable without the registry or the clock.
+ *
+ * @throws {Error} naming the version, the document and the last answer when
+ * the deadline passes.
+ */
+export async function awaitJsrListing(
+  version: string,
+  fetcher: Fetch = fetch,
+  wait: (ms: number) => Promise<void> = pause,
+): Promise<void> {
+  let last = "";
+  for (let waited = 0;; waited += LISTING_POLL_MS) {
+    const response = await fetcher(CLI_META_URL, { cache: "no-store" });
+    if (response.ok) {
+      const meta: unknown = await response.json();
+      const versions = typeof meta === "object" && meta !== null
+        ? Reflect.get(meta, "versions")
+        : undefined;
+      if (
+        typeof versions === "object" && versions !== null &&
+        Object.hasOwn(versions, version)
+      ) {
+        return;
+      }
+      last = `a document not listing it`;
+    } else {
+      last = `HTTP ${response.status}`;
+    }
+    if (waited >= LISTING_DEADLINE_MS) {
+      throw new Error(
+        `@zuke/cli ${version} is not listed by ${CLI_META_URL} after ` +
+          `${LISTING_DEADLINE_MS / 1000}s (last answer: ${last}), so the ` +
+          `compile would not resolve it. Re-run the job once the registry ` +
+          `shows the release.`,
+      );
+    }
+    await wait(LISTING_POLL_MS);
+  }
 }
 
 /** One `deno compile`, as {@link compileCliBinaries} runs it. */

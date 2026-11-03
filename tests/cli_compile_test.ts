@@ -21,6 +21,8 @@ import { absolutePath } from "@zuke/core";
 import { DenoCompileSettings } from "@zuke/deno";
 import {
   assertReportsVersion,
+  awaitJsrListing,
+  CLI_META_URL,
   cliSpecifier,
   compileCliBinaries,
 } from "../build/cli_compile.ts";
@@ -110,4 +112,71 @@ Deno.test("assertReportsVersion runs a binary named relative to the build's dire
       await denoVersionLine(),
     );
   });
+});
+
+/**
+ * A registry answering each call from `answers` in turn: a status, or the
+ * versions a 200 lists. The last answer repeats once they run out.
+ */
+function registry(
+  answers: Array<number | string[]>,
+): { fetcher: typeof fetch; urls: string[]; waits: number[] } {
+  const urls: string[] = [];
+  const waits: number[] = [];
+  let calls = 0;
+  const fetcher: typeof fetch = (input) => {
+    urls.push(String(input));
+    const answer = answers[Math.min(calls++, answers.length - 1)];
+    return Promise.resolve(
+      typeof answer === "number"
+        ? new Response("", { status: answer })
+        : Response.json({
+          latest: answer.at(-1),
+          versions: Object.fromEntries(answer.map((v) => [v, {}])),
+        }),
+    );
+  };
+  return { fetcher, urls, waits };
+}
+
+/** The clock {@link awaitJsrListing} is given: records, never sleeps. */
+function clock(waits: number[]): (ms: number) => Promise<void> {
+  return (ms) => {
+    waits.push(ms);
+    return Promise.resolve();
+  };
+}
+
+Deno.test("awaitJsrListing returns at once when the registry already lists the version", async () => {
+  const { fetcher, urls, waits } = registry([["1.0.0", "2.1.0"]]);
+  await awaitJsrListing("2.1.0", fetcher, clock(waits));
+  assertEquals(urls, [CLI_META_URL]);
+  assertEquals(waits, []);
+});
+
+Deno.test("awaitJsrListing polls until the version appears, through a registry hiccup", async () => {
+  const { fetcher, urls, waits } = registry([["1.0.0"], 503, [
+    "1.0.0",
+    "2.1.0",
+  ]]);
+  await awaitJsrListing("2.1.0", fetcher, clock(waits));
+  assertEquals(urls.length, 3);
+  assertEquals(waits, [5000, 5000]);
+});
+
+Deno.test("awaitJsrListing gives up after the deadline, naming the last answer", async () => {
+  const { fetcher, waits } = registry([["1.0.0"]]);
+  await assertRejects(
+    () => awaitJsrListing("2.1.0", fetcher, clock(waits)),
+    Error,
+    "@zuke/cli 2.1.0 is not listed by https://jsr.io/@zuke/cli/meta.json after 180s (last answer: a document not listing it)",
+  );
+  // Three minutes of five-second polls, then the deadline.
+  assertEquals(waits.length, 36);
+  const failing = registry([500]);
+  await assertRejects(
+    () => awaitJsrListing("2.1.0", failing.fetcher, clock(failing.waits)),
+    Error,
+    "last answer: HTTP 500",
+  );
 });
