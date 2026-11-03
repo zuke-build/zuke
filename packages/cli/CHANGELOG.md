@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.0](https://github.com/zuke-build/zuke/compare/cli-v2.1.1...cli-v2.2.0) (2026-11-03)
+
+
+### Features
+
+* **cli:** the zuke command treats a Python build as a first-class project, without the launchers ([#969](https://github.com/zuke-build/zuke/issues/969)) ([793043a](https://github.com/zuke-build/zuke/commit/793043aa34fd66326e18ed0c1c0af53e4b12f2f9))
+
 ## [2.1.1](https://github.com/zuke-build/zuke/compare/cli-v2.1.0...cli-v2.1.1) (2026-11-03)
 
 
