@@ -10,6 +10,11 @@
  * or `tsconfig`. Both run from a throwaway directory, and both relay what the
  * child printed through the package's sink instead of inheriting its stdio.
  *
+ * That directory sits under the shared temp dir, whose ancestors (`/tmp`) any
+ * local user can seed with a `deno.json` whose import map Deno would honour.
+ * `deno doc` has no `--no-config`, so the directory carries its own workspace
+ * root config, which ends Deno's walk up before it reaches them.
+ *
  * @module
  */
 
@@ -17,9 +22,19 @@ import { spawnDeno } from "./deno_path.ts";
 import { output } from "./output.ts";
 
 /**
+ * The config written into the isolated directory: a workspace root with no
+ * members, so no ancestor config — not even one listing this directory as a
+ * member — is discovered. A plain `{}` is not enough: it would join an
+ * ancestor's `workspace`.
+ */
+const ISOLATED_DENO_CONFIG = '{ "workspace": [] }\n';
+
+/**
  * Spawn `deno <denoArgs>` — {@link spawnDeno} finds the Deno to run, and puts
  * that Deno first on the child's `PATH` — in a fresh temp directory named
  * with `prefix`, which is removed afterwards. Returns the child's exit code.
+ * The directory holds only a memberless workspace-root `deno.json`, so Deno resolves
+ * nothing from the directories above it.
  *
  * The child's output is not inherited. It can repeat arguments the user passed
  * (`deno doc` names a `--filter` it could not find), and it can print a
@@ -33,6 +48,7 @@ export async function runDenoIsolated(
 ): Promise<number> {
   const cwd = await Deno.makeTempDir({ prefix });
   try {
+    await Deno.writeTextFile(`${cwd}/deno.json`, ISOLATED_DENO_CONFIG);
     const child = spawnDeno(denoArgs, {
       cwd,
       stdin: "null",

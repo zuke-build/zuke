@@ -666,6 +666,9 @@ Deno.test("zuke upgrade reports an install that resolved another release as a fa
       assertEquals(code, 1);
     });
     assertEquals(installs[0].includes("--minimum-dependency-age=0"), true);
+    // The install runs under the shared temp dir: no config found above it
+    // may steer what becomes the global zuke.
+    assertEquals(installs[0].includes("--no-config"), true);
     const logs = host.logs.join("\n");
     assertEquals(
       logs.includes("resolves @zuke/cli to 1.8.0, not 999.0.0"),
