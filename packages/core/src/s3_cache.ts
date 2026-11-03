@@ -112,6 +112,13 @@ export class S3CacheStore implements RemoteCacheStore {
     return this.#http.get(key);
   }
 
+  /** The archive stored under `key` as a stream, or `null` if there is none. */
+  getStream(
+    key: string,
+  ): Promise<ReadableStream<Uint8Array<ArrayBuffer>> | null> {
+    return this.#http.getStream(key);
+  }
+
   /** Store `artifact` (a gzipped tar of a target's outputs) under `key`. */
   put(key: string, artifact: Uint8Array): Promise<void> {
     return this.#http.put(key, artifact);

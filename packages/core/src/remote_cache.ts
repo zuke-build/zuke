@@ -28,16 +28,17 @@
 import {
   assertSafeEntryName,
   assertSafeLinkTarget,
+  byteStream,
   findSymlinkAncestor,
   gunzipStreamBounded,
-  gzipTar,
+  gzipTarStream,
   type LinkProbe,
   type TarEntry,
   untarStream,
 } from "./compression.ts";
 import { GitHubActionsCacheStore } from "./github_actions_cache.ts";
-import { assertSecureBackendUrl, HttpError } from "./http.ts";
-import { messageOf, readBytesBounded, readFileOrNull } from "./internal.ts";
+import { artifactBody, assertSecureBackendUrl, HttpError } from "./http.ts";
+import { messageOf, readFileOrNull } from "./internal.ts";
 import type { AwsCredentials } from "./aws_sigv4.ts";
 import { S3CacheStore } from "./s3_cache.ts";
 
@@ -53,11 +54,29 @@ export interface RemoteCacheStore {
   /** Store `artifact` (a gzipped tar of a target's outputs) under `key`. */
   put(key: string, artifact: Uint8Array): Promise<void>;
   /**
+   * {@link RemoteCacheStore.get} as a stream, or `null` if there is nothing
+   * under `key`: the executor writes it straight to a temporary file and
+   * restores from there, so a large artifact is never held in memory. A store
+   * without it is read with `get`.
+   */
+  getStream?(
+    key: string,
+  ): Promise<ReadableStream<Uint8Array<ArrayBuffer>> | null>;
+  /**
+   * {@link RemoteCacheStore.put} from a stream, so the archive is written as
+   * it is compressed rather than buffered first. A store without it is given
+   * the whole artifact through `put`.
+   */
+  putStream?(
+    key: string,
+    artifact: ReadableStream<Uint8Array<ArrayBuffer>>,
+  ): Promise<void>;
+  /**
    * The most an artifact from this store may decompress to, in bytes, before
    * {@link restoreOutputs} refuses it. Defaults to 2 GiB; raise it for a target
    * whose outputs are genuinely larger, such as a whole SDK. The restore streams
    * the inflated archive rather than holding it, so raising the bound does not
-   * raise its memory use: that is the compressed artifact plus one file.
+   * raise its memory use.
    */
   readonly maxInflatedBytes?: number;
 }
@@ -268,6 +287,19 @@ export async function archiveOutputs(
   outputs: readonly string[],
   host: OutputHost,
 ): Promise<Uint8Array> {
+  return new Uint8Array(
+    await new Response(await archiveStream(outputs, host)).arrayBuffer(),
+  );
+}
+
+/**
+ * {@link archiveOutputs} as a stream of the gzipped archive, for a store that
+ * writes it as it is produced ({@link RemoteCacheStore.putStream}).
+ */
+export async function archiveStream(
+  outputs: readonly string[],
+  host: OutputHost,
+): Promise<ReadableStream<Uint8Array<ArrayBuffer>>> {
   const planned = await collectEntries(outputs, host);
   async function* read(): AsyncGenerator<TarEntry> {
     for (const entry of planned) {
@@ -280,7 +312,7 @@ export async function archiveOutputs(
       if (data !== null) yield { ...entry, data };
     }
   }
-  return await gzipTar(read());
+  return gzipTarStream(read());
 }
 
 /**
@@ -426,6 +458,25 @@ export async function restoreOutputs(
   outputs?: readonly string[],
   maxBytes: number = DEFAULT_MAX_INFLATED_BYTES,
 ): Promise<string[]> {
+  return await restoreFrom(
+    () => Promise.resolve(byteStream(artifact)),
+    host,
+    outputs,
+    maxBytes,
+  );
+}
+
+/**
+ * {@link restoreOutputs} from an artifact that `open` can read more than
+ * once — a spooled download, so the compressed bytes need not be in memory.
+ * Each call to `open` must yield the same bytes.
+ */
+export async function restoreFrom(
+  open: () => Promise<ReadableStream<Uint8Array<ArrayBuffer>>>,
+  host: OutputHost,
+  outputs?: readonly string[],
+  maxBytes: number = DEFAULT_MAX_INFLATED_BYTES,
+): Promise<string[]> {
   // A NaN bound would disable the check (`total > NaN` is never true).
   if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
     throw new Error(
@@ -438,9 +489,9 @@ export async function restoreOutputs(
   // the second writes them one file at a time. Writing nothing until all of
   // it is validated is what keeps a refused archive from leaving a
   // half-written, partially-trusted output tree.
-  const inflate = () =>
+  const inflate = async () =>
     gunzipStreamBounded(
-      artifact,
+      await open(),
       maxBytes,
       () =>
         new Error(
@@ -455,7 +506,7 @@ export async function restoreOutputs(
   const realDirs = new Set<string>(["."]);
   const probe: LinkProbe = (path) => host.lstat(normalize(path));
   const validated: TarEntry[] = [];
-  for await (const entry of untarStream(inflate(), false)) {
+  for await (const entry of untarStream(await inflate(), false)) {
     assertSafeEntryName(entry.name);
     assertNoDirectoryEntry(entry);
     const name = normalize(entry.name);
@@ -525,7 +576,7 @@ export async function restoreOutputs(
     ) => [entry.name, entry]),
   );
   const written: string[] = [];
-  for await (const read of untarStream(inflate(), true)) {
+  for await (const read of untarStream(await inflate(), true)) {
     if (read.linkname !== undefined) continue;
     const entry = files.get(normalize(read.name));
     if (entry === undefined) {
@@ -655,10 +706,41 @@ export class FileSystemCacheStore implements RemoteCacheStore {
     return readFileOrNull(this.#path(key));
   }
 
+  /** The archive stored under `key` as a stream, or `null` if there is none. */
+  async getStream(
+    key: string,
+  ): Promise<ReadableStream<Uint8Array<ArrayBuffer>> | null> {
+    try {
+      return (await Deno.open(this.#path(key))).readable;
+    } catch (error) {
+      if (error instanceof Deno.errors.NotFound) return null;
+      throw error;
+    }
+  }
+
   /** Store `artifact` (a gzipped tar of a target's outputs) under `key`. */
-  async put(key: string, artifact: Uint8Array): Promise<void> {
+  put(key: string, artifact: Uint8Array): Promise<void> {
+    return this.putStream(key, byteStream(artifact));
+  }
+
+  /**
+   * Store the archive `artifact` streams under `key`. It is written under a
+   * temporary name and renamed into place, so a reader on another machine
+   * never sees a half-written archive.
+   */
+  async putStream(
+    key: string,
+    artifact: ReadableStream<Uint8Array<ArrayBuffer>>,
+  ): Promise<void> {
     await Deno.mkdir(this.#dir, { recursive: true });
-    await Deno.writeFile(this.#path(key), artifact);
+    const partial = `${this.#path(key)}.${crypto.randomUUID()}.partial`;
+    try {
+      await Deno.writeFile(partial, artifact);
+      await Deno.rename(partial, this.#path(key));
+    } catch (error) {
+      await Deno.remove(partial).catch(() => {}); // already gone is fine
+      throw error;
+    }
   }
 }
 
@@ -753,29 +835,35 @@ export class HttpCacheStore implements RemoteCacheStore {
 
   /** Fetch the archived outputs stored under `key`, or `null` if there are none. */
   async get(key: string): Promise<Uint8Array | null> {
+    const stream = await this.getStream(key);
+    return stream === null
+      ? null
+      : new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+
+  /**
+   * The archive stored under `key` as a stream, or `null` if there is none.
+   * It is bounded as it arrives rather than measured after: a store that
+   * answers with an endless body would otherwise exhaust memory or disk
+   * before there was anything to reject.
+   */
+  async getStream(
+    key: string,
+  ): Promise<ReadableStream<Uint8Array<ArrayBuffer>> | null> {
     const url = this.#url(key);
     const response = await this.#fetch(url, {
       headers: this.#requestHeaders(),
     });
-    if (response.status === 404) {
-      await response.body?.cancel();
-      return null;
-    }
-    if (!response.ok) {
-      await response.body?.cancel();
-      throw new HttpError(response.status, url);
-    }
-    // Read against the cap rather than buffering whole and measuring after: a
-    // store that answers with an endless body would otherwise exhaust memory
-    // before there was anything to reject.
-    const bytes = await readBytesBounded(response.body, this.#maxArtifactBytes);
-    if (bytes === null) {
-      throw new Error(
-        `remote cache: refusing an artifact larger than ` +
-          `${this.#maxArtifactBytes} bytes from ${url}.`,
-      );
-    }
-    return bytes;
+    return await artifactBody(
+      response,
+      url,
+      this.#maxArtifactBytes,
+      () =>
+        new Error(
+          `remote cache: refusing an artifact larger than ` +
+            `${this.#maxArtifactBytes} bytes from ${url}.`,
+        ),
+    );
   }
 
   /** Store `artifact` (a gzipped tar of a target's outputs) under `key`. */

@@ -125,3 +125,16 @@ Deno.test("S3CacheStore reports a 404 as a miss and other errors as errors", asy
   const err = await assertRejects(() => store(denied.fetch).get("nope"));
   assertEquals(err instanceof HttpError, true);
 });
+
+Deno.test("S3CacheStore.getStream signs the request and streams the body", async () => {
+  const { fetch, calls } = fakeFetch(() =>
+    new Response(new Blob([new Uint8Array([4, 5, 6])]))
+  );
+  const stream = await store(fetch).getStream("build-abc");
+  if (stream === null) throw new Error("expected a body");
+  assertEquals(
+    Array.from(new Uint8Array(await new Response(stream).arrayBuffer())),
+    [4, 5, 6],
+  );
+  assertEquals(calls[0].headers.has("authorization"), true);
+});

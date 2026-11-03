@@ -21,7 +21,7 @@ import {
 import { HttpError } from "../src/http.ts";
 import { GitHubActionsCacheStore } from "../src/github_actions_cache.ts";
 import { S3CacheStore } from "../src/s3_cache.ts";
-import { gzip, tar } from "../src/compression.ts";
+import { byteStream, gzip, tar } from "../src/compression.ts";
 import { withTemp } from "./_temp.ts";
 import { defaultCacheHost } from "../src/cache.ts";
 import { messageOf } from "../src/internal.ts";
@@ -1282,4 +1282,83 @@ Deno.test("restoreOutputs refuses a corrupt size field rather than hanging", asy
   );
   assertStringIncludes(err.message, "size field");
   assertEquals(out.files.size, 0);
+});
+
+Deno.test("FileSystemCacheStore streams an archive in and out", async () => {
+  await withTemp(async (dir) => {
+    const store = new FileSystemCacheStore(`${dir}/cache`);
+    assertEquals(await store.getStream("missing"), null);
+    await store.putStream("k1", byteStream(enc("streamed")));
+    const stream = await store.getStream("k1");
+    assertEquals(
+      stream === null
+        ? ""
+        : dec(new Uint8Array(await new Response(stream).arrayBuffer())),
+      "streamed",
+    );
+    // Renamed into place: nothing half-written is left beside it.
+    assertEquals([...Deno.readDirSync(`${dir}/cache`)].map((e) => e.name), [
+      "k1.tar.gz",
+    ]);
+  });
+});
+
+Deno.test("FileSystemCacheStore leaves nothing behind when a streamed upload fails", async () => {
+  await withTemp(async (dir) => {
+    const store = new FileSystemCacheStore(`${dir}/cache`);
+    const failing = new ReadableStream<Uint8Array<ArrayBuffer>>({
+      start(controller) {
+        controller.enqueue(enc("part of it"));
+      },
+      pull(controller) {
+        controller.error(new Error("archive failed"));
+      },
+    });
+    const err = await assertRejects(() => store.putStream("k1", failing));
+    assertStringIncludes(err.message, "archive failed");
+    assertEquals([...Deno.readDirSync(`${dir}/cache`)].length, 0);
+    assertEquals(await store.get("k1"), null);
+  });
+});
+
+Deno.test("FileSystemCacheStore.getStream reports an error other than a miss", async () => {
+  // Windows reports a path through a file as not found, which is a miss.
+  if (Deno.build.os === "windows") return;
+  await withTemp(async (dir) => {
+    // The store directory is a file: opening an entry under it is ENOTDIR,
+    // a broken store rather than an absent key.
+    await Deno.writeTextFile(`${dir}/cache`, "not a directory");
+    const store = new FileSystemCacheStore(`${dir}/cache`);
+    await assertRejects(() => store.getStream("k1"));
+  });
+});
+
+Deno.test("HttpCacheStore.getStream bounds the body as it is read", async () => {
+  const { fetch } = fakeFetch(() => new Response(new Uint8Array(1024)));
+  const store = new HttpCacheStore({
+    url: "https://cache.example",
+    maxArtifactBytes: 256,
+    fetch,
+  });
+  const stream = await store.getStream("k");
+  if (stream === null) throw new Error("expected a body");
+  const err = await assertRejects(() => new Response(stream).arrayBuffer());
+  assertStringIncludes(
+    err.message,
+    "refusing an artifact larger than 256 bytes",
+  );
+  // A 404 is a miss, before any body is read.
+  const miss = new HttpCacheStore({
+    url: "https://cache.example",
+    fetch: fakeFetch(() => new Response("gone", { status: 404 })).fetch,
+  });
+  assertEquals(await miss.getStream("k"), null);
+});
+
+Deno.test("HttpCacheStore reads a body-less success as an empty artifact", async () => {
+  const store = new HttpCacheStore({
+    url: "https://cache.example",
+    fetch: fakeFetch(() => new Response(null, { status: 200 })).fetch,
+  });
+  assertEquals(await store.get("k"), new Uint8Array(0));
 });

@@ -53,7 +53,11 @@ const FAILED = -32000;
  * Members of the settings base class a configure list may not name: the hooks
  * and the run itself, which are the wrapper's to call, not the worker's.
  */
-const RESERVED = new Set([
+/**
+ * Settings members a `configure` entry may not name: the base class's own
+ * hooks and runners, which are the wrapper's to call and never a setter.
+ */
+export const RESERVED: ReadonlySet<string> = new Set([
   "constructor",
   "run",
   "argv",

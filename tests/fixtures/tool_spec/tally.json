@@ -1,0 +1,125 @@
+{
+  "name": "tally",
+  "summary": "Tasks of the other shapes the tool spec must read: an object literal rather than an interface, positional JSON arguments with JSON results, an optional argument, a task named by a Python keyword, settings that run no command, and a setter that answers nothing.",
+  "tasks": [
+    {
+      "name": "TallyTasks",
+      "doc": "Plain functions of several shapes.",
+      "tasks": [
+        {
+          "name": "add",
+          "doc": "Add two numbers.",
+          "params": [
+            {
+              "name": "a",
+              "type": {
+                "kind": "number"
+              },
+              "rest": false,
+              "optional": false
+            },
+            {
+              "name": "b",
+              "type": {
+                "kind": "number"
+              },
+              "rest": false,
+              "optional": false
+            }
+          ],
+          "returns": {
+            "kind": "number"
+          }
+        },
+        {
+          "name": "pass",
+          "doc": "Do nothing, under a name Python reserves.",
+          "params": [],
+          "returns": {
+            "kind": "null"
+          }
+        },
+        {
+          "name": "count",
+          "doc": "Count the items, leaving out the one to skip.",
+          "params": [
+            {
+              "name": "items",
+              "type": {
+                "kind": "array",
+                "element": {
+                  "kind": "string"
+                }
+              },
+              "rest": false,
+              "optional": false
+            },
+            {
+              "name": "skip",
+              "type": {
+                "kind": "string"
+              },
+              "rest": false,
+              "optional": true
+            }
+          ],
+          "returns": {
+            "kind": "number"
+          }
+        },
+        {
+          "name": "tune",
+          "doc": "Tune, through settings that run nothing.",
+          "params": [
+            {
+              "name": "configure",
+              "type": {
+                "kind": "configure",
+                "settings": "Tuning"
+              },
+              "rest": false,
+              "optional": false
+            }
+          ],
+          "returns": {
+            "kind": "number"
+          }
+        }
+      ]
+    }
+  ],
+  "settings": [
+    {
+      "name": "Tuning",
+      "doc": "Settings of a task that runs no command: a plain object with setters.",
+      "extends": null,
+      "setters": [
+        {
+          "name": "level",
+          "doc": "Set the level.",
+          "params": [
+            {
+              "name": "n",
+              "type": {
+                "kind": "number"
+              },
+              "rest": false,
+              "optional": false
+            }
+          ],
+          "returns": {
+            "kind": "self"
+          }
+        },
+        {
+          "name": "reset",
+          "doc": "Back to zero; answers nothing, as a setter written as a statement might.",
+          "params": [],
+          "returns": {
+            "kind": "null"
+          }
+        }
+      ]
+    }
+  ]
+}
