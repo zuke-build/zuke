@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.0](https://github.com/zuke-build/zuke/compare/engine-v1.1.1...engine-v1.2.0) (2026-11-03)
+
+
+### Features
+
+* **ai:** AiTasks, the reviewers as a task a worker reaches through tool.call ([#959](https://github.com/zuke-build/zuke/issues/959)) ([f87a916](https://github.com/zuke-build/zuke/commit/f87a916d28a4102de9e72a410b732331b67c025b))
+* **engine:** publish the tool spec SDK generators read ([#950](https://github.com/zuke-build/zuke/issues/950)) ([87a4f2f](https://github.com/zuke-build/zuke/commit/87a4f2f5046049b3083dedec9205b9154e546f63))
+
 ## [1.1.1](https://github.com/zuke-build/zuke/compare/engine-v1.1.0...engine-v1.1.1) (2026-11-03)
 
 
