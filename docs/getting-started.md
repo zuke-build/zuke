@@ -69,12 +69,14 @@ command and the exact `@zuke/engine` release to run it on, the launchers and a
 `.gitignore`, and no `deno.json`. The engine release is JSR's latest at setup
 time; `--engine <version>` pins one without touching the network. The standalone
 `zuke` binary carries the engine and every wrapper inside it, so with it
-installed a Python build needs **no Deno at all**, only Python and uv. The
-launchers run `jsr:@zuke/engine@<version>` when there is no `zuke.ts`, so a
-clone without the binary, such as a CI job, still needs nothing installed first:
-Deno is bootstrapped as for a TypeScript build, and uv provides the Python side.
-Move the pin later with `zuke upgrade --engine [<version>]`. The other `setup`
-flags apply as they do for a TypeScript build; `--mcp` registers the build's MCP
+installed a Python build needs **no Deno**, only Python and uv, whenever that
+engine serves the pinned release (the same major version, at the pin or newer; a
+pin it cannot serve runs on Deno, after a line saying so). The launchers run
+`jsr:@zuke/engine@<version>` when there is no `zuke.ts`, so a clone without the
+binary, such as a CI job, still needs nothing installed first: Deno is
+bootstrapped as for a TypeScript build, and uv provides the Python side. Move
+the pin later with `zuke upgrade --engine [<version>]`. The other `setup` flags
+apply as they do for a TypeScript build; `--mcp` registers the build's MCP
 server: as `zuke mcp`, which needs no Deno either, when the standalone binary
 runs the setup, and otherwise as `deno run -A jsr:@zuke/engine@<version> mcp`,
 which a client can start with no `zuke` on its `PATH`.
