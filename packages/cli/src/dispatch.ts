@@ -47,6 +47,7 @@ import {
 import { exists } from "./fs.ts";
 import { noLockNotice } from "./launcher.ts";
 import { QUIET_DENO_ENV, spawnDeno } from "./deno_path.ts";
+import { EMBEDDED_ENGINE_ENV, type EmbeddedEngine } from "./embedded_engine.ts";
 
 /** The build file a forwarded command runs, beside {@link CONFIG_FILE}. */
 export const BUILD_FILE = "zuke.ts";
@@ -397,12 +398,20 @@ async function engineVersion(
 /**
  * The build `location` runs, as the CLI names it to a person: the root's
  * `zuke.ts`, or for a build another SDK hosts its `zuke.json` and the engine
- * release that file pins.
+ * that runs it: the binary's own `engine` when it serves the pin, else the
+ * release the file pins.
  */
-export function buildLabel(location: BuildLocation): string {
-  return location.engine === null
-    ? `${location.root}/${BUILD_FILE}`
-    : `${location.root}/${CONFIG_FILE}, on @zuke/engine ${location.engine}`;
+export function buildLabel(
+  location: BuildLocation,
+  engine?: EmbeddedEngine,
+): string {
+  if (location.engine === null) return `${location.root}/${BUILD_FILE}`;
+  const serving = servingEngine(location, engine);
+  return `${location.root}/${CONFIG_FILE}, on ${
+    serving === undefined
+      ? `@zuke/engine ${location.engine}`
+      : `the built-in @zuke/engine ${serving.version}`
+  }`;
 }
 
 /** The module that runs a build another SDK hosts: `@zuke/engine` at `version`. */
@@ -439,19 +448,63 @@ export function buildRunArgs(
 }
 
 /**
- * Run a forwarded command through `runner`: the root's launcher with `args`
- * when it has one and this is not already a launcher's own `zuke` call (see
- * {@link FORWARDED_ENV}), else Deno with {@link buildRunArgs}.
+ * The binary's `engine`, when it is the one to run `location`: a hosted build
+ * whose pinned release it serves. `undefined` for a `zuke.ts` build, for a
+ * run without an embedded engine, and for a pin it cannot serve.
+ */
+export function servingEngine(
+  location: BuildLocation,
+  engine: EmbeddedEngine | undefined,
+): EmbeddedEngine | undefined {
+  return location.engine !== null && engine?.serves(location.engine)
+    ? engine
+    : undefined;
+}
+
+/**
+ * Run a forwarded command through `runner`. A hosted build whose pin the
+ * binary's own `engine` serves runs on it: the binary again, in engine mode,
+ * with `args` as they are, launcher or not. Otherwise the root's launcher with
+ * `args` when it has one and this is not already a launcher's own `zuke` call
+ * (see {@link FORWARDED_ENV}), else Deno with {@link buildRunArgs}.
  */
 export function runBuild(
   runner: BuildRunner,
   location: BuildLocation,
   args: string[],
   env?: Readonly<Record<string, string>>,
+  engine?: EmbeddedEngine,
 ): Promise<number> {
+  const serving = servingEngine(location, engine);
+  if (serving !== undefined) {
+    return runner(location.root, args, serving.program, {
+      ...env,
+      [EMBEDDED_ENGINE_ENV]: "1",
+    });
+  }
   return location.launcher === null || Deno.env.get(FORWARDED_ENV) === "1"
     ? runner(location.root, buildRunArgs(location, args), undefined, env)
     : runner(location.root, args, location.launcher, env);
+}
+
+/**
+ * The stderr line for a hosted build the binary's own `engine` cannot serve,
+ * which then runs the old way and needs Deno; `undefined` when there is
+ * nothing to say: no engine compiled in, a `zuke.ts` build, or a pin it serves.
+ */
+export function embeddedEngineNotice(
+  location: BuildLocation,
+  engine: EmbeddedEngine | undefined,
+): string | undefined {
+  if (
+    engine === undefined || location.engine === null ||
+    servingEngine(location, engine) !== undefined
+  ) {
+    return undefined;
+  }
+  return `zuke: this zuke's built-in @zuke/engine ${engine.version} cannot ` +
+    `run ${CONFIG_FILE}'s ${location.engine}, so Deno runs that release; ` +
+    "update this zuke to one that carries it to run with no Deno";
 }
 
 /** The launchers' notice for a run without a lockfile, verbatim. */
@@ -462,12 +515,19 @@ export const NO_LOCK_NOTICE: string = noLockNotice("—");
  * that build is not in the working directory — so a run that discovery chose
  * is never silent about what it chose.
  */
-export function runningNotice(location: BuildLocation): string {
-  return location.engine === null
-    ? `zuke: running ${location.root}/${BUILD_FILE}`
-    : `zuke: running ${location.root}/${CONFIG_FILE} with ${
-      buildModule(location)
-    }`;
+export function runningNotice(
+  location: BuildLocation,
+  engine?: EmbeddedEngine,
+): string {
+  if (location.engine === null) {
+    return `zuke: running ${location.root}/${BUILD_FILE}`;
+  }
+  const serving = servingEngine(location, engine);
+  return `zuke: running ${location.root}/${CONFIG_FILE} with ${
+    serving === undefined
+      ? buildModule(location)
+      : `the built-in @zuke/engine ${serving.version}`
+  }`;
 }
 
 /**

@@ -4,16 +4,18 @@
 /**
  * Compiling the released `zuke` CLI into standalone binaries.
  *
- * The binaries are compiled from the published `jsr:@zuke/cli@<version>`,
- * not from this checkout: what Homebrew installs is then the same program
- * `deno install -g` installs, resolved the same way, and JSR's own provenance
- * covers its source. `-A` matches the JSR install's permissions, and is also
- * what lets a compiled binary resolve its own path to tell a Homebrew install
- * from another (`packages/cli/src/install_source.ts`).
+ * The binaries are compiled from published releases, not from this
+ * checkout: the entry `build/cli_binary.ts` renders imports
+ * `jsr:@zuke/cli@<version>`, the engine and every wrapper at their exact
+ * releases, so what Homebrew installs runs the same code `deno install -g`
+ * resolves, and JSR's own provenance covers its source. `-A` matches the JSR
+ * install's permissions, and is also what lets a compiled binary resolve its
+ * own path to tell a Homebrew install from another
+ * (`packages/cli/src/install_source.ts`).
  *
  * Deno looks for a configuration file from the working directory, and this
  * checkout's would map `@zuke/*` onto the workspace instead of JSR, so the
- * compile runs from an empty temporary directory.
+ * entry is written to, and compiled from, an empty temporary directory.
  *
  * @module
  */
@@ -29,8 +31,10 @@ export function cliSpecifier(version: string): string {
   return `jsr:@zuke/cli@${version}`;
 }
 
-/** The registry document `deno compile` resolves {@link cliSpecifier} against. */
-export const CLI_META_URL = "https://jsr.io/@zuke/cli/meta.json";
+/** The registry document `deno compile` resolves a `@zuke/<pkg>` release against. */
+export function jsrMetaUrl(pkg: string): string {
+  return `https://jsr.io/@zuke/${pkg}/meta.json`;
+}
 
 /** How often {@link awaitJsrListing} asks again, and for how long in all. */
 const LISTING_POLL_MS = 5_000;
@@ -42,8 +46,8 @@ function pause(ms: number): Promise<void> {
 }
 
 /**
- * Wait until JSR lists `version` of `@zuke/cli`, polling {@link CLI_META_URL}
- * every few seconds for up to three minutes.
+ * Wait until JSR lists `version` of `@zuke/<pkg>`, polling its
+ * {@link jsrMetaUrl} every few seconds for up to three minutes.
  *
  * The publish job finishes seconds before the registry's metadata shows the
  * release it accepted, and `deno compile` resolves the specifier against that
@@ -55,13 +59,14 @@ function pause(ms: number): Promise<void> {
  * the deadline passes.
  */
 export async function awaitJsrListing(
+  pkg: string,
   version: string,
   fetcher: Fetch = fetch,
   wait: (ms: number) => Promise<void> = pause,
 ): Promise<void> {
   let last = "";
   for (let waited = 0;; waited += LISTING_POLL_MS) {
-    const response = await fetcher(CLI_META_URL, { cache: "no-store" });
+    const response = await fetcher(jsrMetaUrl(pkg), { cache: "no-store" });
     if (response.ok) {
       const meta: unknown = await response.json();
       const versions = typeof meta === "object" && meta !== null
@@ -79,7 +84,7 @@ export async function awaitJsrListing(
     }
     if (waited >= LISTING_DEADLINE_MS) {
       throw new Error(
-        `@zuke/cli ${version} is not listed by ${CLI_META_URL} after ` +
+        `@zuke/${pkg} ${version} is not listed by ${jsrMetaUrl(pkg)} after ` +
           `${LISTING_DEADLINE_MS / 1000}s (last answer: ${last}), so the ` +
           `compile would not resolve it. Re-run the job once the registry ` +
           `shows the release.`,
@@ -94,25 +99,31 @@ export type Compile = (
   configure: (s: DenoCompileSettings) => DenoCompileSettings,
 ) => Promise<unknown>;
 
+/** The entry module's file name in the compile's temporary directory. */
+export const ENTRY_FILE = "zuke.ts";
+
 /**
- * Compile every target's binary into `binDir` — absolute, since the
- * compile runs from a temporary directory — then run the one built for this
- * machine, if any, to check it reports `version`.
+ * Compile `entry`, the module `build/cli_binary.ts` renders, into every
+ * target's binary in `binDir` — absolute, since the compile runs from a
+ * temporary directory — then run the one built for this machine, if any, to
+ * check it reports `version`.
  */
 export async function compileCliBinaries(
   version: string,
   binDir: AbsolutePath,
+  entry: string,
   compile: Compile = (configure) => DenoTasks.compile(configure),
 ): Promise<void> {
   const scratch = await Deno.makeTempDir({ prefix: "zuke-compile-" });
   try {
+    await Deno.writeTextFile(`${scratch}/${ENTRY_FILE}`, entry);
     const triples = [...CLI_TARGETS.map((t) => t.triple), WINDOWS_TRIPLE];
     for (const triple of triples) {
       const output = binaryPath(binDir.path, triple);
       await Deno.mkdir(binDir(triple).path, { recursive: true });
       await compile((s) =>
         s.allowAll().target(triple).output(output)
-          .script(cliSpecifier(version)).cwd(scratch)
+          .script(ENTRY_FILE).cwd(scratch)
       );
     }
     const host = triples.find((triple) => triple === Deno.build.target);

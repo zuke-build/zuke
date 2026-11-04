@@ -24,6 +24,17 @@ Deno.test("mcpServerEntry launches the build's server, read-only by default", ()
   assertEquals(mcpServerEntry(true).args.at(-1), "--allow-run");
 });
 
+Deno.test("mcpServerEntry registers the compiled zuke when it is the one asked", () => {
+  assertEquals(mcpServerEntry(false, "jsr:@zuke/engine@1.2.0", true), {
+    command: "zuke",
+    args: ["mcp"],
+  });
+  assertEquals(mcpServerEntry(true, "jsr:@zuke/engine@1.2.0", true), {
+    command: "zuke",
+    args: ["mcp", "--allow-run"],
+  });
+});
+
 Deno.test("mergeMcpConfig writes a fresh file with just the zuke server", () => {
   const text = mergeMcpConfig({}, false);
   assertEquals(text.endsWith("\n"), true);

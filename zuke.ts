@@ -83,6 +83,11 @@ import {
 } from "./build/cli_compile.ts";
 import { signingCredentials, signMacBinaries } from "./build/cli_sign.ts";
 import {
+  binaryEntry,
+  embeddedReleases,
+  releaseEntry,
+} from "./build/cli_binary.ts";
+import {
   publishCliChocolatey,
   verifyCliChocolatey,
 } from "./build/cli_chocolatey.ts";
@@ -2077,11 +2082,16 @@ class ZukeBuild extends Build {
         chocolatey: String(plan.chocolatey),
       });
       if (plan.build) {
-        // The publish job this follows finishes before JSR lists the release.
-        await awaitJsrListing(version);
+        const entry = await releaseEntry(version);
+        // The publish job this follows finishes before JSR lists what it
+        // published, and the compile resolves every embedded release.
+        for (const [pkg, release] of embeddedReleases(entry, version)) {
+          await awaitJsrListing(pkg, release);
+        }
         await compileCliBinaries(
           version,
           absolutePath(Deno.cwd(), CLI_BIN_DIR),
+          binaryEntry(entry),
         );
       }
     });

@@ -11,6 +11,7 @@
  * `Deno`-backed implementation used in production.
  */
 
+import { engineSpecifier } from "./dispatch.ts";
 import {
   MCP_CONFIG_FILE,
   mergeMcpConfig,
@@ -19,7 +20,6 @@ import {
 import { isRecord } from "./records.ts";
 import { launcherBash, launcherPwsh } from "./launcher.ts";
 import { exists, lstatOrNull } from "./fs.ts";
-import { engineSpecifier } from "./dispatch.ts";
 import { output } from "./output.ts";
 import {
   PYTHON_BUILD_FILE,
@@ -342,6 +342,13 @@ export interface SdkSetupOptions {
 export interface McpSetupOptions {
   /** Register the server with `--allow-run`, so the agent may run targets. */
   allowRun: boolean;
+  /**
+   * The CLI registering it is the compiled `zuke` binary, which carries an
+   * engine: a hosted build is registered as `zuke mcp`, which needs no Deno.
+   * Otherwise as `deno run -A jsr:@zuke/engine@<version> mcp`, which an MCP
+   * client can start with no `zuke` on its `PATH`.
+   */
+  binary?: boolean;
 }
 
 /** What happened to one scaffolded file. */
@@ -572,12 +579,18 @@ async function setupMcpConfig(
   force: boolean,
   host: SetupHost,
   notes: string[],
-  build?: string,
+  build: string | undefined,
 ): Promise<FileResult> {
+  // Only a hosted build is the compiled binary's to run: a zuke.ts build
+  // stays on Deno whichever CLI registered it.
+  const binary = build !== undefined && mcp.binary === true;
   const name = MCP_CONFIG_FILE;
   const path = joinPath(dir, name);
   if (!(await host.exists(path))) {
-    await host.writeText(path, mergeMcpConfig({}, mcp.allowRun, build));
+    await host.writeText(
+      path,
+      mergeMcpConfig({}, mcp.allowRun, build, binary),
+    );
     host.log(`  create   ${name}`);
     return { path: name, status: "created" };
   }
@@ -601,7 +614,7 @@ async function setupMcpConfig(
   }
   await host.writeText(
     path,
-    mergeMcpConfig(config.document, mcp.allowRun, build),
+    mergeMcpConfig(config.document, mcp.allowRun, build, binary),
   );
   host.log(`  update   ${name}`);
   return { path: name, status: "overwritten" };

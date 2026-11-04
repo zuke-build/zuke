@@ -9,7 +9,11 @@
  *
  * The file is Claude Code's project format (`mcpServers.<name>`), which Codex
  * and most stdio MCP clients read too. The command is `deno run -A zuke.ts
- * mcp` rather than the launcher because it is the same on every platform.
+ * mcp` rather than the launcher because it is the same on every platform. A
+ * build another SDK hosts runs `jsr:@zuke/engine@<version>` in its place, or,
+ * when the compiled `zuke` binary is the one registering it, `zuke mcp`: the
+ * binary carries the engine, so that needs no Deno and cannot drift from the
+ * pin, and it is a real executable an MCP client can start without a shell.
  *
  * @module
  */
@@ -24,29 +28,34 @@ export const MCP_SERVER_NAME = "zuke";
 
 /** One server entry in `mcpServers`: the command and its arguments. */
 export interface McpServerEntry {
-  /** The executable — always `deno`, which is the same on every platform. */
+  /**
+   * The executable: `deno`, which is the same on every platform, or the
+   * compiled `zuke` for a hosted build it registered.
+   */
   command: string;
   /**
-   * The arguments: `run -A zuke.ts mcp`, plus `--allow-run` when asked for;
-   * `jsr:@zuke/engine@<version>` in place of `zuke.ts` for a build another
-   * SDK hosts.
+   * The arguments: `run -A zuke.ts mcp`, with the engine release in place of
+   * `zuke.ts` for a hosted build, or just `mcp` for the compiled `zuke`; plus
+   * `--allow-run` when asked for.
    */
   args: string[];
 }
 
 /**
- * The entry that launches this build's MCP server. Read-only by default: the
- * agent can inspect the build but not execute targets until `allowRun` opts
- * in, mirroring `zuke mcp --allow-run`.
+ * The entry that launches this build's MCP server: `deno run -A <build> mcp`,
+ * or `zuke mcp` when `binary` asks for the compiled `zuke` to run it.
+ * Read-only by default: the agent can inspect the build but not execute
+ * targets until `allowRun` opts in, mirroring `zuke mcp --allow-run`.
  */
 export function mcpServerEntry(
   allowRun: boolean,
   build: string = "zuke.ts",
+  binary: boolean = false,
 ): McpServerEntry {
-  return {
-    command: "deno",
-    args: ["run", "-A", build, "mcp", ...(allowRun ? ["--allow-run"] : [])],
-  };
+  const mcp = ["mcp", ...(allowRun ? ["--allow-run"] : [])];
+  return binary
+    ? { command: "zuke", args: mcp }
+    : { command: "deno", args: ["run", "-A", build, ...mcp] };
 }
 
 /**
@@ -109,10 +118,11 @@ export function mergeMcpConfig(
   document: Record<string, unknown>,
   allowRun: boolean,
   build?: string,
+  binary: boolean = false,
 ): string {
   const servers: Record<string, unknown> = isRecord(document.mcpServers)
     ? { ...document.mcpServers }
     : {};
-  servers[MCP_SERVER_NAME] = mcpServerEntry(allowRun, build);
+  servers[MCP_SERVER_NAME] = mcpServerEntry(allowRun, build, binary);
   return `${JSON.stringify({ ...document, mcpServers: servers }, null, 2)}\n`;
 }

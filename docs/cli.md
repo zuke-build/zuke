@@ -33,13 +33,25 @@ default target.
 A root with no `zuke.ts` holds a build another SDK hosts: its `zuke.json` names
 the worker to start under `sdk` (`{ "command": ["uv", "run", "build.py"] }`)
 and, under `engine`, the exact [`@zuke/engine`](https://jsr.io/@zuke/engine)
-release that runs it (`"1.2.3"`, never a range). The launchers and the
-forwarding then run `deno run -A jsr:@zuke/engine@<version> <command>` in place
-of `zuke.ts`, adding `--lock=deno.lock --frozen` when a `deno.lock` sits beside
-`zuke.json` (Deno looks for a lock only beside a Deno config, which such a
-project has no reason to keep, so the file is named). The launchers refuse with
-a message naming the field when `zuke.json` carries no `engine`, or one that is
-not an exact version.
+release that runs it (`"1.2.3"`, never a range). The launchers then run
+`deno run -A jsr:@zuke/engine@<version> <command>` in place of `zuke.ts`, adding
+`--lock=deno.lock --frozen` when a `deno.lock` sits beside `zuke.json` (Deno
+looks for a lock only beside a Deno config, which such a project has no reason
+to keep, so the file is named). The launchers refuse with a message naming the
+field when `zuke.json` carries no `engine`, or one that is not an exact version.
+
+The standalone `zuke` binary (Homebrew, Chocolatey, the release downloads) needs
+no Deno for such a project. It is compiled with `@zuke/engine` and every wrapper
+release inside it, and runs the build on that engine itself, launcher or not,
+when it serves the pin: the same major version, at the pinned release or newer.
+A typed wrapper call is served by the same rule from the releases it carries;
+one it cannot serve, such as a Python SDK newer than the binary asking for a
+newer wrapper, is refused mid-build, naming the fix: a newer `zuke`, or the
+project's `./zuke` launcher, which runs the pinned engine on Deno. A pin the
+built-in engine cannot serve runs the old way, on Deno, after a line saying so.
+`zuke --version` names the built-in engine. Under `deno install`, where the
+`zuke` command is itself a Deno program, the forwarding runs
+`deno run -A jsr:@zuke/engine@<version>` as the launchers do.
 
 `--help`/`-h` shows **both** surfaces inside a project, under headings that say
 which is which: the global CLI's own commands, which work anywhere, and then the

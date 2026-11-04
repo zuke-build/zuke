@@ -6,8 +6,11 @@ import {
   assertStringIncludes,
 } from "../../core/tests/_assert.ts";
 import {
+  binaryMain,
   type BuildProbe,
   defaultPrompter,
+  EMBEDDED_ENGINE_ENV,
+  type EmbeddedEngine,
   main,
   parseSetupFlags,
   type UpgradeHost,
@@ -143,12 +146,46 @@ Deno.test("main setup --sdk python pins JSR's latest engine release", async () =
   const config: unknown = JSON.parse(host.files.get("zuke.json") ?? "");
   assertEquals(Reflect.get(Object(config), "engine"), "1.5.0");
   const mcp = JSON.parse(host.files.get(".mcp.json") ?? "{}");
+  // Not the compiled binary, so the pinned engine on Deno, which a client
+  // starts with no zuke on its PATH.
   assertEquals(mcp.mcpServers.zuke.args, [
     "run",
     "-A",
     "jsr:@zuke/engine@1.5.0",
     "mcp",
   ]);
+});
+
+Deno.test("main setup --mcp from the compiled binary registers zuke mcp for a hosted build only", async () => {
+  const binary = {
+    version: "1.5.0",
+    program: "/opt/zuke",
+    serves: () => true,
+  };
+  const scaffold = async (args: string[]) => {
+    const host = new FakeHost();
+    const code = await main(
+      ["setup", "--yes", "--mcp", ...args],
+      host,
+      new FakePrompter(false),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      engineRegistry(ENGINE_META),
+      undefined,
+      binary,
+    );
+    assertEquals(code, 0, host.logs.join("\n"));
+    return JSON.parse(host.files.get(".mcp.json") ?? "{}").mcpServers.zuke;
+  };
+  // The binary carries the engine: no Deno, and no pin to drift from.
+  assertEquals(await scaffold(["--sdk", "python"]), {
+    command: "zuke",
+    args: ["mcp"],
+  });
+  // A zuke.ts build is Deno's whichever CLI registered it.
+  assertEquals((await scaffold([])).command, "deno");
 });
 
 Deno.test("main setup --sdk refuses what it cannot scaffold, before writing anything", async () => {
@@ -900,6 +937,89 @@ Deno.test("main says nothing about a lockfile for a hosted build, as the launche
   });
   assertEquals(err, []);
   assertEquals(seen, ["run", "-A", "jsr:@zuke/engine@1.2.3", "build"]);
+});
+
+/** A compiled binary's engine at 1.3.0, serving any pin up to it. */
+const EMBEDDED: EmbeddedEngine = {
+  version: "1.3.0",
+  program: "/opt/zuke",
+  serves: (pin) => pin.startsWith("1.") && pin <= "1.3.0",
+};
+
+/** A hosted project pinning `engine`. */
+function hostedProbe(engine: string): BuildProbe {
+  return {
+    ...probeAt(["zuke.json"]),
+    readText: () => Promise.resolve(JSON.stringify({ engine })),
+  };
+}
+
+/** Run `main` on `args` with the binary's engine, recording what it ran. */
+async function onEmbedded(
+  args: string[],
+  probe: BuildProbe,
+  host = new FakeHost(),
+): Promise<{ runs: Array<[string[], string | undefined]>; err: string[] }> {
+  const runs: Array<[string[], string | undefined]> = [];
+  const err = await capturingErr(async () => {
+    await main(
+      args,
+      host,
+      defaultPrompter,
+      undefined,
+      undefined,
+      (_root, runArgs, program, env) => {
+        runs.push([
+          runArgs,
+          env?.[EMBEDDED_ENGINE_ENV] === "1" ? program : undefined,
+        ]);
+        return Promise.resolve(0);
+      },
+      probe,
+      undefined,
+      undefined,
+      EMBEDDED,
+    );
+  });
+  return { runs, err };
+}
+
+Deno.test("main runs a hosted build on the binary's own engine, for a command, --help and --version", async () => {
+  // The binary's engine serves the pin, so Deno is not asked; the launcher
+  // case is runBuild's, in dispatch_test.ts.
+  const forwarded = await onEmbedded(["ci", "--plain"], hostedProbe("1.2.0"));
+  assertEquals(forwarded.runs, [[["ci", "--plain"], "/opt/zuke"]]);
+  assertEquals(forwarded.err, []);
+  const help = await onEmbedded(["--help"], hostedProbe("1.2.0"));
+  assertEquals(help.runs, [[["--help"], "/opt/zuke"]]);
+  const versionHost = new FakeHost();
+  const version = await onEmbedded(
+    ["--version"],
+    hostedProbe("1.2.0"),
+    versionHost,
+  );
+  assertEquals(version.runs, [[["--version"], "/opt/zuke"]]);
+  assertEquals(versionHost.logs[0], VERSION);
+  // Named by the engine that runs it, in plain output too, and asked for its
+  // core rather than read from the lock, which is not what the binary runs.
+  assertStringIncludes(
+    versionHost.logs.join("\n"),
+    ", on the built-in @zuke/engine 1.3.0) runs on Zuke:",
+  );
+});
+
+Deno.test("main says when the binary's engine cannot serve the pin, and runs it the old way", async () => {
+  const { runs, err } = await onEmbedded(["ci"], hostedProbe("2.0.0"));
+  // Deno, with the pinned release, as without an embedded engine.
+  assertEquals(runs, [[
+    ["run", "-A", "jsr:@zuke/engine@2.0.0", "ci"],
+    undefined,
+  ]]);
+  assertEquals(err.length, 1);
+  assertStringIncludes(
+    err[0] ?? "",
+    "built-in @zuke/engine 1.3.0 cannot run zuke.json's 2.0.0",
+  );
 });
 
 Deno.test("main propagates the build's exit code and forwards flags verbatim", async () => {
@@ -1958,5 +2078,48 @@ Deno.test("ZUKE_NO_BANNER drops the setup logo too, and keeps the rest", async (
     });
     assertEquals(host.logs.some((l) => l.includes(LOGO_TOP)), false);
     assertEquals(host.logs.some((l) => l.startsWith("Done —")), true);
+  });
+});
+
+Deno.test("--version names the binary's built-in engine as its own row", async () => {
+  await withEnv(RICH_ENV, async () => {
+    const host = new FakeHost();
+    host.terminal = true;
+    await main(
+      ["--version"],
+      host,
+      defaultPrompter,
+      undefined,
+      undefined,
+      () => Promise.resolve(0),
+      noProjectProbe,
+      undefined,
+      undefined,
+      EMBEDDED,
+    );
+    assertStringIncludes(
+      stripAnsi(host.logs.join("\n")),
+      "◆ built-in  @zuke/engine 1.3.0",
+    );
+  });
+});
+
+Deno.test("binaryMain is main with every default and the binary's engine", async () => {
+  // Outside any project, with plain output, so the answer is one line and
+  // nothing is spawned.
+  await withTemp(async (dir) => {
+    const previous = Deno.cwd();
+    Deno.chdir(dir);
+    try {
+      await withEnv({ ZUKE_PLAIN: "1" }, async () => {
+        const { code, out } = await capture(() =>
+          binaryMain(["--version"], EMBEDDED)
+        );
+        assertEquals(code, 0);
+        assertEquals(out, [VERSION]);
+      });
+    } finally {
+      Deno.chdir(previous);
+    }
   });
 });
