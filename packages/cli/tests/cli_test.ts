@@ -104,8 +104,14 @@ Deno.test("parseSetupFlags reads every flag form", () => {
   assertEquals(parseSetupFlags(["--zuke"]).zuke, undefined);
 });
 
+/**
+ * A release this CLI can never be, so it stays another release whatever
+ * version a release bump gives the CLI.
+ */
+const OTHER = "0.9.9";
+
 /** The zuke releases the SDK setup tests pin from: this one, and another. */
-const RELEASES = [testPin(VERSION, "1.5.0"), testPin("2.4.0", "1.4.0")];
+const RELEASES = [testPin(VERSION, "1.5.0"), testPin(OTHER, "1.4.0")];
 
 /** Run `zuke setup` non-interactively against `releases`, returning the code. */
 function setupSdk(
@@ -154,7 +160,7 @@ Deno.test("main setup --sdk python pins this zuke's own release, and its engine"
 
 Deno.test("main setup --sdk python --zuke pins that release", async () => {
   const host = new FakeHost();
-  assertEquals(await setupSdk(host, ["--zuke", "2.4.0"]), 0);
+  assertEquals(await setupSdk(host, ["--zuke", OTHER]), 0);
   assertEquals(
     Reflect.get(
       Object(JSON.parse(host.files.get("zuke.json") ?? "")),
@@ -164,7 +170,7 @@ Deno.test("main setup --sdk python --zuke pins that release", async () => {
   );
   assertStringIncludes(
     host.files.get("zuke.ps1") ?? "",
-    '$ZukeVersion = "2.4.0"',
+    `$ZukeVersion = "${OTHER}"`,
   );
 });
 
