@@ -6,16 +6,18 @@ The `zuke` command-line tool — scaffold
 ```sh
 deno install -A -g -n zuke jsr:@zuke/cli
 zuke setup
-zuke setup --sdk python   # a build.py the Python SDK describes, run on @zuke/engine
+zuke setup --sdk python   # a build.py, with launchers that run the zuke binary: no Deno
 zuke upgrade              # later: move the installed CLI to the latest release
-zuke upgrade --engine     # or a Python project's @zuke/engine pin
+zuke upgrade --engine     # or move a Python project to the latest zuke release
 ```
 
 The same CLI also ships as a standalone binary that needs no Deno up front:
 `brew install zuke-build/tap/zuke` on macOS and Linux, and `choco install zuke`
 on Windows (not Authenticode-signed yet). Update those with `brew upgrade zuke`
 or `choco upgrade zuke`. See
-[installing](https://github.com/zuke-build/zuke/blob/master/docs/install.md).
+[installing](https://github.com/zuke-build/zuke/blob/master/docs/install.md). A
+Python project runs on that binary alone: its launchers download the pinned
+release, checksum-verified, so neither it nor its CI ever needs Deno.
 
 <!-- ZUKE:API:START -->
 
@@ -69,6 +71,16 @@ const FORWARDED_ENV: "ZUKE_FORWARDED"
 const defaultPrompter: Prompter
   The real {@link Prompter}, backed by Deno's `prompt`/`confirm`.
 
+interface BinaryPin
+  The pinned `zuke` release, the engine inside it, and each archive's digest.
+
+  readonly version: string
+    The release, without the tag's `cli-v` prefix, e.g. `"2.4.0"`.
+  readonly engine: string
+    The `@zuke/engine` release compiled into it.
+  readonly checksums: Readonly<Record<BinaryTarget, string>>
+    Lowercase hex SHA-256 of each target's archive.
+
 interface BuildLocation
   Where a forwarded command runs, and how.
 
@@ -117,12 +129,14 @@ interface EmbeddedEngine
 interface EnginePinHost
   What moving the pin reaches outside the process, injectable for tests.
 
-  readText(path: string): Promise<string>
-    Read a text file, rejecting when it cannot be read.
+  readText(path: string): Promise<string | null>
+    Read a text file, or `null` when there is none.
   writeText(path: string, text: string): Promise<void>
     Write a text file, replacing what is there.
-  engineMeta(): Promise<unknown>
-    Fetch and parse `@zuke/engine`'s JSR `meta.json`.
+  cliMeta(): Promise<unknown>
+    Fetch and parse `@zuke/cli`'s JSR `meta.json`, whose latest is the newest zuke.
+  binaryPin(version: string): Promise<BinaryPin>
+    Resolve the pin of a `zuke` release.
 
 interface ImportFlags extends SetupFlags
   Flags accepted by `zuke import` — the setup flags plus `--from`.
@@ -181,8 +195,9 @@ interface Prompter
 interface SdkSetupOptions
   What `--sdk python` scaffolds against.
 
-  engine: string
-    The exact `@zuke/engine` release `zuke.json` pins.
+  pin: BinaryPin
+    The `zuke` release the launchers run; `zuke.json` pins the engine it
+    carries.
 
 interface SetupFlags
   Flags accepted by `zuke setup`.
@@ -202,16 +217,17 @@ interface SetupFlags
   allowRun: boolean
     Register that server with `--allow-run`, so the agent may execute targets. Implies `mcp`.
   bootstrapDeno?: boolean
-    Which launchers to scaffold: `true` (`--bootstrap-deno`) for ones that
-    install a pinned, checksum-verified Deno when none is on `PATH`, `false`
-    (`--no-bootstrap-deno`) for ones that require it and fail closed. Unset:
-    ask when interactive, else take the default (bootstrap).
+    Which launchers to scaffold: `true` (`--bootstrap`) for ones that
+    download their pinned, checksum-verified runtime when it is missing —
+    Deno for a `zuke.ts` build, the `zuke` binary for a hosted one — `false`
+    (`--no-bootstrap`) for ones that require it on `PATH` and fail closed.
+    Unset: ask when interactive, else take the default (bootstrap).
   sdk?: string
     The SDK whose build to scaffold (`--sdk python`): a `build.py` the engine
     runs, in place of a `zuke.ts`. Unset: a TypeScript build.
-  engine?: string
-    The exact `@zuke/engine` release to pin for an SDK build (`--engine`).
-    Unset: the latest release, read from JSR at setup time.
+  zuke?: string
+    The `zuke` release an SDK build's launchers run (`--zuke`), whose engine
+    `zuke.json` pins. Unset: this zuke's own release.
 
 interface SetupHost
   Injected side effects, so {@link runSetup} is unit-testable.
@@ -281,9 +297,10 @@ interface UpgradeHost extends InstallHost
     Whether this is Windows, where the running shim is a `.cmd` file.
   meta(): Promise<unknown>
     Fetch and parse `@zuke/cli`'s JSR `meta.json`.
-  engineMeta(): Promise<unknown>
-    Fetch and parse `@zuke/engine`'s JSR `meta.json`: the release
-    `zuke setup --sdk` pins and `zuke upgrade --engine` moves a pin to.
+  binaryPin(version: string): Promise<BinaryPin>
+    Resolve the pin of `zuke` release `version`, which `zuke setup --sdk`
+    scaffolds a hosted build's launchers with and `zuke upgrade --engine`
+    moves them to: its archives' digests and the engine it carries.
   install(denoArgs: string[]): Promise<number>
     Run `deno <denoArgs>` to reinstall, returning its exit code.
   denoVersion(): string
@@ -291,6 +308,9 @@ interface UpgradeHost extends InstallHost
     CLI, since `zuke upgrade` only ever runs from a JSR install under Deno.
   readText(path: string): Promise<string>
     Read a text file, rejecting when it cannot be read.
+
+type BinaryTarget = "aarch64-apple-darwin" | "x86_64-apple-darwin" | "aarch64-unknown-linux-gnu" | "x86_64-unknown-linux-gnu" | "x86_64-pc-windows-msvc"
+  A platform a `zuke` release ships a binary for, as its archive names it.
 
 type BuildRunner = (root: string, args: string[], program?: string, env?: Readonly<Record<string, string>>) => Promise<number>
   Runs `program <args>` from `root` — Deno when `program` is omitted, else the

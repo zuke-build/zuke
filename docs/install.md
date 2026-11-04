@@ -9,7 +9,13 @@ it. All of them install the same program, from the same release.
 
 A machine without the CLI — a CI runner — can still run a project's build: the
 committed `./zuke` launcher (`.\zuke.ps1` on Windows) that `zuke setup` writes
-bootstraps a pinned, checksum-verified Deno on its own.
+bootstraps its pinned, checksum-verified runtime on its own. For a `zuke.ts`
+build that is Deno. For a Python build it is the standalone `zuke` binary below,
+downloaded from its GitHub release, so a Python project needs no Deno anywhere.
+Each SDK runs on its own stack only.
+
+A Python user installs `zuke` with Homebrew or Chocolatey, or lets the project's
+launchers download it. The JSR route is for Deno users.
 
 ## From JSR (recommended)
 
@@ -27,10 +33,12 @@ brew install zuke-build/tap/zuke
 ```
 
 This installs a standalone binary, so it needs **no Deno up front**.
-`zuke setup` runs right away, and the `./zuke` launcher it writes installs Deno
-the first time the build runs; from then on `zuke <target>` forwards to that
-Deno. Upgrade with `brew upgrade zuke`. `zuke upgrade` refuses to run from a
-Homebrew install, because reinstalling from JSR would leave this one as it was.
+`zuke setup` runs right away. For a `zuke.ts` build, the `./zuke` launcher it
+writes installs Deno the first time the build runs, and from then on
+`zuke <target>` forwards to that Deno. A Python build never needs Deno: the
+binary runs it on the engine it carries. Upgrade with `brew upgrade zuke`.
+`zuke upgrade` refuses to run from a Homebrew install, because reinstalling from
+JSR would leave this one as it was.
 
 The binaries are built for Apple silicon and Intel Macs, and for arm64 and
 x86_64 Linux.

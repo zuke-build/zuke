@@ -19,11 +19,12 @@ import { defaultUpgradeHost } from "../src/upgrade.ts";
 import { VERSION } from "../src/version.ts";
 import { DENO_PIN } from "../src/deno_pin.ts";
 import {
-  engineRegistry,
   FakeHost,
   FakePrompter,
   FakeStarActions,
   noProjectProbe,
+  pinRegistry,
+  testPin,
 } from "./_fakes.ts";
 import { withTemp } from "../../core/tests/_temp.ts";
 import { withEnv } from "../../core/tests/_env.ts";
@@ -92,22 +93,25 @@ Deno.test("parseSetupFlags reads every flag form", () => {
     parseSetupFlags(["--bootstrap-deno", "--no-bootstrap-deno"]).bootstrapDeno,
     false,
   );
+  // The neutral spelling, for a launcher that bootstraps zuke rather than Deno.
+  assertEquals(parseSetupFlags(["--bootstrap"]).bootstrapDeno, true);
+  assertEquals(parseSetupFlags(["--no-bootstrap"]).bootstrapDeno, false);
   assertEquals(parseSetupFlags(["--sdk", "python"]).sdk, "python");
   assertEquals(parseSetupFlags(["--sdk=python"]).sdk, "python");
   assertEquals(parseSetupFlags(["--sdk"]).sdk, undefined);
-  assertEquals(parseSetupFlags(["--engine", "1.2.0"]).engine, "1.2.0");
-  assertEquals(parseSetupFlags(["--engine=1.2.0"]).engine, "1.2.0");
-  assertEquals(parseSetupFlags(["--engine"]).engine, undefined);
+  assertEquals(parseSetupFlags(["--zuke", "2.4.0"]).zuke, "2.4.0");
+  assertEquals(parseSetupFlags(["--zuke=2.4.0"]).zuke, "2.4.0");
+  assertEquals(parseSetupFlags(["--zuke"]).zuke, undefined);
 });
 
-/** The registry document every published engine release test reads. */
-const ENGINE_META = { latest: "1.5.0", versions: { "1.5.0": {} } };
+/** The zuke releases the SDK setup tests pin from: this one, and another. */
+const RELEASES = [testPin(VERSION, "1.5.0"), testPin("2.4.0", "1.4.0")];
 
-/** Run `zuke setup` non-interactively against `registry`, returning the code. */
+/** Run `zuke setup` non-interactively against `releases`, returning the code. */
 function setupSdk(
   host: FakeHost,
   args: string[],
-  registry: unknown = ENGINE_META,
+  releases: typeof RELEASES | Error = RELEASES,
 ): Promise<number> {
   return main(
     ["setup", "--yes", "--sdk", "python", ...args],
@@ -117,87 +121,89 @@ function setupSdk(
     undefined,
     undefined,
     undefined,
-    engineRegistry(registry),
+    pinRegistry(releases),
   );
 }
 
-Deno.test("main setup --sdk python --engine pins that release without the registry", async () => {
+Deno.test("main setup --sdk python pins this zuke's own release, and its engine", async () => {
   const host = new FakeHost();
-  const code = await setupSdk(
-    host,
-    ["--engine", "1.2.0", "--name", "Acme"],
-    new Error("offline"),
-  );
-  assertEquals(code, 0);
+  const code = await setupSdk(host, ["--name", "Acme", "--mcp"]);
+  assertEquals(code, 0, host.logs.join("\n"));
   assertEquals(JSON.parse(host.files.get("zuke.json") ?? ""), {
     name: "Acme",
     sdk: { command: ["uv", "run", "build.py"] },
-    engine: "1.2.0",
+    engine: "1.5.0",
   });
+  assertStringIncludes(
+    host.files.get("zuke") ?? "",
+    `ZUKE_VERSION="${VERSION}"`,
+  );
   assertEquals(host.files.has("build.py"), true);
   assertEquals(host.files.has("zuke.ts"), false);
   assertEquals(host.files.has("deno.json"), false);
   assertEquals(host.logs.some((l) => l.endsWith("Next: zuke")), true);
+  // Served by the zuke binary, whichever CLI scaffolded it: no Deno.
+  assertEquals(
+    JSON.parse(host.files.get(".mcp.json") ?? "{}").mcpServers.zuke,
+    {
+      command: "zuke",
+      args: ["mcp"],
+    },
+  );
 });
 
-Deno.test("main setup --sdk python pins JSR's latest engine release", async () => {
+Deno.test("main setup --sdk python --zuke pins that release", async () => {
   const host = new FakeHost();
-  assertEquals(await setupSdk(host, ["--mcp"]), 0);
-  const config: unknown = JSON.parse(host.files.get("zuke.json") ?? "");
-  assertEquals(Reflect.get(Object(config), "engine"), "1.5.0");
-  const mcp = JSON.parse(host.files.get(".mcp.json") ?? "{}");
-  // Not the compiled binary, so the pinned engine on Deno, which a client
-  // starts with no zuke on its PATH.
-  assertEquals(mcp.mcpServers.zuke.args, [
-    "run",
-    "-A",
-    "jsr:@zuke/engine@1.5.0",
-    "mcp",
-  ]);
+  assertEquals(await setupSdk(host, ["--zuke", "2.4.0"]), 0);
+  assertEquals(
+    Reflect.get(
+      Object(JSON.parse(host.files.get("zuke.json") ?? "")),
+      "engine",
+    ),
+    "1.4.0",
+  );
+  assertStringIncludes(
+    host.files.get("zuke.ps1") ?? "",
+    '$ZukeVersion = "2.4.0"',
+  );
 });
 
-Deno.test("main setup --mcp from the compiled binary registers zuke mcp for a hosted build only", async () => {
-  const binary = {
-    version: "1.5.0",
-    program: "/opt/zuke",
-    serves: () => true,
-  };
-  const scaffold = async (args: string[]) => {
-    const host = new FakeHost();
-    const code = await main(
-      ["setup", "--yes", "--mcp", ...args],
-      host,
-      new FakePrompter(false),
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      engineRegistry(ENGINE_META),
-      undefined,
-      binary,
-    );
-    assertEquals(code, 0, host.logs.join("\n"));
-    return JSON.parse(host.files.get(".mcp.json") ?? "{}").mcpServers.zuke;
-  };
-  // The binary carries the engine: no Deno, and no pin to drift from.
-  assertEquals(await scaffold(["--sdk", "python"]), {
-    command: "zuke",
-    args: ["mcp"],
-  });
-  // A zuke.ts build is Deno's whichever CLI registered it.
-  assertEquals((await scaffold([])).command, "deno");
+Deno.test("main setup --mcp registers a zuke.ts build on Deno, whichever CLI ran it", async () => {
+  const host = new FakeHost();
+  const code = await main(
+    ["setup", "--yes", "--mcp"],
+    host,
+    new FakePrompter(false),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    pinRegistry(RELEASES),
+    undefined,
+    { version: "1.5.0", program: "/opt/zuke", serves: () => true },
+  );
+  assertEquals(code, 0, host.logs.join("\n"));
+  assertEquals(
+    JSON.parse(host.files.get(".mcp.json") ?? "{}").mcpServers.zuke.command,
+    "deno",
+  );
 });
 
 Deno.test("main setup --sdk refuses what it cannot scaffold, before writing anything", async () => {
-  const cases: Array<[string[], unknown, string]> = [
-    [["--sdk", "rust"], ENGINE_META, 'unknown --sdk "rust"'],
-    [["--engine", "latest"], ENGINE_META, "not an exact version"],
-    [[], new Error("offline"), "could not read @zuke/engine's versions"],
-    [[], {}, "names no latest version"],
+  const cases: Array<[string[], typeof RELEASES | Error, string]> = [
+    [["--sdk", "rust"], RELEASES, 'unknown --sdk "rust"'],
+    [["--zuke", "latest"], RELEASES, "not an exact version"],
+    [
+      ["--zuke", "9.9.9"],
+      RELEASES,
+      "zuke 9.9.9's published binaries could not be read. Name a published " +
+      "release with --zuke <version>.",
+    ],
+    [[], new Error("offline"), "zuke setup: offline."],
   ];
-  for (const [args, registry, message] of cases) {
+  for (const [args, releases, message] of cases) {
     const host = new FakeHost();
-    const code = await setupSdk(host, args, registry);
+    const code = await setupSdk(host, args, releases);
     assertEquals(code, 1, args.join(" "));
     assertEquals(host.logs.some((l) => l.includes(message)), true, message);
     assertEquals(host.files.size, 0, args.join(" "));
@@ -219,7 +225,7 @@ Deno.test("main --help documents --sdk and upgrade --engine", async () => {
   assertEquals(code, 0);
   const help = host.logs.join("\n");
   assertStringIncludes(help, "--sdk python");
-  assertStringIncludes(help, "--engine <version>");
+  assertStringIncludes(help, "--zuke <version>");
   assertStringIncludes(help, "upgrade --engine [<v>]");
 });
 
@@ -308,7 +314,7 @@ Deno.test("main import honours the launcher flags and question too", async () =>
   const prompter = new FakePrompter(true, "", true, false, "no");
   assertEquals(await main(["import"], asked, prompter), 0);
   assertEquals(
-    prompter.asks.some((q) => q.includes("bootstrap a pinned")),
+    prompter.asks.some((q) => q.includes("download their pinned")),
     true,
   );
   assertEquals(
@@ -332,8 +338,8 @@ Deno.test("main --help documents both launcher flags", async () => {
     0,
   );
   const help = host.logs.join("\n");
-  assertEquals(help.includes("--bootstrap-deno"), true);
-  assertEquals(help.includes("--no-bootstrap-deno"), true);
+  assertEquals(help.includes("--bootstrap "), true);
+  assertEquals(help.includes("--no-bootstrap "), true);
 });
 
 Deno.test("main setup --mcp writes .mcp.json and import --allow-run passes it through", async () => {
@@ -959,10 +965,13 @@ async function onEmbedded(
   args: string[],
   probe: BuildProbe,
   host = new FakeHost(),
-): Promise<{ runs: Array<[string[], string | undefined]>; err: string[] }> {
+): Promise<
+  { code: number; runs: Array<[string[], string | undefined]>; err: string[] }
+> {
   const runs: Array<[string[], string | undefined]> = [];
+  let code = -1;
   const err = await capturingErr(async () => {
-    await main(
+    code = await main(
       args,
       host,
       defaultPrompter,
@@ -981,7 +990,7 @@ async function onEmbedded(
       EMBEDDED,
     );
   });
-  return { runs, err };
+  return { code, runs, err };
 }
 
 Deno.test("main runs a hosted build on the binary's own engine, for a command, --help and --version", async () => {
@@ -1008,17 +1017,15 @@ Deno.test("main runs a hosted build on the binary's own engine, for a command, -
   );
 });
 
-Deno.test("main says when the binary's engine cannot serve the pin, and runs it the old way", async () => {
-  const { runs, err } = await onEmbedded(["ci"], hostedProbe("2.0.0"));
-  // Deno, with the pinned release, as without an embedded engine.
-  assertEquals(runs, [[
-    ["run", "-A", "jsr:@zuke/engine@2.0.0", "ci"],
-    undefined,
-  ]]);
+Deno.test("main refuses a pin the binary's engine cannot serve, rather than run Deno", async () => {
+  const { code, runs, err } = await onEmbedded(["ci"], hostedProbe("2.0.0"));
+  assertEquals(code, 1);
+  assertEquals(runs, []);
   assertEquals(err.length, 1);
   assertStringIncludes(
     err[0] ?? "",
-    "built-in @zuke/engine 1.3.0 cannot run zuke.json's 2.0.0",
+    "built-in @zuke/engine 1.3.0 cannot run zuke.json's 2.0.0. Install a " +
+      "zuke release that carries it",
   );
 });
 

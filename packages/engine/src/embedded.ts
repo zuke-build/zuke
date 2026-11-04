@@ -9,8 +9,8 @@
  * each behind a literal import the compile embeds, and answers a `tool.call`
  * from those. A release serves a call that asks for the same major version
  * and no newer one; anything else is refused with what to do about it, since
- * the binary has no other release to offer: a newer `zuke`, or the project's
- * launcher, which runs the pinned engine on Deno with JSR's releases.
+ * the binary has no other release to offer: a newer `zuke`, which for a
+ * project's launcher is `zuke upgrade --engine`.
  *
  * @module
  */
@@ -59,8 +59,8 @@ export function servesRelease(carried: string, wanted: string): boolean {
 }
 
 /** What to do about a release the binary cannot serve. */
-const REMEDY = "update this zuke to a release that carries it, or run the " +
-  "project's ./zuke launcher, which runs the pinned engine on Deno";
+const REMEDY = "update this zuke to a release that carries it; a project's " +
+  "launchers move to the latest with `zuke upgrade --engine`";
 
 /**
  * The {@link ToolResolver} of a binary holding `releases`, by package name

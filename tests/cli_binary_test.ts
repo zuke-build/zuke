@@ -19,6 +19,23 @@ import {
 } from "../build/cli_binary.ts";
 import { localVersion } from "../build/packages.ts";
 import { WRAPPER_PACKAGES } from "../build/tool_spec.ts";
+import {
+  archiveName,
+  CHECKSUMS,
+  CLI_TARGETS,
+  cliReleaseTag,
+  releaseAssetUrl,
+  WINDOWS_TRIPLE,
+  windowsArchiveName,
+} from "../build/cli_release.ts";
+import {
+  BINARY_CHECKSUMS,
+  BINARY_POSIX_TARGETS,
+  BINARY_RELEASES_URL,
+  BINARY_WINDOWS_TARGET,
+  binaryArchiveName,
+  binaryReleaseTag,
+} from "../packages/cli/src/binary_pin.ts";
 
 const ENTRY = {
   cli: "jsr:@zuke/cli@2.3.0",
@@ -109,5 +126,30 @@ Deno.test("releaseEntry embeds this checkout's engine and every released wrapper
   assertEquals(
     embeddedReleases(entry, "9.9.9").length,
     entry.wrappers.length + 3,
+  );
+});
+
+Deno.test("the launchers' release vocabulary is the release pipeline's", () => {
+  // The pipeline publishes what the launchers download: the same tag, the
+  // same targets, the same archive names and the same manifest.
+  assertEquals(binaryReleaseTag("2.4.0"), cliReleaseTag("2.4.0"));
+  assertEquals(
+    BINARY_POSIX_TARGETS,
+    CLI_TARGETS.map((target) => target.triple),
+  );
+  assertEquals(BINARY_WINDOWS_TARGET, WINDOWS_TRIPLE);
+  for (const target of CLI_TARGETS) {
+    assertEquals(
+      binaryArchiveName("2.4.0", target.triple),
+      archiveName("2.4.0", target),
+    );
+  }
+  assertEquals(
+    binaryArchiveName("2.4.0", BINARY_WINDOWS_TARGET),
+    windowsArchiveName("2.4.0"),
+  );
+  assertEquals(
+    `${BINARY_RELEASES_URL}/${binaryReleaseTag("2.4.0")}/${BINARY_CHECKSUMS}`,
+    releaseAssetUrl("2.4.0", CHECKSUMS),
   );
 });

@@ -41,6 +41,7 @@ import {
   installSource,
 } from "./src/install_source.ts";
 import { DENO_PIN } from "./src/deno_pin.ts";
+import type { BinaryPin } from "./src/binary_pin.ts";
 import {
   buildLabel,
   type BuildLocation,
@@ -61,9 +62,6 @@ import { runDenoIsolated } from "./src/deno_isolated.ts";
 import { defaultDenoHost, firstSet } from "./src/deno_path.ts";
 import {
   defaultUpgradeHost,
-  ENGINE_PACKAGE,
-  registryMeta,
-  resolveRelease,
   runUpgrade,
   type UpgradeHost,
 } from "./src/upgrade.ts";
@@ -94,6 +92,7 @@ export type { InstallHost } from "./src/install_source.ts";
 export type { UpgradeHost } from "./src/upgrade.ts";
 export type { EnginePinHost } from "./src/engine_pin.ts";
 export type { SdkSetupOptions } from "./src/setup.ts";
+export type { BinaryPin, BinaryTarget } from "./src/binary_pin.ts";
 export type { ProjectHost } from "./src/project.ts";
 export type {
   BuildLocation,
@@ -151,10 +150,11 @@ export interface SetupFlags {
   /** Register that server with `--allow-run`, so the agent may execute targets. Implies `mcp`. */
   allowRun: boolean;
   /**
-   * Which launchers to scaffold: `true` (`--bootstrap-deno`) for ones that
-   * install a pinned, checksum-verified Deno when none is on `PATH`, `false`
-   * (`--no-bootstrap-deno`) for ones that require it and fail closed. Unset:
-   * ask when interactive, else take the default (bootstrap).
+   * Which launchers to scaffold: `true` (`--bootstrap`) for ones that
+   * download their pinned, checksum-verified runtime when it is missing —
+   * Deno for a `zuke.ts` build, the `zuke` binary for a hosted one — `false`
+   * (`--no-bootstrap`) for ones that require it on `PATH` and fail closed.
+   * Unset: ask when interactive, else take the default (bootstrap).
    */
   bootstrapDeno?: boolean;
   /**
@@ -163,10 +163,10 @@ export interface SetupFlags {
    */
   sdk?: string;
   /**
-   * The exact `@zuke/engine` release to pin for an SDK build (`--engine`).
-   * Unset: the latest release, read from JSR at setup time.
+   * The `zuke` release an SDK build's launchers run (`--zuke`), whose engine
+   * `zuke.json` pins. Unset: this zuke's own release.
    */
-  engine?: string;
+  zuke?: string;
 }
 
 /** Parse the argument list following `zuke setup`. */
@@ -190,9 +190,11 @@ export function parseSetupFlags(args: string[]): SetupFlags {
       // implies --mcp rather than being silently ignored without it.
       flags.mcp = true;
       flags.allowRun = true;
-    } else if (arg === "--bootstrap-deno") {
+    } else if (arg === "--bootstrap" || arg === "--bootstrap-deno") {
+      // `--bootstrap-deno` is the older spelling, from before a launcher
+      // could bootstrap anything but Deno.
       flags.bootstrapDeno = true;
-    } else if (arg === "--no-bootstrap-deno") {
+    } else if (arg === "--no-bootstrap" || arg === "--no-bootstrap-deno") {
       flags.bootstrapDeno = false;
     } else if (arg === "--name") {
       if (i + 1 < args.length) {
@@ -222,13 +224,13 @@ export function parseSetupFlags(args: string[]): SetupFlags {
       }
     } else if (arg.startsWith("--sdk=")) {
       flags.sdk = arg.slice("--sdk=".length);
-    } else if (arg === "--engine") {
+    } else if (arg === "--zuke") {
       if (i + 1 < args.length) {
         i++;
-        flags.engine = args[i];
+        flags.zuke = args[i];
       }
-    } else if (arg.startsWith("--engine=")) {
-      flags.engine = arg.slice("--engine=".length);
+    } else if (arg.startsWith("--zuke=")) {
+      flags.zuke = arg.slice("--zuke=".length);
     }
   }
   return flags;
@@ -238,13 +240,12 @@ export function parseSetupFlags(args: string[]): SetupFlags {
 const SDKS = new Set(["python"]);
 
 /**
- * What `--sdk` asks `setup` to scaffold against: the engine release to pin,
- * named by `--engine` (taken as given, so a pin needs no network) or read
- * from JSR as the latest. `undefined` without `--sdk`, for a TypeScript
+ * What `--sdk` asks `setup` to scaffold against: the pin of the `zuke`
+ * release the launchers run. `undefined` without `--sdk`, for a TypeScript
  * build.
  *
- * @throws {Error} naming an SDK the engine cannot host, an `--engine` that
- * is not an exact version, or a registry that cannot be read.
+ * @throws {Error} naming an SDK the engine cannot host, or a release whose
+ * pin cannot be read.
  */
 async function sdkOption(
   flags: SetupFlags,
@@ -257,71 +258,73 @@ async function sdkOption(
         `in: ${[...SDKS].join(", ")}.`,
     );
   }
-  return { engine: await engineRelease(flags, upgradeHost, "zuke setup") };
+  return { pin: await binaryPin(flags, upgradeHost, "zuke setup") };
 }
 
 /**
- * The `@zuke/engine` release an SDK build pins: `--engine` taken as given (so
- * a pin needs no network), or JSR's latest. `command` names the caller in
- * its errors.
+ * The pin of the `zuke` release an SDK build's launchers run: `--zuke`, or
+ * this zuke's own release. `command` names the caller in its errors.
  *
- * @throws {Error} naming an `--engine` that is not an exact version, or a
- * registry that cannot be read.
+ * @throws {Error} naming a `--zuke` that is not an exact version, or a
+ * release whose binaries or engine cannot be read.
  */
-async function engineRelease(
+async function binaryPin(
   flags: SetupFlags,
   upgradeHost: UpgradeHost,
   command: string,
-): Promise<string> {
-  if (flags.engine !== undefined) {
-    if (!VERSION_PATTERN.test(flags.engine)) {
-      throw new Error(
-        `${command}: --engine "${flags.engine}" is not an exact version — ` +
-          "name a release such as 1.2.0.",
-      );
-    }
-    return flags.engine;
+): Promise<BinaryPin> {
+  const version = flags.zuke ?? VERSION;
+  if (!VERSION_PATTERN.test(version)) {
+    throw new Error(
+      `${command}: --zuke "${version}" is not an exact version — name a ` +
+        "zuke release such as 2.4.0.",
+    );
   }
-  const meta = await registryMeta(
-    () => upgradeHost.engineMeta(),
-    ENGINE_PACKAGE,
-    command,
-  );
-  return resolveRelease(meta, undefined, ENGINE_PACKAGE, command);
+  try {
+    return await upgradeHost.binaryPin(version);
+  } catch (error) {
+    throw new Error(
+      `${command}: ${error instanceof Error ? error.message : String(error)}` +
+        ". Name a published release with --zuke <version>.",
+    );
+  }
 }
 
-/**
- * The `.mcp.json` request the flags make, or `undefined` for none; `engine`
- * is the compiled binary's, whose own `zuke mcp` a hosted build then uses.
- */
-function mcpOption(
-  flags: SetupFlags,
-  engine: EmbeddedEngine | undefined,
-): McpSetupOptions | undefined {
-  return flags.mcp
-    ? { allowRun: flags.allowRun, binary: engine !== undefined }
-    : undefined;
+/** The `.mcp.json` request the flags make, or `undefined` for none. */
+function mcpOption(flags: SetupFlags): McpSetupOptions | undefined {
+  return flags.mcp ? { allowRun: flags.allowRun } : undefined;
 }
 
-/** The launcher question, naming the release a yes will pin. */
+/** The launcher question for a TypeScript build, naming the Deno a yes pins. */
 const BOOTSTRAP_QUESTION =
   `Launchers: bootstrap a pinned, checksum-verified Deno v${DENO_PIN.version} ` +
   "when none is on PATH? [y/n]";
 
+/** The launcher question for a build another SDK hosts, which needs no Deno. */
+const SDK_BOOTSTRAP_QUESTION =
+  "Launchers: download the pinned, checksum-verified zuke release on first " +
+  "use, rather than require zuke on PATH? [y/n]";
+
+/** The launcher question when the build's kind is not known yet (`import`). */
+const ANY_BOOTSTRAP_QUESTION =
+  "Launchers: download their pinned, checksum-verified runtime (Deno for a " +
+  "TypeScript build, zuke for a Python one) when it is missing? [y/n]";
+
 /**
  * Which launchers to scaffold. A flag decides outright; otherwise the wizard
- * asks when it is interactive, and the default — bootstrap — stands under
- * `--yes` or a non-TTY. Only an explicit "n…" opts out, so Enter keeps the
- * default the question shows.
+ * asks `question` when it is interactive, and the default — bootstrap —
+ * stands under `--yes` or a non-TTY. Only an explicit "n…" opts out, so
+ * Enter keeps the default the question shows.
  */
 function resolveBootstrapDeno(
   flags: SetupFlags,
   prompter: Prompter,
   interactive: boolean,
+  question: string,
 ): boolean {
   if (flags.bootstrapDeno !== undefined) return flags.bootstrapDeno;
   if (!interactive) return true;
-  return !/^n/i.test(prompter.ask(BOOTSTRAP_QUESTION, "y").trim());
+  return !/^n/i.test(prompter.ask(question, "y").trim());
 }
 
 /** The flag that asks for plain output, read here for the CLI's own commands. */
@@ -397,7 +400,7 @@ Zuke commands (available anywhere):
   doc <package>           Show a @zuke/* package's API docs (isolated resolution)
   upgrade [<version>]     Reinstall this CLI at the latest (or given) JSR release
                           (Homebrew installs: brew upgrade zuke)
-  upgrade --engine [<v>]  Move this project's @zuke/engine pin to the latest (or given) release
+  upgrade --engine [<v>]  Move a Python project's launchers to the latest (or given) zuke release
   add <package...>        Add packages to this project's deno.json (docker = @zuke/docker)
   remove <package...>     Remove packages from this project's deno.json
   cache [<entry>...]      Fetch everything the build imports, keeping the lock
@@ -409,12 +412,13 @@ Setup options:
   --dir <path>            Directory to scaffold into (default: .)
   --name <Class>          Build class name for zuke.ts (default: MyBuild)
   --launcher-name <name>  Launcher base name when a zuke/ directory is in the way
-  --sdk python            Scaffold a build.py the Python SDK describes and @zuke/engine runs
-  --engine <version>      The @zuke/engine release to pin with --sdk (default: JSR's latest)
+  --sdk python            Scaffold a build.py and launchers that run the zuke binary (no Deno)
+  --zuke <version>        The zuke release those launchers run (default: this one)
   --mcp                   Also write .mcp.json registering the build's MCP server
   --allow-run             …with --allow-run, so an agent may execute targets (implies --mcp)
-  --bootstrap-deno        Launchers install a pinned, checksum-verified Deno when none is on PATH (default)
-  --no-bootstrap-deno     Launchers require Deno on PATH and fail closed without it
+  --bootstrap             Launchers download their pinned, checksum-verified runtime when missing (default):
+                          Deno for a zuke.ts build, the zuke binary for a Python one
+  --no-bootstrap          Launchers require that runtime on PATH and fail closed without it
   --force, -f             Overwrite existing files
   --yes, -y               Accept defaults without prompting
 
@@ -422,18 +426,19 @@ Import options:
   --dir <path>            Directory to read from and scaffold into (default: .)
   --name <Class>          Build class name (default: MyBuild)
   --from <source>         Force a source: package.json, makefile or pyproject (default: auto-detect)
-  --engine <version>      The @zuke/engine release a pyproject.toml import pins (default: JSR's latest)
+  --zuke <version>        The zuke release a pyproject.toml import's launchers run (default: this one)
   --mcp                   Also write .mcp.json registering the build's MCP server
   --allow-run             …with --allow-run, so an agent may execute targets (implies --mcp)
-  --bootstrap-deno        Launchers install a pinned, checksum-verified Deno when none is on PATH (default)
-  --no-bootstrap-deno     Launchers require Deno on PATH and fail closed without it
+  --bootstrap             Launchers download their pinned, checksum-verified runtime when missing (default):
+                          Deno for a zuke.ts build, the zuke binary for a Python one
+  --no-bootstrap          Launchers require that runtime on PATH and fail closed without it
   --force, -f             Overwrite existing files
   --yes, -y               Accept defaults without prompting
 
 Upgrade options:
   --dry-run               Say what would be installed, and install nothing
   --force, -f             Reinstall even when already on that version
-  --engine                Move the engine pin in zuke.json instead (takes --dry-run)
+  --engine                Move a Python project's launchers and engine pin instead (takes --dry-run)
 
 Cache and relock options:
   --min-dep-age <age>     Only resolve releases at least this old (0 for the newest)
@@ -507,7 +512,6 @@ async function commandSetup(
   starActions: StarActions,
   paint: CliPaint,
   upgradeHost: UpgradeHost,
-  engine: EmbeddedEngine | undefined,
 ): Promise<number> {
   const flags = parseSetupFlags(args);
   // Resolved before any question is asked, so an unknown SDK or an
@@ -525,7 +529,12 @@ async function commandSetup(
       force = prompter.confirm("Overwrite existing files if present?");
     }
   }
-  const bootstrapDeno = resolveBootstrapDeno(flags, prompter, interactive);
+  const bootstrapDeno = resolveBootstrapDeno(
+    flags,
+    prompter,
+    interactive,
+    sdk === undefined ? BOOTSTRAP_QUESTION : SDK_BOOTSTRAP_QUESTION,
+  );
 
   const where = dir === "." ? "the current directory" : dir;
   host.log(`Scaffolding Zuke into ${where}:`);
@@ -536,7 +545,7 @@ async function commandSetup(
       force,
       name,
       launcherName,
-      mcp: mcpOption(flags, engine),
+      mcp: mcpOption(flags),
       bootstrapDeno,
       sdk,
     },
@@ -624,7 +633,6 @@ async function commandImport(
   prompter: Prompter,
   paint: CliPaint,
   upgradeHost: UpgradeHost,
-  engine: EmbeddedEngine | undefined,
 ): Promise<number> {
   const flags = parseImportFlags(args);
   let name = flags.name ?? "MyBuild";
@@ -639,7 +647,12 @@ async function commandImport(
       force = prompter.confirm("Overwrite existing files if present?");
     }
   }
-  const bootstrapDeno = resolveBootstrapDeno(flags, prompter, interactive);
+  const bootstrapDeno = resolveBootstrapDeno(
+    flags,
+    prompter,
+    interactive,
+    ANY_BOOTSTRAP_QUESTION,
+  );
 
   const result = await runImport(
     {
@@ -647,9 +660,9 @@ async function commandImport(
       force,
       name,
       from: flags.from,
-      mcp: mcpOption(flags, engine),
+      mcp: mcpOption(flags),
       bootstrapDeno,
-      engine: () => engineRelease(flags, upgradeHost, "zuke import"),
+      pin: () => binaryPin(flags, upgradeHost, "zuke import"),
     },
     host,
   );
@@ -1039,7 +1052,6 @@ export async function main(
         starActions,
         paint,
         upgradeHost,
-        engine,
       );
     }
     if (command === "import") {
@@ -1049,7 +1061,6 @@ export async function main(
         prompter,
         paint,
         upgradeHost,
-        engine,
       );
     }
     if (command === "doc") {
@@ -1062,9 +1073,17 @@ export async function main(
           engineArgs,
           (line) => host.log(line),
           {
-            readText: (path) => projectHost.readText(path),
+            readText: async (path) => {
+              try {
+                return await projectHost.readText(path);
+              } catch (error) {
+                if (error instanceof Deno.errors.NotFound) return null;
+                throw error;
+              }
+            },
             writeText: (path, text) => projectHost.writeText(path, text),
-            engineMeta: () => upgradeHost.engineMeta(),
+            cliMeta: () => upgradeHost.meta(),
+            binaryPin: (version) => upgradeHost.binaryPin(version),
           },
           paint,
           Deno.cwd(),

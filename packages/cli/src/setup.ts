@@ -11,7 +11,6 @@
  * `Deno`-backed implementation used in production.
  */
 
-import { engineSpecifier } from "./dispatch.ts";
 import {
   binaryMcpEntry,
   MCP_CONFIG_FILE,
@@ -21,6 +20,8 @@ import {
 } from "./mcp_config.ts";
 import { isRecord } from "./records.ts";
 import { launcherBash, launcherPwsh } from "./launcher.ts";
+import { binaryLauncherBash, binaryLauncherPwsh } from "./binary_launcher.ts";
+import type { BinaryPin } from "./binary_pin.ts";
 import { exists, lstatOrNull } from "./fs.ts";
 import { output } from "./output.ts";
 import {
@@ -312,9 +313,11 @@ export interface SetupOptions {
    */
   imports?: ScaffoldImports;
   /**
-   * Scaffold launchers that bootstrap a pinned, checksum-verified Deno when
-   * none is on `PATH` (the default), or plain ones that require Deno and fail
-   * closed when it is missing (`false`). See {@link "./launcher.ts"}.
+   * Scaffold launchers that bootstrap their runtime when it is missing (the
+   * default), or plain ones that require it on `PATH` and fail closed
+   * (`false`). The runtime is a pinned, checksum-verified Deno for a
+   * TypeScript build (see {@link "./launcher.ts"}), and the pinned `zuke`
+   * release for one another SDK hosts (see {@link "./binary_launcher.ts"}).
    */
   bootstrapDeno?: boolean;
   /**
@@ -327,30 +330,27 @@ export interface SetupOptions {
   /**
    * Scaffold a build the Python SDK describes and `@zuke/engine` runs
    * (`--sdk python`): a starter `build.py` in place of `zuke.ts`, a
-   * `zuke.json` naming `sdk.command` and the `engine` release, and no
-   * `deno.json`, since the project has no Deno code of its own. The launchers
-   * run that engine when there is no `zuke.ts`. Omitted: a TypeScript build.
+   * `zuke.json` naming `sdk.command` and the engine release, and no
+   * `deno.json`, since the project has no Deno code of its own. Its
+   * launchers run the pinned `zuke` binary, which carries that engine, so
+   * nothing in the project needs Deno. Omitted: a TypeScript build.
    */
   sdk?: SdkSetupOptions;
 }
 
 /** What `--sdk python` scaffolds against. */
 export interface SdkSetupOptions {
-  /** The exact `@zuke/engine` release `zuke.json` pins. */
-  engine: string;
+  /**
+   * The `zuke` release the launchers run; `zuke.json` pins the engine it
+   * carries.
+   */
+  pin: BinaryPin;
 }
 
 /** What `--mcp` writes into `.mcp.json`. */
 export interface McpSetupOptions {
   /** Register the server with `--allow-run`, so the agent may run targets. */
   allowRun: boolean;
-  /**
-   * The CLI registering it is the compiled `zuke` binary, which carries an
-   * engine: a hosted build is registered as `zuke mcp`, which needs no Deno.
-   * Otherwise as `deno run -A jsr:@zuke/engine@<version> mcp`, which an MCP
-   * client can start with no `zuke` on its `PATH`.
-   */
-  binary?: boolean;
 }
 
 /** What happened to one scaffolded file. */
@@ -467,16 +467,24 @@ export async function runSetup(
       },
     {
       name: launcher,
-      content: launcherBash(variant),
+      content: sdk === undefined
+        ? launcherBash(variant)
+        : binaryLauncherBash({ download: variant.bootstrapDeno }, sdk.pin),
       mode: 0o755,
       launcher: true,
     },
-    { name: `${launcher}.ps1`, content: launcherPwsh(variant), launcher: true },
+    {
+      name: `${launcher}.ps1`,
+      content: sdk === undefined
+        ? launcherPwsh(variant)
+        : binaryLauncherPwsh({ download: variant.bootstrapDeno }, sdk.pin),
+      launcher: true,
+    },
     {
       name: "zuke.json",
       content: sdk === undefined
         ? starterConfig(options.name)
-        : starterSdkConfig(options.name, sdk.engine),
+        : starterSdkConfig(options.name, sdk.pin.engine),
     },
   ];
 
@@ -561,7 +569,7 @@ export async function runSetup(
         options.force,
         host,
         notes,
-        sdk === undefined ? undefined : engineSpecifier(sdk.engine),
+        sdk !== undefined,
       ),
     );
   }
@@ -581,13 +589,13 @@ async function setupMcpConfig(
   force: boolean,
   host: SetupHost,
   notes: string[],
-  build: string | undefined,
+  hosted: boolean,
 ): Promise<FileResult> {
-  // Only a hosted build is the compiled binary's to run: a zuke.ts build
-  // stays on Deno whichever CLI registered it.
-  const entry = build !== undefined && mcp.binary === true
+  // A hosted build is served by the zuke binary, whichever CLI registered it:
+  // its project needs nothing from Deno's stack. A zuke.ts build stays on Deno.
+  const entry = hosted
     ? binaryMcpEntry(mcp.allowRun)
-    : mcpServerEntry(mcp.allowRun, build);
+    : mcpServerEntry(mcp.allowRun);
   const name = MCP_CONFIG_FILE;
   const path = joinPath(dir, name);
   if (!(await host.exists(path))) {

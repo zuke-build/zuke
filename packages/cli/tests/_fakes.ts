@@ -6,17 +6,52 @@
 import type { SetupHost } from "../src/setup.ts";
 import type { BuildProbe, Prompter, UpgradeHost } from "../mod.ts";
 import { defaultUpgradeHost } from "../src/upgrade.ts";
+import type { BinaryPin } from "../src/binary_pin.ts";
 
 /**
- * An {@link UpgradeHost} whose engine registry answers `doc` (or rejects with
- * it): what `setup --sdk` and `upgrade --engine` read. Everything else is the
- * real host, which those commands never reach.
+ * A pin of `zuke` `version`, carrying `engine`, with a distinct well-formed
+ * digest per target so a test can tell which one a launcher holds.
  */
-export function engineRegistry(doc: unknown): UpgradeHost {
+export function testPin(version = "2.4.0", engine = "1.4.0"): BinaryPin {
+  return {
+    version,
+    engine,
+    checksums: {
+      "aarch64-apple-darwin": "a".repeat(64),
+      "x86_64-apple-darwin": "b".repeat(64),
+      "aarch64-unknown-linux-gnu": "c".repeat(64),
+      "x86_64-unknown-linux-gnu": "d".repeat(64),
+      "x86_64-pc-windows-msvc": "e".repeat(64),
+    },
+  };
+}
+
+/**
+ * An {@link UpgradeHost} whose releases are `pins` (or which rejects with
+ * it, offline), `latest` the newest of them: what `setup --sdk`, `import`
+ * and `upgrade --engine` read. Everything else is the real host, which those
+ * commands never reach.
+ */
+export function pinRegistry(
+  pins: readonly BinaryPin[] | Error,
+  latest = "2.4.0",
+): UpgradeHost {
   return {
     ...defaultUpgradeHost,
-    engineMeta: () =>
-      doc instanceof Error ? Promise.reject(doc) : Promise.resolve(doc),
+    meta: () =>
+      pins instanceof Error ? Promise.reject(pins) : Promise.resolve({
+        latest,
+        versions: Object.fromEntries(pins.map((pin) => [pin.version, {}])),
+      }),
+    binaryPin: (version) => {
+      if (pins instanceof Error) return Promise.reject(pins);
+      const pin = pins.find((candidate) => candidate.version === version);
+      return pin === undefined
+        ? Promise.reject(
+          new Error(`zuke ${version}'s published binaries could not be read`),
+        )
+        : Promise.resolve(pin);
+    },
   };
 }
 
@@ -118,7 +153,7 @@ export class FakePrompter implements Prompter {
     this.asks.push(question);
     // Match the launcher question narrowly, as `confirm` does for the star
     // one, so the class-name answer never leaks into a yes/no question.
-    if (question.includes("bootstrap a pinned")) {
+    if (question.startsWith("Launchers: ")) {
       return this.bootstrap === "" ? fallback : this.bootstrap;
     }
     return this.answer === "" ? fallback : this.answer;

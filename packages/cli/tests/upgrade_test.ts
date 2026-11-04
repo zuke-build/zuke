@@ -15,7 +15,13 @@ import {
   writesInstallLock,
 } from "../src/upgrade.ts";
 import { VERSION } from "../src/version.ts";
-import { FakeHost, FakeStarActions, noProjectProbe } from "./_fakes.ts";
+import {
+  FakeHost,
+  FakeStarActions,
+  noProjectProbe,
+  testPin,
+} from "./_fakes.ts";
+import type { BinaryPin } from "../src/binary_pin.ts";
 import { withTemp } from "../../core/tests/_temp.ts";
 import { withEnv } from "../../core/tests/_env.ts";
 import { absolutePath } from "@zuke/core";
@@ -102,8 +108,8 @@ class FakeUpgradeHost implements UpgradeHost {
       : Promise.resolve(this.metaDoc);
   }
 
-  engineMeta(): Promise<unknown> {
-    return Promise.resolve({ latest: "1.0.0", versions: { "1.0.0": {} } });
+  binaryPin(version: string): Promise<BinaryPin> {
+    return Promise.resolve(testPin(version));
   }
 
   install(denoArgs: string[]): Promise<number> {

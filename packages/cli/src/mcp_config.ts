@@ -47,20 +47,20 @@ function mcpArgs(allowRun: boolean): string[] {
 }
 
 /**
- * The entry that launches this build's MCP server: `deno run -A <build> mcp`.
+ * The entry that launches a `zuke.ts` build's MCP server: `deno run -A zuke.ts mcp`.
  * Read-only by default: the agent can inspect the build but not execute
  * targets until `allowRun` opts in, mirroring `zuke mcp --allow-run`.
  */
-export function mcpServerEntry(
-  allowRun: boolean,
-  build: string = "zuke.ts",
-): McpServerEntry {
-  return { command: "deno", args: ["run", "-A", build, ...mcpArgs(allowRun)] };
+export function mcpServerEntry(allowRun: boolean): McpServerEntry {
+  return {
+    command: "deno",
+    args: ["run", "-A", "zuke.ts", ...mcpArgs(allowRun)],
+  };
 }
 
 /**
- * The entry the compiled `zuke` registers for a hosted build: `zuke mcp`,
- * which runs the pinned engine on the one the binary carries, with no Deno.
+ * The entry a hosted build is registered with: `zuke mcp`, which the
+ * standalone binary runs on the engine it carries, with no Deno.
  */
 export function binaryMcpEntry(allowRun: boolean): McpServerEntry {
   return { command: "zuke", args: mcpArgs(allowRun) };

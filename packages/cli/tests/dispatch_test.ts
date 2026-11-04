@@ -184,6 +184,37 @@ Deno.test("the trust gate accepts a root the current user owns", async () => {
   });
 });
 
+Deno.test("the trust gate does not judge the root a launcher started zuke in, and only that root", async () => {
+  // A container job runs as root over a checkout another uid owns: the
+  // launcher run there names the project, as git's safe.directory would.
+  const fixture: Fixture = {
+    present: ["/work/app/zuke.json"],
+    texts: { "/work/app/zuke.json": '{"engine": "1.3.0"}' },
+    owned: {
+      "/work/app": ownedBy(1001),
+      "/work/app/zuke.json": ownedBy(1001, 0o644),
+    },
+    uid: 0,
+  };
+  const found = await locateBuild("/work/app/src", probe(fixture), "/work/app");
+  assertEquals(found, {
+    root: "/work/app",
+    frozen: false,
+    launcher: null,
+    engine: "1.3.0",
+  });
+  // Another root, or none named, is judged as ever.
+  for (const vouched of ["/work", undefined]) {
+    let refusal: unknown;
+    try {
+      await locateBuild("/work/app", probe(fixture), vouched);
+    } catch (error) {
+      refusal = error;
+    }
+    assertEquals(refusal instanceof UntrustedBuildError, true);
+  }
+});
+
 Deno.test("the trust gate refuses a root owned by another user", async () => {
   // A `zuke.json` planted by another local user in a shared parent (`/tmp`)
   // must not have `zuke ci` below it run their `zuke.ts` with -A.
@@ -574,7 +605,65 @@ Deno.test("runBuild runs a hosted build the binary's engine serves on the binary
   ]);
 });
 
-Deno.test("the binary's engine is named when it runs the build, and when it cannot", () => {
+Deno.test("the binary never falls back to Deno for a hosted build it cannot serve", async () => {
+  const runner = () => Promise.reject(new Error("nothing may run"));
+  const unserved = {
+    root: "/py",
+    frozen: true,
+    launcher: null,
+    engine: "2.0.0",
+  };
+  const refusal = "zuke: this zuke's built-in @zuke/engine 1.3.0 cannot run " +
+    "zuke.json's 2.0.0. Install a zuke release that carries it " +
+    "(https://github.com/zuke-build/zuke/blob/master/docs/install.md), run " +
+    "the project's launcher, which downloads the release it pins, or move " +
+    "the project with `zuke upgrade --engine`.";
+  await withEnv({ [FORWARDED_ENV]: undefined }, async () => {
+    // No launcher to go to (every root on Windows).
+    await assertRejects(
+      () => runBuild(runner, unserved, ["ci"], undefined, EMBEDDED),
+      Error,
+      refusal,
+    );
+  });
+  // The launcher's own zuke: going back to the launcher would loop.
+  await withEnv({ [FORWARDED_ENV]: "1" }, async () => {
+    await assertRejects(
+      () =>
+        runBuild(
+          runner,
+          { ...unserved, launcher: "/py/zuke" },
+          ["ci"],
+          undefined,
+          EMBEDDED,
+        ),
+      Error,
+      refusal,
+    );
+  });
+  // A Deno-installed zuke carries no engine, so its user is on Deno already.
+  const calls: string[][] = [];
+  await withEnv({ [FORWARDED_ENV]: "1" }, async () => {
+    await runBuild(
+      (_root, args) => {
+        calls.push(args);
+        return Promise.resolve(0);
+      },
+      unserved,
+      ["ci"],
+    );
+  });
+  assertEquals(calls, [[
+    "run",
+    "-A",
+    "--lock=deno.lock",
+    "--frozen",
+    "jsr:@zuke/engine@2.0.0",
+    "ci",
+  ]]);
+});
+
+Deno.test("the binary's engine is named when it runs the build, and when it cannot", async () => {
   const hosted = {
     root: "/home/me/app",
     frozen: false,
@@ -586,12 +675,22 @@ Deno.test("the binary's engine is named when it runs the build, and when it cann
     "zuke: running /home/me/app/zuke.json with the built-in @zuke/engine 1.3.0",
   );
   assertEquals(embeddedEngineNotice(hosted, EMBEDDED), undefined);
-  assertEquals(
-    embeddedEngineNotice({ ...hosted, engine: "2.0.0" }, EMBEDDED),
-    "zuke: this zuke's built-in @zuke/engine 1.3.0 cannot run zuke.json's " +
-      "2.0.0, so Deno runs that release; update this zuke to one that " +
-      "carries it to run with no Deno",
-  );
+  await withEnv({ [FORWARDED_ENV]: undefined }, () => {
+    assertEquals(
+      embeddedEngineNotice(
+        { ...hosted, engine: "2.0.0", launcher: "/home/me/app/zuke" },
+        EMBEDDED,
+      ),
+      "zuke: this zuke's built-in @zuke/engine 1.3.0 cannot run zuke.json's " +
+        "2.0.0, so the project's launcher runs it",
+    );
+    // With no launcher to go to, runBuild refuses instead: nothing to note.
+    assertEquals(
+      embeddedEngineNotice({ ...hosted, engine: "2.0.0" }, EMBEDDED),
+      undefined,
+    );
+    return Promise.resolve();
+  });
   // The label --version and --help give it says the same.
   assertEquals(
     buildLabel(hosted, EMBEDDED),

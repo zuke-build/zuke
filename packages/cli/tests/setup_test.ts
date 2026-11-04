@@ -24,7 +24,7 @@ import {
   starterSdkConfig,
   zukeDependency,
 } from "../src/starter.ts";
-import { FakeHost } from "./_fakes.ts";
+import { FakeHost, testPin } from "./_fakes.ts";
 import { withTemp } from "../../core/tests/_temp.ts";
 
 Deno.test("isRecord distinguishes plain objects", () => {
@@ -88,7 +88,12 @@ Deno.test("starterSdkConfig records the name, the worker command and the engine 
 Deno.test("runSetup --sdk python writes build.py and the SDK config, and no deno.json", async () => {
   const host = new FakeHost();
   const result = await runSetup(
-    { dir: ".", force: false, name: "Acme", sdk: { engine: "1.2.0" } },
+    {
+      dir: ".",
+      force: false,
+      name: "Acme",
+      sdk: { pin: testPin("2.4.0", "1.2.0") },
+    },
     host,
   );
   assertEquals(
@@ -103,31 +108,55 @@ Deno.test("runSetup --sdk python writes build.py and the SDK config, and no deno
     JSON.parse(host.files.get("zuke.json") ?? ""),
     { name: "Acme", sdk: { command: PYTHON_SDK_COMMAND }, engine: "1.2.0" },
   );
-  // The launchers run the pinned engine when there is no zuke.ts.
-  assertStringIncludes(host.files.get("zuke") ?? "", "jsr:@zuke/engine@");
+  // The launchers run the pinned zuke binary, and nothing from Deno's stack.
+  const bash = host.files.get("zuke") ?? "";
+  const pwsh = host.files.get("zuke.ps1") ?? "";
+  assertStringIncludes(bash, 'ZUKE_VERSION="2.4.0"');
+  assertStringIncludes(pwsh, '$ZukeVersion = "2.4.0"');
+  for (const launcher of [bash, pwsh]) {
+    assertEquals(/deno/i.test(launcher), false, launcher);
+  }
   assertEquals(host.chmods, [["zuke", 0o755]]);
 });
 
-Deno.test("runSetup --sdk python --mcp registers the engine's MCP server", async () => {
+Deno.test("runSetup --sdk python --no-bootstrap writes launchers that require zuke on PATH", async () => {
+  const host = new FakeHost();
+  await runSetup(
+    {
+      dir: ".",
+      force: false,
+      name: "Acme",
+      sdk: { pin: testPin() },
+      bootstrapDeno: false,
+    },
+    host,
+  );
+  const bash = host.files.get("zuke") ?? "";
+  assertStringIncludes(bash, "command -v zuke");
+  assertEquals(bash.includes("ZUKE_VERSION="), false);
+  assertStringIncludes(
+    host.files.get("zuke.ps1") ?? "",
+    "Get-Command zuke -CommandType Application",
+  );
+});
+
+Deno.test("runSetup --sdk python --mcp registers zuke mcp, which needs no Deno", async () => {
   const host = new FakeHost();
   await runSetup(
     {
       dir: "app",
       force: false,
       name: "Acme",
-      sdk: { engine: "1.2.0" },
+      sdk: { pin: testPin("2.4.0", "1.2.0") },
       mcp: { allowRun: true },
     },
     host,
   );
   const config = JSON.parse(host.files.get("app/.mcp.json") ?? "{}");
-  assertEquals(config.mcpServers.zuke.args, [
-    "run",
-    "-A",
-    "jsr:@zuke/engine@1.2.0",
-    "mcp",
-    "--allow-run",
-  ]);
+  assertEquals(config.mcpServers.zuke, {
+    command: "zuke",
+    args: ["mcp", "--allow-run"],
+  });
 });
 
 Deno.test("runSetup --sdk python reserves build.py, and leaves a deno.json directory alone", async () => {
@@ -138,7 +167,12 @@ Deno.test("runSetup --sdk python reserves build.py, and leaves a deno.json direc
   await assertRejects(
     () =>
       runSetup(
-        { dir: ".", force: false, name: "Acme", sdk: { engine: "1.2.0" } },
+        {
+          dir: ".",
+          force: false,
+          name: "Acme",
+          sdk: { pin: testPin("2.4.0", "1.2.0") },
+        },
         host,
       ),
     Error,
@@ -146,7 +180,12 @@ Deno.test("runSetup --sdk python reserves build.py, and leaves a deno.json direc
   );
   host.directories.delete("build.py");
   const result = await runSetup(
-    { dir: ".", force: false, name: "Acme", sdk: { engine: "1.2.0" } },
+    {
+      dir: ".",
+      force: false,
+      name: "Acme",
+      sdk: { pin: testPin("2.4.0", "1.2.0") },
+    },
     host,
   );
   assertEquals(result.files.length, 5);
@@ -158,7 +197,7 @@ Deno.test("runSetup --sdk python reserves build.py, and leaves a deno.json direc
           dir: ".",
           force: true,
           name: "Acme",
-          sdk: { engine: "1.2.0" },
+          sdk: { pin: testPin("2.4.0", "1.2.0") },
           launcherName: "build.py",
         },
         host,
