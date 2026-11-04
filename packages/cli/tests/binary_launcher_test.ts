@@ -185,13 +185,21 @@ Deno.test({
         binaryLauncherBash(DOWNLOAD, pin),
       );
       await withRelease("2.4.0", archive, async (base, hits) => {
-        const env = { ZUKE_INSTALL: `${dir}/install`, ZUKE_RELEASES_URL: base };
+        const tmp = `${dir}/tmp`;
+        await Deno.mkdir(tmp);
+        const env = {
+          ZUKE_INSTALL: `${dir}/install`,
+          ZUKE_RELEASES_URL: base,
+          TMPDIR: tmp,
+        };
         const first = await runLauncher(project, ["ci", "--list"], env);
         assertEquals(first.code, 0, first.err);
         assertStringIncludes(first.err, "zuke 2.4.0 is not here yet");
         assertStringIncludes(first.out, "args:ci --list\n");
         assertStringIncludes(first.out, "forwarded:1\n");
         assertStringIncludes(first.out, `root:${project}\n`);
+        // The download is gone before the exec, which no trap outlives.
+        assertEquals([...Deno.readDirSync(tmp)], []);
         // Kept, so the second run downloads nothing and says nothing.
         const second = await runLauncher(project, ["test"], env);
         assertEquals(second.code, 0, second.err);
@@ -262,5 +270,26 @@ Deno.test({
       });
       assertEquals(found.code, 0, found.err);
       assertStringIncludes(found.out, "args:ci\nforwarded:1\n");
+    }, { prefix: "zuke-binary-launcher-" }),
+});
+
+Deno.test({
+  name:
+    "the plain bash launcher refuses to run itself, found through an empty PATH entry",
+  ignore: !POSIX,
+  fn: () =>
+    withTemp(async (dir) => {
+      const project = await Deno.realPath(await Deno.makeTempDir({ dir }));
+      await Deno.writeTextFile(
+        `${project}/zuke`,
+        binaryLauncherBash(PLAIN, testPin()),
+        { mode: 0o755 },
+      );
+      // The trailing ":" is the working directory, which is the project.
+      const ran = await runLauncher(project, ["ci"], {
+        PATH: "/usr/bin:/bin:",
+      });
+      assertEquals(ran.code, 1);
+      assertStringIncludes(ran.err, "the zuke on PATH is this launcher");
     }, { prefix: "zuke-binary-launcher-" }),
 });

@@ -80,8 +80,36 @@ export function binaryArchiveName(
 /** What resolving a pin reaches over the network, injectable for tests. */
 export type PinFetch = (url: string) => Promise<Response>;
 
-/** A `SHA256SUMS` line: a digest, two spaces (or a space and `*`), a name. */
-const CHECKSUM_LINE = /^([0-9a-f]{64}) [ *](\S+)$/;
+/** A line of a manifest: a digest, two spaces (or a space and `*`), a name. */
+const CHECKSUM_LINE = /^([0-9a-f]{64}) [ *]([^\s/\\]+)$/;
+
+/**
+ * The digests a `SHA256SUMS` manifest lists, by file name.
+ *
+ * Strict, since what it reads is pinned into launchers and formulas: a line
+ * that is not a digest and a name, or a name listed twice, is refused rather
+ * than skipped or overwritten.
+ *
+ * @throws {Error} naming the first line that is not one, or a repeated name.
+ */
+export function parseChecksums(text: string): Map<string, string> {
+  const sums = new Map<string, string>();
+  for (const line of text.split("\n")) {
+    if (line === "") continue;
+    const match = CHECKSUM_LINE.exec(line);
+    if (match === null) {
+      throw new Error(
+        `${BINARY_CHECKSUMS}: not a checksum line: ${JSON.stringify(line)}`,
+      );
+    }
+    const [, sha256, name] = match;
+    if (sums.has(name)) {
+      throw new Error(`${BINARY_CHECKSUMS}: ${name} is listed twice`);
+    }
+    sums.set(name, sha256);
+  }
+  return sums;
+}
 
 /** The text at `url`, or a message naming what was missing. */
 async function fetchText(
@@ -114,16 +142,13 @@ export async function resolveBinaryPin(
     throw new Error(`"${version}" is not a zuke release such as 2.4.0`);
   }
   const tag = binaryReleaseTag(version);
-  const sums = new Map<string, string>();
-  const manifest = await fetchText(
-    fetch,
-    `${BINARY_RELEASES_URL}/${tag}/${BINARY_CHECKSUMS}`,
-    `zuke ${version}'s published binaries`,
+  const sums = parseChecksums(
+    await fetchText(
+      fetch,
+      `${BINARY_RELEASES_URL}/${tag}/${BINARY_CHECKSUMS}`,
+      `zuke ${version}'s published binaries`,
+    ),
   );
-  for (const line of manifest.split("\n")) {
-    const match = CHECKSUM_LINE.exec(line.trim());
-    if (match !== null) sums.set(match[2], match[1]);
-  }
   const digest = (target: BinaryTarget): string => {
     const name = binaryArchiveName(version, target);
     const sha256 = sums.get(name);

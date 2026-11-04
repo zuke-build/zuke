@@ -330,7 +330,7 @@ export async function locateBuild(
         launcher: named ? null : await launcherAt(dir, probe),
         engine: await probe.exists(dir(BUILD_FILE).path)
           ? null
-          : await engineVersion(dir, probe),
+          : await hostedEngine(dir, probe),
       };
     }
     if (dir.isRoot) return null;
@@ -382,6 +382,26 @@ export const ENGINE_FIELD = "engine";
 /** One exact release, since a range would float the engine between runs. */
 const ENGINE_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$/;
 
+/**
+ * The `engine` a root with no build file pins: such a root holds a build
+ * another SDK hosts, and nothing could run it without one — in particular
+ * not Deno, which a hosted build never needs.
+ * @throws when `zuke.json` names none, or names one that is not exact.
+ */
+async function hostedEngine(
+  root: AbsolutePath,
+  probe: BuildProbe,
+): Promise<string> {
+  const engine = await engineVersion(root, probe);
+  if (engine === null) {
+    throw new Error(
+      `zuke: ${root.path} has no ${BUILD_FILE}, and its ${CONFIG_FILE} ` +
+        `names no '${ENGINE_FIELD}' release to run its 'sdk' build with`,
+    );
+  }
+  return engine;
+}
+
 /** The refusal of an `engine` value that is not an exact version. */
 function badEngineNotice(value: string): string {
   return `zuke: zuke.json names '${ENGINE_FIELD}': '${value}', which is not ` +
@@ -390,9 +410,7 @@ function badEngineNotice(value: string): string {
 
 /**
  * The `engine` field of the root's `zuke.json`: the `@zuke/engine` release
- * that runs a build with no `zuke.ts`, as the launchers read it, or `null`
- * when the file names none — the run then asks Deno for the build file, which
- * reports it missing.
+ * that runs a build with no `zuke.ts`, or `null` when the file names none.
  *
  * @throws when the file is not JSON or the version is not exact, saying which.
  */
@@ -523,9 +541,9 @@ export function runBuild(
     throw new Error(
       `zuke: this zuke's built-in @zuke/engine ${engine.version} cannot run ` +
         `${CONFIG_FILE}'s ${location.engine}. Install a zuke release that ` +
-        `carries it (${BINARY_INSTALL_DOCS}), run the project's launcher, ` +
-        "which downloads the release it pins, or move the project with " +
-        "`zuke upgrade --engine`.",
+        `carries it (${BINARY_INSTALL_DOCS}), run the project's download ` +
+        "launcher (./zuke, or .\\zuke.ps1 on Windows), which fetches the " +
+        "release it pins, or move the project with `zuke upgrade --engine`.",
     );
   }
   return runner(location.root, buildRunArgs(location, args), undefined, env);

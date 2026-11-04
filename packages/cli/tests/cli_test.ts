@@ -809,7 +809,12 @@ function probeAt(
 ): BuildProbe {
   const present = new Set(names.map(atCwd));
   return {
-    exists: (path) => Promise.resolve(present.has(path)),
+    // A root here is a TypeScript build: its zuke.ts goes with its zuke.json.
+    exists: (path) =>
+      Promise.resolve(
+        present.has(path) ||
+          (path === atCwd("zuke.ts") && present.has(atCwd("zuke.json"))),
+      ),
     // Only the root is ever owned here; an ancestor config file is absent.
     ownership: (path) =>
       Promise.resolve(
@@ -935,10 +940,7 @@ Deno.test("main says nothing about a lockfile for a hosted build, as the launche
         seen = args;
         return Promise.resolve(0);
       },
-      {
-        ...probeAt(["zuke.json"]),
-        readText: () => Promise.resolve('{ "engine": "1.2.3" }'),
-      },
+      hostedProbe("1.2.3"),
     );
   });
   assertEquals(err, []);
@@ -956,6 +958,8 @@ const EMBEDDED: EmbeddedEngine = {
 function hostedProbe(engine: string): BuildProbe {
   return {
     ...probeAt(["zuke.json"]),
+    // A zuke.json and no zuke.ts: a build another SDK hosts.
+    exists: (path) => Promise.resolve(path === atCwd("zuke.json")),
     readText: () => Promise.resolve(JSON.stringify({ engine })),
   };
 }
@@ -1388,7 +1392,11 @@ Deno.test("main names the build it forwards to when it is not in the working dir
   // A zuke.json at the parent of the cwd: discovery chose it, so stderr says
   // so. (Every other routing test puts it at the cwd, where nothing is said.)
   const parent = absolutePath(Deno.cwd()).parent();
-  const present = new Set([parent("zuke.json").path, parent("deno.lock").path]);
+  const present = new Set([
+    parent("zuke.json").path,
+    parent("zuke.ts").path,
+    parent("deno.lock").path,
+  ]);
   const probe: BuildProbe = {
     exists: (path) => Promise.resolve(present.has(path)),
     ownership: () => Promise.resolve(null),
@@ -1583,10 +1591,7 @@ Deno.test("--version reads the project's core from deno.lock, running nothing", 
 });
 
 Deno.test("--version and --help name a hosted build by its zuke.json and engine", async () => {
-  const hosted: BuildProbe = {
-    ...probeAt(["zuke.json"]),
-    readText: () => Promise.resolve('{ "engine": "1.2.0" }'),
-  };
+  const hosted = hostedProbe("1.2.0");
   const label = `${atCwd("zuke.json")}, on @zuke/engine 1.2.0`;
   for (const args of [["--version"], ["--help"]]) {
     const host = new FakeHost();

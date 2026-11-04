@@ -785,6 +785,7 @@ Deno.test("zuke add maps short names and runs deno add in the project root", asy
     await Deno.writeTextFile(`${dir}/zuke.ts`, "\n");
     const runs: { args: string[]; cwd: string }[] = [];
     const projectHost = {
+      entry: (path: string) => defaultProjectHost.entry(path),
       readText: (path: string) => Deno.readTextFile(path),
       writeText: (path: string, text: string) => Deno.writeTextFile(path, text),
       remove: (path: string) => Deno.remove(path),

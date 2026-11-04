@@ -43,12 +43,26 @@ function projectAt(names: string[], config: string): BuildProbe {
   };
 }
 
-/** A {@link ProjectHost} over `files` (name → text at the root), recording writes. */
+/**
+ * A {@link ProjectHost} over `files` (name → text at the root), recording
+ * writes; `others` are names that exist as a directory or a link.
+ */
 function filesHost(
   files: Record<string, string>,
+  others: readonly string[] = [],
 ): ProjectHost & { written: Map<string, string> } {
   const host = {
     written: new Map<string, string>(),
+    entry: (path: string) => {
+      const name = path.slice(ROOT.length + 1);
+      return Promise.resolve(
+        others.includes(name)
+          ? "other" as const
+          : name in files
+          ? "file" as const
+          : "missing" as const,
+      );
+    },
     readText: (path: string) => {
       const name = path.slice(ROOT.length + 1);
       return name in files
@@ -165,6 +179,73 @@ Deno.test("zuke upgrade --engine keeps a plain launcher plain, and a project wit
   assertEquals([...bare.written.keys()], ["zuke.json"]);
 });
 
+Deno.test("zuke upgrade --engine leaves what is not a launcher it wrote, and says so", async () => {
+  // A zuke/ directory (why --launcher-name exists), a zuke.ps1 linked to a
+  // launcher shared across repositories, and a zuke script of the user's own.
+  const files = filesHost({
+    "zuke.json": PINNED,
+    "zuke.ps1": launcherPwsh({ bootstrapDeno: true }),
+  }, ["zuke", "zuke.ps1"]);
+  const { code, log } = await pin(
+    [],
+    projectAt(["zuke.json"], PINNED),
+    files,
+  );
+  assertEquals(code, 0, log);
+  assertEquals([...files.written.keys()], ["zuke.json"]);
+  assertStringIncludes(
+    log,
+    `${ROOT}/zuke is a directory or a link, so it is left as it is.`,
+  );
+  assertStringIncludes(log, "a launcher kept under another name");
+  const own = filesHost({ "zuke.json": PINNED, "zuke": "#!/bin/sh\nmake\n" });
+  const mine = await pin([], projectAt(["zuke.json"], PINNED), own);
+  assertStringIncludes(mine.log, `${ROOT}/zuke is not a Zuke launcher`);
+  assertEquals(own.written.has("zuke"), false);
+});
+
+Deno.test("zuke upgrade --engine moves an MCP server off Deno, and leaves any other", async () => {
+  const onDeno = JSON.stringify({
+    mcpServers: {
+      other: { command: "x", args: [] },
+      zuke: {
+        command: "deno",
+        args: ["run", "-A", "jsr:@zuke/engine@1.2.0", "mcp", "--allow-run"],
+      },
+    },
+  });
+  const files = filesHost({ ...ON_DENO, ".mcp.json": onDeno });
+  await pin([], projectAt(["zuke.json"], PINNED), files);
+  assertEquals(JSON.parse(files.written.get(".mcp.json") ?? "{}"), {
+    mcpServers: {
+      other: { command: "x", args: [] },
+      zuke: { command: "zuke", args: ["mcp", "--allow-run"] },
+    },
+  });
+  for (
+    const text of [
+      JSON.stringify({
+        mcpServers: { zuke: { command: "zuke", args: ["mcp"] } },
+      }),
+      "not json",
+    ]
+  ) {
+    const kept = filesHost({ ...ON_DENO, ".mcp.json": text });
+    await pin([], projectAt(["zuke.json"], PINNED), kept);
+    assertEquals(kept.written.has(".mcp.json"), false);
+  }
+});
+
+Deno.test("zuke upgrade --engine refuses a zuke.json it would write through", async () => {
+  const { code, log } = await pin(
+    [],
+    projectAt(["zuke.json"], PINNED),
+    filesHost({}, ["zuke.json"]),
+  );
+  assertEquals(code, 1);
+  assertStringIncludes(log, "zuke.json is not a regular file");
+});
+
 Deno.test("zuke upgrade --engine notes a deno.lock nothing reads any more", async () => {
   const { code, log } = await pin(
     [],
@@ -269,7 +350,8 @@ Deno.test("zuke upgrade --engine refuses what it cannot move, naming the fix", a
       [],
       projectAt(["zuke.json"], PINNED),
       [testPin("2.3.0")],
-      "zuke upgrade --engine: zuke 2.4.0's published binaries could not be read.",
+      "zuke upgrade --engine: zuke 2.4.0's published binaries could not be " +
+      "read. A release's binaries are published shortly after it",
     ],
     [
       ["--force"],

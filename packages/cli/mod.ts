@@ -358,7 +358,7 @@ function enginePinArgs(args: readonly string[]): string[] | null {
 const PLAIN_ENV: Readonly<Record<string, string>> = { ZUKE_PLAIN: "1" };
 
 /** The one-line identity printed under the logo and atop `--help`. */
-const TAGLINE = `zuke ${VERSION} — code-first build automation for Deno`;
+const TAGLINE = `zuke ${VERSION} — code-first build automation`;
 
 /**
  * Print the Zuke logo through `host`, so scaffolding opens with the brand.
@@ -921,7 +921,8 @@ async function commandVersion(
     if (engine !== undefined) {
       rows.push(["built-in", `@zuke/engine ${engine.version}`]);
     }
-    rows.push(["deno", Deno.version.deno]);
+    // The binary's runtime is compiled in, not a Deno its user has or needs.
+    if (!Deno.build.standalone) rows.push(["deno", Deno.version.deno]);
     rows.push(["platform", `${Deno.build.os}-${Deno.build.arch}`]);
     host.log(versionPanel(rows, paint));
   } else {
@@ -1073,14 +1074,8 @@ export async function main(
           engineArgs,
           (line) => host.log(line),
           {
-            readText: async (path) => {
-              try {
-                return await projectHost.readText(path);
-              } catch (error) {
-                if (error instanceof Deno.errors.NotFound) return null;
-                throw error;
-              }
-            },
+            entry: (path) => projectHost.entry(path),
+            readText: (path) => projectHost.readText(path),
             writeText: (path, text) => projectHost.writeText(path, text),
             cliMeta: () => upgradeHost.meta(),
             binaryPin: (version) => upgradeHost.binaryPin(version),

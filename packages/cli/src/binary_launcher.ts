@@ -162,6 +162,9 @@ if [ ! -x "$zuke_bin" ]; then
   mv -f "$work_dir/zuke" "$zuke_bin.$$"
   chmod +x "$zuke_bin.$$"
   mv -f "$zuke_bin.$$" "$zuke_bin"
+  # Removed now: the exec below replaces this shell, so the trap never fires.
+  rm -rf "$work_dir"
+  trap - EXIT
 fi`;
 }
 
@@ -172,7 +175,14 @@ function bashPlain(): string {
   echo "      ${BINARY_INSTALL_DOCS}" >&2
   exit 1
 fi
-zuke_bin="$(command -v zuke)"`;
+zuke_bin="$(command -v zuke)"
+# An empty or "." entry in PATH finds this very script (it ran \`cd\` into its
+# own directory), and so would a zuke linked to it: running that would loop.
+if [ "$zuke_bin" -ef "\${BASH_SOURCE[0]}" ]; then
+  echo "zuke: the zuke on PATH is this launcher ($zuke_bin), not the zuke command." >&2
+  echo "      Install zuke, or drop the empty or . entry from PATH: ${BINARY_INSTALL_DOCS}" >&2
+  exit 1
+fi`;
 }
 
 /**
@@ -272,9 +282,19 @@ if (-not (Test-Path $zuke)) {
 
     Expand-Archive -Path $archive -DestinationPath $workDir -Force
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $zuke) | Out-Null
-    # Moved into place in one step, so a run interrupted mid-copy never leaves
-    # a binary behind that later runs would trust without verifying.
-    Move-Item -Force -Path (Join-Path $workDir "zuke.exe") -Destination $zuke
+    # Copied beside the target first, which may cross volumes, then renamed in
+    # one step, so a run interrupted mid-copy never leaves a binary behind
+    # that later runs would trust without verifying.
+    $staged = "$zuke.$PID"
+    Move-Item -Force -Path (Join-Path $workDir "zuke.exe") -Destination $staged
+    try {
+      Move-Item -Force -Path $staged -Destination $zuke
+    } catch {
+      # A run started alongside this one put it there first, and may be
+      # running it, which Windows will not let this replace.
+      Remove-Item -Force $staged -ErrorAction SilentlyContinue
+      if (-not (Test-Path $zuke)) { throw }
+    }
   } finally {
     Remove-Item -Recurse -Force $workDir -ErrorAction SilentlyContinue
   }

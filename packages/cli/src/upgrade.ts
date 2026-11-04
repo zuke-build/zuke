@@ -61,7 +61,6 @@ function metaUrl(pkg: string): string {
   return `https://jsr.io/${pkg}/meta.json`;
 }
 
-/** The CLI's own package, as the registry names it. */
 /** The CLI's JSR package, whose releases are the `zuke` releases. */
 export const CLI_PACKAGE = "@zuke/cli";
 

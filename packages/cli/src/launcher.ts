@@ -64,6 +64,9 @@ export interface LauncherOptions {
   bootstrapDeno: boolean;
 }
 
+/** The line a plain Deno launcher carries, which `zuke upgrade --engine` keeps a launcher plain by. */
+export const PLAIN_DENO_LAUNCHER = "# Requires Deno:";
+
 /** The URL the plain launchers point at when Deno is missing. */
 export const DENO_INSTALL_DOCS =
   "https://docs.deno.com/runtime/getting_started/installation/";
@@ -289,7 +292,7 @@ ${bootstrapEnvDocs(pin, "—")}`
 #   ./zuke <target>      # run one target and its prerequisites
 #   ./zuke --list        # list every target
 #
-# Requires Deno: ${DENO_INSTALL_DOCS}`;
+${PLAIN_DENO_LAUNCHER} ${DENO_INSTALL_DOCS}`;
   const pinBlock = options.bootstrapDeno ? `\n${bashPin(pin)}` : "";
   return `#!/usr/bin/env bash
 ${LICENSE_HEADER}
@@ -470,7 +473,7 @@ ${bootstrapEnvDocs(pin, "-")}`
 #   .\\zuke.ps1 <target>      # run one target and its prerequisites
 #   .\\zuke.ps1 --list        # list every target
 #
-# Requires Deno: ${DENO_INSTALL_DOCS}`;
+${PLAIN_DENO_LAUNCHER} ${DENO_INSTALL_DOCS}`;
   const pinBlock = options.bootstrapDeno ? `\n${pwshPin(pin)}` : "";
   return `#!/usr/bin/env pwsh
 ${LICENSE_HEADER}

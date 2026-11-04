@@ -616,8 +616,9 @@ Deno.test("the binary never falls back to Deno for a hosted build it cannot serv
   const refusal = "zuke: this zuke's built-in @zuke/engine 1.3.0 cannot run " +
     "zuke.json's 2.0.0. Install a zuke release that carries it " +
     "(https://github.com/zuke-build/zuke/blob/master/docs/install.md), run " +
-    "the project's launcher, which downloads the release it pins, or move " +
-    "the project with `zuke upgrade --engine`.";
+    "the project's download launcher (./zuke, or .\\zuke.ps1 on Windows), " +
+    "which fetches the release it pins, or move the project with " +
+    "`zuke upgrade --engine`.";
   await withEnv({ [FORWARDED_ENV]: undefined }, async () => {
     // No launcher to go to (every root on Windows).
     await assertRejects(
@@ -783,17 +784,24 @@ Deno.test("a root without zuke.ts runs the engine release its zuke.json names", 
   assertEquals(own?.engine, null);
 });
 
-Deno.test("a root without zuke.ts and without an engine version keeps the build file, and bad JSON is named", async () => {
-  // The launchers refuse such a root with a message; the forwarding leaves it
-  // to Deno, which reports the missing build file.
+Deno.test("a root without zuke.ts and without an engine version is refused, and bad JSON is named", async () => {
+  // Nothing could run it: not the binary, and never Deno for a hosted build.
   for (
     const text of ['{ "sdk": { "command": ["python3"] } }', '{ "engine": "" }']
   ) {
-    const location = await locateBuild(
-      "/app",
-      probe({ present: ["/app/zuke.json"], texts: { "/app/zuke.json": text } }),
+    await assertRejects(
+      () =>
+        locateBuild(
+          "/app",
+          probe({
+            present: ["/app/zuke.json"],
+            texts: { "/app/zuke.json": text },
+          }),
+        ),
+      Error,
+      "zuke: /app has no zuke.ts, and its zuke.json names no 'engine' " +
+        "release to run its 'sdk' build with",
     );
-    assertEquals(location?.engine, null);
   }
   await assertRejects(
     () =>
@@ -941,6 +949,7 @@ Deno.test({
         `${dir}/repo/${LAUNCHER_FILE}`,
       );
       await Deno.writeTextFile(`${dir}/repo/${CONFIG_FILE}`, "{}\n");
+      await Deno.writeTextFile(`${dir}/repo/${BUILD_FILE}`, "");
 
       const found = await locateBuild(`${dir}/repo`, defaultBuildProbe);
       const root = await Deno.realPath(`${dir}/repo`);
@@ -976,6 +985,7 @@ Deno.test({
       await Deno.symlink(`${dir}/mine/${LAUNCHER_FILE}`, `${dir}/hop/link`);
       await Deno.symlink(`${dir}/hop/link`, `${dir}/repo/${LAUNCHER_FILE}`);
       await Deno.writeTextFile(`${dir}/repo/${CONFIG_FILE}`, "{}\n");
+      await Deno.writeTextFile(`${dir}/repo/${BUILD_FILE}`, "");
       const found = await locateBuild(`${dir}/repo`, defaultBuildProbe);
       assertEquals(found?.launcher, null);
       // A plain file is no link at all.
