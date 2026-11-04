@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.3.0](https://github.com/zuke-build/zuke/compare/cli-v2.2.0...cli-v2.3.0) (2026-11-04)
+
+
+### Features
+
+* **cli:** the zuke binary runs a Python build on an engine compiled into it, with no Deno ([#982](https://github.com/zuke-build/zuke/issues/982)) ([25f82ab](https://github.com/zuke-build/zuke/commit/25f82ab177c8790478d574deab07df9242879c10))
+* **cli:** zuke import reads a Python project's tasks from pyproject.toml ([#979](https://github.com/zuke-build/zuke/issues/979)) ([df4db27](https://github.com/zuke-build/zuke/commit/df4db2757645bfd8b98c95badf35781447bfa839))
+
 ## [2.2.0](https://github.com/zuke-build/zuke/compare/cli-v2.1.1...cli-v2.2.0) (2026-11-03)
 
 
