@@ -215,3 +215,22 @@ Deno.test("the formula is verified with the real brew on macOS and Linux", () =>
     false,
   );
 });
+
+Deno.test("the Python SDK's sync is started only after this run published a CLI release, with the app key and egress blocked", () => {
+  const sync = job("pythonSync");
+  assertEquals(sync.needs, ["cliBinaries", "cliUpload"]);
+  // A run that published no CLI release has nothing new for the SDK.
+  assertEquals(
+    sync.if,
+    "${{ !cancelled() && needs.cliBinaries.outputs.build == 'true' && " +
+      "needs.cliUpload.result == 'success' }}",
+  );
+  const keys = envKeys("pythonSync");
+  assertEquals(keys.includes("ZUKE_BUILD_APP_KEY"), true);
+  assertEquals(keys.includes("GITHUB_TOKEN"), false);
+  const prelude = stepsOf(sync)[0];
+  assertEquals(
+    isRecord(prelude.with) ? prelude.with["egress-policy"] : undefined,
+    "block",
+  );
+});

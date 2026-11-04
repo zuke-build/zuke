@@ -48,11 +48,14 @@ import {
   type BuildRunner,
   defaultBuildProbe,
   defaultBuildRunner,
+  embeddedEngineNotice,
   locateBuild,
   NO_LOCK_NOTICE,
   runBuild,
   runningNotice,
+  servingEngine,
 } from "./src/dispatch.ts";
+import type { EmbeddedEngine } from "./src/embedded_engine.ts";
 import { absolutePath, logoLines, resolveDocSpec } from "@zuke/core";
 import { runDenoIsolated } from "./src/deno_isolated.ts";
 import { defaultDenoHost, firstSet } from "./src/deno_path.ts";
@@ -81,6 +84,10 @@ import {
 } from "./src/version_report.ts";
 
 export type { SetupHost } from "./src/setup.ts";
+export {
+  EMBEDDED_ENGINE_ENV,
+  type EmbeddedEngine,
+} from "./src/embedded_engine.ts";
 export type { ImportSource } from "./src/import.ts";
 export type { StarActions } from "./src/star.ts";
 export type { InstallHost } from "./src/install_source.ts";
@@ -94,6 +101,7 @@ export type {
   BuildRunner,
   Ownership,
 } from "./src/dispatch.ts";
+export { FORWARDED_ENV } from "./src/dispatch.ts";
 
 /**
  * The interactive surface, injectable so the wizard is testable without a TTY.
@@ -282,9 +290,17 @@ async function engineRelease(
   return resolveRelease(meta, undefined, ENGINE_PACKAGE, command);
 }
 
-/** The `.mcp.json` request the flags make, or `undefined` for none. */
-function mcpOption(flags: SetupFlags): McpSetupOptions | undefined {
-  return flags.mcp ? { allowRun: flags.allowRun } : undefined;
+/**
+ * The `.mcp.json` request the flags make, or `undefined` for none; `engine`
+ * is the compiled binary's, whose own `zuke mcp` a hosted build then uses.
+ */
+function mcpOption(
+  flags: SetupFlags,
+  engine: EmbeddedEngine | undefined,
+): McpSetupOptions | undefined {
+  return flags.mcp
+    ? { allowRun: flags.allowRun, binary: engine !== undefined }
+    : undefined;
 }
 
 /** The launcher question, naming the release a yes will pin. */
@@ -448,8 +464,12 @@ function helpText(paint: CliPaint): string {
  * then a line naming the build. Painted as a section heading when output is
  * rich; plain output is the text it always was.
  */
-function buildHelpHeading(location: BuildLocation, paint: CliPaint): string {
-  const title = `This project's build (${buildLabel(location)}) — ` +
+function buildHelpHeading(
+  location: BuildLocation,
+  paint: CliPaint,
+  engine: EmbeddedEngine | undefined,
+): string {
+  const title = `This project's build (${buildLabel(location, engine)}) — ` +
     `run as \`zuke <target>\` or \`./zuke <target>\`:`;
   return `\n${paint.muted("─".repeat(72))}\n${paint.heading(title)}\n`;
 }
@@ -487,6 +507,7 @@ async function commandSetup(
   starActions: StarActions,
   paint: CliPaint,
   upgradeHost: UpgradeHost,
+  engine: EmbeddedEngine | undefined,
 ): Promise<number> {
   const flags = parseSetupFlags(args);
   // Resolved before any question is asked, so an unknown SDK or an
@@ -515,7 +536,7 @@ async function commandSetup(
       force,
       name,
       launcherName,
-      mcp: mcpOption(flags),
+      mcp: mcpOption(flags, engine),
       bootstrapDeno,
       sdk,
     },
@@ -603,6 +624,7 @@ async function commandImport(
   prompter: Prompter,
   paint: CliPaint,
   upgradeHost: UpgradeHost,
+  engine: EmbeddedEngine | undefined,
 ): Promise<number> {
   const flags = parseImportFlags(args);
   let name = flags.name ?? "MyBuild";
@@ -625,7 +647,7 @@ async function commandImport(
       force,
       name,
       from: flags.from,
-      mcp: mcpOption(flags),
+      mcp: mcpOption(flags, engine),
       bootstrapDeno,
       engine: () => engineRelease(flags, upgradeHost, "zuke import"),
     },
@@ -704,6 +726,7 @@ async function forwardToBuild(
   args: string[],
   probe: BuildProbe,
   runner: BuildRunner,
+  engine: EmbeddedEngine | undefined,
 ): Promise<number | null> {
   // The CLI's own stderr sink, not `ConsoleTasks`: `ZUKE_LOG_LEVEL` is a knob
   // for the build's output, and neither a security refusal nor the launchers'
@@ -717,8 +740,10 @@ async function forwardToBuild(
     // Discovery ran something the caller never named: say which, unless it
     // is the build right here, where `./zuke` would have been the same act.
     if (location.root !== absolutePath(cwd).path) {
-      output.error(runningNotice(location));
+      output.error(runningNotice(location, engine));
     }
+    const fallback = embeddedEngineNotice(location, engine);
+    if (fallback !== undefined) output.error(fallback);
     // A launcher has its own lockfile story to tell; only the bare `deno run`
     // it stands in for is this notice's to report.
     // A hosted build has no Deno config for Deno to write a lock into, so
@@ -729,7 +754,7 @@ async function forwardToBuild(
     ) {
       output.error(NO_LOCK_NOTICE);
     }
-    return await runBuild(runner, location, args);
+    return await runBuild(runner, location, args, undefined, engine);
   } catch (error) {
     output.error(error instanceof Error ? error.message : String(error));
     return 1;
@@ -762,6 +787,7 @@ async function commandHelp(
   runner: BuildRunner,
   paint: CliPaint,
   childEnv: Readonly<Record<string, string>> | undefined,
+  engine: EmbeddedEngine | undefined,
 ): Promise<number> {
   // The wordmark opens the help only where the rest of it is rich: a pipe, CI
   // or plain output reads help as text, where six lines of art are noise.
@@ -786,13 +812,19 @@ async function commandHelp(
     host.log(NO_BUILD_NOTICE);
     return 0;
   }
-  host.log(buildHelpHeading(location, paint));
+  host.log(buildHelpHeading(location, paint, engine));
   try {
     // The runner *returns* the build's exit code rather than throwing on one,
     // so a build whose `--help` runs and fails is reported here too — not
     // only one that fails to spawn. Left unread, that outcome was the one
     // path this command passed over without a word of its own.
-    const code = await runBuild(runner, location, ["--help"], childEnv);
+    const code = await runBuild(
+      runner,
+      location,
+      ["--help"],
+      childEnv,
+      engine,
+    );
     if (code !== 0) output.error(BUILD_HELP_FAILED);
   } catch (error) {
     output.error(error instanceof Error ? error.message : String(error));
@@ -833,6 +865,7 @@ async function commandVersion(
   runner: BuildRunner,
   paint: CliPaint,
   installHost: InstallHost,
+  engine: EmbeddedEngine | undefined,
 ): Promise<number> {
   let location: Awaited<ReturnType<typeof locateBuild>> = null;
   let refusal: string | undefined;
@@ -844,9 +877,12 @@ async function commandVersion(
     // on stdout stays the one line a script reads.
     refusal = error instanceof Error ? error.message : String(error);
   }
-  const core = location === null
-    ? []
-    : await projectCoreVersions(host, location.root);
+  // A build the binary's own engine runs is on the binary's core, not the
+  // one the project's lock names: it is asked, below, like a lockless one.
+  const core =
+    location === null || servingEngine(location, engine) !== undefined
+      ? []
+      : await projectCoreVersions(host, location.root);
   if (paint.rich) {
     const home = firstSet(defaultDenoHost, "HOME", "USERPROFILE");
     // An executable path comes from the OS, with backslashes on Windows;
@@ -869,6 +905,9 @@ async function commandVersion(
       if (location.engine !== null) rows.push(["engine", location.engine]);
       rows.push(["project", display(location.root)]);
     }
+    if (engine !== undefined) {
+      rows.push(["built-in", `@zuke/engine ${engine.version}`]);
+    }
     rows.push(["deno", Deno.version.deno]);
     rows.push(["platform", `${Deno.build.os}-${Deno.build.arch}`]);
     host.log(versionPanel(rows, paint));
@@ -882,18 +921,28 @@ async function commandVersion(
     // always had, so a script reading the second line still finds it.
     if (!paint.rich) {
       host.log(
-        `\nThis project's build (${buildLabel(location)}) runs on Zuke:`,
+        `\nThis project's build (${
+          buildLabel(location, engine)
+        }) runs on Zuke:`,
       );
       host.log(core.join(", "));
     }
     return 0;
   }
   // No lock to read, or none naming core: ask the build itself, as before.
-  host.log(`\nThis project's build (${buildLabel(location)}) runs on Zuke:`);
+  host.log(
+    `\nThis project's build (${buildLabel(location, engine)}) runs on Zuke:`,
+  );
   try {
     // Asked plainly whatever this invocation is, so the answer is the bare
     // version under the heading — never a second panel under the first.
-    const code = await runBuild(runner, location, ["--version"], PLAIN_ENV);
+    const code = await runBuild(
+      runner,
+      location,
+      ["--version"],
+      PLAIN_ENV,
+      engine,
+    );
     if (code !== 0) output.error(BUILD_VERSION_FAILED);
   } catch (error) {
     output.error(error instanceof Error ? error.message : String(error));
@@ -930,7 +979,8 @@ async function projectCoreVersions(
 /**
  * The CLI entry point. Returns a process exit code; `host`, `prompter`,
  * `docRunner`, `starActions`, `buildRunner`, `buildProbe`, `upgradeHost` and
- * `projectHost` are injectable for testing.
+ * `projectHost` are injectable for testing. `engine` is the engine the
+ * compiled binary carries, absent under `deno run`: see {@link binaryMain}.
  */
 export async function main(
   args: string[],
@@ -942,6 +992,7 @@ export async function main(
   buildProbe: BuildProbe = defaultBuildProbe,
   upgradeHost: UpgradeHost = defaultUpgradeHost,
   projectHost: ProjectHost = defaultProjectHost,
+  engine?: EmbeddedEngine,
 ): Promise<number> {
   // `--plain` belongs to whichever CLI answers. For the commands answered
   // here it is read and set aside; a command forwarded to the build keeps it
@@ -957,7 +1008,14 @@ export async function main(
     // reaches it as ZUKE_PLAIN, which a build on any core accepts, where the
     // flag would be refused by one older than core 1.67.0.
     const childEnv = plainFlag ? PLAIN_ENV : undefined;
-    return await commandHelp(host, buildProbe, buildRunner, paint, childEnv);
+    return await commandHelp(
+      host,
+      buildProbe,
+      buildRunner,
+      paint,
+      childEnv,
+      engine,
+    );
   }
   const command = own[0];
   const rest = own.slice(1);
@@ -969,6 +1027,7 @@ export async function main(
       buildRunner,
       paint,
       upgradeHost,
+      engine,
     );
   }
   try {
@@ -980,10 +1039,18 @@ export async function main(
         starActions,
         paint,
         upgradeHost,
+        engine,
       );
     }
     if (command === "import") {
-      return await commandImport(rest, host, prompter, paint, upgradeHost);
+      return await commandImport(
+        rest,
+        host,
+        prompter,
+        paint,
+        upgradeHost,
+        engine,
+      );
     }
     if (command === "doc") {
       return await commandDoc(rest, host, docRunner);
@@ -1056,7 +1123,12 @@ export async function main(
   // `./zuke` — and the build's own CLI answers for it, unknown-target message
   // included. Outside any project a bare `zuke` has no build to run: it is
   // the usage.
-  const forwarded = await forwardToBuild(args, buildProbe, buildRunner);
+  const forwarded = await forwardToBuild(
+    args,
+    buildProbe,
+    buildRunner,
+    engine,
+  );
   if (forwarded !== null) return forwarded;
   if (own.length === 0) {
     host.log(helpText(paint));
@@ -1068,6 +1140,29 @@ export async function main(
   );
   host.log(helpText(paint));
   return 1;
+}
+
+/**
+ * The compiled `zuke` binary's entry point: {@link main} with every default
+ * and the `engine` the binary carries, so a project with no `zuke.ts` runs on
+ * it with no Deno installed.
+ */
+export function binaryMain(
+  args: string[],
+  engine: EmbeddedEngine,
+): Promise<number> {
+  return main(
+    args,
+    defaultHost,
+    defaultPrompter,
+    defaultDocRunner,
+    defaultStarActions,
+    defaultBuildRunner,
+    defaultBuildProbe,
+    defaultUpgradeHost,
+    defaultProjectHost,
+    engine,
+  );
 }
 
 if (import.meta.main) {

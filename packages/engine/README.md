@@ -17,10 +17,22 @@ in `zuke.json`:
 }
 ```
 
-The `./zuke` launcher and the global `zuke` command then run
-`deno run -A jsr:@zuke/engine@1.0.0 <args>` from the project root, so the whole
-CLI — targets, `--list --json`, `graph`, `generate-ci`, `mcp`, `resume` — is the
-engine's, with the worker serving the bodies.
+The `./zuke` launcher then runs `deno run -A jsr:@zuke/engine@1.0.0 <args>` from
+the project root, so the whole CLI — targets, `--list --json`, `graph`,
+`generate-ci`, `mcp`, `resume` — is the engine's, with the worker serving the
+bodies.
+
+The global `zuke` binary needs no Deno for this: it is compiled with this engine
+and every wrapper release inside it, and runs a hosted build on them. A
+`deno compile` binary cannot import a module it was not compiled with, so its
+`tool.call`s are served by `embeddedTools` from the releases it carries: one
+serves a call that asks for the same major version, at that version or newer,
+and anything else is refused with `-32602`, naming the release it holds and the
+two ways past it: a newer `zuke`, or the project's `./zuke` launcher, which runs
+the pinned engine on Deno. The CLI runs the pinned engine on the binary's own
+when that release serves the pin by the same rule, and with Deno otherwise.
+`hostedBuild` is what both programs start from: the worker `zuke.json` names,
+started, described and materialised as a `Build`.
 
 The protocol is newline-delimited JSON-RPC 2.0 over loopback TCP; the engine
 hands the worker its address and a per-run token in `ZUKE_ENGINE_ADDR`,
@@ -60,16 +72,32 @@ runs it in `zuke.json`:
 { "name": "App", "sdk": { "command": ["uv", "run", "build.py"] }, "engine": "1.0.0" }
 ```
 
-The `./zuke` launcher and the global `zuke` command then run
-`deno run -A jsr:@zuke/engine@1.0.0 <args>` from the project root, so the
-whole CLI — targets, `--list --json`, `graph`, `generate-ci`, `mcp`,
-`resume` — is the engine's, with the worker serving the bodies.
+The `./zuke` launcher runs `deno run -A jsr:@zuke/engine@1.0.0 <args>`
+from the project root, and the global `zuke` binary runs the engine
+compiled into it, so the whole CLI — targets, `--list --json`, `graph`,
+`generate-ci`, `mcp`, `resume` — is the engine's, with the worker serving
+the bodies.
 
 Imported as a library, the module exports the host-mode pieces a
 TypeScript program can drive itself: {@link WorkerHost} starts a worker
 and speaks the protocol, {@link materialize} turns its manifest into a
-`Build` subclass `run` accepts.
+`Build` subclass `run` accepts, and {@link hostedBuild} does both for the
+project's `zuke.json`. The global `zuke` binary is such a program: it is
+compiled with this engine and every wrapper release, which
+{@link embeddedTools} serves `tool.call`s from, so a Python build runs
+with no Deno installed.
 @module
+
+function embeddedTools(releases: Readonly<Record<string, EmbeddedRelease>>): ToolResolver
+  The {@link ToolResolver} of a binary holding `releases`, by package name
+  after `@zuke/`. A package it does not hold, or a release that does not
+  serve the version asked for, is refused with a message naming both and the
+  two ways past it.
+
+async function hostedBuild(tools?: ToolResolver): Promise<new () => Build>
+  Start the worker the `zuke.json` above the working directory names, and
+  materialise the build it describes. `tools` resolves a `tool.call`'s
+  wrapper release, a `jsr:` import when omitted.
 
 async function importTool(pkg: string, version: string): Promise<Record<string, unknown>>
   The default {@link ToolResolver}: a dynamic import of the release from JSR,
@@ -89,6 +117,13 @@ function parseToolCall(value: unknown): ToolCall
 
 function sdkCommand(configText: string, where: string): string[]
   Read `sdk.command` from the `zuke.json` text, naming what is wrong if not.
+
+function servesRelease(carried: string, wanted: string): boolean
+  Whether the release `carried` serves what was asked for as `wanted`: the
+  same major version, and no older than `wanted`, which semantic versioning
+  says is compatible. A prerelease is older than its release, so it serves
+  only an older release or itself. A version that is not an exact release
+  serves nothing and is served by nothing.
 
 const PROTOCOL_VERSION: 1
   The protocol version this engine speaks.
@@ -146,6 +181,14 @@ interface ConfigureParams
 
   readonly parameters: Readonly<Record<string, string | null>>
     Each parameter's resolved value in its CLI form, or null when unset.
+
+interface EmbeddedRelease
+  One wrapper release compiled into the binary.
+
+  readonly version: string
+    The release's version, such as `1.4.0`.
+  readonly load: () => Promise<Record<string, unknown>>
+    Load the release's module: a literal `import(...)` the compile embeds.
 
 interface LateSettings
   What `target.settings` answers for one target: the sections it declared.

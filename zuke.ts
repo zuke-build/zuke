@@ -83,6 +83,12 @@ import {
 } from "./build/cli_compile.ts";
 import { signingCredentials, signMacBinaries } from "./build/cli_sign.ts";
 import {
+  binaryEntry,
+  embeddedReleases,
+  releaseEntry,
+} from "./build/cli_binary.ts";
+import { PYTHON_REPO, startPythonSync } from "./build/python_sync.ts";
+import {
   publishCliChocolatey,
   verifyCliChocolatey,
 } from "./build/cli_chocolatey.ts";
@@ -2077,11 +2083,16 @@ class ZukeBuild extends Build {
         chocolatey: String(plan.chocolatey),
       });
       if (plan.build) {
-        // The publish job this follows finishes before JSR lists the release.
-        await awaitJsrListing(version);
+        const entry = await releaseEntry(version);
+        // The publish job this follows finishes before JSR lists what it
+        // published, and the compile resolves every embedded release.
+        for (const [pkg, release] of embeddedReleases(entry, version)) {
+          await awaitJsrListing(pkg, release);
+        }
         await compileCliBinaries(
           version,
           absolutePath(Deno.cwd(), CLI_BIN_DIR),
+          binaryEntry(entry),
         );
       }
     });
@@ -2165,6 +2176,32 @@ class ZukeBuild extends Build {
         contents: "write",
       });
       await publishCliFormula(await localVersion("cli"), token);
+    });
+
+  // The Python SDK follows the CLI release just published: start its engine
+  // sync, which vendors that release and opens or updates its pull request.
+  pythonSync = target()
+    .description("Start the Python SDK's engine sync for the new CLI release")
+    .executes(async () => {
+      assertCiOnReleaseBranch(
+        "start the Python SDK's sync",
+        "it mints a token that runs another repository's workflow",
+      );
+      const credentials = resolveAppCredentials({
+        appId: Deno.env.get("ZUKE_BUILD_APP_ID"),
+        privateKey: Deno.env.get("ZUKE_BUILD_APP_KEY"),
+      });
+      if (credentials === null) {
+        throw new Error(
+          "pythonSync needs ZUKE_BUILD_APP_ID and ZUKE_BUILD_APP_KEY: the " +
+            "sync is dispatched with the app's token, scoped to running " +
+            `${PYTHON_REPO}'s workflows.`,
+        );
+      }
+      await startPythonSync(
+        await mintAppToken(credentials, PYTHON_REPO, { actions: "write" }),
+      );
+      ConsoleTasks.info(`Started ${PYTHON_REPO}'s engine sync.`);
     });
 
   cliChocolateyVerify = target()

@@ -21,7 +21,9 @@ import {
   assertStringIncludes,
 } from "../../packages/core/tests/_assert.ts";
 import { FakeGraphHost } from "../../packages/core/tests/_fakes.ts";
+import { embeddedTools } from "../../packages/engine/src/embedded.ts";
 import { WorkerHost } from "../../packages/engine/src/host.ts";
+import { hostedBuild } from "../../packages/engine/src/hosted.ts";
 import { materialize } from "../../packages/engine/src/materialize.ts";
 import { isRecord } from "../../packages/engine/src/protocol.ts";
 import type { ToolResolver } from "../../packages/engine/src/tools.ts";
@@ -1311,4 +1313,45 @@ Deno.test("the default resolver finds a workspace wrapper at its own version", a
       await host.finish(0);
     }
   });
+});
+
+Deno.test("hostedBuild runs the worker zuke.json names, serving tool.call from the releases a binary carries", async () => {
+  await withStateDir(() =>
+    inTempDir(async (dir) => {
+      await Deno.writeTextFile(
+        `${dir}/zuke.json`,
+        JSON.stringify({
+          name: "Hosted",
+          sdk: { command: [Deno.execPath(), "run", "-A", FAKE] },
+          engine: "1.0.0",
+        }),
+      );
+      Deno.env.set(
+        "ZUKE_FAKE_PLAN",
+        JSON.stringify({
+          name: "Hosted",
+          targets: [{
+            name: "caller",
+            calls: [
+              toolCall("add", [2, 3]),
+              // Newer than the binary's release: refused, naming the fix.
+              toolCall("add", [1, 1], { version: "1.1.0" }),
+            ],
+          }],
+        }),
+      );
+      const Remote = await hostedBuild(
+        embeddedTools({
+          fake: { version: "1.0.0", load: () => import(FAKE_TOOL) },
+        }),
+      );
+      const result = await runCli(Remote, ["caller"]);
+      assertEquals(result.code, 0, result.out + result.err);
+      assertStringIncludes(toolAnswers(result.err)[0] ?? "", "tool.call 5");
+      assertStringIncludes(
+        result.err,
+        "this zuke carries @zuke/fake 1.0.0, which cannot serve 1.1.0",
+      );
+    })
+  );
 });

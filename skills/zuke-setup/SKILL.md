@@ -75,8 +75,11 @@ command (`uv run build.py`) and the exact engine release, the launchers and
 script metadata naming `zuke` as its dependency, so `uv run` provides the SDK
 without a project file; a project that already manages its environment can drop
 that block and add `zuke` to its dev dependencies instead. Every other `setup`
-flag applies; `--mcp` registers the engine's MCP server
-(`deno run -A jsr:@zuke/engine@<version> mcp`). Later,
+flag applies; `--mcp` registers the build's MCP server, as `zuke mcp` when the
+standalone binary runs the setup and as
+`deno run -A jsr:@zuke/engine@<version> mcp` otherwise. The standalone `zuke`
+binary carries the engine and every wrapper, so with it a Python build needs no
+Deno; the launchers bootstrap one for a clone without the binary. Later,
 `zuke upgrade --engine [<version>]` moves the pin, with `--dry-run`. With the
 CLI installed, run the build exactly as a TypeScript one, no launcher needed:
 `zuke <target>`, `zuke --list`, `zuke generate-ci`, `zuke mcp`; the launchers

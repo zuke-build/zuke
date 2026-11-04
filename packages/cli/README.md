@@ -40,16 +40,31 @@ installed CLI itself with `zuke upgrade`, and manage a project's
 dependencies and lock with `zuke add`, `remove`, `cache` and `relock`.
 @module
 
-async function main(args: string[], host: SetupHost, prompter: Prompter, docRunner: DocRunner, starActions: StarActions, buildRunner: BuildRunner, buildProbe: BuildProbe, upgradeHost: UpgradeHost, projectHost: ProjectHost): Promise<number>
+function binaryMain(args: string[], engine: EmbeddedEngine): Promise<number>
+  The compiled `zuke` binary's entry point: {@link main} with every default
+  and the `engine` the binary carries, so a project with no `zuke.ts` runs on
+  it with no Deno installed.
+
+async function main(args: string[], host: SetupHost, prompter: Prompter, docRunner: DocRunner, starActions: StarActions, buildRunner: BuildRunner, buildProbe: BuildProbe, upgradeHost: UpgradeHost, projectHost: ProjectHost, engine?: EmbeddedEngine): Promise<number>
   The CLI entry point. Returns a process exit code; `host`, `prompter`,
   `docRunner`, `starActions`, `buildRunner`, `buildProbe`, `upgradeHost` and
-  `projectHost` are injectable for testing.
+  `projectHost` are injectable for testing. `engine` is the engine the
+  compiled binary carries, absent under `deno run`: see {@link binaryMain}.
 
 function parseImportFlags(args: string[]): ImportFlags
   Parse the argument list following `zuke import`.
 
 function parseSetupFlags(args: string[]): SetupFlags
   Parse the argument list following `zuke setup`.
+
+const EMBEDDED_ENGINE_ENV: "ZUKE_EMBEDDED_ENGINE"
+  Set to `1` in the environment of the process that runs a hosted build on
+  the binary's own engine: the compiled entry reads it, before the CLI does,
+  and removes it, so nothing the build starts inherits it.
+
+const FORWARDED_ENV: "ZUKE_FORWARDED"
+  Set to `1` in a launcher's environment, so a launcher that itself calls the
+  global `zuke` gets the bare `deno run` instead of itself again, endlessly.
 
 const defaultPrompter: Prompter
   The real {@link Prompter}, backed by Deno's `prompt`/`confirm`.
@@ -88,6 +103,16 @@ interface BuildProbe
     The current user's numeric id, or `null` where the platform has none.
   readText(path: string): Promise<string>
     The text of a file.
+
+interface EmbeddedEngine
+  The engine a compiled `zuke` carries, as its entry point describes it.
+
+  readonly version: string
+    The `@zuke/engine` release compiled in, such as `1.3.0`.
+  readonly program: string
+    The executable to start in engine mode: the binary itself.
+  serves(pin: string): boolean
+    Whether the compiled-in release serves the one `zuke.json` pins.
 
 interface EnginePinHost
   What moving the pin reaches outside the process, injectable for tests.

@@ -73,6 +73,8 @@ export interface WorkflowTargets {
   cliFormulaVerify: TargetBuilder;
   /** Publishes the CLI's formula to the Homebrew tap. */
   cliTap: TargetBuilder;
+  /** Starts the Python SDK's engine sync once a CLI release is published. */
+  pythonSync: TargetBuilder;
   /** Verifies the CLI's Chocolatey package with the real choco. */
   cliChocolateyVerify: TargetBuilder;
   /** Pushes the CLI's Chocolatey package to the community repository. */
@@ -575,6 +577,24 @@ export function githubWorkflows(
           // repository at all.
           permissions: { contents: "read" },
           timeoutMinutes: 15,
+          harden: { egress: "block", allowedEndpoints: REPO_WRITE_ENDPOINTS },
+          env: {
+            ZUKE_BUILD_APP_ID: "${{ secrets.ZUKE_BUILD_APP_ID }}",
+            ZUKE_BUILD_APP_KEY: "${{ secrets.ZUKE_BUILD_APP_KEY }}",
+          },
+        },
+        {
+          target: targets.pythonSync,
+          name: "Start the Python SDK's engine sync",
+          after: [targets.cliBinaries, targets.cliUpload],
+          // Only once this run published a CLI release: that release's tag
+          // is what the SDK's sync follows, and it exists from the upload on.
+          if: `\${{ !cancelled() && ${CLI_PLAN}.build == 'true' && ` +
+            "needs.cliUpload.result == 'success' }}",
+          // The dispatch is made with an app token minted inside the target,
+          // scoped to the SDK's actions; GITHUB_TOKEN cannot reach it.
+          permissions: { contents: "read" },
+          timeoutMinutes: 10,
           harden: { egress: "block", allowedEndpoints: REPO_WRITE_ENDPOINTS },
           env: {
             ZUKE_BUILD_APP_ID: "${{ secrets.ZUKE_BUILD_APP_ID }}",

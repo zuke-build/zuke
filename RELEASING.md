@@ -129,10 +129,14 @@ which locks the release with its binaries already inside. The jobs in
 1. `cliBinaries` decides what the current CLI version owes from what is
    published — everything while its release is unpublished, only the tap or the
    Chocolatey package while either lags behind a published release — and, when
-   binaries are owed, compiles them from the published
-   `jsr:@zuke/cli@<version>`, after waiting, for up to three minutes, for JSR's
-   `meta.json` to list that version: `publishJsr` finishes seconds before the
-   registry shows what it accepted.
+   binaries are owed, compiles them from the entry `build/cli_binary.ts`
+   renders: the published `jsr:@zuke/cli@<version>`, with `@zuke/engine` and
+   every released wrapper at the exact versions the release commit holds, so the
+   binary runs a Python build with no Deno. It first waits, for up to three
+   minutes per package, for JSR's `meta.json` to list each of those releases:
+   `publishJsr` finishes seconds before the registry shows what it accepted.
+   Wrapper fixes reach the binary with the next CLI release, which is also the
+   release the Python SDK vendors its facades from.
 2. `cliSign` signs the macOS binaries with the Developer ID under the hardened
    runtime and notarizes them, on a macOS runner in the `cli-signing`
    environment. Missing credentials fail it: nothing is published unsigned.
@@ -157,6 +161,13 @@ which locks the release with its binaries already inside. The jobs in
    Once the moderators approve it, set the variable under Settings → Secrets and
    variables → Actions → Variables, and the next release pushes whatever version
    is owed.
+8. `pythonSync`, once this run has published a CLI release, starts
+   zuke-build/zuke-python's `sync` workflow with an app token scoped to that
+   repository's actions (`actions: write`). The sync follows the newest `cli-v*`
+   release: it vendors that commit's tool spec, wrapper versions and conformance
+   cases, pins its engine, and opens or updates one pull request there. A run
+   that published no CLI release does not start it, and it can be started by
+   hand from that repository's Actions tab.
 
 Every stage is idempotent, so a run that fails part way is finished by the next
 push to master. How users verify a download is in

@@ -4,10 +4,12 @@
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import {
   BUILD_FILE,
+  buildLabel,
   type BuildProbe,
   buildRunArgs,
   defaultBuildProbe,
   defaultBuildRunner,
+  embeddedEngineNotice,
   FORWARDED_ENV,
   LAUNCHER_FILE,
   locateBuild,
@@ -18,6 +20,7 @@ import {
   runningNotice,
   UntrustedBuildError,
 } from "../src/dispatch.ts";
+import { EMBEDDED_ENGINE_ENV } from "../src/embedded_engine.ts";
 import { CONFIG_FILE } from "@zuke/core";
 import { withTemp } from "../../core/tests/_temp.ts";
 import { withEnv } from "../../core/tests/_env.ts";
@@ -506,6 +509,104 @@ Deno.test("runBuild runs the launcher with the bare args, else Deno", async () =
     ["/repo", ["run", "-A", "--frozen", BUILD_FILE, "ci"], undefined],
     ["/repo", ["run", "-A", BUILD_FILE, "ci"], undefined],
   ]);
+});
+
+/** A binary's engine at 1.3.0, serving any 1.x pin up to it. */
+const EMBEDDED = {
+  version: "1.3.0",
+  program: "/opt/zuke",
+  serves: (pin: string) => pin.startsWith("1.") && pin <= "1.3.0",
+};
+
+Deno.test("runBuild runs a hosted build the binary's engine serves on the binary itself, launcher or not", async () => {
+  const calls: Array<
+    [string, string[], string | undefined, Record<string, string> | undefined]
+  > = [];
+  const runner = (
+    root: string,
+    args: string[],
+    program?: string,
+    env?: Readonly<Record<string, string>>,
+  ) => {
+    calls.push([
+      root,
+      args,
+      program,
+      env === undefined ? undefined : { ...env },
+    ]);
+    return Promise.resolve(4);
+  };
+  const hosted = { root: "/py", frozen: true, launcher: "/py/zuke" };
+  assertEquals(
+    await runBuild(
+      runner,
+      { ...hosted, engine: "1.2.0" },
+      ["ci"],
+      { ZUKE_PLAIN: "1" },
+      EMBEDDED,
+    ),
+    4,
+  );
+  // A pin it cannot serve, and a zuke.ts build, go the way they always did.
+  await withEnv({ [FORWARDED_ENV]: undefined }, async () => {
+    await runBuild(
+      runner,
+      { ...hosted, engine: "1.4.0" },
+      ["ci"],
+      undefined,
+      EMBEDDED,
+    );
+    await runBuild(
+      runner,
+      { root: "/ts", frozen: false, launcher: null, engine: null },
+      ["ci"],
+      undefined,
+      EMBEDDED,
+    );
+  });
+  assertEquals(calls, [
+    ["/py", ["ci"], "/opt/zuke", {
+      ZUKE_PLAIN: "1",
+      [EMBEDDED_ENGINE_ENV]: "1",
+    }],
+    ["/py", ["ci"], "/py/zuke", undefined],
+    ["/ts", ["run", "-A", BUILD_FILE, "ci"], undefined, undefined],
+  ]);
+});
+
+Deno.test("the binary's engine is named when it runs the build, and when it cannot", () => {
+  const hosted = {
+    root: "/home/me/app",
+    frozen: false,
+    launcher: null,
+    engine: "1.2.0",
+  };
+  assertEquals(
+    runningNotice(hosted, EMBEDDED),
+    "zuke: running /home/me/app/zuke.json with the built-in @zuke/engine 1.3.0",
+  );
+  assertEquals(embeddedEngineNotice(hosted, EMBEDDED), undefined);
+  assertEquals(
+    embeddedEngineNotice({ ...hosted, engine: "2.0.0" }, EMBEDDED),
+    "zuke: this zuke's built-in @zuke/engine 1.3.0 cannot run zuke.json's " +
+      "2.0.0, so Deno runs that release; update this zuke to one that " +
+      "carries it to run with no Deno",
+  );
+  // The label --version and --help give it says the same.
+  assertEquals(
+    buildLabel(hosted, EMBEDDED),
+    "/home/me/app/zuke.json, on the built-in @zuke/engine 1.3.0",
+  );
+  assertEquals(
+    buildLabel({ ...hosted, engine: "2.0.0" }, EMBEDDED),
+    "/home/me/app/zuke.json, on @zuke/engine 2.0.0",
+  );
+  // Nothing to say without an engine compiled in, or for a zuke.ts build.
+  assertEquals(embeddedEngineNotice(hosted, undefined), undefined);
+  assertEquals(
+    embeddedEngineNotice({ ...hosted, engine: null }, EMBEDDED),
+    undefined,
+  );
 });
 
 Deno.test("the running notice names the build file at the root, or the engine release", () => {
