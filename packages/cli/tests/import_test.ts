@@ -577,10 +577,11 @@ Deno.test("parseImportFlags reads --from pyproject", () => {
 });
 
 Deno.test("main import pins --zuke for a pyproject.toml, or this zuke's own release", async () => {
-  const releases = [testPin(VERSION, "1.5.0"), testPin("2.4.0", "1.2.0")];
+  // 0.9.9 is a release this CLI can never be, whatever a bump makes it.
+  const releases = [testPin(VERSION, "1.5.0"), testPin("0.9.9", "1.2.0")];
   const host = new FakeHost({ "pyproject.toml": PYPROJECT });
   const code = await main(
-    ["import", "--yes", "--from", "pyproject", "--zuke", "2.4.0"],
+    ["import", "--yes", "--from", "pyproject", "--zuke", "0.9.9"],
     host,
     new FakePrompter(false),
     undefined,
