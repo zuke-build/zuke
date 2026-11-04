@@ -13,7 +13,9 @@
 
 import { engineSpecifier } from "./dispatch.ts";
 import {
+  binaryMcpEntry,
   MCP_CONFIG_FILE,
+  mcpServerEntry,
   mergeMcpConfig,
   parseMcpConfig,
 } from "./mcp_config.ts";
@@ -583,13 +585,15 @@ async function setupMcpConfig(
 ): Promise<FileResult> {
   // Only a hosted build is the compiled binary's to run: a zuke.ts build
   // stays on Deno whichever CLI registered it.
-  const binary = build !== undefined && mcp.binary === true;
+  const entry = build !== undefined && mcp.binary === true
+    ? binaryMcpEntry(mcp.allowRun)
+    : mcpServerEntry(mcp.allowRun, build);
   const name = MCP_CONFIG_FILE;
   const path = joinPath(dir, name);
   if (!(await host.exists(path))) {
     await host.writeText(
       path,
-      mergeMcpConfig({}, mcp.allowRun, build, binary),
+      mergeMcpConfig({}, entry),
     );
     host.log(`  create   ${name}`);
     return { path: name, status: "created" };
@@ -614,7 +618,7 @@ async function setupMcpConfig(
   }
   await host.writeText(
     path,
-    mergeMcpConfig(config.document, mcp.allowRun, build, binary),
+    mergeMcpConfig(config.document, entry),
   );
   host.log(`  update   ${name}`);
   return { path: name, status: "overwritten" };
