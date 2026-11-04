@@ -7,7 +7,7 @@ points from a dependency to the target that depends on it, so a target runs
 after everything that points at it. This is the same graph `./zuke graph` prints
 as text and `./zuke graph --output=html` renders interactively.
 
-53 target(s), 30 dependency edge(s). Regenerate with `./zuke graphDoc`; the
+54 target(s), 30 dependency edge(s). Regenerate with `./zuke graphDoc`; the
 `graphDocCheck` target in the CI gate fails when this page drifts from the
 build.
 
@@ -62,10 +62,11 @@ flowchart TD
   t46["cliUpload"]
   t47["cliFormulaVerify"]
   t48["cliTap"]
-  t49["cliChocolateyVerify"]
-  t50["cliChocolatey"]
-  t51["publish"]
-  t52["default"]
+  t49["pythonSync"]
+  t50["cliChocolateyVerify"]
+  t51["cliChocolatey"]
+  t52["publish"]
+  t53["default"]
   t1 --> t5
   t5 --> t6
   t6 --> t8
@@ -93,9 +94,9 @@ flowchart TD
   t33 --> t35
   t32 --> t35
   t38 --> t39
-  t40 --> t51
-  t42 --> t51
-  t35 --> t52
+  t40 --> t52
+  t42 --> t52
+  t35 --> t53
 ```
 
 ## Targets
@@ -151,6 +152,7 @@ flowchart TD
 | `cliUpload`           | Attach the CLI's archives, attestation and SHA256SUMS to its draft release, then publish it         | —                                                                                                                                                                                                                                                                                                            |
 | `cliFormulaVerify`    | Install the CLI's formula with the real brew and test it                                            | —                                                                                                                                                                                                                                                                                                            |
 | `cliTap`              | Publish the CLI's formula to the Homebrew tap                                                       | —                                                                                                                                                                                                                                                                                                            |
+| `pythonSync`          | Start the Python SDK's engine sync for the new CLI release                                          | —                                                                                                                                                                                                                                                                                                            |
 | `cliChocolateyVerify` | Install the CLI's Chocolatey package with choco and run it                                          | —                                                                                                                                                                                                                                                                                                            |
 | `cliChocolatey`       | Push the CLI's Chocolatey package to the community repository                                       | —                                                                                                                                                                                                                                                                                                            |
 | `publish`             | Release then publish new versions to JSR                                                            | `release`, `publishJsr`                                                                                                                                                                                                                                                                                      |
