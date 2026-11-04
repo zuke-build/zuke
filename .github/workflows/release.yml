@@ -245,6 +245,28 @@ jobs:
         env:
           ZUKE_BUILD_APP_ID: "${{ secrets.ZUKE_BUILD_APP_ID }}"
           ZUKE_BUILD_APP_KEY: "${{ secrets.ZUKE_BUILD_APP_KEY }}"
+  pythonSync:
+    name: "Start the Python SDK's engine sync"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    needs:
+      - cliBinaries
+      - cliUpload
+    if: "${{ !cancelled() && needs.cliBinaries.outputs.build == 'true' && needs.cliUpload.result == 'success' }}"
+    timeout-minutes: 10
+    steps:
+      - name: Harden and check out with Zuke
+        uses: zuke-build/zuke@517dc954200eae7c54125406675c329fa8cfb811 # v1.0.9
+        with:
+          egress-policy: block
+          persist-credentials: "false"
+          allowed-endpoints: "deno.land:443 dl.deno.land:443 jsr.io:443 api.github.com:443 github.com:443 codeload.github.com:443 objects.githubusercontent.com:443 release-assets.githubusercontent.com:443"
+      - name: Run pythonSync with Zuke
+        run: ./zuke pythonSync
+        env:
+          ZUKE_BUILD_APP_ID: "${{ secrets.ZUKE_BUILD_APP_ID }}"
+          ZUKE_BUILD_APP_KEY: "${{ secrets.ZUKE_BUILD_APP_KEY }}"
   cliChocolateyVerify:
     name: "Verify Chocolatey package (${{ matrix.os }})"
     runs-on: "${{ matrix.os }}"

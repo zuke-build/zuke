@@ -161,6 +161,13 @@ which locks the release with its binaries already inside. The jobs in
    Once the moderators approve it, set the variable under Settings → Secrets and
    variables → Actions → Variables, and the next release pushes whatever version
    is owed.
+8. `pythonSync`, once this run has published a CLI release, starts
+   zuke-build/zuke-python's `sync` workflow with an app token scoped to that
+   repository's actions (`actions: write`). The sync follows the newest `cli-v*`
+   release: it vendors that commit's tool spec, wrapper versions and conformance
+   cases, pins its engine, and opens or updates one pull request there. A run
+   that published no CLI release does not start it, and it can be started by
+   hand from that repository's Actions tab.
 
 Every stage is idempotent, so a run that fails part way is finished by the next
 push to master. How users verify a download is in
