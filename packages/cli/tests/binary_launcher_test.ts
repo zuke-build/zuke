@@ -70,6 +70,20 @@ Deno.test("the download launchers pin the release and each platform's digest", (
   }
 });
 
+Deno.test("the PowerShell launcher calls no script-module command", () => {
+  // Windows PowerShell started from a PowerShell 7 session inherits its
+  // module path, and cannot load these then: CI's Windows e2e did exactly that.
+  const pwsh = binaryLauncherPwsh(DOWNLOAD, testPin());
+  for (const command of ["Get-FileHash", "Expand-Archive"]) {
+    assertEquals(pwsh.includes(command), false, command);
+  }
+  assertStringIncludes(pwsh, "[System.Security.Cryptography.SHA256]::Create()");
+  assertStringIncludes(
+    pwsh,
+    "[System.IO.Compression.ZipFile]::ExtractToDirectory(",
+  );
+});
+
 Deno.test("both launchers hand zuke the forwarding switch and their own root", () => {
   for (const options of [DOWNLOAD, PLAIN]) {
     const bash = binaryLauncherBash(options, testPin());

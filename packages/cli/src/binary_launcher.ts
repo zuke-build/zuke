@@ -275,18 +275,28 @@ if (-not (Test-Path $zuke)) {
       }
     }
 
-    $actualSha256 = (Get-FileHash -Path $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+    # .NET directly, not the hashing and archive cmdlets: those come from
+    # script modules, which Windows PowerShell started from a PowerShell 7
+    # session (whose module path it inherits) cannot load.
+    $stream = [System.IO.File]::OpenRead($archive)
+    try {
+      $digest = [System.Security.Cryptography.SHA256]::Create().ComputeHash($stream)
+    } finally {
+      $stream.Dispose()
+    }
+    $actualSha256 = -join ($digest | ForEach-Object { $_.ToString("x2") })
     if ($actualSha256 -ne $ZukeSha256) {
       throw "zuke: checksum mismatch for \${asset}: expected $ZukeSha256, got $actualSha256"
     }
 
-    Expand-Archive -Path $archive -DestinationPath $workDir -Force
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($archive, (Join-Path $workDir "unpacked"))
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $zuke) | Out-Null
     # Copied beside the target first, which may cross volumes, then renamed in
     # one step, so a run interrupted mid-copy never leaves a binary behind
     # that later runs would trust without verifying.
     $staged = "$zuke.$PID"
-    Move-Item -Force -Path (Join-Path $workDir "zuke.exe") -Destination $staged
+    Move-Item -Force -Path (Join-Path $workDir "unpacked\\zuke.exe") -Destination $staged
     try {
       Move-Item -Force -Path $staged -Destination $zuke
     } catch {
