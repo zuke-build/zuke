@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/zuke-build/zuke/compare/engine-v1.2.2...engine-v1.3.0) (2026-11-04)
+
+
+### Features
+
+* **cli:** the zuke binary runs a Python build on an engine compiled into it, with no Deno ([#982](https://github.com/zuke-build/zuke/issues/982)) ([25f82ab](https://github.com/zuke-build/zuke/commit/25f82ab177c8790478d574deab07df9242879c10))
+
 ## [1.2.2](https://github.com/zuke-build/zuke/compare/engine-v1.2.1...engine-v1.2.2) (2026-11-03)
 
 
