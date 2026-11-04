@@ -129,8 +129,12 @@ interface EmbeddedEngine
 interface EnginePinHost
   What moving the pin reaches outside the process, injectable for tests.
 
-  readText(path: string): Promise<string | null>
-    Read a text file, or `null` when there is none.
+  entry(path: string): Promise<"file" | "missing" | "other">
+    What is at `path`, not following a link: a regular `file`, nothing
+    (`missing`), or `other` — a directory, or a link, which a write would
+    follow out of the project.
+  readText(path: string): Promise<string>
+    Read a regular text file.
   writeText(path: string, text: string): Promise<void>
     Write a text file, replacing what is there.
   cliMeta(): Promise<unknown>
@@ -171,6 +175,10 @@ interface ProjectHost
   What the project commands reach outside the process, injectable so they
   are testable without a real `deno`.
 
+  entry(path: string): Promise<"file" | "missing" | "other">
+    What is at `path`, not following a link: a regular `file`, nothing
+    (`missing`), or `other` — a directory, or a link, which a write would
+    follow out of the project.
   readText(path: string): Promise<string>
     Read a text file, rejecting when it cannot be read.
   writeText(path: string, text: string): Promise<void>
