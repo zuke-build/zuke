@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.4.0](https://github.com/zuke-build/zuke/compare/cli-v2.3.0...cli-v2.4.0) (2026-11-04)
+
+
+### Features
+
+* **cli:** an SDK project never needs Deno, its launchers and CI run the zuke binary ([#984](https://github.com/zuke-build/zuke/issues/984)) ([a4fd57e](https://github.com/zuke-build/zuke/commit/a4fd57ea4853294083890c0c33d5acf5939cbd52))
+
 ## [2.3.0](https://github.com/zuke-build/zuke/compare/cli-v2.2.0...cli-v2.3.0) (2026-11-04)
 
 
