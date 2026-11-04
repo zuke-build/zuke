@@ -1,5 +1,6 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
+// cspell:ignore LASTEXITCODE
 
 /**
  * The launchers of a build another SDK hosts. The rendered text is checked
