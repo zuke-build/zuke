@@ -69,18 +69,20 @@ They can be installed side by side. On a terminal, `zuke --version` names the
 install that answered:
 
 ```text
-┌ zuke ──────────────────────────────────────────────────────────────┐
-│ ◆ cli       1.14.0                                                 │
-│ ◆ install   Homebrew (/opt/homebrew/Cellar/zuke/1.14.0/bin/zuke)   │
-│ ◆ deno      2.8.3                                                  │
-│ ◆ platform  darwin-aarch64                                         │
-└────────────────────────────────────────────────────────────────────┘
+┌─ zuke ──────────────────────────────────────────────────────────┐
+│ ◆ cli       2.4.0                                               │
+│ ◆ install   Homebrew (/opt/homebrew/Cellar/zuke/2.4.0/bin/zuke) │
+│ ◆ built-in  @zuke/engine 1.4.0                                  │
+│ ◆ platform  darwin-aarch64                                      │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-The row reads `JSR (jsr:@zuke/cli@…)`, `Homebrew (…)`, `Chocolatey (…)`,
-`standalone binary (…)` (a binary installed some other way), or `source (…)` (a
-local checkout). Piped or under `--plain`, `zuke --version` prints only the bare
-version, for scripts.
+The `install` row reads `JSR (jsr:@zuke/cli@…)`, `Homebrew (…)`,
+`Chocolatey (…)`, `standalone binary (…)` (a binary installed some other way),
+or `source (…)` (a local checkout). A binary names the `@zuke/engine` it carries
+as `built-in`, and has no `deno` row: its runtime is compiled in, not a Deno you
+have or need. A JSR install names the Deno it runs on instead. Piped or under
+`--plain`, `zuke --version` prints only the bare version, for scripts.
 
 ## Verifying a download
 
