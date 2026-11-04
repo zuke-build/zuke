@@ -20,7 +20,7 @@ import {
 import { defaultPrompter, main } from "../../packages/cli/mod.ts";
 import { defaultHost, type SetupHost } from "../../packages/cli/src/setup.ts";
 import { defaultBuildProbe } from "../../packages/cli/src/dispatch.ts";
-import { engineRegistry } from "../../packages/cli/tests/_fakes.ts";
+import { pinRegistry, testPin } from "../../packages/cli/tests/_fakes.ts";
 import { withEnv } from "../../packages/core/tests/_env.ts";
 
 /** The production host with its log captured. */
@@ -52,14 +52,14 @@ Deno.test("zuke import turns a pyproject.toml into a Python build on the pinned 
     await Deno.writeTextFile(`${dir}/pyproject.toml`, PYPROJECT);
     const lines: string[] = [];
     const code = await main(
-      ["import", "--yes", "--engine", "1.2.0", "--name", "App"],
+      ["import", "--yes", "--zuke", "2.3.0", "--name", "App"],
       quietHost(lines),
       defaultPrompter,
       undefined,
       undefined,
       undefined,
       undefined,
-      engineRegistry(new Error("offline")),
+      pinRegistry([testPin("2.3.0", "1.2.0")]),
     );
     assertEquals(code, 0, lines.join("\n"));
     assertStringIncludes(

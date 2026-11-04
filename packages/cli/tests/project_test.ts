@@ -29,7 +29,9 @@ const ROOT = "/work/app";
 
 /** A probe that finds a project at {@link ROOT}, with no trust gate. */
 const projectProbe: BuildProbe = {
-  exists: (path) => Promise.resolve(path === `${ROOT}/zuke.json`),
+  // A TypeScript build: its zuke.json and its zuke.ts.
+  exists: (path) =>
+    Promise.resolve(path === `${ROOT}/zuke.json` || path === `${ROOT}/zuke.ts`),
   ownership: () => Promise.resolve(null),
   realPath: (path) => Promise.resolve(path),
   readLink: () => Promise.resolve(null),
@@ -56,6 +58,9 @@ class FakeProjectHost implements ProjectHost {
   throws: Error | undefined;
   version = "2.9.3";
 
+  entry(path: string): Promise<"file" | "missing"> {
+    return Promise.resolve(this.files.has(path) ? "file" : "missing");
+  }
   readText(path: string): Promise<string> {
     const text = this.files.get(path);
     return text === undefined
@@ -569,6 +574,7 @@ Deno.test("relock in a workspace member does not claim to restore what was never
 /** A probe that finds a build another SDK hosts at {@link ROOT}, on engine 1.2.0. */
 const hostedProbe: BuildProbe = {
   ...projectProbe,
+  exists: (path) => Promise.resolve(path === `${ROOT}/zuke.json`),
   readText: () => Promise.resolve('{ "engine": "1.2.0" }'),
 };
 

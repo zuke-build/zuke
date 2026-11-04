@@ -24,13 +24,24 @@
  * @module
  */
 
-import type { DenoCompileTarget } from "@zuke/deno";
 import {
   type FormulaArch,
   type FormulaOs,
   HomebrewTasks,
 } from "@zuke/homebrew";
 import { isNewerSemver } from "./semver.ts";
+import {
+  BINARY_CHECKSUMS,
+  BINARY_WINDOWS_TARGET,
+  binaryArchiveName,
+  binaryReleaseTag,
+  type BinaryTarget,
+  parseChecksums,
+} from "../packages/cli/src/binary_pin.ts";
+
+// The launchers of a hosted build download what this pipeline publishes, so
+// the names and the manifest's format are theirs, defined once.
+export { parseChecksums };
 
 /** The repository the CLI is released from. */
 export const CLI_REPO = "zuke-build/zuke";
@@ -42,12 +53,12 @@ export const CLI_TAP = { repo: "zuke-build/homebrew-tap", branch: "main" };
 export const CLI_BINARY = "zuke";
 
 /** The checksum manifest published beside the archives. */
-export const CHECKSUMS = "SHA256SUMS";
+export const CHECKSUMS = BINARY_CHECKSUMS;
 
 /** One platform a standalone binary is built for. */
 export interface CliTarget {
   /** The `deno compile --target` triple, which also names the archive. */
-  readonly triple: DenoCompileTarget;
+  readonly triple: BinaryTarget;
   /** The formula's `on_<os>` block it belongs in. */
   readonly os: FormulaOs;
   /** The formula's `on_<arch>` block it belongs in. */
@@ -71,7 +82,7 @@ export const MACOS_TARGETS: readonly CliTarget[] = CLI_TARGETS.filter((t) =>
 );
 
 /** The Windows target, whose `zuke.exe` ships in a zip for Chocolatey. */
-export const WINDOWS_TRIPLE: DenoCompileTarget = "x86_64-pc-windows-msvc";
+export const WINDOWS_TRIPLE: BinaryTarget = BINARY_WINDOWS_TARGET;
 
 /** The Chocolatey package id the Windows binary is published under. */
 export const CHOCOLATEY_ID = "zuke";
@@ -88,17 +99,17 @@ export const FIRST_BINARY_VERSION = "1.14.0";
 
 /** The release-please tag of a CLI version: `cli-v1.14.0`. */
 export function cliReleaseTag(version: string): string {
-  return `cli-v${version}`;
+  return binaryReleaseTag(version);
 }
 
 /** The archive a target's binary ships in: `zuke-1.14.0-aarch64-apple-darwin.tar.gz`. */
 export function archiveName(version: string, target: CliTarget): string {
-  return `${CLI_BINARY}-${version}-${target.triple}.tar.gz`;
+  return binaryArchiveName(version, target.triple);
 }
 
 /** The archive the Windows binary ships in: `zuke-1.15.0-x86_64-pc-windows-msvc.zip`. */
 export function windowsArchiveName(version: string): string {
-  return `${CLI_BINARY}-${version}-${WINDOWS_TRIPLE}.zip`;
+  return binaryArchiveName(version, WINDOWS_TRIPLE);
 }
 
 /** The provenance attestation bundle published beside the archives. */
@@ -130,36 +141,6 @@ export function checksumsText(sums: readonly Checksum[]): string {
     .sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
     .map((sum) => `${sum.sha256}  ${sum.name}\n`)
     .join("");
-}
-
-/** A line of a manifest: a digest, two spaces (or a space and `*`), a name. */
-const CHECKSUM_LINE = /^([0-9a-f]{64}) [ *]([^\s/\\]+)$/;
-
-/**
- * The digests a `SHA256SUMS` manifest lists, by file name.
- *
- * The manifest is fetched from the release, so it is read strictly: a line
- * that is not a digest and a plain file name, or a name listed twice, fails
- * rather than being skipped, since a formula built from a partial reading
- * would pin the wrong bytes.
- */
-export function parseChecksums(text: string): Map<string, string> {
-  const sums = new Map<string, string>();
-  for (const line of text.split("\n")) {
-    if (line === "") continue;
-    const match = CHECKSUM_LINE.exec(line);
-    if (match === null) {
-      throw new Error(
-        `${CHECKSUMS}: not a checksum line: ${JSON.stringify(line)}`,
-      );
-    }
-    const [, sha256, name] = match;
-    if (sums.has(name)) {
-      throw new Error(`${CHECKSUMS}: ${name} is listed twice`);
-    }
-    sums.set(name, sha256);
-  }
-  return sums;
 }
 
 /**

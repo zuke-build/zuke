@@ -26,6 +26,7 @@
  * @module
  */
 
+import type { BinaryPin } from "./binary_pin.ts";
 import { parsePyproject } from "./pyproject.ts";
 import { generatePythonBuild } from "./python_build.ts";
 import {
@@ -316,11 +317,12 @@ export interface ImportOptions {
   /** Which launchers to scaffold (see {@link "./setup.ts".SetupOptions.bootstrapDeno}). */
   bootstrapDeno?: boolean;
   /**
-   * Resolve the exact `@zuke/engine` release a Python build's `zuke.json`
-   * pins. Called only when a `pyproject.toml` is imported, so importing a
-   * `package.json` or a `Makefile` never needs the registry.
+   * Resolve the pin of the `zuke` release a Python build's launchers run,
+   * whose engine its `zuke.json` pins. Called only when a `pyproject.toml` is
+   * imported, so importing a `package.json` or a `Makefile` never needs the
+   * network.
    */
-  engine: () => Promise<string>;
+  pin: () => Promise<BinaryPin>;
 }
 
 /** The outcome of {@link runImport}. */
@@ -388,7 +390,7 @@ const SOURCE_FILES: ReadonlyArray<{
  * Import an existing project's tasks into a generated build, then scaffold
  * the launchers and the rest around it (via `zuke setup`): a `zuke.ts` and
  * `deno.json` for `package.json` scripts or a `Makefile`, a `build.py` and a
- * `zuke.json` pinning the engine ({@link ImportOptions.engine}) for a
+ * `zuke.json` and launchers pinning a `zuke` release ({@link ImportOptions.pin}) for a
  * `pyproject.toml`. Detects the source automatically — `package.json`, then a
  * `Makefile`, then `pyproject.toml` — unless {@link ImportOptions.from} pins
  * one. Returns `source: null` when nothing was found (and writes nothing).
@@ -432,7 +434,7 @@ export async function runImport(
       imports: translation.imports,
       mcp: options.mcp,
       bootstrapDeno: options.bootstrapDeno,
-      sdk: translation.python ? { engine: await options.engine() } : undefined,
+      sdk: translation.python ? { pin: await options.pin() } : undefined,
     }, host);
     return {
       ...setup,

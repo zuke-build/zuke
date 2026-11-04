@@ -30,7 +30,14 @@
  * error names what was refused and the two ways forward: run that project's
  * own `./zuke` launcher — an explicit act on a file the caller names — or fix
  * the ownership. Where the platform has no file ownership to compare
- * (Windows), the gate is inert.
+ * (Windows), the gate is inert. A hosted build's launcher starts `zuke` in
+ * the root it sits in, so that root, named in {@link LAUNCHER_ROOT_ENV}, is
+ * not judged either: running the launcher was the explicit act.
+ *
+ * A build another SDK hosts (a `zuke.json` and no `zuke.ts`) needs nothing
+ * from Deno's stack. The standalone binary runs it on its built-in engine,
+ * or, for a pin that engine cannot serve, through the project's launcher,
+ * which downloads the `zuke` release it pins; it never falls back to Deno.
  *
  * Locating and planning are pure given a probe, so the routing is
  * unit-testable; the spawn goes through the injectable {@link BuildRunner}.
@@ -39,13 +46,9 @@
  */
 
 import { type AbsolutePath, absolutePath, CONFIG_FILE } from "@zuke/core";
-import {
-  badEngineNotice,
-  ENGINE_FIELD,
-  ENGINE_VERSION_ERE,
-} from "./launcher.ts";
 import { exists } from "./fs.ts";
 import { noLockNotice } from "./launcher.ts";
+import { BINARY_INSTALL_DOCS } from "./binary_pin.ts";
 import { QUIET_DENO_ENV, spawnDeno } from "./deno_path.ts";
 import { EMBEDDED_ENGINE_ENV, type EmbeddedEngine } from "./embedded_engine.ts";
 
@@ -69,6 +72,13 @@ export const LAUNCHER_FILE = "zuke";
  * global `zuke` gets the bare `deno run` instead of itself again, endlessly.
  */
 export const FORWARDED_ENV = "ZUKE_FORWARDED";
+
+/**
+ * Set by a hosted build's launcher to its own directory, so the `zuke` it
+ * starts does not refuse that root at the trust gate: the caller named the
+ * project by running the launcher inside it.
+ */
+export const LAUNCHER_ROOT_ENV = "ZUKE_LAUNCHER_ROOT";
 
 /** Where a forwarded command runs, and how. */
 export interface BuildLocation {
@@ -295,7 +305,9 @@ function assertEntry(
 /**
  * Walk up from `cwd` to the nearest directory holding {@link CONFIG_FILE},
  * asking `probe`. Returns `null` when no ancestor has one — the caller is not
- * inside a Zuke project.
+ * inside a Zuke project. A root equal to `vouched`, the directory of the
+ * launcher that started this process ({@link LAUNCHER_ROOT_ENV}), is not
+ * held to the trust gate.
  *
  * @throws {UntrustedBuildError} when the root found fails the trust gate (see
  *   the module docs).
@@ -303,18 +315,22 @@ function assertEntry(
 export async function locateBuild(
   cwd: string,
   probe: BuildProbe,
+  vouched: string | undefined = Deno.env.get(LAUNCHER_ROOT_ENV),
 ): Promise<BuildLocation | null> {
   let dir = absolutePath(cwd);
   while (true) {
     if (await probe.exists(dir(CONFIG_FILE).path)) {
-      await assertTrusted(dir, probe);
+      // The root a launcher started this from was named by running it, and
+      // that launcher is the one running, so it is neither judged nor rerun.
+      const named = vouched !== undefined && dir.path === vouched;
+      if (!named) await assertTrusted(dir, probe);
       return {
         root: dir.path,
         frozen: await probe.exists(dir(LOCK_FILE).path),
-        launcher: await launcherAt(dir, probe),
+        launcher: named ? null : await launcherAt(dir, probe),
         engine: await probe.exists(dir(BUILD_FILE).path)
           ? null
-          : await engineVersion(dir, probe),
+          : await hostedEngine(dir, probe),
       };
     }
     if (dir.isRoot) return null;
@@ -360,14 +376,41 @@ async function assertFilesOwned(
   }
 }
 
-/** The exact-version rule the launchers apply, as a JavaScript pattern. */
-const ENGINE_VERSION = new RegExp(ENGINE_VERSION_ERE);
+/** The field of `zuke.json` naming the `@zuke/engine` release that runs a build with no `zuke.ts`. */
+export const ENGINE_FIELD = "engine";
+
+/** One exact release, since a range would float the engine between runs. */
+const ENGINE_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$/;
+
+/**
+ * The `engine` a root with no build file pins: such a root holds a build
+ * another SDK hosts, and nothing could run it without one — in particular
+ * not Deno, which a hosted build never needs.
+ * @throws when `zuke.json` names none, or names one that is not exact.
+ */
+async function hostedEngine(
+  root: AbsolutePath,
+  probe: BuildProbe,
+): Promise<string> {
+  const engine = await engineVersion(root, probe);
+  if (engine === null) {
+    throw new Error(
+      `zuke: ${root.path} has no ${BUILD_FILE}, and its ${CONFIG_FILE} ` +
+        `names no '${ENGINE_FIELD}' release to run its 'sdk' build with`,
+    );
+  }
+  return engine;
+}
+
+/** The refusal of an `engine` value that is not an exact version. */
+function badEngineNotice(value: string): string {
+  return `zuke: zuke.json names '${ENGINE_FIELD}': '${value}', which is not ` +
+    `an exact version like 1.2.3`;
+}
 
 /**
  * The `engine` field of the root's `zuke.json`: the `@zuke/engine` release
- * that runs a build with no `zuke.ts`, as the launchers read it, or `null`
- * when the file names none — the run then asks Deno for the build file, which
- * reports it missing.
+ * that runs a build with no `zuke.ts`, or `null` when the file names none.
  *
  * @throws when the file is not JSON or the version is not exact, saying which.
  */
@@ -461,12 +504,21 @@ export function servingEngine(
     : undefined;
 }
 
+/** Whether a forwarded command goes to the root's launcher rather than running here. */
+function viaLauncher(location: BuildLocation): boolean {
+  return location.launcher !== null && Deno.env.get(FORWARDED_ENV) !== "1";
+}
+
 /**
  * Run a forwarded command through `runner`. A hosted build whose pin the
  * binary's own `engine` serves runs on it: the binary again, in engine mode,
  * with `args` as they are, launcher or not. Otherwise the root's launcher with
  * `args` when it has one and this is not already a launcher's own `zuke` call
- * (see {@link FORWARDED_ENV}), else Deno with {@link buildRunArgs}.
+ * (see {@link FORWARDED_ENV}), else Deno with {@link buildRunArgs} — except a
+ * hosted build in the binary, which never falls back to Deno: a project
+ * another SDK hosts needs nothing from Deno's stack.
+ * @throws {Error} for a hosted build the binary cannot serve and no launcher
+ * can run, naming how to get a zuke that does.
  */
 export function runBuild(
   runner: BuildRunner,
@@ -482,15 +534,26 @@ export function runBuild(
       [EMBEDDED_ENGINE_ENV]: "1",
     });
   }
-  return location.launcher === null || Deno.env.get(FORWARDED_ENV) === "1"
-    ? runner(location.root, buildRunArgs(location, args), undefined, env)
-    : runner(location.root, args, location.launcher, env);
+  if (location.launcher !== null && viaLauncher(location)) {
+    return runner(location.root, args, location.launcher, env);
+  }
+  if (engine !== undefined && location.engine !== null) {
+    throw new Error(
+      `zuke: this zuke's built-in @zuke/engine ${engine.version} cannot run ` +
+        `${CONFIG_FILE}'s ${location.engine}. Install a zuke release that ` +
+        `carries it (${BINARY_INSTALL_DOCS}), run the project's download ` +
+        "launcher (./zuke, or .\\zuke.ps1 on Windows), which fetches the " +
+        "release it pins, or move the project with `zuke upgrade --engine`.",
+    );
+  }
+  return runner(location.root, buildRunArgs(location, args), undefined, env);
 }
 
 /**
  * The stderr line for a hosted build the binary's own `engine` cannot serve,
- * which then runs the old way and needs Deno; `undefined` when there is
- * nothing to say: no engine compiled in, a `zuke.ts` build, or a pin it serves.
+ * which then goes to the project's launcher; `undefined` when there is
+ * nothing to say: no engine compiled in, a `zuke.ts` build, a pin it serves,
+ * or no launcher to go to, which {@link runBuild} refuses instead.
  */
 export function embeddedEngineNotice(
   location: BuildLocation,
@@ -498,13 +561,13 @@ export function embeddedEngineNotice(
 ): string | undefined {
   if (
     engine === undefined || location.engine === null ||
-    servingEngine(location, engine) !== undefined
+    servingEngine(location, engine) !== undefined || !viaLauncher(location)
   ) {
     return undefined;
   }
   return `zuke: this zuke's built-in @zuke/engine ${engine.version} cannot ` +
-    `run ${CONFIG_FILE}'s ${location.engine}, so Deno runs that release; ` +
-    "update this zuke to one that carries it to run with no Deno";
+    `run ${CONFIG_FILE}'s ${location.engine}, so the project's launcher ` +
+    "runs it";
 }
 
 /** The launchers' notice for a run without a lockfile, verbatim. */

@@ -23,6 +23,12 @@ import { acceptsMinimumDependencyAge } from "./upgrade.ts";
  * are testable without a real `deno`.
  */
 export interface ProjectHost {
+  /**
+   * What is at `path`, not following a link: a regular `file`, nothing
+   * (`missing`), or `other` — a directory, or a link, which a write would
+   * follow out of the project.
+   */
+  entry(path: string): Promise<"file" | "missing" | "other">;
   /** Read a text file, rejecting when it cannot be read. */
   readText(path: string): Promise<string>;
   /** Write a text file, replacing what is there. */
@@ -37,6 +43,14 @@ export interface ProjectHost {
 
 /** The real {@link ProjectHost}: the file system, and `deno` in the root. */
 export const defaultProjectHost: ProjectHost = {
+  entry: async (path) => {
+    try {
+      return (await Deno.lstat(path)).isFile ? "file" : "other";
+    } catch (error) {
+      if (error instanceof Deno.errors.NotFound) return "missing";
+      throw error;
+    }
+  },
   readText: (path) => Deno.readTextFile(path),
   writeText: (path, text) => Deno.writeTextFile(path, text),
   remove: (path) => Deno.remove(path),

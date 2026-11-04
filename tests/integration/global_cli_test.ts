@@ -365,7 +365,7 @@ await run(Shadowed);
       exists: () => Promise.resolve(true),
       windows: () => false,
       meta: () => Promise.resolve({ latest: "999.0.0", versions: {} }),
-      engineMeta: () => Promise.resolve({ latest: "1.0.0", versions: {} }),
+      binaryPin: () => Promise.reject(new Error("not reached")),
       install: async (denoArgs) => {
         installs.push(denoArgs);
         // Stand in for Deno: the install writes the lock beside the shim.
@@ -441,7 +441,7 @@ Deno.test({
         exists: () => Promise.resolve(true),
         windows: () => false,
         meta: () => Promise.resolve({ latest: "999.0.0", versions: {} }),
-        engineMeta: () => Promise.resolve({ latest: "1.0.0", versions: {} }),
+        binaryPin: () => Promise.reject(new Error("not reached")),
         install: (denoArgs) => {
           installs.push(denoArgs);
           return Promise.resolve(0);
@@ -642,7 +642,7 @@ Deno.test("zuke upgrade reports an install that resolved another release as a fa
       exists: () => Promise.resolve(true),
       windows: () => false,
       meta: () => Promise.resolve({ latest: "999.0.0", versions: {} }),
-      engineMeta: () => Promise.resolve({ latest: "1.0.0", versions: {} }),
+      binaryPin: () => Promise.reject(new Error("not reached")),
       install: async (denoArgs) => {
         installs.push(denoArgs);
         await writeInstallLock(`${dir}/bin`, "1.8.0");
@@ -785,6 +785,7 @@ Deno.test("zuke add maps short names and runs deno add in the project root", asy
     await Deno.writeTextFile(`${dir}/zuke.ts`, "\n");
     const runs: { args: string[]; cwd: string }[] = [];
     const projectHost = {
+      entry: (path: string) => defaultProjectHost.entry(path),
       readText: (path: string) => Deno.readTextFile(path),
       writeText: (path: string, text: string) => Deno.writeTextFile(path, text),
       remove: (path: string) => Deno.remove(path),

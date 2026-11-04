@@ -40,6 +40,7 @@
  */
 
 import { absolutePath, httpJson, lockedJsrSpecifiers } from "@zuke/core";
+import { type BinaryPin, resolveBinaryPin } from "./binary_pin.ts";
 import { runDenoIsolated } from "./deno_isolated.ts";
 import type { CliPaint } from "./paint.ts";
 import { VERSION_PATTERN } from "./version_report.ts";
@@ -60,11 +61,8 @@ function metaUrl(pkg: string): string {
   return `https://jsr.io/${pkg}/meta.json`;
 }
 
-/** The CLI's own package, as the registry names it. */
-const CLI_PACKAGE = "@zuke/cli";
-
-/** The package whose pin `zuke setup --sdk` writes and `zuke upgrade --engine` moves. */
-export const ENGINE_PACKAGE = "@zuke/engine";
+/** The CLI's JSR package, whose releases are the `zuke` releases. */
+export const CLI_PACKAGE = "@zuke/cli";
 
 /**
  * What `zuke upgrade` reaches outside the process, injectable so the
@@ -84,10 +82,11 @@ export interface UpgradeHost extends InstallHost {
   /** Fetch and parse `@zuke/cli`'s JSR `meta.json`. */
   meta(): Promise<unknown>;
   /**
-   * Fetch and parse `@zuke/engine`'s JSR `meta.json`: the release
-   * `zuke setup --sdk` pins and `zuke upgrade --engine` moves a pin to.
+   * Resolve the pin of `zuke` release `version`, which `zuke setup --sdk`
+   * scaffolds a hosted build's launchers with and `zuke upgrade --engine`
+   * moves them to: its archives' digests and the engine it carries.
    */
-  engineMeta(): Promise<unknown>;
+  binaryPin(version: string): Promise<BinaryPin>;
   /** Run `deno <denoArgs>` to reinstall, returning its exit code. */
   install(denoArgs: string[]): Promise<number>;
   /**
@@ -126,7 +125,7 @@ export const defaultUpgradeHost: UpgradeHost = {
   },
   windows: () => defaultDenoHost.windows(),
   meta: () => httpJson<unknown>(metaUrl(CLI_PACKAGE)),
-  engineMeta: () => httpJson<unknown>(metaUrl(ENGINE_PACKAGE)),
+  binaryPin: (version) => resolveBinaryPin(version, fetch),
   install: (denoArgs) => runDenoIsolated(denoArgs, "zuke-upgrade-"),
   denoVersion: () => Deno.version.deno,
   readText: (path) => Deno.readTextFile(path),

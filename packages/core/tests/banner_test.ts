@@ -38,6 +38,14 @@ Deno.test("banner: off CI it opens with the wordmark", () => {
   assertEquals(lines.slice(0, ART_LINES), ZUKE_LOGO.split("\n"));
 });
 
+Deno.test("banner: the standalone binary names no Deno, whose runtime is compiled in", () => {
+  const [first] = bannerLines(
+    facts({ ci: true, host: "github", deno: undefined }),
+    false,
+  );
+  assertEquals(first, "zuke 1.56.0 · darwin-aarch64 · github");
+});
+
 Deno.test("banner: on CI the art is dropped and the host named", () => {
   // The identity is worth more in a runner log than anywhere else; the six
   // lines of ASCII are worth less.

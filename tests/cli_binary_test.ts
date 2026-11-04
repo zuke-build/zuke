@@ -19,6 +19,11 @@ import {
 } from "../build/cli_binary.ts";
 import { localVersion } from "../build/packages.ts";
 import { WRAPPER_PACKAGES } from "../build/tool_spec.ts";
+import { CLI_TARGETS, WINDOWS_TRIPLE } from "../build/cli_release.ts";
+import {
+  BINARY_POSIX_TARGETS,
+  BINARY_WINDOWS_TARGET,
+} from "../packages/cli/src/binary_pin.ts";
 
 const ENTRY = {
   cli: "jsr:@zuke/cli@2.3.0",
@@ -110,4 +115,13 @@ Deno.test("releaseEntry embeds this checkout's engine and every released wrapper
     embeddedReleases(entry, "9.9.9").length,
     entry.wrappers.length + 3,
   );
+});
+
+Deno.test("the launchers download a target for every platform the release builds", () => {
+  // The names come from one module; the target lists are each side's own.
+  assertEquals(
+    BINARY_POSIX_TARGETS,
+    CLI_TARGETS.map((target) => target.triple),
+  );
+  assertEquals(BINARY_WINDOWS_TARGET, WINDOWS_TRIPLE);
 });

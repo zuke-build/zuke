@@ -861,7 +861,7 @@ function runtimeFacts(
 ): BannerFacts {
   return {
     version: VERSION,
-    deno: Deno.version.deno,
+    deno: Deno.build.standalone ? undefined : Deno.version.deno,
     platform: `${Deno.build.os}-${Deno.build.arch}`,
     // Both, because they answer different questions: `isCI` knows the systems
     // with no `CiHost` name (Jenkins, CircleBuild, a bare `CI=true`) and

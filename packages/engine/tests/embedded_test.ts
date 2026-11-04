@@ -54,8 +54,8 @@ Deno.test("embeddedTools refuses a release it does not carry or cannot serve, na
     () => resolve("helm", "1.0.0"),
     Error,
     "this zuke carries no @zuke/helm: update this zuke to a release that " +
-      "carries it, or run the project's ./zuke launcher, which runs the " +
-      "pinned engine on Deno",
+      "carries it; a project's launchers move to the latest with " +
+      "`zuke upgrade --engine`",
   );
   await assertRejects(
     () => resolve("docker", "1.5.0"),
