@@ -106,6 +106,42 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name: "a symlink loop surfaces as Deno's FilesystemLoop on every operation",
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await Deno.symlink(`${dir}/b`, `${dir}/a`);
+      await Deno.symlink(`${dir}/a`, `${dir}/b`);
+      const loop = `${dir}/a`;
+      const pairs: Array<[string, () => unknown, () => unknown]> = [
+        ["readFile", () => readFile(loop), () => Deno.readFile(loop)],
+        ["stat", () => stat(loop), () => Deno.stat(loop)],
+        ["lstat", () => lstat(`${loop}/x`), () => Deno.lstat(`${loop}/x`)],
+        [
+          "lstatSync",
+          () => lstatSync(`${loop}/x`),
+          () => Deno.lstatSync(`${loop}/x`),
+        ],
+        [
+          "writeFile",
+          () => writeFile(loop, "x"),
+          () => Deno.writeTextFile(loop, "x"),
+        ],
+        [
+          "mkdirRecursive",
+          () => mkdirRecursive(`${loop}/x`),
+          () => Deno.mkdir(`${loop}/x`, { recursive: true }),
+        ],
+      ];
+      for (const [name, ours, theirs] of pairs) {
+        assertEquals(await failure(ours), await failure(theirs), name);
+      }
+      assertEquals((await failure(() => stat(loop))).kind, "FilesystemLoop");
+    });
+  },
+});
+
 Deno.test("mkdirRecursive creates the whole path and accepts one that exists", async () => {
   await withTemp(async (dir) => {
     await mkdirRecursive(`${dir}/a/b/c`);

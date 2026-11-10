@@ -21,16 +21,15 @@
 
 import { lstatSync as nodeLstatSync, type Stats } from "node:fs";
 import {
-  chmod as nodeChmod,
   lstat as nodeLstat,
   mkdir as nodeMkdir,
+  open as nodeOpen,
   readFile as nodeReadFile,
   stat as nodeStat,
-  writeFile as nodeWriteFile,
 } from "node:fs/promises";
 import process from "node:process";
 
-/** Whether this is Windows, which has no permission bits to read or set. */
+/** Whether this is Windows, which has no permission bits to set. */
 const WINDOWS = process.platform === "win32";
 
 /** What is at a path. */
@@ -43,8 +42,8 @@ export interface FileInfo {
   isSymlink: boolean;
   /** Its size in bytes. */
   size: number;
-  /** Its permission and type bits, or `null` on Windows, which has none. */
-  mode: number | null;
+  /** Its permission and type bits, as the platform reports them. */
+  mode: number;
 }
 
 /**
@@ -64,6 +63,8 @@ function denoErrorFor(code: string): (new (message: string) => Error) | null {
       return Deno.errors.NotADirectory;
     case "EISDIR":
       return Deno.errors.IsADirectory;
+    case "ELOOP":
+      return Deno.errors.FilesystemLoop;
     default:
       return null;
   }
@@ -114,7 +115,7 @@ function fileInfo(stats: Stats): FileInfo {
     isDirectory: stats.isDirectory(),
     isSymlink: stats.isSymbolicLink(),
     size: stats.size,
-    mode: WINDOWS ? null : stats.mode,
+    mode: stats.mode,
   };
 }
 
@@ -166,10 +167,14 @@ export function writeFile(
   mode?: number,
 ): Promise<void> {
   return io(async () => {
-    await nodeWriteFile(path, data, { mode });
-    // node:fs applies the mode only when it creates the file.
-    if (mode !== undefined && !WINDOWS) {
-      await nodeChmod(path, mode);
+    const file = await nodeOpen(path, "w", mode);
+    try {
+      // Opening applies the mode only to a file it creates, so it is set
+      // again on the open file, before anything is written.
+      if (mode !== undefined && !WINDOWS) await file.chmod(mode);
+      await file.writeFile(data);
+    } finally {
+      await file.close();
     }
   });
 }
