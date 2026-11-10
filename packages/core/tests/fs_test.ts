@@ -43,6 +43,24 @@ async function failure(call: () => unknown): Promise<Failure> {
   throw new Error("expected the call to fail");
 }
 
+/** One operation, through this module and through the Deno call it replaces. */
+type Pair = [name: string, ours: () => unknown, theirs: () => unknown];
+
+/**
+ * Every pair whose two failures differ, each with both sides spelled out, so
+ * a run on a platform nobody has at hand says what that platform does.
+ */
+async function mismatches(pairs: Pair[]): Promise<string[]> {
+  const found: string[] = [];
+  for (const [name, ours, theirs] of pairs) {
+    const [a, b] = [await failure(ours), await failure(theirs)];
+    if (a.kind !== b.kind || a.code !== b.code) {
+      found.push(`${name}: ours ${a.kind}/${a.code}, Deno ${b.kind}/${b.code}`);
+    }
+  }
+  return found;
+}
+
 /** The fields of Deno's file info that `FileInfo` carries. */
 function shared(info: Deno.FileInfo) {
   return {
@@ -114,7 +132,7 @@ Deno.test({
       await Deno.symlink(`${dir}/b`, `${dir}/a`);
       await Deno.symlink(`${dir}/a`, `${dir}/b`);
       const loop = `${dir}/a`;
-      const pairs: Array<[string, () => unknown, () => unknown]> = [
+      const pairs: Pair[] = [
         ["readFile", () => readFile(loop), () => Deno.readFile(loop)],
         ["stat", () => stat(loop), () => Deno.stat(loop)],
         ["lstat", () => lstat(`${loop}/x`), () => Deno.lstat(`${loop}/x`)],
@@ -134,9 +152,7 @@ Deno.test({
           () => Deno.mkdir(`${loop}/x`, { recursive: true }),
         ],
       ];
-      for (const [name, ours, theirs] of pairs) {
-        assertEquals(await failure(ours), await failure(theirs), name);
-      }
+      assertEquals(await mismatches(pairs), []);
       assertEquals((await failure(() => stat(loop))).kind, "FilesystemLoop");
     });
   },
@@ -193,7 +209,7 @@ Deno.test("each failure surfaces as the Deno error class it always was, keeping 
     await Deno.writeTextFile(`${dir}/file`, "x");
     const missing = `${dir}/nope`;
     const underFile = `${dir}/file/child`;
-    const pairs: Array<[string, () => unknown, () => unknown]> = [
+    const pairs: Pair[] = [
       [
         "readFile missing",
         () => readFile(missing),
@@ -238,10 +254,7 @@ Deno.test("each failure surfaces as the Deno error class it always was, keeping 
         () => Deno.mkdir(underFile, { recursive: true }),
       ],
     ];
-    for (const [name, ours, theirs] of pairs) {
-      const [a, b] = [await failure(ours), await failure(theirs)];
-      assertEquals(a, b, name);
-    }
+    assertEquals(await mismatches(pairs), []);
     // The class is the real one, so a build's own instanceof check matches.
     const caught = await readFile(missing).catch((error: unknown) => error);
     assertEquals(caught instanceof Deno.errors.NotFound, true);
