@@ -60,9 +60,9 @@ Deno.test("zukeDependency pins the caret major", () => {
 });
 
 Deno.test("starterConfig records the build name as JSON", () => {
-  const parsed: unknown = JSON.parse(starterConfig("Acme"));
+  const parsed: unknown = JSON.parse(starterConfig("Acme", "zuke.ts"));
   assertEquals(isRecord(parsed) && parsed.name === "Acme", true);
-  assertEquals(starterConfig("Acme").endsWith("\n"), true);
+  assertEquals(starterConfig("Acme", "zuke.ts").endsWith("\n"), true);
 });
 
 Deno.test("starterPythonBuild names the class, depends on the SDK and ends in run", () => {
@@ -208,7 +208,7 @@ Deno.test("runSetup --sdk python reserves build.py, and leaves a deno.json direc
 });
 
 Deno.test("mergeDenoJson seeds tasks and imports from scratch", () => {
-  const text = mergeDenoJson(null, STARTER_IMPORTS);
+  const text = mergeDenoJson(null, STARTER_IMPORTS, "zuke.ts");
   const parsed: unknown = JSON.parse(text);
   assertEquals(isRecord(parsed) && isRecord(parsed.tasks), true);
   if (isRecord(parsed) && isRecord(parsed.tasks)) {
@@ -226,7 +226,9 @@ Deno.test("mergeDenoJson seeds tasks and imports from scratch", () => {
 Deno.test("mergeDenoJson preserves existing keys, tasks, and import pins", () => {
   const before =
     '{"name":"x","imports":{"@zuke/core":"jsr:@zuke/core@1.2.3"},"tasks":{"fmt":"custom"}}';
-  const parsed: unknown = JSON.parse(mergeDenoJson(before, STARTER_IMPORTS));
+  const parsed: unknown = JSON.parse(
+    mergeDenoJson(before, STARTER_IMPORTS, "zuke.ts"),
+  );
   assertEquals(isRecord(parsed), true);
   if (isRecord(parsed) && isRecord(parsed.tasks) && isRecord(parsed.imports)) {
     assertEquals(parsed.name, "x");
@@ -243,7 +245,7 @@ Deno.test("mergeDenoJson adds a missing import beside existing ones", () => {
     mergeDenoJson(before, {
       ...STARTER_IMPORTS,
       "@zuke/cmd": "jsr:@zuke/cmd@^1",
-    }),
+    }, "zuke.ts"),
   );
   if (isRecord(parsed) && isRecord(parsed.imports)) {
     assertEquals(parsed.imports["@std/yaml"], "jsr:@std/yaml@^1");
@@ -253,7 +255,9 @@ Deno.test("mergeDenoJson adds a missing import beside existing ones", () => {
 });
 
 Deno.test("mergeDenoJson ignores a non-object document", () => {
-  const parsed: unknown = JSON.parse(mergeDenoJson("[]", STARTER_IMPORTS));
+  const parsed: unknown = JSON.parse(
+    mergeDenoJson("[]", STARTER_IMPORTS, "zuke.ts"),
+  );
   assertEquals(isRecord(parsed) && isRecord(parsed.tasks), true);
   if (isRecord(parsed) && isRecord(parsed.tasks) && isRecord(parsed.imports)) {
     assertEquals(parsed.tasks.zuke, "deno run -A zuke.ts");
@@ -263,7 +267,7 @@ Deno.test("mergeDenoJson ignores a non-object document", () => {
 
 Deno.test("mergeDenoJson ignores a non-object imports block", () => {
   const parsed: unknown = JSON.parse(
-    mergeDenoJson('{"imports":5}', STARTER_IMPORTS),
+    mergeDenoJson('{"imports":5}', STARTER_IMPORTS, "zuke.ts"),
   );
   if (isRecord(parsed) && isRecord(parsed.imports)) {
     assertEquals(parsed.imports["@zuke/core"], "jsr:@zuke/core@^1");
@@ -316,7 +320,9 @@ Deno.test("mergeDenoJson leaves a delegated import map alone", () => {
   // Writing `imports` beside a lone `importMap` makes Deno ignore the latter,
   // taking the project's whole module resolution down with it.
   const before = '{"importMap":"./import_map.json"}';
-  const parsed: unknown = JSON.parse(mergeDenoJson(before, STARTER_IMPORTS));
+  const parsed: unknown = JSON.parse(
+    mergeDenoJson(before, STARTER_IMPORTS, "zuke.ts"),
+  );
   if (isRecord(parsed)) {
     assertEquals(parsed.importMap, "./import_map.json");
     assertEquals("imports" in parsed, false);
@@ -994,5 +1000,58 @@ Deno.test("writeText leaves no temporary file behind, on success or failure", as
     const still: string[] = [];
     for await (const entry of Deno.readDir(dir)) still.push(entry.name);
     assertEquals(still, ["zuke.json"]);
+  });
+});
+
+Deno.test("runSetup follows the build file an existing zuke.json names", async () => {
+  const config = '{\n  "name": "Acme",\n  "build": "build.ts"\n}\n';
+  const host = new FakeHost({ "zuke.json": config });
+  const result = await runSetup(
+    { dir: ".", force: true, name: "Acme", mcp: { allowRun: false } },
+    host,
+  );
+  assertEquals(result.manualSteps, []);
+  assertEquals(host.files.has("zuke.ts"), false);
+  assertStringIncludes(host.files.get("build.ts") ?? "", "class Acme extends");
+  assertStringIncludes(host.files.get("zuke") ?? "", 'run -A build.ts "$@"');
+  assertStringIncludes(host.files.get("zuke.ps1") ?? "", '"build.ts")');
+  // --force rewrites zuke.json, and the name it was read from survives.
+  assertEquals(host.files.get("zuke.json"), config);
+  const deno: unknown = JSON.parse(host.files.get("deno.json") ?? "");
+  assertEquals(
+    isRecord(deno) && isRecord(deno.tasks) && deno.tasks.zuke,
+    "deno run -A build.ts",
+  );
+  const mcp: unknown = JSON.parse(host.files.get(".mcp.json") ?? "");
+  assertEquals(
+    isRecord(mcp) && isRecord(mcp.mcpServers) && mcp.mcpServers.zuke,
+    { command: "deno", args: ["run", "-A", "build.ts", "mcp"] },
+  );
+});
+
+Deno.test("runSetup refuses a launcher name that would shadow the named build file, and a bad build name", async () => {
+  await assertRejects(
+    () =>
+      runSetup(
+        { dir: ".", force: false, name: "Acme", launcherName: "Build.ts" },
+        new FakeHost({ "zuke.json": '{ "build": "build.ts" }' }),
+      ),
+    Error,
+    "would overwrite a file setup writes",
+  );
+  const host = new FakeHost({ "zuke.json": '{ "build": "../x.ts" }' });
+  await assertRejects(
+    () => runSetup({ dir: ".", force: true, name: "Acme" }, host),
+    Error,
+    "not a plain TypeScript file name",
+  );
+  assertEquals([...host.files.keys()], ["zuke.json"]);
+});
+
+Deno.test("starterConfig records a build file only when it is not the default", () => {
+  assertEquals(JSON.parse(starterConfig("Acme", "zuke.ts")), { name: "Acme" });
+  assertEquals(JSON.parse(starterConfig("Acme", "build.ts")), {
+    name: "Acme",
+    build: "build.ts",
   });
 });

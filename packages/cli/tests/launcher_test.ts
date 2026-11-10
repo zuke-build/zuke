@@ -4,6 +4,7 @@
 import {
   assertEquals,
   assertStringIncludes,
+  assertThrows,
 } from "../../core/tests/_assert.ts";
 import {
   DENO_INSTALL_DOCS,
@@ -200,5 +201,24 @@ Deno.test("the bash launcher execs Deno so the script is not read after it start
     const bash = launcherBash(options);
     assertStringIncludes(bash, `exec "$deno_bin" run -A --frozen zuke.ts "$@"`);
     assertStringIncludes(bash, `exec "$deno_bin" run -A zuke.ts "$@"`);
+  }
+});
+
+Deno.test("a launcher runs the build file it is given, and refuses an unsafe name", () => {
+  for (const variant of [BOOTSTRAP, PLAIN]) {
+    const options = { ...variant, buildFile: "build.ts" };
+    const bash = launcherBash(options);
+    assertStringIncludes(bash, 'run -A --frozen build.ts "$@"');
+    assertStringIncludes(bash, 'run -A build.ts "$@"');
+    const pwsh = launcherPwsh(options);
+    assertStringIncludes(pwsh, '(Join-Path $dir "build.ts")');
+    for (const script of [bash, pwsh]) {
+      assertEquals(script.includes("zuke.ts"), false, script);
+    }
+    // The name is written into both scripts, so it is checked first.
+    for (const buildFile of ['x";calc;".ts', "$(id).ts", "-A.ts"]) {
+      assertThrows(() => launcherBash({ ...variant, buildFile }), Error);
+      assertThrows(() => launcherPwsh({ ...variant, buildFile }), Error);
+    }
   }
 });

@@ -15,7 +15,11 @@
  */
 
 import { spawnDeno } from "./deno_path.ts";
-import { BUILD_FILE, type BuildProbe, locateBuild } from "./dispatch.ts";
+import {
+  type BuildLocation,
+  type BuildProbe,
+  locateBuild,
+} from "./dispatch.ts";
 import { acceptsMinimumDependencyAge } from "./upgrade.ts";
 
 /**
@@ -67,21 +71,22 @@ export const defaultProjectHost: ProjectHost = {
 };
 
 /**
- * The root of the project at or above `cwd`, through the trust gate.
+ * The project at or above `cwd`, through the trust gate: its root, and the
+ * build file its `zuke.json` names.
  *
- * Every caller works on the project's own Deno code — its `zuke.ts`, its
+ * Every caller works on the project's own Deno code — its build file, its
  * `deno.json` and the lock beside them — so a build another SDK hosts, which
  * has neither, is refused by name rather than handed to a `deno` command
- * that fails on a missing `zuke.ts` or writes a `deno.json` nothing reads.
+ * that fails on a missing build file or writes a `deno.json` nothing reads.
  *
  * @throws {Error} naming `command` when there is no project, when the trust
  * gate refuses the one there is, or when it is a build another SDK hosts.
  */
-export async function projectRoot(
+export async function projectLocation(
   cwd: string,
   probe: BuildProbe,
   command: string,
-): Promise<string> {
+): Promise<BuildLocation> {
   const location = await locateBuild(cwd, probe);
   if (location === null) {
     throw new Error(
@@ -93,18 +98,18 @@ export async function projectRoot(
     throw new Error(
       `zuke ${command}: the project at ${location.root} is a build another ` +
         `SDK hosts, run on @zuke/engine ${location.engine}, with no ` +
-        `${BUILD_FILE} or deno.json of its own to work on. Its tool ` +
+        `${location.build} or deno.json of its own to work on. Its tool ` +
         "wrappers come with the SDK (zuke.tools in Python), and " +
         "zuke upgrade --engine moves the engine it runs on.",
     );
   }
-  return location.root;
+  return location;
 }
 
 /** Flags accepted by the commands that resolve the build's module graph. */
 export interface InstallFlags {
   /**
-   * Entrypoints to resolve beside `zuke.ts` — the other programs that share
+   * Entrypoints to resolve beside the build file — the other programs that share
    * the lock, such as an app's own `main.ts`.
    */
   entrypoints: string[];
@@ -158,7 +163,8 @@ export function parseInstallFlags(
 }
 
 /**
- * The `deno install` argv that resolves the build's module graph — and any
+ * The `deno install` argv that resolves the module graph of `build`, the
+ * project's build file — and any
  * further entrypoints — into the lock, honouring `--min-dep-age` when one was
  * given.
  *
@@ -169,8 +175,9 @@ export function installArgs(
   command: string,
   flags: InstallFlags,
   denoVersion: string,
+  build: string,
 ): string[] {
-  const args = ["install", "--entrypoint", BUILD_FILE, ...flags.entrypoints];
+  const args = ["install", "--entrypoint", build, ...flags.entrypoints];
   if (flags.minDepAge === undefined) return args;
   if (!acceptsMinimumDependencyAge(denoVersion)) {
     throw new Error(

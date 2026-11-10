@@ -38,7 +38,7 @@ import {
   installArgs,
   parseInstallFlags,
   type ProjectHost,
-  projectRoot,
+  projectLocation,
 } from "./project.ts";
 import {
   lockedCoreVersions,
@@ -104,7 +104,7 @@ export async function runRelock(
   probe: BuildProbe,
 ): Promise<number> {
   const flags = parseInstallFlags("relock", args);
-  const root = await projectRoot(cwd, probe, "relock");
+  const { root, build } = await projectLocation(cwd, probe, "relock");
   const lockPath = projectLockPath(
     root,
     await projectConfigText((path) => host.readText(path), root),
@@ -118,7 +118,7 @@ export async function runRelock(
   // Regenerating is the point, so a lock the config freezes is not a reason
   // to refuse the write.
   const denoArgs = [
-    ...installArgs("relock", flags, host.denoVersion()),
+    ...installArgs("relock", flags, host.denoVersion(), build),
     "--frozen=false",
   ];
   const name = lockPath.startsWith(`${root}/`)
@@ -212,7 +212,7 @@ export async function runRelock(
   const dropped = [...jsrPackages(before ?? "")].filter((p) => !kept.has(p));
   if (dropped.length > 0) {
     log(
-      `No longer locked: ${dropped.join(", ")}. Only zuke.ts${
+      `No longer locked: ${dropped.join(", ")}. Only ${build}${
         flags.entrypoints.length > 0
           ? ` and ${flags.entrypoints.join(", ")}`
           : ""

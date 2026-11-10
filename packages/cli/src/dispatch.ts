@@ -49,11 +49,9 @@ import { type AbsolutePath, absolutePath, CONFIG_FILE } from "@zuke/core";
 import { exists } from "./fs.ts";
 import { noLockNotice } from "./launcher.ts";
 import { BINARY_INSTALL_DOCS } from "./binary_pin.ts";
+import { BUILD_FILE, buildFileNamed } from "./build_file.ts";
 import { QUIET_DENO_ENV, spawnDeno } from "./deno_path.ts";
 import { EMBEDDED_ENGINE_ENV, type EmbeddedEngine } from "./embedded_engine.ts";
-
-/** The build file a forwarded command runs, beside {@link CONFIG_FILE}. */
-export const BUILD_FILE = "zuke.ts";
 
 /**
  * Deno's own config files, in the order it prefers them: a `deno.json` wins
@@ -93,8 +91,13 @@ export interface BuildLocation {
    */
   launcher: string | null;
   /**
+   * The build file's name: the one the root's `zuke.json` names in its
+   * `build` field, `zuke.ts` when it names none.
+   */
+  build: string;
+  /**
    * The `@zuke/engine` release that runs the build when the root has no
-   * `zuke.ts`: the `engine` field of its `zuke.json`, which then describes a
+   * build file: the `engine` field of its `zuke.json`, which then describes a
    * build another SDK hosts. `null` when the root has its own build file.
    */
   engine: string | null;
@@ -202,15 +205,15 @@ export class UntrustedBuildError extends Error {
 const ANCESTOR_CONFIG_FILES = [...DENO_CONFIG_FILES, "package.json"];
 
 /**
- * The files in the root itself that decide what runs: the build, its marker,
- * its launcher, its lockfile, and the root's own config. Owning the directory
+ * The files in the root itself that decide what runs, beside the build file
+ * the marker names: the marker, the launcher, the lockfile, and the root's
+ * own config. Owning the directory
  * is not owning these — a `chown` of the directory alone leaves them as they
  * were. The probe follows links, so a symlinked launcher is judged by the
  * file it points at.
  */
 const ROOT_FILES = [
   CONFIG_FILE,
-  BUILD_FILE,
   LAUNCHER_FILE,
   LOCK_FILE,
   ...ANCESTOR_CONFIG_FILES,
@@ -324,13 +327,23 @@ export async function locateBuild(
       // that launcher is the one running, so it is neither judged nor rerun.
       const named = vouched !== undefined && dir.path === vouched;
       if (!named) await assertTrusted(dir, probe);
+      // Read only once the marker passed the gate, and then hold the file it
+      // names to the same gate: it is the one that runs.
+      const build = buildFileNamed(
+        await probe.readText(dir(CONFIG_FILE).path),
+      );
+      const uid = probe.uid();
+      if (!named && uid !== null) {
+        await assertFilesOwned(dir, [build], uid, probe, dir);
+      }
       return {
         root: dir.path,
+        build,
         frozen: await probe.exists(dir(LOCK_FILE).path),
         launcher: named ? null : await launcherAt(dir, probe),
-        engine: await probe.exists(dir(BUILD_FILE).path)
+        engine: await probe.exists(dir(build).path)
           ? null
-          : await hostedEngine(dir, probe),
+          : await hostedEngine(dir, build, probe),
       };
     }
     if (dir.isRoot) return null;
@@ -390,12 +403,13 @@ const ENGINE_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$/;
  */
 async function hostedEngine(
   root: AbsolutePath,
+  build: string,
   probe: BuildProbe,
 ): Promise<string> {
   const engine = await engineVersion(root, probe);
   if (engine === null) {
     throw new Error(
-      `zuke: ${root.path} has no ${BUILD_FILE}, and its ${CONFIG_FILE} ` +
+      `zuke: ${root.path} has no ${build}, and its ${CONFIG_FILE} ` +
         `names no '${ENGINE_FIELD}' release to run its 'sdk' build with`,
     );
   }
@@ -448,7 +462,7 @@ export function buildLabel(
   location: BuildLocation,
   engine?: EmbeddedEngine,
 ): string {
-  if (location.engine === null) return `${location.root}/${BUILD_FILE}`;
+  if (location.engine === null) return `${location.root}/${location.build}`;
   const serving = servingEngine(location, engine);
   return `${location.root}/${CONFIG_FILE}, on ${
     serving === undefined
@@ -465,7 +479,7 @@ export function engineSpecifier(version: string): string {
 /** What a forwarded command runs: the build file, or the engine release for a root without one. */
 function buildModule(location: BuildLocation): string {
   return location.engine === null
-    ? BUILD_FILE
+    ? location.build
     : engineSpecifier(location.engine);
 }
 
@@ -583,7 +597,7 @@ export function runningNotice(
   engine?: EmbeddedEngine,
 ): string {
   if (location.engine === null) {
-    return `zuke: running ${location.root}/${BUILD_FILE}`;
+    return `zuke: running ${location.root}/${location.build}`;
   }
   const serving = servingEngine(location, engine);
   return `zuke: running ${location.root}/${CONFIG_FILE} with ${

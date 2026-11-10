@@ -27,8 +27,14 @@ as well. A root with no executable `zuke` launcher — and every root on Windows
 which reports no file mode — gets the launcher's own invocation instead:
 `deno run -A zuke.ts <command>`, with `--frozen` once a `deno.lock` exists
 beside it. Either way stdio is inherited so `zuke mcp` and prompts work, and the
-command exits with the build's code. A bare `zuke` inside a project runs the
-default target.
+command exits with the build's code. The build file is `zuke.ts` unless
+`zuke.json` names another in its `build` field (`{ "build": "build.ts" }`): the
+forwarding, `zuke relock` and `zuke cache` run the file it names, and
+`zuke setup` re-run in such a project writes launchers, the `deno.json` task and
+the `.mcp.json` entry for it. The name must be a plain file name of letters,
+digits, dots, dashes and underscores, ending in `.ts` and not starting with a
+dash; anything else is refused. A bare `zuke` inside a project runs the default
+target.
 
 A root with no `zuke.ts` holds a build another SDK hosts, a Python build say:
 its `zuke.json` names the worker to start under `sdk`
@@ -83,9 +89,9 @@ Discovery has a trust gate, because it runs code you never named: a `zuke.json`
 planted in a shared parent (`/tmp`, a shared checkout tree) would otherwise have
 `zuke ci` in any directory below it run a stranger's `zuke.ts` with `-A`. So, as
 git's `safe.directory` does, the forwarding refuses a build whose root directory
-is owned by another user or is world-writable, and one whose `zuke.json`,
-`zuke.ts`, `zuke` launcher, `deno.lock` or config file is owned by another user
-or writable by everyone. A symlinked launcher is judged by its target, and so is
+is owned by another user or is world-writable, and one whose `zuke.json`, build
+file, `zuke` launcher, `deno.lock` or config file is owned by another user or
+writable by everyone. A symlinked launcher is judged by its target, and so is
 the directory that holds the target, since whoever can write there can swap the
 file. It is still run by its path under the root (`<root>/zuke`), not by its
 target's: a launcher finds the project it builds from the path it was called by,

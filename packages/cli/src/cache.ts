@@ -20,7 +20,7 @@ import {
   installArgs,
   parseInstallFlags,
   type ProjectHost,
-  projectRoot,
+  projectLocation,
 } from "./project.ts";
 
 /**
@@ -39,8 +39,8 @@ export async function runCache(
   probe: BuildProbe,
 ): Promise<number> {
   const flags = parseInstallFlags("cache", args);
-  const root = await projectRoot(cwd, probe, "cache");
-  const denoArgs = installArgs("cache", flags, host.denoVersion());
+  const { root, build } = await projectLocation(cwd, probe, "cache");
+  const denoArgs = installArgs("cache", flags, host.denoVersion(), build);
   if (flags.dryRun) {
     log(`Would cache the build's dependencies: deno ${denoArgs.join(" ")}`);
     return 0;

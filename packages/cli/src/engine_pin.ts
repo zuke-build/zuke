@@ -16,7 +16,6 @@
  */
 
 import {
-  BUILD_FILE,
   type BuildProbe,
   ENGINE_FIELD,
   LAUNCHER_FILE,
@@ -185,7 +184,7 @@ export async function runEnginePin(
   }
   if (location.engine === null) {
     throw new Error(
-      `${COMMAND}: the project at ${location.root} has its own ${BUILD_FILE}, ` +
+      `${COMMAND}: the project at ${location.root} has its own ${location.build}, ` +
         "so no engine pin to move: its Zuke version is the @zuke/core in its " +
         "lock, which zuke relock moves.",
     );
