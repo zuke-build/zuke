@@ -5887,7 +5887,7 @@ type TargetStatus = "passed" | "failed" | "skipped" | "cached" | "waiting"
 type WaitDisposition = "fail" | "cancel-run" | { target: string; }
   What a timed-out wait does: fail, cancel the run, or run a compensation target.
 
-Ergonomic process execution built on `Deno.Command`, exposed as the `$`
+Ergonomic process execution, exposed as the `$`
 tagged template.
 
 ```ts
@@ -6108,7 +6108,7 @@ class SpawnedProcess
   output goes to that target's block, and passes through live once the block
   has been printed.
 
-  constructor(child: Deno.ChildProcess | undefined, readonly commandLine: string)
+  constructor(child: ChildProcess | undefined, readonly commandLine: string)
     Wrap a spawned child process (or none, for a stub) and its command line.
   get pid(): number
     The operating-system process id (`-1` for a dry-run stub).
@@ -6120,6 +6120,24 @@ class SpawnedProcess
     escalates to `SIGKILL` so a process that ignores `SIGTERM` cannot hang
     teardown. A process that has already exited is treated as stopped. A
     dry-run stub (no child) is a no-op.
+
+interface ChildProcess
+  A started child process: what the shell reads, writes and waits on. A
+  stream is there to use only when its {@link ProcessStdio} was `piped`;
+  reading one that was not throws.
+
+  readonly pid: number
+    The operating-system process id.
+  readonly status: Promise<CommandStatus>
+    Resolves when the process exits.
+  readonly stdin: WritableStream<Uint8Array>
+    The child's input.
+  readonly stdout: ReadableStream<Uint8Array>
+    The child's output.
+  readonly stderr: ReadableStream<Uint8Array>
+    The child's error output.
+  kill(signal?: Signal): void
+    Deliver a signal to the process. Throws if it has already exited.
 
 interface CommandStatus
   How a process ended.
