@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * The examples gate. Every `examples/<name>/zuke.ts` is a complete build a
+ * The examples gate. Every `examples/<name>/build.ts` is a complete build a
  * reader is meant to copy, so each one is type-checked against the workspace,
  * asked to list its targets, and asked to verify any pipeline files it commits
  * — an example cannot rot when the API moves.
@@ -17,13 +17,13 @@ import { DenoTasks } from "@zuke/deno";
 import { denoCheck, type SnippetChecker } from "./snippets.ts";
 
 /** Where the example builds live. */
-export const EXAMPLES_GLOB = "examples/*/zuke.ts";
+export const EXAMPLES_GLOB = "examples/*/build.ts";
 
 /** One example project: its directory and the build file inside it. */
 export interface Example {
   /** The example's directory (repo-relative), the cwd its build runs in. */
   dir: string;
-  /** The build file, `<dir>/zuke.ts`. */
+  /** The build file, `<dir>/build.ts`. */
   file: string;
 }
 
@@ -72,7 +72,7 @@ async function runExampleBuild(
   args: string[],
 ): Promise<ExampleVerdict> {
   const out = await DenoTasks.run((s) =>
-    s.allowAll().frozen().script("zuke.ts").scriptArgs(...args).cwd(dir)
+    s.allowAll().frozen().script("build.ts").scriptArgs(...args).cwd(dir)
       .env({ DENO_NO_PACKAGE_JSON: "1" }).quiet().noThrow()
   );
   return { ok: out.code === 0, detail: `${out.stderr}${out.stdout}`.trim() };
@@ -105,7 +105,7 @@ export async function discoverExamples(
   }
   return files.map((file) => ({
     file,
-    dir: file.replace(/[\\/]zuke\.ts$/, ""),
+    dir: file.replace(/[\\/]build\.ts$/, ""),
   }));
 }
 

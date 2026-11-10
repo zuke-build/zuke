@@ -119,16 +119,16 @@ does, each command run through `await ctx.sh(...)`; `--zuke <version>` pins the
 
 ## Run it yourself
 
-Or write the build file by hand: put a `zuke.ts` in your project root beside a
-`zuke.json` (which marks the root — see [paths](./paths.md#repo-root-reporoot);
-give it a `"build": "build.ts"` field to name the file something else), and run
-it:
+Or write the build file by hand: put a `build.ts` in your project root beside a
+`zuke.json` holding `{ "build": "build.ts" }` (the file marks the root — see
+[paths](./paths.md#repo-root-reporoot) — and names the build file; with no
+`build` field the build file is `zuke.ts`), and run it:
 
 ```sh
 zuke <target>
 ```
 
-With no launcher in the root, `zuke` runs the build as `deno run -A zuke.ts`:
+With no launcher in the root, `zuke` runs the build as `deno run -A build.ts`:
 the `-A` grants permissions (your targets typically run processes, read/write
 files, etc.).
 
@@ -139,7 +139,7 @@ build: [`zuke`](../zuke) (bash) and [`zuke.ps1`](../zuke.ps1) (PowerShell),
 which `zuke setup` and `zuke import` write into your repo root. They locate the
 project, **install Deno on first use if it's missing** (pinned by default, and
 verified against a per-platform SHA-256; override with `DENO_VERSION` plus its
-`DENO_SHA256`), then run `zuke.ts` — so a fresh checkout needs nothing but the
+`DENO_SHA256`), then run `build.ts` — so a fresh checkout needs nothing but the
 script:
 
 ```sh
@@ -163,7 +163,7 @@ the first word of the line.
 <!-- check -->
 
 ```ts
-// zuke.ts
+// build.ts
 import { Build, run, target } from "@zuke/core";
 import { DenoTasks } from "@zuke/deno";
 
@@ -334,8 +334,8 @@ that is ordinary: the token is read-only and secrets are absent.
 
 On **`pull_request_target`** it is not. That event runs with the base
 repository's secrets and a writable token, so a `ref` aimed at a contributor's
-head puts _their_ `zuke.ts` in the workspace — and the last step executes it. No
-configuration makes that safe, so the action refuses it outright:
+head puts _their_ `build.ts` in the workspace — and the last step executes it.
+No configuration makes that safe, so the action refuses it outright:
 
 ```
 Error: Refusing to check out a custom ref on a pull_request_target event: it

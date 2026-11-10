@@ -124,7 +124,7 @@ Three short recipes cover what a small project wants first:
   `npm run what?`. `zuke setup --mcp` writes the client registration on day one.
   `zuke --list --json` and the generated [`llms.txt`](./llms.txt) are the static
   counterparts, and the [agent skills](./docs/agent-skills.md) teach Claude
-  Code, Codex, and Gemini CLI to write a `zuke.ts` the right way.
+  Code, Codex, and Gemini CLI to write a `build.ts` the right way.
 - **Just TypeScript.** Build logic is ordinary async functions with full editor
   support — no bespoke DSL. The `$` tagged template from `@zuke/core/shell` runs
   processes with sane defaults and is injection-safe, so it also replaces the
@@ -318,7 +318,7 @@ test = target()
 ## Agent skills
 
 Two skills — `zuke-setup` and `zuke-write-build` — teach an AI coding assistant
-to scaffold Zuke and write a `zuke.ts` using the typed wrappers instead of
+to scaffold Zuke and write a `build.ts` using the typed wrappers instead of
 guessing the API. Authored once as portable
 [Agent Skills](https://agentskills.io) under [`skills/`](./skills), and
 installable into every harness:

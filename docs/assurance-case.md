@@ -48,7 +48,7 @@ against public CI.
    and review pass. Fork PRs cross this boundary with a read-only token and no
    secrets. The PR _body_ is also untrusted: it reaches the build only through
    an environment variable, never interpolated into a shell line.
-2. **Build layer → published packages.** The build layer (`build/`, `zuke.ts`)
+2. **Build layer → published packages.** The build layer (`build/`, `build.ts`)
    may use dev dependencies; the published packages under `packages/` may not
    depend on anything third-party. The boundary is enforced by each package's
    `deno.json` declaring no dependencies, so nothing the build layer trusts is

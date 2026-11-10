@@ -2,7 +2,8 @@
 
 Zuke driving a Node project's build without touching its dependencies. The app
 is [`greet.mjs`](./greet.mjs) with a `node --test` suite and an npm `build`
-script; [`zuke.ts`](./zuke.ts) runs them through the typed `@zuke/npm` wrapper:
+script; [`build.ts`](./build.ts) runs them through the typed `@zuke/npm`
+wrapper:
 
 ```
 install ─▶ test ─▶ build ─▶ pack ─▶ default

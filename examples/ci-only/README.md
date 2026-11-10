@@ -1,7 +1,7 @@
 # ci-only
 
 For a small project the CI YAML hurts more than the build. This example is a
-project whose whole reason to have a `zuke.ts` is the pipeline: two targets and
+project whose whole reason to have a `build.ts` is the pipeline: two targets and
 three `cicd()` declarations, one per provider, all generated from the same
 source.
 

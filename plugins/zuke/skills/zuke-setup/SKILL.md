@@ -1,6 +1,6 @@
 ---
 name: zuke-setup
-description: Set up Zuke — a code-first, strongly-typed build automation system for Deno/TypeScript — in a project. Use when the user wants to add Zuke to a repo, scaffold a zuke.ts build file, install the Zuke CLI, or bootstrap the ./zuke launcher. After scaffolding, switch to the zuke-write-build skill to author targets.
+description: Set up Zuke — a code-first, strongly-typed build automation system for Deno/TypeScript — in a project. Use when the user wants to add Zuke to a repo, scaffold a build.ts build file, install the Zuke CLI, or bootstrap the ./zuke launcher. After scaffolding, switch to the zuke-write-build skill to author targets.
 ---
 
 # Set up Zuke in a project
@@ -73,7 +73,7 @@ anywhere** — never tell its user to install Deno, and never reach for a Deno
 command in it. Each SDK runs on its own stack only.
 `zuke setup --sdk python
 --yes` writes a starter `build.py` in place of
-`zuke.ts`, a `zuke.json` with the worker command (`uv run build.py`) and the
+`build.ts`, a `zuke.json` with the worker command (`uv run build.py`) and the
 exact engine release, the launchers and `.gitignore`, and no `deno.json`. The
 launchers run the standalone `zuke` binary, which carries the engine and every
 wrapper: they pin one `zuke` release (the running one's, or `--zuke <version>`)
@@ -157,19 +157,19 @@ no `CmdTasks` and no Deno.
   per key: a task or import the file already declares is kept exactly as it is
   (so a deliberate version pin survives), only what is missing is added. A file
   that has the `zuke` task but not the imports is still completed — skipping it
-  would leave the `zuke.ts` written in the same run with nothing to resolve. Two
-  shapes cannot be completed automatically, and setup reports them as steps for
-  you and **exits 1** rather than printing `Next: zuke` over a build that cannot
-  start: a `deno.json` that is JSONC (Deno accepts `//` comments and trailing
-  commas that a JSON parser does not, and rewriting the file would discard
-  them), and one that delegates via `importMap` to a separate file (Deno ignores
-  that field the moment `imports` appears beside it, so the entry belongs in the
-  other file — setup reads that file and stays quiet once it declares the entry,
-  so a correctly configured project still exits 0). Both are left byte-for-byte
-  untouched. A mapping that already points somewhere other than the JSR package
-  is kept — that is how a pin or a local checkout survives — with a note saying
-  so. `--mcp` that cannot register into an unparseable `.mcp.json` is reported
-  the same way, as a note.
+  would leave the `build.ts` written in the same run with nothing to resolve.
+  Two shapes cannot be completed automatically, and setup reports them as steps
+  for you and **exits 1** rather than printing `Next: zuke` over a build that
+  cannot start: a `deno.json` that is JSONC (Deno accepts `//` comments and
+  trailing commas that a JSON parser does not, and rewriting the file would
+  discard them), and one that delegates via `importMap` to a separate file (Deno
+  ignores that field the moment `imports` appears beside it, so the entry
+  belongs in the other file — setup reads that file and stays quiet once it
+  declares the entry, so a correctly configured project still exits 0). Both are
+  left byte-for-byte untouched. A mapping that already points somewhere other
+  than the JSR package is kept — that is how a pin or a local checkout survives
+  — with a note saying so. `--mcp` that cannot register into an unparseable
+  `.mcp.json` is reported the same way, as a note.
 - **`zuke.json`** — `{ "name": "...", "build": "build.ts" }`, which marks the
   repo root and names the build file; the `zuke` command and a re-run of
   `zuke setup` follow it. A `zuke.json` with no `build` field means `zuke.ts`.
@@ -212,27 +212,28 @@ of Zuke the build runs on (`zuke --version` alone also reports the CLI's).
 The bare `zuke` works from anywhere inside the project: `zuke <target>`,
 `zuke --list`, `zuke graph`, `zuke mcp`, bare `zuke` for the default target —
 every command that is not the CLI's own (`setup`, `import`, `doc`) is forwarded
-to the nearest `zuke.ts`. `--help` and `--version` show both surfaces, the CLI's
-and then the build's, each labelled; `zuke -- --help` is the build's own usage
-alone, and `zuke -- <target>` reaches a target that shares one of those names.
-It walks up to the `zuke.json` that marks the repository root and runs the
-executable `./zuke <args>` launcher there, so a project's customised launcher
-(pinned Deno, exported env, a lock outside the repo) applies to `zuke` too. With
-no executable launcher (and on Windows) it runs `deno run -A zuke.ts <args>`,
-with `--frozen` once a `deno.lock` exists. Outside a project, `zuke <target>`
-reports the unknown command and the missing `zuke.json`, and a bare `zuke`
-prints the usage. The forwarding refuses a project whose root directory is owned
-by another user or is world-writable, and one where an ancestor `deno.json`,
-`deno.jsonc` or `package.json` Deno would read is owned by another user (the
-`safe.directory` rule git applies, since discovery runs code the caller never
-named); the error names what was refused and the fix — run that project's own
-`./zuke` there, or fix the ownership. On Windows the gate is inert.
+to the nearest `build.ts`. `--help` and `--version` show both surfaces, the
+CLI's and then the build's, each labelled; `zuke -- --help` is the build's own
+usage alone, and `zuke -- <target>` reaches a target that shares one of those
+names. It walks up to the `zuke.json` that marks the repository root and runs
+the executable `./zuke <args>` launcher there, so a project's customised
+launcher (pinned Deno, exported env, a lock outside the repo) applies to `zuke`
+too. With no executable launcher (and on Windows) it runs
+`deno run -A build.ts <args>`, with `--frozen` once a `deno.lock` exists.
+Outside a project, `zuke <target>` reports the unknown command and the missing
+`zuke.json`, and a bare `zuke` prints the usage. The forwarding refuses a
+project whose root directory is owned by another user or is world-writable, and
+one where an ancestor `deno.json`, `deno.jsonc` or `package.json` Deno would
+read is owned by another user (the `safe.directory` rule git applies, since
+discovery runs code the caller never named); the error names what was refused
+and the fix — run that project's own `./zuke` there, or fix the ownership. On
+Windows the gate is inert.
 
 The CLI is self-describing: `zuke --help` prints the usage grammar plus the
 build's live targets and parameters, so an agent discovers the real command
 surface instead of guessing. For an AI client to operate the build through typed
 calls, `zuke mcp` runs a Model Context Protocol server over it (register with
-`claude mcp add zuke -- deno run -A zuke.ts mcp`; add `--allow-run` to let the
+`claude mcp add zuke -- deno run -A build.ts mcp`; add `--allow-run` to let the
 agent execute targets, not just inspect them).
 
 The scaffolded `deno.json` also carries a `zuke` task
@@ -260,7 +261,7 @@ default `no-import-prefix` rule:
 }
 ```
 
-Then create `zuke.ts` in the project root, extend `Build`, declare targets with
+Then create `build.ts` in the project root, extend `Build`, declare targets with
 `target()`, and call `await run(MyBuild)` at the bottom:
 
 <!-- check -->
@@ -279,10 +280,11 @@ class CI extends Build {
 await run(CI);
 ```
 
-Mark the project root with a `zuke.json` (`{ "name": "my-project" }`) so the
-`zuke` command can find the build, then run it with `zuke test`. (For the
-launcher scripts a CLI-less CI runner needs, prefer `zuke setup`, which drops
-them in for you.)
+Mark the project root with a `zuke.json`
+(`{ "name": "my-project", "build": "build.ts" }`) so the `zuke` command can find
+the build and knows its file, then run it with `zuke test`. (For the launcher
+scripts a CLI-less CI runner needs, prefer `zuke setup`, which drops them in for
+you.)
 
 ## Finding the exact API — never guess
 

@@ -140,7 +140,7 @@ Audit:
 
 `buildId` is the run's **origin**: `ZUKE_BUILD_ID`, else `GITHUB_REPOSITORY`,
 resolved once when the run is created. It says which build a run belongs to when
-a store is shared, because the class name above cannot — a `zuke.ts` templated
+a store is shared, because the class name above cannot — a `build.ts` templated
 across services shares its name, its target names and its graph. Every recovery
 path compares it and touches a run only when the two origins agree; an absent
 one on either side abstains rather than refusing, so records written before the

@@ -9,7 +9,7 @@ it. All of them install the same program, from the same release.
 
 A machine without the CLI — a CI runner — can still run a project's build: the
 committed `./zuke` launcher (`.\zuke.ps1` on Windows) that `zuke setup` writes
-bootstraps its pinned, checksum-verified runtime on its own. For a `zuke.ts`
+bootstraps its pinned, checksum-verified runtime on its own. For a `build.ts`
 build that is Deno. For a Python build it is the standalone `zuke` binary below,
 downloaded from its GitHub release, so a Python project needs no Deno anywhere.
 Each SDK runs on its own stack only.
@@ -33,7 +33,7 @@ brew install zuke-build/tap/zuke
 ```
 
 This installs a standalone binary, so it needs **no Deno up front**.
-`zuke setup` runs right away. For a `zuke.ts` build, the `./zuke` launcher it
+`zuke setup` runs right away. For a `build.ts` build, the `./zuke` launcher it
 writes installs Deno the first time the build runs, and from then on
 `zuke <target>` forwards to that Deno. A Python build never needs Deno: the
 binary runs it on the engine it carries. Upgrade with `brew upgrade zuke`.

@@ -5,10 +5,10 @@ right way — using the typed `*Tasks` wrappers instead of guessing the API or
 shelling out. Two skills, authored once as portable
 [`SKILL.md`](https://agentskills.io) folders under [`skills/`](../skills):
 
-| Skill              | Use it to                                                                                    |
-| ------------------ | -------------------------------------------------------------------------------------------- |
-| `zuke-setup`       | Scaffold Zuke into a project (`zuke setup`, the `./zuke` launcher, a first build).           |
-| `zuke-write-build` | Write or edit a `zuke.ts` — add targets, wire dependencies, call tool wrappers, generate CI. |
+| Skill              | Use it to                                                                                     |
+| ------------------ | --------------------------------------------------------------------------------------------- |
+| `zuke-setup`       | Scaffold Zuke into a project (`zuke setup`, the `./zuke` launcher, a first build).            |
+| `zuke-write-build` | Write or edit a `build.ts` — add targets, wire dependencies, call tool wrappers, generate CI. |
 
 ## Claude Code
 

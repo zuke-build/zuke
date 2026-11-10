@@ -142,10 +142,11 @@ user never needs Deno, just as a TypeScript user never needs Python. Not to
 install Zuke, not to scaffold, not to run a build, not on CI. This holds for
 every SDK, and every change must keep it:
 
-- A build another SDK hosts (a `zuke.json` with no `zuke.ts`) runs on the
-  standalone `zuke` binary, which carries `@zuke/engine` and every wrapper.
-  `zuke setup --sdk` writes launchers that download the pinned `zuke` release,
-  checksum-verified, never a Deno (`packages/cli/src/binary_launcher.ts`).
+- A build another SDK hosts (a `zuke.json` with no TypeScript build file) runs
+  on the standalone `zuke` binary, which carries `@zuke/engine` and every
+  wrapper. `zuke setup --sdk` writes launchers that download the pinned `zuke`
+  release, checksum-verified, never a Deno
+  (`packages/cli/src/binary_launcher.ts`).
 - The binary never falls back to Deno for such a build. A pin it cannot serve
   goes to the project's launcher, or is refused with how to get a `zuke` that
   serves it (`packages/cli/src/dispatch.ts`).
@@ -508,7 +509,7 @@ gemini-extension.json     # Gemini CLI extension manifest (serves skills/)
 - **The global `zuke` command forwards to the project's build.** `@zuke/cli`
   keeps `setup`, `import`, `doc`, `upgrade`, `--help` and `--version` for itself
   and forwards everything else to the nearest `zuke.json` above the working
-  directory, running the `zuke.ts` beside it exactly as `./zuke` would. The
+  directory, running the build file beside it exactly as `./zuke` would. The
   walk-up discovery is the accepted design (#578) — it is how npm, Deno and git
   find their roots — bounded by a trust gate modelled on git's `safe.directory`
   (`packages/cli/src/dispatch.ts`). Review the gate's implementation; the

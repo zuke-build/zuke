@@ -1,7 +1,7 @@
 {
   "name": "zuke",
-  "version": "0.115.0",
-  "description": "Agent skills for Zuke, the code-first build automation system for Deno/TypeScript. Bundles zuke-setup (scaffold Zuke into a project) and zuke-write-build (author or edit a zuke.ts build).",
+  "version": "0.116.0",
+  "description": "Agent skills for Zuke, the code-first build automation system for Deno/TypeScript. Bundles zuke-setup (scaffold Zuke into a project) and zuke-write-build (author or edit a build.ts build).",
   "author": {
     "name": "Zuke",
     "email": "contact@zuke.build",

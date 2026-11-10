@@ -3,7 +3,7 @@
 
 /**
  * The library being released by the `release-library` example. Trivial on
- * purpose — the release routine in `zuke.ts` is the point.
+ * purpose — the release routine in `build.ts` is the point.
  *
  * @module
  */

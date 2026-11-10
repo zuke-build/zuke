@@ -2,7 +2,7 @@
   "name": "node-app-example",
   "version": "1.0.0",
   "private": true,
-  "description": "A Node project whose build is driven by Zuke — see zuke.ts.",
+  "description": "A Node project whose build is driven by Zuke — see build.ts.",
   "type": "module",
   "main": "greet.mjs",
   "scripts": {

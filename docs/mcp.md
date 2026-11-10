@@ -32,8 +32,8 @@ until stdin closes.
 ### Registering with a client
 
 The scaffolder can do it for you: `zuke setup --mcp` (and `zuke import --mcp`)
-writes a project-scoped `.mcp.json` next to `zuke.ts` that registers this server
-as `zuke`, in the format Claude Code, Codex and most stdio clients read.
+writes a project-scoped `.mcp.json` next to `build.ts` that registers this
+server as `zuke`, in the format Claude Code, Codex and most stdio clients read.
 `--allow-run` registers it with execution enabled. An existing file is merged
 around its other servers.
 
@@ -45,11 +45,11 @@ zuke setup --mcp --allow-run    # …and let the agent run targets
 Any client also takes the command directly. For example, with Claude Code:
 
 ```sh
-claude mcp add zuke -- deno run -A zuke.ts mcp
+claude mcp add zuke -- deno run -A build.ts mcp
 ```
 
 Any client that speaks stdio MCP works the same way — give it the command
-`deno run -A zuke.ts mcp` (add `--allow-run` when you want the agent to execute
+`deno run -A build.ts mcp` (add `--allow-run` when you want the agent to execute
 targets). That is the command `zuke setup --mcp` writes too: it is the same on
 every platform and needs only Deno on the machine the client runs on.
 

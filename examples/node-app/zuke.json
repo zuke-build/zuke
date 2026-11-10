@@ -1,3 +1,4 @@
 {
-  "name": "App"
+  "name": "App",
+  "build": "build.ts"
 }

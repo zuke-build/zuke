@@ -293,7 +293,7 @@ than it sounds: recovery does not merely _read_ a foreign run. A reap hands it
 back to `suspended`, a resume then runs **this** build's target bodies against
 that record, and a settlement runs this build's compensations.
 
-The dangerous case is not two unrelated builds — it is one `zuke.ts` templated
+The dangerous case is not two unrelated builds — it is one `build.ts` templated
 across a dozen services. Same class name, same target names, same graph, and
 only the bodies differ. Every shape-based check passes.
 

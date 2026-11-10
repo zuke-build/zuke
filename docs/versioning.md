@@ -134,7 +134,7 @@ stays runnable offline.
   what's _used_. Regenerate it (`deno install` or a fresh `deno.lock` write)
   whenever you deliberately take an upgrade, and review the diff. In this repo
   that is `deno task lock`, and the gate enforces it: every entrypoint that
-  loads `zuke.ts` runs `--frozen`, and the `lockCheck` target fails if a run
+  loads `build.ts` runs `--frozen`, and the `lockCheck` target fails if a run
   modified the lock — so a stale lock is caught before it reaches CI rather than
   being silently healed on the machine that happened to run the gate.
 

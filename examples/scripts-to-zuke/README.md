@@ -7,7 +7,7 @@ same `release` routine three times, in the order a project usually adopts it:
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | [`scripts/release.sh`](./scripts/release.sh) | The starting point. Works, until a version string has a space in it or someone forgets `set -e`.                                |
 | [`scripts/release.ts`](./scripts/release.ts) | The same script with the `$` shell from `@zuke/core/shell`. No build class, no targets: `deno run -A scripts/release.ts 1.1.0`. |
-| [`zuke.ts`](./zuke.ts)                       | The steps as targets: each one runnable alone, visible in `--list`, and the git steps through the typed `GitTasks` wrapper.     |
+| [`build.ts`](./build.ts)                     | The steps as targets: each one runnable alone, visible in `--list`, and the git steps through the typed `GitTasks` wrapper.     |
 
 ```sh
 scripts/release.sh 1.1.0 --dry-run

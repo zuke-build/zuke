@@ -1,13 +1,13 @@
 ---
 name: zuke-write-build
-description: Write or edit a Zuke build (zuke.ts) — the code-first, strongly-typed build system for Deno/TypeScript. Use when adding or changing targets, wiring dependencies, calling a tool wrapper (DenoTasks, NpmTasks, DockerTasks, ...), generating CI, or authoring/refactoring a zuke.ts build file. For first-time project scaffolding, use the zuke-setup skill instead.
+description: Write or edit a Zuke build (build.ts) — the code-first, strongly-typed build system for Deno/TypeScript. Use when adding or changing targets, wiring dependencies, calling a tool wrapper (DenoTasks, NpmTasks, DockerTasks, ...), generating CI, or authoring/refactoring a build.ts build file. For first-time project scaffolding, use the zuke-setup skill instead.
 ---
 
 # Write or edit a Zuke build
 
 A build is a class that **extends `Build`**. Each **target is a class field**
 created with `target()` and made runnable with `await run(MyBuild)` at the
-bottom of `zuke.ts` (no `import.meta.main` guard — `run` no-ops on import).
+bottom of `build.ts` (no `import.meta.main` guard — `run` no-ops on import).
 
 <!-- check -->
 
@@ -103,7 +103,7 @@ it cannot answer "does one exist for this tool?"; only the catalogue
 
 ## Workflow for a change
 
-1. Read the existing `zuke.ts` to learn the targets already declared and their
+1. Read the existing `build.ts` to learn the targets already declared and their
    order.
 2. Identify the tool you need and look up its `*Tasks` object and settings
    methods (cheatsheet → `deno doc` / `llms-full.txt`).
@@ -174,7 +174,7 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   compensations instead of resumed. On a **shared** store, set `ZUKE_BUILD_ID`
   (or rely on `GITHUB_REPOSITORY`) so each build only recovers its own runs — a
   resume runs _this_ build's bodies against whatever record it is given, and a
-  templated `zuke.ts` looks identical to the shape checks. See the cheatsheet.
+  templated `build.ts` looks identical to the shape checks. See the cheatsheet.
 - **Cross-run locks:** `.lock((s) => s.lockKey(...).withTtl("4h"))` — a settings
   lambda — gives a target an exclusive claim across runs/machines; a second run
   wanting the same key fails with a `LockConflictError` naming the holder, or

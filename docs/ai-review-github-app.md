@@ -91,9 +91,9 @@ themselves, and the App token carries the rest.
 
 ## 4. Wire the build
 
-This mirrors this repository's own `zuke.ts`: the credentials as parameters, the
-token source pinned to the repository and narrowed to what the review does, both
-reviewers posting with it and taking commands under the App's name, and the
+This mirrors this repository's own `build.ts`: the credentials as parameters,
+the token source pinned to the repository and narrowed to what the review does,
+both reviewers posting with it and taking commands under the App's name, and the
 workflow handing the credentials to both jobs with egress blocked.
 
 <!-- check -->
@@ -226,7 +226,7 @@ To check the identity took, look at the author of the summary comment: it is
 ## Security notes
 
 - **Who can read the key.** `secrets` on the spec hands the App's credentials to
-  the pull-request job, which executes the pull request's own `zuke.ts`. On a
+  the pull-request job, which executes the pull request's own `build.ts`. On a
   repository where everyone with push access is a maintainer, that is the right
   trade: it is what closes threads on ordinary pushes. Where it is not, put the
   credentials on `command: (c) => c.secrets(this.appId, this.appKey)` instead,

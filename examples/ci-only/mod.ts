@@ -3,7 +3,7 @@
 
 /**
  * The project the pipeline builds. Trivial on purpose — the generated CI in
- * `zuke.ts` is the point of this example.
+ * `build.ts` is the point of this example.
  *
  * @module
  */
