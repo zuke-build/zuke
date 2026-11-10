@@ -5,7 +5,7 @@
  * Integration: the release target's Gemini-asset wiring — build the extension
  * archive, then attach it to the latest release under each platform-prefixed
  * name — driven through the real CLI against a fake GitHub, mirroring how
- * `zuke.ts`'s `release` target is wired (see `build/gemini_archive.ts`).
+ * `build.ts`'s `release` target is wired (see `build/gemini_archive.ts`).
  */
 
 import {

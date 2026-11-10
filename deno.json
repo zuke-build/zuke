@@ -77,21 +77,21 @@
     "@std/yaml": "jsr:@std/yaml@^1.2.0"
   },
   "tasks": {
-    "zuke": "deno run -A --frozen zuke.ts",
+    "zuke": "deno run -A --frozen build.ts",
     "test": "GITHUB_STEP_SUMMARY= deno test -A --frozen",
-    "cov": "deno run -A --frozen zuke.ts coverage",
+    "cov": "deno run -A --frozen build.ts coverage",
     "cov:report": "deno coverage cov_profile '--exclude=tests/'",
-    "check": "deno check --frozen zuke.ts build tests packages examples",
+    "check": "deno check --frozen build.ts build tests packages examples",
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
     "lint": "deno lint",
     "spell": "deno run --allow-read --allow-env --allow-sys npm:cspell@9 lint --no-progress '**'",
-    "ci": "deno run -A --frozen zuke.ts ci",
+    "ci": "deno run -A --frozen build.ts ci",
     "lock": "deno install"
   },
   "fmt": {
     "include": [
-      "zuke.ts",
+      "build.ts",
       "build/",
       "tests/",
       "packages/",
@@ -112,7 +112,7 @@
   },
   "lint": {
     "include": [
-      "zuke.ts",
+      "build.ts",
       "build/",
       "tests/",
       "packages/",

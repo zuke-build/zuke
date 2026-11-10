@@ -33,7 +33,7 @@ exact signatures are published — read them:
   `deno doc jsr:@zuke/deno`).
 - **On each package's JSR page / README:** a generated `## API` section.
 - **The CLI surface — commands, flags, and a build's actual targets:** run
-  `./zuke --help` (or `deno run -A zuke.ts --help`). It prints the usage
+  `./zuke --help` (or `deno run -A build.ts --help`). It prints the usage
   grammar, every reserved command (`graph`, `generate-ci`,
   `completions <print|install> <shell>`, `mcp`, `resume`, `runs`, `cancel`,
   `register`, `doc`) and flag, **plus the current build's targets — with
@@ -396,10 +396,10 @@ naming convention.
    `Deno.execPath()` (guideline 5) against a temp `ZUKE_STATE_DIR`; the fixture
    is a runnable `Build` ending in `await run(...)`. **Name these files
    `*_e2e.ts`** so default `deno test` discovery skips them — they stay out of
-   the fast gate. They run only via the `integration` build target in `zuke.ts`,
-   which the generated `.github/workflows/integration.yml` fans out over the
-   three OS runners. That target globs `tests/e2e/*_e2e.ts`, so a new file is
-   picked up on its own — there is no list to add it to.
+   the fast gate. They run only via the `integration` build target in
+   `build.ts`, which the generated `.github/workflows/integration.yml` fans out
+   over the three OS runners. That target globs `tests/e2e/*_e2e.ts`, so a new
+   file is picked up on its own — there is no list to add it to.
 
 Naming wrinkle to keep straight: the in-process suite _lives in_
 `tests/integration/` but runs in the normal test lane; the build target _named_
@@ -436,19 +436,19 @@ the three test layers above and the "read every reviewer comment" rule below.
 | Regenerate `deno.lock`        | `deno task lock`                        |
 | Verify declared core floors   | `./zuke coreFloorCheck` (needs network) |
 
-`deno task ci` is `deno run -A --frozen zuke.ts ci` — the exact gate the `ci`
+`deno task ci` is `deno run -A --frozen build.ts ci` — the exact gate the `ci`
 job in `ci.yml` runs, so there is one gate, not a hand-maintained subset that
-can drift from it. `zuke.ts`'s `ci` target depends on: `format`
+can drift from it. `build.ts`'s `ci` target depends on: `format`
 (`deno fmt --check`), `lint` (`deno lint`), `spell` (cspell), `coverage`
 (type-check, then the test suite with the 95% coverage gate), `coverageUpload`
 (skips locally without a `CODECOV_TOKEN`), `apiDocsCheck`, `docLint`,
 `snippetsCheck`, `examplesCheck`, `hclSyncCheck`, `pluginSyncCheck`,
 `launcherSyncCheck`, `skillsCheck`, `graphDocCheck`, `pluginVersionCheck`,
-`prBodyLint`, `actionPinCheck`, `security`, and `lockCheck`. Read `zuke.ts`'s
+`prBodyLint`, `actionPinCheck`, `security`, and `lockCheck`. Read `build.ts`'s
 `ci` target for the current, authoritative list — this is a snapshot, not a
 second source of truth.
 
-**The lock is part of the gate.** Every entrypoint that loads `zuke.ts` — both
+**The lock is part of the gate.** Every entrypoint that loads `build.ts` — both
 launchers (once a `deno.lock` exists, which in this repository is always) and
 the root tasks — passes `--frozen`, so a run cannot quietly heal a stale
 `deno.lock` by writing the resolutions it is missing. That mattered: a green
@@ -474,8 +474,8 @@ tests/
   integration/            # in-process: real builds via the CLI main() + _harness.ts
   e2e/                    # subprocess: *_e2e.ts + fixtures/ (run by the `integration` target)
 examples/                 # cloneable mini projects, type-checked and listed by `examplesCheck`
-zuke.ts                   # Zuke's own build (runnable example)
-build/                    # reusable helpers behind zuke.ts's targets (docs, publish, snippets, …)
+build.ts                  # Zuke's own build (runnable example); zuke.json names it
+build/                    # reusable helpers behind build.ts's targets (docs, publish, snippets, …)
 zuke, zuke.ps1            # bootstrap launchers (install Deno, run the build) — GENERATED from packages/cli/src/launcher.ts by `./zuke launcherSync`; zuke.json names the build class
 docs/                     # long-form guides (linked from the README)
 skills/                   # agent skills: zuke-write-build, zuke-setup
@@ -574,7 +574,7 @@ gemini-extension.json     # Gemini CLI extension manifest (serves skills/)
   `1.1.0`, and `1.0.0` never exists. At `0.0.0` the first release is `1.0.0`,
   and `publishJsr` skips the package until then. `tests/release_config_test.ts`
   fails on a package with no `CHANGELOG.md` that is not at `0.0.0`. Omitting
-  `zuke.ts` means the package is released but never published; omitting the
+  `build.ts` means the package is released but never published; omitting the
   `README.md` table means it is invisible to anyone browsing the repo; omitting
   `build/website_tools.ts` fails the gate, because the website's package grid is
   generated from it by `syncWebsite`.
@@ -645,8 +645,8 @@ gemini-extension.json     # Gemini CLI extension manifest (serves skills/)
   the reviewers post in **append mode**, so every run's assessment stays on the
   thread as history, and the id ties a reply to the exact finding (and round) it
   answers, telling a genuinely new finding apart from the same concern reworded.
-  The ids in the `suppressions(...)` list in `zuke.ts` are the same identifiers,
-  used there as the hard override for cross-branch false positives.
+  The ids in the `suppressions(...)` list in `build.ts` are the same
+  identifiers, used there as the hard override for cross-branch false positives.
 - **A reply with no push needs `@zuke-build review` after it.** The reviewers
   run on a push, so a reply that only answers a finding, a rebuttal above all,
   is read by nobody until the next run. After posting such a reply, add one new

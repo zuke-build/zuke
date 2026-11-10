@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * Guards the subprocess e2e suite's registration in `zuke.ts`: the
+ * Guards the subprocess e2e suite's registration in `build.ts`: the
  * `integration` target must discover `tests/e2e/*_e2e.ts` by glob rather than a
  * hardcoded file list, so a newly added `*_e2e.ts` suite is picked up
  * automatically instead of silently running nowhere.
@@ -16,7 +16,7 @@ import {
 } from "../packages/core/tests/_assert.ts";
 import { glob } from "../packages/core/mod.ts";
 
-const ZUKE_SOURCE = await Deno.readTextFile("zuke.ts");
+const ZUKE_SOURCE = await Deno.readTextFile("build.ts");
 
 /**
  * The source text of the `integration` target's field initializer.
@@ -29,13 +29,13 @@ const ZUKE_SOURCE = await Deno.readTextFile("zuke.ts");
 function integrationTargetBody(source: string): string {
   const start = source.indexOf("integration = target()");
   if (start === -1) {
-    throw new Error("could not find the `integration` target in zuke.ts");
+    throw new Error("could not find the `integration` target in build.ts");
   }
   // A class field at the class's own indent level, i.e. `  <name> = `.
   const next = /\n {2}\w+ = /.exec(source.slice(start + 1));
   if (next === null) {
     throw new Error(
-      "could not find the end of the `integration` target in zuke.ts",
+      "could not find the end of the `integration` target in build.ts",
     );
   }
   return source.slice(start, start + 1 + next.index);

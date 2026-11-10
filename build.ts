@@ -6,7 +6,7 @@
  *
  * Every CI and release step is a target here, so the GitHub workflows collapse
  * to `deno task zuke <target>` invocations (equivalently
- * `deno run -A zuke.ts <target>`):
+ * `deno run -A build.ts <target>`):
  *
  *   deno task zuke ci        # fmt → lint → spell → check → test → coverage gate
  *   deno task zuke test      # type-check, then run the suite with coverage
@@ -221,7 +221,7 @@ const CLI_FORMULA_FILE = "dist/cli/zuke.rb";
  * Windows' 32 KB command line, which fails the spawn itself ("The filename or
  * extension is too long").
  */
-const CHECK_ROOTS = ["zuke.ts", "build", "tests", "packages", "examples"];
+const CHECK_ROOTS = ["build.ts", "build", "tests", "packages", "examples"];
 class ZukeBuild extends Build {
   clean = target()
     .description("Remove build artifacts")
@@ -235,7 +235,7 @@ class ZukeBuild extends Build {
       const mods = PACKAGES.map((p) => `packages/${p}/mod.ts`);
       // Frozen so warming the cache can never *heal* a stale `deno.lock` by
       // writing the resolutions it is missing. These entrypoints reach a wider
-      // module graph than loading `zuke.ts` does, so this covers a dependency
+      // module graph than loading `build.ts` does, so this covers a dependency
       // that only a package's `mod.ts` pulls in. The outer `deno run` that
       // loads this file is frozen too — see the launchers and the root tasks —
       // which is what stops the lock being rewritten before the build starts.
@@ -318,7 +318,7 @@ class ZukeBuild extends Build {
           .autoApply()
           .runOnly("ci")
           .commitFixes()
-          .allowPaths("packages/**", "tests/**", "zuke.ts")
+          .allowPaths("packages/**", "tests/**", "build.ts")
           // Fetch the PR base branch itself (auto-detected from the CI env) for
           // diff context — no manual `git fetch` step in the workflow.
           .diff((d) => d.fetchBase())
@@ -925,7 +925,7 @@ class ZukeBuild extends Build {
       // On a pull request, refuse a diff that changes what the scanners look
       // for. They read their rules from the working tree, so a branch that adds
       // a config chooses the scan that judges it. This is visibility, not a
-      // seal: the gate runs the branch's own `zuke.ts` and could simply drop
+      // seal: the gate runs the branch's own `build.ts` and could simply drop
       // the scanner call — but a config change now has to be argued for rather
       // than merged as a detail of something else.
       if (prBase !== undefined && prBase !== "") {
@@ -1948,7 +1948,7 @@ class ZukeBuild extends Build {
       if (appKey !== undefined) Deno.env.delete("ZUKE_BUILD_APP_KEY");
       try {
         await DenoTasks.run((s) =>
-          s.allowAll().frozen().script("zuke.ts").scriptArgs("generate-ci")
+          s.allowAll().frozen().script("build.ts").scriptArgs("generate-ci")
         );
       } finally {
         if (appKey !== undefined) Deno.env.set("ZUKE_BUILD_APP_KEY", appKey);

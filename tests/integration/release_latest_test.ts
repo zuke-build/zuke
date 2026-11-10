@@ -5,7 +5,7 @@
  * Integration: the release target's Latest-pointer wiring — pin the
  * repository's "Latest release" back onto the action's release, then refresh
  * the extension archive it carries — driven through the real CLI against a
- * fake GitHub, mirroring how `zuke.ts`'s `release` target is wired.
+ * fake GitHub, mirroring how `build.ts`'s `release` target is wired.
  */
 
 import {

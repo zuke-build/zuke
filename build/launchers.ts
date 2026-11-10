@@ -25,7 +25,7 @@ export const PWSH_LAUNCHER = "zuke.ps1";
 const EXECUTABLE = 0o755;
 
 /** The variant the repository runs on: nothing installed up front. */
-const ROOT_VARIANT = { bootstrapDeno: true };
+const ROOT_VARIANT = { bootstrapDeno: true, buildFile: "build.ts" };
 
 /** The launchers as they should be committed, keyed by file name. */
 export function renderRootLaunchers(): ReadonlyMap<string, string> {

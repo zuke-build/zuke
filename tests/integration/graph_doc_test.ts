@@ -4,7 +4,7 @@
 /**
  * Integration: the graph-page generate-then-verify flow, driven through the
  * real CLI `main()` — a fixture build whose targets call `writeGraphDoc` /
- * `checkGraphDoc` exactly the way `zuke.ts`'s `graphDoc` / `graphDocCheck`
+ * `checkGraphDoc` exactly the way `build.ts`'s `graphDoc` / `graphDocCheck`
  * targets do, proving the pattern works end-to-end (target execution, the
  * discovered graph feeding the generator, and the failing-check exit code).
  */
@@ -17,7 +17,7 @@ import {
 import { checkGraphDoc, writeGraphDoc } from "../../build/graph_doc.ts";
 import { runCli } from "./_harness.ts";
 
-/** A fixture mirroring zuke.ts's graphDoc/graphDocCheck wiring. */
+/** A fixture mirroring build.ts's graphDoc/graphDocCheck wiring. */
 function fixture(path: string): new () => Build {
   return class GraphDocDemo extends Build {
     lint = target().description("Lint").executes(() => {});

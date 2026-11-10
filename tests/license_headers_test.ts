@@ -34,7 +34,7 @@ async function allSources(): Promise<string[]> {
   const files: string[] = [];
   for (const root of TS_ROOTS) files.push(...await tsFiles(root));
   files.push(
-    "zuke.ts",
+    "build.ts",
     "zuke",
     "zuke.ps1",
     "internal/hcl_tool.ts.tmpl",

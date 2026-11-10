@@ -176,7 +176,7 @@ Deno.test("a custom ref is refused on every secret-bearing event", () => {
   // push a fix to a pull request's head branch. It also hands every consumer
   // the classic escalation: on `pull_request_target` the job holds the base
   // repository's secrets and a writable token, and a `ref` aimed at a pull
-  // request's head puts a contributor's `zuke.ts` where the last step runs it.
+  // request's head puts a contributor's `build.ts` where the last step runs it.
   //
   // The refusal is the mitigation, and it is only as good as its condition —
   // so assert the condition, not just that some guard exists. All three

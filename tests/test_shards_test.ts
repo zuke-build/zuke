@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * The sharded test runner behind `zuke.ts`'s `test` target: how files are
+ * The sharded test runner behind `build.ts`'s `test` target: how files are
  * discovered and dealt into shards, and how the shards' outputs are printed,
  * summed and turned into a verdict. The runner seam is faked, so no `deno test`
  * is spawned here — `tests/integration/test_shards_test.ts` runs real ones.

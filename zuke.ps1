@@ -9,7 +9,7 @@
 #   .\zuke.ps1 --list        # list every target
 #
 # Ensures Deno is available (installing it on first use if missing), then runs
-# the project's build file (zuke.ts). No global install required.
+# the project's build file (build.ts). No global install required.
 #
 # Honoured environment variables:
 #   DENO_INSTALL   where Deno is installed/looked for (default: ~/.deno)
@@ -154,6 +154,6 @@ if (Test-Path (Join-Path $dir "deno.lock")) {
 } else {
   Write-Warning "zuke: no deno.lock here yet - running without lockfile verification so Deno can write one."
 }
-$denoArgs += (Join-Path $dir "zuke.ts")
+$denoArgs += (Join-Path $dir "build.ts")
 & $deno @denoArgs @args
 exit $LASTEXITCODE

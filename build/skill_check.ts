@@ -10,7 +10,7 @@
  * root `gemini-extension.json`, which auto-discovers `skills/`). Both of those
  * harnesses — and the standard itself — require the frontmatter `name` to
  * match the skill's directory name, so a rename that touches only one side
- * ships a skill that silently fails to load. `skillsCheck` in `zuke.ts` runs
+ * ships a skill that silently fails to load. `skillsCheck` in `build.ts` runs
  * this over `skills/` so the gate catches it instead.
  *
  * @module

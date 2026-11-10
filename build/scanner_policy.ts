@@ -51,7 +51,7 @@ export function changedScannerConfigs(
  * when it changed none.
  *
  * The message is deliberately explicit that this is not a complete defence. The
- * gate runs the pull request's own `zuke.ts`, so a branch can delete the scanner
+ * gate runs the pull request's own `build.ts`, so a branch can delete the scanner
  * call outright and no in-tree pinning can stop it. What this buys is that a
  * configuration change becomes a named failure a reviewer sees, rather than a
  * silent narrowing of what the scan covers — and that the scheduled and

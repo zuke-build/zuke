@@ -10,7 +10,7 @@
  * passes precisely because it healed the file — while CI, whose checkout has the
  * committed lock, fails later with "The lockfile is out of date".
  *
- * Every entrypoint that loads `zuke.ts` now passes `--frozen`, which stops the
+ * Every entrypoint that loads `build.ts` now passes `--frozen`, which stops the
  * rewrite at its most common source. `deno task` resolves the workspace before
  * it runs the task's command, though, so `deno task ci` can still heal the lock
  * before a frozen inner run ever starts. This check closes that gap from the

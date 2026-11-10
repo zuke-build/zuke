@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * Integration: the sharded test runner behind `zuke.ts`'s `test` target, end
+ * Integration: the sharded test runner behind `build.ts`'s `test` target, end
  * to end through the CLI `main()`. Real `deno test` processes (the deno
  * already running the suite) run committed fixtures concurrently; the target's
  * summary row carries the counts summed across every shard, not the last
@@ -34,7 +34,7 @@ const MISSING = new URL(
 ).href;
 
 /**
- * A build whose `test` target runs `shards` the way `zuke.ts` does. `attempt`
+ * A build whose `test` target runs `shards` the way `build.ts` does. `attempt`
  * picks the files each run is given, so a test can make the first run of a
  * shard die before it tests anything.
  */
