@@ -4,8 +4,8 @@
 /**
  * Integration: the `pluginSync`/`pluginSyncCheck`-style target wiring — sync
  * a source tree into a destination copy and fail the build on drift — driven
- * through the real CLI, mirroring how `zuke.ts`'s own `pluginSync` and
- * `pluginSyncCheck` targets are wired (see `zuke.ts` and
+ * through the real CLI, mirroring how `build.ts`'s own `pluginSync` and
+ * `pluginSyncCheck` targets are wired (see `build.ts` and
  * `build/plugin_sync.ts`).
  */
 

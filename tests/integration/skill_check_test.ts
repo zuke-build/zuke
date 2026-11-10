@@ -4,8 +4,8 @@
 /**
  * Integration: the `skillsCheck`-style target wiring — validate a skills tree
  * against the Agent Skills spec and fail the build on a violation — driven
- * through the real CLI, mirroring how `zuke.ts`'s own `skillsCheck` target is
- * wired (see `zuke.ts` and `build/skill_check.ts`).
+ * through the real CLI, mirroring how `build.ts`'s own `skillsCheck` target is
+ * wired (see `build.ts` and `build/skill_check.ts`).
  */
 
 import {

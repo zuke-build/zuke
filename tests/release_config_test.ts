@@ -223,7 +223,7 @@ Deno.test("the README still reaches the package matrix", async () => {
 });
 
 Deno.test("deno.lock captures release-please's full npm tree", async () => {
-  // `zuke.ts`'s `release` target provisions release-please through a launcher
+  // `build.ts`'s `release` target provisions release-please through a launcher
   // that runs `deno run --frozen npm:release-please@16.18.0` from the repository
   // root (see `installCli`), so the lock is what pins its transitive tree — and
   // `--frozen` fails the release outright if the specifier is missing from the

@@ -4,7 +4,7 @@
 /**
  * Zuke's own GitHub workflows, declared as targets to run.
  *
- * These live here rather than in `zuke.ts` so the build file stays a list of
+ * These live here rather than in `build.ts` so the build file stays a list of
  * targets. Each workflow names the targets it invokes and the jobs are derived
  * from the build graph — ids and names from the targets, `needs:` edges from
  * their `dependsOn`, `./zuke <target>` as the command, and a hardened runner and
@@ -806,7 +806,7 @@ export function githubWorkflows(
         // the e2e suite's resolution would diverge from the committed lock.
         steps: [{
           name: "Run the subprocess e2e suite",
-          run: "deno run -A --frozen zuke.ts integration",
+          run: "deno run -A --frozen build.ts integration",
         }],
       }],
     }),

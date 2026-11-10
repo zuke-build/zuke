@@ -230,7 +230,7 @@ export function codecovTool(s: ToolInstallSettings): ToolInstallSettings {
 
 /**
  * Every external binary the build provisions, installed into `destDir`. Kept
- * here rather than inline in `zuke.ts` so a test can check that each one pins
+ * here rather than inline in `build.ts` so a test can check that each one pins
  * a checksum: a tool added without one would be fetched and run unverified.
  */
 export function buildToolchain(destDir: PathLike): Toolchain {

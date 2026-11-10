@@ -4,8 +4,8 @@
 /**
  * Integration: the `prBodyLint`-style target wiring — a `.env("PR_BODY")`
  * parameter feeding {@link lintPrBody} and failing the build on any finding —
- * driven through the real CLI, mirroring how `zuke.ts`'s own `prBodyLint`
- * target is wired (see `zuke.ts` and `build/pr_body_lint.ts`).
+ * driven through the real CLI, mirroring how `build.ts`'s own `prBodyLint`
+ * target is wired (see `build.ts` and `build/pr_body_lint.ts`).
  */
 
 import {

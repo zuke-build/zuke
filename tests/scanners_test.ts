@@ -138,7 +138,7 @@ Deno.test("codecov resolves its per-OS binary on Codecov's CDN", () => {
 });
 
 Deno.test("every tool the build provisions pins a 64-hex SHA-256 for each supported platform", () => {
-  // The toolchain zuke.ts installs, so a tool added there without a checksum
+  // The toolchain build.ts installs, so a tool added there without a checksum
   // — downloaded and run unverified, never cached — fails here.
   const chain = buildToolchain(".tools");
   assertEquals(chain.trees.length, 0, "check the trees' checksums here too");

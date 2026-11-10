@@ -370,7 +370,7 @@ deno task check       # type-check
 deno task fmt         # format (fmt:check to verify only)
 deno task lint        # lint
 deno task spell       # spell-check (cspell)
-deno task ci          # the full gate — deno run -A --frozen zuke.ts ci
+deno task ci          # the full gate — deno run -A --frozen build.ts ci
 ```
 
 `deno task ci` **is** `./zuke ci`, the same gate the `ci` job in

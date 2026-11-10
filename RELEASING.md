@@ -123,7 +123,7 @@ changed. So release-please cuts the CLI's release as a **draft**
 (`"draft": true` for `packages/cli` in `.release-please-config.json`), the
 pipeline attaches everything to the draft, and publishing it is the last step,
 which locks the release with its binaries already inside. The jobs in
-`release.yml` run after `publishJsr`, each running a `cli*` target in `zuke.ts`
+`release.yml` run after `publishJsr`, each running a `cli*` target in `build.ts`
 (the code is in `build/cli_*.ts`):
 
 1. `cliBinaries` decides what the current CLI version owes from what is

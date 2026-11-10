@@ -1,3 +1,4 @@
 {
-  "name": "ZukeBuild"
+  "name": "ZukeBuild",
+  "build": "build.ts"
 }

@@ -1,6 +1,6 @@
 # Review criteria — accepted designs
 
-Reference material for the **security** reviewer in `zuke.ts`, fed to the model
+Reference material for the **security** reviewer in `build.ts`, fed to the model
 alongside the diff. It is read from the **diff base** rather than from the
 branch under review, so a pull request cannot add a clause telling the reviewer
 to overlook what that pull request does. That is the whole reason it is a file

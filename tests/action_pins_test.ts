@@ -198,14 +198,14 @@ Deno.test("no declared workflow hardcodes an action SHA", async () => {
   // package) silently reverts a bot's bump on the next run. It had already
   // happened here — `integrationCi` pinned three actions by hand, and
   // @zuke/ai's constant had to be updated to match what Dependabot set.
-  const build = await Deno.readTextFile("zuke.ts");
+  const build = await Deno.readTextFile("build.ts");
   const literals = build.split("\n")
     .map((line, i) => ({ line, no: i + 1 }))
     .filter(({ line }) => /["'][\w.-]+\/[\w.\-/]+@[0-9a-f]{40}["']/.test(line));
   assertEquals(
     literals,
     [],
-    `zuke.ts pins an action by hand; use actionPin(...) instead:\n${
+    `build.ts pins an action by hand; use actionPin(...) instead:\n${
       literals.map(({ no, line }) => `  ${no}: ${line.trim()}`).join("\n")
     }`,
   );
