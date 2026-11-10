@@ -700,6 +700,30 @@ async function withModuleServer(
   }
 }
 
+Deno.test("zuke <target> runs the build file zuke.json names", async () => {
+  await withTemp(async (dir) => {
+    await Deno.writeTextFile(
+      `${dir}/${CONFIG_FILE}`,
+      '{ "name": "Scratch", "build": "build.ts" }\n',
+    );
+    await Deno.writeTextFile(`${dir}/build.ts`, scratchBuild());
+    // A zuke.ts beside it is not the build, and must not run.
+    await Deno.writeTextFile(`${dir}/zuke.ts`, "Deno.exit(7);\n");
+    await Deno.mkdir(`${dir}/src`);
+    const host = recordingHost();
+    await inDir(`${dir}/src`, async () => {
+      assertEquals(await main(["hello"], host), 0);
+      // cache resolves the named file's graph, not zuke.ts's.
+      assertEquals(await main(["cache", "--dry-run"], host), 0);
+    });
+    const cwd = await Deno.readTextFile(`${dir}/ran.txt`);
+    assertEquals(await Deno.realPath(cwd), await Deno.realPath(dir));
+    assertEquals(host.logs, [
+      "Would cache the build's dependencies: deno install --entrypoint build.ts",
+    ]);
+  }, { prefix: "zuke-global-cli-" });
+});
+
 Deno.test("zuke relock and cache drive a real deno install in the project root", async () => {
   await withModuleServer(async (url) => {
     await withTemp(async (dir) => {

@@ -47,14 +47,18 @@ function mcpArgs(allowRun: boolean): string[] {
 }
 
 /**
- * The entry that launches a `zuke.ts` build's MCP server: `deno run -A zuke.ts mcp`.
+ * The entry that launches the MCP server of a TypeScript build whose file is
+ * `buildFile`: `deno run -A zuke.ts mcp`.
  * Read-only by default: the agent can inspect the build but not execute
  * targets until `allowRun` opts in, mirroring `zuke mcp --allow-run`.
  */
-export function mcpServerEntry(allowRun: boolean): McpServerEntry {
+export function mcpServerEntry(
+  allowRun: boolean,
+  buildFile: string,
+): McpServerEntry {
   return {
     command: "deno",
-    args: ["run", "-A", "zuke.ts", ...mcpArgs(allowRun)],
+    args: ["run", "-A", buildFile, ...mcpArgs(allowRun)],
   };
 }
 

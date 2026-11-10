@@ -140,11 +140,16 @@ Deno.test("parseInstallFlags refuses an unknown option or a missing value", () =
 
 Deno.test("installArgs adds the dependency-age flag only when asked, and only where Deno has it", () => {
   assertEquals(
-    installArgs("cache", { entrypoints: [], dryRun: false }, "2.9.3"),
+    installArgs(
+      "cache",
+      { entrypoints: [], dryRun: false },
+      "2.9.3",
+      "build.ts",
+    ),
     [
       "install",
       "--entrypoint",
-      "zuke.ts",
+      "build.ts",
     ],
   );
   assertEquals(
@@ -152,6 +157,7 @@ Deno.test("installArgs adds the dependency-age flag only when asked, and only wh
       "cache",
       { entrypoints: [], dryRun: false, minDepAge: "0" },
       "2.9.3",
+      "zuke.ts",
     ),
     [
       "install",
@@ -166,6 +172,7 @@ Deno.test("installArgs adds the dependency-age flag only when asked, and only wh
         "relock",
         { entrypoints: [], dryRun: false, minDepAge: "0" },
         "2.4.5",
+        "zuke.ts",
       ),
     Error,
     "does not accept",

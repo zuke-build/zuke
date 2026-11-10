@@ -34,6 +34,7 @@
  * @module
  */
 
+import { assertBuildFileName, BUILD_FILE } from "./build_file.ts";
 import {
   DENO_PIN,
   type DenoPin,
@@ -62,6 +63,16 @@ export interface LauncherOptions {
    * (`true`), or require one and fail closed when it is missing (`false`).
    */
   bootstrapDeno: boolean;
+  /**
+   * The build file the launcher runs, when the project's `zuke.json` names
+   * one. Omitted: `zuke.ts`.
+   */
+  buildFile?: string;
+}
+
+/** The build file a launcher with `options` runs, checked before it is written into a script. */
+function buildFileOf(options: LauncherOptions): string {
+  return assertBuildFileName(options.buildFile ?? BUILD_FILE);
 }
 
 /** The line a plain Deno launcher carries, which `zuke upgrade --engine` keeps a launcher plain by. */
@@ -268,13 +279,14 @@ ${arms}
 }
 
 /**
- * The bash launcher (`./zuke`). Runs `zuke.ts` with the Deno on `PATH`, or
+ * The bash launcher (`./zuke`). Runs the build file with the Deno on `PATH`, or
  * with the one it bootstraps first (see the module docs for the variants).
  */
 export function launcherBash(
   options: LauncherOptions,
   pin: DenoPin = DENO_PIN,
 ): string {
+  const build = buildFileOf(options);
   const purpose = options.bootstrapDeno
     ? `# Zuke bootstrap launcher — a \`./build.sh\`-style entry point for Deno.
 #
@@ -283,10 +295,10 @@ export function launcherBash(
 #   ./zuke --list        # list every target
 #
 # Ensures Deno is available (installing it on first use if missing), then runs
-# the project's build file (zuke.ts). No global install required.
+# the project's build file (${build}). No global install required.
 #
 ${bootstrapEnvDocs(pin, "—")}`
-    : `# Zuke launcher — runs the project's build file (zuke.ts) with the Deno on PATH.
+    : `# Zuke launcher — runs the project's build file (${build}) with the Deno on PATH.
 #
 #   ./zuke               # run the default target
 #   ./zuke <target>      # run one target and its prerequisites
@@ -310,10 +322,10 @@ ${bashResolveDeno(options, pin)}
 # skipping, so a deleted lockfile downgrades verification visibly instead of
 # silently.
 if [ -f deno.lock ]; then
-  exec "$deno_bin" run -A --frozen zuke.ts "$@"
+  exec "$deno_bin" run -A --frozen ${build} "$@"
 else
   echo "${noLockNotice("—")}" >&2
-  exec "$deno_bin" run -A zuke.ts "$@"
+  exec "$deno_bin" run -A ${build} "$@"
 fi
 `;
 }
@@ -456,6 +468,7 @@ export function launcherPwsh(
   options: LauncherOptions,
   pin: DenoPin = DENO_PIN,
 ): string {
+  const build = buildFileOf(options);
   const purpose = options.bootstrapDeno
     ? `# Zuke bootstrap launcher (PowerShell) - a \`.\\build.ps1\`-style entry point.
 #
@@ -464,10 +477,10 @@ export function launcherPwsh(
 #   .\\zuke.ps1 --list        # list every target
 #
 # Ensures Deno is available (installing it on first use if missing), then runs
-# the project's build file (zuke.ts). No global install required.
+# the project's build file (${build}). No global install required.
 #
 ${bootstrapEnvDocs(pin, "-")}`
-    : `# Zuke launcher (PowerShell) - runs the project's build file (zuke.ts) with the Deno on PATH.
+    : `# Zuke launcher (PowerShell) - runs the project's build file (${build}) with the Deno on PATH.
 #
 #   .\\zuke.ps1               # run the default target
 #   .\\zuke.ps1 <target>      # run one target and its prerequisites
@@ -497,7 +510,7 @@ if (Test-Path (Join-Path $dir "deno.lock")) {
 } else {
   Write-Warning "${noLockNotice("-")}"
 }
-$denoArgs += (Join-Path $dir "zuke.ts")
+$denoArgs += (Join-Path $dir "${build}")
 & $deno @denoArgs @args
 exit $LASTEXITCODE
 `;

@@ -14,11 +14,13 @@
 import {
   binaryMcpEntry,
   MCP_CONFIG_FILE,
+  type McpServerEntry,
   mcpServerEntry,
   mergeMcpConfig,
   parseMcpConfig,
 } from "./mcp_config.ts";
 import { isRecord } from "./records.ts";
+import { BUILD_FILE, buildFileNamed } from "./build_file.ts";
 import { launcherBash, launcherPwsh } from "./launcher.ts";
 import { binaryLauncherBash, binaryLauncherPwsh } from "./binary_launcher.ts";
 import type { BinaryPin } from "./binary_pin.ts";
@@ -37,7 +39,8 @@ import {
 export { isRecord };
 
 /**
- * The task names `setup` writes into `deno.json`, with their commands.
+ * The task names `setup` writes into `deno.json`, with their commands, for a
+ * build whose file is `buildFile`.
  *
  * The `zuke` task deliberately omits `--frozen`, unlike the launchers: a task
  * command runs in `deno task`'s own shell, which has no conditionals, so it
@@ -46,12 +49,16 @@ export { isRecord };
  * one. The launcher (`./zuke`, the advertised entry point) does the lockfile
  * check and enforces `--frozen` from the second run onward.
  */
-const DEFAULT_TASKS: ReadonlyArray<readonly [string, string]> = [
-  ["zuke", "deno run -A zuke.ts"],
-  ["fmt", "deno fmt"],
-  ["lint", "deno lint"],
-  ["test", "deno test -A"],
-];
+function defaultTasks(
+  buildFile: string,
+): ReadonlyArray<readonly [string, string]> {
+  return [
+    ["zuke", `deno run -A ${buildFile}`],
+    ["fmt", "deno fmt"],
+    ["lint", "deno lint"],
+    ["test", "deno test -A"],
+  ];
+}
 
 /**
  * The import map entries a scaffolded build needs, keyed by bare specifier.
@@ -105,7 +112,7 @@ export function delegatesImportMap(root: Record<string, unknown>): boolean {
  * Merge the default Zuke tasks and `imports` into a `deno.json` document,
  * preserving the existing content. `existing` is the file text, or `null` to
  * start fresh; `imports` are the bare-specifier mappings the scaffolded build
- * resolves through.
+ * resolves through, and `buildFile` is the file the `zuke` task runs.
  *
  * Merging is additive per key: a task or import the document already declares
  * is left exactly as it is, so a project that has pinned `@zuke/core` to a
@@ -117,6 +124,7 @@ export function delegatesImportMap(root: Record<string, unknown>): boolean {
 export function mergeDenoJson(
   existing: string | null,
   imports: ScaffoldImports,
+  buildFile: string,
 ): string {
   const root: Record<string, unknown> = {};
   if (existing !== null) {
@@ -129,7 +137,7 @@ export function mergeDenoJson(
   if (!delegatesImportMap(root)) {
     mergeMissing(root, "imports", Object.entries(imports));
   }
-  mergeMissing(root, "tasks", DEFAULT_TASKS);
+  mergeMissing(root, "tasks", defaultTasks(buildFile));
   return `${JSON.stringify(root, null, 2)}\n`;
 }
 
@@ -402,9 +410,11 @@ interface ScaffoldFile {
 /** The default launcher base name. */
 export const DEFAULT_LAUNCHER = "zuke";
 
-/** Scaffold file names a launcher must not shadow (the build file and config). */
+/**
+ * Scaffold file names a launcher must not shadow (the config, and the Python
+ * build file; the TypeScript one is named per project).
+ */
 const RESERVED_NON_LAUNCHER = new Set([
-  "zuke.ts",
   PYTHON_BUILD_FILE,
   "zuke.json",
   "deno.json",
@@ -415,9 +425,9 @@ const RESERVED_NON_LAUNCHER = new Set([
 /**
  * Validate a `--launcher-name`: a single path segment (so the launcher can't be
  * written outside the target directory) that doesn't shadow another file setup
- * writes. Throws a friendly error otherwise.
+ * writes, `buildFile` among them. Throws a friendly error otherwise.
  */
-function assertLauncherName(name: string): void {
+function assertLauncherName(name: string, buildFile: string): void {
   // Reject path separators and a colon (a Windows drive/ADS separator), so the
   // launcher can only be a plain file in the target directory.
   if (name === "" || /[\\/:]/.test(name) || name === "." || name === "..") {
@@ -428,7 +438,8 @@ function assertLauncherName(name: string): void {
   }
   // Compare case-insensitively: a case-insensitive filesystem (macOS, Windows)
   // would let `Zuke.ts` shadow the `zuke.ts` setup writes.
-  if (RESERVED_NON_LAUNCHER.has(name.toLowerCase())) {
+  const lower = name.toLowerCase();
+  if (RESERVED_NON_LAUNCHER.has(lower) || lower === buildFile.toLowerCase()) {
     throw new Error(
       `zuke setup: --launcher-name "${name}" would overwrite a file setup ` +
         `writes (the build file or config) — choose a different name.`,
@@ -451,14 +462,22 @@ export async function runSetup(
   const manualSteps: string[] = [];
   const notes: string[] = [];
   const launcher = options.launcherName ?? DEFAULT_LAUNCHER;
-  assertLauncherName(launcher);
-  const variant = { bootstrapDeno: options.bootstrapDeno ?? true };
-
   const sdk = options.sdk;
+  // A project that already names its build file keeps the name: the build
+  // file, the launchers, the task and the MCP entry all follow zuke.json. A
+  // link there is not read: the collision check below refuses it.
+  const configPath = joinPath(options.dir, "zuke.json");
+  const buildFile = sdk === undefined && await host.exists(configPath) &&
+      !(await host.isSymlink(configPath))
+    ? buildFileNamed(await host.readText(configPath))
+    : BUILD_FILE;
+  assertLauncherName(launcher, buildFile);
+  const variant = { bootstrapDeno: options.bootstrapDeno ?? true, buildFile };
+
   const scaffold: readonly ScaffoldFile[] = [
     sdk === undefined
       ? {
-        name: "zuke.ts",
+        name: buildFile,
         content: options.buildContent ?? starterBuild(options.name),
       }
       : {
@@ -483,7 +502,7 @@ export async function runSetup(
     {
       name: "zuke.json",
       content: sdk === undefined
-        ? starterConfig(options.name)
+        ? starterConfig(options.name, buildFile)
         : starterSdkConfig(options.name, sdk.pin.engine),
     },
   ];
@@ -554,6 +573,7 @@ export async function runSetup(
       await setupDenoJson(
         options.dir,
         options.imports ?? STARTER_IMPORTS,
+        buildFile,
         host,
         manualSteps,
         notes,
@@ -565,11 +585,15 @@ export async function runSetup(
     files.push(
       await setupMcpConfig(
         options.dir,
-        options.mcp,
         options.force,
         host,
         notes,
-        sdk !== undefined,
+        // A hosted build is served by the zuke binary, whichever CLI
+        // registered it: its project needs nothing from Deno's stack. A
+        // TypeScript build stays on Deno.
+        sdk === undefined
+          ? mcpServerEntry(options.mcp.allowRun, buildFile)
+          : binaryMcpEntry(options.mcp.allowRun),
       ),
     );
   }
@@ -577,7 +601,8 @@ export async function runSetup(
 }
 
 /**
- * Create or merge `.mcp.json` so the build's MCP server is registered. An
+ * Create or merge `.mcp.json` so the build's MCP server is registered as
+ * `entry`. An
  * existing `zuke` entry is left alone unless `force` is set (it may carry a
  * deliberate `--allow-run` choice); every other server in the file survives
  * either way. An unparseable file is skipped, recorded in `notes` so the
@@ -585,17 +610,11 @@ export async function runSetup(
  */
 async function setupMcpConfig(
   dir: string,
-  mcp: McpSetupOptions,
   force: boolean,
   host: SetupHost,
   notes: string[],
-  hosted: boolean,
+  entry: McpServerEntry,
 ): Promise<FileResult> {
-  // A hosted build is served by the zuke binary, whichever CLI registered it:
-  // its project needs nothing from Deno's stack. A zuke.ts build stays on Deno.
-  const entry = hosted
-    ? binaryMcpEntry(mcp.allowRun)
-    : mcpServerEntry(mcp.allowRun);
   const name = MCP_CONFIG_FILE;
   const path = joinPath(dir, name);
   if (!(await host.exists(path))) {
@@ -710,7 +729,7 @@ async function delegatedMapDeclares(
 
 /**
  * Create or merge `deno.json`, returning what happened to it. `imports` are the
- * bare specifiers the `zuke.ts` written alongside it resolves through, so the
+ * bare specifiers the `buildFile` written alongside it resolves through, so the
  * file is completed whenever any of them is missing — not only when the `zuke`
  * task is.
  *
@@ -728,6 +747,7 @@ async function delegatedMapDeclares(
 async function setupDenoJson(
   dir: string,
   imports: ScaffoldImports,
+  buildFile: string,
   host: SetupHost,
   steps: string[],
   notes: string[],
@@ -735,7 +755,7 @@ async function setupDenoJson(
   const name = "deno.json";
   const path = joinPath(dir, name);
   if (!(await host.exists(path))) {
-    await host.writeText(path, mergeDenoJson(null, imports));
+    await host.writeText(path, mergeDenoJson(null, imports, buildFile));
     host.log(`  create   ${name}`);
     return { path: name, status: "created" };
   }
@@ -747,7 +767,9 @@ async function setupDenoJson(
     steps.push(
       `${path} has comments or a trailing comma, so it could not be edited ` +
         `without discarding them. Add to its "imports": ` +
-        `${importLines(imports)} — the scaffolded zuke.ts will not run until ` +
+        `${
+          importLines(imports)
+        } — the scaffolded ${buildFile} will not run until ` +
         `you do.`,
     );
     return { path: name, status: "skipped" };
@@ -769,7 +791,7 @@ async function setupDenoJson(
         `${path} delegates its import map to ${delegated}, which Deno ignores ` +
           `as soon as "imports" appears beside it. Add to that file's ` +
           `"imports" instead: ${importLines(imports)} — the scaffolded ` +
-          `zuke.ts will not run until you do.`,
+          `${buildFile} will not run until you do.`,
       );
     }
   }
@@ -784,7 +806,7 @@ async function setupDenoJson(
     host.log(`  skip     ${name}  (zuke task and imports already declared)`);
     return { path: name, status: "skipped" };
   }
-  await host.writeText(path, mergeDenoJson(before, imports));
+  await host.writeText(path, mergeDenoJson(before, imports, buildFile));
   host.log(`  update   ${name}`);
   return { path: name, status: "overwritten" };
 }

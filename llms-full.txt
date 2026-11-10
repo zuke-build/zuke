@@ -26276,9 +26276,12 @@ interface BuildLocation
     The absolute path of the executable `zuke` launcher at the root, run in
     place of `deno run` — or `null` when there is none, or the platform
     reports no file mode to tell (Windows).
+  build: string
+    The build file's name: the one the root's `zuke.json` names in its
+    `build` field, `zuke.ts` when it names none.
   engine: string | null
     The `@zuke/engine` release that runs the build when the root has no
-    `zuke.ts`: the `engine` field of its `zuke.json`, which then describes a
+    build file: the `engine` field of its `zuke.json`, which then describes a
     build another SDK hosts. `null` when the root has its own build file.
 
 interface BuildProbe

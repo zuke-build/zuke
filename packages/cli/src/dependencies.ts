@@ -19,7 +19,7 @@
 
 import type { BuildProbe } from "./dispatch.ts";
 import type { CliPaint } from "./paint.ts";
-import { type ProjectHost, projectRoot } from "./project.ts";
+import { type ProjectHost, projectLocation } from "./project.ts";
 import { projectConfigText } from "./version_report.ts";
 
 /** A bare Zuke package name, as `zuke add docker` takes it. */
@@ -98,7 +98,7 @@ export async function runDependencies(
   probe: BuildProbe,
 ): Promise<number> {
   const { specifiers, dryRun } = parseDependencyArgs(command, args);
-  const root = await projectRoot(cwd, probe, command);
+  const { root } = await projectLocation(cwd, probe, command);
   const denoArgs = [command, ...specifiers];
   if (dryRun) {
     log(`Would run in ${root}: deno ${denoArgs.join(" ")}`);

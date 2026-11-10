@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { BUILD_FILE } from "../src/build_file.ts";
 import {
-  BUILD_FILE,
   buildLabel,
   type BuildProbe,
   buildRunArgs,
@@ -105,6 +105,7 @@ Deno.test("locateBuild finds zuke.json in the cwd itself", async () => {
   assertEquals(found, {
     root: "/repo",
     frozen: false,
+    build: BUILD_FILE,
     launcher: null,
     engine: null,
   });
@@ -128,6 +129,7 @@ Deno.test("locateBuild reports a lockfile beside the config as frozen", async ()
   assertEquals(found, {
     root: "/repo",
     frozen: true,
+    build: BUILD_FILE,
     launcher: null,
     engine: null,
   });
@@ -179,6 +181,7 @@ Deno.test("the trust gate accepts a root the current user owns", async () => {
   assertEquals(found, {
     root: "/home/me/app",
     frozen: false,
+    build: BUILD_FILE,
     launcher: null,
     engine: null,
   });
@@ -200,6 +203,7 @@ Deno.test("the trust gate does not judge the root a launcher started zuke in, an
   assertEquals(found, {
     root: "/work/app",
     frozen: false,
+    build: BUILD_FILE,
     launcher: null,
     engine: "1.3.0",
   });
@@ -367,7 +371,13 @@ Deno.test("the trust gate is inert where ownership cannot be compared", async ()
 Deno.test("buildRunArgs mirrors the launcher: --frozen only with a lockfile", () => {
   assertEquals(
     buildRunArgs(
-      { root: "/repo", frozen: true, launcher: null, engine: null },
+      {
+        root: "/repo",
+        frozen: true,
+        build: BUILD_FILE,
+        launcher: null,
+        engine: null,
+      },
       [
         "ci",
         "--parallel",
@@ -377,7 +387,13 @@ Deno.test("buildRunArgs mirrors the launcher: --frozen only with a lockfile", ()
   );
   assertEquals(
     buildRunArgs(
-      { root: "/repo", frozen: false, launcher: null, engine: null },
+      {
+        root: "/repo",
+        frozen: false,
+        build: BUILD_FILE,
+        launcher: null,
+        engine: null,
+      },
       [
         "--list",
         "--json",
@@ -389,7 +405,13 @@ Deno.test("buildRunArgs mirrors the launcher: --frozen only with a lockfile", ()
   // so the build's own CLI sees exactly what the user typed.
   assertEquals(
     buildRunArgs(
-      { root: "/repo", frozen: false, launcher: null, engine: null },
+      {
+        root: "/repo",
+        frozen: false,
+        build: BUILD_FILE,
+        launcher: null,
+        engine: null,
+      },
       [],
     ),
     ["run", "-A", BUILD_FILE],
@@ -413,6 +435,7 @@ Deno.test("locateBuild reports an executable launcher at the root", async () => 
   assertEquals(found, {
     root: "/repo",
     frozen: false,
+    build: BUILD_FILE,
     launcher: "/repo/zuke",
     engine: null,
   });
@@ -517,21 +540,39 @@ Deno.test("runBuild runs the launcher with the bare args, else Deno", async () =
   assertEquals(
     await runBuild(
       runner,
-      { root: "/repo", frozen: true, launcher: "/repo/zuke", engine: null },
+      {
+        root: "/repo",
+        frozen: true,
+        build: BUILD_FILE,
+        launcher: "/repo/zuke",
+        engine: null,
+      },
       ["ci"],
     ),
     3,
   );
   await runBuild(
     runner,
-    { root: "/repo", frozen: true, launcher: null, engine: null },
+    {
+      root: "/repo",
+      frozen: true,
+      build: BUILD_FILE,
+      launcher: null,
+      engine: null,
+    },
     ["ci"],
   );
   // A launcher's own call to the global `zuke` gets Deno, not itself again.
   await withEnv({ [FORWARDED_ENV]: "1" }, async () => {
     await runBuild(
       runner,
-      { root: "/repo", frozen: false, launcher: "/repo/zuke", engine: null },
+      {
+        root: "/repo",
+        frozen: false,
+        build: BUILD_FILE,
+        launcher: "/repo/zuke",
+        engine: null,
+      },
       ["ci"],
     );
   });
@@ -567,7 +608,12 @@ Deno.test("runBuild runs a hosted build the binary's engine serves on the binary
     ]);
     return Promise.resolve(4);
   };
-  const hosted = { root: "/py", frozen: true, launcher: "/py/zuke" };
+  const hosted = {
+    root: "/py",
+    frozen: true,
+    build: BUILD_FILE,
+    launcher: "/py/zuke",
+  };
   assertEquals(
     await runBuild(
       runner,
@@ -589,7 +635,13 @@ Deno.test("runBuild runs a hosted build the binary's engine serves on the binary
     );
     await runBuild(
       runner,
-      { root: "/ts", frozen: false, launcher: null, engine: null },
+      {
+        root: "/ts",
+        frozen: false,
+        build: BUILD_FILE,
+        launcher: null,
+        engine: null,
+      },
       ["ci"],
       undefined,
       EMBEDDED,
@@ -610,6 +662,7 @@ Deno.test("the binary never falls back to Deno for a hosted build it cannot serv
   const unserved = {
     root: "/py",
     frozen: true,
+    build: BUILD_FILE,
     launcher: null,
     engine: "2.0.0",
   };
@@ -668,6 +721,7 @@ Deno.test("the binary's engine is named when it runs the build, and when it cann
   const hosted = {
     root: "/home/me/app",
     frozen: false,
+    build: BUILD_FILE,
     launcher: null,
     engine: "1.2.0",
   };
@@ -714,6 +768,7 @@ Deno.test("the running notice names the build file at the root, or the engine re
     runningNotice({
       root: "/home/me/app",
       frozen: false,
+      build: BUILD_FILE,
       launcher: null,
       engine: null,
     }),
@@ -723,6 +778,7 @@ Deno.test("the running notice names the build file at the root, or the engine re
     runningNotice({
       root: "/home/me/app",
       frozen: false,
+      build: BUILD_FILE,
       launcher: null,
       engine: "1.2.3",
     }),
@@ -742,6 +798,7 @@ Deno.test("a root without zuke.ts runs the engine release its zuke.json names", 
   assertEquals(location, {
     root: "/app",
     frozen: false,
+    build: BUILD_FILE,
     launcher: null,
     engine: "1.2.3",
   });
@@ -1015,6 +1072,7 @@ Deno.test("runBuild hands an env to the runner on both the launcher and the Deno
     await runBuild(runner, {
       root: "/r",
       frozen: false,
+      build: BUILD_FILE,
       launcher: "/r/zuke",
       engine: null,
     }, [
@@ -1023,6 +1081,7 @@ Deno.test("runBuild hands an env to the runner on both the launcher and the Deno
     await runBuild(runner, {
       root: "/r",
       frozen: false,
+      build: BUILD_FILE,
       launcher: null,
       engine: null,
     }, [
@@ -1031,6 +1090,7 @@ Deno.test("runBuild hands an env to the runner on both the launcher and the Deno
     await runBuild(runner, {
       root: "/r",
       frozen: false,
+      build: BUILD_FILE,
       launcher: null,
       engine: null,
     }, [
@@ -1041,4 +1101,107 @@ Deno.test("runBuild hands an env to the runner on both the launcher and the Deno
     undefined,
     undefined,
   ]]);
+});
+
+Deno.test("a root whose zuke.json names its build file runs that file", async () => {
+  const found = await locateBuild(
+    "/repo/src",
+    probe({
+      present: ["/repo/zuke.json", "/repo/build.ts"],
+      texts: { "/repo/zuke.json": '{ "name": "Acme", "build": "build.ts" }' },
+    }),
+  );
+  if (found === null) throw new Error("expected a location");
+  assertEquals(found.build, "build.ts");
+  assertEquals(found.engine, null);
+  assertEquals(buildRunArgs(found, ["ci"]), ["run", "-A", "build.ts", "ci"]);
+  assertEquals(buildLabel(found), "/repo/build.ts");
+  assertEquals(runningNotice(found), "zuke: running /repo/build.ts");
+});
+
+Deno.test("a zuke.json that is not JSON still means zuke.ts beside it", async () => {
+  // The file's presence alone marked a project before the build field.
+  const found = await locateBuild(
+    "/repo",
+    probe({
+      present: ["/repo/zuke.json", "/repo/zuke.ts"],
+      texts: { "/repo/zuke.json": "" },
+    }),
+  );
+  assertEquals(found?.build, BUILD_FILE);
+  assertEquals(found?.engine, null);
+});
+
+Deno.test("a build name that is not a plain file name is refused before anything runs", async () => {
+  for (const name of ["-A.ts", "../evil.ts", "a b.ts", "build.py"]) {
+    await assertRejects(
+      () =>
+        locateBuild(
+          "/repo",
+          probe({
+            present: ["/repo/zuke.json"],
+            texts: { "/repo/zuke.json": JSON.stringify({ build: name }) },
+          }),
+        ),
+      Error,
+      "not a plain TypeScript file name",
+    );
+  }
+});
+
+Deno.test("the trust gate judges the build file zuke.json names", async () => {
+  const fixture = {
+    present: ["/home/me/app/zuke.json", "/home/me/app/build.ts"],
+    texts: { "/home/me/app/zuke.json": '{ "build": "build.ts" }' },
+    uid: 1000,
+  };
+  const error = await refused("/home/me/app", {
+    ...fixture,
+    owned: {
+      "/home/me/app": ownedBy(1000),
+      "/home/me/app/build.ts": ownedBy(0, 0o644),
+    },
+  });
+  assertEquals(
+    error.reason,
+    "/home/me/app/build.ts is owned by user 0, not you (1000)",
+  );
+  // A launcher written before zuke.json named a build file still runs
+  // zuke.ts, so a zuke.ts someone else owns is refused as it always was.
+  const stale = await refused("/home/me/app", {
+    ...fixture,
+    owned: {
+      "/home/me/app": ownedBy(1000),
+      "/home/me/app/build.ts": ownedBy(1000, 0o644),
+      "/home/me/app/zuke.ts": ownedBy(0, 0o644),
+      "/home/me/app/zuke": ownedBy(1000, 0o100755),
+    },
+  });
+  assertEquals(
+    stale.reason,
+    "/home/me/app/zuke.ts is owned by user 0, not you (1000)",
+  );
+  // The root a launcher vouched for is not judged, its build file included.
+  const fake = probe({
+    ...fixture,
+    owned: { "/home/me/app/build.ts": ownedBy(0, 0o644) },
+  });
+  const found = await locateBuild("/home/me/app", fake, "/home/me/app");
+  assertEquals(found?.build, "build.ts");
+  assertEquals(fake.asked, []);
+});
+
+Deno.test("a root missing the build file it names, with no engine, says which file", async () => {
+  await assertRejects(
+    () =>
+      locateBuild(
+        "/repo",
+        probe({
+          present: ["/repo/zuke.json"],
+          texts: { "/repo/zuke.json": '{ "build": "build.ts" }' },
+        }),
+      ),
+    Error,
+    "/repo has no build.ts",
+  );
 });

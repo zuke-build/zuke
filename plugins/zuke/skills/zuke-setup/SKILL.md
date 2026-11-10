@@ -168,9 +168,11 @@ no `CmdTasks` and no Deno.
   is kept — that is how a pin or a local checkout survives — with a note saying
   so. `--mcp` that cannot register into an unparseable `.mcp.json` is reported
   the same way, as a note.
-- **`zuke.json`** — `{ "name": "..." }`, which marks the repo root. With
-  `--sdk python` it also carries `sdk.command` and `engine`, and `build.py`
-  replaces `zuke.ts` while `deno.json` is not written.
+- **`zuke.json`** — `{ "name": "..." }`, which marks the repo root. A `build`
+  field (`"build": "build.ts"`) names the build file when it is not `zuke.ts`;
+  the `zuke` command and a re-run of `zuke setup` follow it. With `--sdk python`
+  it also carries `sdk.command` and `engine`, and `build.py` replaces `zuke.ts`
+  while `deno.json` is not written.
 - **`.gitignore`** — created or appended so `.zuke/` is ignored (the cache and
   durable run state live there); untouched if it already covers it.
 - **`.mcp.json`** (with `--mcp`) — `mcpServers.zuke` launching

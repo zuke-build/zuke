@@ -12,6 +12,8 @@
  * @module
  */
 
+import { BUILD_FIELD, BUILD_FILE } from "./build_file.ts";
+
 /**
  * The `jsr:` dependency a scaffolded `deno.json` maps `@zuke/<name>` to.
  *
@@ -64,10 +66,12 @@ await run(${name});
 /**
  * The starter `zuke.json` config. Its presence at the repository root is what
  * `@zuke/core`'s `repoRoot()` walks up to find; the recorded `name` is the
- * build class for reference.
+ * build class for reference, and `build` names the build file when it is not
+ * the default `zuke.ts`.
  */
-export function starterConfig(name: string): string {
-  return `${JSON.stringify({ name }, null, 2)}\n`;
+export function starterConfig(name: string, buildFile: string): string {
+  const build = buildFile === BUILD_FILE ? {} : { [BUILD_FIELD]: buildFile };
+  return `${JSON.stringify({ name, ...build }, null, 2)}\n`;
 }
 
 /** The build file `zuke setup --sdk python` writes, which `sdk.command` runs. */
