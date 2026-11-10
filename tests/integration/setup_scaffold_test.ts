@@ -69,9 +69,9 @@ Deno.test("zuke setup scaffolds a project whose first run has no lockfile to fre
   const bash = await read("zuke");
   assertEquals(bash.includes("if [ -f deno.lock ]; then"), true);
   // One frozen run, of the build file: a Deno launcher runs nothing else.
-  assertEquals(bash.split("run -A --frozen zuke.ts").length - 1, 1);
+  assertEquals(bash.split("run -A --frozen build.ts").length - 1, 1);
   assertEquals(bash.includes("jsr:@zuke/engine@"), false);
-  assertEquals(bash.split(`run -A zuke.ts "$@"`).length - 1, 1);
+  assertEquals(bash.split(`run -A build.ts "$@"`).length - 1, 1);
 
   // The PowerShell launcher agrees.
   const pwsh = await read("zuke.ps1");
@@ -90,14 +90,14 @@ Deno.test("zuke setup scaffolds a project whose first run has no lockfile to fre
     tasks !== null && typeof tasks === "object" && "zuke" in tasks
       ? tasks.zuke
       : undefined;
-  assertEquals(zukeTask, "deno run -A zuke.ts");
+  assertEquals(zukeTask, "deno run -A build.ts");
 
   // The starter build imports by bare specifier and deno.json resolves it, so
   // `deno lint` — the lint task setup writes — passes on the scaffold's own
   // first file. An inline `jsr:` specifier trips Deno's default
   // `no-import-prefix` rule, which applies because setup configures no
   // lint.rules.
-  const build = await read("zuke.ts");
+  const build = await read("build.ts");
   assertEquals(build.includes('from "@zuke/core";'), true);
   assertEquals(/from "(jsr|npm|https):/.test(build), false);
 

@@ -20,13 +20,16 @@
  */
 
 import { ConsoleTasks } from "@zuke/console";
+import { assertBuildFileName, NEW_BUILD_FILE } from "./src/build_file.ts";
 import {
   defaultHost,
+  existingBuildFile,
   type McpSetupOptions,
   runSetup,
   type SdkSetupOptions,
   type SetupHost,
   type SetupResult,
+  unrelatedBuildFile,
 } from "./src/setup.ts";
 import { type ImportSource, runImport } from "./src/import.ts";
 import {
@@ -139,8 +142,10 @@ export interface SetupFlags {
   force: boolean;
   /** Skip prompts and accept defaults. */
   yes: boolean;
-  /** Build class name for the starter `zuke.ts`. */
+  /** Build class name for the starter build file. */
   name?: string;
+  /** The TypeScript build file's name (`--build-file`). Unset: ask, else `build.ts`. */
+  buildFile?: string;
   /** Directory to scaffold into (defaults to the current directory). */
   dir?: string;
   /** Base name for the launcher scripts, when `zuke` is taken by a directory. */
@@ -203,6 +208,13 @@ export function parseSetupFlags(args: string[]): SetupFlags {
       }
     } else if (arg.startsWith("--name=")) {
       flags.name = arg.slice("--name=".length);
+    } else if (arg === "--build-file") {
+      if (i + 1 < args.length) {
+        i++;
+        flags.buildFile = args[i];
+      }
+    } else if (arg.startsWith("--build-file=")) {
+      flags.buildFile = arg.slice("--build-file=".length);
     } else if (arg === "--dir") {
       if (i + 1 < args.length) {
         i++;
@@ -410,7 +422,8 @@ Zuke commands (available anywhere):
 
 Setup options:
   --dir <path>            Directory to scaffold into (default: .)
-  --name <Class>          Build class name for zuke.ts (default: MyBuild)
+  --name <Class>          Build class name (default: MyBuild)
+  --build-file <name>     TypeScript build file name (default: build.ts, or the project's own)
   --launcher-name <name>  Launcher base name when a zuke/ directory is in the way
   --sdk python            Scaffold a build.py and launchers that run the zuke binary (no Deno)
   --zuke <version>        The zuke release those launchers run (default: this one)
@@ -504,6 +517,40 @@ const NO_BUILD_NOTICE =
   `there is no build to describe here.\nRun \`zuke setup\` to scaffold one, ` +
   `then \`zuke --help\` also lists its targets.`;
 
+/** How many answers the build file question takes before setup gives up. */
+const BUILD_FILE_ATTEMPTS = 3;
+
+/**
+ * Ask a new project's build file name until the answer is a valid name that
+ * no unrelated file in `dir` already has. `suggested` is what `--build-file`
+ * gave, shown as the default in place of `build.ts`.
+ *
+ * @throws {Error} after {@link BUILD_FILE_ATTEMPTS} refused answers, saying
+ * why the last one was refused: a closed stdin answers the default forever.
+ */
+async function askBuildFile(
+  dir: string,
+  suggested: string | undefined,
+  host: SetupHost,
+  prompter: Prompter,
+): Promise<string> {
+  let refusal = "";
+  for (let attempt = 0; attempt < BUILD_FILE_ATTEMPTS; attempt++) {
+    const answer = prompter.ask("Build file", suggested ?? NEW_BUILD_FILE)
+      .trim();
+    try {
+      assertBuildFileName(answer);
+      if (!(await unrelatedBuildFile(dir, answer, host))) return answer;
+      refusal = `zuke setup: ${answer} already exists here and is not a ` +
+        "Zuke build. Choose another name.";
+    } catch (error) {
+      refusal = error instanceof Error ? error.message : String(error);
+    }
+    host.log(refusal);
+  }
+  throw new Error(refusal);
+}
+
 /** Run the `setup` subcommand. */
 async function commandSetup(
   args: string[],
@@ -523,7 +570,13 @@ async function commandSetup(
 
   if (paint.banner) printBanner(host);
   const interactive = !flags.yes && prompter.interactive();
+  let buildFile = flags.buildFile;
   if (interactive) {
+    // Only a new TypeScript project is asked: an existing one has its name,
+    // and a Python build is always build.py.
+    if (sdk === undefined && await existingBuildFile(dir, host) === undefined) {
+      buildFile = await askBuildFile(dir, buildFile, host, prompter);
+    }
     name = prompter.ask("Build class name", name);
     if (!force) {
       force = prompter.confirm("Overwrite existing files if present?");
@@ -544,6 +597,7 @@ async function commandSetup(
       dir,
       force,
       name,
+      buildFile,
       launcherName,
       mcp: mcpOption(flags),
       bootstrapDeno,
@@ -659,6 +713,7 @@ async function commandImport(
       dir,
       force,
       name,
+      buildFile: flags.buildFile,
       from: flags.from,
       mcp: mcpOption(flags),
       bootstrapDeno,

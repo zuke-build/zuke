@@ -20,7 +20,12 @@ import {
   parseMcpConfig,
 } from "./mcp_config.ts";
 import { isRecord } from "./records.ts";
-import { BUILD_FILE, buildFileNamed } from "./build_file.ts";
+import {
+  assertBuildFileName,
+  BUILD_FILE,
+  buildFileNamed,
+  NEW_BUILD_FILE,
+} from "./build_file.ts";
 import { launcherBash, launcherPwsh } from "./launcher.ts";
 import { binaryLauncherBash, binaryLauncherPwsh } from "./binary_launcher.ts";
 import type { BinaryPin } from "./binary_pin.ts";
@@ -58,6 +63,21 @@ function defaultTasks(
     ["lint", "deno lint"],
     ["test", "deno test -A"],
   ];
+}
+
+/** The `zuke` task as setup itself writes it, for any build file. */
+const SCAFFOLDED_ZUKE_TASK = /^deno run -A [A-Za-z0-9_.][A-Za-z0-9_.-]*\.ts$/;
+
+/**
+ * Whether `tasks.zuke` is a task setup wrote for another build file than
+ * `buildFile`: the one thing in `tasks` a re-run replaces, so that a project
+ * whose `zuke.json` was pointed at a new build file does not keep a task
+ * running the old one. A task the project wrote itself is never touched.
+ */
+function staleZukeTask(tasks: unknown, buildFile: string): boolean {
+  if (!isRecord(tasks) || typeof tasks.zuke !== "string") return false;
+  return SCAFFOLDED_ZUKE_TASK.test(tasks.zuke) &&
+    tasks.zuke !== `deno run -A ${buildFile}`;
 }
 
 /**
@@ -115,7 +135,8 @@ export function delegatesImportMap(root: Record<string, unknown>): boolean {
  * resolves through, and `buildFile` is the file the `zuke` task runs.
  *
  * Merging is additive per key: a task or import the document already declares
- * is left exactly as it is, so a project that has pinned `@zuke/core` to a
+ * is left exactly as it is (but for a `zuke` task setup wrote for another
+ * build file, which follows the build file), so a project that has pinned `@zuke/core` to a
  * specific version keeps that pin. A document that delegates to an external
  * `importMap` keeps that delegation and grows no `imports` block — see
  * {@link delegatesImportMap}; the caller reports the entry as a manual step
@@ -137,6 +158,9 @@ export function mergeDenoJson(
   if (!delegatesImportMap(root)) {
     mergeMissing(root, "imports", Object.entries(imports));
   }
+  if (staleZukeTask(root.tasks, buildFile) && isRecord(root.tasks)) {
+    root.tasks = { ...root.tasks, zuke: `deno run -A ${buildFile}` };
+  }
   mergeMissing(root, "tasks", defaultTasks(buildFile));
   return `${JSON.stringify(root, null, 2)}\n`;
 }
@@ -144,8 +168,8 @@ export function mergeDenoJson(
 /**
  * Whether a `deno.json` text already carries everything the scaffold needs.
  *
- * `"present"` means both the `zuke` task and every scaffold import are already
- * declared, so there is nothing to merge.
+ * `"present"` means both the `zuke` task, for this build file, and every
+ * scaffold import are already declared, so there is nothing to merge.
  */
 export type DenoJsonState = "present" | "absent" | "unparseable";
 
@@ -162,6 +186,7 @@ export type DenoJsonState = "present" | "absent" | "unparseable";
 export function denoJsonState(
   text: string,
   imports: ScaffoldImports,
+  buildFile: string,
 ): DenoJsonState {
   let parsed: unknown;
   try {
@@ -170,7 +195,8 @@ export function denoJsonState(
     return "unparseable";
   }
   if (!isRecord(parsed)) return "absent";
-  const hasTask = isRecord(parsed.tasks) && "zuke" in parsed.tasks;
+  const hasTask = isRecord(parsed.tasks) && "zuke" in parsed.tasks &&
+    !staleZukeTask(parsed.tasks, buildFile);
   // A document delegating to an external `importMap` will not grow an
   // `imports` block (it would disable the delegation), so the imports are not
   // something this file is still missing — they are reported as a manual step.
@@ -297,8 +323,14 @@ export interface SetupOptions {
   dir: string;
   /** Overwrite existing files instead of skipping them. */
   force: boolean;
-  /** Build class name for the starter `zuke.ts`. */
+  /** Build class name for the starter build file. */
   name: string;
+  /**
+   * The TypeScript build file's name (`--build-file`). Omitted: the name the
+   * project already has (see {@link existingBuildFile}), or `build.ts` for a
+   * new one. Not for {@link SetupOptions.sdk}, whose build is `build.py`.
+   */
+  buildFile?: string;
   /**
    * The base name for the launcher scripts (`<name>` and `<name>.ps1`).
    * Defaults to `"zuke"`; override it when a `zuke/` directory already occupies
@@ -448,7 +480,88 @@ function assertLauncherName(name: string, buildFile: string): void {
 }
 
 /**
- * Scaffold Zuke into `options.dir`: a starter `zuke.ts`, the launcher scripts,
+ * The build file the TypeScript project in `dir` already has: the one its
+ * `zuke.json` names, `zuke.ts` when it names none, and `zuke.ts` too for a
+ * directory that holds one with no `zuke.json` yet. `undefined` for a
+ * directory with neither, which is a new project. A `zuke.json` that is a
+ * link is not read: scaffolding refuses it.
+ *
+ * @throws {Error} when `zuke.json` names a build file that is not a valid name.
+ */
+export async function existingBuildFile(
+  dir: string,
+  host: SetupHost,
+): Promise<string | undefined> {
+  const config = joinPath(dir, "zuke.json");
+  if (await host.exists(config) && !(await host.isSymlink(config))) {
+    return buildFileNamed(await host.readText(config));
+  }
+  return await host.exists(joinPath(dir, BUILD_FILE)) ? BUILD_FILE : undefined;
+}
+
+/**
+ * Whether `name` in `dir` is a file of the project's own that is not a Zuke
+ * build: it exists and does not import `@zuke/core`. A new project must not
+ * take such a name, because its `zuke.json` would point at an unrelated
+ * script, and `--force` would overwrite it.
+ */
+export async function unrelatedBuildFile(
+  dir: string,
+  name: string,
+  host: SetupHost,
+): Promise<boolean> {
+  const path = joinPath(dir, name);
+  // A link or a directory there is refused by the collision check instead.
+  if (
+    !(await host.exists(path)) || await host.isSymlink(path) ||
+    await host.isDirectory(path)
+  ) {
+    return false;
+  }
+  return !(await host.readText(path)).includes("@zuke/core");
+}
+
+/**
+ * The build file a TypeScript scaffold writes: the one asked for, else the
+ * project's own, else `build.ts`.
+ *
+ * @throws {Error} when the name asked for is not valid, differs from the one
+ * an existing project has, or would take over an unrelated file in a new
+ * project.
+ */
+async function scaffoldBuildFile(
+  options: SetupOptions,
+  host: SetupHost,
+): Promise<string> {
+  const existing = await existingBuildFile(options.dir, host);
+  const asked = options.buildFile === undefined
+    ? undefined
+    : assertBuildFileName(options.buildFile);
+  if (existing !== undefined) {
+    // Setup does not move a build: it would have to overwrite whatever has
+    // the new name. The person renames the file, and setup follows zuke.json.
+    if (asked !== undefined && asked !== existing) {
+      throw new Error(
+        `zuke setup: this project's build file is ${existing}, not ${asked}. ` +
+          `To rename it, rename the file, set "build": "${asked}" in ` +
+          "zuke.json, and re-run zuke setup --force to rewrite the launchers.",
+      );
+    }
+    return existing;
+  }
+  const name = asked ?? NEW_BUILD_FILE;
+  if (await unrelatedBuildFile(options.dir, name, host)) {
+    throw new Error(
+      `zuke setup: ${joinPath(options.dir, name)} already exists and is not ` +
+        "a Zuke build, so it was left alone. Pass --build-file <name> to " +
+        "give the build another name.",
+    );
+  }
+  return name;
+}
+
+/**
+ * Scaffold Zuke into `options.dir`: a starter build file, the launcher scripts,
  * and a `deno.json` task block. Existing files are skipped unless
  * `options.force` is set; `deno.json` is always merged (never clobbered). Fails
  * up front if a target name is occupied by a directory (see
@@ -463,13 +576,16 @@ export async function runSetup(
   const notes: string[] = [];
   const launcher = options.launcherName ?? DEFAULT_LAUNCHER;
   const sdk = options.sdk;
-  // A project that already names its build file keeps the name: the build
-  // file, the launchers, the task and the MCP entry all follow zuke.json. A
-  // link there is not read: the collision check below refuses it.
-  const configPath = joinPath(options.dir, "zuke.json");
-  const buildFile = sdk === undefined && await host.exists(configPath) &&
-      !(await host.isSymlink(configPath))
-    ? buildFileNamed(await host.readText(configPath))
+  if (sdk !== undefined && options.buildFile !== undefined) {
+    throw new Error(
+      "zuke setup: --build-file names a TypeScript build file; a Python " +
+        `build is always ${PYTHON_BUILD_FILE}.`,
+    );
+  }
+  // The build file, the launchers, the task, the MCP entry and zuke.json all
+  // carry the one name. An SDK build has no TypeScript file to name.
+  const buildFile = sdk === undefined
+    ? await scaffoldBuildFile(options, host)
     : BUILD_FILE;
   assertLauncherName(launcher, buildFile);
   const variant = { bootstrapDeno: options.bootstrapDeno ?? true, buildFile };
@@ -761,7 +877,7 @@ async function setupDenoJson(
   }
 
   const before = await host.readText(path);
-  const state = denoJsonState(before, imports);
+  const state = denoJsonState(before, imports, buildFile);
   if (state === "unparseable") {
     host.log(`  skip     ${name}  (not plain JSON, edit by hand)`);
     steps.push(

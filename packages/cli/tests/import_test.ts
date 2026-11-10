@@ -326,7 +326,7 @@ Deno.test("runImport auto-detects package.json and scaffolds", async () => {
   );
   assertEquals(result.source, "package.json");
   assertEquals(result.taskCount, 1);
-  assertStringIncludes(host.files.get("zuke.ts") ?? "", "build = target()");
+  assertStringIncludes(host.files.get("build.ts") ?? "", "build = target()");
   assertEquals(host.files.has("zuke"), true); // launcher scaffolded too
 });
 
@@ -343,7 +343,7 @@ Deno.test("runImport keeps a Windows-style script path intact in the scaffold", 
     pin: noPin,
   }, host);
   assertEquals(result.taskCount, 1);
-  const zuke = host.files.get("zuke.ts") ?? "";
+  const zuke = host.files.get("build.ts") ?? "";
   // The path separator survives into the generated file, flagged for a human,
   // instead of being silently swallowed by POSIX escape handling.
   assertStringIncludes(zuke, String.raw`node scripts\build.js`);
@@ -373,7 +373,7 @@ Deno.test("runImport honours an explicit --from source", async () => {
     host,
   );
   assertEquals(result.source, "Makefile");
-  assertStringIncludes(host.files.get("zuke.ts") ?? "", "b = target()");
+  assertStringIncludes(host.files.get("build.ts") ?? "", "b = target()");
 });
 
 Deno.test("runImport reports when there is nothing to import", async () => {
@@ -418,7 +418,7 @@ Deno.test("main dispatches the import command", async () => {
     new FakePrompter(false),
   );
   assertEquals(code, 0);
-  assertStringIncludes(host.files.get("zuke.ts") ?? "", "lint = target()");
+  assertStringIncludes(host.files.get("build.ts") ?? "", "lint = target()");
   assertStringIncludes(
     host.logs.join("\n"),
     "imported 1 task(s) from package.json",
@@ -437,7 +437,7 @@ Deno.test("main import prompts for the name at an interactive terminal", async (
   );
   assertEquals(code, 0);
   assertStringIncludes(
-    host.files.get("zuke.ts") ?? "",
+    host.files.get("build.ts") ?? "",
     "class Pipeline extends Build",
   );
 });
