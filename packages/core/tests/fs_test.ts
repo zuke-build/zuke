@@ -63,7 +63,7 @@ Deno.test("reads return what Deno's return, as plain bytes and text", async () =
     // A plain Uint8Array, not a Buffer: callers compare and hash it.
     assertEquals(bytes.constructor.name, "Uint8Array");
 
-    await Deno.writeTextFile(`${dir}/text.txt`, "héllo\nwörld\n");
+    await Deno.writeTextFile(`${dir}/text.txt`, "π ≈ 3.14\n日本語\n");
     assertEquals(
       await readTextFile(`${dir}/text.txt`),
       await Deno.readTextFile(`${dir}/text.txt`),
@@ -131,7 +131,7 @@ Deno.test({
     await withTemp(async (dir) => {
       const bits = async (path: string) =>
         ((await Deno.stat(path)).mode ?? 0) & 0o777;
-      for (const name of ["ours", "denos"]) {
+      for (const name of ["ours", "theirs"]) {
         const write = name === "ours"
           ? (mode: number) => writeFile(`${dir}/${name}`, "x", mode)
           : (mode: number) =>
@@ -196,8 +196,8 @@ Deno.test("each failure surfaces as the Deno error class it always was, keeping 
         () => Deno.mkdir(underFile, { recursive: true }),
       ],
     ];
-    for (const [name, ours, denos] of pairs) {
-      const [a, b] = [await failure(ours), await failure(denos)];
+    for (const [name, ours, theirs] of pairs) {
+      const [a, b] = [await failure(ours), await failure(theirs)];
       assertEquals(a, b, name);
     }
     // The class is the real one, so a build's own instanceof check matches.
