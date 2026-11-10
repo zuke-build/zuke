@@ -647,6 +647,13 @@ gemini-extension.json     # Gemini CLI extension manifest (serves skills/)
   answers, telling a genuinely new finding apart from the same concern reworded.
   The ids in the `suppressions(...)` list in `zuke.ts` are the same identifiers,
   used there as the hard override for cross-branch false positives.
+- **A reply with no push needs `@zuke-build review` after it.** The reviewers
+  run on a push, so a reply that only answers a finding, a rebuttal above all,
+  is read by nobody until the next run. After posting such a reply, add one new
+  general comment on the pull request whose text is `@zuke-build review` and
+  nothing else: it starts a run with no push, and that run adjudicates every
+  rebuttal and answers it where it was made. Skip it when a push follows the
+  reply anyway, since the push starts the same run.
 - **No secrets or machine-specific paths** in the repo or commits. Don't commit
   coverage artifacts (`cov_profile/`, `cov.lcov`) — they're git-ignored.
 - **Deterministic output.** Topological order is declaration-stable; keep it
