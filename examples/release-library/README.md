@@ -15,7 +15,7 @@ zuke release --release-version 1.1.0 --dry-run # print the plan, run nothing
 VERSION=1.1.0 zuke                             # the parameter from the env
 ```
 
-What to notice in [`zuke.ts`](./zuke.ts):
+What to notice in [`build.ts`](./build.ts):
 
 - `releaseVersion` is a `parameter(...).required()`: a typed build input read
   from `--release-version` or `RELEASE_VERSION`, resolved before anything runs.

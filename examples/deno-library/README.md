@@ -15,7 +15,7 @@ zuke coverage   # check → test → coverage
 zuke --parallel # format, lint and check run concurrently
 ```
 
-What to notice in [`zuke.ts`](./zuke.ts):
+What to notice in [`build.ts`](./build.ts):
 
 - Every step is a typed wrapper — `DenoTasks.fmt`, `.lint`, `.check`, `.test`,
   `.coverage` — configured with a settings lambda that mirrors the real flags.

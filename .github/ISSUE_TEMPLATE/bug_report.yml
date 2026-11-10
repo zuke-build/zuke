@@ -44,7 +44,7 @@ body:
       label: Minimal reproduction
       description: >
         The smallest build file and commands that reproduce the problem. Paste a
-        self-contained `zuke.ts` (or snippet) and the exact command you ran.
+        self-contained `build.ts` (or snippet) and the exact command you ran.
         Code blocks here are automatically formatted, so no backticks are needed.
       render: typescript
     validations:

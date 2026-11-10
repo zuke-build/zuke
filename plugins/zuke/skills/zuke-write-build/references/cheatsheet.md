@@ -276,20 +276,20 @@ class CD extends Build {
 - **Whose run is it — `ZUKE_BUILD_ID`.** A shared store means a sweep sees every
   build's runs, and recovery does not merely read them: a resume runs **this**
   build's target bodies against the record it is handed. The shape checks (build
-  class name, root target, graph) cannot separate one `zuke.ts` templated across
-  a dozen services — same names, same graph, different bodies. So a run records
-  an **origin** at creation: `ZUKE_BUILD_ID`, else `GITHUB_REPOSITORY`, else
-  none. Every recovery path (`resume`, `resume --check`, `cancel`, the reaper)
-  compares it; a sweep silently **skips** a foreign run (so a cron's exit code
-  stays meaningful) and a by-name `resume <id>` / `cancel <id>` **reports** it.
-  An origin only ever **narrows** what the shape checks permit — it can refuse a
-  run, never claim one — so two builds in one repository, which share the
-  repository default, stay separated by the build-name check exactly as before.
-  An absent origin on either side abstains rather than refusing, so records
-  written before the field existed stay recoverable — which means in a container
-  you must set `ZUKE_BUILD_ID` yourself (there is no `GITHUB_REPOSITORY` in a
-  CronJob), using the same value everywhere that build runs. Alternatively give
-  each build its own URL prefix on the shared service
+  class name, root target, graph) cannot separate one `build.ts` templated
+  across a dozen services — same names, same graph, different bodies. So a run
+  records an **origin** at creation: `ZUKE_BUILD_ID`, else `GITHUB_REPOSITORY`,
+  else none. Every recovery path (`resume`, `resume --check`, `cancel`, the
+  reaper) compares it; a sweep silently **skips** a foreign run (so a cron's
+  exit code stays meaningful) and a by-name `resume <id>` / `cancel <id>`
+  **reports** it. An origin only ever **narrows** what the shape checks permit —
+  it can refuse a run, never claim one — so two builds in one repository, which
+  share the repository default, stay separated by the build-name check exactly
+  as before. An absent origin on either side abstains rather than refusing, so
+  records written before the field existed stay recoverable — which means in a
+  container you must set `ZUKE_BUILD_ID` yourself (there is no
+  `GITHUB_REPOSITORY` in a CronJob), using the same value everywhere that build
+  runs. Alternatively give each build its own URL prefix on the shared service
   (`ZUKE_STATE_URL=https://state/svc-a`) and neither can see the other's runs at
   all. See `docs/orchestration.md`.
 - **What a sweep counts as failed.** Not a race it lost: a run another process
@@ -1966,7 +1966,7 @@ pending when it skips.
 ## Recipes — complete builds for the common small-project jobs
 
 Copy the closest one instead of composing from primitives; each is a full
-`zuke.ts` with the commands to run it, and has a runnable twin under
+`build.ts` with the commands to run it, and has a runnable twin under
 `examples/`:
 
 - **Replace a shell script** (`docs/recipes/replace-shell-scripts.md`,
@@ -2033,7 +2033,7 @@ zuke outdated [--exit-code]   # jsr packages the lock resolves behind their late
 zuke outdated --update        # ...and move them up; name packages to narrow it.
 zuke outdated --min-dep-age 0
                               # count releases Deno's 24h age guard would refuse (also passed to --update)
-zuke outdated --update --entrypoint other/zuke.ts
+zuke outdated --update --entrypoint other/build.ts
                               # re-resolve another graph sharing the lock too
                               # Touches the lock only: a package its specifier
                               # pins is reported as held, never rewritten.

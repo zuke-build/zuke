@@ -18,8 +18,8 @@ go and disagree with it there rather than here.
 
 The global `zuke` command (`@zuke/cli`) forwards every command that is not its
 own (`setup`, `import`, `doc`, `--help`, `--version`) to the nearest `zuke.json`
-above the working directory and runs the `zuke.ts` beside it with `deno run -A`,
-exactly as the `./zuke` launcher does.
+above the working directory and runs the `build.ts` beside it with
+`deno run -A`, exactly as the `./zuke` launcher does.
 
 That walk-up discovery is the accepted design: it is how npm, Deno and git find
 `package.json`, `deno.json` and `.git`, and it is gated like git's

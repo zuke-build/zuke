@@ -4,7 +4,7 @@
 #
 # The script every small project has: it started as three lines, grew a flag
 # and two guards, and now nobody wants to touch it. See release.ts for the
-# same thing in TypeScript, and ../zuke.ts for it as targets.
+# same thing in TypeScript, and ../build.ts for it as targets.
 set -euo pipefail
 
 VERSION="${1:-}"

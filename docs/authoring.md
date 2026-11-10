@@ -946,8 +946,8 @@ Instantiates the build, discovers targets, validates the graph, parses CLI
 arguments (`options.args`, defaulting to `Deno.args`), dispatches to the
 executor with any registered `options.plugins` and `options.renderer` (see
 [Console output](./console.md)), and calls `Deno.exit` with `0` on success or
-`1` on failure. This is the standard entry point at the bottom of `zuke.ts`. See
-[Extending Zuke](./extending.md) for the plugin contract.
+`1` on failure. This is the standard entry point at the bottom of `build.ts`.
+See [Extending Zuke](./extending.md) for the plugin contract.
 
 ## Gotchas
 

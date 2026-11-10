@@ -1,3 +1,4 @@
 {
-  "name": "Library"
+  "name": "Library",
+  "build": "build.ts"
 }

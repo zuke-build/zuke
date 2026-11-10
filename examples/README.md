@@ -1,7 +1,7 @@
 # Examples
 
 Small, complete projects you can copy into your own repository. Each folder is a
-repo in miniature — its own `zuke.ts`, `zuke.json` and README — and runs from
+repo in miniature — its own `build.ts`, `zuke.json` and README — and runs from
 its own directory with the `zuke` CLI, which finds the `zuke.json` beside the
 build and runs it:
 
@@ -39,5 +39,5 @@ an inline specifier under `no-import-prefix`.
 
 So when you copy an example, run `zuke setup` in the copy. It adds the `./zuke`
 launcher and a `deno.json` — including the `imports` entries — and leaves the
-existing `zuke.ts` alone; switch its imports to the bare `@zuke/…` form
+existing `build.ts` alone; switch its imports to the bare `@zuke/…` form
 afterwards and `deno task lint` stays clean.

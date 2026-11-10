@@ -659,7 +659,7 @@ bbReview = aiReviewWorkflow({ host: "bitbucket", reviewers: [this.security] });
 ### On demand: a comment command
 
 The `pull_request` job skips a fork's pull request, and must: `./zuke review`
-runs the branch's own `zuke.ts`, launcher and imports, and a same-repository
+runs the branch's own `build.ts`, launcher and imports, and a same-repository
 branch runs with the reviewers' keys and a `pull-requests: write` token in the
 environment. Running that on a fork's code would hand the secrets to whoever
 opened the pull request. Mirroring the fork's branch into the repository does
@@ -758,7 +758,7 @@ anything. A literal `.diff((d) => d.text(...))` still wins, so tests are
 unaffected.
 
 That is the trust boundary the flow keeps: trusted code, untrusted input. The
-pull request's `zuke.ts`, suppressions and criteria never load, so it cannot
+pull request's `build.ts`, suppressions and criteria never load, so it cannot
 change the rules it is judged by from this flow; the maintainer's comment is the
 human gate, as it is for Dependabot's `@dependabot` commands; and the diff and
 the thread are the same untrusted text the reviewers already read. The job also
@@ -916,7 +916,7 @@ the next run, whichever starts it, and the panel leaves the `review` row out.
 
 Zuke's own build gates the `review` target with **two reviewers** on every
 internal PR — an OpenAI security scan and an OpenAI code-quality review sharing
-one key. In [`zuke.ts`](../zuke.ts):
+one key. In [`build.ts`](../build.ts):
 
 ```ts
 openaiKey = parameter("OpenAI API key for the AI security review")

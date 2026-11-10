@@ -1,6 +1,6 @@
 # Recipe: know when your dependencies fall behind
 
-A build that pins its tools inline — `jsr:@zuke/git@^1` in `zuke.ts` and its
+A build that pins its tools inline — `jsr:@zuke/git@^1` in `build.ts` and its
 helper modules, rather than in a `deno.json` imports map — has no manifest for
 `deno outdated` to read. The lock keeps resolving the versions recorded when the
 build was written, and `--frozen` is perfectly content with that, because a

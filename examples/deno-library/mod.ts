@@ -3,7 +3,7 @@
 
 /**
  * A tiny library — the code under test in the `deno-library` example. The
- * build in `zuke.ts` is the interesting part; this exists so it has something
+ * build in `build.ts` is the interesting part; this exists so it has something
  * to format, lint, type-check and cover.
  *
  * @module

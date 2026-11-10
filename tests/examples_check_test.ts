@@ -37,8 +37,8 @@ function fakeRunner(
 }
 
 const EXAMPLES: Example[] = [
-  { dir: "examples/a", file: "examples/a/zuke.ts" },
-  { dir: "examples/b", file: "examples/b/zuke.ts" },
+  { dir: "examples/a", file: "examples/a/build.ts" },
+  { dir: "examples/b", file: "examples/b/build.ts" },
 ];
 
 Deno.test("discoverExamples finds every build file, sorted, with its directory", async () => {
@@ -49,16 +49,16 @@ Deno.test("discoverExamples finds every build file, sorted, with its directory",
   try {
     for (const name of ["zeta", "alpha"]) {
       await Deno.mkdir(`${root}/${name}`);
-      await Deno.writeTextFile(`${root}/${name}/zuke.ts`, "");
+      await Deno.writeTextFile(`${root}/${name}/build.ts`, "");
     }
     // A directory without a build file is not an example.
     await Deno.mkdir(`${root}/notes`);
     await Deno.writeTextFile(`${root}/notes/README.md`, "");
-    const found = await discoverExamples(`${root}/*/zuke.ts`);
+    const found = await discoverExamples(`${root}/*/build.ts`);
     assertEquals(found.map((e) => e.dir), [`${root}/alpha`, `${root}/zeta`]);
     assertEquals(found.map((e) => e.file), [
-      `${root}/alpha/zuke.ts`,
-      `${root}/zeta/zuke.ts`,
+      `${root}/alpha/build.ts`,
+      `${root}/zeta/build.ts`,
     ]);
   } finally {
     await Deno.remove(root, { recursive: true });
@@ -68,7 +68,7 @@ Deno.test("discoverExamples finds every build file, sorted, with its directory",
 Deno.test("discoverExamples refuses an empty match rather than passing vacuously", async () => {
   let message = "";
   try {
-    await discoverExamples("examples/no-such-dir-*/zuke.ts");
+    await discoverExamples("examples/no-such-dir-*/build.ts");
   } catch (error) {
     message = error instanceof Error ? error.message : String(error);
   }
@@ -79,10 +79,10 @@ Deno.test("checkExamples runs all three steps per example, in order", async () =
   const runner = fakeRunner({});
   assertEquals(await checkExamples(EXAMPLES, runner), []);
   assertEquals(runner.calls, [
-    "check examples/a/zuke.ts",
+    "check examples/a/build.ts",
     "list examples/a",
     "pipeline examples/a",
-    "check examples/b/zuke.ts",
+    "check examples/b/build.ts",
     "list examples/b",
     "pipeline examples/b",
   ]);
@@ -90,7 +90,7 @@ Deno.test("checkExamples runs all three steps per example, in order", async () =
 
 Deno.test("a build that fails to type-check is reported once and not listed", async () => {
   const runner = fakeRunner({
-    check: { "examples/a/zuke.ts": "TS2339: no such method" },
+    check: { "examples/a/build.ts": "TS2339: no such method" },
   });
   const failures = await checkExamples(EXAMPLES, runner);
   assertEquals(failures, [

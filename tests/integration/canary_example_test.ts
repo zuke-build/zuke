@@ -12,7 +12,7 @@ import {
   assertEquals,
   assertStringIncludes,
 } from "../../packages/core/tests/_assert.ts";
-import { Release } from "../../examples/canary-release/zuke.ts";
+import { Release } from "../../examples/canary-release/build.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 
 /** A free port, so the test never collides with whatever holds 8080. */
