@@ -20,6 +20,7 @@
  */
 
 import type { PathLike } from "./path.ts";
+import { isNotFound } from "./internal.ts";
 
 /** Raised by the assertion helpers when an expectation fails. */
 export class AssertionError extends Error {
@@ -66,7 +67,7 @@ export async function assertFileExists(path: PathLike): Promise<void> {
   try {
     isFile = (await Deno.stat(target)).isFile;
   } catch (error) {
-    if (error instanceof Deno.errors.NotFound) {
+    if (isNotFound(error)) {
       fail(`Expected file to exist: ${target}`);
     }
     throw error;
@@ -81,7 +82,7 @@ export async function assertDirectoryExists(path: PathLike): Promise<void> {
   try {
     isDirectory = (await Deno.stat(target)).isDirectory;
   } catch (error) {
-    if (error instanceof Deno.errors.NotFound) {
+    if (isNotFound(error)) {
       fail(`Expected directory to exist: ${target}`);
     }
     throw error;

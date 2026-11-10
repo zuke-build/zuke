@@ -18,6 +18,7 @@ import { absolutePath } from "./path.ts";
 import type { TargetBuilder } from "./target.ts";
 import { browserCommand } from "./browser.ts";
 import { cliReporter } from "./reporter.ts";
+import { type HostOs, hostOs } from "./host.ts";
 
 /** Spawn a detached command (binary + args); used to launch a browser. */
 export type Spawn = (cmd: string, args: string[]) => Promise<void>;
@@ -34,7 +35,7 @@ const denoSpawn: Spawn = async (cmd, args) => {
  */
 export async function openInBrowser(
   target: string,
-  os: typeof Deno.build.os = Deno.build.os,
+  os: HostOs = hostOs(),
   spawn: Spawn = denoSpawn,
 ): Promise<void> {
   const [cmd, args] = browserCommand(os, target);

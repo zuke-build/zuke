@@ -73,7 +73,7 @@ import type { StateStore } from "./state/store.ts";
 import type { Plugin, RunInfo } from "./plugin.ts";
 import type { Renderer } from "./renderer.ts";
 import { type BannerFacts, bannerLines } from "./banner.ts";
-import { detectCiHost, isCI } from "./host.ts";
+import { detectCiHost, isCI, platformLabel } from "./host.ts";
 import { VERSION } from "./version.ts";
 
 /** Options for {@link execute}. */
@@ -862,7 +862,7 @@ function runtimeFacts(
   return {
     version: VERSION,
     deno: Deno.build.standalone ? undefined : Deno.version.deno,
-    platform: `${Deno.build.os}-${Deno.build.arch}`,
+    platform: platformLabel(),
     // Both, because they answer different questions: `isCI` knows the systems
     // with no `CiHost` name (Jenkins, CircleBuild, a bare `CI=true`) and
     // decides the art; `detectCiHost` names the four Zuke supports.

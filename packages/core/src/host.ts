@@ -16,6 +16,7 @@
  * @module
  */
 
+import process from "node:process";
 import { defaultReadEnv } from "./internal.ts";
 
 /**
@@ -121,7 +122,82 @@ export function isCI(
 }
 
 /**
- * The operating systems Zuke recognises — Deno's raw `Deno.build.os` values
+ * The host operating system by its raw name, before {@link operatingSystem}
+ * normalises it: the names the Rust target triples use, which are the ones
+ * Zuke has always passed around.
+ */
+export type HostOs =
+  | "darwin"
+  | "linux"
+  | "android"
+  | "windows"
+  | "freebsd"
+  | "netbsd"
+  | "aix"
+  | "solaris"
+  | "illumos";
+
+/** Node's `process.platform` names that are not already a {@link HostOs}. */
+const PLATFORM_NAMES: Readonly<Record<string, HostOs>> = {
+  win32: "windows",
+  cygwin: "windows",
+  sunos: "solaris",
+};
+
+/** The names `process.platform` and {@link HostOs} share, `linux` aside. */
+const SHARED_PLATFORMS: readonly HostOs[] = [
+  "darwin",
+  "android",
+  "freebsd",
+  "netbsd",
+  "aix",
+];
+
+/**
+ * The running host's operating system as a {@link HostOs}. Module-internal:
+ * builds ask {@link operatingSystem}. A platform with no name of its own here
+ * is another Unix, and reads as `linux`, as {@link operatingSystem} would
+ * report it anyway.
+ */
+export function hostOs(platform: string = process.platform): HostOs {
+  return PLATFORM_NAMES[platform] ??
+    SHARED_PLATFORMS.find((name) => name === platform) ?? "linux";
+}
+
+/** Node's `process.arch` names for the two {@link Architecture}s. */
+const ARCH_NAMES: Readonly<Record<string, Architecture>> = {
+  x64: "x86_64",
+  arm64: "aarch64",
+};
+
+/**
+ * The running host's CPU as an {@link Architecture}. Module-internal.
+ *
+ * @throws {Error} naming the CPU when it is neither: nothing Zuke installs
+ * has a build for it.
+ */
+export function hostArch(arch: string = process.arch): Architecture {
+  const mapped = ARCH_NAMES[arch];
+  if (mapped === undefined) {
+    throw new Error(
+      `zuke: unsupported CPU architecture "${arch}": tools are installed ` +
+        "for x86_64 and aarch64 only.",
+    );
+  }
+  return mapped;
+}
+
+/**
+ * The host as `<os>-<arch>` for the banner and the version panel, which name
+ * a CPU Zuke installs nothing for by its raw name rather than refuse to run.
+ * Module-internal.
+ */
+export function platformLabel(): string {
+  return `${hostOs()}-${ARCH_NAMES[process.arch] ?? process.arch}`;
+}
+
+/**
+ * The operating systems Zuke recognises — the raw {@link HostOs} names
  * normalised to a friendly set (notably `darwin` → `macos`). Used across the
  * ecosystem so builds branch on `"macos"` rather than the surprising `"darwin"`.
  */
@@ -133,7 +209,7 @@ export type Architecture = "x86_64" | "aarch64";
 /**
  * The operating system as a Zuke {@link OperatingSystem}: `darwin` becomes
  * `macos`, `windows` stays `windows`, and every other Unix (`linux`, the BSDs,
- * `solaris`, …) is reported as `linux`. Pass a raw `Deno.build.os` value to
+ * `solaris`, …) is reported as `linux`. Pass a raw {@link HostOs} value to
  * normalise it; defaults to the running host — the platform analogue of
  * {@link isCI}.
  *
@@ -143,7 +219,7 @@ export type Architecture = "x86_64" | "aarch64";
  * ```
  */
 export function operatingSystem(
-  os: typeof Deno.build.os = Deno.build.os,
+  os: HostOs = hostOs(),
 ): OperatingSystem {
   switch (os) {
     case "darwin":

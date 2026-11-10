@@ -13,7 +13,8 @@ import { discoverCiFiles, syncCiFiles } from "./ci.ts";
 import { isEntryModule } from "./entry.ts";
 import { messageOf } from "./internal.ts";
 import { forceTarget } from "./force.ts";
-import { denoExecutable, isCI } from "./host.ts";
+import { denoExecutable, hostOs, isCI } from "./host.ts";
+import type { Signal } from "./signal.ts";
 import { GraphError, validateGraph } from "./graph.ts";
 import { InsecureBackendUrlError } from "./http.ts";
 import { execute, type Reporter } from "./executor.ts";
@@ -1742,10 +1743,10 @@ function installCancelSignals(controller: AbortController): () => void {
     cancelling = true;
     controller.abort();
   };
-  const wanted: Deno.Signal[] = Deno.build.os === "windows"
+  const wanted: Signal[] = hostOs() === "windows"
     ? ["SIGINT"]
     : ["SIGINT", "SIGTERM"];
-  const installed: Deno.Signal[] = [];
+  const installed: Signal[] = [];
   for (const sig of wanted) {
     try {
       Deno.addSignalListener(sig, onSignal);

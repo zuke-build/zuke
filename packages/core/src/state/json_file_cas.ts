@@ -22,7 +22,7 @@
  */
 
 import type { PutResult, StateHost } from "./store.ts";
-import { delay, sha256Hex } from "../internal.ts";
+import { delay, isNotFound, sha256Hex } from "../internal.ts";
 
 /** How many times {@link publishFile} retries a rename that lost a race. */
 const PUBLISH_ATTEMPTS = 5;
@@ -98,7 +98,7 @@ export async function publishFile(
       await host.rename(tmp, file);
       return;
     } catch (error) {
-      const fatal = error instanceof Deno.errors.NotFound ||
+      const fatal = isNotFound(error) ||
         attempt >= PUBLISH_ATTEMPTS;
       if (fatal) throw error;
       await delay(PUBLISH_DELAY_MS);

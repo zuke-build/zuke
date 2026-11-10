@@ -6,6 +6,9 @@ import {
   defaultReadEnv,
   delay,
   envFlag,
+  isAlreadyExists,
+  isNotFound,
+  isPermissionDenied,
   messageOf,
   readFileOrNull,
   readTextOrNull,
@@ -197,5 +200,51 @@ Deno.test("envFlag: anything else is on", () => {
   // to guess would be a silent no.
   for (const value of ["1", "true", "TRUE", "yes", "on", "please"]) {
     assertEquals(envFlag(value), true, value);
+  }
+});
+
+/** An error carrying an operating-system code, as Node's file system throws. */
+function coded(code: string): Error {
+  return Object.assign(new Error(code), { code });
+}
+
+Deno.test("the error checks read the code every runtime sets, and still know Deno's classes", async () => {
+  // What the file system really throws.
+  const missing = await Deno.stat(`${await Deno.makeTempDir()}/nope`).catch((
+    e: unknown,
+  ) => e);
+  assertEquals(isNotFound(missing), true);
+  const dir = await Deno.makeTempDir();
+  const exists = await Deno.mkdir(dir).catch((e: unknown) => e);
+  assertEquals(isAlreadyExists(exists), true);
+  assertEquals(isNotFound(exists), false);
+  await Deno.remove(dir);
+
+  // A coded error with no Deno class, as another runtime throws.
+  assertEquals(isNotFound(coded("ENOENT")), true);
+  assertEquals(isAlreadyExists(coded("EEXIST")), true);
+  assertEquals(isPermissionDenied(coded("EACCES")), true);
+  assertEquals(isPermissionDenied(coded("EPERM")), true);
+
+  // A Deno error built by hand carries no code, and is still recognised.
+  assertEquals(isNotFound(new Deno.errors.NotFound("x")), true);
+  assertEquals(isAlreadyExists(new Deno.errors.AlreadyExists("x")), true);
+  assertEquals(isPermissionDenied(new Deno.errors.PermissionDenied("x")), true);
+
+  // An error of Deno's own is judged by its class alone, whatever its code.
+  const mislabelled = Object.assign(new Deno.errors.InvalidData("x"), {
+    code: "ENOENT",
+  });
+  assertEquals(isNotFound(mislabelled), false);
+
+  // Each check answers for its own code only, and never for a non-error.
+  assertEquals(isNotFound(coded("EEXIST")), false);
+  assertEquals(isAlreadyExists(coded("ENOENT")), false);
+  assertEquals(isPermissionDenied(coded("ENOENT")), false);
+  assertEquals(isNotFound(coded("ENOTDIR")), false);
+  assertEquals(isNotFound(new Error("ENOENT")), false);
+  assertEquals(isNotFound(Object.assign(new Error("n"), { code: 2 })), false);
+  for (const value of [undefined, null, "ENOENT", { code: "ENOENT" }]) {
+    assertEquals(isNotFound(value), false);
   }
 });
