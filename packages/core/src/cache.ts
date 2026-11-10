@@ -83,12 +83,10 @@ export const defaultCacheHost: CacheHost = {
     path: string,
   ): Promise<{ isDirectory: boolean; mode?: number } | null> {
     // Narrowed to the fields {@link OutputHost} promises, so a test double
-    // never has to fabricate a whole `Deno.FileInfo`. `mode` is null on
-    // Windows, where there are no permission bits to carry.
+    // never has to fabricate a whole file info.
     const info = await statOrNull(path);
-    if (info === null) return null;
-    return info.mode === null
-      ? { isDirectory: info.isDirectory }
+    return info === null
+      ? null
       : { isDirectory: info.isDirectory, mode: info.mode };
   },
   async lstat(
