@@ -152,28 +152,30 @@ the build declares, and finding out would mean running the build on every
 `--build-file <name>`, `--force`/`-f`, `--yes`/`-y`, and `--mcp`. A new
 TypeScript project's build file is `build.ts`: the wizard asks, `--build-file`
 answers up front, and `zuke.json` records the name. A project that already has a
-`zuke.json` or a `zuke.ts` keeps its build file, and `--build-file` moves it
-only with `--force`. A file of the chosen name that is already there and is not
-a Zuke build is never taken over: the wizard asks for another name, and `--yes`
-fails saying to pass `--build-file`. `--mcp` which also writes a `.mcp.json`
-registering the build's own [MCP server](./mcp.md) (`deno run -A build.ts mcp`)
-so an agent client picks the build up from the first commit; `--allow-run`
-registers it with execution enabled and implies `--mcp`. An existing `.mcp.json`
-is merged around its other servers, and an existing `zuke` entry is kept unless
-`--force` is set. Both also ask which launchers to write — `--bootstrap` (the
-default, and what `--yes` takes) scaffolds launchers that download their pinned,
-checksum-verified runtime when it is missing: Deno for a `zuke.ts` build, the
-`zuke` binary for a Python one. A checkout needs nothing installed up front.
-`--no-bootstrap` scaffolds launchers that require that runtime on `PATH` and
-fail closed without it, for a project that must never download a tool from its
-build entry point. `--bootstrap-deno` and `--no-bootstrap-deno` are the older
-spellings of the same two flags. `--sdk python` scaffolds a `build.py`, a
-`zuke.json` and launchers that run the `zuke` binary. `--zuke <version>` names
-the release those launchers pin (default: the running `zuke`'s own), and
-`zuke.json` pins the engine inside it. `--launcher-name <name>` (for when a
-`zuke/` directory already occupies the launcher's name) and `--sdk python` apply
-to `setup` only; `import` additionally takes
-`--from <package.json|makefile|pyproject>` to pin the source instead of
+`zuke.json` or a `zuke.ts` keeps its build file, and `--build-file` naming
+another is refused: to rename one, rename the file, set `build` in `zuke.json`,
+and re-run `zuke setup --force`, which rewrites the launchers and moves the
+`zuke` task setup wrote in `deno.json`. A file of the chosen name that is
+already there and is not a Zuke build is never taken over: the wizard asks for
+another name, and `--yes` fails saying to pass `--build-file`. `--mcp` which
+also writes a `.mcp.json` registering the build's own [MCP server](./mcp.md)
+(`deno run -A build.ts mcp`) so an agent client picks the build up from the
+first commit; `--allow-run` registers it with execution enabled and implies
+`--mcp`. An existing `.mcp.json` is merged around its other servers, and an
+existing `zuke` entry is kept unless `--force` is set. Both also ask which
+launchers to write — `--bootstrap` (the default, and what `--yes` takes)
+scaffolds launchers that download their pinned, checksum-verified runtime when
+it is missing: Deno for a `zuke.ts` build, the `zuke` binary for a Python one. A
+checkout needs nothing installed up front. `--no-bootstrap` scaffolds launchers
+that require that runtime on `PATH` and fail closed without it, for a project
+that must never download a tool from its build entry point. `--bootstrap-deno`
+and `--no-bootstrap-deno` are the older spellings of the same two flags.
+`--sdk python` scaffolds a `build.py`, a `zuke.json` and launchers that run the
+`zuke` binary. `--zuke <version>` names the release those launchers pin
+(default: the running `zuke`'s own), and `zuke.json` pins the engine inside it.
+`--launcher-name <name>` (for when a `zuke/` directory already occupies the
+launcher's name) and `--sdk python` apply to `setup` only; `import` additionally
+takes `--from <package.json|makefile|pyproject>` to pin the source instead of
 auto-detecting it (in that order: `package.json`, then a `Makefile`, then
 `pyproject.toml`). Both finish by scaffolding the launchers (and, for a
 `zuke.ts` build, `deno.json`), so the very next command you run can be your

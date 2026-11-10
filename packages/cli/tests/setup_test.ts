@@ -279,27 +279,42 @@ Deno.test("mergeDenoJson ignores a non-object imports block", () => {
 Deno.test("denoJsonState classifies deno.json text", () => {
   const complete =
     '{"tasks":{"zuke":"x"},"imports":{"@zuke/core":"jsr:@zuke/core@^1"}}';
-  assertEquals(denoJsonState(complete, STARTER_IMPORTS), "present");
+  assertEquals(denoJsonState(complete, STARTER_IMPORTS, "zuke.ts"), "present");
   // The zuke task alone is not enough: the zuke.ts written in the same run
   // imports @zuke/core by bare specifier, so the import has to be there too.
   assertEquals(
-    denoJsonState('{"tasks":{"zuke":"x"}}', STARTER_IMPORTS),
+    denoJsonState('{"tasks":{"zuke":"x"}}', STARTER_IMPORTS, "zuke.ts"),
     "absent",
   );
   assertEquals(
     denoJsonState(complete, {
       ...STARTER_IMPORTS,
       "@zuke/cmd": "jsr:@zuke/cmd@^1",
-    }),
+    }, "zuke.ts"),
     "absent",
   );
-  assertEquals(denoJsonState('{"tasks":{"a":"b"}}', STARTER_IMPORTS), "absent");
-  assertEquals(denoJsonState('{"tasks":5}', STARTER_IMPORTS), "absent");
-  assertEquals(denoJsonState('{"imports":5}', STARTER_IMPORTS), "absent");
-  assertEquals(denoJsonState("[]", STARTER_IMPORTS), "absent");
-  assertEquals(denoJsonState("not json", STARTER_IMPORTS), "unparseable");
+  assertEquals(
+    denoJsonState('{"tasks":{"a":"b"}}', STARTER_IMPORTS, "zuke.ts"),
+    "absent",
+  );
+  assertEquals(
+    denoJsonState('{"tasks":5}', STARTER_IMPORTS, "zuke.ts"),
+    "absent",
+  );
+  assertEquals(
+    denoJsonState('{"imports":5}', STARTER_IMPORTS, "zuke.ts"),
+    "absent",
+  );
+  assertEquals(denoJsonState("[]", STARTER_IMPORTS, "zuke.ts"), "absent");
+  assertEquals(
+    denoJsonState("not json", STARTER_IMPORTS, "zuke.ts"),
+    "unparseable",
+  );
   // Nothing to add: an empty import set makes the task the whole question.
-  assertEquals(denoJsonState('{"tasks":{"zuke":"x"}}', {}), "present");
+  assertEquals(
+    denoJsonState('{"tasks":{"zuke":"x"}}', {}, "zuke.ts"),
+    "present",
+  );
 });
 
 Deno.test("delegatesImportMap spots a document that points elsewhere", () => {
@@ -1130,37 +1145,63 @@ Deno.test("an existing zuke.ts project stays one, with or without a zuke.json", 
   assertEquals(await existingBuildFile(".", new FakeHost()), undefined);
 });
 
-Deno.test("--build-file moves an existing project's build file only with --force", async () => {
-  const before = { "zuke.json": '{ "name": "Old" }\n', "zuke.ts": "old" };
-  const kept = new FakeHost(before);
-  await assertRejects(
-    () =>
-      runSetup(
-        { dir: ".", force: false, name: "Acme", buildFile: "build.ts" },
-        kept,
-      ),
-    Error,
-    "this project's build file is zuke.ts, not build.ts",
-  );
-  assertEquals(Object.fromEntries(kept.files), before);
+Deno.test("--build-file never moves an existing project's build file, --force or not", async () => {
+  const before = {
+    "zuke.json": '{ "name": "Old" }\n',
+    "zuke.ts": "old",
+    "deploy.ts": "console.log('my own script');\n",
+  };
+  for (const force of [false, true]) {
+    for (const buildFile of ["build.ts", "deploy.ts"]) {
+      const host = new FakeHost(before);
+      await assertRejects(
+        () => runSetup({ dir: ".", force, name: "Acme", buildFile }, host),
+        Error,
+        `this project's build file is zuke.ts, not ${buildFile}`,
+      );
+      assertEquals(Object.fromEntries(host.files), before);
+    }
+  }
   // Naming the file it already has is not a move.
+  const kept = new FakeHost(before);
   await runSetup(
     { dir: ".", force: false, name: "Acme", buildFile: "zuke.ts" },
     kept,
   );
   assertEquals(kept.files.get("zuke.ts"), "old");
+});
 
-  const moved = new FakeHost(before);
-  await runSetup(
-    { dir: ".", force: true, name: "Acme", buildFile: "build.ts" },
-    moved,
-  );
-  assertStringIncludes(moved.files.get("build.ts") ?? "", "class Acme");
-  assertEquals(moved.files.get("zuke.ts"), "old");
-  assertEquals(JSON.parse(moved.files.get("zuke.json") ?? ""), {
-    name: "Acme",
-    build: "build.ts",
+Deno.test("a project renamed in zuke.json gets its scaffolded zuke task moved, and a task of its own kept", async () => {
+  const config = '{\n  "name": "Acme",\n  "build": "build.ts"\n}\n';
+  const tasks = (host: FakeHost): unknown => {
+    const deno: unknown = JSON.parse(host.files.get("deno.json") ?? "");
+    return isRecord(deno) ? deno.tasks : undefined;
+  };
+  const imports = { "@zuke/core": "jsr:@zuke/core@^1" };
+  // The task an earlier setup wrote for zuke.ts follows the new name, with
+  // or without --force, and everything else in the file is kept.
+  const stale = JSON.stringify({
+    imports,
+    tasks: { zuke: "deno run -A zuke.ts", dev: "deno run -A main.ts" },
   });
+  assertEquals(denoJsonState(stale, imports, "build.ts"), "absent");
+  assertEquals(denoJsonState(stale, imports, "zuke.ts"), "present");
+  const host = new FakeHost({ "zuke.json": config, "deno.json": stale });
+  await runSetup({ dir: ".", force: false, name: "Acme" }, host);
+  const moved = tasks(host);
+  assertEquals(isRecord(moved) && moved.zuke, "deno run -A build.ts");
+  assertEquals(isRecord(moved) && moved.dev, "deno run -A main.ts");
+
+  // A zuke task the project wrote itself is not setup's to change.
+  const own = JSON.stringify({
+    imports,
+    tasks: { zuke: "deno run -A --frozen zuke.ts ci" },
+  });
+  assertEquals(denoJsonState(own, imports, "build.ts"), "present");
+  const custom = new FakeHost({ "zuke.json": config, "deno.json": own });
+  await runSetup({ dir: ".", force: true, name: "Acme" }, custom);
+  const kept = tasks(custom);
+  assertEquals(isRecord(kept) && kept.zuke, "deno run -A --frozen zuke.ts ci");
 });
 
 Deno.test("a new project never takes over an unrelated build.ts, even with --force", async () => {

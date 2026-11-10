@@ -65,6 +65,21 @@ function defaultTasks(
   ];
 }
 
+/** The `zuke` task as setup itself writes it, for any build file. */
+const SCAFFOLDED_ZUKE_TASK = /^deno run -A [A-Za-z0-9_.][A-Za-z0-9_.-]*\.ts$/;
+
+/**
+ * Whether `tasks.zuke` is a task setup wrote for another build file than
+ * `buildFile`: the one thing in `tasks` a re-run replaces, so that a project
+ * whose `zuke.json` was pointed at a new build file does not keep a task
+ * running the old one. A task the project wrote itself is never touched.
+ */
+function staleZukeTask(tasks: unknown, buildFile: string): boolean {
+  if (!isRecord(tasks) || typeof tasks.zuke !== "string") return false;
+  return SCAFFOLDED_ZUKE_TASK.test(tasks.zuke) &&
+    tasks.zuke !== `deno run -A ${buildFile}`;
+}
+
 /**
  * The import map entries a scaffolded build needs, keyed by bare specifier.
  *
@@ -120,7 +135,8 @@ export function delegatesImportMap(root: Record<string, unknown>): boolean {
  * resolves through, and `buildFile` is the file the `zuke` task runs.
  *
  * Merging is additive per key: a task or import the document already declares
- * is left exactly as it is, so a project that has pinned `@zuke/core` to a
+ * is left exactly as it is (but for a `zuke` task setup wrote for another
+ * build file, which follows the build file), so a project that has pinned `@zuke/core` to a
  * specific version keeps that pin. A document that delegates to an external
  * `importMap` keeps that delegation and grows no `imports` block — see
  * {@link delegatesImportMap}; the caller reports the entry as a manual step
@@ -142,6 +158,9 @@ export function mergeDenoJson(
   if (!delegatesImportMap(root)) {
     mergeMissing(root, "imports", Object.entries(imports));
   }
+  if (staleZukeTask(root.tasks, buildFile) && isRecord(root.tasks)) {
+    root.tasks = { ...root.tasks, zuke: `deno run -A ${buildFile}` };
+  }
   mergeMissing(root, "tasks", defaultTasks(buildFile));
   return `${JSON.stringify(root, null, 2)}\n`;
 }
@@ -149,8 +168,8 @@ export function mergeDenoJson(
 /**
  * Whether a `deno.json` text already carries everything the scaffold needs.
  *
- * `"present"` means both the `zuke` task and every scaffold import are already
- * declared, so there is nothing to merge.
+ * `"present"` means both the `zuke` task, for this build file, and every
+ * scaffold import are already declared, so there is nothing to merge.
  */
 export type DenoJsonState = "present" | "absent" | "unparseable";
 
@@ -167,6 +186,7 @@ export type DenoJsonState = "present" | "absent" | "unparseable";
 export function denoJsonState(
   text: string,
   imports: ScaffoldImports,
+  buildFile: string,
 ): DenoJsonState {
   let parsed: unknown;
   try {
@@ -175,7 +195,8 @@ export function denoJsonState(
     return "unparseable";
   }
   if (!isRecord(parsed)) return "absent";
-  const hasTask = isRecord(parsed.tasks) && "zuke" in parsed.tasks;
+  const hasTask = isRecord(parsed.tasks) && "zuke" in parsed.tasks &&
+    !staleZukeTask(parsed.tasks, buildFile);
   // A document delegating to an external `importMap` will not grow an
   // `imports` block (it would disable the delegation), so the imports are not
   // something this file is still missing — they are reported as a manual step.
@@ -505,8 +526,8 @@ export async function unrelatedBuildFile(
  * project's own, else `build.ts`.
  *
  * @throws {Error} when the name asked for is not valid, differs from the one
- * an existing project has and `force` is off, or would take over an unrelated
- * file in a new project.
+ * an existing project has, or would take over an unrelated file in a new
+ * project.
  */
 async function scaffoldBuildFile(
   options: SetupOptions,
@@ -517,14 +538,16 @@ async function scaffoldBuildFile(
     ? undefined
     : assertBuildFileName(options.buildFile);
   if (existing !== undefined) {
-    if (asked !== undefined && asked !== existing && !options.force) {
+    // Setup does not move a build: it would have to overwrite whatever has
+    // the new name. The person renames the file, and setup follows zuke.json.
+    if (asked !== undefined && asked !== existing) {
       throw new Error(
         `zuke setup: this project's build file is ${existing}, not ${asked}. ` +
-          "Pass --force to move it to the new name; the old file is left " +
-          "in place.",
+          `To rename it, rename the file, set "build": "${asked}" in ` +
+          "zuke.json, and re-run zuke setup --force to rewrite the launchers.",
       );
     }
-    return asked ?? existing;
+    return existing;
   }
   const name = asked ?? NEW_BUILD_FILE;
   if (await unrelatedBuildFile(options.dir, name, host)) {
@@ -854,7 +877,7 @@ async function setupDenoJson(
   }
 
   const before = await host.readText(path);
-  const state = denoJsonState(before, imports);
+  const state = denoJsonState(before, imports, buildFile);
   if (state === "unparseable") {
     host.log(`  skip     ${name}  (not plain JSON, edit by hand)`);
     steps.push(
