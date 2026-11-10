@@ -677,10 +677,10 @@ function metadataUrl(resource: string): string
   path-inserted location, which is the one a client can validate under both
   halves of RFC 9728 §3.3.
 
-function operatingSystem(os: typeof Deno.build.os): OperatingSystem
+function operatingSystem(os: HostOs): OperatingSystem
   The operating system as a Zuke {@link OperatingSystem}: `darwin` becomes
   `macos`, `windows` stays `windows`, and every other Unix (`linux`, the BSDs,
-  `solaris`, …) is reported as `linux`. Pass a raw `Deno.build.os` value to
+  `solaris`, …) is reported as `linux`. Pass a raw {@link HostOs} value to
   normalise it; defaults to the running host — the platform analogue of
   {@link isCI}.
 
@@ -718,7 +718,7 @@ function plan(root: TargetBuilder, extra: readonly OrderingEdge[]): TargetBuilde
       if the planned graph contains a cycle (which can happen
       via soft edges even when the hard graph is acyclic).
 
-function prependPath(dir: PathLike, os: typeof Deno.build.os): string
+function prependPath(dir: PathLike, os: HostOs): string
   Prepend `dir` to the process `PATH`, and return the new value. A tool
   provisioned into `dir` (e.g. the `bin` directory of an {@link "./install.ts".installTree}
   runtime) then resolves for the rest of the build: the shell `$`, `Command`,
@@ -5771,6 +5771,11 @@ type ForceDenial = "unknown_run" | "run_terminal" | "unknown_target" | "already_
 type ForcedOutcome = "skipped" | "succeeded"
   What an operator may force a target to, without running it.
 
+type HostOs = "darwin" | "linux" | "android" | "windows" | "freebsd" | "netbsd" | "aix" | "solaris" | "illumos"
+  The host operating system by its raw name, before {@link operatingSystem}
+  normalises it: the names the Rust target triples use, which are the ones
+  Zuke has always passed around.
+
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue; }
   A JSON-serialisable value — the only thing that may be persisted in a
   target's {@link TargetStateHandle}, since run state is stored as JSON.
@@ -5813,7 +5818,7 @@ type OnTimeout = () => TargetBuilder | "fail" | "cancel-run"
   What a timed-out wait does — resolved from {@link WaitSettings.onTimeout}.
 
 type OperatingSystem = "linux" | "macos" | "windows"
-  The operating systems Zuke recognises — Deno's raw `Deno.build.os` values
+  The operating systems Zuke recognises — the raw {@link HostOs} names
   normalised to a friendly set (notably `darwin` → `macos`). Used across the
   ecosystem so builds branch on `"macos"` rather than the surprising `"darwin"`.
 
@@ -6107,17 +6112,30 @@ class SpawnedProcess
     Wrap a spawned child process (or none, for a stub) and its command line.
   get pid(): number
     The operating-system process id (`-1` for a dry-run stub).
-  get status(): Promise<Deno.CommandStatus>
+  get status(): Promise<CommandStatus>
     Resolves when the process exits (immediate success for a dry-run stub).
-  stop(signal: Deno.Signal, graceMs: number): Promise<void>
+  stop(signal: Signal, graceMs: number): Promise<void>
     Terminate the process and wait for it to exit. Sends `signal` (default
     `SIGTERM`); if the process has not exited within `graceMs` (default 5s), it
     escalates to `SIGKILL` so a process that ignores `SIGTERM` cannot hang
     teardown. A process that has already exited is treated as stopped. A
     dry-run stub (no child) is a no-op.
 
+interface CommandStatus
+  How a process ended.
+
+  success: boolean
+    Whether it exited with code 0.
+  code: number
+    Its exit code.
+  signal: Signal | null
+    The signal that ended it, or `null` when it exited on its own.
+
 type Interpolatable = string | number | AbsolutePath | Array<string | number | AbsolutePath>
   A value that may be interpolated into a `$` template.
+
+type Signal = "SIGABRT" | "SIGALRM" | "SIGBREAK" | "SIGBUS" | "SIGCHLD" | "SIGCONT" | "SIGEMT" | "SIGFPE" | "SIGHUP" | "SIGILL" | "SIGINFO" | "SIGINT" | "SIGIO" | "SIGPOLL" | "SIGUNUSED" | "SIGKILL" | "SIGPIPE" | "SIGPROF" | "SIGPWR" | "SIGQUIT" | "SIGSEGV" | "SIGSTKFLT" | "SIGSTOP" | "SIGSYS" | "SIGTERM" | "SIGTRAP" | "SIGTSTP" | "SIGTTIN" | "SIGTTOU" | "SIGURG" | "SIGUSR1" | "SIGUSR2" | "SIGVTALRM" | "SIGWINCH" | "SIGXCPU" | "SIGXFSZ"
+  A POSIX signal name, as a process is sent one or reports dying of one.
 
 Foundations for typed tool wrappers (settings-lambda task functions).
 
@@ -6165,7 +6183,7 @@ function runSettings<S extends ToolSettings>(settings: S, configure?: Configure<
   };
   ```
 
-function shimFallbackArgv(argv: ReadonlyArray<string>, os: typeof Deno.build.os): string[] | null
+function shimFallbackArgv(argv: ReadonlyArray<string>, os: HostOs): string[] | null
   On Windows, wrap an argv in a `cmd /c` invocation so `.cmd`/`.bat` shims
   (such as npm's) become spawnable; returns `null` on other platforms.
 
@@ -6178,7 +6196,7 @@ function shimFallbackArgv(argv: ReadonlyArray<string>, os: typeof Deno.build.os)
       escaping for the command processor as it does. Scheduled for removal in the
       next major.
 
-function windowsCmdShim(argv: ReadonlyArray<string>, os: typeof Deno.build.os): string[]
+function windowsCmdShim(argv: ReadonlyArray<string>, os: HostOs): string[]
   On Windows, wrap a resolved `.cmd`/`.bat` shim in `cmd /c`. Returns `argv`
   unchanged on other platforms or when the binary is not a batch shim.
 
@@ -6283,13 +6301,13 @@ abstract class ToolSettings
   ({@link defaultTool}) and the pure subcommand argv ({@link buildArgs});
   the base provides the shared chainers and {@link run}.
 
-  os_: typeof Deno.build.os
+  os_: HostOs
     The platform identifier used when resolving a tool from `node_modules`,
     which on Windows means looking for the `.cmd` shim rather than the bare
     name.
 
-    In production this is always `Deno.build.os`. It is exposed as a public
-    field — rather than read from `Deno.build.os` inline — so that tests can
+    In production this is always the running host's. It is exposed as a public
+    field — rather than read inline — so that tests can
     pin a specific platform without spawning a subprocess or touching the
     environment:
 

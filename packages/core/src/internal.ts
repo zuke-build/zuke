@@ -104,6 +104,33 @@ export async function sha256Hex(data: string | Uint8Array): Promise<string> {
   ).join("");
 }
 
+/** Whether `error` carries the operating-system error `code`, as file-system errors do on every runtime. */
+function hasCode(error: unknown, ...codes: string[]): error is Error {
+  return error instanceof Error && "code" in error &&
+    typeof error.code === "string" && codes.includes(error.code);
+}
+
+// The three checks below read the error's code, which is the same on every
+// runtime. They also accept Deno's own error classes, which core and its
+// tests still construct without a code; that arm goes when they stop.
+
+/** Whether `error` means the file or directory is not there. */
+export function isNotFound(error: unknown): error is Error {
+  return error instanceof Deno.errors.NotFound || hasCode(error, "ENOENT");
+}
+
+/** Whether `error` means the file or directory is already there. */
+export function isAlreadyExists(error: unknown): error is Error {
+  return error instanceof Deno.errors.AlreadyExists ||
+    hasCode(error, "EEXIST");
+}
+
+/** Whether `error` means the operating system refused access. */
+export function isPermissionDenied(error: unknown): error is Error {
+  return error instanceof Deno.errors.PermissionDenied ||
+    hasCode(error, "EACCES", "EPERM");
+}
+
 /** Read a file's bytes, or `null` when it does not exist. */
 export async function readFileOrNull(
   path: string,
@@ -111,7 +138,7 @@ export async function readFileOrNull(
   try {
     return await Deno.readFile(path);
   } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return null;
+    if (isNotFound(error)) return null;
     throw error;
   }
 }
@@ -121,7 +148,7 @@ export async function readTextOrNull(path: string): Promise<string | null> {
   try {
     return await Deno.readTextFile(path);
   } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return null;
+    if (isNotFound(error)) return null;
     throw error;
   }
 }
@@ -135,7 +162,7 @@ export async function statOrNull(path: string): Promise<Deno.FileInfo | null> {
   try {
     return await Deno.stat(path);
   } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return null;
+    if (isNotFound(error)) return null;
     throw error;
   }
 }
@@ -150,7 +177,7 @@ export async function lstatOrNull(path: string): Promise<Deno.FileInfo | null> {
   try {
     return await Deno.lstat(path);
   } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return null;
+    if (isNotFound(error)) return null;
     throw error;
   }
 }

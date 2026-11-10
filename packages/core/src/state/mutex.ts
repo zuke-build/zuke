@@ -18,7 +18,7 @@
  */
 
 import type { StateHost } from "./store.ts";
-import { delay } from "../internal.ts";
+import { delay, isPermissionDenied } from "../internal.ts";
 
 /** How long to wait for a contended marker before giving up (~1s in total). */
 const LOCK_ATTEMPTS = 100;
@@ -131,7 +131,7 @@ async function markerExpired(
   try {
     stamp = await host.readText(marker);
   } catch (error) {
-    if (error instanceof Deno.errors.PermissionDenied) return false;
+    if (isPermissionDenied(error)) return false;
     throw error;
   }
   if (stamp === null || !/^\d+$/.test(stamp)) return false;

@@ -28,6 +28,8 @@ import { ambientRedactor } from "./ambient_redactor.ts";
 import { type AbsolutePath, absolutePath, type PathLike } from "./path.ts";
 import { secretsInOutput } from "./secret_output.ts";
 import { SecretOutputSettings } from "./secret_output_settings.ts";
+import { isNotFound } from "./internal.ts";
+import { type HostOs, hostOs } from "./host.ts";
 
 export type { PathLike };
 export { SecretOutputSettings };
@@ -85,7 +87,7 @@ function isFile(path: string): boolean {
 function findNodeModulesBin(
   tool: string,
   cwd: string,
-  os: typeof Deno.build.os,
+  os: HostOs,
 ): NodeBinLookup {
   const key = `${os}\0${tool}\0${cwd}`;
   const cached = NODE_BIN_MEMO.get(key);
@@ -168,7 +170,7 @@ export class ToolNotFoundError extends Error {
  */
 export function shimFallbackArgv(
   argv: ReadonlyArray<string>,
-  os: typeof Deno.build.os,
+  os: HostOs,
 ): string[] | null {
   return os === "windows" ? ["cmd", "/c", ...argv] : null;
 }
@@ -186,7 +188,7 @@ export function shimFallbackArgv(
  */
 export function windowsCmdShim(
   argv: ReadonlyArray<string>,
-  os: typeof Deno.build.os,
+  os: HostOs,
 ): string[] {
   const first = argv[0];
   return os === "windows" && first !== undefined && /\.(cmd|bat)$/i.test(first)
@@ -208,8 +210,8 @@ export abstract class ToolSettings {
    * which on Windows means looking for the `.cmd` shim rather than the bare
    * name.
    *
-   * In production this is always `Deno.build.os`. It is exposed as a public
-   * field — rather than read from `Deno.build.os` inline — so that tests can
+   * In production this is always the running host's. It is exposed as a public
+   * field — rather than read inline — so that tests can
    * pin a specific platform without spawning a subprocess or touching the
    * environment:
    *
@@ -221,7 +223,7 @@ export abstract class ToolSettings {
    * The trailing underscore signals an internal test seam: do not rely on this
    * field in production code.
    */
-  os_: typeof Deno.build.os = Deno.build.os;
+  os_: HostOs = hostOs();
 
   /**
    * Register `value` with the run's redactor, so every rendered form of this
@@ -556,7 +558,7 @@ export abstract class ToolSettings {
     try {
       return await this.#execute(argv);
     } catch (error) {
-      if (error instanceof Deno.errors.NotFound) {
+      if (isNotFound(error)) {
         throw new ToolNotFoundError(tool, sawNodeModules);
       }
       throw error;

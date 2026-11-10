@@ -22,7 +22,7 @@
  * @module
  */
 
-import { defaultReadEnv } from "./internal.ts";
+import { defaultReadEnv, isAlreadyExists, isNotFound } from "./internal.ts";
 import type { PathLike } from "./path.ts";
 
 /** Options for {@link FileTasksApi.createDirectory}. */
@@ -70,7 +70,7 @@ async function entryExists(path: string): Promise<boolean> {
     await Deno.lstat(path);
     return true;
   } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return false;
+    if (isNotFound(error)) return false;
     throw error;
   }
 }
@@ -223,7 +223,7 @@ export const FileTasks: FileTasksApi = {
         await Deno.remove(`${dir}/${entry.name}`, { recursive: true });
       }
     } catch (error) {
-      if (error instanceof Deno.errors.NotFound) return; // nothing to clean
+      if (isNotFound(error)) return; // nothing to clean
       throw error;
     }
   },
@@ -235,7 +235,7 @@ export const FileTasks: FileTasksApi = {
       });
       return true;
     } catch (error) {
-      if (error instanceof Deno.errors.NotFound) return false;
+      if (isNotFound(error)) return false;
       throw error;
     }
   },
@@ -274,7 +274,7 @@ export const FileTasks: FileTasksApi = {
       // Attempt first, then replace: a caller without `force` gets Deno's own
       // AlreadyExists untouched, and nothing on disk is unlinked until the
       // path is known to be occupied.
-      if (!(error instanceof Deno.errors.AlreadyExists) || !options.force) {
+      if (!isAlreadyExists(error) || !options.force) {
         throw error;
       }
     }

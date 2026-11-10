@@ -38,10 +38,11 @@ import {
 } from "./compression.ts";
 import { GitHubActionsCacheStore } from "./github_actions_cache.ts";
 import { artifactBody, assertSecureBackendUrl, HttpError } from "./http.ts";
-import { messageOf } from "./internal.ts";
+import { isNotFound, messageOf } from "./internal.ts";
 import { redactUrl } from "./redact_url.ts";
 import type { AwsCredentials } from "./aws_sigv4.ts";
 import { S3CacheStore } from "./s3_cache.ts";
+import { hostOs } from "./host.ts";
 
 /**
  * A content-addressed store for archived target outputs, keyed by
@@ -769,7 +770,7 @@ export class FileSystemCacheStore implements RemoteCacheStore {
     try {
       file = await Deno.open(this.#path(key));
     } catch (error) {
-      if (error instanceof Deno.errors.NotFound) return null;
+      if (isNotFound(error)) return null;
       throw error;
     }
     try {
@@ -816,7 +817,7 @@ export class FileSystemCacheStore implements RemoteCacheStore {
     try {
       await Deno.writeFile(partial, artifact);
       // Not group-writable whatever the umask, so getStream accepts it.
-      if (Deno.build.os !== "windows") await Deno.chmod(partial, 0o644);
+      if (hostOs() !== "windows") await Deno.chmod(partial, 0o644);
       await Deno.rename(partial, this.#path(key));
     } catch (error) {
       await Deno.remove(partial).catch(() => {}); // already gone is fine

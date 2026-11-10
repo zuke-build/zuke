@@ -14,6 +14,7 @@
 
 import { type Configure, runSettings, ToolSettings } from "./tooling.ts";
 import type { CommandOutput } from "./shell.ts";
+import type { HostOs } from "./host.ts";
 
 /**
  * The platform-appropriate command to open `target` (a URL or file path) in
@@ -24,7 +25,7 @@ import type { CommandOutput } from "./shell.ts";
  * cannot drift between them.
  */
 export function browserCommand(
-  os: typeof Deno.build.os,
+  os: HostOs,
   target: string,
 ): [string, string[]] {
   if (os === "windows") {

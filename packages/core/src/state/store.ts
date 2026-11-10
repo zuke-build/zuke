@@ -18,6 +18,7 @@
 
 import type { RunQuery, RunRecord, RunSummary } from "./types.ts";
 import type { HeldLockEntry, LockHolder } from "./lock.ts";
+import { isAlreadyExists, isNotFound } from "../internal.ts";
 
 /** The result of a {@link StateStore.putRun} compare-and-swap write. */
 export type PutResult =
@@ -144,7 +145,7 @@ export const defaultStateHost: StateHost = {
     try {
       return await Deno.readTextFile(path);
     } catch (error) {
-      if (error instanceof Deno.errors.NotFound) return null;
+      if (isNotFound(error)) return null;
       throw error;
     }
   },
@@ -162,7 +163,7 @@ export const defaultStateHost: StateHost = {
       file.close();
       return true;
     } catch (error) {
-      if (error instanceof Deno.errors.AlreadyExists) return false;
+      if (isAlreadyExists(error)) return false;
       throw error;
     }
   },
@@ -170,7 +171,7 @@ export const defaultStateHost: StateHost = {
     try {
       await Deno.remove(path);
     } catch (error) {
-      if (!(error instanceof Deno.errors.NotFound)) throw error;
+      if (!isNotFound(error)) throw error;
     }
   },
   async listDir(path: string): Promise<string[]> {
@@ -178,7 +179,7 @@ export const defaultStateHost: StateHost = {
     try {
       for await (const entry of Deno.readDir(path)) names.push(entry.name);
     } catch (error) {
-      if (error instanceof Deno.errors.NotFound) return [];
+      if (isNotFound(error)) return [];
       throw error;
     }
     return names;

@@ -24,6 +24,7 @@ import { ambientSignal } from "./ambient_signal.ts";
 import { ambientEcho } from "./ambient_echo.ts";
 import { ambientOutput, scopedOutput } from "./ambient_output.ts";
 import { redactLine } from "./ambient_redactor.ts";
+import type { CommandStatus, Signal } from "./signal.ts";
 import { terminateProcess, TERMINATION_GRACE_MS } from "./terminate.ts";
 import {
   captureStream,
@@ -37,6 +38,7 @@ import {
  * for input that arrives as one line (a `package.json` script, a Makefile
  * recipe) rather than being constructed with `$`.
  */
+export type { CommandStatus, Signal } from "./signal.ts";
 export { ShellArgsError, splitShellArgs } from "./split_args.ts";
 
 /**
@@ -151,7 +153,7 @@ export class SpawnedProcess {
   }
 
   /** Resolves when the process exits (immediate success for a dry-run stub). */
-  get status(): Promise<Deno.CommandStatus> {
+  get status(): Promise<CommandStatus> {
     return this.#child?.status ??
       Promise.resolve({ success: true, code: 0, signal: null });
   }
@@ -164,7 +166,7 @@ export class SpawnedProcess {
    * dry-run stub (no child) is a no-op.
    */
   stop(
-    signal: Deno.Signal = "SIGTERM",
+    signal: Signal = "SIGTERM",
     graceMs: number = TERMINATION_GRACE_MS,
   ): Promise<void> {
     const child = this.#child;

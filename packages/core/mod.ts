@@ -40,6 +40,7 @@ export {
   ciHost,
   denoExecutable,
   detectCiHost,
+  type HostOs,
   isCI,
   type OperatingSystem,
   operatingSystem,

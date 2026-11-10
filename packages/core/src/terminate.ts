@@ -14,15 +14,17 @@
  * @module
  */
 
+import type { CommandStatus, Signal } from "./signal.ts";
+
 /** How long a process is given to exit on its own before `SIGKILL`, in ms. */
 export const TERMINATION_GRACE_MS = 5000;
 
-/** The part of `Deno.ChildProcess` the termination sequence needs. */
+/** The part of a child process the termination sequence needs. */
 export interface Terminable {
   /** Deliver a signal to the process. Throws if it has already exited. */
-  kill(signal?: Deno.Signal): void;
+  kill(signal?: Signal): void;
   /** Resolves when the process exits. */
-  readonly status: Promise<Deno.CommandStatus>;
+  readonly status: Promise<CommandStatus>;
 }
 
 /**
@@ -43,7 +45,7 @@ export interface Terminable {
  */
 export async function terminateProcess(
   child: Terminable,
-  signal: Deno.Signal = "SIGTERM",
+  signal: Signal = "SIGTERM",
   graceMs: number = TERMINATION_GRACE_MS,
 ): Promise<void> {
   try {

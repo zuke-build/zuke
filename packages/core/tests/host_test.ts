@@ -1,14 +1,17 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "./_assert.ts";
+import { assertEquals, assertThrows } from "./_assert.ts";
 import {
   type CiHost,
   ciHost,
   denoExecutable,
   detectCiHost,
+  hostArch,
+  hostOs,
   isCI,
   operatingSystem,
+  platformLabel,
 } from "../src/host.ts";
 import { withEnv as withScopedEnv } from "./_env.ts";
 
@@ -172,4 +175,31 @@ Deno.test("denoExecutable names the running deno, unless this is a compiled buil
   // the build instead of running Deno, so the compiled case resolves the bare
   // name and lets the OS find a real Deno on PATH.
   assertEquals(denoExecutable(true), "deno");
+});
+
+Deno.test("hostOs gives Node's platform names the names Zuke has always used", () => {
+  assertEquals(hostOs("win32"), "windows");
+  assertEquals(hostOs("cygwin"), "windows");
+  assertEquals(hostOs("sunos"), "solaris");
+  for (
+    const same of ["darwin", "linux", "android", "freebsd", "netbsd", "aix"]
+  ) {
+    assertEquals(hostOs(same), same);
+  }
+  // A Unix with no name of its own reads as linux, as operatingSystem reports it.
+  assertEquals(hostOs("openbsd"), "linux");
+  assertEquals(operatingSystem(hostOs("openbsd")), "linux");
+  // The running host: the same answer the runtime gives.
+  assertEquals(hostOs(), Deno.build.os);
+});
+
+Deno.test("hostArch maps the two CPUs Zuke installs for, and names any other", () => {
+  assertEquals(hostArch("x64"), "x86_64");
+  assertEquals(hostArch("arm64"), "aarch64");
+  assertEquals(hostArch(), Deno.build.arch);
+  assertThrows(() => hostArch("ia32"), Error, 'architecture "ia32"');
+});
+
+Deno.test("platformLabel names the running host as the banner always has", () => {
+  assertEquals(platformLabel(), `${Deno.build.os}-${Deno.build.arch}`);
 });

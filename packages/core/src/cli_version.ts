@@ -15,6 +15,7 @@
 import { box } from "./render.ts";
 import type { CliPaint } from "./cli_paint.ts";
 import { VERSION } from "./version.ts";
+import { platformLabel } from "./host.ts";
 
 /** What the version panel reports, gathered by {@link versionFacts}. */
 export interface VersionFacts {
@@ -34,7 +35,7 @@ export function versionFacts(): VersionFacts {
     core: VERSION,
     deno: Deno.version.deno,
     typescript: Deno.version.typescript,
-    platform: `${Deno.build.os}-${Deno.build.arch}`,
+    platform: platformLabel(),
   };
 }
 

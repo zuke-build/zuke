@@ -45,7 +45,7 @@
 
 import { findConfigDir, pathExists } from "../config.ts";
 import { ALLOW_INSECURE_ENV, isLoopbackHost } from "../http.ts";
-import { isAbsolutePath } from "../internal.ts";
+import { isAbsolutePath, isNotFound } from "../internal.ts";
 import { absolutePath } from "../path.ts";
 import type { BuildLocation } from "./descriptor.ts";
 
@@ -361,7 +361,7 @@ function realPath(path: string): string | undefined {
   try {
     return Deno.realPathSync(path);
   } catch (error) {
-    if (!(error instanceof Deno.errors.NotFound)) return undefined;
+    if (!isNotFound(error)) return undefined;
   }
   // A dangling symlink is not a missing tail: its target can appear later,
   // anywhere, after this check has passed.

@@ -45,6 +45,7 @@ import { type AbsolutePath, type PathLike, resolveDir } from "./path.ts";
 import { readFileOrNull, sha256Hex, statOrNull } from "./internal.ts";
 import {
   type Architecture,
+  hostArch,
   type OperatingSystem,
   operatingSystem,
 } from "./host.ts";
@@ -96,7 +97,7 @@ function platformOf(data: InstallPlatform): Platform {
  * ```
  */
 export function hostPlatform(): Platform {
-  return platformOf({ os: operatingSystem(), arch: Deno.build.arch });
+  return platformOf({ os: operatingSystem(), arch: hostArch() });
 }
 
 /** A download function: fetch `url` into the file at `dest`. */

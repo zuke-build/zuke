@@ -19,6 +19,7 @@
  */
 
 import { type AbsolutePath, absolutePath } from "./path.ts";
+import { isNotFound } from "./internal.ts";
 
 /** The Zuke config file name; its presence marks a repository root. */
 export const CONFIG_FILE = "zuke.json";
@@ -40,7 +41,7 @@ export function pathExists(path: string): boolean {
     Deno.lstatSync(path);
     return true;
   } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return false;
+    if (isNotFound(error)) return false;
     throw error;
   }
 }

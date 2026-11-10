@@ -16,7 +16,7 @@
  * @module
  */
 
-import { operatingSystem } from "./host.ts";
+import { type HostOs, hostOs, operatingSystem } from "./host.ts";
 import type { PathLike } from "./path.ts";
 
 /**
@@ -37,7 +37,7 @@ import type { PathLike } from "./path.ts";
  */
 export function prependPath(
   dir: PathLike,
-  os: typeof Deno.build.os = Deno.build.os,
+  os: HostOs = hostOs(),
 ): string {
   const separator = operatingSystem(os) === "windows" ? ";" : ":";
   const entry = String(dir);

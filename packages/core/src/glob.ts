@@ -17,7 +17,7 @@
  * @module
  */
 
-import { isAbsolutePath } from "./internal.ts";
+import { isAbsolutePath, isNotFound } from "./internal.ts";
 
 /** Escape a literal substring for use inside a regular expression. */
 function escapeRegExp(text: string): string {
@@ -126,7 +126,7 @@ export async function glob(
       const info = await Deno.stat(absOf(base));
       await walk(base, info.isDirectory);
     } catch (error) {
-      if (!(error instanceof Deno.errors.NotFound)) throw error;
+      if (!isNotFound(error)) throw error;
       // A non-existent base simply matches nothing.
     }
   }
