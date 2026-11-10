@@ -10,10 +10,12 @@ import {
   defaultHost,
   delegatesImportMap,
   denoJsonState,
+  existingBuildFile,
   isRecord,
   mergeDenoJson,
   remappedImports,
   runSetup,
+  unrelatedBuildFile,
 } from "../src/setup.ts";
 import {
   PYTHON_SDK_COMMAND,
@@ -369,7 +371,7 @@ Deno.test("runSetup scaffolds an empty project", async () => {
     "created",
     "created",
   ]);
-  assertEquals(host.files.get("zuke.ts")?.includes("class Foo"), true);
+  assertEquals(host.files.get("build.ts")?.includes("class Foo"), true);
   assertEquals(host.files.has("zuke"), true);
   assertEquals(host.files.has("zuke.ps1"), true);
   assertEquals(host.files.get("zuke.json")?.includes('"name": "Foo"'), true);
@@ -418,7 +420,7 @@ Deno.test("runSetup writes the launcher under a custom --launcher-name", async (
   assertEquals(host.files.has("build"), true);
   assertEquals(host.files.has("build.ps1"), true);
   assertEquals(host.files.has("zuke"), false); // the default launcher isn't written
-  assertEquals(host.files.has("zuke.ts"), true); // the build file keeps its name
+  assertEquals(host.files.has("build.ts"), true); // the build file keeps its name
   assertEquals(host.chmods[0], ["build", 0o755]);
 });
 
@@ -474,7 +476,7 @@ Deno.test("runSetup rejects a launcher name that shadows a scaffolded file", asy
   await assertRejects(
     () =>
       runSetup(
-        { dir: ".", force: false, name: "Foo", launcherName: "zuke.ts" },
+        { dir: ".", force: false, name: "Foo", launcherName: "build.ts" },
         host,
       ),
     Error,
@@ -483,10 +485,10 @@ Deno.test("runSetup rejects a launcher name that shadows a scaffolded file", asy
 });
 
 Deno.test("runSetup rejects a case-variant launcher name that shadows a file", async () => {
-  // On a case-insensitive filesystem `Zuke.ts` would clobber the `zuke.ts`
+  // On a case-insensitive filesystem `Build.ts` would clobber the `build.ts`
   // build file, so it must be rejected regardless of case.
   const host = new FakeHost();
-  for (const shadow of ["Zuke.ts", "ZUKE.JSON", "Deno.json", ".GITIGNORE"]) {
+  for (const shadow of ["Build.ts", "ZUKE.JSON", "Deno.json", ".GITIGNORE"]) {
     await assertRejects(
       () =>
         runSetup(
@@ -737,8 +739,8 @@ Deno.test("runSetup writes to disk via the default host", async () => {
   await withTemp(async (dir) => {
     const result = await runSetup({ dir, force: false, name: "Acme" });
     assertEquals(result.files.length, 6);
-    const zukeTs = await Deno.readTextFile(`${dir}/zuke.ts`);
-    assertEquals(zukeTs.includes("class Acme extends Build"), true);
+    const buildTs = await Deno.readTextFile(`${dir}/build.ts`);
+    assertEquals(buildTs.includes("class Acme extends Build"), true);
     const config = await Deno.readTextFile(`${dir}/zuke.json`);
     assertEquals(config.includes('"name": "Acme"'), true);
     if (Deno.build.os !== "windows") {
@@ -788,7 +790,7 @@ Deno.test("runSetup writes .mcp.json only when --mcp asks for it", async () => {
   );
   assertEquals(result.files.at(-1), { path: ".mcp.json", status: "created" });
   const config = JSON.parse(host.files.get(".mcp.json") ?? "{}");
-  assertEquals(config.mcpServers.zuke.args, ["run", "-A", "zuke.ts", "mcp"]);
+  assertEquals(config.mcpServers.zuke.args, ["run", "-A", "build.ts", "mcp"]);
 });
 
 Deno.test("runSetup --mcp --allow-run registers the server with execution enabled", async () => {
@@ -842,7 +844,7 @@ Deno.test("runSetup repairs a malformed zuke entry without --force", async () =>
   );
   assertEquals(result.files.at(-1)?.status, "overwritten");
   const repaired = JSON.parse(host.files.get(".mcp.json") ?? "{}");
-  assertEquals(repaired.mcpServers.zuke.args, ["run", "-A", "zuke.ts", "mcp"]);
+  assertEquals(repaired.mcpServers.zuke.args, ["run", "-A", "build.ts", "mcp"]);
 });
 
 Deno.test("runSetup skips an unparseable .mcp.json with a notice", async () => {
@@ -1054,4 +1056,151 @@ Deno.test("starterConfig records a build file only when it is not the default", 
     name: "Acme",
     build: "build.ts",
   });
+});
+
+Deno.test("a new project gets build.ts, recorded in zuke.json", async () => {
+  const host = new FakeHost();
+  const result = await runSetup({ dir: ".", force: false, name: "Acme" }, host);
+  assertEquals(result.files.map((f) => f.path), [
+    "build.ts",
+    "zuke",
+    "zuke.ps1",
+    "zuke.json",
+    "deno.json",
+    ".gitignore",
+  ]);
+  assertEquals(JSON.parse(host.files.get("zuke.json") ?? ""), {
+    name: "Acme",
+    build: "build.ts",
+  });
+  assertEquals(await existingBuildFile(".", host), "build.ts");
+});
+
+Deno.test("--build-file names a new project's build file, and only a valid TypeScript one", async () => {
+  const host = new FakeHost();
+  await runSetup(
+    { dir: "sub", force: false, name: "Acme", buildFile: "ci.ts" },
+    host,
+  );
+  assertStringIncludes(host.files.get("sub/ci.ts") ?? "", "class Acme");
+  assertStringIncludes(host.files.get("sub/zuke") ?? "", 'run -A ci.ts "$@"');
+  assertEquals(JSON.parse(host.files.get("sub/zuke.json") ?? ""), {
+    name: "Acme",
+    build: "ci.ts",
+  });
+  for (const buildFile of ["../ci.ts", "ci.py", "-A.ts"]) {
+    const empty = new FakeHost();
+    await assertRejects(
+      () => runSetup({ dir: ".", force: true, name: "Acme", buildFile }, empty),
+      Error,
+      "--build-file",
+    );
+    assertEquals(empty.files.size, 0);
+  }
+  // A Python build is always build.py.
+  await assertRejects(
+    () =>
+      runSetup({
+        dir: ".",
+        force: false,
+        name: "Acme",
+        buildFile: "ci.ts",
+        sdk: { pin: testPin("2.4.0", "1.2.0") },
+      }, new FakeHost()),
+    Error,
+    "a Python build is always build.py",
+  );
+});
+
+Deno.test("an existing zuke.ts project stays one, with or without a zuke.json", async () => {
+  const projects: Record<string, string>[] = [
+    { "zuke.ts": "old" },
+    { "zuke.json": '{ "name": "Old" }\n' },
+  ];
+  for (const files of projects) {
+    const host = new FakeHost(files);
+    assertEquals(await existingBuildFile(".", host), "zuke.ts");
+    await runSetup({ dir: ".", force: true, name: "Acme" }, host);
+    assertEquals(host.files.has("build.ts"), false);
+    assertStringIncludes(host.files.get("zuke.ts") ?? "", "class Acme");
+    assertEquals(JSON.parse(host.files.get("zuke.json") ?? ""), {
+      name: "Acme",
+    });
+  }
+  assertEquals(await existingBuildFile(".", new FakeHost()), undefined);
+});
+
+Deno.test("--build-file moves an existing project's build file only with --force", async () => {
+  const before = { "zuke.json": '{ "name": "Old" }\n', "zuke.ts": "old" };
+  const kept = new FakeHost(before);
+  await assertRejects(
+    () =>
+      runSetup(
+        { dir: ".", force: false, name: "Acme", buildFile: "build.ts" },
+        kept,
+      ),
+    Error,
+    "this project's build file is zuke.ts, not build.ts",
+  );
+  assertEquals(Object.fromEntries(kept.files), before);
+  // Naming the file it already has is not a move.
+  await runSetup(
+    { dir: ".", force: false, name: "Acme", buildFile: "zuke.ts" },
+    kept,
+  );
+  assertEquals(kept.files.get("zuke.ts"), "old");
+
+  const moved = new FakeHost(before);
+  await runSetup(
+    { dir: ".", force: true, name: "Acme", buildFile: "build.ts" },
+    moved,
+  );
+  assertStringIncludes(moved.files.get("build.ts") ?? "", "class Acme");
+  assertEquals(moved.files.get("zuke.ts"), "old");
+  assertEquals(JSON.parse(moved.files.get("zuke.json") ?? ""), {
+    name: "Acme",
+    build: "build.ts",
+  });
+});
+
+Deno.test("a new project never takes over an unrelated build.ts, even with --force", async () => {
+  const unrelated = "console.log('my own script');\n";
+  for (const force of [false, true]) {
+    const host = new FakeHost({ "build.ts": unrelated });
+    assertEquals(await unrelatedBuildFile(".", "build.ts", host), true);
+    await assertRejects(
+      () => runSetup({ dir: ".", force, name: "Acme" }, host),
+      Error,
+      "build.ts already exists and is not a Zuke build",
+    );
+    // Nothing was written, zuke.json included: it must not point at the file.
+    assertEquals(Object.fromEntries(host.files), { "build.ts": unrelated });
+  }
+  // A build.ts that is a Zuke build is the project's own: kept, and named.
+  const mine = 'import { Build } from "@zuke/core";\n';
+  const host = new FakeHost({ "build.ts": mine });
+  assertEquals(await unrelatedBuildFile(".", "build.ts", host), false);
+  await runSetup({ dir: ".", force: false, name: "Acme" }, host);
+  assertEquals(host.files.get("build.ts"), mine);
+  assertEquals(await existingBuildFile(".", host), "build.ts");
+});
+
+Deno.test("a link or a directory at the build file name is left to the collision check", async () => {
+  const linked = new FakeHost();
+  linked.symlinks.add("build.ts");
+  assertEquals(await unrelatedBuildFile(".", "build.ts", linked), false);
+  assertEquals(linked.reads, []);
+  await assertRejects(
+    () => runSetup({ dir: ".", force: true, name: "Acme" }, linked),
+    Error,
+    "symbolic link",
+  );
+  const directory = new FakeHost();
+  directory.directories.add("build.ts");
+  assertEquals(await unrelatedBuildFile(".", "build.ts", directory), false);
+  await assertRejects(
+    () => runSetup({ dir: ".", force: true, name: "Acme" }, directory),
+    Error,
+    "a directory exists",
+  );
 });

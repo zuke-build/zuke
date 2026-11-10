@@ -20,7 +20,12 @@ import {
   parseMcpConfig,
 } from "./mcp_config.ts";
 import { isRecord } from "./records.ts";
-import { BUILD_FILE, buildFileNamed } from "./build_file.ts";
+import {
+  assertBuildFileName,
+  BUILD_FILE,
+  buildFileNamed,
+  NEW_BUILD_FILE,
+} from "./build_file.ts";
 import { launcherBash, launcherPwsh } from "./launcher.ts";
 import { binaryLauncherBash, binaryLauncherPwsh } from "./binary_launcher.ts";
 import type { BinaryPin } from "./binary_pin.ts";
@@ -297,8 +302,14 @@ export interface SetupOptions {
   dir: string;
   /** Overwrite existing files instead of skipping them. */
   force: boolean;
-  /** Build class name for the starter `zuke.ts`. */
+  /** Build class name for the starter build file. */
   name: string;
+  /**
+   * The TypeScript build file's name (`--build-file`). Omitted: the name the
+   * project already has (see {@link existingBuildFile}), or `build.ts` for a
+   * new one. Not for {@link SetupOptions.sdk}, whose build is `build.py`.
+   */
+  buildFile?: string;
   /**
    * The base name for the launcher scripts (`<name>` and `<name>.ps1`).
    * Defaults to `"zuke"`; override it when a `zuke/` directory already occupies
@@ -448,7 +459,86 @@ function assertLauncherName(name: string, buildFile: string): void {
 }
 
 /**
- * Scaffold Zuke into `options.dir`: a starter `zuke.ts`, the launcher scripts,
+ * The build file the TypeScript project in `dir` already has: the one its
+ * `zuke.json` names, `zuke.ts` when it names none, and `zuke.ts` too for a
+ * directory that holds one with no `zuke.json` yet. `undefined` for a
+ * directory with neither, which is a new project. A `zuke.json` that is a
+ * link is not read: scaffolding refuses it.
+ *
+ * @throws {Error} when `zuke.json` names a build file that is not a valid name.
+ */
+export async function existingBuildFile(
+  dir: string,
+  host: SetupHost,
+): Promise<string | undefined> {
+  const config = joinPath(dir, "zuke.json");
+  if (await host.exists(config) && !(await host.isSymlink(config))) {
+    return buildFileNamed(await host.readText(config));
+  }
+  return await host.exists(joinPath(dir, BUILD_FILE)) ? BUILD_FILE : undefined;
+}
+
+/**
+ * Whether `name` in `dir` is a file of the project's own that is not a Zuke
+ * build: it exists and does not import `@zuke/core`. A new project must not
+ * take such a name, because its `zuke.json` would point at an unrelated
+ * script, and `--force` would overwrite it.
+ */
+export async function unrelatedBuildFile(
+  dir: string,
+  name: string,
+  host: SetupHost,
+): Promise<boolean> {
+  const path = joinPath(dir, name);
+  // A link or a directory there is refused by the collision check instead.
+  if (
+    !(await host.exists(path)) || await host.isSymlink(path) ||
+    await host.isDirectory(path)
+  ) {
+    return false;
+  }
+  return !(await host.readText(path)).includes("@zuke/core");
+}
+
+/**
+ * The build file a TypeScript scaffold writes: the one asked for, else the
+ * project's own, else `build.ts`.
+ *
+ * @throws {Error} when the name asked for is not valid, differs from the one
+ * an existing project has and `force` is off, or would take over an unrelated
+ * file in a new project.
+ */
+async function scaffoldBuildFile(
+  options: SetupOptions,
+  host: SetupHost,
+): Promise<string> {
+  const existing = await existingBuildFile(options.dir, host);
+  const asked = options.buildFile === undefined
+    ? undefined
+    : assertBuildFileName(options.buildFile);
+  if (existing !== undefined) {
+    if (asked !== undefined && asked !== existing && !options.force) {
+      throw new Error(
+        `zuke setup: this project's build file is ${existing}, not ${asked}. ` +
+          "Pass --force to move it to the new name; the old file is left " +
+          "in place.",
+      );
+    }
+    return asked ?? existing;
+  }
+  const name = asked ?? NEW_BUILD_FILE;
+  if (await unrelatedBuildFile(options.dir, name, host)) {
+    throw new Error(
+      `zuke setup: ${joinPath(options.dir, name)} already exists and is not ` +
+        "a Zuke build, so it was left alone. Pass --build-file <name> to " +
+        "give the build another name.",
+    );
+  }
+  return name;
+}
+
+/**
+ * Scaffold Zuke into `options.dir`: a starter build file, the launcher scripts,
  * and a `deno.json` task block. Existing files are skipped unless
  * `options.force` is set; `deno.json` is always merged (never clobbered). Fails
  * up front if a target name is occupied by a directory (see
@@ -463,13 +553,16 @@ export async function runSetup(
   const notes: string[] = [];
   const launcher = options.launcherName ?? DEFAULT_LAUNCHER;
   const sdk = options.sdk;
-  // A project that already names its build file keeps the name: the build
-  // file, the launchers, the task and the MCP entry all follow zuke.json. A
-  // link there is not read: the collision check below refuses it.
-  const configPath = joinPath(options.dir, "zuke.json");
-  const buildFile = sdk === undefined && await host.exists(configPath) &&
-      !(await host.isSymlink(configPath))
-    ? buildFileNamed(await host.readText(configPath))
+  if (sdk !== undefined && options.buildFile !== undefined) {
+    throw new Error(
+      "zuke setup: --build-file names a TypeScript build file; a Python " +
+        `build is always ${PYTHON_BUILD_FILE}.`,
+    );
+  }
+  // The build file, the launchers, the task, the MCP entry and zuke.json all
+  // carry the one name. An SDK build has no TypeScript file to name.
+  const buildFile = sdk === undefined
+    ? await scaffoldBuildFile(options, host)
     : BUILD_FILE;
   assertLauncherName(launcher, buildFile);
   const variant = { bootstrapDeno: options.bootstrapDeno ?? true, buildFile };

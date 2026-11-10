@@ -357,7 +357,7 @@ Deno.test("main setup --mcp writes .mcp.json and import --allow-run passes it th
   );
   assertEquals(code, 0);
   const config = JSON.parse(host.files.get("app/.mcp.json") ?? "{}");
-  assertEquals(config.mcpServers.zuke.args, ["run", "-A", "zuke.ts", "mcp"]);
+  assertEquals(config.mcpServers.zuke.args, ["run", "-A", "build.ts", "mcp"]);
 
   const imported = new FakeHost({
     "package.json": JSON.stringify({ scripts: { test: "node --test" } }),
@@ -562,7 +562,7 @@ Deno.test("main setup honours --dir", async () => {
     new FakePrompter(false),
   );
   assertEquals(code, 0);
-  assertEquals(host.files.get("sub/zuke.ts")?.includes("class Widget"), true);
+  assertEquals(host.files.get("sub/build.ts")?.includes("class Widget"), true);
   assertEquals(host.files.has("sub/deno.json"), true);
   assertEquals(host.logs.some((l) => l.includes("into sub")), true);
 });
@@ -640,14 +640,14 @@ Deno.test("main setup (non-interactive) scaffolds with flags", async () => {
     new FakePrompter(true, "IGNORED", true),
   );
   assertEquals(code, 0);
-  assertEquals(host.files.get("zuke.ts")?.includes("class Widget"), true);
+  assertEquals(host.files.get("build.ts")?.includes("class Widget"), true);
 });
 
 Deno.test("main setup (non-tty) uses defaults without prompting", async () => {
   const host = new FakeHost();
   const code = await main(["setup"], host, new FakePrompter(false));
   assertEquals(code, 0);
-  assertEquals(host.files.get("zuke.ts")?.includes("class MyBuild"), true);
+  assertEquals(host.files.get("build.ts")?.includes("class MyBuild"), true);
 });
 
 Deno.test("main setup (interactive) asks for name and overwrite", async () => {
@@ -671,7 +671,7 @@ Deno.test("main setup (interactive) keeps --force without asking", async () => {
     new FakePrompter(true, "Named", false),
   );
   assertEquals(code, 0);
-  assertEquals(host.files.get("zuke.ts")?.includes("class Named"), true);
+  assertEquals(host.files.get("build.ts")?.includes("class Named"), true);
 });
 
 Deno.test("main setup opens with the Zuke logo and the version", async () => {
@@ -2140,4 +2140,105 @@ Deno.test("binaryMain is main with every default and the binary's engine", async
       Deno.chdir(previous);
     }
   });
+});
+
+Deno.test("parseSetupFlags reads --build-file in both forms", () => {
+  assertEquals(parseSetupFlags(["--build-file", "ci.ts"]).buildFile, "ci.ts");
+  assertEquals(parseSetupFlags(["--build-file=ci.ts"]).buildFile, "ci.ts");
+  assertEquals(parseSetupFlags(["--build-file"]).buildFile, undefined);
+  assertEquals(parseSetupFlags([]).buildFile, undefined);
+});
+
+Deno.test("main setup asks a new project's build file first, with build.ts the default", async () => {
+  const host = new FakeHost();
+  const prompter = new FakePrompter(true, "Chosen", false);
+  assertEquals(await main(["setup"], host, prompter), 0);
+  assertEquals(prompter.asks.slice(0, 2), ["Build file", "Build class name"]);
+  assertEquals(host.files.get("build.ts")?.includes("class Chosen"), true);
+
+  const named = new FakeHost();
+  assertEquals(
+    await main(
+      ["setup"],
+      named,
+      new FakePrompter(true, "", false, false, "", [" ci.ts "]),
+    ),
+    0,
+  );
+  assertEquals(named.files.has("ci.ts"), true);
+  assertEquals(named.files.has("build.ts"), false);
+});
+
+Deno.test("main setup shows --build-file as the default answer, and takes it under --yes", async () => {
+  const asked = new FakeHost();
+  const prompter = new FakePrompter(true, "", false);
+  assertEquals(
+    await main(["setup", "--build-file", "ci.ts"], asked, prompter),
+    0,
+  );
+  assertEquals(prompter.asks[0], "Build file");
+  assertEquals(asked.files.has("ci.ts"), true);
+
+  const quiet = new FakeHost();
+  assertEquals(
+    await main(
+      ["setup", "--yes", "--build-file=ci.ts"],
+      quiet,
+      new FakePrompter(true),
+    ),
+    0,
+  );
+  assertEquals(quiet.files.has("ci.ts"), true);
+});
+
+Deno.test("main setup asks again after a bad or taken build file name, then gives up", async () => {
+  const host = new FakeHost({ "build.ts": "console.log('mine');\n" });
+  const prompter = new FakePrompter(true, "", false, false, "", [
+    "../x.ts",
+    "build.ts",
+    "ci.ts",
+  ]);
+  assertEquals(await main(["setup"], host, prompter), 0);
+  assertEquals(prompter.asks.filter((q) => q === "Build file").length, 3);
+  assertEquals(
+    host.logs.some((l) => l.includes("not a plain TypeScript file name")),
+    true,
+  );
+  assertEquals(
+    host.logs.some((l) => l.includes("build.ts already exists here")),
+    true,
+  );
+  assertEquals(host.files.get("build.ts"), "console.log('mine');\n");
+  assertEquals(host.files.has("ci.ts"), true);
+
+  // A closed stdin answers the default every time: three refusals, then stop.
+  const stuck = new FakeHost({ "build.ts": "console.log('mine');\n" });
+  const silent = new FakePrompter(true, "", false);
+  assertEquals(await main(["setup"], stuck, silent), 1);
+  assertEquals(silent.asks, ["Build file", "Build file", "Build file"]);
+  assertEquals([...stuck.files.keys()], ["build.ts"]);
+});
+
+Deno.test("main setup does not ask the build file of an existing project or a Python build", async () => {
+  const existing = new FakePrompter(true, "Chosen", true);
+  const host = new FakeHost({ "zuke.json": '{ "name": "Old" }\n' });
+  assertEquals(await main(["setup"], host, existing), 0);
+  assertEquals(existing.asks.includes("Build file"), false);
+  assertEquals(host.files.has("zuke.ts"), true);
+
+  const python = new FakePrompter(true, "Chosen", false);
+  assertEquals(
+    await main(
+      ["setup", "--sdk", "python"],
+      new FakeHost(),
+      python,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      pinRegistry(RELEASES),
+    ),
+    0,
+  );
+  assertEquals(python.asks.includes("Build file"), false);
 });

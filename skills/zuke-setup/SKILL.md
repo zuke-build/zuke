@@ -96,7 +96,7 @@ TypeScript authoring skill does not apply to a `build.py`.
 ### Migrating an existing project: `zuke import`
 
 If the project already has `package.json` scripts or a `Makefile`, prefer
-`zuke import` over `setup` — it reads them and generates a `zuke.ts` with a
+`zuke import` over `setup` — it reads them and generates a `build.ts` with a
 target per task, a working starting point instead of a blank build:
 
 ```sh
@@ -133,12 +133,14 @@ no `CmdTasks` and no Deno.
 
 ### What `zuke setup` writes
 
-- **`zuke.ts`** — a starter build class with a sample target and a `default`.
+- **`build.ts`** — a starter build class with a sample target and a `default`. A
+  new project gets `build.ts`: the wizard asks the name, `--build-file <name>`
+  answers up front. A project that already has a `zuke.ts` keeps it.
 - **`./zuke`** + **`./zuke.ps1`** — launchers that locate the project and run
-  `zuke.ts`. (A Python project's launchers run the pinned `zuke` binary instead,
-  as described above.) By default (`--bootstrap`) they use the Deno on `PATH`
-  and, when there is none, download the pinned release Zuke itself runs on,
-  verify it against a per-platform SHA-256, and install it under `~/.deno` —
+  the build file. (A Python project's launchers run the pinned `zuke` binary
+  instead, as described above.) By default (`--bootstrap`) they use the Deno on
+  `PATH` and, when there is none, download the pinned release Zuke itself runs
+  on, verify it against a per-platform SHA-256, and install it under `~/.deno` —
   never an install script, never an unverified binary — so a clone needs nothing
   installed first. With `--no-bootstrap` they require Deno on `PATH` and exit
   with the install docs URL when it is missing, for a project that must never
@@ -168,15 +170,15 @@ no `CmdTasks` and no Deno.
   is kept — that is how a pin or a local checkout survives — with a note saying
   so. `--mcp` that cannot register into an unparseable `.mcp.json` is reported
   the same way, as a note.
-- **`zuke.json`** — `{ "name": "..." }`, which marks the repo root. A `build`
-  field (`"build": "build.ts"`) names the build file when it is not `zuke.ts`;
-  the `zuke` command and a re-run of `zuke setup` follow it. With `--sdk python`
-  it also carries `sdk.command` and `engine`, and `build.py` replaces `zuke.ts`
-  while `deno.json` is not written.
+- **`zuke.json`** — `{ "name": "...", "build": "build.ts" }`, which marks the
+  repo root and names the build file; the `zuke` command and a re-run of
+  `zuke setup` follow it. A `zuke.json` with no `build` field means `zuke.ts`.
+  With `--sdk python` it carries `sdk.command` and `engine` instead, and
+  `build.py` is the build file while `deno.json` is not written.
 - **`.gitignore`** — created or appended so `.zuke/` is ignored (the cache and
   durable run state live there); untouched if it already covers it.
 - **`.mcp.json`** (with `--mcp`) — `mcpServers.zuke` launching
-  `deno run -A zuke.ts mcp` (plus `--allow-run` when asked). Merged around any
+  `deno run -A build.ts mcp` (plus `--allow-run` when asked). Merged around any
   other servers already in the file; an existing `zuke` entry is kept unless
   `--force` is set.
 

@@ -52,7 +52,7 @@ choco install zuke
 **2. Set up a project and run it**, whichever way you installed:
 
 ```sh
-zuke setup         # scaffold zuke.ts + the ./zuke launcher
+zuke setup         # scaffold build.ts + the ./zuke launcher
 zuke               # run the build
 zuke generate-ci   # write .github/workflows/ci.yml from the build
 ```
@@ -91,8 +91,8 @@ can never drift from the build.
 </p>
 
 Already have `package.json` scripts, a `Makefile` or `pyproject.toml` tasks?
-`zuke import` turns them into a build (`zuke.ts`, or `build.py` for Python) with
-a target per task. Details, the launcher, and a longer first build:
+`zuke import` turns them into a build (`build.ts`, or `build.py` for Python)
+with a target per task. Details, the launcher, and a longer first build:
 **[Getting started](./docs/getting-started.md)**.
 
 Prefer to poke at something real? [`examples/`](./examples) holds six cloneable
@@ -200,7 +200,7 @@ download.
 The same steps, however you installed the CLI:
 
 ```sh
-zuke setup          # scaffold zuke.ts, zuke.json and the ./zuke launcher
+zuke setup          # scaffold build.ts, zuke.json and the ./zuke launcher
 zuke setup --mcp    # …and register the build's MCP server for your agent
 zuke import         # or migrate package.json scripts / a Makefile / pyproject.toml tasks instead
 zuke                # run the default target; any other command runs the build, like zuke ci

@@ -143,6 +143,9 @@ export class FakePrompter implements Prompter {
     /** The answer to the launcher question; `""` takes its default. Kept
      * apart from `answer`, which is the build class name. */
     private readonly bootstrap: string = "",
+    /** The answers to the build file question, in order; when they run out,
+     * or with none, its default. Kept apart from `answer` too. */
+    private readonly buildFiles: string[] = [],
   ) {}
 
   interactive(): boolean {
@@ -156,6 +159,7 @@ export class FakePrompter implements Prompter {
     if (question.startsWith("Launchers: ")) {
       return this.bootstrap === "" ? fallback : this.bootstrap;
     }
+    if (question === "Build file") return this.buildFiles.shift() ?? fallback;
     return this.answer === "" ? fallback : this.answer;
   }
 

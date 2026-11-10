@@ -17,6 +17,9 @@ import { isRecord } from "./records.ts";
 /** The build file of a project whose `zuke.json` names none. */
 export const BUILD_FILE = "zuke.ts";
 
+/** The build file `zuke setup` gives a new project, recorded in its `zuke.json`. */
+export const NEW_BUILD_FILE = "build.ts";
+
 /** The field of `zuke.json` naming the build file. */
 export const BUILD_FIELD = "build";
 
@@ -30,14 +33,16 @@ const BUILD_FILE_NAME = /^[A-Za-z0-9_.][A-Za-z0-9_.-]*\.ts$/;
  * `name`, when it is a build file name that is safe to write into a launcher
  * and pass to `deno run`.
  *
- * @throws {Error} naming the `build` field and the rule, otherwise.
+ * @throws {Error} naming the two places a name comes from, and the rule,
+ * otherwise.
  */
 export function assertBuildFileName(name: string): string {
   if (!BUILD_FILE_NAME.test(name)) {
     throw new Error(
-      `zuke: zuke.json names '${BUILD_FIELD}': '${name}', which is not a ` +
-        "plain TypeScript file name: letters, digits, dots, dashes and " +
-        "underscores only, not starting with a dash, ending in .ts",
+      `zuke: the build file name '${name}' (zuke.json's '${BUILD_FIELD}', ` +
+        "or --build-file) is not a plain TypeScript file name: letters, " +
+        "digits, dots, dashes and underscores only, not starting with a " +
+        "dash, ending in .ts",
     );
   }
   return name;

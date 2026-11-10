@@ -51,7 +51,7 @@ Deno.test("setup --mcp registers a server that lists the scaffolded targets", as
     const config = JSON.parse(await Deno.readTextFile(`${dir}/.mcp.json`));
     const server = config.mcpServers.zuke;
     assertEquals(server.command, "deno");
-    assertEquals(server.args, ["run", "-A", "zuke.ts", "mcp"]);
+    assertEquals(server.args, ["run", "-A", "build.ts", "mcp"]);
 
     // Launch what the file says, from the project directory, and talk MCP.
     const child = new Deno.Command(Deno.execPath(), {

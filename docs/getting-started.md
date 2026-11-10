@@ -14,9 +14,12 @@ Zuke is imported straight from JSR.
 ## Scaffold a project with `zuke setup`
 
 The fastest start is the `@zuke/cli` tool. Install it once, then scaffold a
-starter `zuke.ts`, the `./zuke` launchers, a `deno.json` task, and a `zuke.json`
-config (which marks the repo root — see [paths](./paths.md#repo-root-reporoot))
-into any directory:
+starter `build.ts`, the `./zuke` launchers, a `deno.json` task, and a
+`zuke.json` config (which marks the repo root — see
+[paths](./paths.md#repo-root-reporoot)) into any directory. The build file is
+`build.ts` for a new project; the wizard asks, `--build-file <name>` answers up
+front, and the name is recorded in `zuke.json`. A project that already has a
+`zuke.ts` keeps it:
 
 ```sh
 deno install -A -g -n zuke jsr:@zuke/cli   # once
@@ -91,7 +94,7 @@ they refuse a Python build: its tool wrappers come with the SDK, as
 ## Migrate an existing project with `zuke import`
 
 Already have `package.json` scripts or a `Makefile`? `zuke import` reads them
-and generates a `zuke.ts` with a target per task — a working starting point you
+and generates a `build.ts` with a target per task — a working starting point you
 then refine into typed wrappers, instead of a blank page:
 
 ```sh
@@ -116,8 +119,10 @@ does, each command run through `await ctx.sh(...)`; `--zuke <version>` pins the
 
 ## Run it yourself
 
-Or write the `zuke.ts` by hand: put it in your project root beside a `zuke.json`
-(which marks the root — see [paths](./paths.md#repo-root-reporoot)), and run it:
+Or write the build file by hand: put a `zuke.ts` in your project root beside a
+`zuke.json` (which marks the root — see [paths](./paths.md#repo-root-reporoot);
+give it a `"build": "build.ts"` field to name the file something else), and run
+it:
 
 ```sh
 zuke <target>

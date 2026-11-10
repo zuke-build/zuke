@@ -218,7 +218,9 @@ interface SetupFlags
   yes: boolean
     Skip prompts and accept defaults.
   name?: string
-    Build class name for the starter `zuke.ts`.
+    Build class name for the starter build file.
+  buildFile?: string
+    The TypeScript build file's name (`--build-file`). Unset: ask, else `build.ts`.
   dir?: string
     Directory to scaffold into (defaults to the current directory).
   launcherName?: string

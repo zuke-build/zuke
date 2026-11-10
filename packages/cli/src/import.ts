@@ -305,8 +305,10 @@ export interface ImportOptions {
   dir: string;
   /** Overwrite existing scaffolded files instead of skipping them. */
   force: boolean;
-  /** Build class name for the generated `zuke.ts` or `build.py`. */
+  /** Build class name for the generated build file. */
   name: string;
+  /** The TypeScript build file's name (`--build-file`); see `runSetup`. */
+  buildFile?: string;
   /**
    * Force a specific source; auto-detected (package.json, then Makefile, then
    * pyproject.toml) when unset.
@@ -430,6 +432,7 @@ export async function runImport(
       dir: options.dir,
       force: options.force,
       name: options.name,
+      buildFile: options.buildFile,
       buildContent: translation.buildContent,
       imports: translation.imports,
       mcp: options.mcp,
