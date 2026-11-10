@@ -142,6 +142,7 @@
     "highcpu",
     "HMAC",
     "idempotently",
+    "illumos",
     "IMDS",
     "infosec",
     "Interpolatable",
@@ -390,7 +391,8 @@
     "zukeeper"
   ],
   "ignoreRegExpList": [
-    "/`[0-9a-z]{10,14}`/"
+    "/`[0-9a-z]{10,14}`/",
+    "/\\bSIG[A-Z0-9]+\\b/"
   ],
   "flagWords": [
     "ponytail"
