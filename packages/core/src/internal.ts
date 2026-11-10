@@ -104,15 +104,22 @@ export async function sha256Hex(data: string | Uint8Array): Promise<string> {
   ).join("");
 }
 
-/** Whether `error` carries the operating-system error `code`, as file-system errors do on every runtime. */
+/**
+ * Whether `error` is one another runtime threw that carries one of the
+ * operating-system `codes`. An error of Deno's own is never judged by its
+ * code: its class already says what it is, and on Windows the code Deno
+ * attaches is not always the one its class stands for.
+ */
 function hasCode(error: unknown, ...codes: string[]): error is Error {
-  return error instanceof Error && "code" in error &&
-    typeof error.code === "string" && codes.includes(error.code);
+  if (!(error instanceof Error) || !("code" in error)) return false;
+  if (Object.values(Deno.errors).some((kind) => error instanceof kind)) {
+    return false;
+  }
+  return typeof error.code === "string" && codes.includes(error.code);
 }
 
-// The three checks below read the error's code, which is the same on every
-// runtime. They also accept Deno's own error classes, which core and its
-// tests still construct without a code; that arm goes when they stop.
+// Each check below accepts Deno's error class, exactly as before, and the
+// matching code on an error from another runtime.
 
 /** Whether `error` means the file or directory is not there. */
 export function isNotFound(error: unknown): error is Error {

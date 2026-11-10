@@ -231,6 +231,12 @@ Deno.test("the error checks read the code every runtime sets, and still know Den
   assertEquals(isAlreadyExists(new Deno.errors.AlreadyExists("x")), true);
   assertEquals(isPermissionDenied(new Deno.errors.PermissionDenied("x")), true);
 
+  // An error of Deno's own is judged by its class alone, whatever its code.
+  const mislabelled = Object.assign(new Deno.errors.InvalidData("x"), {
+    code: "ENOENT",
+  });
+  assertEquals(isNotFound(mislabelled), false);
+
   // Each check answers for its own code only, and never for a non-error.
   assertEquals(isNotFound(coded("EEXIST")), false);
   assertEquals(isAlreadyExists(coded("ENOENT")), false);
