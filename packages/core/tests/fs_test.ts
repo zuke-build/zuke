@@ -156,6 +156,12 @@ Deno.test("writeFile writes bytes and text, replacing what is there", async () =
     assertEquals(await Deno.readFile(`${dir}/out`), new Uint8Array([9, 8, 7]));
     await writeFile(`${dir}/out`, "text now");
     assertEquals(await Deno.readTextFile(`${dir}/out`), "text now");
+    // With a mode, on every platform: Windows has no permission bits and
+    // ignores it, as Deno's own write does, and the contents still land.
+    await writeFile(`${dir}/out`, "with a mode", 0o644);
+    assertEquals(await Deno.readTextFile(`${dir}/out`), "with a mode");
+    await writeFile(`${dir}/fresh`, new Uint8Array([1, 2]), 0o600);
+    assertEquals(await Deno.readFile(`${dir}/fresh`), new Uint8Array([1, 2]));
   });
 });
 
