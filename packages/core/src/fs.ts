@@ -29,7 +29,10 @@ import {
 } from "node:fs/promises";
 import process from "node:process";
 
-/** Whether this is Windows, which has no permission bits to set. */
+/**
+ * Whether this is Windows, which has no permission bits to set, and where
+ * Deno reports a few failures differently than it does elsewhere.
+ */
 const WINDOWS = process.platform === "win32";
 
 /** What is at a path. */
@@ -62,7 +65,8 @@ function denoErrorFor(code: string): (new (message: string) => Error) | null {
     case "ENOTDIR":
       return Deno.errors.NotADirectory;
     case "EISDIR":
-      return Deno.errors.IsADirectory;
+      // On Windows Deno throws a plain error for this one.
+      return WINDOWS ? null : Deno.errors.IsADirectory;
     case "ELOOP":
       return Deno.errors.FilesystemLoop;
     default:
@@ -71,31 +75,49 @@ function denoErrorFor(code: string): (new (message: string) => Error) | null {
 }
 
 /**
+ * Codes an operation reports under another name on Deno, keyed by the code
+ * `node:fs` gives. Each entry is a difference the parity tests found by
+ * running both on the platform it names.
+ */
+type Recoded = Readonly<Record<string, string>>;
+
+/**
+ * Deno on Windows reports a directory that cannot be made because a file is
+ * in the way as already existing, where `node:fs` says it is not a directory.
+ */
+const MKDIR_ON_WINDOWS: Recoded = { ENOTDIR: "EEXIST" };
+
+/**
  * `error` as a caller on this runtime has always seen it: on Deno, the
  * `Deno.errors` class for its code, with the code and the original kept; any
- * other error, and every error on another runtime, unchanged.
+ * other error, and every error on another runtime, unchanged. `recoded`
+ * renames a code first, for an operation Deno reports differently.
  */
-function surfaced(error: unknown): unknown {
+function surfaced(error: unknown, recoded: Recoded = {}): unknown {
   if (
     typeof Deno === "undefined" || !(error instanceof Error) ||
     !("code" in error) || typeof error.code !== "string"
   ) {
     return error;
   }
-  const Kind = denoErrorFor(error.code);
+  const code = recoded[error.code] ?? error.code;
+  const Kind = denoErrorFor(code);
   if (Kind === null) return error;
-  return Object.assign(new Kind(error.message), {
-    code: error.code,
-    cause: error,
-  });
+  return Object.assign(new Kind(error.message), { code, cause: error });
 }
 
-/** Run a file operation, surfacing its failure as {@link surfaced} says. */
-async function io<T>(operation: () => Promise<T>): Promise<T> {
+/**
+ * Run a file operation, surfacing its failure as {@link surfaced} says.
+ * `recoded` is passed for an operation whose codes Deno renames.
+ */
+async function io<T>(
+  operation: () => Promise<T>,
+  recoded?: Recoded,
+): Promise<T> {
   try {
     return await operation();
   } catch (error) {
-    throw surfaced(error);
+    throw surfaced(error, recoded);
   }
 }
 
@@ -153,7 +175,7 @@ export function lstatSync(path: string): FileInfo {
 export function mkdirRecursive(path: string): Promise<void> {
   return io(async () => {
     await nodeMkdir(path, { recursive: true });
-  });
+  }, WINDOWS ? MKDIR_ON_WINDOWS : undefined);
 }
 
 /**
