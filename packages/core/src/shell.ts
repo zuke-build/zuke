@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * Ergonomic process execution built on `Deno.Command`, exposed as the `$`
+ * Ergonomic process execution, exposed as the `$`
  * tagged template.
  *
  * ```ts
@@ -24,6 +24,7 @@ import { ambientSignal } from "./ambient_signal.ts";
 import { ambientEcho } from "./ambient_echo.ts";
 import { ambientOutput, scopedOutput } from "./ambient_output.ts";
 import { redactLine } from "./ambient_redactor.ts";
+import { type ChildProcess, spawnProcess } from "./process.ts";
 import type { CommandStatus, Signal } from "./signal.ts";
 import { terminateProcess, TERMINATION_GRACE_MS } from "./terminate.ts";
 import {
@@ -38,6 +39,7 @@ import {
  * for input that arrives as one line (a `package.json` script, a Makefile
  * recipe) rather than being constructed with `$`.
  */
+export type { ChildProcess } from "./process.ts";
 export type { CommandStatus, Signal } from "./signal.ts";
 export { ShellArgsError, splitShellArgs } from "./split_args.ts";
 
@@ -137,11 +139,11 @@ export class CommandOutput {
  */
 export class SpawnedProcess {
   /** The child, or `undefined` for a no-op stub (a deep-dry-run echo). */
-  readonly #child?: Deno.ChildProcess;
+  readonly #child?: ChildProcess;
 
   /** Wrap a spawned child process (or none, for a stub) and its command line. */
   constructor(
-    child: Deno.ChildProcess | undefined,
+    child: ChildProcess | undefined,
     readonly commandLine: string,
   ) {
     this.#child = child;
@@ -335,7 +337,7 @@ export class Command implements PromiseLike<CommandOutput> {
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     try {
-      const child = new Deno.Command(cmd, {
+      const child = spawnProcess(cmd, {
         args,
         cwd: this.#cwd,
         env: this.#env,
@@ -348,7 +350,7 @@ export class Command implements PromiseLike<CommandOutput> {
         // Cancellation (an explicit `.signal()`, else the executor's ambient run
         // signal) terminates the child too, independently of the timeout below.
         signal: this.#signal ?? ambientSignal(),
-      }).spawn();
+      });
 
       // A timeout terminates the child itself rather than aborting the spawn
       // signal, because that only ever delivers SIGTERM: a child that ignores it
@@ -403,7 +405,7 @@ export class Command implements PromiseLike<CommandOutput> {
    * end-of-input, so leaving the stream open hangs the run rather than failing
    * it. The close therefore happens even when the write does not.
    */
-  async #writeStdin(child: Deno.ChildProcess): Promise<void> {
+  async #writeStdin(child: ChildProcess): Promise<void> {
     const text = this.#stdin;
     if (text === undefined) return;
     const writer = child.stdin.getWriter();
@@ -491,14 +493,14 @@ export class Command implements PromiseLike<CommandOutput> {
     // service keeps the terminal (and its colours) as it always has.
     const sink = scopedOutput();
     const stdio = sink === undefined ? "inherit" : "piped";
-    const child = new Deno.Command(cmd, {
+    const child = spawnProcess(cmd, {
       args,
       cwd: this.#cwd,
       env: this.#env,
       stdout: stdio,
       stderr: stdio,
       signal: this.#signal ?? ambientSignal(),
-    }).spawn();
+    });
     if (sink !== undefined) {
       // Nothing is kept (a cap of 0): the pump only forwards. If the sink
       // fails (a closed terminal), cancel the stream so the service gets a
