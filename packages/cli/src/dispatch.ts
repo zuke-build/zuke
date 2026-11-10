@@ -205,15 +205,17 @@ export class UntrustedBuildError extends Error {
 const ANCESTOR_CONFIG_FILES = [...DENO_CONFIG_FILES, "package.json"];
 
 /**
- * The files in the root itself that decide what runs, beside the build file
- * the marker names: the marker, the launcher, the lockfile, and the root's
- * own config. Owning the directory
+ * The files in the root itself that decide what runs: the marker, the default
+ * build file, the launcher, the lockfile, and the root's own config. A build
+ * file the marker names is judged on top of these, never in place of
+ * `zuke.ts`: a launcher written before the marker named one still runs it. Owning the directory
  * is not owning these — a `chown` of the directory alone leaves them as they
  * were. The probe follows links, so a symlinked launcher is judged by the
  * file it points at.
  */
 const ROOT_FILES = [
   CONFIG_FILE,
+  BUILD_FILE,
   LAUNCHER_FILE,
   LOCK_FILE,
   ...ANCESTOR_CONFIG_FILES,
@@ -333,7 +335,7 @@ export async function locateBuild(
         await probe.readText(dir(CONFIG_FILE).path),
       );
       const uid = probe.uid();
-      if (!named && uid !== null) {
+      if (!named && uid !== null && build !== BUILD_FILE) {
         await assertFilesOwned(dir, [build], uid, probe, dir);
       }
       return {

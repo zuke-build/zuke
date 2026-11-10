@@ -298,11 +298,11 @@ Deno.test("the trust gate accepts ancestor config files the user owns, and asks 
   assertEquals(found?.root, "/home/me/mono/app");
   // The root is judged first, then the files in it that decide what runs,
   // then the config files of every ancestor up to the filesystem root —
-  // never the subdirectories walked through — then the build file the
-  // marker names, and last the launcher's mode.
+  // never the subdirectories walked through — and last the launcher's mode.
   assertEquals(fake.asked, [
     "/home/me/mono/app",
     "/home/me/mono/app/zuke.json",
+    "/home/me/mono/app/zuke.ts",
     "/home/me/mono/app/zuke",
     "/home/me/mono/app/deno.lock",
     "/home/me/mono/app/deno.json",
@@ -320,7 +320,6 @@ Deno.test("the trust gate accepts ancestor config files the user owns, and asks 
     "/deno.json",
     "/deno.jsonc",
     "/package.json",
-    "/home/me/mono/app/zuke.ts",
     "/home/me/mono/app/zuke",
   ]);
 });
@@ -1166,6 +1165,21 @@ Deno.test("the trust gate judges the build file zuke.json names", async () => {
   assertEquals(
     error.reason,
     "/home/me/app/build.ts is owned by user 0, not you (1000)",
+  );
+  // A launcher written before zuke.json named a build file still runs
+  // zuke.ts, so a zuke.ts someone else owns is refused as it always was.
+  const stale = await refused("/home/me/app", {
+    ...fixture,
+    owned: {
+      "/home/me/app": ownedBy(1000),
+      "/home/me/app/build.ts": ownedBy(1000, 0o644),
+      "/home/me/app/zuke.ts": ownedBy(0, 0o644),
+      "/home/me/app/zuke": ownedBy(1000, 0o100755),
+    },
+  });
+  assertEquals(
+    stale.reason,
+    "/home/me/app/zuke.ts is owned by user 0, not you (1000)",
   );
   // The root a launcher vouched for is not judged, its build file included.
   const fake = probe({
