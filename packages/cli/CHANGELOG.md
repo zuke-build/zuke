@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.5.0](https://github.com/zuke-build/zuke/compare/cli-v2.4.0...cli-v2.5.0) (2026-11-10)
+
+
+### Features
+
+* **cli:** new projects get build.ts, and the setup wizard asks ([#1001](https://github.com/zuke-build/zuke/issues/1001)) ([db66a9a](https://github.com/zuke-build/zuke/commit/db66a9a28903a096ca5f5f932c9c9790bf74b105))
+* **cli:** the build file is named in zuke.json ([#998](https://github.com/zuke-build/zuke/issues/998)) ([cb6ed02](https://github.com/zuke-build/zuke/commit/cb6ed02a9cd66a31bc8fe3b072f131b891180d7a))
+
 ## [2.4.0](https://github.com/zuke-build/zuke/compare/cli-v2.3.0...cli-v2.4.0) (2026-11-04)
 
 
