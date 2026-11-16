@@ -29,6 +29,7 @@
  * @module
  */
 
+import { mkdirRecursive, writeFile } from "./fs.ts";
 import { Command } from "./shell.ts";
 import { type AbsolutePath, type PathLike, resolveDir } from "./path.ts";
 import { readTextOrNull, statOrNull } from "./internal.ts";
@@ -203,7 +204,7 @@ export async function installNpmTool(
     return bin;
   }
 
-  await Deno.mkdir(String(prefix), { recursive: true });
+  await mkdirRecursive(String(prefix));
   await (options.run ?? defaultNpmRun)([
     "install",
     "--prefix",
@@ -225,7 +226,7 @@ export async function installNpmTool(
         `name, pass { bin } (e.g. "@nestjs/cli" ships the "nest" bin).`,
     );
   }
-  await Deno.writeTextFile(
+  await writeFile(
     markerPath(prefix),
     `${JSON.stringify({ name: spec.name, version: spec.version })}\n`,
   );

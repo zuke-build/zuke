@@ -18,6 +18,7 @@
  * @module
  */
 
+import { appendTextSync } from "./fs.ts";
 import { ambientRedactor } from "./ambient_redactor.ts";
 
 /**
@@ -55,12 +56,9 @@ export function appendJobSummary(markdown: string): boolean {
   }
   if (path === undefined || path === "") return false;
   try {
-    Deno.writeTextFileSync(
+    appendTextSync(
       path,
       markdown.endsWith("\n") ? markdown : `${markdown}\n`,
-      {
-        append: true,
-      },
     );
     return true;
   } catch {

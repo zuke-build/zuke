@@ -8,6 +8,7 @@
  * @module
  */
 
+import process from "node:process";
 import type { Build } from "../build.ts";
 import { isLoopbackHost } from "../http.ts";
 import { defaultReadEnv, messageOf } from "../internal.ts";
@@ -114,7 +115,7 @@ function resolveMcpRegistry(
     readEnv,
     host: defaultStateHost,
     defaultDir: absolutePath(
-      findConfigDir(Deno.cwd(), pathExists) ?? Deno.cwd(),
+      findConfigDir(process.cwd(), pathExists) ?? process.cwd(),
     )(".zuke", "builds").path,
     enableDefault: true,
   });
@@ -130,7 +131,7 @@ function resolveMcpStore(
     readEnv,
     host: defaultStateHost,
     defaultDir: absolutePath(
-      findConfigDir(Deno.cwd(), pathExists) ?? Deno.cwd(),
+      findConfigDir(process.cwd(), pathExists) ?? process.cwd(),
     )(".zuke", "runs").path,
     enableDefault: true,
   });

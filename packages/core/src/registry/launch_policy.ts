@@ -43,6 +43,8 @@
  * @module
  */
 
+import process from "node:process";
+import { realPathSync } from "../fs.ts";
 import { findConfigDir, pathExists } from "../config.ts";
 import { ALLOW_INSECURE_ENV, isLoopbackHost } from "../http.ts";
 import { isAbsolutePath, isNotFound } from "../internal.ts";
@@ -346,7 +348,7 @@ function isInside(path: string, root: string): boolean {
  * working directory, else that directory, as the default registry is.
  */
 export function hostLaunchFileSystem(): LaunchFileSystem {
-  const cwd = Deno.cwd();
+  const cwd = process.cwd();
   return { defaultDir: findConfigDir(cwd, pathExists) ?? cwd, realPath };
 }
 
@@ -359,7 +361,7 @@ export function hostLaunchFileSystem(): LaunchFileSystem {
  */
 function realPath(path: string): string | undefined {
   try {
-    return Deno.realPathSync(path);
+    return realPathSync(path);
   } catch (error) {
     if (!isNotFound(error)) return undefined;
   }

@@ -22,6 +22,8 @@
  * @module
  */
 
+import process from "node:process";
+import { statSync } from "./fs.ts";
 import { Command, CommandError, type CommandOutput } from "./shell.ts";
 import { checkMaxCapturedBytes } from "./capture.ts";
 import { ambientRedactor } from "./ambient_redactor.ts";
@@ -71,7 +73,7 @@ function envResolution(): ToolResolution | null {
 /** Whether `path` names an existing file (following symlinks). */
 function isFile(path: string): boolean {
   try {
-    return Deno.statSync(path).isFile;
+    return statSync(path).isFile;
   } catch {
     return false;
   }
@@ -99,7 +101,7 @@ function findNodeModulesBin(
   const names = os === "windows" ? [`${tool}.cmd`, `${tool}.bat`] : [tool];
   let dir = /^(\/|[A-Za-z]:)/.test(cwd)
     ? absolutePath(cwd)
-    : absolutePath(Deno.cwd(), cwd);
+    : absolutePath(process.cwd(), cwd);
   let sawNodeModules = false;
   while (true) {
     const binDir = dir("node_modules", ".bin");
@@ -119,7 +121,7 @@ function findNodeModulesBin(
 /** Whether `path` names an existing directory. */
 function existsDir(path: string): boolean {
   try {
-    return Deno.statSync(path).isDirectory;
+    return statSync(path).isDirectory;
   } catch {
     return false;
   }
@@ -501,7 +503,7 @@ export abstract class ToolSettings {
     if (this.#effectiveResolution() !== "node_modules") {
       return { argv: base, sawNodeModules: false };
     }
-    const cwd = this.#cwd ?? Deno.cwd();
+    const cwd = this.#cwd ?? process.cwd();
     const { bin, sawNodeModules } = findNodeModulesBin(
       this.defaultTool(),
       cwd,

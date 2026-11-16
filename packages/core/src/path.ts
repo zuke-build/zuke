@@ -32,6 +32,7 @@
  * @module
  */
 
+import process from "node:process";
 import { isAbsolutePath } from "./internal.ts";
 
 /**
@@ -223,6 +224,6 @@ export function absolutePath(first: string, ...rest: string[]): AbsolutePath {
 export function resolveDir(dir: string): AbsolutePath {
   const slashed = dir.replace(/\\/g, "/");
   return absolutePath(
-    isAbsolutePath(slashed) ? slashed : `${Deno.cwd()}/${slashed}`,
+    isAbsolutePath(slashed) ? slashed : `${process.cwd()}/${slashed}`,
   );
 }
