@@ -18,7 +18,13 @@
 
 import type { RunQuery, RunRecord, RunSummary } from "./types.ts";
 import type { HeldLockEntry, LockHolder } from "./lock.ts";
-import { isAlreadyExists, isNotFound } from "../internal.ts";
+import { createNew, mkdirRecursive, readDir, remove, rename } from "../fs.ts";
+import {
+  isAlreadyExists,
+  isNotFound,
+  readTextOrNull,
+  writeTextEnsuringDir,
+} from "../internal.ts";
 
 /** The result of a {@link StateStore.putRun} compare-and-swap write. */
 export type PutResult =
@@ -139,28 +145,14 @@ export interface StateHost {
   now(): number;
 }
 
-/** The real, `Deno`-backed {@link StateHost}. */
+/** The real {@link StateHost}, over the file system. */
 export const defaultStateHost: StateHost = {
-  async readText(path: string): Promise<string | null> {
-    try {
-      return await Deno.readTextFile(path);
-    } catch (error) {
-      if (isNotFound(error)) return null;
-      throw error;
-    }
-  },
-  async writeText(path: string, content: string): Promise<void> {
-    const slash = path.replace(/\\/g, "/").lastIndexOf("/");
-    if (slash > 0) await Deno.mkdir(path.slice(0, slash), { recursive: true });
-    await Deno.writeTextFile(path, content);
-  },
-  rename(from: string, to: string): Promise<void> {
-    return Deno.rename(from, to);
-  },
+  readText: readTextOrNull,
+  writeText: writeTextEnsuringDir,
+  rename,
   async createExclusive(path: string): Promise<boolean> {
     try {
-      const file = await Deno.open(path, { createNew: true, write: true });
-      file.close();
+      await createNew(path);
       return true;
     } catch (error) {
       if (isAlreadyExists(error)) return false;
@@ -169,24 +161,20 @@ export const defaultStateHost: StateHost = {
   },
   async remove(path: string): Promise<void> {
     try {
-      await Deno.remove(path);
+      await remove(path, false);
     } catch (error) {
       if (!isNotFound(error)) throw error;
     }
   },
   async listDir(path: string): Promise<string[]> {
-    const names: string[] = [];
     try {
-      for await (const entry of Deno.readDir(path)) names.push(entry.name);
+      return (await readDir(path)).map((entry) => entry.name);
     } catch (error) {
       if (isNotFound(error)) return [];
       throw error;
     }
-    return names;
   },
-  async mkdirp(path: string): Promise<void> {
-    await Deno.mkdir(path, { recursive: true });
-  },
+  mkdirp: mkdirRecursive,
   now(): number {
     return Date.now();
   },

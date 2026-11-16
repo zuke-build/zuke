@@ -30,6 +30,7 @@ import {
   readdir as nodeReaddir,
   readFile as nodeReadFile,
   readlink as nodeReadlink,
+  realpath as nodeRealpath,
   rename as nodeRename,
   rm as nodeRm,
   rmdir as nodeRmdir,
@@ -287,6 +288,22 @@ export function symlink(
   type?: "file" | "dir",
 ): Promise<void> {
   return io(() => nodeSymlink(target, path, type));
+}
+
+/** `path` with every link in it resolved, as an absolute path. */
+export function realPath(path: string): Promise<string> {
+  return io(() => nodeRealpath(path));
+}
+
+/**
+ * Create the empty file `path`, failing if anything is already there. One
+ * step, so of several callers racing for a path exactly one succeeds.
+ */
+export function createNew(path: string): Promise<void> {
+  return io(async () => {
+    const file = await nodeOpen(path, "wx");
+    await file.close();
+  });
 }
 
 /** The target stored in the symbolic link at `path`. */

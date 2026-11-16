@@ -38,6 +38,7 @@ import {
 } from "./compression.ts";
 import { GitHubActionsCacheStore } from "./github_actions_cache.ts";
 import { artifactBody, assertSecureBackendUrl, HttpError } from "./http.ts";
+import { chmod, mkdirRecursive, remove, rename } from "./fs.ts";
 import { isNotFound, messageOf } from "./internal.ts";
 import { redactUrl } from "./redact_url.ts";
 import type { AwsCredentials } from "./aws_sigv4.ts";
@@ -812,15 +813,15 @@ export class FileSystemCacheStore implements RemoteCacheStore {
     key: string,
     artifact: ReadableStream<Uint8Array<ArrayBuffer>>,
   ): Promise<void> {
-    await Deno.mkdir(this.#dir, { recursive: true });
+    await mkdirRecursive(this.#dir);
     const partial = `${this.#path(key)}.${crypto.randomUUID()}.partial`;
     try {
       await Deno.writeFile(partial, artifact);
       // Not group-writable whatever the umask, so getStream accepts it.
-      if (hostOs() !== "windows") await Deno.chmod(partial, 0o644);
-      await Deno.rename(partial, this.#path(key));
+      if (hostOs() !== "windows") await chmod(partial, 0o644);
+      await rename(partial, this.#path(key));
     } catch (error) {
-      await Deno.remove(partial).catch(() => {}); // already gone is fine
+      await remove(partial, false).catch(() => {}); // already gone is fine
       throw error;
     }
   }

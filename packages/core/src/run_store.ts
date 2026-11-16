@@ -15,6 +15,7 @@
  * @module
  */
 
+import process from "node:process";
 import { ARTIFACT_DIR, findConfigDir, pathExists } from "./config.ts";
 import { absolutePath } from "./path.ts";
 import { defaultStateHost, type StateStore } from "./state/store.ts";
@@ -39,7 +40,7 @@ export function resolveRunStore(
     readEnv,
     host: defaultStateHost,
     defaultDir: absolutePath(
-      findConfigDir(Deno.cwd(), pathExists) ?? Deno.cwd(),
+      findConfigDir(process.cwd(), pathExists) ?? process.cwd(),
     )(ARTIFACT_DIR, "runs").path,
     enableDefault: true,
   });
