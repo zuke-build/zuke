@@ -35,7 +35,7 @@ interface Failure {
   code: unknown;
 }
 
-/** Run `call` expecting it to fail, and describe the failure. */
+/** Run `call` and describe how it failed, or that it did not. */
 async function failure(call: () => unknown): Promise<Failure> {
   try {
     await call();
@@ -48,7 +48,8 @@ async function failure(call: () => unknown): Promise<Failure> {
     }
     throw error;
   }
-  throw new Error("expected the call to fail");
+  // Described, not thrown: on some platform both sides may well succeed.
+  return { kind: "no failure", code: undefined };
 }
 
 /** One operation, through this module and through the Deno call it replaces. */
@@ -335,12 +336,21 @@ Deno.test({
 });
 
 Deno.test("directory, copy, rename and remove failures surface as Deno's do", async () => {
-  await withTemp(async (dir) => {
-    await Deno.writeTextFile(`${dir}/file`, "x");
-    await Deno.mkdir(`${dir}/full/inner`, { recursive: true });
+  // Some of these succeed on one platform or another, and change what is on
+  // disk when they do, so each side of each pair gets a tree of its own.
+  const inFreshTree = async (call: (dir: string) => unknown) => {
+    let result: Failure = { kind: "not run", code: undefined };
+    await withTemp(async (dir) => {
+      await Deno.writeTextFile(`${dir}/file`, "x");
+      await Deno.mkdir(`${dir}/full/inner`, { recursive: true });
+      result = await failure(() => call(dir));
+    });
+    return result;
+  };
+  const pairs = (dir: string): Pair[] => {
     const missing = `${dir}/nope`;
     const full = `${dir}/full`;
-    const pairs: Pair[] = [
+    return [
       ["mkdir existing", () => mkdir(full), () => Deno.mkdir(full)],
       [
         "mkdir without its parent",
@@ -418,8 +428,18 @@ Deno.test("directory, copy, rename and remove failures surface as Deno's do", as
         () => Deno.readLink(`${dir}/file`),
       ],
     ];
-    assertEquals(await mismatches(pairs), []);
-  });
+  };
+  const count = pairs("").length;
+  const found: string[] = [];
+  for (let index = 0; index < count; index++) {
+    const name = pairs("")[index][0];
+    const a = await inFreshTree((dir) => pairs(dir)[index][1]());
+    const b = await inFreshTree((dir) => pairs(dir)[index][2]());
+    if (a.kind !== b.kind || a.code !== b.code) {
+      found.push(`${name}: ours ${a.kind}/${a.code}, Deno ${b.kind}/${b.code}`);
+    }
+  }
+  assertEquals(found, []);
 });
 
 Deno.test({
