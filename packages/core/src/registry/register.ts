@@ -16,6 +16,7 @@
  * @module
  */
 
+import process from "node:process";
 import type { Build } from "../build.ts";
 import { defaultReadEnv } from "../internal.ts";
 import { describeCli } from "../describe.ts";
@@ -62,7 +63,7 @@ function resolveRegisterRegistry(
     readEnv,
     host: defaultStateHost,
     defaultDir: absolutePath(
-      findConfigDir(Deno.cwd(), pathExists) ?? Deno.cwd(),
+      findConfigDir(process.cwd(), pathExists) ?? process.cwd(),
     )(".zuke", "builds").path,
     enableDefault: true,
   });
@@ -100,7 +101,7 @@ function deriveLocation(
   const location: BuildLocation = {
     kind: "module",
     module: redactModuleUrl(Deno.mainModule),
-    cwd: Deno.cwd(),
+    cwd: process.cwd(),
   };
   if (repo !== undefined && repo !== "") location.repo = repo;
   return location;

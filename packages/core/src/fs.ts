@@ -19,7 +19,13 @@
  * @module
  */
 
-import { lstatSync as nodeLstatSync, type Stats } from "node:fs";
+import {
+  lstatSync as nodeLstatSync,
+  realpathSync as nodeRealpathSync,
+  type Stats,
+  statSync as nodeStatSync,
+  writeFileSync as nodeWriteFileSync,
+} from "node:fs";
 import {
   chmod as nodeChmod,
   copyFile as nodeCopyFile,
@@ -219,6 +225,23 @@ export function lstat(path: string): Promise<FileInfo> {
 /** {@link lstat}, without waiting. */
 export function lstatSync(path: string): FileInfo {
   return ioSync(() => fileInfo(nodeLstatSync(path)));
+}
+
+/** {@link stat}, without waiting. */
+export function statSync(path: string): FileInfo {
+  return ioSync(() => fileInfo(nodeStatSync(path)));
+}
+
+/** {@link realPath}, without waiting. */
+export function realPathSync(path: string): string {
+  return ioSync(() => nodeRealpathSync(path));
+}
+
+/** Add `text` to the end of the file `path`, creating it, without waiting. */
+export function appendTextSync(path: string, text: string): void {
+  // Not appendFileSync: under Deno it resets the file's mode to 666 on every
+  // call, opening a private file to everyone.
+  ioSync(() => nodeWriteFileSync(path, text, { flag: "a" }));
 }
 
 /** Create the directory `path` and any parent it is missing. */

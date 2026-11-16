@@ -20,6 +20,7 @@
  * @module
  */
 
+import { writeFile, writeStream } from "./fs.ts";
 import type { PathLike } from "./path.ts";
 import { limitBytes } from "./internal.ts";
 import { redactUrl } from "./redact_url.ts";
@@ -171,16 +172,9 @@ export async function httpDownload(
   options: HttpOptions = {},
 ): Promise<void> {
   const response = await request(url, options);
-  const file = await Deno.open(String(dest), {
-    write: true,
-    create: true,
-    truncate: true,
-  });
-  if (response.body === null) {
-    file.close();
-    return;
-  }
-  await response.body.pipeTo(file.writable); // closes the file when done
+  // A response with no body still leaves the file there, empty.
+  if (response.body === null) await writeFile(String(dest), "");
+  else await writeStream(String(dest), response.body);
 }
 
 /** Fetch `url` and return its body as text. Throws {@link HttpError} on non-2xx. */

@@ -19,6 +19,7 @@
  * @module
  */
 
+import { stat } from "./fs.ts";
 import type { PathLike } from "./path.ts";
 import { isNotFound } from "./internal.ts";
 
@@ -65,7 +66,7 @@ export async function assertFileExists(path: PathLike): Promise<void> {
   const target = String(path);
   let isFile = false;
   try {
-    isFile = (await Deno.stat(target)).isFile;
+    isFile = (await stat(target)).isFile;
   } catch (error) {
     if (isNotFound(error)) {
       fail(`Expected file to exist: ${target}`);
@@ -80,7 +81,7 @@ export async function assertDirectoryExists(path: PathLike): Promise<void> {
   const target = String(path);
   let isDirectory = false;
   try {
-    isDirectory = (await Deno.stat(target)).isDirectory;
+    isDirectory = (await stat(target)).isDirectory;
   } catch (error) {
     if (isNotFound(error)) {
       fail(`Expected directory to exist: ${target}`);

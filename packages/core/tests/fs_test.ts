@@ -10,6 +10,7 @@
 import { assertEquals } from "./_assert.ts";
 import {
   alreadyExists,
+  appendTextSync,
   chmod,
   copyFile,
   createNew,
@@ -24,9 +25,11 @@ import {
   readLink,
   readTextFile,
   realPath,
+  realPathSync,
   remove,
   rename,
   stat,
+  statSync,
   symlink,
   userId,
   writeFile,
@@ -768,4 +771,71 @@ Deno.test("writeStream fails with the stream's own error, and with Deno's for a 
 
 Deno.test("userId is the id Deno gives", () => {
   assertEquals(userId(), Deno.uid());
+});
+
+Deno.test("the calls that do not wait give what Deno's give, and fail the same way", async () => {
+  await withTemp(async (dir) => {
+    await Deno.writeTextFile(`${dir}/file`, "12345");
+    for (const path of [dir, `${dir}/file`]) {
+      assertEquals(statSync(path), shared(Deno.statSync(path)));
+      assertEquals(
+        realPathSync(path),
+        Deno.realPathSync(path),
+      );
+    }
+    const missing = `${dir}/nope`;
+    assertEquals(
+      await mismatches([
+        [
+          "statSync missing",
+          () => statSync(missing),
+          () => Deno.statSync(missing),
+        ],
+        [
+          "realPathSync missing",
+          () => realPathSync(missing),
+          () => Deno.realPathSync(missing),
+        ],
+        [
+          "appendTextSync into a missing directory",
+          () => appendTextSync(`${missing}/log`, "x"),
+          () => Deno.writeTextFileSync(`${missing}/log`, "x", { append: true }),
+        ],
+      ]),
+      [],
+    );
+  });
+});
+
+Deno.test("appendTextSync creates the file, then adds to its end, as Deno's append does", async () => {
+  await withTemp(async (dir) => {
+    for (const text of ["first\n", "second\n"]) {
+      appendTextSync(`${dir}/ours`, text);
+      Deno.writeTextFileSync(`${dir}/theirs`, text, { append: true });
+    }
+    assertEquals(await readTextFile(`${dir}/ours`), "first\nsecond\n");
+    assertEquals(
+      await readTextFile(`${dir}/ours`),
+      await readTextFile(`${dir}/theirs`),
+    );
+  });
+});
+
+Deno.test({
+  name: "appendTextSync leaves a file's mode alone, and makes one with Deno's",
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      appendTextSync(`${dir}/ours`, "x");
+      Deno.writeTextFileSync(`${dir}/theirs`, "x", { append: true });
+      assertEquals(
+        (await stat(`${dir}/ours`)).mode,
+        (await stat(`${dir}/theirs`)).mode,
+      );
+      // A summary someone made private stays private.
+      await writeFile(`${dir}/private`, "", 0o600);
+      appendTextSync(`${dir}/private`, "x");
+      assertEquals((await stat(`${dir}/private`)).mode & 0o777, 0o600);
+    });
+  },
 });

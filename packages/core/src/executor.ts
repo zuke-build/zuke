@@ -20,6 +20,7 @@
  * their shared prerequisite a single time.
  */
 
+import process from "node:process";
 import type { Build, BuildResult } from "./build.ts";
 import { defaultReadEnv, messageOf } from "./internal.ts";
 import { resolveOutputMode } from "./output_mode.ts";
@@ -820,7 +821,7 @@ async function resolveCache(
   if (option === false) return undefined;
   if (typeof option === "object") return option;
   if (!order.some(isCacheable)) return undefined;
-  const root = findConfigDir(Deno.cwd(), pathExists) ?? Deno.cwd();
+  const root = findConfigDir(process.cwd(), pathExists) ?? process.cwd();
   const storePath = absolutePath(root)(ARTIFACT_DIR, CACHE_FILE).path;
   const remote = resolveRemoteStore(remoteOption, build.remoteCache(), readEnv);
   const signingKey = readEnv("ZUKE_REMOTE_CACHE_SIGNING_KEY");
@@ -869,7 +870,7 @@ function runtimeFacts(
     ci: isCI(readEnv),
     host: detectCiHost(readEnv),
     runId,
-    cwd: Deno.cwd(),
+    cwd: process.cwd(),
     width,
   };
 }

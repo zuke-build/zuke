@@ -6,6 +6,8 @@
  * {@link run} entry point that drives a build from `zuke.ts`.
  */
 
+import process from "node:process";
+import { makeTempDir, remove, writeFile } from "./fs.ts";
 import { type Build, discoverGroups, discoverTargets } from "./build.ts";
 import { cliReporter, printJson } from "./reporter.ts";
 import { flushInFlightOutput } from "./scheduler.ts";
@@ -1286,9 +1288,9 @@ export type DocRunner = (spec: string) => Promise<number>;
  * `@zuke/cli`'s `runDenoIsolated` writes the same file.
  */
 const defaultDocRunner: DocRunner = async (spec) => {
-  const cwd = await Deno.makeTempDir({ prefix: "zuke-doc-" });
+  const cwd = await makeTempDir();
   try {
-    await Deno.writeTextFile(`${cwd}/deno.json`, '{ "workspace": [] }\n');
+    await writeFile(`${cwd}/deno.json`, '{ "workspace": [] }\n');
     const command = new Deno.Command(denoExecutable(), {
       args: ["doc", spec],
       cwd,
@@ -1298,7 +1300,7 @@ const defaultDocRunner: DocRunner = async (spec) => {
     const { code } = await command.output();
     return code;
   } finally {
-    await Deno.remove(cwd, { recursive: true });
+    await remove(cwd, true);
   }
 };
 
@@ -1327,7 +1329,7 @@ async function runDoc(
   // A path is relative to the caller's cwd, but the runner documents from an
   // isolated empty directory — resolve it while that directory is still ours.
   try {
-    return await runner(resolveDocSpec(spec, Deno.cwd()));
+    return await runner(resolveDocSpec(spec, process.cwd()));
   } catch (error) {
     cliReporter.error(messageOf(error));
     return 1;

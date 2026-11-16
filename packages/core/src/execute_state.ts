@@ -14,6 +14,7 @@
  * @module
  */
 
+import process from "node:process";
 import { RunLockHolder } from "./run_locks.ts";
 import type { Build } from "./build.ts";
 import type { TargetBuilder } from "./target.ts";
@@ -232,7 +233,7 @@ export async function openRunState(opts: {
       readEnv,
       host: defaultStateHost,
       defaultDir: absolutePath(
-        findConfigDir(Deno.cwd(), pathExists) ?? Deno.cwd(),
+        findConfigDir(process.cwd(), pathExists) ?? process.cwd(),
       )(ARTIFACT_DIR, "runs").path,
       enableDefault: (opts.state ?? false) || usesDurableFeature,
     },

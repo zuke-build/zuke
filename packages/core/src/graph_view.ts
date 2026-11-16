@@ -12,6 +12,8 @@
  * @module
  */
 
+import process from "node:process";
+import { mkdirRecursive, writeFile } from "./fs.ts";
 import { graphData, renderGraphHtml } from "./graph_html.ts";
 import { ARTIFACT_DIR, findConfigDir, pathExists } from "./config.ts";
 import { absolutePath } from "./path.ts";
@@ -62,12 +64,12 @@ export interface GraphHost {
   log(message: string): void;
 }
 
-/** The real, `Deno`-backed {@link GraphHost}. */
+/** The real {@link GraphHost}. */
 export const defaultGraphHost: GraphHost = {
-  cwd: () => Deno.cwd(),
+  cwd: () => process.cwd(),
   exists: pathExists,
-  mkdir: (path) => Deno.mkdir(path, { recursive: true }),
-  writeText: (path, content) => Deno.writeTextFile(path, content),
+  mkdir: mkdirRecursive,
+  writeText: writeFile,
   open: (path) => openInBrowser(path),
   log: (message) => cliReporter.info(message),
 };
