@@ -6065,7 +6065,8 @@ class SpawnedProcess
     `SIGTERM`); if the process has not exited within `graceMs` (default 5s), it
     escalates to `SIGKILL` so a process that ignores `SIGTERM` cannot hang
     teardown. A process that has already exited is treated as stopped. A
-    dry-run stub (no child) is a no-op.
+    dry-run stub (no child) is a no-op. Rejects with the reason for a process
+    that could not be started, where that was not already thrown by `spawn`.
 
 interface ChildProcess
   A started child process: what the shell reads, writes and waits on. A
@@ -6073,9 +6074,9 @@ interface ChildProcess
   reading one that was not throws.
 
   readonly pid: number
-    The operating-system process id.
+    The operating-system process id; `-1` for a child that never started.
   readonly status: Promise<CommandStatus>
-    Resolves when the process exits.
+    Resolves when the process exits. Rejects if it could not be started.
   readonly stdin: WritableStream<Uint8Array>
     The child's input.
   readonly stdout: ReadableStream<Uint8Array>

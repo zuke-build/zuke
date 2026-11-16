@@ -165,7 +165,8 @@ export class SpawnedProcess {
    * `SIGTERM`); if the process has not exited within `graceMs` (default 5s), it
    * escalates to `SIGKILL` so a process that ignores `SIGTERM` cannot hang
    * teardown. A process that has already exited is treated as stopped. A
-   * dry-run stub (no child) is a no-op.
+   * dry-run stub (no child) is a no-op. Rejects with the reason for a process
+   * that could not be started, where that was not already thrown by `spawn`.
    */
   stop(
     signal: Signal = "SIGTERM",
@@ -173,6 +174,10 @@ export class SpawnedProcess {
   ): Promise<void> {
     const child = this.#child;
     if (child === undefined) return Promise.resolve(); // stub: nothing to stop.
+    // A child that never started has nothing to stop either, but it does
+    // have a reason, and this is the last place it can be told: on a runtime
+    // that learns of it late, nothing was thrown when it was spawned.
+    if (child.pid === -1) return child.status.then(() => {});
     return terminateProcess(child, signal, graceMs);
   }
 }
