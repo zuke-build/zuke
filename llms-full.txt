@@ -1220,7 +1220,7 @@ const defaultRenderer: Renderer
   The built-in renderer: Zuke's ruled headers and summary table.
 
 const defaultStateHost: StateHost
-  The real, `Deno`-backed {@link StateHost}.
+  The real {@link StateHost}, over the file system.
 
 class AlreadyResumedError extends Error
   Raised when a run has already been resumed by another process.

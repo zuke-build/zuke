@@ -17,6 +17,7 @@
  */
 
 import type { TargetBuilder } from "./target.ts";
+import { mkdirRecursive, readDir, readLink, realPath, symlink } from "./fs.ts";
 import {
   lstatOrNull,
   messageOf,
@@ -100,9 +101,7 @@ export const defaultCacheHost: CacheHost = {
       : { isSymlink: info.isSymlink, isDirectory: info.isDirectory };
   },
   async readDir(path: string): Promise<string[]> {
-    const names: string[] = [];
-    for await (const entry of Deno.readDir(path)) names.push(entry.name);
-    return names;
+    return (await readDir(path)).map((entry) => entry.name);
   },
   writeFile: writeFileEnsuringDir,
   async spool(
@@ -126,16 +125,16 @@ export const defaultCacheHost: CacheHost = {
     }
     return { open: async () => (await Deno.open(path)).readable, remove };
   },
-  readLink: Deno.readLink,
-  realPath: Deno.realPath,
+  readLink,
+  realPath,
   async symlink(
     target: string,
     path: string,
     type: "file" | "dir",
   ): Promise<void> {
     const parent = parentOf(path);
-    if (parent !== null) await Deno.mkdir(parent, { recursive: true });
-    await Deno.symlink(target, path, { type });
+    if (parent !== null) await mkdirRecursive(parent);
+    await symlink(target, path, type);
   },
   readStore: readTextOrNull,
   writeStore: writeTextEnsuringDir,

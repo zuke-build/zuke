@@ -12,6 +12,7 @@ import {
   alreadyExists,
   chmod,
   copyFile,
+  createNew,
   lstat,
   lstatSync,
   makeTempDir,
@@ -21,6 +22,7 @@ import {
   readFile,
   readLink,
   readTextFile,
+  realPath,
   remove,
   rename,
   stat,
@@ -564,6 +566,78 @@ Deno.test({
       assertEquals(
         new TextDecoder().decode(run.stdout).startsWith("/tmp/zuke-"),
         true,
+      );
+    });
+  },
+});
+
+Deno.test("createNew makes an empty file once, and refuses a taken path as Deno does", async () => {
+  await withTemp(async (dir) => {
+    await createNew(`${dir}/lock`);
+    assertEquals(await readFile(`${dir}/lock`), new Uint8Array());
+    await Deno.mkdir(`${dir}/sub`);
+    const theirs = (path: string) => async () =>
+      (await Deno.open(path, { createNew: true, write: true })).close();
+    const pairs: Pair[] = [
+      ["a taken path", () => createNew(`${dir}/lock`), theirs(`${dir}/lock`)],
+      ["a directory", () => createNew(`${dir}/sub`), theirs(`${dir}/sub`)],
+      [
+        "a missing directory",
+        () => createNew(`${dir}/nope/lock`),
+        theirs(`${dir}/nope/lock`),
+      ],
+    ];
+    assertEquals(await mismatches(pairs), []);
+    // Refused, not replaced: what was there is untouched.
+    await writeFile(`${dir}/lock`, "held");
+    await failure(() => createNew(`${dir}/lock`));
+    assertEquals(await readTextFile(`${dir}/lock`), "held");
+  });
+});
+
+Deno.test("of many callers racing to createNew one path, exactly one succeeds", async () => {
+  await withTemp(async (dir) => {
+    const outcomes = await Promise.allSettled(
+      Array.from({ length: 20 }, () => createNew(`${dir}/lock`)),
+    );
+    assertEquals(
+      outcomes.filter((outcome) => outcome.status === "fulfilled").length,
+      1,
+    );
+  });
+});
+
+Deno.test("realPath gives the path Deno's gives, and fails as Deno's does", async () => {
+  await withTemp(async (dir) => {
+    await Deno.mkdir(`${dir}/a/b`, { recursive: true });
+    for (const path of [dir, `${dir}/a/b/..`, `${dir}/a/./b`]) {
+      assertEquals(await realPath(path), await Deno.realPath(path));
+    }
+    assertEquals(
+      await mismatches([[
+        "realPath missing",
+        () => realPath(`${dir}/nope`),
+        () => Deno.realPath(`${dir}/nope`),
+      ]]),
+      [],
+    );
+  });
+});
+
+Deno.test({
+  name: "realPath resolves a link as Deno's does",
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await Deno.mkdir(`${dir}/real`);
+      await Deno.symlink(`${dir}/real`, `${dir}/link`);
+      assertEquals(
+        await realPath(`${dir}/link`),
+        await Deno.realPath(`${dir}/link`),
+      );
+      assertEquals(
+        await realPath(`${dir}/link`),
+        await realPath(`${dir}/real`),
       );
     });
   },
