@@ -17,7 +17,17 @@
  */
 
 import type { TargetBuilder } from "./target.ts";
-import { mkdirRecursive, readDir, readLink, realPath, symlink } from "./fs.ts";
+import {
+  makeTempDir,
+  mkdirRecursive,
+  openFile,
+  readDir,
+  readLink,
+  realPath,
+  remove,
+  symlink,
+  writeStream,
+} from "./fs.ts";
 import {
   lstatOrNull,
   messageOf,
@@ -77,7 +87,7 @@ export interface SpooledArtifact {
   remove(): Promise<void>;
 }
 
-/** The real, `Deno`-backed {@link CacheHost}. */
+/** The real {@link CacheHost}, over the file system. */
 export const defaultCacheHost: CacheHost = {
   readFile: readFileOrNull,
   async stat(
@@ -107,23 +117,27 @@ export const defaultCacheHost: CacheHost = {
   async spool(
     artifact: ReadableStream<Uint8Array<ArrayBuffer>>,
   ): Promise<SpooledArtifact> {
-    let path: string;
+    let dir: string;
     try {
-      path = await Deno.makeTempFile({ prefix: "zuke-artifact-" });
+      dir = await makeTempDir();
     } catch (error) {
       // Nothing will read the download now: release its connection.
       await artifact.cancel().catch(() => {});
       throw error;
     }
-    // Best-effort: the file is in the system temp directory either way.
-    const remove = () => Deno.remove(path).catch(() => {});
+    const path = `${dir}/artifact`;
+    // Best-effort: it is in the system temp directory either way.
+    const discard = () => remove(dir, true).catch(() => {});
     try {
-      await Deno.writeFile(path, artifact);
+      await writeStream(path, artifact);
     } catch (error) {
-      await remove();
+      await discard();
       throw error;
     }
-    return { open: async () => (await Deno.open(path)).readable, remove };
+    return {
+      open: async () => (await openFile(path)).readable,
+      remove: discard,
+    };
   },
   readLink,
   realPath,

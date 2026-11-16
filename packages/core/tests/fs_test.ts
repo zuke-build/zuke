@@ -18,6 +18,7 @@ import {
   makeTempDir,
   mkdir,
   mkdirRecursive,
+  openFile,
   readDir,
   readFile,
   readLink,
@@ -27,7 +28,9 @@ import {
   rename,
   stat,
   symlink,
+  userId,
   writeFile,
+  writeStream,
 } from "../src/fs.ts";
 import { withTemp } from "./_temp.ts";
 
@@ -641,4 +644,128 @@ Deno.test({
       );
     });
   },
+});
+
+/** Everything a stream yields, as one array. */
+async function drained(
+  stream: ReadableStream<Uint8Array<ArrayBuffer>>,
+): Promise<Uint8Array> {
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+/** A stream of `chunks`, then an error if `failure` is given. */
+function chunked(
+  chunks: Uint8Array<ArrayBuffer>[],
+  failure?: Error,
+): ReadableStream<Uint8Array<ArrayBuffer>> {
+  let next = 0;
+  return new ReadableStream({
+    pull(controller) {
+      if (next < chunks.length) return controller.enqueue(chunks[next++]);
+      if (failure !== undefined) return controller.error(failure);
+      controller.close();
+    },
+  });
+}
+
+Deno.test("openFile streams the bytes Deno's open does, with the owner and mode of its stat", async () => {
+  await withTemp(async (dir) => {
+    // Larger than one read, and not a multiple of it, so chunks are joined.
+    const bytes = new Uint8Array(200_001).map((_, index) => index % 251);
+    await Deno.writeFile(`${dir}/big`, bytes);
+    await Deno.writeFile(`${dir}/empty`, new Uint8Array());
+    for (const name of ["big", "empty"]) {
+      const ours = await openFile(`${dir}/${name}`);
+      using theirs = await Deno.open(`${dir}/${name}`);
+      const info = await theirs.stat();
+      assertEquals(ours.mode, info.mode);
+      // Windows has no owner: Deno reports none, node:fs zero.
+      assertEquals(ours.uid, info.uid ?? 0);
+      assertEquals(
+        await drained(ours.readable),
+        await Deno.readFile(`${dir}/${name}`),
+      );
+    }
+  });
+});
+
+Deno.test("openFile closes the file when it is closed unread or its stream is cancelled", async () => {
+  await withTemp(async (dir) => {
+    await Deno.writeFile(`${dir}/file`, new Uint8Array(100_000));
+    // The test runner fails a test that leaves a file open.
+    await (await openFile(`${dir}/file`)).close();
+    const reader = (await openFile(`${dir}/file`)).readable.getReader();
+    await reader.read();
+    await reader.cancel();
+  });
+});
+
+Deno.test("openFile fails as Deno's open does", async () => {
+  await withTemp(async (dir) => {
+    const theirs = (path: string) => async () =>
+      (await Deno.open(path)).close();
+    assertEquals(
+      await mismatches([
+        ["missing", () => openFile(`${dir}/nope`), theirs(`${dir}/nope`)],
+        [
+          "under a missing directory",
+          () => openFile(`${dir}/nope/file`),
+          theirs(`${dir}/nope/file`),
+        ],
+      ]),
+      [],
+    );
+  });
+});
+
+Deno.test("writeStream writes every chunk in order, replacing what is there, as Deno's does", async () => {
+  await withTemp(async (dir) => {
+    const chunks = () => [
+      new Uint8Array([1, 2, 3]),
+      new Uint8Array(),
+      new Uint8Array(70_000).fill(7),
+      new Uint8Array([9]),
+    ];
+    await writeFile(`${dir}/ours`, "something longer than nothing");
+    await writeStream(`${dir}/ours`, chunked(chunks()));
+    await Deno.writeFile(`${dir}/theirs`, chunked(chunks()));
+    assertEquals(
+      await Deno.readFile(`${dir}/ours`),
+      await Deno.readFile(`${dir}/theirs`),
+    );
+    await writeStream(`${dir}/ours`, chunked([]));
+    assertEquals(await Deno.readFile(`${dir}/ours`), new Uint8Array());
+  });
+});
+
+Deno.test("writeStream fails with the stream's own error, and with Deno's for a path it cannot open", async () => {
+  await withTemp(async (dir) => {
+    const reset = new Error("connection reset");
+    const thrown = await writeStream(
+      `${dir}/partial`,
+      chunked([new Uint8Array([1])], reset),
+    ).catch((error: unknown) => error);
+    assertEquals(thrown, reset);
+
+    let cancelled = false;
+    const unread = () =>
+      new ReadableStream<Uint8Array<ArrayBuffer>>({
+        cancel() {
+          cancelled = true;
+        },
+      });
+    assertEquals(
+      await mismatches([[
+        "into a missing directory",
+        () => writeStream(`${dir}/nope/file`, unread()),
+        () => Deno.writeFile(`${dir}/nope/file`, unread()),
+      ]]),
+      [],
+    );
+    assertEquals(cancelled, false);
+  });
+});
+
+Deno.test("userId is the id Deno gives", () => {
+  assertEquals(userId(), Deno.uid());
 });

@@ -61,6 +61,21 @@ export interface FileInfo {
   mode: number;
 }
 
+/** A file open for reading: who owns it, and its bytes, from the same handle. */
+export interface OpenFile {
+  /** The id of the user who owns the file; `0` on Windows, which has none. */
+  uid: number;
+  /** Its permission and type bits, as the platform reports them. */
+  mode: number;
+  /**
+   * The file's bytes from the start. The file is closed when the stream ends,
+   * fails or is cancelled.
+   */
+  readable: ReadableStream<Uint8Array<ArrayBuffer>>;
+  /** Close the file without reading it. */
+  close(): Promise<void>;
+}
+
 /** One entry of a directory. */
 export interface DirEntry {
   /** Its name, without the directory's path. */
@@ -232,6 +247,67 @@ function tempRoot(): string {
     if (WINDOWS) throw error;
     return "/tmp";
   }
+}
+
+/** How many bytes of a file one read of {@link openFile}'s stream asks for. */
+const READ_CHUNK = 64 * 1024;
+
+/**
+ * Open `path` for reading. The owner and mode are the open file's own, so
+ * what a caller checks is what it then reads, whatever happens to the path.
+ */
+export function openFile(path: string): Promise<OpenFile> {
+  return io(async () => {
+    const file = await nodeOpen(path, "r");
+    const close = () => file.close();
+    try {
+      const stats = await file.stat();
+      const readable = new ReadableStream<Uint8Array<ArrayBuffer>>({
+        async pull(controller) {
+          try {
+            const chunk = new Uint8Array(READ_CHUNK);
+            const { bytesRead } = await file.read(chunk, 0, READ_CHUNK);
+            if (bytesRead > 0) {
+              return controller.enqueue(chunk.subarray(0, bytesRead));
+            }
+            await close();
+            controller.close();
+          } catch (error) {
+            await close().catch(() => {});
+            throw surfaced(error);
+          }
+        },
+        cancel: close,
+      });
+      return { uid: stats.uid, mode: stats.mode, readable, close };
+    } catch (error) {
+      await close().catch(() => {});
+      throw error;
+    }
+  });
+}
+
+/**
+ * Write everything `data` streams to `path`, replacing what is there. A
+ * stream that fails leaves the file with what had arrived.
+ */
+export function writeStream(
+  path: string,
+  data: ReadableStream<Uint8Array<ArrayBuffer>>,
+): Promise<void> {
+  return io(async () => {
+    const file = await nodeOpen(path, "w");
+    try {
+      for await (const chunk of data) await file.writeFile(chunk);
+    } finally {
+      await file.close();
+    }
+  });
+}
+
+/** The id of the user this process runs as, or `null` on Windows, which has none. */
+export function userId(): number | null {
+  return process.getuid?.() ?? null;
 }
 
 /** Create a directory of its own under the system's temporary one. */

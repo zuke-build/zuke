@@ -4007,7 +4007,7 @@ interface FileSystemCacheStoreOptions
     {@link RemoteCacheStore.maxInflatedBytes}. Defaults to 2 GiB.
   uid?: () => number | null
     The current user's id, or `null` where the platform has none (Windows).
-    Defaults to `Deno.uid`; overridable for tests.
+    Defaults to the user the process runs as; overridable for tests.
 
 interface FileTasksApi
   The shape of {@link FileTasks}.
