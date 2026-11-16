@@ -4190,7 +4190,7 @@ interface GlobOptions
   Options for {@link glob}.
 
   cwd?: string
-    Directory to resolve the pattern against (default: `Deno.cwd()`). Ignored
+    Directory to resolve the pattern against (default: the working directory). Ignored
     for an absolute pattern, which names its own root.
 
 interface HeldLease

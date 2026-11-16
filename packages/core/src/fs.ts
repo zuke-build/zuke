@@ -21,11 +21,19 @@
 
 import { lstatSync as nodeLstatSync, type Stats } from "node:fs";
 import {
+  copyFile as nodeCopyFile,
   lstat as nodeLstat,
   mkdir as nodeMkdir,
   open as nodeOpen,
+  readdir as nodeReaddir,
   readFile as nodeReadFile,
+  readlink as nodeReadlink,
+  rename as nodeRename,
+  rm as nodeRm,
+  rmdir as nodeRmdir,
   stat as nodeStat,
+  symlink as nodeSymlink,
+  unlink as nodeUnlink,
 } from "node:fs/promises";
 import process from "node:process";
 
@@ -49,11 +57,21 @@ export interface FileInfo {
   mode: number;
 }
 
+/** One entry of a directory. */
+export interface DirEntry {
+  /** Its name, without the directory's path. */
+  name: string;
+  /** Whether it is a directory; a link to one is not. */
+  isDirectory: boolean;
+}
+
 /**
- * The `Deno.errors` class each file-system code has always surfaced as. Read
- * when an error is translated, never at load, since only Deno has them.
+ * The `Deno.errors` class each file-system code has always surfaced as, and
+ * `null` for a code with none, or on a runtime that is not Deno. Read when an
+ * error is made, never at load, since only Deno has them.
  */
 function denoErrorFor(code: string): (new (message: string) => Error) | null {
+  if (typeof Deno === "undefined") return null;
   switch (code) {
     case "ENOENT":
       return Deno.errors.NotFound;
@@ -69,6 +87,10 @@ function denoErrorFor(code: string): (new (message: string) => Error) | null {
       return WINDOWS ? null : Deno.errors.IsADirectory;
     case "ELOOP":
       return Deno.errors.FilesystemLoop;
+    case "EINVAL":
+      // Deno has no class of its own for an invalid argument, and on Windows
+      // throws a plain error for it.
+      return WINDOWS ? null : TypeError;
     default:
       return null;
   }
@@ -95,8 +117,8 @@ const MKDIR_ON_WINDOWS: Recoded = { ENOTDIR: "EEXIST" };
  */
 function surfaced(error: unknown, recoded: Recoded = {}): unknown {
   if (
-    typeof Deno === "undefined" || !(error instanceof Error) ||
-    !("code" in error) || typeof error.code !== "string"
+    !(error instanceof Error) || !("code" in error) ||
+    typeof error.code !== "string"
   ) {
     return error;
   }
@@ -104,6 +126,15 @@ function surfaced(error: unknown, recoded: Recoded = {}): unknown {
   const Kind = denoErrorFor(code);
   if (Kind === null) return error;
   return Object.assign(new Kind(error.message), { code, cause: error });
+}
+
+/**
+ * The error for a path that is in the way, for a refusal core decides itself:
+ * the class and code the file system's own refusal has.
+ */
+export function alreadyExists(message: string): Error {
+  const Kind = denoErrorFor("EEXIST") ?? Error;
+  return Object.assign(new Kind(message), { code: "EEXIST" });
 }
 
 /**
@@ -176,6 +207,62 @@ export function mkdirRecursive(path: string): Promise<void> {
   return io(async () => {
     await nodeMkdir(path, { recursive: true });
   }, WINDOWS ? MKDIR_ON_WINDOWS : undefined);
+}
+
+/** Create the one directory `path`, whose parent must exist. */
+export function mkdir(path: string): Promise<void> {
+  return io(() => nodeMkdir(path));
+}
+
+/** The entries of the directory `path`, in no particular order. */
+export function readDir(path: string): Promise<DirEntry[]> {
+  return io(async () => {
+    const entries = await nodeReaddir(path, { withFileTypes: true });
+    return entries.map((entry) => ({
+      name: entry.name,
+      isDirectory: entry.isDirectory(),
+    }));
+  });
+}
+
+/**
+ * Remove `path`: a file, a link, or a directory, which must be empty unless
+ * `recursive`. A link is removed itself, never what it points at.
+ */
+export function remove(path: string, recursive: boolean): Promise<void> {
+  return io(async () => {
+    if (recursive) return await nodeRm(path, { recursive: true });
+    // node:fs has one call for a file and another for a directory.
+    const stats = await nodeLstat(path);
+    await (stats.isDirectory() ? nodeRmdir(path) : nodeUnlink(path));
+  });
+}
+
+/** Copy the file `source` to `destination`, replacing what is there. */
+export function copyFile(source: string, destination: string): Promise<void> {
+  return io(() => nodeCopyFile(source, destination));
+}
+
+/** Rename `source` to `destination`, replacing a file or link there. */
+export function rename(source: string, destination: string): Promise<void> {
+  return io(() => nodeRename(source, destination));
+}
+
+/**
+ * Create a symbolic link at `path` holding `target` as given. `type` says
+ * what the target is, which only Windows needs.
+ */
+export function symlink(
+  target: string,
+  path: string,
+  type?: "file" | "dir",
+): Promise<void> {
+  return io(() => nodeSymlink(target, path, type));
+}
+
+/** The target stored in the symbolic link at `path`. */
+export function readLink(path: string): Promise<string> {
+  return io(() => nodeReadlink(path));
 }
 
 /**

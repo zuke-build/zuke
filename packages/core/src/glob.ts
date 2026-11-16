@@ -3,7 +3,7 @@
 
 /**
  * Glob helpers for build scripts: expand patterns like `src/**\/*.ts` to the
- * matching paths, dependency-free (built on `Deno.readDir`).
+ * matching paths, dependency-free.
  *
  * ```ts
  * import { glob } from "@zuke/core";
@@ -17,6 +17,8 @@
  * @module
  */
 
+import process from "node:process";
+import { readDir, stat } from "./fs.ts";
 import { isAbsolutePath, isNotFound } from "./internal.ts";
 
 /** Escape a literal substring for use inside a regular expression. */
@@ -75,7 +77,7 @@ function staticBase(pattern: string): string {
 /** Options for {@link glob}. */
 export interface GlobOptions {
   /**
-   * Directory to resolve the pattern against (default: `Deno.cwd()`). Ignored
+   * Directory to resolve the pattern against (default: the working directory). Ignored
    * for an absolute pattern, which names its own root.
    */
   cwd?: string;
@@ -95,7 +97,7 @@ export async function glob(
   pattern: string,
   options: GlobOptions = {},
 ): Promise<string[]> {
-  const cwd = options.cwd ?? Deno.cwd();
+  const cwd = options.cwd ?? process.cwd();
   // An absolute pattern is already rooted. Joining it onto `cwd` would walk a
   // path that exists nowhere and return nothing at all — no files, no error.
   const absolute = isAbsolutePath(pattern);
@@ -107,7 +109,7 @@ export async function glob(
   const walk = async (rel: string, isDirectory: boolean) => {
     if (rel !== "" && re.test(rel)) results.push(rel);
     if (!isDirectory) return;
-    for await (const entry of Deno.readDir(absOf(rel))) {
+    for (const entry of await readDir(absOf(rel))) {
       const childRel = rel === "" || rel === "/"
         ? `${rel}${entry.name}`
         : `${rel}/${entry.name}`;
@@ -123,7 +125,7 @@ export async function glob(
     await walk("", true);
   } else {
     try {
-      const info = await Deno.stat(absOf(base));
+      const info = await stat(absOf(base));
       await walk(base, info.isDirectory);
     } catch (error) {
       if (!isNotFound(error)) throw error;

@@ -22,7 +22,26 @@
  * @module
  */
 
-import { defaultReadEnv, isAlreadyExists, isNotFound } from "./internal.ts";
+import {
+  alreadyExists,
+  copyFile,
+  mkdir,
+  mkdirRecursive,
+  readDir,
+  readLink,
+  readTextFile,
+  remove,
+  rename,
+  stat,
+  symlink,
+  writeFile,
+} from "./fs.ts";
+import {
+  defaultReadEnv,
+  isAlreadyExists,
+  isNotFound,
+  lstatOrNull,
+} from "./internal.ts";
 import type { PathLike } from "./path.ts";
 
 /** Options for {@link FileTasksApi.createDirectory}. */
@@ -66,13 +85,7 @@ export interface SymlinkOptions {
 
 /** Whether a filesystem entry exists; a `NotFound` maps to `false`. */
 async function entryExists(path: string): Promise<boolean> {
-  try {
-    await Deno.lstat(path);
-    return true;
-  } catch (error) {
-    if (isNotFound(error)) return false;
-    throw error;
-  }
+  return await lstatOrNull(path) !== null;
 }
 
 /** Recursively copy a file or directory tree from `src` to `dest`. */
@@ -81,10 +94,10 @@ async function copyEntry(
   dest: string,
   overwrite: boolean,
 ): Promise<void> {
-  const info = await Deno.stat(src);
+  const info = await stat(src);
   if (info.isDirectory) {
-    await Deno.mkdir(dest, { recursive: true });
-    for await (const entry of Deno.readDir(src)) {
+    await mkdirRecursive(dest);
+    for (const entry of await readDir(src)) {
       await copyEntry(
         `${src}/${entry.name}`,
         `${dest}/${entry.name}`,
@@ -94,11 +107,11 @@ async function copyEntry(
     return;
   }
   if (!overwrite && await entryExists(dest)) {
-    throw new Deno.errors.AlreadyExists(
+    throw alreadyExists(
       `FileTasks.copy: destination "${dest}" exists and overwrite is false.`,
     );
   }
-  await Deno.copyFile(src, dest);
+  await copyFile(src, dest);
 }
 
 /** The shape of {@link FileTasks}. */
@@ -211,16 +224,14 @@ export const FileTasks: FileTasksApi = {
     path: PathLike,
     options: CreateDirectoryOptions = {},
   ): Promise<void> {
-    await Deno.mkdir(String(path), { recursive: options.recursive ?? true });
+    await (options.recursive ?? true ? mkdirRecursive : mkdir)(String(path));
   },
 
   async cleanDirectory(path: PathLike): Promise<void> {
     const dir = String(path);
-    let entries: AsyncIterable<Deno.DirEntry>;
     try {
-      entries = Deno.readDir(dir);
-      for await (const entry of entries) {
-        await Deno.remove(`${dir}/${entry.name}`, { recursive: true });
+      for (const entry of await readDir(dir)) {
+        await remove(`${dir}/${entry.name}`, true);
       }
     } catch (error) {
       if (isNotFound(error)) return; // nothing to clean
@@ -230,9 +241,7 @@ export const FileTasks: FileTasksApi = {
 
   async remove(path: PathLike, options: RemoveOptions = {}): Promise<boolean> {
     try {
-      await Deno.remove(String(path), {
-        recursive: options.recursive ?? false,
-      });
+      await remove(String(path), options.recursive ?? false);
       return true;
     } catch (error) {
       if (isNotFound(error)) return false;
@@ -253,7 +262,7 @@ export const FileTasks: FileTasksApi = {
   },
 
   move(source: PathLike, destination: PathLike): Promise<void> {
-    return Deno.rename(String(source), String(destination));
+    return rename(String(source), String(destination));
   },
 
   async symlink(
@@ -262,16 +271,11 @@ export const FileTasks: FileTasksApi = {
     options: SymlinkOptions = {},
   ): Promise<void> {
     const linkPath = String(path);
-    // Deno.symlink takes `{ type }`, and rejects an unknown key, so the
-    // force flag is this layer's own and never reaches it.
-    const denoOptions = options.type === undefined
-      ? undefined
-      : { type: options.type };
     try {
-      await Deno.symlink(String(target), linkPath, denoOptions);
+      await symlink(String(target), linkPath, options.type);
       return;
     } catch (error) {
-      // Attempt first, then replace: a caller without `force` gets Deno's own
+      // Attempt first, then replace: a caller without `force` gets the file system's own
       // AlreadyExists untouched, and nothing on disk is unlinked until the
       // path is known to be occupied.
       if (!isAlreadyExists(error) || !options.force) {
@@ -289,30 +293,30 @@ export const FileTasks: FileTasksApi = {
     // rename refuses outright, so a link request cannot cost a caller a
     // directory whether it was empty or not.
     const tmp = `${linkPath}.zuke-symlink-${crypto.randomUUID()}`;
-    await Deno.symlink(String(target), tmp, denoOptions);
+    await symlink(String(target), tmp, options.type);
     try {
-      await Deno.rename(tmp, linkPath);
+      await rename(tmp, linkPath);
     } catch (error) {
       // The link exists at a name nobody asked for; take it back out before
       // reporting why it could not be published.
-      await Deno.remove(tmp).catch(() => {});
+      await remove(tmp, false).catch(() => {});
       throw error;
     }
   },
 
   readLink(path: PathLike): Promise<string> {
-    return Deno.readLink(String(path));
+    return readLink(String(path));
   },
 
   readText(path: PathLike): Promise<string> {
-    return Deno.readTextFile(String(path));
+    return readTextFile(String(path));
   },
 
   async writeText(path: PathLike, content: string): Promise<void> {
-    await Deno.writeTextFile(String(path), content);
+    await writeFile(String(path), content);
   },
 
   async readJson<T = unknown>(path: PathLike): Promise<T> {
-    return JSON.parse(await Deno.readTextFile(String(path)));
+    return JSON.parse(await readTextFile(String(path)));
   },
 };

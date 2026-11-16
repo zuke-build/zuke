@@ -9,12 +9,20 @@
 
 import { assertEquals } from "./_assert.ts";
 import {
+  alreadyExists,
+  copyFile,
   lstat,
   lstatSync,
+  mkdir,
   mkdirRecursive,
+  readDir,
   readFile,
+  readLink,
   readTextFile,
+  remove,
+  rename,
   stat,
+  symlink,
   writeFile,
 } from "../src/fs.ts";
 import { withTemp } from "./_temp.ts";
@@ -27,7 +35,7 @@ interface Failure {
   code: unknown;
 }
 
-/** Run `call` expecting it to fail, and describe the failure. */
+/** Run `call` and describe how it failed, or that it did not. */
 async function failure(call: () => unknown): Promise<Failure> {
   try {
     await call();
@@ -40,7 +48,8 @@ async function failure(call: () => unknown): Promise<Failure> {
     }
     throw error;
   }
-  throw new Error("expected the call to fail");
+  // Described, not thrown: on some platform both sides may well succeed.
+  return { kind: "no failure", code: undefined };
 }
 
 /** One operation, through this module and through the Deno call it replaces. */
@@ -261,6 +270,221 @@ Deno.test("each failure surfaces as the Deno error class it always was, keeping 
     assertEquals(
       caught instanceof Error && caught.cause instanceof Error,
       true,
+    );
+  });
+});
+
+Deno.test("directories are made, listed, copied into, renamed and removed as Deno does", async () => {
+  await withTemp(async (dir) => {
+    await mkdir(`${dir}/d`);
+    await mkdir(`${dir}/d/sub`);
+    await writeFile(`${dir}/d/a.txt`, "a");
+    const names = (entries: { name: string; isDirectory: boolean }[]) =>
+      entries.map((entry) => `${entry.name}:${entry.isDirectory}`).sort();
+    assertEquals(
+      names(await readDir(`${dir}/d`)),
+      names(await Array.fromAsync(Deno.readDir(`${dir}/d`))),
+    );
+    assertEquals(names(await readDir(`${dir}/d`)), ["a.txt:false", "sub:true"]);
+
+    await copyFile(`${dir}/d/a.txt`, `${dir}/d/b.txt`);
+    await writeFile(`${dir}/d/a.txt`, "changed");
+    await copyFile(`${dir}/d/a.txt`, `${dir}/d/b.txt`);
+    assertEquals(await readTextFile(`${dir}/d/b.txt`), "changed");
+
+    await rename(`${dir}/d/b.txt`, `${dir}/d/a.txt`);
+    assertEquals(names(await readDir(`${dir}/d`)), ["a.txt:false", "sub:true"]);
+
+    await remove(`${dir}/d/a.txt`, false);
+    await remove(`${dir}/d/sub`, false);
+    assertEquals(await readDir(`${dir}/d`), []);
+    await writeFile(`${dir}/d/kept`, "x");
+    await remove(`${dir}/d`, true);
+    assertEquals(await failure(() => stat(`${dir}/d`)), {
+      kind: "NotFound",
+      code: "ENOENT",
+    });
+  });
+});
+
+Deno.test({
+  name: "a link holds its target as given, and is removed without its target",
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await mkdir(`${dir}/real`);
+      await writeFile(`${dir}/real/file`, "x");
+      await symlink("real", `${dir}/link`, "dir");
+      assertEquals(await readLink(`${dir}/link`), "real");
+      assertEquals(
+        await readLink(`${dir}/link`),
+        await Deno.readLink(`${dir}/link`),
+      );
+      // A link to a directory is listed as a link, so a walk does not follow it.
+      const listed = await readDir(dir);
+      assertEquals(
+        listed.find((entry) => entry.name === "link")?.isDirectory,
+        false,
+      );
+      for (const recursive of [false, true]) {
+        await remove(`${dir}/link`, recursive);
+        assertEquals(await readTextFile(`${dir}/real/file`), "x");
+        await symlink("real", `${dir}/link`);
+      }
+    });
+  },
+});
+
+Deno.test("directory, copy, rename and remove failures surface as Deno's do", async () => {
+  // Some of these succeed on one platform or another, and change what is on
+  // disk when they do, so each side of each pair gets a tree of its own.
+  const inFreshTree = async (call: (dir: string) => unknown) => {
+    let result: Failure = { kind: "not run", code: undefined };
+    await withTemp(async (dir) => {
+      await Deno.writeTextFile(`${dir}/file`, "x");
+      await Deno.mkdir(`${dir}/full/inner`, { recursive: true });
+      result = await failure(() => call(dir));
+    });
+    return result;
+  };
+  const pairs = (dir: string): Pair[] => {
+    const missing = `${dir}/nope`;
+    const full = `${dir}/full`;
+    return [
+      ["mkdir existing", () => mkdir(full), () => Deno.mkdir(full)],
+      [
+        "mkdir without its parent",
+        () => mkdir(`${missing}/x`),
+        () => Deno.mkdir(`${missing}/x`),
+      ],
+      [
+        "mkdir under a file",
+        () => mkdir(`${dir}/file/x`),
+        () => Deno.mkdir(`${dir}/file/x`),
+      ],
+      [
+        "readDir missing",
+        () => readDir(missing),
+        () => Array.fromAsync(Deno.readDir(missing)),
+      ],
+      [
+        "readDir of a file",
+        () => readDir(`${dir}/file`),
+        () => Array.fromAsync(Deno.readDir(`${dir}/file`)),
+      ],
+      [
+        "remove missing",
+        () => remove(missing, false),
+        () => Deno.remove(missing),
+      ],
+      [
+        "remove missing, recursive",
+        () => remove(missing, true),
+        () => Deno.remove(missing, { recursive: true }),
+      ],
+      [
+        "remove a directory that is not empty",
+        () => remove(full, false),
+        () => Deno.remove(full),
+      ],
+      [
+        "copyFile missing",
+        () => copyFile(missing, `${dir}/out`),
+        () => Deno.copyFile(missing, `${dir}/out`),
+      ],
+      [
+        "copyFile into a missing directory",
+        () => copyFile(`${dir}/file`, `${missing}/out`),
+        () => Deno.copyFile(`${dir}/file`, `${missing}/out`),
+      ],
+      [
+        "copyFile of a directory",
+        () => copyFile(full, `${dir}/out`),
+        () => Deno.copyFile(full, `${dir}/out`),
+      ],
+      [
+        "rename missing",
+        () => rename(missing, `${dir}/out`),
+        () => Deno.rename(missing, `${dir}/out`),
+      ],
+      [
+        "rename a file over a directory",
+        () => rename(`${dir}/file`, full),
+        () => Deno.rename(`${dir}/file`, full),
+      ],
+      [
+        "rename a directory over a file",
+        () => rename(full, `${dir}/file`),
+        () => Deno.rename(full, `${dir}/file`),
+      ],
+      [
+        "readLink missing",
+        () => readLink(missing),
+        () => Deno.readLink(missing),
+      ],
+      [
+        "readLink of a file",
+        () => readLink(`${dir}/file`),
+        () => Deno.readLink(`${dir}/file`),
+      ],
+    ];
+  };
+  const count = pairs("").length;
+  const found: string[] = [];
+  for (let index = 0; index < count; index++) {
+    const name = pairs("")[index][0];
+    const a = await inFreshTree((dir) => pairs(dir)[index][1]());
+    const b = await inFreshTree((dir) => pairs(dir)[index][2]());
+    if (a.kind !== b.kind || a.code !== b.code) {
+      found.push(`${name}: ours ${a.kind}/${a.code}, Deno ${b.kind}/${b.code}`);
+    }
+  }
+  // The class is the same on every platform. On Windows two codes are not:
+  // Deno gives a wrong one for the first and none at all for the second,
+  // where node:fs names the failure, and that is kept.
+  assertEquals(
+    found,
+    Deno.build.os === "windows"
+      ? [
+        "readDir of a file: ours NotADirectory/ENOTDIR, Deno NotADirectory/ENOENT",
+        "readLink of a file: ours Error/EINVAL, Deno Error/undefined",
+      ]
+      : [],
+  );
+});
+
+Deno.test({
+  name: "a link onto a taken path fails as Deno's does",
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await Deno.writeTextFile(`${dir}/file`, "x");
+      const pairs: Pair[] = [
+        [
+          "symlink existing",
+          () => symlink("target", `${dir}/file`),
+          () => Deno.symlink("target", `${dir}/file`),
+        ],
+        [
+          "symlink into a missing directory",
+          () => symlink("target", `${dir}/nope/link`),
+          () => Deno.symlink("target", `${dir}/nope/link`),
+        ],
+      ];
+      assertEquals(await mismatches(pairs), []);
+    });
+  },
+});
+
+Deno.test("alreadyExists is the class and code of the file system's own refusal", async () => {
+  await withTemp(async (dir) => {
+    const made = alreadyExists("taken");
+    assertEquals(made instanceof Deno.errors.AlreadyExists, true);
+    assertEquals(made.message, "taken");
+    const real = await failure(() => mkdir(dir));
+    assertEquals(
+      { kind: made.constructor.name, code: "code" in made && made.code },
+      real,
     );
   });
 });
