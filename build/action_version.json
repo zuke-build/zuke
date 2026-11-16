@@ -1,6 +1,6 @@
 {
-  "ref": "zuke-build/zuke@517dc954200eae7c54125406675c329fa8cfb811",
-  "version": "v1.0.9",
+  "ref": "zuke-build/zuke@b2d0b02b0613505f06e125a600ec6cea4ca8fc7b",
+  "version": "v1.0.10",
   "inputs": [
     "target",
     "egress-policy",
@@ -11,5 +11,5 @@
     "deno-version",
     "actions-cache"
   ],
-  "digest": "a6b139bb852a97371e3b468640eff1764e413113678e68636f1f6e4aa32459d8"
+  "digest": "05d79f09f4a90af3ab006066bae3142fc9b5e097406e2d5478b690550a6939ce"
 }
