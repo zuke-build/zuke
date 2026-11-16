@@ -20,7 +20,7 @@ jobs:
       security-events: write
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@517dc954200eae7c54125406675c329fa8cfb811 # v1.0.9
+        uses: zuke-build/zuke@b2d0b02b0613505f06e125a600ec6cea4ca8fc7b # v1.0.10
         with:
           egress-policy: audit
           persist-credentials: "false"
