@@ -34,6 +34,15 @@
  * @module
  */
 
+import {
+  chmod,
+  copyFile,
+  makeTempDir,
+  mkdirRecursive,
+  readFile,
+  remove,
+  writeFile,
+} from "./fs.ts";
 import { httpDownload } from "./http.ts";
 import {
   type ExtractOptions,
@@ -85,7 +94,7 @@ function platformOf(data: InstallPlatform): Platform {
 }
 
 /**
- * The current host's {@link Platform} (from `Deno.build`, with the OS
+ * The current host's {@link Platform} (from the runtime, with the OS
  * normalised) — the analogue of {@link "./host.ts".isCI} for "what machine am I
  * running on". Its `os` is a Zuke {@link OperatingSystem} (`macos`, not
  * `darwin`); use the `osLabel`/`archLabel` helpers to name it for a download URL.
@@ -235,8 +244,8 @@ async function writeMarker(
   target: AbsolutePath,
   checksum: string,
 ): Promise<void> {
-  const binary = await sha256Hex(await Deno.readFile(String(target)));
-  await Deno.writeTextFile(
+  const binary = await sha256Hex(await readFile(String(target)));
+  await writeFile(
     markerPath(target),
     `${JSON.stringify({ checksum, binary })}\n`,
   );
@@ -329,17 +338,17 @@ export async function installRelease(
   }
 
   const url = options.url(platform);
-  await Deno.mkdir(String(dir), { recursive: true });
+  await mkdirRecursive(String(dir));
 
   if (archive !== "raw") {
-    const scratch = await Deno.makeTempDir();
+    const scratch = await makeTempDir();
     try {
       const archivePath = `${scratch}/download.${archive}`;
       await download(url, archivePath);
       if (checksum !== undefined) {
         await verifyChecksum(
           options.name,
-          await Deno.readFile(archivePath),
+          await readFile(archivePath),
           checksum,
         );
       }
@@ -349,9 +358,9 @@ export async function installRelease(
         options.binaryPath ?? options.name,
         platform,
       );
-      await Deno.copyFile(`${unpacked}/${inArchive}`, String(target));
+      await copyFile(`${unpacked}/${inArchive}`, String(target));
     } finally {
-      await Deno.remove(scratch, { recursive: true });
+      await remove(scratch, true);
     }
   } else {
     await download(url, target);
@@ -359,18 +368,18 @@ export async function installRelease(
       try {
         await verifyChecksum(
           options.name,
-          await Deno.readFile(String(target)),
+          await readFile(String(target)),
           checksum,
         );
       } catch (error) {
         // Don't leave an unverified binary on disk to be picked up later.
-        await Deno.remove(String(target)).catch(() => {});
+        await remove(String(target), false).catch(() => {});
         throw error;
       }
     }
   }
 
-  if (!onWindows) await Deno.chmod(String(target), 0o755);
+  if (!onWindows) await chmod(String(target), 0o755);
   // Record the checksum and the installed binary's own hash, so a later run can
   // skip the download only when the binary on disk still matches.
   if (checksum !== undefined) await writeMarker(target, checksum);
@@ -493,24 +502,24 @@ export async function installTree(
 
   const url = options.url(platform);
   const archive = forPlatform(options.archive, platform);
-  const scratch = await Deno.makeTempDir();
+  const scratch = await makeTempDir();
   try {
     const archivePath = `${scratch}/download.${archive}`;
     await download(url, archivePath);
     if (checksum !== undefined) {
       await verifyChecksum(
         options.name,
-        await Deno.readFile(archivePath),
+        await readFile(archivePath),
         checksum,
       );
     }
     // Clear any stale or partial prior tree before unpacking a fresh one, so a
     // re-install never collides with leftover files (or symlinks).
-    await Deno.remove(String(treeRoot), { recursive: true }).catch(() => {});
-    await Deno.mkdir(String(treeRoot), { recursive: true });
+    await remove(String(treeRoot), true).catch(() => {});
+    await mkdirRecursive(String(treeRoot));
     await EXTRACTORS[archive](archivePath, treeRoot, { strip: options.strip });
   } finally {
-    await Deno.remove(scratch, { recursive: true });
+    await remove(scratch, true);
   }
 
   // Extraction keeps the archive's mode bits; the declared bins are a fallback
@@ -518,11 +527,11 @@ export async function installTree(
   // (mirrors installRelease, and keeps the skip branch testable via `platform`).
   if (platform.os !== "windows") {
     for (const bin of bins) {
-      await Deno.chmod(String(treeRoot(...bin.split("/"))), 0o755);
+      await chmod(String(treeRoot(...bin.split("/"))), 0o755);
     }
   }
   if (checksum !== undefined) {
-    await Deno.writeTextFile(
+    await writeFile(
       treeMarkerPath(treeRoot),
       `${JSON.stringify({ checksum })}\n`,
     );

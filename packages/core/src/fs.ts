@@ -21,9 +21,11 @@
 
 import { lstatSync as nodeLstatSync, type Stats } from "node:fs";
 import {
+  chmod as nodeChmod,
   copyFile as nodeCopyFile,
   lstat as nodeLstat,
   mkdir as nodeMkdir,
+  mkdtemp as nodeMkdtemp,
   open as nodeOpen,
   readdir as nodeReaddir,
   readFile as nodeReadFile,
@@ -35,6 +37,7 @@ import {
   symlink as nodeSymlink,
   unlink as nodeUnlink,
 } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import process from "node:process";
 
 /**
@@ -212,6 +215,32 @@ export function mkdirRecursive(path: string): Promise<void> {
 /** Create the one directory `path`, whose parent must exist. */
 export function mkdir(path: string): Promise<void> {
   return io(() => nodeMkdir(path));
+}
+
+/**
+ * The system's temporary directory. Finding it reads the environment, which
+ * a Deno run may deny; core works without that permission, so a denial falls
+ * back to where POSIX keeps temporary files.
+ */
+function tempRoot(): string {
+  try {
+    return tmpdir();
+  } catch (error) {
+    // shortcut: Windows has no fixed place to fall back to, so a denial
+    // there is reported; give it one if a build needs that.
+    if (WINDOWS) throw error;
+    return "/tmp";
+  }
+}
+
+/** Create a directory of its own under the system's temporary one. */
+export function makeTempDir(): Promise<string> {
+  return io(() => nodeMkdtemp(`${tempRoot()}/zuke-`));
+}
+
+/** Set the permission bits of `path`. Not for Windows, which has none. */
+export function chmod(path: string, mode: number): Promise<void> {
+  return io(() => nodeChmod(path, mode));
 }
 
 /** The entries of the directory `path`, in no particular order. */

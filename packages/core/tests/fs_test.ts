@@ -10,9 +10,11 @@
 import { assertEquals } from "./_assert.ts";
 import {
   alreadyExists,
+  chmod,
   copyFile,
   lstat,
   lstatSync,
+  makeTempDir,
   mkdir,
   mkdirRecursive,
   readDir,
@@ -487,4 +489,82 @@ Deno.test("alreadyExists is the class and code of the file system's own refusal"
       real,
     );
   });
+});
+
+Deno.test("makeTempDir makes a new, empty directory each time, where Deno makes its own", async () => {
+  const [a, b, theirs] = [
+    await makeTempDir(),
+    await makeTempDir(),
+    await Deno.makeTempDir(),
+  ];
+  try {
+    assertEquals(a === b, false);
+    assertEquals(await readDir(a), []);
+    // Beside Deno's, compared as the system resolves them.
+    const parent = async (path: string) => await Deno.realPath(`${path}/..`);
+    assertEquals(await parent(a), await parent(theirs));
+    if (Deno.build.os !== "windows") {
+      assertEquals((await stat(a)).mode, (await Deno.stat(theirs)).mode);
+    }
+  } finally {
+    for (const dir of [a, b, theirs]) await remove(dir, true);
+  }
+});
+
+Deno.test({
+  name: "chmod sets the bits Deno's sets, and fails as Deno's does",
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await writeFile(`${dir}/ours`, "x", 0o600);
+      await writeFile(`${dir}/theirs`, "x", 0o600);
+      await chmod(`${dir}/ours`, 0o755);
+      await Deno.chmod(`${dir}/theirs`, 0o755);
+      assertEquals(
+        (await stat(`${dir}/ours`)).mode,
+        (await stat(`${dir}/theirs`)).mode,
+      );
+      assertEquals(
+        await mismatches([[
+          "chmod missing",
+          () => chmod(`${dir}/nope`, 0o755),
+          () => Deno.chmod(`${dir}/nope`, 0o755),
+        ]]),
+        [],
+      );
+    });
+  },
+});
+
+Deno.test({
+  name: "makeTempDir works without permission to read the environment",
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      const module = new URL("../src/fs.ts", import.meta.url).href;
+      await Deno.writeTextFile(
+        `${dir}/probe.ts`,
+        `import { makeTempDir, remove } from ${JSON.stringify(module)};\n` +
+          `const made = await makeTempDir();\n` +
+          `await remove(made, true);\n` +
+          `console.log(made);\n`,
+      );
+      const run = await new Deno.Command(Deno.execPath(), {
+        args: [
+          "run",
+          "--no-config",
+          "--no-prompt",
+          "--allow-read",
+          "--allow-write",
+          `${dir}/probe.ts`,
+        ],
+        stderr: "piped",
+      }).output();
+      assertEquals(new TextDecoder().decode(run.stderr), "");
+      assertEquals(
+        new TextDecoder().decode(run.stdout).startsWith("/tmp/zuke-"),
+        true,
+      );
+    });
+  },
 });
