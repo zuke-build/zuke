@@ -38,7 +38,16 @@ import {
 } from "./compression.ts";
 import { GitHubActionsCacheStore } from "./github_actions_cache.ts";
 import { artifactBody, assertSecureBackendUrl, HttpError } from "./http.ts";
-import { chmod, mkdirRecursive, remove, rename } from "./fs.ts";
+import {
+  chmod,
+  mkdirRecursive,
+  type OpenFile,
+  openFile,
+  remove,
+  rename,
+  userId,
+  writeStream,
+} from "./fs.ts";
 import { isNotFound, messageOf } from "./internal.ts";
 import { redactUrl } from "./redact_url.ts";
 import type { AwsCredentials } from "./aws_sigv4.ts";
@@ -717,7 +726,7 @@ export interface FileSystemCacheStoreOptions {
   maxInflatedBytes?: number;
   /**
    * The current user's id, or `null` where the platform has none (Windows).
-   * Defaults to `Deno.uid`; overridable for tests.
+   * Defaults to the user the process runs as; overridable for tests.
    */
   uid?: () => number | null;
 }
@@ -745,7 +754,7 @@ export class FileSystemCacheStore implements RemoteCacheStore {
   constructor(dir: string, options: FileSystemCacheStoreOptions = {}) {
     this.#dir = dir;
     this.maxInflatedBytes = options.maxInflatedBytes;
-    this.#uid = options.uid ?? Deno.uid;
+    this.#uid = options.uid ?? userId;
   }
 
   #path(key: string): string {
@@ -767,34 +776,27 @@ export class FileSystemCacheStore implements RemoteCacheStore {
   async getStream(
     key: string,
   ): Promise<ReadableStream<Uint8Array<ArrayBuffer>> | null> {
-    let file: Deno.FsFile;
+    let file: OpenFile;
     try {
-      file = await Deno.open(this.#path(key));
+      file = await openFile(this.#path(key));
     } catch (error) {
       if (isNotFound(error)) return null;
       throw error;
     }
-    try {
-      // The open handle's stat, so the file checked is the file read.
-      const info = await file.stat();
-      const uid = this.#uid();
-      // No uid means no POSIX permissions (Windows): Deno reports every
-      // writable file there as mode 666, so neither check means anything.
-      if (uid !== null && info.uid !== null && info.uid !== uid) {
-        throw new Error(
-          `remote cache: refusing "${key}", which is owned by another user ` +
-            `(uid ${info.uid}).`,
-        );
-      }
-      if (uid !== null && info.mode !== null && (info.mode & 0o022) !== 0) {
-        throw new Error(
-          `remote cache: refusing "${key}", which other users can write ` +
-            `(mode ${(info.mode & 0o777).toString(8)}).`,
-        );
-      }
-    } catch (error) {
-      file.close();
-      throw error;
+    // The open file's own owner and mode, so the file checked is the file
+    // read. No uid means no POSIX permissions (Windows): every writable file
+    // there is reported as mode 666, so neither check means anything.
+    const uid = this.#uid();
+    const refusal = uid === null
+      ? null
+      : file.uid !== uid
+      ? `is owned by another user (uid ${file.uid})`
+      : (file.mode & 0o022) !== 0
+      ? `other users can write (mode ${(file.mode & 0o777).toString(8)})`
+      : null;
+    if (refusal !== null) {
+      await file.close();
+      throw new Error(`remote cache: refusing "${key}", which ${refusal}.`);
     }
     return file.readable;
   }
@@ -816,7 +818,7 @@ export class FileSystemCacheStore implements RemoteCacheStore {
     await mkdirRecursive(this.#dir);
     const partial = `${this.#path(key)}.${crypto.randomUUID()}.partial`;
     try {
-      await Deno.writeFile(partial, artifact);
+      await writeStream(partial, artifact);
       // Not group-writable whatever the umask, so getStream accepts it.
       if (hostOs() !== "windows") await chmod(partial, 0o644);
       await rename(partial, this.#path(key));
