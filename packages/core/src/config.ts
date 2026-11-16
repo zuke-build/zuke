@@ -19,6 +19,8 @@
  */
 
 import { type AbsolutePath, absolutePath } from "./path.ts";
+import process from "node:process";
+import { lstatSync } from "./fs.ts";
 import { isNotFound } from "./internal.ts";
 
 /** The Zuke config file name; its presence marks a repository root. */
@@ -38,7 +40,7 @@ export const ARTIFACT_DIR = ".zuke";
  */
 export function pathExists(path: string): boolean {
   try {
-    Deno.lstatSync(path);
+    lstatSync(path);
     return true;
   } catch (error) {
     if (isNotFound(error)) return false;
@@ -68,7 +70,7 @@ export function findConfigDir(
 /**
  * Resolve the repository root from an explicit cwd and existence probe, then
  * append `segments`. Pure given its inputs; {@link repoRoot} wires in the real
- * `Deno.cwd()` and filesystem probe.
+ * working directory and filesystem probe.
  *
  * @throws if no {@link CONFIG_FILE} is found in `cwd` or any ancestor.
  */
@@ -105,5 +107,5 @@ export function repoRootFrom(
  * @throws if no {@link CONFIG_FILE} is found in the cwd or any ancestor.
  */
 export function repoRoot(...segments: string[]): AbsolutePath {
-  return repoRootFrom(Deno.cwd(), pathExists, segments);
+  return repoRootFrom(process.cwd(), pathExists, segments);
 }

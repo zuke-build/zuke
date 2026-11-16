@@ -13,6 +13,16 @@
  * @module
  */
 
+import {
+  type FileInfo,
+  lstat,
+  mkdirRecursive,
+  readFile,
+  readTextFile,
+  stat,
+  writeFile,
+} from "./fs.ts";
+
 /**
  * Read an environment variable, tolerating a denied `--allow-env` permission by
  * returning `undefined` rather than throwing. The default env reader every
@@ -143,7 +153,7 @@ export async function readFileOrNull(
   path: string,
 ): Promise<Uint8Array | null> {
   try {
-    return await Deno.readFile(path);
+    return await readFile(path);
   } catch (error) {
     if (isNotFound(error)) return null;
     throw error;
@@ -153,7 +163,7 @@ export async function readFileOrNull(
 /** Read a file's text, or `null` when it does not exist. */
 export async function readTextOrNull(path: string): Promise<string | null> {
   try {
-    return await Deno.readTextFile(path);
+    return await readTextFile(path);
   } catch (error) {
     if (isNotFound(error)) return null;
     throw error;
@@ -161,13 +171,13 @@ export async function readTextOrNull(path: string): Promise<string | null> {
 }
 
 /**
- * Stat a path, or `null` when it does not exist. `Deno.stat`, not `lstat`, so a
+ * Stat a path, or `null` when it does not exist. A `stat`, not an `lstat`, so a
  * symlink to an existing file counts as present — which is what an installed
  * `bin` symlink needs.
  */
-export async function statOrNull(path: string): Promise<Deno.FileInfo | null> {
+export async function statOrNull(path: string): Promise<FileInfo | null> {
   try {
-    return await Deno.stat(path);
+    return await stat(path);
   } catch (error) {
     if (isNotFound(error)) return null;
     throw error;
@@ -180,9 +190,9 @@ export async function statOrNull(path: string): Promise<Deno.FileInfo | null> {
  * which is what a guard against writing *through* a link needs — `statOrNull`
  * would report the target and so answer the wrong question.
  */
-export async function lstatOrNull(path: string): Promise<Deno.FileInfo | null> {
+export async function lstatOrNull(path: string): Promise<FileInfo | null> {
   try {
-    return await Deno.lstat(path);
+    return await lstat(path);
   } catch (error) {
     if (isNotFound(error)) return null;
     throw error;
@@ -260,8 +270,8 @@ export async function writeTextEnsuringDir(
   content: string,
 ): Promise<void> {
   const parent = parentOf(path);
-  if (parent !== null) await Deno.mkdir(parent, { recursive: true });
-  await Deno.writeTextFile(path, content);
+  if (parent !== null) await mkdirRecursive(parent);
+  await writeFile(path, content);
 }
 
 /**
@@ -274,8 +284,8 @@ export async function writeFileEnsuringDir(
   mode?: number,
 ): Promise<void> {
   const parent = parentOf(path);
-  if (parent !== null) await Deno.mkdir(parent, { recursive: true });
-  await Deno.writeFile(path, bytes, { mode });
+  if (parent !== null) await mkdirRecursive(parent);
+  await writeFile(path, bytes, mode);
 }
 
 /**
