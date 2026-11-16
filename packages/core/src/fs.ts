@@ -88,8 +88,9 @@ function denoErrorFor(code: string): (new (message: string) => Error) | null {
     case "ELOOP":
       return Deno.errors.FilesystemLoop;
     case "EINVAL":
-      // Deno has no class of its own for an invalid argument.
-      return TypeError;
+      // Deno has no class of its own for an invalid argument, and on Windows
+      // throws a plain error for it.
+      return WINDOWS ? null : TypeError;
     default:
       return null;
   }

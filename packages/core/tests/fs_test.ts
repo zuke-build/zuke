@@ -439,7 +439,18 @@ Deno.test("directory, copy, rename and remove failures surface as Deno's do", as
       found.push(`${name}: ours ${a.kind}/${a.code}, Deno ${b.kind}/${b.code}`);
     }
   }
-  assertEquals(found, []);
+  // The class is the same on every platform. On Windows two codes are not:
+  // Deno gives a wrong one for the first and none at all for the second,
+  // where node:fs names the failure, and that is kept.
+  assertEquals(
+    found,
+    Deno.build.os === "windows"
+      ? [
+        "readDir of a file: ours NotADirectory/ENOTDIR, Deno NotADirectory/ENOENT",
+        "readLink of a file: ours Error/EINVAL, Deno Error/undefined",
+      ]
+      : [],
+  );
 });
 
 Deno.test({
