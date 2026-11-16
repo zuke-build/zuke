@@ -489,7 +489,7 @@ async function gzip(data: Uint8Array): Promise<Uint8Array>
   Gzip-compress `data` using the platform `CompressionStream`.
 
 function hostPlatform(): Platform
-  The current host's {@link Platform} (from `Deno.build`, with the OS
+  The current host's {@link Platform} (from the runtime, with the OS
   normalised) — the analogue of {@link "./host.ts".isCI} for "what machine am I
   running on". Its `os` is a Zuke {@link OperatingSystem} (`macos`, not
   `darwin`); use the `osLabel`/`archLabel` helpers to name it for a download URL.

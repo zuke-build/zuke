@@ -27,6 +27,8 @@
  * @module
  */
 
+import process from "node:process";
+import { mkdirRecursive, readFile, remove, symlink, writeFile } from "./fs.ts";
 import type { PathLike } from "./path.ts";
 import { crc32, limitBytes, lstatOrNull } from "./internal.ts";
 import { unxz } from "./xz.ts";
@@ -649,14 +651,14 @@ export async function createTarGzip(
   dest: PathLike,
   options: { cwd?: string } = {},
 ): Promise<void> {
-  const cwd = options.cwd ?? Deno.cwd();
+  const cwd = options.cwd ?? process.cwd();
   const entries: TarEntry[] = [];
   for (const file of files) {
     const name = String(file);
-    const data = await Deno.readFile(`${cwd}/${name}`);
+    const data = await readFile(`${cwd}/${name}`);
     entries.push({ name, data });
   }
-  await Deno.writeFile(String(dest), await gzip(tar(entries)));
+  await writeFile(String(dest), await gzip(tar(entries)));
 }
 
 /** Options common to {@link extractTarGzip}, {@link extractTarXz} and {@link extractZip}. */
@@ -681,7 +683,7 @@ export async function extractTarGzip(
   destDir: PathLike,
   options: ExtractOptions = {},
 ): Promise<void> {
-  const archive = untar(await gunzip(await Deno.readFile(String(src))));
+  const archive = untar(await gunzip(await readFile(String(src))));
   await writeEntries(archive, destDir, options);
 }
 
@@ -702,7 +704,7 @@ export async function extractTarXz(
   const path = String(src);
   // `-T0` decodes a multi-block archive on every core (xz 5.4+).
   const tarball = await decompressWith("xz", ["-dcT0", "--", path]) ??
-    await unxz(await Deno.readFile(path));
+    await unxz(await readFile(path));
   await writeEntries(untar(tarball), destDir, options);
 }
 
@@ -823,7 +825,7 @@ async function writeEntries(
   const strip = options.strip ?? 0;
   for (const entry of entries) assertSafeEntryName(entry.name);
   const root = String(destDir);
-  await Deno.mkdir(root, { recursive: true });
+  await mkdirRecursive(root);
   const realDirs = new Set<string>([root]);
   for (const entry of entries) {
     const name = stripComponents(entry.name, strip);
@@ -849,22 +851,22 @@ async function writeEntries(
       // path so a malformed duplicate is "last wins" (removing a populated
       // directory fails and is ignored, so its contents are kept).
       const dirPath = path.replace(/\/+$/, "");
-      await Deno.remove(dirPath).catch(() => {});
-      await Deno.mkdir(dirPath, { recursive: true });
+      await remove(dirPath, false).catch(() => {});
+      await mkdirRecursive(dirPath);
       realDirs.add(dirPath);
       continue;
     }
     const slash = path.lastIndexOf("/");
     if (slash !== -1) {
-      await Deno.mkdir(path.slice(0, slash), { recursive: true });
+      await mkdirRecursive(path.slice(0, slash));
       realDirs.add(path.slice(0, slash));
     }
     // Remove any node already at the leaf before writing. This is not only
     // "last one wins" for a duplicate entry: it unlinks a symlink sitting at the
     // path — one this archive planted, or one left in a reused `destDir` — so
     // the write lands at the leaf itself and cannot follow the link outside
-    // `destDir`. `Deno.remove` on a symlink drops the link, not its target.
-    await Deno.remove(path).catch(() => {});
+    // `destDir`. Removing a symlink drops the link, not its target.
+    await remove(path, false).catch(() => {});
     // The path is about to become a file or symlink, so it is no longer a plain
     // directory the ancestor check may trust (an empty dir can be replaced here).
     realDirs.delete(path);
@@ -874,15 +876,15 @@ async function writeEntries(
       // (Node's bin/npm → npm-cli.js) are file symlinks.
       // caveat: assume "file"; a directory symlink in a tar unpacked on Windows
       // would get the wrong type — rare (runtimes ship .zip on Windows).
-      await Deno.symlink(entry.linkname, path, { type: "file" });
+      await symlink(entry.linkname, path, "file");
     } else {
       // The archive's permission bits, kept owner-readable and -writable and
       // never group- or world-writable; Windows ignores the mode.
-      await Deno.writeFile(path, entry.data, {
-        mode: entry.mode === undefined
-          ? undefined
-          : (entry.mode | 0o600) & 0o755,
-      });
+      await writeFile(
+        path,
+        entry.data,
+        entry.mode === undefined ? undefined : (entry.mode | 0o600) & 0o755,
+      );
     }
   }
 }
@@ -1167,7 +1169,7 @@ export async function extractZip(
   options: ExtractOptions = {},
 ): Promise<void> {
   await writeEntries(
-    await unzip(await Deno.readFile(String(src))),
+    await unzip(await readFile(String(src))),
     destDir,
     options,
   );
