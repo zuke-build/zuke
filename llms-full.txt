@@ -4540,7 +4540,7 @@ interface OutputModeOptions
   readEnv?: (name: string) => string | undefined
     Reads an environment variable; defaults to the process environment.
   isTerminal?: () => boolean
-    Whether stdout is an interactive terminal; defaults to asking Deno.
+    Whether stdout is an interactive terminal; defaults to asking the system.
 
 interface Platform extends InstallPlatform
   A platform with helpers to name it the way a tool's downloads do. `osLabel`
@@ -4872,7 +4872,7 @@ interface RunOptions
   Options for {@link run}.
 
   args?: string[]
-    Command-line arguments. Defaults to `Deno.args`.
+    Command-line arguments. Defaults to the arguments the process was started with.
   plugins?: Plugin[]
     Lifecycle observers to run alongside the build's own hooks.
   renderer?: Renderer
