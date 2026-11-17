@@ -10,13 +10,13 @@
  * test) `run` returns without doing anything.
  *
  * The decision recovers the module that called `run` from a stack trace and
- * compares it against {@link mainModule}. Both are passed in as arguments
+ * compares it against {@link entryModules}. Both are passed in as arguments
  * so the logic stays pure and unit-testable.
  *
  * @module
  */
 
-import { mainModule } from "./runtime.ts";
+import { entryModules } from "./runtime.ts";
 
 /** The `file://` module URL within a single V8 stack frame, sans `:line:col`. */
 const FRAME = /(file:\/\/.+?):\d+:\d+/;
@@ -46,8 +46,8 @@ export function callerModule(
 export function isEntryModule(
   stack: string,
   selfUrl: string,
-  main: string = mainModule(),
+  entries: readonly string[] = entryModules(),
 ): boolean {
   const caller = callerModule(stack, selfUrl);
-  return caller === undefined || caller === main;
+  return caller === undefined || entries.includes(caller);
 }

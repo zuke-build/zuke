@@ -4,16 +4,20 @@
 /**
  * Run under real Node by `node_process_e2e.ts`: core's runtime seam, loaded
  * as TypeScript source. The test starts this file by its own path and
- * through a symlink to it; either way the entry module must be this file.
+ * through a symlink to it, with and without Node resolving the link; every
+ * way the entry module must be this file.
  */
 
 import assert from "node:assert/strict";
 import process from "node:process";
 
-const core = new URL("../../../packages/core/src/", import.meta.url);
-const { denoPath, mainModule, ON_DENO, runtimeFacts } = await import(
-  new URL("runtime.ts", core).href
-);
+// The test says where core is: started through a link Node does not
+// resolve, this file's own URL is the link's, somewhere else entirely.
+const core = new URL(process.argv[2]);
+const { denoPath, entryModules, mainModule, ON_DENO, runtimeFacts } =
+  await import(
+    new URL("runtime.ts", core).href
+  );
 const { isEntryModule } = await import(new URL("entry.ts", core).href);
 
 assert.equal(ON_DENO, false);
@@ -24,11 +28,16 @@ assert.deepEqual(runtimeFacts(), {
   standalone: false,
 });
 assert.equal(denoPath(), null);
-assert.equal(mainModule(), import.meta.url);
+// However it was started, one of the entry's names is this file's own, and
+// by default it is the first: Node resolved the link it was started through.
+assert.ok(entryModules().includes(import.meta.url));
+if (!process.execArgv.includes("--preserve-symlinks-main")) {
+  assert.equal(mainModule(), import.meta.url);
+}
 // What `run` asks: this file called it, and this file is the entry.
 assert.equal(isEntryModule(new Error().stack, "file:///elsewhere.ts"), true);
 assert.equal(
-  isEntryModule(new Error().stack, "file:///elsewhere.ts", "file:///b.ts"),
+  isEntryModule(new Error().stack, "file:///elsewhere.ts", ["file:///b.ts"]),
   false,
 );
 

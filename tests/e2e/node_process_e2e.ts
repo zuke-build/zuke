@@ -25,6 +25,8 @@ const CANARY = fileURLToPath(
 const RUNTIME_CANARY = fileURLToPath(
   new URL("./fixtures/node_runtime_canary.mjs", import.meta.url),
 );
+/** Where core's source is, as the URL the runtime canary imports from. */
+const CORE_SOURCE = new URL("../../packages/core/src/", import.meta.url).href;
 const STDIO_CANARY = fileURLToPath(
   new URL("./fixtures/node_stdio_canary.mjs", import.meta.url),
 );
@@ -177,9 +179,15 @@ Deno.test({
     const link = `${dir}/started-through-a-link.mjs`;
     await Deno.symlink(RUNTIME_CANARY, link);
     try {
-      for (const script of [RUNTIME_CANARY, link]) {
+      const starts = [
+        [RUNTIME_CANARY],
+        [link],
+        // Node then names the module by the link, not by where it leads.
+        ["--preserve-symlinks-main", link],
+      ];
+      for (const start of starts) {
         const { code, stdout, stderr } = await new Deno.Command("node", {
-          args: [...RUN_TYPESCRIPT, script],
+          args: [...RUN_TYPESCRIPT, ...start, CORE_SOURCE],
           stdout: "piped",
           stderr: "piped",
         }).output();

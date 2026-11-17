@@ -57,15 +57,29 @@ export function runtimeFacts(): RuntimeFacts {
 }
 
 /**
+ * Every URL the module the program was started with can go by, the usual one
+ * first; none when it was started with no module.
+ *
+ * On Deno there is one. On Node there are two when the script named on the
+ * command line is a symlink, as it is under `npx` and in a global install:
+ * Node names the module by the file the link leads to, unless it was started
+ * with `--preserve-symlinks-main`, when it names it by the link.
+ */
+export function entryModules(): string[] {
+  if (ON_DENO) return [Deno.mainModule];
+  const script = process.argv.at(1);
+  if (script === undefined) return [];
+  const resolved = pathToFileURL(realPathSync(script)).href;
+  const given = pathToFileURL(script).href;
+  return resolved === given ? [resolved] : [resolved, given];
+}
+
+/**
  * The URL of the module the program was started with, or `""` when it was
- * started with none. On Node that is the script named on the command line
- * with symlinks resolved, which is how Node names it in a stack trace: `npx`
- * and a global install both start a script through one.
+ * started with none: the first of {@link entryModules}.
  */
 export function mainModule(): string {
-  if (ON_DENO) return Deno.mainModule;
-  const script = process.argv.at(1);
-  return script === undefined ? "" : pathToFileURL(realPathSync(script)).href;
+  return entryModules().at(0) ?? "";
 }
 
 /**
