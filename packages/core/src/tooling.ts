@@ -63,7 +63,7 @@ interface NodeBinLookup {
 function envResolution(): ToolResolution | null {
   let value: string | undefined;
   try {
-    value = Deno.env.get("ZUKE_TOOL_RESOLUTION");
+    value = process.env.ZUKE_TOOL_RESOLUTION;
   } catch {
     return null; // no --allow-env: behave as if unset
   }

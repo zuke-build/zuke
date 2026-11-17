@@ -13,6 +13,7 @@
  * @module
  */
 
+import process from "node:process";
 import {
   type FileInfo,
   lstat,
@@ -30,7 +31,7 @@ import {
  */
 export function defaultReadEnv(name: string): string | undefined {
   try {
-    return Deno.env.get(name);
+    return process.env[name];
   } catch {
     return undefined;
   }

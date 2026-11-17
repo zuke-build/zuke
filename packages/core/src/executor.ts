@@ -132,7 +132,7 @@ export interface ExecuteOptions {
   params?: Record<string, string>;
   /**
    * Reads an environment variable as a parameter fallback. Defaults to
-   * `Deno.env.get` (returning `undefined` when env access is unavailable);
+   * the process environment (returning `undefined` when env access is unavailable);
    * overridable so parameter resolution can be tested hermetically.
    */
   readEnv?: (name: string) => string | undefined;

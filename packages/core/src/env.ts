@@ -16,6 +16,7 @@
  * @module
  */
 
+import process from "node:process";
 import { type HostOs, hostOs, operatingSystem } from "./host.ts";
 import type { PathLike } from "./path.ts";
 
@@ -23,7 +24,7 @@ import type { PathLike } from "./path.ts";
  * Prepend `dir` to the process `PATH`, and return the new value. A tool
  * provisioned into `dir` (e.g. the `bin` directory of an {@link "./install.ts".installTree}
  * runtime) then resolves for the rest of the build: the shell `$`, `Command`,
- * and every tool wrapper spawn subprocesses that inherit `Deno.env`, so the
+ * and every tool wrapper spawn subprocesses that inherit the environment, so the
  * `node_modules/.bin` shims and `NpmTasks` that assume a `node`/`npm` on `PATH`
  * find the provisioned one.
  *
@@ -41,10 +42,10 @@ export function prependPath(
 ): string {
   const separator = operatingSystem(os) === "windows" ? ";" : ":";
   const entry = String(dir);
-  const current = Deno.env.get("PATH") ?? "";
+  const current = process.env.PATH ?? "";
   const parts = current.split(separator).filter((part) => part !== "");
   if (parts.includes(entry)) return current; // already present — unchanged
   const next = current === "" ? entry : `${entry}${separator}${current}`;
-  Deno.env.set("PATH", next);
+  process.env.PATH = next;
   return next;
 }
