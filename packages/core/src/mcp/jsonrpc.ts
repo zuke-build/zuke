@@ -13,6 +13,8 @@
  * @module
  */
 
+import { type AwaitedWriter, stdinBytes, stdoutWriter } from "../stdio.ts";
+
 /** A JSON-RPC 2.0 request or notification (a notification omits `id`). */
 export interface JsonRpcRequest {
   readonly jsonrpc: "2.0";
@@ -70,11 +72,6 @@ export function err(
   };
 }
 
-/** A sink the transport writes framed responses to (stdout in production). */
-export interface ByteWriter {
-  write(p: Uint8Array): Promise<number>;
-}
-
 /**
  * The per-request context a transport hands the message handler, and the only
  * thing an authenticator sees of the request. Empty on the stdio transport,
@@ -126,8 +123,8 @@ export async function serveStdio(
     message: unknown,
     ctx: McpRequestContext,
   ) => Promise<JsonRpcResponse | null>,
-  input: ReadableStream<Uint8Array> = Deno.stdin.readable,
-  output: ByteWriter = Deno.stdout,
+  input: ReadableStream<Uint8Array> = stdinBytes(),
+  output: AwaitedWriter = stdoutWriter(),
 ): Promise<void> {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();

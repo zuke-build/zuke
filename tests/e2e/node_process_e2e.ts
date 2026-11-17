@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * End-to-end: core's process seam under real Node. The unit tests run the
- * Node backend through Deno's `node:child_process`, which is not Node. What
- * Node itself does with a command, its arguments, its streams and a Windows
- * batch file is only known by running it, on each operating system:
- * {@link file://./fixtures/node_process_canary.mjs} does that, loading
- * `packages/core/src/process.ts` as TypeScript source.
+ * End-to-end: core's process seam and its standard streams under real Node.
+ * The unit tests run the Node code through Deno's `node:` modules, which are
+ * not Node. What Node itself does with a command, its arguments, its streams
+ * and a Windows batch file, and with output written to a pipe just before it
+ * exits, is only known by running it, on each operating system:
+ * {@link file://./fixtures/node_process_canary.mjs} and
+ * {@link file://./fixtures/node_stdio_canary.mjs} do that, loading core's
+ * TypeScript source.
  *
  * These tests need a real `node` on `PATH` that can run TypeScript, so they
  * are skipped where there is none. CI's OS matrix has one; the fast unit gate
@@ -20,6 +22,15 @@ import { assertEquals } from "../../packages/core/tests/_assert.ts";
 const CANARY = fileURLToPath(
   new URL("./fixtures/node_process_canary.mjs", import.meta.url),
 );
+const STDIO_CANARY = fileURLToPath(
+  new URL("./fixtures/node_stdio_canary.mjs", import.meta.url),
+);
+
+/** The arguments that make `node` run the TypeScript a fixture loads. */
+// Needed before 22.18, accepted after it.
+const RUN_TYPESCRIPT = ["--experimental-strip-types", "--no-warnings"];
+
+const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 
 /** The first Node that runs TypeScript source, behind the flag passed below. */
 const MINIMUM = [22, 6];
@@ -73,16 +84,55 @@ Deno.test({
   ignore: !USABLE,
   fn: async () => {
     const { code, stdout, stderr } = await new Deno.Command("node", {
-      // Needed before 22.18, accepted after it.
-      args: ["--experimental-strip-types", "--no-warnings", CANARY],
+      args: [...RUN_TYPESCRIPT, CANARY],
       stdout: "piped",
       stderr: "piped",
     }).output();
-    const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
     assertEquals(
       { code, stderr: decode(stderr) },
       { code: 0, stderr: "" },
     );
     assertEquals(decode(stdout).includes("node process canary ok"), true);
+  },
+});
+
+Deno.test({
+  name: "output written just before exit reaches a slow reader whole",
+  ignore: !USABLE,
+  fn: async () => {
+    const child = new Deno.Command("node", {
+      args: [...RUN_TYPESCRIPT, STDIO_CANARY, "flood"],
+      stdout: "piped",
+      stderr: "piped",
+    }).spawn();
+    // Nothing reads the pipe yet, so Node has most of the output queued when
+    // the canary asks to exit.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const { code, stdout, stderr } = await child.output();
+    assertEquals(
+      { code, stdout: stdout.length, stderr: decode(stderr) },
+      { code: 3, stdout: 32 * 64 * 1024, stderr: "to stderr\n" },
+    );
+  },
+});
+
+Deno.test({
+  name: "stdin is read to its end and written back under real Node",
+  ignore: !USABLE,
+  fn: async () => {
+    const child = new Deno.Command("node", {
+      args: [...RUN_TYPESCRIPT, STDIO_CANARY, "echo"],
+      stdin: "piped",
+      stdout: "piped",
+      stderr: "piped",
+    }).spawn();
+    const sent = new Uint8Array(300_000).map((_, index) => index % 251);
+    const writer = child.stdin.getWriter();
+    await writer.write(sent.subarray(0, 100_000));
+    await writer.write(sent.subarray(100_000));
+    await writer.close();
+    const { code, stdout, stderr } = await child.output();
+    assertEquals({ code, stderr: decode(stderr) }, { code: 0, stderr: "" });
+    assertEquals(stdout, sent);
   },
 });

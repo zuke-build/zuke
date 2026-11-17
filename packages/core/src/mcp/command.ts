@@ -18,8 +18,8 @@ import { defaultStateHost, type StateStore } from "../state/store.ts";
 import { resolveStateStore } from "../state/resolve.ts";
 import type { BuildRegistry } from "../registry/registry.ts";
 import { resolveBuildRegistry } from "../registry/resolve.ts";
+import type { AwaitedWriter } from "../stdio.ts";
 import {
-  type ByteWriter,
   type JsonRpcResponse,
   type McpRequestContext,
   serveStdio,
@@ -84,7 +84,7 @@ export interface ServeMcpOptions extends McpServerOptions {
   /** The message stream to read (defaults to stdin); injectable for tests. */
   input?: ReadableStream<Uint8Array>;
   /** The sink to write responses to (defaults to stdout); injectable for tests. */
-  output?: ByteWriter;
+  output?: AwaitedWriter;
   /** Suppress the stderr startup banner (used by tests). */
   quiet?: boolean;
   /** Serve over HTTP on this address instead of stdio. */

@@ -11,6 +11,7 @@ import { makeTempDir, remove, writeFile } from "./fs.ts";
 import { type Build, discoverGroups, discoverTargets } from "./build.ts";
 import { cliReporter, printJson } from "./reporter.ts";
 import { flushInFlightOutput } from "./scheduler.ts";
+import { flushOutput } from "./stdio.ts";
 import { discoverCiFiles, syncCiFiles } from "./ci.ts";
 import { isEntryModule } from "./entry.ts";
 import { messageOf } from "./internal.ts";
@@ -1796,5 +1797,6 @@ export async function run(
     renderer: options.renderer,
     watchSignals: true,
   });
+  await flushOutput();
   process.exit(code);
 }
