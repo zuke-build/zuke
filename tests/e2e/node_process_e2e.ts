@@ -188,6 +188,8 @@ Deno.test({
         { args: [preserve, link] },
         { args: [link], env: { NODE_OPTIONS: preserve } },
         { args: [link], env: { NODE_OPTIONS: `"${preserve}"` } },
+        // Spelled with underscores, which Node reads as hyphens.
+        { args: ["--preserve_symlinks_main", link] },
         // Turned off again on the command line, which decides.
         {
           args: [`--no-${preserve.slice(2)}`, link],

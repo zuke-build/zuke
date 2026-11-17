@@ -92,14 +92,16 @@ export function nodeOptionWords(value: string): string[] {
  * Whether Node was told to name the entry module by the symlink it was
  * started through and not by the file the link leads to. Node takes the
  * option from `NODE_OPTIONS` (`nodeOptions`) and then from its command line
- * (`execArgv`); it can be given turned off as well as on, and the last one
- * given decides.
+ * (`execArgv`); it can be given turned off as well as on, with `_` in place
+ * of any `-` in its name, and the last one given decides.
  */
 export function preservesMainSymlink(
   execArgv: readonly string[],
   nodeOptions: string | undefined,
 ): boolean {
   const last = [...nodeOptionWords(nodeOptions ?? ""), ...execArgv]
+    // Node reads `_` in an option's name as `-`.
+    .map((option) => option.replaceAll("_", "-"))
     .findLast((option) => option === PRESERVE_MAIN || option === RESOLVE_MAIN);
   return last === PRESERVE_MAIN;
 }

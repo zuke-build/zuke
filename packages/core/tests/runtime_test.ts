@@ -46,6 +46,13 @@ Deno.test("the option that keeps the entry's symlink is found where Node takes i
   assertEquals(preservesMainSymlink([off], option), false);
   assertEquals(preservesMainSymlink([option], off), true);
   assertEquals(preservesMainSymlink([], `${option} ${off}`), false);
+  // Spelled with underscores, which Node reads as hyphens.
+  assertEquals(preservesMainSymlink(["--preserve_symlinks_main"], ""), true);
+  assertEquals(
+    preservesMainSymlink(["--no_preserve_symlinks_main"], option),
+    false,
+  );
+  assertEquals(preservesMainSymlink([], "--preserve_symlinks_main"), true);
   // Another option that only begins the same way is not it.
   assertEquals(preservesMainSymlink(["--preserve-symlinks"], ""), false);
   assertEquals(preservesMainSymlink([], "--preserve-symlinks"), false);
