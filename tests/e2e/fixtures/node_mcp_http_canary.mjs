@@ -82,7 +82,15 @@ await huge.body?.cancel();
 // server must end the connection, since the rest of the body is not read.
 // The status line is kept the moment it arrives, so a reset after it cannot
 // erase it, and a round left open fails after a while instead of hanging.
-for (let round = 0; round < 3; round++) {
+// A wrong token is refused before the body is read at all, and must end the
+// same way.
+const rounds = [
+  ["Bearer secret", "HTTP/1.1 413 Payload Too Large"],
+  ["Bearer secret", "HTTP/1.1 413 Payload Too Large"],
+  ["Bearer wrong", "HTTP/1.1 401 Unauthorized"],
+  ["Bearer wrong", "HTTP/1.1 401 Unauthorized"],
+];
+for (const [authorization, expected] of rounds) {
   const status = await new Promise((resolve) => {
     const slow = connect(Number(new URL(url).port), "127.0.0.1");
     let reply = "";
@@ -110,7 +118,8 @@ for (let round = 0; round < 3; round++) {
     slow.on("close", () => finish(line));
     slow.write(
       `POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\n` +
-        `Authorization: Bearer secret\r\nContent-Length: ${total}\r\n\r\n`,
+        `Authorization: ${authorization}\r\n` +
+        `Content-Length: ${total}\r\n\r\n`,
     );
     const pump = () => {
       if (slow.destroyed || ended) return;
@@ -121,8 +130,39 @@ for (let round = 0; round < 3; round++) {
     };
     pump();
   });
-  assert.equal(status, "HTTP/1.1 413 Payload Too Large");
+  assert.equal(status, expected);
 }
+
+// A refused upload must not leave its connection stuck half read: a client
+// that sends another request behind it hears from the server again, an
+// answer or the connection closing, instead of nothing at all.
+const stuck = await new Promise((resolve) => {
+  const conn = connect(Number(new URL(url).port), "127.0.0.1");
+  const size = 2 * 1024 * 1024;
+  let reply = "";
+  const finish = (outcome) => {
+    clearTimeout(deadline);
+    conn.destroy();
+    resolve(outcome);
+  };
+  const deadline = setTimeout(() => finish("stuck"), 15_000);
+  conn.on("data", (chunk) => {
+    reply += chunk;
+    if (reply.split("HTTP/1.1 ").length > 2) finish("answered again");
+  });
+  conn.on("error", () => {});
+  conn.on(
+    "close",
+    () => finish(reply.startsWith("HTTP/1.1 401") ? "closed" : reply),
+  );
+  conn.write(
+    `POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\n` +
+      `Authorization: Bearer wrong\r\nContent-Length: ${size}\r\n\r\n`,
+  );
+  conn.write(Buffer.alloc(size, 120));
+  conn.write("GET /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n");
+});
+assert.notEqual(stuck, "stuck");
 
 // Only the one good request reached the handler.
 assert.deepEqual(handled, ["ping"]);

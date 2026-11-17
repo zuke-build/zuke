@@ -73,20 +73,22 @@ export async function serve(
 /** What `Request` needs to stream a body on Node; Deno's types lack it. */
 type StreamingInit = RequestInit & { duplex: "half" };
 
+/** Stop handing `incoming` on, and let the rest of it flow away unread. */
+function discard(incoming: Readable): void {
+  incoming.removeAllListeners("data");
+  incoming.resume();
+}
+
 /**
  * `incoming`'s body as a web stream, read only as fast as it is consumed.
  *
  * Cancelling it, as a handler does when a body is over its limit, stops
- * handing the body on, lets the rest of it flow away unread, and calls
- * `stopped`. The connection is left to the caller, so the answer to the
- * request can still be written before it goes. Left to Node's own
- * conversion, a cancel destroys the connection on some platforms and leaves
- * it reading on others.
+ * handing the body on and lets the rest of it flow away unread. The
+ * connection is left to the server, so the answer to the request can still
+ * be written before it goes. Left to Node's own conversion, a cancel
+ * destroys the connection on some platforms and leaves it reading on others.
  */
-export function bodyStream(
-  incoming: Readable,
-  stopped: () => void,
-): ReadableStream<Uint8Array> {
+export function bodyStream(incoming: Readable): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
     start(controller) {
       incoming.on("data", (chunk: Uint8Array) => {
@@ -101,9 +103,7 @@ export function bodyStream(
       incoming.resume();
     },
     cancel() {
-      incoming.removeAllListeners("data");
-      incoming.resume();
-      stopped();
+      discard(incoming);
     },
   }, { highWaterMark: 64 * 1024, size: (chunk) => chunk.byteLength });
 }
@@ -112,14 +112,9 @@ export function bodyStream(
  * The web request for `incoming`. Its URL is built from the `Host` header,
  * as Deno builds it, or from the bound address when that header does not
  * make a URL. The body is streamed, never buffered here, so a handler that
- * bounds what it reads bounds what the server holds; if the handler stops
- * reading it, `stopped` is called.
+ * bounds what it reads bounds what the server holds.
  */
-export function webRequest(
-  incoming: IncomingMessage,
-  bound: string,
-  stopped: () => void = () => {},
-): Request {
+export function webRequest(incoming: IncomingMessage, bound: string): Request {
   const path = incoming.url ?? "/";
   const given = `http://${incoming.headers.host ?? ""}${path}`;
   const url = URL.canParse(given)
@@ -136,9 +131,7 @@ export function webRequest(
   const init: StreamingInit = {
     method,
     headers,
-    body: method === "GET" || method === "HEAD"
-      ? null
-      : bodyStream(incoming, stopped),
+    body: method === "GET" || method === "HEAD" ? null : bodyStream(incoming),
     duplex: "half",
   };
   return new Request(url, init);
@@ -282,17 +275,21 @@ export async function serveOnNode(
   const server = createServer((incoming, outgoing) => {
     const socket = incoming.socket;
     connections.busy(socket);
+    // A request whose body has not all arrived once its answer is written,
+    // because the handler refused it before reading or stopped part way, is
+    // not a connection to keep: the rest cannot be skipped to reach a next
+    // request. It flows away unread, and the connection is closed gently.
+    outgoing.once("finish", () => {
+      if (incoming.complete) return;
+      discard(incoming);
+      lingerThenClose(socket);
+    });
     outgoing.once("close", () => {
       if (connections.idle(socket) && stopping) socket.destroy();
     });
     const answer = async (): Promise<Response> => {
       try {
-        // A body left unread is not a connection to keep: once this answer
-        // has been written, the connection is closed, gently.
-        const stopped = () => {
-          outgoing.once("finish", () => lingerThenClose(socket));
-        };
-        return await handler(webRequest(incoming, bound, stopped));
+        return await handler(webRequest(incoming, bound));
       } catch {
         return internalError();
       }

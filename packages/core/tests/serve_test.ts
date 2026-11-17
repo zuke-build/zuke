@@ -161,9 +161,6 @@ for (const [backend, start] of BACKENDS) {
 Deno.test("a request body reads whole, a chunk at a time", async () => {
   const body = bodyStream(
     Readable.from([new Uint8Array([1, 2]), new Uint8Array([3])]),
-    () => {
-      throw new Error("not cancelled");
-    },
   );
   assertEquals(
     new Uint8Array(await new Response(body).arrayBuffer()),
@@ -173,12 +170,10 @@ Deno.test("a request body reads whole, a chunk at a time", async () => {
 
 Deno.test("cancelling a request body lets the rest flow away and leaves the source open", async () => {
   const source = new PassThrough();
-  let stopped = 0;
-  const reader = bodyStream(source, () => stopped++).getReader();
+  const reader = bodyStream(source).getReader();
   source.write(new Uint8Array(10));
   assertEquals((await reader.read()).value?.length, 10);
   await reader.cancel();
-  assertEquals(stopped, 1);
   // The connection is the caller's to close, after its answer.
   assertEquals(source.destroyed, false);
   // What arrives afterwards flows away, never handed on.
