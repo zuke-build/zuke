@@ -54,7 +54,7 @@ All share the same fluent `Reviewer` and return a `Validation`:
 
 `.provider("claude" | "openai" | "gemini")` and `.apiKey(...)` are the only
 required calls. The key is read from a `parameter().secret()` (so Zuke masks it
-in CI output) or a literal string. Defaults: Claude `claude-opus-4-8`, plus a
+in CI output) or a literal string. Defaults: Claude `claude-opus-5-5`, plus a
 sane default model for OpenAI and Gemini — override with `.model(...)`.
 
 ## Schema enforcement (why the gate is reliable)
@@ -116,7 +116,7 @@ So a slow run reads as work-in-progress rather than a hang, each review prints a
 start line echoing its settings, and a notice on every retry:
 
 ```
-[security review] reviewing "review" — openai/gpt-5.4-mini · gate score>8 · comment
+[security review] reviewing "review" — openai/gpt-6-luna · gate score>8 · comment
 [security review] attempt 1/3 failed (HTTP 503) — retrying in 1.0s
 ```
 
@@ -927,7 +927,7 @@ openaiKey = parameter("OpenAI API key for the AI security review")
 aiBudget = budget((b) => b.maxTokens(500_000));
 
 securityReview = securityReviewer((r) =>
-  r.provider("openai") // default model: gpt-5.4-mini
+  r.provider("openai") // default model: gpt-6-luna
     .apiKey(this.openaiKey)
     .budget(this.aiBudget) // shared with the other reviewer and the lint fixer
     .skipIfKeyMissing() // skip + announce when the key is absent (local runs)

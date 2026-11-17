@@ -48,7 +48,7 @@ project-specific notes (e.g. "strict TypeScript, no `any`") above the diff.
 
 ## Providers
 
-`"claude"` (default model `claude-opus-4-8`), `"openai"`, and `"gemini"`. The
+`"claude"` (default model `claude-opus-5-5`), `"openai"`, and `"gemini"`. The
 API key comes from a `parameter().secret()` (masked in CI) or a string. The
 assessment JSON shape is enforced **server-side** via each provider's
 structured-output mode (Claude `output_config.format`, OpenAI strict

@@ -125,7 +125,9 @@ Deno.test("security review passes below the threshold and calls Claude", async (
   const headers = calls[0].init?.headers as Record<string, string>;
   assertEquals(headers["x-api-key"], "sk-test");
   const body = JSON.parse(calls[0].body);
-  assertEquals(body.model, "claude-opus-4-8"); // default model
+  assertEquals(body.model, "claude-opus-5-5"); // default model
+  // Room for the thinking current Claude models always do before answering.
+  assertEquals(body.max_tokens, 16000);
   assertEquals(typeof body.system, "string");
   assertEquals(body.messages[0].content.includes("eval(input)"), true);
   // The response schema is enforced server-side, not just in the prompt.
@@ -498,7 +500,7 @@ Deno.test("gemini provider posts to generateContent with the key in a header, no
   ).validate(noRedactionContext("t"));
   assertEquals(
     calls[0].url,
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent",
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
   );
   // The key travels in a header — never the query string, which can leak.
   assertEquals(calls[0].url.includes("key="), false);
@@ -711,6 +713,7 @@ Deno.test("malformed score/severity/findings degrade to a clean pass", async () 
   const { fetch } = recordFetch(
     JSON.stringify({
       content: [{
+        type: "text",
         text: JSON.stringify({
           score: "oops",
           severity: "bogus",
@@ -807,6 +810,49 @@ Deno.test("a null inside the response shape fails closed", async () => {
   );
 });
 
+Deno.test("a Claude answer after a thinking block is read", async () => {
+  const { fetch } = recordFetch(JSON.stringify({
+    content: [
+      { type: "thinking", thinking: "", signature: "sig" },
+      {
+        type: "text",
+        text: JSON.stringify({
+          score: 9,
+          severity: "high",
+          summary: "bad",
+          findings: [],
+        }),
+      },
+    ],
+    stop_reason: "end_turn",
+  }));
+  await assertRejects(
+    () =>
+      securityReviewer((r) =>
+        r.provider("claude").apiKey("k").quiet().diff((d) => d.text(DIFF))
+          .fetch(fetch)
+      ).validate(noRedactionContext("t")),
+    AiReviewError,
+    "risk score 9 exceeds",
+  );
+});
+
+Deno.test("a Claude reply with only a thinking block fails closed", async () => {
+  const { fetch } = recordFetch(JSON.stringify({
+    content: [{ type: "thinking", thinking: "", signature: "sig" }],
+    stop_reason: "end_turn",
+  }));
+  await assertRejects(
+    () =>
+      securityReviewer((r) =>
+        r.provider("claude").apiKey("k").quiet().diff((d) => d.text(DIFF))
+          .fetch(fetch)
+      ).validate(noRedactionContext("t")),
+    AiReviewError,
+    "could not read the Claude response",
+  );
+});
+
 Deno.test("the assessment is appended to the GitHub Actions job summary", async () => {
   const summaryFile = await Deno.makeTempFile();
   const prev = Deno.env.get("GITHUB_STEP_SUMMARY");
@@ -896,7 +942,7 @@ Deno.test("a transient 503 from the provider is retried, then the review passes"
   // The run announces itself and the retry, so it doesn't look like a hang.
   assertEquals(
     lines.some((l) =>
-      l.startsWith('[security review] reviewing "t" — claude/claude-opus-4-8')
+      l.startsWith('[security review] reviewing "t" — claude/claude-opus-5-5')
     ),
     true,
   );

@@ -567,7 +567,6 @@ export class AiFixer implements Remediation {
         retry,
         schema: { json: FIX_JSON_SCHEMA, gemini: FIX_GEMINI_SCHEMA },
         schemaName: "fix",
-        maxTokens: 8192,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
