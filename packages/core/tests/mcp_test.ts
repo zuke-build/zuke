@@ -1,13 +1,10 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import type { AwaitedWriter } from "../src/stdio.ts";
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { Build, parameter, target } from "../mod.ts";
-import {
-  type ByteWriter,
-  METHOD_NOT_FOUND,
-  serveStdio,
-} from "../src/mcp/jsonrpc.ts";
+import { METHOD_NOT_FOUND, serveStdio } from "../src/mcp/jsonrpc.ts";
 import { McpServer } from "../src/mcp/server.ts";
 import {
   negotiateInitialize,
@@ -308,8 +305,8 @@ function streamOf(...chunks: string[]): ReadableStream<Uint8Array> {
   });
 }
 
-/** A ByteWriter that records everything written, decodable as JSON lines. */
-function capturingWriter(): { output: ByteWriter; messages(): unknown[] } {
+/** A AwaitedWriter that records everything written, decodable as JSON lines. */
+function capturingWriter(): { output: AwaitedWriter; messages(): unknown[] } {
   const parts: string[] = [];
   const dec = new TextDecoder();
   return {

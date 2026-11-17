@@ -28,8 +28,9 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import { format } from "node:util";
+import { processOutput } from "./stdio.ts";
 
-/** Something raw output bytes can be written to, like `Deno.stdout`. */
+/** Something raw output bytes can be written to, like the process's stdout. */
 export interface ByteWriter {
   /** Write `p`, returning the number of bytes written. */
   writeSync(p: Uint8Array): number;
@@ -48,7 +49,7 @@ const storage = new AsyncLocalStorage<OutputSink>();
 
 /** The output sink in effect, or the process's own stdout/stderr. */
 export function ambientOutput(): OutputSink {
-  return scopedOutput() ?? { stdout: Deno.stdout, stderr: Deno.stderr };
+  return scopedOutput() ?? processOutput();
 }
 
 /** The sink installed by {@link withAmbientOutput}, or `undefined` outside one. */

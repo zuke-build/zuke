@@ -7,13 +7,10 @@
  * authz tiers keyed on the qualified `<buildId>:<target>` name, and auditing.
  */
 
+import type { AwaitedWriter } from "../src/stdio.ts";
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { Build } from "../src/build.ts";
-import {
-  type ByteWriter,
-  type JsonRpcResponse,
-  METHOD_NOT_FOUND,
-} from "../src/mcp/jsonrpc.ts";
+import { type JsonRpcResponse, METHOD_NOT_FOUND } from "../src/mcp/jsonrpc.ts";
 import { PROTOCOL_VERSION } from "../src/mcp/protocol.ts";
 import { authenticatorFromHook } from "../src/mcp/auth.ts";
 import { serveMcp } from "../src/mcp/command.ts";
@@ -133,8 +130,8 @@ function streamOf(...chunks: string[]): ReadableStream<Uint8Array> {
   });
 }
 
-/** A ByteWriter that records everything written. */
-function capturingWriter(): { output: ByteWriter; text(): string } {
+/** A AwaitedWriter that records everything written. */
+function capturingWriter(): { output: AwaitedWriter; text(): string } {
   const parts: string[] = [];
   const dec = new TextDecoder();
   return {

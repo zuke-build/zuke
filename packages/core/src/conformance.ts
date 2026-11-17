@@ -44,6 +44,7 @@ import type { BuildDescriptor } from "./registry/descriptor.ts";
 import type { BuildRegistry } from "./registry/registry.ts";
 import { HttpBuildRegistry } from "./registry/http_registry.ts";
 import { cliReporter } from "./reporter.ts";
+import { flushOutput } from "./stdio.ts";
 
 /** The outcome of one conformance scenario. */
 export interface ConformanceResult {
@@ -611,5 +612,7 @@ function flag(args: string[], name: string): string | undefined {
 }
 
 if (import.meta.main) {
-  process.exit(await runConformanceCli(process.argv.slice(2)));
+  const code = await runConformanceCli(process.argv.slice(2));
+  await flushOutput();
+  process.exit(code);
 }
