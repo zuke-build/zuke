@@ -116,8 +116,6 @@ async function assertResolution(
   tool: string,
   expected: ToolResolution,
 ): Promise<void> {
-  const previous = process.env.ZUKE_TOOL_RESOLUTION;
-  delete process.env.ZUKE_TOOL_RESOLUTION;
   const root = await makeTempDir();
   try {
     const binDir = `${root}/node_modules/.bin`;
@@ -128,7 +126,9 @@ async function assertResolution(
     // Pin linux: the shim written above has no `.cmd`/`.bat` extension, which is
     // all a Windows host would look for.
     settings.os_ = "linux";
-    const resolved = slashes(head(settings.cwd(root).resolvedArgv()));
+    const resolved = slashes(
+      head(withoutOverride(() => settings.cwd(root).resolvedArgv())),
+    );
     if (expected === "node_modules" && resolved !== shim) {
       throw new Error(
         `Wrapper conformance for "${tool}": expected npx-style resolution, ` +
@@ -148,6 +148,20 @@ async function assertResolution(
     }
   } finally {
     await remove(root, true);
+  }
+}
+
+/**
+ * The result of `resolve` with the ambient `ZUKE_TOOL_RESOLUTION` override
+ * out of the way. Nothing is awaited while it is, so no other code in the
+ * process ever sees the variable missing.
+ */
+function withoutOverride<T>(resolve: () => T): T {
+  const previous = process.env.ZUKE_TOOL_RESOLUTION;
+  delete process.env.ZUKE_TOOL_RESOLUTION;
+  try {
+    return resolve();
+  } finally {
     if (previous !== undefined) process.env.ZUKE_TOOL_RESOLUTION = previous;
   }
 }
