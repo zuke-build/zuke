@@ -60,6 +60,32 @@ export function runtimeFacts(): RuntimeFacts {
 const PRESERVE_MAIN = "--preserve-symlinks-main";
 
 /**
+ * The options in a `NODE_OPTIONS` value, split the way Node splits it: on
+ * spaces, except inside double quotes, where a backslash takes the next
+ * character as it is. The quotes are not part of an option.
+ */
+export function nodeOptionWords(value: string): string[] {
+  const words: string[] = [];
+  let word = "";
+  let quoted = false;
+  for (let at = 0; at < value.length; at++) {
+    const character = value[at];
+    if (character === "\\" && quoted) {
+      at++;
+      word += value.charAt(at);
+    } else if (character === '"') {
+      quoted = !quoted;
+    } else if (character === " " && !quoted) {
+      if (word !== "") words.push(word);
+      word = "";
+    } else {
+      word += character;
+    }
+  }
+  return word === "" ? words : [...words, word];
+}
+
+/**
  * Whether Node was told to name the entry module by the symlink it was
  * started through and not by the file the link leads to: on its command line
  * (`execArgv`) or in `NODE_OPTIONS` (`nodeOptions`), the two places Node
@@ -70,7 +96,7 @@ export function preservesMainSymlink(
   nodeOptions: string | undefined,
 ): boolean {
   return execArgv.includes(PRESERVE_MAIN) ||
-    (nodeOptions ?? "").split(/\s+/).includes(PRESERVE_MAIN);
+    nodeOptionWords(nodeOptions ?? "").includes(PRESERVE_MAIN);
 }
 
 /**

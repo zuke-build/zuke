@@ -184,9 +184,10 @@ Deno.test({
         { args: [RUNTIME_CANARY] },
         { args: [link] },
         // Node then names the module by the link, not by where it leads,
-        // whichever of the two ways it is told.
+        // whichever way it is told.
         { args: [preserve, link] },
         { args: [link], env: { NODE_OPTIONS: preserve } },
+        { args: [link], env: { NODE_OPTIONS: `"${preserve}"` } },
       ];
       for (const { args, env } of starts) {
         const { code, stdout, stderr } = await new Deno.Command("node", {

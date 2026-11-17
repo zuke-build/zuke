@@ -5,6 +5,7 @@ import { assertEquals } from "./_assert.ts";
 import {
   denoPath,
   mainModule,
+  nodeOptionWords,
   ON_DENO,
   preservesMainSymlink,
   runtimeFacts,
@@ -31,7 +32,31 @@ Deno.test("the option that keeps the entry's symlink is found where Node takes i
     true,
   );
   assertEquals(preservesMainSymlink([], `--no-warnings  ${option}`), true);
+  // Quoted, as NODE_OPTIONS allows.
+  assertEquals(preservesMainSymlink([], `"${option}" --no-warnings`), true);
+  // Inside the value of another option it is not an option.
+  assertEquals(
+    preservesMainSymlink([], `--title "a ${option} b"`),
+    false,
+  );
   // Another option that only begins the same way is not it.
   assertEquals(preservesMainSymlink(["--preserve-symlinks"], ""), false);
   assertEquals(preservesMainSymlink([], "--preserve-symlinks"), false);
+});
+
+Deno.test("NODE_OPTIONS is split as Node splits it", () => {
+  assertEquals(nodeOptionWords(""), []);
+  assertEquals(nodeOptionWords("  --a   --b "), ["--a", "--b"]);
+  assertEquals(nodeOptionWords('--require "./a b.js" --c'), [
+    "--require",
+    "./a b.js",
+    "--c",
+  ]);
+  // A backslash inside quotes takes the next character as it is.
+  assertEquals(nodeOptionWords('"a \\" b" c'), ['a " b', "c"]);
+  // Outside quotes it is an ordinary character.
+  assertEquals(nodeOptionWords("C:\\dir\\file"), ["C:\\dir\\file"]);
+  // A quote left open, and a backslash at the very end of one.
+  assertEquals(nodeOptionWords('"open --a'), ["open --a"]);
+  assertEquals(nodeOptionWords('"end\\'), ["end"]);
 });
