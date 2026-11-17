@@ -277,6 +277,86 @@ try {
     });
     assert.equal((await dotted.status).code, 7);
     await assert.rejects(realpath(marker), { code: "ENOENT" });
+
+    // The shim a package manager writes for a tool is seen through: the
+    // tool's script is started directly, with no cmd.exe between. The shim
+    // here is one npm itself writes, installing a package from a directory,
+    // which needs no network. npm is a batch file too, and is not a shim.
+    const tool = join(dir, "canary-tool");
+    const project = join(dir, "project");
+    await mkdir(tool);
+    await mkdir(project);
+    await writeFile(
+      join(tool, "package.json"),
+      JSON.stringify({
+        name: "canary-tool",
+        version: "1.0.0",
+        bin: { "canary-tool": "cli.js" },
+      }),
+    );
+    await writeFile(
+      join(tool, "cli.js"),
+      `#!/usr/bin/env node
+       require("node:fs").writeFileSync(
+         ${JSON.stringify(received)},
+         JSON.stringify({ argv: process.argv.slice(2), parent: process.ppid }),
+       );
+       process.exit(9);`,
+    );
+    await writeFile(
+      join(project, "package.json"),
+      JSON.stringify({ name: "project", private: true }),
+    );
+    const install = spawnProcess("npm.cmd", {
+      // Linked, not copied, so the script can be rewritten below.
+      args: [
+        "install",
+        "--offline",
+        "--no-audit",
+        "--no-fund",
+        "--install-links=false",
+        tool,
+      ],
+      cwd: project,
+      stdin: "null",
+      stdout: "piped",
+      stderr: "piped",
+    });
+    const installed = await Promise.all([
+      text(install.stdout),
+      text(install.stderr),
+    ]);
+    assert.equal((await install.status).code, 0, installed.join("\n"));
+
+    const shim = join(project, "node_modules", ".bin", "canary-tool.cmd");
+    // A line break too: no line is built, so nothing has to be refused.
+    const toTool = [...toBatch, "new\nline"];
+    const direct = spawnProcess(shim, { args: toTool, ...quiet });
+    assert.equal((await direct.status).code, 9);
+    const report = JSON.parse(await readFile(received, "utf8"));
+    assert.deepEqual(report.argv, toTool);
+    // Started by this process itself: cmd.exe would have been its parent.
+    assert.equal(report.parent, process.pid);
+    await assert.rejects(realpath(marker), { code: "ENOENT" });
+
+    // So a kill ends the tool, not a shell in front of it.
+    await writeFile(
+      join(tool, "cli.js"),
+      `#!/usr/bin/env node
+       require("node:fs").writeFileSync(${
+        JSON.stringify(received)
+      }, String(process.pid));
+       setInterval(() => {}, 1000);`,
+    );
+    const running = spawnProcess(shim, { args: [], ...quiet });
+    // The tool writes its own process id once it is up: the one started.
+    for (let waited = 0; waited < 200; waited++) {
+      if ((await readFile(received, "utf8")) === String(running.pid)) break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.equal(await readFile(received, "utf8"), String(running.pid));
+    running.kill();
+    assert.equal((await running.status).success, false);
   }
 } finally {
   await rm(dir, { recursive: true, force: true });

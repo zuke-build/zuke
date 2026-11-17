@@ -23,6 +23,7 @@ import {
   readDir,
   readFile,
   readLink,
+  readSmallTextSync,
   readTextFile,
   realPath,
   realPathSync,
@@ -838,4 +839,15 @@ Deno.test({
       assertEquals((await stat(`${dir}/private`)).mode & 0o777, 0o600);
     });
   },
+});
+
+Deno.test("readSmallTextSync reads a file within the limit, and nothing else", async () => {
+  await withTemp(async (dir) => {
+    await writeFile(`${dir}/small`, "12345");
+    assertEquals(readSmallTextSync(`${dir}/small`, 5), "12345");
+    assertEquals(readSmallTextSync(`${dir}/small`, 4), null);
+    assertEquals(readSmallTextSync(`${dir}/nope`, 100), null);
+    // A directory is not opened, whatever the limit.
+    assertEquals(readSmallTextSync(dir, 1_000_000), null);
+  });
 });
