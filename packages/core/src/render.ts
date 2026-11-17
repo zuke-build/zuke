@@ -18,6 +18,8 @@
  * @module
  */
 
+import process from "node:process";
+
 /**
  * Escape a value interpolated into the body of a GitHub Actions workflow
  * command (`::error::<data>`).
@@ -203,12 +205,10 @@ const MIN_WIDTH = 40;
 
 /** Read the terminal width if available, clamped to a sane range. */
 export function detectWidth(): number {
-  try {
-    const size = Deno.consoleSize();
-    return Math.max(MIN_WIDTH, Math.min(size.columns, DEFAULT_WIDTH));
-  } catch {
-    return DEFAULT_WIDTH;
-  }
+  // Only a stream that is a terminal has a width.
+  const columns = process.stdout.columns ?? process.stderr.columns ??
+    DEFAULT_WIDTH;
+  return Math.max(MIN_WIDTH, Math.min(columns, DEFAULT_WIDTH));
 }
 
 /** Options for {@link line}. */

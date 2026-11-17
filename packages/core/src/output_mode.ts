@@ -30,6 +30,7 @@
  * @module
  */
 
+import { isatty } from "node:tty";
 import { defaultReadEnv, envFlag } from "./internal.ts";
 import { isCI } from "./host.ts";
 
@@ -66,13 +67,13 @@ export interface OutputModeOptions {
   banner?: boolean;
   /** Reads an environment variable; defaults to the process environment. */
   readEnv?: (name: string) => string | undefined;
-  /** Whether stdout is an interactive terminal; defaults to asking Deno. */
+  /** Whether stdout is an interactive terminal; defaults to asking the system. */
   isTerminal?: () => boolean;
 }
 
 /** Whether stdout is a terminal. */
 function stdoutIsTerminal(): boolean {
-  return Deno.stdout.isTerminal();
+  return isatty(1);
 }
 
 /**

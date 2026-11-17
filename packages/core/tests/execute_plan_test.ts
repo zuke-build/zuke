@@ -42,17 +42,6 @@ function withLocalHost(fn: () => void): void {
   }
 }
 
-/** Run `fn` with `Deno.stdin.isTerminal` stubbed, restored afterwards. */
-function withStdinTerminal(stub: () => boolean, fn: () => void): void {
-  const original = Deno.stdin.isTerminal;
-  Deno.stdin.isTerminal = stub;
-  try {
-    fn();
-  } finally {
-    Deno.stdin.isTerminal = original;
-  }
-}
-
 /** Run `fn` with the global `prompt` stubbed, restored afterwards. */
 function withPrompt(
   stub: (message?: string, defaultValue?: string) => string | null,
@@ -67,51 +56,49 @@ function withPrompt(
   }
 }
 
-Deno.test("defaultPrompt never prompts when the terminal check itself throws", () => {
-  // A runtime with no stdin (a worker, a stripped-down embed) throws from
-  // isTerminal(); that must read as "not interactive", not crash resolution.
-  withPrompt(() => {
-    throw new Error("prompt must not be reached");
-  }, () => {
-    withStdinTerminal(() => {
-      throw new Error("stdin unavailable");
+Deno.test("defaultPrompt never prompts when stdin is not a terminal", () => {
+  withLocalHost(() =>
+    withPrompt(() => {
+      throw new Error("prompt must not be reached");
     }, () => {
-      assertEquals(defaultPrompt("env", "target environment"), undefined);
-    });
-  });
+      assertEquals(
+        defaultPrompt("env", "target environment", false),
+        undefined,
+      );
+    })
+  );
 });
 
 Deno.test("defaultPrompt asks at an interactive terminal, labelling flag and description", () => {
-  withLocalHost(() =>
-    withStdinTerminal(() => true, () => {
-      const asked: (string | undefined)[] = [];
-      withPrompt((message) => {
-        asked.push(message);
-        return "sit-7";
-      }, () => {
-        assertEquals(defaultPrompt("env", "target environment"), "sit-7");
-      });
-      // The label names the flag the operator would have passed, with the
-      // declared description so they know what is being asked for.
-      assertEquals(asked, ["--env (target environment):"]);
-    })
-  );
+  withLocalHost(() => {
+    const asked: (string | undefined)[] = [];
+    withPrompt((message) => {
+      asked.push(message);
+      return "sit-7";
+    }, () => {
+      assertEquals(
+        defaultPrompt("env", "target environment", true),
+        "sit-7",
+      );
+    });
+    // The label names the flag the operator would have passed, with the
+    // declared description so they know what is being asked for.
+    assertEquals(asked, ["--env (target environment):"]);
+  });
 });
 
 Deno.test("a dismissed prompt leaves the parameter unset", () => {
-  withLocalHost(() =>
-    withStdinTerminal(() => true, () => {
-      const asked: (string | undefined)[] = [];
-      withPrompt((message) => {
-        asked.push(message);
-        return null; // the operator hit Ctrl-D / entered nothing
-      }, () => {
-        assertEquals(defaultPrompt("env", undefined), undefined);
-      });
-      // Without a description the label is the bare flag.
-      assertEquals(asked, ["--env:"]);
-    })
-  );
+  withLocalHost(() => {
+    const asked: (string | undefined)[] = [];
+    withPrompt((message) => {
+      asked.push(message);
+      return null; // the operator hit Ctrl-D / entered nothing
+    }, () => {
+      assertEquals(defaultPrompt("env", undefined, true), undefined);
+    });
+    // Without a description the label is the bare flag.
+    assertEquals(asked, ["--env:"]);
+  });
 });
 
 Deno.test("conditionSkips keeps triggered targets and tolerates an unbound dependency", async () => {

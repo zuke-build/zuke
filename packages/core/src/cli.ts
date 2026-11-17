@@ -1740,7 +1740,7 @@ function installCancelSignals(controller: AbortController): () => void {
   const onSignal = () => {
     if (cancelling) {
       flushInFlightOutput();
-      Deno.exit(130);
+      process.exit(130);
     }
     cancelling = true;
     controller.abort();
@@ -1748,29 +1748,15 @@ function installCancelSignals(controller: AbortController): () => void {
   const wanted: Signal[] = hostOs() === "windows"
     ? ["SIGINT"]
     : ["SIGINT", "SIGTERM"];
-  const installed: Signal[] = [];
-  for (const sig of wanted) {
-    try {
-      Deno.addSignalListener(sig, onSignal);
-      installed.push(sig);
-    } catch {
-      // A platform that doesn't support this signal — skip it.
-    }
-  }
+  for (const sig of wanted) process.on(sig, onSignal);
   return () => {
-    for (const sig of installed) {
-      try {
-        Deno.removeSignalListener(sig, onSignal);
-      } catch {
-        // Best-effort teardown.
-      }
-    }
+    for (const sig of wanted) process.off(sig, onSignal);
   };
 }
 
 /** Options for {@link run}. */
 export interface RunOptions {
-  /** Command-line arguments. Defaults to `Deno.args`. */
+  /** Command-line arguments. Defaults to the arguments the process was started with. */
   args?: string[];
   /** Lifecycle observers to run alongside the build's own hooks. */
   plugins?: Plugin[];
@@ -1805,10 +1791,10 @@ export async function run(
   if (!isEntryModule(new Error().stack ?? "", import.meta.url)) return;
   // `watchSignals` lets `main` wire Ctrl-C/SIGTERM to graceful cancellation, but
   // only around a build run — every other command keeps default signal handling.
-  const code = await main(BuildClass, options.args ?? Deno.args, {
+  const code = await main(BuildClass, options.args ?? process.argv.slice(2), {
     plugins: options.plugins,
     renderer: options.renderer,
     watchSignals: true,
   });
-  Deno.exit(code);
+  process.exit(code);
 }

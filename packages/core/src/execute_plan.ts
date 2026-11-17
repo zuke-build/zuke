@@ -13,6 +13,7 @@
  * @module
  */
 
+import { isatty } from "node:tty";
 import type { Build } from "./build.ts";
 import type { TargetBuilder } from "./target.ts";
 import type { RunPlan } from "./run_plan.ts";
@@ -31,17 +32,17 @@ import {
 } from "./affected.ts";
 import { isCI } from "./host.ts";
 
-/** Prompt for a missing required parameter, only at an interactive (non-CI) TTY. */
+/**
+ * Prompt for a missing required parameter, only at an interactive (non-CI) TTY.
+ *
+ * @param interactive whether stdin is a terminal; defaults to asking the
+ * system (a test seam).
+ */
 export function defaultPrompt(
   flag: string,
   description: string | undefined,
+  interactive: boolean = isatty(0),
 ): string | undefined {
-  let interactive = false;
-  try {
-    interactive = Deno.stdin.isTerminal();
-  } catch {
-    interactive = false;
-  }
   if (!interactive || isCI()) return undefined;
   const label = description ? `--${flag} (${description})` : `--${flag}`;
   return prompt(`${label}:`) ?? undefined;

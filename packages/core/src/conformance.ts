@@ -34,6 +34,7 @@
  * @module
  */
 
+import process from "node:process";
 import type { RunEvent, RunRecord } from "./state/types.ts";
 import { defaultReadEnv, delay, messageOf } from "./internal.ts";
 import type { StateStore } from "./state/store.ts";
@@ -610,5 +611,5 @@ function flag(args: string[], name: string): string | undefined {
 }
 
 if (import.meta.main) {
-  Deno.exit(await runConformanceCli(Deno.args));
+  process.exit(await runConformanceCli(process.argv.slice(2)));
 }

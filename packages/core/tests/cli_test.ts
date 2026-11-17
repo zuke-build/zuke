@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import process from "node:process";
 import {
   assertEquals,
   assertRejects,
@@ -1018,13 +1019,13 @@ Deno.test("main returns 1 when an executed target fails", async () => {
   assertEquals(err.join("\n").includes("explode"), true);
 });
 
-/** Sentinel thrown by the stubbed `Deno.exit` so control returns to the test. */
+/** Sentinel thrown by the stubbed `process.exit` so control returns to the test. */
 class ExitSignal extends Error {}
 
 Deno.test("run() drives main and sets the process exit code", async () => {
-  const origExit = Deno.exit;
+  const origExit = process.exit;
   let captured: number | undefined;
-  Deno.exit = (code?: number): never => {
+  process.exit = (code?: number): never => {
     captured = code ?? 0;
     throw new ExitSignal();
   };
@@ -1035,7 +1036,7 @@ Deno.test("run() drives main and sets the process exit code", async () => {
   } catch (e) {
     if (!(e instanceof ExitSignal)) throw e;
   } finally {
-    Deno.exit = origExit;
+    process.exit = origExit;
     console.log = origLog;
   }
   assertEquals(captured, 0);
@@ -1044,11 +1045,11 @@ Deno.test("run() drives main and sets the process exit code", async () => {
 Deno.test("run() is a no-op when its module isn't the program entry", async () => {
   // Simulate the build file being imported (e.g. under test) rather than run
   // directly: point Deno.mainModule at a different module than this caller.
-  const origExit = Deno.exit;
+  const origExit = process.exit;
   const mainDesc = Object.getOwnPropertyDescriptor(Deno, "mainModule");
   let exited = false;
   let ran = false;
-  Deno.exit = (_code?: number): never => {
+  process.exit = (_code?: number): never => {
     exited = true;
     throw new ExitSignal();
   };
@@ -1062,7 +1063,7 @@ Deno.test("run() is a no-op when its module isn't the program entry", async () =
   try {
     await run(Demo2, { args: ["go"] });
   } finally {
-    Deno.exit = origExit;
+    process.exit = origExit;
     if (mainDesc !== undefined) {
       Object.defineProperty(Deno, "mainModule", mainDesc);
     }
@@ -1218,10 +1219,10 @@ Deno.test("main forwards plugins to the build lifecycle", async () => {
 Deno.test("run forwards args and plugins to main", async () => {
   const seen: string[] = [];
   const plugin: Plugin = { onFinish: () => void seen.push("finished") };
-  const origExit = Deno.exit;
+  const origExit = process.exit;
   const origLog = console.log;
   let code: number | undefined;
-  Deno.exit = (c?: number): never => {
+  process.exit = (c?: number): never => {
     code = c;
     throw new ExitSignal();
   };
@@ -1231,7 +1232,7 @@ Deno.test("run forwards args and plugins to main", async () => {
   } catch (e) {
     if (!(e instanceof ExitSignal)) throw e;
   } finally {
-    Deno.exit = origExit;
+    process.exit = origExit;
     console.log = origLog;
   }
   assertEquals(code, 0);
@@ -1362,28 +1363,25 @@ Deno.test("main: cancel exits 1 when a compensation fails", async () => {
   });
 });
 
-Deno.test("run() defaults to Deno.args when no args option is given", async () => {
-  const desc = Object.getOwnPropertyDescriptor(Deno, "args");
-  const origExit = Deno.exit;
+Deno.test("run() defaults to the process's arguments when no args option is given", async () => {
+  const origArgv = process.argv;
+  const origExit = process.exit;
   const origLog = console.log;
   let captured: number | undefined;
-  Object.defineProperty(Deno, "args", {
-    value: ["--list"],
-    configurable: true,
-  });
-  Deno.exit = (code?: number): never => {
+  process.argv = [...origArgv.slice(0, 2), "--list"];
+  process.exit = (code?: number): never => {
     captured = code ?? 0;
     throw new ExitSignal();
   };
   console.log = () => {};
   try {
-    await run(Demo); // no options at all: argv comes from Deno.args
+    await run(Demo); // no options at all: the arguments come from the process
   } catch (e) {
     if (!(e instanceof ExitSignal)) throw e;
   } finally {
-    Deno.exit = origExit;
+    process.exit = origExit;
+    process.argv = origArgv;
     console.log = origLog;
-    if (desc !== undefined) Object.defineProperty(Deno, "args", desc);
   }
   assertEquals(captured, 0);
 });
@@ -1467,77 +1465,46 @@ Deno.test("main: --affected rejects a git base that reads as a git option", asyn
 });
 
 Deno.test("main watchSignals: a signal cancels the run, a second force-exits", async () => {
-  const handlers: Array<() => void> = [];
-  const removed: Deno.Signal[] = [];
-  const origAdd = Deno.addSignalListener;
-  const origRemove = Deno.removeSignalListener;
-  const origExit = Deno.exit;
-  Deno.addSignalListener = (_sig: Deno.Signal, fn: () => void): void => {
-    handlers.push(fn);
-  };
-  Deno.removeSignalListener = (sig: Deno.Signal, _fn: () => void): void => {
-    removed.push(sig);
-  };
+  const before = process.listeners("SIGINT");
+  const added = () =>
+    process.listeners("SIGINT").filter((known) => !before.includes(known));
+  let interrupt = (): void => {};
   const ran: string[] = [];
   class Interrupted extends Build {
     first = target().executes(() => {
       ran.push("first");
-      handlers[0](); // Ctrl-C arrives mid-build
+      const [handler] = added();
+      interrupt = () => handler("SIGINT");
+      interrupt(); // Ctrl-C arrives mid-build
     });
     second = target().dependsOn(this.first).executes(
       () => void ran.push("second"),
     );
   }
+  const origExit = process.exit;
   try {
     const { code } = await capture(() =>
       main(Interrupted, ["second"], { watchSignals: true })
     );
     assertEquals(code, 1); // the run was cancelled, not completed
     assertEquals(ran, ["first"]); // `second` never started
-    // Every installed handler was removed on the way out.
-    assertEquals(removed.length, handlers.length);
+    // The handler was removed on the way out.
+    assertEquals(added().length, 0);
 
     // A second signal while cancellation is in flight force-exits 130.
-    let exitCode: number | undefined;
-    Deno.exit = (code?: number): never => {
+    let exitCode: number | string | null | undefined;
+    process.exit = (code): never => {
       exitCode = code;
       throw new ExitSignal();
     };
     try {
-      handlers[0]();
+      interrupt();
     } catch (e) {
       if (!(e instanceof ExitSignal)) throw e;
     }
     assertEquals(exitCode, 130);
   } finally {
-    Deno.addSignalListener = origAdd;
-    Deno.removeSignalListener = origRemove;
-    Deno.exit = origExit;
-  }
-});
-
-Deno.test("main watchSignals: unsupported signals are skipped, teardown is best-effort", async () => {
-  const origAdd = Deno.addSignalListener;
-  const origRemove = Deno.removeSignalListener;
-  let installed = 0;
-  Deno.addSignalListener = (sig: Deno.Signal, _fn: () => void): void => {
-    // A platform that rejects everything but SIGINT (e.g. SIGTERM on Windows).
-    if (sig !== "SIGINT") throw new TypeError(`unsupported signal ${sig}`);
-    installed++;
-  };
-  Deno.removeSignalListener = (): void => {
-    throw new TypeError("teardown refused");
-  };
-  try {
-    const { code } = await capture(() =>
-      main(Demo, ["build"], { watchSignals: true })
-    );
-    // Neither the rejected install nor the failing teardown surfaces.
-    assertEquals(code, 0);
-    assertEquals(installed, 1);
-  } finally {
-    Deno.addSignalListener = origAdd;
-    Deno.removeSignalListener = origRemove;
+    process.exit = origExit;
   }
 });
 
