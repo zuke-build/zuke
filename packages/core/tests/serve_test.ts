@@ -1,12 +1,13 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { Socket } from "node:net";
+import { createServer, Socket } from "node:net";
 import { PassThrough, Readable } from "node:stream";
 import { assertEquals } from "./_assert.ts";
 import {
   bodyStream,
   type FetchHandler,
+  lingerThenClose,
   OpenConnections,
   sendResponse,
   serve,
@@ -170,7 +171,7 @@ Deno.test("a request body reads whole, a chunk at a time", async () => {
   );
 });
 
-Deno.test("cancelling a request body stops the read and leaves the source open", async () => {
+Deno.test("cancelling a request body lets the rest flow away and leaves the source open", async () => {
   const source = new PassThrough();
   let stopped = 0;
   const reader = bodyStream(source, () => stopped++).getReader();
@@ -180,10 +181,43 @@ Deno.test("cancelling a request body stops the read and leaves the source open",
   assertEquals(stopped, 1);
   // The connection is the caller's to close, after its answer.
   assertEquals(source.destroyed, false);
-  // What arrives afterwards is not read.
+  // What arrives afterwards flows away, never handed on.
   source.write(new Uint8Array(5));
-  assertEquals(source.readableLength, 5);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assertEquals(source.readableLength, 0);
   source.destroy();
+});
+
+Deno.test("a gentle close says no more but keeps taking what is still sent", async () => {
+  let serverSide: Socket | undefined;
+  const server = createServer((socket) => {
+    serverSide = socket;
+    lingerThenClose(socket);
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  const port = typeof address === "object" && address !== null
+    ? address.port
+    : 0;
+  // A client that keeps its own side open when the server ends its, as one
+  // still uploading does.
+  const client = new Socket({ allowHalfOpen: true });
+  const ended = new Promise((resolve) => client.once("end", resolve));
+  client.connect(port, "127.0.0.1");
+  // The server has ended its side, and the client hears that first.
+  await ended;
+  // What the client still sends is taken, not refused with a reset.
+  let refused = false;
+  client.on("error", () => refused = true);
+  client.write(new Uint8Array(64 * 1024));
+  const serverClosed = new Promise((resolve) =>
+    serverSide?.once("close", resolve)
+  );
+  client.end();
+  await serverClosed;
+  assertEquals(refused, false);
+  client.destroy();
+  await new Promise((resolve) => server.close(resolve));
 });
 
 Deno.test("a connection whose request finishes after it closed is not kept", async () => {

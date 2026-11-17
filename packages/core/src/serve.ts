@@ -76,11 +76,12 @@ type StreamingInit = RequestInit & { duplex: "half" };
 /**
  * `incoming`'s body as a web stream, read only as fast as it is consumed.
  *
- * Cancelling it, as a handler does when a body is over its limit, stops the
- * read and calls `stopped`, and nothing more: the connection is left to the
- * caller, so the answer to the request can still be written before it goes.
- * Left to Node's own conversion, a cancel destroys the connection on some
- * platforms and leaves it reading on others.
+ * Cancelling it, as a handler does when a body is over its limit, stops
+ * handing the body on, lets the rest of it flow away unread, and calls
+ * `stopped`. The connection is left to the caller, so the answer to the
+ * request can still be written before it goes. Left to Node's own
+ * conversion, a cancel destroys the connection on some platforms and leaves
+ * it reading on others.
  */
 export function bodyStream(
   incoming: Readable,
@@ -100,8 +101,8 @@ export function bodyStream(
       incoming.resume();
     },
     cancel() {
-      incoming.pause();
       incoming.removeAllListeners("data");
+      incoming.resume();
       stopped();
     },
   }, { highWaterMark: 64 * 1024, size: (chunk) => chunk.byteLength });
@@ -235,6 +236,32 @@ export class OpenConnections {
   }
 }
 
+/** How long a connection is drained after a body was abandoned. */
+const LINGER_MS = 2_000;
+
+/** How much of an abandoned body is drained before the connection is cut. */
+const LINGER_BYTES = 16 * 1024 * 1024;
+
+/**
+ * Close `socket` after an answer to a request whose body was left unread,
+ * the way a web server does: say no more, but keep taking what the client
+ * is still sending for a little while. Closing outright with data still
+ * arriving makes the system reset the connection, and on Windows a reset
+ * can discard the answer before the client has read it. Past the time or
+ * the amount, the connection is cut.
+ */
+export function lingerThenClose(socket: Socket): void {
+  let drained = 0;
+  const cut = () => socket.destroy();
+  const timer = setTimeout(cut, LINGER_MS);
+  socket.once("close", () => clearTimeout(timer));
+  socket.on("data", (chunk: Uint8Array) => {
+    drained += chunk.byteLength;
+    if (drained > LINGER_BYTES) cut();
+  });
+  socket.end();
+}
+
 /** The answer to a request the handler threw on, as `Deno.serve` gives it. */
 function internalError(): Response {
   return new Response("Internal Server Error", { status: 500 });
@@ -260,9 +287,11 @@ export async function serveOnNode(
     });
     const answer = async (): Promise<Response> => {
       try {
-        // A body left unread cannot be skipped to reach a next request, so
-        // the connection closes once this answer has been written.
-        const stopped = () => outgoing.shouldKeepAlive = false;
+        // A body left unread is not a connection to keep: once this answer
+        // has been written, the connection is closed, gently.
+        const stopped = () => {
+          outgoing.once("finish", () => lingerThenClose(socket));
+        };
         return await handler(webRequest(incoming, bound, stopped));
       } catch {
         return internalError();

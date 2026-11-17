@@ -79,34 +79,42 @@ await huge.body?.cancel();
 
 // The same over a raw connection still uploading when the limit is reached:
 // 64 MiB declared and sent in slices. The 413 must come back, and then the
-// server must close the connection, since the rest of the body is not read.
-// A round that hears nothing, or is left open, fails after a while rather
-// than waiting for ever.
+// server must end the connection, since the rest of the body is not read.
+// The status line is kept the moment it arrives, so a reset after it cannot
+// erase it, and a round left open fails after a while instead of hanging.
 for (let round = 0; round < 3; round++) {
   const status = await new Promise((resolve) => {
     const slow = connect(Number(new URL(url).port), "127.0.0.1");
     let reply = "";
+    let line = "";
     let sent = 0;
+    let ended = false;
     const total = 64 * 1024 * 1024;
     const slice = Buffer.alloc(256 * 1024, 120);
-    const finish = (line) => {
+    const finish = (outcome) => {
       clearTimeout(deadline);
       slow.destroy();
-      resolve(line);
+      resolve(outcome);
     };
     const deadline = setTimeout(
-      () => finish(`not closed within 30s: ${reply.split("\r\n")[0]}`),
+      () => finish(`not ended within 30s: ${line}`),
       30_000,
     );
-    slow.on("data", (chunk) => reply += chunk);
+    slow.on("data", (chunk) => {
+      reply += chunk;
+      if (line === "" && reply.includes("\r\n")) line = reply.split("\r\n")[0];
+    });
+    // The server has said all it will say: stop sending.
+    slow.on("end", () => ended = true);
     slow.on("error", () => {});
-    slow.on("close", () => finish(reply.split("\r\n")[0]));
+    slow.on("close", () => finish(line));
     slow.write(
       `POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\n` +
         `Authorization: Bearer secret\r\nContent-Length: ${total}\r\n\r\n`,
     );
     const pump = () => {
-      if (slow.destroyed || sent >= total) return;
+      if (slow.destroyed || ended) return;
+      if (sent >= total) return void slow.end();
       slow.write(slice);
       sent += slice.length;
       setTimeout(pump, 5);
