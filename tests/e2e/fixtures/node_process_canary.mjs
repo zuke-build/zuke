@@ -100,24 +100,32 @@ try {
   assert.equal((await text(inherited.stdout)).trim(), "kept");
   await inherited.status;
 
-  // Started from a cleared environment, it has none of the parent's.
-  const cleared = spawnProcess(node, {
-    args: [
-      "-e",
-      "console.log((process.env.PATH ?? process.env.Path) === undefined ? 'none' : 'kept', process.env.ZUKE_CANARY)",
-    ],
+  // Started from a cleared environment, it has none of the parent's. A
+  // variable of the canary's own is the proof: on Windows, Node hands a child
+  // the few the system needs (PATH among them) whatever it was given.
+  process.env.ZUKE_CANARY_PARENT = "inherited";
+  const report =
+    "console.log(process.env.ZUKE_CANARY_PARENT, process.env.ZUKE_CANARY)";
+  const kept = spawnProcess(node, {
+    args: ["-e", report],
     stdin: "null",
     stdout: "piped",
     stderr: "null",
-    // A Windows program cannot start without knowing the system directory.
-    env: {
-      ZUKE_CANARY: "set",
-      ...(WINDOWS ? { SystemRoot: process.env.SystemRoot } : {}),
-    },
+    env: { ZUKE_CANARY: "set" },
+  });
+  assert.equal((await text(kept.stdout)).trim(), "inherited set");
+  await kept.status;
+  const cleared = spawnProcess(node, {
+    args: ["-e", report],
+    stdin: "null",
+    stdout: "piped",
+    stderr: "null",
+    env: { ZUKE_CANARY: "set" },
     clearEnv: true,
   });
-  assert.equal((await text(cleared.stdout)).trim(), "none set");
+  assert.equal((await text(cleared.stdout)).trim(), "undefined set");
   await cleared.status;
+  delete process.env.ZUKE_CANARY_PARENT;
 
   // A stream that was not piped is not there; a killed child reports it.
   const killed = spawnProcess(node, { args: forever, ...quiet });

@@ -26,7 +26,8 @@ export interface ProcessOptions {
   env?: Record<string, string>;
   /**
    * Start from an empty environment, so `env` is the whole of what the child
-   * sees and nothing of the parent's reaches it.
+   * sees and nothing the parent set for itself reaches it. On Windows under
+   * Node the variables the system needs are still passed on.
    */
   clearEnv?: boolean;
   /** The child's stdin. Omitted: inherited. */
