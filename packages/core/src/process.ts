@@ -24,6 +24,11 @@ export interface ProcessOptions {
   cwd?: string;
   /** Variables added to the environment the child inherits. */
   env?: Record<string, string>;
+  /**
+   * Start from an empty environment, so `env` is the whole of what the child
+   * sees and nothing of the parent's reaches it.
+   */
+  clearEnv?: boolean;
   /** The child's stdin. Omitted: inherited. */
   stdin?: ProcessStdio;
   /** The child's stdout. Omitted: inherited. */
@@ -71,4 +76,52 @@ export function spawnProcess(
   return typeof Deno === "undefined"
     ? spawnOnNode(command, options)
     : new Deno.Command(command, options).spawn();
+}
+
+/** How a process run to its end finished, and what it wrote to its pipes. */
+export interface ProcessOutput extends CommandStatus {
+  /** What it wrote to stdout; empty unless stdout was `piped`. */
+  stdout: Uint8Array;
+  /** What it wrote to stderr; empty unless stderr was `piped`. */
+  stderr: Uint8Array;
+}
+
+/** Everything `stream` carries, or nothing for a stream that was not piped. */
+async function collected(
+  stdio: ProcessStdio | undefined,
+  stream: () => ReadableStream<Uint8Array>,
+): Promise<Uint8Array> {
+  if (stdio !== "piped") return new Uint8Array();
+  return new Uint8Array(await new Response(stream()).arrayBuffer());
+}
+
+/**
+ * Wait for `child`, which was started with `options`, reading its piped
+ * output as it comes so a full pipe never stalls it.
+ *
+ * @throws when the child could not be started.
+ */
+export async function outputOf(
+  child: ChildProcess,
+  options: ProcessOptions,
+): Promise<ProcessOutput> {
+  const [status, stdout, stderr] = await Promise.all([
+    child.status,
+    collected(options.stdout, () => child.stdout),
+    collected(options.stderr, () => child.stderr),
+  ]);
+  return { ...status, stdout, stderr };
+}
+
+/**
+ * Run `command` with `options` to its end. Module-internal, like
+ * {@link spawnProcess}: for the few commands core runs for itself.
+ *
+ * @throws when the command cannot be started.
+ */
+export async function runProcess(
+  command: string,
+  options: ProcessOptions,
+): Promise<ProcessOutput> {
+  return await outputOf(spawnProcess(command, options), options);
 }

@@ -30,6 +30,8 @@
  * @module
  */
 
+import process from "node:process";
+import { runProcess } from "../process.ts";
 import { denoExecutable } from "../host.ts";
 import { absolutePath } from "../path.ts";
 import { resolveActor } from "../state/record.ts";
@@ -117,7 +119,7 @@ export type RegistryRunner = (
   options?: RegistryRunOptions,
 ) => Promise<RegistryRunResult>;
 
-/** The real, `Deno`-backed {@link RegistryRunner}. */
+/** The real {@link RegistryRunner}: it starts the build as a process. */
 export const defaultRegistryRunner: RegistryRunner = async (
   argv,
   cwd,
@@ -126,7 +128,10 @@ export const defaultRegistryRunner: RegistryRunner = async (
   // The build inherits the server's environment (that is how it resolves its own
   // parameters), but the MCP server's *authorization* secrets are stripped — a
   // spawned pipeline must not be able to read the operator or HTTP bearer token.
-  const env = Deno.env.toObject();
+  const env: Record<string, string> = {};
+  for (const [name, value] of Object.entries(process.env)) {
+    if (value !== undefined) env[name] = value;
+  }
   delete env.ZUKE_OPERATOR_TOKEN;
   delete env.ZUKE_MCP_TOKEN;
   // The child's stdout and stderr are returned verbatim as the tool's result,
@@ -150,7 +155,7 @@ export const defaultRegistryRunner: RegistryRunner = async (
       .map(encodeURIComponent)
       .join(",");
   }
-  const command = new Deno.Command(argv[0], {
+  const { code, stdout, stderr } = await runProcess(argv[0], {
     args: [...argv.slice(1)],
     cwd,
     env,
@@ -158,7 +163,6 @@ export const defaultRegistryRunner: RegistryRunner = async (
     stdout: "piped",
     stderr: "piped",
   });
-  const { code, stdout, stderr } = await command.output();
   const decoder = new TextDecoder();
   return {
     code,

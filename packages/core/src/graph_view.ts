@@ -21,14 +21,14 @@ import type { TargetBuilder } from "./target.ts";
 import { browserCommand } from "./browser.ts";
 import { cliReporter } from "./reporter.ts";
 import { type HostOs, hostOs } from "./host.ts";
+import { runProcess } from "./process.ts";
 
 /** Spawn a detached command (binary + args); used to launch a browser. */
 export type Spawn = (cmd: string, args: string[]) => Promise<void>;
 
 /** The real spawner: run the opener, discarding its output. */
-const denoSpawn: Spawn = async (cmd, args) => {
-  await new Deno.Command(cmd, { args, stdout: "null", stderr: "null" })
-    .output();
+const realSpawn: Spawn = async (cmd, args) => {
+  await runProcess(cmd, { args, stdout: "null", stderr: "null" });
 };
 
 /**
@@ -38,7 +38,7 @@ const denoSpawn: Spawn = async (cmd, args) => {
 export async function openInBrowser(
   target: string,
   os: HostOs = hostOs(),
-  spawn: Spawn = denoSpawn,
+  spawn: Spawn = realSpawn,
 ): Promise<void> {
   const [cmd, args] = browserCommand(os, target);
   try {

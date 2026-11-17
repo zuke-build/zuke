@@ -5,7 +5,9 @@ import { assertEquals, assertRejects, assertThrows } from "./_assert.ts";
 import { isNotFound } from "../src/internal.ts";
 import {
   type ChildProcess,
+  outputOf,
   type ProcessOptions,
+  runProcess,
   spawnProcess,
 } from "../src/process.ts";
 import { childEnvironment, spawnOnNode } from "../src/process_node.ts";
@@ -27,8 +29,7 @@ const BACKENDS: [name: string, spawn: Spawn][] = [
 function run(
   spawn: Spawn,
   script: string,
-  extra: { cwd?: string; env?: Record<string, string>; signal?: AbortSignal } =
-    {},
+  extra: Partial<ProcessOptions> = {},
 ) {
   return spawn(Deno.execPath(), {
     args: ["eval", script],
@@ -85,6 +86,83 @@ for (const [backend, spawn] of BACKENDS) {
     assertEquals(err.trim(), "to stderr");
     assertEquals(await child.status, { success: false, code: 3, signal: null });
     await Deno.remove(dir);
+  });
+
+  Deno.test(`${backend}: a child started from a cleared environment sees none of the parent's`, async () => {
+    Deno.env.set("ZUKE_PROCESS_PARENT", "inherited");
+    try {
+      const script =
+        `console.log(Deno.env.get("ZUKE_PROCESS_PARENT") + "|" + Deno.env.get("ZUKE_PROCESS_TEST"))`;
+      // A Windows program cannot start without knowing the system directory.
+      const system = Deno.env.get("SystemRoot");
+      const base: Record<string, string> = system === undefined
+        ? {}
+        : { SystemRoot: system };
+      const kept = run(spawn, script, { env: { ZUKE_PROCESS_TEST: "set" } });
+      const cleared = run(spawn, script, {
+        env: { ...base, ZUKE_PROCESS_TEST: "set" },
+        clearEnv: true,
+      });
+      const bare = run(spawn, script, { env: base, clearEnv: true });
+      assertEquals((await text(kept.stdout)).trim(), "inherited|set");
+      assertEquals((await text(cleared.stdout)).trim(), "undefined|set");
+      assertEquals((await text(bare.stdout)).trim(), "undefined|undefined");
+      for (const child of [kept, cleared, bare]) {
+        await child.stdin.close();
+        await child.stderr.cancel();
+        await child.status;
+      }
+    } finally {
+      Deno.env.delete("ZUKE_PROCESS_PARENT");
+    }
+  });
+
+  Deno.test(`${backend}: a process run to its end gives its status and what it piped`, async () => {
+    const options: ProcessOptions = {
+      args: [
+        "eval",
+        `await Deno.stdout.write(new Uint8Array(300_000).fill(120));
+         console.error("to stderr");
+         Deno.exit(4);`,
+      ],
+      stdin: "null",
+      stdout: "piped",
+      stderr: "piped",
+    };
+    const output = await outputOf(spawn(Deno.execPath(), options), options);
+    assertEquals(
+      {
+        success: output.success,
+        code: output.code,
+        stdout: output.stdout.length,
+        stderr: new TextDecoder().decode(output.stderr).trim(),
+      },
+      { success: false, code: 4, stdout: 300_000, stderr: "to stderr" },
+    );
+    // A stream that was not piped comes back empty.
+    const quiet: ProcessOptions = {
+      args: ["eval", "console.log('unseen')"],
+      stdin: "null",
+      stdout: "null",
+      stderr: "null",
+    };
+    const silent = await outputOf(spawn(Deno.execPath(), quiet), quiet);
+    assertEquals(
+      [silent.code, silent.stdout.length, silent.stderr.length],
+      [0, 0, 0],
+    );
+  });
+
+  Deno.test(`${backend}: running a command that is not there rejects`, async () => {
+    const options: ProcessOptions = {
+      args: [],
+      stdin: "null",
+      stdout: "piped",
+      stderr: "piped",
+    };
+    await assertRejects(async () =>
+      await outputOf(spawn("zuke-no-such-command-anywhere", options), options)
+    );
   });
 
   Deno.test(`${backend}: a child ends when it is killed, and when its abort signal fires`, async () => {
@@ -263,4 +341,15 @@ Deno.test("a child's environment is the parent's with the added variables over i
     path: "C:\\mine",
     NEW: "1",
   });
+});
+
+Deno.test("runProcess starts the command and waits for it", async () => {
+  const output = await runProcess(Deno.execPath(), {
+    args: ["eval", "console.log('ran')"],
+    stdin: "null",
+    stdout: "piped",
+    stderr: "null",
+  });
+  assertEquals(new TextDecoder().decode(output.stdout).trim(), "ran");
+  assertEquals(output.code, 0);
 });

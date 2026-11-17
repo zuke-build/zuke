@@ -100,6 +100,25 @@ try {
   assert.equal((await text(inherited.stdout)).trim(), "kept");
   await inherited.status;
 
+  // Started from a cleared environment, it has none of the parent's.
+  const cleared = spawnProcess(node, {
+    args: [
+      "-e",
+      "console.log((process.env.PATH ?? process.env.Path) === undefined ? 'none' : 'kept', process.env.ZUKE_CANARY)",
+    ],
+    stdin: "null",
+    stdout: "piped",
+    stderr: "null",
+    // A Windows program cannot start without knowing the system directory.
+    env: {
+      ZUKE_CANARY: "set",
+      ...(WINDOWS ? { SystemRoot: process.env.SystemRoot } : {}),
+    },
+    clearEnv: true,
+  });
+  assert.equal((await text(cleared.stdout)).trim(), "none set");
+  await cleared.status;
+
   // A stream that was not piped is not there; a killed child reports it.
   const killed = spawnProcess(node, { args: forever, ...quiet });
   assert.throws(() => killed.stdout);

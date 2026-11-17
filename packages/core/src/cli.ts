@@ -6,6 +6,7 @@
  * {@link run} entry point that drives a build from `zuke.ts`.
  */
 
+import { runProcess } from "./process.ts";
 import process from "node:process";
 import { makeTempDir, remove, writeFile } from "./fs.ts";
 import { type Build, discoverGroups, discoverTargets } from "./build.ts";
@@ -1292,13 +1293,12 @@ const defaultDocRunner: DocRunner = async (spec) => {
   const cwd = await makeTempDir();
   try {
     await writeFile(`${cwd}/deno.json`, '{ "workspace": [] }\n');
-    const command = new Deno.Command(denoExecutable(), {
+    const { code } = await runProcess(denoExecutable(), {
       args: ["doc", spec],
       cwd,
       stdout: "inherit",
       stderr: "inherit",
     });
-    const { code } = await command.output();
     return code;
   } finally {
     await remove(cwd, true);
