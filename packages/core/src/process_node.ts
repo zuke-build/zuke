@@ -25,7 +25,9 @@
  * throws at once, as Deno does.
  *
  * A Windows batch file is started through `cmd.exe` on a line built so that
- * no argument can become a command, see `process_batch.ts`.
+ * no argument can become a command, see `process_batch.ts`; and where it is
+ * only a package manager's shim for a Node script, the script is started
+ * directly, see `process_shim.ts`.
  *
  * @module
  */
@@ -34,10 +36,13 @@ import { type ChildProcess as NodeChild, spawn } from "node:child_process";
 import { constants } from "node:os";
 import process from "node:process";
 import { Readable, Writable } from "node:stream";
-import { isFileSync } from "./fs.ts";
+import { isFileSync, readSmallTextSync } from "./fs.ts";
 import { invocation } from "./process_batch.ts";
 import type { ChildProcess, ProcessOptions, ProcessStdio } from "./process.ts";
 import type { CommandStatus, Signal } from "./signal.ts";
+
+/** The most a batch file may hold and still be read to see whether it is a shim. */
+const SHIM_LIMIT = 64 * 1024;
 
 /** The `stdio` entry Node names each {@link ProcessStdio}. */
 function nodeStdio(
@@ -222,7 +227,10 @@ export function spawnOnNode(
     windows,
     process.env,
     env ?? process.env,
-    isFileSync,
+    {
+      isFile: isFileSync,
+      readText: (path) => readSmallTextSync(path, SHIM_LIMIT),
+    },
   );
   const child = spawn(start.file, start.args, {
     cwd: options.cwd,

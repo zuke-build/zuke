@@ -151,9 +151,17 @@ Deno.test("a bare batch file name is found on PATH, by full paths only, in order
   assertThrows(() => resolvedBatchFile("npm.cmd", undefined, isFile));
 });
 
+/** A machine with the files `files`, each with the text given. */
+function hostWith(files: Record<string, string> = {}) {
+  return {
+    isFile: (path: string) => path in files,
+    readText: (path: string) => files[path] ?? null,
+  };
+}
+
 Deno.test("a batch file on Windows is started through cmd.exe on a prepared line", () => {
   const parent = { SystemRoot: "C:\\Windows", PATH: "C:\\parent" };
-  const none = () => false;
+  const none = hostWith();
   assertEquals(invocation(SCRIPT, ["a b", "&c"], true, parent, {}, none), {
     file: "C:\\Windows\\System32\\cmd.exe",
     args: ["/e:ON", "/v:OFF", "/d", "/c", `""${SCRIPT}" "a b" "&c""`],
@@ -169,7 +177,7 @@ Deno.test("a batch file on Windows is started through cmd.exe on a prepared line
       true,
       parent,
       child,
-      (path) => path === "C:\\child\\npm.cmd",
+      hostWith({ "C:\\child\\npm.cmd": "@echo off" }),
     ),
     {
       file: "C:\\Windows\\System32\\cmd.exe",
@@ -188,9 +196,118 @@ Deno.test("a batch file on Windows is started through cmd.exe on a prepared line
   assertThrows(() => invocation("npm.cmd", [], true, parent, {}, none));
 });
 
+Deno.test("a package manager's shim for a Node script is seen through", () => {
+  const bin = "C:\\p\\node_modules\\.bin";
+  const shim = `${bin}\\tsc.cmd`;
+  const target = `${bin}\\..\\typescript\\bin\\tsc`;
+  const text = [
+    "@SETLOCAL",
+    '@IF EXIST "%~dp0\\node.exe" (',
+    '  "%~dp0\\node.exe"  "%~dp0\\..\\typescript\\bin\\tsc" %*',
+    ") ELSE (",
+    "  @SET PATHEXT=%PATHEXT:;.JS;=;%",
+    '  node  "%~dp0\\..\\typescript\\bin\\tsc" %*',
+    ")",
+    "",
+  ].join("\r\n");
+  const files = { [shim]: text, [target]: "" };
+  const onPath = { PATH: `.;C:\\node18;C:\\node22;${bin}` };
+  // Node is started on the script, with the arguments as they are: no line
+  // is built, so even what cmd.exe could never be given is passed.
+  const args = ["a b", '"&calc', "new\nline"];
+  // The Node is the one the shim would start: the first on the child's PATH.
+  assertEquals(
+    invocation(
+      shim,
+      args,
+      true,
+      { PATH: "C:\\parent" },
+      onPath,
+      hostWith({
+        ...files,
+        "C:\\node18\\node.exe": "",
+        "C:\\node22\\node.exe": "",
+        "C:\\parent\\node.exe": "",
+        ".\\node.exe": "",
+      }),
+    ),
+    { file: "C:\\node18\\node.exe", args: [target, ...args], verbatim: false },
+  );
+  // Or the one beside the shim, which the shim tries first.
+  assertEquals(
+    invocation(
+      "tsc.cmd",
+      [],
+      true,
+      {},
+      onPath,
+      hostWith({
+        ...files,
+        [`${bin}\\node.exe`]: "",
+        "C:\\node18\\node.exe": "",
+      }),
+    ),
+    { file: `${bin}\\node.exe`, args: [target], verbatim: false },
+  );
+  // Where `node` first means a wrapper, as a version manager's does, the
+  // shim would start the wrapper, so it is run and not seen through.
+  for (const wrapper of ["node.cmd", "node.bat", "node.com"]) {
+    const started = invocation(
+      shim,
+      [],
+      true,
+      { SystemRoot: "C:\\Windows" },
+      onPath,
+      hostWith({
+        ...files,
+        [`C:\\node18\\${wrapper}`]: "",
+        "C:\\node22\\node.exe": "",
+      }),
+    );
+    assertEquals(started.verbatim, true);
+  }
+  // In one directory Node itself comes before a batch wrapper.
+  assertEquals(
+    invocation(
+      shim,
+      [],
+      true,
+      {},
+      onPath,
+      hostWith({
+        ...files,
+        "C:\\node18\\node.cmd": "",
+        "C:\\node18\\node.exe": "",
+      }),
+    ).file,
+    "C:\\node18\\node.exe",
+  );
+  // With no Node to be found, or without the script it names, or named by a
+  // relative path, it is run as the batch file it is.
+  const parent = { SystemRoot: "C:\\Windows" };
+  for (
+    const [command, host] of [
+      [shim, hostWith(files)],
+      [shim, hostWith({ [shim]: text, "C:\\node18\\node.exe": "" })],
+      [
+        "node_modules\\.bin\\tsc.cmd",
+        hostWith({
+          "node_modules\\.bin\\tsc.cmd": text,
+          "node_modules\\.bin\\..\\typescript\\bin\\tsc": "",
+          "C:\\node18\\node.exe": "",
+        }),
+      ],
+    ] as const
+  ) {
+    const started = invocation(command, [], true, parent, onPath, host);
+    assertEquals(started.file, "C:\\Windows\\System32\\cmd.exe");
+    assertEquals(started.verbatim, true);
+  }
+});
+
 Deno.test("everything else is started as it is", () => {
   const args = ["a b", "&c", "new\nline"];
-  const none = () => false;
+  const none = hostWith();
   assertEquals(invocation("C:\\tools\\node.exe", args, true, {}, {}, none), {
     file: "C:\\tools\\node.exe",
     args,

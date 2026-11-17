@@ -21,6 +21,7 @@
 
 import {
   lstatSync as nodeLstatSync,
+  readFileSync as nodeReadFileSync,
   realpathSync as nodeRealpathSync,
   type Stats,
   statSync as nodeStatSync,
@@ -238,6 +239,21 @@ export function isFileSync(path: string): boolean {
     return nodeStatSync(path).isFile();
   } catch {
     return false;
+  }
+}
+
+/**
+ * The text of the file `path`, without waiting, or `null` when it is not a
+ * file of at most `limit` bytes that can be read. Nothing else is opened: a
+ * pipe or a device would never finish, and a huge file would be held whole.
+ */
+export function readSmallTextSync(path: string, limit: number): string | null {
+  try {
+    const stats = nodeStatSync(path);
+    if (!stats.isFile() || stats.size > limit) return null;
+    return nodeReadFileSync(path, "utf8");
+  } catch {
+    return null;
   }
 }
 

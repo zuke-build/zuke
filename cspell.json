@@ -279,6 +279,7 @@
     "Scorecard",
     "secretref",
     "semgrep",
+    "SETLOCAL",
     "shellcheck",
     "shortlog",
     "shortstat",
