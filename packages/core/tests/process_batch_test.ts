@@ -177,6 +177,11 @@ Deno.test("a batch file on Windows is started through cmd.exe on a prepared line
       verbatim: true,
     },
   );
+  // A name Windows reads as the batch file is written as the batch file.
+  assertEquals(
+    invocation(`${SCRIPT}. .`, ["&c"], true, parent, {}, none).args[4],
+    `""${SCRIPT}" "&c""`,
+  );
   // A batch file that cannot be run safely is refused, not started another way.
   assertThrows(() => invocation(SCRIPT, ["a\nb"], true, parent, {}, none));
   assertThrows(() => invocation(SCRIPT, [], true, {}, {}, none));

@@ -212,7 +212,10 @@ export function invocation(
   if (!windows || !isBatchFile(command)) {
     return { file: command, args, verbatim: false };
   }
-  const script = resolvedBatchFile(command, variable(child, "PATH"), isFile);
+  // Windows drops dots and spaces from the end of a name; cmd.exe, given the
+  // name in quotes, does not, and would not find the file.
+  const named = command.replace(/[. ]+$/, "");
+  const script = resolvedBatchFile(named, variable(child, "PATH"), isFile);
   return {
     file: commandPrompt(parent),
     args: [...PROMPT_OPTIONS, batchCommandLine(script, args)],
