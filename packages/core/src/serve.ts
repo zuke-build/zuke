@@ -128,8 +128,9 @@ export async function sendResponse(
 }
 
 /**
- * The server's open connections, and which are answering a request now, so
- * the idle ones can be closed on stop. Kept here because not every
+ * The server's open connections, and how many requests each is answering
+ * now, so the idle ones can be closed on stop. A count, not a flag: a client
+ * can send its next request before the last is answered. Kept here because not every
  * `node:http` closes idle connections on request.
  *
  * A connection is only ever marked busy or idle while it is open: a request
@@ -138,7 +139,7 @@ export async function sendResponse(
  */
 export class OpenConnections {
   readonly #open = new Set<Socket>();
-  readonly #busy = new WeakSet<Socket>();
+  readonly #answering = new WeakMap<Socket, number>();
 
   /** How many are open. */
   get size(): number {
@@ -152,20 +153,30 @@ export class OpenConnections {
     socket.once("close", () => this.#open.delete(socket));
   }
 
-  /** `socket` is answering a request. */
+  /** `socket` has begun answering a request. */
   busy(socket: Socket): void {
-    this.#busy.add(socket);
+    this.#answering.set(socket, this.#count(socket) + 1);
   }
 
-  /** `socket` has answered its request. */
-  idle(socket: Socket): void {
-    this.#busy.delete(socket);
+  /**
+   * `socket` has answered one of its requests. Whether it is now answering
+   * none.
+   */
+  idle(socket: Socket): boolean {
+    const left = Math.max(0, this.#count(socket) - 1);
+    this.#answering.set(socket, left);
+    return left === 0;
+  }
+
+  /** How many requests `socket` is answering. */
+  #count(socket: Socket): number {
+    return this.#answering.get(socket) ?? 0;
   }
 
   /** Close every open connection that is not answering a request. */
   closeIdle(): void {
     for (const socket of this.#open) {
-      if (!this.#busy.has(socket)) socket.destroy();
+      if (this.#count(socket) === 0) socket.destroy();
     }
   }
 }
@@ -191,8 +202,7 @@ export async function serveOnNode(
     const socket = incoming.socket;
     connections.busy(socket);
     outgoing.once("close", () => {
-      connections.idle(socket);
-      if (stopping) socket.destroy();
+      if (connections.idle(socket) && stopping) socket.destroy();
     });
     const answer = async (): Promise<Response> => {
       try {

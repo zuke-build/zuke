@@ -11,6 +11,7 @@
  */
 
 import assert from "node:assert/strict";
+import { connect } from "node:net";
 
 const { serveHttp } = await import(
   new URL("../../../packages/core/src/mcp/http.ts", import.meta.url).href
@@ -106,6 +107,37 @@ await assert.rejects(fetch(plain));
 assert.equal(await (await fetch(plain)).text(), "still serving");
 stopper.abort();
 await serving;
+
+// A stop that arrives while a connection still owes the answer to a request
+// it was sent behind another one lets that answer go out first.
+const pipelined = new AbortController();
+let pipelinedPort = () => {};
+const pipelinedBound = new Promise((resolve) => pipelinedPort = resolve);
+let requests = 0;
+const pipelining = serveOnNode({
+  hostname: "127.0.0.1",
+  port: 0,
+  signal: pipelined.signal,
+  onListen: (address) => pipelinedPort(address.port),
+}, async () => {
+  requests++;
+  if (requests === 1) return new Response("first");
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  return new Response("second");
+});
+const socket = connect(await pipelinedBound, "127.0.0.1");
+let received = "";
+const ended = new Promise((resolve) => socket.on("close", resolve));
+socket.on("data", (chunk) => {
+  received += chunk;
+  if (received.includes("first")) pipelined.abort();
+});
+socket.write(
+  "GET /a HTTP/1.1\r\nHost: x\r\n\r\nGET /b HTTP/1.1\r\nHost: x\r\n\r\n",
+);
+await pipelining;
+await ended;
+assert.ok(received.includes("second"), received);
 
 // A stop that arrives while the server is still starting is not missed.
 const early = new AbortController();

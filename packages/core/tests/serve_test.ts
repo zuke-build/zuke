@@ -163,6 +163,23 @@ Deno.test("only idle connections are closed on stop", async () => {
   busy.destroy();
 });
 
+Deno.test("a connection answering two requests is idle only once both are answered", async () => {
+  const connections = new OpenConnections();
+  const socket = new Socket();
+  connections.opened(socket);
+  // A client sent its next request before the first was answered.
+  connections.busy(socket);
+  connections.busy(socket);
+  assertEquals(connections.idle(socket), false);
+  connections.closeIdle();
+  assertEquals(socket.destroyed, false);
+  assertEquals(connections.idle(socket), true);
+  const closed = new Promise((resolve) => socket.once("close", resolve));
+  connections.closeIdle();
+  await closed;
+  assertEquals(socket.destroyed, true);
+});
+
 Deno.test("a response Node refuses tears the connection down instead of throwing", async () => {
   let destroyed = false;
   const outgoing = Object.assign(new PassThrough(), {
