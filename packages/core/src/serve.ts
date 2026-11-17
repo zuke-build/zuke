@@ -74,12 +74,51 @@ export async function serve(
 type StreamingInit = RequestInit & { duplex: "half" };
 
 /**
+ * `incoming`'s body as a web stream, read only as fast as it is consumed.
+ *
+ * Cancelling it, as a handler does when a body is over its limit, stops the
+ * read and calls `stopped`, and nothing more: the connection is left to the
+ * caller, so the answer to the request can still be written before it goes.
+ * Left to Node's own conversion, a cancel destroys the connection on some
+ * platforms and leaves it reading on others.
+ */
+export function bodyStream(
+  incoming: Readable,
+  stopped: () => void,
+): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      incoming.on("data", (chunk: Uint8Array) => {
+        controller.enqueue(new Uint8Array(chunk));
+        if ((controller.desiredSize ?? 0) <= 0) incoming.pause();
+      });
+      incoming.once("end", () => controller.close());
+      incoming.once("error", (error) => controller.error(error));
+      incoming.pause();
+    },
+    pull() {
+      incoming.resume();
+    },
+    cancel() {
+      incoming.pause();
+      incoming.removeAllListeners("data");
+      stopped();
+    },
+  }, { highWaterMark: 64 * 1024, size: (chunk) => chunk.byteLength });
+}
+
+/**
  * The web request for `incoming`. Its URL is built from the `Host` header,
  * as Deno builds it, or from the bound address when that header does not
  * make a URL. The body is streamed, never buffered here, so a handler that
- * bounds what it reads bounds what the server holds.
+ * bounds what it reads bounds what the server holds; if the handler stops
+ * reading it, `stopped` is called.
  */
-export function webRequest(incoming: IncomingMessage, bound: string): Request {
+export function webRequest(
+  incoming: IncomingMessage,
+  bound: string,
+  stopped: () => void = () => {},
+): Request {
   const path = incoming.url ?? "/";
   const given = `http://${incoming.headers.host ?? ""}${path}`;
   const url = URL.canParse(given)
@@ -98,7 +137,7 @@ export function webRequest(incoming: IncomingMessage, bound: string): Request {
     headers,
     body: method === "GET" || method === "HEAD"
       ? null
-      : Readable.toWeb(incoming),
+      : bodyStream(incoming, stopped),
     duplex: "half",
   };
   return new Request(url, init);
@@ -221,7 +260,10 @@ export async function serveOnNode(
     });
     const answer = async (): Promise<Response> => {
       try {
-        return await handler(webRequest(incoming, bound));
+        // A body left unread cannot be skipped to reach a next request, so
+        // the connection closes once this answer has been written.
+        const stopped = () => outgoing.shouldKeepAlive = false;
+        return await handler(webRequest(incoming, bound, stopped));
       } catch {
         return internalError();
       }

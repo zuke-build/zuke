@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 import { Socket } from "node:net";
-import { PassThrough } from "node:stream";
+import { PassThrough, Readable } from "node:stream";
 import { assertEquals } from "./_assert.ts";
 import {
+  bodyStream,
   type FetchHandler,
   OpenConnections,
   sendResponse,
@@ -155,6 +156,35 @@ for (const [backend, start] of BACKENDS) {
     assertEquals(refused, true);
   });
 }
+
+Deno.test("a request body reads whole, a chunk at a time", async () => {
+  const body = bodyStream(
+    Readable.from([new Uint8Array([1, 2]), new Uint8Array([3])]),
+    () => {
+      throw new Error("not cancelled");
+    },
+  );
+  assertEquals(
+    new Uint8Array(await new Response(body).arrayBuffer()),
+    new Uint8Array([1, 2, 3]),
+  );
+});
+
+Deno.test("cancelling a request body stops the read and leaves the source open", async () => {
+  const source = new PassThrough();
+  let stopped = 0;
+  const reader = bodyStream(source, () => stopped++).getReader();
+  source.write(new Uint8Array(10));
+  assertEquals((await reader.read()).value?.length, 10);
+  await reader.cancel();
+  assertEquals(stopped, 1);
+  // The connection is the caller's to close, after its answer.
+  assertEquals(source.destroyed, false);
+  // What arrives afterwards is not read.
+  source.write(new Uint8Array(5));
+  assertEquals(source.readableLength, 5);
+  source.destroy();
+});
 
 Deno.test("a connection whose request finishes after it closed is not kept", async () => {
   const connections = new OpenConnections();
