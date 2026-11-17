@@ -31,6 +31,7 @@ import {
   gitChangedFiles,
 } from "./affected.ts";
 import { isCI } from "./host.ts";
+import { promptLine } from "./stdio.ts";
 
 /**
  * Prompt for a missing required parameter, only at an interactive (non-CI) TTY.
@@ -45,7 +46,7 @@ export function defaultPrompt(
 ): string | undefined {
   if (!interactive || isCI()) return undefined;
   const label = description ? `--${flag} (${description})` : `--${flag}`;
-  return prompt(`${label}:`) ?? undefined;
+  return promptLine(`${label}:`) ?? undefined;
 }
 
 /**

@@ -8,14 +8,16 @@
  * - `flood`: writes more than a pipe holds to stdout and a line to stderr,
  *   flushes, and exits 3 at once. Without the flush Node drops what is still
  *   queued.
+ * - `prompt`: asks three times and prints the answers as JSON on stderr.
  * - `echo`: copies stdin to stdout until stdin ends.
  */
 
 import process from "node:process";
 
-const { flushOutput, processOutput, stdinBytes, stdoutWriter } = await import(
-  new URL("../../../packages/core/src/stdio.ts", import.meta.url).href
-);
+const { flushOutput, processOutput, promptLine, stdinBytes, stdoutWriter } =
+  await import(
+    new URL("../../../packages/core/src/stdio.ts", import.meta.url).href
+  );
 
 if (process.argv[2] === "flood") {
   const { stdout, stderr } = processOutput();
@@ -24,6 +26,17 @@ if (process.argv[2] === "flood") {
   stderr.writeSync(new TextEncoder().encode("to stderr\n"));
   await flushOutput();
   process.exit(3);
+}
+
+if (process.argv[2] === "prompt") {
+  console.error(
+    JSON.stringify([
+      promptLine("first:"),
+      promptLine("second:"),
+      promptLine("third:"),
+    ]),
+  );
+  process.exit(0);
 }
 
 const output = stdoutWriter();

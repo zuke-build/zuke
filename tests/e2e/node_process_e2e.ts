@@ -136,3 +136,31 @@ Deno.test({
     assertEquals(stdout, sent);
   },
 });
+
+Deno.test({
+  name:
+    "a prompt shows its message and reads one line at a time under real Node",
+  ignore: !USABLE,
+  fn: async () => {
+    const child = new Deno.Command("node", {
+      args: [...RUN_TYPESCRIPT, STDIO_CANARY, "prompt"],
+      stdin: "piped",
+      stdout: "piped",
+      stderr: "piped",
+    }).spawn();
+    const writer = child.stdin.getWriter();
+    // Both lines at once: the first prompt must leave the second its line.
+    await writer.write(new TextEncoder().encode("staging\r\nnaïve café\n"));
+    await writer.close();
+    const { code, stdout, stderr } = await child.output();
+    assertEquals(
+      { code, stdout: decode(stdout), stderr: decode(stderr).trim() },
+      {
+        code: 0,
+        stdout: "first: second: third: ",
+        // The third finds stdin at its end.
+        stderr: JSON.stringify(["staging", "naïve café", null]),
+      },
+    );
+  },
+});

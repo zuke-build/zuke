@@ -17,6 +17,7 @@
  * @module
  */
 
+import { readSync, writeSync } from "node:fs";
 import process from "node:process";
 import { Readable } from "node:stream";
 import type { ByteWriter, OutputSink } from "./ambient_output.ts";
@@ -93,4 +94,49 @@ export function stdinBytes(): ReadableStream<Uint8Array> {
 /** The process's stdout, as a writer whose writes can be awaited. */
 export function stdoutWriter(): AwaitedWriter {
   return ON_DENO ? Deno.stdout : awaitedWriter(process.stdout);
+}
+
+/**
+ * One line read from `read`, which fills the buffer it is given and returns
+ * how many bytes it put there, none at the end of the input. The line break
+ * is not part of the line. `null` when the input ends before anything is
+ * read.
+ *
+ * It reads a byte at a time, so nothing after the line is taken from the
+ * input, and decodes only once the line is whole, so a character whose bytes
+ * arrive apart is still one character.
+ */
+export function readLine(read: (buffer: Uint8Array) => number): string | null {
+  const bytes: number[] = [];
+  const one = new Uint8Array(1);
+  let ended = false;
+  while (!ended && bytes.at(-1) !== 10) {
+    if (read(one) === 0) ended = true;
+    else bytes.push(one[0]);
+  }
+  if (ended && bytes.length === 0) return null;
+  return new TextDecoder().decode(new Uint8Array(bytes)).replace(/\r?\n$/, "");
+}
+
+/**
+ * Show `message` and return the line the person types, or `null` when stdin
+ * has ended. Only for a stdin that is a terminal: the caller checks.
+ */
+export function promptLine(message: string): string | null {
+  if (ON_DENO) return prompt(message);
+  writeSync(1, `${message} `);
+  return readLine(readStdin);
+}
+
+/** Fill `buffer` from stdin, returning how many bytes, none at its end. */
+function readStdin(buffer: Uint8Array): number {
+  try {
+    return readSync(0, buffer);
+  } catch (error) {
+    // On Windows the end of a pipe is an error with this code, not a zero.
+    if (error instanceof Error && "code" in error && error.code === "EOF") {
+      return 0;
+    }
+    throw error;
+  }
 }

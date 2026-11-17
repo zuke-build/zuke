@@ -7,7 +7,9 @@ import {
   awaitedWriter,
   flushOutput,
   processOutput,
+  promptLine,
   queuedWriter,
+  readLine,
   stdinBytes,
   stdoutWriter,
 } from "../src/stdio.ts";
@@ -64,4 +66,52 @@ Deno.test("on Deno the process's streams are Deno's own, and a flush is immediat
   assertEquals(stdoutWriter(), Deno.stdout);
   assertEquals(stdinBytes(), Deno.stdin.readable);
   await flushOutput();
+});
+
+/** A reader handing out `text` a byte per call, then the end of the input. */
+function reader(text: string): (buffer: Uint8Array) => number {
+  const source = bytes(text);
+  let at = 0;
+  return (buffer) => {
+    if (at === source.length) return 0;
+    buffer[0] = source[at++];
+    return 1;
+  };
+}
+
+Deno.test("a line is read up to its line break, which is dropped", () => {
+  assertEquals(readLine(reader("staging\n")), "staging");
+  assertEquals(readLine(reader("staging\r\n")), "staging");
+  assertEquals(readLine(reader("\n")), "");
+});
+
+Deno.test("a line read takes nothing after the line break", () => {
+  const read = reader("one\ntwo\n");
+  assertEquals(readLine(read), "one");
+  assertEquals(readLine(read), "two");
+  assertEquals(readLine(read), null);
+});
+
+Deno.test("input that ends without a line break is still a line, and none at all is not", () => {
+  assertEquals(readLine(reader("unfinished")), "unfinished");
+  assertEquals(readLine(reader("")), null);
+});
+
+Deno.test("a character whose bytes arrive in separate reads is one character", () => {
+  assertEquals(readLine(reader("café → 東京\n")), "café → 東京");
+});
+
+Deno.test("on Deno the prompt is Deno's own", () => {
+  const original = globalThis.prompt;
+  const asked: (string | undefined)[] = [];
+  globalThis.prompt = (message) => {
+    asked.push(message);
+    return "typed";
+  };
+  try {
+    assertEquals(promptLine("--env:"), "typed");
+  } finally {
+    globalThis.prompt = original;
+  }
+  assertEquals(asked, ["--env:"]);
 });
