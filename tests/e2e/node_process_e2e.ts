@@ -22,6 +22,11 @@ import { assertEquals } from "../../packages/core/tests/_assert.ts";
 const CANARY = fileURLToPath(
   new URL("./fixtures/node_process_canary.mjs", import.meta.url),
 );
+const RUNTIME_CANARY = fileURLToPath(
+  new URL("./fixtures/node_runtime_canary.mjs", import.meta.url),
+);
+/** Where core's source is, as the URL the runtime canary imports from. */
+const CORE_SOURCE = new URL("../../packages/core/src/", import.meta.url).href;
 const STDIO_CANARY = fileURLToPath(
   new URL("./fixtures/node_stdio_canary.mjs", import.meta.url),
 );
@@ -162,5 +167,49 @@ Deno.test({
         stderr: JSON.stringify(["staging", "naïve café", null]),
       },
     );
+  },
+});
+
+Deno.test({
+  name:
+    "the entry module under real Node is the script started, also through a symlink",
+  ignore: !USABLE,
+  fn: async () => {
+    const dir = await Deno.makeTempDir();
+    const link = `${dir}/started-through-a-link.mjs`;
+    await Deno.symlink(RUNTIME_CANARY, link);
+    try {
+      const preserve = "--preserve-symlinks-main";
+      const starts: { args: string[]; env?: Record<string, string> }[] = [
+        { args: [RUNTIME_CANARY] },
+        { args: [link] },
+        // Node then names the module by the link, not by where it leads,
+        // whichever way it is told.
+        { args: [preserve, link] },
+        { args: [link], env: { NODE_OPTIONS: preserve } },
+        { args: [link], env: { NODE_OPTIONS: `"${preserve}"` } },
+        // Spelled with underscores, which Node reads as hyphens.
+        { args: ["--preserve_symlinks_main", link] },
+        // Turned off again on the command line, which decides.
+        {
+          args: [`--no-${preserve.slice(2)}`, link],
+          env: { NODE_OPTIONS: preserve },
+        },
+      ];
+      for (const { args, env } of starts) {
+        const { code, stdout, stderr } = await new Deno.Command("node", {
+          args: [...RUN_TYPESCRIPT, ...args, CORE_SOURCE],
+          env,
+          stdout: "piped",
+          stderr: "piped",
+        }).output();
+        assertEquals(
+          { code, stdout: decode(stdout).trim(), stderr: decode(stderr) },
+          { code: 0, stdout: "node runtime canary ok", stderr: "" },
+        );
+      }
+    } finally {
+      await Deno.remove(dir, { recursive: true });
+    }
   },
 });

@@ -17,7 +17,7 @@ import { ZUKE_LOGO } from "../src/logo.ts";
 function facts(overrides: Partial<BannerFacts> = {}): BannerFacts {
   return {
     version: "1.56.0",
-    deno: "2.8.3",
+    runtime: "deno 2.8.3",
     platform: "darwin-aarch64",
     ci: false,
     host: "local",
@@ -40,7 +40,7 @@ Deno.test("banner: off CI it opens with the wordmark", () => {
 
 Deno.test("banner: the standalone binary names no Deno, whose runtime is compiled in", () => {
   const [first] = bannerLines(
-    facts({ ci: true, host: "github", deno: undefined }),
+    facts({ ci: true, host: "github", runtime: undefined }),
     false,
   );
   assertEquals(first, "zuke 1.56.0 · darwin-aarch64 · github");
@@ -98,7 +98,7 @@ Deno.test("banner: the facts are reported verbatim", () => {
       ci: true,
       host: "gitlab",
       version: "9.9.9",
-      deno: "3.0.0",
+      runtime: "deno 3.0.0",
       platform: "windows-x86_64",
     }),
     false,

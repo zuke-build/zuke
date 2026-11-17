@@ -10,6 +10,7 @@
  * @module
  */
 
+import { ON_DENO } from "./runtime.ts";
 import { spawnOnNode } from "./process_node.ts";
 import type { CommandStatus, Signal } from "./signal.ts";
 
@@ -74,9 +75,9 @@ export function spawnProcess(
   command: string,
   options: ProcessOptions,
 ): ChildProcess {
-  return typeof Deno === "undefined"
-    ? spawnOnNode(command, options)
-    : new Deno.Command(command, options).spawn();
+  return ON_DENO
+    ? new Deno.Command(command, options).spawn()
+    : spawnOnNode(command, options);
 }
 
 /** How a process run to its end finished, and what it wrote to its pipes. */

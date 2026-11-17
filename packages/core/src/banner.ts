@@ -28,11 +28,11 @@ export interface BannerFacts {
   /** The `@zuke/core` version executing this build. */
   version: string;
   /**
-   * The Deno runtime version, e.g. `2.8.3`, or `undefined` in the standalone
-   * `zuke` binary, whose runtime is compiled in rather than a Deno the user
-   * runs: a Python build's user never needs to hear of one.
+   * The runtime and its version, e.g. `deno 2.8.3`, or `undefined` in the
+   * standalone `zuke` binary, whose runtime is compiled in rather than one
+   * the user runs: a Python build's user never needs to hear of one.
    */
-  deno: string | undefined;
+  runtime: string | undefined;
   /** The platform as `<os>-<arch>`, e.g. `darwin-aarch64`. */
   platform: string;
   /**
@@ -87,7 +87,7 @@ export function bannerLines(facts: BannerFacts, color: boolean): string[] {
 
   const fields = [
     `${stylize(color, ["cyan", "bold"], "zuke")} ${facts.version}`,
-    ...(facts.deno === undefined ? [] : [`deno ${facts.deno}`]),
+    ...(facts.runtime === undefined ? [] : [facts.runtime]),
     facts.platform,
   ];
   // Name the host when Zuke knows it, and otherwise say plainly that this is

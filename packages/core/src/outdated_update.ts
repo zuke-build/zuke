@@ -22,6 +22,7 @@
  * @module
  */
 
+import { mainModule } from "./runtime.ts";
 import { runProcess } from "./process.ts";
 import { denoExecutable } from "./host.ts";
 import { resolveDir } from "./path.ts";
@@ -231,7 +232,7 @@ const denoResolve: ResolveLock = async (
     args: [
       "install",
       "--entrypoint",
-      Deno.mainModule,
+      mainModule(),
       ...entrypoints,
       "--reload=jsr:",
       "--frozen=false",

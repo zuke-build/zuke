@@ -20,6 +20,7 @@
  * their shared prerequisite a single time.
  */
 
+import { runtimeFacts } from "./runtime.ts";
 import process from "node:process";
 import type { Build, BuildResult } from "./build.ts";
 import { defaultReadEnv, messageOf } from "./internal.ts";
@@ -381,7 +382,7 @@ export async function execute(
   // store. A directory named `::error::…` would otherwise reach a runner's log
   // as a live command.
   if (writesToConsole && showBanner(options.banner, readEnv)) {
-    const facts = runtimeFacts(runId, readEnv, style.width);
+    const facts = gatherBannerFacts(runId, readEnv, style.width);
     for (const line of bannerLines(facts, style.color)) messages.info(line);
   }
 
@@ -855,14 +856,17 @@ function showBanner(
  * The facts the banner reports, read from the runtime here so
  * {@link bannerLines} stays pure and unit-testable without an environment.
  */
-function runtimeFacts(
+function gatherBannerFacts(
   runId: string,
   readEnv: (name: string) => string | undefined,
   width: number,
 ): BannerFacts {
+  const runtime = runtimeFacts();
   return {
     version: VERSION,
-    deno: Deno.build.standalone ? undefined : Deno.version.deno,
+    runtime: runtime.standalone
+      ? undefined
+      : `${runtime.name} ${runtime.version}`,
     platform: platformLabel(),
     // Both, because they answer different questions: `isCI` knows the systems
     // with no `CiHost` name (Jenkins, CircleBuild, a bare `CI=true`) and
