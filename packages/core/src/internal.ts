@@ -114,6 +114,9 @@ export async function sha256Hex(data: string | Uint8Array): Promise<string> {
   ).join("");
 }
 
+/** Whether this runtime is Deno, and so has Deno's error classes to test for. */
+const ON_DENO = typeof Deno !== "undefined";
+
 /**
  * Whether `error` is one another runtime threw that carries one of the
  * operating-system `codes`. An error of Deno's own is never judged by its
@@ -122,7 +125,9 @@ export async function sha256Hex(data: string | Uint8Array): Promise<string> {
  */
 function hasCode(error: unknown, ...codes: string[]): error is Error {
   if (!(error instanceof Error) || !("code" in error)) return false;
-  if (Object.values(Deno.errors).some((kind) => error instanceof kind)) {
+  if (
+    ON_DENO && Object.values(Deno.errors).some((kind) => error instanceof kind)
+  ) {
     return false;
   }
   return typeof error.code === "string" && codes.includes(error.code);
@@ -133,18 +138,19 @@ function hasCode(error: unknown, ...codes: string[]): error is Error {
 
 /** Whether `error` means the file or directory is not there. */
 export function isNotFound(error: unknown): error is Error {
-  return error instanceof Deno.errors.NotFound || hasCode(error, "ENOENT");
+  return (ON_DENO && error instanceof Deno.errors.NotFound) ||
+    hasCode(error, "ENOENT");
 }
 
 /** Whether `error` means the file or directory is already there. */
 export function isAlreadyExists(error: unknown): error is Error {
-  return error instanceof Deno.errors.AlreadyExists ||
+  return (ON_DENO && error instanceof Deno.errors.AlreadyExists) ||
     hasCode(error, "EEXIST");
 }
 
 /** Whether `error` means the operating system refused access. */
 export function isPermissionDenied(error: unknown): error is Error {
-  return error instanceof Deno.errors.PermissionDenied ||
+  return (ON_DENO && error instanceof Deno.errors.PermissionDenied) ||
     hasCode(error, "EACCES", "EPERM");
 }
 

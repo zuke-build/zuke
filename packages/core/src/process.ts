@@ -10,6 +10,7 @@
  * @module
  */
 
+import { spawnOnNode } from "./process_node.ts";
 import type { CommandStatus, Signal } from "./signal.ts";
 
 /** How one of a child's standard streams is connected. */
@@ -39,9 +40,9 @@ export interface ProcessOptions {
  * reading one that was not throws.
  */
 export interface ChildProcess {
-  /** The operating-system process id. */
+  /** The operating-system process id; `-1` for a child that never started. */
   readonly pid: number;
-  /** Resolves when the process exits. */
+  /** Resolves when the process exits. Rejects if it could not be started. */
   readonly status: Promise<CommandStatus>;
   /** Deliver a signal to the process. Throws if it has already exited. */
   kill(signal?: Signal): void;
@@ -57,11 +58,17 @@ export interface ChildProcess {
  * Start `command` with `options` and return the running child. Module-internal:
  * builds run processes through the shell.
  *
- * @throws when the command cannot be started, as the runtime reports it.
+ * On Deno this is `Deno.Command`, as it has always been. On any other runtime
+ * it is `node:child_process`, see {@link spawnOnNode}.
+ *
+ * @throws when the command cannot be started and the runtime knows at once,
+ * as Deno does. Where it learns later, the child's `status` rejects.
  */
 export function spawnProcess(
   command: string,
   options: ProcessOptions,
 ): ChildProcess {
-  return new Deno.Command(command, options).spawn();
+  return typeof Deno === "undefined"
+    ? spawnOnNode(command, options)
+    : new Deno.Command(command, options).spawn();
 }
