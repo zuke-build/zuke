@@ -39,6 +39,10 @@ export interface ServeOptions {
  * Serve `handler` until `options.signal` aborts, resolving once the server
  * has closed. A signal aborted already starts nothing: Deno would wait
  * forever on a server it never opened.
+ *
+ * @throws what `options.onListen` throws, once the server it was told about
+ * has closed again. Left to themselves both runtimes would pass the error
+ * on and keep serving.
  */
 export async function serve(
   options: ServeOptions,
@@ -46,12 +50,23 @@ export async function serve(
 ): Promise<void> {
   if (options.signal?.aborted) return;
   if (!ON_DENO) return await serveOnNode(options, handler);
+  let failure: { error: unknown } | undefined;
   const server = Deno.serve({
     hostname: options.hostname,
     port: options.port,
     signal: options.signal,
-    onListen: options.onListen,
+    onListen: (address) => {
+      try {
+        options.onListen(address);
+      } catch (error) {
+        failure = { error };
+      }
+    },
   }, handler);
+  if (failure !== undefined) {
+    await server.shutdown();
+    throw failure.error;
+  }
   await server.finished;
 }
 
@@ -238,6 +253,13 @@ export async function serveOnNode(
   // was there to hear it.
   if (options.signal?.aborted) stop();
   else options.signal?.addEventListener("abort", stop, { once: true });
-  options.onListen({ hostname: options.hostname, port });
+  try {
+    options.onListen({ hostname: options.hostname, port });
+  } catch (error) {
+    options.signal?.removeEventListener("abort", stop);
+    stop();
+    await closed;
+    throw error;
+  }
   await closed;
 }

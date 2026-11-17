@@ -128,6 +128,32 @@ for (const [backend, start] of BACKENDS) {
     controller.abort();
     await finished;
   });
+
+  Deno.test(`${backend}: a listen callback that throws closes the server and passes the error on`, async () => {
+    let port = 0;
+    const hook = new Error("hook");
+    let thrown: unknown;
+    try {
+      await start({
+        hostname: "127.0.0.1",
+        port: 0,
+        onListen: (address) => {
+          port = address.port;
+          throw hook;
+        },
+      }, () => new Response("still serving"));
+    } catch (error) {
+      thrown = error;
+    }
+    assertEquals(thrown, hook);
+    let refused = false;
+    try {
+      await (await fetch(`http://127.0.0.1:${port}/`)).text();
+    } catch {
+      refused = true;
+    }
+    assertEquals(refused, true);
+  });
 }
 
 Deno.test("a connection whose request finishes after it closed is not kept", async () => {
