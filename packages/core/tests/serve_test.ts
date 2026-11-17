@@ -1,9 +1,13 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { Socket } from "node:net";
+import { PassThrough } from "node:stream";
 import { assertEquals } from "./_assert.ts";
 import {
   type FetchHandler,
+  OpenConnections,
+  sendResponse,
   serve,
   serveOnNode,
   type ServeOptions,
@@ -111,7 +115,86 @@ for (const [backend, start] of BACKENDS) {
       },
     );
   });
+
+  Deno.test(`${backend}: an abort that lands while the server starts stops it`, async () => {
+    const controller = new AbortController();
+    const finished = start({
+      hostname: "127.0.0.1",
+      port: 0,
+      signal: controller.signal,
+      onListen: () => {},
+    }, () => new Response());
+    // Before the server has had the chance to bind.
+    controller.abort();
+    await finished;
+  });
 }
+
+Deno.test("a connection whose request finishes after it closed is not kept", async () => {
+  const connections = new OpenConnections();
+  const socket = new Socket();
+  connections.opened(socket);
+  connections.busy(socket);
+  assertEquals(connections.size, 1);
+  const closed = new Promise((resolve) => socket.once("close", resolve));
+  socket.destroy();
+  await closed;
+  // The client went away mid-request; its answer finishes afterwards.
+  connections.idle(socket);
+  assertEquals(connections.size, 0);
+  // A connection reported only after it closed is not kept either.
+  connections.opened(socket);
+  assertEquals(connections.size, 0);
+});
+
+Deno.test("only idle connections are closed on stop", async () => {
+  const connections = new OpenConnections();
+  const [idle, busy] = [new Socket(), new Socket()];
+  for (const socket of [idle, busy]) connections.opened(socket);
+  connections.busy(busy);
+  const closed = new Promise((resolve) => idle.once("close", resolve));
+  connections.closeIdle();
+  await closed;
+  assertEquals([idle.destroyed, busy.destroyed, connections.size], [
+    true,
+    false,
+    1,
+  ]);
+  busy.destroy();
+});
+
+Deno.test("a response Node refuses tears the connection down instead of throwing", async () => {
+  let destroyed = false;
+  const outgoing = Object.assign(new PassThrough(), {
+    statusCode: 0,
+    setHeader(): never {
+      throw new TypeError("Invalid character in header content");
+    },
+  });
+  outgoing.once("close", () => destroyed = true);
+  await sendResponse(
+    new Response("x", { headers: { "x-bad": "a\u0001b" } }),
+    outgoing,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assertEquals(destroyed, true);
+});
+
+Deno.test("every Set-Cookie header is sent, not only the last", async () => {
+  const set: Record<string, string | string[]> = {};
+  const outgoing = Object.assign(new PassThrough(), {
+    statusCode: 0,
+    setHeader(name: string, value: string | string[]) {
+      set[name] = value;
+    },
+  });
+  const headers = new Headers({ "x-one": "1" });
+  headers.append("set-cookie", "a=1");
+  headers.append("set-cookie", "b=2");
+  await sendResponse(new Response(null, { status: 204, headers }), outgoing);
+  assertEquals(outgoing.statusCode, 204);
+  assertEquals(set, { "x-one": "1", "set-cookie": ["a=1", "b=2"] });
+});
 
 Deno.test("Node: a Host header that makes no URL is answered on the bound address", async () => {
   await serving(serveOnNode, (request) => {

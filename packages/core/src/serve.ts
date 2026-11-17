@@ -14,11 +14,7 @@
  * @module
  */
 
-import {
-  createServer,
-  type IncomingMessage,
-  type ServerResponse,
-} from "node:http";
+import { createServer, type IncomingMessage } from "node:http";
 import type { Socket } from "node:net";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -93,24 +89,84 @@ export function webRequest(incoming: IncomingMessage, bound: string): Request {
   return new Request(url, init);
 }
 
+/** What {@link sendResponse} needs of Node's response. */
+export interface OutgoingResponse extends NodeJS.WritableStream {
+  /** The status sent. */
+  statusCode: number;
+  /** Set a header, replacing one of the same name. */
+  setHeader(name: string, value: string | string[]): unknown;
+  /** Tear the response down without finishing it. */
+  destroy(): unknown;
+}
+
 /**
- * Write `response` to `outgoing`. A body the client stops reading ends the
- * write quietly: the client has gone, and there is nobody to tell.
+ * Write `response` to `outgoing`. Whatever fails is answered by tearing the
+ * response down, never by a throw: a header value Node refuses, or a client
+ * that stops reading. The client then sees the connection close, and the
+ * server, which a throw here would have taken down, keeps serving.
  */
 export async function sendResponse(
   response: Response,
-  outgoing: ServerResponse,
+  outgoing: OutgoingResponse,
 ): Promise<void> {
-  outgoing.statusCode = response.status;
-  response.headers.forEach((value, name) => outgoing.setHeader(name, value));
-  if (response.body === null) {
-    outgoing.end();
-    return;
-  }
   try {
+    outgoing.statusCode = response.status;
+    response.headers.forEach((value, name) => {
+      if (name !== "set-cookie") outgoing.setHeader(name, value);
+    });
+    // The one header a fetch response keeps apart; joined, it would be wrong.
+    const cookies = response.headers.getSetCookie();
+    if (cookies.length > 0) outgoing.setHeader("set-cookie", cookies);
+    if (response.body === null) {
+      outgoing.end();
+      return;
+    }
     await pipeline(Readable.fromWeb(response.body), outgoing);
   } catch {
     outgoing.destroy();
+  }
+}
+
+/**
+ * The server's open connections, and which are answering a request now, so
+ * the idle ones can be closed on stop. Kept here because not every
+ * `node:http` closes idle connections on request.
+ *
+ * A connection is only ever marked busy or idle while it is open: a request
+ * whose client went away finishes after its connection closed, and marking
+ * that one would keep it here for good.
+ */
+export class OpenConnections {
+  readonly #open = new Set<Socket>();
+  readonly #busy = new WeakSet<Socket>();
+
+  /** How many are open. */
+  get size(): number {
+    return this.#open.size;
+  }
+
+  /** `socket` has opened; it is forgotten once it closes. */
+  opened(socket: Socket): void {
+    if (socket.destroyed) return;
+    this.#open.add(socket);
+    socket.once("close", () => this.#open.delete(socket));
+  }
+
+  /** `socket` is answering a request. */
+  busy(socket: Socket): void {
+    this.#busy.add(socket);
+  }
+
+  /** `socket` has answered its request. */
+  idle(socket: Socket): void {
+    this.#busy.delete(socket);
+  }
+
+  /** Close every open connection that is not answering a request. */
+  closeIdle(): void {
+    for (const socket of this.#open) {
+      if (!this.#busy.has(socket)) socket.destroy();
+    }
   }
 }
 
@@ -130,15 +186,13 @@ export async function serveOnNode(
 ): Promise<void> {
   let bound = `http://${options.hostname}`;
   let stopping = false;
-  // Each open connection, and whether it is answering a request now. Kept
-  // here because not every `node:http` closes idle connections on request.
-  const connections = new Map<Socket, boolean>();
+  const connections = new OpenConnections();
   const server = createServer((incoming, outgoing) => {
     const socket = incoming.socket;
-    connections.set(socket, true);
+    connections.busy(socket);
     outgoing.once("close", () => {
+      connections.idle(socket);
       if (stopping) socket.destroy();
-      else connections.set(socket, false);
     });
     const answer = async (): Promise<Response> => {
       try {
@@ -149,10 +203,7 @@ export async function serveOnNode(
     };
     void answer().then((response) => sendResponse(response, outgoing));
   });
-  server.on("connection", (socket) => {
-    connections.set(socket, false);
-    socket.once("close", () => connections.delete(socket));
-  });
+  server.on("connection", (socket) => connections.opened(socket));
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(options.port, options.hostname, () => {
@@ -168,11 +219,15 @@ export async function serveOnNode(
     options.hostname.includes(":") ? `[${options.hostname}]` : options.hostname
   }:${port}`;
   const closed = new Promise<void>((resolve) => server.once("close", resolve));
-  options.signal?.addEventListener("abort", () => {
+  const stop = () => {
     stopping = true;
     server.close();
-    for (const [socket, busy] of connections) if (!busy) socket.destroy();
-  }, { once: true });
+    connections.closeIdle();
+  };
+  // An abort can land while the server was still starting, when no listener
+  // was there to hear it.
+  if (options.signal?.aborted) stop();
+  else options.signal?.addEventListener("abort", stop, { once: true });
   options.onListen({ hostname: options.hostname, port });
   await closed;
 }

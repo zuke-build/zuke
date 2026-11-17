@@ -5,7 +5,9 @@
  * Run under real Node by `node_process_e2e.ts`: the MCP HTTP transport,
  * loaded as TypeScript source, serving on `node:http`. Its checks must hold
  * there as they do on Deno: a request is answered, a wrong token and a
- * foreign origin are refused before the handler runs, and an abort stops it.
+ * foreign origin are refused before the handler runs, and an abort stops it,
+ * also one that arrives while it is starting. A response Node refuses does
+ * not take the process down.
  */
 
 import assert from "node:assert/strict";
@@ -79,4 +81,40 @@ assert.deepEqual(handled, ["ping"]);
 
 controller.abort();
 await finished;
+// A response header Node refuses does not take the process down: that
+// connection is torn down and the server keeps serving.
+const { serveOnNode } = await import(
+  new URL("../../../packages/core/src/serve.ts", import.meta.url).href
+);
+const stopper = new AbortController();
+let bound = () => {};
+const boundPort = new Promise((resolve) => bound = resolve);
+let calls = 0;
+const serving = serveOnNode({
+  hostname: "127.0.0.1",
+  port: 0,
+  signal: stopper.signal,
+  onListen: (address) => bound(address.port),
+}, () => {
+  calls++;
+  return calls === 1
+    ? new Response("x", { headers: { "x-bad": "a\u0001b" } })
+    : new Response("still serving");
+});
+const plain = `http://127.0.0.1:${await boundPort}/`;
+await assert.rejects(fetch(plain));
+assert.equal(await (await fetch(plain)).text(), "still serving");
+stopper.abort();
+await serving;
+
+// A stop that arrives while the server is still starting is not missed.
+const early = new AbortController();
+const starting = serveHttp(() => Promise.resolve(null), {
+  host: "127.0.0.1",
+  port: 0,
+  signal: early.signal,
+});
+early.abort();
+await starting;
+
 console.log("node mcp http canary ok");
