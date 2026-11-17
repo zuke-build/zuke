@@ -14,7 +14,9 @@
  * - **Closing the input of a child that has exited.** It succeeds, as it does
  *   on Deno, where Node would fail it.
  * - **The environment.** Node replaces the environment with what it is given,
- *   so the parent's is put under it.
+ *   so the parent's is put under it, unless the child is to start from an
+ *   empty one. On Windows Node still hands such a child the few variables
+ *   the system needs, `PATH` and `SystemRoot` among them, from the parent.
  *
  * - **Variable names on Windows.** They are not case-sensitive there, so a
  *   variable given replaces the parent's whatever its case, as it does on
@@ -218,9 +220,12 @@ export function spawnOnNode(
   options: ProcessOptions,
 ): ChildProcess {
   const windows = process.platform === "win32";
-  const env = options.env === undefined
+  const added = options.env ?? {};
+  const env = options.clearEnv
+    ? added
+    : options.env === undefined
     ? undefined
-    : childEnvironment(process.env, options.env, windows);
+    : childEnvironment(process.env, added, windows);
   const start = invocation(
     command,
     options.args,

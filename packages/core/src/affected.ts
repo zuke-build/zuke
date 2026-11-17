@@ -22,6 +22,7 @@
  * @module
  */
 
+import { type ProcessOutput, runProcess } from "./process.ts";
 import { messageOf } from "./internal.ts";
 import type { TargetBuilder } from "./target.ts";
 
@@ -108,13 +109,13 @@ export async function runGitProcess(
   args: string[],
   bin = "git",
 ): Promise<string> {
-  let output: Deno.CommandOutput;
+  let output: ProcessOutput;
   try {
-    output = await new Deno.Command(bin, {
+    output = await runProcess(bin, {
       args,
       stdout: "piped",
       stderr: "piped",
-    }).output();
+    });
   } catch (error) {
     const detail = messageOf(error);
     throw new Error(

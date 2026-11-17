@@ -22,6 +22,7 @@
  * @module
  */
 
+import { runProcess } from "./process.ts";
 import { denoExecutable } from "./host.ts";
 import { resolveDir } from "./path.ts";
 import { messageOf, readTextOrNull, writeTextEnsuringDir } from "./internal.ts";
@@ -226,7 +227,7 @@ const denoResolve: ResolveLock = async (
 ) => {
   const slash = lockPath.lastIndexOf("/");
   const cwd = slash > 0 ? lockPath.slice(0, slash) : ".";
-  const command = new Deno.Command(denoExecutable(), {
+  const { code, stderr } = await runProcess(denoExecutable(), {
     args: [
       "install",
       "--entrypoint",
@@ -240,7 +241,6 @@ const denoResolve: ResolveLock = async (
     stdout: "null",
     stderr: "piped",
   });
-  const { code, stderr } = await command.output();
   if (code !== 0) {
     throw new Error(
       `re-resolving the lock failed (deno install exited ${code}): ` +

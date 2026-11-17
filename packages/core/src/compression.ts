@@ -27,6 +27,7 @@
  * @module
  */
 
+import { runProcess } from "./process.ts";
 import process from "node:process";
 import { mkdirRecursive, readFile, remove, symlink, writeFile } from "./fs.ts";
 import type { PathLike } from "./path.ts";
@@ -718,12 +719,12 @@ export async function decompressWith(
   args: string[],
 ): Promise<Uint8Array | null> {
   try {
-    const out = await new Deno.Command(cmd, {
+    const out = await runProcess(cmd, {
       args,
       stdin: "null",
       stdout: "piped",
       stderr: "null",
-    }).output();
+    });
     return out.success ? out.stdout : null;
   } catch {
     return null;
