@@ -24,8 +24,8 @@
  * not be run. Any other, a working directory that is a file for one, it
  * throws at once, as Deno does.
  *
- * A Windows batch file is not handled here yet: Node refuses to start one,
- * at once.
+ * A Windows batch file is started through `cmd.exe` on a line built so that
+ * no argument can become a command, see `process_batch.ts`.
  *
  * @module
  */
@@ -34,6 +34,8 @@ import { type ChildProcess as NodeChild, spawn } from "node:child_process";
 import { constants } from "node:os";
 import process from "node:process";
 import { Readable, Writable } from "node:stream";
+import { isFileSync } from "./fs.ts";
+import { invocation } from "./process_batch.ts";
 import type { ChildProcess, ProcessOptions, ProcessStdio } from "./process.ts";
 import type { CommandStatus, Signal } from "./signal.ts";
 
@@ -198,20 +200,37 @@ export function childEnvironment(
 }
 
 /**
- * Start `command` with `options` on `node:child_process`. No shell is
- * involved: the command and each argument reach the child as they are.
+ * Start `command` with `options` on `node:child_process`. The command and
+ * each argument reach the child as they are: no shell reads them, and for a
+ * Windows batch file, which only `cmd.exe` can run, the line it reads is
+ * built so that they still do.
+ *
+ * @throws {Error} for a batch file whose path or arguments cannot be passed
+ * safely.
  */
 export function spawnOnNode(
   command: string,
   options: ProcessOptions,
 ): ChildProcess {
-  const child = spawn(command, options.args, {
+  const windows = process.platform === "win32";
+  const env = options.env === undefined
+    ? undefined
+    : childEnvironment(process.env, options.env, windows);
+  const start = invocation(
+    command,
+    options.args,
+    windows,
+    process.env,
+    env ?? process.env,
+    isFileSync,
+  );
+  const child = spawn(start.file, start.args, {
     cwd: options.cwd,
-    env: options.env === undefined ? undefined : childEnvironment(
-      process.env,
-      options.env,
-      process.platform === "win32",
-    ),
+    env,
+    // The whole line is then the one written: nothing is quoted again, and
+    // it begins with the bare name, as the line Rust builds does.
+    windowsVerbatimArguments: start.verbatim,
+    argv0: start.verbatim ? "cmd.exe" : undefined,
     stdio: [
       nodeStdio(options.stdin),
       nodeStdio(options.stdout),

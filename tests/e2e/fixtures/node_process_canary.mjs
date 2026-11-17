@@ -9,7 +9,7 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
@@ -148,22 +148,127 @@ try {
   await gone.stdin.close();
 
   if (WINDOWS) {
-    // A batch file is refused, not run through a shell: an argument that
-    // would be a second command to cmd.exe must never get the chance.
+    // A batch file is run by cmd.exe, which reads the whole line itself.
+    // Every argument must still reach the program behind the batch file
+    // unchanged, and none of it may run: the marker is what an injected
+    // command would create.
     const marker = join(dir, "injected.txt");
-    const batch = join(dir, "tool.cmd");
-    await writeFile(batch, "@echo off\r\necho %*\r\n");
-    let refused = false;
-    try {
-      const child = spawnProcess(batch, {
-        args: [`x"&echo injected>"${marker}`],
-        ...quiet,
-      });
-      await child.status;
-    } catch {
-      refused = true;
-    }
-    assert.equal(refused, true, "a batch file was started");
+    const received = join(dir, "received.json");
+    const print = join(dir, "print.mjs");
+    const batch = join(dir, "tool with space.cmd");
+    await writeFile(
+      print,
+      `import { writeFileSync } from "node:fs";
+       writeFileSync(${
+        JSON.stringify(received)
+      }, JSON.stringify(process.argv.slice(2)));
+       process.exit(7);`,
+    );
+    await writeFile(batch, `@echo off\r\n"${node}" "${print}" %*\r\n`);
+    const toBatch = [
+      "plain",
+      "a b",
+      "",
+      `x"&echo injected>"${marker}`,
+      `"&echo injected>"${marker}"&"`,
+      `& echo injected> "${marker}"`,
+      `| echo injected> "${marker}"`,
+      "a&b|c<d>e",
+      "^caret^",
+      "%PATH%",
+      "%%PATH%%",
+      "100%",
+      "!PATH!",
+      "(parens)",
+      "a;b,c=d",
+      'say "hi"',
+      'back\\"quote',
+      "trailing\\",
+      "C:\\dir with space\\",
+      "tab\there",
+      "unicode-é→",
+      "$(id) `id` *",
+      // Odd numbers of quotes, and quotes at the edges.
+      '"',
+      'x"',
+      'a"b"c"',
+      '\\\\"',
+      // Carets and percents on their own and at the edges.
+      "a^",
+      "^",
+      "%",
+      "%cd%",
+      "%CD:~,%",
+      "%%cd:~,%",
+      '"%PATH%"',
+      "%~1",
+      "!x!%y%",
+      // What cmd.exe itself takes as an option.
+      "/c",
+      "/?",
+      "\\\\server\\share\\",
+    ];
+    const ran = spawnProcess(batch, {
+      args: toBatch,
+      stdin: "null",
+      stdout: "piped",
+      stderr: "piped",
+      // The percent handling leans on a variable that always exists. One of
+      // the same name in the environment must not change what comes out.
+      env: { CD: "decoy" },
+    });
+    const [batchOut, batchErr] = await Promise.all([
+      text(ran.stdout),
+      text(ran.stderr),
+    ]);
+    const batchStatus = await ran.status;
+    assert.equal(batchErr, "");
+    assert.equal(batchOut, "");
+    assert.deepEqual(JSON.parse(await readFile(received, "utf8")), toBatch);
+    // The exit code of what the batch file ran comes back through cmd.exe.
+    assert.equal(batchStatus.code, 7);
+    await assert.rejects(realpath(marker), { code: "ENOENT" });
+
+    // What cannot be made safe is refused before anything starts.
+    assert.throws(() => spawnProcess(batch, { args: ["new\nline"], ...quiet }));
+    await assert.rejects(realpath(marker), { code: "ENOENT" });
+
+    // A batch file's own exit code comes back, from one in a directory whose
+    // name cmd.exe would act on outside quotes, named in upper case.
+    const odd = join(dir, "a&b ^(c)!");
+    await mkdir(odd);
+    const exits = join(odd, "EXITS.BAT");
+    await writeFile(exits, "@echo off\r\nexit /b 5\r\n");
+    const exited = spawnProcess(exits, { args: [], ...quiet });
+    assert.equal((await exited.status).code, 5);
+
+    // A bare name is found on PATH and never in the working directory, where
+    // a checkout could plant one.
+    const planted = join(dir, "planted");
+    await mkdir(planted);
+    await writeFile(
+      join(planted, "bare-tool.cmd"),
+      `@echo off\r\necho planted> "${marker}"\r\n`,
+    );
+    assert.throws(
+      () => spawnProcess("bare-tool.cmd", { args: [], cwd: planted, ...quiet }),
+      { code: "ENOENT" },
+    );
+    await assert.rejects(realpath(marker), { code: "ENOENT" });
+    const onPath = spawnProcess("EXITS.BAT", {
+      args: [],
+      cwd: planted,
+      env: { PATH: `${odd};${process.env.PATH}` },
+      ...quiet,
+    });
+    assert.equal((await onPath.status).code, 5);
+
+    // A name Windows would read as the batch file takes the same safe path.
+    const dotted = spawnProcess(`${batch}.`, {
+      args: [`x"&echo injected>"${marker}`],
+      ...quiet,
+    });
+    assert.equal((await dotted.status).code, 7);
     await assert.rejects(realpath(marker), { code: "ENOENT" });
   }
 } finally {

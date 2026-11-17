@@ -232,6 +232,15 @@ export function statSync(path: string): FileInfo {
   return ioSync(() => fileInfo(nodeStatSync(path)));
 }
 
+/** Whether `path` is an existing file, following a final link. */
+export function isFileSync(path: string): boolean {
+  try {
+    return nodeStatSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
 /** {@link realPath}, without waiting. */
 export function realPathSync(path: string): string {
   return ioSync(() => nodeRealpathSync(path));
