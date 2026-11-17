@@ -1130,6 +1130,7 @@ class ZukeBuild extends Build {
   securityReview = securityReviewer((r) =>
     r
       .provider("openai")
+      .model("gpt-6.1-sol")
       .apiKey(this.openaiKey)
       .budget(this.aiBudget)
       .skipIfKeyMissing()
@@ -1355,6 +1356,7 @@ class ZukeBuild extends Build {
   generalReview = genericReviewer((r) =>
     r
       .provider("openai")
+      .model("gpt-6.1-sol")
       .apiKey(this.openaiKey)
       .budget(this.aiBudget)
       .skipIfKeyMissing()
