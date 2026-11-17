@@ -28,6 +28,9 @@ const RUNTIME_CANARY = fileURLToPath(
 const MCP_HTTP_CANARY = fileURLToPath(
   new URL("./fixtures/node_mcp_http_canary.mjs", import.meta.url),
 );
+const CORE_CANARY = fileURLToPath(
+  new URL("./fixtures/node_core_canary.mjs", import.meta.url),
+);
 /** Where core's source is, as the URL the runtime canary imports from. */
 const CORE_SOURCE = new URL("../../packages/core/src/", import.meta.url).href;
 const STDIO_CANARY = fileURLToPath(
@@ -229,6 +232,22 @@ Deno.test({
     assertEquals(
       { code, stdout: decode(stdout).trim(), stderr: decode(stderr) },
       { code: 0, stdout: "node mcp http canary ok", stderr: "" },
+    );
+  },
+});
+
+Deno.test({
+  name: "every entry point of core loads under real Node",
+  ignore: !USABLE,
+  fn: async () => {
+    const { code, stdout, stderr } = await new Deno.Command("node", {
+      args: [...RUN_TYPESCRIPT, CORE_CANARY],
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+    assertEquals(
+      { code, stdout: decode(stdout).trim(), stderr: decode(stderr) },
+      { code: 0, stdout: "node core canary ok", stderr: "" },
     );
   },
 });

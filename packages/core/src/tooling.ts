@@ -128,10 +128,11 @@ function remember(key: string, lookup: NodeBinLookup): NodeBinLookup {
 export class ToolNotFoundError extends Error {
   /** The error name. */
   override name = "ToolNotFoundError";
+  /** The binary that could not be resolved. */
+  readonly tool: string;
   /** Build the error naming the tool binary that could not be found. */
   constructor(
-    /** The binary that could not be resolved. */
-    readonly tool: string,
+    tool: string,
     /**
      * Whether a `node_modules` directory was seen during resolution but lacked
      * the binary — when `true`, the message suggests `npm ci` / `toolchain()`.
@@ -146,6 +147,7 @@ export class ToolNotFoundError extends Error {
             `"${tool}" — run \`npm ci\`, or provision it via toolchain().`
           : ""),
     );
+    this.tool = tool;
   }
 }
 

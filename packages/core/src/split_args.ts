@@ -21,18 +21,22 @@
 export class ShellArgsError extends Error {
   /** The error name. */
   override name = "ShellArgsError";
+  /** The quote character that was never closed — `'` or `"`. */
+  readonly quote: string;
+  /** The zero-based index in the input at which that quote was opened. */
+  readonly offset: number;
   /** Build the error from the unclosed quote character and its offset. */
   constructor(
-    /** The quote character that was never closed — `'` or `"`. */
-    readonly quote: string,
-    /** The zero-based index in the input at which that quote was opened. */
-    readonly offset: number,
+    quote: string,
+    offset: number,
   ) {
     super(
       `Unterminated ${quote} quote in command string at offset ${offset}. ` +
         `Close the quote, or escape it with a backslash if the character was ` +
         `meant literally.`,
     );
+    this.quote = quote;
+    this.offset = offset;
   }
 }
 

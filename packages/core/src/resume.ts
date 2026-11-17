@@ -59,16 +59,22 @@ import { detectCiHost } from "./host.ts";
 export class AlreadyResumedError extends Error {
   /** The error name. */
   override name = "AlreadyResumedError";
+  /** The run that could not be resumed. */
+  readonly runId: string;
+  /** The actor already running it. */
+  readonly by: string;
+  /** ISO-8601 time it went `running`. */
+  readonly at: string;
   /** Build the error from the run id and who is already running it. */
   constructor(
-    /** The run that could not be resumed. */
-    readonly runId: string,
-    /** The actor already running it. */
-    readonly by: string,
-    /** ISO-8601 time it went `running`. */
-    readonly at: string,
+    runId: string,
+    by: string,
+    at: string,
   ) {
     super(`run ${runId} was already resumed by ${by} at ${at}`);
+    this.runId = runId;
+    this.by = by;
+    this.at = at;
   }
 }
 
@@ -86,14 +92,18 @@ export class AlreadyResumedError extends Error {
 export class RunNotSuspendedError extends Error {
   /** The error name. */
   override name = "RunNotSuspendedError";
+  /** The run that could not be resumed. */
+  readonly runId: string;
+  /** The status it was in instead of `suspended`. */
+  readonly status: RunStatus;
   /** Build the error from the run id and the status found instead. */
   constructor(
-    /** The run that could not be resumed. */
-    readonly runId: string,
-    /** The status it was in instead of `suspended`. */
-    readonly status: RunStatus,
+    runId: string,
+    status: RunStatus,
   ) {
     super(`resume: run ${runId} is "${status}", not suspended.`);
+    this.runId = runId;
+    this.status = status;
   }
 }
 

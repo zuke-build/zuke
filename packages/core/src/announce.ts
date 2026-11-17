@@ -108,12 +108,14 @@ export class AnnounceError extends Error {
 export class SlackApiError extends Error {
   /** The error name. */
   override name = "SlackApiError";
+  /** Slack's `error` code from the `chat.postMessage` response. */
+  readonly error: string;
   /** Build the error from Slack's machine-readable error code. */
   constructor(
-    /** Slack's `error` code from the `chat.postMessage` response. */
-    readonly error: string,
+    error: string,
   ) {
     super(`Slack chat.postMessage failed: ${error}`);
+    this.error = error;
   }
 }
 

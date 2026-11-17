@@ -91,20 +91,26 @@ export function ownsRun(
 export class ForeignRunError extends Error {
   /** The error name. */
   override name = "ForeignRunError";
+  /** The run that was refused. */
+  readonly runId: string;
+  /** The origin recorded on the run. */
+  readonly owner: string;
+  /** The origin of the build in this process. */
+  readonly self: string;
   /** Build the error from the run and the two disagreeing origins. */
   constructor(
-    /** The run that was refused. */
-    readonly runId: string,
-    /** The origin recorded on the run. */
-    readonly owner: string,
-    /** The origin of the build in this process. */
-    readonly self: string,
+    runId: string,
+    owner: string,
+    self: string,
   ) {
     super(
       `run ${runId} belongs to build "${owner}", but this process is ` +
         `"${self}". A build only recovers its own runs. Set ZUKE_BUILD_ID to ` +
         `"${owner}" if this process really does own it.`,
     );
+    this.runId = runId;
+    this.owner = owner;
+    this.self = self;
   }
 }
 

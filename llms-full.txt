@@ -1225,10 +1225,16 @@ const defaultStateHost: StateHost
 class AlreadyResumedError extends Error
   Raised when a run has already been resumed by another process.
 
-  constructor(readonly runId: string, readonly by: string, readonly at: string)
+  constructor(runId: string, by: string, at: string)
     Build the error from the run id and who is already running it.
   override name: string
     The error name.
+  readonly runId: string
+    The run that could not be resumed.
+  readonly by: string
+    The actor already running it.
+  readonly at: string
+    ISO-8601 time it went `running`.
 
 class AnnounceError extends Error
   Raised when an announcement is run before it is fully configured.
@@ -1837,10 +1843,16 @@ class ForeignRunError extends Error
   that named one run reports it, because the operator asked about a run that is
   not this build's to touch.
 
-  constructor(readonly runId: string, readonly owner: string, readonly self: string)
+  constructor(runId: string, owner: string, self: string)
     Build the error from the run and the two disagreeing origins.
   override name: string
     The error name.
+  readonly runId: string
+    The run that was refused.
+  readonly owner: string
+    The origin recorded on the run.
+  readonly self: string
+    The origin of the build in this process.
 
 class GitHubActionsCacheStore implements RemoteCacheStore
   A {@link RemoteCacheStore} over the GitHub Actions cache service. A `get`
@@ -1999,10 +2011,12 @@ class LockConflictError extends Error
   surfaces verbatim in the CLI failure footer and the run record; `holder`
   carries the structured identity for programmatic surfaces (e.g. MCP).
 
-  constructor(readonly holder: LockHolder, guidance: string)
+  constructor(holder: LockHolder, guidance: string)
     Build the error from the current holder and the rendered guidance.
   override name: string
     The error name.
+  readonly holder: LockHolder
+    Who currently holds the contended lock.
 
 class LockSettings
   Fluent configuration for {@link TargetBuilder.lock}, in the settings-lambda
@@ -2259,10 +2273,14 @@ class RunNotSuspendedError extends Error
   reading `succeeded` has discovered a success, not a fault. Counting it would
   put a false alarm in the exit code a cron watches.
 
-  constructor(readonly runId: string, readonly status: RunStatus)
+  constructor(runId: string, status: RunStatus)
     Build the error from the run id and the status found instead.
   override name: string
     The error name.
+  readonly runId: string
+    The run that could not be resumed.
+  readonly status: RunStatus
+    The status it was in instead of `suspended`.
 
 class S3CacheStore implements RemoteCacheStore
   A {@link RemoteCacheStore} over an S3-compatible bucket: the HTTP store's
@@ -2358,10 +2376,12 @@ class SlackApiError extends Error
   failure (`{ ok: false }`), carrying Slack's machine-readable error code (e.g.
   `channel_not_found`, `not_in_channel`, `invalid_auth`).
 
-  constructor(readonly error: string)
+  constructor(error: string)
     Build the error from Slack's machine-readable error code.
   override name: string
     The error name.
+  readonly error: string
+    Slack's `error` code from the `chat.postMessage` response.
 
 class TargetBuilder
   The fluent builder returned by {@link target}. All configuration methods are
@@ -6010,16 +6030,34 @@ class Command implements PromiseLike<CommandOutput>
 class CommandError extends Error
   Raised when a command exits non-zero and throwing was not suppressed.
 
-  constructor(readonly command: string, readonly code: number, readonly stderr: string)
+  constructor(command: string, code: number, stderr: string)
     Build the error from the failed command line, exit code, and stderr.
   override name: string
     The error name.
+  readonly command: string
+    The command line that failed (argv joined by spaces).
+  readonly code: number
+    The process exit code.
+  readonly stderr: string
+    Captured stderr, if any.
 
 class CommandOutput
   The resolved result of a command, available when awaiting a {@link Command}.
 
-  constructor(readonly code: number, readonly stdout: string, readonly stderr: string, readonly truncated: boolean, readonly maxCapturedBytes: number)
+  constructor(code: number, stdout: string, stderr: string, truncated: boolean, maxCapturedBytes: number)
     Build the output from the process exit code and captured streams.
+  readonly code: number
+    The process exit code.
+  readonly stdout: string
+    Captured standard output.
+  readonly stderr: string
+    Captured standard error.
+  readonly truncated: boolean
+    Whether either captured stream hit the capture cap, in which case it holds
+    only its tail — the newest bytes — and its beginning is gone. See
+    {@link Command.maxCapturedBytes}.
+  readonly maxCapturedBytes: number
+    The per-stream capture cap that applied, in bytes.
   text(): string
     Trimmed stdout, prefixed with a one-line notice when {@link truncated} — so
     a caller reading the output cannot mistake a tail for the whole of it.
@@ -6029,20 +6067,28 @@ class CommandTimeoutError extends Error
   budget. Thrown regardless of {@link Command.noThrow}, since a timeout is a
   distinct, exceptional outcome from a normal non-zero exit.
 
-  constructor(readonly command: string, readonly timeoutMs: number)
+  constructor(command: string, timeoutMs: number)
     Build the error from the command line and the elapsed-time budget.
   override name: string
     The error name.
+  readonly command: string
+    The command line that timed out (argv joined by spaces).
+  readonly timeoutMs: number
+    The elapsed-time budget, in milliseconds, that was exceeded.
 
 class ShellArgsError extends Error
   Raised when {@link splitShellArgs} reaches the end of the input with a quote
   still open. Names the offending quote character and the offset at which it was
   opened so the bad spot in a long command line is findable.
 
-  constructor(readonly quote: string, readonly offset: number)
+  constructor(quote: string, offset: number)
     Build the error from the unclosed quote character and its offset.
   override name: string
     The error name.
+  readonly quote: string
+    The quote character that was never closed — `'` or `"`.
+  readonly offset: number
+    The zero-based index in the input at which that quote was opened.
 
 class SpawnedProcess
   A long-lived process started with {@link Command.spawn} — the handle a
@@ -6054,8 +6100,10 @@ class SpawnedProcess
   output goes to that target's block, and passes through live once the block
   has been printed.
 
-  constructor(child: ChildProcess | undefined, readonly commandLine: string)
+  constructor(child: ChildProcess | undefined, commandLine: string)
     Wrap a spawned child process (or none, for a stub) and its command line.
+  readonly commandLine: string
+    The command line the process was started with (argv joined by spaces).
   get pid(): number
     The operating-system process id (`-1` for a dry-run stub).
   get status(): Promise<CommandStatus>
@@ -6256,10 +6304,12 @@ abstract class SubcommandSettings extends ToolSettings
 class ToolNotFoundError extends Error
   Raised when a tool's binary cannot be found on the system.
 
-  constructor(readonly tool: string, sawNodeModules: boolean)
+  constructor(tool: string, sawNodeModules: boolean)
     Build the error naming the tool binary that could not be found.
   override name: string
     The error name.
+  readonly tool: string
+    The binary that could not be resolved.
 
 abstract class ToolSettings
   Abstract fluent base for tool settings. Subclasses provide the binary
