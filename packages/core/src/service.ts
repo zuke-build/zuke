@@ -32,6 +32,7 @@
  * @module
  */
 
+import { connect } from "node:net";
 import { type EffectFn, TargetBuilder } from "./target.ts";
 import { delay, messageOf } from "./internal.ts";
 
@@ -262,13 +263,20 @@ export class ServiceRegistry {
  */
 export async function tcpReachable(address: string): Promise<boolean> {
   const { hostname, port } = parseAddress(address);
-  try {
-    const conn = await Deno.connect({ hostname, port });
-    conn.close();
-    return true;
-  } catch {
-    return false;
-  }
+  return await new Promise<boolean>((resolve) => {
+    try {
+      const socket = connect({ host: hostname, port });
+      socket.once("connect", () => {
+        socket.destroy();
+        resolve(true);
+      });
+      socket.once("error", () => resolve(false));
+    } catch {
+      // A connection that may not even be attempted, such as one the
+      // runtime's permissions refuse, is one that is not accepted.
+      resolve(false);
+    }
+  });
 }
 
 /**

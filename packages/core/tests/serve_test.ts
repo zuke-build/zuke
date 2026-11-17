@@ -1,0 +1,148 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
+import { assertEquals } from "./_assert.ts";
+import {
+  type FetchHandler,
+  serve,
+  serveOnNode,
+  type ServeOptions,
+} from "../src/serve.ts";
+
+/** A way of serving. */
+type Serve = (options: ServeOptions, handler: FetchHandler) => Promise<void>;
+
+/**
+ * The two ways core serves. Both run here: the Node one through Deno's
+ * `node:http`, so every expectation below is held to on both.
+ */
+const BACKENDS: [name: string, serve: Serve][] = [
+  ["Deno", serve],
+  ["Node", serveOnNode],
+];
+
+/** Serve `handler` on a free port, run `fn` against it, then stop. */
+async function serving(
+  start: Serve,
+  handler: FetchHandler,
+  fn: (base: string) => Promise<void>,
+): Promise<void> {
+  const controller = new AbortController();
+  let listening = (_port: number) => {};
+  const port = new Promise<number>((resolve) => listening = resolve);
+  const finished = start({
+    hostname: "127.0.0.1",
+    port: 0,
+    signal: controller.signal,
+    onListen: ({ port }) => listening(port),
+  }, handler);
+  try {
+    await fn(`http://127.0.0.1:${await port}`);
+  } finally {
+    controller.abort();
+    await finished;
+  }
+}
+
+for (const [backend, start] of BACKENDS) {
+  Deno.test(`${backend}: a request reaches the handler whole, and its response comes back whole`, async () => {
+    const seen: string[] = [];
+    await serving(start, async (request) => {
+      const url = new URL(request.url);
+      seen.push(
+        request.method,
+        url.pathname + url.search,
+        request.headers.get("x-zuke") ?? "",
+        await request.text(),
+      );
+      return new Response("x".repeat(200_000), {
+        status: 201,
+        headers: { "x-answer": "yes", "content-type": "text/plain" },
+      });
+    }, async (base) => {
+      const response = await fetch(`${base}/path?q=1`, {
+        method: "POST",
+        headers: { "x-zuke": "set" },
+        body: "y".repeat(100_000),
+      });
+      assertEquals(response.status, 201);
+      assertEquals(response.headers.get("x-answer"), "yes");
+      assertEquals((await response.text()).length, 200_000);
+    });
+    assertEquals(seen, ["POST", "/path?q=1", "set", "y".repeat(100_000)]);
+  });
+
+  Deno.test(`${backend}: a GET has no body, and a response with none has none`, async () => {
+    await serving(start, (request) => {
+      assertEquals(request.body, null);
+      return new Response(null, { status: 204 });
+    }, async (base) => {
+      const response = await fetch(`${base}/`);
+      assertEquals(response.status, 204);
+      assertEquals(await response.text(), "");
+    });
+  });
+
+  Deno.test(`${backend}: a handler that throws is answered 500 and the server keeps serving`, async () => {
+    let calls = 0;
+    await serving(start, () => {
+      calls++;
+      if (calls === 1) throw new Error("boom");
+      return new Response("fine");
+    }, async (base) => {
+      const failed = await fetch(base);
+      assertEquals(failed.status, 500);
+      await failed.body?.cancel();
+      assertEquals(await (await fetch(base)).text(), "fine");
+    });
+  });
+
+  Deno.test(`${backend}: a body the handler leaves unread does not stall the answer`, async () => {
+    await serving(
+      start,
+      () => new Response("early", { status: 413 }),
+      async (base) => {
+        const response = await fetch(base, {
+          method: "POST",
+          body: "z".repeat(50_000),
+        });
+        assertEquals(response.status, 413);
+        assertEquals(await response.text(), "early");
+      },
+    );
+  });
+}
+
+Deno.test("Node: a Host header that makes no URL is answered on the bound address", async () => {
+  await serving(serveOnNode, (request) => {
+    return new Response(new URL(request.url).pathname);
+  }, async (base) => {
+    const { port } = new URL(base);
+    const conn = await Deno.connect({
+      hostname: "127.0.0.1",
+      port: Number(port),
+    });
+    await conn.write(
+      new TextEncoder().encode(
+        "GET /seen HTTP/1.1\r\nHost: bad host\r\nConnection: close\r\n\r\n",
+      ),
+    );
+    const reply = await new Response(conn.readable).text();
+    assertEquals(reply.split("\r\n")[0], "HTTP/1.1 200 OK");
+    // The body, however it is framed, carries the path.
+    assertEquals(reply.split("\r\n\r\n")[1].includes("/seen"), true);
+  });
+});
+
+Deno.test("a server whose signal was aborted before it starts resolves at once", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  await serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    signal: controller.signal,
+    onListen: () => {
+      throw new Error("nothing should have been opened");
+    },
+  }, () => new Response());
+});
