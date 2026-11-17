@@ -55,6 +55,7 @@ import {
 } from "./resource_metadata.ts";
 import { isLoopbackHost } from "../http.ts";
 import { readBytesBounded } from "../internal.ts";
+import { serve } from "../serve.ts";
 
 /** Options for {@link serveHttp}. */
 export interface HttpTransportOptions {
@@ -470,7 +471,7 @@ export async function serveHttp(
     return jsonResponse(response, 200);
   };
 
-  const server = Deno.serve({
+  await serve({
     hostname: host,
     port,
     signal,
@@ -478,5 +479,4 @@ export async function serveHttp(
     // banner. Tests use this to learn the port bound for `port: 0`.
     onListen: onListen ?? (() => {}),
   }, onRequest);
-  await server.finished;
 }
