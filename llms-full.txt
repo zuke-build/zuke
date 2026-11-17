@@ -668,7 +668,7 @@ function prependPath(dir: PathLike, os: HostOs): string
   Prepend `dir` to the process `PATH`, and return the new value. A tool
   provisioned into `dir` (e.g. the `bin` directory of an {@link "./install.ts".installTree}
   runtime) then resolves for the rest of the build: the shell `$`, `Command`,
-  and every tool wrapper spawn subprocesses that inherit `Deno.env`, so the
+  and every tool wrapper spawn subprocesses that inherit the environment, so the
   `node_modules/.bin` shims and `NpmTasks` that assume a `node`/`npm` on `PATH`
   find the provisioned one.
 
@@ -3900,7 +3900,7 @@ interface ExecuteOptions
     environment, then its declared default before any target runs.
   readEnv?: (name: string) => string | undefined
     Reads an environment variable as a parameter fallback. Defaults to
-    `Deno.env.get` (returning `undefined` when env access is unavailable);
+    the process environment (returning `undefined` when env access is unavailable);
     overridable so parameter resolution can be tested hermetically.
   prompt?: (flag: string, description: string | undefined) => string | undefined
     Prompt for a missing required parameter, returning the entered value (or

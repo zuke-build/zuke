@@ -17,6 +17,7 @@
  * @module
  */
 
+import process from "node:process";
 import type { Build } from "./build.ts";
 import { discoverTargets } from "./build.ts";
 import { messageOf } from "./internal.ts";
@@ -203,7 +204,7 @@ export async function forceTarget(
   build: Build,
   options: ForceOptions,
 ): Promise<ForceResult> {
-  const readEnv = options.readEnv ?? ((name) => Deno.env.get(name));
+  const readEnv = options.readEnv ?? ((name) => process.env[name]);
   const store = resolveRunStore(
     options.stateStore,
     build.stateStore(),

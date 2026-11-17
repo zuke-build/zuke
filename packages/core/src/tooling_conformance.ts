@@ -28,6 +28,8 @@
  * @module
  */
 
+import process from "node:process";
+import { makeTempDir, mkdirRecursive, remove, writeFile } from "./fs.ts";
 import {
   ToolNotFoundError,
   type ToolResolution,
@@ -100,7 +102,7 @@ export async function assertWrapperConformance(
         `or pass the binary the wrapper really runs as the tool argument.`,
     );
   }
-  assertResolution(makeSettings, tool, options.resolution);
+  await assertResolution(makeSettings, tool, options.resolution);
   await assertToolNotFound(makeSettings, tool);
 }
 
@@ -109,24 +111,24 @@ export async function assertWrapperConformance(
  * `node_modules/.bin/<tool>` next to a temp working directory: an npx-style
  * wrapper must rewrite argv[0] to that shim, a `PATH` wrapper must ignore it.
  */
-function assertResolution(
+async function assertResolution(
   makeSettings: () => ToolSettings,
   tool: string,
   expected: ToolResolution,
-): void {
-  const previous = Deno.env.get("ZUKE_TOOL_RESOLUTION");
-  Deno.env.delete("ZUKE_TOOL_RESOLUTION");
-  const root = Deno.makeTempDirSync();
+): Promise<void> {
+  const root = await makeTempDir();
   try {
     const binDir = `${root}/node_modules/.bin`;
-    Deno.mkdirSync(binDir, { recursive: true });
+    await mkdirRecursive(binDir);
     const shim = slashes(`${binDir}/${tool}`);
-    Deno.writeTextFileSync(shim, "#!/bin/sh\n");
+    await writeFile(shim, "#!/bin/sh\n");
     const settings = makeSettings();
     // Pin linux: the shim written above has no `.cmd`/`.bat` extension, which is
     // all a Windows host would look for.
     settings.os_ = "linux";
-    const resolved = slashes(head(settings.cwd(root).resolvedArgv()));
+    const resolved = slashes(
+      head(withoutOverride(() => settings.cwd(root).resolvedArgv())),
+    );
     if (expected === "node_modules" && resolved !== shim) {
       throw new Error(
         `Wrapper conformance for "${tool}": expected npx-style resolution, ` +
@@ -145,9 +147,22 @@ function assertResolution(
       );
     }
   } finally {
-    Deno.removeSync(root, { recursive: true });
-    if (previous === undefined) Deno.env.delete("ZUKE_TOOL_RESOLUTION");
-    else Deno.env.set("ZUKE_TOOL_RESOLUTION", previous);
+    await remove(root, true);
+  }
+}
+
+/**
+ * The result of `resolve` with the ambient `ZUKE_TOOL_RESOLUTION` override
+ * out of the way. Nothing is awaited while it is, so no other code in the
+ * process ever sees the variable missing.
+ */
+function withoutOverride<T>(resolve: () => T): T {
+  const previous = process.env.ZUKE_TOOL_RESOLUTION;
+  delete process.env.ZUKE_TOOL_RESOLUTION;
+  try {
+    return resolve();
+  } finally {
+    if (previous !== undefined) process.env.ZUKE_TOOL_RESOLUTION = previous;
   }
 }
 

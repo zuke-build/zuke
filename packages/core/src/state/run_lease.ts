@@ -18,6 +18,7 @@
  * @module
  */
 
+import { clearInterval, setInterval } from "node:timers";
 import { lockKey } from "./lock.ts";
 import type { StateStore } from "./store.ts";
 
@@ -94,7 +95,7 @@ export async function acquireLease(
   }, Math.max(1000, Math.floor(ttlMs / 2)));
   // Never keep the process alive for a heartbeat; the work decides when the run
   // ends, not the bookkeeping.
-  Deno.unrefTimer(heartbeat);
+  heartbeat.unref();
 
   /** One renewal: report loss, ignore anything that is merely a bad moment. */
   async function renew(): Promise<void> {

@@ -18,6 +18,7 @@
  * @module
  */
 
+import process from "node:process";
 import { appendTextSync } from "./fs.ts";
 import { ambientRedactor } from "./ambient_redactor.ts";
 
@@ -50,7 +51,7 @@ export function appendJobSummary(markdown: string): boolean {
   if (redactor !== undefined) markdown = redactor.redact(markdown);
   let path: string | undefined;
   try {
-    path = Deno.env.get("GITHUB_STEP_SUMMARY");
+    path = process.env.GITHUB_STEP_SUMMARY;
   } catch {
     return false; // no env access — nothing to write to
   }

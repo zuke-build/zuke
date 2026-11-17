@@ -12,6 +12,7 @@
  * @module
  */
 
+import { clearInterval, setInterval } from "node:timers";
 import { LockSettings, type TargetBuilder } from "./target.ts";
 import { LockConflictError, type LockHolder } from "./state/lock.ts";
 import type { LockResult, StateStore } from "./state/store.ts";
@@ -243,7 +244,7 @@ export async function acquireTargetLock(
   const heartbeat = setInterval(() => {
     store.renewLock(key, token, ttlMs).catch(() => {});
   }, Math.max(1000, Math.floor(ttlMs / 2)));
-  Deno.unrefTimer(heartbeat);
+  heartbeat.unref();
   return {
     release: async () => {
       clearInterval(heartbeat);

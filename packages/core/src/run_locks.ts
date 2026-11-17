@@ -21,6 +21,7 @@
  * @module
  */
 
+import { clearInterval, setInterval } from "node:timers";
 import { LockConflictError, type LockHolder } from "./state/lock.ts";
 import type { StateStore } from "./state/store.ts";
 import type { RunLock } from "./state/types.ts";
@@ -112,7 +113,7 @@ export class RunLockHolder {
     const heartbeat = setInterval(() => {
       store.renewLock(lock.key, lock.token, lock.ttlMs).catch(() => {});
     }, Math.max(1000, Math.floor(lock.ttlMs / 2)));
-    Deno.unrefTimer(heartbeat);
+    heartbeat.unref();
     this.#held.set(lock.key, { lock, heartbeat });
   }
 
