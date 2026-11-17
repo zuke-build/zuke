@@ -29,9 +29,9 @@ export const PROVIDER_HOSTS: Record<Provider, string> = {
 
 /** Default model per provider, used when `.model(...)` is not set. */
 export const DEFAULT_MODELS: Record<Provider, string> = {
-  claude: "claude-opus-4-8",
-  openai: "gpt-5.4-mini",
-  gemini: "gemini-3.5-flash",
+  claude: "claude-opus-5-5",
+  openai: "gpt-6-luna",
+  gemini: "gemini-3.8-flash",
 };
 
 /** Options threaded through {@link callProvider}. */
@@ -49,7 +49,10 @@ export interface CallOptions {
   schema?: { json: Record<string, unknown>; gemini: Record<string, unknown> };
   /** Name for OpenAI's `json_schema` (cosmetic). Defaults to `"assessment"`. */
   schemaName?: string;
-  /** Max output tokens to request. Defaults to 4096. */
+  /**
+   * Max output tokens to request. Defaults to 16000: Claude's thinking counts
+   * against it, and current Claude models always think.
+   */
   maxTokens?: number;
 }
 
@@ -145,7 +148,7 @@ export async function callProvider(
   const jsonSchema = options.schema?.json ?? ASSESSMENT_JSON_SCHEMA;
   const geminiSchema = options.schema?.gemini ?? ASSESSMENT_GEMINI_SCHEMA;
   const schemaName = options.schemaName ?? "assessment";
-  const maxTokens = options.maxTokens ?? 4096;
+  const maxTokens = options.maxTokens ?? 16000;
   if (provider === "claude") {
     // `output_config.format` enforces the JSON shape server-side.
     const outputConfig: Record<string, unknown> = {
@@ -174,11 +177,14 @@ export async function callProvider(
     if (dig(data, "stop_reason") === "refusal") {
       throw new AiReviewError("the model refused the request");
     }
+    // Current Claude models always think, and a thinking block comes before
+    // the answer, so read the first text block rather than the first block.
+    const content = dig(data, "content");
+    const answer = Array.isArray(content)
+      ? content.find((block) => dig(block, "type") === "text")
+      : undefined;
     return {
-      text: expectString(
-        dig(data, "content", 0, "text"),
-        "the Claude response",
-      ),
+      text: expectString(dig(answer, "text"), "the Claude response"),
       usage: readUsage(data, provider),
     };
   }

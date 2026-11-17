@@ -36,7 +36,7 @@ export interface ReviewStart {
 /**
  * The line announcing a review is starting, echoing its key settings so a slow
  * run reads as work-in-progress rather than a hang. For example:
- * `[security review] reviewing "deploy" — openai/gpt-5.4-mini · gate score>8 · comment`.
+ * `[security review] reviewing "deploy" — openai/gpt-6-luna · gate score>8 · comment`.
  */
 export function reviewStartLine(name: string, start: ReviewStart): string {
   const bits = [`${start.provider}/${start.model}`, `gate ${start.gate}`];
