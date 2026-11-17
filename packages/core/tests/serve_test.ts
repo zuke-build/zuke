@@ -183,6 +183,21 @@ Deno.test("cancelling a request body lets the rest flow away and leaves the sour
   source.destroy();
 });
 
+Deno.test("a cancelled body that then ends, or fails, as it arrives throws nothing", async () => {
+  for (const finish of ["end", "error"] as const) {
+    const source = new PassThrough();
+    const reader = bodyStream(source).getReader();
+    source.write(new Uint8Array(10));
+    await reader.read();
+    await reader.cancel();
+    // The rest of the upload arrives and the body is over, after the cancel.
+    source.write(new Uint8Array(5));
+    if (finish === "end") source.end();
+    else source.destroy(new Error("gone"));
+    await new Promise((resolve) => source.once("close", resolve));
+  }
+});
+
 Deno.test("a gentle close says no more but keeps taking what is still sent", async () => {
   let serverSide: Socket | undefined;
   const server = createServer((socket) => {
