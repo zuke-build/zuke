@@ -39,6 +39,13 @@ Deno.test("the option that keeps the entry's symlink is found where Node takes i
     preservesMainSymlink([], `--title "a ${option} b"`),
     false,
   );
+  // Turned off again, the last one given decides, the command line last.
+  const off = "--no-preserve-symlinks-main";
+  assertEquals(preservesMainSymlink([option, off], undefined), false);
+  assertEquals(preservesMainSymlink([off, option], undefined), true);
+  assertEquals(preservesMainSymlink([off], option), false);
+  assertEquals(preservesMainSymlink([option], off), true);
+  assertEquals(preservesMainSymlink([], `${option} ${off}`), false);
   // Another option that only begins the same way is not it.
   assertEquals(preservesMainSymlink(["--preserve-symlinks"], ""), false);
   assertEquals(preservesMainSymlink([], "--preserve-symlinks"), false);

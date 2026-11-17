@@ -59,6 +59,9 @@ export function runtimeFacts(): RuntimeFacts {
 /** The Node option that keeps the entry script's symlink unresolved. */
 const PRESERVE_MAIN = "--preserve-symlinks-main";
 
+/** The same option turned off again. */
+const RESOLVE_MAIN = "--no-preserve-symlinks-main";
+
 /**
  * The options in a `NODE_OPTIONS` value, split the way Node splits it: on
  * spaces, except inside double quotes, where a backslash takes the next
@@ -87,16 +90,18 @@ export function nodeOptionWords(value: string): string[] {
 
 /**
  * Whether Node was told to name the entry module by the symlink it was
- * started through and not by the file the link leads to: on its command line
- * (`execArgv`) or in `NODE_OPTIONS` (`nodeOptions`), the two places Node
- * takes the option from.
+ * started through and not by the file the link leads to. Node takes the
+ * option from `NODE_OPTIONS` (`nodeOptions`) and then from its command line
+ * (`execArgv`); it can be given turned off as well as on, and the last one
+ * given decides.
  */
 export function preservesMainSymlink(
   execArgv: readonly string[],
   nodeOptions: string | undefined,
 ): boolean {
-  return execArgv.includes(PRESERVE_MAIN) ||
-    nodeOptionWords(nodeOptions ?? "").includes(PRESERVE_MAIN);
+  const last = [...nodeOptionWords(nodeOptions ?? ""), ...execArgv]
+    .findLast((option) => option === PRESERVE_MAIN || option === RESOLVE_MAIN);
+  return last === PRESERVE_MAIN;
 }
 
 /**

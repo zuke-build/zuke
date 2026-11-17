@@ -188,6 +188,11 @@ Deno.test({
         { args: [preserve, link] },
         { args: [link], env: { NODE_OPTIONS: preserve } },
         { args: [link], env: { NODE_OPTIONS: `"${preserve}"` } },
+        // Turned off again on the command line, which decides.
+        {
+          args: [`--no-${preserve.slice(2)}`, link],
+          env: { NODE_OPTIONS: preserve },
+        },
       ];
       for (const { args, env } of starts) {
         const { code, stdout, stderr } = await new Deno.Command("node", {
