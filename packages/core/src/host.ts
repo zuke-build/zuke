@@ -16,6 +16,7 @@
  * @module
  */
 
+import { denoPath, runtimeFacts } from "./runtime.ts";
 import process from "node:process";
 import { defaultReadEnv } from "./internal.ts";
 
@@ -264,7 +265,7 @@ export function operatingSystem(
  *   standalone.
  */
 export function denoExecutable(
-  standalone: boolean = Deno.build.standalone,
+  standalone: boolean = runtimeFacts().standalone,
 ): string {
-  return standalone ? "deno" : Deno.execPath();
+  return standalone ? "deno" : denoPath() ?? "deno";
 }

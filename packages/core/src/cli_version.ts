@@ -16,25 +16,27 @@ import { box } from "./render.ts";
 import type { CliPaint } from "./cli_paint.ts";
 import { VERSION } from "./version.ts";
 import { platformLabel } from "./host.ts";
+import { runtimeFacts } from "./runtime.ts";
 
 /** What the version panel reports, gathered by {@link versionFacts}. */
 export interface VersionFacts {
   /** The `@zuke/core` version executing this build. */
   core: string;
-  /** The Deno runtime version. */
-  deno: string;
-  /** The TypeScript version Deno bundles. */
-  typescript: string;
+  /** The runtime's name and its version. */
+  runtime: VersionRow;
+  /** The TypeScript version the runtime bundles, where it says. */
+  typescript: string | undefined;
   /** The platform as `<os>-<arch>`. */
   platform: string;
 }
 
 /** The running process's facts, read here so the formatter stays pure. */
 export function versionFacts(): VersionFacts {
+  const runtime = runtimeFacts();
   return {
     core: VERSION,
-    deno: Deno.version.deno,
-    typescript: Deno.version.typescript,
+    runtime: [runtime.name, runtime.version],
+    typescript: runtime.typescript,
     platform: platformLabel(),
   };
 }
@@ -46,8 +48,10 @@ export type VersionRow = readonly [label: string, value: string];
 function rows(facts: VersionFacts): VersionRow[] {
   return [
     ["core", facts.core],
-    ["deno", facts.deno],
-    ["typescript", facts.typescript],
+    facts.runtime,
+    ...(facts.typescript === undefined
+      ? []
+      : [["typescript", facts.typescript] satisfies VersionRow]),
     ["platform", facts.platform],
   ];
 }

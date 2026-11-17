@@ -13,6 +13,7 @@
  * @module
  */
 
+import { ON_DENO } from "./runtime.ts";
 import process from "node:process";
 import {
   type FileInfo,
@@ -114,9 +115,6 @@ export async function sha256Hex(data: string | Uint8Array): Promise<string> {
     (b) => b.toString(16).padStart(2, "0"),
   ).join("");
 }
-
-/** Whether this runtime is Deno, and so has Deno's error classes to test for. */
-const ON_DENO = typeof Deno !== "undefined";
 
 /**
  * Whether `error` is one another runtime threw that carries one of the

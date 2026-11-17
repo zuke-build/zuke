@@ -16,6 +16,7 @@
  * @module
  */
 
+import { mainModule } from "../runtime.ts";
 import process from "node:process";
 import type { Build } from "../build.ts";
 import { defaultReadEnv } from "../internal.ts";
@@ -100,7 +101,7 @@ function deriveLocation(
   const repo = readEnv("GITHUB_REPOSITORY");
   const location: BuildLocation = {
     kind: "module",
-    module: redactModuleUrl(Deno.mainModule),
+    module: redactModuleUrl(mainModule()),
     cwd: process.cwd(),
   };
   if (repo !== undefined && repo !== "") location.repo = repo;

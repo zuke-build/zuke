@@ -22,6 +22,9 @@ import { assertEquals } from "../../packages/core/tests/_assert.ts";
 const CANARY = fileURLToPath(
   new URL("./fixtures/node_process_canary.mjs", import.meta.url),
 );
+const RUNTIME_CANARY = fileURLToPath(
+  new URL("./fixtures/node_runtime_canary.mjs", import.meta.url),
+);
 const STDIO_CANARY = fileURLToPath(
   new URL("./fixtures/node_stdio_canary.mjs", import.meta.url),
 );
@@ -162,5 +165,31 @@ Deno.test({
         stderr: JSON.stringify(["staging", "naïve café", null]),
       },
     );
+  },
+});
+
+Deno.test({
+  name:
+    "the entry module under real Node is the script started, also through a symlink",
+  ignore: !USABLE,
+  fn: async () => {
+    const dir = await Deno.makeTempDir();
+    const link = `${dir}/started-through-a-link.mjs`;
+    await Deno.symlink(RUNTIME_CANARY, link);
+    try {
+      for (const script of [RUNTIME_CANARY, link]) {
+        const { code, stdout, stderr } = await new Deno.Command("node", {
+          args: [...RUN_TYPESCRIPT, script],
+          stdout: "piped",
+          stderr: "piped",
+        }).output();
+        assertEquals(
+          { code, stdout: decode(stdout).trim(), stderr: decode(stderr) },
+          { code: 0, stdout: "node runtime canary ok", stderr: "" },
+        );
+      }
+    } finally {
+      await Deno.remove(dir, { recursive: true });
+    }
   },
 });

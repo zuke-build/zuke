@@ -5,6 +5,7 @@ import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { cliPaint, PLAIN_PAINT } from "../src/cli_paint.ts";
 import {
   formatVersionPanel,
+  type VersionFacts,
   versionFacts,
   versionPanel,
 } from "../src/cli_version.ts";
@@ -12,12 +13,21 @@ import * as render from "../src/render.ts";
 import { stripAnsi } from "../src/render.ts";
 import { VERSION } from "../src/version.ts";
 
-const FACTS = {
+const FACTS: VersionFacts = {
   core: "1.2.3",
-  deno: "2.8.3",
+  runtime: ["deno", "2.8.3"],
   typescript: "5.9.2",
   platform: "linux-x86_64",
 };
+
+Deno.test("a runtime that names no TypeScript version gets no row for one", () => {
+  const panel = formatVersionPanel(
+    { ...FACTS, runtime: ["node", "22.18.0"], typescript: undefined },
+    PLAIN_PAINT,
+  );
+  assertStringIncludes(panel, "node");
+  assertEquals(panel.includes("typescript"), false);
+});
 
 Deno.test("plain paint is the identity, whatever it is handed", () => {
   for (const paint of [PLAIN_PAINT, cliPaint({ rich: false, color: true })]) {
@@ -127,7 +137,7 @@ Deno.test("the coloured version panel has the same visible text", () => {
 Deno.test("versionFacts reports the running process", () => {
   const facts = versionFacts();
   assertEquals(facts.core, VERSION);
-  assertEquals(facts.deno, Deno.version.deno);
+  assertEquals(facts.runtime, ["deno", Deno.version.deno]);
   assertEquals(facts.typescript, Deno.version.typescript);
   assertEquals(facts.platform, `${Deno.build.os}-${Deno.build.arch}`);
 });

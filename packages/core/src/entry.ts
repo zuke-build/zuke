@@ -6,15 +6,17 @@
  *
  * {@link run} uses this so a build file can call `run(MyBuild)` at the top
  * level without an `if (import.meta.main)` guard: when the module is the one
- * Deno was started with it runs; when it is merely imported (for example under
+ * the program was started with it runs; when it is merely imported (for example under
  * test) `run` returns without doing anything.
  *
  * The decision recovers the module that called `run` from a stack trace and
- * compares it against {@link Deno.mainModule}. Both are passed in as arguments
+ * compares it against {@link mainModule}. Both are passed in as arguments
  * so the logic stays pure and unit-testable.
  *
  * @module
  */
+
+import { mainModule } from "./runtime.ts";
 
 /** The `file://` module URL within a single V8 stack frame, sans `:line:col`. */
 const FRAME = /(file:\/\/.+?):\d+:\d+/;
@@ -44,8 +46,8 @@ export function callerModule(
 export function isEntryModule(
   stack: string,
   selfUrl: string,
-  mainModule: string = Deno.mainModule,
+  main: string = mainModule(),
 ): boolean {
   const caller = callerModule(stack, selfUrl);
-  return caller === undefined || caller === mainModule;
+  return caller === undefined || caller === main;
 }

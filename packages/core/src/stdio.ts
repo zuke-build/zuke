@@ -17,6 +17,7 @@
  * @module
  */
 
+import { ON_DENO } from "./runtime.ts";
 import { readSync, writeSync } from "node:fs";
 import process from "node:process";
 import { Readable } from "node:stream";
@@ -60,9 +61,6 @@ export function queuedWriter(stream: NodeOutput): ByteWriter {
     },
   };
 }
-
-/** Whether this runtime is Deno, whose own streams are then the ones used. */
-const ON_DENO = typeof Deno !== "undefined";
 
 /** The process's stdout and stderr, as the sink command output is teed to. */
 export function processOutput(): OutputSink {
