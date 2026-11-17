@@ -77,6 +77,34 @@ const huge = await fetch(url, {
 assert.equal(huge.status, 413);
 await huge.body?.cancel();
 
+// The same over a raw connection still uploading when the limit is reached:
+// 64 MiB declared, sent in slices, and the 413 must arrive before the
+// connection goes.
+for (let round = 0; round < 3; round++) {
+  const status = await new Promise((resolve) => {
+    const slow = connect(Number(new URL(url).port), "127.0.0.1");
+    let reply = "";
+    let sent = 0;
+    const total = 64 * 1024 * 1024;
+    const slice = Buffer.alloc(256 * 1024, 120);
+    slow.on("data", (chunk) => reply += chunk);
+    slow.on("error", () => {});
+    slow.on("close", () => resolve(reply.split("\r\n")[0]));
+    slow.write(
+      `POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\n` +
+        `Authorization: Bearer secret\r\nContent-Length: ${total}\r\n\r\n`,
+    );
+    const pump = () => {
+      if (slow.destroyed || sent >= total) return;
+      slow.write(slice);
+      sent += slice.length;
+      setTimeout(pump, 5);
+    };
+    pump();
+  });
+  assert.equal(status, "HTTP/1.1 413 Payload Too Large");
+}
+
 // Only the one good request reached the handler.
 assert.deepEqual(handled, ["ping"]);
 
