@@ -184,7 +184,8 @@ Deno.test("cancelling a request body lets the rest flow away and leaves the sour
 });
 
 Deno.test("a cancelled body that then ends, or fails, as it arrives throws nothing", async () => {
-  for (const finish of ["end", "error"] as const) {
+  const finishes: readonly ("end" | "error")[] = ["end", "error"];
+  for (const finish of finishes) {
     const source = new PassThrough();
     const reader = bodyStream(source).getReader();
     source.write(new Uint8Array(10));
