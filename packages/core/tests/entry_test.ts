@@ -56,30 +56,15 @@ Deno.test("callerModule returns undefined when no other module is present", () =
 
 Deno.test("isEntryModule is true when the caller is the main module", () => {
   const s = stack(`at run (${SELF}:1:1)`, "at file:///repo/zuke.ts:5:1");
-  assertEquals(isEntryModule(s, SELF, ["file:///repo/zuke.ts"]), true);
+  assertEquals(isEntryModule(s, SELF, "file:///repo/zuke.ts"), true);
 });
 
 Deno.test("isEntryModule is false when the caller is some other module", () => {
   const s = stack(`at run (${SELF}:1:1)`, "at file:///repo/zuke.ts:5:1");
-  assertEquals(isEntryModule(s, SELF, ["file:///repo/test_main.ts"]), false);
+  assertEquals(isEntryModule(s, SELF, "file:///repo/test_main.ts"), false);
 });
 
 Deno.test("isEntryModule defaults to true when the caller is unknown", () => {
   // No identifiable caller frame — keep run()'s always-execute behaviour.
-  assertEquals(
-    isEntryModule("Error", SELF, ["file:///repo/anything.ts"]),
-    true,
-  );
-});
-
-Deno.test("isEntryModule accepts any of the names the entry goes by, and none of them is no match", () => {
-  const s = stack(
-    `at run (${SELF}:425:13)`,
-    "at file:///repo/link.ts:9:7",
-  );
-  assertEquals(
-    isEntryModule(s, SELF, ["file:///repo/real.ts", "file:///repo/link.ts"]),
-    true,
-  );
-  assertEquals(isEntryModule(s, SELF, []), false);
+  assertEquals(isEntryModule("Error", SELF, "file:///repo/anything.ts"), true);
 });

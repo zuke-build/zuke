@@ -14,10 +14,9 @@ import process from "node:process";
 // The test says where core is: started through a link Node does not
 // resolve, this file's own URL is the link's, somewhere else entirely.
 const core = new URL(process.argv[2]);
-const { denoPath, entryModules, mainModule, ON_DENO, runtimeFacts } =
-  await import(
-    new URL("runtime.ts", core).href
-  );
+const { denoPath, mainModule, ON_DENO, runtimeFacts } = await import(
+  new URL("runtime.ts", core).href
+);
 const { isEntryModule } = await import(new URL("entry.ts", core).href);
 
 assert.equal(ON_DENO, false);
@@ -28,16 +27,12 @@ assert.deepEqual(runtimeFacts(), {
   standalone: false,
 });
 assert.equal(denoPath(), null);
-// However it was started, one of the entry's names is this file's own, and
-// by default it is the first: Node resolved the link it was started through.
-assert.ok(entryModules().includes(import.meta.url));
-if (!process.execArgv.includes("--preserve-symlinks-main")) {
-  assert.equal(mainModule(), import.meta.url);
-}
+// However it was started, the entry is named as Node names this file.
+assert.equal(mainModule(), import.meta.url);
 // What `run` asks: this file called it, and this file is the entry.
 assert.equal(isEntryModule(new Error().stack, "file:///elsewhere.ts"), true);
 assert.equal(
-  isEntryModule(new Error().stack, "file:///elsewhere.ts", ["file:///b.ts"]),
+  isEntryModule(new Error().stack, "file:///elsewhere.ts", "file:///b.ts"),
   false,
 );
 

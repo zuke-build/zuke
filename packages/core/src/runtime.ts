@@ -56,30 +56,41 @@ export function runtimeFacts(): RuntimeFacts {
   };
 }
 
+/** The Node option that keeps the entry script's symlink unresolved. */
+const PRESERVE_MAIN = "--preserve-symlinks-main";
+
 /**
- * Every URL the module the program was started with can go by, the usual one
- * first; none when it was started with no module.
- *
- * On Deno there is one. On Node there are two when the script named on the
- * command line is a symlink, as it is under `npx` and in a global install:
- * Node names the module by the file the link leads to, unless it was started
- * with `--preserve-symlinks-main`, when it names it by the link.
+ * Whether Node was told to name the entry module by the symlink it was
+ * started through and not by the file the link leads to: on its command line
+ * (`execArgv`) or in `NODE_OPTIONS` (`nodeOptions`), the two places Node
+ * takes the option from.
  */
-export function entryModules(): string[] {
-  if (ON_DENO) return [Deno.mainModule];
-  const script = process.argv.at(1);
-  if (script === undefined) return [];
-  const resolved = pathToFileURL(realPathSync(script)).href;
-  const given = pathToFileURL(script).href;
-  return resolved === given ? [resolved] : [resolved, given];
+export function preservesMainSymlink(
+  execArgv: readonly string[],
+  nodeOptions: string | undefined,
+): boolean {
+  return execArgv.includes(PRESERVE_MAIN) ||
+    (nodeOptions ?? "").split(/\s+/).includes(PRESERVE_MAIN);
 }
 
 /**
  * The URL of the module the program was started with, or `""` when it was
- * started with none: the first of {@link entryModules}.
+ * started with none.
+ *
+ * On Node that is the script named on the command line, which is a symlink
+ * under `npx` and in a global install. Node names the module by the file the
+ * link leads to, so the link is resolved here too, unless Node was started
+ * with `--preserve-symlinks-main`, when it names it by the link.
  */
 export function mainModule(): string {
-  return entryModules().at(0) ?? "";
+  if (ON_DENO) return Deno.mainModule;
+  const script = process.argv.at(1);
+  if (script === undefined) return "";
+  const preserved = preservesMainSymlink(
+    process.execArgv,
+    process.env.NODE_OPTIONS,
+  );
+  return pathToFileURL(preserved ? script : realPathSync(script)).href;
 }
 
 /**
