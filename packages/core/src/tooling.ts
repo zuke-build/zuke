@@ -23,7 +23,7 @@
  */
 
 import process from "node:process";
-import { statSync } from "./fs.ts";
+import { isFileSync, statSync } from "./fs.ts";
 import { Command, CommandError, type CommandOutput } from "./shell.ts";
 import { checkMaxCapturedBytes } from "./capture.ts";
 import { ambientRedactor } from "./ambient_redactor.ts";
@@ -70,15 +70,6 @@ function envResolution(): ToolResolution | null {
   return value === "node_modules" || value === "path" ? value : null;
 }
 
-/** Whether `path` names an existing file (following symlinks). */
-function isFile(path: string): boolean {
-  try {
-    return statSync(path).isFile;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Search `node_modules/.bin` for `tool`, walking up from `cwd` to the
  * filesystem root. On Windows the `.cmd`/`.bat` shim variants are matched too;
@@ -108,7 +99,7 @@ function findNodeModulesBin(
     if (existsDir(dir("node_modules").path)) sawNodeModules = true;
     for (const name of names) {
       const candidate = binDir(name);
-      if (isFile(candidate.path)) {
+      if (isFileSync(candidate.path)) {
         return remember(key, { bin: candidate.path, sawNodeModules: true });
       }
     }
