@@ -28,7 +28,7 @@ const NPM = [
   "",
 ].join("\r\n");
 
-/** The shim pnpm and Yarn 1 write. */
+/** The shim pnpm writes. */
 const PNPM = [
   "@SETLOCAL",
   '@IF EXIST "%~dp0\\node.exe" (',
@@ -40,7 +40,7 @@ const PNPM = [
   "",
 ].join("\r\n");
 
-/** The shim npm wrote before version 7. */
+/** The shim Yarn 1 and early pnpm write. */
 const OLD_NPM = [
   '@IF EXIST "%~dp0\\node.exe" (',
   `  "%~dp0\\node.exe"  "%~dp0\\${SCRIPT}" %*`,

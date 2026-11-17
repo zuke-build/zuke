@@ -40,7 +40,7 @@
  * @module
  */
 
-import { besideFile, shimTarget } from "./process_shim.ts";
+import { besideFile, FULL_PATH, shimTarget } from "./process_shim.ts";
 
 /** The options `cmd.exe` is given before the line it runs. */
 const PROMPT_OPTIONS = ["/e:ON", "/v:OFF", "/d", "/c"];
@@ -54,8 +54,12 @@ const CONTROL = /\p{Cc}/u;
 /** What ends a line or a string for `cmd.exe`, and so can never be passed. */
 const UNPASSABLE = /[\r\n\0]/;
 
-/** A directory by its full path, on a drive or a network share. */
-const FULL_DIRECTORY = /^([A-Za-z]:[\\/]|\\\\)/;
+/**
+ * The names `cmd.exe` tries for the command `node`, in its order. Only the
+ * second is Node itself: the others are wrappers a version manager puts
+ * first on `PATH`, which have to be run as what they are.
+ */
+const NODE_NAMES = ["node.com", "node.exe", "node.bat", "node.cmd"];
 
 /** What Node is asked to start: a program, its arguments, and how they are passed. */
 export interface Invocation {
@@ -96,20 +100,21 @@ function refused(what: string): Error {
 }
 
 /**
- * The file `name` in the first of the full paths on `searchPath` that has it,
- * or `null`. An entry that is not a full path is passed over: the working
+ * The first file there is with one of `names`, looking through the full
+ * paths on `searchPath` in order and trying the names in order in each, or
+ * `null`. An entry that is not a full path is passed over: the working
  * directory is never searched.
  */
 function onSearchPath(
-  name: string,
+  names: string[],
   searchPath: string | undefined,
   isFile: (path: string) => boolean,
 ): string | null {
   for (const entry of (searchPath ?? "").split(";")) {
     const directory = `${entry.replace(/^"|"$/g, "").replace(/[\\/]+$/, "")}\\`;
-    if (FULL_DIRECTORY.test(directory) && isFile(directory + name)) {
-      return directory + name;
-    }
+    if (!FULL_PATH.test(directory)) continue;
+    const found = names.find((name) => isFile(directory + name));
+    if (found !== undefined) return directory + found;
   }
   return null;
 }
@@ -127,7 +132,7 @@ export function resolvedBatchFile(
   isFile: (path: string) => boolean,
 ): string {
   if (/[\\/]/.test(script)) return script;
-  const found = onSearchPath(script, searchPath, isFile);
+  const found = onSearchPath([script], searchPath, isFile);
   if (found !== null) return found;
   throw Object.assign(new Error(`${script} was not found on PATH`), {
     code: "ENOENT",
@@ -223,7 +228,9 @@ export interface BatchHost {
  * - A batch file that is only a package manager's shim for a Node script is
  *   seen through: Node is started on the script, and no `cmd.exe` runs. See
  *   `process_shim.ts`. The Node is the one the shim would start: one beside
- *   the shim, else the first `node.exe` on the child's `PATH`.
+ *   the shim, else the first `node` on the full paths of the child's `PATH`.
+ *   Where that is a wrapper and not `node.exe`, the shim is not seen through.
+ *   The working directory is not searched, though `cmd.exe` would search it.
  * - Any other batch file, and a shim with no such Node, is started through
  *   `cmd.exe` on a line built by {@link batchCommandLine}.
  *
@@ -250,11 +257,13 @@ export function invocation(
   const script = resolvedBatchFile(named, searchPath, host.isFile);
   const target = shimTarget(script, host.readText, host.isFile);
   if (target !== null) {
+    // What the shim would start: a Node beside it, else whatever `node`
+    // first means on PATH. If that is not Node itself, the shim is run.
     const beside = besideFile(script, "node.exe");
     const node = host.isFile(beside)
       ? beside
-      : onSearchPath("node.exe", searchPath, host.isFile);
-    if (node !== null) {
+      : onSearchPath(NODE_NAMES, searchPath, host.isFile);
+    if (node !== null && /\\node\.exe$/i.test(node)) {
       return { file: node, args: [target, ...args], verbatim: false };
     }
   }

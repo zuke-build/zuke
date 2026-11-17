@@ -249,6 +249,39 @@ Deno.test("a package manager's shim for a Node script is seen through", () => {
     ),
     { file: `${bin}\\node.exe`, args: [target], verbatim: false },
   );
+  // Where `node` first means a wrapper, as a version manager's does, the
+  // shim would start the wrapper, so it is run and not seen through.
+  for (const wrapper of ["node.cmd", "node.bat", "node.com"]) {
+    const started = invocation(
+      shim,
+      [],
+      true,
+      { SystemRoot: "C:\\Windows" },
+      onPath,
+      hostWith({
+        ...files,
+        [`C:\\node18\\${wrapper}`]: "",
+        "C:\\node22\\node.exe": "",
+      }),
+    );
+    assertEquals(started.verbatim, true);
+  }
+  // In one directory Node itself comes before a batch wrapper.
+  assertEquals(
+    invocation(
+      shim,
+      [],
+      true,
+      {},
+      onPath,
+      hostWith({
+        ...files,
+        "C:\\node18\\node.cmd": "",
+        "C:\\node18\\node.exe": "",
+      }),
+    ).file,
+    "C:\\node18\\node.exe",
+  );
   // With no Node to be found, or without the script it names, or named by a
   // relative path, it is run as the batch file it is.
   const parent = { SystemRoot: "C:\\Windows" };

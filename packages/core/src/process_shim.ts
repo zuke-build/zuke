@@ -54,7 +54,7 @@ const TEMPLATES = [
     'endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\' +
     SCRIPT + '" %*',
   ],
-  // pnpm, and Yarn 1.
+  // pnpm.
   [
     "@SETLOCAL",
     '@IF EXIST "%~dp0\\node.exe" (',
@@ -64,7 +64,7 @@ const TEMPLATES = [
     '  node  "%~dp0\\' + SCRIPT + '" %*',
     ")",
   ],
-  // npm before version 7.
+  // Yarn 1, and early pnpm.
   [
     '@IF EXIST "%~dp0\\node.exe" (',
     '  "%~dp0\\node.exe"  "%~dp0\\' + SCRIPT + '" %*',
@@ -82,8 +82,8 @@ const TEMPLATES = [
   return new RegExp(`^${first}([^"%\\n]+)${rest.join("\\1")}$`);
 });
 
-/** A file by its full path, on a drive or a network share. */
-const FULL_PATH = /^([A-Za-z]:[\\/]|\\\\)/;
+/** A file or directory by its full path, on a drive or a network share. */
+export const FULL_PATH = /^([A-Za-z]:[\\/]|\\\\)/;
 
 /**
  * The script a shim starts with Node, relative to the shim's own directory,
