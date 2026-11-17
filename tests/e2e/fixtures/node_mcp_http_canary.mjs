@@ -78,8 +78,10 @@ assert.equal(huge.status, 413);
 await huge.body?.cancel();
 
 // The same over a raw connection still uploading when the limit is reached:
-// 64 MiB declared, sent in slices, and the 413 must arrive before the
-// connection goes.
+// 64 MiB declared and sent in slices, and the 413 must come back. The answer
+// is taken as soon as its status line arrives, whether or not the server then
+// closes the connection, and a round that hears nothing fails after a while
+// rather than waiting for ever.
 for (let round = 0; round < 3; round++) {
   const status = await new Promise((resolve) => {
     const slow = connect(Number(new URL(url).port), "127.0.0.1");
@@ -87,9 +89,18 @@ for (let round = 0; round < 3; round++) {
     let sent = 0;
     const total = 64 * 1024 * 1024;
     const slice = Buffer.alloc(256 * 1024, 120);
-    slow.on("data", (chunk) => reply += chunk);
+    const finish = (line) => {
+      clearTimeout(deadline);
+      slow.destroy();
+      resolve(line);
+    };
+    const deadline = setTimeout(() => finish("no answer within 30s"), 30_000);
+    slow.on("data", (chunk) => {
+      reply += chunk;
+      if (reply.includes("\r\n")) finish(reply.split("\r\n")[0]);
+    });
     slow.on("error", () => {});
-    slow.on("close", () => resolve(reply.split("\r\n")[0]));
+    slow.on("close", () => finish(reply.split("\r\n")[0]));
     slow.write(
       `POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\n` +
         `Authorization: Bearer secret\r\nContent-Length: ${total}\r\n\r\n`,
