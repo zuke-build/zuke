@@ -15,6 +15,7 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { apiPath, apiUrl, type Connection, isGuid } from "./connect.ts";
 import { SignPathRequestError } from "./errors.ts";
 import { scrub } from "./scrub.ts";
@@ -32,7 +33,7 @@ async function readArtifact(
   path: string,
 ): Promise<Uint8Array<ArrayBuffer>> {
   try {
-    return await Deno.readFile(path);
+    return new Uint8Array(await FileTasks.readBytes(path));
   } catch (error) {
     throw new Error(
       `could not read the artifact to sign, ${path}: ${

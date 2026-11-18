@@ -25,7 +25,7 @@
  * @module
  */
 
-import type { PathLike } from "@zuke/core";
+import { FileTasks, type PathLike, StreamTasks } from "@zuke/core";
 import { apiPath, apiUrl, type Connection } from "./connect.ts";
 import { SignPathRequestError } from "./errors.ts";
 import { SignPathStatusSettings } from "./status.ts";
@@ -160,11 +160,12 @@ export async function downloadSignedArtifact(
   const max = connection.settings.maxDownloadBytes_;
   let bytes = 0;
   let oversized = false;
-  let file: Deno.FsFile;
   try {
     const parent = parentOf(output);
-    if (parent !== undefined) await Deno.mkdir(parent, { recursive: true });
-    file = await Deno.open(partial, { write: true, createNew: true });
+    if (parent !== undefined) await FileTasks.createDirectory(parent);
+    // Claim the partial path first, so a path already taken fails here and
+    // is never removed below as if it were this download's own.
+    await FileTasks.writeBytes(partial, new Uint8Array(), (s) => s.createNew());
   } catch (error) {
     // Release the connection: the body will never be read.
     await response.body?.cancel();
@@ -182,13 +183,14 @@ export async function downloadSignedArtifact(
         controller.enqueue(chunk);
       },
     });
-    if (response.body === null) file.close();
-    else await response.body.pipeThrough(limit).pipeTo(file.writable);
-    await Deno.rename(partial, output);
+    if (response.body !== null) {
+      await StreamTasks.toFile(partial, response.body.pipeThrough(limit));
+    }
+    await FileTasks.move(partial, output);
   } catch (error) {
-    // The file is closed by now — a failed pipe aborts, and so closes, its
-    // writable — so Windows lets the partial file be removed.
-    await Deno.remove(partial).catch(() => {});
+    // The file is closed by now, whether the stream or the write failed, so
+    // Windows lets the partial file be removed.
+    await FileTasks.remove(partial).catch(() => {});
     if (oversized) {
       throw new SignPathRequestError(
         "GET",

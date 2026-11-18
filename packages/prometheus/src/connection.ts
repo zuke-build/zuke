@@ -21,7 +21,12 @@
  * @module
  */
 
-import { defaultReadEnv, parseDuration } from "@zuke/core";
+import {
+  defaultReadEnv,
+  FileTasks,
+  parseDuration,
+  RuntimeTasks,
+} from "@zuke/core";
 import type { Configure } from "@zuke/core/tooling";
 import { sigv4Credentials } from "./aws.ts";
 import { PrometheusAwsSettings } from "./aws_settings.ts";
@@ -61,7 +66,7 @@ export class PrometheusConnectionSettings {
   readEnv_: (name: string) => string | undefined = defaultReadEnv;
   /** The text-file reader credential sources use (set by {@link readTextFile}). */
   readTextFile_: (path: string) => Promise<string> = (path) =>
-    Deno.readTextFile(path);
+    FileTasks.readText(path);
   /** The clock, in epoch ms (set by {@link now}). */
   now_: () => number = Date.now;
 
@@ -158,7 +163,7 @@ export class PrometheusConnectionSettings {
     this.credentials_.push(
       googleCredentials(
         configure(new PrometheusGoogleSettings()),
-        Deno.build.os,
+        RuntimeTasks.os(),
       ),
     );
     return this;

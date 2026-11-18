@@ -1551,13 +1551,13 @@
     "members": {
       "packages/ai": {
         "dependencies": [
-          "jsr:@zuke/core@^1.58.0",
+          "jsr:@zuke/core@^1.82.0",
           "jsr:@zuke/gh@^1.13.0"
         ]
       },
       "packages/apple": {
         "dependencies": [
-          "jsr:@zuke/core@^1.75.0"
+          "jsr:@zuke/core@^1.82.0"
         ]
       },
       "packages/argo-rollouts": {
@@ -1816,7 +1816,7 @@
       },
       "packages/prometheus": {
         "dependencies": [
-          "jsr:@zuke/core@^1.76.0"
+          "jsr:@zuke/core@^1.82.0"
         ]
       },
       "packages/qr": {
@@ -1846,7 +1846,7 @@
       },
       "packages/signpath": {
         "dependencies": [
-          "jsr:@zuke/core@^1.72.0"
+          "jsr:@zuke/core@^1.82.0"
         ]
       },
       "packages/storybook": {

@@ -16,6 +16,7 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { envValue } from "./env.ts";
 import { messageOf } from "./message.ts";
 import type { PrometheusCredentialsContext } from "./credentials.ts";
@@ -63,7 +64,7 @@ async function readOptional(
   try {
     return await context.readTextFile(path);
   } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return "";
+    if (FileTasks.isNotFound(error)) return "";
     throw new Error(
       `aws: could not read the shared file at ${path}: ${messageOf(error)}`,
     );

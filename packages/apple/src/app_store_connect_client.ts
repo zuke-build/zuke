@@ -12,7 +12,7 @@
  * @module
  */
 
-import { assertSecureBackendUrl } from "@zuke/core";
+import { assertSecureBackendUrl, FileTasks } from "@zuke/core";
 import type { AppStoreConnectSettings } from "./app_store_connect.ts";
 import { signToken } from "./app_store_connect_token.ts";
 import {
@@ -105,7 +105,7 @@ export class AppStoreConnectClient {
       return privateKey_;
     }
     if (privateKeyFile_ !== undefined && privateKey_ === undefined) {
-      this.#privateKey ??= await Deno.readTextFile(privateKeyFile_);
+      this.#privateKey ??= await FileTasks.readText(privateKeyFile_);
       return this.#privateKey;
     }
     throw new Error(

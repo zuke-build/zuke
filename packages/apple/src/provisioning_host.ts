@@ -28,10 +28,12 @@ export interface ProvisioningHost {
 
 /** The real file system. */
 export const defaultProvisioningHost: ProvisioningHost = {
-  readFile: (path) => Deno.readFile(path),
-  makeDirectory: (path) => Deno.mkdir(path, { recursive: true }),
-  writeFile: (path, data) => Deno.writeFile(path, data),
-  remove: (path) => Deno.remove(path),
+  readFile: (path) => FileTasks.readBytes(path),
+  makeDirectory: (path) => FileTasks.createDirectory(path),
+  writeFile: (path, data) => FileTasks.writeBytes(path, data),
+  async remove(path) {
+    await FileTasks.remove(path);
+  },
   exists: (path) => FileTasks.exists(path),
   home: () => FileTasks.homeDirectory(),
 };

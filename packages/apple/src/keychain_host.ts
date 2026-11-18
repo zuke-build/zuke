@@ -8,12 +8,13 @@
  * a temp directory, a short-lived `.p12` file — none of which a test runner
  * off macOS can do for real. The orchestration (the order of the steps, and
  * that every cleanup step runs whatever failed) is what needs proving, so it
- * depends on this interface rather than on `Deno.*` directly, and a test hands
+ * depends on this interface rather than on the file system directly, and a test hands
  * in a fake that records what was asked of it.
  *
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import type { CommandOutput } from "@zuke/core/shell";
 import type { SecuritySettings } from "./security_settings.ts";
 
@@ -39,19 +40,18 @@ export interface KeychainHost {
   randomHex(bytes: number): string;
 }
 
-/** The real, `Deno`-backed {@link KeychainHost}. */
+/** The real {@link KeychainHost}, on the machine the build runs on. */
 export const defaultKeychainHost: KeychainHost = {
   security: (settings) => settings.quiet().run(),
   makeTempDir: async () =>
-    await Deno.realPath(await Deno.makeTempDir({ prefix: "zuke-keychain-" })),
+    await FileTasks.realPath(
+      await FileTasks.makeTempDirectory((s) => s.prefix("zuke-keychain-")),
+    ),
   writePrivateFile: (path, data) =>
-    Deno.writeFile(path, data, { mode: 0o600, createNew: true }),
+    FileTasks.writeBytes(path, data, (s) => s.mode(0o600).createNew()),
   async remove(path) {
-    try {
-      await Deno.remove(path, { recursive: true });
-    } catch (error) {
-      if (!(error instanceof Deno.errors.NotFound)) throw error;
-    }
+    // A path that is already gone is fine: remove tolerates it.
+    await FileTasks.remove(path, { recursive: true });
   },
   randomHex(bytes) {
     const buffer = crypto.getRandomValues(new Uint8Array(bytes));
