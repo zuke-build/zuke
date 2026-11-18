@@ -34,28 +34,32 @@ let staging = "";
 class RuntimeTasksBuild extends Build {
   stage = target().executes(async () => {
     const body = new Blob(["streamed"]).stream();
-    await StreamTasks.toFile(`${staging}/payload.txt`, body, {
-      createNew: true,
-    });
+    await StreamTasks.toFile(
+      `${staging}/payload.txt`,
+      body,
+      (s) => s.createNew(),
+    );
     const entries = await FileTasks.readDirectory(staging);
     seen.push(`staged ${entries.map((entry) => entry.name).join(",")}`);
   });
 
   run = target().dependsOn(this.stage).executes(async () => {
-    const output = await ProcessTasks.run(RuntimeTasks.execPath(), {
-      args: [
-        "eval",
-        `console.log(await Deno.readTextFile(Deno.args[0]) + Deno.env.get("SUFFIX"))`,
-        `${staging}/payload.txt`,
-      ],
-      env: { SUFFIX: EnvTasks.get("ZUKE_RUNTIME_TASKS") ?? "unset" },
-      stdout: "piped",
-    });
+    const output = await ProcessTasks.run(
+      RuntimeTasks.execPath(),
+      (s) =>
+        s.args(
+          "eval",
+          `console.log(await Deno.readTextFile(Deno.args[0]) + Deno.env.get("SUFFIX"))`,
+          `${staging}/payload.txt`,
+        )
+          .env("SUFFIX", EnvTasks.get("ZUKE_RUNTIME_TASKS") ?? "unset")
+          .stdout("piped"),
+    );
     seen.push(`child said ${new TextDecoder().decode(output.stdout).trim()}`);
   });
 
   talk = target().dependsOn(this.run).executes(async () => {
-    const listener = await NetTasks.listen("127.0.0.1", 0);
+    const listener = await NetTasks.listen();
     const client = await Deno.connect({
       hostname: "127.0.0.1",
       port: listener.port,
@@ -70,7 +74,7 @@ class RuntimeTasksBuild extends Build {
 }
 
 Deno.test("a build stages, runs and talks through core's runtime tasks", async () => {
-  staging = await FileTasks.makeTempDirectory({ prefix: "zuke-runtime-" });
+  staging = await FileTasks.makeTempDirectory((s) => s.prefix("zuke-runtime-"));
   seen.length = 0;
   Deno.env.set("ZUKE_RUNTIME_TASKS", "!");
   try {

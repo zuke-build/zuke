@@ -12,6 +12,31 @@
  */
 
 import { createServer, type Server, type Socket } from "node:net";
+import type { Configure } from "./tooling.ts";
+
+/** Where {@link NetTasks.listen} listens. */
+export class ListenSettings {
+  /** The address to listen on; see {@link hostname}. */
+  hostname_ = "127.0.0.1";
+
+  /** The port to listen on; see {@link port}. */
+  port_ = 0;
+
+  /**
+   * The address to listen on (default `127.0.0.1`, reachable only from this
+   * machine). `0.0.0.0` accepts connections from anywhere the network allows.
+   */
+  hostname(address: string): this {
+    this.hostname_ = address;
+    return this;
+  }
+
+  /** The port to listen on (default `0`, which lets the system choose). */
+  port(number: number): this {
+    this.port_ = number;
+    return this;
+  }
+}
 
 /** One accepted TCP connection. */
 export interface NetConnection {
@@ -45,11 +70,15 @@ export interface NetListener {
 /** The shape of {@link NetTasks}. */
 export interface NetTasksApi {
   /**
-   * Listen on `hostname` and `port`; port `0` lets the system choose. Every
-   * accepted connection has Nagle's algorithm off, so a short message is sent
-   * at once rather than held for more.
+   * Listen as `configure` says: on loopback, on a port the system chooses,
+   * unless set otherwise. Every accepted connection has Nagle's algorithm
+   * off, so a short message is sent at once rather than held for more.
+   *
+   * ```ts
+   * const listener = await NetTasks.listen((s) => s.port(8080));
+   * ```
    */
-  listen(hostname: string, port: number): Promise<NetListener>;
+  listen(configure?: Configure<ListenSettings>): Promise<NetListener>;
 }
 
 /**
@@ -101,7 +130,13 @@ function connectionOf(socket: Socket): NetConnection {
       });
     },
     closeWrite(): Promise<void> {
-      return new Promise((resolve) => socket.end(resolve));
+      // A socket already closed, by `close` or a cancelled read, never
+      // finishes an end, so there is nothing to wait for.
+      if (socket.destroyed) return Promise.resolve();
+      return new Promise((resolve) => {
+        socket.once("close", () => resolve());
+        socket.end(() => resolve());
+      });
     },
     close(): void {
       socket.destroy();
@@ -111,7 +146,10 @@ function connectionOf(socket: Socket): NetConnection {
 
 /** A listening server as a {@link NetListener}, queuing what is not yet accepted. */
 function listenerOf(server: Server, port: number): NetListener {
-  const arrived: Socket[] = [];
+  // Wrapped on arrival, so a queued connection has its error listener before
+  // anything can go wrong with it: a reset before `accept` must not end the
+  // process, and the reader still learns of it.
+  const arrived: NetConnection[] = [];
   const waiting: Array<{
     resolve: (connection: NetConnection) => void;
     reject: (error: Error) => void;
@@ -119,15 +157,16 @@ function listenerOf(server: Server, port: number): NetListener {
   let closed = false;
   server.on("connection", (socket: Socket) => {
     const next = waiting.shift();
-    if (next === undefined) arrived.push(socket);
-    else next.resolve(connectionOf(socket));
+    const connection = connectionOf(socket);
+    if (next === undefined) arrived.push(connection);
+    else next.resolve(connection);
   });
   const closedError = () => new Error("the listener is closed");
   return {
     port,
     accept(): Promise<NetConnection> {
-      const socket = arrived.shift();
-      if (socket !== undefined) return Promise.resolve(connectionOf(socket));
+      const connection = arrived.shift();
+      if (connection !== undefined) return Promise.resolve(connection);
       if (closed) return Promise.reject(closedError());
       return new Promise((resolve, reject) =>
         waiting.push({ resolve, reject })
@@ -138,7 +177,7 @@ function listenerOf(server: Server, port: number): NetListener {
       closed = true;
       server.close();
       // A connection that arrived but was never accepted has no owner.
-      for (const socket of arrived.splice(0)) socket.destroy();
+      for (const connection of arrived.splice(0)) connection.close();
       for (const next of waiting.splice(0)) next.reject(closedError());
     },
   };
@@ -146,7 +185,12 @@ function listenerOf(server: Server, port: number): NetListener {
 
 /** TCP sockets, on whichever runtime the build runs on. */
 export const NetTasks: NetTasksApi = {
-  listen(hostname: string, port: number): Promise<NetListener> {
+  listen(
+    configure: Configure<ListenSettings> = (s) => s,
+  ): Promise<NetListener> {
+    const { hostname_: hostname, port_: port } = configure(
+      new ListenSettings(),
+    );
     // Half-open, so the other side closing its half leaves this side's open
     // for an answer, as `closeWrite` promises the other side.
     const server = createServer({ allowHalfOpen: true });

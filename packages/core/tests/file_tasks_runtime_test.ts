@@ -18,9 +18,9 @@ Deno.test("readBytes and writeBytes round-trip bytes", async () => {
 Deno.test("writeBytes with createNew refuses an existing file", async () => {
   await withTemp(async (dir) => {
     const path = `${dir}/data.bin`;
-    await FileTasks.writeBytes(path, new Uint8Array([1]), { createNew: true });
+    await FileTasks.writeBytes(path, new Uint8Array([1]), (s) => s.createNew());
     await assertRejects(() =>
-      FileTasks.writeBytes(path, new Uint8Array([2]), { createNew: true })
+      FileTasks.writeBytes(path, new Uint8Array([2]), (s) => s.createNew())
     );
     assertEquals([...await FileTasks.readBytes(path)], [1]);
   });
@@ -29,7 +29,7 @@ Deno.test("writeBytes with createNew refuses an existing file", async () => {
 Deno.test("writeText applies the mode it is given", async () => {
   await withTemp(async (dir) => {
     const path = `${dir}/secret.txt`;
-    await FileTasks.writeText(path, "hidden", { mode: 0o600 });
+    await FileTasks.writeText(path, "hidden", (s) => s.mode(0o600));
     assertEquals(await FileTasks.readText(path), "hidden");
     const info = await FileTasks.stat(path);
     assertEquals(
@@ -71,7 +71,7 @@ Deno.test("readDirectory lists files and directories", async () => {
 });
 
 Deno.test("makeTempDirectory names it with the prefix", async () => {
-  const dir = await FileTasks.makeTempDirectory({ prefix: "zuke-tasks-" });
+  const dir = await FileTasks.makeTempDirectory((s) => s.prefix("zuke-tasks-"));
   try {
     assertEquals(dir.split(/[\\/]/).at(-1)?.startsWith("zuke-tasks-"), true);
     assertEquals((await FileTasks.stat(dir)).isDirectory, true);
@@ -104,4 +104,12 @@ Deno.test("isNotFound tells a missing path from other failures", async () => {
     assertEquals(FileTasks.isNotFound(other), false);
     assertEquals(FileTasks.isNotFound("ENOENT"), false);
   });
+});
+
+Deno.test("makeTempDirectory refuses a prefix that would leave the temp root", async () => {
+  for (const prefix of ["../escape-", "a/b-", "a\\b-"]) {
+    await assertRejects(() =>
+      FileTasks.makeTempDirectory((s) => s.prefix(prefix))
+    );
+  }
 });

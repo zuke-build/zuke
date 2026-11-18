@@ -2026,6 +2026,19 @@ class InsecureBackendUrlError extends Error
   readonly setting: string
     The environment variable (or setting) carrying the plaintext URL.
 
+class ListenSettings
+  Where {@link NetTasks.listen} listens.
+
+  hostname_: string
+    The address to listen on; see {@link hostname}.
+  port_: number
+    The port to listen on; see {@link port}.
+  hostname(address: string): this
+    The address to listen on (default `127.0.0.1`, reachable only from this
+    machine). `0.0.0.0` accepts connections from anywhere the network allows.
+  port(number: number): this
+    The port to listen on (default `0`, which lets the system choose).
+
 class LockConflictError extends Error
   Raised when a target's lock is already held by another run. Its `message` is
   the rendered guidance (from the target's `onConflict`, else a default), so it
@@ -2215,6 +2228,57 @@ class ParameterError extends Error
 
   override name: string
     The error name.
+
+class ProcessSettings
+  How a child process is started, for `ProcessTasks.spawn` and
+  `ProcessTasks.run`:
+
+  ```ts
+  const output = await ProcessTasks.run("git", (s) =>
+    s.args("rev-parse", "HEAD").cwd(repo).stdout("piped"));
+  ```
+
+  With nothing set, the child gets no arguments, the parent's working
+  directory and environment, and inherits all three standard streams.
+
+  args_: string[]
+    The arguments; see {@link args}.
+  cwd_: string | undefined
+    The working directory; see {@link cwd}.
+  env_: Record<string, string>
+    Variables added to the environment; see {@link env}.
+  clearEnv_: boolean
+    Whether to start from an empty environment; see {@link clearEnv}.
+  stdin_: ProcessStdio
+    How stdin is connected; see {@link stdin}.
+  stdout_: ProcessStdio
+    How stdout is connected; see {@link stdout}.
+  stderr_: ProcessStdio
+    How stderr is connected; see {@link stderr}.
+  signal_: AbortSignal | undefined
+    What terminates the child when aborted; see {@link signal}.
+  args(...values: string[]): this
+    Arguments, one per value: nothing re-splits or re-quotes them.
+    Accumulates across calls.
+  cwd(path: string): this
+    The working directory (default: the parent's).
+  env(name: string, value: string): this
+    Set `name` to `value` in the child's environment, on top of what it
+    inherits. Accumulates across calls.
+  clearEnv(): this
+    Start from an empty environment, so the variables set with {@link env}
+    are all the child sees. On Windows under Node the variables the system
+    needs are still passed on.
+  stdin(how: ProcessStdio): this
+    How the child's stdin is connected (default `inherit`).
+  stdout(how: ProcessStdio): this
+    How the child's stdout is connected (default `inherit`); `piped` to read
+    or collect it.
+  stderr(how: ProcessStdio): this
+    How the child's stderr is connected (default `inherit`); `piped` to read
+    or collect it.
+  signal(abort: AbortSignal): this
+    Terminate the child when `abort` is aborted.
 
 class ProtectedResourceError extends Error
   Raised when a protected-resource declaration cannot produce a valid document.
@@ -2851,6 +2915,18 @@ class TeamsAnnouncementSettings extends AnnouncementSettings
   override protected sendBot(): Promise<void>
     Post the announcement through Microsoft Graph in bot mode.
 
+class TempDirectorySettings
+  How `FileTasks.makeTempDirectory` names the directory:
+
+  ```ts
+  const dir = await FileTasks.makeTempDirectory((s) => s.prefix("zuke-pack-"));
+  ```
+
+  prefix_: string | undefined
+    How the directory's name starts; see {@link prefix}.
+  prefix(start: string): this
+    How the directory's name starts (default `zuke-`).
+
 class ToolInstallSettings
   Fluent settings for installing a release tool. Configure it in a
   settings-lambda (`(s) => s.name(...).url(...)`), the same shape as Zuke's tool
@@ -2988,6 +3064,29 @@ class WaitSettings
     What to do when the deadline passes: a thunk returning a sibling
     compensation target (a thunk, so it can reference a target declared below
     this one), or the string `"fail"` / `"cancel-run"`. Defaults to `"fail"`.
+
+class WriteSettings
+  How a file is written, for `FileTasks.writeText`, `FileTasks.writeBytes`
+  and `StreamTasks.toFile`:
+
+  ```ts
+  await FileTasks.writeText("key.pem", pem, (s) => s.mode(0o600).createNew());
+  ```
+
+  With nothing set, the file is created or replaced with the system's default
+  permissions.
+
+  mode_: number | undefined
+    The permission bits to give the file; see {@link mode}.
+  createNew_: boolean
+    Whether to refuse a path already taken; see {@link createNew}.
+  mode(bits: number): this
+    The file's permission bits, such as `0o600`, applied to a file that
+    already exists too. Windows has none and ignores it.
+  createNew(): this
+    Fail with an `AlreadyExists` when anything is at the path, instead of
+    replacing it. The check and the create are one step, so of several
+    writers racing for a path exactly one succeeds.
 
 interface AbsolutePath
   An immutable, absolute filesystem path with a fluent API.
@@ -4136,13 +4235,13 @@ interface FileTasksApi
     `Deno.readLink` gives.
   readText(path: PathLike): Promise<string>
     Read the UTF-8 text content of the file at `path`.
-  writeText(path: PathLike, content: string, options?: WriteOptions): Promise<void>
+  writeText(path: PathLike, content: string, configure?: Configure<WriteSettings>): Promise<void>
     Write `content` to the file at `path`, creating or truncating it.
   readJson(path: PathLike): Promise<T>
     Read and parse the JSON file at `path`.
   readBytes(path: PathLike): Promise<Uint8Array>
     Read the file at `path` as bytes.
-  writeBytes(path: PathLike, data: Uint8Array, options?: WriteOptions): Promise<void>
+  writeBytes(path: PathLike, data: Uint8Array, configure?: Configure<WriteSettings>): Promise<void>
     Write `data` to the file at `path`, replacing it unless `createNew`.
   stat(path: PathLike): Promise<PathInfo>
     What `path` resolves to, following a final link.
@@ -4154,7 +4253,7 @@ interface FileTasksApi
     `path` with every link in it resolved, as an absolute path.
   readDirectory(path: PathLike): Promise<DirectoryEntry[]>
     The entries of the directory at `path`, in no particular order.
-  makeTempDirectory(options?: TempDirectoryOptions): Promise<string>
+  makeTempDirectory(configure?: Configure<TempDirectorySettings>): Promise<string>
     Create a directory of its own under the system's temporary directory and
     return its path. Removing it is the caller's job.
   chmod(path: PathLike, mode: number): Promise<void>
@@ -4582,10 +4681,14 @@ interface NetListener
 interface NetTasksApi
   The shape of {@link NetTasks}.
 
-  listen(hostname: string, port: number): Promise<NetListener>
-    Listen on `hostname` and `port`; port `0` lets the system choose. Every
-    accepted connection has Nagle's algorithm off, so a short message is sent
-    at once rather than held for more.
+  listen(configure?: Configure<ListenSettings>): Promise<NetListener>
+    Listen as `configure` says: on loopback, on a port the system chooses,
+    unless set otherwise. Every accepted connection has Nagle's algorithm
+    off, so a short message is sent at once rather than held for more.
+
+    ```ts
+    const listener = await NetTasks.listen((s) => s.port(8080));
+    ```
 
 interface NpmToolSpec
   A specification of an npm-registry package to provision as a tool.
@@ -4744,28 +4847,6 @@ interface Plugin
     — the canceller's process owns the final `cancelled` — so treat `cancelling`
     as run-ended for the owning process.
 
-interface ProcessOptions
-  What a child process is started with, beyond its command.
-
-  args: string[]
-    The arguments, one per entry: nothing re-splits or re-quotes them.
-  cwd?: string
-    The working directory. Omitted: the parent's.
-  env?: Record<string, string>
-    Variables added to the environment the child inherits.
-  clearEnv?: boolean
-    Start from an empty environment, so `env` is the whole of what the child
-    sees and nothing the parent set for itself reaches it. On Windows under
-    Node the variables the system needs are still passed on.
-  stdin?: ProcessStdio
-    The child's stdin. Omitted: inherited.
-  stdout?: ProcessStdio
-    The child's stdout. Omitted: inherited.
-  stderr?: ProcessStdio
-    The child's stderr. Omitted: inherited.
-  signal?: AbortSignal
-    Aborting it terminates the child.
-
 interface ProcessOutput extends CommandStatus
   How a process run to its end finished, and what it wrote to its pipes.
 
@@ -4777,14 +4858,14 @@ interface ProcessOutput extends CommandStatus
 interface ProcessTasksApi
   The shape of {@link ProcessTasks}.
 
-  spawn(command: string, options: ProcessOptions): ChildProcess
+  spawn(command: string, configure?: Configure<ProcessSettings>): ChildProcess
     Start `command` and return the running child.
 
     @throws
         when the command cannot be started and the runtime knows at once.
         Where it learns later, the child's `status` rejects.
 
-  run(command: string, options: ProcessOptions): Promise<ProcessOutput>
+  run(command: string, configure?: Configure<ProcessSettings>): Promise<ProcessOutput>
     Run `command` to its end, collecting what it writes to the streams that
     are `piped`.
 
@@ -4793,7 +4874,8 @@ interface ProcessTasksApi
 
   addSignalListener(signal: Signal, handler: () => void): void
     Call `handler` each time this process receives `signal`. On Windows only
-    `SIGINT` and `SIGBREAK` arrive.
+    `SIGINT` and `SIGBREAK` arrive, and Deno refuses a listener for any other
+    there, so a portable caller listens for those two on Windows.
   removeSignalListener(signal: Signal, handler: () => void): void
     Stop calling `handler` for `signal`.
 
@@ -5441,17 +5523,15 @@ interface StateStore
 interface StreamTasksApi
   The shape of {@link StreamTasks}.
 
-  toFile(path: PathLike, data: ReadableStream<Uint8Array>, options?: StreamToFileOptions): Promise<void>
-    Write everything `data` carries to the file at `path`, replacing it unless
-    `createNew`. A stream that fails leaves the file with what had arrived, and
-    the failure is thrown.
+  toFile(path: PathLike, data: ReadableStream<Uint8Array>, configure?: Configure<WriteSettings>): Promise<void>
+    Write everything `data` carries to the file at `path`, as `configure`
+    says: replacing it unless `createNew`, in which case nothing is read from
+    a stream whose path is taken. A stream that fails leaves the file with
+    what had arrived, and the failure is thrown.
 
-interface StreamToFileOptions
-  Options for {@link StreamTasksApi.toFile}.
-
-  createNew?: boolean
-    Fail with an `AlreadyExists` when anything is at the path, instead of
-    replacing it. Nothing is read from the stream in that case.
+    ```ts
+    await StreamTasks.toFile("app.zip", response.body, (s) => s.createNew());
+    ```
 
 interface SummaryEntry
   One rendered `key: value` note on a target's summary row.
@@ -5701,12 +5781,6 @@ interface TargetTiming
   readonly durationMs: number
     The target's wall-clock duration in milliseconds (0 for skipped/cached).
 
-interface TempDirectoryOptions
-  Options for {@link FileTasksApi.makeTempDirectory}.
-
-  prefix?: string
-    How the directory's name starts (default `"zuke-"`).
-
 interface TestCounts
   The counts a test run produced — the one shape every test-runner wrapper
   maps its runner's own summary line onto, so `DenoTasks.test`,
@@ -5864,17 +5938,6 @@ interface WaitTrigger
     and a durable {@link WaitContext}. The context lets a trigger persist
     correlation state across a suspend/resume; a trigger that only inspects
     signals may ignore it (fewer parameters stay assignable).
-
-interface WriteOptions
-  Options for {@link FileTasksApi.writeText} and {@link FileTasksApi.writeBytes}.
-
-  mode?: number
-    The file's permission bits, applied to a file that already exists too.
-    Windows has none and ignores it.
-  createNew?: boolean
-    Fail with an `AlreadyExists` when anything is at the path, instead of
-    replacing it. The check and the create are one step, so of several
-    writers racing for a path exactly one succeeds.
 
 type ActorKind = "human" | "service"
   Whether a person or a machine asked for a run (see {@link RunInitiator}).

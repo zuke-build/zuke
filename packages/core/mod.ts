@@ -332,17 +332,12 @@ export {
   type PathInfo,
   type RemoveOptions,
   type SymlinkOptions,
-  type TempDirectoryOptions,
-  type WriteOptions,
 } from "./src/file.ts";
-export {
-  StreamTasks,
-  type StreamTasksApi,
-  type StreamToFileOptions,
-} from "./src/stream.ts";
+export { TempDirectorySettings, WriteSettings } from "./src/file_settings.ts";
+export { StreamTasks, type StreamTasksApi } from "./src/stream.ts";
+export { ProcessSettings } from "./src/process_settings.ts";
 export {
   type ChildProcess,
-  type ProcessOptions,
   type ProcessOutput,
   type ProcessStdio,
   ProcessTasks,
@@ -354,6 +349,7 @@ export {
   type RuntimeTasksApi,
 } from "./src/runtime_tasks.ts";
 export {
+  ListenSettings,
   type NetConnection,
   type NetListener,
   NetTasks,

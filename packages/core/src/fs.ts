@@ -342,17 +342,27 @@ export function openFile(path: string): Promise<OpenFile> {
 
 /**
  * Write everything `data` streams to `path`, replacing what is there, or
- * failing if anything is there when `createNew`. A stream that fails leaves
- * the file with what had arrived.
+ * failing if anything is there when `createNew`. `mode` is applied as
+ * {@link writeFile} applies it. A stream that fails leaves the file with what
+ * had arrived.
  */
 export function writeStream(
   path: string,
   data: ReadableStream<Uint8Array>,
+  mode?: number,
   createNew = false,
 ): Promise<void> {
   return io(async () => {
-    const file = await nodeOpen(path, createNew ? "wx" : "w");
+    const file = await nodeOpen(path, createNew ? "wx" : "w", mode).catch(
+      async (error) => {
+        // Nothing will read the stream: release its source, such as a
+        // response body still holding its connection.
+        await data.cancel(error).catch(() => {});
+        throw error;
+      },
+    );
     try {
+      if (mode !== undefined && !WINDOWS) await file.chmod(mode);
       for await (const chunk of data) await file.writeFile(chunk);
     } finally {
       await file.close();
@@ -367,9 +377,18 @@ export function userId(): number | null {
 
 /**
  * Create a directory of its own under the system's temporary one, its name
- * starting with `prefix`.
+ * starting with `prefix`, which may not hold a path separator: it names the
+ * directory, never where it goes.
  */
 export function makeTempDir(prefix = "zuke-"): Promise<string> {
+  if (/[\\/]/.test(prefix)) {
+    return Promise.reject(
+      new TypeError(
+        `a temporary directory's prefix names it and cannot hold a path ` +
+          `separator: "${prefix}"`,
+      ),
+    );
+  }
   return io(() => nodeMkdtemp(`${tempRoot()}/${prefix}`));
 }
 

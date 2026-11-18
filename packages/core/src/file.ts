@@ -50,7 +50,9 @@ import {
   isNotFound,
   lstatOrNull,
 } from "./internal.ts";
+import { TempDirectorySettings, WriteSettings } from "./file_settings.ts";
 import type { PathLike } from "./path.ts";
+import type { Configure } from "./tooling.ts";
 
 /** Options for {@link FileTasksApi.createDirectory}. */
 export interface CreateDirectoryOptions {
@@ -89,27 +91,6 @@ export interface SymlinkOptions {
    * Pass `"dir"` when linking a directory, or the link is unusable on Windows.
    */
   type?: "file" | "dir";
-}
-
-/** Options for {@link FileTasksApi.writeText} and {@link FileTasksApi.writeBytes}. */
-export interface WriteOptions {
-  /**
-   * The file's permission bits, applied to a file that already exists too.
-   * Windows has none and ignores it.
-   */
-  mode?: number;
-  /**
-   * Fail with an `AlreadyExists` when anything is at the path, instead of
-   * replacing it. The check and the create are one step, so of several
-   * writers racing for a path exactly one succeeds.
-   */
-  createNew?: boolean;
-}
-
-/** Options for {@link FileTasksApi.makeTempDirectory}. */
-export interface TempDirectoryOptions {
-  /** How the directory's name starts (default `"zuke-"`). */
-  prefix?: string;
 }
 
 /** What is at a path, as {@link FileTasksApi.stat} and its kin report it. */
@@ -266,7 +247,7 @@ export interface FileTasksApi {
   writeText(
     path: PathLike,
     content: string,
-    options?: WriteOptions,
+    configure?: Configure<WriteSettings>,
   ): Promise<void>;
 
   /** Read and parse the JSON file at `path`. */
@@ -279,7 +260,7 @@ export interface FileTasksApi {
   writeBytes(
     path: PathLike,
     data: Uint8Array,
-    options?: WriteOptions,
+    configure?: Configure<WriteSettings>,
   ): Promise<void>;
 
   /** What `path` resolves to, following a final link. */
@@ -301,7 +282,9 @@ export interface FileTasksApi {
    * Create a directory of its own under the system's temporary directory and
    * return its path. Removing it is the caller's job.
    */
-  makeTempDirectory(options?: TempDirectoryOptions): Promise<string>;
+  makeTempDirectory(
+    configure?: Configure<TempDirectorySettings>,
+  ): Promise<string>;
 
   /** Set the permission bits of `path`. Not for Windows, which has none. */
   chmod(path: PathLike, mode: number): Promise<void>;
@@ -425,9 +408,10 @@ export const FileTasks: FileTasksApi = {
   async writeText(
     path: PathLike,
     content: string,
-    options: WriteOptions = {},
+    configure: Configure<WriteSettings> = (s) => s,
   ): Promise<void> {
-    await writeFile(String(path), content, options.mode, options.createNew);
+    const s = configure(new WriteSettings());
+    await writeFile(String(path), content, s.mode_, s.createNew_);
   },
 
   async readJson<T = unknown>(path: PathLike): Promise<T> {
@@ -441,9 +425,10 @@ export const FileTasks: FileTasksApi = {
   async writeBytes(
     path: PathLike,
     data: Uint8Array,
-    options: WriteOptions = {},
+    configure: Configure<WriteSettings> = (s) => s,
   ): Promise<void> {
-    await writeFile(String(path), data, options.mode, options.createNew);
+    const s = configure(new WriteSettings());
+    await writeFile(String(path), data, s.mode_, s.createNew_);
   },
 
   async stat(path: PathLike): Promise<PathInfo> {
@@ -466,8 +451,10 @@ export const FileTasks: FileTasksApi = {
     return readDir(String(path));
   },
 
-  makeTempDirectory(options: TempDirectoryOptions = {}): Promise<string> {
-    return makeTempDir(options.prefix);
+  makeTempDirectory(
+    configure: Configure<TempDirectorySettings> = (s) => s,
+  ): Promise<string> {
+    return makeTempDir(configure(new TempDirectorySettings()).prefix_);
   },
 
   chmod(path: PathLike, mode: number): Promise<void> {

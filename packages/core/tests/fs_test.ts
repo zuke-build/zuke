@@ -767,7 +767,9 @@ Deno.test("writeStream fails with the stream's own error, and with Deno's for a 
       ]]),
       [],
     );
-    assertEquals(cancelled, false);
+    // Unlike Deno's, a stream that cannot be written is cancelled, so its
+    // source, such as a response body, is released rather than left open.
+    assertEquals(cancelled, true);
   });
 });
 

@@ -44,16 +44,20 @@ const {
   StreamTasks,
 } = await import(new URL("mod.ts", core).href);
 
-const dir = await FileTasks.makeTempDirectory({ prefix: "zuke-canary-" });
+const dir = await FileTasks.makeTempDirectory((s) => s.prefix("zuke-canary-"));
 try {
-  await FileTasks.writeBytes(`${dir}/a.bin`, new Uint8Array([1, 2]), {
-    createNew: true,
-  });
+  await FileTasks.writeBytes(
+    `${dir}/a.bin`,
+    new Uint8Array([1, 2]),
+    (s) => s.createNew(),
+  );
   assert.deepEqual([...await FileTasks.readBytes(`${dir}/a.bin`)], [1, 2]);
   await assert.rejects(() =>
-    FileTasks.writeBytes(`${dir}/a.bin`, new Uint8Array([3]), {
-      createNew: true,
-    })
+    FileTasks.writeBytes(
+      `${dir}/a.bin`,
+      new Uint8Array([3]),
+      (s) => s.createNew(),
+    )
   );
   const missing = await FileTasks.readText(`${dir}/none`).catch((e) => e);
   assert.equal(FileTasks.isNotFound(missing), true);
@@ -80,16 +84,16 @@ assert.equal(RuntimeTasks.facts().name, "node");
 assert.equal(RuntimeTasks.execPath(), process.execPath);
 assert.deepEqual(RuntimeTasks.args(), process.argv.slice(2));
 
-const output = await ProcessTasks.run(process.execPath, {
-  args: ["-e", "process.stdout.write('child')"],
-  stdout: "piped",
-});
+const output = await ProcessTasks.run(
+  process.execPath,
+  (s) => s.args("-e", "process.stdout.write('child')").stdout("piped"),
+);
 assert.equal(new TextDecoder().decode(output.stdout), "child");
 const handler = () => {};
 ProcessTasks.addSignalListener("SIGINT", handler);
 ProcessTasks.removeSignalListener("SIGINT", handler);
 
-const listener = await NetTasks.listen("127.0.0.1", 0);
+const listener = await NetTasks.listen();
 const { connect } = await import("node:net");
 const client = connect(listener.port, "127.0.0.1");
 const accepted = await listener.accept();
