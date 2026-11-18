@@ -8,6 +8,7 @@
  * @module
  */
 
+import type { NetConnection } from "@zuke/core";
 import { INVALID_PARAMS, isRecord } from "./protocol.ts";
 
 /** A request handler: returns the result, or throws to produce an error. */
@@ -38,7 +39,7 @@ export const MAX_LINE = 16 * 1024 * 1024;
 
 /** The JSON-RPC peer. Call {@link serve} once to start reading. */
 export class Peer {
-  #conn: Deno.Conn;
+  #conn: NetConnection;
   #next = 1;
   #pending = new Map<number, Pending>();
   #handlers = new Map<string, RpcHandler>();
@@ -50,7 +51,7 @@ export class Peer {
   #decoder = new TextDecoder();
 
   /** Wrap an open connection. */
-  constructor(conn: Deno.Conn) {
+  constructor(conn: NetConnection) {
     this.#conn = conn;
   }
 
@@ -207,10 +208,7 @@ export class Peer {
     // with another's bytes.
     this.#writes = this.#writes.then(async () => {
       if (this.#closed) return;
-      let written = 0;
-      while (written < bytes.length) {
-        written += await this.#conn.write(bytes.subarray(written));
-      }
+      await this.#conn.write(bytes);
     }).catch(() => this.close());
     return this.#writes;
   }

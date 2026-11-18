@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { type NetConnection, NetTasks } from "@zuke/core";
 import { MAX_LINE, Peer, RpcFailure } from "../src/peer.ts";
+import { connect } from "./_conn.ts";
 import { INVALID_PARAMS, isRecord } from "../src/protocol.ts";
 
 /** The RPC code of a rejection, or NaN when it was not an RpcFailure. */
@@ -16,10 +18,10 @@ async function pair(): Promise<{
   b: Peer;
   close: () => Promise<void>;
 }> {
-  const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
+  const listener = await NetTasks.listen((s) => s.hostname("127.0.0.1"));
   const [server, client] = await Promise.all([
     listener.accept(),
-    Deno.connect({ hostname: "127.0.0.1", port: listener.addr.port }),
+    connect(listener.port),
   ]);
   listener.close();
   const a = new Peer(server);
@@ -39,13 +41,13 @@ async function pair(): Promise<{
 /** A Peer talking to a raw socket the test drives byte by byte. */
 async function rawPair(): Promise<{
   peer: Peer;
-  raw: Deno.Conn;
+  raw: NetConnection;
   close: () => Promise<void>;
 }> {
-  const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
+  const listener = await NetTasks.listen((s) => s.hostname("127.0.0.1"));
   const [server, raw] = await Promise.all([
     listener.accept(),
-    Deno.connect({ hostname: "127.0.0.1", port: listener.addr.port }),
+    connect(listener.port),
   ]);
   listener.close();
   const peer = new Peer(server);
@@ -65,13 +67,18 @@ async function rawPair(): Promise<{
   };
 }
 
-async function readLine(conn: Deno.Conn): Promise<string> {
-  const buffer = new Uint8Array(4096);
+async function readLine(conn: NetConnection): Promise<string> {
+  const reader = conn.readable.getReader();
+  const decoder = new TextDecoder();
   let text = "";
-  while (!text.includes("\n")) {
-    const n = await conn.read(buffer);
-    if (n === null) break;
-    text += new TextDecoder().decode(buffer.subarray(0, n));
+  try {
+    while (!text.includes("\n")) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    reader.releaseLock();
   }
   return text.slice(0, text.indexOf("\n"));
 }

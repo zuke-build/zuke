@@ -53,9 +53,6 @@ const ALLOWED: Record<string, number> = {
   "packages/cli/src/project.ts": 6,
   "packages/cli/src/setup.ts": 5,
   "packages/cli/src/upgrade.ts": 7,
-  "packages/engine/src/host.ts": 6,
-  "packages/engine/src/hosted.ts": 2,
-  "packages/engine/src/peer.ts": 2,
 };
 
 /**
