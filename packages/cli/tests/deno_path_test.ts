@@ -125,7 +125,7 @@ Deno.test("spawnDeno skips a candidate that is not installed", async () => {
   // what the assertions prove.
   const child = spawnDeno(
     ["eval", "console.log('ok')"],
-    { stdout: "piped", stderr: "piped" },
+    { stdout: "piped", stderr: "null" },
     [MISSING, Deno.execPath()],
   );
   const [{ code }, stdout] = await Promise.all([
