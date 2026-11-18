@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.83.0](https://github.com/zuke-build/zuke/compare/core-v1.82.0...core-v1.83.0) (2026-11-18)
+
+
+### Features
+
+* **core:** RuntimeTasks reports cwd, arch and terminals, and exits ([#1072](https://github.com/zuke-build/zuke/issues/1072)) ([e3cdba1](https://github.com/zuke-build/zuke/commit/e3cdba1973c6c430665d4782fc61f3d54a359f88))
+
 ## [1.82.0](https://github.com/zuke-build/zuke/compare/core-v1.81.0...core-v1.82.0) (2026-11-18)
 
 
