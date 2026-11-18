@@ -300,15 +300,23 @@ async function spawn(
   }
   const listener = await NetTasks.listen((s) => s.hostname("127.0.0.1"));
   const token = crypto.randomUUID();
-  const child = ProcessTasks.spawn(program, (s) =>
-    s.args(...args)
-      .cwd(options.cwd)
-      .env("ZUKE_ENGINE_ADDR", `127.0.0.1:${listener.port}`)
-      .env("ZUKE_ENGINE_TOKEN", token)
-      .env("ZUKE_PROTOCOL", String(PROTOCOL_VERSION))
-      .stdin("null")
-      .stdout("piped")
-      .stderr("piped"));
+  let child: ChildProcess;
+  try {
+    child = ProcessTasks.spawn(program, (s) =>
+      s.args(...args)
+        .cwd(options.cwd)
+        .env("ZUKE_ENGINE_ADDR", `127.0.0.1:${listener.port}`)
+        .env("ZUKE_ENGINE_TOKEN", token)
+        .env("ZUKE_PROTOCOL", String(PROTOCOL_VERSION))
+        .stdin("null")
+        .stdout("piped")
+        .stderr("piped"));
+  } catch (error) {
+    // A program that cannot start throws here, before the try below: the
+    // listener would otherwise keep the event loop alive.
+    listener.close();
+    throw error;
+  }
   // The worker's own output is the build's log, never the protocol, and it
   // goes to stderr so `--list --json` on stdout stays machine-readable.
   const write = (line: string) => output.write(line);

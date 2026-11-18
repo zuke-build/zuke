@@ -1355,3 +1355,30 @@ Deno.test("hostedBuild runs the worker zuke.json names, serving tool.call from t
     })
   );
 });
+
+Deno.test("a worker program that does not exist rejects the start and leaves no listener open", async () => {
+  // A listener left open keeps the event loop alive, so the leak shows as a
+  // process that never exits after the error is caught.
+  const script = `
+    import { WorkerHost } from ${
+    JSON.stringify(
+      new URL("../../packages/engine/src/host.ts", import.meta.url).href,
+    )
+  };
+    try {
+      await WorkerHost.start({ command: ["zuke-no-such-program-xyz"], cwd: Deno.cwd() });
+    } catch (error) {
+      console.log("rejected:", error instanceof Error);
+    }
+  `;
+  const child = new Deno.Command(Deno.execPath(), {
+    args: ["eval", script],
+    stdout: "piped",
+    stderr: "piped",
+  }).spawn();
+  const timer = setTimeout(() => child.kill("SIGKILL"), 15_000);
+  const { code, stdout } = await child.output();
+  clearTimeout(timer);
+  assertEquals(new TextDecoder().decode(stdout).trim(), "rejected: true");
+  assertEquals(code, 0);
+});

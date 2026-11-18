@@ -69,12 +69,13 @@ async function rawPair(): Promise<{
 
 async function readLine(conn: NetConnection): Promise<string> {
   const reader = conn.readable.getReader();
+  const decoder = new TextDecoder();
   let text = "";
   try {
     while (!text.includes("\n")) {
       const { value, done } = await reader.read();
       if (done) break;
-      text += new TextDecoder().decode(value);
+      text += decoder.decode(value, { stream: true });
     }
   } finally {
     reader.releaseLock();
