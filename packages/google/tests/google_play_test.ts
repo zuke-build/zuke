@@ -184,13 +184,11 @@ Deno.test("the required settings are checked before anything is sent", async () 
 
 Deno.test("a missing bundle fails before signing in", async () => {
   const fake = google();
-  await assertRejects(
-    () =>
-      GooglePlayTasks.upload((s) =>
-        against(fake)(s).bundle("/nowhere/app.aab")
-      ),
-    Deno.errors.NotFound,
+  const error = await assertRejects(() =>
+    GooglePlayTasks.upload((s) => against(fake)(s).bundle("/nowhere/app.aab"))
   );
+  // Not found, whichever runtime reports it.
+  assertEquals("code" in error ? error.code : undefined, "ENOENT");
   assertEquals(fake.calls.length, 0);
 });
 

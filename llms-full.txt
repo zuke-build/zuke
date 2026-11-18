@@ -30185,7 +30185,7 @@ class GooglePlaySettings
   fetch(fetcher: typeof fetch): this
     Send with this `fetch` instead of the global one — the seam tests use.
   readEnv(reader: (name: string) => string | undefined): this
-    Read environment variables through `reader` instead of `Deno.env`.
+    Read environment variables through `reader` instead of the process environment.
   now(clock: () => number): this
     Read the time from `clock` (epoch ms) instead of `Date.now`.
   log(sink: (line: string) => void): this

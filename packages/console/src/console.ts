@@ -23,6 +23,7 @@
  * @module
  */
 
+import process from "node:process";
 import {
   box as renderBox,
   type BoxOptions,
@@ -70,7 +71,7 @@ const defaultSink: Sink = {
 /** Read an environment variable, treating missing env access as unset. */
 function readEnv(name: string): string | undefined {
   try {
-    return Deno.env.get(name);
+    return process.env[name];
   } catch {
     return undefined;
   }

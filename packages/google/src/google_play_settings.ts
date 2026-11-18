@@ -9,6 +9,7 @@
  * @module
  */
 
+import process from "node:process";
 import { parseDuration } from "@zuke/core";
 import type { PathLike } from "@zuke/core/tooling";
 
@@ -51,7 +52,7 @@ export class GooglePlaySettings {
   /** The `fetch` to use (set by {@link fetch}). */
   fetch_: typeof fetch = fetch;
   /** The environment reader (set by {@link readEnv}). */
-  readEnv_: (name: string) => string | undefined = (name) => Deno.env.get(name);
+  readEnv_: (name: string) => string | undefined = (name) => process.env[name];
   /** The clock, in epoch ms (set by {@link now}). */
   now_: () => number = Date.now;
   /** Where progress lines go (set by {@link log}). */
@@ -142,7 +143,7 @@ export class GooglePlaySettings {
     return this;
   }
 
-  /** Read environment variables through `reader` instead of `Deno.env`. */
+  /** Read environment variables through `reader` instead of the process environment. */
   readEnv(reader: (name: string) => string | undefined): this {
     this.readEnv_ = reader;
     return this;

@@ -11,6 +11,9 @@
  * @module
  */
 
+import { mkdtemp, readdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { FileTasks } from "@zuke/core";
 import { ChocoTasks } from "./choco.ts";
 import type { ChocoSettings } from "./choco_settings.ts";
@@ -92,8 +95,10 @@ export async function packPackage(
       .outputDirectory(directory)
   );
   const packed: string[] = [];
-  for await (const entry of Deno.readDir(directory)) {
-    if (entry.isFile && entry.name.endsWith(".nupkg")) packed.push(entry.name);
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    if (entry.isFile() && entry.name.endsWith(".nupkg")) {
+      packed.push(entry.name);
+    }
   }
   const [nupkg] = packed;
   if (nupkg === undefined || packed.length > 1) {
@@ -129,7 +134,7 @@ export async function runAll(
 
 /** A fresh temporary directory, its prefix naming what it is for. */
 export function stagingDirectory(purpose: string): Promise<string> {
-  return Deno.makeTempDir({ prefix: `zuke-choco-${purpose}-` });
+  return mkdtemp(join(tmpdir(), `zuke-choco-${purpose}-`));
 }
 
 /** Remove a staging directory and everything in it. */

@@ -14,6 +14,8 @@
  * @module
  */
 
+import process from "node:process";
+
 /** GitHub's REST root. */
 export const DEFAULT_BASE_URL = "https://api.github.com";
 
@@ -257,7 +259,7 @@ export function caller(
  */
 export function env(name: string): string | undefined {
   try {
-    const value = Deno.env.get(name);
+    const value = process.env[name];
     return value === "" ? undefined : value;
   } catch {
     return undefined;
