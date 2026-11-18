@@ -11,10 +11,15 @@
  * file is run, on a line built for it. This test fails when another way in
  * appears, so a later change cannot reintroduce one unnoticed.
  *
+ * It matches patterns; it does not analyse the code. A shortcut built up
+ * from parts, such as a program name held in a variable and its run option
+ * added elsewhere, goes past it. Review still has to catch that.
+ *
  * @module
  */
 
 import { assertEquals } from "../packages/core/tests/_assert.ts";
+import { packageSources, withoutComments } from "./_package_sources.ts";
 
 /** What a shell shortcut looks like in code, by name. */
 const SHORTCUTS: [name: string, pattern: RegExp][] = [
@@ -39,44 +44,15 @@ const ALLOWED: Record<string, number> = {
   "packages/core/src/tooling.ts": 2,
 };
 
-/** `source` without its comments, which may say what the code must not do. */
-function code(source: string): string {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "");
-}
-
 /** The shortcuts in `source`, one name per occurrence. */
 function shortcutsIn(source: string): string[] {
-  const text = code(source);
+  const text = withoutComments(source);
   return SHORTCUTS.flatMap(([name, pattern]) =>
     Array.from(
       text.matchAll(new RegExp(pattern.source, `${pattern.flags}g`)),
       () => name,
     )
   );
-}
-
-/** Every `.ts` file under `dir`, recursively. */
-async function tsFiles(dir: string): Promise<string[]> {
-  const found: string[] = [];
-  for await (const entry of Deno.readDir(dir)) {
-    const path = `${dir}/${entry.name}`;
-    if (entry.isDirectory) found.push(...await tsFiles(path));
-    else if (entry.isFile && entry.name.endsWith(".ts")) found.push(path);
-  }
-  return found;
-}
-
-/** Every source file a package publishes: its entry point and its `src`. */
-async function packageSources(): Promise<string[]> {
-  const files: string[] = [];
-  for await (const entry of Deno.readDir("packages")) {
-    if (!entry.isDirectory) continue;
-    const root = `packages/${entry.name}`;
-    files.push(`${root}/mod.ts`, ...await tsFiles(`${root}/src`));
-  }
-  return files.sort();
 }
 
 Deno.test("a shell shortcut is recognised in each way it is written", () => {
