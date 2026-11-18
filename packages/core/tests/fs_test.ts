@@ -89,6 +89,7 @@ function shared(info: Deno.FileInfo) {
     isSymlink: info.isSymlink,
     size: info.size,
     mode: info.mode,
+    uid: info.uid,
   };
 }
 

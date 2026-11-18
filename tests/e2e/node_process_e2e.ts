@@ -237,11 +237,13 @@ Deno.test({
 });
 
 Deno.test({
-  name: "every entry point of core loads under real Node",
+  name:
+    "every entry point of core loads, and its runtime tasks work, under real Node",
   ignore: !USABLE,
   fn: async () => {
     const { code, stdout, stderr } = await new Deno.Command("node", {
       args: [...RUN_TYPESCRIPT, CORE_CANARY],
+      env: { ZUKE_CANARY_VALUE: "set" },
       stdout: "piped",
       stderr: "piped",
     }).output();

@@ -12,6 +12,7 @@
 
 import { ON_DENO } from "./runtime.ts";
 import { spawnOnNode } from "./process_node.ts";
+import process from "node:process";
 import type { CommandStatus, Signal } from "./signal.ts";
 
 /** How one of a child's standard streams is connected. */
@@ -126,4 +127,19 @@ export async function runProcess(
   options: ProcessOptions,
 ): Promise<ProcessOutput> {
   return await outputOf(spawnProcess(command, options), options);
+}
+
+/** Call `handler` each time this process receives `signal`. */
+export function addSignalListener(signal: Signal, handler: () => void): void {
+  if (ON_DENO) Deno.addSignalListener(signal, handler);
+  else process.on(signal, handler);
+}
+
+/** Stop calling `handler` for `signal`. */
+export function removeSignalListener(
+  signal: Signal,
+  handler: () => void,
+): void {
+  if (ON_DENO) Deno.removeSignalListener(signal, handler);
+  else process.off(signal, handler);
 }

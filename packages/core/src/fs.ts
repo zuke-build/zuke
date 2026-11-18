@@ -66,6 +66,8 @@ export interface FileInfo {
   size: number;
   /** Its permission and type bits, as the platform reports them. */
   mode: number;
+  /** The id of the user who owns it, or `null` on Windows, which has none. */
+  uid: number | null;
 }
 
 /** A file open for reading: who owns it, and its bytes, from the same handle. */
@@ -87,6 +89,8 @@ export interface OpenFile {
 export interface DirEntry {
   /** Its name, without the directory's path. */
   name: string;
+  /** Whether it is a regular file; a link to one is not. */
+  isFile: boolean;
   /** Whether it is a directory; a link to one is not. */
   isDirectory: boolean;
 }
@@ -195,6 +199,7 @@ function fileInfo(stats: Stats): FileInfo {
     isSymlink: stats.isSymbolicLink(),
     size: stats.size,
     mode: stats.mode,
+    uid: WINDOWS ? null : stats.uid,
   };
 }
 
@@ -336,15 +341,17 @@ export function openFile(path: string): Promise<OpenFile> {
 }
 
 /**
- * Write everything `data` streams to `path`, replacing what is there. A
- * stream that fails leaves the file with what had arrived.
+ * Write everything `data` streams to `path`, replacing what is there, or
+ * failing if anything is there when `createNew`. A stream that fails leaves
+ * the file with what had arrived.
  */
 export function writeStream(
   path: string,
-  data: ReadableStream<Uint8Array<ArrayBuffer>>,
+  data: ReadableStream<Uint8Array>,
+  createNew = false,
 ): Promise<void> {
   return io(async () => {
-    const file = await nodeOpen(path, "w");
+    const file = await nodeOpen(path, createNew ? "wx" : "w");
     try {
       for await (const chunk of data) await file.writeFile(chunk);
     } finally {
@@ -358,9 +365,12 @@ export function userId(): number | null {
   return process.getuid?.() ?? null;
 }
 
-/** Create a directory of its own under the system's temporary one. */
-export function makeTempDir(): Promise<string> {
-  return io(() => nodeMkdtemp(`${tempRoot()}/zuke-`));
+/**
+ * Create a directory of its own under the system's temporary one, its name
+ * starting with `prefix`.
+ */
+export function makeTempDir(prefix = "zuke-"): Promise<string> {
+  return io(() => nodeMkdtemp(`${tempRoot()}/${prefix}`));
 }
 
 /** Set the permission bits of `path`. Not for Windows, which has none. */
@@ -374,6 +384,7 @@ export function readDir(path: string): Promise<DirEntry[]> {
     const entries = await nodeReaddir(path, { withFileTypes: true });
     return entries.map((entry) => ({
       name: entry.name,
+      isFile: entry.isFile(),
       isDirectory: entry.isDirectory(),
     }));
   });
@@ -436,17 +447,18 @@ export function readLink(path: string): Promise<string> {
 }
 
 /**
- * Write `data` to `path`, replacing what is there. `mode` sets the file's
- * permission bits, on a file that already exists too; Windows has none and
- * ignores it.
+ * Write `data` to `path`, replacing what is there, or failing if anything is
+ * there when `createNew`. `mode` sets the file's permission bits, on a file
+ * that already exists too; Windows has none and ignores it.
  */
 export function writeFile(
   path: string,
   data: Uint8Array | string,
   mode?: number,
+  createNew = false,
 ): Promise<void> {
   return io(async () => {
-    const file = await nodeOpen(path, "w", mode);
+    const file = await nodeOpen(path, createNew ? "wx" : "w", mode);
     try {
       // Opening applies the mode only to a file it creates, so it is set
       // again on the open file, before anything is written.

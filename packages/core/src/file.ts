@@ -22,17 +22,25 @@
  * @module
  */
 
+import process from "node:process";
 import {
   alreadyExists,
+  chmod,
   copyFile,
+  type FileInfo,
+  lstat,
+  makeTempDir,
   mkdir,
   mkdirRecursive,
   readDir,
+  readFile,
   readLink,
   readTextFile,
+  realPath,
   remove,
   rename,
   stat,
+  statSync,
   symlink,
   writeFile,
 } from "./fs.ts";
@@ -81,6 +89,64 @@ export interface SymlinkOptions {
    * Pass `"dir"` when linking a directory, or the link is unusable on Windows.
    */
   type?: "file" | "dir";
+}
+
+/** Options for {@link FileTasksApi.writeText} and {@link FileTasksApi.writeBytes}. */
+export interface WriteOptions {
+  /**
+   * The file's permission bits, applied to a file that already exists too.
+   * Windows has none and ignores it.
+   */
+  mode?: number;
+  /**
+   * Fail with an `AlreadyExists` when anything is at the path, instead of
+   * replacing it. The check and the create are one step, so of several
+   * writers racing for a path exactly one succeeds.
+   */
+  createNew?: boolean;
+}
+
+/** Options for {@link FileTasksApi.makeTempDirectory}. */
+export interface TempDirectoryOptions {
+  /** How the directory's name starts (default `"zuke-"`). */
+  prefix?: string;
+}
+
+/** What is at a path, as {@link FileTasksApi.stat} and its kin report it. */
+export interface PathInfo {
+  /** Whether it is a regular file. */
+  isFile: boolean;
+  /** Whether it is a directory. */
+  isDirectory: boolean;
+  /** Whether it is a symbolic link; only ever true from `lstat`. */
+  isSymlink: boolean;
+  /** Its size in bytes. */
+  size: number;
+  /**
+   * Its permission and type bits, or `null` on Windows, whose files have no
+   * POSIX permissions to report.
+   */
+  mode: number | null;
+  /** The id of the user who owns it, or `null` on Windows, which has none. */
+  uid: number | null;
+}
+
+/** One entry of a directory, as {@link FileTasksApi.readDirectory} lists it. */
+export interface DirectoryEntry {
+  /** Its name, without the directory's path. */
+  name: string;
+  /** Whether it is a regular file; a link to one is not. */
+  isFile: boolean;
+  /** Whether it is a directory; a link to one is not. */
+  isDirectory: boolean;
+}
+
+/** Core's file information as the public {@link PathInfo}. */
+function pathInfo(info: FileInfo): PathInfo {
+  return {
+    ...info,
+    mode: process.platform === "win32" ? null : info.mode,
+  };
 }
 
 /** Whether a filesystem entry exists; a `NotFound` maps to `false`. */
@@ -197,10 +263,54 @@ export interface FileTasksApi {
   readText(path: PathLike): Promise<string>;
 
   /** Write `content` to the file at `path`, creating or truncating it. */
-  writeText(path: PathLike, content: string): Promise<void>;
+  writeText(
+    path: PathLike,
+    content: string,
+    options?: WriteOptions,
+  ): Promise<void>;
 
   /** Read and parse the JSON file at `path`. */
   readJson<T = unknown>(path: PathLike): Promise<T>;
+
+  /** Read the file at `path` as bytes. */
+  readBytes(path: PathLike): Promise<Uint8Array>;
+
+  /** Write `data` to the file at `path`, replacing it unless `createNew`. */
+  writeBytes(
+    path: PathLike,
+    data: Uint8Array,
+    options?: WriteOptions,
+  ): Promise<void>;
+
+  /** What `path` resolves to, following a final link. */
+  stat(path: PathLike): Promise<PathInfo>;
+
+  /** {@link FileTasksApi.stat}, without waiting. */
+  statSync(path: PathLike): PathInfo;
+
+  /** What is at `path` itself: a final link is described, not followed. */
+  lstat(path: PathLike): Promise<PathInfo>;
+
+  /** `path` with every link in it resolved, as an absolute path. */
+  realPath(path: PathLike): Promise<string>;
+
+  /** The entries of the directory at `path`, in no particular order. */
+  readDirectory(path: PathLike): Promise<DirectoryEntry[]>;
+
+  /**
+   * Create a directory of its own under the system's temporary directory and
+   * return its path. Removing it is the caller's job.
+   */
+  makeTempDirectory(options?: TempDirectoryOptions): Promise<string>;
+
+  /** Set the permission bits of `path`. Not for Windows, which has none. */
+  chmod(path: PathLike, mode: number): Promise<void>;
+
+  /**
+   * Whether `error` means the path was not there, on any runtime: the check
+   * a caller makes before treating a missing file as empty.
+   */
+  isNotFound(error: unknown): error is Error;
 }
 
 /** Filesystem task functions for build scripts. */
@@ -312,11 +422,59 @@ export const FileTasks: FileTasksApi = {
     return readTextFile(String(path));
   },
 
-  async writeText(path: PathLike, content: string): Promise<void> {
-    await writeFile(String(path), content);
+  async writeText(
+    path: PathLike,
+    content: string,
+    options: WriteOptions = {},
+  ): Promise<void> {
+    await writeFile(String(path), content, options.mode, options.createNew);
   },
 
   async readJson<T = unknown>(path: PathLike): Promise<T> {
     return JSON.parse(await readTextFile(String(path)));
+  },
+
+  readBytes(path: PathLike): Promise<Uint8Array> {
+    return readFile(String(path));
+  },
+
+  async writeBytes(
+    path: PathLike,
+    data: Uint8Array,
+    options: WriteOptions = {},
+  ): Promise<void> {
+    await writeFile(String(path), data, options.mode, options.createNew);
+  },
+
+  async stat(path: PathLike): Promise<PathInfo> {
+    return pathInfo(await stat(String(path)));
+  },
+
+  statSync(path: PathLike): PathInfo {
+    return pathInfo(statSync(String(path)));
+  },
+
+  async lstat(path: PathLike): Promise<PathInfo> {
+    return pathInfo(await lstat(String(path)));
+  },
+
+  realPath(path: PathLike): Promise<string> {
+    return realPath(String(path));
+  },
+
+  readDirectory(path: PathLike): Promise<DirectoryEntry[]> {
+    return readDir(String(path));
+  },
+
+  makeTempDirectory(options: TempDirectoryOptions = {}): Promise<string> {
+    return makeTempDir(options.prefix);
+  },
+
+  chmod(path: PathLike, mode: number): Promise<void> {
+    return chmod(String(path), mode);
+  },
+
+  isNotFound(error: unknown): error is Error {
+    return isNotFound(error);
   },
 };

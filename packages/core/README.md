@@ -1164,6 +1164,15 @@ const DEFAULT_READY_TIMEOUT_MS: 30000
 const DEFAULT_TOOLS_DIR: ".zuke/tools"
   The default directory a {@link Toolchain} (and {@link ToolTasks}) installs into.
 
+const EnvTasks: EnvTasksApi
+  The process environment, on whichever runtime the build runs on.
+
+  ```ts
+  import { EnvTasks } from "@zuke/core";
+
+  const token = EnvTasks.get("GITHUB_TOKEN");
+  ```
+
 const FileTasks: FileTasksApi
   Filesystem task functions for build scripts.
 
@@ -1183,8 +1192,14 @@ const INVALID_TOKEN: McpAuthReject
 const NO_BANNER_ENV: "ZUKE_NO_BANNER"
   The environment variable that turns off a run's opening banner.
 
+const NetTasks: NetTasksApi
+  TCP sockets, on whichever runtime the build runs on.
+
 const PLAIN_ENV: "ZUKE_PLAIN"
   The environment variable that asks for plain output.
+
+const ProcessTasks: ProcessTasksApi
+  Child processes and signals, on whichever runtime the build runs on.
 
 const REDACTED: "[redacted]"
   The placeholder a {@link Redactor} substitutes for each secret value.
@@ -1204,6 +1219,12 @@ const RUN_LEASE_TTL_MS: 60000
   a slow step, a busy host, a paused container — does not look like death, short
   enough that a genuinely dead run is picked up on the next sweep rather than
   hours later.
+
+const RuntimeTasks: RuntimeTasksApi
+  Facts about the running process, on whichever runtime it is.
+
+const StreamTasks: StreamTasksApi
+  Byte streams, on whichever runtime the build runs on.
 
 const ToolTasks: ToolTasksApi
   Provision external CLIs from a build. `ToolTasks.install((s) => …)` fetches a
@@ -3333,6 +3354,24 @@ interface CancelResult
   failures: CompensationFailure[]
     Compensations that threw (recorded, non-fatal).
 
+interface ChildProcess
+  A started child process: what the shell reads, writes and waits on. A
+  stream is there to use only when its {@link ProcessStdio} was `piped`;
+  reading one that was not throws.
+
+  readonly pid: number
+    The operating-system process id; `-1` for a child that never started.
+  readonly status: Promise<CommandStatus>
+    Resolves when the process exits. Rejects if it could not be started.
+  readonly stdin: WritableStream<Uint8Array>
+    The child's input.
+  readonly stdout: ReadableStream<Uint8Array>
+    The child's output.
+  readonly stderr: ReadableStream<Uint8Array>
+    The child's error output.
+  kill(signal?: Signal): void
+    Deliver a signal to the process. Throws if it has already exited.
+
 interface CiActionRef
   A pinned action reference, and the version its commit corresponds to.
 
@@ -3897,6 +3936,16 @@ interface DescribeCliOptions
   omitSecrets?: boolean
     Drop `.secret()` parameters from the surface (used for registry descriptors).
 
+interface DirectoryEntry
+  One entry of a directory, as {@link FileTasksApi.readDirectory} lists it.
+
+  name: string
+    Its name, without the directory's path.
+  isFile: boolean
+    Whether it is a regular file; a link to one is not.
+  isDirectory: boolean
+    Whether it is a directory; a link to one is not.
+
 interface EffectContext extends TargetContext
   The context an effect body receives: the target's own context, plus which
   effect this is and whether it has been driven before.
@@ -3929,6 +3978,14 @@ interface EffectState
     The failure message when `status` is `failed`.
   attempts: number
     How many times the body has been driven. Above one means it was re-driven.
+
+interface EnvTasksApi
+  The shape of {@link EnvTasks}.
+
+  get(name: string): string | undefined
+    The value of the environment variable `name`, or `undefined` when it is
+    not set. A runtime that denies reading the environment, as Deno can, reads
+    as unset rather than throwing.
 
 interface ExecuteOptions
   Options for {@link execute}.
@@ -4133,10 +4190,32 @@ interface FileTasksApi
     `Deno.readLink` gives.
   readText(path: PathLike): Promise<string>
     Read the UTF-8 text content of the file at `path`.
-  writeText(path: PathLike, content: string): Promise<void>
+  writeText(path: PathLike, content: string, options?: WriteOptions): Promise<void>
     Write `content` to the file at `path`, creating or truncating it.
   readJson(path: PathLike): Promise<T>
     Read and parse the JSON file at `path`.
+  readBytes(path: PathLike): Promise<Uint8Array>
+    Read the file at `path` as bytes.
+  writeBytes(path: PathLike, data: Uint8Array, options?: WriteOptions): Promise<void>
+    Write `data` to the file at `path`, replacing it unless `createNew`.
+  stat(path: PathLike): Promise<PathInfo>
+    What `path` resolves to, following a final link.
+  statSync(path: PathLike): PathInfo
+    {@link FileTasksApi.stat}, without waiting.
+  lstat(path: PathLike): Promise<PathInfo>
+    What is at `path` itself: a final link is described, not followed.
+  realPath(path: PathLike): Promise<string>
+    `path` with every link in it resolved, as an absolute path.
+  readDirectory(path: PathLike): Promise<DirectoryEntry[]>
+    The entries of the directory at `path`, in no particular order.
+  makeTempDirectory(options?: TempDirectoryOptions): Promise<string>
+    Create a directory of its own under the system's temporary directory and
+    return its path. Removing it is the caller's job.
+  chmod(path: PathLike, mode: number): Promise<void>
+    Set the permission bits of `path`. Not for Windows, which has none.
+  isNotFound(error: unknown): error is Error
+    Whether `error` means the path was not there, on any runtime: the check
+    a caller makes before treating a missing file as empty.
 
 interface ForEachItem
   One materialised fan-out item: a unique label plus its pipeline stages.
@@ -4527,6 +4606,41 @@ interface McpRequestContext
     reads it once to parse the JSON-RPC message, and a credential never lives
     there. Everything else — method, URL, headers — is the real request's.
 
+interface NetConnection
+  One accepted TCP connection.
+
+  readonly readable: ReadableStream<Uint8Array>
+    What the other side sends. It ends when the other side closes its half,
+    and errors when the connection is reset.
+  write(bytes: Uint8Array): Promise<void>
+    Send `bytes`, resolving once they are handed to the operating system.
+  closeWrite(): Promise<void>
+    Close this side's half: the other side reads an end, and may still send.
+  close(): void
+    Close the connection in both directions, at once.
+
+interface NetListener
+  A TCP port being listened on.
+
+  readonly port: number
+    The port, which the system chose when `0` was asked for.
+  accept(): Promise<NetConnection>
+    The next connection, as it arrives.
+
+    @throws
+        once the listener is closed.
+
+  close(): void
+    Stop listening. Connections already accepted stay open.
+
+interface NetTasksApi
+  The shape of {@link NetTasks}.
+
+  listen(hostname: string, port: number): Promise<NetListener>
+    Listen on `hostname` and `port`; port `0` lets the system choose. Every
+    accepted connection has Nagle's algorithm off, so a short message is sent
+    at once rather than held for more.
+
 interface NpmToolSpec
   A specification of an npm-registry package to provision as a tool.
 
@@ -4616,6 +4730,23 @@ interface OutputModeOptions
   isTerminal?: () => boolean
     Whether stdout is an interactive terminal; defaults to asking the system.
 
+interface PathInfo
+  What is at a path, as {@link FileTasksApi.stat} and its kin report it.
+
+  isFile: boolean
+    Whether it is a regular file.
+  isDirectory: boolean
+    Whether it is a directory.
+  isSymlink: boolean
+    Whether it is a symbolic link; only ever true from `lstat`.
+  size: number
+    Its size in bytes.
+  mode: number | null
+    Its permission and type bits, or `null` on Windows, whose files have no
+    POSIX permissions to report.
+  uid: number | null
+    The id of the user who owns it, or `null` on Windows, which has none.
+
 interface Platform extends InstallPlatform
   A platform with helpers to name it the way a tool's downloads do. `osLabel`
   and `archLabel` map the `os`/`arch` to a tool's own naming, falling back to
@@ -4666,6 +4797,59 @@ interface Plugin
     run (`zuke cancel`), this process observes it through `cancelling` and stops
     — the canceller's process owns the final `cancelled` — so treat `cancelling`
     as run-ended for the owning process.
+
+interface ProcessOptions
+  What a child process is started with, beyond its command.
+
+  args: string[]
+    The arguments, one per entry: nothing re-splits or re-quotes them.
+  cwd?: string
+    The working directory. Omitted: the parent's.
+  env?: Record<string, string>
+    Variables added to the environment the child inherits.
+  clearEnv?: boolean
+    Start from an empty environment, so `env` is the whole of what the child
+    sees and nothing the parent set for itself reaches it. On Windows under
+    Node the variables the system needs are still passed on.
+  stdin?: ProcessStdio
+    The child's stdin. Omitted: inherited.
+  stdout?: ProcessStdio
+    The child's stdout. Omitted: inherited.
+  stderr?: ProcessStdio
+    The child's stderr. Omitted: inherited.
+  signal?: AbortSignal
+    Aborting it terminates the child.
+
+interface ProcessOutput extends CommandStatus
+  How a process run to its end finished, and what it wrote to its pipes.
+
+  stdout: Uint8Array
+    What it wrote to stdout; empty unless stdout was `piped`.
+  stderr: Uint8Array
+    What it wrote to stderr; empty unless stderr was `piped`.
+
+interface ProcessTasksApi
+  The shape of {@link ProcessTasks}.
+
+  spawn(command: string, options: ProcessOptions): ChildProcess
+    Start `command` and return the running child.
+
+    @throws
+        when the command cannot be started and the runtime knows at once.
+        Where it learns later, the child's `status` rejects.
+
+  run(command: string, options: ProcessOptions): Promise<ProcessOutput>
+    Run `command` to its end, collecting what it writes to the streams that
+    are `piped`.
+
+    @throws
+        when the command cannot be started.
+
+  addSignalListener(signal: Signal, handler: () => void): void
+    Call `handler` each time this process receives `signal`. On Windows only
+    `SIGINT` and `SIGBREAK` arrive.
+  removeSignalListener(signal: Signal, handler: () => void): void
+    Stop calling `handler` for `signal`.
 
 interface Remediation
   A recovery step plugged into a target with {@link TargetBuilder.recoverWith}.
@@ -5157,6 +5341,35 @@ interface RunningService
   stop(): Promise<void>
     Stop the service; never rejects (failures are the registry's concern).
 
+interface RuntimeFacts
+  What is known about the runtime the process is running on.
+
+  name: "deno" | "node"
+    The runtime's name, as a person would type it.
+  version: string
+    Its version, e.g. `2.8.3`.
+  typescript: string | undefined
+    The TypeScript version it bundles, where it says.
+  standalone: boolean
+    Whether the process is a compiled binary with the runtime inside it,
+    and not the runtime started on a script.
+
+interface RuntimeTasksApi
+  The shape of {@link RuntimeTasks}.
+
+  facts(): RuntimeFacts
+    Which runtime this is, its version, and whether it is a compiled binary.
+  os(): HostOs
+    The operating system, by the names Deno uses: `windows`, `darwin`, …
+  execPath(): string
+    The path of the executable running this process.
+  mainModule(): string
+    The URL of the module the process was started on.
+  args(): string[]
+    The arguments the process was started with, after the module.
+  userId(): number | null
+    The id of the user this process runs as, or `null` on Windows.
+
 interface S3CacheStoreOptions
   Configuration for an {@link S3CacheStore}.
 
@@ -5278,6 +5491,21 @@ interface StateStore
     not having one. A caller that needs the listing rather than an empty result
     should go through {@link listStoreLocks}, which fails with a message naming
     the backend instead of pretending the store holds nothing.
+
+interface StreamTasksApi
+  The shape of {@link StreamTasks}.
+
+  toFile(path: PathLike, data: ReadableStream<Uint8Array>, options?: StreamToFileOptions): Promise<void>
+    Write everything `data` carries to the file at `path`, replacing it unless
+    `createNew`. A stream that fails leaves the file with what had arrived, and
+    the failure is thrown.
+
+interface StreamToFileOptions
+  Options for {@link StreamTasksApi.toFile}.
+
+  createNew?: boolean
+    Fail with an `AlreadyExists` when anything is at the path, instead of
+    replacing it. Nothing is read from the stream in that case.
 
 interface SummaryEntry
   One rendered `key: value` note on a target's summary row.
@@ -5527,6 +5755,12 @@ interface TargetTiming
   readonly durationMs: number
     The target's wall-clock duration in milliseconds (0 for skipped/cached).
 
+interface TempDirectoryOptions
+  Options for {@link FileTasksApi.makeTempDirectory}.
+
+  prefix?: string
+    How the directory's name starts (default `"zuke-"`).
+
 interface TestCounts
   The counts a test run produced — the one shape every test-runner wrapper
   maps its runner's own summary line onto, so `DenoTasks.test`,
@@ -5684,6 +5918,17 @@ interface WaitTrigger
     and a durable {@link WaitContext}. The context lets a trigger persist
     correlation state across a suspend/resume; a trigger that only inspects
     signals may ignore it (fewer parameters stay assignable).
+
+interface WriteOptions
+  Options for {@link FileTasksApi.writeText} and {@link FileTasksApi.writeBytes}.
+
+  mode?: number
+    The file's permission bits, applied to a file that already exists too.
+    Windows has none and ignores it.
+  createNew?: boolean
+    Fail with an `AlreadyExists` when anything is at the path, instead of
+    replacing it. The check and the create are one step, so of several
+    writers racing for a path exactly one succeeds.
 
 type ActorKind = "human" | "service"
   Whether a person or a machine asked for a run (see {@link RunInitiator}).
@@ -5859,6 +6104,9 @@ type PathLike = string | AbsolutePath
   A filesystem path accepted by Zuke APIs: either a plain string or an
   {@link AbsolutePath}. Anywhere a tool wrapper or build helper takes a path,
   it accepts a `PathLike` and coerces it to a string.
+
+type ProcessStdio = "inherit" | "piped" | "null"
+  How one of a child's standard streams is connected.
 
 type PutBuildResult = { ok: true; version: string; } | { ok: false; conflict: true; }
   The result of a {@link BuildRegistry.register} compare-and-swap write.
@@ -6169,24 +6417,6 @@ class SpawnedProcess
     teardown. A process that has already exited is treated as stopped. A
     dry-run stub (no child) is a no-op. Rejects with the reason for a process
     that could not be started, where that was not already thrown by `spawn`.
-
-interface ChildProcess
-  A started child process: what the shell reads, writes and waits on. A
-  stream is there to use only when its {@link ProcessStdio} was `piped`;
-  reading one that was not throws.
-
-  readonly pid: number
-    The operating-system process id; `-1` for a child that never started.
-  readonly status: Promise<CommandStatus>
-    Resolves when the process exits. Rejects if it could not be started.
-  readonly stdin: WritableStream<Uint8Array>
-    The child's input.
-  readonly stdout: ReadableStream<Uint8Array>
-    The child's output.
-  readonly stderr: ReadableStream<Uint8Array>
-    The child's error output.
-  kill(signal?: Signal): void
-    Deliver a signal to the process. Throws if it has already exited.
 
 interface CommandStatus
   How a process ended.
