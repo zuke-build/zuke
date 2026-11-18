@@ -4683,8 +4683,8 @@ interface NetTasksApi
 
   listen(configure?: Configure<ListenSettings>): Promise<NetListener>
     Listen as `configure` says: on loopback, on a port the system chooses,
-    unless set otherwise. Every accepted connection has Nagle's algorithm
-    off, so a short message is sent at once rather than held for more.
+    unless set otherwise. Every accepted connection sends a
+    short message at once rather than holding it for more.
 
     ```ts
     const listener = await NetTasks.listen((s) => s.port(8080));
