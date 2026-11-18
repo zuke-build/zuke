@@ -46,7 +46,7 @@ Deno.test("ProcessTasks passes the working directory and environment it is given
       (s) =>
         s.args(
           "eval",
-          "console.log(Deno.cwd(), Deno.env.get('ZUKE_ONLY'), Deno.env.get('HOME'))",
+          "console.log(Deno.realPathSync(Deno.cwd()), Deno.env.get('ZUKE_ONLY'), Deno.env.get('HOME'))",
         )
           .cwd(dir)
           .env("ZUKE_ONLY", "set")
