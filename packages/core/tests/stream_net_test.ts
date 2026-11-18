@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 import { assertEquals, assertRejects } from "./_assert.ts";
-import { connect } from "node:net";
+import { connect, createServer } from "node:net";
 import { FileTasks } from "../src/file.ts";
-import { NetTasks } from "../src/net.ts";
+import { listenerOf, NetTasks } from "../src/net.ts";
 import { StreamTasks } from "../src/stream.ts";
 import { withTemp } from "./_temp.ts";
 
@@ -214,4 +214,24 @@ Deno.test("NetTasks closeWrite settles on a connection already closed", async ()
   server.close();
   await server.closeWrite();
   client.close();
+});
+
+Deno.test("NetTasks ends the listener on a server error after binding, not the process", async () => {
+  // 1ei252lrz7ghf: an accept the system refuses must reach the caller.
+  const server = createServer();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  const port = typeof address === "object" && address !== null
+    ? address.port
+    : 0;
+  const listener = listenerOf(server, port);
+  const waiting = listener.accept();
+  const refused = new Error("EMFILE: too many open files");
+  server.emit("error", refused);
+  assertEquals(await waiting.catch((error: unknown) => error), refused);
+  assertEquals(
+    await listener.accept().catch((error: unknown) => error),
+    refused,
+  );
+  listener.close();
 });

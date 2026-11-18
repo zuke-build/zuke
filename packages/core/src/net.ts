@@ -144,8 +144,11 @@ function connectionOf(socket: Socket): NetConnection {
   };
 }
 
-/** A listening server as a {@link NetListener}, queuing what is not yet accepted. */
-function listenerOf(server: Server, port: number): NetListener {
+/**
+ * A listening server as a {@link NetListener}, queuing what is not yet
+ * accepted. Module-internal, exported for its tests.
+ */
+export function listenerOf(server: Server, port: number): NetListener {
   // Wrapped on arrival, so a queued connection has its error listener before
   // anything can go wrong with it: a reset before `accept` must not end the
   // process, and the reader still learns of it.
@@ -154,31 +157,38 @@ function listenerOf(server: Server, port: number): NetListener {
     resolve: (connection: NetConnection) => void;
     reject: (error: Error) => void;
   }> = [];
-  let closed = false;
+  // Why the listener stopped, once it has: what every later accept rejects with.
+  let ended: Error | null = null;
+  const end = (reason: Error): void => {
+    if (ended !== null) return;
+    ended = reason;
+    server.close();
+    // A connection that arrived but was never accepted has no owner.
+    for (const connection of arrived.splice(0)) connection.close();
+    for (const next of waiting.splice(0)) next.reject(reason);
+  };
   server.on("connection", (socket: Socket) => {
     const next = waiting.shift();
     const connection = connectionOf(socket);
     if (next === undefined) arrived.push(connection);
     else next.resolve(connection);
   });
-  const closedError = () => new Error("the listener is closed");
+  // A server that fails after binding, such as on an accept the system
+  // refuses, ends the listener: with no listener the error would end the
+  // process instead.
+  server.on("error", end);
   return {
     port,
     accept(): Promise<NetConnection> {
       const connection = arrived.shift();
       if (connection !== undefined) return Promise.resolve(connection);
-      if (closed) return Promise.reject(closedError());
+      if (ended !== null) return Promise.reject(ended);
       return new Promise((resolve, reject) =>
         waiting.push({ resolve, reject })
       );
     },
     close(): void {
-      if (closed) return;
-      closed = true;
-      server.close();
-      // A connection that arrived but was never accepted has no owner.
-      for (const connection of arrived.splice(0)) connection.close();
-      for (const next of waiting.splice(0)) next.reject(closedError());
+      end(new Error("the listener is closed"));
     },
   };
 }
