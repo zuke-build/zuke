@@ -158,32 +158,42 @@ export function codeOnly(source: string): string {
 
 /** How many times `source`'s code names Deno's API. */
 export function denoUses(source: string): number {
-  return Array.from(codeOnly(source).matchAll(/\bDeno\.[A-Za-z_$]/g)).length;
+  // A property read in any form: `.`, `?.` or `[`, with any spacing or line
+  // break around it, as a formatter may split a chain.
+  return Array.from(
+    codeOnly(source).matchAll(/\bDeno\s*(?:\?\.|\.|\[)/g),
+  ).length;
 }
 
 Deno.test("only code is counted: comments and the text of strings are not", () => {
-  for (
-    const [source, expected] of [
-      ["const cwd = Deno.cwd();", 1],
-      ["new Deno.Command(Deno.execPath(), { env: Deno.env.toObject() })", 3],
-      ["let output: Deno.CommandOutput;", 1],
-      // Written about, not called.
-      ["// Deno.cwd() would be wrong here", 0],
-      ["/** Like `Deno.symlink`. */ const x = 1;", 0],
-      ["/* Deno.exit(1)\n Deno.exit(2) */", 0],
-      ['const message = "use Deno.env instead";', 0],
-      ["const line = 'Deno.exit(3)';", 0],
-      ["const generated = `await Deno.readTextFile(path)`;", 0],
-      // Code inside a template's `${…}` is code, nested or not.
-      ["const s = `cwd: ${Deno.cwd()}`;", 1],
-      ["const s = `a ${`b ${Deno.pid}`} ${{ x: Deno.pid }.x}`;", 2],
-      // A string holding a comment marker, and an escaped quote.
-      ['const url = "http://x"; Deno.exit(0);', 1],
-      ['const q = "a \\" Deno.exit"; Deno.exit(0);', 1],
-      // A name that only ends in Deno is not Deno.
-      ["const onDeno = myDeno.thing;", 0],
-    ] as const
-  ) {
+  const cases: [source: string, uses: number][] = [
+    ["const cwd = Deno.cwd();", 1],
+    ["new Deno.Command(Deno.execPath(), { env: Deno.env.toObject() })", 3],
+    ["let output: Deno.CommandOutput;", 1],
+    // Written about, not called.
+    ["// Deno.cwd() would be wrong here", 0],
+    ["/** Like `Deno.symlink`. */ const x = 1;", 0],
+    ["/* Deno.exit(1)\n Deno.exit(2) */", 0],
+    ['const message = "use Deno.env instead";', 0],
+    ["const line = 'Deno.exit(3)';", 0],
+    ["const generated = `await Deno.readTextFile(path)`;", 0],
+    // Code inside a template's `${…}` is code, nested or not.
+    ["const s = `cwd: ${Deno.cwd()}`;", 1],
+    ["const s = `a ${`b ${Deno.pid}`} ${{ x: Deno.pid }.x}`;", 2],
+    // A string holding a comment marker, and an escaped quote.
+    ['const url = "http://x"; Deno.exit(0);', 1],
+    ['const q = "a \\" Deno.exit"; Deno.exit(0);', 1],
+    // A name that only ends in Deno is not Deno.
+    ["const onDeno = myDeno.thing;", 0],
+    // However the property is reached, and however it is spaced.
+    ["const cwd = Deno\n  .cwd();", 1],
+    ["Deno . exit(0);", 1],
+    ["const e = Deno?.env;", 1],
+    ['const e = Deno["env"];', 1],
+    // Asking whether Deno is there at all is not using its API.
+    ['const onDeno = typeof Deno !== "undefined";', 0],
+  ];
+  for (const [source, expected] of cases) {
     assertEquals(denoUses(source), expected, source);
   }
 });
