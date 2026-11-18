@@ -38,11 +38,14 @@ const ALLOWED: Record<string, number> = {
   "packages/node/src/evaluate.ts": 1,
 };
 
-/** How many `node:` modules `source` imports, statically or dynamically. */
+/**
+ * How many `node:` modules `source` imports or requires, statically or
+ * dynamically.
+ */
 function nodeImports(source: string): number {
   return Array.from(
     withoutComments(source).matchAll(
-      /\b(?:from|import)\s*\(?\s*["']node:[^"']*["']/g,
+      /\b(?:from|import|require)\s*\(?\s*["'`]node:[^"'`]*["'`]/g,
     ),
   ).length;
 }
@@ -53,6 +56,9 @@ Deno.test("static and dynamic node: imports are counted, comments are not", () =
     ["import { readFile } from 'node:fs/promises';", 1],
     ['const net = await import("node:net");', 1],
     ['export { join } from "node:path";', 1],
+    ["const fs = await import(`node:fs`);", 1],
+    ['const os = require("node:os");', 1],
+    ['import "node:process";', 1],
     ['import { FileTasks } from "@zuke/core";', 0],
     ['// import process from "node:process";', 0],
     ['/** Not `import x from "node:fs"`. */ const x = 1;', 0],

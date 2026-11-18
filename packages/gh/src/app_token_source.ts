@@ -20,7 +20,7 @@
  * @module
  */
 
-import type { AnyParameter } from "@zuke/core";
+import { type AnyParameter, EnvTasks } from "@zuke/core";
 import type { Configure } from "@zuke/core/tooling";
 import {
   type GhAppTokenResult,
@@ -28,7 +28,6 @@ import {
   type GhPermissionLevel,
   mintAppToken,
 } from "./app_token.ts";
-import { EnvTasks } from "@zuke/core";
 
 /** Read an environment variable, tolerating an absent `--allow-env`. */
 export type GhEnvReader = (name: string) => string | undefined;

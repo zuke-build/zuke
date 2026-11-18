@@ -51,7 +51,7 @@ export class GooglePlaySettings {
   /** The `fetch` to use (set by {@link fetch}). */
   fetch_: typeof fetch = fetch;
   /** The environment reader (set by {@link readEnv}). */
-  readEnv_: (name: string) => string | undefined = (name) => EnvTasks.get(name);
+  readEnv_: (name: string) => string | undefined = EnvTasks.get;
   /** The clock, in epoch ms (set by {@link now}). */
   now_: () => number = Date.now;
   /** Where progress lines go (set by {@link log}). */

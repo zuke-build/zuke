@@ -23,11 +23,11 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import type { Configure, PathLike } from "@zuke/core/tooling";
 import type { GhCall } from "./api.ts";
 import { caller, DEFAULT_BASE_URL, GhApiError, isRecord } from "./api.ts";
 import { resolveAuthToken, resolveRepoSlug } from "./credentials.ts";
-import { FileTasks } from "@zuke/core";
 
 /** Content types inferred from an asset name's extension. */
 const CONTENT_TYPES: Record<string, string> = {
