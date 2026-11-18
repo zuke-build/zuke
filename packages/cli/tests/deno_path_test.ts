@@ -265,7 +265,11 @@ Deno.test("every spawned Deno skips its update check, so its notice cannot land 
       { stdout: "piped", stderr: "null" },
       [Deno.execPath()],
     );
-    const stdout = await new Response(child.stdout).text();
+    const [{ code }, stdout] = await Promise.all([
+      child.status,
+      new Response(child.stdout).text(),
+    ]);
+    assertEquals(code, 0);
     assertEquals(stdout.trim(), "1");
   });
   assertEquals(QUIET_DENO_ENV, { DENO_NO_UPDATE_CHECK: "1" });
@@ -284,6 +288,10 @@ Deno.test("a caller's env reaches the spawned Deno, but cannot turn the update c
     },
     [Deno.execPath()],
   );
-  const stdout = await new Response(child.stdout).text();
+  const [{ code }, stdout] = await Promise.all([
+    child.status,
+    new Response(child.stdout).text(),
+  ]);
+  assertEquals(code, 0);
   assertEquals(stdout.trim(), "yes 1");
 });
