@@ -9,8 +9,7 @@
  * @module
  */
 
-import process from "node:process";
-import { parseDuration } from "@zuke/core";
+import { EnvTasks, parseDuration } from "@zuke/core";
 import type { PathLike } from "@zuke/core/tooling";
 
 /** The Google Play Developer API's base URL. */
@@ -52,7 +51,7 @@ export class GooglePlaySettings {
   /** The `fetch` to use (set by {@link fetch}). */
   fetch_: typeof fetch = fetch;
   /** The environment reader (set by {@link readEnv}). */
-  readEnv_: (name: string) => string | undefined = (name) => process.env[name];
+  readEnv_: (name: string) => string | undefined = (name) => EnvTasks.get(name);
   /** The clock, in epoch ms (set by {@link now}). */
   now_: () => number = Date.now;
   /** Where progress lines go (set by {@link log}). */

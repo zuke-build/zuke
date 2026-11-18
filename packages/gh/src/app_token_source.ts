@@ -20,7 +20,6 @@
  * @module
  */
 
-import process from "node:process";
 import type { AnyParameter } from "@zuke/core";
 import type { Configure } from "@zuke/core/tooling";
 import {
@@ -29,18 +28,10 @@ import {
   type GhPermissionLevel,
   mintAppToken,
 } from "./app_token.ts";
+import { EnvTasks } from "@zuke/core";
 
 /** Read an environment variable, tolerating an absent `--allow-env`. */
 export type GhEnvReader = (name: string) => string | undefined;
-
-/** The default env reader: the process environment, `undefined` when denied. */
-function readEnv(name: string): string | undefined {
-  try {
-    return process.env[name];
-  } catch {
-    return undefined;
-  }
-}
 
 /**
  * A token provider: resolves to the App's installation token, or to the
@@ -82,7 +73,7 @@ export class GhAppTokenSourceSettings {
   /** The token yielded without an App. Set by {@link fallback}. */
   fallback_?: GhCredential;
   /** The env reader for the defaults. Set by {@link env}. */
-  env_: GhEnvReader = readEnv;
+  env_: GhEnvReader = EnvTasks.get;
   /** The `fetch` implementation the mint uses. Set by {@link fetch}. */
   fetch_?: typeof fetch;
   /** REST base URL for the mint. Set by {@link baseUrl}. */

@@ -27,8 +27,7 @@
  * @module
  */
 
-import process from "node:process";
-import { signJwtRs256 } from "@zuke/core";
+import { EnvTasks, signJwtRs256 } from "@zuke/core";
 import type { Configure } from "@zuke/core/tooling";
 import { assertRefName, DEFAULT_BASE_URL, encodePath } from "./api.ts";
 import type {
@@ -235,13 +234,10 @@ async function json(
  * Actions this is a no-op, so a local run prints nothing odd.
  */
 function maskInActions(value: string): void {
-  let inActions = false;
-  try {
-    inActions = process.env.GITHUB_ACTIONS === "true";
-  } catch {
-    return; // no env permission: nothing to mask into
+  // No env permission reads as unset: nothing to mask into.
+  if (EnvTasks.get("GITHUB_ACTIONS") === "true") {
+    console.log(`::add-mask::${value}`);
   }
-  if (inActions) console.log(`::add-mask::${value}`);
 }
 
 /** The shape of the app-token tasks, mixed into `GhTasks`. */

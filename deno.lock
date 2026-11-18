@@ -1593,7 +1593,7 @@
       },
       "packages/chocolatey": {
         "dependencies": [
-          "jsr:@zuke/core@^1.71.0"
+          "jsr:@zuke/core@^1.82.0"
         ]
       },
       "packages/claude": {
@@ -1625,7 +1625,7 @@
       },
       "packages/console": {
         "dependencies": [
-          "jsr:@zuke/core@^1.67.0"
+          "jsr:@zuke/core@^1.82.0"
         ]
       },
       "packages/cspell": {
@@ -1700,17 +1700,17 @@
       },
       "packages/gh": {
         "dependencies": [
-          "jsr:@zuke/core@^1.66.0"
+          "jsr:@zuke/core@^1.82.0"
         ]
       },
       "packages/git": {
         "dependencies": [
-          "jsr:@zuke/core@^1.32.0"
+          "jsr:@zuke/core@^1.82.0"
         ]
       },
       "packages/google": {
         "dependencies": [
-          "jsr:@zuke/core@^1.75.0"
+          "jsr:@zuke/core@^1.82.0"
         ]
       },
       "packages/helm": {

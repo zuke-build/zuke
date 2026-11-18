@@ -23,11 +23,11 @@
  * @module
  */
 
-import { readFile } from "node:fs/promises";
 import type { Configure, PathLike } from "@zuke/core/tooling";
 import type { GhCall } from "./api.ts";
 import { caller, DEFAULT_BASE_URL, GhApiError, isRecord } from "./api.ts";
 import { resolveAuthToken, resolveRepoSlug } from "./credentials.ts";
+import { FileTasks } from "@zuke/core";
 
 /** Content types inferred from an asset name's extension. */
 const CONTENT_TYPES: Record<string, string> = {
@@ -291,7 +291,7 @@ export async function uploadReleaseAsset(
   // but the common already-exists path needs none.
   let bytes: Uint8Array<ArrayBuffer> | undefined;
   const fileBytes = async (): Promise<Uint8Array<ArrayBuffer>> =>
-    bytes ??= new Uint8Array(await readFile(settings.filePath_()));
+    bytes ??= new Uint8Array(await FileTasks.readBytes(settings.filePath_()));
 
   // Idempotence: a release that already carries the asset is left untouched —
   // published assets are immutable history, and re-running the pipeline must

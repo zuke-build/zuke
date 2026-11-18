@@ -26,8 +26,7 @@
  * @module
  */
 
-import { readFile } from "node:fs/promises";
-import { assertSecureBackendUrl } from "@zuke/core";
+import { assertSecureBackendUrl, FileTasks } from "@zuke/core";
 import type { Configure } from "@zuke/core/tooling";
 import { GooglePlayError } from "./errors.ts";
 import { GooglePlayClient } from "./google_play_client.ts";
@@ -67,7 +66,7 @@ async function upload(settings: GooglePlaySettings): Promise<GooglePlayUpload> {
     "Google Play apiUrl",
     settings.readEnv_,
   );
-  const bytes = new Uint8Array(await readFile(bundle_));
+  const bytes = new Uint8Array(await FileTasks.readBytes(bundle_));
   const controller = new AbortController();
   const timer = setTimeout(
     () =>

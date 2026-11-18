@@ -23,7 +23,6 @@
  * @module
  */
 
-import process from "node:process";
 import {
   box as renderBox,
   type BoxOptions,
@@ -40,6 +39,7 @@ import {
 } from "@zuke/core/render";
 import {
   defaultRenderer,
+  EnvTasks,
   resolveOutputMode,
   type TargetReport,
 } from "@zuke/core";
@@ -68,15 +68,6 @@ const defaultSink: Sink = {
   err: (line) => console.error(line),
 };
 
-/** Read an environment variable, treating missing env access as unset. */
-function readEnv(name: string): string | undefined {
-  try {
-    return process.env[name];
-  } catch {
-    return undefined;
-  }
-}
-
 /** Mutable configuration for {@link ConsoleTasks}. */
 interface ConsoleState {
   level: LogLevel;
@@ -90,7 +81,7 @@ interface ConsoleState {
 /** A fresh state, with the level seeded from `ZUKE_LOG_LEVEL`. */
 function freshState(): ConsoleState {
   return {
-    level: resolveLevel(readEnv),
+    level: resolveLevel(EnvTasks.get),
     sink: defaultSink,
     theme: defaultTheme,
   };
@@ -100,7 +91,7 @@ let state: ConsoleState = freshState();
 
 /** Whether the build is running inside GitHub Actions. */
 function autoGithub(): boolean {
-  return readEnv("GITHUB_ACTIONS") === "true";
+  return EnvTasks.get("GITHUB_ACTIONS") === "true";
 }
 
 /**
@@ -110,7 +101,7 @@ function autoGithub(): boolean {
  * and the executor around it agree on what `ZUKE_PLAIN` means.
  */
 function autoColor(): boolean {
-  return resolveOutputMode({ readEnv }).color;
+  return resolveOutputMode({ readEnv: EnvTasks.get }).color;
 }
 
 /** Resolve the active output style from overrides and the environment. */
