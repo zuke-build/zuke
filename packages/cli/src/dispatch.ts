@@ -56,7 +56,6 @@ import {
   ProcessTasks,
   RuntimeTasks,
 } from "@zuke/core";
-import { exists } from "./fs.ts";
 import { noLockNotice } from "./launcher.ts";
 import { BINARY_INSTALL_DOCS } from "./binary_pin.ts";
 import { BUILD_FILE, buildFileNamed } from "./build_file.ts";
@@ -162,7 +161,7 @@ async function statOrNull(path: string): Promise<PathInfo | null> {
 
 /** The real, `Deno`-backed {@link BuildProbe}. */
 export const defaultBuildProbe: BuildProbe = {
-  exists,
+  exists: (path) => FileTasks.exists(path),
   async ownership(path: string): Promise<Ownership | null> {
     const info = await statOrNull(path);
     return info === null ? null : { uid: info.uid, mode: info.mode };

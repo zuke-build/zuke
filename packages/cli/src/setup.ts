@@ -30,7 +30,7 @@ import {
 import { launcherBash, launcherPwsh } from "./launcher.ts";
 import { binaryLauncherBash, binaryLauncherPwsh } from "./binary_launcher.ts";
 import type { BinaryPin } from "./binary_pin.ts";
-import { exists, lstatOrNull } from "./fs.ts";
+import { lstatOrNull } from "./fs.ts";
 import { output } from "./output.ts";
 import {
   PYTHON_BUILD_FILE,
@@ -283,7 +283,7 @@ export interface SetupHost {
  * as a symlink instead of as whatever it points at.
  */
 export const defaultHost: SetupHost = {
-  exists,
+  exists: (path) => FileTasks.exists(path),
   async isDirectory(path: string): Promise<boolean> {
     return (await lstatOrNull(path))?.isDirectory === true;
   },

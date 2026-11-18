@@ -985,7 +985,7 @@ async function commandVersion(
     if (!RuntimeTasks.facts().standalone) {
       rows.push(["deno", Deno.version.deno]);
     }
-    rows.push(["platform", `${RuntimeTasks.os()}-${Deno.build.arch}`]);
+    rows.push(["platform", `${Deno.build.os}-${Deno.build.arch}`]);
     host.log(versionPanel(rows, paint));
   } else {
     host.log(VERSION);
