@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.13.1](https://github.com/zuke-build/zuke/compare/ai-v2.13.0...ai-v2.13.1) (2026-11-18)
+
+
+### Bug Fixes
+
+* **ai:** default to current models and read a thinking Claude reply ([#1049](https://github.com/zuke-build/zuke/issues/1049)) ([4e4c557](https://github.com/zuke-build/zuke/commit/4e4c557a1fc35466c48a203306233d8f32837d0a))
+
 ## [2.13.0](https://github.com/zuke-build/zuke/compare/ai-v2.12.1...ai-v2.13.0) (2026-11-03)
 
 

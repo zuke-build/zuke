@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.82.0](https://github.com/zuke-build/zuke/compare/core-v1.81.0...core-v1.82.0) (2026-11-18)
+
+
+### Features
+
+* **core:** a Node backend behind the process seam ([#1027](https://github.com/zuke-build/zuke/issues/1027)) ([af96d17](https://github.com/zuke-build/zuke/commit/af96d1799226b3f8edd136e7095c874cd2294468))
+* **core:** run Windows batch files safely from the Node process backend ([#1031](https://github.com/zuke-build/zuke/issues/1031)) ([c4d8f46](https://github.com/zuke-build/zuke/commit/c4d8f463c43218007010bd1cce8b5585ec8d9fe6))
+* **core:** runtime-neutral task objects for files, environment, processes, streams and sockets ([#1061](https://github.com/zuke-build/zuke/issues/1061)) ([f9ff22c](https://github.com/zuke-build/zuke/commit/f9ff22cef31cc09642967fee1bc90bd41ca31b3f))
+* **core:** serve MCP over HTTP and probe TCP readiness on Node ([#1053](https://github.com/zuke-build/zuke/issues/1053)) ([3a65abe](https://github.com/zuke-build/zuke/commit/3a65abe657b6760aa3eccb034573d0ca56934ff6))
+* **core:** start the script behind a node_modules shim directly on Node ([#1033](https://github.com/zuke-build/zuke/issues/1033)) ([4f74194](https://github.com/zuke-build/zuke/commit/4f74194236efc487cef71087a5ec1344bd26fbd4))
+
 ## [1.81.0](https://github.com/zuke-build/zuke/compare/core-v1.80.1...core-v1.81.0) (2026-11-04)
 
 
