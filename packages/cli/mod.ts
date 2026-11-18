@@ -986,10 +986,8 @@ async function commandVersion(
       rows.push(["built-in", `@zuke/engine ${engine.version}`]);
     }
     // The binary's runtime is compiled in, not a Deno its user has or needs.
-    if (!RuntimeTasks.facts().standalone) {
-      const runtime = RuntimeTasks.facts();
-      rows.push([runtime.name, runtime.version]);
-    }
+    const runtime = RuntimeTasks.facts();
+    if (!runtime.standalone) rows.push([runtime.name, runtime.version]);
     rows.push(["platform", `${RuntimeTasks.os()}-${RuntimeTasks.arch()}`]);
     host.log(versionPanel(rows, paint));
   } else {
