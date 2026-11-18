@@ -138,13 +138,18 @@ Deno.test({
       stderr: "piped",
     }).spawn();
     const sent = new Uint8Array(300_000).map((_, index) => index % 251);
+    // Read while writing: the child echoes as it reads, so once its stdout
+    // pipe is full it stops reading stdin, and a writer waiting on it would
+    // wait for ever.
+    const stdout = new Response(child.stdout).arrayBuffer();
+    const stderr = new Response(child.stderr).text();
     const writer = child.stdin.getWriter();
     await writer.write(sent.subarray(0, 100_000));
     await writer.write(sent.subarray(100_000));
     await writer.close();
-    const { code, stdout, stderr } = await child.output();
-    assertEquals({ code, stderr: decode(stderr) }, { code: 0, stderr: "" });
-    assertEquals(stdout, sent);
+    const { code } = await child.status;
+    assertEquals({ code, stderr: await stderr }, { code: 0, stderr: "" });
+    assertEquals(new Uint8Array(await stdout), sent);
   },
 });
 
