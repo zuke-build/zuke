@@ -13,7 +13,7 @@
 
 import process from "node:process";
 import { userId } from "./fs.ts";
-import { type HostOs, hostOs } from "./host.ts";
+import { archName, type HostOs, hostOs } from "./host.ts";
 import {
   mainModule,
   programArgs,
@@ -25,12 +25,6 @@ export type { RuntimeFacts } from "./runtime.ts";
 
 /** A standard stream of the process, for {@link RuntimeTasksApi.isTerminal}. */
 export type StandardStream = "stdin" | "stdout" | "stderr";
-
-/** Node's `process.arch` names that differ from Deno's `Deno.build.arch`. */
-const ARCH_NAMES: Readonly<Record<string, string>> = {
-  x64: "x86_64",
-  arm64: "aarch64",
-};
 
 /** The shape of {@link RuntimeTasks}. */
 export interface RuntimeTasksApi {
@@ -53,8 +47,9 @@ export interface RuntimeTasksApi {
   userId(): number | null;
 
   /**
-   * The CPU architecture, by the names Deno uses: `x86_64`, `aarch64`, …
-   * Another runtime's name for the same architecture is mapped to Deno's.
+   * The CPU architecture: `x86_64` or `aarch64`, by the names Deno uses, on
+   * every runtime. Any other CPU is named as the runtime's `process.arch`
+   * reports it.
    */
   arch(): string;
 
@@ -64,7 +59,11 @@ export interface RuntimeTasksApi {
   /** Whether `stream` is connected to a terminal. */
   isTerminal(stream: StandardStream): boolean;
 
-  /** End the process with exit `code`. */
+  /**
+   * End the process with exit `code`.
+   *
+   * @throws {RangeError} when `code` is not an integer.
+   */
   exit(code: number): never;
 }
 
@@ -95,7 +94,7 @@ export const RuntimeTasks: RuntimeTasksApi = {
   },
 
   arch(): string {
-    return ARCH_NAMES[process.arch] ?? process.arch;
+    return archName();
   },
 
   cwd(): string {

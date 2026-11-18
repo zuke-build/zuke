@@ -84,11 +84,13 @@ assert.equal(RuntimeTasks.facts().name, "node");
 assert.equal(RuntimeTasks.execPath(), process.execPath);
 assert.deepEqual(RuntimeTasks.args(), process.argv.slice(2));
 assert.equal(RuntimeTasks.cwd(), process.cwd());
-assert.equal(
-  RuntimeTasks.arch(),
-  { x64: "x86_64", arm64: "aarch64" }[process.arch] ?? process.arch,
-);
-assert.equal(RuntimeTasks.isTerminal("stdin"), process.stdin.isTTY === true);
+if (process.arch === "x64") assert.equal(RuntimeTasks.arch(), "x86_64");
+if (process.arch === "arm64") assert.equal(RuntimeTasks.arch(), "aarch64");
+// The test connects all three streams to null or a pipe, so none is a
+// terminal.
+assert.equal(RuntimeTasks.isTerminal("stdin"), false);
+assert.equal(RuntimeTasks.isTerminal("stdout"), false);
+assert.equal(RuntimeTasks.isTerminal("stderr"), false);
 
 const output = await ProcessTasks.run(
   process.execPath,
@@ -109,3 +111,5 @@ assert.equal(await new Response(accepted.readable).text(), "ping");
 accepted.close();
 
 console.log("node core canary ok");
+// The test expects this code, so the exit itself is checked under Node too.
+RuntimeTasks.exit(3);

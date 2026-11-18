@@ -5452,14 +5452,18 @@ interface RuntimeTasksApi
   userId(): number | null
     The id of the user this process runs as, or `null` on Windows.
   arch(): string
-    The CPU architecture, by the names Deno uses: `x86_64`, `aarch64`, …
-    Another runtime's name for the same architecture is mapped to Deno's.
+    The CPU architecture: `x86_64` or `aarch64`, by the names Deno uses, on
+    every runtime. Any other CPU is named as the runtime's `process.arch`
+    reports it.
   cwd(): string
     The process's current working directory.
   isTerminal(stream: StandardStream): boolean
     Whether `stream` is connected to a terminal.
   exit(code: number): never
     End the process with exit `code`.
+
+    @throws {RangeError}
+        when `code` is not an integer.
 
 interface S3CacheStoreOptions
   Configuration for an {@link S3CacheStore}.

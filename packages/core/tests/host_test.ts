@@ -3,6 +3,7 @@
 
 import { assertEquals, assertThrows } from "./_assert.ts";
 import {
+  archName,
   type CiHost,
   ciHost,
   denoExecutable,
@@ -198,6 +199,13 @@ Deno.test("hostArch maps the two CPUs Zuke installs for, and names any other", (
   assertEquals(hostArch("arm64"), "aarch64");
   assertEquals(hostArch(), Deno.build.arch);
   assertThrows(() => hostArch("ia32"), Error, 'architecture "ia32"');
+});
+
+Deno.test("archName maps the two CPUs Zuke recognises, and passes any other through", () => {
+  assertEquals(archName("x64"), "x86_64");
+  assertEquals(archName("arm64"), "aarch64");
+  assertEquals(archName("ppc64"), "ppc64");
+  assertEquals(archName(), Deno.build.arch);
 });
 
 Deno.test("platformLabel names the running host as the banner always has", () => {
