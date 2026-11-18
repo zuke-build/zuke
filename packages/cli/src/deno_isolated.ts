@@ -18,6 +18,7 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { spawnDeno } from "./deno_path.ts";
 import { output } from "./output.ts";
 
@@ -46,18 +47,21 @@ export async function runDenoIsolated(
   denoArgs: string[],
   prefix: string,
 ): Promise<number> {
-  const cwd = await Deno.makeTempDir({ prefix });
+  const cwd = await FileTasks.makeTempDirectory((s) => s.prefix(prefix));
   try {
-    await Deno.writeTextFile(`${cwd}/deno.json`, ISOLATED_DENO_CONFIG);
+    await FileTasks.writeText(`${cwd}/deno.json`, ISOLATED_DENO_CONFIG);
     const child = spawnDeno(denoArgs, {
       cwd,
       stdin: "null",
       stdout: "piped",
       stderr: "piped",
     });
-    const { code, stdout, stderr } = await child.output();
-    const relay = (bytes: Uint8Array, write: (line: string) => void) => {
-      const text = new TextDecoder().decode(bytes);
+    const [{ code }, stdout, stderr] = await Promise.all([
+      child.status,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+    const relay = (text: string, write: (line: string) => void) => {
       // The console adds the line's own newline; keep the text otherwise as
       // the child wrote it, blank lines included.
       if (text !== "") write(text.endsWith("\n") ? text.slice(0, -1) : text);
@@ -66,6 +70,6 @@ export async function runDenoIsolated(
     relay(stderr, output.error);
     return code;
   } finally {
-    await Deno.remove(cwd, { recursive: true });
+    await FileTasks.remove(cwd, { recursive: true });
   }
 }

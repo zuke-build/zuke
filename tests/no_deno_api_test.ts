@@ -45,14 +45,9 @@ const ALLOWED: Record<string, number> = {
   // The Deno CLI's own wrapper.
   "packages/deno/src/deno.ts": 1,
   // Still to move.
-  "packages/cli/mod.ts": 15,
-  "packages/cli/src/deno_isolated.ts": 3,
-  "packages/cli/src/deno_path.ts": 8,
-  "packages/cli/src/dispatch.ts": 18,
-  "packages/cli/src/fs.ts": 3,
-  "packages/cli/src/project.ts": 6,
-  "packages/cli/src/setup.ts": 5,
-  "packages/cli/src/upgrade.ts": 7,
+  "packages/cli/mod.ts": 12,
+  "packages/cli/src/project.ts": 1,
+  "packages/cli/src/upgrade.ts": 1,
 };
 
 /**

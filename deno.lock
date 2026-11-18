@@ -1604,7 +1604,7 @@
       "packages/cli": {
         "dependencies": [
           "jsr:@zuke/console@^1.1.0",
-          "jsr:@zuke/core@^1.68.0",
+          "jsr:@zuke/core@^1.82.0",
           "jsr:@zuke/gh@^1.6.0"
         ]
       },
