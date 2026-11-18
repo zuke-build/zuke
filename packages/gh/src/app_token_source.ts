@@ -20,6 +20,7 @@
  * @module
  */
 
+import process from "node:process";
 import type { AnyParameter } from "@zuke/core";
 import type { Configure } from "@zuke/core/tooling";
 import {
@@ -32,10 +33,10 @@ import {
 /** Read an environment variable, tolerating an absent `--allow-env`. */
 export type GhEnvReader = (name: string) => string | undefined;
 
-/** The default env reader: `Deno.env.get`, `undefined` when denied. */
+/** The default env reader: the process environment, `undefined` when denied. */
 function readEnv(name: string): string | undefined {
   try {
-    return Deno.env.get(name);
+    return process.env[name];
   } catch {
     return undefined;
   }

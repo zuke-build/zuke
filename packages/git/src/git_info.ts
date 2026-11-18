@@ -19,6 +19,8 @@
  * @module
  */
 
+import { execFile } from "node:child_process";
+
 /** Resolved git repository information. */
 export interface GitInfo {
   /** Current branch, or `"HEAD"` when detached. */
@@ -49,23 +51,23 @@ export interface GitInfoOptions {
   run?: GitRunner;
 }
 
-/** A {@link GitRunner} that spawns the real `git` binary in `cwd`. */
+/**
+ * A {@link GitRunner} that starts the real `git` binary in `cwd`, directly
+ * and with no shell. Not core's `Command`: under a deep dry run that only
+ * echoes, and the facts read here are needed for real then too.
+ */
 function defaultRunner(cwd?: string): GitRunner {
-  return async (args: string[]): Promise<string | null> => {
-    try {
-      const command = new Deno.Command("git", {
-        args,
-        cwd,
-        stdout: "piped",
-        stderr: "null",
-      });
-      const { code, stdout } = await command.output();
-      if (code !== 0) return null;
-      return new TextDecoder().decode(stdout).trim();
-    } catch {
-      return null; // git not installed, or no permission to run it
-    }
-  };
+  return (args: string[]): Promise<string | null> =>
+    new Promise((resolve) => {
+      try {
+        execFile("git", args, { cwd, encoding: "utf8" }, (error, stdout) => {
+          // A non-zero exit, a git not installed, or no permission to run it.
+          resolve(error === null ? stdout.trim() : null);
+        });
+      } catch {
+        resolve(null); // refused before it could start
+      }
+    });
 }
 
 /** Normalize an empty/`null` runner result to `undefined`. */

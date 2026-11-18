@@ -27,6 +27,7 @@
  * @module
  */
 
+import process from "node:process";
 import { signJwtRs256 } from "@zuke/core";
 import type { Configure } from "@zuke/core/tooling";
 import { assertRefName, DEFAULT_BASE_URL, encodePath } from "./api.ts";
@@ -236,7 +237,7 @@ async function json(
 function maskInActions(value: string): void {
   let inActions = false;
   try {
-    inActions = Deno.env.get("GITHUB_ACTIONS") === "true";
+    inActions = process.env.GITHUB_ACTIONS === "true";
   } catch {
     return; // no env permission: nothing to mask into
   }

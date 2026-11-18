@@ -33,7 +33,10 @@ export async function defaultComposeProbe(
     const out = await new Command([...argv, "version"]).noThrow().quiet();
     return out.code === 0;
   } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return false;
+    // A program that is not there, as both runtimes report it.
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return false;
+    }
     throw error;
   }
 }
