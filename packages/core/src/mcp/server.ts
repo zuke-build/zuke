@@ -217,10 +217,14 @@ export class McpServer {
   /** The audit trail, opened lazily on the first audited call. */
   #trail?: AuditTrail;
 
+  /** The build whose targets this server exposes. */
+  private readonly build: Build;
+
   constructor(
-    private readonly build: Build,
+    build: Build,
     options: McpServerOptions = {},
   ) {
+    this.build = build;
     this.#targets = discoverTargets(build);
     this.#params = discoverParameters(build);
     this.#allowRun = options.allowRun ?? false;

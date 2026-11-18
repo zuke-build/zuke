@@ -61,19 +61,25 @@ export type Interpolatable =
 export class CommandError extends Error {
   /** The error name. */
   override name = "CommandError";
+  /** The command line that failed (argv joined by spaces). */
+  readonly command: string;
+  /** The process exit code. */
+  readonly code: number;
+  /** Captured stderr, if any. */
+  readonly stderr: string;
   /** Build the error from the failed command line, exit code, and stderr. */
   constructor(
-    /** The command line that failed (argv joined by spaces). */
-    readonly command: string,
-    /** The process exit code. */
-    readonly code: number,
-    /** Captured stderr, if any. */
-    readonly stderr: string,
+    command: string,
+    code: number,
+    stderr: string,
   ) {
     super(
       `Command failed (exit ${code}): ${command}` +
         (stderr ? `\n${stderr.trimEnd()}` : ""),
     );
+    this.command = command;
+    this.code = code;
+    this.stderr = stderr;
   }
 }
 
@@ -85,36 +91,51 @@ export class CommandError extends Error {
 export class CommandTimeoutError extends Error {
   /** The error name. */
   override name = "CommandTimeoutError";
+  /** The command line that timed out (argv joined by spaces). */
+  readonly command: string;
+  /** The elapsed-time budget, in milliseconds, that was exceeded. */
+  readonly timeoutMs: number;
   /** Build the error from the command line and the elapsed-time budget. */
   constructor(
-    /** The command line that timed out (argv joined by spaces). */
-    readonly command: string,
-    /** The elapsed-time budget, in milliseconds, that was exceeded. */
-    readonly timeoutMs: number,
+    command: string,
+    timeoutMs: number,
   ) {
     super(`Command timed out after ${timeoutMs}ms: ${command}`);
+    this.command = command;
+    this.timeoutMs = timeoutMs;
   }
 }
 
 /** The resolved result of a command, available when awaiting a {@link Command}. */
 export class CommandOutput {
+  /** The process exit code. */
+  readonly code: number;
+  /** Captured standard output. */
+  readonly stdout: string;
+  /** Captured standard error. */
+  readonly stderr: string;
+  /**
+   * Whether either captured stream hit the capture cap, in which case it holds
+   * only its tail — the newest bytes — and its beginning is gone. See
+   * {@link Command.maxCapturedBytes}.
+   */
+  readonly truncated: boolean;
+  /** The per-stream capture cap that applied, in bytes. */
+  readonly maxCapturedBytes: number;
   /** Build the output from the process exit code and captured streams. */
   constructor(
-    /** The process exit code. */
-    readonly code: number,
-    /** Captured standard output. */
-    readonly stdout: string,
-    /** Captured standard error. */
-    readonly stderr: string,
-    /**
-     * Whether either captured stream hit the capture cap, in which case it holds
-     * only its tail — the newest bytes — and its beginning is gone. See
-     * {@link Command.maxCapturedBytes}.
-     */
-    readonly truncated: boolean = false,
-    /** The per-stream capture cap that applied, in bytes. */
-    readonly maxCapturedBytes: number = DEFAULT_MAX_CAPTURED_BYTES,
-  ) {}
+    code: number,
+    stdout: string,
+    stderr: string,
+    truncated: boolean = false,
+    maxCapturedBytes: number = DEFAULT_MAX_CAPTURED_BYTES,
+  ) {
+    this.code = code;
+    this.stdout = stdout;
+    this.stderr = stderr;
+    this.truncated = truncated;
+    this.maxCapturedBytes = maxCapturedBytes;
+  }
 
   /**
    * Trimmed stdout, prefixed with a one-line notice when {@link truncated} — so
@@ -141,11 +162,15 @@ export class SpawnedProcess {
   /** The child, or `undefined` for a no-op stub (a deep-dry-run echo). */
   readonly #child?: ChildProcess;
 
+  /** The command line the process was started with (argv joined by spaces). */
+  readonly commandLine: string;
+
   /** Wrap a spawned child process (or none, for a stub) and its command line. */
   constructor(
     child: ChildProcess | undefined,
-    readonly commandLine: string,
+    commandLine: string,
   ) {
+    this.commandLine = commandLine;
     this.#child = child;
   }
 

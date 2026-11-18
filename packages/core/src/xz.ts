@@ -148,7 +148,14 @@ class RangeDecoder {
   code = 0;
   pos: number;
 
-  constructor(readonly data: Uint8Array, start: number, readonly end: number) {
+  /** The bytes the chunk is in. */
+  readonly data: Uint8Array;
+  /** Where the chunk's compressed bytes end in {@link data}. */
+  readonly end: number;
+
+  constructor(data: Uint8Array, start: number, end: number) {
+    this.data = data;
+    this.end = end;
     if (end - start < 5 || data[start] !== 0) {
       throw corrupt("bad range coder header");
     }

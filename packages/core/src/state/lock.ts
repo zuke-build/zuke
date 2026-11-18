@@ -40,14 +40,16 @@ export interface LockHolder {
 export class LockConflictError extends Error {
   /** The error name. */
   override name = "LockConflictError";
+  /** Who currently holds the contended lock. */
+  readonly holder: LockHolder;
   /** Build the error from the current holder and the rendered guidance. */
   constructor(
-    /** Who currently holds the contended lock. */
-    readonly holder: LockHolder,
+    holder: LockHolder,
     /** The human-facing guidance shown to the loser. */
     guidance: string,
   ) {
     super(guidance);
+    this.holder = holder;
   }
 }
 
