@@ -19,7 +19,7 @@
  * @module
  */
 
-import { execFile } from "node:child_process";
+import { ProcessTasks } from "@zuke/core";
 
 /** Resolved git repository information. */
 export interface GitInfo {
@@ -57,17 +57,20 @@ export interface GitInfoOptions {
  * echoes, and the facts read here are needed for real then too.
  */
 function defaultRunner(cwd?: string): GitRunner {
-  return (args: string[]): Promise<string | null> =>
-    new Promise((resolve) => {
-      try {
-        execFile("git", args, { cwd, encoding: "utf8" }, (error, stdout) => {
-          // A non-zero exit, a git not installed, or no permission to run it.
-          resolve(error === null ? stdout.trim() : null);
-        });
-      } catch {
-        resolve(null); // refused before it could start
-      }
-    });
+  return async (args: string[]): Promise<string | null> => {
+    try {
+      const output = await ProcessTasks.run("git", (s) => {
+        s.args(...args).stdin("null").stdout("piped").stderr("null");
+        return cwd === undefined ? s : s.cwd(cwd);
+      });
+      // A non-zero exit says nothing usable came back.
+      return output.success
+        ? new TextDecoder().decode(output.stdout).trim()
+        : null;
+    } catch {
+      return null; // a git not installed, or no permission to run it
+    }
+  };
 }
 
 /** Normalize an empty/`null` runner result to `undefined`. */

@@ -14,7 +14,7 @@
  * @module
  */
 
-import process from "node:process";
+import { EnvTasks } from "@zuke/core";
 
 /** GitHub's REST root. */
 export const DEFAULT_BASE_URL = "https://api.github.com";
@@ -258,10 +258,6 @@ export function caller(
  * so the only reading of an empty value is that nothing was provided.
  */
 export function env(name: string): string | undefined {
-  try {
-    const value = process.env[name];
-    return value === "" ? undefined : value;
-  } catch {
-    return undefined;
-  }
+  const value = EnvTasks.get(name);
+  return value === "" ? undefined : value;
 }

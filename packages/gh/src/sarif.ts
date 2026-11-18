@@ -17,8 +17,7 @@
  * @module
  */
 
-import { readFile } from "node:fs/promises";
-import { gzip } from "@zuke/core";
+import { FileTasks, gzip } from "@zuke/core";
 import type { Configure, PathLike } from "@zuke/core/tooling";
 import { caller, DEFAULT_BASE_URL, env } from "./api.ts";
 import { base64 } from "./base64.ts";
@@ -123,7 +122,7 @@ export class GhSarifSettings {
     if (ref === undefined) {
       throw new Error("uploading SARIF requires .ref(...) (or GITHUB_REF).");
     }
-    const packed = await gzip(await readFile(this.file_));
+    const packed = await gzip(await FileTasks.readBytes(this.file_));
     const body: Record<string, string> = {
       commit_sha: commit,
       ref,
