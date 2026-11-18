@@ -130,6 +130,19 @@ function pathInfo(info: FileInfo): PathInfo {
   };
 }
 
+/**
+ * Write `data` to `path` as `configure` says: the one write behind
+ * `FileTasks.writeText` and `FileTasks.writeBytes`.
+ */
+async function writeConfigured(
+  path: PathLike,
+  data: string | Uint8Array,
+  configure: Configure<WriteSettings> = (s) => s,
+): Promise<void> {
+  const s = configure(new WriteSettings());
+  await writeFile(String(path), data, s.mode_, s.createNew_);
+}
+
 /** Whether a filesystem entry exists; a `NotFound` maps to `false`. */
 async function entryExists(path: string): Promise<boolean> {
   return await lstatOrNull(path) !== null;
@@ -405,13 +418,12 @@ export const FileTasks: FileTasksApi = {
     return readTextFile(String(path));
   },
 
-  async writeText(
+  writeText(
     path: PathLike,
     content: string,
-    configure: Configure<WriteSettings> = (s) => s,
+    configure?: Configure<WriteSettings>,
   ): Promise<void> {
-    const s = configure(new WriteSettings());
-    await writeFile(String(path), content, s.mode_, s.createNew_);
+    return writeConfigured(path, content, configure);
   },
 
   async readJson<T = unknown>(path: PathLike): Promise<T> {
@@ -422,13 +434,12 @@ export const FileTasks: FileTasksApi = {
     return readFile(String(path));
   },
 
-  async writeBytes(
+  writeBytes(
     path: PathLike,
     data: Uint8Array,
-    configure: Configure<WriteSettings> = (s) => s,
+    configure?: Configure<WriteSettings>,
   ): Promise<void> {
-    const s = configure(new WriteSettings());
-    await writeFile(String(path), data, s.mode_, s.createNew_);
+    return writeConfigured(path, data, configure);
   },
 
   async stat(path: PathLike): Promise<PathInfo> {
