@@ -347,6 +347,7 @@ export {
   type RuntimeFacts,
   RuntimeTasks,
   type RuntimeTasksApi,
+  type StandardStream,
 } from "./src/runtime_tasks.ts";
 export {
   ListenSettings,

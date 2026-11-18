@@ -412,13 +412,13 @@ Core is the only part of Zuke that talks to the runtime it runs on. Next to
 `FileTasks`, these task objects cover the rest of what a build or a package
 needs, so nothing above core calls `Deno.*` or imports a `node:` module:
 
-| Task object    | Methods                                                           |
-| -------------- | ----------------------------------------------------------------- |
-| `EnvTasks`     | `get(name)`: a variable, or `undefined` when unset or denied.     |
-| `ProcessTasks` | `spawn`, `run`, `addSignalListener`, `removeSignalListener`.      |
-| `RuntimeTasks` | `facts`, `os`, `execPath`, `mainModule`, `args`, `userId`.        |
-| `StreamTasks`  | `toFile(path, stream, (s) => s.createNew())`: a stream to disk.   |
-| `NetTasks`     | `listen((s) => s.port(8080))`: accept TCP connections as streams. |
+| Task object    | Methods                                                                                         |
+| -------------- | ----------------------------------------------------------------------------------------------- |
+| `EnvTasks`     | `get(name)`: a variable, or `undefined` when unset or denied.                                   |
+| `ProcessTasks` | `spawn`, `run`, `addSignalListener`, `removeSignalListener`.                                    |
+| `RuntimeTasks` | `facts`, `os`, `arch`, `execPath`, `mainModule`, `args`, `userId`, `cwd`, `isTerminal`, `exit`. |
+| `StreamTasks`  | `toFile(path, stream, (s) => s.createNew())`: a stream to disk.                                 |
+| `NetTasks`     | `listen((s) => s.port(8080))`: accept TCP connections as streams.                               |
 
 Each is configured through a settings lambda, as the tool wrappers are, and each
 works the same on Deno and on Node. For a command a target runs, prefer the

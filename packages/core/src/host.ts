@@ -189,12 +189,21 @@ export function hostArch(arch: string = process.arch): Architecture {
 }
 
 /**
+ * Name the CPU `arch` (a Node `process.arch` value) as Deno does: an
+ * {@link Architecture} for the two Zuke recognises, the name as given for any
+ * other. Module-internal.
+ */
+export function archName(arch: string = process.arch): string {
+  return ARCH_NAMES[arch] ?? arch;
+}
+
+/**
  * The host as `<os>-<arch>` for the banner and the version panel, which name
  * a CPU Zuke installs nothing for by its raw name rather than refuse to run.
  * Module-internal.
  */
 export function platformLabel(): string {
-  return `${hostOs()}-${ARCH_NAMES[process.arch] ?? process.arch}`;
+  return `${hostOs()}-${archName()}`;
 }
 
 /**

@@ -249,12 +249,13 @@ Deno.test({
     const { code, stdout, stderr } = await new Deno.Command("node", {
       args: [...RUN_TYPESCRIPT, CORE_CANARY],
       env: { ZUKE_CANARY_VALUE: "set" },
+      stdin: "null",
       stdout: "piped",
       stderr: "piped",
     }).output();
     assertEquals(
       { code, stdout: decode(stdout).trim(), stderr: decode(stderr) },
-      { code: 0, stdout: "node core canary ok", stderr: "" },
+      { code: 3, stdout: "node core canary ok", stderr: "" },
     );
   },
 });
