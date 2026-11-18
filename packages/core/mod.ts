@@ -326,11 +326,35 @@ export { glob, type GlobOptions, globToRegExp } from "./src/glob.ts";
 export {
   type CopyOptions,
   type CreateDirectoryOptions,
+  type DirectoryEntry,
   FileTasks,
   type FileTasksApi,
+  type PathInfo,
   type RemoveOptions,
   type SymlinkOptions,
 } from "./src/file.ts";
+export { TempDirectorySettings, WriteSettings } from "./src/file_settings.ts";
+export { StreamTasks, type StreamTasksApi } from "./src/stream.ts";
+export { ProcessSettings } from "./src/process_settings.ts";
+export {
+  type ChildProcess,
+  type ProcessOutput,
+  type ProcessStdio,
+  ProcessTasks,
+  type ProcessTasksApi,
+} from "./src/process_tasks.ts";
+export {
+  type RuntimeFacts,
+  RuntimeTasks,
+  type RuntimeTasksApi,
+} from "./src/runtime_tasks.ts";
+export {
+  ListenSettings,
+  type NetConnection,
+  type NetListener,
+  NetTasks,
+  type NetTasksApi,
+} from "./src/net.ts";
 export {
   BrowserOpenSettings,
   BrowserTasks,
@@ -397,7 +421,7 @@ export {
   type InstallTreeOptions,
   type Platform,
 } from "./src/install.ts";
-export { prependPath } from "./src/env.ts";
+export { EnvTasks, type EnvTasksApi, prependPath } from "./src/env.ts";
 export { appendJobSummary } from "./src/job_summary.ts";
 export {
   installNpmTool,

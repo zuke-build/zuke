@@ -134,3 +134,12 @@ export function mainModule(): string {
 export function denoPath(): string | null {
   return ON_DENO && !Deno.build.standalone ? Deno.execPath() : null;
 }
+
+/**
+ * The arguments the process was started with, after the module. A compiled
+ * Deno binary has no script in its argv, so Deno's own list is the one that is
+ * right in both of its modes.
+ */
+export function programArgs(): string[] {
+  return ON_DENO ? [...Deno.args] : process.argv.slice(2);
+}

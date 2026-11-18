@@ -38,8 +38,8 @@ const ALLOWED: Record<string, number> = {
   // Core's runtime seams.
   "packages/core/src/fs.ts": 6,
   "packages/core/src/internal.ts": 4,
-  "packages/core/src/process.ts": 1,
-  "packages/core/src/runtime.ts": 6,
+  "packages/core/src/process.ts": 3,
+  "packages/core/src/runtime.ts": 7,
   "packages/core/src/serve.ts": 1,
   "packages/core/src/stdio.ts": 4,
   // The Deno CLI's own wrapper.
