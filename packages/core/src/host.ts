@@ -189,7 +189,7 @@ export function hostArch(arch: string = process.arch): Architecture {
 }
 
 /**
- * The CPU `arch` names, a Node `process.arch` value, as Deno names it: an
+ * Name the CPU `arch` (a Node `process.arch` value) as Deno does: an
  * {@link Architecture} for the two Zuke recognises, the name as given for any
  * other. Module-internal.
  */
