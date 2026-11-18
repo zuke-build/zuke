@@ -45,13 +45,6 @@ const ALLOWED: Record<string, number> = {
   // The Deno CLI's own wrapper.
   "packages/deno/src/deno.ts": 1,
   // Still to move.
-  "packages/ai/src/apply.ts": 2,
-  "packages/ai/src/context.ts": 1,
-  "packages/ai/src/hosts/types.ts": 1,
-  "packages/apple/src/app_store_connect.ts": 1,
-  "packages/apple/src/app_store_connect_client.ts": 1,
-  "packages/apple/src/keychain_host.ts": 5,
-  "packages/apple/src/provisioning_host.ts": 4,
   "packages/cli/mod.ts": 15,
   "packages/cli/src/deno_isolated.ts": 3,
   "packages/cli/src/deno_path.ts": 8,
@@ -63,11 +56,6 @@ const ALLOWED: Record<string, number> = {
   "packages/engine/src/host.ts": 6,
   "packages/engine/src/hosted.ts": 2,
   "packages/engine/src/peer.ts": 2,
-  "packages/prometheus/src/aws_profile.ts": 1,
-  "packages/prometheus/src/connection.ts": 2,
-  "packages/prometheus/src/google.ts": 5,
-  "packages/signpath/src/download.ts": 5,
-  "packages/signpath/src/submit_direct.ts": 1,
 };
 
 /**

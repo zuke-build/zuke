@@ -24,7 +24,7 @@
 
 import { envValue } from "./env.ts";
 import { messageOf } from "./message.ts";
-import { signJwtRs256 } from "@zuke/core";
+import { FileTasks, type HostOs, signJwtRs256 } from "@zuke/core";
 import { authRequestJson, readAuthFile } from "./auth_http.ts";
 import type {
   PrometheusCredentials,
@@ -174,14 +174,14 @@ async function metadataToken(
 }
 
 /** Join path parts with the platform's separator. */
-function joinPath(platform: typeof Deno.build.os, ...parts: string[]): string {
+function joinPath(platform: HostOs, ...parts: string[]): string {
   return parts.join(platform === "windows" ? "\\" : "/");
 }
 
 /** gcloud's well-known ADC file, or `undefined` when no base directory is set. */
 function wellKnownFile(
   readEnv: (name: string) => string | undefined,
-  platform: typeof Deno.build.os,
+  platform: HostOs,
 ): string | undefined {
   const name = "application_default_credentials.json";
   const configured = envValue(readEnv, "CLOUDSDK_CONFIG");
@@ -216,7 +216,7 @@ function parseFile(path: string, text: string): CredentialsFile {
 async function locateFile(
   settings: PrometheusGoogleSettings,
   context: PrometheusCredentialsContext,
-  platform: typeof Deno.build.os,
+  platform: HostOs,
 ): Promise<CredentialsFile | undefined> {
   const named = settings.credentialsFile_ ??
     envValue(context.readEnv, "GOOGLE_APPLICATION_CREDENTIALS");
@@ -235,7 +235,7 @@ async function locateFile(
   try {
     text = await context.readTextFile(path);
   } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return undefined;
+    if (FileTasks.isNotFound(error)) return undefined;
     throw new Error(
       `google: could not read the gcloud credentials file at ${path}: ${
         messageOf(error)
@@ -275,11 +275,11 @@ function fileToken(
  * project is set or the file names one.
  *
  * `platform` decides where gcloud's well-known file lives; the connection
- * passes `Deno.build.os`.
+ * passes the operating system it runs on.
  */
 export function googleCredentials(
   settings: PrometheusGoogleSettings,
-  platform: typeof Deno.build.os,
+  platform: HostOs,
 ): PrometheusCredentials {
   const scopes = settings.scopes_;
   return async (_request, context): Promise<PrometheusHeaders> => {

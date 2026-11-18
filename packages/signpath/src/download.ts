@@ -25,7 +25,7 @@
  * @module
  */
 
-import type { PathLike } from "@zuke/core";
+import { FileTasks, type PathLike, StreamTasks } from "@zuke/core";
 import { apiPath, apiUrl, type Connection } from "./connect.ts";
 import { SignPathRequestError } from "./errors.ts";
 import { SignPathStatusSettings } from "./status.ts";
@@ -160,35 +160,47 @@ export async function downloadSignedArtifact(
   const max = connection.settings.maxDownloadBytes_;
   let bytes = 0;
   let oversized = false;
-  let file: Deno.FsFile;
   try {
     const parent = parentOf(output);
-    if (parent !== undefined) await Deno.mkdir(parent, { recursive: true });
-    file = await Deno.open(partial, { write: true, createNew: true });
+    if (parent !== undefined) await FileTasks.createDirectory(parent);
   } catch (error) {
     // Release the connection: the body will never be read.
     await response.body?.cancel();
     throw error;
   }
+  const limit = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      bytes += chunk.byteLength;
+      if (bytes > max) {
+        oversized = true;
+        controller.error(new Error("oversized"));
+        return;
+      }
+      controller.enqueue(chunk);
+    },
+  });
+  // No body is an empty artifact.
+  const body = response.body ?? new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.close();
+    },
+  });
   try {
-    const limit = new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        bytes += chunk.byteLength;
-        if (bytes > max) {
-          oversized = true;
-          controller.error(new Error("oversized"));
-          return;
-        }
-        controller.enqueue(chunk);
-      },
-    });
-    if (response.body === null) file.close();
-    else await response.body.pipeThrough(limit).pipeTo(file.writable);
-    await Deno.rename(partial, output);
+    // One exclusive open, which never follows a link: a partial path already
+    // taken fails here, and the body is cancelled for it.
+    await StreamTasks.toFile(
+      partial,
+      body.pipeThrough(limit),
+      (s) => s.createNew(),
+    );
+    await FileTasks.move(partial, output);
   } catch (error) {
-    // The file is closed by now — a failed pipe aborts, and so closes, its
-    // writable — so Windows lets the partial file be removed.
-    await Deno.remove(partial).catch(() => {});
+    // A partial path someone else holds is theirs, never removed here. Any
+    // other failure leaves this download's own partial file, closed by now
+    // so Windows lets it be removed.
+    if (!alreadyExists(error)) {
+      await FileTasks.remove(partial).catch(() => {});
+    }
     if (oversized) {
       throw new SignPathRequestError(
         "GET",
@@ -200,4 +212,9 @@ export async function downloadSignedArtifact(
     throw failure(connection, outgoing, error, signal);
   }
   return { path: output, bytes };
+}
+
+/** Whether `error` means the path was already taken, on any runtime. */
+function alreadyExists(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "EEXIST";
 }

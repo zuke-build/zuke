@@ -15,6 +15,7 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { apiPath, apiUrl, type Connection, isGuid } from "./connect.ts";
 import { SignPathRequestError } from "./errors.ts";
 import { scrub } from "./scrub.ts";
@@ -32,7 +33,12 @@ async function readArtifact(
   path: string,
 ): Promise<Uint8Array<ArrayBuffer>> {
   try {
-    return await Deno.readFile(path);
+    const bytes = await FileTasks.readBytes(path);
+    // The same bytes, typed as the upload needs them; a copy only when they
+    // sit in shared memory, which a file read never gives.
+    return bytes.buffer instanceof ArrayBuffer
+      ? new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+      : new Uint8Array(bytes);
   } catch (error) {
     throw new Error(
       `could not read the artifact to sign, ${path}: ${

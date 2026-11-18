@@ -10,6 +10,7 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { CommandError } from "@zuke/core/shell";
 
 /** The files a fixer reads, in order, for project conventions. */
@@ -20,7 +21,7 @@ export async function readTextOrUndefined(
   path: string,
 ): Promise<string | undefined> {
   try {
-    return await Deno.readTextFile(path);
+    return await FileTasks.readText(path);
   } catch {
     return undefined;
   }

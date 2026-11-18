@@ -9,6 +9,7 @@
  * @module
  */
 
+import { EnvTasks } from "@zuke/core";
 import type { PathLike } from "@zuke/core/tooling";
 
 /** The App Store Connect API's base URL. */
@@ -38,7 +39,7 @@ export class AppStoreConnectSettings {
   /** The `fetch` to use (set by {@link fetch}). */
   fetch_: typeof fetch = fetch;
   /** The environment reader (set by {@link readEnv}). */
-  readEnv_: (name: string) => string | undefined = (name) => Deno.env.get(name);
+  readEnv_: (name: string) => string | undefined = EnvTasks.get;
   /** How the task waits between polls (set by {@link sleep}). */
   sleep_: (ms: number) => Promise<void> = (ms) =>
     new Promise((resolve) => setTimeout(resolve, ms));
@@ -87,7 +88,7 @@ export class AppStoreConnectSettings {
     return this;
   }
 
-  /** Read environment variables through `reader` instead of `Deno.env`. */
+  /** Read environment variables through `reader` instead of the process environment. */
   readEnv(reader: (name: string) => string | undefined): this {
     this.readEnv_ = reader;
     return this;

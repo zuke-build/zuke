@@ -10,7 +10,7 @@
  * @module
  */
 
-import { globToRegExp } from "@zuke/core";
+import { FileTasks, globToRegExp } from "@zuke/core";
 import type { FileEdit } from "./fix.ts";
 import { AiReviewError } from "./errors.ts";
 
@@ -133,8 +133,8 @@ export function checkEdits(edits: FileEdit[], guards: ApplyGuards): string[] {
  */
 async function writeEnsuringDir(path: string, content: string): Promise<void> {
   const slash = path.lastIndexOf("/");
-  if (slash > 0) await Deno.mkdir(path.slice(0, slash), { recursive: true });
-  await Deno.writeTextFile(path, content);
+  if (slash > 0) await FileTasks.createDirectory(path.slice(0, slash));
+  await FileTasks.writeText(path, content);
 }
 
 /**

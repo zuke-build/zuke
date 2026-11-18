@@ -9,6 +9,7 @@
  * @module
  */
 
+import { EnvTasks } from "@zuke/core";
 import type { CallerVerdict } from "../callers.ts";
 import { AiReviewError } from "../errors.ts";
 import { dig } from "../json.ts";
@@ -16,13 +17,9 @@ import { dig } from "../json.ts";
 /** Read an environment variable, tolerating an absent `--allow-env` permission. */
 export type EnvReader = (name: string) => string | undefined;
 
-/** The default env reader — `Deno.env.get` wrapped to return `undefined` on denial. */
+/** The default env reader: the process environment, `undefined` on denial. */
 export function readEnv(name: string): string | undefined {
-  try {
-    return Deno.env.get(name);
-  } catch {
-    return undefined;
-  }
+  return EnvTasks.get(name);
 }
 
 /**
