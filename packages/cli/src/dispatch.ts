@@ -45,8 +45,17 @@
  * @module
  */
 
-import { type AbsolutePath, absolutePath, CONFIG_FILE } from "@zuke/core";
-import { exists } from "./fs.ts";
+import {
+  type AbsolutePath,
+  absolutePath,
+  type ChildProcess,
+  CONFIG_FILE,
+  EnvTasks,
+  FileTasks,
+  type PathInfo,
+  ProcessTasks,
+  RuntimeTasks,
+} from "@zuke/core";
 import { noLockNotice } from "./launcher.ts";
 import { BINARY_INSTALL_DOCS } from "./binary_pin.ts";
 import { BUILD_FILE, buildFileNamed } from "./build_file.ts";
@@ -137,38 +146,38 @@ export interface BuildProbe {
 }
 
 /**
- * `Deno.stat` a path, or `null` when nothing is there. Follows links, since
+ * `FileTasks.stat` a path, or `null` when nothing is there. Follows links, since
  * the gate judges the directory the build actually runs in. A `NotFound` maps
  * to `null`; any other error is rethrown rather than masked as absence.
  */
-async function statOrNull(path: string): Promise<Deno.FileInfo | null> {
+async function statOrNull(path: string): Promise<PathInfo | null> {
   try {
-    return await Deno.stat(path);
+    return await FileTasks.stat(path);
   } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return null;
+    if (FileTasks.isNotFound(error)) return null;
     throw error;
   }
 }
 
 /** The real, `Deno`-backed {@link BuildProbe}. */
 export const defaultBuildProbe: BuildProbe = {
-  exists,
+  exists: (path) => FileTasks.exists(path),
   async ownership(path: string): Promise<Ownership | null> {
     const info = await statOrNull(path);
     return info === null ? null : { uid: info.uid, mode: info.mode };
   },
   realPath(path: string): Promise<string> {
-    return Deno.realPath(path);
+    return FileTasks.realPath(path);
   },
   async readLink(path: string): Promise<string | null> {
-    const info = await Deno.lstat(path);
-    return info.isSymlink ? await Deno.readLink(path) : null;
+    const info = await FileTasks.lstat(path);
+    return info.isSymlink ? await FileTasks.readLink(path) : null;
   },
   uid(): number | null {
-    return Deno.uid();
+    return RuntimeTasks.userId();
   },
   readText(path: string): Promise<string> {
-    return Deno.readTextFile(path);
+    return FileTasks.readText(path);
   },
 };
 
@@ -320,7 +329,7 @@ function assertEntry(
 export async function locateBuild(
   cwd: string,
   probe: BuildProbe,
-  vouched: string | undefined = Deno.env.get(LAUNCHER_ROOT_ENV),
+  vouched: string | undefined = EnvTasks.get(LAUNCHER_ROOT_ENV),
 ): Promise<BuildLocation | null> {
   let dir = absolutePath(cwd);
   while (true) {
@@ -522,7 +531,7 @@ export function servingEngine(
 
 /** Whether a forwarded command goes to the root's launcher rather than running here. */
 function viaLauncher(location: BuildLocation): boolean {
-  return location.launcher !== null && Deno.env.get(FORWARDED_ENV) !== "1";
+  return location.launcher !== null && EnvTasks.get(FORWARDED_ENV) !== "1";
 }
 
 /**
@@ -622,6 +631,9 @@ export type BuildRunner = (
   env?: Readonly<Record<string, string>>,
 ) => Promise<number>;
 
+/** The signals the forwarding parent listens for. */
+type PlannedSignal = "SIGINT" | "SIGTERM" | "SIGBREAK";
+
 /**
  * The signals the forwarding parent handles while the build runs, and how.
  *
@@ -635,17 +647,17 @@ export type BuildRunner = (
  * Ctrl-Break is ignored like Ctrl-C.
  */
 function signalPlan(
-  child: Deno.ChildProcess,
-): Array<[Deno.Signal, () => void]> {
+  child: ChildProcess,
+): Array<[PlannedSignal, () => void]> {
   const ignore = (): void => {};
-  const forward = (signal: Deno.Signal) => (): void => {
+  const forward = (signal: PlannedSignal) => (): void => {
     try {
       child.kill(signal);
     } catch {
       // The build already exited; its status is what the caller awaits.
     }
   };
-  return Deno.build.os === "windows"
+  return RuntimeTasks.os() === "windows"
     ? [["SIGINT", ignore], ["SIGBREAK", ignore]]
     : [["SIGINT", ignore], ["SIGTERM", forward("SIGTERM")]];
 }
@@ -665,29 +677,31 @@ export const defaultBuildRunner: BuildRunner = async (
   program,
   env,
 ): Promise<number> => {
-  const options: Deno.CommandOptions = {
-    cwd: root,
-    stdin: "inherit",
-    stdout: "inherit",
-    stderr: "inherit",
-  };
   const child = program === undefined
-    ? spawnDeno(args, { ...options, env })
-    : new Deno.Command(program, {
-      ...options,
-      args,
-      env: { ...env, ...QUIET_DENO_ENV, [FORWARDED_ENV]: "1" },
-    }).spawn();
+    ? spawnDeno(args, {
+      cwd: root,
+      stdin: "inherit",
+      stdout: "inherit",
+      stderr: "inherit",
+      env,
+    })
+    : ProcessTasks.spawn(program, (s) => {
+      s.args(...args).cwd(root).stdin("inherit").stdout("inherit")
+        .stderr("inherit");
+      const childEnv = { ...env, ...QUIET_DENO_ENV, [FORWARDED_ENV]: "1" };
+      for (const [name, value] of Object.entries(childEnv)) s.env(name, value);
+      return s;
+    });
   const plan = signalPlan(child);
   for (const [signal, handler] of plan) {
-    Deno.addSignalListener(signal, handler);
+    ProcessTasks.addSignalListener(signal, handler);
   }
   try {
     const { code } = await child.status;
     return code;
   } finally {
     for (const [signal, handler] of plan) {
-      Deno.removeSignalListener(signal, handler);
+      ProcessTasks.removeSignalListener(signal, handler);
     }
   }
 };

@@ -19,6 +19,7 @@ import {
   mergeMcpConfig,
   parseMcpConfig,
 } from "./mcp_config.ts";
+import { FileTasks } from "@zuke/core";
 import { isRecord } from "./records.ts";
 import {
   assertBuildFileName,
@@ -29,7 +30,7 @@ import {
 import { launcherBash, launcherPwsh } from "./launcher.ts";
 import { binaryLauncherBash, binaryLauncherPwsh } from "./binary_launcher.ts";
 import type { BinaryPin } from "./binary_pin.ts";
-import { exists, lstatOrNull } from "./fs.ts";
+import { lstatOrNull } from "./fs.ts";
 import { output } from "./output.ts";
 import {
   PYTHON_BUILD_FILE,
@@ -282,7 +283,7 @@ export interface SetupHost {
  * as a symlink instead of as whatever it points at.
  */
 export const defaultHost: SetupHost = {
-  exists,
+  exists: (path) => FileTasks.exists(path),
   async isDirectory(path: string): Promise<boolean> {
     return (await lstatOrNull(path))?.isDirectory === true;
   },
@@ -290,7 +291,7 @@ export const defaultHost: SetupHost = {
     return (await lstatOrNull(path))?.isSymlink === true;
   },
   readText(path: string): Promise<string> {
-    return Deno.readTextFile(path);
+    return FileTasks.readText(path);
   },
   async writeText(path: string, content: string): Promise<void> {
     // Write beside the destination and rename into place, rather than writing
@@ -301,16 +302,16 @@ export const defaultHost: SetupHost = {
     // itself be a link someone left waiting.
     const temp = `${path}.zuke-${crypto.randomUUID().slice(0, 8)}.tmp`;
     try {
-      await Deno.writeTextFile(temp, content, { createNew: true });
-      await Deno.rename(temp, path);
+      await FileTasks.writeText(temp, content, (s) => s.createNew());
+      await FileTasks.move(temp, path);
     } catch (error) {
       // Best effort: a failed write may not have created the file at all.
-      await Deno.remove(temp).catch(() => {});
+      await FileTasks.remove(temp).catch(() => {});
       throw error;
     }
   },
   chmod(path: string, mode: number): Promise<void> {
-    return Deno.chmod(path, mode);
+    return FileTasks.chmod(path, mode);
   },
   log(message: string): void {
     output.info(message);

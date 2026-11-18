@@ -39,7 +39,13 @@
  * @module
  */
 
-import { absolutePath, httpJson, lockedJsrSpecifiers } from "@zuke/core";
+import {
+  absolutePath,
+  FileTasks,
+  httpJson,
+  lockedJsrSpecifiers,
+  RuntimeTasks,
+} from "@zuke/core";
 import { type BinaryPin, resolveBinaryPin } from "./binary_pin.ts";
 import { runDenoIsolated } from "./deno_isolated.ts";
 import type { CliPaint } from "./paint.ts";
@@ -100,10 +106,10 @@ export interface UpgradeHost extends InstallHost {
 
 /** The real {@link UpgradeHost}: `Deno.mainModule`, JSR, and `deno install`. */
 export const defaultUpgradeHost: UpgradeHost = {
-  standalone: () => Deno.build.standalone,
-  mainModule: () => Deno.mainModule,
-  execPath: () => Deno.execPath(),
-  realPath: (path) => Deno.realPath(path),
+  standalone: () => RuntimeTasks.facts().standalone,
+  mainModule: () => RuntimeTasks.mainModule(),
+  execPath: () => RuntimeTasks.execPath(),
+  realPath: (path) => FileTasks.realPath(path),
   binDir: () => {
     const explicit = firstSet(defaultDenoHost, "DENO_INSTALL_ROOT");
     const home = firstSet(defaultDenoHost, "HOME", "USERPROFILE");
@@ -117,7 +123,7 @@ export const defaultUpgradeHost: UpgradeHost = {
   },
   exists: async (path) => {
     try {
-      await Deno.stat(path);
+      await FileTasks.stat(path);
       return true;
     } catch {
       return false;
@@ -128,7 +134,7 @@ export const defaultUpgradeHost: UpgradeHost = {
   binaryPin: (version) => resolveBinaryPin(version, fetch),
   install: (denoArgs) => runDenoIsolated(denoArgs, "zuke-upgrade-"),
   denoVersion: () => Deno.version.deno,
-  readText: (path) => Deno.readTextFile(path),
+  readText: (path) => FileTasks.readText(path),
 };
 
 /** Flags accepted by `zuke upgrade`. */

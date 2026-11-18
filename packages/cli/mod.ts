@@ -60,7 +60,12 @@ import {
   servingEngine,
 } from "./src/dispatch.ts";
 import type { EmbeddedEngine } from "./src/embedded_engine.ts";
-import { absolutePath, logoLines, resolveDocSpec } from "@zuke/core";
+import {
+  absolutePath,
+  logoLines,
+  resolveDocSpec,
+  RuntimeTasks,
+} from "@zuke/core";
 import { runDenoIsolated } from "./src/deno_isolated.ts";
 import { defaultDenoHost, firstSet } from "./src/deno_path.ts";
 import {
@@ -977,7 +982,9 @@ async function commandVersion(
       rows.push(["built-in", `@zuke/engine ${engine.version}`]);
     }
     // The binary's runtime is compiled in, not a Deno its user has or needs.
-    if (!Deno.build.standalone) rows.push(["deno", Deno.version.deno]);
+    if (!RuntimeTasks.facts().standalone) {
+      rows.push(["deno", Deno.version.deno]);
+    }
     rows.push(["platform", `${Deno.build.os}-${Deno.build.arch}`]);
     host.log(versionPanel(rows, paint));
   } else {
@@ -1235,5 +1242,5 @@ export function binaryMain(
 }
 
 if (import.meta.main) {
-  Deno.exit(await main(Deno.args));
+  Deno.exit(await main(RuntimeTasks.args()));
 }

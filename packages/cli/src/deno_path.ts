@@ -31,7 +31,17 @@
  * @module
  */
 
-import { type AbsolutePath, absolutePath, denoExecutable } from "@zuke/core";
+import {
+  type AbsolutePath,
+  absolutePath,
+  type ChildProcess,
+  denoExecutable,
+  EnvTasks,
+  FileTasks,
+  type ProcessStdio,
+  ProcessTasks,
+  RuntimeTasks,
+} from "@zuke/core";
 import { DENO_INSTALL_DOCS } from "./launcher.ts";
 
 /**
@@ -49,9 +59,9 @@ export interface DenoHost {
 
 /** The real, `Deno`-backed {@link DenoHost}. */
 export const defaultDenoHost: DenoHost = {
-  standalone: () => Deno.build.standalone,
-  env: (name) => Deno.env.get(name),
-  windows: () => Deno.build.os === "windows",
+  standalone: () => RuntimeTasks.facts().standalone,
+  env: (name) => EnvTasks.get(name),
+  windows: () => RuntimeTasks.os() === "windows",
 };
 
 /** The first of `names` with a non-empty value, or `undefined` if none has one. */
@@ -163,21 +173,33 @@ export class DenoNotFoundError extends Error {
 }
 
 /**
- * What {@link spawnDeno} accepts: `Deno.Command`'s options without the argv,
- * which is the caller's `args`. An `env` is added to the inherited
- * environment; it can never override {@link QUIET_DENO_ENV}'s update check,
- * nor the resolved Deno's directory on `PATH`, which only this function knows.
+ * What {@link spawnDeno} accepts: where the child runs and how its streams are
+ * connected, beside the argv, which is the caller's `args`. An `env` is added
+ * to the inherited environment; it can never override {@link QUIET_DENO_ENV}'s
+ * update check, nor the resolved Deno's directory on `PATH`, which only this
+ * function knows.
  */
-export type DenoSpawnOptions = Omit<Deno.CommandOptions, "args">;
+export interface DenoSpawnOptions {
+  /** The working directory. Omitted: this process's own. */
+  cwd?: string;
+  /** Variables added to the inherited environment. */
+  env?: Record<string, string>;
+  /** The child's stdin. Omitted: inherited. */
+  stdin?: ProcessStdio;
+  /** The child's stdout. Omitted: inherited. */
+  stdout?: ProcessStdio;
+  /** The child's stderr. Omitted: inherited. */
+  stderr?: ProcessStdio;
+}
 
 /**
  * Whether `cwd` still names a directory to spawn in — vacuously true when the
  * caller named none and the child inherits this process's own.
  */
-function cwdUsable(cwd: string | URL | undefined): boolean {
+function cwdUsable(cwd: string | undefined): boolean {
   if (cwd === undefined) return true;
   try {
-    return Deno.statSync(cwd).isDirectory;
+    return FileTasks.statSync(cwd).isDirectory;
   } catch {
     return false;
   }
@@ -199,16 +221,25 @@ export function spawnDeno(
   args: string[],
   options: DenoSpawnOptions = {},
   candidates: readonly string[] = denoCandidates(),
-): Deno.ChildProcess {
+): ChildProcess {
   const tried: string[] = [];
   for (const command of candidates) {
     tried.push(command);
     try {
-      return new Deno.Command(command, {
-        ...options,
-        args,
-        env: { ...options.env, ...QUIET_DENO_ENV, ...pathWithDeno(command) },
-      }).spawn();
+      return ProcessTasks.spawn(command, (s) => {
+        s.args(...args);
+        if (options.cwd !== undefined) s.cwd(options.cwd);
+        if (options.stdin !== undefined) s.stdin(options.stdin);
+        if (options.stdout !== undefined) s.stdout(options.stdout);
+        if (options.stderr !== undefined) s.stderr(options.stderr);
+        const env = {
+          ...options.env,
+          ...QUIET_DENO_ENV,
+          ...pathWithDeno(command),
+        };
+        for (const [name, value] of Object.entries(env)) s.env(name, value);
+        return s;
+      });
     } catch (error) {
       // Not installed here; the next candidate may be. Anything else — a
       // permission denial, a directory where the binary should be — is the
@@ -216,7 +247,7 @@ export function spawnDeno(
       // a `cwd` that is gone as `NotFound` as well, and no other Deno would
       // fix that: telling the user to install one they already have would send
       // them somewhere the problem is not.
-      if (!(error instanceof Deno.errors.NotFound)) throw error;
+      if (!FileTasks.isNotFound(error)) throw error;
       if (!cwdUsable(options.cwd)) throw error;
     }
   }

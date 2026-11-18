@@ -14,6 +14,7 @@
  * @module
  */
 
+import { FileTasks } from "@zuke/core";
 import { spawnDeno } from "./deno_path.ts";
 import {
   type BuildLocation,
@@ -49,15 +50,17 @@ export interface ProjectHost {
 export const defaultProjectHost: ProjectHost = {
   entry: async (path) => {
     try {
-      return (await Deno.lstat(path)).isFile ? "file" : "other";
+      return (await FileTasks.lstat(path)).isFile ? "file" : "other";
     } catch (error) {
-      if (error instanceof Deno.errors.NotFound) return "missing";
+      if (FileTasks.isNotFound(error)) return "missing";
       throw error;
     }
   },
-  readText: (path) => Deno.readTextFile(path),
-  writeText: (path, text) => Deno.writeTextFile(path, text),
-  remove: (path) => Deno.remove(path),
+  readText: (path) => FileTasks.readText(path),
+  writeText: (path, text) => FileTasks.writeText(path, text),
+  remove: async (path) => {
+    await FileTasks.remove(path);
+  },
   deno: async (denoArgs, cwd) => {
     const child = spawnDeno(denoArgs, {
       cwd,
