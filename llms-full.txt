@@ -30183,7 +30183,7 @@ interface ProvisioningHost
   writeFile(path: string, data: Uint8Array): Promise<void>
     Write a file, replacing one that exists.
   remove(path: string): Promise<void>
-    Remove a file.
+    Remove a file; one that is already gone is not an error.
   exists(path: string): Promise<boolean>
     Whether a file exists.
   home(): string
