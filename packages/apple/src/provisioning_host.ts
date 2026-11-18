@@ -18,7 +18,7 @@ export interface ProvisioningHost {
   makeDirectory(path: string): Promise<void>;
   /** Write a file, replacing one that exists. */
   writeFile(path: string, data: Uint8Array): Promise<void>;
-  /** Remove a file. */
+  /** Remove a file; one that is already gone is not an error. */
   remove(path: string): Promise<void>;
   /** Whether a file exists. */
   exists(path: string): Promise<boolean>;

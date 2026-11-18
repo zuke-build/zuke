@@ -292,3 +292,28 @@ Deno.test("download: an output that is a directory fails and leaves no partial f
   );
   assertEquals(await entries(dir), ["zuke.exe"]);
 });
+
+Deno.test("download: a partial path someone else holds is left alone, and the body released", async () => {
+  // Regression (adversarial review): the partial file is opened once, with an
+  // exclusive create, so a path already taken is refused rather than written
+  // through, and is never removed as if it were this download's own.
+  const { dir } = await target();
+  const fixed = "00000000-0000-4000-8000-000000000000";
+  const original = crypto.randomUUID;
+  crypto.randomUUID = () => fixed;
+  try {
+    const held = `${dir}/zuke.exe.${fixed}.partial`;
+    await Deno.writeTextFile(held, "theirs");
+    let cancelled = false;
+    const net = fakeFetch(() =>
+      new Response(
+        new ReadableStream({ cancel: () => void (cancelled = true) }),
+      )
+    );
+    await assertRejects(() => download(net, `${dir}/zuke.exe`));
+    assertEquals(cancelled, true);
+    assertEquals(await Deno.readTextFile(held), "theirs");
+  } finally {
+    crypto.randomUUID = original;
+  }
+});

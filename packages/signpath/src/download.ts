@@ -163,34 +163,44 @@ export async function downloadSignedArtifact(
   try {
     const parent = parentOf(output);
     if (parent !== undefined) await FileTasks.createDirectory(parent);
-    // Claim the partial path first, so a path already taken fails here and
-    // is never removed below as if it were this download's own.
-    await FileTasks.writeBytes(partial, new Uint8Array(), (s) => s.createNew());
   } catch (error) {
     // Release the connection: the body will never be read.
     await response.body?.cancel();
     throw error;
   }
+  const limit = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      bytes += chunk.byteLength;
+      if (bytes > max) {
+        oversized = true;
+        controller.error(new Error("oversized"));
+        return;
+      }
+      controller.enqueue(chunk);
+    },
+  });
+  // No body is an empty artifact.
+  const body = response.body ?? new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.close();
+    },
+  });
   try {
-    const limit = new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        bytes += chunk.byteLength;
-        if (bytes > max) {
-          oversized = true;
-          controller.error(new Error("oversized"));
-          return;
-        }
-        controller.enqueue(chunk);
-      },
-    });
-    if (response.body !== null) {
-      await StreamTasks.toFile(partial, response.body.pipeThrough(limit));
-    }
+    // One exclusive open, which never follows a link: a partial path already
+    // taken fails here, and the body is cancelled for it.
+    await StreamTasks.toFile(
+      partial,
+      body.pipeThrough(limit),
+      (s) => s.createNew(),
+    );
     await FileTasks.move(partial, output);
   } catch (error) {
-    // The file is closed by now, whether the stream or the write failed, so
-    // Windows lets the partial file be removed.
-    await FileTasks.remove(partial).catch(() => {});
+    // A partial path someone else holds is theirs, never removed here. Any
+    // other failure leaves this download's own partial file, closed by now
+    // so Windows lets it be removed.
+    if (!alreadyExists(error)) {
+      await FileTasks.remove(partial).catch(() => {});
+    }
     if (oversized) {
       throw new SignPathRequestError(
         "GET",
@@ -202,4 +212,9 @@ export async function downloadSignedArtifact(
     throw failure(connection, outgoing, error, signal);
   }
   return { path: output, bytes };
+}
+
+/** Whether `error` means the path was already taken, on any runtime. */
+function alreadyExists(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "EEXIST";
 }
