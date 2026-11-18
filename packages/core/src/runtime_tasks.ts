@@ -3,8 +3,10 @@
 
 /**
  * `RuntimeTasks`: what a package asks about the process it runs in — which
- * runtime, which operating system, where the executable is, which module
- * started it and with what arguments — answered the same on every runtime.
+ * runtime, which operating system and architecture, where the executable is,
+ * which module started it and with what arguments, where it works and whether
+ * a stream is a terminal — answered the same on every runtime, and how it
+ * exits.
  *
  * @module
  */
@@ -20,6 +22,15 @@ import {
 } from "./runtime.ts";
 
 export type { RuntimeFacts } from "./runtime.ts";
+
+/** A standard stream of the process, for {@link RuntimeTasksApi.isTerminal}. */
+export type StandardStream = "stdin" | "stdout" | "stderr";
+
+/** Node's `process.arch` names that differ from Deno's `Deno.build.arch`. */
+const ARCH_NAMES: Readonly<Record<string, string>> = {
+  x64: "x86_64",
+  arm64: "aarch64",
+};
 
 /** The shape of {@link RuntimeTasks}. */
 export interface RuntimeTasksApi {
@@ -40,6 +51,21 @@ export interface RuntimeTasksApi {
 
   /** The id of the user this process runs as, or `null` on Windows. */
   userId(): number | null;
+
+  /**
+   * The CPU architecture, by the names Deno uses: `x86_64`, `aarch64`, …
+   * Another runtime's name for the same architecture is mapped to Deno's.
+   */
+  arch(): string;
+
+  /** The process's current working directory. */
+  cwd(): string;
+
+  /** Whether `stream` is connected to a terminal. */
+  isTerminal(stream: StandardStream): boolean;
+
+  /** End the process with exit `code`. */
+  exit(code: number): never;
 }
 
 /** Facts about the running process, on whichever runtime it is. */
@@ -66,5 +92,21 @@ export const RuntimeTasks: RuntimeTasksApi = {
 
   userId(): number | null {
     return userId();
+  },
+
+  arch(): string {
+    return ARCH_NAMES[process.arch] ?? process.arch;
+  },
+
+  cwd(): string {
+    return process.cwd();
+  },
+
+  isTerminal(stream: StandardStream): boolean {
+    return process[stream].isTTY === true;
+  },
+
+  exit(code: number): never {
+    return process.exit(code);
   },
 };

@@ -5451,6 +5451,15 @@ interface RuntimeTasksApi
     The arguments the process was started with, after the module.
   userId(): number | null
     The id of the user this process runs as, or `null` on Windows.
+  arch(): string
+    The CPU architecture, by the names Deno uses: `x86_64`, `aarch64`, …
+    Another runtime's name for the same architecture is mapped to Deno's.
+  cwd(): string
+    The process's current working directory.
+  isTerminal(stream: StandardStream): boolean
+    Whether `stream` is connected to a terminal.
+  exit(code: number): never
+    End the process with exit `code`.
 
 interface S3CacheStoreOptions
   Configuration for an {@link S3CacheStore}.
@@ -6184,6 +6193,9 @@ type RunStatus = "running" | "suspended" | "cancelling" | "succeeded" | "failed"
   The lifecycle status of a whole run. `cancelling` is the transient state a
   cancellation moves through — the run has been asked to stop and its
   compensations are running — before it settles as `cancelled`.
+
+type StandardStream = "stdin" | "stdout" | "stderr"
+  A standard stream of the process, for {@link RuntimeTasksApi.isTerminal}.
 
 type SummaryPairs = Readonly<Record<string, SummaryValue>>
   The notes a target reports, keyed by their label — `{ Passed: 837, Failed: 0 }`.

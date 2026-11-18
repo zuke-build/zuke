@@ -41,6 +41,11 @@ class RuntimeTasksBuild extends Build {
     );
     const entries = await FileTasks.readDirectory(staging);
     seen.push(`staged ${entries.map((entry) => entry.name).join(",")}`);
+    seen.push(
+      `in ${RuntimeTasks.cwd() === Deno.cwd()} on ${
+        RuntimeTasks.arch() === Deno.build.arch
+      }`,
+    );
   });
 
   run = target().dependsOn(this.stage).executes(async () => {
@@ -82,6 +87,7 @@ Deno.test("a build stages, runs and talks through core's runtime tasks", async (
     assertEquals(code, 0, err);
     assertEquals(seen, [
       "staged payload.txt",
+      "in true on true",
       "child said streamed!",
       "socket carried streamed",
     ]);

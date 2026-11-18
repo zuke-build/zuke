@@ -83,6 +83,12 @@ assert.equal(EnvTasks.get("ZUKE_CANARY_VALUE"), "set");
 assert.equal(RuntimeTasks.facts().name, "node");
 assert.equal(RuntimeTasks.execPath(), process.execPath);
 assert.deepEqual(RuntimeTasks.args(), process.argv.slice(2));
+assert.equal(RuntimeTasks.cwd(), process.cwd());
+assert.equal(
+  RuntimeTasks.arch(),
+  { x64: "x86_64", arm64: "aarch64" }[process.arch] ?? process.arch,
+);
+assert.equal(RuntimeTasks.isTerminal("stdin"), process.stdin.isTTY === true);
 
 const output = await ProcessTasks.run(
   process.execPath,
