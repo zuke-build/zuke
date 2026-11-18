@@ -40,6 +40,7 @@
  */
 
 import { Peer, RpcFailure } from "../src/peer.ts";
+import { connect } from "./_conn.ts";
 import { isRecord } from "../src/protocol.ts";
 
 interface Script {
@@ -232,8 +233,8 @@ if (HANGUP_FILE !== undefined && Deno.build.os !== "windows") {
   });
 }
 
-const [hostname, port] = (Deno.env.get("ZUKE_ENGINE_ADDR") ?? "").split(":");
-const conn = await Deno.connect({ hostname, port: Number(port) });
+const [, port] = (Deno.env.get("ZUKE_ENGINE_ADDR") ?? "").split(":");
+const conn = await connect(Number(port));
 const peer = new Peer(conn);
 peer.on("build.describe", () => PLAN);
 peer.on("build.configure", (params) => {

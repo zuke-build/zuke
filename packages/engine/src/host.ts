@@ -19,6 +19,9 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
+  type ChildProcess,
+  NetTasks,
+  ProcessTasks,
   redactLine,
   type TargetContext,
   type TargetStateHandle,
@@ -226,7 +229,7 @@ function after(ms: number): Promise<false> {
   return new Promise((resolve) => setTimeout(() => resolve(false), ms));
 }
 
-function signal(child: Deno.ChildProcess, name: Deno.Signal): void {
+function signal(child: ChildProcess, name: "SIGTERM" | "SIGKILL"): void {
   try {
     child.kill(name);
   } catch {
@@ -239,7 +242,7 @@ function signal(child: Deno.ChildProcess, name: Deno.Signal): void {
  * grace period, so a worker that ignores the first never stalls the caller.
  */
 async function stopChild(
-  child: Deno.ChildProcess,
+  child: ChildProcess,
   graceMs: number,
 ): Promise<void> {
   const exited = child.status.then(() => true);
@@ -274,7 +277,7 @@ class WorkerOutput {
 
 /** One spawned worker: its process, connection and greeting. */
 interface Worker {
-  readonly child: Deno.ChildProcess;
+  readonly child: ChildProcess;
   readonly peer: Peer;
   readonly hello: Hello;
   readonly background: Promise<unknown>;
@@ -295,20 +298,17 @@ async function spawn(
   if (program === undefined) {
     throw new Error("zuke: sdk.command in zuke.json must not be empty");
   }
-  const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
+  const listener = await NetTasks.listen((s) => s.hostname("127.0.0.1"));
   const token = crypto.randomUUID();
-  const child = new Deno.Command(program, {
-    args,
-    cwd: options.cwd,
-    env: {
-      ZUKE_ENGINE_ADDR: `127.0.0.1:${listener.addr.port}`,
-      ZUKE_ENGINE_TOKEN: token,
-      ZUKE_PROTOCOL: String(PROTOCOL_VERSION),
-    },
-    stdin: "null",
-    stdout: "piped",
-    stderr: "piped",
-  }).spawn();
+  const child = ProcessTasks.spawn(program, (s) =>
+    s.args(...args)
+      .cwd(options.cwd)
+      .env("ZUKE_ENGINE_ADDR", `127.0.0.1:${listener.port}`)
+      .env("ZUKE_ENGINE_TOKEN", token)
+      .env("ZUKE_PROTOCOL", String(PROTOCOL_VERSION))
+      .stdin("null")
+      .stdout("piped")
+      .stderr("piped"));
   // The worker's own output is the build's log, never the protocol, and it
   // goes to stderr so `--list --json` on stdout stays machine-readable.
   const write = (line: string) => output.write(line);
@@ -344,7 +344,6 @@ async function spawn(
   try {
     const conn = await Promise.race([listener.accept(), timeout, died]);
     listener.close();
-    conn.setNoDelay(true);
     const connected = new Peer(conn);
     peer = connected;
     const hello = new Promise<Hello>((resolve, reject) => {
