@@ -46,7 +46,7 @@ import {
 import { DenoTasks } from "@zuke/deno";
 import { NpmTasks } from "@zuke/npm";
 import { $ } from "@zuke/core/shell";
-import { messageOf } from "./packages/core/src/internal.ts";
+import { delay, messageOf } from "./packages/core/src/internal.ts";
 import { CspellTasks } from "@zuke/cspell";
 import { CodecovTasks } from "@zuke/codecov";
 import { isPublished } from "@zuke/jsr";
@@ -177,7 +177,7 @@ import {
   resolveBaseRef,
 } from "./build/plugin_version_check.ts";
 import { actionPin } from "./build/action_pins.ts";
-import { buildNpm } from "./build/npm_build.ts";
+import { buildNpm, installNpmToolchain, NPM_TOOLS } from "./build/npm_build.ts";
 import {
   consumerManifest,
   SMOKE_BUILD,
@@ -191,10 +191,13 @@ import {
   changedSinceRelease,
   failures,
   readTree,
+  REAL_NPM,
   registrySource,
   RELEASE_PROVENANCE,
-  verifyPackage,
-  type VerifyResult,
+  sigstorePolicy,
+  sigstoreVerifier,
+  slsaBundle,
+  verifyAll,
 } from "./build/npm_verify.ts";
 import { scannerConfigDenial } from "./build/scanner_policy.ts";
 import {
@@ -1109,6 +1112,56 @@ class ZukeBuild extends Build {
       ConsoleTasks.success("The npm build installs and runs under Node.");
     });
 
+  // The fixture is sigstore@5.0.1's real attestation: it must verify under its
+  // own identity and be refused under ours, and under its own with another
+  // commit. It fetches Sigstore's trusted root over TUF, so it needs the
+  // network, as npmSmoke needs the registry.
+  npmSigstoreCheck = target()
+    .description(
+      "Check that sigstore-js verifies a real npm attestation under its own identity and refuses ours",
+    )
+    .executes(async () => {
+      const work = absolutePath(
+        await FileTasks.makeTempDirectory((s) => s.prefix("zuke-sigstore-")),
+      );
+      try {
+        await installNpmToolchain();
+        const verify = sigstoreVerifier(NPM_TOOLS, work);
+        const fixture = await FileTasks.readJson(
+          "tests/fixtures/npm_attestation_sigstore-5.0.1.json",
+        );
+        const bundle = slsaBundle(fixture);
+        const theirs = {
+          repository: "https://github.com/sigstore/sigstore-js",
+          path: ".github/workflows/release.yml",
+          ref: "refs/heads/main",
+          commit: "4576519f81b93bf96bd7457fc7252b8cfa11e67f",
+        };
+        await verify(bundle, sigstorePolicy(theirs));
+        for (
+          const wrong of [
+            { ...RELEASE_PROVENANCE, commit: theirs.commit },
+            { ...theirs, commit: "0".repeat(40) },
+          ]
+        ) {
+          const accepted = await verify(bundle, sigstorePolicy(wrong)).then(
+            () => true,
+            () => false,
+          );
+          if (accepted) {
+            throw new Error(
+              `sigstore-js accepted the attestation for ${wrong.repository}@${wrong.commit}.`,
+            );
+          }
+        }
+        ConsoleTasks.success(
+          "sigstore-js verifies the real attestation, and refuses another identity or commit.",
+        );
+      } finally {
+        await FileTasks.remove(work, { recursive: true });
+      }
+    });
+
   ci = target()
     .description("Full pre-commit / CI gate")
     .dependsOn(
@@ -1131,6 +1184,7 @@ class ZukeBuild extends Build {
       this.prBodyLint,
       this.actionPinCheck,
       this.npmSmoke,
+      this.npmSigstoreCheck,
       // In the gate now that the scanners are provisioned by the `tools`
       // toolchain rather than assumed on PATH — the reason it used to be
       // excluded. The dedicated security workflow still runs it separately,
@@ -2161,7 +2215,8 @@ class ZukeBuild extends Build {
     });
 
   allowNone = parameter(
-    "npmVerify: succeed even when no package version is on npm to compare",
+    "npmVerify: for a checkout whose versions were never published: report " +
+      "a version missing from npm and skip it, and succeed if none was compared",
   ).boolean();
 
   npmVerify = target()
@@ -2175,28 +2230,26 @@ class ZukeBuild extends Build {
       );
       try {
         await buildNpm(NPM_PACKAGES, work("dist"));
-        const source = registrySource(work);
-        const results = new Map<string, VerifyResult>();
-        const verified = new Map<string, string>();
+        const versions = new Map<string, string>();
         for (const pkg of NPM_PACKAGES) {
           const version = await localVersion(pkg);
-          if (version === "0.0.0") continue;
-          const changed = await changedSinceRelease(pkg, version);
-          const result: VerifyResult = changed !== null
-            ? { status: "skipped", reason: changed }
-            : await verifyPackage(
-              pkg,
-              version,
-              await readTree(String(work("dist", pkg))),
-              source,
-              {
-                ...RELEASE_PROVENANCE,
-                commit: await builtCommit(pkg, version),
-              },
-            );
-          results.set(pkg, result);
-          if (result.status === "match") verified.set(pkg, version);
-          const line = `@zuke-build/${pkg}@${version}`;
+          if (version !== "0.0.0") versions.set(pkg, version);
+        }
+        const project = work("consumer");
+        const results = await verifyAll(versions, {
+          source: registrySource(sigstoreVerifier(NPM_TOOLS, work)),
+          npm: REAL_NPM,
+          project,
+          rebuilt: (pkg) => readTree(String(work("dist", pkg))),
+          skipReason: changedSinceRelease,
+          commitOf: builtCommit,
+          allowMissing: this.allowNone.value,
+          // The registry's caches can lag a publish by a few minutes.
+          attempts: 5,
+          wait: () => delay(30_000),
+        });
+        for (const [pkg, result] of results) {
+          const line = `@zuke-build/${pkg}@${result.version}`;
           if (result.status === "match") {
             ConsoleTasks.success(`${line} is what this commit compiles to.`);
           } else if (result.status === "skipped") {
@@ -2216,11 +2269,12 @@ class ZukeBuild extends Build {
             }`,
           );
         }
-        if (verified.size > 0) {
-          await auditSignatures(work("consumer"), verified);
-        }
+        const verified = [...results.values()].filter((r) =>
+          r.status === "match"
+        ).length;
+        if (verified > 0) await auditSignatures(project);
         ConsoleTasks.success(
-          `Verified ${verified.size} npm package(s) against a rebuild.`,
+          `Verified ${verified} npm package(s) against a rebuild.`,
         );
       } finally {
         await FileTasks.remove(work, { recursive: true });

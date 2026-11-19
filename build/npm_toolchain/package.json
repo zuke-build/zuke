@@ -1,10 +1,11 @@
 {
   "name": "zuke-npm-toolchain",
   "private": true,
-  "description": "The compiler and ambient types the npm build uses (build/npm_build.ts). Pinned exactly; package-lock.json pins the rest.",
+  "description": "The compiler, ambient types and sigstore verifier the npm build and npmVerify use (build/npm_build.ts). Pinned exactly; package-lock.json pins the rest.",
   "devDependencies": {
     "@types/deno": "2.7.0",
     "@types/node": "24.19.2",
+    "sigstore": "5.0.1",
     "typescript": "7.0.2"
   }
 }

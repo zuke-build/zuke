@@ -3,76 +3,114 @@
 
 /**
  * The `npmVerify` target (`build.ts`): check that what is on npm under
- * `@zuke-build/<name>` is exactly what this checkout compiles to.
+ * `@zuke-build/<name>` is exactly what this checkout compiles to, and that the
+ * workflow that published it is this repository's release workflow.
  *
- * For each package the registry's tarball is downloaded, checked against the
- * `dist.integrity` the registry document states, unpacked, and compared with a
- * fresh `buildNpm` of the checkout: the same set of files, the same bytes. The
- * one exception is `package.json`, compared as parsed JSON, because npm is free
- * to re-serialise it on publish (an npm 10 `npm pack` of a local build stores it
- * byte for byte today, but nothing promises that), and its content is what
- * matters. The registry and the network are behind {@link NpmSource}, so every
+ * What is compared is what npm itself unpacks. The verified versions are
+ * installed from the registry with `npm install --ignore-scripts`, and the
+ * installed package directories are compared with a fresh `buildNpm` of the
+ * checkout: the same set of files, the same bytes. Nothing here parses a tarball,
+ * so a tarball crafted to read differently under another tar implementation
+ * cannot make the check see something other than what is installed. The one
+ * file compared by value is `package.json` (parsed JSON), in case a newer npm
+ * re-serialises it; npm 10 leaves it, and every other file, byte for byte.
+ *
+ * What ties the installed bytes to the commit, in order:
+ * 1. the registry's `dist.integrity` of the version (npm checks the tarball
+ *    against it while installing, and the lockfile it writes must record it);
+ * 2. the SLSA provenance statement of the version, whose subject digest must be
+ *    that same sha512, whose workflow must be this repository's `release.yml` on
+ *    `refs/heads/master`, and whose commit must be the one rebuilt from;
+ * 3. the Sigstore bundle carrying that statement, verified here with
+ *    sigstore-js ({@link sigstorePolicy}): the signature, the transparency log,
+ *    and a certificate whose issuer, identity, repository, ref and commit are
+ *    ours. The statement's fields are written by the signer, so only the
+ *    certificate, which Fulcio issues to the workflow's OIDC token, can vouch
+ *    for them.
+ *
+ * `npm audit signatures` ({@link auditSignatures}) then checks the registry's
+ * own signatures. Registry, git, npm and Sigstore are behind seams, so every
  * decision here runs against fakes.
- *
- * Provenance is mandatory. Each version must carry an npm SLSA provenance
- * attestation, and its signed statement must name the exact bytes compared, the
- * repository and workflow that built it, and (for a package compared at its own
- * checkout) the commit rebuilt from. The signatures themselves are not checked
- * here: that is `npm audit signatures`' job ({@link auditSignatures}). This
- * module checks what the signed statement says; npm checks that it is signed.
  */
 
-import {
-  type AbsolutePath,
-  FileTasks,
-  gunzip,
-  httpDownload,
-  HttpError,
-  httpJson,
-  type TarEntry,
-  untar,
-} from "@zuke/core";
+import { type AbsolutePath, FileTasks, HttpError, httpJson } from "@zuke/core";
 import { GitTasks } from "@zuke/git";
+import { NodeTasks } from "@zuke/node";
 import { NpmTasks } from "@zuke/npm";
 import { messageOf } from "../packages/core/src/internal.ts";
 import { NPM_SCOPE } from "./npm_manifest.ts";
 
-/** What the registry says about one version: where its tarball is, and its hash. */
+/** What the registry says about one version. */
 export interface NpmDist {
-  /** The tarball's URL. */
-  tarball: string;
   /** Its Subresource Integrity string, e.g. `sha512-<base64>`. */
   integrity: string;
   /** Where its attestations are, or `null` when it declares no SLSA provenance. */
   attestations: string | null;
 }
 
-/** What a provenance attestation must say. */
+/** What a provenance attestation and its certificate must say. */
 export interface ExpectedProvenance {
   /** The repository URL the workflow ran in. */
   repository: string;
   /** The workflow file's path in it. */
   path: string;
-  /** The commit it was built from, or `null` when this checkout is not that commit. */
-  commit: string | null;
+  /** The git ref it ran on. */
+  ref: string;
+  /** The commit it was built from. */
+  commit: string;
 }
 
-/** The workflow whose provenance npm must carry: this repository's release. */
+/** The workflow whose provenance npm must carry: this repository's release, on master. */
 export const RELEASE_PROVENANCE: Omit<ExpectedProvenance, "commit"> = {
   repository: "https://github.com/zuke-build/zuke",
   path: ".github/workflows/release.yml",
+  ref: "refs/heads/master",
 };
 
 const SLSA = "https://slsa.dev/provenance/v1";
+const GITHUB = "https://github.com/";
 
-/** The registry, as verification needs it. */
+/** The policy `verify_bundle.mjs` gives sigstore-js's `verify`. */
+export interface SigstorePolicy {
+  /** The OIDC issuer the certificate must name. */
+  certificateIssuer: string;
+  /** An anchored regular expression the certificate's identity must match. */
+  certificateIdentityURI: string;
+  /** Fulcio extension OIDs to the exact value they must carry. */
+  certificateOIDs: Record<string, string>;
+}
+
+/**
+ * The Sigstore policy for `expected`: issued to GitHub Actions' OIDC token, for
+ * exactly `<repository>/<path>@<ref>`, with the Fulcio extensions for the
+ * repository (`1.3.6.1.4.1.57264.1.5`), ref (`.1.6`) and commit (`.1.3`, the
+ * GitHub workflow SHA) equal to ours. All three are present, as raw strings, in
+ * the certificate of sigstore@5.0.1's real attestation. sigstore-js treats the
+ * identity as a regular expression, so it is escaped and anchored.
+ */
+export function sigstorePolicy(expected: ExpectedProvenance): SigstorePolicy {
+  const identity = `${expected.repository}/${expected.path}@${expected.ref}`;
+  return {
+    certificateIssuer: "https://token.actions.githubusercontent.com",
+    certificateIdentityURI: `^${
+      identity.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    }$`,
+    certificateOIDs: {
+      "1.3.6.1.4.1.57264.1.3": expected.commit,
+      "1.3.6.1.4.1.57264.1.5": expected.repository.slice(GITHUB.length),
+      "1.3.6.1.4.1.57264.1.6": expected.ref,
+    },
+  };
+}
+
+/** The registry and the signature check, as verification needs them. */
 export interface NpmSource {
   /** The registry document of `@zuke-build/<pkg>`, or `null` when it was never published. */
   document(pkg: string): Promise<unknown>;
-  /** The bytes at `url`. */
-  tarball(url: string): Promise<Uint8Array>;
   /** The attestations document at `url`. */
   attestations(url: string): Promise<unknown>;
+  /** Verify a Sigstore bundle against `policy`; rejects when it does not satisfy it. */
+  verifyBundle(bundle: unknown, policy: SigstorePolicy): Promise<void>;
 }
 
 /** How one package fared. */
@@ -87,58 +125,143 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** The `dist` of `version` in a registry document, or `null` when it is not there. */
+/**
+ * The `dist` of `version` in a registry document, or `null` when the version is
+ * not there.
+ *
+ * @throws {Error} when the version is there but its `dist` has no usable
+ * `tarball` and `integrity`: that is a broken registry document, not a version
+ * that is not published.
+ */
 export function distOf(document: unknown, version: string): NpmDist | null {
   if (!isRecord(document) || !isRecord(document.versions)) return null;
   const entry = document.versions[version];
-  if (!isRecord(entry) || !isRecord(entry.dist)) return null;
-  const { tarball, integrity, attestations } = entry.dist;
-  if (typeof tarball !== "string" || typeof integrity !== "string") {
-    return null;
+  if (entry === undefined) return null;
+  const dist = isRecord(entry) ? entry.dist : undefined;
+  if (
+    !isRecord(dist) || typeof dist.tarball !== "string" ||
+    typeof dist.integrity !== "string" || dist.integrity === ""
+  ) {
+    throw new Error(
+      `the registry lists ${version} without a usable dist.tarball and dist.integrity.`,
+    );
   }
+  const { attestations } = dist;
   const url = isRecord(attestations) && typeof attestations.url === "string" &&
       isRecord(attestations.provenance) &&
       attestations.provenance.predicateType === SLSA
     ? attestations.url
     : null;
-  return { tarball, integrity, attestations: url };
+  return { integrity: dist.integrity, attestations: url };
 }
 
-async function sha512(bytes: Uint8Array): Promise<Uint8Array> {
-  return new Uint8Array(
-    await crypto.subtle.digest("SHA-512", new Uint8Array(bytes)),
-  );
+/** The lowercase hex of the sha512 in an SRI string, or `null` when it has none. */
+export function sha512Hex(integrity: string): string | null {
+  const hash = integrity.split(/\s+/).find((h) => h.startsWith("sha512-"));
+  if (hash === undefined) return null;
+  try {
+    return Array.from(
+      atob(hash.slice("sha512-".length)),
+      (c) => c.charCodeAt(0).toString(16).padStart(2, "0"),
+    ).join("");
+  } catch {
+    return null;
+  }
+}
+
+/** The value at `path` in nested records, or `undefined`. */
+function dig(value: unknown, ...path: string[]): unknown {
+  let at = value;
+  for (const key of path) {
+    if (!isRecord(at)) return undefined;
+    at = at[key];
+  }
+  return at;
+}
+
+/** The Sigstore bundle of the SLSA provenance entry of an attestations document, if any. */
+export function slsaBundle(attestations: unknown): unknown {
+  const list = dig(attestations, "attestations");
+  const entry = Array.isArray(list)
+    ? list.find((e) => dig(e, "predicateType") === SLSA)
+    : undefined;
+  return dig(entry, "bundle");
 }
 
 /**
- * Why `bytes` does not match the SRI string `integrity`, or `null` when it
- * does. Only `sha512-` entries count; a string with none cannot vouch for
- * anything, so that is a problem too.
+ * What is wrong with the provenance statement in `bundle`, given the version's
+ * registry `integrity`; empty when it is right. It reads the in-toto statement
+ * the bundle carries and checks that it vouches for exactly that sha512 and
+ * names `expected`'s repository, workflow, ref and commit. It does not verify
+ * the signature: {@link NpmSource.verifyBundle} does, and only that makes the
+ * statement's claims the certificate's.
  */
-export async function integrityProblem(
-  bytes: Uint8Array,
+export function provenanceProblems(
+  bundle: unknown,
   integrity: string,
-): Promise<string | null> {
-  const wanted = integrity.split(/\s+/).filter((h) => h.startsWith("sha512-"));
-  if (wanted.length === 0) {
-    return `the registry's integrity "${integrity}" has no sha512 hash.`;
+  expected: ExpectedProvenance,
+): string[] {
+  const payload = dig(bundle, "dsseEnvelope", "payload");
+  if (typeof payload !== "string") {
+    return ["the attestations hold no SLSA provenance statement."];
   }
-  const actual = "sha512-" + btoa(String.fromCharCode(...await sha512(bytes)));
-  return wanted.includes(actual)
-    ? null
-    : `the tarball hashes to ${actual}, not the registry's ${integrity}.`;
-}
-
-/** A tarball's files by path with npm's `package/` prefix removed; directories dropped. */
-export function tarballFiles(
-  entries: readonly TarEntry[],
-): Map<string, Uint8Array> {
-  const files = new Map<string, Uint8Array>();
-  for (const entry of entries) {
-    if (entry.name.endsWith("/")) continue;
-    files.set(entry.name.replace(/^package\//, ""), entry.data);
+  let statement: unknown;
+  try {
+    statement = JSON.parse(
+      new TextDecoder().decode(
+        Uint8Array.from(atob(payload), (c) => c.charCodeAt(0)),
+      ),
+    );
+  } catch {
+    return ["the SLSA provenance statement is not readable."];
   }
-  return files;
+  const problems: string[] = [];
+  const subjects = dig(statement, "subject");
+  const wanted = sha512Hex(integrity);
+  if (
+    wanted === null || !Array.isArray(subjects) ||
+    !subjects.some((s) => dig(s, "digest", "sha512") === wanted)
+  ) {
+    problems.push(
+      "provenance: no subject has the sha512 of the registry's integrity.",
+    );
+  }
+  const workflow = dig(
+    statement,
+    "predicate",
+    "buildDefinition",
+    "externalParameters",
+    "workflow",
+  );
+  const keys: Array<"repository" | "path" | "ref"> = [
+    "repository",
+    "path",
+    "ref",
+  ];
+  for (const key of keys) {
+    if (dig(workflow, key) !== expected[key]) {
+      problems.push(
+        `provenance: workflow ${key} is ${String(dig(workflow, key))}, not ${
+          expected[key]
+        }.`,
+      );
+    }
+  }
+  const deps = dig(
+    statement,
+    "predicate",
+    "buildDefinition",
+    "resolvedDependencies",
+  );
+  const commit = Array.isArray(deps)
+    ? dig(deps[0], "digest", "gitCommit")
+    : undefined;
+  if (commit !== expected.commit) {
+    problems.push(
+      `provenance: built from ${String(commit)}, not ${expected.commit}.`,
+    );
+  }
+  return problems;
 }
 
 /** `value` with every object's keys sorted, so equal JSON serialises equally. */
@@ -166,20 +289,19 @@ function sameManifest(a: Uint8Array, b: Uint8Array): boolean {
 }
 
 /**
- * Every difference between the `published` files and the `rebuilt` ones, one
+ * Every difference between the `installed` files and the `rebuilt` ones, one
  * line each, sorted; empty when they agree. `package.json` agrees when its
- * parsed JSON does (npm may re-serialise it); every other file must match byte
- * for byte.
+ * parsed JSON does; every other file must match byte for byte.
  */
 export function compareFiles(
-  published: ReadonlyMap<string, Uint8Array>,
+  installed: ReadonlyMap<string, Uint8Array>,
   rebuilt: ReadonlyMap<string, Uint8Array>,
 ): string[] {
   const problems: string[] = [];
-  for (const [path, data] of published) {
+  for (const [path, data] of installed) {
     const local = rebuilt.get(path);
     if (local === undefined) {
-      problems.push(`${path}: on npm, not in the rebuild.`);
+      problems.push(`${path}: installed from npm, not in the rebuild.`);
     } else if (
       path === "package.json"
         ? !sameManifest(data, local)
@@ -189,14 +311,20 @@ export function compareFiles(
     }
   }
   for (const path of rebuilt.keys()) {
-    if (!published.has(path)) {
-      problems.push(`${path}: in the rebuild, not on npm.`);
+    if (!installed.has(path)) {
+      problems.push(`${path}: in the rebuild, not installed from npm.`);
     }
   }
   return problems.sort();
 }
 
-/** Every file under `dir` by its path relative to `dir`, with `/` separators. */
+/**
+ * Every file under `dir` by its path relative to `dir`, with `/` separators.
+ *
+ * @throws {Error} on anything that is neither a regular file nor a directory
+ * (a symlink, say): a package has none, and reading through one would compare
+ * something other than what is installed.
+ */
 export async function readTree(
   dir: string,
   prefix = "",
@@ -210,171 +338,18 @@ export async function readTree(
       ) {
         files.set(path, data);
       }
-    } else files.set(rel, await FileTasks.readBytes(`${dir}/${entry.name}`));
+    } else if (entry.isFile) {
+      files.set(rel, await FileTasks.readBytes(`${dir}/${entry.name}`));
+    } else throw new Error(`${rel} is not a regular file or a directory.`);
   }
   return files;
 }
 
-/** The value at `path` in nested records, or `undefined`. */
-function dig(value: unknown, ...path: string[]): unknown {
-  let at = value;
-  for (const key of path) {
-    if (!isRecord(at)) return undefined;
-    at = at[key];
-  }
-  return at;
-}
-
-/**
- * What is wrong with the provenance in `attestations` (the registry's
- * attestations document), given the sha512 of the tarball we hold, as hex;
- * empty when it is right. Reads the SLSA entry's in-toto statement and checks,
- * without verifying any signature, that it vouches for exactly these bytes
- * and names `expected`'s repository, workflow and (when set) commit.
- */
-export function provenanceProblems(
-  attestations: unknown,
-  tarballSha512: string,
-  expected: ExpectedProvenance,
-): string[] {
-  const list = dig(attestations, "attestations");
-  const entry = Array.isArray(list)
-    ? list.find((e) => dig(e, "predicateType") === SLSA)
-    : undefined;
-  const payload = dig(entry, "bundle", "dsseEnvelope", "payload");
-  if (typeof payload !== "string") {
-    return ["the attestations hold no SLSA provenance statement."];
-  }
-  let statement: unknown;
-  try {
-    statement = JSON.parse(new TextDecoder().decode(
-      Uint8Array.from(atob(payload), (c) => c.charCodeAt(0)),
-    ));
-  } catch {
-    return ["the SLSA provenance statement is not readable."];
-  }
-  const problems: string[] = [];
-  const subjects = dig(statement, "subject");
-  if (
-    !Array.isArray(subjects) ||
-    !subjects.some((s) => dig(s, "digest", "sha512") === tarballSha512)
-  ) {
-    problems.push(
-      "provenance: no subject has the sha512 of the tarball compared.",
-    );
-  }
-  const workflow = dig(
-    statement,
-    "predicate",
-    "buildDefinition",
-    "externalParameters",
-    "workflow",
-  );
-  if (dig(workflow, "repository") !== expected.repository) {
-    problems.push(
-      `provenance: built in ${
-        String(dig(workflow, "repository"))
-      }, not ${expected.repository}.`,
-    );
-  }
-  if (dig(workflow, "path") !== expected.path) {
-    problems.push(
-      `provenance: built by ${
-        String(dig(workflow, "path"))
-      }, not ${expected.path}.`,
-    );
-  }
-  const deps = dig(
-    statement,
-    "predicate",
-    "buildDefinition",
-    "resolvedDependencies",
-  );
-  const commit = Array.isArray(deps)
-    ? dig(deps[0], "digest", "gitCommit")
-    : undefined;
-  if (expected.commit !== null && commit !== expected.commit) {
-    problems.push(
-      `provenance: built from ${String(commit)}, not ${expected.commit}.`,
-    );
-  }
-  return problems;
-}
-
-/**
- * Compare `@zuke-build/<pkg>`@`version` on the registry with the rebuilt files
- * in `rebuilt`. A package or version that is not on the registry is skipped,
- * not failed, so the check works before the first publish. A version without
- * SLSA provenance fails, as does one whose provenance does not match `expected`.
- */
-export async function verifyPackage(
-  pkg: string,
-  version: string,
-  rebuilt: ReadonlyMap<string, Uint8Array>,
-  source: NpmSource,
-  expected: ExpectedProvenance,
-): Promise<VerifyResult> {
-  const document = await source.document(pkg);
-  if (document === null) {
-    return { status: "skipped", reason: "the package is not on npm." };
-  }
-  const dist = distOf(document, version);
-  if (dist === null) {
-    return { status: "skipped", reason: `version ${version} is not on npm.` };
-  }
-  const bytes = await source.tarball(dist.tarball);
-  const bad = await integrityProblem(bytes, dist.integrity);
-  if (bad !== null) return { status: "mismatch", problems: [bad] };
-  const problems = dist.attestations === null
-    ? ["the version has no SLSA provenance attestation."]
-    : provenanceProblems(
-      await source.attestations(dist.attestations),
-      Array.from(await sha512(bytes), (b) => b.toString(16).padStart(2, "0"))
-        .join(""),
-      expected,
-    );
-  problems.push(...compareFiles(
-    tarballFiles(untar(await gunzip(bytes))),
-    rebuilt,
-  ));
-  return problems.length === 0
-    ? { status: "match" }
-    : { status: "mismatch", problems };
-}
-
-/**
- * The failures to report, empty when the run is good: every mismatch, and, unless
- * `allowNone`, a run in which nothing was compared at all (a green result that
- * checked nothing is not one).
- */
-export function failures(
-  results: ReadonlyMap<string, VerifyResult>,
-  allowNone: boolean,
-): string[] {
-  const lines: string[] = [];
-  let compared = 0;
-  for (const [pkg, result] of results) {
-    if (result.status === "skipped") continue;
-    compared++;
-    if (result.status === "mismatch") {
-      lines.push(...result.problems.map((p) => `${NPM_SCOPE}/${pkg}: ${p}`));
-    }
-  }
-  if (compared === 0 && !allowNone) {
-    lines.push(
-      "nothing was compared: no package version of this checkout is on npm. " +
-        "Pass --allow-none if that is expected.",
-    );
-  }
-  return lines;
-}
-
-/** The real registry: `httpJson` for the document (404 is "never published"), `httpDownload` for tarballs. */
+/** The real registry: `httpJson` for documents (404 is "never published"). */
 export function registrySource(
-  scratch: AbsolutePath,
+  verifyBundle: NpmSource["verifyBundle"],
   doFetch: typeof fetch = fetch,
 ): NpmSource {
-  let count = 0;
   return {
     async document(pkg) {
       try {
@@ -387,12 +362,41 @@ export function registrySource(
         throw error;
       }
     },
-    async tarball(url) {
-      const file = scratch(`download-${count++}.tgz`);
-      await httpDownload(url, file, { fetch: doFetch });
-      return await FileTasks.readBytes(file);
-    },
     attestations: (url) => httpJson(url, { fetch: doFetch }),
+    verifyBundle,
+  };
+}
+
+/**
+ * Verify a bundle with sigstore-js under node: `verify_bundle.mjs`, run from
+ * `tools` (where the toolchain, and so sigstore-js, is installed), with the
+ * policy as JSON. The first run fetches Sigstore's trusted root over TUF into
+ * `scratch`, so it needs the network.
+ */
+export function sigstoreVerifier(
+  tools: AbsolutePath,
+  scratch: AbsolutePath,
+): NpmSource["verifyBundle"] {
+  let count = 0;
+  return async (bundle, policy) => {
+    const id = count++;
+    const bundleFile = scratch(`bundle-${id}.json`);
+    const policyFile = scratch(`policy-${id}.json`);
+    await FileTasks.writeText(bundleFile, JSON.stringify(bundle));
+    await FileTasks.writeText(policyFile, JSON.stringify(policy));
+    try {
+      await NodeTasks.run((s) =>
+        s.cwd(tools).script(tools("verify_bundle.mjs")).scriptArgs(
+          String(bundleFile),
+          String(policyFile),
+          String(scratch("tuf")),
+        )
+      );
+    } catch (error) {
+      throw new Error(
+        `the Sigstore bundle did not verify: ${messageOf(error)}`,
+      );
+    }
   };
 }
 
@@ -437,9 +441,23 @@ export async function changedSinceRelease(
     : `packages/${pkg} has changed since ${tag}; check out the tag to verify it.`;
 }
 
-/** The two npm commands {@link auditSignatures} runs; each throws on failure. */
+/**
+ * The commit `pkg`@`version`'s provenance must name: its release tag's commit
+ * when this clone has the tag (the version was built there, and
+ * {@link changedSinceRelease} has said the package is unchanged since), else
+ * the commit checked out, which is the release itself when run on a tag.
+ */
+export async function builtCommit(
+  pkg: string,
+  version: string,
+  git: GitProbe = GIT,
+): Promise<string> {
+  return await git.tagCommit(`${pkg}-v${version}`) ?? await git.head();
+}
+
+/** The npm commands verification runs; each throws on failure. */
 export interface NpmProbe {
-  /** Install `specs` into `project` without running scripts. */
+  /** Install exactly `specs` (`@zuke-build/<pkg>@<version>`) into `project` without running scripts. */
   install(project: AbsolutePath, specs: string[]): Promise<void>;
   /** `npm audit signatures` in `project`. */
   auditSignatures(project: AbsolutePath): Promise<void>;
@@ -456,42 +474,233 @@ const NPM: NpmProbe = {
   },
 };
 
+/** What {@link verifyAll} needs to know about the world. */
+export interface VerifyDeps {
+  /** The registry and the signature check. */
+  source: NpmSource;
+  /** npm. */
+  npm: NpmProbe;
+  /** The scratch project the versions are installed into. */
+  project: AbsolutePath;
+  /** The rebuilt files of a package. */
+  rebuilt(pkg: string): Promise<ReadonlyMap<string, Uint8Array>>;
+  /** Why a package cannot be compared in this checkout, or `null`. */
+  skipReason(pkg: string, version: string): Promise<string | null>;
+  /** The commit a version's provenance must name. */
+  commitOf(pkg: string, version: string): Promise<string>;
+  /**
+   * Whether a version missing from npm is reported and skipped rather than
+   * failed: for a checkout whose versions were never published.
+   */
+  allowMissing: boolean;
+  /** How many times a missing version is looked for before it is a failure. */
+  attempts: number;
+  /** Wait between those attempts, for the registry's caches to catch up. */
+  wait(): Promise<void>;
+}
+
+/** What looking a version up on the registry found: its `dist`, or why there is none. */
+type Lookup =
+  & { version: string }
+  & ({ dist: NpmDist } | { missing: string } | { broken: string });
+
 /**
- * Install the verified versions from the registry into a scratch project and
- * run `npm audit signatures` there: the registry signatures (and the
- * provenance attestations, where a version has them) of the packages and
- * everything they depend on. Fails if any is missing or invalid. This is where
- * the signatures are verified; {@link provenanceProblems} only reads the
- * statement they sign.
+ * Look every package in `wanted` up, and look again, in passes with one wait
+ * between them (the registry's caches can lag a publish), at the ones that are
+ * missing, up to `attempts` passes (one when `allowMissing`). A version that
+ * is listed but broken is final at once.
+ */
+async function lookupAll(
+  wanted: ReadonlyMap<string, string>,
+  deps: VerifyDeps,
+): Promise<Map<string, Lookup>> {
+  const found = new Map<string, Lookup>();
+  const passes = deps.allowMissing ? 1 : deps.attempts;
+  for (let pass = 1; pass <= passes; pass++) {
+    for (const [pkg, version] of wanted) {
+      const prior = found.get(pkg);
+      if (prior !== undefined && !("missing" in prior)) continue;
+      try {
+        const document = await deps.source.document(pkg);
+        const dist = distOf(document, version);
+        found.set(
+          pkg,
+          dist !== null ? { version, dist } : {
+            version,
+            missing: document === null
+              ? "the package is not on npm."
+              : `version ${version} is not on npm.`,
+          },
+        );
+      } catch (error) {
+        found.set(pkg, { version, broken: messageOf(error) });
+      }
+    }
+    const missing = [...found.values()].some((l) => "missing" in l);
+    if (!missing || pass === passes) break;
+    await deps.wait();
+  }
+  return found;
+}
+
+/** What the provenance of a version says, before anything is installed. */
+async function checkProvenance(
+  pkg: string,
+  version: string,
+  dist: NpmDist,
+  deps: VerifyDeps,
+): Promise<{ dist: NpmDist } | VerifyResult> {
+  if (dist.attestations === null) {
+    return {
+      status: "mismatch",
+      problems: ["the version has no SLSA provenance attestation."],
+    };
+  }
+  const bundle = slsaBundle(await deps.source.attestations(dist.attestations));
+  const expected = {
+    ...RELEASE_PROVENANCE,
+    commit: await deps.commitOf(pkg, version),
+  };
+  const problems = provenanceProblems(bundle, dist.integrity, expected);
+  if (problems.length === 0) {
+    try {
+      await deps.source.verifyBundle(bundle, sigstorePolicy(expected));
+    } catch (error) {
+      problems.push(messageOf(error));
+    }
+  }
+  return problems.length > 0 ? { status: "mismatch", problems } : { dist };
+}
+
+/** Why npm's lockfile does not record `version` with `integrity` for `pkg`, or `null` when it does. */
+function lockProblem(
+  lock: unknown,
+  pkg: string,
+  version: string,
+  integrity: string,
+): string | null {
+  const entry = dig(lock, "packages", `node_modules/${NPM_SCOPE}/${pkg}`);
+  return dig(entry, "version") === version &&
+      dig(entry, "integrity") === integrity
+    ? null
+    : `npm installed ${NPM_SCOPE}/${pkg} with an integrity or version other than the registry's ${version} ${integrity}.`;
+}
+
+/**
+ * Verify every package in `versions` (package to its local version): the
+ * registry and provenance of each ({@link checkRegistry}), then one install of
+ * the ones that passed, whose lockfile must record the integrity the
+ * provenance vouches for, and whose installed files are compared with the
+ * rebuild. A version that is not on npm fails, after `attempts` looks, unless
+ * `allowMissing`.
+ */
+export async function verifyAll(
+  versions: ReadonlyMap<string, string>,
+  deps: VerifyDeps,
+): Promise<Map<string, VerifyResult & { version: string }>> {
+  const results = new Map<string, VerifyResult & { version: string }>();
+  const checked = new Map<string, { version: string; dist: NpmDist }>();
+  const wanted = new Map<string, string>();
+  for (const [pkg, version] of versions) {
+    const skip = await deps.skipReason(pkg, version);
+    if (skip === null) wanted.set(pkg, version);
+    else results.set(pkg, { status: "skipped", reason: skip, version });
+  }
+  for (const [pkg, found] of await lookupAll(wanted, deps)) {
+    const { version } = found;
+    let outcome: { dist: NpmDist } | VerifyResult;
+    if ("dist" in found) {
+      try {
+        outcome = await checkProvenance(pkg, version, found.dist, deps);
+      } catch (error) {
+        outcome = { status: "mismatch", problems: [messageOf(error)] };
+      }
+    } else if ("broken" in found) {
+      outcome = { status: "mismatch", problems: [found.broken] };
+    } else {
+      outcome = deps.allowMissing
+        ? { status: "skipped", reason: found.missing }
+        : { status: "mismatch", problems: [found.missing] };
+    }
+    if ("dist" in outcome) checked.set(pkg, { version, dist: outcome.dist });
+    else results.set(pkg, { ...outcome, version });
+  }
+  if (checked.size === 0) return results;
+  await FileTasks.createDirectory(deps.project);
+  await FileTasks.writeText(deps.project("package.json"), '{"private":true}\n');
+  await deps.npm.install(
+    deps.project,
+    [...checked].map(([pkg, { version }]) => `${NPM_SCOPE}/${pkg}@${version}`),
+  );
+  const lock: unknown = await FileTasks.readJson(
+    deps.project("package-lock.json"),
+  );
+  for (const [pkg, { version, dist }] of checked) {
+    const problems: string[] = [];
+    const locked = lockProblem(lock, pkg, version, dist.integrity);
+    if (locked !== null) problems.push(locked);
+    try {
+      problems.push(...compareFiles(
+        await readTree(String(deps.project("node_modules", NPM_SCOPE, pkg))),
+        await deps.rebuilt(pkg),
+      ));
+    } catch (error) {
+      problems.push(messageOf(error));
+    }
+    results.set(
+      pkg,
+      problems.length === 0
+        ? { status: "match", version }
+        : { status: "mismatch", problems, version },
+    );
+  }
+  return results;
+}
+
+/**
+ * The failures to report, empty when the run is good: every mismatch, and, unless
+ * `allowNone`, a run in which nothing was compared at all (a green result that
+ * checked nothing is not one).
+ */
+export function failures(
+  results: ReadonlyMap<string, VerifyResult>,
+  allowNone: boolean,
+): string[] {
+  const lines: string[] = [];
+  let compared = 0;
+  for (const [pkg, result] of results) {
+    if (result.status === "skipped") continue;
+    compared++;
+    if (result.status === "mismatch") {
+      lines.push(...result.problems.map((p) => `${NPM_SCOPE}/${pkg}: ${p}`));
+    }
+  }
+  if (compared === 0 && !allowNone) {
+    lines.push(
+      "nothing was compared: no package version of this checkout is on npm. " +
+        "Pass --allow-none if that is expected.",
+    );
+  }
+  return lines;
+}
+
+/**
+ * Run `npm audit signatures` in `project`, where the verified versions are
+ * installed: the registry signatures (and the provenance attestations, where a
+ * version has them) of the packages and everything they depend on. Fails if
+ * any is missing or invalid. The Sigstore certificate identity is checked by
+ * {@link sigstoreVerifier}, not here: npm checks that some identity signed.
  */
 export async function auditSignatures(
   project: AbsolutePath,
-  verified: ReadonlyMap<string, string>,
   npm: NpmProbe = NPM,
 ): Promise<void> {
-  await FileTasks.createDirectory(project);
-  await FileTasks.writeText(project("package.json"), '{"private":true}\n');
-  const specs = [...verified].map(([pkg, version]) =>
-    `${NPM_SCOPE}/${pkg}@${version}`
-  );
   try {
-    await npm.install(project, specs);
     await npm.auditSignatures(project);
   } catch (error) {
     throw new Error(`npm audit signatures failed: ${messageOf(error)}`);
   }
 }
 
-/**
- * The commit `pkg`@`version`'s provenance must name: its release tag's commit
- * when this clone has the tag (the version was built there, and
- * {@link changedSinceRelease} has said the package is unchanged since), else
- * the commit checked out, which is the release itself when run on a tag.
- */
-export async function builtCommit(
-  pkg: string,
-  version: string,
-  git: GitProbe = GIT,
-): Promise<string> {
-  return await git.tagCommit(`${pkg}-v${version}`) ?? await git.head();
-}
+/** The real npm. */
+export const REAL_NPM: NpmProbe = NPM;
