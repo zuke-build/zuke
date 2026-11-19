@@ -1126,7 +1126,7 @@ class ZukeBuild extends Build {
       );
       try {
         await installNpmToolchain();
-        const verify = sigstoreVerifier(NPM_TOOLS, work);
+        const verify = sigstoreVerifier(NPM_TOOLS, work, "bundled");
         const fixture = await FileTasks.readJson(
           "tests/fixtures/npm_attestation_sigstore-5.0.1.json",
         );
@@ -2237,7 +2237,7 @@ class ZukeBuild extends Build {
         }
         const project = work("consumer");
         const results = await verifyAll(versions, {
-          source: registrySource(sigstoreVerifier(NPM_TOOLS, work)),
+          source: registrySource(sigstoreVerifier(NPM_TOOLS, work, "refresh")),
           npm: REAL_NPM,
           project,
           rebuilt: (pkg) => readTree(String(work("dist", pkg))),

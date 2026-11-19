@@ -374,6 +374,15 @@ export function registrySource(
 }
 
 /**
+ * Where {@link sigstoreVerifier} takes Sigstore's trusted root from:
+ * `"refresh"` fetches the current one over TUF, which a real verification
+ * needs so a rotated key is honoured; `"bundled"` uses the copy sigstore-js
+ * ships and touches no network, for the gate's check of a recorded bundle on
+ * a runner whose egress is blocked.
+ */
+export type SigstoreRoot = "refresh" | "bundled";
+
+/**
  * Verify a bundle with sigstore-js under node: `verify_bundle.mjs`, run from
  * `tools` (where the toolchain, and so sigstore-js, is installed), with the
  * policy as JSON. The first run fetches Sigstore's trusted root over TUF into
@@ -382,6 +391,7 @@ export function registrySource(
 export function sigstoreVerifier(
   tools: AbsolutePath,
   scratch: AbsolutePath,
+  root: SigstoreRoot,
 ): NpmSource["verifyBundle"] {
   let count = 0;
   return async (bundle, policy) => {
@@ -396,6 +406,7 @@ export function sigstoreVerifier(
           String(bundleFile),
           String(policyFile),
           String(scratch("tuf")),
+          root,
         )
       );
     } catch (error) {
