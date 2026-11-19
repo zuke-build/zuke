@@ -114,10 +114,12 @@ const DenoTasks: DenoTasksApi
 class CoverageThresholdError extends Error
   Raised when measured coverage falls below a configured threshold.
 
-  constructor(readonly failures: string[])
+  constructor(failures: string[])
     Construct the error from one message per metric that fell short.
   override name: string
     The error name, `"CoverageThresholdError"`.
+  readonly failures: string[]
+    One human-readable message per metric that fell short.
 
 class DenoAddSettings extends DenoLockSettings
   Settings for `deno add`.

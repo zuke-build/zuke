@@ -18,9 +18,13 @@ export type RpcHandler = (params: unknown) => unknown | Promise<unknown>;
 export class RpcFailure extends Error {
   /** The error name. */
   override name = "RpcFailure";
+  /** The JSON-RPC error code the remote side answered with. */
+  readonly code: number;
+
   /** Build the failure from the remote error's code and message. */
-  constructor(readonly code: number, message: string) {
+  constructor(code: number, message: string) {
     super(message);
+    this.code = code;
   }
 }
 

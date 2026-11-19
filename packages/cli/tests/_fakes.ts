@@ -133,20 +133,37 @@ export class FakePrompter implements Prompter {
   /** Every question passed to {@link ask}, in order. */
   readonly asks: string[] = [];
 
+  /** Whether the prompter reports an interactive terminal. */
+  private readonly tty: boolean;
+  /** The answer to the other questions, the build class name; `""` takes the default. */
+  private readonly answer: string;
+  /** The answer to every yes/no question but the star prompt. */
+  private readonly yes: boolean;
+  /** The answer to the star prompt (kept apart from `yes`, so tests of the
+   * other confirms don't accidentally opt in to starring). */
+  private readonly star: boolean;
+  /** The answer to the launcher question; `""` takes its default. Kept
+   * apart from `answer`, which is the build class name. */
+  private readonly bootstrap: string;
+  /** The answers to the build file question, in order; when they run out,
+   * or with none, its default. Kept apart from `answer` too. */
+  private readonly buildFiles: string[];
+
   constructor(
-    private readonly tty: boolean,
-    private readonly answer: string = "",
-    private readonly yes: boolean = false,
-    /** The answer to the star prompt (kept apart from `yes`, so tests of the
-     * other confirms don't accidentally opt in to starring). */
-    private readonly star: boolean = false,
-    /** The answer to the launcher question; `""` takes its default. Kept
-     * apart from `answer`, which is the build class name. */
-    private readonly bootstrap: string = "",
-    /** The answers to the build file question, in order; when they run out,
-     * or with none, its default. Kept apart from `answer` too. */
-    private readonly buildFiles: string[] = [],
-  ) {}
+    tty: boolean,
+    answer: string = "",
+    yes: boolean = false,
+    star: boolean = false,
+    bootstrap: string = "",
+    buildFiles: string[] = [],
+  ) {
+    this.tty = tty;
+    this.answer = answer;
+    this.yes = yes;
+    this.star = star;
+    this.bootstrap = bootstrap;
+    this.buildFiles = buildFiles;
+  }
 
   interactive(): boolean {
     return this.tty;
@@ -176,14 +193,22 @@ export class FakeStarActions {
   /** The effect names invoked, in order. */
   readonly calls: string[] = [];
 
+  /** What `ghAuthenticated()` reports. */
+  private readonly authed: boolean;
+  /** Whether `starWithGh()` succeeds (else it rejects). */
+  private readonly starOk: boolean;
+  /** What `openBrowser()` reports. */
+  private readonly browserOk: boolean;
+
   constructor(
-    /** What `ghAuthenticated()` reports. */
-    private readonly authed: boolean,
-    /** Whether `starWithGh()` succeeds (else it rejects). */
-    private readonly starOk: boolean = true,
-    /** What `openBrowser()` reports. */
-    private readonly browserOk: boolean = true,
-  ) {}
+    authed: boolean,
+    starOk: boolean = true,
+    browserOk: boolean = true,
+  ) {
+    this.authed = authed;
+    this.starOk = starOk;
+    this.browserOk = browserOk;
+  }
 
   ghAuthenticated(): Promise<boolean> {
     this.calls.push("auth");

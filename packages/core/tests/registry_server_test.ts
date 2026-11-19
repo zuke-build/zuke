@@ -111,8 +111,11 @@ function recordingRunner(
 
 /** A build whose `registry()` returns a fixed registry (for the serveMcp path). */
 class RegistryBuild extends Build {
-  constructor(private readonly reg: BuildRegistry) {
+  private readonly reg: BuildRegistry;
+
+  constructor(reg: BuildRegistry) {
     super();
+    this.reg = reg;
   }
   override registry(): BuildRegistry {
     return this.reg;

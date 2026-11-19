@@ -24,10 +24,13 @@ export class FakeGraphHost implements GraphHost {
   /** Lines passed to {@link log}. */
   readonly logs: string[] = [];
 
-  constructor(
-    private readonly cwdPath = "/repo",
-    private readonly existing: string[] = [],
-  ) {}
+  private readonly cwdPath: string;
+  private readonly existing: string[];
+
+  constructor(cwdPath = "/repo", existing: string[] = []) {
+    this.cwdPath = cwdPath;
+    this.existing = existing;
+  }
 
   cwd(): string {
     return this.cwdPath;

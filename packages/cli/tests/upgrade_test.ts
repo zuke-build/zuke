@@ -43,8 +43,12 @@ class FakeUpgradeHost implements UpgradeHost {
   /** Every argv passed to {@link install}. */
   readonly installs: string[][] = [];
 
+  readonly metaDoc: unknown;
+  readonly running: string;
+  readonly exit: number;
+
   constructor(
-    readonly metaDoc: unknown = {
+    metaDoc: unknown = {
       latest: NEWER,
       versions: {
         [NEWER]: {},
@@ -53,9 +57,13 @@ class FakeUpgradeHost implements UpgradeHost {
         "1.1.0": { yanked: true },
       },
     },
-    readonly running: string = FROM_JSR,
-    readonly exit: number = 0,
-  ) {}
+    running: string = FROM_JSR,
+    exit: number = 0,
+  ) {
+    this.metaDoc = metaDoc;
+    this.running = running;
+    this.exit = exit;
+  }
 
   /** What {@link binDir} answers. */
   bin: string | undefined = BIN;

@@ -93,10 +93,12 @@ class GooglePlayError extends Error
   refused request, Google's own error message; it never carries the
   service-account key or an access token.
 
-  constructor(message: string, readonly status?: number)
+  constructor(message: string, status?: number)
     Build the error from its message and, for a refused request, the HTTP status.
   override name: string
     The error name.
+  readonly status?: number
+    The HTTP status of the refused request, or `undefined` when no request was refused.
 
 class GooglePlaySettings
   Settings for `GooglePlayTasks.upload`.

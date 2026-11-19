@@ -23,12 +23,15 @@ import type { CommandOutput } from "@zuke/core/shell";
 export class GhApiSettings extends ToolSettings {
   #flags: string[] = [];
 
+  /** The REST endpoint path, or `graphql`. */
+  readonly endpoint: string;
+
   /** Build settings for a call to `endpoint` (e.g. `"user/starred/o/r"`). */
   constructor(
-    /** The REST endpoint path, or `graphql`. */
-    readonly endpoint: string,
+    endpoint: string,
   ) {
     super();
+    this.endpoint = endpoint;
   }
 
   /** The default binary: `gh`. */

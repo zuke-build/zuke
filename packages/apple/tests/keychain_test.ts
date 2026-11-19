@@ -250,8 +250,13 @@ class SharedListHost extends FakeHost {
   /** Every list this host saw while its callback ran. */
   readonly seenDuringUse: string[][] = [];
 
-  constructor(readonly name: string, readonly shared: { list: string[] }) {
+  readonly name: string;
+  readonly shared: { list: string[] };
+
+  constructor(name: string, shared: { list: string[] }) {
     super();
+    this.name = name;
+    this.shared = shared;
   }
   override security(settings: SecuritySettings): Promise<CommandOutput> {
     const argv = settings.argv();

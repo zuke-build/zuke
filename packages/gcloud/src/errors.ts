@@ -23,13 +23,18 @@ export class GcloudOutputError extends Error {
   /** The error name. */
   override name = "GcloudOutputError";
 
+  /** The reader that could not use the output, e.g. `GcloudTasks.logEntryCount`. */
+  readonly task: string;
+  /** What was wrong with the output, without quoting it. */
+  readonly detail: string;
+
   /** Build the error from the reader that failed and what was wrong. */
   constructor(
-    /** The reader that could not use the output, e.g. `GcloudTasks.logEntryCount`. */
-    readonly task: string,
-    /** What was wrong with the output, without quoting it. */
-    readonly detail: string,
+    task: string,
+    detail: string,
   ) {
     super(`${task}: ${detail}`);
+    this.task = task;
+    this.detail = detail;
   }
 }

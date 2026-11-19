@@ -189,13 +189,18 @@ export class UntrustedBuildError extends Error {
   /** The error's name, as reported by `String(error)` and stack traces. */
   override name = "UntrustedBuildError";
 
+  /** The directory holding the `zuke.json` that was found. */
+  readonly root: string;
+  /** What the gate refused, as a clause: "the directory … ". */
+  readonly reason: string;
+
   /**
    * Build the refusal for `root`, explaining `reason` and the ways forward.
    *
    * @param root The directory holding the `zuke.json` that was found.
    * @param reason What the gate refused, as a clause: "the directory … ".
    */
-  constructor(readonly root: string, readonly reason: string) {
+  constructor(root: string, reason: string) {
     // Prose only — never a rendered shell line to paste, since `root` is
     // whatever the filesystem says and the launcher there belongs to whoever
     // owns it.
@@ -204,6 +209,8 @@ export class UntrustedBuildError extends Error {
         `there could have been planted by someone else. If you trust it, run ` +
         `its own launcher from that directory (./zuke), or fix the ownership.`,
     );
+    this.root = root;
+    this.reason = reason;
   }
 }
 

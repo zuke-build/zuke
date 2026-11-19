@@ -72,7 +72,14 @@ class Symbol_ {
   /** `isFunction[y][x]`, `true` where a function pattern owns the module. */
   readonly isFunction: boolean[][];
 
-  constructor(readonly version: number, readonly level: ErrorCorrectionLevel) {
+  /** The symbol's version, 1 to 40, which fixes its size. */
+  readonly version: number;
+  /** The error-correction level the codewords are built for. */
+  readonly level: ErrorCorrectionLevel;
+
+  constructor(version: number, level: ErrorCorrectionLevel) {
+    this.version = version;
+    this.level = level;
     this.size = sizeOf(version);
     this.modules = Array.from(
       { length: this.size },

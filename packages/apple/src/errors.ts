@@ -73,14 +73,19 @@ export class NotarizationError extends Error {
   /** The error name. */
   override name = "NotarizationError";
 
+  /** The submission as `notarytool submit` reported it. */
+  readonly submission: NotarytoolSubmission;
+  /** The submission's notarization log, or `undefined` if it could not be fetched. */
+  readonly log: NotarytoolLog | undefined;
+
   /** Build the error from the finished submission and, if fetched, its log. */
   constructor(
-    /** The submission as `notarytool submit` reported it. */
-    readonly submission: NotarytoolSubmission,
-    /** The submission's notarization log, or `undefined` if it could not be fetched. */
-    readonly log: NotarytoolLog | undefined,
+    submission: NotarytoolSubmission,
+    log: NotarytoolLog | undefined,
   ) {
     super(notarizationMessage(submission, log));
+    this.submission = submission;
+    this.log = log;
   }
 }
 
@@ -93,13 +98,16 @@ export class NotarytoolOutputError extends Error {
   /** The error name. */
   override name = "NotarytoolOutputError";
 
+  /** What notarytool printed on stdout. */
+  readonly stdout: string;
+
   /** Build the error from a description of the problem and the raw stdout. */
   constructor(
     message: string,
-    /** What notarytool printed on stdout. */
-    readonly stdout: string,
+    stdout: string,
   ) {
     super(message);
+    this.stdout = stdout;
   }
 }
 
@@ -125,6 +133,9 @@ export class KeychainCleanupError extends Error {
   /** The error name. */
   override name = "KeychainCleanupError";
 
+  /** Each cleanup step that threw, in the order they ran. */
+  readonly failures: ReadonlyArray<KeychainCleanupFailure>;
+
   /**
    * Build the error from the failed cleanup steps and, when setup or the
    * callback had failed first, `{ cause }` holding that error — whatever was
@@ -132,8 +143,7 @@ export class KeychainCleanupError extends Error {
    * callback failed.
    */
   constructor(
-    /** Each cleanup step that threw, in the order they ran. */
-    readonly failures: ReadonlyArray<KeychainCleanupFailure>,
+    failures: ReadonlyArray<KeychainCleanupFailure>,
     options?: ErrorOptions,
   ) {
     super(
@@ -144,6 +154,7 @@ export class KeychainCleanupError extends Error {
           : "\nThe keychain callback had already failed; see the cause."),
       options,
     );
+    this.failures = failures;
   }
 }
 
@@ -190,14 +201,18 @@ export class AppStoreConnectError extends Error {
   /** The error name. */
   override name = "AppStoreConnectError";
 
+  /** The request, e.g. `GET /v1/apps`. */
+  readonly request: string;
+  /** The HTTP status. */
+  readonly status: number;
+  /** The errors the response listed, possibly none. */
+  readonly errors: ReadonlyArray<AppStoreConnectErrorDetail>;
+
   /** Build the error from the request, the status and the API's errors. */
   constructor(
-    /** The request, e.g. `GET /v1/apps`. */
-    readonly request: string,
-    /** The HTTP status. */
-    readonly status: number,
-    /** The errors the response listed, possibly none. */
-    readonly errors: ReadonlyArray<AppStoreConnectErrorDetail>,
+    request: string,
+    status: number,
+    errors: ReadonlyArray<AppStoreConnectErrorDetail>,
   ) {
     super(
       `App Store Connect: ${request} failed with HTTP ${status}` +
@@ -206,6 +221,9 @@ export class AppStoreConnectError extends Error {
             "\n",
           )),
     );
+    this.request = request;
+    this.status = status;
+    this.errors = errors;
   }
 }
 
