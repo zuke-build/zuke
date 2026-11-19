@@ -147,8 +147,9 @@ export interface PublishOneDeps {
 }
 
 /**
- * Publish one package's pending version to JSR: skip it if already published,
- * otherwise run `deno publish` up to {@link PUBLISH_ATTEMPTS} times. After an
+ * Publish one package's pending version to JSR, which the walk in
+ * {@link publishAllTo} has found missing there: run `deno publish` up to
+ * {@link PUBLISH_ATTEMPTS} times. After an
  * attempt that times out or fails, JSR is checked for a while before the next
  * one: an upload JSR accepted keeps processing after deno gives up on it — its
  * queue has taken the better part of an hour (#855) — so a stalled attempt is
@@ -165,10 +166,6 @@ export async function publishOne(
 ): Promise<void> {
   const name = `@zuke/${pkg}@${version}`;
   const onJsr = () => deps.isPublished(`@zuke/${pkg}`, version);
-  if (await onJsr()) {
-    deps.info(`${name} is already on JSR.`);
-    return;
-  }
   let outcome = "";
   for (let attempt = 1; attempt <= PUBLISH_ATTEMPTS; attempt++) {
     deps.info(

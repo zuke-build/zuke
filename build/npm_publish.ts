@@ -6,6 +6,7 @@
  * npm as `@zuke-build/<name>`, and registering each one's trusted publisher.
  */
 
+import { ConsoleTasks } from "@zuke/console";
 import { HttpError, httpJson } from "@zuke/core";
 import { $ } from "@zuke/core/shell";
 import { NpmTasks } from "@zuke/npm";
@@ -56,7 +57,10 @@ export const NPM_REGISTRY: PublishRegistry = {
   name: "npm",
   packageName: (pkg) => `${NPM_SCOPE}/${pkg}`,
   isPublished: isPublishedToNpm,
-  publish: (pkg) => publishToNpm(pkg),
+  publish: (pkg, version) => {
+    ConsoleTasks.info(`Publishing ${NPM_SCOPE}/${pkg}@${version} to npm...`);
+    return publishToNpm(pkg);
+  },
 };
 
 /**
