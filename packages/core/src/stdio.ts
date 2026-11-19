@@ -20,8 +20,8 @@
 import { ON_DENO } from "./runtime.ts";
 import { readSync, writeSync } from "node:fs";
 import process from "node:process";
-import { Readable } from "node:stream";
 import type { ByteWriter, OutputSink } from "./ambient_output.ts";
+import { toWebStream } from "./web_stream.ts";
 
 /** The part of a Node output stream used here. */
 export interface NodeOutput {
@@ -86,7 +86,7 @@ export async function flushOutput(): Promise<void> {
 
 /** The process's stdin, as a stream of bytes that ends when it does. */
 export function stdinBytes(): ReadableStream<Uint8Array> {
-  return ON_DENO ? Deno.stdin.readable : Readable.toWeb(process.stdin);
+  return ON_DENO ? Deno.stdin.readable : toWebStream(process.stdin);
 }
 
 /** The process's stdout, as a writer whose writes can be awaited. */

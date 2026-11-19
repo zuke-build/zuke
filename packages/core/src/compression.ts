@@ -32,6 +32,7 @@ import process from "node:process";
 import { mkdirRecursive, readFile, remove, symlink, writeFile } from "./fs.ts";
 import type { PathLike } from "./path.ts";
 import { crc32, limitBytes, lstatOrNull } from "./internal.ts";
+import { streamOf } from "./web_stream.ts";
 import { unxz } from "./xz.ts";
 
 /**
@@ -155,7 +156,7 @@ export function byteStream(
       yield data.slice(i, i + STREAM_SLICE);
     }
   }
-  return ReadableStream.from(slices());
+  return streamOf(slices());
 }
 
 /** How many bytes of an in-memory archive are fed to a stream at a time. */
@@ -290,7 +291,7 @@ export function gzipTarStream(
     for await (const entry of entries) yield* tarMember(entry);
     yield tarTrailer();
   }
-  return ReadableStream.from(blocks()).pipeThrough(
+  return streamOf(blocks()).pipeThrough(
     new CompressionStream("gzip"),
   );
 }

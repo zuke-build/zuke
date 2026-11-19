@@ -24,6 +24,7 @@ import { writeFile, writeStream } from "./fs.ts";
 import type { PathLike } from "./path.ts";
 import { limitBytes } from "./internal.ts";
 import { redactUrl } from "./redact_url.ts";
+import { streamOf } from "./web_stream.ts";
 
 /**
  * The environment variable that opts a deployment out of {@link
@@ -216,6 +217,6 @@ export async function artifactBody(
     await response.body?.cancel();
     throw new HttpError(response.status, url);
   }
-  return (response.body ?? ReadableStream.from<Uint8Array<ArrayBuffer>>([]))
+  return (response.body ?? streamOf<Uint8Array<ArrayBuffer>>([]))
     .pipeThrough(limitBytes(limit, tooLarge));
 }
