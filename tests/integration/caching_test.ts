@@ -564,7 +564,7 @@ Deno.test("a signed output larger than one stream slice restores byte for byte",
         // upload, the signature and the restore each span more than one.
         let seed = 0x2545f491;
         const payload = Uint8Array.from({ length: 200 * 1024 }, () => {
-          // xorshift: bytes gzip cannot shrink below a slice.
+          // A shift-register generator: bytes gzip cannot shrink below a slice.
           seed ^= seed << 13;
           seed ^= seed >>> 17;
           seed ^= seed << 5;
