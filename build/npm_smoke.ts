@@ -10,7 +10,7 @@
  */
 
 /** The packages the smoke test compiles: core, and one wrapper that uses it. */
-export const SMOKE_PACKAGES = ["core", "deno"] as const;
+export const SMOKE_PACKAGES: readonly string[] = ["core", "deno"];
 
 /** The consumer's build: it imports both aliases and runs a target. */
 export const SMOKE_BUILD = `import { Build, run, target } from "@zuke/core";

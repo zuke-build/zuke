@@ -9864,6 +9864,43 @@ class NpmTokenSettings extends NpmSettings
   override protected subcommandArgs(): string[]
     Assemble the `npm token` argv.
 
+class NpmTrustSettings extends NpmSettings
+  Settings for `npm trust`. Pick the subcommand with {@link github},
+  {@link gitlab}, {@link circleci}, {@link list}, or {@link revoke}; the
+  provider flags apply to the three provider subcommands.
+
+  override protected readonly taskName: string
+    The `NpmTasks` method this backs.
+  github(pkg?: string, file?: string): this
+    Trust a GitHub Actions workflow (`trust github [<pkg>]`).
+  gitlab(pkg?: string, file?: string): this
+    Trust a GitLab CI/CD pipeline file (`trust gitlab [<pkg>]`).
+  circleci(pkg?: string, file?: string): this
+    Trust a CircleCI pipeline (`trust circleci [<pkg>]`).
+  list(pkg?: string): this
+    List a package's trusted publishers (`trust list [<pkg>]`), the default.
+  revoke(id: string, pkg?: string): this
+    Remove a trusted publisher by id (`trust revoke [<pkg>] --id=<id>`).
+  file(name: string): this
+    The workflow or pipeline file to trust (`--file=<name>`).
+  repo(name: string): this
+    The source repository as `owner/name` (`--repo=<owner/name>`).
+  environment(name: string): this
+    Bind the trust to a deployment environment (`--environment=<name>`).
+  allowPublish(): this
+    Let the trusted workflow publish the package (`--allow-publish`).
+  allowStagePublish(): this
+    Let the trusted workflow stage a publish (`--allow-stage-publish`).
+  yes(): this
+    Skip the confirmation prompt (`--yes`).
+  otp(code: string): this
+    Provide a one-time password.
+
+    Carried in `npm_config_otp` rather than on the command line — see
+    {@link NpmSettings.applyOtp} for why.
+  override protected subcommandArgs(): string[]
+    Assemble the `npm trust` argv.
+
 class NpmUninstallSettings extends NpmDependencySettings
   Settings for `npm uninstall`.
 
@@ -10025,6 +10062,8 @@ interface NpmTasksApi
     Warn installers off a version: `npm deprecate`.
   distTag(configure?: Configure<NpmDistTagSettings>): Promise<CommandOutput>
     Manage dist-tags: `npm dist-tag add|rm|ls`.
+  trust(configure?: Configure<NpmTrustSettings>): Promise<CommandOutput>
+    Manage trusted publishers: `npm trust github|gitlab|circleci|list|revoke`.
   view(configure?: Configure<NpmViewSettings>): Promise<CommandOutput>
     Read registry metadata: `npm view`.
   ping(configure?: Configure<NpmPingSettings>): Promise<CommandOutput>

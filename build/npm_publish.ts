@@ -8,7 +8,6 @@
 
 import { ConsoleTasks } from "@zuke/console";
 import { HttpError, httpJson } from "@zuke/core";
-import { $ } from "@zuke/core/shell";
 import { NpmTasks } from "@zuke/npm";
 import { NPM_SCOPE } from "./npm_manifest.ts";
 import { NPM_DIST } from "./npm_build.ts";
@@ -69,6 +68,8 @@ export const NPM_REGISTRY: PublishRegistry = {
  * 2FA-authenticated login, and the package must already exist on npm.
  */
 export async function trustPublisher(pkg: string): Promise<void> {
-  // `NpmTasks` has no `trust` task yet; the argv is discrete, never a shell line.
-  await $`npm trust github ${NPM_SCOPE}/${pkg} --file ${TRUSTED_WORKFLOW} --repo ${TRUSTED_REPOSITORY} --environment ${NPM_ENVIRONMENT} --allow-publish --yes`;
+  await NpmTasks.trust((s) =>
+    s.github(`${NPM_SCOPE}/${pkg}`, TRUSTED_WORKFLOW).repo(TRUSTED_REPOSITORY)
+      .environment(NPM_ENVIRONMENT).allowPublish().yes()
+  );
 }
