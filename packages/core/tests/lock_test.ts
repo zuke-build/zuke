@@ -23,14 +23,20 @@ import type { RunQuery, RunRecord, RunSummary } from "../src/state/types.ts";
 class FakeStore implements StateStore {
   attempts = 0;
   released = 0;
+  private heldFor: number;
+  private holder: LockHolder;
+
   constructor(
-    private heldFor: number,
-    private holder: LockHolder = {
+    heldFor: number,
+    holder: LockHolder = {
       actor: "alice",
       runId: "run-1",
       since: "2026-01-01T00:00:00.000Z",
     },
-  ) {}
+  ) {
+    this.heldFor = heldFor;
+    this.holder = holder;
+  }
 
   acquireLock(): Promise<LockResult> {
     this.attempts++;

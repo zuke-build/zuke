@@ -113,10 +113,14 @@ const QrTasks: QrTasksApi
 class QrCapacityError extends Error
   Thrown when the text does not fit the largest symbol at the requested level.
 
-  constructor(readonly bytes: number, readonly level: ErrorCorrectionLevel)
+  constructor(bytes: number, level: ErrorCorrectionLevel)
     Build the error for a text of `bytes` UTF-8 bytes refused at `level`.
   override name: string
     The error's class name, for `instanceof`-free identification.
+  readonly bytes: number
+    The UTF-8 length of the text that was refused.
+  readonly level: ErrorCorrectionLevel
+    The error-correction level the text was refused at.
 
 class QrSettings
   Configuration for encoding and rendering a QR code, set through a lambda

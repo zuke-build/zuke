@@ -331,10 +331,16 @@ class AppStoreConnectError extends Error
   message names the request and every error the API listed; it never carries
   the API key or the token signed with it.
 
-  constructor(readonly request: string, readonly status: number, readonly errors: ReadonlyArray<AppStoreConnectErrorDetail>)
+  constructor(request: string, status: number, errors: ReadonlyArray<AppStoreConnectErrorDetail>)
     Build the error from the request, the status and the API's errors.
   override name: string
     The error name.
+  readonly request: string
+    The request, e.g. `GET /v1/apps`.
+  readonly status: number
+    The HTTP status.
+  readonly errors: ReadonlyArray<AppStoreConnectErrorDetail>
+    The errors the response listed, possibly none.
 
 class AppStoreConnectSettings
   Settings for a task that calls the App Store Connect API with an API key
@@ -526,13 +532,15 @@ class KeychainCleanupError extends Error
   one that threw. When the callback had already failed, that error is the
   {@link Error.cause}, so neither is lost.
 
-  constructor(readonly failures: ReadonlyArray<KeychainCleanupFailure>, options?: ErrorOptions)
+  constructor(failures: ReadonlyArray<KeychainCleanupFailure>, options?: ErrorOptions)
     Build the error from the failed cleanup steps and, when setup or the
     callback had failed first, `{ cause }` holding that error — whatever was
     thrown, `undefined` included, since its presence is what records that the
     callback failed.
   override name: string
     The error name.
+  readonly failures: ReadonlyArray<KeychainCleanupFailure>
+    Each cleanup step that threw, in the order they ran.
 
 class KeychainError extends Error
   Raised by `SecurityTasks.temporaryKeychain` when the keychain cannot be set
@@ -549,10 +557,14 @@ class NotarizationError extends Error
   status and lists the issues from the submission's notarization log, which
   the task fetched with the same credentials.
 
-  constructor(readonly submission: NotarytoolSubmission, readonly log: NotarytoolLog | undefined)
+  constructor(submission: NotarytoolSubmission, log: NotarytoolLog | undefined)
     Build the error from the finished submission and, if fetched, its log.
   override name: string
     The error name.
+  readonly submission: NotarytoolSubmission
+    The submission as `notarytool submit` reported it.
+  readonly log: NotarytoolLog | undefined
+    The submission's notarization log, or `undefined` if it could not be fetched.
 
 class NotarytoolHistorySettings extends NotarytoolSettings
   Settings for `xcrun notarytool history`.
@@ -588,10 +600,12 @@ class NotarytoolOutputError extends Error
   an older Xcode, a crash, or output that is not a notarytool result at all.
   The raw output is kept on the error rather than in its message.
 
-  constructor(message: string, readonly stdout: string)
+  constructor(message: string, stdout: string)
     Build the error from a description of the problem and the raw stdout.
   override name: string
     The error name.
+  readonly stdout: string
+    What notarytool printed on stdout.
 
 abstract class NotarytoolSettings extends ToolSettings
   The shared settings of every `xcrun notarytool` subcommand: the credentials,

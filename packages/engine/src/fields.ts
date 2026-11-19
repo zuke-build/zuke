@@ -42,11 +42,17 @@ const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
  * they reject.
  */
 export class Fields {
+  private readonly object: Record<string, unknown>;
+  /** Where this object sits in the message, the prefix of every rejection. */
+  readonly where: string;
+
   constructor(
-    private readonly object: Record<string, unknown>,
-    /** Where this object sits in the message, the prefix of every rejection. */
-    readonly where: string,
-  ) {}
+    object: Record<string, unknown>,
+    where: string,
+  ) {
+    this.object = object;
+    this.where = where;
+  }
 
   /** Whether the field is present. */
   has(name: string): boolean {

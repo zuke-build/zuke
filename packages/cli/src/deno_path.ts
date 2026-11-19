@@ -156,12 +156,15 @@ export class DenoNotFoundError extends Error {
   /** The error's name, as reported by `String(error)` and stack traces. */
   override name = "DenoNotFoundError";
 
+  /** The executables that were spawned and not found, in the order tried. */
+  readonly tried: readonly string[];
+
   /**
    * Build the failure from the candidates that were tried, in order.
    *
    * @param tried The executables that were spawned and not found.
    */
-  constructor(readonly tried: readonly string[]) {
+  constructor(tried: readonly string[]) {
     super(
       `zuke: running a build needs Deno, and none was found — tried ` +
         `${
@@ -169,6 +172,7 @@ export class DenoNotFoundError extends Error {
         }. Install Deno (${DENO_INSTALL_DOCS}), or run the ` +
         `project's own ./zuke launcher, which installs a pinned Deno itself.`,
     );
+    this.tried = tried;
   }
 }
 

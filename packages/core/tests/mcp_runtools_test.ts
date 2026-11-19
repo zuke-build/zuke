@@ -392,7 +392,11 @@ Deno.test("a resume_check failure on one run is reported as structured run_faile
 /** Delegates to a real store, but `getRun` fails after the first read. */
 class FlakyStore implements StateStore {
   #reads = 0;
-  constructor(private readonly inner: StateStore) {}
+  private readonly inner: StateStore;
+
+  constructor(inner: StateStore) {
+    this.inner = inner;
+  }
   getRun(id: string): ReturnType<StateStore["getRun"]> {
     this.#reads += 1;
     if (this.#reads > 1) {

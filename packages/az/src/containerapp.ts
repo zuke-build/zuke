@@ -188,12 +188,15 @@ export class AzContainerappRevisionListSettings extends AzResourceSettings {
 export class AzContainerappRevisionSettings extends AzResourceSettings {
   #revision?: string;
 
+  /** `activate` or `deactivate`. */
+  readonly verb_: "activate" | "deactivate";
+
   /** The settings for `revision <verb>`. */
   constructor(
-    /** `activate` or `deactivate`. */
-    readonly verb_: "activate" | "deactivate",
+    verb_: "activate" | "deactivate",
   ) {
     super();
+    this.verb_ = verb_;
   }
 
   /** The revision to activate or deactivate (`--revision`). */

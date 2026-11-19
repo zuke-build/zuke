@@ -1084,10 +1084,14 @@ class GcloudOutputError extends Error
   payload an application logged, and an error that echoed it would put a
   secret in the build log.
 
-  constructor(readonly task: string, readonly detail: string)
+  constructor(task: string, detail: string)
     Build the error from the reader that failed and what was wrong.
   override name: string
     The error name.
+  readonly task: string
+    The reader that could not use the output, e.g. `GcloudTasks.logEntryCount`.
+  readonly detail: string
+    What was wrong with the output, without quoting it.
 
 class GcloudRunDeploySettings extends GcloudSettings
   Settings for `gcloud run deploy`.

@@ -1134,10 +1134,14 @@ class AwsLogsQueryError extends Error
   `Failed`, `Cancelled` or `Timeout`, or it was still running when the
   reader's own timeout ran out.
 
-  constructor(readonly queryId: string, readonly status: string, message: string)
+  constructor(queryId: string, status: string, message: string)
     Build the error from the query, its last status and an explanation.
   override name: string
     The error name.
+  readonly queryId: string
+    The id `logs start-query` returned.
+  readonly status: string
+    The last status `logs get-query-results` reported.
 
 class AwsLogsStartQuerySettings extends AwsSettings
   Settings for `aws logs start-query`.
@@ -1195,10 +1199,14 @@ class AwsOutputError extends Error
   credentials and secret payloads, and an error that echoed what the CLI
   printed would put the secret in the build log it was read to stay out of.
 
-  constructor(readonly task: string, readonly detail: string)
+  constructor(task: string, detail: string)
     Build the error from the reader that failed and what was wrong.
   override name: string
     The error name.
+  readonly task: string
+    The reader that could not use the output, e.g. `AwsTasks.metricValue`.
+  readonly detail: string
+    What was wrong with the output, without quoting it.
 
 class AwsS3CpSettings extends AwsSettings
   Settings for `aws s3 cp`.

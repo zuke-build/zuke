@@ -18,12 +18,15 @@ import { reportSummary } from "@zuke/core";
 export class CoverageThresholdError extends Error {
   /** The error name, `"CoverageThresholdError"`. */
   override name = "CoverageThresholdError";
+  /** One human-readable message per metric that fell short. */
+  readonly failures: string[];
+
   /** Construct the error from one message per metric that fell short. */
   constructor(
-    /** One human-readable message per metric that fell short. */
-    readonly failures: string[],
+    failures: string[],
   ) {
     super(`coverage gate failed: ${failures.join("; ")}`);
+    this.failures = failures;
   }
 }
 

@@ -7662,10 +7662,12 @@ const DenoTasks: DenoTasksApi
 class CoverageThresholdError extends Error
   Raised when measured coverage falls below a configured threshold.
 
-  constructor(readonly failures: string[])
+  constructor(failures: string[])
     Construct the error from one message per metric that fell short.
   override name: string
     The error name, `"CoverageThresholdError"`.
+  readonly failures: string[]
+    One human-readable message per metric that fell short.
 
 class DenoAddSettings extends DenoLockSettings
   Settings for `deno add`.
@@ -17635,10 +17637,14 @@ class GcloudOutputError extends Error
   payload an application logged, and an error that echoed it would put a
   secret in the build log.
 
-  constructor(readonly task: string, readonly detail: string)
+  constructor(task: string, detail: string)
     Build the error from the reader that failed and what was wrong.
   override name: string
     The error name.
+  readonly task: string
+    The reader that could not use the output, e.g. `GcloudTasks.logEntryCount`.
+  readonly detail: string
+    What was wrong with the output, without quoting it.
 
 class GcloudRunDeploySettings extends GcloudSettings
   Settings for `gcloud run deploy`.
@@ -19116,10 +19122,14 @@ class AwsLogsQueryError extends Error
   `Failed`, `Cancelled` or `Timeout`, or it was still running when the
   reader's own timeout ran out.
 
-  constructor(readonly queryId: string, readonly status: string, message: string)
+  constructor(queryId: string, status: string, message: string)
     Build the error from the query, its last status and an explanation.
   override name: string
     The error name.
+  readonly queryId: string
+    The id `logs start-query` returned.
+  readonly status: string
+    The last status `logs get-query-results` reported.
 
 class AwsLogsStartQuerySettings extends AwsSettings
   Settings for `aws logs start-query`.
@@ -19177,10 +19187,14 @@ class AwsOutputError extends Error
   credentials and secret payloads, and an error that echoed what the CLI
   printed would put the secret in the build log it was read to stay out of.
 
-  constructor(readonly task: string, readonly detail: string)
+  constructor(task: string, detail: string)
     Build the error from the reader that failed and what was wrong.
   override name: string
     The error name.
+  readonly task: string
+    The reader that could not use the output, e.g. `AwsTasks.metricValue`.
+  readonly detail: string
+    What was wrong with the output, without quoting it.
 
 class AwsS3CpSettings extends AwsSettings
   Settings for `aws s3 cp`.
@@ -20100,8 +20114,10 @@ class AzContainerappRevisionSettings extends AzResourceSettings
   Settings for `az containerapp revision activate` and `deactivate`: the
   app, and the revision to switch.
 
-  constructor(readonly verb_: "activate" | "deactivate")
+  constructor(verb_: "activate" | "deactivate")
     The settings for `revision <verb>`.
+  readonly verb_: "activate" | "deactivate"
+    `activate` or `deactivate`.
   revision(name: string): this
     The revision to activate or deactivate (`--revision`).
   override protected leadingTokens(): string[]
@@ -20622,10 +20638,14 @@ class AzOutputError extends Error
   tokens and secret values, and an error that echoed what the CLI printed
   would put the secret in the build log it was read to stay out of.
 
-  constructor(readonly task: string, readonly detail: string)
+  constructor(task: string, detail: string)
     Build the error from the reader that failed and what was wrong.
   override name: string
     The error name.
+  readonly task: string
+    The reader that could not use the output, e.g. `AzTasks.metricValue`.
+  readonly detail: string
+    What was wrong with the output, without quoting it.
 
 abstract class AzResourceSettings extends AzSettings
   Settings for a command on one named resource in a resource group.
@@ -22945,8 +22965,10 @@ class GhApiSettings extends ToolSettings
   real `gh api` flags: `--method`, `--field`, `--raw-field`, `--header`,
   `--jq`, and `--silent`.
 
-  constructor(readonly endpoint: string)
+  constructor(endpoint: string)
     Build settings for a call to `endpoint` (e.g. `"user/starred/o/r"`).
+  readonly endpoint: string
+    The REST endpoint path, or `graphql`.
   override protected defaultTool(): string
     The default binary: `gh`.
   method(verb: string): this
@@ -29122,10 +29144,14 @@ const QrTasks: QrTasksApi
 class QrCapacityError extends Error
   Thrown when the text does not fit the largest symbol at the requested level.
 
-  constructor(readonly bytes: number, readonly level: ErrorCorrectionLevel)
+  constructor(bytes: number, level: ErrorCorrectionLevel)
     Build the error for a text of `bytes` UTF-8 bytes refused at `level`.
   override name: string
     The error's class name, for `instanceof`-free identification.
+  readonly bytes: number
+    The UTF-8 length of the text that was refused.
+  readonly level: ErrorCorrectionLevel
+    The error-correction level the text was refused at.
 
 class QrSettings
   Configuration for encoding and rendering a QR code, set through a lambda
@@ -29290,10 +29316,16 @@ class AppStoreConnectError extends Error
   message names the request and every error the API listed; it never carries
   the API key or the token signed with it.
 
-  constructor(readonly request: string, readonly status: number, readonly errors: ReadonlyArray<AppStoreConnectErrorDetail>)
+  constructor(request: string, status: number, errors: ReadonlyArray<AppStoreConnectErrorDetail>)
     Build the error from the request, the status and the API's errors.
   override name: string
     The error name.
+  readonly request: string
+    The request, e.g. `GET /v1/apps`.
+  readonly status: number
+    The HTTP status.
+  readonly errors: ReadonlyArray<AppStoreConnectErrorDetail>
+    The errors the response listed, possibly none.
 
 class AppStoreConnectSettings
   Settings for a task that calls the App Store Connect API with an API key
@@ -29485,13 +29517,15 @@ class KeychainCleanupError extends Error
   one that threw. When the callback had already failed, that error is the
   {@link Error.cause}, so neither is lost.
 
-  constructor(readonly failures: ReadonlyArray<KeychainCleanupFailure>, options?: ErrorOptions)
+  constructor(failures: ReadonlyArray<KeychainCleanupFailure>, options?: ErrorOptions)
     Build the error from the failed cleanup steps and, when setup or the
     callback had failed first, `{ cause }` holding that error — whatever was
     thrown, `undefined` included, since its presence is what records that the
     callback failed.
   override name: string
     The error name.
+  readonly failures: ReadonlyArray<KeychainCleanupFailure>
+    Each cleanup step that threw, in the order they ran.
 
 class KeychainError extends Error
   Raised by `SecurityTasks.temporaryKeychain` when the keychain cannot be set
@@ -29508,10 +29542,14 @@ class NotarizationError extends Error
   status and lists the issues from the submission's notarization log, which
   the task fetched with the same credentials.
 
-  constructor(readonly submission: NotarytoolSubmission, readonly log: NotarytoolLog | undefined)
+  constructor(submission: NotarytoolSubmission, log: NotarytoolLog | undefined)
     Build the error from the finished submission and, if fetched, its log.
   override name: string
     The error name.
+  readonly submission: NotarytoolSubmission
+    The submission as `notarytool submit` reported it.
+  readonly log: NotarytoolLog | undefined
+    The submission's notarization log, or `undefined` if it could not be fetched.
 
 class NotarytoolHistorySettings extends NotarytoolSettings
   Settings for `xcrun notarytool history`.
@@ -29547,10 +29585,12 @@ class NotarytoolOutputError extends Error
   an older Xcode, a crash, or output that is not a notarytool result at all.
   The raw output is kept on the error rather than in its message.
 
-  constructor(message: string, readonly stdout: string)
+  constructor(message: string, stdout: string)
     Build the error from a description of the problem and the raw stdout.
   override name: string
     The error name.
+  readonly stdout: string
+    What notarytool printed on stdout.
 
 abstract class NotarytoolSettings extends ToolSettings
   The shared settings of every `xcrun notarytool` subcommand: the credentials,
@@ -30426,10 +30466,12 @@ class GooglePlayError extends Error
   refused request, Google's own error message; it never carries the
   service-account key or an access token.
 
-  constructor(message: string, readonly status?: number)
+  constructor(message: string, status?: number)
     Build the error from its message and, for a refused request, the HTTP status.
   override name: string
     The error name.
+  readonly status?: number
+    The HTTP status of the refused request, or `undefined` when no request was refused.
 
 class GooglePlaySettings
   Settings for `GooglePlayTasks.upload`.

@@ -29,18 +29,23 @@ export class QrCapacityError extends Error {
   /** The error's class name, for `instanceof`-free identification. */
   override name = "QrCapacityError";
 
+  /** The UTF-8 length of the text that was refused. */
+  readonly bytes: number;
+  /** The error-correction level the text was refused at. */
+  readonly level: ErrorCorrectionLevel;
+
   /** Build the error for a text of `bytes` UTF-8 bytes refused at `level`. */
   constructor(
-    /** The UTF-8 length of the text that was refused. */
-    readonly bytes: number,
-    /** The error-correction level the text was refused at. */
-    readonly level: ErrorCorrectionLevel,
+    bytes: number,
+    level: ErrorCorrectionLevel,
   ) {
     super(
       `${bytes} bytes of text do not fit a QR code at error-correction ` +
         `level ${level} (version ${MAX_VERSION} is the largest symbol); ` +
         `shorten the text or lower the level.`,
     );
+    this.bytes = bytes;
+    this.level = level;
   }
 }
 

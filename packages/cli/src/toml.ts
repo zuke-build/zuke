@@ -71,7 +71,11 @@ class Reader {
   /** Tables a `[header]` has defined, so a second definition is refused. */
   private readonly defined = new Set<Table>();
 
-  constructor(private readonly text: string) {}
+  private readonly text: string;
+
+  constructor(text: string) {
+    this.text = text;
+  }
 
   document(): Table {
     const root: Table = {};

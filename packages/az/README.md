@@ -634,8 +634,10 @@ class AzContainerappRevisionSettings extends AzResourceSettings
   Settings for `az containerapp revision activate` and `deactivate`: the
   app, and the revision to switch.
 
-  constructor(readonly verb_: "activate" | "deactivate")
+  constructor(verb_: "activate" | "deactivate")
     The settings for `revision <verb>`.
+  readonly verb_: "activate" | "deactivate"
+    `activate` or `deactivate`.
   revision(name: string): this
     The revision to activate or deactivate (`--revision`).
   override protected leadingTokens(): string[]
@@ -1156,10 +1158,14 @@ class AzOutputError extends Error
   tokens and secret values, and an error that echoed what the CLI printed
   would put the secret in the build log it was read to stay out of.
 
-  constructor(readonly task: string, readonly detail: string)
+  constructor(task: string, detail: string)
     Build the error from the reader that failed and what was wrong.
   override name: string
     The error name.
+  readonly task: string
+    The reader that could not use the output, e.g. `AzTasks.metricValue`.
+  readonly detail: string
+    What was wrong with the output, without quoting it.
 
 abstract class AzResourceSettings extends AzSettings
   Settings for a command on one named resource in a resource group.

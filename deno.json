@@ -128,5 +128,8 @@
         "ban-untagged-todo"
       ]
     }
+  },
+  "compilerOptions": {
+    "erasableSyntaxOnly": true
   }
 }

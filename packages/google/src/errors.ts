@@ -18,12 +18,15 @@ export class GooglePlayError extends Error {
   /** The error name. */
   override name = "GooglePlayError";
 
+  /** The HTTP status of the refused request, or `undefined` when no request was refused. */
+  readonly status?: number;
+
   /** Build the error from its message and, for a refused request, the HTTP status. */
   constructor(
     message: string,
-    /** The HTTP status of the refused request, or `undefined` when no request was refused. */
-    readonly status?: number,
+    status?: number,
   ) {
     super(message);
+    this.status = status;
   }
 }

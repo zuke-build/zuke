@@ -97,7 +97,11 @@ function declareParameter(p: ManifestParameter): AnyParameter {
 /** The fields a materialised build declares, each name used once. */
 class Fields {
   readonly #declared = new Set<string>();
-  constructor(private readonly build: Build) {}
+  private readonly build: Build;
+
+  constructor(build: Build) {
+    this.build = build;
+  }
 
   define(name: string, value: unknown): void {
     if (this.#declared.has(name)) {

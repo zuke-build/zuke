@@ -390,8 +390,10 @@ class GhApiSettings extends ToolSettings
   real `gh api` flags: `--method`, `--field`, `--raw-field`, `--header`,
   `--jq`, and `--silent`.
 
-  constructor(readonly endpoint: string)
+  constructor(endpoint: string)
     Build settings for a call to `endpoint` (e.g. `"user/starred/o/r"`).
+  readonly endpoint: string
+    The REST endpoint path, or `graphql`.
   override protected defaultTool(): string
     The default binary: `gh`.
   method(verb: string): this
