@@ -19,7 +19,9 @@ import { ReadableStream as NodeReadableStream } from "node:stream/web";
 /**
  * A stream of what `source` yields, as `ReadableStream.from` builds it: an
  * item is read only when the stream is pulled, an error from the iterator
- * errors the stream, and cancelling the stream returns the iterator.
+ * errors the stream, and cancelling the stream returns the iterator. Unlike
+ * `ReadableStream.from`, a promise a sync iterable yields is enqueued as it
+ * is, not awaited; no caller yields one.
  */
 export function streamOf<T>(
   source: Iterable<T> | AsyncIterable<T>,

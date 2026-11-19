@@ -53,6 +53,26 @@ Deno.test("streamOf errors the stream when the iterator throws", async () => {
   );
 });
 
+Deno.test("streamOf errors the stream when a sync iterator's next throws", async () => {
+  const throwing: Iterable<number> = {
+    [Symbol.iterator]: () => ({
+      next: (): IteratorResult<number> => {
+        throw new Error("next broke");
+      },
+    }),
+  };
+  await assertRejects(() => collect(streamOf(throwing)), Error, "next broke");
+});
+
+Deno.test("cancelling a streamOf stream whose iterator has no return succeeds", async () => {
+  const endless: Iterable<number> = {
+    [Symbol.iterator]: () => ({ next: () => ({ done: false, value: 1 }) }),
+  };
+  const reader = streamOf(endless).getReader();
+  assertEquals((await reader.read()).value, 1);
+  await reader.cancel("done");
+});
+
 Deno.test("cancelling a streamOf stream returns the iterator", async () => {
   let finished = false;
   function* items(): Generator<number> {

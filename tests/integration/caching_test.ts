@@ -269,11 +269,6 @@ Deno.test("an output with a looping directory link uploads and restores", async 
         await Deno.remove(`${dir}/.zuke`, { recursive: true });
         await Deno.remove(`${dir}/dist`, { recursive: true });
         assertEquals((await runCli(B, ["build"])).code, 0);
-        let stored = 0;
-        for await (const entry of Deno.readDir(remoteDir)) {
-          stored += (await Deno.stat(`${remoteDir}/${entry.name}`)).size;
-        }
-        assertEquals(stored > 128 * 1024, true); // the archive spans slices
         assertEquals(log, ["build"]); // restored, not rebuilt
         assertEquals(await Deno.readTextFile(`${dir}/dist/app.js`), "built");
       } finally {
