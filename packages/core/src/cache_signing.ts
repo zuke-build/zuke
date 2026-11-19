@@ -23,6 +23,8 @@
  * @module
  */
 
+import { streamOf } from "./web_stream.ts";
+
 /** The fixed chunk size the archive is hashed in. Changing it changes every MAC. */
 const CHUNK = 1024 * 1024;
 
@@ -178,5 +180,5 @@ export async function verifySigned(
 export function withoutTrailer(
   stored: ReadableStream<Uint8Array<ArrayBuffer>>,
 ): ReadableStream<Uint8Array<ArrayBuffer>> {
-  return ReadableStream.from(splitTrailer(stored, { mac: new Uint8Array(0) }));
+  return streamOf(splitTrailer(stored, { mac: new Uint8Array(0) }));
 }

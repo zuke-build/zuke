@@ -16,9 +16,10 @@
 
 import { createServer, type IncomingMessage } from "node:http";
 import type { Socket } from "node:net";
-import { Readable } from "node:stream";
+import type { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { ON_DENO } from "./runtime.ts";
+import { fromWebStream } from "./web_stream.ts";
 
 /** A handler that answers a web request with a web response. */
 export type FetchHandler = (request: Request) => Response | Promise<Response>;
@@ -180,7 +181,7 @@ export async function sendResponse(
       outgoing.end();
       return;
     }
-    await pipeline(Readable.fromWeb(response.body), outgoing);
+    await pipeline(fromWebStream(response.body), outgoing);
   } catch {
     outgoing.destroy();
   }

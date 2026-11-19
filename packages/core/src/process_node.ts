@@ -37,11 +37,12 @@
 import { type ChildProcess as NodeChild, spawn } from "node:child_process";
 import { constants } from "node:os";
 import process from "node:process";
-import { Readable, Writable } from "node:stream";
+import { type Readable, Writable } from "node:stream";
 import { isFileSync, readSmallTextSync } from "./fs.ts";
 import { invocation } from "./process_batch.ts";
 import type { ChildProcess, ProcessOptions, ProcessStdio } from "./process.ts";
 import type { CommandStatus, Signal } from "./signal.ts";
+import { toWebStream } from "./web_stream.ts";
 
 /** The most a batch file may hold and still be read to see whether it is a shim. */
 const SHIM_LIMIT = 64 * 1024;
@@ -148,7 +149,7 @@ class NodeChildProcess implements ChildProcess {
     stream: Readable | null,
   ): ReadableStream<Uint8Array> | null {
     if (stdio !== "piped") return null;
-    if (started && stream !== null) return Readable.toWeb(stream);
+    if (started && stream !== null) return toWebStream(stream);
     return new ReadableStream({ start: (controller) => controller.close() });
   }
 

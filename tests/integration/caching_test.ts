@@ -549,3 +549,56 @@ Deno.test("with a signing key, a store writer's swapped artifact is rebuilt, not
     });
   });
 });
+
+Deno.test("a signed output larger than one stream slice restores byte for byte", async () => {
+  await withStateDir(async () => {
+    await withTempCwd(async (dir) => {
+      const remoteDir = await Deno.makeTempDir({ prefix: "zuke-it-large-" });
+      const names = ["ZUKE_REMOTE_CACHE_DIR", "ZUKE_REMOTE_CACHE_SIGNING_KEY"];
+      const prev = names.map((name) => Deno.env.get(name));
+      Deno.env.set("ZUKE_REMOTE_CACHE_DIR", remoteDir);
+      Deno.env.set("ZUKE_REMOTE_CACHE_SIGNING_KEY", "it-secret");
+      try {
+        await Deno.writeTextFile(`${dir}/input.txt`, "v1");
+        // Several of the 64 KiB slices the archive is streamed in, so the
+        // upload, the signature and the restore each span more than one.
+        let seed = 0x2545f491;
+        const payload = Uint8Array.from({ length: 200 * 1024 }, () => {
+          // A shift-register generator: bytes gzip cannot shrink below a slice.
+          seed ^= seed << 13;
+          seed ^= seed >>> 17;
+          seed ^= seed << 5;
+          return seed & 0xff;
+        });
+        const log: string[] = [];
+        class B extends Build {
+          build = target().inputs("input.txt").outputs("out.bin").executes(
+            async () => {
+              log.push("build");
+              await Deno.writeFile("out.bin", payload);
+            },
+          );
+        }
+
+        assertEquals((await runCli(B, ["build"])).code, 0);
+        await Deno.remove(`${dir}/.zuke`, { recursive: true });
+        await Deno.remove(`${dir}/out.bin`);
+        assertEquals((await runCli(B, ["build"])).code, 0);
+        let stored = 0;
+        for await (const entry of Deno.readDir(remoteDir)) {
+          stored += (await Deno.stat(`${remoteDir}/${entry.name}`)).size;
+        }
+        assertEquals(stored > 128 * 1024, true); // the archive spans slices
+        assertEquals(log, ["build"]); // restored, not rebuilt
+        assertEquals(await Deno.readFile(`${dir}/out.bin`), payload);
+      } finally {
+        names.forEach((name, i) => {
+          const value = prev[i];
+          if (value === undefined) Deno.env.delete(name);
+          else Deno.env.set(name, value);
+        });
+        await Deno.remove(remoteDir, { recursive: true });
+      }
+    });
+  });
+});
