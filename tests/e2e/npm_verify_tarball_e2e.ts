@@ -18,10 +18,10 @@
 
 import { absolutePath, gunzip, gzip, untar } from "../../packages/core/mod.ts";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { RELEASE_PROVENANCE } from "../../build/npm_provenance.ts";
 import {
   type NpmProbe,
   type NpmSource,
-  RELEASE_PROVENANCE,
   verifyAll,
 } from "../../build/npm_verify.ts";
 import { NpmTasks } from "@zuke/npm";

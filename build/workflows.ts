@@ -107,8 +107,9 @@ export interface WorkflowTargets {
  *
  * Each entry is traceable to something the build does — the Deno bootstrap,
  * module resolution (JSR, plus npm for the cspell tooling), the OpenAI API for
- * the lint fixer, GitHub for the fixer's comment and push, and Codecov's CDN,
- * API, and upload bucket.
+ * the lint fixer, GitHub for the fixer's comment and push, Codecov's CDN,
+ * API, and upload bucket, and Sigstore's TUF repository for the npm
+ * attestation check.
  */
 const GATE_ENDPOINTS = [
   "deno.land:443",
@@ -125,6 +126,9 @@ const GATE_ENDPOINTS = [
   "api.codecov.io:443",
   "ingest.codecov.io:443",
   "storage.googleapis.com:443",
+  // Sigstore's trusted root, over TUF: `npmSigstoreCheck` verifies a recorded
+  // attestation with sigstore-js, which contacts only this host.
+  "tuf-repo-cdn.sigstore.dev:443",
 ];
 
 /**

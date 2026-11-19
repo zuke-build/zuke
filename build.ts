@@ -185,18 +185,19 @@ import {
 } from "./build/npm_smoke.ts";
 import { NPM_REGISTRY, trustPublisher } from "./build/npm_publish.ts";
 import { npmPackages } from "./build/npm_manifest.ts";
+import { readTree } from "./build/npm_installed.ts";
 import {
-  auditSignatures,
-  builtCommit,
-  changedSinceRelease,
-  failures,
-  readTree,
-  REAL_NPM,
-  registrySource,
   RELEASE_PROVENANCE,
   sigstorePolicy,
   sigstoreVerifier,
   slsaBundle,
+} from "./build/npm_provenance.ts";
+import { registrySource } from "./build/npm_registry.ts";
+import { builtCommit, changedSinceRelease } from "./build/npm_release.ts";
+import {
+  auditSignatures,
+  failures,
+  REAL_NPM,
   verifyAll,
 } from "./build/npm_verify.ts";
 import { scannerConfigDenial } from "./build/scanner_policy.ts";
@@ -1126,7 +1127,7 @@ class ZukeBuild extends Build {
       );
       try {
         await installNpmToolchain();
-        const verify = sigstoreVerifier(NPM_TOOLS, work, "bundled");
+        const verify = sigstoreVerifier(NPM_TOOLS, work);
         const fixture = await FileTasks.readJson(
           "tests/fixtures/npm_attestation_sigstore-5.0.1.json",
         );
@@ -2237,7 +2238,10 @@ class ZukeBuild extends Build {
         }
         const project = work("consumer");
         const results = await verifyAll(versions, {
-          source: registrySource(sigstoreVerifier(NPM_TOOLS, work, "refresh")),
+          source: {
+            ...registrySource(),
+            verifyBundle: sigstoreVerifier(NPM_TOOLS, work),
+          },
           npm: REAL_NPM,
           project,
           rebuilt: (pkg) => readTree(String(work("dist", pkg))),

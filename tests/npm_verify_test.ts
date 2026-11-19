@@ -2,286 +2,52 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * `npmVerify`'s decisions, against fakes: what the registry and its provenance
- * must say, what is compared with the rebuild (the files npm installs), what
- * counts as a failure and what as a skip, and the seams to the registry, git
- * and npm. Also the properties the npm build needs for its output not to depend
- * on the machine.
+ * `npmVerify`'s orchestration, against fakes: what the registry and its
+ * provenance must say, what is compared with the rebuild (the files npm
+ * installs, direct and through the `@zuke/*` aliases), what counts as a failure
+ * and what as a skip, and the seam to npm. Also the properties the npm build
+ * needs for its output not to depend on the machine.
  *
  * @module
  */
 
-import { absolutePath, HttpError } from "../packages/core/mod.ts";
+import { absolutePath } from "../packages/core/mod.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
 } from "../packages/core/tests/_assert.ts";
+import type { ExpectedProvenance } from "../build/npm_provenance.ts";
 import {
   auditSignatures,
-  builtCommit,
-  changedSinceRelease,
-  compareFiles,
-  distOf,
-  type ExpectedProvenance,
   failures,
-  type GitProbe,
-  manifestProblems,
-  NPM_ACTED_ON_FIELDS,
   type NpmProbe,
   type NpmSource,
-  provenanceProblems,
-  readTree,
-  registrySource,
-  sha512Hex,
-  sigstorePolicy,
-  slsaBundle,
   verifyAll,
   type VerifyDeps,
   type VerifyResult,
 } from "../build/npm_verify.ts";
 import { npmTsconfig } from "../build/npm_build.ts";
 import { npmManifest } from "../build/npm_manifest.ts";
+import {
+  bundleOf,
+  integrityOf,
+  OURS,
+  SLSA,
+  statement,
+  text,
+} from "./_npm_verify.ts";
 
-const text = (s: string) => new TextEncoder().encode(s);
-const SLSA = "https://slsa.dev/provenance/v1";
-
-const OURS: ExpectedProvenance = {
-  repository: "https://github.com/zuke-build/zuke",
-  path: ".github/workflows/release.yml",
-  ref: "refs/heads/master",
-  commit: "1234abc",
-};
-
-/** An SRI string for 64 bytes of `seed`, and the hex a statement carries for it. */
-function integrityOf(seed: number): { integrity: string; hex: string } {
-  const bytes = new Uint8Array(64).fill(seed);
-  return {
-    integrity: "sha512-" + btoa(String.fromCharCode(...bytes)),
-    hex: Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join(""),
-  };
-}
-
-/** The bundle of an attestations document whose SLSA statement says `statement`. */
-function bundleOf(statement: unknown): unknown {
-  return { dsseEnvelope: { payload: btoa(JSON.stringify(statement)) } };
-}
-
-/** The statement npm records for a build of `hex` from `OURS`, changed by `over`. */
-function statement(
-  hex: string,
-  over: Partial<ExpectedProvenance> = {},
-): unknown {
-  const at = { ...OURS, ...over };
-  return {
-    subject: [{ name: "pkg:npm/x@1.0.0", digest: { sha512: hex } }],
-    predicate: {
-      buildDefinition: {
-        externalParameters: {
-          workflow: { repository: at.repository, path: at.path, ref: at.ref },
-        },
-        resolvedDependencies: [{ digest: { gitCommit: at.commit } }],
-      },
-    },
-  };
-}
-
-const FIXTURE: unknown = JSON.parse(
-  Deno.readTextFileSync(
-    new URL("./fixtures/npm_attestation_sigstore-5.0.1.json", import.meta.url),
-  ),
-);
-// sigstore@5.0.1's real npm attestation (fetched from the registry), so the
-// field paths read are the ones npm really writes.
-const SIGSTORE: ExpectedProvenance = {
-  repository: "https://github.com/sigstore/sigstore-js",
-  path: ".github/workflows/release.yml",
-  ref: "refs/heads/main",
-  commit: "4576519f81b93bf96bd7457fc7252b8cfa11e67f",
-};
-const SIGSTORE_INTEGRITY =
-  "sha512-LNdyRQ9ex5Nola93z1Xfm9WewHiy1v3XDH8SVizrWzPcGTuHpi3C5U6EQuCNH7Oo7G3j+16cnNf9Vd3VZxpafA==";
-
-Deno.test("distOf reads a version's integrity and attestations, null when absent, and throws when broken", () => {
-  const dist = {
-    tarball: "u",
-    integrity: "i",
-    attestations: { url: "a", provenance: { predicateType: SLSA } },
-  };
-  const doc = (d: unknown) => ({ versions: { "1.0.0": { dist: d } } });
-  assertEquals(distOf(doc(dist), "1.0.0")?.attestations, "a");
-  assertEquals(distOf(doc(dist), "1.0.0")?.integrity, "i");
-  assertEquals(
-    distOf(doc({ tarball: "u", integrity: "i" }), "1.0.0")?.attestations,
-    null,
-  );
-  assertEquals(distOf(doc(dist), "1.0.0")?.manifest, { dist });
-  for (const absent of [null, [], {}, { versions: [] }, doc(dist)]) {
-    assertEquals(distOf(absent, "2.0.0"), null);
-  }
-  for (
-    const broken of [1, {}, { tarball: "u" }, { integrity: "i" }, {
-      tarball: "u",
-      integrity: "",
-    }]
-  ) {
-    const bad = distOf.bind(null, doc(broken), "1.0.0");
-    try {
-      bad();
-      throw new Error("distOf accepted a broken dist");
-    } catch (error) {
-      assertStringIncludes(String(error), "without a usable dist.tarball");
-    }
-  }
-  const wrongType = doc({ ...dist, attestations: { url: "a" } });
-  assertEquals(distOf(wrongType, "1.0.0")?.attestations, null);
-});
-
-Deno.test("sha512Hex reads an SRI string's sha512", () => {
-  assertEquals(sha512Hex(integrityOf(1).integrity), integrityOf(1).hex);
-  assertEquals(sha512Hex("sha1-abc sha512-" + btoa("\x01")), "01");
-  assertEquals(sha512Hex("sha1-abc"), null);
-  assertEquals(sha512Hex("sha512-***"), null);
-});
-
-Deno.test("a real npm attestation passes for its integrity, repository, workflow, ref and commit", () => {
-  const bundle = slsaBundle(FIXTURE);
-  assertEquals(provenanceProblems(bundle, SIGSTORE_INTEGRITY, SIGSTORE), []);
-});
-
-Deno.test("a real npm attestation fails for another integrity, repository, workflow, ref or commit", () => {
-  const bundle = slsaBundle(FIXTURE);
-  const wrong = (
-    over: Partial<ExpectedProvenance>,
-    integrity = SIGSTORE_INTEGRITY,
-  ) => provenanceProblems(bundle, integrity, { ...SIGSTORE, ...over });
-  assertStringIncludes(
-    wrong({}, integrityOf(9).integrity)[0],
-    "no subject has the sha512",
-  );
-  assertStringIncludes(wrong({}, "sha1-x")[0], "no subject has the sha512");
-  assertStringIncludes(
-    wrong({ repository: OURS.repository })[0],
-    "workflow repository is https://github.com/sigstore/sigstore-js",
-  );
-  assertStringIncludes(wrong({ path: "x.yml" })[0], "workflow path is");
-  assertStringIncludes(
-    wrong({ ref: OURS.ref })[0],
-    "workflow ref is refs/heads/main",
-  );
-  assertStringIncludes(wrong({ commit: "abc" })[0], "built from 4576519");
-});
-
-Deno.test("a bundle without a readable SLSA statement is refused", () => {
-  assertEquals(
-    slsaBundle({ attestations: [{ predicateType: "other" }] }),
-    undefined,
-  );
-  for (const bad of [undefined, {}, { dsseEnvelope: { payload: 1 } }]) {
-    assertStringIncludes(
-      provenanceProblems(bad, "sha512-AA==", OURS)[0],
-      "no SLSA",
-    );
-  }
-  const garbage = { dsseEnvelope: { payload: btoa("{") } };
-  assertStringIncludes(
-    provenanceProblems(garbage, "sha512-AA==", OURS)[0],
-    "not readable",
-  );
-  assertStringIncludes(
-    provenanceProblems(bundleOf({}), "sha512-AA==", OURS).join("\n"),
-    "built from undefined",
-  );
-});
-
-Deno.test("the Sigstore policy pins issuer, an anchored identity, and the repository, ref and commit OIDs", () => {
-  const policy = sigstorePolicy(OURS);
-  assertEquals(
-    policy.certificateIssuer,
-    "https://token.actions.githubusercontent.com",
-  );
-  assertEquals(policy.certificateOIDs, {
-    "1.3.6.1.4.1.57264.1.3": "1234abc",
-    "1.3.6.1.4.1.57264.1.5": "zuke-build/zuke",
-    "1.3.6.1.4.1.57264.1.6": "refs/heads/master",
-  });
-  // sigstore-js tests the identity as a regular expression.
-  const identity = new RegExp(policy.certificateIdentityURI);
-  const ours =
-    "https://github.com/zuke-build/zuke/.github/workflows/release.yml@refs/heads/master";
-  assertEquals(identity.test(ours), true);
-  for (
-    const other of [
-      ours + "x",
-      "x" + ours,
-      ours.replace("zuke-build/zuke", "zuke-build/zuke2"),
-      ours.replace("release.yml", "release-yml"),
-      ours.replace("master", "main"),
-      ours.replace("https://github.com", "https://github-com"),
-    ]
-  ) assertEquals(identity.test(other), false, other);
-});
-
-Deno.test("only an exact match of the installed files with the rebuild is accepted", () => {
-  const rebuilt = new Map([
-    ["package.json", text('{"name":"x","version":"1.0.0"}\n')],
-    ["mod.js", text("export {};\n")],
-    ["README.md", text("# x\n")],
-  ]);
-  assertEquals(compareFiles(new Map(rebuilt), rebuilt), []);
-  // package.json by value: key order and whitespace do not matter.
-  const reordered = new Map(rebuilt).set(
-    "package.json",
-    text('{ "version": "1.0.0", "name": "x" }'),
-  );
-  assertEquals(compareFiles(reordered, rebuilt), []);
-  const changed = new Map(rebuilt).set("mod.js", text("export const x = 1;\n"))
-    .set("extra.js", text(""));
-  changed.delete("README.md");
-  assertEquals(compareFiles(changed, rebuilt), [
-    "README.md: in the rebuild, not installed from npm.",
-    "extra.js: installed from npm, not in the rebuild.",
-    "mod.js: differs from the rebuild.",
-  ]);
-  for (const manifest of ['{"name":"x","version":"9.9.9"}', "{"]) {
-    assertEquals(
-      compareFiles(
-        new Map(rebuilt).set("package.json", text(manifest)),
-        rebuilt,
-      ),
-      ["package.json: differs from the rebuild."],
-    );
-  }
-});
-
-Deno.test("readTree lists nested files by relative path, and refuses a symlink", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
-    await Deno.mkdir(`${dir}/src`);
-    await Deno.writeTextFile(`${dir}/mod.js`, "m");
-    await Deno.writeTextFile(`${dir}/src/a.js`, "a");
-    assertEquals([...(await readTree(dir)).keys()].sort(), [
-      "mod.js",
-      "src/a.js",
-    ]);
-    if (Deno.build.os !== "windows") {
-      await Deno.symlink(`${dir}/mod.js`, `${dir}/link.js`);
-      await assertRejects(
-        () => readTree(dir),
-        Error,
-        "link.js is not a regular file",
-      );
-    }
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
-});
-
-/** A world in which `@zuke-build/x`@1.0.0 is on npm, and what happened in it. */
+/** A world in which `@zuke-build/<pkg>`@1.0.0 is on npm, and what happened in it. */
 interface World {
   deps: VerifyDeps;
   dir: string;
-  log: { installs: string[][]; waits: number; verified: unknown[] };
+  log: {
+    installs: string[][];
+    waits: number;
+    verified: unknown[];
+    manifest: Record<string, unknown>;
+  };
 }
 
 const REBUILT = new Map([
@@ -289,9 +55,21 @@ const REBUILT = new Map([
   ["mod.js", text("export {};\n")],
 ]);
 
+/** `y`, which imports `x` through its alias. */
+const REBUILT_Y = new Map([
+  [
+    "package.json",
+    text(
+      '{"name":"@zuke-build/y","version":"1.0.0","dependencies":{"@zuke/x":"npm:@zuke-build/x@^1"}}\n',
+    ),
+  ],
+]);
+
 async function world(
   over: {
     installed?: Record<string, string>;
+    /** What the alias directory `node_modules/@zuke/x` holds, when there is one. */
+    aliasInstalled?: Record<string, string>;
     lockIntegrity?: string;
     document?: (integrity: string) => unknown;
     /** Fields the registry's metadata for the version has besides the rebuild's. */
@@ -303,7 +81,10 @@ async function world(
     attested?: boolean;
     badSignature?: boolean;
     allowMissing?: boolean;
-    skip?: string | null;
+    /** Packages skipped, with their reason. */
+    skip?: Record<string, string>;
+    /** The packages the registry has; `x` unless given. */
+    packages?: string[];
   } = {},
 ): Promise<World> {
   const dir = await Deno.makeTempDir();
@@ -319,21 +100,28 @@ async function world(
       attestations: { url: "t://att", provenance: { predicateType: SLSA } },
     }),
   };
-  const log: World["log"] = { installs: [], waits: 0, verified: [] };
+  const log: World["log"] = {
+    installs: [],
+    waits: 0,
+    verified: [],
+    manifest: {},
+  };
   const source: NpmSource = {
     document: (pkg) =>
       Promise.resolve(
-        pkg !== "x" ? null : over.document?.(integrity) ??
-          {
-            versions: {
-              "1.0.0": {
-                name: "@zuke-build/x",
-                version: "1.0.0",
-                dist,
-                ...over.metadata,
+        !(over.packages ?? ["x"]).includes(pkg)
+          ? null
+          : over.document?.(integrity) ??
+            {
+              versions: {
+                "1.0.0": {
+                  name: `@zuke-build/${pkg}`,
+                  version: "1.0.0",
+                  dist,
+                  ...over.metadata,
+                },
               },
             },
-          },
       ),
     attestations: () =>
       Promise.resolve({
@@ -350,15 +138,23 @@ async function world(
     },
   };
   const project = absolutePath(dir)("consumer");
+  const write = async (out: string, files: Record<string, string>) => {
+    for (const [path, data] of Object.entries(files)) {
+      await Deno.mkdir(`${out}/${path}`.replace(/\/[^/]*$/, ""), {
+        recursive: true,
+      });
+      await Deno.writeTextFile(`${out}/${path}`, data);
+    }
+  };
   const npm: NpmProbe = {
     install: async (_p, specs) => {
       log.installs.push(specs);
-      const out = `${project}/node_modules/@zuke-build/x`;
-      for (const [path, data] of Object.entries(installed)) {
-        await Deno.mkdir(`${out}/${path}`.replace(/\/[^/]*$/, ""), {
-          recursive: true,
-        });
-        await Deno.writeTextFile(`${out}/${path}`, data);
+      log.manifest = JSON.parse(
+        await Deno.readTextFile(`${project}/package.json`),
+      );
+      await write(`${project}/node_modules/@zuke-build/x`, installed);
+      if (over.aliasInstalled !== undefined) {
+        await write(`${project}/node_modules/@zuke/x`, over.aliasInstalled);
       }
       await Deno.writeTextFile(
         `${project}/package-lock.json`,
@@ -381,8 +177,8 @@ async function world(
     source,
     npm,
     project,
-    rebuilt: () => Promise.resolve(REBUILT),
-    skipReason: () => Promise.resolve(over.skip ?? null),
+    rebuilt: (pkg) => Promise.resolve(pkg === "y" ? REBUILT_Y : REBUILT),
+    skipReason: (pkg) => Promise.resolve(over.skip?.[pkg] ?? null),
     commitOf: () => Promise.resolve(OURS.commit),
     allowMissing: over.allowMissing ?? false,
     attempts: 3,
@@ -396,11 +192,17 @@ async function world(
 
 async function run(
   over: Parameters<typeof world>[0],
-  pkg = "x",
+  ...pkgs: string[]
 ): Promise<{ w: World; result: Awaited<ReturnType<typeof verifyAll>> }> {
   const w = await world(over);
   try {
-    return { w, result: await verifyAll(new Map([[pkg, "1.0.0"]]), w.deps) };
+    return {
+      w,
+      result: await verifyAll(
+        new Map((pkgs.length > 0 ? pkgs : ["x"]).map((p) => [p, "1.0.0"])),
+        w.deps,
+      ),
+    };
   } finally {
     await Deno.remove(w.dir, { recursive: true });
   }
@@ -478,18 +280,17 @@ Deno.test("verifyAll: metadata that differs from the rebuilt package.json in a f
   }
 });
 
-Deno.test("manifestProblems lists every field npm acts on and nothing else", () => {
-  assertEquals(NPM_ACTED_ON_FIELDS.includes("scripts"), true);
-  assertEquals(
-    manifestProblems(
-      { name: "x", extra: 1 },
-      text('{"name":"x","files":["a"]}'),
-    ),
-    [],
-  );
-  assertEquals(manifestProblems({}, text("{")).length, 1);
-  assertEquals(manifestProblems({}, undefined).length, 1);
-});
+/** The lockfile entry of the alias `@zuke/x` as npm writes it, changed by `over`. */
+function aliasEntry(over: Record<string, unknown> = {}) {
+  return {
+    "node_modules/@zuke/x": {
+      name: "@zuke-build/x",
+      version: "1.0.0",
+      integrity: integrityOf(7).integrity,
+      ...over,
+    },
+  };
+}
 
 Deno.test("verifyAll: a lockfile with another package, an install script or a bin fails", async () => {
   const other = await run({
@@ -500,9 +301,7 @@ Deno.test("verifyAll: a lockfile with another package, an install script or a bi
     "node_modules/evil, which is not one of ours",
   );
   const script = await run({
-    lockExtra: {
-      "node_modules/@zuke/x": { name: "@zuke-build/x", hasInstallScript: true },
-    },
+    lockExtra: aliasEntry({ hasInstallScript: true }),
   });
   assertStringIncludes(problemsOf(script)[0], "has an install script");
   const bin = await run({ lockBin: { x: "evil.js" } });
@@ -510,16 +309,88 @@ Deno.test("verifyAll: a lockfile with another package, an install script or a bi
     problemsOf(bin)[0],
     "has a bin other than the rebuild's",
   );
-  const alias = await run({
-    lockExtra: {
-      "node_modules/@zuke/x": { name: "@zuke-build/x", version: "1.0.1" },
-    },
-  });
-  assertEquals(alias.result.get("x")?.status, "match");
   const gone = await run({
     lockExtra: { "node_modules/@zuke-build/x": undefined },
   });
   assertStringIncludes(problemsOf(gone)[0], "no entry for @zuke-build/x");
+});
+
+Deno.test("verifyAll: every alias is pinned to the verified version, and matches it", async () => {
+  const out = await run({
+    lockExtra: aliasEntry(),
+    aliasInstalled: {
+      "package.json": '{"name":"@zuke-build/x","version":"1.0.0"}',
+      "mod.js": "export {};\n",
+    },
+  });
+  assertEquals(out.result.get("x")?.status, "match");
+  assertEquals(out.w.log.manifest.overrides, {
+    "@zuke/x": "npm:@zuke-build/x@1.0.0",
+  });
+});
+
+Deno.test("verifyAll: an alias with another integrity, another version, other files or no verification fails", async () => {
+  const integrity = await run({
+    lockExtra: aliasEntry({ integrity: integrityOf(8).integrity }),
+  });
+  assertStringIncludes(
+    problemsOf(integrity).join("\n"),
+    "node_modules/@zuke/x with a version or integrity other than the verified",
+  );
+  const version = await run({ lockExtra: aliasEntry({ version: "1.0.1" }) });
+  assertStringIncludes(
+    problemsOf(version).join("\n"),
+    "node_modules/@zuke/x with a version or integrity other than the verified",
+  );
+  const named = await run({ lockExtra: aliasEntry({ name: "evil" }) });
+  assertStringIncludes(
+    problemsOf(named).join("\n"),
+    "is not an alias of @zuke-build/x",
+  );
+  const files = await run({
+    lockExtra: aliasEntry(),
+    aliasInstalled: {
+      "package.json": '{"name":"@zuke-build/x","version":"1.0.0"}',
+      "mod.js": "export const evil = 1;\n",
+    },
+  });
+  assertEquals(problemsOf(files), [
+    "alias @zuke/x: mod.js: differs from the rebuild.",
+  ]);
+  const unverified = await run({
+    lockExtra: {
+      "node_modules/@zuke/y": {
+        name: "@zuke-build/y",
+        version: "1.0.0",
+        integrity: integrityOf(7).integrity,
+      },
+    },
+  });
+  assertStringIncludes(
+    problemsOf(unverified).join("\n"),
+    "node_modules/@zuke/y is a package that was not verified in this run",
+  );
+});
+
+Deno.test("verifyAll: a package whose dependency was skipped or failed is not verified either", async () => {
+  const skipped = await run(
+    { packages: ["x", "y"], skip: { x: "packages/x has changed" } },
+    "x",
+    "y",
+  );
+  assertEquals(skipped.result.get("y"), {
+    status: "skipped",
+    reason:
+      "it depends on @zuke-build/x, which was skipped (packages/x has changed).",
+    unverifiable: true,
+    version: "1.0.0",
+  });
+  assertEquals(skipped.w.log.installs, []);
+  const failed = await run({ packages: ["y"] }, "x", "y");
+  assertEquals(problemsOf(failed, "y"), [
+    "it depends on @zuke-build/x, which was not verified.",
+  ]);
+  assertStringIncludes(problemsOf(failed, "x")[0], "not on npm");
 });
 
 Deno.test("verifyAll: provenance for another repository, workflow, ref, commit or bytes fails before anything is installed", async () => {
@@ -584,10 +455,11 @@ Deno.test("verifyAll: a version entry without a usable dist is a failure, not a 
 });
 
 Deno.test("verifyAll: a package changed since its release is skipped", async () => {
-  const out = await run({ skip: "changed" });
+  const out = await run({ skip: { x: "changed" } });
   assertEquals(out.result.get("x"), {
     status: "skipped",
     reason: "changed",
+    unverifiable: true,
     version: "1.0.0",
   });
   assertEquals(out.w.log.installs, []);
@@ -615,46 +487,15 @@ Deno.test("only mismatches fail, and comparing nothing fails unless allowed", ()
     failures(new Map<string, VerifyResult>([["y", skipped]]), true),
     [],
   );
-});
-
-/** A git that knows `tags` (tag to commit) and says `changed` differs since. */
-function git(tags: Record<string, string>, changed: string[]): GitProbe {
-  return {
-    tagCommit: (tag) => Promise.resolve(tags[tag] ?? null),
-    changed: () => Promise.resolve(changed),
-    head: () => Promise.resolve("headsha"),
+  // Everything moved since its release: nothing to compare is not an error.
+  const moved: VerifyResult = {
+    status: "skipped",
+    reason: "changed",
+    unverifiable: true,
   };
-}
-
-Deno.test("changedSinceRelease: no tag compares, an unchanged tag compares, a changed one skips", async () => {
-  assertEquals(await changedSinceRelease("x", "1.0.0", git({}, ["a"])), null);
-  const tagged = { "x-v1.0.0": "tag-commit" };
-  assertEquals(await changedSinceRelease("x", "1.0.0", git(tagged, [])), null);
   assertEquals(
-    await changedSinceRelease("x", "1.0.0", git(tagged, ["packages/x/a.ts"])),
-    "packages/x has changed since x-v1.0.0; check out the tag to verify it.",
-  );
-  // The provenance must name the tag's commit, else the checkout's.
-  assertEquals(await builtCommit("x", "1.0.0", git(tagged, [])), "tag-commit");
-  assertEquals(await builtCommit("x", "1.0.0", git({}, [])), "headsha");
-});
-
-Deno.test("registrySource: 404 is not published, other errors fail, attestations are read", async () => {
-  const answer = (status: number, body = "{}"): typeof fetch => () =>
-    Promise.resolve(new Response(body, { status }));
-  const never = () => Promise.reject(new Error("unused"));
-  assertEquals(await registrySource(never, answer(404)).document("x"), null);
-  assertEquals(
-    await registrySource(never, answer(200, '{"a":1}')).document("x"),
-    { a: 1 },
-  );
-  await assertRejects(
-    () => registrySource(never, answer(500)).document("x"),
-    HttpError,
-  );
-  assertEquals(
-    await registrySource(never, answer(200, "[2]")).attestations("u"),
-    [2],
+    failures(new Map<string, VerifyResult>([["y", moved]]), false),
+    [],
   );
 });
 

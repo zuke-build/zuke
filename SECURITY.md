@@ -177,10 +177,13 @@ source itself is free of bugs.
   the registry's metadata for a version, not on the tarball's `package.json`, so
   it also compares that metadata's scripts, dependencies, bin, os and the other
   fields npm acts on with the rebuild, and checks that npm's lockfile holds only
-  our packages, none with an install script or a bin. For each version it
-  requires an npm SLSA provenance attestation and checks, with sigstore-js
-  itself, that the Sigstore bundle verifies and that its certificate was issued
-  to the GitHub Actions identity
+  our packages, none with an install script or a bin. The `@zuke/<name>` aliases
+  the packages import each other through are pinned to the versions verified in
+  the same run, recorded in the lockfile with the same integrity, and their
+  files compared too; a package whose dependency was not verified there is
+  reported, not verified. For each version it requires an npm SLSA provenance
+  attestation and checks, with sigstore-js itself, that the Sigstore bundle
+  verifies and that its certificate was issued to the GitHub Actions identity
   `https://github.com/zuke-build/zuke/.github/workflows/release.yml@refs/heads/master`
   for repository `zuke-build/zuke`, ref `refs/heads/master` and the release
   commit X (the tag's); that the statement it signs names that same commit and a
