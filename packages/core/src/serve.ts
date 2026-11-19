@@ -16,7 +16,7 @@
 
 import { createServer, type IncomingMessage } from "node:http";
 import type { Socket } from "node:net";
-import { Readable } from "node:stream";
+import type { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { ON_DENO } from "./runtime.ts";
 import { fromWebStream } from "./web_stream.ts";

@@ -37,7 +37,7 @@
 import { type ChildProcess as NodeChild, spawn } from "node:child_process";
 import { constants } from "node:os";
 import process from "node:process";
-import { Readable, Writable } from "node:stream";
+import { type Readable, Writable } from "node:stream";
 import { isFileSync, readSmallTextSync } from "./fs.ts";
 import { invocation } from "./process_batch.ts";
 import type { ChildProcess, ProcessOptions, ProcessStdio } from "./process.ts";
