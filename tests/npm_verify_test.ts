@@ -467,6 +467,8 @@ Deno.test("verifyAll: metadata that differs from the rebuilt package.json in a f
     ["os", { os: ["linux"] }],
     ["name", { name: "@zuke-build/y" }],
     ["version", { version: "1.0.0-evil" }],
+    ["_hasShrinkwrap", { _hasShrinkwrap: true }],
+    ["acceptDependencies", { acceptDependencies: { "@zuke/core": "*" } }],
   ];
   for (const [field, metadata] of cases) {
     const out = await run({ metadata });

@@ -582,14 +582,16 @@ async function checkProvenance(
  * The `package.json` fields npm acts on when it installs: what it resolves
  * (`dependencies` and its kin, `bundleDependencies`/`bundledDependencies`,
  * `os`, `cpu`, `libc`, `engines`), what it runs or links (`scripts`,
- * `hasInstallScript`, `gypfile`, `bin`, `man`, `directories`) and what the
+ * `hasInstallScript`, `gypfile`, `bin`, `man`, `directories`), how it resolves
+ * them (`_hasShrinkwrap`, which makes npm skip the package's dependencies, and
+ * `acceptDependencies`, which widens what satisfies them) and what the
  * installed package exposes to Node (`main`, `exports`, `imports`, `type`).
  * They are read by npm from the registry's version metadata, which a publish
  * can set apart from the tarball, so each is compared with the rebuild.
  *
  * Deliberately not here: what the registry adds or rewrites and npm does not act
  * on (`_id`, `_npmVersion`, `_nodeVersion`, `_npmUser`, `_npmOperationalInternal`,
- * `_hasShrinkwrap`, `dist`, `gitHead`, `maintainers`, `author` as an object),
+ * `dist`, `gitHead`, `maintainers`, `author` as an object),
  * and `files`, which the registry drops from the version metadata (confirmed on
  * sigstore@5.0.1) and which only governs what `npm pack` puts in a tarball,
  * which {@link compareFiles} compares.
@@ -617,6 +619,8 @@ export const NPM_ACTED_ON_FIELDS: readonly string[] = [
   "exports",
   "imports",
   "type",
+  "_hasShrinkwrap",
+  "acceptDependencies",
 ];
 
 /** `value` as npm sees it: empty objects and arrays, `null` and `false` are absent. */
