@@ -133,8 +133,11 @@ export class FakePrompter implements Prompter {
   /** Every question passed to {@link ask}, in order. */
   readonly asks: string[] = [];
 
+  /** Whether the prompter reports an interactive terminal. */
   private readonly tty: boolean;
+  /** The answer to the other questions, the build class name; `""` takes the default. */
   private readonly answer: string;
+  /** The answer to every yes/no question but the star prompt. */
   private readonly yes: boolean;
   /** The answer to the star prompt (kept apart from `yes`, so tests of the
    * other confirms don't accidentally opt in to starring). */
