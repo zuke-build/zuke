@@ -21,7 +21,7 @@ import {
   npmPackages,
   parseDenoPackage,
 } from "../build/npm_manifest.ts";
-import { consumerManifest } from "../build/npm_smoke.ts";
+import { consumerManifest, SMOKE_BUILD } from "../build/npm_smoke.ts";
 import { npmTsconfig } from "../build/npm_build.ts";
 import { isPublishedToNpm, NPM_REGISTRY } from "../build/npm_publish.ts";
 import { publishAllTo, type PublishRegistry } from "../build/publish.ts";
@@ -256,4 +256,14 @@ Deno.test("the smoke consumer installs both aliases and overrides core", () => {
     overrides: { "@zuke/core": "file:/t/core.tgz" },
   });
   assertThrows(() => consumerManifest({}), Error, "@zuke/core");
+});
+
+Deno.test("the smoke build it generates opens with the license header", () => {
+  assertEquals(
+    SMOKE_BUILD.split("\n").slice(0, 2),
+    [
+      "// Copyright (c) 2026 the Zuke contributors",
+      "// SPDX-License-Identifier: MIT",
+    ],
+  );
 });

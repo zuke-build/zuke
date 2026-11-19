@@ -13,7 +13,10 @@
 export const SMOKE_PACKAGES: readonly string[] = ["core", "deno"];
 
 /** The consumer's build: it imports both aliases and runs a target. */
-export const SMOKE_BUILD = `import { Build, run, target } from "@zuke/core";
+export const SMOKE_BUILD = `// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
+import { Build, run, target } from "@zuke/core";
 import { DenoTasks } from "@zuke/deno";
 class Mini extends Build {
   hello = target().executes(() => {
