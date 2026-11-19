@@ -137,6 +137,8 @@ for (const [name, parts] of Object.entries(variants)) {
             Promise.resolve({
               versions: {
                 "1.0.0": {
+                  name: "@zuke-build/x",
+                  version: "1.0.0",
                   dist: {
                     tarball: "t",
                     integrity,
@@ -183,7 +185,11 @@ for (const [name, parts] of Object.entries(variants)) {
         });
         assertEquals(results.get("x"), {
           status: "mismatch",
-          problems: ["package.json: differs from the rebuild."],
+          // The lockfile npm writes records the install script too.
+          problems: [
+            "node_modules/@zuke-build/x has an install script.",
+            "package.json: differs from the rebuild.",
+          ],
           version: "1.0.0",
         });
       } finally {
