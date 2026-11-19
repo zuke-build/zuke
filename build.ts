@@ -185,6 +185,17 @@ import {
 } from "./build/npm_smoke.ts";
 import { NPM_REGISTRY, trustPublisher } from "./build/npm_publish.ts";
 import { npmPackages } from "./build/npm_manifest.ts";
+import {
+  auditSignatures,
+  builtCommit,
+  changedSinceRelease,
+  failures,
+  readTree,
+  registrySource,
+  RELEASE_PROVENANCE,
+  verifyPackage,
+  type VerifyResult,
+} from "./build/npm_verify.ts";
 import { scannerConfigDenial } from "./build/scanner_policy.ts";
 import {
   ACTIONLINT_VERSION,
@@ -2147,6 +2158,73 @@ class ZukeBuild extends Build {
         info: ConsoleTasks.info,
         failed: ConsoleTasks.error,
       }, NPM_REGISTRY);
+    });
+
+  allowNone = parameter(
+    "npmVerify: succeed even when no package version is on npm to compare",
+  ).boolean();
+
+  npmVerify = target()
+    .description(
+      "Verify every published npm package against a rebuild of this commit",
+    )
+    .executes(async () => {
+      // A temp dir, as npmSmoke: the repo's dist/npm is left alone.
+      const work = absolutePath(
+        await FileTasks.makeTempDirectory((s) => s.prefix("zuke-npm-verify-")),
+      );
+      try {
+        await buildNpm(NPM_PACKAGES, work("dist"));
+        const source = registrySource(work);
+        const results = new Map<string, VerifyResult>();
+        const verified = new Map<string, string>();
+        for (const pkg of NPM_PACKAGES) {
+          const version = await localVersion(pkg);
+          if (version === "0.0.0") continue;
+          const changed = await changedSinceRelease(pkg, version);
+          const result: VerifyResult = changed !== null
+            ? { status: "skipped", reason: changed }
+            : await verifyPackage(
+              pkg,
+              version,
+              await readTree(String(work("dist", pkg))),
+              source,
+              {
+                ...RELEASE_PROVENANCE,
+                commit: await builtCommit(pkg, version),
+              },
+            );
+          results.set(pkg, result);
+          if (result.status === "match") verified.set(pkg, version);
+          const line = `@zuke-build/${pkg}@${version}`;
+          if (result.status === "match") {
+            ConsoleTasks.success(`${line} is what this commit compiles to.`);
+          } else if (result.status === "skipped") {
+            ConsoleTasks.info(`${line} skipped: ${result.reason}`);
+          } else {
+            ConsoleTasks.error(`${line} differs:`);
+            for (const problem of result.problems) {
+              ConsoleTasks.error(`  ${problem}`);
+            }
+          }
+        }
+        const failed = failures(results, this.allowNone.value);
+        if (failed.length > 0) {
+          throw new Error(
+            `npm verification failed:\n${
+              failed.map((f) => `  ${f}`).join("\n")
+            }`,
+          );
+        }
+        if (verified.size > 0) {
+          await auditSignatures(work("consumer"), verified);
+        }
+        ConsoleTasks.success(
+          `Verified ${verified.size} npm package(s) against a rebuild.`,
+        );
+      } finally {
+        await FileTasks.remove(work, { recursive: true });
+      }
     });
 
   npmTrust = target()

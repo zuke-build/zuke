@@ -7,7 +7,7 @@ arrow points from a dependency to the target that depends on it, so a target
 runs after everything that points at it. This is the same graph `./zuke graph`
 prints as text and `./zuke graph --output=html` renders interactively.
 
-58 target(s), 31 dependency edge(s). Regenerate with `./zuke graphDoc`; the
+59 target(s), 31 dependency edge(s). Regenerate with `./zuke graphDoc`; the
 `graphDocCheck` target in the CI gate fails when this page drifts from the
 build.
 
@@ -59,18 +59,19 @@ flowchart TD
   t43["publishJsr"]
   t44["npmBuild"]
   t45["publishNpm"]
-  t46["npmTrust"]
-  t47["cliBinaries"]
-  t48["cliSign"]
-  t49["cliPackage"]
-  t50["cliUpload"]
-  t51["cliFormulaVerify"]
-  t52["cliTap"]
-  t53["pythonSync"]
-  t54["cliChocolateyVerify"]
-  t55["cliChocolatey"]
-  t56["publish"]
-  t57["default"]
+  t46["npmVerify"]
+  t47["npmTrust"]
+  t48["cliBinaries"]
+  t49["cliSign"]
+  t50["cliPackage"]
+  t51["cliUpload"]
+  t52["cliFormulaVerify"]
+  t53["cliTap"]
+  t54["pythonSync"]
+  t55["cliChocolateyVerify"]
+  t56["cliChocolatey"]
+  t57["publish"]
+  t58["default"]
   t1 --> t5
   t5 --> t6
   t6 --> t8
@@ -99,9 +100,9 @@ flowchart TD
   t33 --> t36
   t32 --> t36
   t39 --> t40
-  t41 --> t56
-  t43 --> t56
-  t36 --> t57
+  t41 --> t57
+  t43 --> t57
+  t36 --> t58
 ```
 
 ## Targets
@@ -154,6 +155,7 @@ flowchart TD
 | `publishJsr`          | Publish new package versions to JSR, core first                                                                               | —                                                                                                                                                                                                                                                                                                                        |
 | `npmBuild`            | Compile every package for npm into dist/npm                                                                                   | —                                                                                                                                                                                                                                                                                                                        |
 | `publishNpm`          | Publish new package versions to npm as @zuke-build/*                                                                          | —                                                                                                                                                                                                                                                                                                                        |
+| `npmVerify`           | Verify every published npm package against a rebuild of this commit                                                           | —                                                                                                                                                                                                                                                                                                                        |
 | `npmTrust`            | Register release.yml as each package's npm trusted publisher (run once, locally, after the first publish; npm 11.15+ and 2FA) | —                                                                                                                                                                                                                                                                                                                        |
 | `cliBinaries`         | Compile the CLI's standalone binaries when its release lacks them                                                             | —                                                                                                                                                                                                                                                                                                                        |
 | `cliSign`             | Sign and notarize the CLI's macOS binaries (macOS only)                                                                       | —                                                                                                                                                                                                                                                                                                                        |

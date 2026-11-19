@@ -40,6 +40,9 @@ const COMPILER_OPTIONS = {
   rewriteRelativeImportExtensions: true,
   allowImportingTsExtensions: true,
   declaration: true,
+  // The emit's line endings would otherwise follow the OS (CRLF on Windows),
+  // and the published bytes must not depend on the machine that built them.
+  newLine: "lf",
   strict: true,
   skipLibCheck: true,
   erasableSyntaxOnly: true,
