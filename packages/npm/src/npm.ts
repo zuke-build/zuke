@@ -66,6 +66,7 @@ import {
   readAuditSummary,
   readOutdated,
 } from "./inspect.ts";
+import { NpmTrustSettings } from "./trust.ts";
 import {
   NpmCacheSettings,
   NpmConfigSettings,
@@ -116,6 +117,8 @@ export interface NpmTasksApi {
   ): Promise<CommandOutput>;
   /** Manage dist-tags: `npm dist-tag add|rm|ls`. */
   distTag(configure?: Configure<NpmDistTagSettings>): Promise<CommandOutput>;
+  /** Manage trusted publishers: `npm trust github|gitlab|circleci|list|revoke`. */
+  trust(configure?: Configure<NpmTrustSettings>): Promise<CommandOutput>;
   /** Read registry metadata: `npm view`. */
   view(configure?: Configure<NpmViewSettings>): Promise<CommandOutput>;
   /** Check the registry is reachable: `npm ping`. */
@@ -199,6 +202,7 @@ export const NpmTasks: NpmTasksApi = {
   unpublish: (c) => runSettings(new NpmUnpublishSettings(), c),
   deprecate: (c) => runSettings(new NpmDeprecateSettings(), c),
   distTag: (c) => runSettings(new NpmDistTagSettings(), c),
+  trust: (c) => runSettings(new NpmTrustSettings(), c),
   view: (c) => runSettings(new NpmViewSettings(), c),
   ping: (c) => runSettings(new NpmPingSettings(), c),
   whoami: (c) => runSettings(new NpmWhoamiSettings(), c),

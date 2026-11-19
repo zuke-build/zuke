@@ -7470,6 +7470,24 @@
               }
             },
             {
+              "name": "trust",
+              "doc": "Manage trusted publishers: `npm trust github|gitlab|circleci|list|revoke`.",
+              "params": [
+                {
+                  "name": "configure",
+                  "type": {
+                    "kind": "configure",
+                    "settings": "NpmTrustSettings"
+                  },
+                  "rest": false,
+                  "optional": true
+                }
+              ],
+              "returns": {
+                "kind": "output"
+              }
+            },
+            {
               "name": "view",
               "doc": "Read registry metadata: `npm view`.",
               "params": [
@@ -9682,6 +9700,222 @@
                   "optional": false
                 }
               ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "otp",
+              "doc": "Provide a one-time password.\n\nCarried in `npm_config_otp` rather than on the command line — see\nNpmSettings.applyOtp for why.",
+              "params": [
+                {
+                  "name": "code",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            }
+          ]
+        },
+        {
+          "name": "NpmTrustSettings",
+          "doc": "Settings for `npm trust`. Pick the subcommand with github,\ngitlab, circleci, list, or revoke; the\nprovider flags apply to the three provider subcommands.",
+          "extends": "NpmSettings",
+          "setters": [
+            {
+              "name": "github",
+              "doc": "Trust a GitHub Actions workflow (`trust github [<pkg>]`).",
+              "params": [
+                {
+                  "name": "pkg",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": true
+                },
+                {
+                  "name": "file",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": true
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "gitlab",
+              "doc": "Trust a GitLab CI/CD pipeline file (`trust gitlab [<pkg>]`).",
+              "params": [
+                {
+                  "name": "pkg",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": true
+                },
+                {
+                  "name": "file",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": true
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "circleci",
+              "doc": "Trust a CircleCI pipeline (`trust circleci [<pkg>]`).",
+              "params": [
+                {
+                  "name": "pkg",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": true
+                },
+                {
+                  "name": "file",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": true
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "list",
+              "doc": "List a package's trusted publishers (`trust list [<pkg>]`), the default.",
+              "params": [
+                {
+                  "name": "pkg",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": true
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "revoke",
+              "doc": "Remove a trusted publisher by id (`trust revoke [<pkg>] --id=<id>`).",
+              "params": [
+                {
+                  "name": "id",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                },
+                {
+                  "name": "pkg",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": true
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "file",
+              "doc": "The workflow or pipeline file to trust (`--file=<name>`).",
+              "params": [
+                {
+                  "name": "name",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "repo",
+              "doc": "The source repository as `owner/name` (`--repo=<owner/name>`).",
+              "params": [
+                {
+                  "name": "name",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "environment",
+              "doc": "Bind the trust to a deployment environment (`--environment=<name>`).",
+              "params": [
+                {
+                  "name": "name",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "allowPublish",
+              "doc": "Let the trusted workflow publish the package (`--allow-publish`).",
+              "params": [],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "allowStagePublish",
+              "doc": "Let the trusted workflow stage a publish (`--allow-stage-publish`).",
+              "params": [],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "yes",
+              "doc": "Skip the confirmation prompt (`--yes`).",
+              "params": [],
               "returns": {
                 "kind": "self"
               }

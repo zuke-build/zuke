@@ -464,16 +464,9 @@ function fakeDeps(opts: {
   };
 }
 
-Deno.test("publishOne: skips a package already on JSR", async () => {
-  const { deps, calls } = fakeDeps({ publishedAnswers: [true], attempts: [] });
-  await publishOne("core", "1.0.0", deps);
-  assertEquals(calls.info, ["@zuke/core@1.0.0 is already on JSR."]);
-  assertEquals(calls.publishes, 0);
-});
-
 Deno.test("publishOne: publishes cleanly when not yet on JSR", async () => {
   const { deps, calls } = fakeDeps({
-    publishedAnswers: [false],
+    publishedAnswers: [],
     attempts: [true],
   });
   await publishOne("core", "1.0.0", deps);
@@ -485,7 +478,7 @@ Deno.test("publishOne: publishes cleanly when not yet on JSR", async () => {
 Deno.test("publishOne: a timed-out upload JSR finishes processing is a success", async () => {
   // Not there, not yet, then there: JSR finished it during the second wait.
   const { deps, calls } = fakeDeps({
-    publishedAnswers: [false, false, false, true],
+    publishedAnswers: [false, false, true],
     attempts: [false],
   });
   await publishOne("core", "1.0.0", deps);

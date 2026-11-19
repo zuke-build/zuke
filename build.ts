@@ -44,6 +44,9 @@ import {
   suppressions,
 } from "@zuke/ai";
 import { DenoTasks } from "@zuke/deno";
+import { NpmTasks } from "@zuke/npm";
+import { $ } from "@zuke/core/shell";
+import { messageOf } from "./packages/core/src/internal.ts";
 import { CspellTasks } from "@zuke/cspell";
 import { CodecovTasks } from "@zuke/codecov";
 import { isPublished } from "@zuke/jsr";
@@ -108,6 +111,7 @@ import {
 import {
   installCli,
   publishAll,
+  publishAllTo,
   publishPackage,
   TOOLS_ROOT,
   waitFor,
@@ -173,6 +177,14 @@ import {
   resolveBaseRef,
 } from "./build/plugin_version_check.ts";
 import { actionPin } from "./build/action_pins.ts";
+import { buildNpm } from "./build/npm_build.ts";
+import {
+  consumerManifest,
+  SMOKE_BUILD,
+  SMOKE_PACKAGES,
+} from "./build/npm_smoke.ts";
+import { NPM_REGISTRY, trustPublisher } from "./build/npm_publish.ts";
+import { npmPackages } from "./build/npm_manifest.ts";
 import { scannerConfigDenial } from "./build/scanner_policy.ts";
 import {
   ACTIONLINT_VERSION,
@@ -182,6 +194,9 @@ import {
   ZIZMOR_VERSION,
 } from "./build/scanners.ts";
 import { BOOTSTRAP_ENDPOINTS, githubWorkflows } from "./build/workflows.ts";
+
+/** The packages published to npm: all but the Deno-only ones. */
+const NPM_PACKAGES = npmPackages(PACKAGES);
 
 /**
  * Where the `security` target writes gitleaks' findings. The security workflow
@@ -1041,6 +1056,48 @@ class ZukeBuild extends Build {
       }
     });
 
+  // Not on `npmBuild`: it compiles core and deno into its own temp dir, so
+  // it never touches dist/npm. The compile needs the registry, which a build
+  // target may use (as `spell` does).
+  npmSmoke = target()
+    .description(
+      "Install the npm build of core and deno into a scratch project and run it under Node",
+    )
+    .executes(async () => {
+      const work = absolutePath(
+        await FileTasks.makeTempDirectory((s) => s.prefix("zuke-npm-")),
+      );
+      try {
+        await buildNpm(SMOKE_PACKAGES, work("dist"));
+        await FileTasks.createDirectory(work("tarballs"));
+        const tarballs: Record<string, string> = {};
+        for (const pkg of SMOKE_PACKAGES) {
+          const { stdout } = await NpmTasks.pack((s) =>
+            s.packages(String(work("dist", pkg)))
+              .packDestination(work("tarballs"))
+          );
+          // `npm pack` prints the tarball's file name on its last line.
+          const file = stdout.trim().split("\n").at(-1);
+          tarballs[`@zuke/${pkg}`] = `file:${work("tarballs", String(file))}`;
+        }
+        const consumer = work("consumer");
+        await FileTasks.createDirectory(consumer);
+        await FileTasks.writeText(
+          consumer("package.json"),
+          JSON.stringify(consumerManifest(tarballs), null, 2),
+        );
+        await FileTasks.writeText(consumer("build.mjs"), SMOKE_BUILD);
+        await NpmTasks.install((s) => s.cwd(consumer).noAudit().noFund());
+        const ran = await $`node build.mjs hello`.cwd(consumer);
+        if (!ran.stdout.includes("hello from function")) {
+          throw new Error(`the smoke build did not run: ${ran.stdout}`);
+        }
+      } finally {
+        await FileTasks.remove(work, { recursive: true });
+      }
+      ConsoleTasks.success("The npm build installs and runs under Node.");
+    });
+
   ci = target()
     .description("Full pre-commit / CI gate")
     .dependsOn(
@@ -1062,6 +1119,7 @@ class ZukeBuild extends Build {
       this.pluginVersionCheck,
       this.prBodyLint,
       this.actionPinCheck,
+      this.npmSmoke,
       // In the gate now that the scanners are provisioned by the `tools`
       // toolchain rather than assumed on PATH — the reason it used to be
       // excluded. The dedicated security workflow still runs it separately,
@@ -2062,6 +2120,58 @@ class ZukeBuild extends Build {
         failed: ConsoleTasks.error,
         wait: waitFor,
       });
+    });
+
+  npmBuild = target()
+    .description("Compile every package for npm into dist/npm")
+    .executes(async () => {
+      await buildNpm(NPM_PACKAGES);
+      ConsoleTasks.success(
+        `Compiled ${NPM_PACKAGES.length} packages into dist/npm.`,
+      );
+    });
+
+  publishNpm = target()
+    .description("Publish new package versions to npm as @zuke-build/*")
+    .executes(async () => {
+      // First, before anything is installed or compiled: a dispatch on a
+      // feature branch would otherwise run its code with the publishing
+      // identity (see `publishJsr`).
+      assertCiOnReleaseBranch(
+        "publish to npm",
+        "the publish carries provenance every consumer trusts",
+      );
+      await buildNpm(NPM_PACKAGES);
+      await publishAllTo(NPM_PACKAGES, PACKAGE_DEPENDENCIES, {
+        versionOf: localVersion,
+        info: ConsoleTasks.info,
+        failed: ConsoleTasks.error,
+      }, NPM_REGISTRY);
+    });
+
+  npmTrust = target()
+    .description(
+      "Register release.yml as each package's npm trusted publisher " +
+        "(run once, locally, after the first publish; npm 11.15+ and 2FA)",
+    )
+    .executes(async () => {
+      const failures: string[] = [];
+      for (const pkg of NPM_PACKAGES) {
+        if (await localVersion(pkg) === "0.0.0") continue;
+        try {
+          await trustPublisher(pkg);
+          ConsoleTasks.success(`@zuke-build/${pkg} trusts release.yml.`);
+        } catch (error) {
+          // Already trusted, or not yet on npm: report it and carry on.
+          ConsoleTasks.error(
+            `@zuke-build/${pkg}: ${messageOf(error)}`,
+          );
+          failures.push(pkg);
+        }
+      }
+      if (failures.length > 0) {
+        throw new Error(`npm trust failed for: ${failures.join(", ")}.`);
+      }
     });
 
   // The CLI's standalone binaries (#782). Five stages, one CI job each, in

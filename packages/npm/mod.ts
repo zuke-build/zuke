@@ -27,6 +27,7 @@ export * from "./src/install.ts";
 export * from "./src/scripts.ts";
 export * from "./src/publish.ts";
 export * from "./src/registry.ts";
+export * from "./src/trust.ts";
 export * from "./src/project.ts";
 export {
   NpmAuditSettings,

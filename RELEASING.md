@@ -195,15 +195,75 @@ release, not by editing this one. A release published without its binaries
 (`cli-v1.15.0`, cut before the draft flow) is skipped with a note in the log,
 for the same reason.
 
+## Publishing to npm
+
+Every package except `cli` and `engine` is also published to npm as
+`@zuke-build/<name>` (the `@zuke` scope there belongs to someone else). A
+consumer installs it under the name the sources import, through an alias:
+`npm install @zuke/core@npm:@zuke-build/core`. The `dependencies` of each
+published package are written the same way, so `@zuke/*` specifiers resolve
+without rewriting.
+
+`cli` and `engine` stay off npm (`NPM_EXCLUDED` in `build/npm_manifest.ts`):
+they load `jsr:` specifiers with a runtime `import()`, which Node cannot
+resolve. They join once the engine's Node support (phase 3) removes that.
+
+- `./zuke npmBuild` compiles every other package with `tsc` 7 into
+  `dist/npm/<name>/` (`.js`, `.d.ts`, a `package.json` generated from the
+  package's `deno.json`, its README and the LICENSE). The compiler and the
+  `@types/node` and `@types/deno` packages are installed by npm into
+  `.zuke/tools/npm-tsc`; Node 24 or later and npm must be on `PATH`.
+- `./zuke publishNpm` runs `npmBuild`, then
+  `npm publish --access public
+  --provenance` for each package, in `PACKAGES`
+  order. A version already on the registry and `0.0.0` are skipped, and a
+  package whose dependency failed is not tried, as for JSR. In CI it refuses any
+  ref but `master`.
+- The release workflow's **Publish to npm** job runs it after `release`. It is
+  inert until the repository variable `NPM_PUBLISH` is `true`.
+
+### One-time bootstrap
+
+The job runs in a GitHub Environment named `npm`, so the token and the trusted
+publisher are reachable only from jobs in it. npm only lets a package register a
+trusted publisher once it exists, so the first release of each package needs a
+token.
+
+1. Make sure the `zuke-build` npm organisation exists and the maintainer who
+   runs the steps below is an owner.
+2. In the repository's Settings, Environments, create the environment `npm` and
+   restrict its deployment branches to `master`.
+3. Create a short-lived granular access token on npm with read and write access
+   to the `zuke-build` organisation's packages, allowed to bypass 2FA for
+   publishing. Add it as the secret `NPM_TOKEN` **of the `npm` environment**,
+   not a repository secret. Then set the repository variable `NPM_PUBLISH` to
+   `true` and run the Release workflow on `master` (or wait for the next merge):
+   it publishes every package.
+4. Once they exist, run `./zuke npmTrust` locally (npm 11.15 or later, logged in
+   with 2FA). For each package it registers `release.yml` of `zuke-build/zuke`,
+   in the `npm` environment, as a trusted publisher
+   (`npm trust github
+   --environment npm`). One that is already trusted
+   reports an error and the rest carry on.
+5. Delete the `NPM_TOKEN` secret and revoke the token on npm. With the job's
+   `id-token: write` and a trusted publisher, npm authenticates by OIDC and the
+   provenance attestation is signed by the workflow.
+
+The job audits its egress rather than blocking it: the OIDC token request goes
+to a per-run GitHub host and `setup-node`'s download host depends on the runner
+image, so the full list is not established. Move it to `block` once a real run's
+audit log gives the set.
+
 ## Manual trigger
 
 `release.yml` also has a `workflow_dispatch` trigger, so you can run
 release-please on demand from the Actions tab without waiting for a push.
-Dispatch it on `master`: in CI, `release`, `publishJsr`, `syncWebsite` and
-`cliTap` refuse any other ref (`GITHUB_REF` must be `refs/heads/master`), since
-they hold JSR's publishing identity or the app's key. That guard stops a
-mistaken dispatch; it is not a control against someone with write access, whose
-branch runs its own copy of the build. Run locally, the targets skip it.
+Dispatch it on `master`: in CI, `release`, `publishJsr`, `publishNpm`,
+`syncWebsite` and `cliTap` refuse any other ref (`GITHUB_REF` must be
+`refs/heads/master`), since they hold JSR's publishing identity or the app's
+key. That guard stops a mistaken dispatch; it is not a control against someone
+with write access, whose branch runs its own copy of the build. Run locally, the
+targets skip it.
 
 ## Running the build locally
 

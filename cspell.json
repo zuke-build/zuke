@@ -21,6 +21,7 @@
     "appstoreconnect",
     "argvs",
     "asciinema",
+    "asynciterable",
     "Authenticode",
     "autosquash",
     "autostash",
@@ -401,6 +402,7 @@
   ],
   "ignorePaths": [
     "cspell.json",
+    "build/npm_toolchain/package-lock.json",
     "cov_profile/",
     "cov.lcov",
     "/llms.txt",

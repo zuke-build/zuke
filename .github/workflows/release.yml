@@ -67,6 +67,32 @@ jobs:
           persist-credentials: "false"
       - name: Run publishJsr with Zuke
         run: ./zuke publishJsr
+  publishNpm:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    needs:
+      - release
+    if: "${{ vars.NPM_PUBLISH == 'true' }}"
+    timeout-minutes: 60
+    steps:
+      - name: Harden and check out with Zuke
+        uses: zuke-build/zuke@b2d0b02b0613505f06e125a600ec6cea4ca8fc7b # v1.0.10
+        with:
+          egress-policy: audit
+          persist-credentials: "false"
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+      - name: Publish to npm
+        run: ./zuke publishNpm
+        env:
+          NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}"
   syncWebsite:
     name: "Sync website docs + API reference"
     runs-on: ubuntu-latest

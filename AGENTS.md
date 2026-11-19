@@ -96,14 +96,17 @@ regenerate them in the same PR.
 
 - **Runtime & toolchain:** [Deno](https://deno.com/) (2.x). All tooling — test
   runner, formatter, linter, type-checker, coverage — is the built-in `deno`
-  CLI. No Node, npm, or external build tools.
+  CLI. No Node, npm, or external build tools — except `npmBuild`, which installs
+  `tsc` with npm to compile the packages for npm.
 - **Language:** TypeScript, strict mode (Deno's default).
 - **Distribution:** [JSR](https://jsr.io/) as a workspace of 72 packages:
   `@zuke/core` (exports `.`, `./shell`, `./tooling`, `./tooling/conformance`,
   `./render`, `./conformance`) plus the `@zuke/cli` command, a generic
   `@zuke/cmd` fallback, and 50+ typed tool wrappers and plugins (`@zuke/deno`,
-  `@zuke/npm`, `@zuke/docker`, `@zuke/ai`, …). The npm org `@zuke-build` is
-  reserved for future npm distribution (1:1 name mapping).
+  `@zuke/npm`, `@zuke/docker`, `@zuke/ai`, …). Every package is also published
+  to npm as `@zuke-build/<name>` (compiled by `npmBuild`, published by
+  `publishNpm`; see `RELEASING.md`) and consumed there through an alias as
+  `@zuke/<name>`.
 - **No runtime dependencies.** The library is dependency-free; tests use a local
   assertion helper (`packages/core/tests/_assert.ts`) rather than a third-party
   assert library so the suite runs with zero network access. This is a claim
