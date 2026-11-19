@@ -59,6 +59,8 @@ export interface WorkflowTargets {
   actionRelease: TargetBuilder;
   /** Publishes new package versions to JSR over OIDC. */
   publishJsr: TargetBuilder;
+  /** Publishes new package versions to npm as `@zuke-build/*`. */
+  publishNpm: TargetBuilder;
   /** Opens and merges the website documentation sync PR. */
   syncWebsite: TargetBuilder;
   /** Decides what the CLI's binary release owes, and compiles if anything. */
@@ -415,6 +417,37 @@ export function githubWorkflows(
           // finish processing it (#855) — and a version whose dependency did
           // not land is skipped at once, so this only stops a runaway job.
           timeoutMinutes: 90,
+        },
+        {
+          target: targets.publishNpm,
+          name: "Publish to npm",
+          after: [targets.release],
+          // Inert until a maintainer sets the NPM_PUBLISH repository variable
+          // (RELEASING.md): the packages must exist on npm, and trust this
+          // workflow, before a publish from here can work.
+          if: "${{ vars.NPM_PUBLISH == 'true' }}",
+          // As publishJsr: the OIDC identity npm trusts, no GITHUB_TOKEN.
+          permissions: { contents: "read", "id-token": "write" },
+          // Compiling every package takes minutes; each publish is one upload.
+          timeoutMinutes: 60,
+          // `npm publish` needs Node 24's npm for trusted publishing.
+          steps: [
+            {
+              name: "Set up Node",
+              uses: actionPin("actions/setup-node"),
+              with: {
+                "node-version": "24",
+                "registry-url": "https://registry.npmjs.org",
+              },
+            },
+            {
+              name: "Publish to npm",
+              run: "./zuke publishNpm",
+              // Only until the packages have a trusted publisher; with one
+              // and `id-token`, npm authenticates by OIDC and ignores this.
+              env: { NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}" },
+            },
+          ],
         },
         {
           target: targets.syncWebsite,

@@ -64,6 +64,11 @@ export const SEED_PINS: Readonly<Record<string, CiActionRef>> = {
     ref: "denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed",
     version: "v2.0.5",
   },
+  // The npm publish job needs a Node whose npm can do trusted publishing.
+  "actions/setup-node": {
+    ref: "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+    version: "v7.1.0",
+  },
   "ossf/scorecard-action": {
     ref: "ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc",
     version: "v2.4.4",
