@@ -133,7 +133,8 @@ export const defaultUpgradeHost: UpgradeHost = {
   meta: () => httpJson<unknown>(metaUrl(CLI_PACKAGE)),
   binaryPin: (version) => resolveBinaryPin(version, fetch),
   install: (denoArgs) => runDenoIsolated(denoArgs, "zuke-upgrade-"),
-  denoVersion: () => Deno.version.deno,
+  // The cli runs on Deno, so the runtime is the Deno that runs the command.
+  denoVersion: () => RuntimeTasks.facts().version,
   readText: (path) => FileTasks.readText(path),
 };
 

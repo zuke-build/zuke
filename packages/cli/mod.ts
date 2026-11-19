@@ -125,7 +125,7 @@ export interface Prompter {
 /** The real {@link Prompter}, backed by Deno's `prompt`/`confirm`. */
 export const defaultPrompter: Prompter = {
   interactive(): boolean {
-    return Deno.stdin.isTerminal();
+    return RuntimeTasks.isTerminal("stdin");
   },
   ask(question: string, fallback: string): string {
     // The default is shown in the question rather than prefilled: `prompt`
@@ -783,7 +783,11 @@ async function commandDoc(
   // A path would resolve against the runner's throwaway cwd — the resolver
   // pins it to the user's directory now, while cwd is still theirs. (Absolute
   // paths and `jsr:`/`npm:`/`https:` specifiers are location-independent.)
-  return await runner(["doc", ...extra, resolveDocSpec(pkg, Deno.cwd())]);
+  return await runner([
+    "doc",
+    ...extra,
+    resolveDocSpec(pkg, RuntimeTasks.cwd()),
+  ]);
 }
 
 /**
@@ -807,7 +811,7 @@ async function forwardToBuild(
   // line on an Actions runner — the root and the error message below carry
   // text from the filesystem and from a failed spawn, not from Zuke.
   try {
-    const cwd = Deno.cwd();
+    const cwd = RuntimeTasks.cwd();
     const location = await locateBuild(cwd, probe);
     if (location === null) return null;
     // Discovery ran something the caller never named: say which, unless it
@@ -870,7 +874,7 @@ async function commandHelp(
   host.log(helpText(paint));
   let location: Awaited<ReturnType<typeof locateBuild>> = null;
   try {
-    location = await locateBuild(Deno.cwd(), probe);
+    location = await locateBuild(RuntimeTasks.cwd(), probe);
   } catch (error) {
     // A refusal is not the same as an absence, and must not be reported as
     // one: the trust gate rejecting a `zuke.json` is exactly what someone
@@ -943,7 +947,7 @@ async function commandVersion(
   let location: Awaited<ReturnType<typeof locateBuild>> = null;
   let refusal: string | undefined;
   try {
-    location = await locateBuild(Deno.cwd(), probe);
+    location = await locateBuild(RuntimeTasks.cwd(), probe);
   } catch (error) {
     // A refused build is worth saying out loud even here: silence would read
     // as "no project", which is a different fact. On stderr, so the version
@@ -982,10 +986,9 @@ async function commandVersion(
       rows.push(["built-in", `@zuke/engine ${engine.version}`]);
     }
     // The binary's runtime is compiled in, not a Deno its user has or needs.
-    if (!RuntimeTasks.facts().standalone) {
-      rows.push(["deno", Deno.version.deno]);
-    }
-    rows.push(["platform", `${Deno.build.os}-${Deno.build.arch}`]);
+    const runtime = RuntimeTasks.facts();
+    if (!runtime.standalone) rows.push([runtime.name, runtime.version]);
+    rows.push(["platform", `${RuntimeTasks.os()}-${RuntimeTasks.arch()}`]);
     host.log(versionPanel(rows, paint));
   } else {
     host.log(VERSION);
@@ -1143,7 +1146,7 @@ export async function main(
             binaryPin: (version) => upgradeHost.binaryPin(version),
           },
           paint,
-          Deno.cwd(),
+          RuntimeTasks.cwd(),
           buildProbe,
         );
       }
@@ -1161,7 +1164,7 @@ export async function main(
         log,
         projectHost,
         paint,
-        Deno.cwd(),
+        RuntimeTasks.cwd(),
         buildProbe,
       );
     }
@@ -1171,7 +1174,7 @@ export async function main(
         log,
         projectHost,
         paint,
-        Deno.cwd(),
+        RuntimeTasks.cwd(),
         buildProbe,
       );
     }
@@ -1182,7 +1185,7 @@ export async function main(
         log,
         projectHost,
         paint,
-        Deno.cwd(),
+        RuntimeTasks.cwd(),
         buildProbe,
       );
     }
@@ -1242,5 +1245,5 @@ export function binaryMain(
 }
 
 if (import.meta.main) {
-  Deno.exit(await main(RuntimeTasks.args()));
+  RuntimeTasks.exit(await main(RuntimeTasks.args()));
 }

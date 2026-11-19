@@ -14,7 +14,7 @@
  * @module
  */
 
-import { FileTasks } from "@zuke/core";
+import { FileTasks, RuntimeTasks } from "@zuke/core";
 import { spawnDeno } from "./deno_path.ts";
 import {
   type BuildLocation,
@@ -70,7 +70,8 @@ export const defaultProjectHost: ProjectHost = {
     });
     return (await child.status).code;
   },
-  denoVersion: () => Deno.version.deno,
+  // The cli runs on Deno, so the runtime is the Deno that runs the command.
+  denoVersion: () => RuntimeTasks.facts().version,
 };
 
 /**
