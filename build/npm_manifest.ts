@@ -140,3 +140,17 @@ export function npmManifest(deno: unknown): Record<string, unknown> {
     ),
   };
 }
+
+/**
+ * The packages that are not published to npm: `cli` and `engine` load `jsr:`
+ * specifiers with a runtime `import()` (the engine's tool wrappers, the CLI's
+ * engine specifiers), which Node cannot resolve, so an npm install of either
+ * would fail the first time it ran. They stay out until the Node support of
+ * the engine's phase 3 lets them load without `jsr:`.
+ */
+export const NPM_EXCLUDED: readonly string[] = ["cli", "engine"];
+
+/** `packages` without {@link NPM_EXCLUDED}: what `npmBuild`, `publishNpm` and `npmTrust` handle. */
+export function npmPackages(packages: readonly string[]): string[] {
+  return packages.filter((pkg) => !NPM_EXCLUDED.includes(pkg));
+}

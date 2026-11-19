@@ -15,21 +15,35 @@ import {
   assertThrows,
 } from "../packages/core/tests/_assert.ts";
 import { PACKAGE_DEPENDENCIES, PACKAGES } from "../build/packages.ts";
-import { npmManifest, parseDenoPackage } from "../build/npm_manifest.ts";
+import {
+  NPM_EXCLUDED,
+  npmManifest,
+  npmPackages,
+  parseDenoPackage,
+} from "../build/npm_manifest.ts";
 import { consumerManifest } from "../build/npm_smoke.ts";
 import { npmTsconfig } from "../build/npm_build.ts";
-import {
-  isPublishedToNpm,
-  type NpmPublishDeps,
-  publishAllToNpm,
-} from "../build/npm_publish.ts";
+import { isPublishedToNpm, NPM_REGISTRY } from "../build/npm_publish.ts";
+import { publishAllTo, type PublishRegistry } from "../build/publish.ts";
 
 async function denoJson(pkg: string): Promise<Record<string, unknown>> {
   return JSON.parse(await Deno.readTextFile(`packages/${pkg}/deno.json`));
 }
 
-Deno.test("every package's npm manifest agrees with its deno.json", async () => {
-  for (const pkg of PACKAGES) {
+Deno.test("only the packages that import jsr: at runtime stay off npm", () => {
+  assertEquals([...NPM_EXCLUDED], ["cli", "engine"]);
+  for (const pkg of NPM_EXCLUDED) assertEquals(PACKAGES.includes(pkg), true);
+  assertEquals(npmPackages(PACKAGES).length, PACKAGES.length - 2);
+  // Nothing published depends on a package that is not.
+  for (const pkg of npmPackages(PACKAGES)) {
+    for (const dep of PACKAGE_DEPENDENCIES[pkg] ?? []) {
+      assertEquals(NPM_EXCLUDED.includes(dep), false, `${pkg} -> ${dep}`);
+    }
+  }
+});
+
+Deno.test("every published package's npm manifest agrees with its deno.json", async () => {
+  for (const pkg of npmPackages(PACKAGES)) {
     const json = await denoJson(pkg);
     const manifest = npmManifest(json);
     assertEquals(manifest.name, `@zuke-build/${pkg}`);
@@ -134,56 +148,73 @@ Deno.test("the tsconfig maps and emits every entry point", async () => {
   );
 });
 
-/** A fake registry: what is on npm, what a publish does, what was said. */
+/** A fake npm: what is on it, what a publish does, what was said. */
 function fake(
   onNpm: string[],
   failing: string[] = [],
-): NpmPublishDeps & { published: string[]; said: string[] } {
+) {
   const published: string[] = [];
   const said: string[] = [];
-  return {
-    published,
-    said,
-    versionOf: (pkg) => Promise.resolve(pkg === "docs" ? "0.0.0" : "1.0.0"),
+  const registry: PublishRegistry = {
+    ...NPM_REGISTRY,
     isPublished: (pkg) => Promise.resolve(onNpm.includes(pkg)),
     publish: (pkg) => {
       if (failing.includes(pkg)) return Promise.reject(new Error("boom"));
       published.push(pkg);
       return Promise.resolve();
     },
-    info: (message) => said.push(message),
-    failed: (message) => said.push(message),
   };
+  const deps = {
+    versionOf: (pkg: string) =>
+      Promise.resolve(pkg === "docs" ? "0.0.0" : "1.0.0"),
+    info: (message: string) => said.push(message),
+    failed: (message: string) => said.push(message),
+  };
+  return { registry, deps, published, said };
 }
 
-Deno.test("publishAllToNpm skips 0.0.0 and published, in order", async () => {
-  const deps = fake(["deno"]);
-  await publishAllToNpm(
+Deno.test("publishAllTo npm skips 0.0.0 and published, in order", async () => {
+  const { registry, deps, published, said } = fake(["deno"]);
+  await publishAllTo(
     ["core", "engine", "deno", "docs", "ai"],
     { ai: ["gh"] },
     deps,
+    registry,
   );
-  assertEquals(deps.published, ["core", "engine", "ai"]);
+  assertEquals(published, ["core", "engine", "ai"]);
+  assertEquals(said, [
+    "@zuke-build/deno@1.0.0 is already on npm.",
+    "@zuke-build/docs has no released version yet.",
+  ]);
 });
 
-Deno.test("publishAllToNpm skips what depends on a failure, then throws", async () => {
-  const deps = fake([], ["core", "gh"]);
+Deno.test("publishAllTo npm skips what depends on a failure, then throws", async () => {
+  const { registry, deps, published, said } = fake([], ["core", "gh"]);
   await assertRejects(
-    () => publishAllToNpm(["core", "deno", "gh", "ai"], { ai: ["gh"] }, deps),
+    () =>
+      publishAllTo(
+        ["core", "deno", "gh", "ai"],
+        { ai: ["gh"] },
+        deps,
+        registry,
+      ),
     Error,
-    "4 package version(s) did not reach npm",
+    "4 package version(s) did not reach npm: @zuke-build/core@1.0.0",
   );
-  assertEquals(deps.published, []);
+  assertEquals(published, []);
   assertEquals(
-    deps.said.filter((m) => m.includes("did not land")).length,
+    said.filter((m) => m.includes("did not land")).length,
     3,
   );
 });
 
-Deno.test("publishAllToNpm does not need a published version's dependencies", async () => {
-  const deps = fake(["deno"], ["core"]);
-  await assertRejects(() => publishAllToNpm(["core", "deno"], {}, deps));
-  assertEquals(deps.said.some((m) => m.includes("already on npm")), true);
+Deno.test("publishAllTo npm does not hold a published version to its dependencies", async () => {
+  const { registry, deps, said } = fake(["deno"], ["core"]);
+  await assertRejects(() => publishAllTo(["core", "deno"], {}, deps, registry));
+  assertEquals(
+    said.includes("@zuke-build/deno@1.0.0 is already on npm."),
+    true,
+  );
 });
 
 Deno.test("isPublishedToNpm reads the registry's versions, and 404 is no", async () => {

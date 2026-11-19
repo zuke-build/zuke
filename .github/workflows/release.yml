@@ -70,6 +70,7 @@ jobs:
   publishNpm:
     name: Publish to npm
     runs-on: ubuntu-latest
+    environment: npm
     permissions:
       contents: read
       id-token: write

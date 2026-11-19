@@ -10,9 +10,9 @@
  * so each `@zuke/*` specifier resolves to a source file through `paths`. The
  * sources are Deno TypeScript, so the program also needs `@types/node` and
  * `@types/deno`. Deno's own npm cache keeps no `node_modules` layout for a
- * compiler to find them in, so the three are installed with npm, at pinned
- * versions, into a scratch directory under {@link TOOLS_ROOT} that also holds
- * the generated tsconfig. Every machine that runs the gate has Node and npm.
+ * compiler to find them in, so the three are installed with `npm ci` from the
+ * committed lock (`build/npm_toolchain`) into a scratch directory under
+ * {@link TOOLS_ROOT} that also holds the generated tsconfig. Every machine that runs the gate has Node and npm.
  */
 
 import { type AbsolutePath, FileTasks, repoRoot } from "@zuke/core";
@@ -24,12 +24,13 @@ import { TOOLS_ROOT } from "./publish.ts";
 /** Where the compiled packages go, one directory per package. */
 export const NPM_DIST: AbsolutePath = repoRoot("dist", "npm");
 
-/** The compiler and the ambient types it needs, pinned. */
-export const NPM_TOOLCHAIN: Readonly<Record<string, string>> = {
-  typescript: "7.0.2",
-  "@types/node": "24.19.2",
-  "@types/deno": "2.7.0",
-};
+/**
+ * The compiler and the ambient types it needs: a `package.json` pinning them
+ * exactly and the `package-lock.json` that pins everything under them, both
+ * committed. They are installed with `npm ci`, so every run checks the
+ * registry's tarballs against the lock's integrity hashes.
+ */
+const TOOLCHAIN: AbsolutePath = repoRoot("build", "npm_toolchain");
 
 /** The compiler options every package is built with. */
 const COMPILER_OPTIONS = {
@@ -86,14 +87,10 @@ export async function buildNpm(
   );
   const tools = TOOLS_ROOT("npm-tsc");
   await FileTasks.createDirectory(tools);
-  await FileTasks.writeText(
-    tools("package.json"),
-    JSON.stringify({ private: true, devDependencies: NPM_TOOLCHAIN }, null, 2) +
-      "\n",
-  );
-  await NpmTasks.install((s) =>
-    s.cwd(tools).ignoreScripts().noAudit().noFund()
-  );
+  for (const file of ["package.json", "package-lock.json"]) {
+    await FileTasks.copy(TOOLCHAIN(file), tools(file));
+  }
+  await NpmTasks.ci((s) => s.cwd(tools).ignoreScripts().noAudit().noFund());
   await FileTasks.remove(dist, { recursive: true });
   await FileTasks.createDirectory(dist);
   const config = tools("tsconfig.json");

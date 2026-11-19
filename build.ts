@@ -110,6 +110,7 @@ import {
 import {
   installCli,
   publishAll,
+  publishAllTo,
   publishPackage,
   TOOLS_ROOT,
   waitFor,
@@ -181,12 +182,8 @@ import {
   SMOKE_BUILD,
   SMOKE_PACKAGES,
 } from "./build/npm_smoke.ts";
-import {
-  isPublishedToNpm,
-  publishAllToNpm,
-  publishToNpm,
-  trustPublisher,
-} from "./build/npm_publish.ts";
+import { NPM_REGISTRY, trustPublisher } from "./build/npm_publish.ts";
+import { npmPackages } from "./build/npm_manifest.ts";
 import { scannerConfigDenial } from "./build/scanner_policy.ts";
 import {
   ACTIONLINT_VERSION,
@@ -196,6 +193,9 @@ import {
   ZIZMOR_VERSION,
 } from "./build/scanners.ts";
 import { BOOTSTRAP_ENDPOINTS, githubWorkflows } from "./build/workflows.ts";
+
+/** The packages published to npm: all but the Deno-only ones. */
+const NPM_PACKAGES = npmPackages(PACKAGES);
 
 /**
  * Where the `security` target writes gitleaks' findings. The security workflow
@@ -2124,29 +2124,28 @@ class ZukeBuild extends Build {
   npmBuild = target()
     .description("Compile every package for npm into dist/npm")
     .executes(async () => {
-      await buildNpm(PACKAGES);
+      await buildNpm(NPM_PACKAGES);
       ConsoleTasks.success(
-        `Compiled ${PACKAGES.length} packages into dist/npm.`,
+        `Compiled ${NPM_PACKAGES.length} packages into dist/npm.`,
       );
     });
 
   publishNpm = target()
     .description("Publish new package versions to npm as @zuke-build/*")
-    .dependsOn(this.npmBuild)
     .executes(async () => {
-      // npm's trusted publishing, like JSR's, accepts a run of the workflow
-      // on any branch, so a dispatch on a feature branch would publish its code.
+      // First, before anything is installed or compiled: a dispatch on a
+      // feature branch would otherwise run its code with the publishing
+      // identity (see `publishJsr`).
       assertCiOnReleaseBranch(
         "publish to npm",
         "the publish carries provenance every consumer trusts",
       );
-      await publishAllToNpm(PACKAGES, PACKAGE_DEPENDENCIES, {
+      await buildNpm(NPM_PACKAGES);
+      await publishAllTo(NPM_PACKAGES, PACKAGE_DEPENDENCIES, {
         versionOf: localVersion,
-        isPublished: isPublishedToNpm,
-        publish: publishToNpm,
         info: ConsoleTasks.info,
         failed: ConsoleTasks.error,
-      });
+      }, NPM_REGISTRY);
     });
 
   npmTrust = target()
@@ -2156,7 +2155,7 @@ class ZukeBuild extends Build {
     )
     .executes(async () => {
       const failures: string[] = [];
-      for (const pkg of PACKAGES) {
+      for (const pkg of NPM_PACKAGES) {
         if (await localVersion(pkg) === "0.0.0") continue;
         try {
           await trustPublisher(pkg);

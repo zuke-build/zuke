@@ -203,54 +203,78 @@ export async function publishOne(
 export const waitFor: (ms: number) => Promise<void> = delay;
 
 /**
- * The dependencies {@link publishAll} needs beyond {@link PublishOneDeps}:
- * each package's version, and where a version that did not land is reported.
+ * A registry the packages are released to, for {@link publishAllTo}: what
+ * differs between JSR and npm.
  */
-export interface PublishAllDeps extends PublishOneDeps {
+export interface PublishRegistry {
+  /** The registry's name in messages: `JSR`, `npm`. */
+  name: string;
+  /** The registry's name for workspace package `pkg`: `@zuke/core`. */
+  packageName(pkg: string): string;
+  /** Whether `pkg`@`version` is already on the registry. */
+  isPublished(pkg: string, version: string): Promise<boolean>;
+  /** Publish `pkg`@`version`; throws if it did not land. */
+  publish(pkg: string, version: string): Promise<void>;
+}
+
+/** What {@link publishAllTo} needs besides a {@link PublishRegistry}. */
+export interface ReleaseWalkDeps {
   /** The version `pkg` releases from this commit; `"0.0.0"` means none yet. */
   versionOf(pkg: string): Promise<string>;
+  /** Report a skip or progress line. */
+  info(message: string): void;
   /** Report a version that did not land, and why. */
   failed(message: string): void;
 }
 
 /**
- * Publish every package's pending version to JSR, in `packages` order (core
- * first, each package after the workspace packages it depends on). A package
- * that fails — a JSR task left pending, a rejected upload — is reported and
- * the walk carries on, so one stuck package cannot hold back the rest of the
- * release (#849). A package whose dependency did not land in this walk is not
- * tried: it may need the dependency's new version, which JSR does not have.
- * Every package depends on `core`; `dependencies` lists the others
- * (`PACKAGE_DEPENDENCIES`).
+ * The dependencies {@link publishAll} needs beyond {@link PublishOneDeps}:
+ * each package's version, and where a version that did not land is reported.
+ */
+export interface PublishAllDeps extends PublishOneDeps, ReleaseWalkDeps {}
+
+/**
+ * Release every package's pending version to `registry`, in `packages` order
+ * (core first, each package after the workspace packages it depends on). For
+ * each: `0.0.0` is skipped, a version already on the registry is skipped, and
+ * one whose dependency did not land in this walk is not tried, since it may
+ * need the dependency's new version. A package that fails is reported and the
+ * walk carries on, so one stuck package cannot hold back the rest of the
+ * release (#849). Every package depends on `core`; `dependencies` lists the
+ * others (`PACKAGE_DEPENDENCIES`).
  *
  * @throws {Error} after the last package, naming every version that did not
  * land.
  */
-export async function publishAll(
+export async function publishAllTo(
   packages: readonly string[],
   dependencies: Readonly<Record<string, readonly string[]>>,
-  deps: PublishAllDeps,
+  deps: ReleaseWalkDeps,
+  registry: PublishRegistry,
 ): Promise<void> {
   const missing = new Set<string>();
   const failures: string[] = [];
   for (const pkg of packages) {
     const version = await deps.versionOf(pkg);
     if (version === "0.0.0") {
-      deps.info(`@zuke/${pkg} has no released version yet.`);
+      deps.info(`${registry.packageName(pkg)} has no released version yet.`);
       continue;
     }
-    const name = `@zuke/${pkg}@${version}`;
+    const name = `${registry.packageName(pkg)}@${version}`;
     const needs = pkg === "core" ? [] : ["core", ...(dependencies[pkg] ?? [])];
-    const blocker = needs.find((dependency) => missing.has(dependency));
     try {
-      // A version already on JSR needs nothing from its dependencies.
-      if (
-        blocker !== undefined &&
-        !await deps.isPublished(`@zuke/${pkg}`, version)
-      ) {
-        throw new Error(`its dependency @zuke/${blocker} did not land.`);
+      // A version already on the registry needs nothing from its dependencies.
+      if (await registry.isPublished(pkg, version)) {
+        deps.info(`${name} is already on ${registry.name}.`);
+        continue;
       }
-      await publishOne(pkg, version, deps);
+      const blocker = needs.find((dependency) => missing.has(dependency));
+      if (blocker !== undefined) {
+        throw new Error(
+          `its dependency ${registry.packageName(blocker)} did not land.`,
+        );
+      }
+      await registry.publish(pkg, version);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       deps.failed(`${name} did not publish: ${reason}`);
@@ -260,9 +284,23 @@ export async function publishAll(
   }
   if (failures.length > 0) {
     throw new Error(
-      `${failures.length} package version(s) did not reach JSR: ` +
+      `${failures.length} package version(s) did not reach ${registry.name}: ` +
         `${failures.join(", ")}. Re-run once the cause is fixed — a version ` +
-        "already on JSR is skipped.",
+        `already on ${registry.name} is skipped.`,
     );
   }
+}
+
+/** Publish every package's pending version to JSR: {@link publishAllTo} with `deno publish`. */
+export function publishAll(
+  packages: readonly string[],
+  dependencies: Readonly<Record<string, readonly string[]>>,
+  deps: PublishAllDeps,
+): Promise<void> {
+  return publishAllTo(packages, dependencies, deps, {
+    name: "JSR",
+    packageName: (pkg) => `@zuke/${pkg}`,
+    isPublished: (pkg, version) => deps.isPublished(`@zuke/${pkg}`, version),
+    publish: (pkg, version) => publishOne(pkg, version, deps),
+  });
 }

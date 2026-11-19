@@ -11,6 +11,14 @@ import { $ } from "@zuke/core/shell";
 import { NpmTasks } from "@zuke/npm";
 import { NPM_SCOPE } from "./npm_manifest.ts";
 import { NPM_DIST } from "./npm_build.ts";
+import type { PublishRegistry } from "./publish.ts";
+
+/**
+ * The GitHub Environment the npm publish job runs in. `NPM_TOKEN` is its
+ * secret, and the trusted publisher is bound to it, so only a job in this
+ * environment (whose deployment branches are limited to `master`) can publish.
+ */
+export const NPM_ENVIRONMENT = "npm";
 
 /** The workflow npm is told to trust, and the repository it runs in. */
 export const TRUSTED_WORKFLOW = "release.yml";
@@ -36,86 +44,27 @@ export async function isPublishedToNpm(
   }
 }
 
-/** Publish the compiled `pkg` with provenance: the real {@link NpmPublishDeps.publish}. */
+/** Publish the compiled `pkg` with provenance. */
 export async function publishToNpm(pkg: string): Promise<void> {
   await NpmTasks.publish((s) =>
     s.cwd(NPM_DIST(pkg)).access("public").provenance()
   );
 }
 
-/** What {@link publishAllToNpm} needs, injected so it is testable offline. */
-export interface NpmPublishDeps {
-  /** The version `pkg` releases from this commit; `"0.0.0"` means none yet. */
-  versionOf(pkg: string): Promise<string>;
-  /** Whether `pkg`@`version` is on npm. */
-  isPublished(pkg: string, version: string): Promise<boolean>;
-  /** Publish the compiled `pkg`. */
-  publish(pkg: string): Promise<void>;
-  /** Report progress. */
-  info(message: string): void;
-  /** Report a version that did not land, and why. */
-  failed(message: string): void;
-}
+/** npm as a {@link PublishRegistry}: what `publishNpm` hands to `publishAllTo`. */
+export const NPM_REGISTRY: PublishRegistry = {
+  name: "npm",
+  packageName: (pkg) => `${NPM_SCOPE}/${pkg}`,
+  isPublished: isPublishedToNpm,
+  publish: (pkg) => publishToNpm(pkg),
+};
 
 /**
- * Publish every package's pending version to npm, in `packages` order (a
- * package after the ones it depends on). A version already on npm is skipped,
- * so a re-run finishes what failed. A package that fails is reported and the
- * walk carries on, except that one whose dependency failed is not tried: npm
- * would resolve a range its dependency's new version does not yet satisfy.
- *
- * @throws {Error} after the last package, naming every version that did not land.
- */
-export async function publishAllToNpm(
-  packages: readonly string[],
-  dependencies: Readonly<Record<string, readonly string[]>>,
-  deps: NpmPublishDeps,
-): Promise<void> {
-  const missing = new Set<string>();
-  const failures: string[] = [];
-  for (const pkg of packages) {
-    const version = await deps.versionOf(pkg);
-    if (version === "0.0.0") {
-      deps.info(`@zuke/${pkg} has no released version yet.`);
-      continue;
-    }
-    const name = `${NPM_SCOPE}/${pkg}@${version}`;
-    try {
-      if (await deps.isPublished(pkg, version)) {
-        deps.info(`${name} is already on npm.`);
-        continue;
-      }
-      const needs = pkg === "core"
-        ? []
-        : ["core", ...(dependencies[pkg] ?? [])];
-      const blocker = needs.find((dependency) => missing.has(dependency));
-      if (blocker !== undefined) {
-        throw new Error(`its dependency @zuke/${blocker} did not land.`);
-      }
-      deps.info(`Publishing ${name} to npm...`);
-      await deps.publish(pkg);
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      deps.failed(`${name} did not publish: ${reason}`);
-      missing.add(pkg);
-      failures.push(name);
-    }
-  }
-  if (failures.length > 0) {
-    throw new Error(
-      `${failures.length} package version(s) did not reach npm: ` +
-        `${failures.join(", ")}. Re-run once the cause is fixed — a version ` +
-        "already on npm is skipped.",
-    );
-  }
-}
-
-/**
- * Register the release workflow as `pkg`'s trusted publisher, so publishing
- * from CI needs no token. Needs npm 11.15 or later, and a maintainer's
+ * Register the release workflow, in the {@link NPM_ENVIRONMENT} environment,
+ * as `pkg`'s trusted publisher, so publishing from CI needs no token. Needs npm 11.15 or later, and a maintainer's
  * 2FA-authenticated login, and the package must already exist on npm.
  */
 export async function trustPublisher(pkg: string): Promise<void> {
   // `NpmTasks` has no `trust` task yet; the argv is discrete, never a shell line.
-  await $`npm trust github ${NPM_SCOPE}/${pkg} --file ${TRUSTED_WORKFLOW} --repo ${TRUSTED_REPOSITORY} --allow-publish --yes`;
+  await $`npm trust github ${NPM_SCOPE}/${pkg} --file ${TRUSTED_WORKFLOW} --repo ${TRUSTED_REPOSITORY} --environment ${NPM_ENVIRONMENT} --allow-publish --yes`;
 }

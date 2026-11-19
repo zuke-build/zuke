@@ -7,7 +7,7 @@ arrow points from a dependency to the target that depends on it, so a target
 runs after everything that points at it. This is the same graph `./zuke graph`
 prints as text and `./zuke graph --output=html` renders interactively.
 
-58 target(s), 32 dependency edge(s). Regenerate with `./zuke graphDoc`; the
+58 target(s), 31 dependency edge(s). Regenerate with `./zuke graphDoc`; the
 `graphDocCheck` target in the CI gate fails when this page drifts from the
 build.
 
@@ -99,7 +99,6 @@ flowchart TD
   t33 --> t36
   t32 --> t36
   t39 --> t40
-  t44 --> t45
   t41 --> t56
   t43 --> t56
   t36 --> t57
@@ -154,7 +153,7 @@ flowchart TD
 | `actionRelease`       | Tag a new version of the Marketplace action when it changed                                                                   | —                                                                                                                                                                                                                                                                                                                        |
 | `publishJsr`          | Publish new package versions to JSR, core first                                                                               | —                                                                                                                                                                                                                                                                                                                        |
 | `npmBuild`            | Compile every package for npm into dist/npm                                                                                   | —                                                                                                                                                                                                                                                                                                                        |
-| `publishNpm`          | Publish new package versions to npm as @zuke-build/*                                                                          | `npmBuild`                                                                                                                                                                                                                                                                                                               |
+| `publishNpm`          | Publish new package versions to npm as @zuke-build/*                                                                          | —                                                                                                                                                                                                                                                                                                                        |
 | `npmTrust`            | Register release.yml as each package's npm trusted publisher (run once, locally, after the first publish; npm 11.15+ and 2FA) | —                                                                                                                                                                                                                                                                                                                        |
 | `cliBinaries`         | Compile the CLI's standalone binaries when its release lacks them                                                             | —                                                                                                                                                                                                                                                                                                                        |
 | `cliSign`             | Sign and notarize the CLI's macOS binaries (macOS only)                                                                       | —                                                                                                                                                                                                                                                                                                                        |
