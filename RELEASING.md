@@ -233,19 +233,21 @@ token.
    runs the steps below is an owner.
 2. In the repository's Settings, Environments, create the environment `npm` and
    restrict its deployment branches to `master`.
-3. Add an automation token that can publish to the organisation as the secret
-   `NPM_TOKEN` **of the `npm` environment**, not a repository secret. Then set
-   the repository variable `NPM_PUBLISH` to `true`. The next release publishes
-   every package.
+3. Create a short-lived granular access token on npm with read and write access
+   to the `zuke-build` organisation's packages, allowed to bypass 2FA for
+   publishing. Add it as the secret `NPM_TOKEN` **of the `npm` environment**,
+   not a repository secret. Then set the repository variable `NPM_PUBLISH` to
+   `true` and run the Release workflow on `master` (or wait for the next merge):
+   it publishes every package.
 4. Once they exist, run `./zuke npmTrust` locally (npm 11.15 or later, logged in
    with 2FA). For each package it registers `release.yml` of `zuke-build/zuke`,
    in the `npm` environment, as a trusted publisher
    (`npm trust github
    --environment npm`). One that is already trusted
    reports an error and the rest carry on.
-5. Delete the `NPM_TOKEN` secret. With the job's `id-token: write` and a trusted
-   publisher, npm authenticates by OIDC and the provenance attestation is signed
-   by the workflow.
+5. Delete the `NPM_TOKEN` secret and revoke the token on npm. With the job's
+   `id-token: write` and a trusted publisher, npm authenticates by OIDC and the
+   provenance attestation is signed by the workflow.
 
 The job audits its egress rather than blocking it: the OIDC token request goes
 to a per-run GitHub host and `setup-node`'s download host depends on the runner
