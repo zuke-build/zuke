@@ -93,6 +93,39 @@ jobs:
         run: ./zuke publishNpm
         env:
           NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}"
+  npmVerify:
+    name: "Verify npm packages (${{ matrix.os }})"
+    runs-on: "${{ matrix.os }}"
+    permissions:
+      contents: read
+    needs:
+      - publishNpm
+    if: "${{ vars.NPM_PUBLISH == 'true' }}"
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: "false"
+          fetch-depth: "0"
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+      - name: Verify npm packages
+        if: "runner.os != 'Windows'"
+        run: ./zuke npmVerify
+      - name: "Verify npm packages (PowerShell)"
+        if: "runner.os == 'Windows'"
+        shell: pwsh
+        run: ./zuke.ps1 npmVerify
   syncWebsite:
     name: "Sync website docs + API reference"
     runs-on: ubuntu-latest

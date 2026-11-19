@@ -11,7 +11,8 @@
  * sources are Deno TypeScript, so the program also needs `@types/node` and
  * `@types/deno`. Deno's own npm cache keeps no `node_modules` layout for a
  * compiler to find them in, so the three are installed with `npm ci` from the
- * committed lock (`build/npm_toolchain`) into a scratch directory under
+ * committed lock (`build/npm_toolchain`, which also carries sigstore-js, for
+ * the script of `npm_verify_script.ts`) into a scratch directory under
  * {@link TOOLS_ROOT} that also holds the generated tsconfig. Every machine that runs the gate has Node and npm.
  */
 
@@ -19,6 +20,7 @@ import { type AbsolutePath, FileTasks, repoRoot } from "@zuke/core";
 import { NpmTasks } from "@zuke/npm";
 import { TscTasks } from "@zuke/tsc";
 import { npmManifest, parseDenoPackage, shortName } from "./npm_manifest.ts";
+import { VERIFY_BUNDLE_SCRIPT } from "./npm_verify_script.ts";
 import { TOOLS_ROOT } from "./publish.ts";
 
 /** Where the compiled packages go, one directory per package. */
@@ -40,12 +42,18 @@ const COMPILER_OPTIONS = {
   rewriteRelativeImportExtensions: true,
   allowImportingTsExtensions: true,
   declaration: true,
+  // The emit's line endings would otherwise follow the OS (CRLF on Windows),
+  // and the published bytes must not depend on the machine that built them.
+  newLine: "lf",
   strict: true,
   skipLibCheck: true,
   erasableSyntaxOnly: true,
   lib: ["esnext", "dom", "dom.iterable", "dom.asynciterable"],
   types: ["node", "deno"],
 };
+
+/** The scratch directory the toolchain is installed in, and the tsconfig written. */
+export const NPM_TOOLS: AbsolutePath = TOOLS_ROOT("npm-tsc");
 
 /**
  * The tsconfig that compiles `packages`, given each one's `deno.json` as
@@ -74,6 +82,19 @@ export function npmTsconfig(
   };
 }
 
+/** Install the toolchain (and the sigstore verifier script) into {@link NPM_TOOLS} with `npm ci`. */
+export async function installNpmToolchain(): Promise<void> {
+  await FileTasks.createDirectory(NPM_TOOLS);
+  for (const file of ["package.json", "package-lock.json"]) {
+    await FileTasks.copy(TOOLCHAIN(file), NPM_TOOLS(file));
+  }
+  await FileTasks.writeText(
+    NPM_TOOLS("verify_bundle.mjs"),
+    VERIFY_BUNDLE_SCRIPT,
+  );
+  await NpmTasks.ci((s) => s.cwd(NPM_TOOLS).ignoreScripts().noAudit().noFund());
+}
+
 /**
  * Compile `packages` into `dist` (by default {@link NPM_DIST}), replacing what
  * is there.
@@ -85,12 +106,8 @@ export async function buildNpm(
   const configs = await Promise.all(
     packages.map((pkg) => FileTasks.readJson(`packages/${pkg}/deno.json`)),
   );
-  const tools = TOOLS_ROOT("npm-tsc");
-  await FileTasks.createDirectory(tools);
-  for (const file of ["package.json", "package-lock.json"]) {
-    await FileTasks.copy(TOOLCHAIN(file), tools(file));
-  }
-  await NpmTasks.ci((s) => s.cwd(tools).ignoreScripts().noAudit().noFund());
+  const tools = NPM_TOOLS;
+  await installNpmToolchain();
   await FileTasks.remove(dist, { recursive: true });
   await FileTasks.createDirectory(dist);
   const config = tools("tsconfig.json");

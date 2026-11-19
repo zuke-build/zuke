@@ -221,6 +221,13 @@ resolve. They join once the engine's Node support (phase 3) removes that.
   ref but `master`.
 - The release workflow's **Publish to npm** job runs it after `release`. It is
   inert until the repository variable `NPM_PUBLISH` is `true`.
+- The **Verify npm packages** job runs `./zuke npmVerify` after it, on Ubuntu,
+  macOS and Windows, under the same variable: it rebuilds this commit and
+  compares every published version to it, then runs `npm audit signatures` on
+  them. A package with unreleased changes since its tag is skipped. See
+  SECURITY.md, "Verifying a release". A version missing from npm fails it after
+  a few retries; locally, `--allow-none` reports and skips one instead, for a
+  checkout that was never published.
 
 ### One-time bootstrap
 

@@ -62,6 +62,8 @@ export interface WorkflowTargets {
   publishJsr: TargetBuilder;
   /** Publishes new package versions to npm as `@zuke-build/*`. */
   publishNpm: TargetBuilder;
+  /** Verifies every published npm package against a rebuild of the commit. */
+  npmVerify: TargetBuilder;
   /** Opens and merges the website documentation sync PR. */
   syncWebsite: TargetBuilder;
   /** Decides what the CLI's binary release owes, and compiles if anything. */
@@ -105,8 +107,9 @@ export interface WorkflowTargets {
  *
  * Each entry is traceable to something the build does — the Deno bootstrap,
  * module resolution (JSR, plus npm for the cspell tooling), the OpenAI API for
- * the lint fixer, GitHub for the fixer's comment and push, and Codecov's CDN,
- * API, and upload bucket.
+ * the lint fixer, GitHub for the fixer's comment and push, Codecov's CDN,
+ * API, and upload bucket, and Sigstore's TUF repository for the npm
+ * attestation check.
  */
 const GATE_ENDPOINTS = [
   "deno.land:443",
@@ -123,6 +126,9 @@ const GATE_ENDPOINTS = [
   "api.codecov.io:443",
   "ingest.codecov.io:443",
   "storage.googleapis.com:443",
+  // Sigstore's trusted root, over TUF: `npmSigstoreCheck` verifies a recorded
+  // attestation with sigstore-js, which contacts only this host.
+  "tuf-repo-cdn.sigstore.dev:443",
 ];
 
 /**
@@ -458,6 +464,46 @@ export function githubWorkflows(
               // Only until the packages have a trusted publisher; with one
               // and `id-token`, npm authenticates by OIDC and ignores this.
               env: { NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}" },
+            },
+          ],
+        },
+        {
+          target: targets.npmVerify,
+          name: "Verify npm packages (${{ matrix.os }})",
+          after: [targets.publishNpm],
+          // The same switch as the publish. A skipped publish skips this too.
+          if: "${{ vars.NPM_PUBLISH == 'true' }}",
+          // Public on purpose: anyone can read this job's log and rerun the
+          // same check locally. It reads the registry and the checkout only,
+          // so it holds no secret, no environment and no token but read.
+          permissions: { contents: "read" },
+          matrix: { os: ["ubuntu-latest", "macos-latest", "windows-latest"] },
+          // A platform that differs is the finding, so let every one report.
+          failFast: false,
+          // As the Tests matrix: macOS and Windows runners, which the Linux
+          // hardening agent does not cover.
+          harden: false,
+          // The release tags let it tell a package unchanged since its release
+          // from one with unreleased changes, which it cannot verify.
+          checkout: { fetchDepth: 0 },
+          // Compiling every package takes minutes; downloads are small.
+          timeoutMinutes: 30,
+          steps: [
+            {
+              name: "Set up Node",
+              uses: actionPin("actions/setup-node"),
+              with: { "node-version": "24" },
+            },
+            {
+              name: "Verify npm packages",
+              if: "runner.os != 'Windows'",
+              run: "./zuke npmVerify",
+            },
+            {
+              name: "Verify npm packages (PowerShell)",
+              if: "runner.os == 'Windows'",
+              shell: "pwsh",
+              run: "./zuke.ps1 npmVerify",
             },
           ],
         },

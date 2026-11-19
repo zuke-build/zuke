@@ -128,21 +128,93 @@ boundaries, and the design-principle arguments behind the list below:
 
 ## Verifying a release
 
-Every published `@zuke/*` version can be verified against this repository:
+Every published `@zuke/*` version can be verified against this repository. Each
+check below says what it proves and what it does not; none of them proves the
+source itself is free of bugs.
+
+### Verify what you install
+
+**JSR.**
 
 - **Provenance (signature).** Packages are published to JSR via OIDC trusted
   publishing, and JSR records a [Sigstore](https://www.sigstore.dev/) provenance
-  attestation for each version — signed by the release workflow's short-lived
+  attestation for each version, signed by the release workflow's short-lived
   OIDC identity, so there is no long-lived private key anywhere, let alone on
-  the distribution site. To verify, open the version on
-  [jsr.io](https://jsr.io/@zuke/core) and check its **provenance** panel: it
-  names this repository, the exact commit, and the workflow run that published
-  it. A version without provenance, or with provenance naming another repository
-  or a commit that is not on `master`, should be treated as compromised and
-  reported (see above).
+  the distribution site. Open the version on [jsr.io](https://jsr.io/@zuke/core)
+  and check its **provenance** panel: it names this repository, the exact
+  commit, and the workflow run that published it. A version without provenance,
+  or with provenance naming another repository or a commit that is not on
+  `master`, should be treated as compromised and reported (see above). _Proves_
+  which workflow and commit published it. _Does not prove_ anything about that
+  commit's content.
 - **Source equality.** The published artifacts are the committed source files
   (there is no build/compile step), so a version's contents can be diffed
-  directly against its provenance-named commit.
+  directly against its provenance-named commit. _Proves_ the files are the
+  commit's. _Does not prove_ the commit is sound.
+
+**npm** (`@zuke-build/<name>`, compiled from the same sources).
+
+- **Provenance badge.** the npm website shows a "Built and signed on GitHub
+  Actions" badge on a version published with provenance, linking the commit and
+  the workflow run. _Proves_ which workflow and commit built it. _Does not
+  prove_ the files are what that commit compiles to, only that the workflow
+  produced them.
+- **`npm audit signatures`.** In your own project, after installing, run
+  `npm audit signatures`: it checks the registry's signature of every installed
+  package, and the provenance attestation of those that have one. _Proves_ the
+  tarball carries npm's registry signature, and that some Sigstore identity
+  signed its provenance; it applies no policy to which identity, so it does not
+  prove the identity is ours (`npmVerify`, below, checks that). _Does not prove_
+  what the tarball contains; a package without an attestation is reported, not
+  failed.
+- **Rebuild it.** Check out the release tag (`git checkout core-v1.83.0`: tags
+  are `<package>-v<version>`) and run `./zuke npmVerify`. It rebuilds every
+  package with this checkout's pinned compiler and build scripts, installs the
+  published versions from the registry with `npm install --ignore-scripts` (so
+  what is compared is what npm unpacks, not what a tar reader of ours sees), and
+  compares every installed file with the rebuild byte for byte; `package.json`
+  is compared as parsed JSON, since a newer npm may re-serialise it. npm acts on
+  the registry's metadata for a version, not on the tarball's `package.json`, so
+  it also compares that metadata's scripts, dependencies, bin, os and the other
+  fields npm acts on with the rebuild, and checks that npm's lockfile holds only
+  our packages, none with an install script or a bin. The `@zuke/<name>` aliases
+  the packages import each other through are pinned to the versions verified in
+  the same run, recorded in the lockfile with the same integrity, and their
+  files compared too; a package whose dependency was not verified there is
+  reported, not verified. For each version it requires an npm SLSA provenance
+  attestation and checks, with sigstore-js itself, that the Sigstore bundle
+  verifies and that its certificate was issued to the GitHub Actions identity
+  `https://github.com/zuke-build/zuke/.github/workflows/release.yml@refs/heads/master`
+  for repository `zuke-build/zuke`, ref `refs/heads/master` and the release
+  commit X (the tag's); that the statement it signs names that same commit and a
+  subject sha512 equal to the registry's integrity; and that npm's lockfile
+  records that integrity for what it installed. Finally `npm audit signatures`
+  checks the registry's own signatures of everything installed. _Proves_ the
+  package was built by `release.yml` of `zuke-build/zuke` on `master` from
+  commit X, and that the files npm installs are what this checkout compiles for
+  a package unchanged since its release commit X (`packages/<name>` is checked
+  against the tag; the compiler and build scripts are this checkout's). On the
+  release tag itself that is X's own build. A package changed since its tag is
+  reported and skipped; a version that is not on npm, after a few retries, or
+  one without provenance, fails. Only `--allow-none`, for a checkout whose
+  versions were never published, reports a missing version and skips it. _Does
+  not prove_ the source is free of bugs. It trusts Sigstore's trusted root
+  (fetched over TUF) and the registry's document, which the signed statement and
+  the lockfile are checked against.
+- **The public job.** The release workflow's **Verify npm packages** job runs
+  `./zuke npmVerify` after every publish, on Ubuntu, macOS and Windows, with a
+  read-only token and no secrets. Its log is public. _Proves_ the same rebuild
+  agrees on three operating systems. _Does not prove_ more than running it
+  yourself does; it is the same code.
+
+**CLI binaries.** Each release archive carries a build-provenance attestation,
+and the release lists the SHA-256 of every archive; `gh attestation verify`
+checks one against this repository and the release workflow. The launchers and
+the Homebrew and Chocolatey packages pin the same SHA-256 and check it on every
+download. [Installing](./docs/install.md#verifying-a-download) has the commands.
+_Proves_ the archive was built by this repository's release workflow and is the
+one the release lists. _Does not prove_ the source is sound.
+
 - **Launcher downloads.** The `./zuke` / `zuke.ps1` launchers verify the Deno
   archive they bootstrap against a per-platform SHA-256 baked into the launcher,
   as described under "Known trade-offs".
