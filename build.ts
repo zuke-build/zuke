@@ -46,6 +46,7 @@ import {
 import { DenoTasks } from "@zuke/deno";
 import { NpmTasks } from "@zuke/npm";
 import { $ } from "@zuke/core/shell";
+import { messageOf } from "./packages/core/src/internal.ts";
 import { CspellTasks } from "@zuke/cspell";
 import { CodecovTasks } from "@zuke/codecov";
 import { isPublished } from "@zuke/jsr";
@@ -2163,9 +2164,7 @@ class ZukeBuild extends Build {
         } catch (error) {
           // Already trusted, or not yet on npm: report it and carry on.
           ConsoleTasks.error(
-            `@zuke-build/${pkg}: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            `@zuke-build/${pkg}: ${messageOf(error)}`,
           );
           failures.push(pkg);
         }
