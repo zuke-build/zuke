@@ -193,7 +193,7 @@ import {
 } from "./build/npm_provenance.ts";
 import { registrySource } from "./build/npm_registry.ts";
 import { masterCheck } from "./build/npm_release.ts";
-import { REBUILD_BUILD, REBUILD_GIT, rebuilder } from "./build/npm_rebuild.ts";
+import { rebuildBuild, rebuilder, rebuildGit } from "./build/npm_rebuild.ts";
 import {
   auditSignatures,
   failures,
@@ -2246,7 +2246,7 @@ class ZukeBuild extends Build {
           npm: REAL_NPM,
           project,
           masterProblem: masterCheck(),
-          rebuildAt: rebuilder(work, REBUILD_GIT, REBUILD_BUILD),
+          rebuildAt: rebuilder(work, rebuildGit(), rebuildBuild()),
           allowMissing: this.allowNone.value,
           // The registry's caches can lag a publish by several minutes: wait
           // up to ten (twenty pauses of 30s) for what is not there yet.

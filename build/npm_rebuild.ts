@@ -14,6 +14,7 @@
  */
 
 import type { AbsolutePath } from "@zuke/core";
+import type { ToolSettings } from "@zuke/core/tooling";
 import { DenoTasks } from "@zuke/deno";
 import { GitTasks } from "@zuke/git";
 import { readTree } from "./npm_installed.ts";
@@ -29,26 +30,42 @@ export interface RebuildGit {
 /** Run the build of the tree at `tree` that compiles every package into its `dist/npm`. */
 export type RebuildBuild = (tree: AbsolutePath) => Promise<void>;
 
-/** The real git. */
-export const REBUILD_GIT: RebuildGit = {
-  async addWorktree(dir, commit) {
-    await GitTasks.worktree((s) => s.add(dir).detach().branch(commit));
-  },
-  async removeWorktree(dir) {
-    await GitTasks.worktree((s) => s.remove(dir).force());
-  },
-};
+/**
+ * A last change to a tool's settings before it runs: the seam a test uses to
+ * read the argv or point the tool at another binary. Production passes none.
+ */
+export type ToolTweak = <S extends ToolSettings>(settings: S) => S;
+
+const AS_IS: ToolTweak = (s) => s;
+
+/** The real git, each call's settings finished by `tweak`. */
+export function rebuildGit(tweak: ToolTweak = AS_IS): RebuildGit {
+  return {
+    async addWorktree(dir, commit) {
+      await GitTasks.worktree((s) => tweak(s.add(dir).detach().branch(commit)));
+    },
+    async removeWorktree(dir) {
+      await GitTasks.worktree((s) => tweak(s.remove(dir).force()));
+    },
+  };
+}
 
 /**
  * The real builds. A worktree is built by running its own `build.ts npmBuild`
  * with Deno, frozen to its own lock as `./zuke` would; it installs its own
  * toolchain under its own `.zuke`, so nothing is shared with this checkout.
  */
-export const REBUILD_BUILD: RebuildBuild = async (tree) => {
-  await DenoTasks.run((s) =>
-    s.cwd(tree).allowAll().frozen().script("build.ts").scriptArgs("npmBuild")
-  );
-};
+export function rebuildBuild(tweak: ToolTweak = AS_IS): RebuildBuild {
+  return async (tree) => {
+    await DenoTasks.run((s) =>
+      tweak(
+        s.cwd(tree).allowAll().frozen().script("build.ts").scriptArgs(
+          "npmBuild",
+        ),
+      )
+    );
+  };
+}
 
 /**
  * A function that rebuilds `packages` from `commit` under `work` and returns

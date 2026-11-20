@@ -11,7 +11,12 @@
 
 import { absolutePath } from "../packages/core/mod.ts";
 import { assertEquals, assertRejects } from "../packages/core/tests/_assert.ts";
-import { rebuilder } from "../build/npm_rebuild.ts";
+import {
+  rebuildBuild,
+  rebuilder,
+  type RebuildGit,
+  rebuildGit,
+} from "../build/npm_rebuild.ts";
 
 /** A rebuilder over fakes whose builds write `<tag>` as each package's `mod.js`. */
 async function setup(fail = false) {
@@ -68,6 +73,70 @@ Deno.test("rebuilder: a failing build still removes its worktree and rejects", a
       "tsc failed",
     );
     assertEquals(log.at(-1), "remove tree-0");
+  } finally {
+    await Deno.remove(String(work), { recursive: true });
+  }
+});
+
+Deno.test("rebuildGit: adds a detached worktree at the commit and force-removes it", async () => {
+  const argv: string[][] = [];
+  // Record each call's finished argv, then point git at a binary that cannot
+  // exist, so no real git runs.
+  const git = rebuildGit((s) => {
+    argv.push(s.argv());
+    return s.toolPath("/nonexistent/zuke-test-git");
+  });
+  const dir = absolutePath("/w/tree-0");
+  await assertRejects(() => git.addWorktree(dir, "c".repeat(40)));
+  await assertRejects(() => git.removeWorktree(dir));
+  assertEquals(argv.map((a) => a.slice(1).join(" ")), [
+    `worktree add --detach ${String(dir)} ${"c".repeat(40)}`,
+    `worktree remove --force ${String(dir)}`,
+  ]);
+});
+
+/** A git that checks a commit out as a tree holding `build`, as its build.ts. */
+function fixtureGit(build: string, log: string[]): RebuildGit {
+  return {
+    addWorktree: async (dir) => {
+      await Deno.mkdir(String(dir), { recursive: true });
+      await Deno.writeTextFile(String(dir("build.ts")), build);
+    },
+    removeWorktree: async (dir) => {
+      log.push("removed");
+      await Deno.remove(String(dir), { recursive: true });
+    },
+  };
+}
+
+// The real build adapter, run by the running deno against a tree's build.ts.
+const DENO = rebuildBuild((s) => s.toolPath(Deno.execPath()).quiet());
+
+Deno.test("rebuildBuild: runs the tree's own build.ts npmBuild in the tree", async () => {
+  const work = absolutePath(await Deno.makeTempDir());
+  const log: string[] = [];
+  try {
+    const build = `
+      if (Deno.args.join(" ") !== "npmBuild") throw new Error("args");
+      await Deno.mkdir("dist/npm/x", { recursive: true });
+      await Deno.writeTextFile("dist/npm/x/mod.js", "built in tree");
+    `;
+    const rebuild = rebuilder(work, fixtureGit(build, log), DENO);
+    const built = await rebuild("d".repeat(40), ["x"]);
+    assertEquals(text(built.get("x")), "built in tree");
+    assertEquals(log, ["removed"]);
+  } finally {
+    await Deno.remove(String(work), { recursive: true });
+  }
+});
+
+Deno.test("rebuildBuild: a build.ts that fails rejects, and the tree is removed", async () => {
+  const work = absolutePath(await Deno.makeTempDir());
+  const log: string[] = [];
+  try {
+    const rebuild = rebuilder(work, fixtureGit("Deno.exit(3);", log), DENO);
+    await assertRejects(() => rebuild("d".repeat(40), ["x"]));
+    assertEquals(log, ["removed"]);
   } finally {
     await Deno.remove(String(work), { recursive: true });
   }
