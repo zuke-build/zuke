@@ -9,6 +9,7 @@
 import { ConsoleTasks } from "@zuke/console";
 import { HttpError, httpJson } from "@zuke/core";
 import { NpmTasks } from "@zuke/npm";
+import { messageOf } from "../packages/core/src/internal.ts";
 import { NPM_SCOPE } from "./npm_manifest.ts";
 import { NPM_DIST } from "./npm_build.ts";
 import { type ReleaseProbe, releaseSourceProblem } from "./npm_release.ts";
@@ -127,15 +128,22 @@ export async function trustAll(
     if (!code) throw new Error("npm trust needs a one-time password.");
     return code;
   };
+  // A run that never started (npm not found, a spawn error) is a failure of
+  // that package, reported like npm's own, and the rest still go on.
+  const attempt = (pkg: string, code: string) =>
+    trust(pkg, code).catch((error: unknown): TrustOutcome => ({
+      code: 1,
+      stderr: `npm error ${messageOf(error)}`,
+    }));
   let otp = read("npm one-time password:");
   const failed: string[] = [];
   for (const pkg of packages) {
-    let out = await trust(pkg, otp);
+    let out = await attempt(pkg, otp);
     if (out.code !== 0 && out.stderr.includes("EOTP")) {
       otp = read(
         `${NPM_SCOPE}/${pkg}: that code expired; next one-time password:`,
       );
-      out = await trust(pkg, otp);
+      out = await attempt(pkg, otp);
     }
     if (out.code === 0) {
       ConsoleTasks.success(`${NPM_SCOPE}/${pkg} trusts release.yml.`);

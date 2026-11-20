@@ -354,6 +354,22 @@ Deno.test("trustAll reuses a one-time password until npm rejects it, then asks a
     report,
   );
   assertEquals(errors, ["@zuke-build/f: npm trust failed."]);
+  // A run that cannot start fails its own package, and the next one still runs.
+  errors.length = 0;
+  const tried: string[] = [];
+  const thrown = await trustAll(
+    ["g", "h"],
+    (pkg) => {
+      tried.push(pkg);
+      return pkg === "g"
+        ? Promise.reject(new Error("npm: not found"))
+        : Promise.resolve({ code: 0, stderr: "" });
+    },
+    () => "5",
+    report,
+  );
+  assertEquals([thrown, tried], [["g"], ["g", "h"]]);
+  assertEquals(errors, ["@zuke-build/g: npm error npm: not found"]);
   // No code at all stops the run before any npm call.
   await assertRejects(
     () =>
