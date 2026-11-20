@@ -13,7 +13,7 @@ import { Command } from "@zuke/core/shell";
 import { messageOf } from "../packages/core/src/internal.ts";
 import { NPM_SCOPE } from "./npm_manifest.ts";
 import { NPM_DIST } from "./npm_build.ts";
-import { type ReleaseProbe, releaseSourceProblem } from "./npm_release.ts";
+import { type ReleaseProbe, releaseSource, releaseTag } from "./npm_release.ts";
 import type { PublishRegistry } from "./publish.ts";
 
 /**
@@ -58,18 +58,31 @@ export async function publishToNpm(pkg: string): Promise<void> {
 /**
  * npm as a {@link PublishRegistry}: what `publishNpm` hands to `publishAllTo`.
  * A version is published only when this checkout's `packages/<pkg>` is its
- * release tag's source ({@link releaseSourceProblem}), so npm `X.Y.Z` is the
- * source JSR `X.Y.Z` has; otherwise that package fails and the walk goes on.
- * `git` is the seam to the tags.
+ * release tag's source ({@link releaseSource}), so npm `X.Y.Z` is the source
+ * JSR `X.Y.Z` has. A package changed since its release waits for its next one
+ * (a package new to npm, until then); a missing tag fails that package and the
+ * walk goes on. `git` is the seam to the tags.
  */
 export function npmRegistry(git?: ReleaseProbe): PublishRegistry {
   return {
     name: "npm",
     packageName: (pkg) => `${NPM_SCOPE}/${pkg}`,
     isPublished: isPublishedToNpm,
+    async held(pkg, version) {
+      return await releaseSource(pkg, version, git) === "changed"
+        ? `packages/${pkg} changed since ${
+          releaseTag(pkg, version)
+        }, so its next release publishes it to npm.`
+        : null;
+    },
     async publish(pkg, version) {
-      const problem = await releaseSourceProblem(pkg, version, git);
-      if (problem !== null) throw new Error(problem);
+      if (await releaseSource(pkg, version, git) === "untagged") {
+        throw new Error(
+          `there is no tag ${releaseTag(pkg, version)} in this clone, so ` +
+            `its source cannot be shown to be JSR's ${NPM_SCOPE}/${pkg}@${version}; ` +
+            "fetch the tags and retry.",
+        );
+      }
       ConsoleTasks.info(`Publishing ${NPM_SCOPE}/${pkg}@${version} to npm...`);
       await publishToNpm(pkg);
     },

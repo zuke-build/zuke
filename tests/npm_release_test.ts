@@ -14,7 +14,8 @@ import {
   type AncestryProbe,
   masterCheck,
   type ReleaseProbe,
-  releaseSourceProblem,
+  releaseSource,
+  releaseTag,
 } from "../build/npm_release.ts";
 
 const SHA = "a".repeat(40);
@@ -34,21 +35,21 @@ function git(
   };
 }
 
-Deno.test("releaseSourceProblem: only an existing, unchanged tag may be published", async () => {
+Deno.test("releaseSource: same, changed since the tag, or no tag", async () => {
   const tagged = (changed: string[]) =>
     git({
-      hasTag: (tag) => Promise.resolve(tag === "x-v1.0.0"),
-      changed: () => Promise.resolve(changed),
+      hasTag: (tag) => Promise.resolve(tag === releaseTag("x", "1.0.0")),
+      changed: (tag, path) => {
+        assertEquals([tag, path], ["x-v1.0.0", "packages/x"]);
+        return Promise.resolve(changed);
+      },
     });
-  assertEquals(await releaseSourceProblem("x", "1.0.0", tagged([])), null);
-  const message =
-    "packages/x changed since x-v1.0.0, or there is no such tag; npm would get different source than JSR's @zuke/x@1.0.0.";
+  assertEquals(await releaseSource("x", "1.0.0", tagged([])), "same");
   assertEquals(
-    await releaseSourceProblem("x", "1.0.0", tagged(["packages/x/a.ts"])),
-    message,
+    await releaseSource("x", "1.0.0", tagged(["packages/x/a.ts"])),
+    "changed",
   );
-  // No tag at all is refused too, however clean the diff would be.
-  assertEquals(await releaseSourceProblem("x", "1.0.0", git()), message);
+  assertEquals(await releaseSource("x", "1.0.0", git()), "untagged");
 });
 
 Deno.test("masterCheck: an ancestor of origin/master passes, any other commit fails", async () => {

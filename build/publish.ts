@@ -210,6 +210,12 @@ export interface PublishRegistry {
   packageName(pkg: string): string;
   /** Whether `pkg`@`version` is already on the registry. */
   isPublished(pkg: string, version: string): Promise<boolean>;
+  /**
+   * Why `pkg`@`version`, not yet on the registry, waits rather than publishes
+   * now, or `null` when it is due. A held version is no failure: it is
+   * reported and skipped, and so is every package that depends on it.
+   */
+  held?(pkg: string, version: string): Promise<string | null>;
   /** Publish `pkg`@`version`; throws if it did not land. */
   publish(pkg: string, version: string): Promise<void>;
 }
@@ -231,9 +237,36 @@ export interface ReleaseWalkDeps {
 export interface PublishAllDeps extends PublishOneDeps, ReleaseWalkDeps {}
 
 /**
+ * Why `pkg`@`version`, which needs the workspace packages `needs`, waits on
+ * `registry` rather than publishes: one of `needs` is in `held` (packages
+ * already found waiting), or the registry holds it. `null` when it is due.
+ */
+export async function holdOf(
+  pkg: string,
+  version: string,
+  needs: readonly string[],
+  held: ReadonlySet<string>,
+  registry: PublishRegistry,
+): Promise<string | null> {
+  const waiting = needs.find((dependency) => held.has(dependency));
+  return waiting !== undefined
+    ? `its dependency ${registry.packageName(waiting)} waits.`
+    : await registry.held?.(pkg, version) ?? null;
+}
+
+/** The workspace packages `pkg` needs on a registry before it: core and its dependencies. */
+export function needsOf(
+  pkg: string,
+  dependencies: Readonly<Record<string, readonly string[]>>,
+): string[] {
+  return pkg === "core" ? [] : ["core", ...(dependencies[pkg] ?? [])];
+}
+
+/**
  * Release every package's pending version to `registry`, in `packages` order
  * (core first, each package after the workspace packages it depends on). For
- * each: `0.0.0` is skipped, a version already on the registry is skipped, and
+ * each: `0.0.0` is skipped, a version already on the registry is skipped, one
+ * the registry holds (or whose dependency it holds) waits without failing, and
  * one whose dependency did not land in this walk is not tried, since it may
  * need the dependency's new version. A package that fails is reported and the
  * walk carries on, so one stuck package cannot hold back the rest of the
@@ -250,6 +283,7 @@ export async function publishAllTo(
   registry: PublishRegistry,
 ): Promise<void> {
   const missing = new Set<string>();
+  const held = new Set<string>();
   const failures: string[] = [];
   for (const pkg of packages) {
     const version = await deps.versionOf(pkg);
@@ -258,11 +292,17 @@ export async function publishAllTo(
       continue;
     }
     const name = `${registry.packageName(pkg)}@${version}`;
-    const needs = pkg === "core" ? [] : ["core", ...(dependencies[pkg] ?? [])];
+    const needs = needsOf(pkg, dependencies);
     try {
       // A version already on the registry needs nothing from its dependencies.
       if (await registry.isPublished(pkg, version)) {
         deps.info(`${name} is already on ${registry.name}.`);
+        continue;
+      }
+      const hold = await holdOf(pkg, version, needs, held, registry);
+      if (hold !== null) {
+        deps.info(`${name} waits: ${hold}`);
+        held.add(pkg);
         continue;
       }
       const blocker = needs.find((dependency) => missing.has(dependency));
