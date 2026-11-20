@@ -8,7 +8,9 @@
 
 import { ConsoleTasks } from "@zuke/console";
 import { HttpError, httpJson } from "@zuke/core";
-import { NpmTasks } from "@zuke/npm";
+import { NpmTasks, NpmTrustSettings } from "@zuke/npm";
+import { Command } from "@zuke/core/shell";
+import { messageOf } from "../packages/core/src/internal.ts";
 import { NPM_SCOPE } from "./npm_manifest.ts";
 import { NPM_DIST } from "./npm_build.ts";
 import { type ReleaseProbe, releaseSourceProblem } from "./npm_release.ts";
@@ -75,12 +77,45 @@ export function npmRegistry(git?: ReleaseProbe): PublishRegistry {
 
 /**
  * Register the release workflow, in the {@link NPM_ENVIRONMENT} environment,
- * as `pkg`'s trusted publisher, so publishing from CI needs no token. Needs npm 11.15 or later, and a maintainer's
- * 2FA-authenticated login, and the package must already exist on npm.
+ * as `pkg`'s trusted publisher, so publishing from CI needs no token, and
+ * return npm's exit code. Needs npm 11.15 or later, a maintainer's login, and
+ * the package already on npm. npm asks for 2FA on every call, and it signs in
+ * through the browser (a security key) or prompts for a code only when it has
+ * the terminal, so it is spawned with the terminal rather than captured.
  */
-export async function trustPublisher(pkg: string): Promise<void> {
-  await NpmTasks.trust((s) =>
-    s.github(`${NPM_SCOPE}/${pkg}`, TRUSTED_WORKFLOW).repo(TRUSTED_REPOSITORY)
-      .environment(NPM_ENVIRONMENT).allowPublish().yes()
-  );
+export async function trustPublisher(pkg: string): Promise<number> {
+  const argv = new NpmTrustSettings()
+    .github(`${NPM_SCOPE}/${pkg}`, TRUSTED_WORKFLOW).repo(TRUSTED_REPOSITORY)
+    .environment(NPM_ENVIRONMENT).allowPublish().yes().argv();
+  return (await new Command(argv).spawn().status).code;
+}
+
+/**
+ * Trust each of `packages` with `trust`, which returns npm's exit code, and
+ * return those that failed. Each failure goes to `report`; npm's own error is
+ * already on the terminal above it. A call that cannot even start (npm not
+ * found, a spawn error) fails its own package, and the rest still run.
+ */
+export async function trustAll(
+  packages: readonly string[],
+  trust: (pkg: string) => Promise<number>,
+  report: (message: string) => void,
+): Promise<string[]> {
+  const failed: string[] = [];
+  for (const pkg of packages) {
+    let problem: string | null;
+    try {
+      const code = await trust(pkg);
+      problem = code === 0 ? null : `npm trust exited with code ${code}`;
+    } catch (error) {
+      problem = messageOf(error);
+    }
+    if (problem === null) {
+      ConsoleTasks.success(`${NPM_SCOPE}/${pkg} trusts release.yml.`);
+    } else {
+      report(`${NPM_SCOPE}/${pkg}: ${problem}.`);
+      failed.push(pkg);
+    }
+  }
+  return failed;
 }

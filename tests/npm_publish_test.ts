@@ -23,7 +23,11 @@ import {
 } from "../build/npm_manifest.ts";
 import { consumerManifest, SMOKE_BUILD } from "../build/npm_smoke.ts";
 import { npmTsconfig } from "../build/npm_build.ts";
-import { isPublishedToNpm, npmRegistry } from "../build/npm_publish.ts";
+import {
+  isPublishedToNpm,
+  npmRegistry,
+  trustAll,
+} from "../build/npm_publish.ts";
 import { publishAllTo, type PublishRegistry } from "../build/publish.ts";
 
 async function denoJson(pkg: string): Promise<Record<string, unknown>> {
@@ -292,5 +296,31 @@ Deno.test("the smoke build it generates opens with the license header", () => {
       "// Copyright (c) 2026 the Zuke contributors",
       "// SPDX-License-Identifier: MIT",
     ],
+  );
+});
+
+Deno.test("trustAll reports each package npm could not trust and carries on", async () => {
+  const errors: string[] = [];
+  const tried: string[] = [];
+  const failed = await trustAll(
+    ["a", "b", "c", "d"],
+    (pkg) => {
+      tried.push(pkg);
+      if (pkg === "c") throw new Error("spawn failed");
+      if (pkg === "d") return Promise.reject(new Error("npm: not found"));
+      return Promise.resolve(pkg === "b" ? 1 : 0);
+    },
+    (m) => errors.push(m),
+  );
+  assertEquals(tried, ["a", "b", "c", "d"]);
+  assertEquals(failed, ["b", "c", "d"]);
+  assertEquals(errors, [
+    "@zuke-build/b: npm trust exited with code 1.",
+    "@zuke-build/c: spawn failed.",
+    "@zuke-build/d: npm: not found.",
+  ]);
+  assertEquals(
+    await trustAll([], () => Promise.resolve(1), (m) => errors.push(m)),
+    [],
   );
 });

@@ -46,7 +46,7 @@ import {
 import { DenoTasks } from "@zuke/deno";
 import { NpmTasks } from "@zuke/npm";
 import { $ } from "@zuke/core/shell";
-import { delay, messageOf } from "./packages/core/src/internal.ts";
+import { delay } from "./packages/core/src/internal.ts";
 import { CspellTasks } from "@zuke/cspell";
 import { CodecovTasks } from "@zuke/codecov";
 import { isPublished } from "@zuke/jsr";
@@ -183,7 +183,7 @@ import {
   SMOKE_BUILD,
   SMOKE_PACKAGES,
 } from "./build/npm_smoke.ts";
-import { npmRegistry, trustPublisher } from "./build/npm_publish.ts";
+import { npmRegistry, trustAll, trustPublisher } from "./build/npm_publish.ts";
 import { npmPackages } from "./build/npm_manifest.ts";
 import {
   RELEASE_PROVENANCE,
@@ -2292,20 +2292,16 @@ class ZukeBuild extends Build {
         "(run once, locally, after the first publish; npm 11.15+ and 2FA)",
     )
     .executes(async () => {
-      const failures: string[] = [];
+      const packages: string[] = [];
       for (const pkg of NPM_PACKAGES) {
-        if (await localVersion(pkg) === "0.0.0") continue;
-        try {
-          await trustPublisher(pkg);
-          ConsoleTasks.success(`@zuke-build/${pkg} trusts release.yml.`);
-        } catch (error) {
-          // Already trusted, or not yet on npm: report it and carry on.
-          ConsoleTasks.error(
-            `@zuke-build/${pkg}: ${messageOf(error)}`,
-          );
-          failures.push(pkg);
-        }
+        if (await localVersion(pkg) !== "0.0.0") packages.push(pkg);
       }
+      // Already trusted, or not yet on npm: npm reports it, and the rest go on.
+      const failures = await trustAll(
+        packages,
+        trustPublisher,
+        (m) => ConsoleTasks.error(m),
+      );
       if (failures.length > 0) {
         throw new Error(`npm trust failed for: ${failures.join(", ")}.`);
       }
