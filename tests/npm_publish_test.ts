@@ -303,6 +303,8 @@ Deno.test("trustAll reuses a one-time password until npm rejects it, then asks a
   const asked: string[] = [];
   const codes = ["111", " 222 "];
   const ran: string[] = [];
+  const errors: string[] = [];
+  const report = (m: string) => errors.push(m);
   const failed = await trustAll(
     ["a", "b", "c", "d"],
     (pkg, otp) => {
@@ -313,7 +315,11 @@ Deno.test("trustAll reuses a one-time password until npm rejects it, then asks a
       }
       return Promise.resolve(
         pkg === "d"
-          ? { code: 1, stderr: "npm error code E409" }
+          ? {
+            code: 1,
+            stderr: "npm error code E409\nnpm error Conflict\n" +
+              "npm error see https://x.invalid/auth/1\n",
+          }
           : { code: 0, stderr: "" },
       );
     },
@@ -321,13 +327,42 @@ Deno.test("trustAll reuses a one-time password until npm rejects it, then asks a
       asked.push(message);
       return codes.shift() ?? null;
     },
+    report,
   );
   assertEquals(ran, ["a:111", "b:111", "b:222", "c:222", "d:222"]);
   assertEquals(failed, ["d"]);
   assertEquals(asked.length, 2);
+  // Each failure is reported with npm's own error lines, a URL left out,
+  // also when the retry with a fresh code fails again.
+  assertEquals(errors, [
+    "@zuke-build/d: npm error code E409 · npm error Conflict",
+  ]);
+  errors.length = 0;
+  const again = await trustAll(
+    ["e"],
+    () => Promise.resolve({ code: 1, stderr: "npm error code EOTP\n" }),
+    () => "333",
+    report,
+  );
+  assertEquals(again, ["e"]);
+  assertEquals(errors, ["@zuke-build/e: npm error code EOTP"]);
+  errors.length = 0;
+  await trustAll(
+    ["f"],
+    () => Promise.resolve({ code: 1, stderr: "" }),
+    () => "4",
+    report,
+  );
+  assertEquals(errors, ["@zuke-build/f: npm trust failed."]);
   // No code at all stops the run before any npm call.
   await assertRejects(
-    () => trustAll(["a"], () => Promise.reject(new Error("ran")), () => null),
+    () =>
+      trustAll(
+        ["a"],
+        () => Promise.reject(new Error("ran")),
+        () => null,
+        report,
+      ),
     Error,
     "needs a one-time password",
   );

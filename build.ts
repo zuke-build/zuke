@@ -2297,7 +2297,12 @@ class ZukeBuild extends Build {
         if (await localVersion(pkg) !== "0.0.0") packages.push(pkg);
       }
       // Already trusted, or not yet on npm: npm reports it, and the rest go on.
-      const failures = await trustAll(packages, trustPublisher, prompt);
+      const failures = await trustAll(
+        packages,
+        trustPublisher,
+        prompt,
+        (m) => ConsoleTasks.error(m),
+      );
       if (failures.length > 0) {
         throw new Error(`npm trust failed for: ${failures.join(", ")}.`);
       }

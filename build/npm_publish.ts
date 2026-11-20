@@ -99,16 +99,28 @@ export interface TrustOutcome {
 }
 
 /**
+ * npm's own `npm error` lines from `stderr`, joined, without the ones that
+ * carry a URL (a sign-in link names a one-off auth id).
+ */
+function npmErrors(stderr: string): string {
+  const lines = stderr.split("\n").map((l) => l.trim())
+    .filter((l) => l.startsWith("npm error") && !l.includes("://"));
+  return lines.length > 0 ? lines.join(" · ") : "npm trust failed.";
+}
+
+/**
  * Trust each of `packages` with `trust`, asking `ask` for a one-time password
  * first and again whenever npm rejects the current one (`EOTP`, an expired or
  * used code), retrying that package once with the new code. Returns the
- * packages that still failed. A code is reused across packages while npm
- * accepts it, so a run asks once per code lifetime, not once per package.
+ * packages that still failed, each given to `report` with npm's error. A
+ * code is reused across packages while npm accepts it, so a run asks once per
+ * code lifetime, not once per package.
  */
 export async function trustAll(
   packages: readonly string[],
   trust: (pkg: string, otp: string) => Promise<TrustOutcome>,
   ask: (message: string) => string | null,
+  report: (message: string) => void,
 ): Promise<string[]> {
   const read = (message: string) => {
     const code = ask(message)?.trim();
@@ -127,7 +139,10 @@ export async function trustAll(
     }
     if (out.code === 0) {
       ConsoleTasks.success(`${NPM_SCOPE}/${pkg} trusts release.yml.`);
-    } else failed.push(pkg);
+    } else {
+      report(`${NPM_SCOPE}/${pkg}: ${npmErrors(out.stderr)}`);
+      failed.push(pkg);
+    }
   }
   return failed;
 }
