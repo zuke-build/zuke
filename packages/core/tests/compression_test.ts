@@ -1407,23 +1407,39 @@ Deno.test("untar refuses a member whose header checksum is wrong", async () => {
   assertEquals(untar(high).map((e) => e.name), ["é.txt"]);
 });
 
-Deno.test("untar takes no path or linkpath from a global pax header", () => {
+Deno.test("untar refuses a global pax header that sets path or linkpath", async () => {
   const record = (key: string, value: string) => {
     const body = ` ${key}=${value}\n`;
     let len = body.length + 1;
     while (`${len}${body}`.length !== len) len++;
     return `${len}${body}`;
   };
-  const out = untar(ustarArchive([
-    {
-      name: "pax_global_header",
-      prefix: "",
-      data: enc(record("path", "package/evil.js") + record("linkpath", "/etc")),
-      typeflag: 0x67, // 'g'
-    },
-    { name: "package/index.js", prefix: "", data: enc("ok") },
-    { name: "link", prefix: "", data: new Uint8Array(0), typeflag: 0x32 },
-  ]));
+  const withGlobal = (records: string) =>
+    ustarArchive([
+      {
+        name: "pax_global_header",
+        prefix: "",
+        data: enc(records),
+        typeflag: 0x67, // 'g'
+      },
+      { name: "package/index.js", prefix: "", data: enc("ok") },
+      { name: "link", prefix: "", data: new Uint8Array(0), typeflag: 0x32 },
+    ]);
+  // node-tar would apply this linkpath to the link; GNU tar also the path.
+  for (
+    const records of [
+      record("path", "package/evil.js"),
+      record("linkpath", "/etc"),
+    ]
+  ) {
+    const archive = withGlobal(records);
+    assertThrows(() => untar(archive), Error, "global pax header");
+    const err = await assertRejects(() =>
+      collect(untarStream(chunked(archive, 100), true))
+    );
+    assertStringIncludes(err.message, "global pax header");
+  }
+  // git archive's global header carries only a comment, and still reads.
+  const out = untar(withGlobal(record("comment", "abc123")));
   assertEquals(out.map((e) => e.name), ["package/index.js", "link"]);
-  assertEquals(out[1].linkname, "");
 });

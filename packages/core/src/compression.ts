@@ -442,7 +442,7 @@ function parsePaxOverrides(
  * refuses it, so what a caller inspects is what a real extractor produces: the
  * archive ends at two zero blocks (or one at the end of the input), and members
  * after a lone zero block throw; a header whose checksum is wrong throws; and a
- * global pax header (`'g'`) names no member.
+ * global pax header (`'g'`) that sets `path` or `linkpath` throws.
  */
 export function untar(archive: Uint8Array): TarEntry[] {
   const reader = new TarReader(true);
@@ -615,8 +615,16 @@ class TarReader {
       return;
     }
     if (typeflag === 0x67) {
-      // pax 'g' (global) header: its path/linkpath would name every following
-      // member, so extractors ignore them (node-tar does); so does this one.
+      // pax 'g' (global) header. Extractors disagree on its path/linkpath:
+      // node-tar ignores path but applies linkpath to every later member, GNU
+      // tar applies both. No one reading is right, so such a header is
+      // refused; any other global record (git archive's comment=) is skipped.
+      const p = parsePaxOverrides(data);
+      if (p.path !== undefined || p.linkpath !== undefined) {
+        throw new Error(
+          "tar: refusing a global pax header that sets path or linkpath.",
+        );
+      }
       return;
     }
     if (typeflag === 0x78) {
