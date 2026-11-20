@@ -149,14 +149,17 @@ export function provenanceCommit(
  * What is wrong with the provenance statement in `bundle`, given the version's
  * registry `integrity`; empty when it is right. It reads the in-toto statement
  * the bundle carries and checks that it vouches for exactly that sha512 and
- * names `expected`'s repository, workflow, ref and commit. It does not verify
- * the signature: a {@link BundleVerifier} does, and only that makes the
- * statement's claims the certificate's.
+ * names `expected`'s repository, workflow and ref. The commit is not compared
+ * here: it is read from this same statement by {@link provenanceCommit}, and
+ * what binds it is the certificate, whose commit extension the
+ * {@link sigstorePolicy} pins to it. It does not verify the signature: a
+ * {@link BundleVerifier} does, and only that makes the statement's claims the
+ * certificate's.
  */
 export function provenanceProblems(
   bundle: unknown,
   integrity: string,
-  expected: ExpectedProvenance,
+  expected: Omit<ExpectedProvenance, "commit">,
 ): string[] {
   const read = readStatement(bundle);
   if ("problem" in read) return [read.problem];
@@ -192,12 +195,6 @@ export function provenanceProblems(
         }.`,
       );
     }
-  }
-  const commit = gitCommitOf(statement);
-  if (commit !== expected.commit) {
-    problems.push(
-      `provenance: built from ${String(commit)}, not ${expected.commit}.`,
-    );
   }
   return problems;
 }

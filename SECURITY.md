@@ -211,7 +211,11 @@ source itself is free of bugs.
   version. The provenance says so, and `npmVerify` proves it. From then on,
   `publishNpm` publishes a version only when `packages/<name>` is unchanged
   since its release tag `<name>-v<version>` (and the tag exists), so a later npm
-  version is the same source as its JSR version. JSR is unaffected.
+  version is the same source as its JSR version. JSR is unaffected. The same run
+  also left a `0.0.0-stage` version on every package: npm's own placeholder for
+  staged publishing, created when a package is first published. It is a two-file
+  stub with no code, no scripts and no provenance, is never `latest`, and no
+  `^1` range resolves to it; `npmVerify` does not check it.
 - **The public job.** The release workflow's **Verify npm packages** job runs
   `./zuke npmVerify` after every publish, on Ubuntu, macOS and Windows, with a
   read-only token and no secrets. Its log is public. _Proves_ the same rebuild

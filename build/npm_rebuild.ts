@@ -8,37 +8,29 @@
  * commit's `build/npm_*` and `build/npm_toolchain`, so building them with this
  * checkout's (newer or older) code would test this checkout's compiler
  * settings against another tree's sources, and report a difference that is not
- * one. The commit this checkout is at is built in place instead of in a
- * worktree, and each commit is built once whatever its package count.
+ * one. Every commit, this checkout's included, is built from a clean worktree,
+ * so uncommitted edits never take part, and each commit is built once whatever
+ * its package count.
  */
 
 import type { AbsolutePath } from "@zuke/core";
 import { DenoTasks } from "@zuke/deno";
 import { GitTasks } from "@zuke/git";
-import { buildNpm } from "./npm_build.ts";
 import { readTree } from "./npm_installed.ts";
 
 /** The git operations a rebuild needs. */
 export interface RebuildGit {
-  /** The commit this checkout is at, as a full SHA. */
-  head(): Promise<string>;
   /** Check `commit` out, detached, at the new directory `dir`. */
   addWorktree(dir: AbsolutePath, commit: string): Promise<void>;
   /** Remove the worktree at `dir`, with whatever the build left in it. */
   removeWorktree(dir: AbsolutePath): Promise<void>;
 }
 
-/** How a build is run. */
-export interface RebuildBuild {
-  /** Compile `packages` of this checkout into `dist`. */
-  here(packages: readonly string[], dist: AbsolutePath): Promise<void>;
-  /** Run the build of the tree at `tree` that compiles every package into its `dist/npm`. */
-  inTree(tree: AbsolutePath): Promise<void>;
-}
+/** Run the build of the tree at `tree` that compiles every package into its `dist/npm`. */
+export type RebuildBuild = (tree: AbsolutePath) => Promise<void>;
 
 /** The real git. */
 export const REBUILD_GIT: RebuildGit = {
-  head: () => GitTasks.revision((s) => s.rev("HEAD")),
   async addWorktree(dir, commit) {
     await GitTasks.worktree((s) => s.add(dir).detach().branch(commit));
   },
@@ -52,13 +44,10 @@ export const REBUILD_GIT: RebuildGit = {
  * with Deno, frozen to its own lock as `./zuke` would; it installs its own
  * toolchain under its own `.zuke`, so nothing is shared with this checkout.
  */
-export const REBUILD_BUILD: RebuildBuild = {
-  here: (packages, dist) => buildNpm(packages, dist),
-  async inTree(tree) {
-    await DenoTasks.run((s) =>
-      s.cwd(tree).allowAll().frozen().script("build.ts").scriptArgs("npmBuild")
-    );
-  },
+export const REBUILD_BUILD: RebuildBuild = async (tree) => {
+  await DenoTasks.run((s) =>
+    s.cwd(tree).allowAll().frozen().script("build.ts").scriptArgs("npmBuild")
+  );
 };
 
 /**
@@ -82,15 +71,10 @@ export function rebuilder(
     return files;
   };
   return async (commit, packages) => {
-    if (commit === await git.head()) {
-      const dist = work("dist-here");
-      await build.here(packages, dist);
-      return read(dist, packages);
-    }
     const tree = work(`tree-${trees++}`);
     await git.addWorktree(tree, commit);
     try {
-      await build.inTree(tree);
+      await build(tree);
       return await read(tree("dist", "npm"), packages);
     } finally {
       await git.removeWorktree(tree);

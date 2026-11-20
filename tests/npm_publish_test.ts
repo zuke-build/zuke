@@ -222,7 +222,7 @@ Deno.test("npmRegistry refuses a version whose package changed since its tag, or
   const registry: PublishRegistry = {
     ...npmRegistry({
       // `core` has its tag and is unchanged, `gh` changed, `deno` has no tag.
-      tagCommit: (tag) => Promise.resolve(tag === "deno-v1.0.0" ? null : "c"),
+      hasTag: (tag) => Promise.resolve(tag !== "deno-v1.0.0"),
       changed: (_tag, path) =>
         Promise.resolve(path === "packages/gh" ? ["packages/gh/a.ts"] : []),
       hasCommit: () => Promise.resolve(true),

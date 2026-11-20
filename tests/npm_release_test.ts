@@ -21,7 +21,7 @@ const SHA = "a".repeat(40);
 /** A git that knows `tags` (tag to commit) and says `changed` differs since. */
 function git(over: Partial<GitProbe> = {}): GitProbe {
   return {
-    tagCommit: () => Promise.resolve(null),
+    hasTag: () => Promise.resolve(false),
     changed: () => Promise.resolve([]),
     hasCommit: () => Promise.resolve(true),
     fetchCommit: () => Promise.resolve(),
@@ -34,7 +34,7 @@ function git(over: Partial<GitProbe> = {}): GitProbe {
 Deno.test("releaseSourceProblem: only an existing, unchanged tag may be published", async () => {
   const tagged = (changed: string[]) =>
     git({
-      tagCommit: (tag) => Promise.resolve(tag === "x-v1.0.0" ? "c" : null),
+      hasTag: (tag) => Promise.resolve(tag === "x-v1.0.0"),
       changed: () => Promise.resolve(changed),
     });
   assertEquals(await releaseSourceProblem("x", "1.0.0", tagged([])), null);

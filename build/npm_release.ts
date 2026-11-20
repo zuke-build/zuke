@@ -12,8 +12,8 @@ import { GitTasks } from "@zuke/git";
 
 /** The questions {@link releaseSourceProblem} and {@link masterCheck} ask git. */
 export interface GitProbe {
-  /** The commit `tag` points to, or `null` when the tag is not in this clone. */
-  tagCommit(tag: string): Promise<string | null>;
+  /** Whether `tag` is in this clone and points at a commit. */
+  hasTag(tag: string): Promise<boolean>;
   /** The paths under `path` that differ between `tag` and `HEAD`. */
   changed(tag: string, path: string): Promise<string[]>;
   /** Whether `commit` is an object of this clone. */
@@ -35,12 +35,7 @@ async function resolves(rev: string): Promise<boolean> {
 }
 
 const GIT: GitProbe = {
-  async tagCommit(tag) {
-    const found = await GitTasks.revParse((s) =>
-      s.verify().rev(`refs/tags/${tag}^{commit}`).noThrow().quiet()
-    );
-    return found.code === 0 ? found.stdout.trim() : null;
-  },
+  hasTag: (tag) => resolves(`refs/tags/${tag}`),
   changed: (tag, path) =>
     GitTasks.diffNames((s) => s.commits(tag, "HEAD").paths(path)),
   hasCommit: resolves,
@@ -64,7 +59,7 @@ export async function releaseSourceProblem(
   git: GitProbe = GIT,
 ): Promise<string | null> {
   const tag = `${pkg}-v${version}`;
-  const same = await git.tagCommit(tag) !== null &&
+  const same = await git.hasTag(tag) &&
     (await git.changed(tag, `packages/${pkg}`)).length === 0;
   return same ? null : `packages/${pkg} changed since ${tag}, or there is no ` +
     `such tag; npm would get different source than JSR's @zuke/${pkg}@${version}.`;
