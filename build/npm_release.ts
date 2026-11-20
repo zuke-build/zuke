@@ -106,14 +106,27 @@ export async function releaseSource(
   const tag = releaseTag(pkg, version);
   let base: string;
   if (await git.hasTag(tag)) base = tag;
-  else if (
-    await git.versionAt("HEAD", pkg) === version &&
-    await git.versionAt("HEAD^", pkg) !== version
-  ) base = "HEAD";
+  else if (await setByHead(pkg, version, git)) base = "HEAD";
   else return "untagged";
   return (await git.changed(base, `packages/${pkg}`)).length === 0
     ? "same"
     : "changed";
+}
+
+/**
+ * Whether `HEAD` is the commit that set `pkg`'s version to `version`: it
+ * declares it, and its parent was read and declares another. A parent that
+ * cannot be read (a shallow clone) proves nothing, so it is no stand-in; a
+ * new package's parent declares `0.0.0`, its registration version.
+ */
+async function setByHead(
+  pkg: string,
+  version: string,
+  git: ReleaseProbe,
+): Promise<boolean> {
+  if (await git.versionAt("HEAD", pkg) !== version) return false;
+  const parent = await git.versionAt("HEAD^", pkg);
+  return parent !== null && parent !== version;
 }
 
 /** The tag release-please gives `pkg`@`version`. */

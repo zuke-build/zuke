@@ -77,11 +77,13 @@ Deno.test("releaseSource: with no tag yet, HEAD stands in when it is the commit 
     await releaseSource("cli", "2.6.0", at(release, ["packages/cli/x.ts"])),
     "changed",
   );
-  // HEAD did not set this version, or declares another: no stand-in.
+  // HEAD^ already had it, HEAD declares another, nothing is readable, or
+  // HEAD^ cannot be read at all (a shallow clone): none proves the release.
   const others: Array<Record<string, string>> = [
     { HEAD: "2.6.0", "HEAD^": "2.6.0" },
     { HEAD: "2.7.0", "HEAD^": "2.6.0" },
     {},
+    { HEAD: "2.6.0" },
   ];
   for (const versions of others) {
     assertEquals(await releaseSource("cli", "2.6.0", at(versions)), "untagged");
