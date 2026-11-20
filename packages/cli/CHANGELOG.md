@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.6.0](https://github.com/zuke-build/zuke/compare/cli-v2.5.0...cli-v2.6.0) (2026-11-20)
+
+
+### Features
+
+* **cli:** publish @zuke-build/cli to npm ([#1093](https://github.com/zuke-build/zuke/issues/1093)) ([d205884](https://github.com/zuke-build/zuke/commit/d205884714e155e7e7f1cc1c8cabd568b6b3695e))
+
 ## [2.5.0](https://github.com/zuke-build/zuke/compare/cli-v2.4.0...cli-v2.5.0) (2026-11-18)
 
 
