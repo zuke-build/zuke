@@ -109,12 +109,11 @@ import {
   PACKAGES,
 } from "./build/packages.ts";
 import {
-  holdOf,
   installCli,
-  needsOf,
   publishAll,
   publishAllTo,
   publishPackage,
+  standingOf,
   TOOLS_ROOT,
   waitFor,
 } from "./build/publish.ts";
@@ -2255,11 +2254,17 @@ class ZukeBuild extends Build {
         for (const pkg of NPM_PACKAGES) {
           const version = await localVersion(pkg);
           if (version === "0.0.0") continue;
-          const needs = needsOf(pkg, PACKAGE_DEPENDENCIES);
-          const hold = await holdOf(pkg, version, needs, held, registry);
-          if (hold !== null && !await registry.isPublished(pkg, version)) {
-            ConsoleTasks.info(`@zuke-build/${pkg}@${version} waits: ${hold}`);
-            held.add(pkg);
+          const standing = await standingOf(
+            pkg,
+            version,
+            PACKAGE_DEPENDENCIES,
+            held,
+            registry,
+          );
+          if (standing.kind === "held") {
+            ConsoleTasks.info(
+              `@zuke-build/${pkg}@${version} waits: ${standing.reason}`,
+            );
             continue;
           }
           versions.set(pkg, version);

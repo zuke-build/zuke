@@ -236,26 +236,39 @@ export interface ReleaseWalkDeps {
  */
 export interface PublishAllDeps extends PublishOneDeps, ReleaseWalkDeps {}
 
+/** Where a package version stands on a registry: see {@link standingOf}. */
+export type Standing =
+  | { kind: "published" }
+  | { kind: "held"; reason: string }
+  | { kind: "due" };
+
 /**
- * Why `pkg`@`version`, which needs the workspace packages `needs`, waits on
- * `registry` rather than publishes: one of `needs` is in `held` (packages
- * already found waiting), or the registry holds it. `null` when it is due.
+ * Where `pkg`@`version` stands on `registry`, the one decision both the
+ * publish walk and npm's verification make: already `published`; `held`,
+ * because a workspace package it needs (core and `dependencies[pkg]`) is in
+ * `held` or the registry holds it, in which case `pkg` joins `held`; or `due`.
+ * Call it in `packages` order, so a dependency is decided before its
+ * dependents.
  */
-export async function holdOf(
+export async function standingOf(
   pkg: string,
   version: string,
-  needs: readonly string[],
-  held: ReadonlySet<string>,
+  dependencies: Readonly<Record<string, readonly string[]>>,
+  held: Set<string>,
   registry: PublishRegistry,
-): Promise<string | null> {
-  const waiting = needs.find((dependency) => held.has(dependency));
-  return waiting !== undefined
+): Promise<Standing> {
+  if (await registry.isPublished(pkg, version)) return { kind: "published" };
+  const waiting = needsOf(pkg, dependencies).find((d) => held.has(d));
+  const reason = waiting !== undefined
     ? `its dependency ${registry.packageName(waiting)} waits.`
     : await registry.held?.(pkg, version) ?? null;
+  if (reason === null) return { kind: "due" };
+  held.add(pkg);
+  return { kind: "held", reason };
 }
 
 /** The workspace packages `pkg` needs on a registry before it: core and its dependencies. */
-export function needsOf(
+function needsOf(
   pkg: string,
   dependencies: Readonly<Record<string, readonly string[]>>,
 ): string[] {
@@ -292,20 +305,26 @@ export async function publishAllTo(
       continue;
     }
     const name = `${registry.packageName(pkg)}@${version}`;
-    const needs = needsOf(pkg, dependencies);
     try {
       // A version already on the registry needs nothing from its dependencies.
-      if (await registry.isPublished(pkg, version)) {
+      const standing = await standingOf(
+        pkg,
+        version,
+        dependencies,
+        held,
+        registry,
+      );
+      if (standing.kind === "published") {
         deps.info(`${name} is already on ${registry.name}.`);
         continue;
       }
-      const hold = await holdOf(pkg, version, needs, held, registry);
-      if (hold !== null) {
-        deps.info(`${name} waits: ${hold}`);
-        held.add(pkg);
+      if (standing.kind === "held") {
+        deps.info(`${name} waits: ${standing.reason}`);
         continue;
       }
-      const blocker = needs.find((dependency) => missing.has(dependency));
+      const blocker = needsOf(pkg, dependencies).find((dependency) =>
+        missing.has(dependency)
+      );
       if (blocker !== undefined) {
         throw new Error(
           `its dependency ${registry.packageName(blocker)} did not land.`,

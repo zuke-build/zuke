@@ -31,7 +31,11 @@ import {
   npmRegistry,
   trustAll,
 } from "../build/npm_publish.ts";
-import { publishAllTo, type PublishRegistry } from "../build/publish.ts";
+import {
+  publishAllTo,
+  type PublishRegistry,
+  standingOf,
+} from "../build/publish.ts";
 
 async function denoJson(pkg: string): Promise<Record<string, unknown>> {
   return JSON.parse(await Deno.readTextFile(`packages/${pkg}/deno.json`));
@@ -359,4 +363,31 @@ Deno.test("trustAll reports each package npm could not trust and carries on", as
     await trustAll([], () => Promise.resolve(1), (m) => errors.push(m)),
     [],
   );
+});
+
+Deno.test("standingOf: published first, then a held dependency or a hold, else due", async () => {
+  const probed: string[] = [];
+  const registry: PublishRegistry = {
+    name: "npm",
+    packageName: (pkg) => `@zuke-build/${pkg}`,
+    isPublished: (pkg) => Promise.resolve(pkg === "old"),
+    held: (pkg) => {
+      probed.push(pkg);
+      return Promise.resolve(pkg === "gh" ? "changed" : null);
+    },
+    publish: () => Promise.resolve(),
+  };
+  const held = new Set<string>();
+  const deps = { ai: ["gh"] };
+  const of = (pkg: string) => standingOf(pkg, "1.0.0", deps, held, registry);
+  // A published version is never probed for a hold.
+  assertEquals(await of("old"), { kind: "published" });
+  assertEquals(await of("gh"), { kind: "held", reason: "changed" });
+  assertEquals(await of("ai"), {
+    kind: "held",
+    reason: "its dependency @zuke-build/gh waits.",
+  });
+  assertEquals(await of("core"), { kind: "due" });
+  assertEquals(probed, ["gh", "core"]);
+  assertEquals([...held], ["gh", "ai"]);
 });
