@@ -456,7 +456,7 @@ async function gitChangedFiles(base: string, run: (args: string[]) => Promise<st
   git and returns stdout (defaults to a real `git` subprocess); override it to
   test without a repository.
 
-async function glob(pattern: string, options: GlobOptions): Promise<string[]>
+function glob(pattern: string, options: GlobOptions): Promise<string[]>
   Expand a glob pattern to the matching paths, sorted for determinism. The walk
   starts at the pattern's static prefix, so anchor patterns (e.g.
   `src/**\/*.ts`) to avoid scanning the whole tree. Symlinked directories are
@@ -465,6 +465,10 @@ async function glob(pattern: string, options: GlobOptions): Promise<string[]>
   A relative pattern is resolved against `cwd` and its matches are returned
   relative to it. An absolute pattern (a leading `/`, or a `C:`-style drive)
   names its own root: `cwd` plays no part and the matches come back absolute.
+
+  A directory removed while the walk runs, after its parent was listed and
+  before it is read itself, has no matches and is skipped; any other error
+  reading a directory rejects.
 
 function globToRegExp(pattern: string): RegExp
   Compile a glob pattern into an anchored {@link RegExp} that matches a full

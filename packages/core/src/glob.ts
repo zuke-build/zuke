@@ -18,7 +18,7 @@
  */
 
 import process from "node:process";
-import { readDir, stat } from "./fs.ts";
+import { type DirEntry, readDir, stat } from "./fs.ts";
 import { isAbsolutePath, isNotFound } from "./internal.ts";
 
 /** Escape a literal substring for use inside a regular expression. */
@@ -92,10 +92,27 @@ export interface GlobOptions {
  * A relative pattern is resolved against `cwd` and its matches are returned
  * relative to it. An **absolute** pattern (a leading `/`, or a `C:`-style drive)
  * names its own root: `cwd` plays no part and the matches come back absolute.
+ *
+ * A directory removed while the walk runs, after its parent was listed and
+ * before it is read itself, has no matches and is skipped; any other error
+ * reading a directory rejects.
  */
-export async function glob(
+export function glob(
   pattern: string,
   options: GlobOptions = {},
+): Promise<string[]> {
+  return globListing(pattern, options, readDir);
+}
+
+/**
+ * {@link glob}, listing each directory with `list`: the seam a test uses to
+ * remove a directory between its parent's listing and its own. Not part of
+ * the public surface.
+ */
+export async function globListing(
+  pattern: string,
+  options: GlobOptions,
+  list: (path: string) => Promise<DirEntry[]>,
 ): Promise<string[]> {
   const cwd = options.cwd ?? process.cwd();
   // An absolute pattern is already rooted. Joining it onto `cwd` would walk a
@@ -109,7 +126,16 @@ export async function glob(
   const walk = async (rel: string, isDirectory: boolean) => {
     if (rel !== "" && re.test(rel)) results.push(rel);
     if (!isDirectory) return;
-    for (const entry of await readDir(absOf(rel))) {
+    let entries: DirEntry[];
+    try {
+      entries = await list(absOf(rel));
+    } catch (error) {
+      // Removed after its parent was listed (a build cleaning up a scratch
+      // directory, say): it holds nothing now, so the walk goes on.
+      if (isNotFound(error)) return;
+      throw error;
+    }
+    for (const entry of entries) {
       const childRel = rel === "" || rel === "/"
         ? `${rel}${entry.name}`
         : `${rel}/${entry.name}`;
