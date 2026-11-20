@@ -7,9 +7,8 @@
  */
 
 import { ConsoleTasks } from "@zuke/console";
-import { HttpError, httpJson } from "@zuke/core";
+import { HttpError, httpJson, ProcessTasks } from "@zuke/core";
 import { NpmTasks, NpmTrustSettings } from "@zuke/npm";
-import { Command } from "@zuke/core/shell";
 import { messageOf } from "../packages/core/src/internal.ts";
 import { NPM_SCOPE } from "./npm_manifest.ts";
 import { NPM_DIST } from "./npm_build.ts";
@@ -96,38 +95,72 @@ export function npmRegistry(git?: ReleaseProbe): PublishRegistry {
   };
 }
 
-/**
- * Register the release workflow, in the {@link NPM_ENVIRONMENT} environment,
- * as `pkg`'s trusted publisher, so publishing from CI needs no token, and
- * return npm's exit code. Needs npm 11.15 or later, a maintainer's login, and
- * the package already on npm. npm asks for 2FA on every call, and it signs in
- * through the browser (a security key) or prompts for a code only when it has
- * the terminal, so it is spawned with the terminal rather than captured.
- */
-export async function trustPublisher(pkg: string): Promise<number> {
-  const argv = new NpmTrustSettings()
-    .github(`${NPM_SCOPE}/${pkg}`, TRUSTED_WORKFLOW).repo(TRUSTED_REPOSITORY)
-    .environment(NPM_ENVIRONMENT).allowPublish().yes().argv();
-  return (await new Command(argv).spawn().status).code;
+/** What {@link trustAll} reads of one `npm trust` run. */
+export interface TrustOutcome {
+  /** npm's exit code. */
+  readonly code: number;
+  /** What npm wrote to stderr, where it names its error code. */
+  readonly stderr: string;
 }
 
 /**
- * Trust each of `packages` with `trust`, which returns npm's exit code, and
- * return those that failed. Each failure goes to `report`; npm's own error is
- * already on the terminal above it. A call that cannot even start (npm not
- * found, a spawn error) fails its own package, and the rest still run.
+ * Register the release workflow, in the {@link NPM_ENVIRONMENT} environment,
+ * as `pkg`'s trusted publisher, so publishing from CI needs no token. Needs
+ * npm 11.15 or later, a maintainer's login, and the package already on npm.
+ * npm asks for 2FA on every call, and it signs in through the browser (a
+ * security key) or prompts for a code only when stdin and stdout are the
+ * terminal, so those are inherited. Its stderr is read for the error code and
+ * passed through as it arrives, so the maintainer still sees all of it.
+ */
+export async function trustPublisher(pkg: string): Promise<TrustOutcome> {
+  const [command, ...args] = new NpmTrustSettings()
+    .github(`${NPM_SCOPE}/${pkg}`, TRUSTED_WORKFLOW).repo(TRUSTED_REPOSITORY)
+    .environment(NPM_ENVIRONMENT).allowPublish().yes().argv();
+  const child = ProcessTasks.spawn(
+    command,
+    (s) => s.args(...args).stdin("inherit").stdout("inherit").stderr("piped"),
+  );
+  const decoder = new TextDecoder();
+  let stderr = "";
+  for await (const chunk of child.stderr) {
+    await Deno.stderr.write(chunk);
+    stderr += decoder.decode(chunk, { stream: true });
+  }
+  return { code: (await child.status).code, stderr };
+}
+
+/**
+ * npm's answer when the package already trusts a publisher that matches:
+ * `E409`, "a trusted publisher configuration ... already exists".
+ */
+function alreadyTrusted(outcome: TrustOutcome): boolean {
+  return outcome.code !== 0 && /\bE409\b/.test(outcome.stderr);
+}
+
+/**
+ * Trust each of `packages` with `trust`, and return those that failed. A
+ * package that already trusts the workflow (npm's `E409`) is no failure: it
+ * is reported as trusted already. Each failure goes to `report`; npm's own
+ * error is already on the terminal above it. A call that cannot even start
+ * (npm not found, a spawn error) fails its own package, and the rest still run.
  */
 export async function trustAll(
   packages: readonly string[],
-  trust: (pkg: string) => Promise<number>,
+  trust: (pkg: string) => Promise<TrustOutcome>,
   report: (message: string) => void,
 ): Promise<string[]> {
   const failed: string[] = [];
   for (const pkg of packages) {
     let problem: string | null;
     try {
-      const code = await trust(pkg);
-      problem = code === 0 ? null : `npm trust exited with code ${code}`;
+      const outcome = await trust(pkg);
+      if (alreadyTrusted(outcome)) {
+        ConsoleTasks.info(`${NPM_SCOPE}/${pkg} already trusts release.yml.`);
+        continue;
+      }
+      problem = outcome.code === 0
+        ? null
+        : `npm trust exited with code ${outcome.code}`;
     } catch (error) {
       problem = messageOf(error);
     }

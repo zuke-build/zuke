@@ -343,24 +343,42 @@ Deno.test("trustAll reports each package npm could not trust and carries on", as
   const errors: string[] = [];
   const tried: string[] = [];
   const failed = await trustAll(
-    ["a", "b", "c", "d"],
+    ["a", "b", "c", "d", "e", "f"],
     (pkg) => {
       tried.push(pkg);
       if (pkg === "c") throw new Error("spawn failed");
       if (pkg === "d") return Promise.reject(new Error("npm: not found"));
-      return Promise.resolve(pkg === "b" ? 1 : 0);
+      // npm's E409: this package already trusts the workflow.
+      if (pkg === "e") {
+        return Promise.resolve({
+          code: 1,
+          stderr: "npm error code E409\nnpm error 409 Conflict - POST ...",
+        });
+      }
+      // E4090 is not E409, and an exit 0 that mentions E409 is a success.
+      if (pkg === "f") {
+        return Promise.resolve({ code: 1, stderr: "npm error code E4090" });
+      }
+      return Promise.resolve(
+        pkg === "b" ? { code: 1, stderr: "" } : { code: 0, stderr: "E409" },
+      );
     },
     (m) => errors.push(m),
   );
-  assertEquals(tried, ["a", "b", "c", "d"]);
-  assertEquals(failed, ["b", "c", "d"]);
+  assertEquals(tried, ["a", "b", "c", "d", "e", "f"]);
+  assertEquals(failed, ["b", "c", "d", "f"]);
   assertEquals(errors, [
     "@zuke-build/b: npm trust exited with code 1.",
     "@zuke-build/c: spawn failed.",
     "@zuke-build/d: npm: not found.",
+    "@zuke-build/f: npm trust exited with code 1.",
   ]);
   assertEquals(
-    await trustAll([], () => Promise.resolve(1), (m) => errors.push(m)),
+    await trustAll(
+      [],
+      () => Promise.resolve({ code: 1, stderr: "" }),
+      (m) => errors.push(m),
+    ),
     [],
   );
 });
