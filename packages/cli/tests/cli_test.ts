@@ -1824,6 +1824,30 @@ Deno.test("--version names a Homebrew install in the panel, and keeps plain outp
   assertEquals(await version(false), [VERSION]);
 });
 
+Deno.test("--version names an npm install in the panel", async () => {
+  const entry = "file:///usr/lib/node_modules/@zuke-build/cli/zuke.js";
+  const npm: UpgradeHost = {
+    ...defaultUpgradeHost,
+    standalone: () => false,
+    mainModule: () => entry,
+  };
+  const host = new FakeHost();
+  host.terminal = true;
+  await withEnv(RICH_ENV, async () => {
+    await main(
+      ["--version"],
+      host,
+      defaultPrompter,
+      undefined,
+      undefined,
+      () => Promise.resolve(0),
+      noProjectProbe,
+      npm,
+    );
+  });
+  assertStringIncludes(stripAnsi(host.logs[0]), `◆ install   npm (${entry})`);
+});
+
 Deno.test("--version names a Chocolatey install in the panel", async () => {
   const chocolatey: UpgradeHost = {
     ...defaultUpgradeHost,

@@ -16,6 +16,9 @@ import {
 } from "../packages/core/tests/_assert.ts";
 import { PACKAGE_DEPENDENCIES, PACKAGES } from "../build/packages.ts";
 import {
+  NPM_BIN_FILE,
+  NPM_BIN_PACKAGE,
+  NPM_BIN_SOURCE,
   NPM_EXCLUDED,
   npmManifest,
   npmPackages,
@@ -34,10 +37,11 @@ async function denoJson(pkg: string): Promise<Record<string, unknown>> {
   return JSON.parse(await Deno.readTextFile(`packages/${pkg}/deno.json`));
 }
 
-Deno.test("only the packages that import jsr: at runtime stay off npm", () => {
-  assertEquals([...NPM_EXCLUDED], ["cli", "engine"]);
+Deno.test("only the engine, which imports jsr: at runtime, stays off npm", () => {
+  assertEquals([...NPM_EXCLUDED], ["engine"]);
   for (const pkg of NPM_EXCLUDED) assertEquals(PACKAGES.includes(pkg), true);
-  assertEquals(npmPackages(PACKAGES).length, PACKAGES.length - 2);
+  assertEquals(npmPackages(PACKAGES).length, PACKAGES.length - 1);
+  assertEquals(npmPackages(PACKAGES).includes("cli"), true);
   // Nothing published depends on a package that is not.
   for (const pkg of npmPackages(PACKAGES)) {
     for (const dep of PACKAGE_DEPENDENCIES[pkg] ?? []) {
@@ -82,6 +86,25 @@ Deno.test("every published package's npm manifest agrees with its deno.json", as
       );
     }
   }
+});
+
+Deno.test("only the cli's manifest carries the zuke bin, and its file is a deterministic node script", async () => {
+  for (const pkg of npmPackages(PACKAGES)) {
+    const manifest = npmManifest(await denoJson(pkg));
+    assertEquals(
+      manifest.bin,
+      pkg === NPM_BIN_PACKAGE ? { zuke: NPM_BIN_FILE } : undefined,
+      pkg,
+    );
+  }
+  const lines = NPM_BIN_SOURCE.split("\n");
+  assertEquals(lines[0], "#!/usr/bin/env node");
+  assertEquals(lines.slice(1, 3), [
+    "// Copyright (c) 2026 the Zuke contributors",
+    "// SPDX-License-Identifier: MIT",
+  ]);
+  assertEquals(NPM_BIN_SOURCE.includes("\r"), false);
+  assertEquals(NPM_BIN_SOURCE.includes("import.meta.main"), false);
 });
 
 Deno.test("a manifest takes a string export and omits a missing description", () => {
@@ -275,7 +298,7 @@ Deno.test("isPublishedToNpm reads the registry's versions, and 404 is no", async
   }
 });
 
-Deno.test("the smoke consumer installs both aliases and overrides core", () => {
+Deno.test("the smoke consumer installs every alias and overrides each to its tarball", () => {
   const tarballs = {
     "@zuke/core": "file:/t/core.tgz",
     "@zuke/deno": "file:/t/deno.tgz",
@@ -284,7 +307,7 @@ Deno.test("the smoke consumer installs both aliases and overrides core", () => {
     private: true,
     type: "module",
     dependencies: tarballs,
-    overrides: { "@zuke/core": "file:/t/core.tgz" },
+    overrides: tarballs,
   });
   assertThrows(() => consumerManifest({}), Error, "@zuke/core");
 });

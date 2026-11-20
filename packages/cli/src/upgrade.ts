@@ -378,6 +378,13 @@ export async function runUpgrade(
         `JSR (deno install -A -g -n zuke ${PACKAGE}).`,
     );
   }
+  if (source.kind === "npm") {
+    log(
+      "This zuke was installed from npm. Update it with: " +
+        "npm install -g @zuke-build/cli@latest",
+    );
+    return 0;
+  }
   if (source.kind === "source") {
     throw new Error(
       `zuke upgrade: this zuke runs ${source.location}, not ${PACKAGE}, so ` +

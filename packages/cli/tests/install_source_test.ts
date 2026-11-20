@@ -123,6 +123,28 @@ Deno.test("installSource does not take another package's or directory's lib for 
   }
 });
 
+Deno.test("installSource reads a Node process whose main module is under node_modules as npm", async () => {
+  for (
+    const main of [
+      "file:///home/me/.npm/_npx/ab/node_modules/@zuke-build/cli/zuke.js",
+      "file:///C:/Users/me/AppData/Roaming/npm/node_modules/@zuke-build/cli/zuke.js",
+      "C:\\Users\\me\\npm\\node_modules\\@zuke-build\\cli\\zuke.js",
+    ]
+  ) {
+    assertEquals(await installSource(host({ main })), {
+      kind: "npm",
+      location: main,
+    }, main);
+  }
+  // Another package, or a lookalike scope, is not the CLI.
+  for (
+    const main of [
+      "file:///a/node_modules/@zuke-build/core/mod.js",
+      "file:///a/node_modules/@zuke/cli/zuke.js",
+    ]
+  ) assertEquals((await installSource(host({ main }))).kind, "source", main);
+});
+
 Deno.test("installSource keeps the reported path when the link cannot be resolved", async () => {
   const source = await installSource(host({
     standalone: true,
@@ -137,6 +159,10 @@ Deno.test("installSource keeps the reported path when the link cannot be resolve
 
 Deno.test("installLabel names the kind, shortening a path but never a specifier", () => {
   const tilde = (path: string) => path.replace("/home/me", "~");
+  assertEquals(
+    installLabel({ kind: "npm", location: "file:///home/me/x/zuke.js" }, tilde),
+    "npm (file:///home/me/x/zuke.js)",
+  );
   assertEquals(
     installLabel({ kind: "jsr", location: "jsr:@zuke/cli@1.14.0" }, tilde),
     "JSR (jsr:@zuke/cli@1.14.0)",
