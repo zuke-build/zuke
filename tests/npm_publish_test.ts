@@ -253,6 +253,7 @@ Deno.test("npmRegistry holds a package changed since its tag, and its dependents
     hasTag: (tag) => Promise.resolve(tag !== "deno-v1.0.0"),
     changed: (_tag, path) =>
       Promise.resolve(path === "packages/gh" ? ["packages/gh/a.ts"] : []),
+    versionAt: () => Promise.resolve(null),
   });
   const registry: PublishRegistry = {
     ...base,

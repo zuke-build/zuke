@@ -9,16 +9,23 @@
  */
 
 import { GitTasks } from "@zuke/git";
+import { dig } from "./npm_json.ts";
 
 /** What {@link releaseSource} asks git. */
 export interface ReleaseProbe {
   /** Whether `tag` is in this clone and points at a commit. */
   hasTag(tag: string): Promise<boolean>;
   /**
-   * The paths under `path` whose checkout differs from `tag`: committed,
+   * The paths under `path` whose checkout differs from `tag` (a tag or any
+   * revision): committed,
    * staged, unstaged or untracked, since the build reads the working tree.
    */
   changed(tag: string, path: string): Promise<string[]>;
+  /**
+   * The version `packages/<pkg>/deno.json` declares at `rev`, or `null` when
+   * that file or its version is not there.
+   */
+  versionAt(rev: string, pkg: string): Promise<string | null>;
 }
 
 /** What {@link masterCheck} asks git. */
@@ -43,6 +50,17 @@ async function resolves(rev: string): Promise<boolean> {
 
 const GIT: ReleaseProbe & AncestryProbe = {
   hasTag: (tag) => resolves(`refs/tags/${tag}`),
+  async versionAt(rev, pkg) {
+    try {
+      const text = await GitTasks.blobText((s) =>
+        s.object(`${rev}:packages/${pkg}/deno.json`).quiet()
+      );
+      const version: unknown = dig(JSON.parse(text), "version");
+      return typeof version === "string" ? version : null;
+    } catch {
+      return null;
+    }
+  },
   // One rev diffs the tag against the working tree, so staged and unstaged
   // edits count; status adds the untracked files a diff never lists.
   changed: async (tag, path) => [
@@ -73,15 +91,27 @@ const GIT: ReleaseProbe & AncestryProbe = {
  */
 export type ReleaseSource = "same" | "changed" | "untagged";
 
-/** The {@link ReleaseSource} of `pkg`@`version` in this clone. */
+/**
+ * The {@link ReleaseSource} of `pkg`@`version` in this clone. The source is
+ * compared with the release tag, or, while the tag is not there yet, with
+ * `HEAD` when `HEAD` is the release commit that set this version: a draft
+ * release (the CLI's, until its binaries are attached) is tagged only when it
+ * is published, after the npm job has run.
+ */
 export async function releaseSource(
   pkg: string,
   version: string,
   git: ReleaseProbe = GIT,
 ): Promise<ReleaseSource> {
   const tag = releaseTag(pkg, version);
-  if (!await git.hasTag(tag)) return "untagged";
-  return (await git.changed(tag, `packages/${pkg}`)).length === 0
+  let base: string;
+  if (await git.hasTag(tag)) base = tag;
+  else if (
+    await git.versionAt("HEAD", pkg) === version &&
+    await git.versionAt("HEAD^", pkg) !== version
+  ) base = "HEAD";
+  else return "untagged";
+  return (await git.changed(base, `packages/${pkg}`)).length === 0
     ? "same"
     : "changed";
 }
