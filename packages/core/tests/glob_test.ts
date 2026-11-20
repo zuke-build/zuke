@@ -1,8 +1,9 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "./_assert.ts";
-import { glob, globToRegExp } from "../src/glob.ts";
+import { assertEquals, assertRejects } from "./_assert.ts";
+import { glob, globListing, globToRegExp } from "../src/glob.ts";
+import { readDir } from "../src/fs.ts";
 import { withTemp } from "./_temp.ts";
 
 Deno.test("globToRegExp compiles the supported syntax", () => {
@@ -91,4 +92,36 @@ Deno.test("glob defaults cwd to Deno.cwd()", async () => {
     Deno.chdir(original);
     await Deno.remove(dir, { recursive: true });
   }
+});
+
+Deno.test("glob skips a directory removed after its parent was listed (#1096)", async () => {
+  await withTemp(async (dir) => {
+    for (const sub of ["keep", "gone"]) {
+      await Deno.mkdir(`${dir}/${sub}`);
+      await Deno.writeTextFile(`${dir}/${sub}/a_test.ts`, "");
+    }
+    // Another process removes `gone` once the walk has listed `dir`.
+    const removing = async (path: string) => {
+      if (path.endsWith("/gone")) await Deno.remove(path, { recursive: true });
+      return await readDir(path);
+    };
+    assertEquals(
+      await globListing("**/*_test.ts", { cwd: dir }, removing),
+      ["keep/a_test.ts"],
+    );
+    // Any other error reading a directory still rejects.
+    await assertRejects(
+      () =>
+        globListing(
+          "**/*.ts",
+          { cwd: dir },
+          (path) =>
+            path.endsWith("/keep")
+              ? Promise.reject(new Error("permission denied"))
+              : readDir(path),
+        ),
+      Error,
+      "permission denied",
+    );
+  });
 });
