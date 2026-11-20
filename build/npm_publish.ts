@@ -17,9 +17,10 @@ import { type ReleaseProbe, releaseSourceProblem } from "./npm_release.ts";
 import type { PublishRegistry } from "./publish.ts";
 
 /**
- * The GitHub Environment the npm publish job runs in. `NPM_TOKEN` is its
- * secret, and the trusted publisher is bound to it, so only a job in this
- * environment (whose deployment branches are limited to `master`) can publish.
+ * The GitHub Environment the npm publish job runs in. The trusted publisher is
+ * bound to it, and a new package's one-off `NPM_TOKEN` lives in it, so only a
+ * job in this environment (whose deployment branches are limited to `master`)
+ * can publish.
  */
 export const NPM_ENVIRONMENT = "npm";
 

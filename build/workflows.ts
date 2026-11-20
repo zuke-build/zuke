@@ -429,10 +429,10 @@ export function githubWorkflows(
           target: targets.publishNpm,
           name: "Publish to npm",
           after: [targets.release],
-          // `NPM_TOKEN` is this environment's secret, and the npm trusted
-          // publisher is bound to it, so a job outside it (a branch's, say)
-          // can neither read the token nor publish by OIDC. Limit its
-          // deployment branches to master (RELEASING.md).
+          // The npm trusted publisher is bound to this environment, and a new
+          // package's one-off `NPM_TOKEN` lives in it, so a job outside it (a
+          // branch's, say) can neither publish by OIDC nor read the token.
+          // Its deployment branches are limited to master (RELEASING.md).
           environment: NPM_ENVIRONMENT,
           // Inert until a maintainer sets the NPM_PUBLISH repository variable
           // (RELEASING.md): the packages must exist on npm, and trust this
@@ -464,8 +464,9 @@ export function githubWorkflows(
             {
               name: "Publish to npm",
               run: "./zuke publishNpm",
-              // Only until the packages have a trusted publisher; with one
-              // and `id-token`, npm authenticates by OIDC and ignores this.
+              // Empty except while a new package's first release needs a
+              // token (RELEASING.md); with a trusted publisher and `id-token`,
+              // npm authenticates by OIDC.
               env: { NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}" },
             },
           ],
