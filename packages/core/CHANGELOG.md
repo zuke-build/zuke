@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.83.1](https://github.com/zuke-build/zuke/compare/core-v1.83.0...core-v1.83.1) (2026-11-20)
+
+
+### Bug Fixes
+
+* **core:** untar reads archives the way GNU tar and node-tar do, or refuses them ([#1091](https://github.com/zuke-build/zuke/issues/1091)) ([8e60377](https://github.com/zuke-build/zuke/commit/8e60377a26abde2d08ec2deb0e8807bb421cd0d3))
+
 ## [1.83.0](https://github.com/zuke-build/zuke/compare/core-v1.82.0...core-v1.83.0) (2026-11-18)
 
 

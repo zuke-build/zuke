@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/zuke-build/zuke/compare/npm-v1.3.1...npm-v1.4.0) (2026-11-20)
+
+
+### Features
+
+* publish the packages to npm as @zuke-build/* ([#1080](https://github.com/zuke-build/zuke/issues/1080)) ([3ce39eb](https://github.com/zuke-build/zuke/commit/3ce39eb2409cc2d12efb41660ee1de04b091f1db))
+
 ## [1.3.1](https://github.com/zuke-build/zuke/compare/npm-v1.3.0...npm-v1.3.1) (2026-09-14)
 
 
