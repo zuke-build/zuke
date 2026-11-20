@@ -14,7 +14,10 @@ import { GitTasks } from "@zuke/git";
 export interface ReleaseProbe {
   /** Whether `tag` is in this clone and points at a commit. */
   hasTag(tag: string): Promise<boolean>;
-  /** The paths under `path` that differ between `tag` and `HEAD`. */
+  /**
+   * The paths under `path` whose checkout differs from `tag`: committed,
+   * staged, unstaged or untracked, since the build reads the working tree.
+   */
   changed(tag: string, path: string): Promise<string[]>;
 }
 
@@ -40,8 +43,14 @@ async function resolves(rev: string): Promise<boolean> {
 
 const GIT: ReleaseProbe & AncestryProbe = {
   hasTag: (tag) => resolves(`refs/tags/${tag}`),
-  changed: (tag, path) =>
-    GitTasks.diffNames((s) => s.commits(tag, "HEAD").paths(path)),
+  // One rev diffs the tag against the working tree, so staged and unstaged
+  // edits count; status adds the untracked files a diff never lists.
+  changed: async (tag, path) => [
+    ...await GitTasks.diffNames((s) => s.commits(tag).paths(path).quiet()),
+    ...(await GitTasks.statusEntries((s) =>
+      s.paths(path).untrackedFiles("all").quiet()
+    )).filter((e) => e.index === "?").map((e) => e.path),
+  ],
   hasCommit: resolves,
   async fetchCommit(commit) {
     await GitTasks.fetch((s) => s.remote("origin").refspec(commit).noTags());
@@ -55,7 +64,8 @@ const GIT: ReleaseProbe & AncestryProbe = {
  * Why `pkg`@`version` may not go to npm, or `null` when it may: JSR carries
  * what its release tag (`<pkg>-v<version>`) holds, and `publishNpm` builds from
  * the checkout, so npm gets the same source only when the tag exists in this
- * clone and `packages/<pkg>` has not changed since.
+ * clone and the checkout of `packages/<pkg>`, working tree included, has not
+ * changed since.
  */
 export async function releaseSourceProblem(
   pkg: string,
