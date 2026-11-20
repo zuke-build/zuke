@@ -10,6 +10,7 @@ import { ConsoleTasks } from "@zuke/console";
 import { HttpError, httpJson, ProcessTasks } from "@zuke/core";
 import { NpmTasks, NpmTrustSettings } from "@zuke/npm";
 import { messageOf } from "../packages/core/src/internal.ts";
+import { dig } from "./npm_json.ts";
 import { NPM_SCOPE } from "./npm_manifest.ts";
 import { NPM_DIST } from "./npm_build.ts";
 import { type ReleaseProbe, releaseSource, releaseTag } from "./npm_release.ts";
@@ -99,75 +100,169 @@ export function npmRegistry(git?: ReleaseProbe): PublishRegistry {
 export interface TrustOutcome {
   /** npm's exit code. */
   readonly code: number;
+  /** What npm wrote to stdout, when it was read. */
+  readonly stdout: string;
   /** What npm wrote to stderr, where it names its error code. */
   readonly stderr: string;
 }
 
 /**
- * Register the release workflow, in the {@link NPM_ENVIRONMENT} environment,
- * as `pkg`'s trusted publisher, so publishing from CI needs no token. Needs
- * npm 11.15 or later, a maintainer's login, and the package already on npm.
- * npm asks for 2FA on every call, and it signs in through the browser (a
- * security key) or prompts for a code only when stdin and stdout are the
- * terminal, so those are inherited. Its stderr is read for the error code and
- * passed through as it arrives, so the maintainer still sees all of it.
+ * Run `npm` with `args`: stdin always the terminal, which npm's 2FA reads,
+ * stdout too unless `readStdout`, and stderr read. npm signs in (a security
+ * key, through the browser, or a code) only when stdin and stdout are a
+ * terminal, and writes those prompts to stdout, so stderr can be read without
+ * hiding any.
  */
-export async function trustPublisher(pkg: string): Promise<TrustOutcome> {
-  const [command, ...args] = new NpmTrustSettings()
-    .github(`${NPM_SCOPE}/${pkg}`, TRUSTED_WORKFLOW).repo(TRUSTED_REPOSITORY)
-    .environment(NPM_ENVIRONMENT).allowPublish().yes().argv();
-  const child = ProcessTasks.spawn(
+async function npm(args: string[], readStdout: boolean): Promise<TrustOutcome> {
+  const [command, ...rest] = args;
+  const out = await ProcessTasks.run(
     command,
-    (s) => s.args(...args).stdin("inherit").stdout("inherit").stderr("piped"),
+    (s) =>
+      s.args(...rest).stdin("inherit").stdout(readStdout ? "piped" : "inherit")
+        .stderr("piped"),
   );
-  const decoder = new TextDecoder();
-  let stderr = "";
-  for await (const chunk of child.stderr) {
-    await Deno.stderr.write(chunk);
-    stderr += decoder.decode(chunk, { stream: true });
-  }
-  return { code: (await child.status).code, stderr };
+  const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
+  return { code: out.code, stdout: text(out.stdout), stderr: text(out.stderr) };
 }
 
 /**
- * npm's answer when the package already has a trusted publisher a token could
- * also match: `E409`, "a trusted publisher configuration ... already exists".
- * npm does not say which one, so this is reported as it is, and checked where
- * it matters: a publisher other than `release.yml` in the `npm` environment
- * cannot publish from the release job, and anything it did publish fails
- * `npmVerify`, whose Sigstore policy pins that workflow, ref and repository.
+ * Register the release workflow, in the {@link NPM_ENVIRONMENT} environment,
+ * as `pkg`'s trusted publisher, so publishing from CI needs no token. Needs
+ * npm 11.15 or later, a maintainer's login, and the package already on npm;
+ * npm asks for 2FA on every call.
  */
-function alreadyTrusted(outcome: TrustOutcome): boolean {
+export function trustPublisher(pkg: string): Promise<TrustOutcome> {
+  return npm(
+    new NpmTrustSettings()
+      .github(`${NPM_SCOPE}/${pkg}`, TRUSTED_WORKFLOW).repo(TRUSTED_REPOSITORY)
+      .environment(NPM_ENVIRONMENT).allowPublish().yes().argv(),
+    false,
+  );
+}
+
+/** `pkg`'s trusted publishers, as `npm trust list --json` prints them. */
+export function listPublishers(pkg: string): Promise<TrustOutcome> {
+  return npm(
+    new NpmTrustSettings().list(`${NPM_SCOPE}/${pkg}`).json().argv(),
+    true,
+  );
+}
+
+/**
+ * The JSON values in `text`, one after another: `npm trust list --json`
+ * prints one object per publisher, not an array. Text that is not JSON is
+ * skipped a character at a time.
+ */
+export function jsonValues(text: string): unknown[] {
+  const values: unknown[] = [];
+  let start = text.indexOf("{");
+  while (start !== -1) {
+    let depth = 0;
+    let inString = false;
+    let end = -1;
+    for (let i = start; i < text.length && end === -1; i++) {
+      const c = text[i];
+      if (inString) {
+        if (c === "\\") i++;
+        else if (c === '"') inString = false;
+      } else if (c === '"') inString = true;
+      else if (c === "{") depth++;
+      else if (c === "}" && --depth === 0) end = i;
+    }
+    if (end === -1) break;
+    try {
+      values.push(JSON.parse(text.slice(start, end + 1)));
+      start = text.indexOf("{", end + 1);
+    } catch {
+      start = text.indexOf("{", start + 1);
+    }
+  }
+  return values;
+}
+
+/** Whether `listed` (`npm trust list --json` output) names this repository's release workflow. */
+export function trustsRelease(listed: string): boolean {
+  return jsonValues(listed).some((p) =>
+    dig(p, "type") === "github" && dig(p, "file") === TRUSTED_WORKFLOW &&
+    dig(p, "repository") === TRUSTED_REPOSITORY &&
+    dig(p, "environment") === NPM_ENVIRONMENT
+  );
+}
+
+/** npm's `E409`: the package already has a trusted publisher, not said which. */
+function conflict(outcome: TrustOutcome): boolean {
   return outcome.code !== 0 && /\bE409\b/.test(outcome.stderr);
 }
 
+/** npm's `npm error …` lines in `stderr`, for a failure's report. */
+function npmErrors(stderr: string): string[] {
+  return stderr.split("\n").map((l) => l.trim())
+    .filter((l) => l.startsWith("npm error"));
+}
+
+/** What {@link trustAll} runs: `npm trust github` and `npm trust list`. */
+export interface TrustNpm {
+  /** Make `release.yml` `pkg`'s trusted publisher. */
+  trust(pkg: string): Promise<TrustOutcome>;
+  /** List `pkg`'s trusted publishers as JSON. */
+  list(pkg: string): Promise<TrustOutcome>;
+}
+
 /**
- * Trust each of `packages` with `trust`, and return those that failed. A
- * package that already has a trusted publisher (npm's `E409`) is no failure:
- * it is reported, with how to see which publisher it is. Each failure goes to `report`; npm's own
- * error is already on the terminal above it. A call that cannot even start
- * (npm not found, a spawn error) fails its own package, and the rest still run.
+ * Why `pkg` does not trust the release workflow after `npm` tried, or `null`
+ * when it does. An `E409` (a publisher already there) counts only when
+ * `npm trust list` shows it is this repository's `release.yml` in the
+ * {@link NPM_ENVIRONMENT} environment.
+ */
+async function trustProblem(
+  pkg: string,
+  npm: TrustNpm,
+): Promise<string | null> {
+  const outcome = await npm.trust(pkg);
+  if (outcome.code === 0) return null;
+  if (!conflict(outcome)) {
+    return [
+      `npm trust exited with code ${outcome.code}`,
+      ...npmErrors(
+        outcome.stderr,
+      ),
+    ].join("; ");
+  }
+  const listed = await npm.list(pkg);
+  if (listed.code !== 0) {
+    return [
+      `it has a trusted publisher, and npm trust list exited with code ` +
+      `${listed.code}, so it is not known to be ${TRUSTED_WORKFLOW}`,
+      // With --json, npm reports its error as JSON on stdout.
+      ...jsonValues(listed.stdout).map((v) => dig(v, "error", "summary"))
+        .filter((m) => typeof m === "string"),
+      ...npmErrors(listed.stderr),
+    ].join("; ");
+  }
+  return trustsRelease(listed.stdout)
+    ? null
+    : `it has a trusted publisher other than ${TRUSTED_REPOSITORY}'s ` +
+      `${TRUSTED_WORKFLOW} in the ${NPM_ENVIRONMENT} environment; npm trust ` +
+      `list ${NPM_SCOPE}/${pkg} shows it`;
+}
+
+/**
+ * Trust each of `packages` through `npm`, and return those that failed, each
+ * given to `report` with why. A package that already has a trusted publisher
+ * passes only when that publisher is the release workflow. A call that cannot
+ * even start (npm not found, a spawn error) fails its own package, and the
+ * rest still run.
  */
 export async function trustAll(
   packages: readonly string[],
-  trust: (pkg: string) => Promise<TrustOutcome>,
+  npm: TrustNpm,
   report: (message: string) => void,
 ): Promise<string[]> {
   const failed: string[] = [];
   for (const pkg of packages) {
     let problem: string | null;
     try {
-      const outcome = await trust(pkg);
-      if (alreadyTrusted(outcome)) {
-        ConsoleTasks.info(
-          `${NPM_SCOPE}/${pkg} already has a trusted publisher; npm trust ` +
-            `list ${NPM_SCOPE}/${pkg} shows which.`,
-        );
-        continue;
-      }
-      problem = outcome.code === 0
-        ? null
-        : `npm trust exited with code ${outcome.code}`;
+      problem = await trustProblem(pkg, npm);
     } catch (error) {
       problem = messageOf(error);
     }

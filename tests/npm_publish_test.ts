@@ -28,8 +28,10 @@ import { consumerManifest, SMOKE_BUILD } from "../build/npm_smoke.ts";
 import { npmTsconfig } from "../build/npm_build.ts";
 import {
   isPublishedToNpm,
+  jsonValues,
   npmRegistry,
   trustAll,
+  trustsRelease,
 } from "../build/npm_publish.ts";
 import {
   publishAllTo,
@@ -339,48 +341,96 @@ Deno.test("the smoke build it generates opens with the license header", () => {
   );
 });
 
-Deno.test("trustAll reports each package npm could not trust and carries on", async () => {
+/** `npm trust list --json` output: one object per publisher, as npm prints it. */
+const RELEASE = JSON.stringify(
+  {
+    id: "abc",
+    type: "github",
+    file: "release.yml",
+    repository: "zuke-build/zuke",
+    environment: "npm",
+    permissions: ["publish"],
+  },
+  null,
+  2,
+);
+const OTHER = RELEASE.replace("release.yml", "evil.yml");
+const ok = (stdout = "") => ({ code: 0, stdout, stderr: "" });
+const fail = (stderr: string) => ({ code: 1, stdout: "", stderr });
+const E409 = fail("npm error code E409\nnpm error 409 Conflict - POST ...");
+
+Deno.test("trustAll accepts an existing publisher only when it is the release workflow", async () => {
   const errors: string[] = [];
-  const tried: string[] = [];
+  const listed: string[] = [];
   const failed = await trustAll(
-    ["a", "b", "c", "d", "e", "f"],
-    (pkg) => {
-      tried.push(pkg);
-      if (pkg === "c") throw new Error("spawn failed");
-      if (pkg === "d") return Promise.reject(new Error("npm: not found"));
-      // npm's E409: this package already trusts the workflow.
-      if (pkg === "e") {
-        return Promise.resolve({
-          code: 1,
-          stderr: "npm error code E409\nnpm error 409 Conflict - POST ...",
-        });
-      }
-      // E4090 is not E409, and an exit 0 that mentions E409 is a success.
-      if (pkg === "f") {
-        return Promise.resolve({ code: 1, stderr: "npm error code E4090" });
-      }
-      return Promise.resolve(
-        pkg === "b" ? { code: 1, stderr: "" } : { code: 0, stderr: "E409" },
-      );
+    ["new", "same", "other", "unlisted", "broken", "e4090", "thrown", "gone"],
+    {
+      trust: (pkg) => {
+        if (pkg === "thrown") throw new Error("spawn failed");
+        if (pkg === "gone") return Promise.reject(new Error("npm: not found"));
+        if (pkg === "new") return Promise.resolve(ok());
+        if (pkg === "broken") {
+          return Promise.resolve(fail("npm error code E500"));
+        }
+        // E4090 is not E409.
+        if (pkg === "e4090") {
+          return Promise.resolve(fail("npm error code E4090"));
+        }
+        return Promise.resolve(E409);
+      },
+      list: (pkg) => {
+        listed.push(pkg);
+        if (pkg === "unlisted") {
+          return Promise.resolve({
+            code: 1,
+            stdout: '{"error":{"code":"E401","summary":"401 Unauthorized"}}',
+            stderr: "npm error code E401",
+          });
+        }
+        // Two publishers, the release workflow second.
+        return Promise.resolve(
+          ok(pkg === "same" ? `${OTHER}\n\n${RELEASE}\n` : OTHER),
+        );
+      },
     },
     (m) => errors.push(m),
   );
-  assertEquals(tried, ["a", "b", "c", "d", "e", "f"]);
-  assertEquals(failed, ["b", "c", "d", "f"]);
-  assertEquals(errors, [
-    "@zuke-build/b: npm trust exited with code 1.",
-    "@zuke-build/c: spawn failed.",
-    "@zuke-build/d: npm: not found.",
-    "@zuke-build/f: npm trust exited with code 1.",
+  assertEquals(failed, [
+    "other",
+    "unlisted",
+    "broken",
+    "e4090",
+    "thrown",
+    "gone",
   ]);
-  assertEquals(
-    await trustAll(
-      [],
-      () => Promise.resolve({ code: 1, stderr: "" }),
-      (m) => errors.push(m),
-    ),
-    [],
-  );
+  // Only a conflict is listed.
+  assertEquals(listed, ["same", "other", "unlisted"]);
+  assertEquals(errors, [
+    "@zuke-build/other: it has a trusted publisher other than zuke-build/zuke's release.yml in the npm environment; npm trust list @zuke-build/other shows it.",
+    "@zuke-build/unlisted: it has a trusted publisher, and npm trust list exited with code 1, so it is not known to be release.yml; 401 Unauthorized; npm error code E401.",
+    "@zuke-build/broken: npm trust exited with code 1; npm error code E500.",
+    "@zuke-build/e4090: npm trust exited with code 1; npm error code E4090.",
+    "@zuke-build/thrown: spawn failed.",
+    "@zuke-build/gone: npm: not found.",
+  ]);
+});
+
+Deno.test("jsonValues reads one object after another, and trustsRelease needs every field", () => {
+  assertEquals(jsonValues(`noise ${RELEASE}\n{"a":"}"}\n{bad}`).length, 2);
+  assertEquals(jsonValues('{"s":"a\\"}"}'), [{ s: 'a"}' }]);
+  assertEquals(jsonValues("{ unclosed"), []);
+  assertEquals(trustsRelease(RELEASE), true);
+  for (
+    const [from, to] of [
+      ['"github"', '"gitlab"'],
+      ['"zuke-build/zuke"', '"zuke-build/fork"'],
+      ['"npm"', '"other"'],
+    ]
+  ) {
+    assertEquals(trustsRelease(RELEASE.replace(from, to)), false, to);
+  }
+  assertEquals(trustsRelease(OTHER), false);
+  assertEquals(trustsRelease(""), false);
 });
 
 Deno.test("standingOf: published first, then a held dependency or a hold, else due", async () => {

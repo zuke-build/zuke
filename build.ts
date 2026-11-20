@@ -184,7 +184,12 @@ import {
   SMOKE_BUILD,
   SMOKE_PACKAGES,
 } from "./build/npm_smoke.ts";
-import { npmRegistry, trustAll, trustPublisher } from "./build/npm_publish.ts";
+import {
+  listPublishers,
+  npmRegistry,
+  trustAll,
+  trustPublisher,
+} from "./build/npm_publish.ts";
 import { npmPackages } from "./build/npm_manifest.ts";
 import {
   RELEASE_PROVENANCE,
@@ -2331,7 +2336,7 @@ class ZukeBuild extends Build {
       // Already trusted, or not yet on npm: npm reports it, and the rest go on.
       const failures = await trustAll(
         packages,
-        trustPublisher,
+        { trust: trustPublisher, list: listPublishers },
         (m) => ConsoleTasks.error(m),
       );
       if (failures.length > 0) {
