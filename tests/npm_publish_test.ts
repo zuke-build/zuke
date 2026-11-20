@@ -374,6 +374,11 @@ Deno.test("trustAll reuses a one-time password until npm rejects it, then asks a
     "@zuke-build/g: npm error npm: not found",
     "@zuke-build/i: npm error spawn failed",
   ]);
+  // Nothing to trust asks for no code and runs nothing.
+  const never = () => {
+    throw new Error("called");
+  };
+  assertEquals(await trustAll([], never, never, report), []);
   // No code at all stops the run before any npm call.
   await assertRejects(
     () =>

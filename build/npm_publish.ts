@@ -137,6 +137,7 @@ export async function trustAll(
       return { code: 1, stderr: `npm error ${messageOf(error)}` };
     }
   };
+  if (packages.length === 0) return [];
   let otp = read("npm one-time password:");
   const failed: string[] = [];
   for (const pkg of packages) {
