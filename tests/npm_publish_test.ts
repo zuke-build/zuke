@@ -23,7 +23,11 @@ import {
 } from "../build/npm_manifest.ts";
 import { consumerManifest, SMOKE_BUILD } from "../build/npm_smoke.ts";
 import { npmTsconfig } from "../build/npm_build.ts";
-import { isPublishedToNpm, npmRegistry } from "../build/npm_publish.ts";
+import {
+  isPublishedToNpm,
+  npmRegistry,
+  trustAll,
+} from "../build/npm_publish.ts";
 import { publishAllTo, type PublishRegistry } from "../build/publish.ts";
 
 async function denoJson(pkg: string): Promise<Record<string, unknown>> {
@@ -292,5 +296,39 @@ Deno.test("the smoke build it generates opens with the license header", () => {
       "// Copyright (c) 2026 the Zuke contributors",
       "// SPDX-License-Identifier: MIT",
     ],
+  );
+});
+
+Deno.test("trustAll reuses a one-time password until npm rejects it, then asks again", async () => {
+  const asked: string[] = [];
+  const codes = ["111", " 222 "];
+  const ran: string[] = [];
+  const failed = await trustAll(
+    ["a", "b", "c", "d"],
+    (pkg, otp) => {
+      ran.push(`${pkg}:${otp}`);
+      // "111" expires after a; d is already trusted, which is not EOTP.
+      if (otp === "111" && pkg !== "a") {
+        return Promise.resolve({ code: 1, stderr: "npm error code EOTP" });
+      }
+      return Promise.resolve(
+        pkg === "d"
+          ? { code: 1, stderr: "npm error code E409" }
+          : { code: 0, stderr: "" },
+      );
+    },
+    (message) => {
+      asked.push(message);
+      return codes.shift() ?? null;
+    },
+  );
+  assertEquals(ran, ["a:111", "b:111", "b:222", "c:222", "d:222"]);
+  assertEquals(failed, ["d"]);
+  assertEquals(asked.length, 2);
+  // No code at all stops the run before any npm call.
+  await assertRejects(
+    () => trustAll(["a"], () => Promise.reject(new Error("ran")), () => null),
+    Error,
+    "needs a one-time password",
   );
 });

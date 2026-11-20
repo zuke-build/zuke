@@ -76,11 +76,58 @@ export function npmRegistry(git?: ReleaseProbe): PublishRegistry {
 /**
  * Register the release workflow, in the {@link NPM_ENVIRONMENT} environment,
  * as `pkg`'s trusted publisher, so publishing from CI needs no token. Needs npm 11.15 or later, and a maintainer's
- * 2FA-authenticated login, and the package must already exist on npm.
+ * 2FA-authenticated login, and the package must already exist on npm. `otp`
+ * is the login's one-time password: npm's browser sign-in needs a terminal,
+ * which a captured run is not, so the code is passed instead.
  */
-export async function trustPublisher(pkg: string): Promise<void> {
-  await NpmTasks.trust((s) =>
+export function trustPublisher(
+  pkg: string,
+  otp: string,
+): Promise<TrustOutcome> {
+  return NpmTasks.trust((s) =>
     s.github(`${NPM_SCOPE}/${pkg}`, TRUSTED_WORKFLOW).repo(TRUSTED_REPOSITORY)
-      .environment(NPM_ENVIRONMENT).allowPublish().yes()
+      .environment(NPM_ENVIRONMENT).allowPublish().yes().otp(otp).noThrow()
   );
+}
+
+/** What {@link trustAll} reads of one `npm trust` run. */
+export interface TrustOutcome {
+  /** The exit code. */
+  readonly code: number;
+  /** What npm wrote to stderr, where it reports `EOTP`. */
+  readonly stderr: string;
+}
+
+/**
+ * Trust each of `packages` with `trust`, asking `ask` for a one-time password
+ * first and again whenever npm rejects the current one (`EOTP`, an expired or
+ * used code), retrying that package once with the new code. Returns the
+ * packages that still failed. A code is reused across packages while npm
+ * accepts it, so a run asks once per code lifetime, not once per package.
+ */
+export async function trustAll(
+  packages: readonly string[],
+  trust: (pkg: string, otp: string) => Promise<TrustOutcome>,
+  ask: (message: string) => string | null,
+): Promise<string[]> {
+  const read = (message: string) => {
+    const code = ask(message)?.trim();
+    if (!code) throw new Error("npm trust needs a one-time password.");
+    return code;
+  };
+  let otp = read("npm one-time password:");
+  const failed: string[] = [];
+  for (const pkg of packages) {
+    let out = await trust(pkg, otp);
+    if (out.code !== 0 && out.stderr.includes("EOTP")) {
+      otp = read(
+        `${NPM_SCOPE}/${pkg}: that code expired; next one-time password:`,
+      );
+      out = await trust(pkg, otp);
+    }
+    if (out.code === 0) {
+      ConsoleTasks.success(`${NPM_SCOPE}/${pkg} trusts release.yml.`);
+    } else failed.push(pkg);
+  }
+  return failed;
 }
