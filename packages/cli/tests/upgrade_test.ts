@@ -421,6 +421,21 @@ Deno.test("zuke upgrade sends a Homebrew install to brew, even one compiled from
   assertEquals(fake.probed, []);
 });
 
+Deno.test("zuke upgrade tells an npm install the npm command and runs nothing", async () => {
+  const fake = new FakeUpgradeHost(
+    undefined,
+    "file:///usr/lib/node_modules/@zuke-build/cli/zuke.js",
+  );
+  const { code, logs } = await upgrade([], fake);
+  assertEquals(code, 0);
+  assertStringIncludes(
+    logs.join("\n"),
+    "npm install -g @zuke-build/cli@latest",
+  );
+  assertEquals(fake.installs, []);
+  assertEquals(fake.probed, []);
+});
+
 Deno.test("zuke upgrade sends a Chocolatey install to choco", async () => {
   const fake = new FakeUpgradeHost(undefined, FROM_JSR);
   fake.compiled = true;

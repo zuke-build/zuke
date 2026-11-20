@@ -197,22 +197,25 @@ for the same reason.
 
 ## Publishing to npm
 
-Every package except `cli` and `engine` is also published to npm as
-`@zuke-build/<name>` (the `@zuke` scope there belongs to someone else). A
-consumer installs it under the name the sources import, through an alias:
+Every package except `engine` is also published to npm as `@zuke-build/<name>`
+(the `@zuke` scope there belongs to someone else). A consumer installs it under
+the name the sources import, through an alias:
 `npm install @zuke/core@npm:@zuke-build/core`. The `dependencies` of each
 published package are written the same way, so `@zuke/*` specifiers resolve
 without rewriting.
 
-`cli` and `engine` stay off npm (`NPM_EXCLUDED` in `build/npm_manifest.ts`):
-they load `jsr:` specifiers with a runtime `import()`, which Node cannot
-resolve. They join once the engine's Node support (phase 3) removes that.
+`engine` stays off npm (`NPM_EXCLUDED` in `build/npm_manifest.ts`): it loads
+`jsr:` specifiers with a runtime `import()`, which Node cannot resolve. It joins
+once its Node support (phase 3) removes that. `cli` is on npm and ships the
+`zuke` executable (`bin`): `npmBuild` writes `zuke.js` beside its compiled
+modules, so `npx @zuke-build/cli --version` works on Node. `zuke upgrade` on
+such an install prints `npm install -g @zuke-build/cli@latest` and runs nothing.
 
-- `./zuke npmBuild` compiles every other package with `tsc` 7 into
-  `dist/npm/<name>/` (`.js`, `.d.ts`, a `package.json` generated from the
-  package's `deno.json`, its README and the LICENSE). The compiler and the
-  `@types/node` and `@types/deno` packages are installed by npm into
-  `.zuke/tools/npm-tsc`; Node 24 or later and npm must be on `PATH`.
+- `./zuke npmBuild` compiles every package with `tsc` 7 into `dist/npm/<name>/`
+  (`.js`, `.d.ts`, a `package.json` generated from the package's `deno.json`,
+  its README and the LICENSE). The compiler and the `@types/node` and
+  `@types/deno` packages are installed by npm into `.zuke/tools/npm-tsc`; Node
+  24 or later and npm must be on `PATH`.
 - `./zuke publishNpm` runs `npmBuild`, then
   `npm publish --access public
   --provenance` for each package, in `PACKAGES`

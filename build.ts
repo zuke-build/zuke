@@ -1071,12 +1071,12 @@ class ZukeBuild extends Build {
       }
     });
 
-  // Not on `npmBuild`: it compiles core and deno into its own temp dir, so
+  // Not on `npmBuild`: it compiles core, deno and cli into its own temp dir, so
   // it never touches dist/npm. The compile needs the registry, which a build
   // target may use (as `spell` does).
   npmSmoke = target()
     .description(
-      "Install the npm build of core and deno into a scratch project and run it under Node",
+      "Install the npm build of core, deno and cli into a scratch project and run both under Node",
     )
     .executes(async () => {
       const work = absolutePath(
@@ -1106,6 +1106,19 @@ class ZukeBuild extends Build {
         const ran = await $`node build.mjs hello`.cwd(consumer);
         if (!ran.stdout.includes("hello from function")) {
           throw new Error(`the smoke build did not run: ${ran.stdout}`);
+        }
+        const bin = consumer(
+          "node_modules",
+          ".bin",
+          Deno.build.os === "windows" ? "zuke.cmd" : "zuke",
+        );
+        const version = await $`${bin} --version`.cwd(consumer);
+        const cli = await FileTasks.readJson("packages/cli/deno.json");
+        if (
+          typeof cli !== "object" || cli === null || !("version" in cli) ||
+          !version.stdout.includes(String(cli.version))
+        ) {
+          throw new Error(`zuke --version printed: ${version.stdout}`);
         }
       } finally {
         await FileTasks.remove(work, { recursive: true });

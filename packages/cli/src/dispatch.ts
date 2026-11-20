@@ -54,6 +54,7 @@ import {
   FileTasks,
   type PathInfo,
   ProcessTasks,
+  type RuntimeFacts,
   RuntimeTasks,
 } from "@zuke/core";
 import { noLockNotice } from "./launcher.ts";
@@ -547,10 +548,12 @@ function viaLauncher(location: BuildLocation): boolean {
  * with `args` as they are, launcher or not. Otherwise the root's launcher with
  * `args` when it has one and this is not already a launcher's own `zuke` call
  * (see {@link FORWARDED_ENV}), else Deno with {@link buildRunArgs} — except a
- * hosted build in the binary, which never falls back to Deno: a project
- * another SDK hosts needs nothing from Deno's stack.
- * @throws {Error} for a hosted build the binary cannot serve and no launcher
- * can run, naming how to get a zuke that does.
+ * hosted build in the binary or on Node, which never falls back to Deno: a
+ * project another SDK hosts needs nothing from Deno's stack. `runtime` is the
+ * one this CLI runs on.
+ * @throws {Error} for a hosted build the binary cannot serve, or a CLI on
+ * Node cannot run, when no launcher can run it either, naming how to get a
+ * zuke that does.
  */
 export function runBuild(
   runner: BuildRunner,
@@ -558,6 +561,7 @@ export function runBuild(
   args: string[],
   env?: Readonly<Record<string, string>>,
   engine?: EmbeddedEngine,
+  runtime: RuntimeFacts["name"] = RuntimeTasks.facts().name,
 ): Promise<number> {
   const serving = servingEngine(location, engine);
   if (serving !== undefined) {
@@ -568,6 +572,16 @@ export function runBuild(
   }
   if (location.launcher !== null && viaLauncher(location)) {
     return runner(location.root, args, location.launcher, env);
+  }
+  if (location.engine !== null && runtime !== "deno") {
+    // Installed from npm and run by Node: the Deno route would make a project
+    // another SDK hosts need Deno, which it never does.
+    throw new Error(
+      `zuke: this zuke runs on Node and has no @zuke/engine to run ` +
+        `${CONFIG_FILE}'s ${location.engine}. Run the project's download ` +
+        "launcher (./zuke, or .\\zuke.ps1 on Windows), which fetches the " +
+        `release it pins, or install the zuke binary (${BINARY_INSTALL_DOCS}).`,
+    );
   }
   if (engine !== undefined && location.engine !== null) {
     throw new Error(

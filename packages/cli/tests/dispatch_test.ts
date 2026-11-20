@@ -1,7 +1,11 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import {
+  assertEquals,
+  assertRejects,
+  assertStringIncludes,
+} from "../../core/tests/_assert.ts";
 import { BUILD_FILE } from "../src/build_file.ts";
 import {
   buildLabel,
@@ -1204,4 +1208,45 @@ Deno.test("a root missing the build file it names, with no engine, says which fi
     Error,
     "/repo has no build.ts",
   );
+});
+
+Deno.test("runBuild on Node refuses a hosted build no launcher can run, rather than ask for Deno", async () => {
+  const calls: string[][] = [];
+  const runner = (_root: string, args: string[], program?: string) => {
+    calls.push(program === undefined ? args : [program, ...args]);
+    return Promise.resolve(0);
+  };
+  const hosted = {
+    root: "/repo",
+    frozen: true,
+    build: BUILD_FILE,
+    launcher: null,
+    engine: "1.2.0",
+  };
+  const err = await assertRejects(() =>
+    runBuild(runner, hosted, ["ci"], undefined, undefined, "node")
+  );
+  assertStringIncludes(err.message, "runs on Node");
+  assertStringIncludes(err.message, "download launcher");
+  // With a launcher it goes there, and a build file still runs as before.
+  await runBuild(
+    runner,
+    { ...hosted, launcher: "/repo/zuke" },
+    ["ci"],
+    undefined,
+    undefined,
+    "node",
+  );
+  await runBuild(
+    runner,
+    { ...hosted, engine: null },
+    ["ci"],
+    undefined,
+    undefined,
+    "node",
+  );
+  assertEquals(calls, [
+    ["/repo/zuke", "ci"],
+    ["run", "-A", "--frozen", BUILD_FILE, "ci"],
+  ]);
 });

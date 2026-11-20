@@ -123,6 +123,7 @@ export function npmManifest(deno: unknown): Record<string, unknown> {
       }]),
     ),
     files: ["**/*.js", "**/*.d.ts"],
+    ...(short === NPM_BIN_PACKAGE ? { bin: { zuke: NPM_BIN_FILE } } : {}),
     engines: { node: ">=24.12" },
     repository: {
       type: "git",
@@ -142,13 +143,33 @@ export function npmManifest(deno: unknown): Record<string, unknown> {
 }
 
 /**
- * The packages that are not published to npm: `cli` and `engine` load `jsr:`
- * specifiers with a runtime `import()` (the engine's tool wrappers, the CLI's
- * engine specifiers), which Node cannot resolve, so an npm install of either
- * would fail the first time it ran. They stay out until the Node support of
- * the engine's phase 3 lets them load without `jsr:`.
+ * The packages that are not published to npm: `engine` loads `jsr:` specifiers
+ * with a runtime `import()` (its tool wrappers), which Node cannot resolve, so
+ * an npm install of it would fail the first time it ran. It stays out until
+ * the Node support of the engine's phase 3 lets it load without `jsr:`.
  */
-export const NPM_EXCLUDED: readonly string[] = ["cli", "engine"];
+export const NPM_EXCLUDED: readonly string[] = ["engine"];
+
+/** The package whose npm build also ships the `zuke` executable. */
+export const NPM_BIN_PACKAGE = "cli";
+
+/** The `bin` entry of {@link NPM_BIN_PACKAGE}: the file `npmBuild` writes. */
+export const NPM_BIN_FILE = "zuke.js";
+
+/**
+ * The executable `npmBuild` writes beside the CLI's compiled modules. It calls
+ * the entry itself: npm's bin symlinks and Windows `.cmd` shims would make an
+ * `import.meta.main` check false.
+ */
+export const NPM_BIN_SOURCE = `#!/usr/bin/env node
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
+import { RuntimeTasks } from "@zuke/core";
+import { main } from "./mod.js";
+
+RuntimeTasks.exit(await main(RuntimeTasks.args()));
+`;
 
 /** `packages` without {@link NPM_EXCLUDED}: what `npmBuild`, `publishNpm` and `npmTrust` handle. */
 export function npmPackages(packages: readonly string[]): string[] {

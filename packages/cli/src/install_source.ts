@@ -57,11 +57,18 @@ const CHOCOLATEY_BINARY = new RegExp(
 );
 
 /**
+ * An npm-installed CLI's main module, a file URL or path with either
+ * separator: `.../node_modules/@zuke-build/cli/zuke.js`.
+ */
+const NPM_MODULE = /node_modules[\\/]@zuke-build[\\/]cli[\\/]/;
+
+/**
  * Where the running CLI came from:
  * - `jsr`: `deno install -g` of {@link JSR_PACKAGE};
  * - `homebrew`: the compiled binary, installed by Homebrew;
  * - `chocolatey`: the compiled binary, installed by Chocolatey;
  * - `binary`: the compiled binary, installed any other way;
+ * - `npm`: installed from npm as `@zuke-build/cli` and run by Node;
  * - `source`: run under Deno from anything but JSR, e.g. a checkout.
  */
 export type InstallKind =
@@ -69,6 +76,7 @@ export type InstallKind =
   | "homebrew"
   | "chocolatey"
   | "binary"
+  | "npm"
   | "source";
 
 /** The install the running CLI came from, and where it lives. */
@@ -122,7 +130,12 @@ export async function installSource(host: InstallHost): Promise<InstallSource> {
     return { kind, location: path };
   }
   const main = host.mainModule();
-  return { kind: isJsrModule(main) ? "jsr" : "source", location: main };
+  const kind = isJsrModule(main)
+    ? "jsr"
+    : NPM_MODULE.test(main)
+    ? "npm"
+    : "source";
+  return { kind, location: main };
 }
 
 /** The name each install kind is shown under. */
@@ -131,6 +144,7 @@ const KIND_LABELS: Readonly<Record<InstallKind, string>> = {
   homebrew: "Homebrew",
   chocolatey: "Chocolatey",
   binary: "standalone binary",
+  npm: "npm",
   source: "source",
 };
 
@@ -144,7 +158,8 @@ export function installLabel(
   source: InstallSource,
   display: (path: string) => string,
 ): string {
-  const where = source.kind === "jsr" || source.kind === "source"
+  const where = source.kind === "jsr" || source.kind === "source" ||
+      source.kind === "npm"
     ? source.location
     : display(source.location);
   return `${KIND_LABELS[source.kind]} (${where})`;

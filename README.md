@@ -222,7 +222,8 @@ project that must never download a tool from its build entry point.
 > wrappers. A minor or patch release never breaks a public symbol; a breaking
 > change bumps the major. See
 > [Versioning & compatibility](./docs/versioning.md). The npm scope `@zuke` is
-> not controlled by this project — install from JSR, not npm.
+> not controlled by this project — install from JSR, not npm. The `zuke` command
+> is also on npm as `@zuke-build/cli` (`npx @zuke-build/cli --version`).
 
 > [!NOTE]
 > **Built with AI.** Much of Zuke — code, tests, and docs — was written with AI

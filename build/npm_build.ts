@@ -19,7 +19,14 @@
 import { type AbsolutePath, FileTasks, repoRoot } from "@zuke/core";
 import { NpmTasks } from "@zuke/npm";
 import { TscTasks } from "@zuke/tsc";
-import { npmManifest, parseDenoPackage, shortName } from "./npm_manifest.ts";
+import {
+  NPM_BIN_FILE,
+  NPM_BIN_PACKAGE,
+  NPM_BIN_SOURCE,
+  npmManifest,
+  parseDenoPackage,
+  shortName,
+} from "./npm_manifest.ts";
 import { VERIFY_BUNDLE_SCRIPT } from "./npm_verify_script.ts";
 import { TOOLS_ROOT } from "./publish.ts";
 
@@ -130,6 +137,9 @@ export async function buildNpm(
       out("package.json"),
       JSON.stringify(npmManifest(configs[index]), null, 2) + "\n",
     );
+    if (pkg === NPM_BIN_PACKAGE) {
+      await FileTasks.writeText(out(NPM_BIN_FILE), NPM_BIN_SOURCE);
+    }
     await FileTasks.copy(`packages/${pkg}/README.md`, out("README.md"));
     await FileTasks.copy(repoRoot("LICENSE"), out("LICENSE"));
   }
