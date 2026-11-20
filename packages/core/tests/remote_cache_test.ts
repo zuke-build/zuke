@@ -23,6 +23,7 @@ import { GitHubActionsCacheStore } from "../src/github_actions_cache.ts";
 import { S3CacheStore } from "../src/s3_cache.ts";
 import { byteStream, gzip, tar } from "../src/compression.ts";
 import { withTemp } from "./_temp.ts";
+import { sealHeader } from "./_tar.ts";
 import { defaultCacheHost } from "../src/cache.ts";
 import { messageOf } from "../src/internal.ts";
 
@@ -1275,6 +1276,7 @@ Deno.test("restoreOutputs writes each file from the second pass, in order", asyn
 Deno.test("restoreOutputs refuses a corrupt size field rather than hanging", async () => {
   const archive = tar([{ name: "dist/a.js", data: enc("0123456789") }]);
   archive.set(enc(" -1750\0\0\0\0\0\0"), 124); // octal -1000
+  sealHeader(archive.subarray(0, 512)); // a valid checksum, so the size is read
   const out = new MemFs();
   const err = await assertRejects(async () =>
     restoreOutputs(await gzip(archive), out, ["dist"])

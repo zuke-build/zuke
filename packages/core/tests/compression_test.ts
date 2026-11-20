@@ -28,7 +28,7 @@ import {
   zip,
 } from "../src/compression.ts";
 import { DEFLATE, makeZip, STORED } from "./_zip.ts";
-import { GNU, longLink, ustarArchive } from "./_tar.ts";
+import { GNU, longLink, sealHeader, ustarArchive } from "./_tar.ts";
 import { withTemp } from "./_temp.ts";
 import { ESCAPING_TAR_XZ, fixture, FLUTTER_TAR_XZ } from "./_xz.ts";
 
@@ -365,6 +365,7 @@ Deno.test("untar clamps a malformed huge @LongLink size (no out-of-bounds scan o
   header.set(enc("77777777777"), 124); // ~8.5e9 bytes claimed
   header[156] = 0x4c; // 'L'
   header.set(enc(GNU), 257);
+  sealHeader(header);
   const data = enc("abc/def"); // far short of the claimed size, no NUL padding
   const archive = new Uint8Array(512 + data.length);
   archive.set(header, 0);
@@ -1327,6 +1328,7 @@ Deno.test("untarStream reads a truncated archive as untar does", async () => {
 function withSizeField(field: string): Uint8Array {
   const archive = tar([{ name: "a.js", data: enc("0123456789") }]);
   archive.set(enc(field.padEnd(12, "\0")), 124);
+  sealHeader(archive.subarray(0, 512));
   return archive;
 }
 
@@ -1353,4 +1355,75 @@ Deno.test("untarStream ignores empty chunks between and inside members", async (
     await collect(untarStream(ReadableStream.from(chunks), true)),
     untar(archive),
   );
+});
+
+// #1083: untar must read an archive the way GNU tar and node-tar do, or refuse
+// it, so a caller never inspects files a real extractor would not produce.
+
+/** `tar(entries)` with its two-block trailer cut to one. */
+function oneZeroBlock(entries: TarEntry[]): Uint8Array {
+  const archive = tar(entries);
+  return archive.subarray(0, archive.length - 512);
+}
+
+Deno.test("untar refuses members after a lone zero block, and accepts a one-block trailer", async () => {
+  const clean = oneZeroBlock([{
+    name: "package/package.json",
+    data: enc("{}"),
+  }]);
+  const evil = tar([{ name: "package/package.json", data: enc("evil") }]);
+  // A clean member, one zero block, then a second member: GNU tar stops at the
+  // zero block, node-tar reads the second, so the two disagree.
+  const smuggled = new Uint8Array(clean.length + evil.length);
+  smuggled.set(clean, 0);
+  smuggled.set(evil, clean.length);
+  assertThrows(() => untar(smuggled), Error, "lone zero block");
+  const err = await assertRejects(() =>
+    collect(untarStream(chunked(smuggled, 100), true))
+  );
+  assertStringIncludes(err.message, "lone zero block");
+  // One zero block and then the end of the input is a short trailer.
+  assertEquals(untar(clean).map((e) => dec(e.data)), ["{}"]);
+  assertEquals(
+    (await collect(untarStream(chunked(clean, 100), true))).length,
+    1,
+  );
+});
+
+Deno.test("untar refuses a member whose header checksum is wrong", async () => {
+  const archive = tar([{ name: "a.js", data: enc("x") }]);
+  archive[0] = enc("b")[0]; // the name changes, the stored checksum does not
+  assertThrows(() => untar(archive), Error, "checksum");
+  const err = await assertRejects(() =>
+    collect(untarStream(chunked(archive, 7), true))
+  );
+  assertStringIncludes(err.message, "checksum");
+  // The signed sum some old writers stored is accepted, as GNU tar does.
+  const high = ustarArchive([{ name: "é.txt", prefix: "", data: enc("y") }]);
+  const header = high.subarray(0, 512);
+  header.fill(0x20, 148, 156);
+  const signed = header.reduce((t, b) => t + (b > 127 ? b - 256 : b), 0);
+  header.set(enc(`${signed.toString(8).padStart(6, "0")}\0 `), 148);
+  assertEquals(untar(high).map((e) => e.name), ["é.txt"]);
+});
+
+Deno.test("untar takes no path or linkpath from a global pax header", () => {
+  const record = (key: string, value: string) => {
+    const body = ` ${key}=${value}\n`;
+    let len = body.length + 1;
+    while (`${len}${body}`.length !== len) len++;
+    return `${len}${body}`;
+  };
+  const out = untar(ustarArchive([
+    {
+      name: "pax_global_header",
+      prefix: "",
+      data: enc(record("path", "package/evil.js") + record("linkpath", "/etc")),
+      typeflag: 0x67, // 'g'
+    },
+    { name: "package/index.js", prefix: "", data: enc("ok") },
+    { name: "link", prefix: "", data: new Uint8Array(0), typeflag: 0x32 },
+  ]));
+  assertEquals(out.map((e) => e.name), ["package/index.js", "link"]);
+  assertEquals(out[1].linkname, "");
 });
