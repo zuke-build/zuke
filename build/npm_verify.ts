@@ -3,17 +3,17 @@
 
 /**
  * The `npmVerify` target (`build.ts`): check that what is on npm under
- * `@zuke-build/<name>` is what this checkout compiles to, and that the workflow
- * that published it is this repository's release workflow. This module
- * orchestrates; the registry, provenance, installed-files and release checks
- * are in `npm_registry.ts`, `npm_provenance.ts`, `npm_installed.ts` and
- * `npm_release.ts`.
+ * `@zuke-build/<name>` is what the commit its signed provenance names compiles
+ * to, and that the workflow that published it is this repository's release
+ * workflow. This module orchestrates; the registry, provenance,
+ * installed-files and release checks are in `npm_registry.ts`,
+ * `npm_provenance.ts`, `npm_installed.ts` and `npm_release.ts`.
  *
  * What is compared is what npm itself unpacks. The verified versions are
  * installed from the registry with `npm install --ignore-scripts`, and the
- * installed package directories are compared with a fresh `buildNpm` of the
- * checkout: the same set of files, the same bytes (`package.json` by value, in
- * case a newer npm re-serialises it). Nothing here parses a tarball, so a
+ * installed package directories are compared with a fresh build of that
+ * commit, in its own worktree (`npm_rebuild.ts`): the same set of files, the
+ * same bytes (`package.json` by value, in case a newer npm re-serialises it). Nothing here parses a tarball, so a
  * tarball crafted to read differently under another tar implementation cannot
  * make the check see something other than what is installed.
  *
