@@ -23,7 +23,7 @@ import {
 } from "../build/npm_manifest.ts";
 import { consumerManifest, SMOKE_BUILD } from "../build/npm_smoke.ts";
 import { npmTsconfig } from "../build/npm_build.ts";
-import { isPublishedToNpm, NPM_REGISTRY } from "../build/npm_publish.ts";
+import { isPublishedToNpm, npmRegistry } from "../build/npm_publish.ts";
 import { publishAllTo, type PublishRegistry } from "../build/publish.ts";
 
 async function denoJson(pkg: string): Promise<Record<string, unknown>> {
@@ -156,7 +156,7 @@ function fake(
   const published: string[] = [];
   const said: string[] = [];
   const registry: PublishRegistry = {
-    ...NPM_REGISTRY,
+    ...npmRegistry(),
     isPublished: (pkg) => Promise.resolve(onNpm.includes(pkg)),
     publish: (pkg) => {
       if (failing.includes(pkg)) return Promise.reject(new Error("boom"));
@@ -215,6 +215,37 @@ Deno.test("publishAllTo npm does not hold a published version to its dependencie
     said.includes("@zuke-build/deno@1.0.0 is already on npm."),
     true,
   );
+});
+
+Deno.test("npmRegistry refuses a version whose package changed since its tag, or has none, and uploads nothing", async () => {
+  const said: string[] = [];
+  const registry: PublishRegistry = {
+    ...npmRegistry({
+      // `core` has its tag and is unchanged, `gh` changed, `deno` has no tag.
+      tagCommit: (tag) => Promise.resolve(tag === "deno-v1.0.0" ? null : "c"),
+      changed: (_tag, path) =>
+        Promise.resolve(path === "packages/gh" ? ["packages/gh/a.ts"] : []),
+      hasCommit: () => Promise.resolve(true),
+      fetchCommit: () => Promise.resolve(),
+      hasRef: () => Promise.resolve(true),
+      isAncestor: () => Promise.resolve(true),
+    }),
+    isPublished: () => Promise.resolve(false),
+  };
+  await assertRejects(
+    () =>
+      publishAllTo(["gh", "deno"], {}, {
+        versionOf: () => Promise.resolve("1.0.0"),
+        info: (m) => said.push(m),
+        failed: (m) => said.push(m),
+      }, registry),
+    Error,
+    "2 package version(s) did not reach npm",
+  );
+  assertEquals(said, [
+    "@zuke-build/gh@1.0.0 did not publish: packages/gh changed since gh-v1.0.0, or there is no such tag; npm would get different source than JSR's @zuke/gh@1.0.0.",
+    "@zuke-build/deno@1.0.0 did not publish: packages/deno changed since deno-v1.0.0, or there is no such tag; npm would get different source than JSR's @zuke/deno@1.0.0.",
+  ]);
 });
 
 Deno.test("isPublishedToNpm reads the registry's versions, and 404 is no", async () => {

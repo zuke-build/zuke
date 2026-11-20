@@ -22,18 +22,25 @@
  * that runs, so each alias is pinned (through `overrides`) to the exact
  * version verified in this run, its lockfile entry must record that version and
  * integrity, and its files are compared with the rebuild like the direct copy.
- * A package whose dependency was not verified here (skipped, missing, or
- * failed) cannot be verified either, as its alias would resolve to code nothing
- * has checked; it is reported with that reason.
+ * A package whose dependency was not verified here (missing, or failed) cannot
+ * be verified either, as its alias would resolve to code nothing has checked;
+ * it is reported with that reason.
  *
- * What ties the installed bytes to the commit, in order:
+ * What is rebuilt, and from what, is not chosen by this checkout: each version
+ * is rebuilt from the commit its own signed provenance names (the commit
+ * `publishNpm` built it from, which need not be its release tag's), in a git
+ * worktree at that commit with that commit's own build code. What ties the
+ * installed bytes to that commit, in order:
  * 1. the registry's `dist.integrity` of the version (npm checks the tarball
  *    against it while installing, and the lockfile it writes must record it);
  * 2. the SLSA provenance statement of the version, whose subject digest must be
- *    that same sha512, whose workflow must be this repository's `release.yml` on
- *    `refs/heads/master`, and whose commit must be the one rebuilt from;
+ *    that same sha512 and whose workflow must be this repository's `release.yml`
+ *    on `refs/heads/master`; its commit, a full SHA, is the one rebuilt from;
  * 3. the Sigstore bundle carrying that statement, verified with sigstore-js
- *    against {@link sigstorePolicy}.
+ *    against {@link sigstorePolicy} with the certificate's commit pinned to the
+ *    statement's, so the commit is the one the certificate attests rather than
+ *    a payload field;
+ * 4. that commit being on master ({@link masterCheck}).
  *
  * `npm audit signatures` ({@link auditSignatures}) then checks the registry's
  * own signatures. Registry, git, npm and Sigstore are behind seams, so every
@@ -55,6 +62,7 @@ import { dig, isRecord } from "./npm_json.ts";
 import { NPM_SCOPE } from "./npm_manifest.ts";
 import {
   type BundleVerifier,
+  provenanceCommit,
   provenanceProblems,
   RELEASE_PROVENANCE,
   sigstorePolicy,
@@ -75,12 +83,8 @@ export interface NpmSource extends RegistryReader {
 /** How one package fared. */
 export type VerifyResult =
   | { status: "match" }
-  /**
-   * Not comparable here, and why; not a failure. `unverifiable` marks a package
-   * whose source has moved since its release (or that depends on one), which is
-   * no reason to doubt the registry.
-   */
-  | { status: "skipped"; reason: string; unverifiable?: true }
+  /** Not comparable here, and why; not a failure. */
+  | { status: "skipped"; reason: string }
   /** What differs, one line each; a failure. */
   | { status: "mismatch"; problems: string[] };
 
@@ -103,6 +107,9 @@ const NPM: NpmProbe = {
   },
 };
 
+/** The files of a package, path to bytes. */
+type Files = ReadonlyMap<string, Uint8Array>;
+
 /** What {@link verifyAll} needs to know about the world. */
 export interface VerifyDeps {
   /** The registry and the signature check. */
@@ -111,12 +118,16 @@ export interface VerifyDeps {
   npm: NpmProbe;
   /** The scratch project the versions are installed into. */
   project: AbsolutePath;
-  /** The rebuilt files of a package. */
-  rebuilt(pkg: string): Promise<ReadonlyMap<string, Uint8Array>>;
-  /** Why a package cannot be compared in this checkout, or `null`. */
-  skipReason(pkg: string, version: string): Promise<string | null>;
-  /** The commit a version's provenance must name. */
-  commitOf(pkg: string, version: string): Promise<string>;
+  /** Why `commit` (a full SHA) is not on master, or `null` when it is. */
+  masterProblem(commit: string): Promise<string | null>;
+  /**
+   * Rebuild `packages` from `commit` and return each one's files. Called once
+   * per distinct commit; rejects when the commit cannot be built.
+   */
+  rebuildAt(
+    commit: string,
+    packages: readonly string[],
+  ): Promise<ReadonlyMap<string, Files>>;
   /**
    * Whether a version missing from npm is reported and skipped rather than
    * failed: for a checkout whose versions were never published.
@@ -130,11 +141,9 @@ export interface VerifyDeps {
 
 /** What the provenance of a version says, before anything is installed. */
 async function checkProvenance(
-  pkg: string,
-  version: string,
   dist: NpmDist,
   deps: VerifyDeps,
-): Promise<{ dist: NpmDist } | VerifyResult> {
+): Promise<{ dist: NpmDist; commit: string } | VerifyResult> {
   if (dist.attestations === null) {
     return {
       status: "mismatch",
@@ -142,10 +151,13 @@ async function checkProvenance(
     };
   }
   const bundle = slsaBundle(await deps.source.attestations(dist.attestations));
-  const expected = {
-    ...RELEASE_PROVENANCE,
-    commit: await deps.commitOf(pkg, version),
-  };
+  const named = provenanceCommit(bundle);
+  if ("problem" in named) {
+    return { status: "mismatch", problems: [named.problem] };
+  }
+  // The statement's commit is only a claim until the certificate, pinned to
+  // the same commit, vouches for it.
+  const expected = { ...RELEASE_PROVENANCE, commit: named.commit };
   const problems = provenanceProblems(bundle, dist.integrity, expected);
   if (problems.length === 0) {
     try {
@@ -154,11 +166,17 @@ async function checkProvenance(
       problems.push(messageOf(error));
     }
   }
-  return problems.length > 0 ? { status: "mismatch", problems } : { dist };
+  if (problems.length === 0) {
+    const off = await deps.masterProblem(named.commit);
+    if (off !== null) problems.push(off);
+  }
+  return problems.length > 0
+    ? { status: "mismatch", problems }
+    : { dist, commit: named.commit };
 }
 
 /** The packages `files` (a rebuilt package) imports through `@zuke/<name>` aliases. */
-function aliasesOf(files: ReadonlyMap<string, Uint8Array>): string[] {
+function aliasesOf(files: Files): string[] {
   const dependencies = dig(
     readManifest(files.get("package.json")),
     "dependencies",
@@ -172,7 +190,8 @@ function aliasesOf(files: ReadonlyMap<string, Uint8Array>): string[] {
 
 /**
  * Verify every package in `versions` (package to its local version): the
- * registry and provenance of each, then one install of the ones that passed,
+ * registry and provenance of each, a rebuild of the ones that passed (one per
+ * distinct provenance commit), then one install of them,
  * with every `@zuke/<name>` alias pinned to the version verified here, whose
  * lockfile must record the integrity the provenance vouches for, and whose
  * direct and alias directories are compared with the rebuild. A version that is
@@ -183,26 +202,16 @@ export async function verifyAll(
   deps: VerifyDeps,
 ): Promise<Map<string, VerifyResult & { version: string }>> {
   const results = new Map<string, VerifyResult & { version: string }>();
-  const checked = new Map<string, { version: string; dist: NpmDist }>();
-  const wanted = new Map<string, string>();
-  for (const [pkg, version] of versions) {
-    const skip = await deps.skipReason(pkg, version);
-    if (skip === null) wanted.set(pkg, version);
-    else {
-      results.set(pkg, {
-        status: "skipped",
-        reason: skip,
-        unverifiable: true,
-        version,
-      });
-    }
-  }
-  for (const [pkg, found] of await lookupAll(wanted, deps.source, deps)) {
+  const checked = new Map<
+    string,
+    { version: string; dist: NpmDist; commit: string }
+  >();
+  for (const [pkg, found] of await lookupAll(versions, deps.source, deps)) {
     const { version } = found;
-    let outcome: { dist: NpmDist } | VerifyResult;
+    let outcome: { dist: NpmDist; commit: string } | VerifyResult;
     if ("dist" in found) {
       try {
-        outcome = await checkProvenance(pkg, version, found.dist, deps);
+        outcome = await checkProvenance(found.dist, deps);
       } catch (error) {
         outcome = { status: "mismatch", problems: [messageOf(error)] };
       }
@@ -213,11 +222,29 @@ export async function verifyAll(
         ? { status: "skipped", reason: found.missing }
         : { status: "mismatch", problems: [found.missing] };
     }
-    if ("dist" in outcome) checked.set(pkg, { version, dist: outcome.dist });
+    if ("dist" in outcome) checked.set(pkg, { version, ...outcome });
     else results.set(pkg, { ...outcome, version });
   }
-  const rebuilt = new Map<string, ReadonlyMap<string, Uint8Array>>();
-  for (const pkg of checked.keys()) rebuilt.set(pkg, await deps.rebuilt(pkg));
+  const byCommit = new Map<string, Array<{ pkg: string; version: string }>>();
+  for (const [pkg, { version, commit }] of checked) {
+    byCommit.set(commit, [...byCommit.get(commit) ?? [], { pkg, version }]);
+  }
+  const rebuilt = new Map<string, Files>();
+  for (const [commit, group] of byCommit) {
+    try {
+      const built = await deps.rebuildAt(commit, group.map((g) => g.pkg));
+      for (const [pkg, files] of built) rebuilt.set(pkg, files);
+    } catch (error) {
+      for (const { pkg, version } of group) {
+        results.set(pkg, {
+          status: "mismatch",
+          problems: [`rebuilding ${commit} failed: ${messageOf(error)}`],
+          version,
+        });
+        checked.delete(pkg);
+      }
+    }
+  }
   // A package whose dependency was not verified would run unchecked code
   // through its alias: drop it, to a fixed point, and say why.
   for (let dropped = true; dropped;) {
@@ -234,12 +261,7 @@ export async function verifyAll(
         results.set(
           pkg,
           why?.status === "skipped"
-            ? {
-              status: "skipped",
-              reason,
-              ...(why.unverifiable ? { unverifiable: true as const } : {}),
-              version,
-            }
+            ? { status: "skipped", reason, version }
             : { status: "mismatch", problems: [reason], version },
         );
         checked.delete(pkg);
@@ -312,9 +334,7 @@ export async function verifyAll(
 /**
  * The failures to report, empty when the run is good: every mismatch, and, unless
  * `allowNone`, a run in which nothing was compared at all (a green result that
- * checked nothing is not one). A run in which every package was skipped because
- * its source has moved since its release has nothing to compare, and is not
- * that.
+ * checked nothing is not one).
  */
 export function failures(
   results: ReadonlyMap<string, VerifyResult>,
@@ -322,18 +342,14 @@ export function failures(
 ): string[] {
   const lines: string[] = [];
   let compared = 0;
-  let unverifiable = 0;
   for (const [pkg, result] of results) {
-    if (result.status === "skipped") {
-      if (result.unverifiable) unverifiable++;
-      continue;
-    }
+    if (result.status === "skipped") continue;
     compared++;
     if (result.status === "mismatch") {
       lines.push(...result.problems.map((p) => `${NPM_SCOPE}/${pkg}: ${p}`));
     }
   }
-  if (compared === 0 && unverifiable === 0 && !allowNone) {
+  if (compared === 0 && !allowNone) {
     lines.push(
       "nothing was compared: no package version of this checkout is on npm. " +
         "Pass --allow-none if that is expected.",

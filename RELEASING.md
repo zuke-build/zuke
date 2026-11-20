@@ -218,16 +218,22 @@ resolve. They join once the engine's Node support (phase 3) removes that.
   --provenance` for each package, in `PACKAGES`
   order. A version already on the registry and `0.0.0` are skipped, and a
   package whose dependency failed is not tried, as for JSR. In CI it refuses any
-  ref but `master`.
+  ref but `master`. It also refuses a version whose release tag
+  `<name>-v<version>` is missing or whose `packages/<name>` has changed since
+  it, so npm `X.Y.Z` carries the same source as JSR `X.Y.Z`; the job checks out
+  the full history and tags for that. Publishing from a commit that changed the
+  package therefore needs its release first.
 - The release workflow's **Publish to npm** job runs it after `release`. It is
   inert until the repository variable `NPM_PUBLISH` is `true`.
 - The **Verify npm packages** job runs `./zuke npmVerify` after it, on Ubuntu,
-  macOS and Windows, under the same variable: it rebuilds this commit and
-  compares every published version to it, then runs `npm audit signatures` on
-  them. A package with unreleased changes since its tag is skipped. See
-  SECURITY.md, "Verifying a release". A version missing from npm fails it after
-  a few retries; locally, `--allow-none` reports and skips one instead, for a
-  checkout that was never published.
+  macOS and Windows, under the same variable: it rebuilds each published version
+  from the commit named by its verified provenance (in a worktree, with that
+  commit's own build scripts) and compares it, then runs `npm audit signatures`
+  on them. Anyone can run it from a clone with full history, no tag checkout
+  needed. See SECURITY.md, "Verify what you install". A version missing from npm
+  fails it after retries of up to ten minutes, for the registry to catch up;
+  locally, `--allow-none` reports and skips one instead, for a checkout that was
+  never published.
 
 ### One-time bootstrap
 

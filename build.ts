@@ -183,9 +183,8 @@ import {
   SMOKE_BUILD,
   SMOKE_PACKAGES,
 } from "./build/npm_smoke.ts";
-import { NPM_REGISTRY, trustPublisher } from "./build/npm_publish.ts";
+import { npmRegistry, trustPublisher } from "./build/npm_publish.ts";
 import { npmPackages } from "./build/npm_manifest.ts";
-import { readTree } from "./build/npm_installed.ts";
 import {
   RELEASE_PROVENANCE,
   sigstorePolicy,
@@ -193,7 +192,8 @@ import {
   slsaBundle,
 } from "./build/npm_provenance.ts";
 import { registrySource } from "./build/npm_registry.ts";
-import { builtCommit, changedSinceRelease } from "./build/npm_release.ts";
+import { masterCheck } from "./build/npm_release.ts";
+import { REBUILD_BUILD, REBUILD_GIT, rebuilder } from "./build/npm_rebuild.ts";
 import {
   auditSignatures,
   failures,
@@ -2212,7 +2212,7 @@ class ZukeBuild extends Build {
         versionOf: localVersion,
         info: ConsoleTasks.info,
         failed: ConsoleTasks.error,
-      }, NPM_REGISTRY);
+      }, npmRegistry());
     });
 
   allowNone = parameter(
@@ -2222,7 +2222,7 @@ class ZukeBuild extends Build {
 
   npmVerify = target()
     .description(
-      "Verify every published npm package against a rebuild of this commit",
+      "Verify every published npm package against a rebuild of the commit its provenance names",
     )
     .executes(async () => {
       // A temp dir, as npmSmoke: the repo's dist/npm is left alone.
@@ -2230,7 +2230,8 @@ class ZukeBuild extends Build {
         await FileTasks.makeTempDirectory((s) => s.prefix("zuke-npm-verify-")),
       );
       try {
-        await buildNpm(NPM_PACKAGES, work("dist"));
+        // The Sigstore check below runs from the toolchain, before any build.
+        await installNpmToolchain();
         const versions = new Map<string, string>();
         for (const pkg of NPM_PACKAGES) {
           const version = await localVersion(pkg);
@@ -2244,18 +2245,18 @@ class ZukeBuild extends Build {
           },
           npm: REAL_NPM,
           project,
-          rebuilt: (pkg) => readTree(String(work("dist", pkg))),
-          skipReason: changedSinceRelease,
-          commitOf: builtCommit,
+          masterProblem: masterCheck(),
+          rebuildAt: rebuilder(work, REBUILD_GIT, REBUILD_BUILD),
           allowMissing: this.allowNone.value,
-          // The registry's caches can lag a publish by a few minutes.
-          attempts: 5,
+          // The registry's caches can lag a publish by several minutes: wait
+          // up to ten (twenty pauses of 30s) for what is not there yet.
+          attempts: 21,
           wait: () => delay(30_000),
         });
         for (const [pkg, result] of results) {
           const line = `@zuke-build/${pkg}@${result.version}`;
           if (result.status === "match") {
-            ConsoleTasks.success(`${line} is what this commit compiles to.`);
+            ConsoleTasks.success(`${line} is what its commit compiles to.`);
           } else if (result.status === "skipped") {
             ConsoleTasks.info(`${line} skipped: ${result.reason}`);
           } else {
@@ -2278,7 +2279,7 @@ class ZukeBuild extends Build {
         ).length;
         if (verified > 0) await auditSignatures(project);
         ConsoleTasks.success(
-          `Verified ${verified} npm package(s) against a rebuild.`,
+          `Verified ${verified} npm package(s) against a rebuild of their commits.`,
         );
       } finally {
         await FileTasks.remove(work, { recursive: true });

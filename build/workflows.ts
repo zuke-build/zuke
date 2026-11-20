@@ -442,6 +442,9 @@ export function githubWorkflows(
           permissions: { contents: "read", "id-token": "write" },
           // Compiling every package takes minutes; each publish is one upload.
           timeoutMinutes: 60,
+          // Full history and tags: a version is published only when its
+          // package is unchanged since its release tag (`publishNpm`).
+          checkout: { fetchDepth: 0 },
           // Egress is audited, not blocked, because the full list is not
           // established: besides the registry, the sigstore hosts and the
           // Deno bootstrap, the OIDC token request goes to a per-run
@@ -483,11 +486,12 @@ export function githubWorkflows(
           // As the Tests matrix: macOS and Windows runners, which the Linux
           // hardening agent does not cover.
           harden: false,
-          // The release tags let it tell a package unchanged since its release
-          // from one with unreleased changes, which it cannot verify.
+          // Full history: each version is rebuilt from the commit its signed
+          // provenance names, in a worktree, which must be in the clone.
           checkout: { fetchDepth: 0 },
-          // Compiling every package takes minutes; downloads are small.
-          timeoutMinutes: 30,
+          // One compile of every package per distinct provenance commit, and
+          // up to ten minutes waiting for the registry to show the publish.
+          timeoutMinutes: 60,
           steps: [
             {
               name: "Set up Node",

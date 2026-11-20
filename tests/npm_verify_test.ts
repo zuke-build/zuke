@@ -46,6 +46,12 @@ interface World {
     installs: string[][];
     waits: number;
     verified: unknown[];
+    /** The policy each verified bundle was checked against. */
+    policies: Array<{ certificateOIDs: Record<string, string> }>;
+    /** Each rebuild: the commit and the packages built from it. */
+    builds: Array<[string, readonly string[]]>;
+    /** The commits asked about for master. */
+    mastered: string[];
     manifest: Record<string, unknown>;
   };
 }
@@ -80,9 +86,15 @@ async function world(
     stmt?: Partial<ExpectedProvenance>;
     attested?: boolean;
     badSignature?: boolean;
+    /** The commit the certificate attests; the signature fails for a policy pinned to another. */
+    certCommit?: string;
     allowMissing?: boolean;
-    /** Packages skipped, with their reason. */
-    skip?: Record<string, string>;
+    /** The commit each package's statement names, where not `OURS.commit`. */
+    commits?: Record<string, string>;
+    /** Commits that are not on master. */
+    offMaster?: string[];
+    /** Commits whose rebuild throws. */
+    brokenBuild?: string[];
     /** The packages the registry has; `x` unless given. */
     packages?: string[];
   } = {},
@@ -93,17 +105,23 @@ async function world(
     "package.json": '{"version":"1.0.0","name":"@zuke-build/x"}',
     "mod.js": "export {};\n",
   };
-  const dist = {
+  const distOf = (pkg: string) => ({
     tarball: "t://x",
     integrity,
     ...(over.attested === false ? {} : {
-      attestations: { url: "t://att", provenance: { predicateType: SLSA } },
+      attestations: {
+        url: `t://att/${pkg}`,
+        provenance: { predicateType: SLSA },
+      },
     }),
-  };
+  });
   const log: World["log"] = {
     installs: [],
     waits: 0,
     verified: [],
+    policies: [],
+    builds: [],
+    mastered: [],
     manifest: {},
   };
   const source: NpmSource = {
@@ -117,22 +135,30 @@ async function world(
                 "1.0.0": {
                   name: `@zuke-build/${pkg}`,
                   version: "1.0.0",
-                  dist,
+                  dist: distOf(pkg),
                   ...over.metadata,
                 },
               },
             },
       ),
-    attestations: () =>
+    attestations: (url) =>
       Promise.resolve({
         attestations: [{
           predicateType: SLSA,
-          bundle: bundleOf(statement(hex, over.stmt)),
+          bundle: bundleOf(statement(hex, {
+            ...over.stmt,
+            commit: over.stmt?.commit ??
+              over.commits?.[url.slice("t://att/".length)] ??
+              OURS.commit,
+          })),
         }],
       }),
-    verifyBundle: (bundle) => {
+    verifyBundle: (bundle, policy) => {
       log.verified.push(bundle);
-      return over.badSignature
+      log.policies.push(policy);
+      const pinned = policy.certificateOIDs["1.3.6.1.4.1.57264.1.3"];
+      return over.badSignature ||
+          (over.certCommit !== undefined && pinned !== over.certCommit)
         ? Promise.reject(new Error("the Sigstore bundle did not verify: no"))
         : Promise.resolve();
     },
@@ -177,9 +203,22 @@ async function world(
     source,
     npm,
     project,
-    rebuilt: (pkg) => Promise.resolve(pkg === "y" ? REBUILT_Y : REBUILT),
-    skipReason: (pkg) => Promise.resolve(over.skip?.[pkg] ?? null),
-    commitOf: () => Promise.resolve(OURS.commit),
+    masterProblem: (commit) => {
+      log.mastered.push(commit);
+      return Promise.resolve(
+        over.offMaster?.includes(commit)
+          ? `provenance: ${commit} is off master.`
+          : null,
+      );
+    },
+    rebuildAt: (commit, pkgs) => {
+      log.builds.push([commit, pkgs]);
+      return over.brokenBuild?.includes(commit)
+        ? Promise.reject(new Error("the build broke"))
+        : Promise.resolve(
+          new Map(pkgs.map((p) => [p, p === "y" ? REBUILT_Y : REBUILT])),
+        );
+    },
     allowMissing: over.allowMissing ?? false,
     attempts: 3,
     wait: () => {
@@ -372,17 +411,17 @@ Deno.test("verifyAll: an alias with another integrity, another version, other fi
   );
 });
 
-Deno.test("verifyAll: a package whose dependency was skipped or failed is not verified either", async () => {
+Deno.test("verifyAll: a package whose dependency is missing or failed is not verified either", async () => {
+  // `x` is not on npm and that is allowed: it is skipped, and so is `y`.
   const skipped = await run(
-    { packages: ["x", "y"], skip: { x: "packages/x has changed" } },
+    { packages: ["y"], allowMissing: true },
     "x",
     "y",
   );
   assertEquals(skipped.result.get("y"), {
     status: "skipped",
     reason:
-      "it depends on @zuke-build/x, which was skipped (packages/x has changed).",
-    unverifiable: true,
+      "it depends on @zuke-build/x, which was skipped (the package is not on npm.).",
     version: "1.0.0",
   });
   assertEquals(skipped.w.log.installs, []);
@@ -454,15 +493,69 @@ Deno.test("verifyAll: a version entry without a usable dist is a failure, not a 
   assertStringIncludes(problemsOf(out)[0], "without a usable dist.tarball");
 });
 
-Deno.test("verifyAll: a package changed since its release is skipped", async () => {
-  const out = await run({ skip: { x: "changed" } });
-  assertEquals(out.result.get("x"), {
-    status: "skipped",
-    reason: "changed",
-    unverifiable: true,
-    version: "1.0.0",
-  });
-  assertEquals(out.w.log.installs, []);
+Deno.test("verifyAll: each distinct provenance commit is rebuilt once, with its own packages", async () => {
+  const other = "abcdef0123456789abcdef0123456789abcdef01";
+  const out = await run(
+    { packages: ["x", "y", "z"], commits: { z: other } },
+    "x",
+    "y",
+    "z",
+  );
+  assertEquals(out.w.log.builds, [
+    [OURS.commit, ["x", "y"]],
+    [other, ["z"]],
+  ]);
+  // Each version's certificate is pinned to the commit its own statement names.
+  assertEquals(
+    out.w.log.policies.map((p) => p.certificateOIDs["1.3.6.1.4.1.57264.1.3"]),
+    [OURS.commit, OURS.commit, other],
+  );
+  assertEquals(out.w.log.mastered, [OURS.commit, OURS.commit, other]);
+});
+
+Deno.test("verifyAll: a commit that is not on master, or not a SHA, fails before any build", async () => {
+  const off = await run({ offMaster: [OURS.commit] });
+  assertEquals(problemsOf(off), [`provenance: ${OURS.commit} is off master.`]);
+  assertEquals(off.w.log.builds, []);
+  assertEquals(off.w.log.installs, []);
+  const bad = await run({ stmt: { commit: "1234abc" } });
+  assertStringIncludes(problemsOf(bad)[0], "is not a full 40-hex git SHA");
+  assertEquals(bad.w.log.mastered, []);
+  assertEquals(bad.w.log.verified, []);
+  // A signature that does not hold is not asked about master at all.
+  const unsigned = await run({ badSignature: true });
+  assertEquals(unsigned.w.log.mastered, []);
+});
+
+Deno.test("verifyAll: a statement commit the certificate does not attest fails before master or a build", async () => {
+  // The statement says OURS.commit; the certificate was issued for another.
+  const out = await run({ certCommit: "e".repeat(40) });
+  assertStringIncludes(problemsOf(out)[0], "did not verify");
+  assertEquals(
+    out.w.log.policies[0].certificateOIDs["1.3.6.1.4.1.57264.1.3"],
+    OURS.commit,
+  );
+  assertEquals(out.w.log.mastered, []);
+  assertEquals(out.w.log.builds, []);
+  const same = await run({ certCommit: OURS.commit });
+  assertEquals(same.result.get("x")?.status, "match");
+});
+
+Deno.test("verifyAll: a commit that cannot be rebuilt fails its packages and not the others", async () => {
+  const other = "abcdef0123456789abcdef0123456789abcdef01";
+  const out = await run(
+    {
+      packages: ["x", "y"],
+      commits: { y: other },
+      brokenBuild: [other],
+    },
+    "x",
+    "y",
+  );
+  assertEquals(out.result.get("x")?.status, "match");
+  assertEquals(problemsOf(out, "y"), [
+    `rebuilding ${other} failed: the build broke`,
+  ]);
 });
 
 Deno.test("only mismatches fail, and comparing nothing fails unless allowed", () => {
@@ -485,16 +578,6 @@ Deno.test("only mismatches fail, and comparing nothing fails unless allowed", ()
   );
   assertEquals(
     failures(new Map<string, VerifyResult>([["y", skipped]]), true),
-    [],
-  );
-  // Everything moved since its release: nothing to compare is not an error.
-  const moved: VerifyResult = {
-    status: "skipped",
-    reason: "changed",
-    unverifiable: true,
-  };
-  assertEquals(
-    failures(new Map<string, VerifyResult>([["y", moved]]), false),
     [],
   );
 });

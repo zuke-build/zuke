@@ -92,6 +92,59 @@ export function slsaBundle(attestations: unknown): unknown {
   return dig(entry, "bundle");
 }
 
+/** The in-toto statement `bundle` carries, or why it cannot be read. */
+function readStatement(bundle: unknown): { statement: unknown } | {
+  problem: string;
+} {
+  const payload = dig(bundle, "dsseEnvelope", "payload");
+  if (typeof payload !== "string") {
+    return { problem: "the attestations hold no SLSA provenance statement." };
+  }
+  try {
+    return {
+      statement: JSON.parse(
+        new TextDecoder().decode(
+          Uint8Array.from(atob(payload), (c) => c.charCodeAt(0)),
+        ),
+      ),
+    };
+  } catch {
+    return { problem: "the SLSA provenance statement is not readable." };
+  }
+}
+
+/** The commit a statement says it was built from, whatever that holds. */
+function gitCommitOf(statement: unknown): unknown {
+  const deps = dig(
+    statement,
+    "predicate",
+    "buildDefinition",
+    "resolvedDependencies",
+  );
+  return Array.isArray(deps) ? dig(deps[0], "digest", "gitCommit") : undefined;
+}
+
+/**
+ * The commit the provenance statement in `bundle` says the package was built
+ * from, as a full 40-hex SHA, or why there is none. It is the statement's claim
+ * only: pass it to {@link sigstorePolicy} so the certificate has to say the
+ * same before anything is rebuilt from it.
+ */
+export function provenanceCommit(
+  bundle: unknown,
+): { commit: string } | { problem: string } {
+  const read = readStatement(bundle);
+  if ("problem" in read) return { problem: read.problem };
+  const commit = gitCommitOf(read.statement);
+  return typeof commit === "string" && /^[0-9a-f]{40}$/.test(commit)
+    ? { commit }
+    : {
+      problem: `provenance: the commit ${
+        String(commit)
+      } is not a full 40-hex git SHA.`,
+    };
+}
+
 /**
  * What is wrong with the provenance statement in `bundle`, given the version's
  * registry `integrity`; empty when it is right. It reads the in-toto statement
@@ -105,20 +158,9 @@ export function provenanceProblems(
   integrity: string,
   expected: ExpectedProvenance,
 ): string[] {
-  const payload = dig(bundle, "dsseEnvelope", "payload");
-  if (typeof payload !== "string") {
-    return ["the attestations hold no SLSA provenance statement."];
-  }
-  let statement: unknown;
-  try {
-    statement = JSON.parse(
-      new TextDecoder().decode(
-        Uint8Array.from(atob(payload), (c) => c.charCodeAt(0)),
-      ),
-    );
-  } catch {
-    return ["the SLSA provenance statement is not readable."];
-  }
+  const read = readStatement(bundle);
+  if ("problem" in read) return [read.problem];
+  const { statement } = read;
   const problems: string[] = [];
   const subjects = dig(statement, "subject");
   const wanted = sha512Hex(integrity);
@@ -151,15 +193,7 @@ export function provenanceProblems(
       );
     }
   }
-  const deps = dig(
-    statement,
-    "predicate",
-    "buildDefinition",
-    "resolvedDependencies",
-  );
-  const commit = Array.isArray(deps)
-    ? dig(deps[0], "digest", "gitCommit")
-    : undefined;
+  const commit = gitCommitOf(statement);
   if (commit !== expected.commit) {
     problems.push(
       `provenance: built from ${String(commit)}, not ${expected.commit}.`,

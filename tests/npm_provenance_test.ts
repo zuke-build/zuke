@@ -14,12 +14,13 @@ import {
 } from "../packages/core/tests/_assert.ts";
 import {
   type ExpectedProvenance,
+  provenanceCommit,
   provenanceProblems,
   sha512Hex,
   sigstorePolicy,
   slsaBundle,
 } from "../build/npm_provenance.ts";
-import { bundleOf, integrityOf, OURS } from "./_npm_verify.ts";
+import { bundleOf, integrityOf, OURS, statement } from "./_npm_verify.ts";
 
 const FIXTURE: unknown = JSON.parse(
   Deno.readTextFileSync(
@@ -101,7 +102,7 @@ Deno.test("the Sigstore policy pins issuer, an anchored identity, and the reposi
     "https://token.actions.githubusercontent.com",
   );
   assertEquals(policy.certificateOIDs, {
-    "1.3.6.1.4.1.57264.1.3": "1234abc",
+    "1.3.6.1.4.1.57264.1.3": OURS.commit,
     "1.3.6.1.4.1.57264.1.5": "zuke-build/zuke",
     "1.3.6.1.4.1.57264.1.6": "refs/heads/master",
   });
@@ -120,4 +121,32 @@ Deno.test("the Sigstore policy pins issuer, an anchored identity, and the reposi
       ours.replace("https://github.com", "https://github-com"),
     ]
   ) assertEquals(identity.test(other), false, other);
+});
+
+const problemOf = (r: ReturnType<typeof provenanceCommit>) =>
+  "problem" in r ? r.problem : "";
+
+Deno.test("provenanceCommit reads the statement's commit and refuses a malformed one", () => {
+  assertEquals(provenanceCommit(slsaBundle(FIXTURE)), {
+    commit: SIGSTORE.commit,
+  });
+  assertEquals(provenanceCommit(bundleOf(statement("", OURS))), {
+    commit: OURS.commit,
+  });
+  for (const bad of ["abc", OURS.commit.toUpperCase(), OURS.commit + "0", ""]) {
+    const bundle = bundleOf(statement("", { commit: bad }));
+    assertStringIncludes(
+      problemOf(provenanceCommit(bundle)),
+      "is not a full 40-hex git SHA",
+    );
+  }
+  assertStringIncludes(
+    problemOf(provenanceCommit(bundleOf({}))),
+    "undefined is not a full 40-hex",
+  );
+  assertStringIncludes(problemOf(provenanceCommit(undefined)), "no SLSA");
+  assertStringIncludes(
+    problemOf(provenanceCommit({ dsseEnvelope: { payload: btoa("{") } })),
+    "not readable",
+  );
 });
