@@ -130,8 +130,12 @@ export async function trustPublisher(pkg: string): Promise<TrustOutcome> {
 }
 
 /**
- * npm's answer when the package already trusts a publisher that matches:
- * `E409`, "a trusted publisher configuration ... already exists".
+ * npm's answer when the package already has a trusted publisher a token could
+ * also match: `E409`, "a trusted publisher configuration ... already exists".
+ * npm does not say which one, so this is reported as it is, and checked where
+ * it matters: a publisher other than `release.yml` in the `npm` environment
+ * cannot publish from the release job, and anything it did publish fails
+ * `npmVerify`, whose Sigstore policy pins that workflow, ref and repository.
  */
 function alreadyTrusted(outcome: TrustOutcome): boolean {
   return outcome.code !== 0 && /\bE409\b/.test(outcome.stderr);
@@ -139,8 +143,8 @@ function alreadyTrusted(outcome: TrustOutcome): boolean {
 
 /**
  * Trust each of `packages` with `trust`, and return those that failed. A
- * package that already trusts the workflow (npm's `E409`) is no failure: it
- * is reported as trusted already. Each failure goes to `report`; npm's own
+ * package that already has a trusted publisher (npm's `E409`) is no failure:
+ * it is reported, with how to see which publisher it is. Each failure goes to `report`; npm's own
  * error is already on the terminal above it. A call that cannot even start
  * (npm not found, a spawn error) fails its own package, and the rest still run.
  */
@@ -155,7 +159,10 @@ export async function trustAll(
     try {
       const outcome = await trust(pkg);
       if (alreadyTrusted(outcome)) {
-        ConsoleTasks.info(`${NPM_SCOPE}/${pkg} already trusts release.yml.`);
+        ConsoleTasks.info(
+          `${NPM_SCOPE}/${pkg} already has a trusted publisher; npm trust ` +
+            `list ${NPM_SCOPE}/${pkg} shows which.`,
+        );
         continue;
       }
       problem = outcome.code === 0
