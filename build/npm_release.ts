@@ -10,12 +10,16 @@
 
 import { GitTasks } from "@zuke/git";
 
-/** The questions {@link releaseSourceProblem} and {@link masterCheck} ask git. */
-export interface GitProbe {
+/** What {@link releaseSourceProblem} asks git. */
+export interface ReleaseProbe {
   /** Whether `tag` is in this clone and points at a commit. */
   hasTag(tag: string): Promise<boolean>;
   /** The paths under `path` that differ between `tag` and `HEAD`. */
   changed(tag: string, path: string): Promise<string[]>;
+}
+
+/** What {@link masterCheck} asks git. */
+export interface AncestryProbe {
   /** Whether `commit` is an object of this clone. */
   hasCommit(commit: string): Promise<boolean>;
   /** Fetch `commit` from `origin`; rejects when that is not possible. */
@@ -34,7 +38,7 @@ async function resolves(rev: string): Promise<boolean> {
   return found.code === 0;
 }
 
-const GIT: GitProbe = {
+const GIT: ReleaseProbe & AncestryProbe = {
   hasTag: (tag) => resolves(`refs/tags/${tag}`),
   changed: (tag, path) =>
     GitTasks.diffNames((s) => s.commits(tag, "HEAD").paths(path)),
@@ -56,7 +60,7 @@ const GIT: GitProbe = {
 export async function releaseSourceProblem(
   pkg: string,
   version: string,
-  git: GitProbe = GIT,
+  git: ReleaseProbe = GIT,
 ): Promise<string | null> {
   const tag = `${pkg}-v${version}`;
   const same = await git.hasTag(tag) &&
@@ -76,7 +80,7 @@ export async function releaseSourceProblem(
  * line of that check, and a `HEAD` on a branch only makes it stricter.
  */
 export function masterCheck(
-  git: GitProbe = GIT,
+  git: AncestryProbe = GIT,
 ): (commit: string) => Promise<string | null> {
   const seen = new Map<string, Promise<string | null>>();
   const check = async (commit: string): Promise<string | null> => {

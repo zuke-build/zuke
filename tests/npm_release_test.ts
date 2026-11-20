@@ -11,15 +11,18 @@
 
 import { assertEquals } from "../packages/core/tests/_assert.ts";
 import {
-  type GitProbe,
+  type AncestryProbe,
   masterCheck,
+  type ReleaseProbe,
   releaseSourceProblem,
 } from "../build/npm_release.ts";
 
 const SHA = "a".repeat(40);
 
 /** A git that knows `tags` (tag to commit) and says `changed` differs since. */
-function git(over: Partial<GitProbe> = {}): GitProbe {
+function git(
+  over: Partial<ReleaseProbe & AncestryProbe> = {},
+): ReleaseProbe & AncestryProbe {
   return {
     hasTag: () => Promise.resolve(false),
     changed: () => Promise.resolve([]),

@@ -11,7 +11,7 @@ import { HttpError, httpJson } from "@zuke/core";
 import { NpmTasks } from "@zuke/npm";
 import { NPM_SCOPE } from "./npm_manifest.ts";
 import { NPM_DIST } from "./npm_build.ts";
-import { type GitProbe, releaseSourceProblem } from "./npm_release.ts";
+import { type ReleaseProbe, releaseSourceProblem } from "./npm_release.ts";
 import type { PublishRegistry } from "./publish.ts";
 
 /**
@@ -59,7 +59,7 @@ export async function publishToNpm(pkg: string): Promise<void> {
  * source JSR `X.Y.Z` has; otherwise that package fails and the walk goes on.
  * `git` is the seam to the tags.
  */
-export function npmRegistry(git?: GitProbe): PublishRegistry {
+export function npmRegistry(git?: ReleaseProbe): PublishRegistry {
   return {
     name: "npm",
     packageName: (pkg) => `${NPM_SCOPE}/${pkg}`,
