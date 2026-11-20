@@ -437,6 +437,12 @@ function parsePaxOverrides(
  * pseudo-entries accumulate onto the next real member, matching GNU/bsdtar, so a
  * mixed archive is read correctly; a pax record wins over a GNU long name, which
  * wins over the header's own fields.
+ *
+ * It reads an archive the way GNU tar and node-tar (npm's extractor) do, or
+ * refuses it, so what a caller inspects is what a real extractor produces: the
+ * archive ends at two zero blocks (or one at the end of the input), and members
+ * after a lone zero block throw; a header whose checksum is wrong throws; and a
+ * global pax header (`'g'`) that sets `path` or `linkpath` throws.
  */
 export function untar(archive: Uint8Array): TarEntry[] {
   const reader = new TarReader(true);
@@ -483,12 +489,14 @@ class TarReader {
   /** The bytes of a header still being assembled across chunks. */
   #headerBytes: Uint8Array = new Uint8Array(0);
   #member: PendingMember | null = null;
-  /** Set at the first zero block: the archive's end. */
+  /** Set at the second zero block in a row: the archive's end. */
   #done = false;
+  /** Set at a zero block, which ends the archive only if another follows. */
+  #zeroSeen = false;
   #longName: string | undefined; // GNU 'L'
   #longLinkname: string | undefined; // GNU 'K'
-  #paxPath: string | undefined; // pax 'x'/'g' path=
-  #paxLinkpath: string | undefined; // pax 'x'/'g' linkpath=
+  #paxPath: string | undefined; // pax 'x' path=
+  #paxLinkpath: string | undefined; // pax 'x' linkpath=
 
   constructor(keepData: boolean) {
     this.#keepData = keepData;
@@ -529,8 +537,25 @@ class TarReader {
       const header = this.#headerBytes;
       this.#headerBytes = new Uint8Array(0);
       if (header.every((byte) => byte === 0)) {
-        this.#done = true;
-        break;
+        // The archive ends at two zero blocks (POSIX). One zero block followed
+        // by the end of the input is a common short trailer, and is accepted.
+        if (this.#zeroSeen) this.#done = true;
+        this.#zeroSeen = true;
+        continue;
+      }
+      if (this.#zeroSeen) {
+        // A lone zero block with members after it: GNU tar stops there while
+        // node-tar reads on, so the two would see different files.
+        throw new Error(
+          "tar: refusing an archive with members after a lone zero block.",
+        );
+      }
+      if (!checksumMatches(header)) {
+        // A conforming extractor skips such a member; reading it instead would
+        // show a caller files that npm or tar never extract.
+        throw new Error(
+          "tar: refusing a member whose header checksum is wrong.",
+        );
       }
       // Read the full 12-byte size field; the trailing byte is a NUL terminator.
       const size = readOctal(header, 124, 12);
@@ -589,10 +614,23 @@ class TarReader {
       }
       return;
     }
-    if (typeflag === 0x78 || typeflag === 0x67) {
-      // pax 'x' (per-file) / 'g' (global) extended header. Accumulate its
-      // path/linkpath overrides WITHOUT clearing a pending GNU long name, so
-      // L/K/x headers stack onto the same member (as real tar does).
+    if (typeflag === 0x67) {
+      // pax 'g' (global) header. Extractors disagree on its path/linkpath:
+      // node-tar ignores path but applies linkpath to every later member, GNU
+      // tar applies both. No one reading is right, so such a header is
+      // refused; any other global record (git archive's comment=) is skipped.
+      const p = parsePaxOverrides(data);
+      if (p.path !== undefined || p.linkpath !== undefined) {
+        throw new Error(
+          "tar: refusing a global pax header that sets path or linkpath.",
+        );
+      }
+      return;
+    }
+    if (typeflag === 0x78) {
+      // pax 'x' (per-file) extended header. Accumulate its path/linkpath
+      // overrides WITHOUT clearing a pending GNU long name, so L/K/x headers
+      // stack onto the same member (as real tar does).
       const p = parsePaxOverrides(data);
       if (p.path !== undefined) this.#paxPath = p.path;
       if (p.linkpath !== undefined) this.#paxLinkpath = p.linkpath;
@@ -624,6 +662,23 @@ class TarReader {
     }
     // Other typeflags (hardlink '1', device/fifo nodes) are not extractable.
   }
+}
+
+/**
+ * Whether `header`'s stored checksum matches its bytes, summed with the
+ * checksum field read as eight spaces. Both the unsigned sum POSIX specifies
+ * and the signed one some old writers used are accepted, as GNU tar does.
+ */
+function checksumMatches(header: Uint8Array): boolean {
+  const stored = readOctal(header, 148, 8);
+  let unsigned = 0;
+  let signed = 0;
+  for (let i = 0; i < BLOCK; i++) {
+    const byte = i >= 148 && i < 156 ? 0x20 : header[i];
+    unsigned += byte;
+    signed += byte > 127 ? byte - 256 : byte;
+  }
+  return stored === unsigned || stored === signed;
 }
 
 /** Regular files: `'0'`, legacy NUL, or `'7'` contiguous — the ones carrying data. */

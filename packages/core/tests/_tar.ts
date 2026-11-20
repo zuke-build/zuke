@@ -35,7 +35,7 @@ export function ustarArchive(entries: RawTarEntry[]): Uint8Array {
     put(257, e.magic ?? "ustar\0"); // POSIX magic (a trailing space → non-ustar)
     put(263, "00"); // version
     put(345, e.prefix);
-    blocks.push(header);
+    blocks.push(sealHeader(header));
     const body = new Uint8Array(Math.ceil(e.data.length / 512) * 512);
     body.set(e.data);
     blocks.push(body);
@@ -49,6 +49,21 @@ export function ustarArchive(entries: RawTarEntry[]): Uint8Array {
     off += b.length;
   }
   return out;
+}
+
+/**
+ * Write `header`'s checksum (the unsigned sum of its bytes, with the checksum
+ * field counted as spaces) into bytes 148-155, as a tar writer does, and
+ * return it. A test that edits a header after building it seals it again.
+ */
+export function sealHeader(header: Uint8Array): Uint8Array {
+  header.fill(0x20, 148, 156);
+  const sum = header.reduce((total, byte) => total + byte, 0);
+  header.set(
+    new TextEncoder().encode(`${sum.toString(8).padStart(6, "0")}\0 `),
+    148,
+  );
+  return header;
 }
 
 /** The GNU magic: a trailing space, not the POSIX NUL. */

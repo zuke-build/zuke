@@ -1053,6 +1053,12 @@ function untar(archive: Uint8Array): TarEntry[]
   mixed archive is read correctly; a pax record wins over a GNU long name, which
   wins over the header's own fields.
 
+  It reads an archive the way GNU tar and node-tar (npm's extractor) do, or
+  refuses it, so what a caller inspects is what a real extractor produces: the
+  archive ends at two zero blocks (or one at the end of the input), and members
+  after a lone zero block throw; a header whose checksum is wrong throws; and a
+  global pax header (`'g'`) that sets `path` or `linkpath` throws.
+
 async function unzip(archive: Uint8Array): Promise<TarEntry[]>
   Read the entries of a `.zip` archive, decompressing `stored` and `deflate`
   members. The central directory is the source of truth. Directory entries (a

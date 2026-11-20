@@ -3,21 +3,25 @@
 
 /**
  * `npmVerify` compares what npm installs, not what a tar reader of ours sees.
- * Two crafted tarballs, each carrying a clean `package.json` that core's `untar`
- * reads and an evil one (with a postinstall script) that npm unpacks, are put
- * through `verifyAll` with the real `npm install`: both must be a mismatch.
+ * Two crafted tarballs, each carrying a clean `package.json` that a lax tar
+ * reader would take and an evil one (with a postinstall script) that npm
+ * unpacks, are put through `verifyAll` with the real `npm install`: both must
+ * be a mismatch.
  *
- * The first has a lone zero block between the two files (core's reader stops
- * there, node-tar goes on); the second has the evil file first and a clean file
- * after it whose header checksum is wrong (core's reader ignores checksums and
- * takes the later file). The install is from a local tarball, so it needs npm
+ * The first has a lone zero block between the two files (GNU tar stops there,
+ * node-tar goes on); the second has the evil file first and a clean file after
+ * it whose header checksum is wrong (node-tar skips it). Core's `untar` used to
+ * read both the lax way and now refuses them (#1083). The install is from a local tarball, so it needs npm
  * but no network; the tests are skipped where npm is not on the path.
  *
  * @module
  */
 
 import { absolutePath, gunzip, gzip, untar } from "../../packages/core/mod.ts";
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import {
+  assertEquals,
+  assertThrows,
+} from "../../packages/core/tests/_assert.ts";
 import { RELEASE_PROVENANCE } from "../../build/npm_provenance.ts";
 import {
   type NpmProbe,
@@ -107,13 +111,12 @@ for (const [name, parts] of Object.entries(variants)) {
       const dir = await Deno.makeTempDir();
       try {
         const tgz = await gzip(concat(parts));
-        // The premise: core's reader sees the clean file, so reading the
-        // tarball with it would have said "match".
-        const seen = untar(await gunzip(tgz));
-        assertEquals(
-          seen.map((e) => new TextDecoder().decode(e.data)).includes(CLEAN),
-          true,
-        );
+        // Core's reader once saw the clean file here, so reading the tarball
+        // with it would have said "match" (#1083). It now refuses the
+        // archive, and npmVerify, which compares what npm installs, still
+        // fails it below.
+        const tar = await gunzip(tgz);
+        assertThrows(() => untar(tar), Error, "tar: refusing");
         const file = `${dir}/x.tgz`;
         await Deno.writeFile(file, tgz);
         const digest = new Uint8Array(
