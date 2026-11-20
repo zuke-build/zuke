@@ -2300,7 +2300,6 @@ class ZukeBuild extends Build {
       const failures = await trustAll(
         packages,
         trustPublisher,
-        prompt,
         (m) => ConsoleTasks.error(m),
       );
       if (failures.length > 0) {

@@ -8,7 +8,8 @@
 
 import { ConsoleTasks } from "@zuke/console";
 import { HttpError, httpJson } from "@zuke/core";
-import { NpmTasks } from "@zuke/npm";
+import { NpmTasks, NpmTrustSettings } from "@zuke/npm";
+import { Command } from "@zuke/core/shell";
 import { messageOf } from "../packages/core/src/internal.ts";
 import { NPM_SCOPE } from "./npm_manifest.ts";
 import { NPM_DIST } from "./npm_build.ts";
@@ -76,82 +77,43 @@ export function npmRegistry(git?: ReleaseProbe): PublishRegistry {
 
 /**
  * Register the release workflow, in the {@link NPM_ENVIRONMENT} environment,
- * as `pkg`'s trusted publisher, so publishing from CI needs no token. Needs npm 11.15 or later, and a maintainer's
- * 2FA-authenticated login, and the package must already exist on npm. `otp`
- * is the login's one-time password: npm's browser sign-in needs a terminal,
- * which a captured run is not, so the code is passed instead.
+ * as `pkg`'s trusted publisher, so publishing from CI needs no token, and
+ * return npm's exit code. Needs npm 11.15 or later, a maintainer's login, and
+ * the package already on npm. npm asks for 2FA on every call, and it signs in
+ * through the browser (a security key) or prompts for a code only when it has
+ * the terminal, so it is spawned with the terminal rather than captured.
  */
-export function trustPublisher(
-  pkg: string,
-  otp: string,
-): Promise<TrustOutcome> {
-  return NpmTasks.trust((s) =>
-    s.github(`${NPM_SCOPE}/${pkg}`, TRUSTED_WORKFLOW).repo(TRUSTED_REPOSITORY)
-      .environment(NPM_ENVIRONMENT).allowPublish().yes().otp(otp).noThrow()
-  );
-}
-
-/** What {@link trustAll} reads of one `npm trust` run. */
-export interface TrustOutcome {
-  /** The exit code. */
-  readonly code: number;
-  /** What npm wrote to stderr, where it reports `EOTP`. */
-  readonly stderr: string;
+export async function trustPublisher(pkg: string): Promise<number> {
+  const argv = new NpmTrustSettings()
+    .github(`${NPM_SCOPE}/${pkg}`, TRUSTED_WORKFLOW).repo(TRUSTED_REPOSITORY)
+    .environment(NPM_ENVIRONMENT).allowPublish().yes().argv();
+  return (await new Command(argv).spawn().status).code;
 }
 
 /**
- * npm's own `npm error` lines from `stderr`, joined, without the ones that
- * carry a URL (a sign-in link names a one-off auth id).
- */
-function npmErrors(stderr: string): string {
-  const lines = stderr.split("\n").map((l) => l.trim())
-    .filter((l) => l.startsWith("npm error") && !l.includes("://"));
-  return lines.length > 0 ? lines.join(" · ") : "npm trust failed.";
-}
-
-/**
- * Trust each of `packages` with `trust`, asking `ask` for a one-time password
- * first and again whenever npm rejects the current one (`EOTP`, an expired or
- * used code), retrying that package once with the new code. Returns the
- * packages that still failed, each given to `report` with npm's error. A
- * code is reused across packages while npm accepts it, so a run asks once per
- * code lifetime, not once per package.
+ * Trust each of `packages` with `trust`, which returns npm's exit code, and
+ * return those that failed. Each failure goes to `report`; npm's own error is
+ * already on the terminal above it. A call that cannot even start (npm not
+ * found, a spawn error) fails its own package, and the rest still run.
  */
 export async function trustAll(
   packages: readonly string[],
-  trust: (pkg: string, otp: string) => Promise<TrustOutcome>,
-  ask: (message: string) => string | null,
+  trust: (pkg: string) => Promise<number>,
   report: (message: string) => void,
 ): Promise<string[]> {
-  const read = (message: string) => {
-    const code = ask(message)?.trim();
-    if (!code) throw new Error("npm trust needs a one-time password.");
-    return code;
-  };
-  // A run that never started (npm not found, a spawn error) is a failure of
-  // that package, reported like npm's own, and the rest still go on.
-  const attempt = async (pkg: string, code: string): Promise<TrustOutcome> => {
-    try {
-      return await trust(pkg, code);
-    } catch (error) {
-      return { code: 1, stderr: `npm error ${messageOf(error)}` };
-    }
-  };
-  if (packages.length === 0) return [];
-  let otp = read("npm one-time password:");
   const failed: string[] = [];
   for (const pkg of packages) {
-    let out = await attempt(pkg, otp);
-    if (out.code !== 0 && out.stderr.includes("EOTP")) {
-      otp = read(
-        `${NPM_SCOPE}/${pkg}: that code expired; next one-time password:`,
-      );
-      out = await attempt(pkg, otp);
+    let problem: string | null;
+    try {
+      const code = await trust(pkg);
+      problem = code === 0 ? null : `npm trust exited with code ${code}`;
+    } catch (error) {
+      problem = messageOf(error);
     }
-    if (out.code === 0) {
+    if (problem === null) {
       ConsoleTasks.success(`${NPM_SCOPE}/${pkg} trusts release.yml.`);
     } else {
-      report(`${NPM_SCOPE}/${pkg}: ${npmErrors(out.stderr)}`);
+      report(`${NPM_SCOPE}/${pkg}: ${problem}.`);
       failed.push(pkg);
     }
   }

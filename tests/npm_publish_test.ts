@@ -299,96 +299,28 @@ Deno.test("the smoke build it generates opens with the license header", () => {
   );
 });
 
-Deno.test("trustAll reuses a one-time password until npm rejects it, then asks again", async () => {
-  const asked: string[] = [];
-  const codes = ["111", " 222 "];
-  const ran: string[] = [];
+Deno.test("trustAll reports each package npm could not trust and carries on", async () => {
   const errors: string[] = [];
-  const report = (m: string) => errors.push(m);
+  const tried: string[] = [];
   const failed = await trustAll(
     ["a", "b", "c", "d"],
-    (pkg, otp) => {
-      ran.push(`${pkg}:${otp}`);
-      // "111" expires after a; d is already trusted, which is not EOTP.
-      if (otp === "111" && pkg !== "a") {
-        return Promise.resolve({ code: 1, stderr: "npm error code EOTP" });
-      }
-      return Promise.resolve(
-        pkg === "d"
-          ? {
-            code: 1,
-            stderr: "npm error code E409\nnpm error Conflict\n" +
-              "npm error see https://x.invalid/auth/1\n",
-          }
-          : { code: 0, stderr: "" },
-      );
-    },
-    (message) => {
-      asked.push(message);
-      return codes.shift() ?? null;
-    },
-    report,
-  );
-  assertEquals(ran, ["a:111", "b:111", "b:222", "c:222", "d:222"]);
-  assertEquals(failed, ["d"]);
-  assertEquals(asked.length, 2);
-  // Each failure is reported with npm's own error lines, a URL left out,
-  // also when the retry with a fresh code fails again.
-  assertEquals(errors, [
-    "@zuke-build/d: npm error code E409 · npm error Conflict",
-  ]);
-  errors.length = 0;
-  const again = await trustAll(
-    ["e"],
-    () => Promise.resolve({ code: 1, stderr: "npm error code EOTP\n" }),
-    () => "333",
-    report,
-  );
-  assertEquals(again, ["e"]);
-  assertEquals(errors, ["@zuke-build/e: npm error code EOTP"]);
-  errors.length = 0;
-  await trustAll(
-    ["f"],
-    () => Promise.resolve({ code: 1, stderr: "" }),
-    () => "4",
-    report,
-  );
-  assertEquals(errors, ["@zuke-build/f: npm trust failed."]);
-  // A run that cannot start fails its own package, and the next one still runs.
-  errors.length = 0;
-  const tried: string[] = [];
-  const thrown = await trustAll(
-    ["g", "i", "h"],
     (pkg) => {
       tried.push(pkg);
-      if (pkg === "i") throw new Error("spawn failed");
-      return pkg === "g"
-        ? Promise.reject(new Error("npm: not found"))
-        : Promise.resolve({ code: 0, stderr: "" });
+      if (pkg === "c") throw new Error("spawn failed");
+      if (pkg === "d") return Promise.reject(new Error("npm: not found"));
+      return Promise.resolve(pkg === "b" ? 1 : 0);
     },
-    () => "5",
-    report,
+    (m) => errors.push(m),
   );
-  assertEquals([thrown, tried], [["g", "i"], ["g", "i", "h"]]);
+  assertEquals(tried, ["a", "b", "c", "d"]);
+  assertEquals(failed, ["b", "c", "d"]);
   assertEquals(errors, [
-    "@zuke-build/g: npm error npm: not found",
-    "@zuke-build/i: npm error spawn failed",
+    "@zuke-build/b: npm trust exited with code 1.",
+    "@zuke-build/c: spawn failed.",
+    "@zuke-build/d: npm: not found.",
   ]);
-  // Nothing to trust asks for no code and runs nothing.
-  const never = () => {
-    throw new Error("called");
-  };
-  assertEquals(await trustAll([], never, never, report), []);
-  // No code at all stops the run before any npm call.
-  await assertRejects(
-    () =>
-      trustAll(
-        ["a"],
-        () => Promise.reject(new Error("ran")),
-        () => null,
-        report,
-      ),
-    Error,
-    "needs a one-time password",
+  assertEquals(
+    await trustAll([], () => Promise.resolve(1), (m) => errors.push(m)),
+    [],
   );
 });
