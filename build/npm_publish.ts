@@ -180,13 +180,21 @@ export function jsonValues(text: string): unknown[] {
   return values;
 }
 
-/** Whether `listed` (`npm trust list --json` output) names this repository's release workflow. */
+/** npm's permission to publish a package, as `npm trust list --json` names it. */
+const PUBLISH_PERMISSION = "createPackage";
+
+/**
+ * Whether `listed` (`npm trust list --json` output) names this repository's
+ * release workflow, in its environment, with the permission to publish.
+ */
 export function trustsRelease(listed: string): boolean {
-  return jsonValues(listed).some((p) =>
-    dig(p, "type") === "github" && dig(p, "file") === TRUSTED_WORKFLOW &&
-    dig(p, "repository") === TRUSTED_REPOSITORY &&
-    dig(p, "environment") === NPM_ENVIRONMENT
-  );
+  return jsonValues(listed).some((p) => {
+    const permissions = dig(p, "permissions");
+    return dig(p, "type") === "github" && dig(p, "file") === TRUSTED_WORKFLOW &&
+      dig(p, "repository") === TRUSTED_REPOSITORY &&
+      dig(p, "environment") === NPM_ENVIRONMENT &&
+      Array.isArray(permissions) && permissions.includes(PUBLISH_PERMISSION);
+  });
 }
 
 /** npm's `E409`: the package already has a trusted publisher, not said which. */
@@ -242,7 +250,8 @@ async function trustProblem(
   return trustsRelease(listed.stdout)
     ? null
     : `it has a trusted publisher other than ${TRUSTED_REPOSITORY}'s ` +
-      `${TRUSTED_WORKFLOW} in the ${NPM_ENVIRONMENT} environment; npm trust ` +
+      `${TRUSTED_WORKFLOW} in the ${NPM_ENVIRONMENT} environment allowed to ` +
+      `publish; npm trust ` +
       `list ${NPM_SCOPE}/${pkg} shows it`;
 }
 

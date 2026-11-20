@@ -349,7 +349,7 @@ const RELEASE = JSON.stringify(
     file: "release.yml",
     repository: "zuke-build/zuke",
     environment: "npm",
-    permissions: ["publish"],
+    permissions: ["createPackage"],
   },
   null,
   2,
@@ -406,7 +406,7 @@ Deno.test("trustAll accepts an existing publisher only when it is the release wo
   // Only a conflict is listed.
   assertEquals(listed, ["same", "other", "unlisted"]);
   assertEquals(errors, [
-    "@zuke-build/other: it has a trusted publisher other than zuke-build/zuke's release.yml in the npm environment; npm trust list @zuke-build/other shows it.",
+    "@zuke-build/other: it has a trusted publisher other than zuke-build/zuke's release.yml in the npm environment allowed to publish; npm trust list @zuke-build/other shows it.",
     "@zuke-build/unlisted: it has a trusted publisher, and npm trust list exited with code 1, so it is not known to be release.yml; 401 Unauthorized; npm error code E401.",
     "@zuke-build/broken: npm trust exited with code 1; npm error code E500.",
     "@zuke-build/e4090: npm trust exited with code 1; npm error code E4090.",
@@ -425,11 +425,19 @@ Deno.test("jsonValues reads one object after another, and trustsRelease needs ev
       ['"github"', '"gitlab"'],
       ['"zuke-build/zuke"', '"zuke-build/fork"'],
       ['"npm"', '"other"'],
+      // Allowed only to stage a publish.
+      ['"createPackage"', '"createStagedPackage"'],
     ]
   ) {
     assertEquals(trustsRelease(RELEASE.replace(from, to)), false, to);
   }
   assertEquals(trustsRelease(OTHER), false);
+  // Permissions that are not a list are no permission.
+  const flat = JSON.stringify({
+    ...JSON.parse(RELEASE),
+    permissions: "createPackage",
+  });
+  assertEquals(trustsRelease(flat), false);
   assertEquals(trustsRelease(""), false);
 });
 
