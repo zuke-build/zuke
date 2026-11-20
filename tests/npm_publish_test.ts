@@ -358,9 +358,10 @@ Deno.test("trustAll reuses a one-time password until npm rejects it, then asks a
   errors.length = 0;
   const tried: string[] = [];
   const thrown = await trustAll(
-    ["g", "h"],
+    ["g", "i", "h"],
     (pkg) => {
       tried.push(pkg);
+      if (pkg === "i") throw new Error("spawn failed");
       return pkg === "g"
         ? Promise.reject(new Error("npm: not found"))
         : Promise.resolve({ code: 0, stderr: "" });
@@ -368,8 +369,11 @@ Deno.test("trustAll reuses a one-time password until npm rejects it, then asks a
     () => "5",
     report,
   );
-  assertEquals([thrown, tried], [["g"], ["g", "h"]]);
-  assertEquals(errors, ["@zuke-build/g: npm error npm: not found"]);
+  assertEquals([thrown, tried], [["g", "i"], ["g", "i", "h"]]);
+  assertEquals(errors, [
+    "@zuke-build/g: npm error npm: not found",
+    "@zuke-build/i: npm error spawn failed",
+  ]);
   // No code at all stops the run before any npm call.
   await assertRejects(
     () =>

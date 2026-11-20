@@ -130,11 +130,13 @@ export async function trustAll(
   };
   // A run that never started (npm not found, a spawn error) is a failure of
   // that package, reported like npm's own, and the rest still go on.
-  const attempt = (pkg: string, code: string) =>
-    trust(pkg, code).catch((error: unknown): TrustOutcome => ({
-      code: 1,
-      stderr: `npm error ${messageOf(error)}`,
-    }));
+  const attempt = async (pkg: string, code: string): Promise<TrustOutcome> => {
+    try {
+      return await trust(pkg, code);
+    } catch (error) {
+      return { code: 1, stderr: `npm error ${messageOf(error)}` };
+    }
+  };
   let otp = read("npm one-time password:");
   const failed: string[] = [];
   for (const pkg of packages) {
