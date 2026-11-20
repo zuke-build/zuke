@@ -48,10 +48,22 @@ function deviceName(fileName: string): string {
   return (dot === -1 ? fileName : fileName.slice(0, dot)).toLowerCase();
 }
 
-/** Every path under `dir`, recursively, skipping what git does not track. */
+/**
+ * Every path under `dir`, recursively, skipping what git does not track. A
+ * directory that is gone by the time it is read is skipped too: the gate's
+ * other steps create and remove scratch directories in the repository root
+ * (`.fmt-text-*`, `.snippets-*`) while the tests run, and none is tracked.
+ */
 async function walk(dir: string): Promise<string[]> {
   const found: string[] = [];
-  for await (const entry of Deno.readDir(dir)) {
+  let entries: Deno.DirEntry[];
+  try {
+    entries = await Array.fromAsync(Deno.readDir(dir));
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) return found;
+    throw error;
+  }
+  for (const entry of entries) {
     if (SKIP.has(entry.name)) continue;
     const path = `${dir}/${entry.name}`;
     found.push(path);
