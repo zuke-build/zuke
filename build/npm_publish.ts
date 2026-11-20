@@ -76,11 +76,18 @@ export function npmRegistry(git?: ReleaseProbe): PublishRegistry {
         : null;
     },
     async publish(pkg, version) {
-      if (await releaseSource(pkg, version, git) === "untagged") {
+      // Checked again right before the upload, and only `same` passes: a
+      // checkout changed since `held` looked must not reach npm either.
+      const source = await releaseSource(pkg, version, git);
+      if (source !== "same") {
         throw new Error(
-          `there is no tag ${releaseTag(pkg, version)} in this clone, so ` +
-            `its source cannot be shown to be JSR's ${NPM_SCOPE}/${pkg}@${version}; ` +
-            "fetch the tags and retry.",
+          source === "untagged"
+            ? `there is no tag ${releaseTag(pkg, version)} in this clone, so ` +
+              `its source cannot be shown to be JSR's ${NPM_SCOPE}/${pkg}@${version}; ` +
+              "fetch the tags and retry."
+            : `packages/${pkg} changed since ${
+              releaseTag(pkg, version)
+            }; npm would get different source than JSR's ${NPM_SCOPE}/${pkg}@${version}.`,
         );
       }
       ConsoleTasks.info(`Publishing ${NPM_SCOPE}/${pkg}@${version} to npm...`);

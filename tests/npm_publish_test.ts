@@ -391,3 +391,16 @@ Deno.test("standingOf: published first, then a held dependency or a hold, else d
   assertEquals(probed, ["gh", "core"]);
   assertEquals([...held], ["gh", "ai"]);
 });
+
+Deno.test("npmRegistry's publish refuses a changed package itself, without the hold before it", async () => {
+  const registry = npmRegistry({
+    hasTag: () => Promise.resolve(true),
+    changed: () => Promise.resolve(["packages/gh/a.ts"]),
+    versionAt: () => Promise.resolve(null),
+  });
+  await assertRejects(
+    () => registry.publish("gh", "1.0.0"),
+    Error,
+    "packages/gh changed since gh-v1.0.0; npm would get different source",
+  );
+});
