@@ -167,40 +167,55 @@ source itself is free of bugs.
   prove the identity is ours (`npmVerify`, below, checks that). _Does not prove_
   what the tarball contains; a package without an attestation is reported, not
   failed.
-- **Rebuild it.** Check out the release tag (`git checkout core-v1.83.0`: tags
-  are `<package>-v<version>`) and run `./zuke npmVerify`. It rebuilds every
-  package with this checkout's pinned compiler and build scripts, installs the
-  published versions from the registry with `npm install --ignore-scripts` (so
-  what is compared is what npm unpacks, not what a tar reader of ours sees), and
-  compares every installed file with the rebuild byte for byte; `package.json`
-  is compared as parsed JSON, since a newer npm may re-serialise it. npm acts on
-  the registry's metadata for a version, not on the tarball's `package.json`, so
-  it also compares that metadata's scripts, dependencies, bin, os and the other
-  fields npm acts on with the rebuild, and checks that npm's lockfile holds only
-  our packages, none with an install script or a bin. The `@zuke/<name>` aliases
-  the packages import each other through are pinned to the versions verified in
-  the same run, recorded in the lockfile with the same integrity, and their
-  files compared too; a package whose dependency was not verified there is
-  reported, not verified. For each version it requires an npm SLSA provenance
-  attestation and checks, with sigstore-js itself, that the Sigstore bundle
-  verifies and that its certificate was issued to the GitHub Actions identity
+- **Rebuild it.** From any clone with full history (`git clone`, then
+  `./zuke npmVerify`; no tag needs checking out) run `./zuke npmVerify`. For
+  each published version it reads the commit X named by that version's own
+  signed provenance, requires X to be on `master`, and rebuilds the package from
+  X: a git worktree at X, built by X's own build scripts and pinned compiler
+  (not this checkout's), once per distinct X. It installs the published versions
+  from the registry with `npm install --ignore-scripts` (so what is compared is
+  what npm unpacks, not what a tar reader of ours sees), and compares every
+  installed file with the rebuild byte for byte; `package.json` is compared as
+  parsed JSON, since a newer npm may re-serialise it. npm acts on the registry's
+  metadata for a version, not on the tarball's `package.json`, so it also
+  compares that metadata's scripts, dependencies, bin, os and the other fields
+  npm acts on with the rebuild, and checks that npm's lockfile holds only our
+  packages, none with an install script or a bin. The `@zuke/<name>` aliases the
+  packages import each other through are pinned to the versions verified in the
+  same run, recorded in the lockfile with the same integrity, and their files
+  compared too; a package whose dependency was not verified there is reported,
+  not verified. For each version it requires an npm SLSA provenance attestation
+  and checks, with sigstore-js itself, that the Sigstore bundle verifies and
+  that its certificate was issued to the GitHub Actions identity
   `https://github.com/zuke-build/zuke/.github/workflows/release.yml@refs/heads/master`
-  for repository `zuke-build/zuke`, ref `refs/heads/master` and the release
-  commit X (the tag's); that the statement it signs names that same commit and a
+  for repository `zuke-build/zuke`, ref `refs/heads/master` and a commit equal
+  to the one the signed statement names, which is X; that the statement names a
   subject sha512 equal to the registry's integrity; and that npm's lockfile
-  records that integrity for what it installed. Finally `npm audit signatures`
-  checks the registry's own signatures of everything installed. _Proves_ the
-  package was built by `release.yml` of `zuke-build/zuke` on `master` from
-  commit X, and that the files npm installs are what this checkout compiles for
-  a package unchanged since its release commit X (`packages/<name>` is checked
-  against the tag; the compiler and build scripts are this checkout's). On the
-  release tag itself that is X's own build. A package changed since its tag is
-  reported and skipped; a version that is not on npm, after a few retries, or
-  one without provenance, fails. Only `--allow-none`, for a checkout whose
-  versions were never published, reports a missing version and skips it. _Does
-  not prove_ the source is free of bugs. It trusts Sigstore's trusted root
-  (fetched over TUF) and the registry's document, which the signed statement and
-  the lockfile are checked against.
+  records that integrity for what it installed. Only then is X trusted and
+  rebuilt. Finally `npm audit signatures` checks the registry's own signatures
+  of everything installed. _Proves_ the package was built by `release.yml` of
+  `zuke-build/zuke` on `master` from commit X, and that the bytes npm serves are
+  exactly what that master commit compiles to. A version that is not on npm
+  (after retries of up to ten minutes, for the registry to catch up with a
+  publish), or one without provenance, fails. Only `--allow-none`, for a
+  checkout whose versions were never published, reports a missing version and
+  skips it. _Does not prove_ the source is free of bugs, nor that X's source is
+  the source of the version's release tag or of its JSR package (see the
+  disclosure below). It trusts Sigstore's trusted root (fetched over TUF) and
+  the registry's document, which the signed statement and the lockfile are
+  checked against.
+- **Disclosure: the first npm publish.** The initial bulk publish of all 70
+  packages to npm, on 2026-11-20, built every package from one commit,
+  `09d0edc`. For a package whose sources changed after its release, that npm
+  version contains the newer source rather than the JSR files of the same
+  version. The provenance says so, and `npmVerify` proves it. From then on,
+  `publishNpm` publishes a version only when `packages/<name>` is unchanged
+  since its release tag `<name>-v<version>` (and the tag exists), so a later npm
+  version is the same source as its JSR version. JSR is unaffected. The same run
+  also left a `0.0.0-stage` version on every package: npm's own placeholder for
+  staged publishing, created when a package is first published. It is a two-file
+  stub with no code, no scripts and no provenance, is never `latest`, and no
+  `^1` range resolves to it; `npmVerify` does not check it.
 - **The public job.** The release workflow's **Verify npm packages** job runs
   `./zuke npmVerify` after every publish, on Ubuntu, macOS and Windows, with a
   read-only token and no secrets. Its log is public. _Proves_ the same rebuild

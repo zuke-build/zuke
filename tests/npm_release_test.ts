@@ -2,37 +2,112 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * `npmVerify`'s questions to git: whether a package has moved since its release
- * tag, and which commit its provenance must name.
+ * `npm`'s questions to git: whether a package is still its release tag's
+ * source (what `publishNpm` requires) and whether a provenance commit is on
+ * master (what `npmVerify` requires), against a fake git.
  *
  * @module
  */
 
 import { assertEquals } from "../packages/core/tests/_assert.ts";
 import {
-  builtCommit,
-  changedSinceRelease,
-  type GitProbe,
+  type AncestryProbe,
+  masterCheck,
+  type ReleaseProbe,
+  releaseSourceProblem,
 } from "../build/npm_release.ts";
 
+const SHA = "a".repeat(40);
+
 /** A git that knows `tags` (tag to commit) and says `changed` differs since. */
-function git(tags: Record<string, string>, changed: string[]): GitProbe {
+function git(
+  over: Partial<ReleaseProbe & AncestryProbe> = {},
+): ReleaseProbe & AncestryProbe {
   return {
-    tagCommit: (tag) => Promise.resolve(tags[tag] ?? null),
-    changed: () => Promise.resolve(changed),
-    head: () => Promise.resolve("headsha"),
+    hasTag: () => Promise.resolve(false),
+    changed: () => Promise.resolve([]),
+    hasCommit: () => Promise.resolve(true),
+    fetchCommit: () => Promise.resolve(),
+    hasRef: () => Promise.resolve(true),
+    isAncestor: () => Promise.resolve(true),
+    ...over,
   };
 }
 
-Deno.test("changedSinceRelease: no tag compares, an unchanged tag compares, a changed one skips", async () => {
-  assertEquals(await changedSinceRelease("x", "1.0.0", git({}, ["a"])), null);
-  const tagged = { "x-v1.0.0": "tag-commit" };
-  assertEquals(await changedSinceRelease("x", "1.0.0", git(tagged, [])), null);
+Deno.test("releaseSourceProblem: only an existing, unchanged tag may be published", async () => {
+  const tagged = (changed: string[]) =>
+    git({
+      hasTag: (tag) => Promise.resolve(tag === "x-v1.0.0"),
+      changed: () => Promise.resolve(changed),
+    });
+  assertEquals(await releaseSourceProblem("x", "1.0.0", tagged([])), null);
+  const message =
+    "packages/x changed since x-v1.0.0, or there is no such tag; npm would get different source than JSR's @zuke/x@1.0.0.";
   assertEquals(
-    await changedSinceRelease("x", "1.0.0", git(tagged, ["packages/x/a.ts"])),
-    "packages/x has changed since x-v1.0.0; check out the tag to verify it.",
+    await releaseSourceProblem("x", "1.0.0", tagged(["packages/x/a.ts"])),
+    message,
   );
-  // The provenance must name the tag's commit, else the checkout's.
-  assertEquals(await builtCommit("x", "1.0.0", git(tagged, [])), "tag-commit");
-  assertEquals(await builtCommit("x", "1.0.0", git({}, [])), "headsha");
+  // No tag at all is refused too, however clean the diff would be.
+  assertEquals(await releaseSourceProblem("x", "1.0.0", git()), message);
+});
+
+Deno.test("masterCheck: an ancestor of origin/master passes, any other commit fails", async () => {
+  const asked: string[] = [];
+  const check = masterCheck(git({
+    isAncestor: (commit, ref) => {
+      asked.push(`${commit}..${ref}`);
+      return Promise.resolve(commit === SHA);
+    },
+  }));
+  assertEquals(await check(SHA), null);
+  assertEquals(await check(SHA), null);
+  const other = "b".repeat(40);
+  assertEquals(
+    await check(other),
+    `provenance: commit ${other} is not on origin/master; fetch origin and retry if master is newer than this clone.`,
+  );
+  // Memoised per commit.
+  assertEquals(asked, [`${SHA}..origin/master`, `${other}..origin/master`]);
+});
+
+Deno.test("masterCheck: without origin/master it asks HEAD", async () => {
+  const asked: string[] = [];
+  const check = masterCheck(git({
+    hasRef: () => Promise.resolve(false),
+    isAncestor: (_c, ref) => {
+      asked.push(ref);
+      return Promise.resolve(true);
+    },
+  }));
+  assertEquals(await check(SHA), null);
+  assertEquals(asked, ["HEAD"]);
+});
+
+Deno.test("masterCheck: a missing commit is fetched, and reported when it stays missing", async () => {
+  const fetched: string[] = [];
+  let present = false;
+  const fetching = masterCheck(git({
+    hasCommit: () => Promise.resolve(present),
+    fetchCommit: (commit) => {
+      fetched.push(commit);
+      present = true;
+      return Promise.resolve();
+    },
+  }));
+  assertEquals(await fetching(SHA), null);
+  assertEquals(fetched, [SHA]);
+  for (
+    const fetchCommit of [
+      () => Promise.resolve(),
+      () => Promise.reject(new Error("no")),
+    ]
+  ) {
+    const gone = masterCheck(
+      git({ hasCommit: () => Promise.resolve(false), fetchCommit }),
+    );
+    assertEquals(
+      await gone(SHA),
+      `provenance: commit ${SHA} is not in this clone and could not be fetched; clone the repository with its full history.`,
+    );
+  }
 });

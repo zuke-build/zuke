@@ -2,63 +2,121 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * What git says about a package's release: whether its source has moved since
- * its tag, and which commit its provenance must name.
+ * What git says about a release, for npm: whether a package's source is still
+ * the source of its release tag (the condition for `publishNpm` to publish it),
+ * and whether a commit named by a provenance statement is on master (a
+ * condition for `npmVerify` to rebuild from it).
  */
 
 import { GitTasks } from "@zuke/git";
 
-/** The two questions {@link changedSinceRelease} asks git. */
-export interface GitProbe {
-  /** The commit `tag` points to, or `null` when the tag is not in this clone. */
-  tagCommit(tag: string): Promise<string | null>;
-  /** The commit this checkout is at. */
-  head(): Promise<string>;
-  /** The paths under `path` that differ between `tag` and `HEAD`. */
+/** What {@link releaseSourceProblem} asks git. */
+export interface ReleaseProbe {
+  /** Whether `tag` is in this clone and points at a commit. */
+  hasTag(tag: string): Promise<boolean>;
+  /**
+   * The paths under `path` whose checkout differs from `tag`: committed,
+   * staged, unstaged or untracked, since the build reads the working tree.
+   */
   changed(tag: string, path: string): Promise<string[]>;
 }
 
-const GIT: GitProbe = {
-  async tagCommit(tag) {
-    const found = await GitTasks.revParse((s) =>
-      s.verify().rev(`refs/tags/${tag}^{commit}`).noThrow().quiet()
-    );
-    return found.code === 0 ? found.stdout.trim() : null;
+/** What {@link masterCheck} asks git. */
+export interface AncestryProbe {
+  /** Whether `commit` is an object of this clone. */
+  hasCommit(commit: string): Promise<boolean>;
+  /** Fetch `commit` from `origin`; rejects when that is not possible. */
+  fetchCommit(commit: string): Promise<void>;
+  /** Whether `ref` resolves in this clone. */
+  hasRef(ref: string): Promise<boolean>;
+  /** Whether `commit` is reachable from `ref`. */
+  isAncestor(commit: string, ref: string): Promise<boolean>;
+}
+
+/** Whether a quiet `git rev-parse --verify <rev>^{commit}` finds `rev`. */
+async function resolves(rev: string): Promise<boolean> {
+  const found = await GitTasks.revParse((s) =>
+    s.verify().rev(`${rev}^{commit}`).noThrow().quiet()
+  );
+  return found.code === 0;
+}
+
+const GIT: ReleaseProbe & AncestryProbe = {
+  hasTag: (tag) => resolves(`refs/tags/${tag}`),
+  // One rev diffs the tag against the working tree, so staged and unstaged
+  // edits count; status adds the untracked files a diff never lists.
+  changed: async (tag, path) => [
+    ...await GitTasks.diffNames((s) => s.commits(tag).paths(path).quiet()),
+    ...(await GitTasks.statusEntries((s) =>
+      s.paths(path).untrackedFiles("all").quiet()
+    )).filter((e) => e.index === "?").map((e) => e.path),
+  ],
+  hasCommit: resolves,
+  async fetchCommit(commit) {
+    await GitTasks.fetch((s) => s.remote("origin").refspec(commit).noTags());
   },
-  head: () => GitTasks.revision((s) => s.rev("HEAD")),
-  changed: (tag, path) =>
-    GitTasks.diffNames((s) => s.commits(tag, "HEAD").paths(path)),
+  hasRef: resolves,
+  isAncestor: (commit, ref) =>
+    GitTasks.isAncestor((s) => s.commits(commit, ref)),
 };
 
 /**
- * Why `pkg`'s source cannot be compared at `version`, or `null` when it can:
- * its release tag (`<pkg>-v<version>`) exists in this clone and `packages/<pkg>`
- * has changed since. The published bytes are what the *tag* compiles to, so a
- * checkout with unreleased changes to the package would "mismatch" by design.
- * A clone without the tag is compared anyway.
+ * Why `pkg`@`version` may not go to npm, or `null` when it may: JSR carries
+ * what its release tag (`<pkg>-v<version>`) holds, and `publishNpm` builds from
+ * the checkout, so npm gets the same source only when the tag exists in this
+ * clone and the checkout of `packages/<pkg>`, working tree included, has not
+ * changed since.
  */
-export async function changedSinceRelease(
+export async function releaseSourceProblem(
   pkg: string,
   version: string,
-  git: GitProbe = GIT,
+  git: ReleaseProbe = GIT,
 ): Promise<string | null> {
   const tag = `${pkg}-v${version}`;
-  if (await git.tagCommit(tag) === null) return null;
-  return (await git.changed(tag, `packages/${pkg}`)).length === 0
-    ? null
-    : `packages/${pkg} has changed since ${tag}; check out the tag to verify it.`;
+  const same = await git.hasTag(tag) &&
+    (await git.changed(tag, `packages/${pkg}`)).length === 0;
+  return same ? null : `packages/${pkg} changed since ${tag}, or there is no ` +
+    `such tag; npm would get different source than JSR's @zuke/${pkg}@${version}.`;
 }
 
 /**
- * The commit `pkg`@`version`'s provenance must name: its release tag's commit
- * when this clone has the tag (the version was built there, and
- * {@link changedSinceRelease} has said the package is unchanged since), else
- * the commit checked out, which is the release itself when run on a tag.
+ * A check, memoised per commit, of why a commit is not on master, or `null`
+ * when it is. A commit missing from the clone is fetched from `origin` first,
+ * and failing that is reported. It is on master when it is an ancestor of
+ * `origin/master`, the authoritative branch; a clone without that ref (the
+ * release job's checkout of master has only `HEAD`) falls back to `HEAD`. The
+ * fallback cannot admit a commit that is not on master: the signed certificate
+ * already pins the workflow's ref to `refs/heads/master`, so this is the second
+ * line of that check, and a `HEAD` on a branch only makes it stricter.
  */
-export async function builtCommit(
-  pkg: string,
-  version: string,
-  git: GitProbe = GIT,
-): Promise<string> {
-  return await git.tagCommit(`${pkg}-v${version}`) ?? await git.head();
+export function masterCheck(
+  git: AncestryProbe = GIT,
+): (commit: string) => Promise<string | null> {
+  const seen = new Map<string, Promise<string | null>>();
+  const check = async (commit: string): Promise<string | null> => {
+    if (!await git.hasCommit(commit)) {
+      try {
+        await git.fetchCommit(commit);
+      } catch {
+        // Reported below, with the clone's state.
+      }
+      if (!await git.hasCommit(commit)) {
+        return `provenance: commit ${commit} is not in this clone and could ` +
+          "not be fetched; clone the repository with its full history.";
+      }
+    }
+    const ref = await git.hasRef("origin/master") ? "origin/master" : "HEAD";
+    return await git.isAncestor(commit, ref)
+      ? null
+      : `provenance: commit ${commit} is not on ${ref}; ` +
+        "fetch origin and retry if master is newer than this clone.";
+  };
+  return (commit) => {
+    let answer = seen.get(commit);
+    if (answer === undefined) {
+      answer = check(commit);
+      seen.set(commit, answer);
+    }
+    return answer;
+  };
 }

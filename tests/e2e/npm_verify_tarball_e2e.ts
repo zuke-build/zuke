@@ -28,6 +28,7 @@ import { NpmTasks } from "@zuke/npm";
 
 const SLSA = "https://slsa.dev/provenance/v1";
 const enc = new TextEncoder();
+const COMMIT = "c".repeat(40);
 const CLEAN = '{"name":"@zuke-build/x","version":"1.0.0"}';
 const EVIL =
   '{"name":"@zuke-build/x","version":"1.0.0","scripts":{"postinstall":"echo pwned"}}';
@@ -128,7 +129,7 @@ for (const [name, parts] of Object.entries(variants)) {
               externalParameters: {
                 workflow: RELEASE_PROVENANCE,
               },
-              resolvedDependencies: [{ digest: { gitCommit: "c" } }],
+              resolvedDependencies: [{ digest: { gitCommit: COMMIT } }],
             },
           },
         };
@@ -175,10 +176,11 @@ for (const [name, parts] of Object.entries(variants)) {
           source,
           npm,
           project: absolutePath(dir)("consumer"),
-          rebuilt: () =>
-            Promise.resolve(new Map([["package.json", enc.encode(CLEAN)]])),
-          skipReason: () => Promise.resolve(null),
-          commitOf: () => Promise.resolve("c"),
+          masterProblem: () => Promise.resolve(null),
+          rebuildAt: () =>
+            Promise.resolve(
+              new Map([["x", new Map([["package.json", enc.encode(CLEAN)]])]]),
+            ),
           allowMissing: false,
           attempts: 1,
           wait: () => Promise.resolve(),

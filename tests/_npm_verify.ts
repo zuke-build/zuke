@@ -17,7 +17,7 @@ export const OURS: ExpectedProvenance = {
   repository: "https://github.com/zuke-build/zuke",
   path: ".github/workflows/release.yml",
   ref: "refs/heads/master",
-  commit: "1234abc",
+  commit: "1234abcd1234abcd1234abcd1234abcd1234abcd",
 };
 
 /** An SRI string for 64 bytes of `seed`, and the hex a statement carries for it. */

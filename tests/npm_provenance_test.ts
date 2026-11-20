@@ -14,12 +14,13 @@ import {
 } from "../packages/core/tests/_assert.ts";
 import {
   type ExpectedProvenance,
+  provenanceCommit,
   provenanceProblems,
   sha512Hex,
   sigstorePolicy,
   slsaBundle,
 } from "../build/npm_provenance.ts";
-import { bundleOf, integrityOf, OURS } from "./_npm_verify.ts";
+import { bundleOf, integrityOf, OURS, statement } from "./_npm_verify.ts";
 
 const FIXTURE: unknown = JSON.parse(
   Deno.readTextFileSync(
@@ -44,15 +45,15 @@ Deno.test("sha512Hex reads an SRI string's sha512", () => {
   assertEquals(sha512Hex("sha512-***"), null);
 });
 
-Deno.test("a real npm attestation passes for its integrity, repository, workflow, ref and commit", () => {
+Deno.test("a real npm attestation passes for its integrity, repository, workflow and ref", () => {
   const bundle = slsaBundle(FIXTURE);
   assertEquals(provenanceProblems(bundle, SIGSTORE_INTEGRITY, SIGSTORE), []);
 });
 
-Deno.test("a real npm attestation fails for another integrity, repository, workflow, ref or commit", () => {
+Deno.test("a real npm attestation fails for another integrity, repository, workflow or ref", () => {
   const bundle = slsaBundle(FIXTURE);
   const wrong = (
-    over: Partial<ExpectedProvenance>,
+    over: Partial<Omit<ExpectedProvenance, "commit">>,
     integrity = SIGSTORE_INTEGRITY,
   ) => provenanceProblems(bundle, integrity, { ...SIGSTORE, ...over });
   assertStringIncludes(
@@ -69,7 +70,6 @@ Deno.test("a real npm attestation fails for another integrity, repository, workf
     wrong({ ref: OURS.ref })[0],
     "workflow ref is refs/heads/main",
   );
-  assertStringIncludes(wrong({ commit: "abc" })[0], "built from 4576519");
 });
 
 Deno.test("a bundle without a readable SLSA statement is refused", () => {
@@ -90,7 +90,7 @@ Deno.test("a bundle without a readable SLSA statement is refused", () => {
   );
   assertStringIncludes(
     provenanceProblems(bundleOf({}), "sha512-AA==", OURS).join("\n"),
-    "built from undefined",
+    "no subject has the sha512",
   );
 });
 
@@ -101,7 +101,7 @@ Deno.test("the Sigstore policy pins issuer, an anchored identity, and the reposi
     "https://token.actions.githubusercontent.com",
   );
   assertEquals(policy.certificateOIDs, {
-    "1.3.6.1.4.1.57264.1.3": "1234abc",
+    "1.3.6.1.4.1.57264.1.3": OURS.commit,
     "1.3.6.1.4.1.57264.1.5": "zuke-build/zuke",
     "1.3.6.1.4.1.57264.1.6": "refs/heads/master",
   });
@@ -120,4 +120,32 @@ Deno.test("the Sigstore policy pins issuer, an anchored identity, and the reposi
       ours.replace("https://github.com", "https://github-com"),
     ]
   ) assertEquals(identity.test(other), false, other);
+});
+
+const problemOf = (r: ReturnType<typeof provenanceCommit>) =>
+  "problem" in r ? r.problem : "";
+
+Deno.test("provenanceCommit reads the statement's commit and refuses a malformed one", () => {
+  assertEquals(provenanceCommit(slsaBundle(FIXTURE)), {
+    commit: SIGSTORE.commit,
+  });
+  assertEquals(provenanceCommit(bundleOf(statement("", OURS))), {
+    commit: OURS.commit,
+  });
+  for (const bad of ["abc", OURS.commit.toUpperCase(), OURS.commit + "0", ""]) {
+    const bundle = bundleOf(statement("", { commit: bad }));
+    assertStringIncludes(
+      problemOf(provenanceCommit(bundle)),
+      "is not a full 40-hex git SHA",
+    );
+  }
+  assertStringIncludes(
+    problemOf(provenanceCommit(bundleOf({}))),
+    "undefined is not a full 40-hex",
+  );
+  assertStringIncludes(problemOf(provenanceCommit(undefined)), "no SLSA");
+  assertStringIncludes(
+    problemOf(provenanceCommit({ dsseEnvelope: { payload: btoa("{") } })),
+    "not readable",
+  );
 });
