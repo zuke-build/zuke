@@ -221,11 +221,13 @@ such an install prints `npm install -g @zuke-build/cli@latest` and runs nothing.
   --provenance` for each package, in `PACKAGES`
   order. A version already on the registry and `0.0.0` are skipped, and a
   package whose dependency failed is not tried, as for JSR. In CI it refuses any
-  ref but `master`. It also refuses a version whose release tag
-  `<name>-v<version>` is missing or whose `packages/<name>` has changed since
-  it, so npm `X.Y.Z` carries the same source as JSR `X.Y.Z`; the job checks out
-  the full history and tags for that. Publishing from a commit that changed the
-  package therefore needs its release first.
+  ref but `master`. It publishes a version only when `packages/<name>` is still
+  the source of its release tag `<name>-v<version>`, so npm `X.Y.Z` carries the
+  same source as JSR `X.Y.Z`; the job checks out the full history and tags for
+  that. A package changed since its tag waits, with a notice and no failure, for
+  its next release, and so does every package depending on it: this is how a
+  package new to npm goes there with its next release. A missing tag fails that
+  package. `npmVerify` skips a waiting version that is not on npm the same way.
 - The release workflow's **Publish to npm** job runs it after `release`. It is
   inert until the repository variable `NPM_PUBLISH` is `true`.
 - The **Verify npm packages** job runs `./zuke npmVerify` after it, on Ubuntu,

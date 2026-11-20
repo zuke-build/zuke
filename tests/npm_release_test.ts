@@ -14,7 +14,8 @@ import {
   type AncestryProbe,
   masterCheck,
   type ReleaseProbe,
-  releaseSourceProblem,
+  releaseSource,
+  releaseTag,
 } from "../build/npm_release.ts";
 
 const SHA = "a".repeat(40);
@@ -26,6 +27,7 @@ function git(
   return {
     hasTag: () => Promise.resolve(false),
     changed: () => Promise.resolve([]),
+    versionAt: () => Promise.resolve(null),
     hasCommit: () => Promise.resolve(true),
     fetchCommit: () => Promise.resolve(),
     hasRef: () => Promise.resolve(true),
@@ -34,21 +36,58 @@ function git(
   };
 }
 
-Deno.test("releaseSourceProblem: only an existing, unchanged tag may be published", async () => {
+Deno.test("releaseSource: same, changed since the tag, or no tag", async () => {
   const tagged = (changed: string[]) =>
     git({
-      hasTag: (tag) => Promise.resolve(tag === "x-v1.0.0"),
-      changed: () => Promise.resolve(changed),
+      hasTag: (tag) => Promise.resolve(tag === releaseTag("x", "1.0.0")),
+      changed: (tag, path) => {
+        assertEquals([tag, path], ["x-v1.0.0", "packages/x"]);
+        return Promise.resolve(changed);
+      },
     });
-  assertEquals(await releaseSourceProblem("x", "1.0.0", tagged([])), null);
-  const message =
-    "packages/x changed since x-v1.0.0, or there is no such tag; npm would get different source than JSR's @zuke/x@1.0.0.";
+  assertEquals(await releaseSource("x", "1.0.0", tagged([])), "same");
   assertEquals(
-    await releaseSourceProblem("x", "1.0.0", tagged(["packages/x/a.ts"])),
-    message,
+    await releaseSource("x", "1.0.0", tagged(["packages/x/a.ts"])),
+    "changed",
   );
-  // No tag at all is refused too, however clean the diff would be.
-  assertEquals(await releaseSourceProblem("x", "1.0.0", git()), message);
+  assertEquals(await releaseSource("x", "1.0.0", git()), "untagged");
+});
+
+Deno.test("releaseSource: with no tag yet, HEAD stands in when it is the commit that set the version", async () => {
+  const asked: string[] = [];
+  const at = (
+    versions: Record<string, string | null>,
+    changed: string[] = [],
+  ) =>
+    git({
+      versionAt: (rev, pkg) => {
+        assertEquals(pkg, "cli");
+        return Promise.resolve(versions[rev] ?? null);
+      },
+      changed: (base) => {
+        asked.push(base);
+        return Promise.resolve(changed);
+      },
+    });
+  // A draft release: HEAD bumped 2.5.0 to 2.6.0, and is not tagged yet.
+  const release = { HEAD: "2.6.0", "HEAD^": "2.5.0" };
+  assertEquals(await releaseSource("cli", "2.6.0", at(release)), "same");
+  assertEquals(asked, ["HEAD"]);
+  assertEquals(
+    await releaseSource("cli", "2.6.0", at(release, ["packages/cli/x.ts"])),
+    "changed",
+  );
+  // HEAD^ already had it, HEAD declares another, nothing is readable, or
+  // HEAD^ cannot be read at all (a shallow clone): none proves the release.
+  const others: Array<Record<string, string>> = [
+    { HEAD: "2.6.0", "HEAD^": "2.6.0" },
+    { HEAD: "2.7.0", "HEAD^": "2.6.0" },
+    {},
+    { HEAD: "2.6.0" },
+  ];
+  for (const versions of others) {
+    assertEquals(await releaseSource("cli", "2.6.0", at(versions)), "untagged");
+  }
 });
 
 Deno.test("masterCheck: an ancestor of origin/master passes, any other commit fails", async () => {

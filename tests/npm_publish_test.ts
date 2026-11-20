@@ -31,7 +31,11 @@ import {
   npmRegistry,
   trustAll,
 } from "../build/npm_publish.ts";
-import { publishAllTo, type PublishRegistry } from "../build/publish.ts";
+import {
+  publishAllTo,
+  type PublishRegistry,
+  standingOf,
+} from "../build/publish.ts";
 
 async function denoJson(pkg: string): Promise<Record<string, unknown>> {
   return JSON.parse(await Deno.readTextFile(`packages/${pkg}/deno.json`));
@@ -185,6 +189,7 @@ function fake(
   const registry: PublishRegistry = {
     ...npmRegistry(),
     isPublished: (pkg) => Promise.resolve(onNpm.includes(pkg)),
+    held: () => Promise.resolve(null),
     publish: (pkg) => {
       if (failing.includes(pkg)) return Promise.reject(new Error("boom"));
       published.push(pkg);
@@ -244,30 +249,42 @@ Deno.test("publishAllTo npm does not hold a published version to its dependencie
   );
 });
 
-Deno.test("npmRegistry refuses a version whose package changed since its tag, or has none, and uploads nothing", async () => {
+Deno.test("npmRegistry holds a package changed since its tag, and its dependents, refuses one with no tag, and uploads neither", async () => {
   const said: string[] = [];
+  const uploaded: string[] = [];
+  const base = npmRegistry({
+    // `core` is unchanged, `gh` changed, `deno` has no tag.
+    hasTag: (tag) => Promise.resolve(tag !== "deno-v1.0.0"),
+    changed: (_tag, path) =>
+      Promise.resolve(path === "packages/gh" ? ["packages/gh/a.ts"] : []),
+    versionAt: () => Promise.resolve(null),
+  });
   const registry: PublishRegistry = {
-    ...npmRegistry({
-      // `core` has its tag and is unchanged, `gh` changed, `deno` has no tag.
-      hasTag: (tag) => Promise.resolve(tag !== "deno-v1.0.0"),
-      changed: (_tag, path) =>
-        Promise.resolve(path === "packages/gh" ? ["packages/gh/a.ts"] : []),
-    }),
+    ...base,
     isPublished: () => Promise.resolve(false),
+    // The tag checks are the real ones; only the upload is faked, and an
+    // untagged package is refused before anything is uploaded.
+    publish: (pkg, version) => {
+      if (pkg === "deno") return base.publish(pkg, version);
+      uploaded.push(pkg);
+      return Promise.resolve();
+    },
   };
   await assertRejects(
     () =>
-      publishAllTo(["gh", "deno"], {}, {
+      publishAllTo(["core", "gh", "ai", "deno"], { ai: ["gh"] }, {
         versionOf: () => Promise.resolve("1.0.0"),
         info: (m) => said.push(m),
         failed: (m) => said.push(m),
       }, registry),
     Error,
-    "2 package version(s) did not reach npm",
+    "1 package version(s) did not reach npm: @zuke-build/deno@1.0.0",
   );
+  assertEquals(uploaded, ["core"]);
   assertEquals(said, [
-    "@zuke-build/gh@1.0.0 did not publish: packages/gh changed since gh-v1.0.0, or there is no such tag; npm would get different source than JSR's @zuke/gh@1.0.0.",
-    "@zuke-build/deno@1.0.0 did not publish: packages/deno changed since deno-v1.0.0, or there is no such tag; npm would get different source than JSR's @zuke/deno@1.0.0.",
+    "@zuke-build/gh@1.0.0 waits: packages/gh changed since gh-v1.0.0, so its next release publishes it to npm.",
+    "@zuke-build/ai@1.0.0 waits: its dependency @zuke-build/gh waits.",
+    "@zuke-build/deno@1.0.0 did not publish: there is no tag deno-v1.0.0 in this clone, so its source cannot be shown to be JSR's @zuke-build/deno@1.0.0; fetch the tags and retry.",
   ]);
 });
 
@@ -345,5 +362,45 @@ Deno.test("trustAll reports each package npm could not trust and carries on", as
   assertEquals(
     await trustAll([], () => Promise.resolve(1), (m) => errors.push(m)),
     [],
+  );
+});
+
+Deno.test("standingOf: published first, then a held dependency or a hold, else due", async () => {
+  const probed: string[] = [];
+  const registry: PublishRegistry = {
+    name: "npm",
+    packageName: (pkg) => `@zuke-build/${pkg}`,
+    isPublished: (pkg) => Promise.resolve(pkg === "old"),
+    held: (pkg) => {
+      probed.push(pkg);
+      return Promise.resolve(pkg === "gh" ? "changed" : null);
+    },
+    publish: () => Promise.resolve(),
+  };
+  const held = new Set<string>();
+  const deps = { ai: ["gh"] };
+  const of = (pkg: string) => standingOf(pkg, "1.0.0", deps, held, registry);
+  // A published version is never probed for a hold.
+  assertEquals(await of("old"), { kind: "published" });
+  assertEquals(await of("gh"), { kind: "held", reason: "changed" });
+  assertEquals(await of("ai"), {
+    kind: "held",
+    reason: "its dependency @zuke-build/gh waits.",
+  });
+  assertEquals(await of("core"), { kind: "due" });
+  assertEquals(probed, ["gh", "core"]);
+  assertEquals([...held], ["gh", "ai"]);
+});
+
+Deno.test("npmRegistry's publish refuses a changed package itself, without the hold before it", async () => {
+  const registry = npmRegistry({
+    hasTag: () => Promise.resolve(true),
+    changed: () => Promise.resolve(["packages/gh/a.ts"]),
+    versionAt: () => Promise.resolve(null),
+  });
+  await assertRejects(
+    () => registry.publish("gh", "1.0.0"),
+    Error,
+    "packages/gh changed since gh-v1.0.0; npm would get different source",
   );
 });

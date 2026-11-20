@@ -113,6 +113,7 @@ import {
   publishAll,
   publishAllTo,
   publishPackage,
+  standingOf,
   TOOLS_ROOT,
   waitFor,
 } from "./build/publish.ts";
@@ -2245,10 +2246,28 @@ class ZukeBuild extends Build {
       try {
         // The Sigstore check below runs from the toolchain, before any build.
         await installNpmToolchain();
+        // A version publishNpm holds for its package's next release, and not
+        // on npm, is skipped as publishNpm skipped it.
+        const registry = npmRegistry();
         const versions = new Map<string, string>();
+        const held = new Set<string>();
         for (const pkg of NPM_PACKAGES) {
           const version = await localVersion(pkg);
-          if (version !== "0.0.0") versions.set(pkg, version);
+          if (version === "0.0.0") continue;
+          const standing = await standingOf(
+            pkg,
+            version,
+            PACKAGE_DEPENDENCIES,
+            held,
+            registry,
+          );
+          if (standing.kind === "held") {
+            ConsoleTasks.info(
+              `@zuke-build/${pkg}@${version} waits: ${standing.reason}`,
+            );
+            continue;
+          }
+          versions.set(pkg, version);
         }
         const project = work("consumer");
         const results = await verifyAll(versions, {

@@ -9,16 +9,23 @@
  */
 
 import { GitTasks } from "@zuke/git";
+import { dig } from "./npm_json.ts";
 
-/** What {@link releaseSourceProblem} asks git. */
+/** What {@link releaseSource} asks git. */
 export interface ReleaseProbe {
   /** Whether `tag` is in this clone and points at a commit. */
   hasTag(tag: string): Promise<boolean>;
   /**
-   * The paths under `path` whose checkout differs from `tag`: committed,
+   * The paths under `path` whose checkout differs from `tag` (a tag or any
+   * revision): committed,
    * staged, unstaged or untracked, since the build reads the working tree.
    */
   changed(tag: string, path: string): Promise<string[]>;
+  /**
+   * The version `packages/<pkg>/deno.json` declares at `rev`, or `null` when
+   * that file or its version is not there.
+   */
+  versionAt(rev: string, pkg: string): Promise<string | null>;
 }
 
 /** What {@link masterCheck} asks git. */
@@ -43,6 +50,17 @@ async function resolves(rev: string): Promise<boolean> {
 
 const GIT: ReleaseProbe & AncestryProbe = {
   hasTag: (tag) => resolves(`refs/tags/${tag}`),
+  async versionAt(rev, pkg) {
+    try {
+      const text = await GitTasks.blobText((s) =>
+        s.object(`${rev}:packages/${pkg}/deno.json`).quiet()
+      );
+      const version: unknown = dig(JSON.parse(text), "version");
+      return typeof version === "string" ? version : null;
+    } catch {
+      return null;
+    }
+  },
   // One rev diffs the tag against the working tree, so staged and unstaged
   // edits count; status adds the untracked files a diff never lists.
   changed: async (tag, path) => [
@@ -61,22 +79,59 @@ const GIT: ReleaseProbe & AncestryProbe = {
 };
 
 /**
- * Why `pkg`@`version` may not go to npm, or `null` when it may: JSR carries
- * what its release tag (`<pkg>-v<version>`) holds, and `publishNpm` builds from
- * the checkout, so npm gets the same source only when the tag exists in this
- * clone and the checkout of `packages/<pkg>`, working tree included, has not
- * changed since.
+ * Where `pkg`@`version`'s release source stands, for npm. JSR carries what its
+ * release tag (`<pkg>-v<version>`) holds, and `publishNpm` builds from the
+ * checkout, so npm gets the same source only when the tag exists in this clone
+ * and the checkout of `packages/<pkg>`, working tree included, has not changed
+ * since:
+ * - `same`: it may be published;
+ * - `changed`: the package changed after its release, so this version waits
+ *   for the package's next release, which tags this source;
+ * - `untagged`: the tag is missing, which a released version never is.
  */
-export async function releaseSourceProblem(
+export type ReleaseSource = "same" | "changed" | "untagged";
+
+/**
+ * The {@link ReleaseSource} of `pkg`@`version` in this clone. The source is
+ * compared with the release tag, or, while the tag is not there yet, with
+ * `HEAD` when `HEAD` is the release commit that set this version: a draft
+ * release (the CLI's, until its binaries are attached) is tagged only when it
+ * is published, after the npm job has run.
+ */
+export async function releaseSource(
   pkg: string,
   version: string,
   git: ReleaseProbe = GIT,
-): Promise<string | null> {
-  const tag = `${pkg}-v${version}`;
-  const same = await git.hasTag(tag) &&
-    (await git.changed(tag, `packages/${pkg}`)).length === 0;
-  return same ? null : `packages/${pkg} changed since ${tag}, or there is no ` +
-    `such tag; npm would get different source than JSR's @zuke/${pkg}@${version}.`;
+): Promise<ReleaseSource> {
+  const tag = releaseTag(pkg, version);
+  let base: string;
+  if (await git.hasTag(tag)) base = tag;
+  else if (await setByHead(pkg, version, git)) base = "HEAD";
+  else return "untagged";
+  return (await git.changed(base, `packages/${pkg}`)).length === 0
+    ? "same"
+    : "changed";
+}
+
+/**
+ * Whether `HEAD` is the commit that set `pkg`'s version to `version`: it
+ * declares it, and its parent was read and declares another. A parent that
+ * cannot be read (a shallow clone) proves nothing, so it is no stand-in; a
+ * new package's parent declares `0.0.0`, its registration version.
+ */
+async function setByHead(
+  pkg: string,
+  version: string,
+  git: ReleaseProbe,
+): Promise<boolean> {
+  if (await git.versionAt("HEAD", pkg) !== version) return false;
+  const parent = await git.versionAt("HEAD^", pkg);
+  return parent !== null && parent !== version;
+}
+
+/** The tag release-please gives `pkg`@`version`. */
+export function releaseTag(pkg: string, version: string): string {
+  return `${pkg}-v${version}`;
 }
 
 /**
