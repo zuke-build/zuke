@@ -13,9 +13,10 @@
  * installed from the registry with `npm install --ignore-scripts`, and the
  * installed package directories are compared with a fresh build of that
  * commit, in its own worktree (`npm_rebuild.ts`): the same set of files, the
- * same bytes (`package.json` by value, in case a newer npm re-serialises it). Nothing here parses a tarball, so a
- * tarball crafted to read differently under another tar implementation cannot
- * make the check see something other than what is installed.
+ * same bytes (`package.json` by value, in case a newer npm re-serialises it).
+ * Nothing here parses a tarball, so a tarball crafted to read differently
+ * under another tar implementation cannot make the check see something other
+ * than what is installed.
  *
  * The packages import each other as `@zuke/<name>`, which npm resolves to an
  * alias directory beside the direct `@zuke-build/<name>` one. That is the code
