@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.83.2](https://github.com/zuke-build/zuke/compare/core-v1.83.1...core-v1.83.2) (2026-11-20)
+
+
+### Bug Fixes
+
+* **core:** glob skips a directory removed while it walks ([#1099](https://github.com/zuke-build/zuke/issues/1099)) ([3f82ee6](https://github.com/zuke-build/zuke/commit/3f82ee6a967cbacc7d247535cc4756e3093a4d44))
+
 ## [1.83.1](https://github.com/zuke-build/zuke/compare/core-v1.83.0...core-v1.83.1) (2026-11-20)
 
 
