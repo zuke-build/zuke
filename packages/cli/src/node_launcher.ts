@@ -194,16 +194,56 @@ export PATH="$node_dir:$PATH"
 
 # Written only after npm succeeds, so a failed install is retried next run.
 installed=node_modules/.zuke-installed
-if [ -f package-lock.json ]; then
-  if [ ! -f "$installed" ] || [ package-lock.json -nt "$installed" ]; then
-    rm -f "$installed"
-    npm ci --ignore-scripts
-    mkdir -p node_modules && : > "$installed"
+
+# The npm command this checkout needs, or nothing when its install is current.
+install_needed() {
+  if [ -f package-lock.json ]; then
+    if [ ! -f "$installed" ] || [ package-lock.json -nt "$installed" ]; then
+      echo ci
+    fi
+  elif [ -f package.json ] && [ ! -f "$installed" ]; then
+    echo install
   fi
-elif [ -f package.json ] && [ ! -f "$installed" ]; then
-  echo "zuke: no package-lock.json here yet — running npm install so one can be written." >&2
-  npm install --ignore-scripts
-  mkdir -p node_modules && : > "$installed"
+}
+
+if [ -n "$(install_needed)" ]; then
+  # One install at a time per checkout: a second launcher waits for the lock,
+  # then finds the first one's install current. The lock is created with
+  # noclobber, which fails when it exists, and holds its owner's process id. A
+  # lock whose owner is gone is reported, never removed: deciding that for
+  # another run is a guess two waiting runs could both act on.
+  lock=.zuke/install.lock
+  mkdir -p .zuke
+  waited=0
+  until (set -C; echo "$$" > "$lock") 2>/dev/null; do
+    holder="$(cat "$lock" 2>/dev/null || true)"
+    if [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; then
+      echo "zuke: $lock was left by an install that did not finish (process $holder); remove it and run again." >&2
+      exit 1
+    fi
+    if [ "$waited" -ge 600 ]; then
+      echo "zuke: another launcher has held $lock for 10 minutes; if none is running, remove it and run again." >&2
+      exit 1
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  trap 'rm -f "$lock"' EXIT
+  case "$(install_needed)" in
+    ci)
+      rm -f "$installed"
+      npm ci --ignore-scripts
+      mkdir -p node_modules && : > "$installed"
+      ;;
+    install)
+      echo "zuke: no package-lock.json here yet — running npm install so one can be written." >&2
+      npm install --ignore-scripts
+      mkdir -p node_modules && : > "$installed"
+      ;;
+  esac
+  # Released here, because the exec below skips the EXIT trap.
+  rm -f "$lock"
+  trap - EXIT
 fi
 
 exec node ${build} "$@"
@@ -342,21 +382,64 @@ $env:PATH = (Split-Path -Parent $node) + [IO.Path]::PathSeparator + $env:PATH
 
 # Written only after npm succeeds, so a failed install is retried next run.
 $installed = Join-Path "node_modules" ".zuke-installed"
-$install = $null
-if (Test-Path "package-lock.json") {
-  if (-not (Test-Path $installed) -or
-    (Get-Item "package-lock.json").LastWriteTime -gt (Get-Item $installed).LastWriteTime) {
-    $install = "ci"
+
+# The npm command this checkout needs, or $null when its install is current.
+function Get-InstallNeeded {
+  if (Test-Path "package-lock.json") {
+    if (-not (Test-Path $installed) -or
+      (Get-Item "package-lock.json").LastWriteTime -gt (Get-Item $installed).LastWriteTime) {
+      return "ci"
+    }
+  } elseif ((Test-Path "package.json") -and -not (Test-Path $installed)) {
+    return "install"
   }
-} elseif ((Test-Path "package.json") -and -not (Test-Path $installed)) {
-  Write-Warning "zuke: no package-lock.json here yet - running npm install so one can be written."
-  $install = "install"
+  return $null
 }
-if ($install) {
-  if (Test-Path $installed) { Remove-Item -Force $installed }
-  & npm $install --ignore-scripts
-  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-  New-Item -ItemType File -Force -Path $installed | Out-Null
+
+if (Get-InstallNeeded) {
+  # One install at a time per checkout: a second launcher waits for the lock,
+  # then finds the first one's install current. The lock is created with
+  # CreateNew, which fails when it exists, and holds its owner's process id. A
+  # lock whose owner is gone is reported, never removed: deciding that for
+  # another run is a guess two waiting runs could both act on.
+  New-Item -ItemType Directory -Force -Path (Join-Path $dir ".zuke") | Out-Null
+  $lock = Join-Path $dir ".zuke/install.lock"
+  $waited = 0
+  while ($true) {
+    try {
+      $stream = [System.IO.File]::Open($lock, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write)
+      $bytes = [System.Text.Encoding]::ASCII.GetBytes("$PID")
+      $stream.Write($bytes, 0, $bytes.Length)
+      $stream.Close()
+      break
+    } catch {
+      $holder = 0
+      $text = Get-Content -Path $lock -Raw -ErrorAction SilentlyContinue
+      if ([int]::TryParse("$text".Trim(), [ref]$holder) -and
+        -not (Get-Process -Id $holder -ErrorAction SilentlyContinue)) {
+        throw "zuke: $lock was left by an install that did not finish (process $holder); remove it and run again."
+      }
+      if ($waited -ge 600) {
+        throw "zuke: another launcher has held $lock for 10 minutes; if none is running, remove it and run again."
+      }
+      Start-Sleep -Seconds 1
+      $waited++
+    }
+  }
+  try {
+    $install = Get-InstallNeeded
+    if ($install -eq "install") {
+      Write-Warning "zuke: no package-lock.json here yet - running npm install so one can be written."
+    }
+    if ($install) {
+      if (Test-Path $installed) { Remove-Item -Force $installed }
+      & npm $install --ignore-scripts
+      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      New-Item -ItemType File -Force -Path $installed | Out-Null
+    }
+  } finally {
+    Remove-Item -Force $lock -ErrorAction SilentlyContinue
+  }
 }
 
 & $node (Join-Path $dir "${build}") @args

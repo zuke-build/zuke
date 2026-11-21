@@ -380,3 +380,94 @@ Deno.test({
     }
   },
 });
+
+/**
+ * A project with a lockfile and the launcher, and a fake `node` and a slow fake
+ * `npm` on `PATH` that log what they run. Returns a run function.
+ */
+async function lockedProject(root: string) {
+  const bin = `${root}/bin`;
+  const log = `${root}/log`;
+  await Deno.mkdir(bin);
+  await Deno.mkdir(`${root}/project`);
+  await script(
+    `${bin}/node`,
+    `if [ "$1" = "--version" ]; then echo v${NODE_PIN.version}; exit 0; fi\necho "node $*" >> "${log}"`,
+  );
+  // Slow enough that a second launcher arrives while the first installs.
+  await script(`${bin}/npm`, `echo "npm $*" >> "${log}"; sleep 1`);
+  await Deno.writeTextFile(`${root}/project/build.ts`, "");
+  await Deno.writeTextFile(`${root}/project/package.json`, "{}");
+  await Deno.writeTextFile(`${root}/project/package-lock.json`, "{}");
+  const launcher = `${root}/project/zuke`;
+  await Deno.writeTextFile(
+    launcher,
+    nodeLauncherBash({ buildFile: "build.ts" }),
+    { mode: 0o755 },
+  );
+  const run = async () => {
+    const out = await new Deno.Command(launcher, {
+      args: ["ci"],
+      env: { PATH: `${bin}:/usr/bin:/bin`, HOME: root },
+      clearEnv: true,
+      stdout: "null",
+      stderr: "piped",
+    }).output();
+    return { code: out.code, stderr: new TextDecoder().decode(out.stderr) };
+  };
+  const logged = async () =>
+    (await Deno.readTextFile(log).catch(() => "")).trim().split("\n")
+      .filter((l) => l !== "");
+  return { lock: `${root}/project/.zuke/install.lock`, run, logged };
+}
+
+Deno.test({
+  name:
+    "two node launchers started at once install once, and both run the build",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const root = await Deno.makeTempDir();
+    try {
+      const p = await lockedProject(root);
+      const [first, second] = await Promise.all([p.run(), p.run()]);
+      assertEquals(first.code, 0, first.stderr);
+      assertEquals(second.code, 0, second.stderr);
+      assertEquals(await p.logged(), [
+        "npm ci --ignore-scripts",
+        "node build.ts ci",
+        "node build.ts ci",
+      ]);
+      // Released by both: nothing is left to block the next run.
+      assertEquals(
+        await Deno.stat(p.lock).then(() => true, () => false),
+        false,
+      );
+    } finally {
+      await Deno.remove(root, { recursive: true });
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "the node launcher reports an install lock its owner left behind, and leaves it",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const root = await Deno.makeTempDir();
+    try {
+      const p = await lockedProject(root);
+      // The id of a process that has exited, as a killed launcher leaves it.
+      const gone = new Deno.Command("true").spawn();
+      await gone.status;
+      await Deno.mkdir(`${root}/project/.zuke`);
+      await Deno.writeTextFile(p.lock, `${gone.pid}\n`);
+      const out = await p.run();
+      assertEquals(out.code, 1, out.stderr);
+      assertEquals(out.stderr.includes("remove it and run again"), true);
+      assertEquals(await p.logged(), []);
+      assertEquals(await Deno.readTextFile(p.lock), `${gone.pid}\n`);
+    } finally {
+      await Deno.remove(root, { recursive: true });
+    }
+  },
+});

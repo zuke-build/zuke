@@ -217,3 +217,70 @@ Deno.test({
     }
   },
 });
+
+Deno.test({
+  name:
+    "two powershell node launchers started at once install once, and both run the build",
+  ignore: !WINDOWS,
+  async fn() {
+    const root = await Deno.makeTempDir();
+    try {
+      const w = await world(root);
+      await Deno.writeTextFile(`${w.project}\\package.json`, "{}");
+      await Deno.writeTextFile(`${w.project}\\package-lock.json`, "{}");
+      const log = `${root}\\npm.log`;
+      // Slow enough that a second launcher arrives while the first installs.
+      await Deno.writeTextFile(
+        `${w.bin}\\npm.cmd`,
+        `@echo off\r\necho %*>>"${log}"\r\nping -n 3 127.0.0.1 >nul\r\nexit /b 0\r\n`,
+      );
+      // The Node is already cached, so only the install can race.
+      const warm = await w.run({});
+      assertEquals(warm.code, 0, warm.out);
+      await Deno.remove(log);
+      await Deno.remove(`${w.project}\\node_modules`, { recursive: true });
+      const [first, second] = await Promise.all([w.run({}), w.run({})]);
+      assertEquals(first.code, 0, first.out);
+      assertEquals(second.code, 0, second.out);
+      assertEquals(first.out.includes("ran ci"), true, first.out);
+      assertEquals(second.out.includes("ran ci"), true, second.out);
+      assertEquals(
+        (await Deno.readTextFile(log)).trim().split(/\r?\n/).length,
+        1,
+      );
+      assertEquals(
+        await w.entries(`${w.project}\\.zuke`),
+        [],
+      );
+    } finally {
+      await Deno.remove(root, { recursive: true });
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "the powershell node launcher reports an install lock its owner left behind, and leaves it",
+  ignore: !WINDOWS,
+  async fn() {
+    const root = await Deno.makeTempDir();
+    try {
+      const w = await world(root);
+      await Deno.writeTextFile(`${w.project}\\package-lock.json`, "{}");
+      // The id of a process that has exited, as a killed launcher leaves it.
+      const gone = new Deno.Command("cmd.exe", { args: ["/c", "exit"] })
+        .spawn();
+      await gone.status;
+      await Deno.mkdir(`${w.project}\\.zuke`);
+      const lock = `${w.project}\\.zuke\\install.lock`;
+      await Deno.writeTextFile(lock, `${gone.pid}`);
+      const out = await w.run({});
+      assertEquals(out.code, 1, out.out);
+      assertEquals(out.out.includes("remove it and run again"), true, out.out);
+      assertEquals(out.out.includes("ran ci"), false, out.out);
+      assertEquals(await Deno.readTextFile(lock), `${gone.pid}`);
+    } finally {
+      await Deno.remove(root, { recursive: true });
+    }
+  },
+});
