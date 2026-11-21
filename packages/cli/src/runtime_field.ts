@@ -8,7 +8,7 @@
  * @module
  */
 
-import { isRecord } from "./records.ts";
+import { forgivingField } from "./records.ts";
 
 /** The field of `zuke.json` naming the runtime the build file runs on. */
 export const RUNTIME_FIELD = "runtime";
@@ -28,14 +28,8 @@ export const DEFAULT_RUNTIME: ProjectRuntime = "deno";
  * @throws {Error} when the field is there and names no runtime Zuke runs on.
  */
 export function runtimeNamed(text: string): ProjectRuntime {
-  let config: unknown;
-  try {
-    config = JSON.parse(text);
-  } catch {
-    return DEFAULT_RUNTIME;
-  }
-  if (!isRecord(config) || !(RUNTIME_FIELD in config)) return DEFAULT_RUNTIME;
-  const runtime = config[RUNTIME_FIELD];
+  const runtime = forgivingField(text, RUNTIME_FIELD);
+  if (runtime === undefined) return DEFAULT_RUNTIME;
   if (runtime === "deno" || runtime === "node") return runtime;
   throw new Error(
     `zuke: zuke.json's '${RUNTIME_FIELD}' is ${
