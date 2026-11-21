@@ -1380,15 +1380,21 @@ Deno.test("runSetup --runtime node leaves a complete package.json, and keeps ano
   assertStringIncludes(noted.notes[0], '"commonjs"');
 });
 
-Deno.test("runSetup --runtime node reports a package.json that is not JSON as a manual step", async () => {
-  const host = new FakeHost({ "package.json": "{ nope" });
-  const result = await runSetup(
-    { dir: ".", force: false, name: "A", runtime: "node" },
-    host,
-  );
-  assertEquals(host.files.get("package.json"), "{ nope");
-  assertEquals(result.manualSteps.length, 1);
-  assertStringIncludes(result.manualSteps[0], NODE_CORE);
+Deno.test("runSetup --runtime node leaves a package.json that is not a JSON object and reports a manual step", async () => {
+  for (const text of ["{ nope", "[1, 2]", "null", '"text"']) {
+    const host = new FakeHost({ "package.json": text });
+    const result = await runSetup(
+      { dir: ".", force: false, name: "A", runtime: "node" },
+      host,
+    );
+    assertEquals(host.files.get("package.json"), text);
+    assertEquals(
+      result.files.find((f) => f.path === "package.json")?.status,
+      "skipped",
+    );
+    assertEquals(result.manualSteps.length, 1, text);
+    assertStringIncludes(result.manualSteps[0], NODE_CORE);
+  }
 });
 
 Deno.test("runSetup --runtime node merges node_modules/ into an existing .gitignore", async () => {

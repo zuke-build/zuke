@@ -866,15 +866,20 @@ async function setupPackageJson(
     try {
       parsed = JSON.parse(await host.readText(path));
     } catch {
-      host.log(`  skip     ${name}  (not valid JSON, edit by hand)`);
+      parsed = undefined;
+    }
+    // Not JSON, or JSON that is not an object: either way not a manifest setup
+    // can merge into, so it is left exactly as it is.
+    if (!isRecord(parsed)) {
+      host.log(`  skip     ${name}  (not a JSON object, edit by hand)`);
       steps.push(
-        `${path} is not valid JSON. Add "type": "module" and a dependency ` +
+        `${path} is not a JSON object. Add "type": "module" and a dependency ` +
           `"@zuke/core": "${dependency[0][1]}" — the scaffolded build will ` +
           "not run until you do.",
       );
       return { path: name, status: "skipped" };
     }
-    if (isRecord(parsed)) Object.assign(root, parsed);
+    Object.assign(root, parsed);
     original = JSON.stringify(root);
   } else {
     root.name = packageNameFor(dir);
