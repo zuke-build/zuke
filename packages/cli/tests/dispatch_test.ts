@@ -9,6 +9,7 @@ import {
 import { BUILD_FILE } from "../src/build_file.ts";
 import {
   buildLabel,
+  type BuildLocation,
   type BuildProbe,
   buildRunArgs,
   defaultBuildProbe,
@@ -110,9 +111,24 @@ Deno.test("locateBuild finds zuke.json in the cwd itself", async () => {
     root: "/repo",
     frozen: false,
     build: BUILD_FILE,
+    runtime: "deno",
     launcher: null,
     engine: null,
   });
+});
+
+Deno.test("locateBuild reads the runtime from zuke.json, and refuses one it does not know", async () => {
+  // A Node project: its build file is present, so no engine runs it.
+  const node = probe({
+    present: ["/n/zuke.json", "/n/build.ts"],
+    texts: { "/n/zuke.json": '{"build":"build.ts","runtime":"node"}' },
+  });
+  assertEquals((await locateBuild("/n", node))?.runtime, "node");
+  const bun = probe({
+    present: ["/b/zuke.json"],
+    texts: { "/b/zuke.json": '{"runtime":"bun"}' },
+  });
+  await assertRejects(() => locateBuild("/b", bun), Error, "'runtime'");
 });
 
 Deno.test("locateBuild walks up to the nearest ancestor holding zuke.json", async () => {
@@ -134,6 +150,7 @@ Deno.test("locateBuild reports a lockfile beside the config as frozen", async ()
     root: "/repo",
     frozen: true,
     build: BUILD_FILE,
+    runtime: "deno",
     launcher: null,
     engine: null,
   });
@@ -186,6 +203,7 @@ Deno.test("the trust gate accepts a root the current user owns", async () => {
     root: "/home/me/app",
     frozen: false,
     build: BUILD_FILE,
+    runtime: "deno",
     launcher: null,
     engine: null,
   });
@@ -208,6 +226,7 @@ Deno.test("the trust gate does not judge the root a launcher started zuke in, an
     root: "/work/app",
     frozen: false,
     build: BUILD_FILE,
+    runtime: "deno",
     launcher: null,
     engine: "1.3.0",
   });
@@ -379,6 +398,7 @@ Deno.test("buildRunArgs mirrors the launcher: --frozen only with a lockfile", ()
         root: "/repo",
         frozen: true,
         build: BUILD_FILE,
+        runtime: "deno",
         launcher: null,
         engine: null,
       },
@@ -395,6 +415,7 @@ Deno.test("buildRunArgs mirrors the launcher: --frozen only with a lockfile", ()
         root: "/repo",
         frozen: false,
         build: BUILD_FILE,
+        runtime: "deno",
         launcher: null,
         engine: null,
       },
@@ -413,6 +434,7 @@ Deno.test("buildRunArgs mirrors the launcher: --frozen only with a lockfile", ()
         root: "/repo",
         frozen: false,
         build: BUILD_FILE,
+        runtime: "deno",
         launcher: null,
         engine: null,
       },
@@ -440,6 +462,7 @@ Deno.test("locateBuild reports an executable launcher at the root", async () => 
     root: "/repo",
     frozen: false,
     build: BUILD_FILE,
+    runtime: "deno",
     launcher: "/repo/zuke",
     engine: null,
   });
@@ -548,6 +571,7 @@ Deno.test("runBuild runs the launcher with the bare args, else Deno", async () =
         root: "/repo",
         frozen: true,
         build: BUILD_FILE,
+        runtime: "deno",
         launcher: "/repo/zuke",
         engine: null,
       },
@@ -561,6 +585,7 @@ Deno.test("runBuild runs the launcher with the bare args, else Deno", async () =
       root: "/repo",
       frozen: true,
       build: BUILD_FILE,
+      runtime: "deno",
       launcher: null,
       engine: null,
     },
@@ -574,6 +599,7 @@ Deno.test("runBuild runs the launcher with the bare args, else Deno", async () =
         root: "/repo",
         frozen: false,
         build: BUILD_FILE,
+        runtime: "deno",
         launcher: "/repo/zuke",
         engine: null,
       },
@@ -612,10 +638,11 @@ Deno.test("runBuild runs a hosted build the binary's engine serves on the binary
     ]);
     return Promise.resolve(4);
   };
-  const hosted = {
+  const hosted: Omit<BuildLocation, "engine"> = {
     root: "/py",
     frozen: true,
     build: BUILD_FILE,
+    runtime: "deno",
     launcher: "/py/zuke",
   };
   assertEquals(
@@ -643,6 +670,7 @@ Deno.test("runBuild runs a hosted build the binary's engine serves on the binary
         root: "/ts",
         frozen: false,
         build: BUILD_FILE,
+        runtime: "deno",
         launcher: null,
         engine: null,
       },
@@ -663,10 +691,11 @@ Deno.test("runBuild runs a hosted build the binary's engine serves on the binary
 
 Deno.test("the binary never falls back to Deno for a hosted build it cannot serve", async () => {
   const runner = () => Promise.reject(new Error("nothing may run"));
-  const unserved = {
+  const unserved: BuildLocation = {
     root: "/py",
     frozen: true,
     build: BUILD_FILE,
+    runtime: "deno",
     launcher: null,
     engine: "2.0.0",
   };
@@ -722,10 +751,11 @@ Deno.test("the binary never falls back to Deno for a hosted build it cannot serv
 });
 
 Deno.test("the binary's engine is named when it runs the build, and when it cannot", async () => {
-  const hosted = {
+  const hosted: BuildLocation = {
     root: "/home/me/app",
     frozen: false,
     build: BUILD_FILE,
+    runtime: "deno",
     launcher: null,
     engine: "1.2.0",
   };
@@ -773,6 +803,7 @@ Deno.test("the running notice names the build file at the root, or the engine re
       root: "/home/me/app",
       frozen: false,
       build: BUILD_FILE,
+      runtime: "deno",
       launcher: null,
       engine: null,
     }),
@@ -783,6 +814,7 @@ Deno.test("the running notice names the build file at the root, or the engine re
       root: "/home/me/app",
       frozen: false,
       build: BUILD_FILE,
+      runtime: "deno",
       launcher: null,
       engine: "1.2.3",
     }),
@@ -803,6 +835,7 @@ Deno.test("a root without zuke.ts runs the engine release its zuke.json names", 
     root: "/app",
     frozen: false,
     build: BUILD_FILE,
+    runtime: "deno",
     launcher: null,
     engine: "1.2.3",
   });
@@ -1077,6 +1110,7 @@ Deno.test("runBuild hands an env to the runner on both the launcher and the Deno
       root: "/r",
       frozen: false,
       build: BUILD_FILE,
+      runtime: "deno",
       launcher: "/r/zuke",
       engine: null,
     }, [
@@ -1086,6 +1120,7 @@ Deno.test("runBuild hands an env to the runner on both the launcher and the Deno
       root: "/r",
       frozen: false,
       build: BUILD_FILE,
+      runtime: "deno",
       launcher: null,
       engine: null,
     }, [
@@ -1095,6 +1130,7 @@ Deno.test("runBuild hands an env to the runner on both the launcher and the Deno
       root: "/r",
       frozen: false,
       build: BUILD_FILE,
+      runtime: "deno",
       launcher: null,
       engine: null,
     }, [
@@ -1216,10 +1252,11 @@ Deno.test("runBuild on Node refuses a hosted build no launcher can run, rather t
     calls.push(program === undefined ? args : [program, ...args]);
     return Promise.resolve(0);
   };
-  const hosted = {
+  const hosted: BuildLocation = {
     root: "/repo",
     frozen: true,
     build: BUILD_FILE,
+    runtime: "deno",
     launcher: null,
     engine: "1.2.0",
   };
@@ -1248,5 +1285,36 @@ Deno.test("runBuild on Node refuses a hosted build no launcher can run, rather t
   assertEquals(calls, [
     ["/repo/zuke", "ci"],
     ["run", "-A", "--frozen", BUILD_FILE, "ci"],
+  ]);
+});
+
+Deno.test("runBuild runs a build file on Node as node <build>, unless a launcher or an engine runs it", async () => {
+  const calls: Array<[string[], string | undefined]> = [];
+  const runner = (_root: string, args: string[], program?: string) => {
+    calls.push([args, program]);
+    return Promise.resolve(0);
+  };
+  const node: BuildLocation = {
+    root: "/n",
+    frozen: true,
+    build: "build.ts",
+    runtime: "node",
+    launcher: null,
+    engine: null,
+  };
+  await withEnv({ [FORWARDED_ENV]: undefined }, async () => {
+    await runBuild(runner, node, ["ci"]);
+    // The project's launcher still runs it: picking a runtime is its job.
+    await runBuild(runner, { ...node, launcher: "/n/zuke" }, ["ci"]);
+    // A build another SDK hosts is the engine's, whatever the field says.
+    await runBuild(runner, { ...node, engine: "1.2.0" }, ["ci"], undefined, {
+      ...EMBEDDED,
+      serves: () => true,
+    });
+  });
+  assertEquals(calls, [
+    [["build.ts", "ci"], "node"],
+    [["ci"], "/n/zuke"],
+    [["ci"], "/opt/zuke"],
   ]);
 });

@@ -12,7 +12,7 @@
  * @module
  */
 
-import { isRecord } from "./records.ts";
+import { forgivingField } from "./records.ts";
 
 /** The build file of a project whose `zuke.json` names none. */
 export const BUILD_FILE = "zuke.ts";
@@ -59,14 +59,8 @@ export function assertBuildFileName(name: string): string {
  * {@link assertBuildFileName}.
  */
 export function buildFileNamed(text: string): string {
-  let config: unknown;
-  try {
-    config = JSON.parse(text);
-  } catch {
-    return BUILD_FILE;
-  }
-  if (!isRecord(config) || !(BUILD_FIELD in config)) return BUILD_FILE;
-  const name = config[BUILD_FIELD];
+  const name = forgivingField(text, BUILD_FIELD);
+  if (name === undefined) return BUILD_FILE;
   // Anything but a string is refused as written: String() would turn the
   // array ["build.ts"] into a name that passes.
   return assertBuildFileName(
