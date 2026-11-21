@@ -812,6 +812,7 @@ function probeAt(
     uid: null,
     owner: null,
   },
+  config = "{}",
 ): BuildProbe {
   const present = new Set(names.map(atCwd));
   return {
@@ -831,7 +832,7 @@ function probeAt(
     realPath: (path) => Promise.resolve(path),
     readLink: () => Promise.resolve(null),
     uid: () => owned.uid,
-    readText: () => Promise.resolve("{}"),
+    readText: () => Promise.resolve(config),
   };
 }
 
@@ -889,6 +890,29 @@ Deno.test("main forwards a build command to zuke.ts at the nearest zuke.json", a
   ]);
   // Nothing of the CLI's own output gets in the way of the build's.
   assertEquals(host.logs, []);
+});
+
+Deno.test("main runs a build file on Node with node when zuke.json names that runtime", async () => {
+  const host = new FakeHost();
+  let seen: [string, string[], string | undefined] | undefined;
+  const code = await main(
+    ["ci"],
+    host,
+    defaultPrompter,
+    undefined,
+    undefined,
+    (root, args, program) => {
+      seen = [root, args, program];
+      return Promise.resolve(0);
+    },
+    probeAt(["zuke.json"], undefined, '{"runtime":"node"}'),
+  );
+  assertEquals(code, 0);
+  assertEquals(seen, [
+    Deno.cwd().replaceAll("\\", "/"),
+    ["zuke.ts", "ci"],
+    "node",
+  ]);
 });
 
 Deno.test("main forwards with --frozen once a deno.lock sits beside zuke.json", async () => {

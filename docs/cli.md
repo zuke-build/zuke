@@ -37,6 +37,14 @@ The name must be a plain file name of letters, digits, dots, dashes and
 underscores, ending in `.ts` and not starting with a dash; anything else is
 refused. A bare `zuke` inside a project runs the default target.
 
+A `runtime` field picks what runs the build file: `"deno"`, the default when the
+field is absent, or `"node"` (`{ "build": "build.ts", "runtime": "node" }`). A
+root with no launcher then gets `node build.ts <command>` instead of `deno run`:
+Node runs the TypeScript file itself and resolves its `@zuke/*` imports from
+`node_modules`, installed from npm. A root with a launcher still runs the
+launcher, and a build another SDK hosts (below) ignores the field. Any other
+value is refused, naming the field.
+
 A root with no TypeScript build file holds a build another SDK hosts, a Python
 build say: its `zuke.json` names the worker to start under `sdk`
 (`{ "command": ["uv", "run", "build.py"] }`) and, under `engine`, the exact

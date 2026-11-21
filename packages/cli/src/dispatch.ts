@@ -60,6 +60,7 @@ import {
 import { noLockNotice } from "./launcher.ts";
 import { BINARY_INSTALL_DOCS } from "./binary_pin.ts";
 import { BUILD_FILE, buildFileNamed } from "./build_file.ts";
+import { type ProjectRuntime, runtimeNamed } from "./runtime_field.ts";
 import { QUIET_DENO_ENV, spawnDeno } from "./deno_path.ts";
 import { EMBEDDED_ENGINE_ENV, type EmbeddedEngine } from "./embedded_engine.ts";
 
@@ -105,6 +106,11 @@ export interface BuildLocation {
    * `build` field, `zuke.ts` when it names none.
    */
   build: string;
+  /**
+   * The runtime the build file runs on: the `runtime` field of the root's
+   * `zuke.json`, `deno` when it names none.
+   */
+  runtime: ProjectRuntime;
   /**
    * The `@zuke/engine` release that runs the build when the root has no
    * build file: the `engine` field of its `zuke.json`, which then describes a
@@ -348,9 +354,9 @@ export async function locateBuild(
       if (!named) await assertTrusted(dir, probe);
       // Read only once the marker passed the gate, and then hold the file it
       // names to the same gate: it is the one that runs.
-      const build = buildFileNamed(
-        await probe.readText(dir(CONFIG_FILE).path),
-      );
+      const config = await probe.readText(dir(CONFIG_FILE).path);
+      const build = buildFileNamed(config);
+      const runtime = runtimeNamed(config);
       const uid = probe.uid();
       if (!named && uid !== null && build !== BUILD_FILE) {
         await assertFilesOwned(dir, [build], uid, probe, dir);
@@ -358,6 +364,7 @@ export async function locateBuild(
       return {
         root: dir.path,
         build,
+        runtime,
         frozen: await probe.exists(dir(LOCK_FILE).path),
         launcher: named ? null : await launcherAt(dir, probe),
         engine: await probe.exists(dir(build).path)
@@ -592,8 +599,16 @@ export function runBuild(
         "release it pins, or move the project with `zuke upgrade --engine`.",
     );
   }
+  // A build file on Node runs as `node <build>`: Node strips the types of a
+  // TypeScript file itself, and resolves its imports from node_modules.
+  if (location.engine === null && location.runtime === "node") {
+    return runner(location.root, [location.build, ...args], NODE, env);
+  }
   return runner(location.root, buildRunArgs(location, args), undefined, env);
 }
+
+/** The program a build file on Node runs with, found on `PATH`. */
+export const NODE = "node";
 
 /**
  * The stderr line for a hosted build the binary's own `engine` cannot serve,
@@ -641,7 +656,8 @@ export function runningNotice(
 
 /**
  * Runs `program <args>` from `root` — Deno when `program` is omitted, else the
- * project's launcher at that path — and resolves to its exit code: the
+ * project's launcher at that path, or {@link NODE} for a build file on Node —
+ * and resolves to its exit code: the
  * injectable subprocess seam, so the forwarding is testable without a build.
  * `env` adds variables to the environment the child inherits.
  */
