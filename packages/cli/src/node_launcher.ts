@@ -264,7 +264,8 @@ function Resolve-Node {
   $onPath = Get-Command node -CommandType Application -ErrorAction SilentlyContinue
   if ($onPath) {
     # A shim that cannot report a version is treated as no node at all.
-    $reported = try { & $onPath.Source --version 2>$null } catch { "" }
+    $reported = ""
+    try { $reported = & $onPath.Source --version 2>$null } catch { }
     if ($reported -match '^v(\\d+)\\.' -and [int]$Matches[1] -ge $MinNodeMajor) {
       return $onPath.Source
     }
