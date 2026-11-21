@@ -172,12 +172,15 @@ ${bashFetchVerified("Node")}
   staging="$(mktemp -d "$node_root/.v$node_version.XXXXXX")"
   trap 'rm -rf "$work_dir" "$staging"' EXIT
   tar -xzf "$archive" -C "$staging" --strip-components=1
-  # A published install always has bin/node, so anything else there is debris.
-  [ -x "$node_home/bin/node" ] || rm -rf "$node_home"
   # The rename publishes ours; if a concurrent launcher published first, mv
-  # nests ours inside theirs instead, and we drop it and use theirs.
+  # nests ours inside theirs instead, and we drop it and use theirs. Nothing
+  # already at $node_home is ever deleted: it may be another run's Node.
   mv "$staging" "$node_home"
   rm -rf "$node_home/$(basename "$staging")"
+  if [ ! -x "$node_home/bin/node" ]; then
+    echo "zuke: $node_home exists but holds no bin/node; remove it and run again." >&2
+    exit 1
+  fi
   node_dir="$node_home/bin"
 fi
 
@@ -303,20 +306,20 @@ ${pwshFetchVerified("Node")}
     New-Item -ItemType Directory -Force -Path $nodeRoot | Out-Null
     $staging = Join-Path $nodeRoot ".v$nodeVersion.$([System.Guid]::NewGuid())"
     Expand-Archive -Path $archive -DestinationPath $staging -Force
-    # A published install always has node.exe, so anything else there is debris.
-    if (-not (Test-Path (Join-Path $nodeHome "node.exe")) -and (Test-Path $nodeHome)) {
-      Remove-Item -Recurse -Force $nodeHome
-    }
     $release = Get-ChildItem -Path $staging -Directory | Select-Object -First 1
     # The move publishes ours; if a concurrent launcher published first, ours
     # is refused or nested inside theirs, and we drop it and use theirs.
+    # Nothing already at $nodeHome is ever deleted: it may be another run's Node.
     try {
       Move-Item -Path $release.FullName -Destination $nodeHome
     } catch {
-      if (-not (Test-Path (Join-Path $nodeHome "node.exe"))) { throw }
+      if (-not (Test-Path $nodeHome)) { throw }
     }
     $nested = Join-Path $nodeHome $release.Name
     if (Test-Path $nested) { Remove-Item -Recurse -Force $nested }
+    if (-not (Test-Path (Join-Path $nodeHome "node.exe"))) {
+      throw "zuke: $nodeHome exists but holds no node.exe; remove it and run again."
+    }
   } finally {
     Remove-Item -Recurse -Force $workDir -ErrorAction SilentlyContinue
     if ($staging) { Remove-Item -Recurse -Force $staging -ErrorAction SilentlyContinue }

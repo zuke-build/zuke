@@ -303,3 +303,29 @@ Deno.test({
     }
   },
 });
+
+Deno.test({
+  name:
+    "the node launcher never deletes what is already at the cache path, and says what to remove",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const root = await Deno.makeTempDir();
+    try {
+      const w = await bootstrapWorld(root);
+      // A directory that is not a Node, which this run must not delete.
+      await Deno.mkdir(`${root}/.zuke/node/v9.9.9`, { recursive: true });
+      await Deno.writeTextFile(`${root}/.zuke/node/v9.9.9/keep`, "");
+      const out = await w.run({ NODE_VERSION: "9.9.9", NODE_SHA256: w.sha });
+      assertEquals(out.code, 1, out.stderr);
+      assertEquals(out.stderr.includes("remove it and run again"), true);
+      assertEquals(await w.logged(), ["curl"]);
+      assertEquals(
+        (await Array.fromAsync(Deno.readDir(`${root}/.zuke/node/v9.9.9`)))
+          .map((e) => e.name),
+        ["keep"],
+      );
+    } finally {
+      await Deno.remove(root, { recursive: true });
+    }
+  },
+});
