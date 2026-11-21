@@ -164,12 +164,16 @@ else
   download_url="${NODE_DIST_URL}/v\${node_version}/\${asset}"
 ${bashFetchVerified("Node")}
 
-  # Unpack beside the final directory, then move it in whole, so an interrupted
-  # run never leaves a half-extracted Node that looks installed.
-  mkdir -p "$(dirname "$node_home")" "$work_dir/unpacked"
-  tar -xzf "$archive" -C "$work_dir/unpacked" --strip-components=1
+  # Unpack into a sibling of the final directory, on the same filesystem, then
+  # rename it into place: the rename is atomic, so an interrupted run never
+  # leaves a half-extracted Node that looks installed.
+  node_root="$(dirname "$node_home")"
+  mkdir -p "$node_root"
+  staging="$(mktemp -d "$node_root/.v$node_version.XXXXXX")"
+  trap 'rm -rf "$work_dir" "$staging"' EXIT
+  tar -xzf "$archive" -C "$staging" --strip-components=1
   rm -rf "$node_home"
-  mv "$work_dir/unpacked" "$node_home"
+  mv "$staging" "$node_home"
   node_dir="$node_home/bin"
 fi
 
@@ -280,18 +284,22 @@ if (-not $node) {
   $workDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid())
   New-Item -ItemType Directory -Path $workDir | Out-Null
   $archive = Join-Path $workDir $asset
+  $staging = $null
   try {
 ${pwshFetchVerified("Node")}
 
-    # Unpack in the work directory, then move the release folder in whole, so
-    # an interrupted run never leaves a half-extracted Node that looks installed.
-    Expand-Archive -Path $archive -DestinationPath (Join-Path $workDir "unpacked") -Force
+    # Unpack into a sibling of the final directory, on the same volume, then
+    # move the release folder into place: the move is a rename there, so an
+    # interrupted run never leaves a half-extracted Node that looks installed.
     New-Item -ItemType Directory -Force -Path $nodeRoot | Out-Null
+    $staging = Join-Path $nodeRoot ".v$nodeVersion.$([System.Guid]::NewGuid())"
+    Expand-Archive -Path $archive -DestinationPath $staging -Force
     if (Test-Path $nodeHome) { Remove-Item -Recurse -Force $nodeHome }
-    $release = Get-ChildItem -Path (Join-Path $workDir "unpacked") -Directory | Select-Object -First 1
+    $release = Get-ChildItem -Path $staging -Directory | Select-Object -First 1
     Move-Item -Path $release.FullName -Destination $nodeHome
   } finally {
     Remove-Item -Recurse -Force $workDir -ErrorAction SilentlyContinue
+    if ($staging) { Remove-Item -Recurse -Force $staging -ErrorAction SilentlyContinue }
   }
 
   $node = Join-Path $nodeHome "node.exe"

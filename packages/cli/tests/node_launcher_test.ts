@@ -14,6 +14,7 @@ import {
   NODE_PIN,
   NODE_POSIX_PLATFORMS,
   NODE_WINDOWS_PLATFORMS,
+  type NodePlatform,
 } from "../src/node_pin.ts";
 
 Deno.test("the node pin has a well-formed checksum for every platform", () => {
@@ -26,16 +27,17 @@ Deno.test("the node pin has a well-formed checksum for every platform", () => {
   }
 });
 
-for (
-  const [name, script, platforms] of [
-    ["bash", nodeLauncherBash({ buildFile: "build.ts" }), NODE_POSIX_PLATFORMS],
-    [
-      "powershell",
-      nodeLauncherPowerShell({ buildFile: "build.ts" }),
-      NODE_WINDOWS_PLATFORMS,
-    ],
-  ] as const
-) {
+const LAUNCHERS: ReadonlyArray<
+  readonly [string, string, readonly NodePlatform[]]
+> = [
+  ["bash", nodeLauncherBash({ buildFile: "build.ts" }), NODE_POSIX_PLATFORMS],
+  [
+    "powershell",
+    nodeLauncherPowerShell({ buildFile: "build.ts" }),
+    NODE_WINDOWS_PLATFORMS,
+  ],
+];
+for (const [name, script, platforms] of LAUNCHERS) {
   Deno.test(`the ${name} node launcher carries the pin, header and build file`, () => {
     assertStringIncludes(script, "SPDX-License-Identifier: MIT");
     assertStringIncludes(script, NODE_PIN.version);
