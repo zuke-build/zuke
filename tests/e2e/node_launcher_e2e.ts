@@ -11,6 +11,7 @@
  * a checksum mismatch installs nothing, and a failing npm stops the run.
  */
 
+import { sha256Hex } from "@zuke/core";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { nodeLauncherBash } from "../../packages/cli/src/node_launcher.ts";
 import { NODE_PIN } from "../../packages/cli/src/node_pin.ts";
@@ -116,16 +117,6 @@ async function toolsDir(root: string): Promise<string> {
   return dir;
 }
 
-/** The SHA-256 of `path`, in lowercase hex. */
-async function sha256(path: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    await Deno.readFile(path),
-  );
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 /**
  * A project with the launcher, and a Node release tarball holding a fake
  * `bin/node` that logs its arguments, served by a fake `curl` that copies it to
@@ -171,7 +162,14 @@ async function bootstrapWorld(root: string) {
   const logged = async () =>
     (await Deno.readTextFile(log).catch(() => "")).trim().split("\n")
       .filter((l) => l !== "");
-  return { root, bin, tarball, run, logged, sha: await sha256(tarball) };
+  return {
+    root,
+    bin,
+    tarball,
+    run,
+    logged,
+    sha: await sha256Hex(await Deno.readFile(tarball)),
+  };
 }
 
 Deno.test({

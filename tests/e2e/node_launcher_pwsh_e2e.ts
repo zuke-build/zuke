@@ -9,6 +9,7 @@
  * check, cache reuse, publication race and install retry all run as shipped.
  */
 
+import { sha256Hex } from "@zuke/core";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { nodeLauncherPowerShell } from "../../packages/cli/src/node_launcher.ts";
 
@@ -23,16 +24,6 @@ async function powershell(command: string): Promise<void> {
     stderr: "piped",
   }).output();
   assertEquals(out.success, true, new TextDecoder().decode(out.stderr));
-}
-
-/** The SHA-256 of `path`, in lowercase hex. */
-async function sha256(path: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    await Deno.readFile(path),
-  );
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /**
@@ -86,7 +77,7 @@ async function world(root: string, beforeCopy = "") {
         ZUKE_NODE_HOME: nodeHome,
         ZUKE_TEST_NODE_ZIP: zip,
         NODE_VERSION: "9.9.9",
-        NODE_SHA256: await sha256(zip),
+        NODE_SHA256: await sha256Hex(await Deno.readFile(zip)),
         ...env,
       },
       stdout: "piped",
