@@ -11,7 +11,7 @@
  * @module
  */
 
-import { absolutePath } from "../packages/core/mod.ts";
+import { absolutePath, HttpError } from "../packages/core/mod.ts";
 import {
   assertEquals,
   assertRejects,
@@ -85,6 +85,10 @@ async function world(
     lockBin?: unknown;
     stmt?: Partial<ExpectedProvenance>;
     attested?: boolean;
+    /** How many times the attestations answer 404 before they are there. */
+    attestationMisses?: number;
+    /** A status other than 404 the attestations answer with, always. */
+    attestationStatus?: number;
     badSignature?: boolean;
     /** The commit the certificate attests; the signature fails for a policy pinned to another. */
     certCommit?: string;
@@ -115,6 +119,7 @@ async function world(
       },
     }),
   });
+  let misses = 0;
   const log: World["log"] = {
     installs: [],
     waits: 0,
@@ -141,8 +146,15 @@ async function world(
               },
             },
       ),
-    attestations: (url) =>
-      Promise.resolve({
+    attestations: (url) => {
+      if (over.attestationStatus !== undefined) {
+        return Promise.reject(new HttpError(over.attestationStatus, url));
+      }
+      if ((over.attestationMisses ?? 0) > misses) {
+        misses++;
+        return Promise.reject(new HttpError(404, url));
+      }
+      return Promise.resolve({
         attestations: [{
           predicateType: SLSA,
           bundle: bundleOf(statement(hex, {
@@ -152,7 +164,8 @@ async function world(
               OURS.commit,
           })),
         }],
-      }),
+      });
+    },
     verifyBundle: (bundle, policy) => {
       log.verified.push(bundle);
       log.policies.push(policy);
@@ -620,4 +633,19 @@ Deno.test("the npm build pins LF, and a manifest does not depend on key order or
     "@zuke/core",
   ]);
   assertEquals(json.includes("/home"), false);
+});
+
+Deno.test("verifyAll: attestations that are not there yet are looked for again", async () => {
+  // The registry serves the version before its attestations (#1100's run).
+  const late = await run({ attestationMisses: 2 });
+  assertEquals(late.result.get("x"), { status: "match", version: "1.0.0" });
+  assertEquals(late.w.log.waits, 2);
+  // Still 404 after every attempt: a mismatch naming it.
+  const gone = await run({ attestationMisses: 3 });
+  assertStringIncludes(problemsOf(gone)[0], "HTTP 404");
+  assertEquals(gone.w.log.waits, 2);
+  // Another status is not waited for.
+  const denied = await run({ attestationStatus: 500 });
+  assertStringIncludes(problemsOf(denied)[0], "HTTP 500");
+  assertEquals(denied.w.log.waits, 0);
 });
