@@ -2290,3 +2290,65 @@ Deno.test("main setup does not ask the build file of an existing project or a Py
   );
   assertEquals(python.asks.includes("Build file"), false);
 });
+
+Deno.test("main setup --runtime node scaffolds a Node project and asks nothing about Deno", async () => {
+  const host = new FakeHost();
+  const prompter = new FakePrompter(true, "", true);
+  assertEquals(await main(["setup", "--runtime", "node"], host, prompter), 0);
+  assertEquals(host.files.has("package.json"), true);
+  assertEquals(host.files.has("deno.json"), false);
+  assertEquals(prompter.asks.some((q) => q.startsWith("Runtime")), false);
+  assertEquals(prompter.asks.some((q) => q.includes("Deno")), false);
+});
+
+Deno.test("main setup (interactive) asks the runtime, and takes an answer of node", async () => {
+  const host = new FakeHost();
+  const base = new FakePrompter(true, "", true);
+  const asked: string[] = [];
+  const prompter = {
+    interactive: () => true,
+    ask: (q: string, fallback: string) => {
+      asked.push(q);
+      return q.startsWith("Runtime") ? "node" : base.ask(q, fallback);
+    },
+    confirm: (q: string) => base.confirm(q),
+  };
+  assertEquals(await main(["setup"], host, prompter), 0);
+  assertEquals(
+    host.files.get("zuke.json")?.includes('"runtime": "node"'),
+    true,
+  );
+  assertEquals(asked.some((q) => q.includes("Deno")), false);
+  const deno = new FakeHost();
+  assertEquals(
+    await main(["setup"], deno, new FakePrompter(true, "", true)),
+    0,
+  );
+  assertEquals(deno.files.has("deno.json"), true);
+});
+
+Deno.test("main setup refuses an unknown runtime, from the flag and from the question", async () => {
+  const flagged = new FakeHost();
+  assertEquals(
+    await main(["setup", "--runtime=bun"], flagged, new FakePrompter(false)),
+    1,
+  );
+  assertEquals(flagged.logs.some((l) => l.includes('--runtime "bun"')), true);
+  const asked = new FakeHost();
+  const prompter = {
+    interactive: () => true,
+    ask: (q: string, fallback: string) =>
+      q.startsWith("Runtime") ? "bun" : fallback,
+    confirm: () => true,
+  };
+  assertEquals(await main(["setup"], asked, prompter), 1);
+  assertEquals(asked.logs.some((l) => l.includes('runtime "bun"')), true);
+  assertEquals(asked.files.size, 0);
+});
+
+Deno.test("main setup refuses --runtime node with --sdk", async () => {
+  const host = new FakeHost();
+  const code = await setupSdk(host, ["--runtime", "node"], RELEASES);
+  assertEquals(code, 1);
+  assertEquals(host.logs.some((l) => l.includes("--runtime")), true);
+});

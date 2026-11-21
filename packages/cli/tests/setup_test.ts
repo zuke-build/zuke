@@ -1245,3 +1245,149 @@ Deno.test("a link or a directory at the build file name is left to the collision
     "a directory exists",
   );
 });
+
+const NODE_CORE = "npm:@zuke-build/core@^1";
+
+Deno.test("runSetup --runtime node writes build.ts, package.json, a Node zuke.json and launchers, and no deno.json", async () => {
+  const host = new FakeHost();
+  const result = await runSetup(
+    {
+      dir: "My App",
+      force: false,
+      name: "Acme",
+      runtime: "node",
+      mcp: { allowRun: false },
+    },
+    host,
+  );
+  assertEquals(result.manualSteps, []);
+  const at = (name: string) => host.files.get(`My App/${name}`) ?? "";
+  assertEquals(host.files.has("My App/deno.json"), false);
+  assertStringIncludes(at("build.ts"), "class Acme extends Build");
+  assertEquals(JSON.parse(at("package.json")), {
+    name: "my-app",
+    private: true,
+    type: "module",
+    dependencies: { "@zuke/core": NODE_CORE },
+  });
+  assertEquals(JSON.parse(at("zuke.json")), {
+    name: "Acme",
+    build: "build.ts",
+    runtime: "node",
+  });
+  assertEquals(at(".gitignore"), ".zuke/\nnode_modules/\n");
+  assertEquals(JSON.parse(at(".mcp.json")).mcpServers.zuke, {
+    command: "./zuke",
+    args: ["mcp"],
+  });
+  for (const name of ["zuke", "zuke.ps1", ".mcp.json", "build.ts"]) {
+    assertEquals(/deno/i.test(at(name)), false, name);
+  }
+});
+
+Deno.test("runSetup --runtime node names a package after the working directory for '.'", async () => {
+  const host = new FakeHost();
+  await runSetup({ dir: ".", force: false, name: "A", runtime: "node" }, host);
+  const name = JSON.parse(host.files.get("package.json") ?? "").name;
+  assertEquals(/^[a-z0-9][a-z0-9._-]*$/.test(name), true, name);
+  const root = new FakeHost();
+  await runSetup({ dir: "/", force: false, name: "A", runtime: "node" }, root);
+  assertEquals(
+    JSON.parse(root.files.get("//package.json") ?? "").name,
+    "zuke-build",
+  );
+});
+
+Deno.test("runSetup --runtime node merges into an existing package.json", async () => {
+  const host = new FakeHost({
+    "package.json": JSON.stringify({
+      name: "keep",
+      dependencies: { left: "1" },
+    }),
+  });
+  const result = await runSetup(
+    { dir: ".", force: false, name: "A", runtime: "node" },
+    host,
+  );
+  assertEquals(
+    result.files.find((f) => f.path === "package.json")?.status,
+    "overwritten",
+  );
+  assertEquals(JSON.parse(host.files.get("package.json") ?? ""), {
+    name: "keep",
+    dependencies: { left: "1", "@zuke/core": NODE_CORE },
+    type: "module",
+  });
+});
+
+Deno.test("runSetup --runtime node leaves a complete package.json, and keeps another type with a note", async () => {
+  const complete = {
+    name: "p",
+    type: "module",
+    dependencies: { "@zuke/core": "npm:@zuke-build/core@^1.2.0" },
+  };
+  const host = new FakeHost({ "package.json": JSON.stringify(complete) });
+  const result = await runSetup(
+    { dir: ".", force: false, name: "A", runtime: "node" },
+    host,
+  );
+  assertEquals(
+    result.files.find((f) => f.path === "package.json")?.status,
+    "skipped",
+  );
+  assertEquals(JSON.parse(host.files.get("package.json") ?? ""), complete);
+
+  const cjs = new FakeHost({ "package.json": '{"type":"commonjs"}' });
+  const noted = await runSetup(
+    { dir: ".", force: false, name: "A", runtime: "node" },
+    cjs,
+  );
+  assertEquals(
+    JSON.parse(cjs.files.get("package.json") ?? "").type,
+    "commonjs",
+  );
+  assertEquals(noted.notes.length, 1);
+  assertStringIncludes(noted.notes[0], '"commonjs"');
+});
+
+Deno.test("runSetup --runtime node reports a package.json that is not JSON as a manual step", async () => {
+  const host = new FakeHost({ "package.json": "{ nope" });
+  const result = await runSetup(
+    { dir: ".", force: false, name: "A", runtime: "node" },
+    host,
+  );
+  assertEquals(host.files.get("package.json"), "{ nope");
+  assertEquals(result.manualSteps.length, 1);
+  assertStringIncludes(result.manualSteps[0], NODE_CORE);
+});
+
+Deno.test("runSetup --runtime node merges node_modules/ into an existing .gitignore", async () => {
+  const host = new FakeHost({ ".gitignore": "dist\n.zuke/" });
+  await runSetup({ dir: ".", force: false, name: "A", runtime: "node" }, host);
+  assertEquals(host.files.get(".gitignore"), "dist\n.zuke/\nnode_modules/\n");
+  await runSetup({ dir: ".", force: false, name: "A", runtime: "node" }, host);
+  assertEquals(host.files.get(".gitignore"), "dist\n.zuke/\nnode_modules/\n");
+});
+
+Deno.test("runSetup refuses --runtime node with --sdk, and treats deno as today's setup", async () => {
+  await assertRejects(
+    () =>
+      runSetup(
+        {
+          dir: ".",
+          force: false,
+          name: "A",
+          runtime: "node",
+          sdk: { pin: testPin("2.4.0", "1.2.0") },
+        },
+        new FakeHost(),
+      ),
+    Error,
+    "--runtime",
+  );
+  const host = new FakeHost();
+  await runSetup({ dir: ".", force: false, name: "A", runtime: "deno" }, host);
+  assertEquals(host.files.has("deno.json"), true);
+  assertEquals(host.files.has("package.json"), false);
+  assertEquals(host.files.get("zuke.json")?.includes("runtime"), false);
+});

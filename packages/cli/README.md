@@ -6,6 +6,7 @@ The `zuke` command-line tool — scaffold
 ```sh
 deno install -A -g -n zuke jsr:@zuke/cli
 zuke setup
+zuke setup --runtime node  # a Node project: package.json and Node launchers, no Deno
 zuke setup --sdk python   # a build.py, with launchers that run the zuke binary: no Deno
 zuke upgrade              # later: move the installed CLI to the latest release
 zuke upgrade --engine     # or move a Python project to the latest zuke release
@@ -169,12 +170,6 @@ interface InstallHost
   realPath(path: string): Promise<string>
     `path` with every symbolic link resolved (`Deno.realPath`).
 
-interface NodeLauncherOptions
-  What a Node launcher is rendered for.
-
-  buildFile?: string
-    The build file the launcher runs. Omitted: `zuke.ts`.
-
 interface Ownership
   What the trust gate needs to know about a filesystem entry.
 
@@ -247,6 +242,8 @@ interface SetupFlags
   sdk?: string
     The SDK whose build to scaffold (`--sdk python`): a `build.py` the engine
     runs, in place of a `zuke.ts`. Unset: a TypeScript build.
+  runtime?: string
+    The runtime of a TypeScript build (`--runtime deno|node`). Unset: Deno, asked when interactive.
   zuke?: string
     The `zuke` release an SDK build's launchers run (`--zuke`), whose engine
     `zuke.json` pins. Unset: this zuke's own release.

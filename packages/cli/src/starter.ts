@@ -13,6 +13,7 @@
  */
 
 import { BUILD_FIELD, BUILD_FILE } from "./build_file.ts";
+import { type ProjectRuntime, RUNTIME_FIELD } from "./runtime_field.ts";
 
 /**
  * The `jsr:` dependency a scaffolded `deno.json` maps `@zuke/<name>` to.
@@ -24,6 +25,16 @@ import { BUILD_FIELD, BUILD_FILE } from "./build_file.ts";
  */
 export function zukeDependency(name: string): string {
   return `jsr:@zuke/${name}@^1`;
+}
+
+/**
+ * The `package.json` dependency a Node project maps `@zuke/<name>` to: the npm
+ * package every Zuke package is also published as, behind an alias so the build
+ * imports the same bare specifier. The caret major is the one
+ * {@link zukeDependency} pins.
+ */
+export function zukeNpmDependency(name: string): string {
+  return `npm:@zuke-build/${name}@^1`;
 }
 
 /**
@@ -67,11 +78,17 @@ await run(${name});
  * The starter `zuke.json` config. Its presence at the repository root is what
  * `@zuke/core`'s `repoRoot()` walks up to find; the recorded `name` is the
  * build class for reference, and `build` names the build file when it is not
- * the default `zuke.ts`.
+ * the default `zuke.ts`. A `runtime` other than Deno is recorded as the
+ * `runtime` field.
  */
-export function starterConfig(name: string, buildFile: string): string {
+export function starterConfig(
+  name: string,
+  buildFile: string,
+  runtime: ProjectRuntime = "deno",
+): string {
   const build = buildFile === BUILD_FILE ? {} : { [BUILD_FIELD]: buildFile };
-  return `${JSON.stringify({ name, ...build }, null, 2)}\n`;
+  const on = runtime === "deno" ? {} : { [RUNTIME_FIELD]: runtime };
+  return `${JSON.stringify({ name, ...build, ...on }, null, 2)}\n`;
 }
 
 /** The build file `zuke setup --sdk python` writes, which `sdk.command` runs. */

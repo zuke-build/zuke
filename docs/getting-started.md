@@ -53,6 +53,23 @@ Already have a `@zuke/*` package's API in hand? `zuke doc <package>` prints it
 directory so a surrounding Node project's `@types/node` resolution doesn't drown
 the output.
 
+## Scaffold a Node project with `zuke setup --runtime node`
+
+A build can run on Node 26 (which strips TypeScript types natively) instead of
+Deno:
+
+```sh
+zuke setup --runtime node                   # in your project
+./zuke                                      # run the build
+```
+
+It writes a starter `build.ts`, a `package.json` (created, or merged: `type` and
+the `@zuke/core` dependency, `npm:@zuke-build/core@^1`, are added only when
+absent), a `zuke.json` with `"runtime": "node"`, Node launchers that bootstrap a
+pinned, checksum-verified Node when none is on `PATH`, and a `.gitignore`
+covering `node_modules/`. No `deno.json`, and no Deno anywhere. With `--mcp`,
+`.mcp.json` registers `./zuke mcp`.
+
 ## Scaffold a Python project with `zuke setup --sdk python`
 
 A build can be written in Python with the

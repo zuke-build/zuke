@@ -71,6 +71,14 @@ export function binaryMcpEntry(allowRun: boolean): McpServerEntry {
 }
 
 /**
+ * The entry a Node project is registered with: its own `./zuke` launcher, which
+ * finds or fetches the Node the build runs on.
+ */
+export function nodeMcpEntry(allowRun: boolean): McpServerEntry {
+  return { command: "./zuke", args: mcpArgs(allowRun) };
+}
+
+/**
  * A parsed `.mcp.json`, ready to merge. `present` means a well-formed
  * {@link McpServerEntry} is registered as `zuke` (whatever its arguments — a
  * deliberate `--allow-run` or transport choice survives a re-run without

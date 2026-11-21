@@ -176,6 +176,7 @@ export class FakePrompter implements Prompter {
     if (question.startsWith("Launchers: ")) {
       return this.bootstrap === "" ? fallback : this.bootstrap;
     }
+    if (question.startsWith("Runtime ")) return fallback;
     if (question === "Build file") return this.buildFiles.shift() ?? fallback;
     return this.answer === "" ? fallback : this.answer;
   }
