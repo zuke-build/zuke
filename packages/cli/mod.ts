@@ -274,15 +274,17 @@ function isRuntime(value: string): value is ProjectRuntime {
  *
  * @throws {Error} naming a value that is not a runtime.
  */
-function runtimeOption(flags: SetupFlags): ProjectRuntime | undefined {
-  if (flags.runtime === undefined) return undefined;
-  if (!isRuntime(flags.runtime)) {
+function runtimeOption(
+  runtime: string | undefined,
+): ProjectRuntime | undefined {
+  if (runtime === undefined) return undefined;
+  if (!isRuntime(runtime)) {
     throw new Error(
-      `zuke setup: unknown --runtime "${flags.runtime}" — a TypeScript ` +
+      `zuke setup: unknown --runtime "${runtime}" — a TypeScript ` +
         "build runs on deno or node.",
     );
   }
-  return flags.runtime;
+  return runtime;
 }
 
 /** The SDKs `--sdk` accepts: the ones whose build `@zuke/engine` can host. */
@@ -601,7 +603,7 @@ async function commandSetup(
   const flags = parseSetupFlags(args);
   // Resolved before any question is asked, so an unknown SDK or an
   // unreachable registry stops the run before the wizard starts.
-  let runtime = runtimeOption(flags);
+  let runtime = runtimeOption(flags.runtime);
   const sdk = await sdkOption(flags, upgradeHost);
   let name = flags.name ?? "MyBuild";
   let force = flags.force;
