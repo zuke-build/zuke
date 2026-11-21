@@ -15,11 +15,16 @@ import { nodeLauncherPowerShell } from "../../packages/cli/src/node_launcher.ts"
 
 const WINDOWS = Deno.build.os === "windows";
 const DOWNLOAD = "Invoke-WebRequest -Uri $downloadUrl -OutFile $archive";
+const SYSTEM = Deno.env.get("SystemRoot") ?? "C:\\Windows";
+// Windows PowerShell's own modules: a PSModulePath inherited from pwsh 7 (the
+// runner's shell) hides built-ins such as Get-FileHash from it.
+const MODULES = `${SYSTEM}\\System32\\WindowsPowerShell\\v1.0\\Modules`;
 
 /** Runs a PowerShell command and fails the test when it does not succeed. */
 async function powershell(command: string): Promise<void> {
   const out = await new Deno.Command("powershell.exe", {
     args: ["-NoProfile", "-NonInteractive", "-Command", command],
+    env: { PSModulePath: MODULES },
     stdout: "null",
     stderr: "piped",
   }).output();
@@ -57,7 +62,6 @@ async function world(root: string, beforeCopy = "") {
   const bin = `${root}\\bin`;
   await Deno.mkdir(bin);
   const nodeHome = `${root}\\cache`;
-  const system = Deno.env.get("SystemRoot") ?? "C:\\Windows";
   const run = async (env: Record<string, string>) => {
     const out = await new Deno.Command("powershell.exe", {
       args: [
@@ -73,7 +77,8 @@ async function world(root: string, beforeCopy = "") {
       env: {
         // No node or npm but the ones a test puts in bin.
         PATH:
-          `${bin};${system}\\System32;${system}\\System32\\WindowsPowerShell\\v1.0`,
+          `${bin};${SYSTEM}\\System32;${SYSTEM}\\System32\\WindowsPowerShell\\v1.0`,
+        PSModulePath: MODULES,
         ZUKE_NODE_HOME: nodeHome,
         ZUKE_TEST_NODE_ZIP: zip,
         NODE_VERSION: "9.9.9",
