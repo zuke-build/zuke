@@ -26746,6 +26746,9 @@ interface BuildLocation
   build: string
     The build file's name: the one the root's `zuke.json` names in its
     `build` field, `zuke.ts` when it names none.
+  runtime: ProjectRuntime
+    The runtime the build file runs on: the `runtime` field of the root's
+    `zuke.json`, `deno` when it names none.
   engine: string | null
     The `@zuke/engine` release that runs the build when the root has no
     build file: the `engine` field of its `zuke.json`, which then describes a
@@ -26978,7 +26981,8 @@ type BinaryTarget = "aarch64-apple-darwin" | "x86_64-apple-darwin" | "aarch64-un
 
 type BuildRunner = (root: string, args: string[], program?: string, env?: Readonly<Record<string, string>>) => Promise<number>
   Runs `program <args>` from `root` — Deno when `program` is omitted, else the
-  project's launcher at that path — and resolves to its exit code: the
+  project's launcher at that path, or {@link NODE} for a build file on Node —
+  and resolves to its exit code: the
   injectable subprocess seam, so the forwarding is testable without a build.
   `env` adds variables to the environment the child inherits.
 
@@ -26988,6 +26992,9 @@ type DocRunner = (denoArgs: string[]) => Promise<number>
 
 type ImportSource = "package.json" | "Makefile" | "pyproject.toml"
   The kinds of project `zuke import` can read.
+
+type ProjectRuntime = "deno" | "node"
+  A runtime a project's build file can run on.
 
 ========================================================================
 # @zuke/codecov
