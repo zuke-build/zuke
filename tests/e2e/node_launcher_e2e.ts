@@ -329,3 +329,37 @@ Deno.test({
     }
   },
 });
+
+Deno.test({
+  name:
+    "the node launcher uses the winner's Node when its own rename loses the race",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const root = await Deno.makeTempDir();
+    try {
+      const w = await bootstrapWorld(root);
+      await Deno.mkdir(`${root}/winner/bin`, { recursive: true });
+      await script(
+        `${root}/winner/bin/node`,
+        `echo "winner $*" >> "${root}/log"`,
+      );
+      // An mv whose rename fails because the other launcher's landed first.
+      const realMv = await Deno.realPath(`${root}/tools/mv`);
+      await Deno.remove(`${root}/tools/mv`);
+      await script(
+        `${root}/tools/mv`,
+        `"${realMv}" "${root}/winner" "$2"; exit 1`,
+      );
+      const out = await w.run({ NODE_VERSION: "9.9.9", NODE_SHA256: w.sha });
+      assertEquals(out.code, 0, out.stderr);
+      assertEquals(await w.logged(), ["curl", "winner build.ts ci"]);
+      assertEquals(
+        (await Array.fromAsync(Deno.readDir(`${root}/.zuke/node`)))
+          .map((e) => e.name),
+        ["v9.9.9"],
+      );
+    } finally {
+      await Deno.remove(root, { recursive: true });
+    }
+  },
+});

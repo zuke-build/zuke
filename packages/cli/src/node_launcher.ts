@@ -172,11 +172,15 @@ ${bashFetchVerified("Node")}
   staging="$(mktemp -d "$node_root/.v$node_version.XXXXXX")"
   trap 'rm -rf "$work_dir" "$staging"' EXIT
   tar -xzf "$archive" -C "$staging" --strip-components=1
-  # The rename publishes ours; if a concurrent launcher published first, mv
-  # nests ours inside theirs instead, and we drop it and use theirs. Nothing
-  # already at $node_home is ever deleted: it may be another run's Node.
-  mv "$staging" "$node_home"
+  # The rename publishes ours. If a concurrent launcher published first, mv
+  # either fails (their rename won the race) or nests ours inside theirs; we
+  # drop ours and use theirs. Nothing already at $node_home is ever deleted: it
+  # may be another run's Node.
+  mv "$staging" "$node_home" 2>/dev/null || true
   rm -rf "$node_home/$(basename "$staging")"
+  # Here, not only in the trap: the exec below replaces this shell, so the
+  # EXIT trap never runs on success.
+  rm -rf "$staging" "$work_dir"
   if [ ! -x "$node_home/bin/node" ]; then
     echo "zuke: $node_home exists but holds no bin/node; remove it and run again." >&2
     exit 1
