@@ -13,9 +13,9 @@
  *
  * The chosen node's directory goes first on `PATH`, so the `npm` the build runs
  * is that node's. Dependencies are installed with `--ignore-scripts` before the
- * build starts: `npm ci` when `package-lock.json` is newer than `node_modules`
- * (or it is missing), `npm install` when there is a `package.json` and no
- * lockfile. The launcher is a Node project's own; it names no other stack.
+ * build starts: `npm ci` when `package-lock.json` is newer than the last
+ * successful install (or there is none), `npm install` when there is a
+ * `package.json` and no lockfile. The launcher is a Node project's own; it names no other stack.
  *
  * @module
  */
@@ -172,21 +172,30 @@ ${bashFetchVerified("Node")}
   staging="$(mktemp -d "$node_root/.v$node_version.XXXXXX")"
   trap 'rm -rf "$work_dir" "$staging"' EXIT
   tar -xzf "$archive" -C "$staging" --strip-components=1
-  rm -rf "$node_home"
+  # A published install always has bin/node, so anything else there is debris.
+  [ -x "$node_home/bin/node" ] || rm -rf "$node_home"
+  # The rename publishes ours; if a concurrent launcher published first, mv
+  # nests ours inside theirs instead, and we drop it and use theirs.
   mv "$staging" "$node_home"
+  rm -rf "$node_home/$(basename "$staging")"
   node_dir="$node_home/bin"
 fi
 
 # This node first on PATH, so the npm and npx the build runs are its own.
 export PATH="$node_dir:$PATH"
 
+# Written only after npm succeeds, so a failed install is retried next run.
+installed=node_modules/.zuke-installed
 if [ -f package-lock.json ]; then
-  if [ ! -d node_modules ] || [ package-lock.json -nt node_modules ]; then
+  if [ ! -f "$installed" ] || [ package-lock.json -nt "$installed" ]; then
+    rm -f "$installed"
     npm ci --ignore-scripts
+    mkdir -p node_modules && : > "$installed"
   fi
-elif [ -f package.json ] && [ ! -d node_modules ]; then
+elif [ -f package.json ] && [ ! -f "$installed" ]; then
   echo "zuke: no package-lock.json here yet — running npm install so one can be written." >&2
   npm install --ignore-scripts
+  mkdir -p node_modules && : > "$installed"
 fi
 
 exec node ${build} "$@"
@@ -294,9 +303,20 @@ ${pwshFetchVerified("Node")}
     New-Item -ItemType Directory -Force -Path $nodeRoot | Out-Null
     $staging = Join-Path $nodeRoot ".v$nodeVersion.$([System.Guid]::NewGuid())"
     Expand-Archive -Path $archive -DestinationPath $staging -Force
-    if (Test-Path $nodeHome) { Remove-Item -Recurse -Force $nodeHome }
+    # A published install always has node.exe, so anything else there is debris.
+    if (-not (Test-Path (Join-Path $nodeHome "node.exe")) -and (Test-Path $nodeHome)) {
+      Remove-Item -Recurse -Force $nodeHome
+    }
     $release = Get-ChildItem -Path $staging -Directory | Select-Object -First 1
-    Move-Item -Path $release.FullName -Destination $nodeHome
+    # The move publishes ours; if a concurrent launcher published first, ours
+    # is refused or nested inside theirs, and we drop it and use theirs.
+    try {
+      Move-Item -Path $release.FullName -Destination $nodeHome
+    } catch {
+      if (-not (Test-Path (Join-Path $nodeHome "node.exe"))) { throw }
+    }
+    $nested = Join-Path $nodeHome $release.Name
+    if (Test-Path $nested) { Remove-Item -Recurse -Force $nested }
   } finally {
     Remove-Item -Recurse -Force $workDir -ErrorAction SilentlyContinue
     if ($staging) { Remove-Item -Recurse -Force $staging -ErrorAction SilentlyContinue }
@@ -308,19 +328,23 @@ ${pwshFetchVerified("Node")}
 # This node first on PATH, so the npm and npx the build runs are its own.
 $env:PATH = (Split-Path -Parent $node) + [IO.Path]::PathSeparator + $env:PATH
 
+# Written only after npm succeeds, so a failed install is retried next run.
+$installed = Join-Path "node_modules" ".zuke-installed"
 $install = $null
 if (Test-Path "package-lock.json") {
-  if (-not (Test-Path "node_modules") -or
-    (Get-Item "package-lock.json").LastWriteTime -gt (Get-Item "node_modules").LastWriteTime) {
+  if (-not (Test-Path $installed) -or
+    (Get-Item "package-lock.json").LastWriteTime -gt (Get-Item $installed).LastWriteTime) {
     $install = "ci"
   }
-} elseif ((Test-Path "package.json") -and -not (Test-Path "node_modules")) {
+} elseif ((Test-Path "package.json") -and -not (Test-Path $installed)) {
   Write-Warning "zuke: no package-lock.json here yet - running npm install so one can be written."
   $install = "install"
 }
 if ($install) {
+  if (Test-Path $installed) { Remove-Item -Force $installed }
   & npm $install --ignore-scripts
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  New-Item -ItemType File -Force -Path $installed | Out-Null
 }
 
 & $node (Join-Path $dir "${build}") @args

@@ -5,7 +5,7 @@
  * End-to-end: the bash Node launcher, run for real against a fake `node` and a
  * fake `npm` on `PATH` (no network, no real Node). It must run the build with
  * the node it finds, and install dependencies with `npm ci --ignore-scripts`
- * when `package-lock.json` is newer than `node_modules`. Its bootstrap is run
+ * when `package-lock.json` is newer than the last successful install. Its bootstrap is run
  * too, against a fake `curl` that serves a local tarball: the download is
  * verified, unpacked and cached, a cached Node is reused without a download,
  * a checksum mismatch installs nothing, and a failing npm stops the run.
@@ -37,14 +37,9 @@ Deno.test({
       await script(`${bin}/npm`, `echo "npm $*" >> "${log}"`);
       await Deno.writeTextFile(`${root}/project/build.ts`, "");
       await Deno.writeTextFile(`${root}/project/package.json`, "{}");
-      // cspell:ignore utime mktemp
-      // Make the lockfile strictly newer than node_modules.
+      // cspell:ignore mktemp
+      // node_modules exists, but no install has succeeded yet.
       await Deno.writeTextFile(`${root}/project/package-lock.json`, "{}");
-      await Deno.utime(
-        `${root}/project/node_modules`,
-        new Date(Date.now() - 60_000),
-        new Date(Date.now() - 60_000),
-      );
       const launcher = `${root}/project/zuke`;
       await Deno.writeTextFile(
         launcher,
@@ -52,17 +47,26 @@ Deno.test({
         { mode: 0o755 },
       );
 
-      const { code, stderr } = await new Deno.Command(launcher, {
-        args: ["lint", "--plain"],
-        env: { PATH: `${bin}:/usr/bin:/bin`, HOME: root },
-        clearEnv: true,
-        stdout: "null",
-        stderr: "piped",
-      }).output();
-      assertEquals(code, 0, new TextDecoder().decode(stderr));
+      const run = async () => {
+        const { code, stderr } = await new Deno.Command(launcher, {
+          args: ["lint", "--plain"],
+          env: { PATH: `${bin}:/usr/bin:/bin`, HOME: root },
+          clearEnv: true,
+          stdout: "null",
+          stderr: "piped",
+        }).output();
+        assertEquals(code, 0, new TextDecoder().decode(stderr));
+      };
+      await run();
+      // The second run finds the install it recorded and skips npm.
+      await run();
       assertEquals(
         (await Deno.readTextFile(log)).trim().split("\n"),
-        ["npm ci --ignore-scripts", "node build.ts lint --plain"],
+        [
+          "npm ci --ignore-scripts",
+          "node build.ts lint --plain",
+          "node build.ts lint --plain",
+        ],
       );
     } finally {
       await Deno.remove(root, { recursive: true });
@@ -81,6 +85,7 @@ async function toolsDir(root: string): Promise<string> {
     "bash",
     "env",
     "dirname",
+    "basename",
     "sed",
     "sleep",
     "mktemp",
@@ -234,18 +239,65 @@ Deno.test({
 });
 
 Deno.test({
-  name: "the node launcher stops when npm fails, and never runs the build",
+  name:
+    "the node launcher stops when npm fails, never runs the build, and retries the install",
   ignore: Deno.build.os === "windows",
   async fn() {
     const root = await Deno.makeTempDir();
     try {
       const w = await bootstrapWorld(root);
-      await script(`${w.bin}/npm`, `echo npm >> "${root}/log"; exit 3`);
+      // npm fails part-way, after it has created node_modules.
+      await script(
+        `${w.bin}/npm`,
+        `echo npm >> "${root}/log"; mkdir -p node_modules; exit 3`,
+      );
       await Deno.writeTextFile(`${root}/project/package.json`, "{}");
       await Deno.writeTextFile(`${root}/project/package-lock.json`, "{}");
-      const out = await w.run({ NODE_VERSION: "9.9.9", NODE_SHA256: w.sha });
+      const pinned = { NODE_VERSION: "9.9.9", NODE_SHA256: w.sha };
+      const out = await w.run(pinned);
       assertEquals(out.code, 3, out.stderr);
       assertEquals(await w.logged(), ["curl", "npm"]);
+      // The next run installs again rather than trusting that node_modules.
+      await script(`${w.bin}/npm`, `echo npm >> "${root}/log"`);
+      const retry = await w.run(pinned);
+      assertEquals(retry.code, 0, retry.stderr);
+      assertEquals(await w.logged(), [
+        "curl",
+        "npm",
+        "npm",
+        "node build.ts ci",
+      ]);
+    } finally {
+      await Deno.remove(root, { recursive: true });
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "the node launcher uses a Node a concurrent launcher published first, and leaves no copy of its own",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const root = await Deno.makeTempDir();
+    try {
+      const w = await bootstrapWorld(root);
+      // The other launcher's Node lands in the cache while this one downloads.
+      await Deno.mkdir(`${root}/winner/bin`, { recursive: true });
+      await script(
+        `${root}/winner/bin/node`,
+        `echo "winner $*" >> "${root}/log"`,
+      );
+      await script(
+        `${w.bin}/curl`,
+        `out=""; while [ $# -gt 0 ]; do [ "$1" = "-o" ] && { out="$2"; shift; }; shift; done\necho curl >> "${root}/log"\nmkdir -p "${root}/.zuke/node"\nmv "${root}/winner" "${root}/.zuke/node/v9.9.9"\ncat "${w.tarball}" > "$out"`,
+      );
+      const out = await w.run({ NODE_VERSION: "9.9.9", NODE_SHA256: w.sha });
+      assertEquals(out.code, 0, out.stderr);
+      assertEquals(await w.logged(), ["curl", "winner build.ts ci"]);
+      const names = async (dir: string) =>
+        (await Array.fromAsync(Deno.readDir(dir))).map((e) => e.name);
+      assertEquals(await names(`${root}/.zuke/node`), ["v9.9.9"]);
+      assertEquals(await names(`${root}/.zuke/node/v9.9.9`), ["bin"]);
     } finally {
       await Deno.remove(root, { recursive: true });
     }
