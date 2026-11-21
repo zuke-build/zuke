@@ -34,6 +34,7 @@ import {
   type BinaryPin,
   binaryReleaseTag,
 } from "./binary_pin.ts";
+import { LICENSE_HEADER } from "./launcher_shared.ts";
 import { FORWARDED_ENV, LAUNCHER_ROOT_ENV } from "./dispatch.ts";
 
 /** Which binary launcher variant to render. */
@@ -52,10 +53,6 @@ export const BINARY_LAUNCHER_MARKER =
 
 /** The line a plain binary launcher carries, which `zuke upgrade --engine` keeps it plain by. */
 export const PLAIN_BINARY_LAUNCHER = "# Runs the zuke on PATH:";
-
-/** The MIT notice every generated launcher opens with (after its shebang). */
-const LICENSE_HEADER = `# Copyright (c) 2026 the Zuke contributors
-# SPDX-License-Identifier: MIT`;
 
 /* cspell:disable */
 

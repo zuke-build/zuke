@@ -103,6 +103,7 @@ export type { SdkSetupOptions } from "./src/setup.ts";
 export type { BinaryPin, BinaryTarget } from "./src/binary_pin.ts";
 export type { ProjectHost } from "./src/project.ts";
 export type { ProjectRuntime } from "./src/runtime_field.ts";
+export type { NodeLauncherOptions } from "./src/node_launcher.ts";
 export type {
   BuildLocation,
   BuildProbe,

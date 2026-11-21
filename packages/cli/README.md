@@ -169,6 +169,12 @@ interface InstallHost
   realPath(path: string): Promise<string>
     `path` with every symbolic link resolved (`Deno.realPath`).
 
+interface NodeLauncherOptions
+  What a Node launcher is rendered for.
+
+  buildFile?: string
+    The build file the launcher runs. Omitted: `zuke.ts`.
+
 interface Ownership
   What the trust gate needs to know about a filesystem entry.
 
