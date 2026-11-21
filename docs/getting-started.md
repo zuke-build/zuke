@@ -68,7 +68,9 @@ the `@zuke/core` dependency, `npm:@zuke-build/core@^1`, are added only when
 absent), a `zuke.json` with `"runtime": "node"`, Node launchers that bootstrap a
 pinned, checksum-verified Node when none is on `PATH`, and a `.gitignore`
 covering `node_modules/`. No `deno.json`, and no Deno anywhere. With `--mcp`,
-`.mcp.json` registers `./zuke mcp`.
+`.mcp.json` registers `node <build file> mcp`, which works on every platform
+once Node 26 or newer is on `PATH` and a first `./zuke` run has installed the
+dependencies.
 
 ## Scaffold a Python project with `zuke setup --sdk python`
 

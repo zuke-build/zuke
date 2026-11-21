@@ -75,7 +75,9 @@ deno` is the default; it cannot combine with `--sdk`). Setup writes
 added when absent), a `zuke.json` with `"runtime": "node"`, Node launchers that
 bootstrap a pinned, checksum-verified Node, and a `.gitignore` entry for
 `node_modules/`. **A Node project needs no Deno** — never tell its user to
-install it. With `--mcp`, `.mcp.json` registers `./zuke mcp`.
+install it. With `--mcp`, `.mcp.json` registers `node <build file> mcp`, which
+works on every platform once Node 26 or newer is on `PATH` and a first `./zuke`
+run has installed the dependencies.
 
 ### A Python project: `zuke setup --sdk python`
 

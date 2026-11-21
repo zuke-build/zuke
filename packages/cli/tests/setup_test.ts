@@ -1277,8 +1277,8 @@ Deno.test("runSetup --runtime node writes build.ts, package.json, a Node zuke.js
   });
   assertEquals(at(".gitignore"), ".zuke/\nnode_modules/\n");
   assertEquals(JSON.parse(at(".mcp.json")).mcpServers.zuke, {
-    command: "./zuke",
-    args: ["mcp"],
+    command: "node",
+    args: ["build.ts", "mcp"],
   });
   for (const name of ["zuke", "zuke.ps1", ".mcp.json", "build.ts"]) {
     assertEquals(/deno/i.test(at(name)), false, name);

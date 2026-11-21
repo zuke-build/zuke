@@ -742,7 +742,7 @@ export async function runSetup(
         // registered it: its project needs nothing from Deno's stack. A
         // TypeScript build stays on Deno.
         node
-          ? nodeMcpEntry(options.mcp.allowRun)
+          ? nodeMcpEntry(options.mcp.allowRun, buildFile)
           : sdk === undefined
           ? mcpServerEntry(options.mcp.allowRun, buildFile)
           : binaryMcpEntry(options.mcp.allowRun),

@@ -71,11 +71,17 @@ export function binaryMcpEntry(allowRun: boolean): McpServerEntry {
 }
 
 /**
- * The entry a Node project is registered with: its own `./zuke` launcher, which
- * finds or fetches the Node the build runs on.
+ * The entry a Node project is registered with: `node zuke.ts mcp`, the Node
+ * counterpart of {@link mcpServerEntry}. `.mcp.json` is committed and shared,
+ * so it names the runtime rather than a launcher script, which a Windows MCP
+ * client could not start. It needs Node 26 or newer on `PATH` and the
+ * project's dependencies installed, which a first `./zuke` run does.
  */
-export function nodeMcpEntry(allowRun: boolean): McpServerEntry {
-  return { command: "./zuke", args: mcpArgs(allowRun) };
+export function nodeMcpEntry(
+  allowRun: boolean,
+  buildFile: string,
+): McpServerEntry {
+  return { command: "node", args: [buildFile, ...mcpArgs(allowRun)] };
 }
 
 /**
