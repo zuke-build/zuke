@@ -363,3 +363,22 @@ Deno.test({
     }
   },
 });
+
+Deno.test({
+  name:
+    "the node launcher bootstraps when the node on PATH cannot report its version",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const root = await Deno.makeTempDir();
+    try {
+      const w = await bootstrapWorld(root);
+      // A version-manager shim with no runtime behind it.
+      await script(`${w.bin}/node`, "exit 1");
+      const out = await w.run({ NODE_VERSION: "9.9.9", NODE_SHA256: w.sha });
+      assertEquals(out.code, 0, out.stderr);
+      assertEquals(await w.logged(), ["curl", "node build.ts ci"]);
+    } finally {
+      await Deno.remove(root, { recursive: true });
+    }
+  },
+});

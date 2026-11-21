@@ -109,10 +109,11 @@ node_version="\${NODE_VERSION:-$DEFAULT_NODE_VERSION}"
 node_version="\${node_version#v}"
 node_home="\${ZUKE_NODE_HOME:-$HOME/.zuke/node}/v$node_version"
 
-# The major version of the node on PATH, empty when there is none.
+# The major version of the node on PATH, empty when there is none or it cannot
+# say (a version-manager shim with no runtime installed, say).
 path_major=""
 if command -v node >/dev/null 2>&1; then
-  path_major="$(node --version 2>/dev/null | sed -n 's/^v\\([0-9][0-9]*\\)\\..*/\\1/p')"
+  path_major="$(node --version 2>/dev/null | sed -n 's/^v\\([0-9][0-9]*\\)\\..*/\\1/p')" || path_major=""
 fi
 
 if [ -n "$path_major" ] && [ "$path_major" -ge "$MIN_NODE_MAJOR" ]; then
@@ -262,7 +263,8 @@ $nodeHome = Join-Path $nodeRoot "v$nodeVersion"
 function Resolve-Node {
   $onPath = Get-Command node -CommandType Application -ErrorAction SilentlyContinue
   if ($onPath) {
-    $reported = & $onPath.Source --version
+    # A shim that cannot report a version is treated as no node at all.
+    $reported = try { & $onPath.Source --version 2>$null } catch { "" }
     if ($reported -match '^v(\\d+)\\.' -and [int]$Matches[1] -ge $MinNodeMajor) {
       return $onPath.Source
     }
