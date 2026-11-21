@@ -887,7 +887,20 @@ async function setupPackageJson(
         'the scaffolded build uses import syntax and needs "type": "module".',
     );
   }
+  const declared = root.dependencies;
+  const added = !(isRecord(declared) && dependency[0][0] in declared);
   mergeMissing(root, "dependencies", dependency);
+  // The launcher runs npm ci, which refuses a lockfile that no longer matches
+  // package.json, so a dependency added beside an existing lock needs one
+  // npm install to record it.
+  const lock = joinPath(dir, "package-lock.json");
+  if (added && await host.exists(lock)) {
+    steps.push(
+      `Run \`npm install --ignore-scripts\` in ${dir} once to add ` +
+        `${dependency[0][0]} to package-lock.json: ./zuke installs with ` +
+        "npm ci, which refuses a lockfile that does not match package.json.",
+    );
+  }
   if (exists && JSON.stringify(root) === original) {
     host.log(`  skip     ${name}  (type and @zuke/core already declared)`);
     return { path: name, status: "skipped" };

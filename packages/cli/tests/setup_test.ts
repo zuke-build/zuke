@@ -1320,6 +1320,36 @@ Deno.test("runSetup --runtime node merges into an existing package.json", async 
   });
 });
 
+Deno.test("runSetup --runtime node asks for one npm install when it adds @zuke/core beside a lockfile", async () => {
+  const locked = new FakeHost({
+    "package.json": JSON.stringify({ name: "p", type: "module" }),
+    "package-lock.json": "{}",
+  });
+  const result = await runSetup(
+    { dir: ".", force: false, name: "A", runtime: "node" },
+    locked,
+  );
+  assertEquals(result.manualSteps.length, 1);
+  assertStringIncludes(result.manualSteps[0], "npm install --ignore-scripts");
+  assertStringIncludes(result.manualSteps[0], "package-lock.json");
+
+  // Nothing to record: the dependency was already declared, or there is no lock.
+  const declared = new FakeHost({
+    "package.json": JSON.stringify({
+      dependencies: { "@zuke/core": NODE_CORE },
+    }),
+    "package-lock.json": "{}",
+  });
+  const unlocked = new FakeHost({ "package.json": "{}" });
+  for (const host of [declared, unlocked]) {
+    const quiet = await runSetup(
+      { dir: ".", force: false, name: "A", runtime: "node" },
+      host,
+    );
+    assertEquals(quiet.manualSteps, []);
+  }
+});
+
 Deno.test("runSetup --runtime node leaves a complete package.json, and keeps another type with a note", async () => {
   const complete = {
     name: "p",
