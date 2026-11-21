@@ -311,6 +311,8 @@ ${pwshFetchVerified("Node")}
     $staging = Join-Path $nodeRoot ".v$nodeVersion.$([System.Guid]::NewGuid())"
     Expand-Archive -Path $archive -DestinationPath $staging -Force
     $release = Get-ChildItem -Path $staging -Directory | Select-Object -First 1
+    # A name of its own, so a nested copy below is only ever this run's.
+    $release = Rename-Item -Path $release.FullName -NewName ([System.Guid]::NewGuid()) -PassThru
     # The move publishes ours; if a concurrent launcher published first, ours
     # is refused or nested inside theirs, and we drop it and use theirs.
     # Nothing already at $nodeHome is ever deleted: it may be another run's Node.
@@ -320,7 +322,7 @@ ${pwshFetchVerified("Node")}
       if (-not (Test-Path $nodeHome)) { throw }
     }
     $nested = Join-Path $nodeHome $release.Name
-    if (Test-Path $nested) { Remove-Item -Recurse -Force $nested }
+    Remove-Item -Recurse -Force $nested -ErrorAction SilentlyContinue
     if (-not (Test-Path (Join-Path $nodeHome "node.exe"))) {
       throw "zuke: $nodeHome exists but holds no node.exe; remove it and run again."
     }
