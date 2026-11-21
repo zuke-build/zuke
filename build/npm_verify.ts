@@ -48,7 +48,7 @@
  * decision here runs against fakes.
  */
 
-import { type AbsolutePath, FileTasks } from "@zuke/core";
+import { type AbsolutePath, FileTasks, HttpError } from "@zuke/core";
 import { NpmTasks } from "@zuke/npm";
 import { messageOf } from "../packages/core/src/internal.ts";
 import {
@@ -140,6 +140,24 @@ export interface VerifyDeps {
   wait(): Promise<void>;
 }
 
+/**
+ * The attestations document at `url`. The registry can answer 404 for a
+ * version's attestations for a while after it publishes the version itself,
+ * so a 404 is looked for again, as a missing version is (`deps.attempts`
+ * times, `deps.wait` apart); anything else, or the last 404, rejects.
+ */
+async function attestationsAt(url: string, deps: VerifyDeps): Promise<unknown> {
+  for (let attempt = 1;; attempt++) {
+    try {
+      return await deps.source.attestations(url);
+    } catch (error) {
+      const notYet = error instanceof HttpError && error.status === 404;
+      if (!notYet || attempt >= deps.attempts) throw error;
+      await deps.wait();
+    }
+  }
+}
+
 /** What the provenance of a version says, before anything is installed. */
 async function checkProvenance(
   dist: NpmDist,
@@ -151,7 +169,7 @@ async function checkProvenance(
       problems: ["the version has no SLSA provenance attestation."],
     };
   }
-  const bundle = slsaBundle(await deps.source.attestations(dist.attestations));
+  const bundle = slsaBundle(await attestationsAt(dist.attestations, deps));
   const named = provenanceCommit(bundle);
   if ("problem" in named) {
     return { status: "mismatch", problems: [named.problem] };
