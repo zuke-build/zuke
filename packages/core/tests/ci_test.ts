@@ -1205,7 +1205,7 @@ Deno.test("every prelude option maps onto the action's own input names", () => {
         target: this.gate,
         harden: { egress: "block", allowedEndpoints: ["jsr.io:443", "x:443"] },
         checkout: { persistCredentials: true, fetchDepth: 0, ref: "main" },
-        bootstrap: { denoVersion: "v2.8.3" },
+        bootstrap: { denoVersion: "v2.8.3", nodeVersion: "26.13.1" },
       }],
     });
   }
@@ -1218,6 +1218,9 @@ Deno.test("every prelude option maps onto the action's own input names", () => {
   // Deno setup folds in too, so the third step disappears with the other two.
   assertStringIncludes(yaml, "deno-version: v2.8.3");
   assertEquals(yaml.includes("denoland/setup-deno"), false);
+  // Node's the same way, for a build that runs on it.
+  assertStringIncludes(yaml, "node-version: 26.13.1");
+  assertEquals(yaml.includes("actions/setup-node"), false);
 });
 
 Deno.test("bootstrap actionsCache renders the action's actions-cache input", () => {
