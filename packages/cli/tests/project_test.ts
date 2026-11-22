@@ -19,6 +19,7 @@ import { runRelock } from "../src/relock.ts";
 import { runCache } from "../src/cache.ts";
 import {
   dependencySpecifier,
+  npmOperand,
   parseDependencyArgs,
   runDependencies,
 } from "../src/dependencies.ts";
@@ -77,6 +78,18 @@ class FakeProjectHost implements ProjectHost {
   }
   deno(args: string[], cwd: string): Promise<number> {
     this.runs.push({ args, cwd });
+    return this.#ran();
+  }
+  /** Runs npm as `deno` runs Deno, recording into {@link npmRuns}. */
+  readonly npmRuns: { args: string[]; cwd: string }[] = [];
+  /** The files as each npm run found them. */
+  readonly npmSaw: Map<string, string>[] = [];
+  npm(args: string[], cwd: string): Promise<number> {
+    this.npmRuns.push({ args, cwd });
+    this.npmSaw.push(new Map(this.files));
+    return this.#ran();
+  }
+  #ran(): Promise<number> {
     if (this.throws !== undefined) return Promise.reject(this.throws);
     for (const [path, text] of Object.entries(this.writes)) {
       this.files.set(path, text);
@@ -632,4 +645,223 @@ Deno.test("the project commands refuse a build another SDK hosts, running nothin
   }
   assertEquals(host.runs, []);
   assertEquals(host.files.size, 0);
+});
+
+/** A probe that finds a project at {@link ROOT} whose build runs on Node. */
+const nodeProbe: BuildProbe = {
+  ...projectProbe,
+  readText: () => Promise.resolve('{ "runtime": "node" }'),
+};
+
+Deno.test("npmOperand maps a Zuke package to its npm alias, and passes npm: specifiers through", () => {
+  const docker = dependencySpecifier("add", "docker");
+  assertEquals(
+    npmOperand("add", docker),
+    "@zuke/docker@npm:@zuke-build/docker@^1",
+  );
+  assertEquals(npmOperand("remove", docker), "@zuke/docker");
+  assertEquals(npmOperand("add", "npm:left-pad@1"), "left-pad@1");
+  assertEquals(npmOperand("remove", "npm:left-pad@1"), "left-pad");
+  assertEquals(npmOperand("remove", "npm:@types/node@26"), "@types/node");
+  assertEquals(npmOperand("remove", "npm:@types/node"), "@types/node");
+  const refused = assertThrows(() => npmOperand("add", "jsr:@std/yaml"));
+  assertStringIncludes(String(refused), "npm:<name>");
+});
+
+Deno.test("zuke add and remove run npm in a Node project, never deno", async () => {
+  const host = new FakeProjectHost();
+  host.files.set(`${ROOT}/package.json`, "{}");
+  host.writes = { [`${ROOT}/package.json`]: '{"dependencies":{}}' };
+  const added = await collect((log) =>
+    runDependencies(
+      "add",
+      ["docker", "npm:left-pad@1"],
+      log,
+      host,
+      PLAIN_PAINT,
+      ROOT,
+      nodeProbe,
+    )
+  );
+  assertEquals(added.code, 0, added.logs);
+  assertStringIncludes(added.logs, "Added @zuke/docker, left-pad.");
+  assertEquals(host.runs, []);
+  assertEquals(host.npmRuns, [{
+    args: [
+      "install",
+      "--ignore-scripts",
+      "@zuke/docker@npm:@zuke-build/docker@^1",
+      "left-pad@1",
+    ],
+    cwd: ROOT,
+  }]);
+
+  // Nothing changed in package.json: nothing was there to remove.
+  const removed = await collect((log) =>
+    runDependencies(
+      "remove",
+      ["docker"],
+      log,
+      host,
+      PLAIN_PAINT,
+      ROOT,
+      nodeProbe,
+    )
+  );
+  assertEquals(removed.code, 1);
+  assertStringIncludes(removed.logs, "package.json has no @zuke/docker.");
+  assertEquals(host.npmRuns[1].args, [
+    "uninstall",
+    "--ignore-scripts",
+    "@zuke/docker",
+  ]);
+
+  const dry = await collect((log) =>
+    runDependencies(
+      "add",
+      ["gh", "--dry-run"],
+      log,
+      host,
+      PLAIN_PAINT,
+      ROOT,
+      nodeProbe,
+    )
+  );
+  assertEquals(dry.code, 0);
+  assertStringIncludes(
+    dry.logs,
+    "npm install --ignore-scripts @zuke/gh@npm:@zuke-build/gh@^1",
+  );
+  assertEquals(host.npmRuns.length, 2);
+
+  host.exit = 7;
+  const failed = await collect((log) =>
+    runDependencies("add", ["gh"], log, host, PLAIN_PAINT, ROOT, nodeProbe)
+  );
+  assertEquals(failed.code, 7);
+  assertStringIncludes(failed.logs, "npm install exited 7");
+  await assertRejects(() =>
+    runDependencies(
+      "add",
+      ["@std/yaml"],
+      () => {},
+      host,
+      PLAIN_PAINT,
+      ROOT,
+      nodeProbe,
+    )
+  );
+});
+
+Deno.test("zuke cache runs npm ci over a Node project's lock, or npm install without one", async () => {
+  const host = new FakeProjectHost();
+  const run = (args: string[]) =>
+    collect((log) => runCache(args, log, host, PLAIN_PAINT, ROOT, nodeProbe));
+  assertEquals((await run([])).code, 0);
+  host.files.set(`${ROOT}/package-lock.json`, "{}");
+  assertEquals((await run([])).code, 0);
+  assertEquals(host.npmRuns.map((r) => r.args), [
+    ["install", "--ignore-scripts"],
+    ["ci", "--ignore-scripts"],
+  ]);
+  assertStringIncludes(
+    (await run(["--dry-run"])).logs,
+    "npm ci --ignore-scripts",
+  );
+  host.exit = 2;
+  const failed = await run([]);
+  assertEquals(failed.code, 2);
+  assertStringIncludes(failed.logs, "npm ci exited 2");
+  await assertRejects(() => run(["main.ts"]), Error, "only --dry-run");
+  await assertRejects(
+    () => run(["--min-dep-age", "0"]),
+    Error,
+    "only --dry-run",
+  );
+  assertEquals(host.runs, []);
+});
+
+Deno.test("zuke relock regenerates a Node project's package-lock.json behind a backup", async () => {
+  const lock = `${ROOT}/package-lock.json`;
+  const backup = `${lock}.relock-backup`;
+  const host = new FakeProjectHost();
+  const run = (args: string[] = []) =>
+    collect((log) => runRelock(args, log, host, PLAIN_PAINT, ROOT, nodeProbe));
+  host.files.set(lock, "old");
+  host.writes = { [lock]: "new" };
+  const ok = await run();
+  assertEquals(ok.code, 0, ok.logs);
+  assertEquals(host.npmRuns[0].args, [
+    "install",
+    "--package-lock-only",
+    "--ignore-scripts",
+  ]);
+  assertEquals(host.files.get(lock), "new");
+  assertEquals(host.files.has(backup), false);
+  // npm found the lock emptied in place, not removed, so a link stays one;
+  // an unreadable lock takes npm's current format.
+  assertEquals(JSON.parse(host.npmSaw[0].get(lock) ?? ""), {
+    lockfileVersion: 3,
+    packages: {},
+  });
+
+  // A failed npm puts the old lock back and drops the backup.
+  host.writes = {};
+  host.exit = 1;
+  const failed = await run();
+  assertEquals(failed.code, 1);
+  assertStringIncludes(failed.logs, "package-lock.json is unchanged");
+  assertEquals(host.files.get(lock), "new");
+  assertEquals(host.files.has(backup), false);
+
+  // An npm that exits 0 but leaves the emptied lock (npm_config_dry_run=true,
+  // say) has regenerated nothing: the old lock goes back.
+  host.writes = {};
+  host.exit = 0;
+  const idle = await run();
+  assertEquals(idle.code, 1);
+  assertStringIncludes(idle.logs, "wrote no package-lock.json");
+  assertEquals(host.files.get(lock), "new");
+  assertEquals(host.files.has(backup), false);
+  host.exit = 1;
+
+  // The lock's own format version is kept.
+  host.files.set(lock, '{ "lockfileVersion": 2, "packages": { "x": {} } }');
+  await run();
+  assertEquals(JSON.parse(host.npmSaw.at(-1)?.get(lock) ?? ""), {
+    lockfileVersion: 2,
+    packages: {},
+  });
+  host.files.set(lock, "new");
+
+  // So does one that throws.
+  host.throws = new Error("spawn failed");
+  await assertRejects(() => run(), Error, "spawn failed");
+  assertEquals(host.files.get(lock), "new");
+  assertEquals(host.files.has(backup), false);
+  host.throws = undefined;
+
+  // A first lock has nothing to back up.
+  host.files.delete(lock);
+  host.exit = 0;
+  host.writes = { [lock]: "first" };
+  assertEquals((await run()).code, 0);
+  assertEquals(host.files.get(lock), "first");
+
+  // A backup left by an unfinished run stops the next one.
+  host.files.set(backup, "older");
+  await assertRejects(() => run(), Error, "did not finish");
+  assertEquals(host.files.get(lock), "first");
+
+  host.files.delete(backup);
+  assertStringIncludes(
+    (await run(["--dry-run"])).logs,
+    "npm install --package-lock-only",
+  );
+  await assertRejects(
+    () => run(["--min-dep-age", "0"]),
+    Error,
+    "only --dry-run",
+  );
+  assertEquals(host.runs, []);
 });

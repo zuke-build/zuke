@@ -817,6 +817,7 @@ Deno.test("zuke add maps short names and runs deno add in the project root", asy
         runs.push({ args, cwd });
         return Promise.resolve(0);
       },
+      npm: () => Promise.reject(new Error("a Deno project runs no npm")),
       denoVersion: () => "2.9.3",
     };
     await Deno.mkdir(`${dir}/sub`);
@@ -841,6 +842,119 @@ Deno.test("zuke add maps short names and runs deno add in the project root", asy
       await Deno.realPath(dir),
     );
   }, { prefix: "zuke-global-cli-" });
+});
+
+Deno.test("zuke add in a Node project runs npm install in its root, never deno", async () => {
+  await withTemp(async (dir) => {
+    await Deno.writeTextFile(
+      `${dir}/${CONFIG_FILE}`,
+      '{ "name": "Deps", "build": "build.ts", "runtime": "node" }\n',
+    );
+    await Deno.writeTextFile(`${dir}/build.ts`, "\n");
+    await Deno.writeTextFile(`${dir}/package.json`, "{}\n");
+    const runs: { tool: string; args: string[]; cwd: string }[] = [];
+    const projectHost = {
+      entry: (path: string) => defaultProjectHost.entry(path),
+      readText: (path: string) => Deno.readTextFile(path),
+      writeText: (path: string, text: string) => Deno.writeTextFile(path, text),
+      remove: (path: string) => Deno.remove(path),
+      deno: (args: string[], cwd: string) => {
+        runs.push({ tool: "deno", args, cwd });
+        return Promise.resolve(0);
+      },
+      npm: (args: string[], cwd: string) => {
+        runs.push({ tool: "npm", args, cwd });
+        return Promise.resolve(0);
+      },
+      denoVersion: () => "2.9.3",
+    };
+    await Deno.mkdir(`${dir}/sub`);
+    await inDir(`${dir}/sub`, async () => {
+      const code = await main(
+        ["add", "docker"],
+        recordingHost(),
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        defaultBuildProbe,
+        undefined,
+        projectHost,
+      );
+      assertEquals(code, 0);
+    });
+    assertEquals(runs.map((r) => [r.tool, ...r.args]), [[
+      "npm",
+      "install",
+      "--ignore-scripts",
+      "@zuke/docker@npm:@zuke-build/docker@^1",
+    ]]);
+    assertEquals(
+      await Deno.realPath(runs[0].cwd),
+      await Deno.realPath(dir),
+    );
+  }, { prefix: "zuke-global-cli-" });
+});
+
+Deno.test({
+  name: "zuke relock keeps a Node project's symlinked package-lock.json a link",
+  // Creating a symlink needs privileges Windows runners do not grant.
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await Deno.writeTextFile(
+        `${dir}/${CONFIG_FILE}`,
+        '{ "name": "L", "build": "build.ts", "runtime": "node" }\n',
+      );
+      await Deno.writeTextFile(`${dir}/build.ts`, "\n");
+      await Deno.writeTextFile(`${dir}/package.json`, "{}\n");
+      await Deno.writeTextFile(
+        `${dir}/shared.lock`,
+        '{ "lockfileVersion": 3 }\n',
+      );
+      await Deno.symlink("shared.lock", `${dir}/package-lock.json`);
+      let exit = 0;
+      const projectHost = {
+        ...defaultProjectHost,
+        // npm writes its lock through the path, as the real one does.
+        npm: async (_args: string[], cwd: string) => {
+          if (exit === 0) {
+            await Deno.writeTextFile(`${cwd}/package-lock.json`, "fresh\n");
+          }
+          return exit;
+        },
+      };
+      const relock = async () => {
+        let code = -1;
+        await inDir(dir, async () => {
+          code = await main(
+            ["relock"],
+            recordingHost(),
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            defaultBuildProbe,
+            undefined,
+            projectHost,
+          );
+        });
+        return code;
+      };
+      assertEquals(await relock(), 0);
+      const link = await Deno.lstat(`${dir}/package-lock.json`);
+      assertEquals(link.isSymlink, true);
+      assertEquals(await Deno.readTextFile(`${dir}/shared.lock`), "fresh\n");
+      // A failed npm puts the old text back through the same link.
+      exit = 1;
+      assertEquals(await relock(), 1);
+      assertEquals(
+        (await Deno.lstat(`${dir}/package-lock.json`)).isSymlink,
+        true,
+      );
+      assertEquals(await Deno.readTextFile(`${dir}/shared.lock`), "fresh\n");
+    }, { prefix: "zuke-global-cli-" });
+  },
 });
 
 Deno.test({

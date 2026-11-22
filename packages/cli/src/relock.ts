@@ -28,6 +28,11 @@
  * matters on Deno 2.9, which by default skips releases from the last day or
  * so: `--min-dep-age 0` resolves the newest published versions.
  *
+ * In a project whose build runs on Node it regenerates `package-lock.json`
+ * instead, behind the same backup and emptied in place the same way, and
+ * `npm install --package-lock-only --ignore-scripts` resolves `package.json`
+ * afresh into it, installing nothing.
+ *
  * @module
  */
 
@@ -36,6 +41,8 @@ import type { BuildProbe } from "./dispatch.ts";
 import type { CliPaint } from "./paint.ts";
 import {
   installArgs,
+  type InstallFlags,
+  nodeInstallFlags,
   parseInstallFlags,
   type ProjectHost,
   projectLocation,
@@ -69,18 +76,170 @@ function olderThan(a: string, b: string): boolean {
   return false;
 }
 
-/** The emptied lock a run resolves into: `before`'s format version, no entries. */
-function emptied(before: string): string {
-  let version: unknown = "5";
+/** How an emptied lock keeps its format. */
+interface LockFormat {
+  /** The field that holds the lock's format version. */
+  key: string;
+  /** The format version to write when the old lock cannot be read. */
+  fallback: string | number;
+  /** The empty entries the format needs beside its version. */
+  entries: Record<string, unknown>;
+}
+
+/** The lock formats `relock` empties: Deno's `deno.lock`, npm's `package-lock.json`. */
+const LOCK_FORMATS: Record<"deno" | "npm", LockFormat> = {
+  deno: { key: "version", fallback: "5", entries: {} },
+  npm: { key: "lockfileVersion", fallback: 3, entries: { packages: {} } },
+};
+
+/**
+ * The emptied lock a run resolves into: `before`'s format version, no
+ * entries. It is written over the lock in place rather than the lock being
+ * removed, so a lock that is a symlink to a shared file stays one.
+ */
+function emptied(before: string, kind: "deno" | "npm"): string {
+  const format = LOCK_FORMATS[kind];
+  let version: unknown = format.fallback;
   try {
     const parsed: unknown = JSON.parse(before);
     if (parsed !== null && typeof parsed === "object") {
-      version = Reflect.get(parsed, "version") ?? version;
+      version = Reflect.get(parsed, format.key) ?? version;
     }
   } catch {
-    // An unreadable lock is still replaced; the default format is Deno 2's.
+    // An unreadable lock is still replaced, in the current default format.
   }
-  return `${JSON.stringify({ version }, null, 2)}\n`;
+  return `${
+    JSON.stringify({ [format.key]: version, ...format.entries }, null, 2)
+  }\n`;
+}
+
+/**
+ * Refuse to start while `backup`, a lock an earlier run set aside, is still
+ * there: it is the only copy of the lock as it was.
+ *
+ * @throws {Error} saying how to restore or drop it.
+ */
+async function refuseLeftover(
+  host: ProjectHost,
+  backup: string,
+  name: string,
+): Promise<void> {
+  try {
+    await host.readText(backup);
+  } catch {
+    return;
+  }
+  throw new Error(
+    `zuke relock: ${backup} is left from a relock that did not finish. ` +
+      `It is the lock as it was before that run: move it back over ${name} ` +
+      "to restore it, or delete it to keep the lock as it is, then run " +
+      "zuke relock again.",
+  );
+}
+
+/** What {@link regenerateLock} leaves: the exit code, and both locks. */
+interface Regenerated {
+  /** The regenerating tool's exit code. */
+  code: number;
+  /** The lock as it was; `undefined` when there was none. */
+  before?: string;
+  /** The new lock, kept; `undefined` when the old one was put back. */
+  after?: string;
+}
+
+/**
+ * Regenerate the lock at `lockPath` behind a backup, the one sequence both
+ * runtimes share: refuse to start over a backup an earlier run left, set the
+ * lock aside, empty it in place in format `kind` (written through, so a link
+ * stays one), and run `regenerate`. Its result is kept only when it exits 0
+ * and writes a lock that is not still the emptied one; otherwise the old text
+ * goes back the same way. The backup is removed either way, and on a throw.
+ */
+async function regenerateLock(
+  host: ProjectHost,
+  lockPath: string,
+  name: string,
+  kind: "deno" | "npm",
+  log: (line: string) => void,
+  regenerate: () => Promise<number>,
+): Promise<Regenerated> {
+  const backup = `${lockPath}${BACKUP_SUFFIX}`;
+  await refuseLeftover(host, backup, name);
+  let before: string | undefined;
+  try {
+    before = await host.readText(lockPath);
+  } catch {
+    // No lock yet: there is nothing to back up or put back.
+  }
+  if (before !== undefined) {
+    await host.writeText(backup, before);
+    await host.writeText(lockPath, emptied(before, kind));
+  }
+  const settle = async (keep: boolean) => {
+    if (before === undefined) return;
+    if (!keep) await host.writeText(lockPath, before);
+    await host.remove(backup);
+  };
+  log(`Regenerating ${name}…`);
+  let code: number;
+  try {
+    code = await regenerate();
+  } catch (error) {
+    await settle(false);
+    throw error;
+  }
+  let after: string | undefined;
+  if (code === 0) {
+    try {
+      after = await host.readText(lockPath);
+    } catch {
+      // Reported by the caller, as no lock written.
+    }
+  }
+  const fresh = code === 0 && after !== undefined &&
+    after !== emptied(before ?? "", kind);
+  await settle(fresh);
+  return { code, before, after: fresh ? after : undefined };
+}
+
+/**
+ * Regenerate a Node project's `package-lock.json` in `root`, resolving
+ * `package.json` afresh with npm behind {@link regenerateLock}'s backup.
+ */
+async function relockNode(
+  flags: InstallFlags,
+  root: string,
+  log: (line: string) => void,
+  host: ProjectHost,
+  paint: CliPaint,
+): Promise<number> {
+  nodeInstallFlags("relock", flags);
+  const name = "package-lock.json";
+  const npmArgs = ["install", "--package-lock-only", "--ignore-scripts"];
+  if (flags.dryRun) {
+    log(`Would regenerate ${name}: npm ${npmArgs.join(" ")}`);
+    return 0;
+  }
+  const { code, before, after } = await regenerateLock(
+    host,
+    `${root}/${name}`,
+    name,
+    "npm",
+    log,
+    () => host.npm(npmArgs, root),
+  );
+  if (after === undefined) {
+    log(paint.fail(
+      code !== 0
+        ? `zuke relock: npm install exited ${code}; ${name} is unchanged.`
+        : `zuke relock: npm install wrote no ${name}${
+          before === undefined ? "" : "; the old one is restored"
+        }.`,
+    ));
+    return code !== 0 ? code : 1;
+  }
+  log(paint.ok(`Regenerated ${name}.`));
+  return 0;
 }
 
 /** The JSR package names `lock` resolves. */
@@ -104,7 +263,10 @@ export async function runRelock(
   probe: BuildProbe,
 ): Promise<number> {
   const flags = parseInstallFlags("relock", args);
-  const { root, build } = await projectLocation(cwd, probe, "relock");
+  const { root, build, runtime } = await projectLocation(cwd, probe, "relock");
+  if (runtime === "node") {
+    return await relockNode(flags, root, log, host, paint);
+  }
   const lockPath = projectLockPath(
     root,
     await projectConfigText((path) => host.readText(path), root),
@@ -129,56 +291,15 @@ export async function runRelock(
     return 0;
   }
 
-  const backup = `${lockPath}${BACKUP_SUFFIX}`;
-  let leftover = true;
-  try {
-    await host.readText(backup);
-  } catch {
-    leftover = false;
-  }
-  if (leftover) {
-    throw new Error(
-      `zuke relock: ${backup} is left from a relock that did not finish. ` +
-        `It is the lock as it was before that run: move it back over ${name} ` +
-        "to restore it, or delete it to keep the lock as it is, then run " +
-        "zuke relock again.",
-    );
-  }
-
-  let before: string | undefined;
-  try {
-    before = await host.readText(lockPath);
-  } catch {
-    // No lock yet: there is nothing to back up or put back.
-  }
-  if (before !== undefined) {
-    await host.writeText(backup, before);
-    await host.writeText(lockPath, emptied(before));
-  }
-  const restore = async () => {
-    if (before !== undefined) await host.writeText(lockPath, before);
-  };
-
-  log(`Regenerating ${name}…`);
-  let code: number;
-  try {
-    code = await host.deno(denoArgs, root);
-  } catch (error) {
-    await restore();
-    if (before !== undefined) await host.remove(backup);
-    throw error;
-  }
-  let after: string | undefined;
-  if (code === 0) {
-    try {
-      after = await host.readText(lockPath);
-    } catch {
-      // Reported below.
-    }
-  }
-  if (code !== 0 || after === undefined || after === emptied(before ?? "")) {
-    await restore();
-    if (before !== undefined) await host.remove(backup);
+  const { code, before, after } = await regenerateLock(
+    host,
+    lockPath,
+    name,
+    "deno",
+    log,
+    () => host.deno(denoArgs, root),
+  );
+  if (after === undefined) {
     log(paint.fail(
       code !== 0
         ? `zuke relock: deno install exited ${code}; ${name} is unchanged.`
@@ -189,7 +310,6 @@ export async function runRelock(
     ));
     return code !== 0 ? code : 1;
   }
-  if (before !== undefined) await host.remove(backup);
 
   const was = lockedCoreVersions(before ?? "");
   const now = lockedCoreVersions(after);
