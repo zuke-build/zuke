@@ -147,6 +147,15 @@ export const BOOTSTRAP_ENDPOINTS = [
   "release-assets.githubusercontent.com:443",
 ];
 
+/** The CLI archives' build-provenance attestation, attempted and retried alike. */
+const ATTEST_ARCHIVES = {
+  uses: actionPin("actions/attest-build-provenance"),
+  with: {
+    "subject-path": "dist/cli/release/*.tar.gz\ndist/cli/release/*.zip\n" +
+      "dist/cli/release/SHA256SUMS",
+  },
+};
+
 /**
  * What a job that pushes a branch and opens a pull request needs. Checked
  * against the hosts a real release run actually contacted, which were
@@ -633,23 +642,33 @@ export function githubWorkflows(
               with: { name: CLI_SIGNED_ARTIFACT, path: "dist/cli/bin" },
             },
             { name: "Package the archives", run: "./zuke cliPackage" },
+            // Sigstore's transparency log can briefly 404 an entry it has
+            // just written (release run 791), so a failed attempt waits and
+            // attests once more; a second failure fails the job.
             {
               id: "attest",
               name: "Attest the archives' build provenance",
-              uses: actionPin("actions/attest-build-provenance"),
-              with: {
-                "subject-path":
-                  "dist/cli/release/*.tar.gz\ndist/cli/release/*.zip\n" +
-                  "dist/cli/release/SHA256SUMS",
-              },
+              continueOnError: true,
+              ...ATTEST_ARCHIVES,
+            },
+            {
+              name: "Wait before attesting again",
+              if: "steps.attest.outcome == 'failure'",
+              run: "sleep 30",
+            },
+            {
+              id: "attest_retry",
+              name: "Attest the archives' build provenance (retry)",
+              if: "steps.attest.outcome == 'failure'",
+              ...ATTEST_ARCHIVES,
             },
             {
               name: "Upload to the release",
               run: "./zuke cliUpload",
               env: {
                 GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
-                CLI_ATTESTATION_BUNDLE:
-                  "${{ steps.attest.outputs.bundle-path }}",
+                CLI_ATTESTATION_BUNDLE: "${{ steps.attest.outputs.bundle-path" +
+                  " || steps.attest_retry.outputs.bundle-path }}",
               },
             },
           ],

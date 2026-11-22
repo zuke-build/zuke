@@ -126,11 +126,25 @@ Deno.test("the upload attests the archives and the manifest before uploading the
       "dist/cli/release/SHA256SUMS",
     ],
   );
-  // The bundle the attestation step wrote is what the upload publishes.
+  // A failed first attempt does not fail the job: a second one runs after a
+  // pause, only then, with the same subjects, and its failure is final.
+  assertEquals(attestStep.id, "attest");
+  assertEquals(attestStep["continue-on-error"], true);
+  const retry = order.lastIndexOf("actions/attest-build-provenance");
+  assertEquals(retry > attest, true, order.join(", "));
+  assertEquals(at("./zuke cliUpload") > retry, true, order.join(", "));
+  const retryStep = steps[retry];
+  assertEquals(retryStep.id, "attest_retry");
+  assertEquals(retryStep.if, "steps.attest.outcome == 'failure'");
+  assertEquals(retryStep["continue-on-error"], undefined);
+  assertEquals(retryStep.with, attestStep.with);
+  assertEquals(steps[at("sleep 30")].if, "steps.attest.outcome == 'failure'");
+  // Whichever attempt succeeded wrote the bundle the upload publishes.
   const upload = steps[at("./zuke cliUpload")];
   assertEquals(
     isRecord(upload.env) ? upload.env.CLI_ATTESTATION_BUNDLE : undefined,
-    "${{ steps.attest.outputs.bundle-path }}",
+    "${{ steps.attest.outputs.bundle-path || " +
+      "steps.attest_retry.outputs.bundle-path }}",
   );
 });
 
