@@ -82,7 +82,10 @@ Deno.test("a Node single executable is told apart by node:sea", () => {
   assertEquals(isSingleExecutable(builtin({ isSea: () => true })), true);
   assertEquals(isSingleExecutable(builtin({ isSea: () => false })), false);
   // A Node with no getBuiltinModule, or a node:sea without isSea, is not one.
-  assertEquals(isSingleExecutable(undefined), false);
+  // null, not undefined, which would take the default and read this runtime.
+  assertEquals(isSingleExecutable(null), false);
   assertEquals(isSingleExecutable(builtin(undefined)), false);
   assertEquals(isSingleExecutable(builtin({})), false);
+  // By default it asks the running process, which here is no single executable.
+  assertEquals(isSingleExecutable(), false);
 });
