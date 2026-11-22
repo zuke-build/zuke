@@ -814,6 +814,17 @@ Deno.test("zuke relock regenerates a Node project's package-lock.json behind a b
   assertEquals(host.files.get(lock), "new");
   assertEquals(host.files.has(backup), false);
 
+  // An npm that exits 0 but leaves the emptied lock (npm_config_dry_run=true,
+  // say) has regenerated nothing: the old lock goes back.
+  host.writes = {};
+  host.exit = 0;
+  const idle = await run();
+  assertEquals(idle.code, 1);
+  assertStringIncludes(idle.logs, "wrote no package-lock.json");
+  assertEquals(host.files.get(lock), "new");
+  assertEquals(host.files.has(backup), false);
+  host.exit = 1;
+
   // The lock's own format version is kept.
   host.files.set(lock, '{ "lockfileVersion": 2, "packages": { "x": {} } }');
   await run();
