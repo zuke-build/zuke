@@ -897,6 +897,67 @@ Deno.test("zuke add in a Node project runs npm install in its root, never deno",
 });
 
 Deno.test({
+  name: "zuke relock keeps a Node project's symlinked package-lock.json a link",
+  // Creating a symlink needs privileges Windows runners do not grant.
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await Deno.writeTextFile(
+        `${dir}/${CONFIG_FILE}`,
+        '{ "name": "L", "build": "build.ts", "runtime": "node" }\n',
+      );
+      await Deno.writeTextFile(`${dir}/build.ts`, "\n");
+      await Deno.writeTextFile(`${dir}/package.json`, "{}\n");
+      await Deno.writeTextFile(
+        `${dir}/shared.lock`,
+        '{ "lockfileVersion": 3 }\n',
+      );
+      await Deno.symlink("shared.lock", `${dir}/package-lock.json`);
+      let exit = 0;
+      const projectHost = {
+        ...defaultProjectHost,
+        // npm writes its lock through the path, as the real one does.
+        npm: async (_args: string[], cwd: string) => {
+          if (exit === 0) {
+            await Deno.writeTextFile(`${cwd}/package-lock.json`, "fresh\n");
+          }
+          return exit;
+        },
+      };
+      const relock = async () => {
+        let code = -1;
+        await inDir(dir, async () => {
+          code = await main(
+            ["relock"],
+            recordingHost(),
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            defaultBuildProbe,
+            undefined,
+            projectHost,
+          );
+        });
+        return code;
+      };
+      assertEquals(await relock(), 0);
+      const link = await Deno.lstat(`${dir}/package-lock.json`);
+      assertEquals(link.isSymlink, true);
+      assertEquals(await Deno.readTextFile(`${dir}/shared.lock`), "fresh\n");
+      // A failed npm puts the old text back through the same link.
+      exit = 1;
+      assertEquals(await relock(), 1);
+      assertEquals(
+        (await Deno.lstat(`${dir}/package-lock.json`)).isSymlink,
+        true,
+      );
+      assertEquals(await Deno.readTextFile(`${dir}/shared.lock`), "fresh\n");
+    }, { prefix: "zuke-global-cli-" });
+  },
+});
+
+Deno.test({
   name: "zuke relock writes through a symlinked lock, keeping the link",
   // Creating a symlink needs privileges Windows runners do not grant.
   ignore: Deno.build.os === "windows",

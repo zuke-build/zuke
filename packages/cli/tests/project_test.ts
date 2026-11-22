@@ -82,8 +82,11 @@ class FakeProjectHost implements ProjectHost {
   }
   /** Runs npm as `deno` runs Deno, recording into {@link npmRuns}. */
   readonly npmRuns: { args: string[]; cwd: string }[] = [];
+  /** The files as each npm run found them. */
+  readonly npmSaw: Map<string, string>[] = [];
   npm(args: string[], cwd: string): Promise<number> {
     this.npmRuns.push({ args, cwd });
+    this.npmSaw.push(new Map(this.files));
     return this.#ran();
   }
   #ran(): Promise<number> {
@@ -795,6 +798,12 @@ Deno.test("zuke relock regenerates a Node project's package-lock.json behind a b
   ]);
   assertEquals(host.files.get(lock), "new");
   assertEquals(host.files.has(backup), false);
+  // npm found the lock emptied in place, not removed, so a link stays one;
+  // an unreadable lock takes npm's current format.
+  assertEquals(JSON.parse(host.npmSaw[0].get(lock) ?? ""), {
+    lockfileVersion: 3,
+    packages: {},
+  });
 
   // A failed npm puts the old lock back and drops the backup.
   host.writes = {};
@@ -804,6 +813,15 @@ Deno.test("zuke relock regenerates a Node project's package-lock.json behind a b
   assertStringIncludes(failed.logs, "package-lock.json is unchanged");
   assertEquals(host.files.get(lock), "new");
   assertEquals(host.files.has(backup), false);
+
+  // The lock's own format version is kept.
+  host.files.set(lock, '{ "lockfileVersion": 2, "packages": { "x": {} } }');
+  await run();
+  assertEquals(JSON.parse(host.npmSaw.at(-1)?.get(lock) ?? ""), {
+    lockfileVersion: 2,
+    packages: {},
+  });
+  host.files.set(lock, "new");
 
   // So does one that throws.
   host.throws = new Error("spawn failed");

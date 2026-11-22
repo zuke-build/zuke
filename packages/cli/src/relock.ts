@@ -29,9 +29,9 @@
  * so: `--min-dep-age 0` resolves the newest published versions.
  *
  * In a project whose build runs on Node it regenerates `package-lock.json`
- * instead, behind the same backup: the lock is set aside and `npm install
- * --package-lock-only --ignore-scripts` resolves `package.json` afresh,
- * installing nothing.
+ * instead, behind the same backup and emptied in place the same way, and
+ * `npm install --package-lock-only --ignore-scripts` resolves `package.json`
+ * afresh into it, installing nothing.
  *
  * @module
  */
@@ -76,18 +76,41 @@ function olderThan(a: string, b: string): boolean {
   return false;
 }
 
-/** The emptied lock a run resolves into: `before`'s format version, no entries. */
-function emptied(before: string): string {
-  let version: unknown = "5";
+/** How an emptied lock keeps its format. */
+interface LockFormat {
+  /** The field that holds the lock's format version. */
+  key: string;
+  /** The format version to write when the old lock cannot be read. */
+  fallback: string | number;
+  /** The empty entries the format needs beside its version. */
+  entries: Record<string, unknown>;
+}
+
+/** The lock formats `relock` empties: Deno's `deno.lock`, npm's `package-lock.json`. */
+const LOCK_FORMATS: Record<"deno" | "npm", LockFormat> = {
+  deno: { key: "version", fallback: "5", entries: {} },
+  npm: { key: "lockfileVersion", fallback: 3, entries: { packages: {} } },
+};
+
+/**
+ * The emptied lock a run resolves into: `before`'s format version, no
+ * entries. It is written over the lock in place rather than the lock being
+ * removed, so a lock that is a symlink to a shared file stays one.
+ */
+function emptied(before: string, kind: "deno" | "npm"): string {
+  const format = LOCK_FORMATS[kind];
+  let version: unknown = format.fallback;
   try {
     const parsed: unknown = JSON.parse(before);
     if (parsed !== null && typeof parsed === "object") {
-      version = Reflect.get(parsed, "version") ?? version;
+      version = Reflect.get(parsed, format.key) ?? version;
     }
   } catch {
-    // An unreadable lock is still replaced; the default format is Deno 2's.
+    // An unreadable lock is still replaced, in the current default format.
   }
-  return `${JSON.stringify({ version }, null, 2)}\n`;
+  return `${
+    JSON.stringify({ [format.key]: version, ...format.entries }, null, 2)
+  }\n`;
 }
 
 /**
@@ -143,7 +166,7 @@ async function relockNode(
   }
   if (before !== undefined) {
     await host.writeText(backup, before);
-    await host.remove(lockPath);
+    await host.writeText(lockPath, emptied(before, "npm"));
   }
   const restore = async () => {
     if (before === undefined) return;
@@ -232,7 +255,7 @@ export async function runRelock(
   }
   if (before !== undefined) {
     await host.writeText(backup, before);
-    await host.writeText(lockPath, emptied(before));
+    await host.writeText(lockPath, emptied(before, "deno"));
   }
   const restore = async () => {
     if (before !== undefined) await host.writeText(lockPath, before);
@@ -255,7 +278,9 @@ export async function runRelock(
       // Reported below.
     }
   }
-  if (code !== 0 || after === undefined || after === emptied(before ?? "")) {
+  if (
+    code !== 0 || after === undefined || after === emptied(before ?? "", "deno")
+  ) {
     await restore();
     if (before !== undefined) await host.remove(backup);
     log(paint.fail(
