@@ -251,11 +251,24 @@ jobs:
             dist/cli/release/*.tar.gz
             dist/cli/release/*.zip
             dist/cli/release/SHA256SUMS
+        continue-on-error: true
+      - name: Wait before attesting again
+        if: "steps.attest.outcome == 'failure'"
+        run: sleep 30
+      - name: "Attest the archives' build provenance (retry)"
+        id: attest_retry
+        if: "steps.attest.outcome == 'failure'"
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/cli/release/*.tar.gz
+            dist/cli/release/*.zip
+            dist/cli/release/SHA256SUMS
       - name: Upload to the release
         run: ./zuke cliUpload
         env:
           GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
-          CLI_ATTESTATION_BUNDLE: "${{ steps.attest.outputs.bundle-path }}"
+          CLI_ATTESTATION_BUNDLE: "${{ steps.attest.outputs.bundle-path || steps.attest_retry.outputs.bundle-path }}"
   cliFormulaVerify:
     name: "Verify formula (${{ matrix.os }})"
     runs-on: "${{ matrix.os }}"
