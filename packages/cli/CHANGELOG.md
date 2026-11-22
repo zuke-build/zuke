@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.7.0](https://github.com/zuke-build/zuke/compare/cli-v2.6.0...cli-v2.7.0) (2026-11-22)
+
+
+### Features
+
+* **cli:** a runtime field in zuke.json runs a build file on Node ([#1104](https://github.com/zuke-build/zuke/issues/1104)) ([7dccb0a](https://github.com/zuke-build/zuke/commit/7dccb0aaf07b87ebddf2667bf810e8730362f6e3))
+* **cli:** zuke setup --runtime node, with launchers that bootstrap a pinned Node ([#1107](https://github.com/zuke-build/zuke/issues/1107)) ([715d038](https://github.com/zuke-build/zuke/commit/715d038f3ef2fe7e8ed3a2d0449313d6ac03b06e))
+
 ## [2.6.0](https://github.com/zuke-build/zuke/compare/cli-v2.5.0...cli-v2.6.0) (2026-11-20)
 
 
