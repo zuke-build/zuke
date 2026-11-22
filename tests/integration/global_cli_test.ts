@@ -817,6 +817,7 @@ Deno.test("zuke add maps short names and runs deno add in the project root", asy
         runs.push({ args, cwd });
         return Promise.resolve(0);
       },
+      npm: () => Promise.reject(new Error("a Deno project runs no npm")),
       denoVersion: () => "2.9.3",
     };
     await Deno.mkdir(`${dir}/sub`);
@@ -836,6 +837,58 @@ Deno.test("zuke add maps short names and runs deno add in the project root", asy
     });
     assertEquals(runs.length, 1);
     assertEquals(runs[0].args, ["add", "jsr:@zuke/docker", "jsr:@std/yaml"]);
+    assertEquals(
+      await Deno.realPath(runs[0].cwd),
+      await Deno.realPath(dir),
+    );
+  }, { prefix: "zuke-global-cli-" });
+});
+
+Deno.test("zuke add in a Node project runs npm install in its root, never deno", async () => {
+  await withTemp(async (dir) => {
+    await Deno.writeTextFile(
+      `${dir}/${CONFIG_FILE}`,
+      '{ "name": "Deps", "build": "build.ts", "runtime": "node" }\n',
+    );
+    await Deno.writeTextFile(`${dir}/build.ts`, "\n");
+    await Deno.writeTextFile(`${dir}/package.json`, "{}\n");
+    const runs: { tool: string; args: string[]; cwd: string }[] = [];
+    const projectHost = {
+      entry: (path: string) => defaultProjectHost.entry(path),
+      readText: (path: string) => Deno.readTextFile(path),
+      writeText: (path: string, text: string) => Deno.writeTextFile(path, text),
+      remove: (path: string) => Deno.remove(path),
+      deno: (args: string[], cwd: string) => {
+        runs.push({ tool: "deno", args, cwd });
+        return Promise.resolve(0);
+      },
+      npm: (args: string[], cwd: string) => {
+        runs.push({ tool: "npm", args, cwd });
+        return Promise.resolve(0);
+      },
+      denoVersion: () => "2.9.3",
+    };
+    await Deno.mkdir(`${dir}/sub`);
+    await inDir(`${dir}/sub`, async () => {
+      const code = await main(
+        ["add", "docker"],
+        recordingHost(),
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        defaultBuildProbe,
+        undefined,
+        projectHost,
+      );
+      assertEquals(code, 0);
+    });
+    assertEquals(runs.map((r) => [r.tool, ...r.args]), [[
+      "npm",
+      "install",
+      "--ignore-scripts",
+      "@zuke/docker@npm:@zuke-build/docker@^1",
+    ]]);
     assertEquals(
       await Deno.realPath(runs[0].cwd),
       await Deno.realPath(dir),

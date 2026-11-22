@@ -26844,6 +26844,9 @@ interface ProjectHost
     Remove a file.
   deno(denoArgs: string[], cwd: string): Promise<number>
     Run `deno <denoArgs>` in `cwd`, returning its exit code.
+  npm(npmArgs: string[], cwd: string): Promise<number>
+    Run `npm <npmArgs>` in `cwd`, a Node project's root, returning its exit
+    code.
   denoVersion(): string
     The version of the Deno that runs the command.
 

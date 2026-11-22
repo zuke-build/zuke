@@ -79,6 +79,11 @@ install it. With `--mcp`, `.mcp.json` registers `node <build file> mcp`, which
 works on every platform once Node 26 or newer is on `PATH` and a first `./zuke`
 run has installed the dependencies.
 
+`zuke add docker` then installs `@zuke/docker` from npm (as the alias for
+`npm:@zuke-build/docker`), and `zuke remove`, `zuke cache` and `zuke relock` run
+npm too: the `npm` on `PATH`, or else the one beside the Node `./zuke`
+downloaded.
+
 ### A Python project: `zuke setup --sdk python`
 
 A build can be written in Python with the `zuke` package from PyPI and run on

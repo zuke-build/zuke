@@ -14,12 +14,19 @@
  * `--minimum-dependency-age` flag. Both honour the project's own
  * `minimumDependencyAge` in `deno.json`, which Deno reads for them.
  *
+ * In a project whose build runs on Node they run `npm install` and
+ * `npm uninstall` instead, with `--ignore-scripts`, and change `package.json`:
+ * a bare name becomes the alias `@zuke/<name>` for `npm:@zuke-build/<name>@^1`,
+ * as `zuke setup --runtime node` writes it, and an `npm:` specifier passes
+ * through. A JSR package has no npm install, so it is refused there.
+ *
  * @module
  */
 
 import type { BuildProbe } from "./dispatch.ts";
 import type { CliPaint } from "./paint.ts";
 import { type ProjectHost, projectLocation } from "./project.ts";
+import { zukeNpmDependency } from "./starter.ts";
 import { projectConfigText } from "./version_report.ts";
 
 /** A bare Zuke package name, as `zuke add docker` takes it. */
@@ -53,6 +60,43 @@ export function dependencySpecifier(
     `zuke ${command}: "${name}" is not a package. Pass a Zuke package name ` +
       "(docker), a scoped JSR name (@scope/name), or a jsr: or npm: " +
       "specifier.",
+  );
+}
+
+/** The `@zuke/<name>` a Zuke package's specifier names, if it is one. */
+const ZUKE_JSR = /^jsr:@zuke\/([a-z0-9][a-z0-9-]*)$/;
+
+/**
+ * The `npm install` / `npm uninstall` operand for `specifier`, one
+ * {@link dependencySpecifier} returned: a Zuke package becomes its
+ * `@zuke/<name>` alias (to add) or that alias (to remove), and an `npm:`
+ * specifier is npm's own, without the prefix. A removal names the package
+ * alone, as `npm uninstall` takes it.
+ *
+ * @throws {Error} naming `command` on any other JSR package, which npm
+ * cannot install.
+ */
+export function npmOperand(
+  command: DependencyCommand,
+  specifier: string,
+): string {
+  const zuke = ZUKE_JSR.exec(specifier)?.[1];
+  if (zuke !== undefined) {
+    return command === "add"
+      ? `@zuke/${zuke}@${zukeNpmDependency(zuke)}`
+      : `@zuke/${zuke}`;
+  }
+  if (specifier.startsWith("npm:")) {
+    const spec = specifier.slice("npm:".length);
+    if (command === "add") return spec;
+    // `name@range` names `name`; a scoped name's own `@` comes first.
+    const at = spec.indexOf("@", 1);
+    return at === -1 ? spec : spec.slice(0, at);
+  }
+  throw new Error(
+    `zuke ${command}: ${specifier} is a JSR package, and this project's build ` +
+      "runs on Node, which installs from npm. Pass its npm name as " +
+      "npm:<name>.",
   );
 }
 
@@ -98,30 +142,48 @@ export async function runDependencies(
   probe: BuildProbe,
 ): Promise<number> {
   const { specifiers, dryRun } = parseDependencyArgs(command, args);
-  const { root } = await projectLocation(cwd, probe, command);
-  const denoArgs = [command, ...specifiers];
+  const { root, runtime } = await projectLocation(cwd, probe, command);
+  const node = runtime === "node";
+  const tool = node ? "npm" : "deno";
+  const toolArgs = node
+    ? [
+      command === "add" ? "install" : "uninstall",
+      "--ignore-scripts",
+      ...specifiers.map((specifier) => npmOperand(command, specifier)),
+    ]
+    : [command, ...specifiers];
   if (dryRun) {
-    log(`Would run in ${root}: deno ${denoArgs.join(" ")}`);
+    log(`Would run in ${root}: ${tool} ${toolArgs.join(" ")}`);
     return 0;
   }
-  const config = () => projectConfigText((path) => host.readText(path), root);
+  const manifest = node ? "package.json" : "deno.json";
+  // What the report names: the packages as the manifest spells them.
+  const named =
+    (node
+      ? specifiers.map((specifier) => npmOperand("remove", specifier))
+      : specifiers).join(", ");
+  const config = node
+    ? () => host.readText(`${root}/package.json`).catch(() => undefined)
+    : () => projectConfigText((path) => host.readText(path), root);
   const before = await config();
-  const code = await host.deno(denoArgs, root);
+  const code = node
+    ? await host.npm(toolArgs, root)
+    : await host.deno(toolArgs, root);
   if (code !== 0) {
-    log(paint.fail(`zuke ${command}: deno ${command} exited ${code}.`));
+    log(paint.fail(`zuke ${command}: ${tool} ${toolArgs[0]} exited ${code}.`));
     return code;
   }
-  // `deno remove` exits 0 when it finds nothing to remove; an unchanged
-  // config is how that shows.
+  // `deno remove` and `npm uninstall` exit 0 when they find nothing to
+  // remove; an unchanged manifest is how that shows.
   if (command === "remove" && (await config()) === before) {
     log(paint.fail(
-      `zuke remove: nothing was removed; this project's deno.json has no ` +
-        `${specifiers.join(", ")}.`,
+      `zuke remove: nothing was removed; this project's ${manifest} has no ` +
+        `${named}.`,
     ));
     return 1;
   }
   log(paint.ok(
-    `${command === "add" ? "Added" : "Removed"} ${specifiers.join(", ")}.`,
+    `${command === "add" ? "Added" : "Removed"} ${named}.`,
   ));
   return 0;
 }

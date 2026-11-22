@@ -28,6 +28,11 @@
  * matters on Deno 2.9, which by default skips releases from the last day or
  * so: `--min-dep-age 0` resolves the newest published versions.
  *
+ * In a project whose build runs on Node it regenerates `package-lock.json`
+ * instead, behind the same backup: the lock is set aside and `npm install
+ * --package-lock-only --ignore-scripts` resolves `package.json` afresh,
+ * installing nothing.
+ *
  * @module
  */
 
@@ -36,6 +41,8 @@ import type { BuildProbe } from "./dispatch.ts";
 import type { CliPaint } from "./paint.ts";
 import {
   installArgs,
+  type InstallFlags,
+  nodeInstallFlags,
   parseInstallFlags,
   type ProjectHost,
   projectLocation,
@@ -83,6 +90,88 @@ function emptied(before: string): string {
   return `${JSON.stringify({ version }, null, 2)}\n`;
 }
 
+/**
+ * Refuse to start while `backup`, a lock an earlier run set aside, is still
+ * there: it is the only copy of the lock as it was.
+ *
+ * @throws {Error} saying how to restore or drop it.
+ */
+async function refuseLeftover(
+  host: ProjectHost,
+  backup: string,
+  name: string,
+): Promise<void> {
+  try {
+    await host.readText(backup);
+  } catch {
+    return;
+  }
+  throw new Error(
+    `zuke relock: ${backup} is left from a relock that did not finish. ` +
+      `It is the lock as it was before that run: move it back over ${name} ` +
+      "to restore it, or delete it to keep the lock as it is, then run " +
+      "zuke relock again.",
+  );
+}
+
+/**
+ * Regenerate a Node project's `package-lock.json` in `root`: set it aside,
+ * resolve `package.json` afresh with npm, and put it back if npm fails.
+ */
+async function relockNode(
+  flags: InstallFlags,
+  root: string,
+  log: (line: string) => void,
+  host: ProjectHost,
+  paint: CliPaint,
+): Promise<number> {
+  nodeInstallFlags("relock", flags);
+  const name = "package-lock.json";
+  const lockPath = `${root}/${name}`;
+  const npmArgs = ["install", "--package-lock-only", "--ignore-scripts"];
+  if (flags.dryRun) {
+    log(`Would regenerate ${name}: npm ${npmArgs.join(" ")}`);
+    return 0;
+  }
+  const backup = `${lockPath}${BACKUP_SUFFIX}`;
+  await refuseLeftover(host, backup, name);
+  let before: string | undefined;
+  try {
+    before = await host.readText(lockPath);
+  } catch {
+    // No lock yet: there is nothing to back up or put back.
+  }
+  if (before !== undefined) {
+    await host.writeText(backup, before);
+    await host.remove(lockPath);
+  }
+  const restore = async () => {
+    if (before === undefined) return;
+    await host.writeText(lockPath, before);
+    await host.remove(backup);
+  };
+  log(`Regenerating ${name}…`);
+  let code: number;
+  try {
+    code = await host.npm(npmArgs, root);
+  } catch (error) {
+    await restore();
+    throw error;
+  }
+  if (code !== 0) {
+    await restore();
+    log(
+      paint.fail(
+        `zuke relock: npm install exited ${code}; ${name} is unchanged.`,
+      ),
+    );
+    return code;
+  }
+  if (before !== undefined) await host.remove(backup);
+  log(paint.ok(`Regenerated ${name}.`));
+  return 0;
+}
+
 /** The JSR package names `lock` resolves. */
 function jsrPackages(lock: string): Set<string> {
   return new Set(lockedJsrSpecifiers(lock).map((entry) => entry.name));
@@ -104,7 +193,10 @@ export async function runRelock(
   probe: BuildProbe,
 ): Promise<number> {
   const flags = parseInstallFlags("relock", args);
-  const { root, build } = await projectLocation(cwd, probe, "relock");
+  const { root, build, runtime } = await projectLocation(cwd, probe, "relock");
+  if (runtime === "node") {
+    return await relockNode(flags, root, log, host, paint);
+  }
   const lockPath = projectLockPath(
     root,
     await projectConfigText((path) => host.readText(path), root),
@@ -130,20 +222,7 @@ export async function runRelock(
   }
 
   const backup = `${lockPath}${BACKUP_SUFFIX}`;
-  let leftover = true;
-  try {
-    await host.readText(backup);
-  } catch {
-    leftover = false;
-  }
-  if (leftover) {
-    throw new Error(
-      `zuke relock: ${backup} is left from a relock that did not finish. ` +
-        `It is the lock as it was before that run: move it back over ${name} ` +
-        "to restore it, or delete it to keep the lock as it is, then run " +
-        "zuke relock again.",
-    );
-  }
+  await refuseLeftover(host, backup, name);
 
   let before: string | undefined;
   try {

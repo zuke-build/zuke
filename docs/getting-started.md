@@ -72,6 +72,11 @@ covering `node_modules/`. No `deno.json`, and no Deno anywhere. With `--mcp`,
 once Node 26 or newer is on `PATH` and a first `./zuke` run has installed the
 dependencies.
 
+`zuke add docker` then installs `@zuke/docker` from npm (as the alias for
+`npm:@zuke-build/docker`), and `zuke remove`, `zuke cache` and `zuke relock` run
+npm too: the `npm` on `PATH`, or else the one beside the Node `./zuke`
+downloaded.
+
 ## Scaffold a Python project with `zuke setup --sdk python`
 
 A build can be written in Python with the

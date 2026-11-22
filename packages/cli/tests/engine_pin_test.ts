@@ -75,6 +75,7 @@ function filesHost(
     },
     remove: () => Promise.resolve(),
     deno: () => Promise.resolve(0),
+    npm: () => Promise.resolve(0),
     denoVersion: () => "2.9.3",
   };
   return host;

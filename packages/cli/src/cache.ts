@@ -11,6 +11,10 @@
  * moved. `--min-dep-age` passes Deno's `--minimum-dependency-age` through,
  * and only matters for a resolution the lock does not have yet.
  *
+ * In a project whose build runs on Node it runs `npm ci --ignore-scripts`,
+ * which installs exactly what `package-lock.json` pins, or `npm install
+ * --ignore-scripts` to write the first lock when there is none.
+ *
  * @module
  */
 
@@ -18,6 +22,7 @@ import type { BuildProbe } from "./dispatch.ts";
 import type { CliPaint } from "./paint.ts";
 import {
   installArgs,
+  nodeInstallFlags,
   parseInstallFlags,
   type ProjectHost,
   projectLocation,
@@ -39,7 +44,24 @@ export async function runCache(
   probe: BuildProbe,
 ): Promise<number> {
   const flags = parseInstallFlags("cache", args);
-  const { root, build } = await projectLocation(cwd, probe, "cache");
+  const { root, build, runtime } = await projectLocation(cwd, probe, "cache");
+  if (runtime === "node") {
+    nodeInstallFlags("cache", flags);
+    const locked =
+      (await host.entry(`${root}/package-lock.json`)) !== "missing";
+    const npmArgs = [locked ? "ci" : "install", "--ignore-scripts"];
+    if (flags.dryRun) {
+      log(`Would cache the build's dependencies: npm ${npmArgs.join(" ")}`);
+      return 0;
+    }
+    const code = await host.npm(npmArgs, root);
+    if (code !== 0) {
+      log(paint.fail(`zuke cache: npm ${npmArgs[0]} exited ${code}.`));
+      return code;
+    }
+    log(paint.ok("Installed everything the build imports."));
+    return 0;
+  }
   const denoArgs = installArgs("cache", flags, host.denoVersion(), build);
   if (flags.dryRun) {
     log(`Would cache the build's dependencies: deno ${denoArgs.join(" ")}`);

@@ -3,8 +3,9 @@
 
 /**
  * What the global CLI's project commands share: `relock`, `cache`, `add` and
- * `remove` each run a `deno` command in the project root, so that working on
- * a Zuke project needs only `zuke`.
+ * `remove` each run a `deno` command in the project root — or an `npm` one,
+ * in a project whose build runs on Node — so that working on a Zuke project
+ * needs only `zuke`.
  *
  * They are the CLI's own rather than the build's because they must work
  * whatever core the project is on — including one too old, or too broken, to
@@ -16,6 +17,7 @@
 
 import { FileTasks, RuntimeTasks } from "@zuke/core";
 import { spawnDeno } from "./deno_path.ts";
+import { runNpm } from "./npm_path.ts";
 import {
   type BuildLocation,
   type BuildProbe,
@@ -42,11 +44,16 @@ export interface ProjectHost {
   remove(path: string): Promise<void>;
   /** Run `deno <denoArgs>` in `cwd`, returning its exit code. */
   deno(denoArgs: string[], cwd: string): Promise<number>;
+  /**
+   * Run `npm <npmArgs>` in `cwd`, a Node project's root, returning its exit
+   * code.
+   */
+  npm(npmArgs: string[], cwd: string): Promise<number>;
   /** The version of the Deno that runs the command. */
   denoVersion(): string;
 }
 
-/** The real {@link ProjectHost}: the file system, and `deno` in the root. */
+/** The real {@link ProjectHost}: the file system, and `deno` or `npm` in the root. */
 export const defaultProjectHost: ProjectHost = {
   entry: async (path) => {
     try {
@@ -70,6 +77,7 @@ export const defaultProjectHost: ProjectHost = {
     });
     return (await child.status).code;
   },
+  npm: (npmArgs, cwd) => runNpm(npmArgs, cwd),
   // The cli runs on Deno, so the runtime is the Deno that runs the command.
   denoVersion: () => RuntimeTasks.facts().version,
 };
@@ -190,4 +198,21 @@ export function installArgs(
     );
   }
   return [...args, `--minimum-dependency-age=${flags.minDepAge}`];
+}
+
+/**
+ * Refuse what `flags` asks of npm that it cannot do: a Node project's
+ * dependencies are its `package.json`'s, so there are no further entrypoints
+ * to resolve, and `--min-dep-age` is Deno's.
+ *
+ * @throws {Error} naming `command` when either was given.
+ */
+export function nodeInstallFlags(command: string, flags: InstallFlags): void {
+  if (flags.entrypoints.length > 0 || flags.minDepAge !== undefined) {
+    throw new Error(
+      `zuke ${command}: this project's build runs on Node, whose ` +
+        "dependencies are package.json's: it takes only --dry-run, not " +
+        "entrypoints or --min-dep-age.",
+    );
+  }
 }
