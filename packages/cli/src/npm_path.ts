@@ -65,6 +65,10 @@ export async function runNpm(
   candidates: readonly string[] = npmCandidates(),
 ): Promise<number> {
   for (const command of candidates) {
+    // A path that is not there is skipped before spawning: Windows reports
+    // spawning one as an error that is not a plain "not found".
+    const isPath = command.includes("/") || command.includes("\\");
+    if (isPath && !(await FileTasks.exists(command))) continue;
     try {
       const out = await ProcessTasks.run(command, (s) => {
         s.args(...args).cwd(cwd).stdin("null").stdout("inherit")
