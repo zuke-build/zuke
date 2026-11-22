@@ -65,6 +65,20 @@ To read a `@zuke/*` package's API without a Node repo's `@types/node` noise, run
 `zuke doc <package>` (e.g. `zuke doc core`) — it runs `deno doc` in an isolated
 directory.
 
+### A Node project: `zuke setup --runtime node`
+
+To run the build on Node 26 instead of Deno, pass `--runtime node`
+(`--runtime
+deno` is the default; it cannot combine with `--sdk`). Setup writes
+`build.ts`, a `package.json` (created, or merged without overwriting:
+`"type": "module"` and the `@zuke/core` dependency `npm:@zuke-build/core@^1` are
+added when absent), a `zuke.json` with `"runtime": "node"`, Node launchers that
+bootstrap a pinned, checksum-verified Node, and a `.gitignore` entry for
+`node_modules/`. **A Node project needs no Deno** — never tell its user to
+install it. With `--mcp`, `.mcp.json` registers `node <build file> mcp`, which
+works on every platform once Node 26 or newer is on `PATH` and a first `./zuke`
+run has installed the dependencies.
+
 ### A Python project: `zuke setup --sdk python`
 
 A build can be written in Python with the `zuke` package from PyPI and run on

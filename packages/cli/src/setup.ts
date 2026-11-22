@@ -17,9 +17,10 @@ import {
   type McpServerEntry,
   mcpServerEntry,
   mergeMcpConfig,
+  nodeMcpEntry,
   parseMcpConfig,
 } from "./mcp_config.ts";
-import { FileTasks } from "@zuke/core";
+import { FileTasks, RuntimeTasks } from "@zuke/core";
 import { isRecord } from "./records.ts";
 import {
   assertBuildFileName,
@@ -28,6 +29,8 @@ import {
   NEW_BUILD_FILE,
 } from "./build_file.ts";
 import { launcherBash, launcherPwsh } from "./launcher.ts";
+import { nodeLauncherBash, nodeLauncherPowerShell } from "./node_launcher.ts";
+import type { ProjectRuntime } from "./runtime_field.ts";
 import { binaryLauncherBash, binaryLauncherPwsh } from "./binary_launcher.ts";
 import type { BinaryPin } from "./binary_pin.ts";
 import { lstatOrNull } from "./fs.ts";
@@ -39,6 +42,7 @@ import {
   starterConfig,
   starterPythonBuild,
   starterSdkConfig,
+  zukeNpmDependency,
 } from "./starter.ts";
 
 // Re-exported so the merge guard keeps its historical home for importers.
@@ -377,6 +381,13 @@ export interface SetupOptions {
    * nothing in the project needs Deno. Omitted: a TypeScript build.
    */
   sdk?: SdkSetupOptions;
+  /**
+   * The runtime the build file runs on (`--runtime`): `"node"` scaffolds a
+   * `package.json` in place of `deno.json`, a `zuke.json` with
+   * `"runtime": "node"` and launchers that bootstrap Node. Omitted or
+   * `"deno"`: today's Deno project. Not with {@link SetupOptions.sdk}.
+   */
+  runtime?: ProjectRuntime;
 }
 
 /** What `--sdk python` scaffolds against. */
@@ -451,6 +462,7 @@ const RESERVED_NON_LAUNCHER = new Set([
   PYTHON_BUILD_FILE,
   "zuke.json",
   "deno.json",
+  "package.json",
   ".gitignore",
   MCP_CONFIG_FILE,
 ]);
@@ -577,6 +589,13 @@ export async function runSetup(
   const notes: string[] = [];
   const launcher = options.launcherName ?? DEFAULT_LAUNCHER;
   const sdk = options.sdk;
+  const node = options.runtime === "node";
+  if (sdk !== undefined && node) {
+    throw new Error(
+      "zuke setup: --runtime picks the runtime of a TypeScript build; " +
+        "--sdk python builds run on the zuke binary.",
+    );
+  }
   if (sdk !== undefined && options.buildFile !== undefined) {
     throw new Error(
       "zuke setup: --build-file names a TypeScript build file; a Python " +
@@ -603,7 +622,9 @@ export async function runSetup(
       },
     {
       name: launcher,
-      content: sdk === undefined
+      content: node
+        ? nodeLauncherBash({ buildFile })
+        : sdk === undefined
         ? launcherBash(variant)
         : binaryLauncherBash({ download: variant.bootstrapDeno }, sdk.pin),
       mode: 0o755,
@@ -611,7 +632,9 @@ export async function runSetup(
     },
     {
       name: `${launcher}.ps1`,
-      content: sdk === undefined
+      content: node
+        ? nodeLauncherPowerShell({ buildFile })
+        : sdk === undefined
         ? launcherPwsh(variant)
         : binaryLauncherPwsh({ download: variant.bootstrapDeno }, sdk.pin),
       launcher: true,
@@ -619,7 +642,7 @@ export async function runSetup(
     {
       name: "zuke.json",
       content: sdk === undefined
-        ? starterConfig(options.name, buildFile)
+        ? starterConfig(options.name, buildFile, options.runtime)
         : starterSdkConfig(options.name, sdk.pin.engine),
     },
   ];
@@ -630,7 +653,9 @@ export async function runSetup(
   // setup writes, including the separately-written deno.json and .gitignore.
   const collisionTargets: ReadonlyArray<{ name: string; launcher: boolean }> = [
     ...scaffold.map((s) => ({ name: s.name, launcher: s.launcher === true })),
-    ...(sdk === undefined ? [{ name: "deno.json", launcher: false }] : []),
+    ...(sdk === undefined
+      ? [{ name: node ? "package.json" : "deno.json", launcher: false }]
+      : []),
     { name: ".gitignore", launcher: false },
     ...(options.mcp ? [{ name: MCP_CONFIG_FILE, launcher: false }] : []),
   ];
@@ -685,7 +710,9 @@ export async function runSetup(
     files.push({ path: item.name, status });
   }
 
-  if (sdk === undefined) {
+  if (node) {
+    files.push(await setupPackageJson(options.dir, host, manualSteps, notes));
+  } else if (sdk === undefined) {
     files.push(
       await setupDenoJson(
         options.dir,
@@ -697,7 +724,13 @@ export async function runSetup(
       ),
     );
   }
-  files.push(await setupGitignore(options.dir, host));
+  files.push(
+    await setupGitignore(
+      options.dir,
+      host,
+      node ? [GITIGNORE_ENTRY, "node_modules/"] : [GITIGNORE_ENTRY],
+    ),
+  );
   if (options.mcp) {
     files.push(
       await setupMcpConfig(
@@ -708,7 +741,9 @@ export async function runSetup(
         // A hosted build is served by the zuke binary, whichever CLI
         // registered it: its project needs nothing from Deno's stack. A
         // TypeScript build stays on Deno.
-        sdk === undefined
+        node
+          ? nodeMcpEntry(options.mcp.allowRun, buildFile)
+          : sdk === undefined
           ? mcpServerEntry(options.mcp.allowRun, buildFile)
           : binaryMcpEntry(options.mcp.allowRun),
       ),
@@ -771,28 +806,113 @@ async function setupMcpConfig(
 /** The line `setup` ensures is present in `.gitignore` for generated output. */
 const GITIGNORE_ENTRY = ".zuke/";
 
-/** Create or update `.gitignore` so the generated `.zuke/` folder is ignored. */
+/**
+ * Create or update `.gitignore` so every one of `entries` is ignored, adding
+ * only the lines it does not already have.
+ */
 async function setupGitignore(
   dir: string,
   host: SetupHost,
+  entries: readonly string[],
 ): Promise<FileResult> {
   const name = ".gitignore";
   const path = joinPath(dir, name);
-  if (!(await host.exists(path))) {
-    await host.writeText(path, `${GITIGNORE_ENTRY}\n`);
-    host.log(`  create   ${name}`);
-    return { path: name, status: "created" };
-  }
-
-  const before = await host.readText(path);
-  if (before.split(/\r?\n/).some((line) => line.trim() === GITIGNORE_ENTRY)) {
-    host.log(`  skip     ${name}  (${GITIGNORE_ENTRY} already ignored)`);
+  const exists = await host.exists(path);
+  const before = exists ? await host.readText(path) : "";
+  const lines = before.split(/\r?\n/).map((line) => line.trim());
+  const missing = entries.filter((entry) => !lines.includes(entry));
+  if (missing.length === 0) {
+    host.log(`  skip     ${name}  (${entries.join(", ")} already ignored)`);
     return { path: name, status: "skipped" };
   }
   const separator = before === "" || before.endsWith("\n") ? "" : "\n";
-  await host.writeText(path, `${before}${separator}${GITIGNORE_ENTRY}\n`);
-  host.log(`  update   ${name}`);
-  return { path: name, status: "overwritten" };
+  await host.writeText(path, `${before}${separator}${missing.join("\n")}\n`);
+  host.log(`  ${exists ? "update" : "create"}   ${name}`);
+  return { path: name, status: exists ? "overwritten" : "created" };
+}
+
+/** The name a new `package.json` takes: the project directory's, as npm spells one. */
+function packageNameFor(dir: string): string {
+  const last =
+    (dir === "." ? RuntimeTasks.cwd() : dir).split(/[\\/]/).filter(Boolean)
+      .at(-1) ?? "";
+  const name = last.toLowerCase().replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^[._-]+/, "");
+  return name === "" ? "zuke-build" : name;
+}
+
+/**
+ * Create or merge `package.json` for a Node project: `type: module` and the
+ * `@zuke/core` dependency, each only when absent. A different `type` is kept
+ * and noted, since a CommonJS package cannot load the starter build; a file
+ * that is not JSON is left alone and reported as a manual step.
+ */
+async function setupPackageJson(
+  dir: string,
+  host: SetupHost,
+  steps: string[],
+  notes: string[],
+): Promise<FileResult> {
+  const name = "package.json";
+  const path = joinPath(dir, name);
+  const dependency: ReadonlyArray<readonly [string, string]> = [
+    ["@zuke/core", zukeNpmDependency("core")],
+  ];
+  const exists = await host.exists(path);
+  const root: Record<string, unknown> = {};
+  let original = "";
+  if (exists) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(await host.readText(path));
+    } catch {
+      parsed = undefined;
+    }
+    // Not JSON, or JSON that is not an object: either way not a manifest setup
+    // can merge into, so it is left exactly as it is.
+    if (!isRecord(parsed)) {
+      host.log(`  skip     ${name}  (not a JSON object, edit by hand)`);
+      steps.push(
+        `${path} is not a JSON object. Add "type": "module" and a dependency ` +
+          `"@zuke/core": "${dependency[0][1]}" — the scaffolded build will ` +
+          "not run until you do.",
+      );
+      return { path: name, status: "skipped" };
+    }
+    Object.assign(root, parsed);
+    original = JSON.stringify(root);
+  } else {
+    root.name = packageNameFor(dir);
+    root.private = true;
+  }
+  if (root.type === undefined) root.type = "module";
+  else if (root.type !== "module") {
+    notes.push(
+      `${path} has "type": ${JSON.stringify(root.type)}; setup kept it, but ` +
+        'the scaffolded build uses import syntax and needs "type": "module".',
+    );
+  }
+  const declared = root.dependencies;
+  const added = !(isRecord(declared) && dependency[0][0] in declared);
+  mergeMissing(root, "dependencies", dependency);
+  // The launcher runs npm ci, which refuses a lockfile that no longer matches
+  // package.json, so a dependency added beside an existing lock needs one
+  // npm install to record it.
+  const lock = joinPath(dir, "package-lock.json");
+  if (added && await host.exists(lock)) {
+    steps.push(
+      `Run \`npm install --ignore-scripts\` in ${dir} once to add ` +
+        `${dependency[0][0]} to package-lock.json: ./zuke installs with ` +
+        "npm ci, which refuses a lockfile that does not match package.json.",
+    );
+  }
+  if (exists && JSON.stringify(root) === original) {
+    host.log(`  skip     ${name}  (type and @zuke/core already declared)`);
+    return { path: name, status: "skipped" };
+  }
+  await host.writeText(path, `${JSON.stringify(root, null, 2)}\n`);
+  host.log(`  ${exists ? "update" : "create"}   ${name}`);
+  return { path: name, status: exists ? "overwritten" : "created" };
 }
 
 /** The `imports` entries `steps` tells the reader to add, as JSON lines. */

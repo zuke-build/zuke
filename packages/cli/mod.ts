@@ -37,6 +37,7 @@ import {
   promptStar,
   type StarActions,
 } from "./src/star.ts";
+import type { ProjectRuntime } from "./src/runtime_field.ts";
 import { VERSION } from "./src/version.ts";
 import {
   type InstallHost,
@@ -173,6 +174,8 @@ export interface SetupFlags {
    * runs, in place of a `zuke.ts`. Unset: a TypeScript build.
    */
   sdk?: string;
+  /** The runtime of a TypeScript build (`--runtime deno|node`). Unset: Deno, asked when interactive. */
+  runtime?: string;
   /**
    * The `zuke` release an SDK build's launchers run (`--zuke`), whose engine
    * `zuke.json` pins. Unset: this zuke's own release.
@@ -242,6 +245,13 @@ export function parseSetupFlags(args: string[]): SetupFlags {
       }
     } else if (arg.startsWith("--sdk=")) {
       flags.sdk = arg.slice("--sdk=".length);
+    } else if (arg === "--runtime") {
+      if (i + 1 < args.length) {
+        i++;
+        flags.runtime = args[i];
+      }
+    } else if (arg.startsWith("--runtime=")) {
+      flags.runtime = arg.slice("--runtime=".length);
     } else if (arg === "--zuke") {
       if (i + 1 < args.length) {
         i++;
@@ -252,6 +262,29 @@ export function parseSetupFlags(args: string[]): SetupFlags {
     }
   }
   return flags;
+}
+
+/** Whether `value` names a runtime `--runtime` accepts. */
+function isRuntime(value: string): value is ProjectRuntime {
+  return value === "deno" || value === "node";
+}
+
+/**
+ * The runtime `--runtime` asks for, `undefined` without it.
+ *
+ * @throws {Error} naming a value that is not a runtime.
+ */
+function runtimeOption(
+  runtime: string | undefined,
+): ProjectRuntime | undefined {
+  if (runtime === undefined) return undefined;
+  if (!isRuntime(runtime)) {
+    throw new Error(
+      `zuke setup: unknown --runtime "${runtime}" — a TypeScript ` +
+        "build runs on deno or node.",
+    );
+  }
+  return runtime;
 }
 
 /** The SDKs `--sdk` accepts: the ones whose build `@zuke/engine` can host. */
@@ -431,6 +464,7 @@ Setup options:
   --name <Class>          Build class name (default: MyBuild)
   --build-file <name>     TypeScript build file name (default: build.ts, or the project's own)
   --launcher-name <name>  Launcher base name when a zuke/ directory is in the way
+  --runtime deno|node     Runtime of a TypeScript build (default: deno); node scaffolds a package.json and Node launchers
   --sdk python            Scaffold a build.py and launchers that run the zuke binary (no Deno)
   --zuke <version>        The zuke release those launchers run (default: this one)
   --mcp                   Also write .mcp.json registering the build's MCP server
@@ -569,6 +603,7 @@ async function commandSetup(
   const flags = parseSetupFlags(args);
   // Resolved before any question is asked, so an unknown SDK or an
   // unreachable registry stops the run before the wizard starts.
+  let runtime = runtimeOption(flags.runtime);
   const sdk = await sdkOption(flags, upgradeHost);
   let name = flags.name ?? "MyBuild";
   let force = flags.force;
@@ -587,8 +622,18 @@ async function commandSetup(
     if (!force) {
       force = prompter.confirm("Overwrite existing files if present?");
     }
+    if (sdk === undefined && runtime === undefined) {
+      const answer = prompter.ask("Runtime (deno or node)", "deno").trim();
+      if (!isRuntime(answer)) {
+        throw new Error(
+          `zuke setup: unknown runtime "${answer}" — answer deno or node.`,
+        );
+      }
+      runtime = answer;
+    }
   }
-  const bootstrapDeno = resolveBootstrapDeno(
+  // A Node launcher always bootstraps and names no Deno, so it is not asked.
+  const bootstrapDeno = runtime === "node" ? undefined : resolveBootstrapDeno(
     flags,
     prompter,
     interactive,
@@ -608,6 +653,7 @@ async function commandSetup(
       mcp: mcpOption(flags),
       bootstrapDeno,
       sdk,
+      runtime,
     },
     host,
   );

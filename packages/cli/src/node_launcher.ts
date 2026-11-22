@@ -1,0 +1,450 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
+/**
+ * The `./zuke` (bash) and `zuke.ps1` (PowerShell) launchers of a project whose
+ * build runs on Node, so a checkout with no Node installed can run
+ * `./zuke <target>`. Each uses, in order: a `node` on `PATH` whose major
+ * version is at least the pin's ({@link "./node_pin.ts"}); the copy cached
+ * under `ZUKE_NODE_HOME` (default `~/.zuke/node`), one directory per release;
+ * or the pinned release downloaded from nodejs.org, verified against its
+ * SHA-256 and unpacked there. `NODE_VERSION` overrides the release and must
+ * come with `NODE_SHA256`: nothing unverified is ever installed.
+ *
+ * The chosen node's directory goes first on `PATH`, so the `npm` the build runs
+ * is that node's. Dependencies are installed with `--ignore-scripts` before the
+ * build starts: `npm ci` when `package-lock.json` is newer than the last
+ * successful install (or there is none), `npm install` when there is a
+ * `package.json` and no lockfile. The launcher is a Node project's own; it names no other stack.
+ *
+ * @module
+ */
+
+import { assertBuildFileName, BUILD_FILE } from "./build_file.ts";
+import {
+  bashFetchVerified,
+  LICENSE_HEADER,
+  pwshFetchVerified,
+} from "./launcher_shared.ts";
+import {
+  NODE_DIST_URL,
+  NODE_PIN,
+  NODE_POSIX_PLATFORMS,
+  NODE_WINDOWS_PLATFORMS,
+  type NodePin,
+} from "./node_pin.ts";
+
+/** What a Node launcher is rendered for. */
+export interface NodeLauncherOptions {
+  /** The build file the launcher runs. Omitted: `zuke.ts`. */
+  buildFile?: string;
+}
+
+/** The pin's major version: the oldest `node` on `PATH` a launcher accepts. */
+function majorOf(pin: NodePin): string {
+  return pin.version.split(".")[0];
+}
+
+/** The `NODE_VERSION` / `NODE_SHA256` / `ZUKE_NODE_HOME` contract, as the comment block both scripts carry. */
+function envDocs(pin: NodePin): string {
+  return `# Honoured environment variables:
+#   ZUKE_NODE_HOME  where Node is kept (default: ~/.zuke/node), one directory
+#                   per release
+#   NODE_VERSION    which Node to download, an exact release (e.g. ${pin.version}).
+#                   Defaults to the pinned, verified ${pin.version}.
+#   NODE_SHA256     required alongside a NODE_VERSION override: the SHA-256 of
+#                   the release asset for the current platform. This launcher
+#                   never downloads an unverified binary.`;
+}
+
+/* cspell:disable */
+
+/**
+ * The bash launcher (`./zuke`) of a Node project.
+ *
+ * @throws {Error} when the build file name is not a plain file name.
+ */
+export function nodeLauncherBash(
+  options: NodeLauncherOptions = {},
+  pin: NodePin = NODE_PIN,
+): string {
+  const build = assertBuildFileName(options.buildFile ?? BUILD_FILE);
+  const arms = NODE_POSIX_PLATFORMS.map((platform) =>
+    `    ${platform})\n      echo "${pin.checksums[platform]}" ;;`
+  ).join("\n");
+  return `#!/usr/bin/env bash
+${LICENSE_HEADER}
+#
+# Zuke launcher for a build that runs on Node.
+#
+#   ./zuke               # run the default target
+#   ./zuke <target>      # run one target and its prerequisites
+#   ./zuke --list        # list every target
+#
+# Uses the node on PATH when it is Node ${majorOf(pin)} or newer, else a pinned,
+# checksum-verified Node it downloads once, then installs the project's
+# dependencies and runs ${build}.
+#
+${envDocs(pin)}
+set -euo pipefail
+
+DEFAULT_NODE_VERSION="${pin.version}"
+MIN_NODE_MAJOR=${majorOf(pin)}
+
+# SHA-256 of each \`node-v<version>-<platform>.tar.gz\` asset, from
+# ${NODE_DIST_URL}/v${pin.version}/SHASUMS256.txt. Generated from @zuke/cli's
+# node_pin.ts: change the pin there.
+node_checksum_for() {
+  case "$1" in
+${arms}
+    *)
+      return 1 ;;
+  esac
+}
+
+dir="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+cd "$dir"
+
+node_version="\${NODE_VERSION:-$DEFAULT_NODE_VERSION}"
+node_version="\${node_version#v}"
+node_home="\${ZUKE_NODE_HOME:-$HOME/.zuke/node}/v$node_version"
+
+# The major version of the node on PATH, empty when there is none or it cannot
+# say (a version-manager shim with no runtime installed, say).
+path_major=""
+if command -v node >/dev/null 2>&1; then
+  path_major="$(node --version 2>/dev/null | sed -n 's/^v\\([0-9][0-9]*\\)\\..*/\\1/p')" || path_major=""
+fi
+
+if [ -n "$path_major" ] && [ "$path_major" -ge "$MIN_NODE_MAJOR" ]; then
+  node_dir="$(dirname "$(command -v node)")"
+elif [ -x "$node_home/bin/node" ]; then
+  node_dir="$node_home/bin"
+else
+  echo "zuke: Node $MIN_NODE_MAJOR or newer not found — installing $node_version now..." >&2
+  for cmd in curl tar; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+      echo "zuke: $cmd is required to download Node; install Node $MIN_NODE_MAJOR or newer instead." >&2
+      exit 1
+    fi
+  done
+
+  case "$(uname -s)" in
+    Linux) os_part="linux" ;;
+    Darwin) os_part="darwin" ;;
+    *)
+      echo "zuke: unsupported OS for the checksum-verified Node download: $(uname -s)." >&2
+      exit 1
+      ;;
+  esac
+  case "$(uname -m)" in
+    x86_64 | amd64) arch_part="x64" ;;
+    arm64 | aarch64) arch_part="arm64" ;;
+    *)
+      echo "zuke: unsupported architecture for the checksum-verified Node download: $(uname -m)." >&2
+      exit 1
+      ;;
+  esac
+  platform="\${os_part}-\${arch_part}"
+
+  if [ "$node_version" = "$DEFAULT_NODE_VERSION" ]; then
+    expected_sha256="$(node_checksum_for "$platform")" || {
+      echo "zuke: no pinned checksum for $platform." >&2
+      exit 1
+    }
+  elif [ -n "\${NODE_SHA256:-}" ]; then
+    expected_sha256="$NODE_SHA256"
+  else
+    echo "zuke: NODE_VERSION=$node_version overrides the pinned $DEFAULT_NODE_VERSION," >&2
+    echo "      but no checksum is pinned for it. Set NODE_SHA256 to the expected" >&2
+    echo "      SHA-256 of node-v$node_version-$platform.tar.gz, or unset NODE_VERSION." >&2
+    exit 1
+  fi
+
+  asset="node-v\${node_version}-\${platform}.tar.gz"
+  download_url="${NODE_DIST_URL}/v\${node_version}/\${asset}"
+${bashFetchVerified("Node")}
+
+  # Unpack into a sibling of the final directory, on the same filesystem, then
+  # rename it into place: the rename is atomic, so an interrupted run never
+  # leaves a half-extracted Node that looks installed.
+  node_root="$(dirname "$node_home")"
+  mkdir -p "$node_root"
+  staging="$(mktemp -d "$node_root/.v$node_version.XXXXXX")"
+  trap 'rm -rf "$work_dir" "$staging"' EXIT
+  tar -xzf "$archive" -C "$staging" --strip-components=1
+  # The rename publishes ours. If a concurrent launcher published first, mv
+  # either fails (their rename won the race) or nests ours inside theirs; we
+  # drop ours and use theirs. Nothing already at $node_home is ever deleted: it
+  # may be another run's Node.
+  mv "$staging" "$node_home" 2>/dev/null || true
+  rm -rf "$node_home/$(basename "$staging")"
+  # Here, not only in the trap: the exec below replaces this shell, so the
+  # EXIT trap never runs on success.
+  rm -rf "$staging" "$work_dir"
+  if [ ! -x "$node_home/bin/node" ]; then
+    echo "zuke: $node_home exists but holds no bin/node; remove it and run again." >&2
+    exit 1
+  fi
+  node_dir="$node_home/bin"
+fi
+
+# This node first on PATH, so the npm and npx the build runs are its own.
+export PATH="$node_dir:$PATH"
+
+# Written only after npm succeeds, so a failed install is retried next run.
+installed=node_modules/.zuke-installed
+
+# The npm command this checkout needs, or nothing when its install is current.
+install_needed() {
+  if [ -f package-lock.json ]; then
+    if [ ! -f "$installed" ] || [ package-lock.json -nt "$installed" ]; then
+      echo ci
+    fi
+  elif [ -f package.json ] && [ ! -f "$installed" ]; then
+    echo install
+  fi
+}
+
+if [ -n "$(install_needed)" ]; then
+  # One install at a time per checkout: a second launcher waits for the lock,
+  # then finds the first one's install current. The lock is created with
+  # noclobber, which fails when it exists, and holds its owner's process id. A
+  # lock whose owner is gone is reported, never removed: deciding that for
+  # another run is a guess two waiting runs could both act on.
+  lock=.zuke/install.lock
+  mkdir -p .zuke
+  waited=0
+  until (set -C; echo "$$" > "$lock") 2>/dev/null; do
+    holder="$(cat "$lock" 2>/dev/null || true)"
+    if [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; then
+      echo "zuke: $lock was left by an install that did not finish (process $holder); remove it and run again." >&2
+      exit 1
+    fi
+    if [ "$waited" -ge 600 ]; then
+      echo "zuke: another launcher has held $lock for 10 minutes; if none is running, remove it and run again." >&2
+      exit 1
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  trap 'rm -f "$lock"' EXIT
+  case "$(install_needed)" in
+    ci)
+      rm -f "$installed"
+      npm ci --ignore-scripts
+      mkdir -p node_modules && : > "$installed"
+      ;;
+    install)
+      echo "zuke: no package-lock.json here yet — running npm install so one can be written." >&2
+      npm install --ignore-scripts
+      mkdir -p node_modules && : > "$installed"
+      ;;
+  esac
+  # Released here, because the exec below skips the EXIT trap.
+  rm -f "$lock"
+  trap - EXIT
+fi
+
+exec node ${build} "$@"
+`;
+}
+
+/**
+ * The PowerShell launcher (`.\zuke.ps1`) of a Node project, mirroring
+ * {@link nodeLauncherBash}.
+ *
+ * @throws {Error} when the build file name is not a plain file name.
+ */
+export function nodeLauncherPowerShell(
+  options: NodeLauncherOptions = {},
+  pin: NodePin = NODE_PIN,
+): string {
+  const build = assertBuildFileName(options.buildFile ?? BUILD_FILE);
+  const width = Math.max(...NODE_WINDOWS_PLATFORMS.map((p) => p.length)) + 2;
+  const entries = NODE_WINDOWS_PLATFORMS.map((platform) =>
+    `  ${`"${platform}"`.padEnd(width)} = "${pin.checksums[platform]}"`
+  ).join("\n");
+  return `#!/usr/bin/env pwsh
+${LICENSE_HEADER}
+#
+# Zuke launcher (PowerShell) for a build that runs on Node.
+#
+#   .\\zuke.ps1               # run the default target
+#   .\\zuke.ps1 <target>      # run one target and its prerequisites
+#   .\\zuke.ps1 --list        # list every target
+#
+# Uses the node on PATH when it is Node ${majorOf(pin)} or newer, else a pinned,
+# checksum-verified Node it downloads once, then installs the project's
+# dependencies and runs ${build}.
+#
+${envDocs(pin)}
+
+$ErrorActionPreference = "Stop"
+
+$DefaultNodeVersion = "${pin.version}"
+$MinNodeMajor = ${majorOf(pin)}
+
+# SHA-256 of each \`node-v<version>-<platform>.zip\` asset, from
+# ${NODE_DIST_URL}/v${pin.version}/SHASUMS256.txt. Generated from @zuke/cli's
+# node_pin.ts: change the pin there.
+$NodeChecksums = @{
+${entries}
+}
+
+$dir = Split-Path -Parent $MyInvocation.MyCommand.Path
+Set-Location $dir
+
+$nodeVersion = if ($env:NODE_VERSION) { $env:NODE_VERSION } else { $DefaultNodeVersion }
+$nodeVersion = $nodeVersion.TrimStart("v")
+$nodeRoot = if ($env:ZUKE_NODE_HOME) { $env:ZUKE_NODE_HOME } else { Join-Path $HOME ".zuke\\node" }
+$nodeHome = Join-Path $nodeRoot "v$nodeVersion"
+
+function Resolve-Node {
+  $onPath = Get-Command node -CommandType Application -ErrorAction SilentlyContinue
+  if ($onPath) {
+    # A shim that cannot report a version is treated as no node at all.
+    $reported = ""
+    try { $reported = & $onPath.Source --version 2>$null } catch { }
+    if ($reported -match '^v(\\d+)\\.' -and [int]$Matches[1] -ge $MinNodeMajor) {
+      return $onPath.Source
+    }
+  }
+  $local = Join-Path $nodeHome "node.exe"
+  if (Test-Path $local) { return $local }
+  return $null
+}
+
+$node = Resolve-Node
+if (-not $node) {
+  Write-Host "zuke: Node $MinNodeMajor or newer not found - installing $nodeVersion now..."
+
+  $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+  $platform = switch ($arch) {
+    "X64" { "win-x64" }
+    "Arm64" { "win-arm64" }
+    default {
+      throw "zuke: unsupported architecture for the checksum-verified Node download: $arch."
+    }
+  }
+
+  if ($nodeVersion -eq $DefaultNodeVersion -and $NodeChecksums.ContainsKey($platform)) {
+    $expectedSha256 = $NodeChecksums[$platform]
+  } elseif ($env:NODE_SHA256) {
+    $expectedSha256 = $env:NODE_SHA256
+  } else {
+    throw "zuke: NODE_VERSION=$nodeVersion overrides the pinned $DefaultNodeVersion, " +
+      "but no checksum is pinned for it. Set NODE_SHA256 to the expected SHA-256 " +
+      "of node-v$nodeVersion-$platform.zip, or unset NODE_VERSION."
+  }
+
+  $asset = "node-v$nodeVersion-$platform.zip"
+  $downloadUrl = "${NODE_DIST_URL}/v$nodeVersion/$asset"
+  $workDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid())
+  New-Item -ItemType Directory -Path $workDir | Out-Null
+  $archive = Join-Path $workDir $asset
+  $staging = $null
+  try {
+${pwshFetchVerified("Node")}
+
+    # Unpack into a sibling of the final directory, on the same volume, then
+    # move the release folder into place: the move is a rename there, so an
+    # interrupted run never leaves a half-extracted Node that looks installed.
+    New-Item -ItemType Directory -Force -Path $nodeRoot | Out-Null
+    $staging = Join-Path $nodeRoot ".v$nodeVersion.$([System.Guid]::NewGuid())"
+    Expand-Archive -Path $archive -DestinationPath $staging -Force
+    $release = Get-ChildItem -Path $staging -Directory | Select-Object -First 1
+    # A name of its own, so a nested copy below is only ever this run's.
+    $release = Rename-Item -Path $release.FullName -NewName ([System.Guid]::NewGuid()) -PassThru
+    # The move publishes ours; if a concurrent launcher published first, ours
+    # is refused or nested inside theirs, and we drop it and use theirs.
+    # Nothing already at $nodeHome is ever deleted: it may be another run's Node.
+    try {
+      Move-Item -Path $release.FullName -Destination $nodeHome
+    } catch {
+      if (-not (Test-Path $nodeHome)) { throw }
+    }
+    $nested = Join-Path $nodeHome $release.Name
+    Remove-Item -Recurse -Force $nested -ErrorAction SilentlyContinue
+    if (-not (Test-Path (Join-Path $nodeHome "node.exe"))) {
+      throw "zuke: $nodeHome exists but holds no node.exe; remove it and run again."
+    }
+  } finally {
+    Remove-Item -Recurse -Force $workDir -ErrorAction SilentlyContinue
+    if ($staging) { Remove-Item -Recurse -Force $staging -ErrorAction SilentlyContinue }
+  }
+
+  $node = Join-Path $nodeHome "node.exe"
+}
+
+# This node first on PATH, so the npm and npx the build runs are its own.
+$env:PATH = (Split-Path -Parent $node) + [IO.Path]::PathSeparator + $env:PATH
+
+# Written only after npm succeeds, so a failed install is retried next run.
+$installed = Join-Path "node_modules" ".zuke-installed"
+
+# The npm command this checkout needs, or $null when its install is current.
+function Get-InstallNeeded {
+  if (Test-Path "package-lock.json") {
+    if (-not (Test-Path $installed) -or
+      (Get-Item "package-lock.json").LastWriteTime -gt (Get-Item $installed).LastWriteTime) {
+      return "ci"
+    }
+  } elseif ((Test-Path "package.json") -and -not (Test-Path $installed)) {
+    return "install"
+  }
+  return $null
+}
+
+if (Get-InstallNeeded) {
+  # One install at a time per checkout: a second launcher waits for the lock,
+  # then finds the first one's install current. The lock is created with
+  # CreateNew, which fails when it exists, and holds its owner's process id. A
+  # lock whose owner is gone is reported, never removed: deciding that for
+  # another run is a guess two waiting runs could both act on.
+  New-Item -ItemType Directory -Force -Path (Join-Path $dir ".zuke") | Out-Null
+  $lock = Join-Path $dir ".zuke/install.lock"
+  $waited = 0
+  while ($true) {
+    try {
+      $stream = [System.IO.File]::Open($lock, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write)
+      $bytes = [System.Text.Encoding]::ASCII.GetBytes("$PID")
+      $stream.Write($bytes, 0, $bytes.Length)
+      $stream.Close()
+      break
+    } catch {
+      $holder = 0
+      $text = Get-Content -Path $lock -Raw -ErrorAction SilentlyContinue
+      if ([int]::TryParse("$text".Trim(), [ref]$holder) -and
+        -not (Get-Process -Id $holder -ErrorAction SilentlyContinue)) {
+        throw "zuke: $lock was left by an install that did not finish (process $holder); remove it and run again."
+      }
+      if ($waited -ge 600) {
+        throw "zuke: another launcher has held $lock for 10 minutes; if none is running, remove it and run again."
+      }
+      Start-Sleep -Seconds 1
+      $waited++
+    }
+  }
+  try {
+    $install = Get-InstallNeeded
+    if ($install -eq "install") {
+      Write-Warning "zuke: no package-lock.json here yet - running npm install so one can be written."
+    }
+    if ($install) {
+      if (Test-Path $installed) { Remove-Item -Force $installed }
+      & npm $install --ignore-scripts
+      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      New-Item -ItemType File -Force -Path $installed | Out-Null
+    }
+  } finally {
+    Remove-Item -Force $lock -ErrorAction SilentlyContinue
+  }
+}
+
+& $node (Join-Path $dir "${build}") @args
+exit $LASTEXITCODE
+`;
+}
+
+/* cspell:enable */
