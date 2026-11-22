@@ -23,7 +23,7 @@ jobs:
           - windows-latest
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@b2d0b02b0613505f06e125a600ec6cea4ca8fc7b # v1.0.10
+        uses: zuke-build/zuke@6d44df88d10e9d6027aa5d34054c8aa40a001c05 # v1.0.11
         with:
           egress-policy: audit
           persist-credentials: "false"
