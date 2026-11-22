@@ -214,6 +214,12 @@ export interface CiBootstrap {
    */
   denoVersion?: string;
   /**
+   * Install this Node version, for a build whose `zuke.json` says
+   * `"runtime": "node"` and a job that runs `node` or `npm` directly rather
+   * than through the `./zuke` launcher (which bootstraps its own).
+   */
+  nodeVersion?: string;
+  /**
    * Expose the GitHub Actions cache to the build, so `envCacheStore` shares
    * target outputs through it with no further configuration. The runner hands
    * the cache service's token and URL to JavaScript actions only; this has the
@@ -850,6 +856,9 @@ function bootstrapStep(
   if (checkout?.ref !== undefined) inputs.ref = checkout.ref;
   if (bootstrap.denoVersion !== undefined) {
     inputs["deno-version"] = bootstrap.denoVersion;
+  }
+  if (bootstrap.nodeVersion !== undefined) {
+    inputs["node-version"] = bootstrap.nodeVersion;
   }
   if (bootstrap.actionsCache) inputs["actions-cache"] = "true";
   return {

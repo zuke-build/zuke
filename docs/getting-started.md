@@ -300,6 +300,7 @@ only governs what runs after it.
 | `fetch-depth`         | `1`     | Commits to fetch. `0` is the full history, which a secret scan needs.                                                           |
 | `ref`                 | `""`    | Branch, tag or SHA to check out. Empty follows the event — the base or default branch on a secret-bearing one. See below.       |
 | `deno-version`        | `""`    | Install this Deno. Usually unnecessary — the `./zuke` launcher bootstraps its own.                                              |
+| `node-version`        | `""`    | Install this Node, for a build that runs on Node. Usually unnecessary — a Node project's `./zuke` launcher bootstraps its own.  |
 | `actions-cache`       | `false` | Expose the Actions cache service to the build, so its [remote cache](./caching.md#on-github-actions) shares outputs through it. |
 
 Running a target needs a committed `./zuke` launcher in the repository (that is

@@ -58,6 +58,10 @@ inputs:
     description: "Install this Deno instead of letting the ./zuke launcher bootstrap one."
     required: false
     default: ""
+  node-version:
+    description: "Install this Node (for a build whose zuke.json says \"runtime\": \"node\") instead of letting the ./zuke launcher bootstrap one."
+    required: false
+    default: ""
   actions-cache:
     description: "Expose the Actions cache service to the build, so Zuke's remote cache shares target outputs through it (see docs/caching.md)."
     required: false
@@ -129,6 +133,15 @@ runs:
       uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
       with:
         deno-version: ${{ inputs.deno-version }}
+
+    # Only when asked, as for Deno: a Node project's ./zuke launcher bootstraps
+    # a pinned, checksum-verified Node itself, so this is for a job that runs
+    # node or npm directly, or wants the runner's own cached Node.
+    - name: Set up Node
+      if: inputs.node-version != ''
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: ${{ inputs.node-version }}
 
     # The cache service's token and URL reach a JavaScript action's process and
     # nothing else — not a `run:` step, and not this composite's own shell — so
