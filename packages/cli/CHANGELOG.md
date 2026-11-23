@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.8.0](https://github.com/zuke-build/zuke/compare/cli-v2.7.0...cli-v2.8.0) (2026-11-23)
+
+
+### Features
+
+* **cli:** zuke add, remove, cache and relock run npm in a Node project ([#1112](https://github.com/zuke-build/zuke/issues/1112)) ([65b895c](https://github.com/zuke-build/zuke/commit/65b895c3413e2905d8857f830eaa22d4e09d02e7))
+
+
+### Bug Fixes
+
+* **cli:** find the launchers' Deno from the Node binary when PATH has none ([#1128](https://github.com/zuke-build/zuke/issues/1128)) ([9e6d1df](https://github.com/zuke-build/zuke/commit/9e6d1df90b6ce1fe87d49ecae162313b72d87516))
+* **cli:** zuke setup --dir creates the directory it names ([#1120](https://github.com/zuke-build/zuke/issues/1120)) ([0c9fed9](https://github.com/zuke-build/zuke/commit/0c9fed997542af5a7b688ed7d88fdb7d8f3a1b0d))
+
 ## [2.7.0](https://github.com/zuke-build/zuke/compare/cli-v2.6.0...cli-v2.7.0) (2026-11-22)
 
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.84.0](https://github.com/zuke-build/zuke/compare/core-v1.83.2...core-v1.84.0) (2026-11-23)
+
+
+### Features
+
+* **core:** a node-version input on the action, and nodeVersion in the CI bootstrap ([#1115](https://github.com/zuke-build/zuke/issues/1115)) ([6d44df8](https://github.com/zuke-build/zuke/commit/6d44df88d10e9d6027aa5d34054c8aa40a001c05))
+* **core:** tell a Node single executable apart from Node on a script ([#1118](https://github.com/zuke-build/zuke/issues/1118)) ([36e82c8](https://github.com/zuke-build/zuke/commit/36e82c82865fa3f8798391f07bb88fba5e7edd6a))
+
 ## [1.83.2](https://github.com/zuke-build/zuke/compare/core-v1.83.1...core-v1.83.2) (2026-11-20)
 
 
