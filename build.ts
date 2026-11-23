@@ -96,6 +96,7 @@ import {
   bundleNodeCli,
   npmEntry,
 } from "./build/cli_node.ts";
+import { compileNodeCli, hostTriple } from "./build/cli_node_compile.ts";
 import { PYTHON_REPO, startPythonSync } from "./build/python_sync.ts";
 import {
   publishCliChocolatey,
@@ -249,6 +250,8 @@ const GITLEAKS_CONFIG = ["[extend]", "useDefault = true", ""].join("\n");
 const CLI_BIN_DIR = "dist/cli/bin";
 /** Where `cliNodeBundle` writes the Node binary's bundle. */
 const CLI_NODE_BUNDLE = "dist/cli/node/zuke.mjs";
+/** Where `cliNodeCompile` writes the Node binaries, laid out as `CLI_BIN_DIR`. */
+const CLI_NODE_BIN_DIR = "dist/cli/node-bin";
 
 /** Where the CLI's release archives and SHA256SUMS are packed. */
 const CLI_RELEASE_DIR = "dist/cli/release";
@@ -2400,6 +2403,31 @@ class ZukeBuild extends Build {
       await bundleNodeCli(npmEntry(await releaseEntry(version), version), out);
       await assertNodeBundleVersion(out, version);
       ConsoleTasks.info(`Bundled zuke ${version} for Node into ${out.path}.`);
+    });
+
+  // Step two (#1121): that bundle injected into each target's pinned,
+  // checksum-verified Node release, so one runner builds all five. The one
+  // built for this machine is run. Built and checked here; nothing ships them.
+  cliNodeCompile = target()
+    .description(
+      "Build the Node binary of every release target from the bundle",
+    )
+    .dependsOn(this.cliNodeBundle)
+    .executes(async () => {
+      const version = await localVersion("cli");
+      const cwd = RuntimeTasks.cwd();
+      const out = absolutePath(cwd, CLI_NODE_BIN_DIR);
+      await compileNodeCli(absolutePath(cwd, CLI_NODE_BUNDLE), out);
+      const host = hostTriple(RuntimeTasks.os(), RuntimeTasks.arch());
+      if (host === undefined) {
+        ConsoleTasks.info("No Node binary is built for this machine to run.");
+        return;
+      }
+      await assertReportsVersion(
+        absolutePath(binaryPath(out.path, host)),
+        version,
+      );
+      ConsoleTasks.info(`Built the Node binaries; ${host} reports ${version}.`);
     });
 
   cliSign = target()
