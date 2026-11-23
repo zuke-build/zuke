@@ -123,8 +123,9 @@ export const BUNDLE_FILE = "zuke.mjs";
  * temporary directory): `deno bundle` resolves the releases it names into
  * one ES module, and `compile` injects that into each target's pinned Node
  * (`build/cli_node_compile.ts`). Then the binary built for this machine, if
- * any, is run to check it reports `version`, ad-hoc signed first on macOS,
- * which will not start a binary whose signature the injection broke.
+ * any, is run to check it reports `version`, signed first on macOS with
+ * `sign` (an ad-hoc signature), since macOS will not start a binary whose
+ * signature the injection broke.
  */
 export async function compileCliBinaries(
   version: string,
@@ -132,6 +133,7 @@ export async function compileCliBinaries(
   entry: string,
   bundle: Bundle = (configure) => DenoTasks.bundle(configure),
   compile: CompileBundle = (out, dir) => compileNodeCli(out, dir),
+  sign: (binary: string) => Promise<void> = adHocSign,
 ): Promise<void> {
   const scratch = absolutePath(
     await FileTasks.makeTempDirectory((s) => s.prefix("zuke-compile-")),
@@ -145,7 +147,7 @@ export async function compileCliBinaries(
     const host = hostTriple(RuntimeTasks.os(), RuntimeTasks.arch());
     if (host !== undefined) {
       const binary = binaryPath(binDir.path, host);
-      if (RuntimeTasks.os() === "darwin") await adHocSign(binary);
+      if (RuntimeTasks.os() === "darwin") await sign(binary);
       await assertReportsVersion(absolutePath(binary), version);
     }
   } finally {

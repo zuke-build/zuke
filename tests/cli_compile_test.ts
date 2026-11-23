@@ -65,6 +65,7 @@ Deno.test("compileCliBinaries bundles the entry, compiles the bundle, and runs t
     const host = hostTriple(RuntimeTasks.os(), RuntimeTasks.arch());
     const expected = host === undefined ? "1.14.0" : await denoVersionLine();
     let compiled = "";
+    const signed: string[] = [];
     await compileCliBinaries(
       expected,
       bin,
@@ -92,6 +93,17 @@ Deno.test("compileCliBinaries bundles the entry, compiles the bundle, and runs t
           await Deno.copyFile(Deno.execPath(), binaryPath(bin.path, host));
         }
       },
+      (binary) => {
+        signed.push(binary);
+        return Promise.resolve();
+      },
+    );
+    // Only a macOS host signs its binary before running it.
+    assertEquals(
+      signed,
+      host !== undefined && RuntimeTasks.os() === "darwin"
+        ? [binaryPath(bin.path, host)]
+        : [],
     );
     assertEquals(bundles, [["bundle", "--output", BUNDLE_FILE, ENTRY_FILE]]);
     assertEquals(compiled, "// bundled\n");
