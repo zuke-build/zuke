@@ -71,7 +71,7 @@ export async function buildNodeBinary(
  * The entry the release compiles, for the workspace's CLI, engine and `deno`
  * wrapper in place of their JSR releases.
  */
-export async function workspaceEntry(): Promise<string> {
+async function workspaceEntry(): Promise<string> {
   return binaryEntry({
     cli: "@zuke/cli",
     engine: "@zuke/engine",

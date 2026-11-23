@@ -553,6 +553,9 @@ export function githubWorkflows(
           name: "CLI binaries: plan and compile",
           // The binaries are compiled from the version JSR just published.
           after: [targets.publishJsr],
+          // Each binary is a Node single executable, which only a Node with
+          // `--build-sea` builds: the pinned one the launchers run.
+          bootstrap: { nodeVersion: NODE_PIN.version },
           permissions: { contents: "read" },
           timeoutMinutes: 30,
           outputs: {

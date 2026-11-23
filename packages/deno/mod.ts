@@ -94,6 +94,8 @@ export {
   DenoWhySettings,
 } from "./src/dependencies.ts";
 export {
+  type DenoBundlePlatform,
+  DenoBundleSettings,
   DenoCleanSettings,
   DenoCompileSettings,
   type DenoCompileTarget,

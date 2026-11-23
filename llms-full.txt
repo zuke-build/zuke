@@ -7765,6 +7765,21 @@ class DenoBumpVersionSettings extends DenoSettings
   override protected buildArgs(): string[]
     Assemble the `deno bump-version` argv.
 
+class DenoBundleSettings extends DenoSettings
+  Settings for `deno bundle`.
+
+  script(path: PathLike): this
+    The entrypoint to bundle (required).
+  output(path: PathLike): this
+    The file to write (`--output`); without it the bundle goes to stdout.
+  platform(value: DenoBundlePlatform): this
+    The platform to bundle for (`--platform`). `deno`, the default, leaves
+    `node:` built-ins as imports, which is what a Node program needs too.
+  minify(): this
+    Minify the output (`--minify`).
+  override protected buildArgs(): string[]
+    Assemble the `deno bundle` argv.
+
 class DenoCacheSettings extends DenoSettings
   Settings for `deno cache`.
 
@@ -9118,6 +9133,8 @@ interface DenoTasksApi
     Run benchmarks: `deno bench`.
   compile(configure?: Configure<DenoCompileSettings>): Promise<CommandOutput>
     Build a self-contained executable: `deno compile`.
+  bundle(configure?: Configure<DenoBundleSettings>): Promise<CommandOutput>
+    Bundle a module and its dependencies into one file: `deno bundle`.
   clean(configure?: Configure<DenoCleanSettings>): Promise<CommandOutput>
     Remove the cache directory: `deno clean`.
   info(configure?: Configure<DenoInfoSettings>): Promise<CommandOutput>
@@ -9151,6 +9168,9 @@ interface DenoTasksApi
     build can assert on what its entry point actually pulls in.
   cacheInfo(configure?: Configure<DenoInfoSettings>): Promise<DenoCacheInfo>
     The toolchain's cache locations, parsed from `deno info --json`.
+
+type DenoBundlePlatform = "deno" | "browser"
+  The platform `deno bundle` builds for (`--platform`).
 
 type DenoCompileTarget = "x86_64-unknown-linux-gnu" | "aarch64-unknown-linux-gnu" | "x86_64-pc-windows-msvc" | "x86_64-apple-darwin" | "aarch64-apple-darwin"
   A target triple `deno compile` can cross-compile to, as listed by

@@ -2,15 +2,16 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * End-to-end: the compiled `zuke` runs a hosted build on the engine compiled
- * into it, with no Deno anywhere it could look.
+ * End-to-end: the `zuke` binary runs a hosted build on the engine built into
+ * it, with no Deno anywhere it could look.
  *
- * Only a real `deno compile` binary can prove this. Under `deno test` the
+ * Only a real standalone binary can prove this. Under `deno test` the
  * running executable is Deno, so a CLI that quietly spawned one would pass;
  * a compiled binary cannot import a module it was not compiled with, so an
  * engine that reached for JSR at runtime would fail only here. So: render the
- * entry the release compiles (`build/cli_binary.ts`), with the workspace's
- * CLI, engine and `deno` wrapper in place of their JSR releases, compile it,
+ * entry the release builds (`build/cli_binary.ts`), with the workspace's CLI,
+ * engine and `deno` wrapper in place of their JSR releases, build the Node
+ * binary from it as the release does,
  * and run a project whose `zuke.json` names a scripted worker, under an
  * environment where `PATH`, `HOME` and `DENO_INSTALL` hold no Deno. The
  * worker itself is started by absolute path; what is proven is the engine's
@@ -34,7 +35,6 @@ import {
   buildWorkspaceNodeBinary,
   MUST_HAVE_SEA_NODE,
   SEA_NODE,
-  workspaceEntry,
 } from "./_node_binary.ts";
 import {
   binaryArchiveName,
@@ -53,33 +53,6 @@ const FAKE_WORKER = new URL(
 
 /** The compiled binary's name on this platform. */
 const BINARY = Deno.build.os === "windows" ? "zuke.exe" : "zuke";
-
-/**
- * Compile the workspace's `zuke` to `binary` with `deno compile`: the same
- * entry the Node binary bundles.
- */
-async function compileEmbedding(binary: string): Promise<void> {
-  const source = await Deno.makeTempDir({
-    dir: Deno.cwd(),
-    prefix: ".zuke-e2e-entry-",
-  });
-  try {
-    const entry = `${source}/zuke.ts`;
-    await Deno.writeTextFile(entry, await workspaceEntry());
-    const { code, stderr } = await new Deno.Command(Deno.execPath(), {
-      args: ["compile", "-A", "--no-lock", "--output", binary, entry],
-      stdout: "null",
-      stderr: "piped",
-    }).output();
-    if (code !== 0) {
-      throw new Error(
-        `deno compile failed: ${new TextDecoder().decode(stderr)}`,
-      );
-    }
-  } finally {
-    await Deno.remove(source, { recursive: true });
-  }
-}
 
 /** The environment of a machine with no Deno, which Windows still needs a few of. */
 function noDeno(dir: string, extra: Record<string, string>) {
@@ -200,15 +173,13 @@ async function denoOnPath(path: string): Promise<boolean> {
 }
 
 /**
- * The `zuke` that `build` writes runs a hosted build on its own engine,
+ * The workspace's `zuke` binary runs a hosted build on its own engine,
  * directly and through the launchers that download it, with no Deno.
  */
-async function runsHostedBuild(
-  build: (binary: string) => Promise<void>,
-): Promise<void> {
+async function runsHostedBuild(): Promise<void> {
   await withTemp(async (dir) => {
     const binary = `${dir}/${BINARY}`;
-    await build(binary);
+    await buildWorkspaceNodeBinary(binary);
     const project = `${dir}/project`;
     await Deno.mkdir(project);
     const engine = await localVersion("engine");
@@ -308,12 +279,9 @@ async function runsHostedBuild(
   }, { prefix: "zuke-embedded-engine-" });
 }
 
-Deno.test("a compiled zuke runs a hosted build on its own engine, directly and through the launchers that download it, with no Deno", () =>
-  runsHostedBuild(compileEmbedding));
-
 Deno.test({
   name:
-    "the Node zuke runs a hosted build on its own engine, directly and through the launchers that download it, with no Deno",
+    "the zuke binary runs a hosted build on its own engine, directly and through the launchers that download it, with no Deno",
   ignore: SEA_NODE === undefined && !MUST_HAVE_SEA_NODE,
-  fn: () => runsHostedBuild(buildWorkspaceNodeBinary),
+  fn: runsHostedBuild,
 });
