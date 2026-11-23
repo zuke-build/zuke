@@ -101,8 +101,9 @@ Deno.test({
             : new Response(new Uint8Array(archive)),
         );
       };
+      // The whole file name: "darwin-x64.json" ends with "win-x64.json".
       const buildSea: BuildSea = (config) =>
-        config.endsWith(`${host.platform}.json`)
+        config.split(/[\\/]/).at(-1) === `${host.platform}.json`
           ? NODE_BUILD_SEA(config)
           : Promise.resolve();
       const out = root("bin");
