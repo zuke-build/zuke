@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/zuke-build/zuke/compare/deno-v1.5.0...deno-v1.6.0) (2026-11-23)
+
+
+### Features
+
+* **deno:** add DenoTasks.bundle, and build the release binaries with Node ([#1132](https://github.com/zuke-build/zuke/issues/1132)) ([3dae30e](https://github.com/zuke-build/zuke/commit/3dae30e977a09c18ca8a65fbd26309cf1bb947ff))
+
 ## [1.5.0](https://github.com/zuke-build/zuke/compare/deno-v1.4.2...deno-v1.5.0) (2026-10-21)
 
 
