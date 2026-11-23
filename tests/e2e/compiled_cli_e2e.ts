@@ -56,16 +56,11 @@ await run(Report);
 /** The compiled `zuke` binary's name on this platform. */
 const BINARY = Deno.build.os === "windows" ? "zuke.exe" : "zuke";
 
-/**
- * Build the real CLI into `dir` with `deno compile`, or as the Node binary
- * the release ships, returning the binary's path.
- */
-async function compileCli(dir: string, runtime: Runtime): Promise<string> {
-  const binary = `${dir}/${BINARY}`;
-  if (runtime === "node") {
-    await buildWorkspaceNodeBinary(binary);
-    return binary;
-  }
+/** Writes a `zuke` binary at the given path. */
+type BuildBinary = (binary: string) => Promise<void>;
+
+/** Compile the real CLI to `binary` with `deno compile`. */
+async function compileCli(binary: string): Promise<void> {
   const { code, stderr } = await new Deno.Command(Deno.execPath(), {
     args: ["compile", "-A", "--output", binary, CLI],
     stdout: "null",
@@ -76,7 +71,6 @@ async function compileCli(dir: string, runtime: Runtime): Promise<string> {
       `deno compile failed: ${new TextDecoder().decode(stderr)}`,
     );
   }
-  return binary;
 }
 
 /** Write a scratch project — root marker and build — into `dir`. */
@@ -116,24 +110,29 @@ async function forward(
   return JSON.parse(await Deno.readTextFile(`${dir}/spawned.json`));
 }
 
-/** Which runtime a binary is built on. */
-type Runtime = "deno" | "node";
+/** Each binary the forwarding is proved on, and how it is built. */
+const BINARIES: { name: string; build: BuildBinary; skip: boolean }[] = [
+  { name: "a compiled zuke", build: compileCli, skip: false },
+  {
+    name: "the Node zuke",
+    build: buildWorkspaceNodeBinary,
+    skip: SEA_NODE === undefined && !MUST_HAVE_SEA_NODE,
+  },
+];
 
-for (const runtime of ["deno", "node"] as const) {
+for (const { name, build, skip } of BINARIES) {
   Deno.test({
-    name: runtime === "deno"
-      ? "a compiled zuke forwards to a real Deno rather than to itself"
-      : "the Node zuke forwards to a real Deno rather than to itself",
+    name: `${name} forwards to a real Deno rather than to itself`,
     // The bootstrap-directory case below builds a symlink, and the compiled
     // binary is ~90 MB; the resolution order itself is unit tested, and this
     // proves the compiled case on the OSes that carry it.
-    ignore: Deno.build.os === "windows" ||
-      (runtime === "node" && SEA_NODE === undefined && !MUST_HAVE_SEA_NODE),
+    ignore: Deno.build.os === "windows" || skip,
     fn: async (t) => {
       await withTemp(async (dir) => {
         // One compile for both cases: it is the expensive part, and neither
         // case changes the binary.
-        const binary = await compileCli(dir, runtime);
+        const binary = `${dir}/${BINARY}`;
+        await build(binary);
 
         await t.step("the deno on PATH", async () => {
           const project = `${dir}/on-path`;

@@ -54,22 +54,11 @@ const FAKE_WORKER = new URL(
 /** The compiled binary's name on this platform. */
 const BINARY = Deno.build.os === "windows" ? "zuke.exe" : "zuke";
 
-/** Which runtime a binary is built on: `deno compile`, or Node's single executable. */
-type Runtime = "deno" | "node";
-
 /**
- * Build the workspace's `zuke` into `dir` on `runtime`, returning the
- * binary's path. The Deno one compiles the same entry the Node one bundles.
+ * Compile the workspace's `zuke` to `binary` with `deno compile`: the same
+ * entry the Node binary bundles.
  */
-async function compileEmbedding(
-  dir: string,
-  runtime: Runtime,
-): Promise<string> {
-  const binary = `${dir}/${BINARY}`;
-  if (runtime === "node") {
-    await buildWorkspaceNodeBinary(binary);
-    return binary;
-  }
+async function compileEmbedding(binary: string): Promise<void> {
   const source = await Deno.makeTempDir({
     dir: Deno.cwd(),
     prefix: ".zuke-e2e-entry-",
@@ -87,7 +76,6 @@ async function compileEmbedding(
         `deno compile failed: ${new TextDecoder().decode(stderr)}`,
       );
     }
-    return binary;
   } finally {
     await Deno.remove(source, { recursive: true });
   }
@@ -212,12 +200,15 @@ async function denoOnPath(path: string): Promise<boolean> {
 }
 
 /**
- * A `zuke` built on `runtime` runs a hosted build on its own engine, directly
- * and through the launchers that download it, with no Deno.
+ * The `zuke` that `build` writes runs a hosted build on its own engine,
+ * directly and through the launchers that download it, with no Deno.
  */
-async function runsHostedBuild(runtime: Runtime): Promise<void> {
+async function runsHostedBuild(
+  build: (binary: string) => Promise<void>,
+): Promise<void> {
   await withTemp(async (dir) => {
-    const binary = await compileEmbedding(dir, runtime);
+    const binary = `${dir}/${BINARY}`;
+    await build(binary);
     const project = `${dir}/project`;
     await Deno.mkdir(project);
     const engine = await localVersion("engine");
@@ -318,11 +309,11 @@ async function runsHostedBuild(runtime: Runtime): Promise<void> {
 }
 
 Deno.test("a compiled zuke runs a hosted build on its own engine, directly and through the launchers that download it, with no Deno", () =>
-  runsHostedBuild("deno"));
+  runsHostedBuild(compileEmbedding));
 
 Deno.test({
   name:
     "the Node zuke runs a hosted build on its own engine, directly and through the launchers that download it, with no Deno",
   ignore: SEA_NODE === undefined && !MUST_HAVE_SEA_NODE,
-  fn: () => runsHostedBuild("node"),
+  fn: () => runsHostedBuild(buildWorkspaceNodeBinary),
 });
