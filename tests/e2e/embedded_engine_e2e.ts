@@ -28,9 +28,14 @@ import {
   assertStringIncludes,
 } from "../../packages/core/tests/_assert.ts";
 import { withTemp } from "../../packages/core/tests/_temp.ts";
-import { binaryEntry } from "../../build/cli_binary.ts";
 import { localVersion } from "../../build/packages.ts";
 import { gzip, sha256Hex, tar, zip } from "@zuke/core";
+import {
+  buildWorkspaceNodeBinary,
+  MUST_HAVE_SEA_NODE,
+  SEA_NODE,
+  workspaceEntry,
+} from "./_node_binary.ts";
 import {
   binaryArchiveName,
   type BinaryPin,
@@ -50,33 +55,17 @@ const FAKE_WORKER = new URL(
 const BINARY = Deno.build.os === "windows" ? "zuke.exe" : "zuke";
 
 /**
- * Compile the entry for the workspace's CLI, engine and `deno` wrapper into
- * `dir`, returning the binary's path. The entry is written inside the
- * checkout, where the workspace resolves `@zuke/*` to its members.
+ * Compile the workspace's `zuke` to `binary` with `deno compile`: the same
+ * entry the Node binary bundles.
  */
-async function compileEmbedding(dir: string): Promise<string> {
+async function compileEmbedding(binary: string): Promise<void> {
   const source = await Deno.makeTempDir({
     dir: Deno.cwd(),
     prefix: ".zuke-e2e-entry-",
   });
   try {
     const entry = `${source}/zuke.ts`;
-    await Deno.writeTextFile(
-      entry,
-      binaryEntry({
-        cli: "@zuke/cli",
-        engine: "@zuke/engine",
-        engineVersion: await localVersion("engine"),
-        core: "@zuke/core",
-        coreVersion: await localVersion("core"),
-        wrappers: [{
-          name: "deno",
-          version: await localVersion("deno"),
-          specifier: "@zuke/deno",
-        }],
-      }),
-    );
-    const binary = `${dir}/${BINARY}`;
+    await Deno.writeTextFile(entry, await workspaceEntry());
     const { code, stderr } = await new Deno.Command(Deno.execPath(), {
       args: ["compile", "-A", "--no-lock", "--output", binary, entry],
       stdout: "null",
@@ -87,7 +76,6 @@ async function compileEmbedding(dir: string): Promise<string> {
         `deno compile failed: ${new TextDecoder().decode(stderr)}`,
       );
     }
-    return binary;
   } finally {
     await Deno.remove(source, { recursive: true });
   }
@@ -211,9 +199,16 @@ async function denoOnPath(path: string): Promise<boolean> {
   return code === 0;
 }
 
-Deno.test("a compiled zuke runs a hosted build on its own engine, directly and through the launchers that download it, with no Deno", async () => {
+/**
+ * The `zuke` that `build` writes runs a hosted build on its own engine,
+ * directly and through the launchers that download it, with no Deno.
+ */
+async function runsHostedBuild(
+  build: (binary: string) => Promise<void>,
+): Promise<void> {
   await withTemp(async (dir) => {
-    const binary = await compileEmbedding(dir);
+    const binary = `${dir}/${BINARY}`;
+    await build(binary);
     const project = `${dir}/project`;
     await Deno.mkdir(project);
     const engine = await localVersion("engine");
@@ -311,4 +306,14 @@ Deno.test("a compiled zuke runs a hosted build on its own engine, directly and t
       await server.shutdown();
     }
   }, { prefix: "zuke-embedded-engine-" });
+}
+
+Deno.test("a compiled zuke runs a hosted build on its own engine, directly and through the launchers that download it, with no Deno", () =>
+  runsHostedBuild(compileEmbedding));
+
+Deno.test({
+  name:
+    "the Node zuke runs a hosted build on its own engine, directly and through the launchers that download it, with no Deno",
+  ignore: SEA_NODE === undefined && !MUST_HAVE_SEA_NODE,
+  fn: () => runsHostedBuild(buildWorkspaceNodeBinary),
 });

@@ -221,16 +221,16 @@ function cwdUsable(cwd: string | undefined): boolean {
  *
  * @throws {DenoNotFoundError} when every candidate is missing.
  */
-export function spawnDeno(
+export async function spawnDeno(
   args: string[],
   options: DenoSpawnOptions = {},
   candidates: readonly string[] = denoCandidates(),
-): ChildProcess {
+): Promise<ChildProcess> {
   const tried: string[] = [];
   for (const command of candidates) {
     tried.push(command);
     try {
-      return ProcessTasks.spawn(command, (s) => {
+      const child = ProcessTasks.spawn(command, (s) => {
         s.args(...args);
         if (options.cwd !== undefined) s.cwd(options.cwd);
         if (options.stdin !== undefined) s.stdin(options.stdin);
@@ -244,6 +244,10 @@ export function spawnDeno(
         for (const [name, value] of Object.entries(env)) s.env(name, value);
         return s;
       });
+      // On Node a command that cannot start throws nothing: the child has no
+      // process, and its status rejects with why.
+      if (child.pid === -1) await child.status;
+      return child;
     } catch (error) {
       // Not installed here; the next candidate may be. Anything else — a
       // permission denial, a directory where the binary should be — is the

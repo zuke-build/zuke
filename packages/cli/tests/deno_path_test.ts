@@ -3,8 +3,8 @@
 
 import {
   assertEquals,
+  assertRejects,
   assertStringIncludes,
-  assertThrows,
 } from "../../core/tests/_assert.ts";
 import {
   defaultDenoHost,
@@ -123,7 +123,7 @@ Deno.test("a windows PATH is joined with semicolons", () => {
 Deno.test("spawnDeno skips a candidate that is not installed", async () => {
   // Only the second candidate can have produced this output, so the skip is
   // what the assertions prove.
-  const child = spawnDeno(
+  const child = await spawnDeno(
     ["eval", "console.log('ok')"],
     { stdout: "piped", stderr: "null" },
     [MISSING, Deno.execPath()],
@@ -136,8 +136,8 @@ Deno.test("spawnDeno skips a candidate that is not installed", async () => {
   assertStringIncludes(stdout, "ok");
 });
 
-Deno.test("spawnDeno reports every candidate it tried when none is installed", () => {
-  const error = assertThrows(
+Deno.test("spawnDeno reports every candidate it tried when none is installed", async () => {
+  const error = await assertRejects(
     () => spawnDeno(["--version"], {}, [MISSING, `${MISSING}-2`]),
     DenoNotFoundError,
   );
@@ -160,7 +160,7 @@ Deno.test({
     try {
       const notExecutable = `${dir}/deno`;
       await Deno.writeTextFile(notExecutable, "not a binary\n");
-      const error = assertThrows(() =>
+      const error = await assertRejects(() =>
         spawnDeno(["--version"], {}, [
           notExecutable,
         ])
@@ -206,7 +206,7 @@ Deno.test("an empty inherited PATH is not joined onto", () => {
 Deno.test("spawnDeno does not blame Deno for a cwd that is gone", async () => {
   const dir = await Deno.makeTempDir({ prefix: "zuke-deno-path-" });
   await Deno.remove(dir);
-  const error = assertThrows(() =>
+  const error = await assertRejects(() =>
     spawnDeno(["--version"], { cwd: dir }, [Deno.execPath()])
   );
   assertEquals(error instanceof DenoNotFoundError, false);
@@ -218,7 +218,7 @@ Deno.test("spawnDeno does not blame Deno for a cwd that is a file", async () => 
   try {
     const file = `${dir}/not-a-directory`;
     await Deno.writeTextFile(file, "");
-    const error = assertThrows(() =>
+    const error = await assertRejects(() =>
       spawnDeno(["--version"], { cwd: file }, [Deno.execPath()])
     );
     assertEquals(error instanceof DenoNotFoundError, false);
@@ -260,7 +260,7 @@ Deno.test("the compiled order is the one the launchers use in shell", () => {
 
 Deno.test("every spawned Deno skips its update check, so its notice cannot land in our output", async () => {
   await withEnv({ DENO_NO_UPDATE_CHECK: undefined }, async () => {
-    const child = spawnDeno(
+    const child = await spawnDeno(
       ["eval", "console.log(Deno.env.get('DENO_NO_UPDATE_CHECK'))"],
       { stdout: "piped", stderr: "null" },
       [Deno.execPath()],
@@ -276,7 +276,7 @@ Deno.test("every spawned Deno skips its update check, so its notice cannot land 
 });
 
 Deno.test("a caller's env reaches the spawned Deno, but cannot turn the update check back on", async () => {
-  const child = spawnDeno(
+  const child = await spawnDeno(
     [
       "eval",
       "console.log(Deno.env.get('EXTRA'), Deno.env.get('DENO_NO_UPDATE_CHECK'))",
