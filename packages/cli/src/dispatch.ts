@@ -715,7 +715,7 @@ export const defaultBuildRunner: BuildRunner = async (
   env,
 ): Promise<number> => {
   const child = program === undefined
-    ? spawnDeno(args, {
+    ? await spawnDeno(args, {
       cwd: root,
       stdin: "inherit",
       stdout: "inherit",

@@ -69,7 +69,7 @@ export const defaultProjectHost: ProjectHost = {
     await FileTasks.remove(path);
   },
   deno: async (denoArgs, cwd) => {
-    const child = spawnDeno(denoArgs, {
+    const child = await spawnDeno(denoArgs, {
       cwd,
       stdin: "null",
       stdout: "inherit",

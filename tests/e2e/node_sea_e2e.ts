@@ -25,36 +25,19 @@ import {
   nodeAsset,
 } from "../../build/cli_node_compile.ts";
 import { binaryPath } from "../../build/cli_package.ts";
+import { MUST_HAVE_SEA_NODE, SEA_NODE } from "./_node_binary.ts";
 import {
   NODE_PIN,
   type NodePin,
   type NodePlatform,
 } from "../../packages/cli/src/node_pin.ts";
 
-/** The `node` on `PATH`, when it is one that has `--build-sea`. */
-async function seaNode(): Promise<string | undefined> {
-  try {
-    const out = await new Deno.Command("node", {
-      args: ["-p", "process.versions.node + ' ' + process.execPath"],
-      stdout: "piped",
-      stderr: "null",
-    }).output();
-    const [version, ...path] = new TextDecoder().decode(out.stdout).trim()
-      .split(" ");
-    return out.success && Number(version.split(".")[0]) >= 25
-      ? path.join(" ")
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-const NODE = await seaNode();
+const NODE = SEA_NODE;
 const HOST = hostTriple(Deno.build.os, Deno.build.arch);
 
 Deno.test({
   name: "CI runs the Node single executable test rather than skipping it",
-  ignore: Deno.env.get("CI") !== "true",
+  ignore: !MUST_HAVE_SEA_NODE,
   fn: () => {
     assertEquals(
       NODE !== undefined,

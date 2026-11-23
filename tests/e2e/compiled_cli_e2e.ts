@@ -18,6 +18,11 @@
 
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { withTemp } from "../../packages/core/tests/_temp.ts";
+import {
+  buildWorkspaceNodeBinary,
+  MUST_HAVE_SEA_NODE,
+  SEA_NODE,
+} from "./_node_binary.ts";
 
 const CORE = new URL("../../packages/core/mod.ts", import.meta.url).href;
 const CLI = new URL("../../packages/cli/mod.ts", import.meta.url).pathname;
@@ -51,9 +56,16 @@ await run(Report);
 /** The compiled `zuke` binary's name on this platform. */
 const BINARY = Deno.build.os === "windows" ? "zuke.exe" : "zuke";
 
-/** Compile the real CLI into `dir`, returning the binary's path. */
-async function compileCli(dir: string): Promise<string> {
+/**
+ * Build the real CLI into `dir` with `deno compile`, or as the Node binary
+ * the release ships, returning the binary's path.
+ */
+async function compileCli(dir: string, runtime: Runtime): Promise<string> {
   const binary = `${dir}/${BINARY}`;
+  if (runtime === "node") {
+    await buildWorkspaceNodeBinary(binary);
+    return binary;
+  }
   const { code, stderr } = await new Deno.Command(Deno.execPath(), {
     args: ["compile", "-A", "--output", binary, CLI],
     stdout: "null",
@@ -104,50 +116,58 @@ async function forward(
   return JSON.parse(await Deno.readTextFile(`${dir}/spawned.json`));
 }
 
-Deno.test({
-  name: "a compiled zuke forwards to a real Deno rather than to itself",
-  // The bootstrap-directory case below builds a symlink, and the compiled
-  // binary is ~90 MB; the resolution order itself is unit tested, and this
-  // proves the compiled case on the OSes that carry it.
-  ignore: Deno.build.os === "windows",
-  fn: async (t) => {
-    await withTemp(async (dir) => {
-      // One compile for both cases: it is the expensive part, and neither
-      // case changes the binary.
-      const binary = await compileCli(dir);
+/** Which runtime a binary is built on. */
+type Runtime = "deno" | "node";
 
-      await t.step("the deno on PATH", async () => {
-        const project = `${dir}/on-path`;
-        await Deno.mkdir(project);
-        await scratchProject(project);
-        const denoBin = new URL(".", `file://${Deno.execPath()}`).pathname;
-        const spawned = await forward(binary, project, {
-          PATH: `${denoBin}:/usr/bin:/bin`,
-          HOME: dir,
-        });
-        // A real Deno ran the build — not the compiled binary, which would
-        // have re-entered the CLI instead of running anything.
-        assertEquals(spawned.standalone, false);
-        assertEquals(spawned.execPath === binary, false);
-      });
+for (const runtime of ["deno", "node"] as const) {
+  Deno.test({
+    name: runtime === "deno"
+      ? "a compiled zuke forwards to a real Deno rather than to itself"
+      : "the Node zuke forwards to a real Deno rather than to itself",
+    // The bootstrap-directory case below builds a symlink, and the compiled
+    // binary is ~90 MB; the resolution order itself is unit tested, and this
+    // proves the compiled case on the OSes that carry it.
+    ignore: Deno.build.os === "windows" ||
+      (runtime === "node" && SEA_NODE === undefined && !MUST_HAVE_SEA_NODE),
+    fn: async (t) => {
+      await withTemp(async (dir) => {
+        // One compile for both cases: it is the expensive part, and neither
+        // case changes the binary.
+        const binary = await compileCli(dir, runtime);
 
-      await t.step("the launchers' DENO_INSTALL directory", async () => {
-        const project = `${dir}/bootstrap-project`;
-        await Deno.mkdir(project);
-        await scratchProject(project);
-        // A bootstrap directory exactly as the launchers install one, and a
-        // PATH with no `deno` on it at all, so only the fallback can answer.
-        const install = `${dir}/bootstrap`;
-        await Deno.mkdir(`${install}/bin`, { recursive: true });
-        await Deno.symlink(Deno.execPath(), `${install}/bin/deno`);
-        const spawned = await forward(binary, project, {
-          PATH: "/nonexistent-for-this-test",
-          DENO_INSTALL: install,
-          HOME: dir,
+        await t.step("the deno on PATH", async () => {
+          const project = `${dir}/on-path`;
+          await Deno.mkdir(project);
+          await scratchProject(project);
+          const denoBin = new URL(".", `file://${Deno.execPath()}`).pathname;
+          const spawned = await forward(binary, project, {
+            PATH: `${denoBin}:/usr/bin:/bin`,
+            HOME: dir,
+          });
+          // A real Deno ran the build — not the compiled binary, which would
+          // have re-entered the CLI instead of running anything.
+          assertEquals(spawned.standalone, false);
+          assertEquals(spawned.execPath === binary, false);
         });
-        assertEquals(spawned.standalone, false);
-        assertEquals(spawned.execPath === binary, false);
-      });
-    }, { prefix: "zuke-compiled-cli-" });
-  },
-});
+
+        await t.step("the launchers' DENO_INSTALL directory", async () => {
+          const project = `${dir}/bootstrap-project`;
+          await Deno.mkdir(project);
+          await scratchProject(project);
+          // A bootstrap directory exactly as the launchers install one, and a
+          // PATH with no `deno` on it at all, so only the fallback can answer.
+          const install = `${dir}/bootstrap`;
+          await Deno.mkdir(`${install}/bin`, { recursive: true });
+          await Deno.symlink(Deno.execPath(), `${install}/bin/deno`);
+          const spawned = await forward(binary, project, {
+            PATH: "/nonexistent-for-this-test",
+            DENO_INSTALL: install,
+            HOME: dir,
+          });
+          assertEquals(spawned.standalone, false);
+          assertEquals(spawned.execPath === binary, false);
+        });
+      }, { prefix: "zuke-compiled-cli-" });
+    },
+  });
+}

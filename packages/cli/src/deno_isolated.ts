@@ -50,7 +50,7 @@ export async function runDenoIsolated(
   const cwd = await FileTasks.makeTempDirectory((s) => s.prefix(prefix));
   try {
     await FileTasks.writeText(`${cwd}/deno.json`, ISOLATED_DENO_CONFIG);
-    const child = spawnDeno(denoArgs, {
+    const child = await spawnDeno(denoArgs, {
       cwd,
       stdin: "null",
       stdout: "piped",

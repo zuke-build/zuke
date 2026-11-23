@@ -300,7 +300,7 @@ Deno.test("a forwarded build resolves a real Deno when the CLI is a compiled bin
       windows: () => Deno.build.os === "windows",
     };
     const runner: BuildRunner = async (root, denoArgs) => {
-      const child = spawnDeno(
+      const child = await spawnDeno(
         denoArgs,
         { cwd: root, stdin: "null", stdout: "null", stderr: "inherit" },
         denoCandidates(compiled),
