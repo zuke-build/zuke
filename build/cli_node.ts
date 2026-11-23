@@ -128,13 +128,40 @@ export function tsdownConfig(): string {
 }
 
 /**
- * Bundle `entry` into the single ES module at `out`: install its packages
- * from JSR's npm registry, without their scripts, in a scratch directory, and
- * bundle the entry with everything it imports with tsdown.
+ * The two steps of {@link bundleNodeCli} that reach outside the process,
+ * each run in the scratch directory: injectable, so the rest is testable
+ * without the network or a Node.
+ */
+export interface BundleSteps {
+  /** Install the packages `package.json` names, without their scripts. */
+  install(dir: string): Promise<void>;
+  /** Bundle `entry.mjs` as `tsdown.config.mjs` says, into `out/entry.mjs`. */
+  bundle(dir: string): Promise<void>;
+}
+
+/** The real {@link BundleSteps}: npm, then tsdown. */
+export const NPM_TSDOWN: BundleSteps = {
+  install: async (dir) => {
+    await NpmTasks.install((s) =>
+      s.cwd(dir).ignoreScripts().noAudit().noFund()
+    );
+  },
+  bundle: async (dir) => {
+    await TsdownTasks.build((s) => s.cwd(dir).config("tsdown.config.mjs"));
+  },
+};
+
+/**
+ * Bundle `entry` into the single ES module at `out`: in a scratch directory,
+ * write its `package.json`, `.npmrc`, entry and tsdown configuration, install
+ * the packages from JSR's npm registry, bundle the entry with everything it
+ * imports, and copy the result to `out`. The scratch directory is removed
+ * whether it succeeds or not.
  */
 export async function bundleNodeCli(
   entry: NpmEntry,
   out: AbsolutePath,
+  steps: BundleSteps = NPM_TSDOWN,
 ): Promise<void> {
   const scratch = absolutePath(
     await FileTasks.makeTempDirectory((s) => s.prefix("zuke-node-bundle-")),
@@ -146,16 +173,12 @@ export async function bundleNodeCli(
       scratch("entry.mjs").path,
       binaryEntry(entry.entry),
     );
-    await NpmTasks.install((s) =>
-      s.cwd(scratch.path).ignoreScripts().noAudit().noFund()
-    );
     await FileTasks.writeText(
       scratch("tsdown.config.mjs").path,
       tsdownConfig(),
     );
-    await TsdownTasks.build((s) =>
-      s.cwd(scratch.path).config("tsdown.config.mjs")
-    );
+    await steps.install(scratch.path);
+    await steps.bundle(scratch.path);
     await FileTasks.createDirectory(out.parent().path);
     await FileTasks.copy(scratch("out", "entry.mjs").path, out.path);
   } finally {
@@ -164,7 +187,8 @@ export async function bundleNodeCli(
 }
 
 /**
- * Run the bundle at `out` on Node with `--version`, and require the first
+ * Run the bundle at `out` with `node` (any runtime that runs an ES module
+ * file given as its first argument) and `--version`, and require the first
  * line it prints to be `version`.
  *
  * @throws {Error} naming what it printed otherwise.
@@ -172,15 +196,16 @@ export async function bundleNodeCli(
 export async function assertNodeBundleVersion(
   out: AbsolutePath,
   version: string,
+  node = "node",
 ): Promise<void> {
   const { code, stdout } = await ProcessTasks.run(
-    "node",
+    node,
     (s) => s.args(out.path, "--version").stdout("piped"),
   );
   const first = new TextDecoder().decode(stdout).split("\n")[0].trim();
   if (code !== 0 || first !== version) {
     throw new Error(
-      `the Node bundle at ${out} printed "${first}" (exit ${code}) for ` +
+      `the Node bundle at ${out.path} printed "${first}" (exit ${code}) for ` +
         `--version, not ${version}`,
     );
   }
