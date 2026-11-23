@@ -26,6 +26,7 @@ import { HomebrewTasks } from "@zuke/homebrew";
 import { actionPin } from "./action_pins.ts";
 import { NPM_ENVIRONMENT } from "./npm_publish.ts";
 import { ACTION_PIN } from "./action_release.ts";
+import { NODE_PIN } from "../packages/cli/src/node_pin.ts";
 
 /**
  * Share the build's cacheable outputs (the provisioned toolchain) through the
@@ -916,7 +917,9 @@ export function githubWorkflows(
         // prelude action, which installs it — so this job's opening is one step
         // like every other, and `setup-deno`'s pin lives in `action.yml` with
         // the rest rather than being named here.
-        bootstrap: { denoVersion: "v2.8.3" },
+        // The pinned Node too: the single executable e2e test needs a Node with
+        // `--build-sea`, which no runner image ships yet.
+        bootstrap: { denoVersion: "v2.8.3", nodeVersion: NODE_PIN.version },
         // Runs `deno` directly for the same reason. `--frozen` fails the run if
         // the e2e suite's resolution would diverge from the committed lock.
         steps: [{

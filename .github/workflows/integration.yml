@@ -28,5 +28,6 @@ jobs:
           egress-policy: audit
           persist-credentials: "false"
           deno-version: v2.8.3
+          node-version: 26.13.1
       - name: Run the subprocess e2e suite
         run: deno run -A --frozen build.ts integration
