@@ -17,6 +17,7 @@
  * @module
  */
 
+import { CodesignTasks } from "@zuke/apple";
 import {
   type AbsolutePath,
   absolutePath,
@@ -185,6 +186,16 @@ export async function compileNodeCli(
   } finally {
     await FileTasks.remove(scratch, { recursive: true });
   }
+}
+
+/**
+ * Ad-hoc sign the macOS executable at `path`, so this Mac will start it:
+ * injection leaves its signature invalid, and macOS kills an arm64 binary
+ * without a valid one. Only for running it here; the release signs it for
+ * real.
+ */
+export async function adHocSign(path: string): Promise<void> {
+  await CodesignTasks.sign((s) => s.identity("-").force().file(path));
 }
 
 /**

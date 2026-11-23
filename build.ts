@@ -96,7 +96,11 @@ import {
   bundleNodeCli,
   npmEntry,
 } from "./build/cli_node.ts";
-import { compileNodeCli, hostTriple } from "./build/cli_node_compile.ts";
+import {
+  adHocSign,
+  compileNodeCli,
+  hostTriple,
+} from "./build/cli_node_compile.ts";
 import { PYTHON_REPO, startPythonSync } from "./build/python_sync.ts";
 import {
   publishCliChocolatey,
@@ -2423,10 +2427,9 @@ class ZukeBuild extends Build {
         ConsoleTasks.info("No Node binary is built for this machine to run.");
         return;
       }
-      await assertReportsVersion(
-        absolutePath(binaryPath(out.path, host)),
-        version,
-      );
+      const exe = binaryPath(out.path, host);
+      if (RuntimeTasks.os() === "darwin") await adHocSign(exe);
+      await assertReportsVersion(absolutePath(exe), version);
       ConsoleTasks.info(`Built the Node binaries; ${host} reports ${version}.`);
     });
 

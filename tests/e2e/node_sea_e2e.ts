@@ -16,6 +16,7 @@
 import { absolutePath, gzip, sha256Hex, tar, zip } from "@zuke/core";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import {
+  adHocSign,
   type BuildSea,
   compileNodeCli,
   hostTriple,
@@ -110,13 +111,7 @@ Deno.test({
       await compileNodeCli(bundle, out, fetcher, buildSea, pin);
 
       const exe = binaryPath(out.path, host.triple);
-      if (Deno.build.os === "darwin") {
-        // Injection invalidates the signature; macOS kills an unsigned arm64 binary.
-        const signed = await new Deno.Command("codesign", {
-          args: ["--sign", "-", "--force", exe],
-        }).output();
-        assertEquals(signed.success, true);
-      }
+      if (Deno.build.os === "darwin") await adHocSign(exe);
       const run = await new Deno.Command(exe, {
         args: ["--version", "x"],
         stdout: "piped",
