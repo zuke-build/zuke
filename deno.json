@@ -74,8 +74,7 @@
     "packages/dart"
   ],
   "imports": {
-    "@std/yaml": "jsr:@std/yaml@^1.2.0",
-    "esbuild": "npm:esbuild@^0.25.12"
+    "@std/yaml": "jsr:@std/yaml@^1.2.0"
   },
   "tasks": {
     "zuke": "deno run -A --frozen build.ts",

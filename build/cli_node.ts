@@ -13,14 +13,15 @@
  * to those names, so importing them by the same names gives the bundle one
  * core that the CLI, the engine and every wrapper share.
  *
- * Bundled as an ES module because the packages use top-level await, which a
- * CommonJS bundle cannot express; a single executable runs it with
- * `"mainFormat": "module"`.
+ * tsdown bundles it, installed beside the packages at a pinned release, into
+ * one ES module: every dependency bundled and every dynamic import (the
+ * wrappers) inlined, since a single executable carries one file. An ES
+ * module because the packages use top-level await, which a CommonJS bundle
+ * cannot express; a single executable runs it with `"mainFormat": "module"`.
  *
  * @module
  */
 
-import { build } from "esbuild";
 import {
   type AbsolutePath,
   absolutePath,
@@ -28,7 +29,11 @@ import {
   ProcessTasks,
 } from "@zuke/core";
 import { NpmTasks } from "@zuke/npm";
+import { TsdownTasks } from "@zuke/tsdown";
 import { type BinaryEntry, binaryEntry } from "./cli_binary.ts";
+
+/** The tsdown release the bundle is built with. */
+const TSDOWN_VERSION = "0.23.4";
 
 /** JSR's npm-compatible registry, which serves the `@jsr` scope. */
 const JSR_NPM_REGISTRY = "https://npm.jsr.io";
@@ -82,6 +87,7 @@ export function npmManifest(entry: NpmEntry): string {
         private: true,
         type: "module",
         dependencies: entry.dependencies,
+        devDependencies: { tsdown: TSDOWN_VERSION },
       },
       null,
       2,
@@ -96,14 +102,35 @@ export const JSR_NPMRC = `@jsr:registry=${JSR_NPM_REGISTRY}\n`;
  * Lets a bundled package that still calls `require` find it: an ES module has
  * none of its own.
  */
-const REQUIRE_SHIM =
+export const REQUIRE_SHIM =
   'import { createRequire as __zukeRequire } from "node:module";\n' +
   "const require = __zukeRequire(import.meta.url);";
 
 /**
+ * The tsdown configuration that bundles `entry.mjs` into `out/entry.mjs`:
+ * every dependency bundled, every dynamic import inlined, so one file holds
+ * the whole binary.
+ */
+export function tsdownConfig(): string {
+  const config = {
+    entry: ["entry.mjs"],
+    format: "esm",
+    platform: "node",
+    target: "node24",
+    outDir: "out",
+    dts: false,
+    outputOptions: { inlineDynamicImports: true },
+    banner: { js: REQUIRE_SHIM },
+  };
+  // A RegExp has no JSON form, so it is written into the module text.
+  return `export default {\n  ...${JSON.stringify(config)},\n` +
+    "  deps: { alwaysBundle: [/.*/] },\n};\n";
+}
+
+/**
  * Bundle `entry` into the single ES module at `out`: install its packages
  * from JSR's npm registry, without their scripts, in a scratch directory, and
- * bundle the entry with everything it imports.
+ * bundle the entry with everything it imports with tsdown.
  */
 export async function bundleNodeCli(
   entry: NpmEntry,
@@ -122,17 +149,15 @@ export async function bundleNodeCli(
     await NpmTasks.install((s) =>
       s.cwd(scratch.path).ignoreScripts().noAudit().noFund()
     );
+    await FileTasks.writeText(
+      scratch("tsdown.config.mjs").path,
+      tsdownConfig(),
+    );
+    await TsdownTasks.build((s) =>
+      s.cwd(scratch.path).config("tsdown.config.mjs")
+    );
     await FileTasks.createDirectory(out.parent().path);
-    await build({
-      entryPoints: [scratch("entry.mjs").path],
-      outfile: out.path,
-      bundle: true,
-      platform: "node",
-      format: "esm",
-      target: "node24",
-      banner: { js: REQUIRE_SHIM },
-      logLevel: "warning",
-    });
+    await FileTasks.copy(scratch("out", "entry.mjs").path, out.path);
   } finally {
     await FileTasks.remove(scratch, { recursive: true });
   }

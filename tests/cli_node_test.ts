@@ -17,6 +17,8 @@ import {
   jsrNpmName,
   npmEntry,
   npmManifest,
+  REQUIRE_SHIM,
+  tsdownConfig,
 } from "../build/cli_node.ts";
 
 const ENTRY = {
@@ -58,5 +60,18 @@ Deno.test("npmManifest pins the dependencies in a private ES module package, and
   assertEquals(manifest.private, true);
   assertEquals(manifest.type, "module");
   assertEquals(manifest.dependencies["@jsr/zuke__cli"], "2.3.0");
+  // The bundler is pinned beside them, not taken from wherever.
+  assertEquals(manifest.devDependencies, { tsdown: "0.23.4" });
   assertEquals(JSR_NPMRC, "@jsr:registry=https://npm.jsr.io\n");
+});
+
+Deno.test("tsdownConfig bundles every dependency into one ES module, dynamic imports inlined", () => {
+  const config = tsdownConfig();
+  assertStringIncludes(config, "export default {");
+  // One file: a single executable carries nothing beside it.
+  assertStringIncludes(config, '"inlineDynamicImports":true');
+  assertStringIncludes(config, "deps: { alwaysBundle: [/.*/] },");
+  assertStringIncludes(config, '"format":"esm"');
+  assertStringIncludes(config, '"platform":"node"');
+  assertStringIncludes(config, JSON.stringify(REQUIRE_SHIM));
 });
