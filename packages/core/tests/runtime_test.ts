@@ -4,6 +4,7 @@
 import { assertEquals } from "./_assert.ts";
 import {
   denoPath,
+  isSingleExecutable,
   mainModule,
   nodeOptionWords,
   ON_DENO,
@@ -73,4 +74,18 @@ Deno.test("NODE_OPTIONS is split as Node splits it", () => {
   // A quote left open, and a backslash at the very end of one.
   assertEquals(nodeOptionWords('"open --a'), ["open --a"]);
   assertEquals(nodeOptionWords('"end\\'), ["end"]);
+});
+
+Deno.test("a Node single executable is told apart by node:sea", () => {
+  const builtin = (sea: unknown) => (id: string) =>
+    id === "node:sea" ? sea : undefined;
+  assertEquals(isSingleExecutable(builtin({ isSea: () => true })), true);
+  assertEquals(isSingleExecutable(builtin({ isSea: () => false })), false);
+  // A Node with no getBuiltinModule, or a node:sea without isSea, is not one.
+  // null, not undefined, which would take the default and read this runtime.
+  assertEquals(isSingleExecutable(null), false);
+  assertEquals(isSingleExecutable(builtin(undefined)), false);
+  assertEquals(isSingleExecutable(builtin({})), false);
+  // By default it asks the running process, which here is no single executable.
+  assertEquals(isSingleExecutable(), false);
 });

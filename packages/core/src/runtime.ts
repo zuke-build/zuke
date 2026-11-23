@@ -50,10 +50,26 @@ export function runtimeFacts(): RuntimeFacts {
     name: "node",
     version: process.versions.node,
     typescript: undefined,
-    // shortcut: a Node single executable is not detected, add it with the
-    // Node-built binary.
-    standalone: false,
+    standalone: isSingleExecutable(),
   };
+}
+
+/**
+ * Whether this Node process is a single executable application: a binary
+ * with Node and the program inside it. `node:sea` answers, read through
+ * `process.getBuiltinModule` (`getBuiltin`) rather than imported, since Deno
+ * has no such module and a static import would fail there. A Node too old to
+ * have `getBuiltinModule` (before 22.3) is not one.
+ */
+export function isSingleExecutable(
+  getBuiltin: unknown = Reflect.get(process, "getBuiltinModule"),
+): boolean {
+  if (typeof getBuiltin !== "function") return false;
+  const sea: unknown = Reflect.apply(getBuiltin, process, ["node:sea"]);
+  const isSea = sea !== null && typeof sea === "object"
+    ? Reflect.get(sea, "isSea")
+    : undefined;
+  return typeof isSea === "function" && isSea() === true;
 }
 
 /** The Node option that keeps the entry script's symlink unresolved. */
