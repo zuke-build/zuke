@@ -51,7 +51,12 @@ Deno.test("binaryEntry imports the CLI, the engine, its core and every wrapper b
     '  FORWARDED_ENV,\n} from "jsr:@zuke/cli@2.3.0";',
   );
   assertStringIncludes(source, '} from "jsr:@zuke/engine@1.3.0";');
-  assertStringIncludes(source, 'import { run } from "jsr:@zuke/core@^1.80.0";');
+  assertStringIncludes(
+    source,
+    'import { run, RuntimeTasks } from "jsr:@zuke/core@^1.80.0";',
+  );
+  // Runtime-neutral, so the one entry builds the Deno and the Node binary.
+  assertEquals(/\bDeno\./.test(source), false);
   assertStringIncludes(source, 'const ENGINE = "1.3.0";');
   // Literal imports, in the order given, which is what the compile embeds.
   assertStringIncludes(
@@ -65,11 +70,11 @@ Deno.test("binaryEntry imports the CLI, the engine, its core and every wrapper b
   // so a zuke a body runs is forwarded afresh, launcher and all.
   assertStringIncludes(
     source,
-    "  Deno.env.delete(EMBEDDED_ENGINE_ENV);\n" +
-      "  Deno.env.delete(FORWARDED_ENV);\n" +
+    "  delete process.env[EMBEDDED_ENGINE_ENV];\n" +
+      "  delete process.env[FORWARDED_ENV];\n" +
       "  await run(await hostedBuild(embeddedTools(RELEASES)));",
   );
-  assertStringIncludes(source, "program: Deno.execPath(),");
+  assertStringIncludes(source, "program: RuntimeTasks.execPath(),");
   assertEquals(binaryEntry(ENTRY), source);
 });
 
