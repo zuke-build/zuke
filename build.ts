@@ -30,6 +30,7 @@ import {
   parameter,
   repoRoot,
   run,
+  RuntimeTasks,
   target,
 } from "@zuke/core";
 import { GitTasks } from "@zuke/git";
@@ -90,6 +91,11 @@ import {
   embeddedReleases,
   releaseEntry,
 } from "./build/cli_binary.ts";
+import {
+  assertNodeBundleVersion,
+  bundleNodeCli,
+  npmEntry,
+} from "./build/cli_node.ts";
 import { PYTHON_REPO, startPythonSync } from "./build/python_sync.ts";
 import {
   publishCliChocolatey,
@@ -241,6 +247,8 @@ const GITLEAKS_CONFIG = ["[extend]", "useDefault = true", ""].join("\n");
 
 /** Where the CLI's compiled binaries are built, one directory per target. */
 const CLI_BIN_DIR = "dist/cli/bin";
+/** Where `cliNodeBundle` writes the Node binary's bundle. */
+const CLI_NODE_BUNDLE = "dist/cli/node/zuke.mjs";
 
 /** Where the CLI's release archives and SHA256SUMS are packed. */
 const CLI_RELEASE_DIR = "dist/cli/release";
@@ -2377,6 +2385,21 @@ class ZukeBuild extends Build {
           binaryEntry(entry),
         );
       }
+    });
+
+  // The binary built with Node (#1121), first step: the release's entry from
+  // npm, bundled into the one ES module a Node single executable runs. Built
+  // and checked here; nothing ships it yet.
+  cliNodeBundle = target()
+    .description(
+      "Bundle the CLI, its engine and every wrapper from npm for a Node binary",
+    )
+    .executes(async () => {
+      const version = await localVersion("cli");
+      const out = absolutePath(RuntimeTasks.cwd(), CLI_NODE_BUNDLE);
+      await bundleNodeCli(npmEntry(await releaseEntry(version), version), out);
+      await assertNodeBundleVersion(out, version);
+      ConsoleTasks.info(`Bundled zuke ${version} for Node into ${out.path}.`);
     });
 
   cliSign = target()
