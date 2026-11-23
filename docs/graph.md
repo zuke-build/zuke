@@ -7,7 +7,7 @@ arrow points from a dependency to the target that depends on it, so a target
 runs after everything that points at it. This is the same graph `./zuke graph`
 prints as text and `./zuke graph --output=html` renders interactively.
 
-62 target(s), 33 dependency edge(s). Regenerate with `./zuke graphDoc`; the
+60 target(s), 32 dependency edge(s). Regenerate with `./zuke graphDoc`; the
 `graphDocCheck` target in the CI gate fails when this page drifts from the
 build.
 
@@ -63,18 +63,16 @@ flowchart TD
   t47["npmVerify"]
   t48["npmTrust"]
   t49["cliBinaries"]
-  t50["cliNodeBundle"]
-  t51["cliNodeCompile"]
-  t52["cliSign"]
-  t53["cliPackage"]
-  t54["cliUpload"]
-  t55["cliFormulaVerify"]
-  t56["cliTap"]
-  t57["pythonSync"]
-  t58["cliChocolateyVerify"]
-  t59["cliChocolatey"]
-  t60["publish"]
-  t61["default"]
+  t50["cliSign"]
+  t51["cliPackage"]
+  t52["cliUpload"]
+  t53["cliFormulaVerify"]
+  t54["cliTap"]
+  t55["pythonSync"]
+  t56["cliChocolateyVerify"]
+  t57["cliChocolatey"]
+  t58["publish"]
+  t59["default"]
   t1 --> t5
   t5 --> t6
   t6 --> t8
@@ -104,10 +102,9 @@ flowchart TD
   t33 --> t37
   t32 --> t37
   t40 --> t41
-  t50 --> t51
-  t42 --> t60
-  t44 --> t60
-  t37 --> t61
+  t42 --> t58
+  t44 --> t58
+  t37 --> t59
 ```
 
 ## Targets
@@ -164,8 +161,6 @@ flowchart TD
 | `npmVerify`           | Verify every published npm package against a rebuild of the commit its provenance names                                       | —                                                                                                                                                                                                                                                                                                                                            |
 | `npmTrust`            | Register release.yml as each package's npm trusted publisher (run once, locally, after the first publish; npm 11.15+ and 2FA) | —                                                                                                                                                                                                                                                                                                                                            |
 | `cliBinaries`         | Compile the CLI's standalone binaries when its release lacks them                                                             | —                                                                                                                                                                                                                                                                                                                                            |
-| `cliNodeBundle`       | Bundle the CLI, its engine and every wrapper from npm for a Node binary                                                       | —                                                                                                                                                                                                                                                                                                                                            |
-| `cliNodeCompile`      | Build the Node binary of every release target from the bundle                                                                 | `cliNodeBundle`                                                                                                                                                                                                                                                                                                                              |
 | `cliSign`             | Sign and notarize the CLI's macOS binaries (macOS only)                                                                       | —                                                                                                                                                                                                                                                                                                                                            |
 | `cliPackage`          | Pack the CLI's binaries into release archives and SHA256SUMS                                                                  | —                                                                                                                                                                                                                                                                                                                                            |
 | `cliUpload`           | Attach the CLI's archives, attestation and SHA256SUMS to its draft release, then publish it                                   | —                                                                                                                                                                                                                                                                                                                                            |

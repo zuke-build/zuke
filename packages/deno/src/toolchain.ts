@@ -3,8 +3,8 @@
 
 /**
  * Settings for the `deno` subcommands that act on the toolchain and its caches
- * rather than on a project's dependencies: `compile`, `clean`, `info`, `init`
- * and `upgrade`.
+ * rather than on a project's dependencies: `compile`, `bundle`, `clean`,
+ * `info`, `init` and `upgrade`.
  */
 
 import type { PathLike } from "@zuke/core/tooling";
@@ -192,6 +192,57 @@ export class DenoCompileSettings extends DenoPermissionSettings {
  */
 function targetsElsewhere(target: DenoCompileTarget | undefined): boolean {
   return target !== undefined && !target.includes("windows");
+}
+
+/** The platform `deno bundle` builds for (`--platform`). */
+export type DenoBundlePlatform = "deno" | "browser";
+
+/** Settings for `deno bundle`. */
+export class DenoBundleSettings extends DenoSettings {
+  #script?: string;
+  #output?: string;
+  #platform?: DenoBundlePlatform;
+  #minify = false;
+
+  /** The entrypoint to bundle (required). */
+  script(path: PathLike): this {
+    this.#script = String(path);
+    return this;
+  }
+
+  /** The file to write (`--output`); without it the bundle goes to stdout. */
+  output(path: PathLike): this {
+    this.#output = String(path);
+    return this;
+  }
+
+  /**
+   * The platform to bundle for (`--platform`). `deno`, the default, leaves
+   * `node:` built-ins as imports, which is what a Node program needs too.
+   */
+  platform(value: DenoBundlePlatform): this {
+    this.#platform = value;
+    return this;
+  }
+
+  /** Minify the output (`--minify`). */
+  minify(): this {
+    this.#minify = true;
+    return this;
+  }
+
+  /** Assemble the `deno bundle` argv. */
+  protected override buildArgs(): string[] {
+    if (this.#script === undefined) {
+      throw new Error("DenoTasks.bundle: .script() is required.");
+    }
+    const argv = ["bundle"];
+    if (this.#output !== undefined) argv.push("--output", this.#output);
+    if (this.#platform !== undefined) argv.push("--platform", this.#platform);
+    if (this.#minify) argv.push("--minify");
+    argv.push(this.#script);
+    return argv;
+  }
 }
 
 /** Settings for `deno clean`. */

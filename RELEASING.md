@@ -112,11 +112,13 @@ the packages publish themselves.
 
 ## The CLI's standalone binaries
 
-From `@zuke/cli` 1.14.0, every CLI release also ships `deno compile` binaries
-for macOS and Linux on its `cli-v<version>` GitHub release, and through the
-Homebrew tap
-[`zuke-build/homebrew-tap`](https://github.com/zuke-build/homebrew-tap); from
-1.15.1, a Windows binary too, through Chocolatey.
+From `@zuke/cli` 1.14.0, every CLI release also ships standalone binaries for
+macOS and Linux on its `cli-v<version>` GitHub release, and through the Homebrew
+tap [`zuke-build/homebrew-tap`](https://github.com/zuke-build/homebrew-tap);
+from 1.15.1, a Windows binary too, through Chocolatey. They were `deno compile`
+binaries until the Node migration (#1121); each is now a Node single executable:
+the release bundled into one ES module and injected into the pinned Node release
+of its platform.
 
 Releases are **immutable**: once published, nothing can be added to one or
 changed. So release-please cuts the CLI's release as a **draft**
@@ -129,14 +131,17 @@ which locks the release with its binaries already inside. The jobs in
 1. `cliBinaries` decides what the current CLI version owes from what is
    published — everything while its release is unpublished, only the tap or the
    Chocolatey package while either lags behind a published release — and, when
-   binaries are owed, compiles them from the entry `build/cli_binary.ts`
-   renders: the published `jsr:@zuke/cli@<version>`, with `@zuke/engine` and
-   every released wrapper at the exact versions the release commit holds, so the
-   binary runs a Python build with no Deno. It first waits, for up to three
-   minutes per package, for JSR's `meta.json` to list each of those releases:
-   `publishJsr` finishes seconds before the registry shows what it accepted.
-   Wrapper fixes reach the binary with the next CLI release, which is also the
-   release the Python SDK vendors its facades from.
+   binaries are owed, builds them from the entry `build/cli_binary.ts` renders:
+   the published `jsr:@zuke/cli@<version>`, with `@zuke/engine` and every
+   released wrapper at the exact versions the release commit holds, so the
+   binary runs a Python build with no Deno. `deno bundle` resolves the entry
+   into one ES module, and `node --build-sea`, with the Node the job installs,
+   injects it into each target's Node release from nodejs.org, checked against
+   the SHA-256 the launchers pin (`packages/cli/src/node_pin.ts`). It first
+   waits, for up to three minutes per package, for JSR's `meta.json` to list
+   each of those releases: `publishJsr` finishes seconds before the registry
+   shows what it accepted. Wrapper fixes reach the binary with the next CLI
+   release, which is also the release the Python SDK vendors its facades from.
 2. `cliSign` signs the macOS binaries with the Developer ID under the hardened
    runtime and notarizes them, on a macOS runner in the `cli-signing`
    environment. Missing credentials fail it: nothing is published unsigned.

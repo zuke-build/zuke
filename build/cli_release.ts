@@ -4,8 +4,8 @@
 /**
  * What the `zuke` CLI's standalone release is made of, and when one is owed.
  *
- * Besides JSR, each `@zuke/cli` release ships as `deno compile` binaries on
- * its GitHub release (`cli-v<version>`), through the Homebrew tap, and, for
+ * Besides JSR, each `@zuke/cli` release ships as standalone binaries, Node
+ * single executables, on its GitHub release (`cli-v<version>`), through the Homebrew tap, and, for
  * Windows, through Chocolatey. This
  * module is the vocabulary every stage shares — the targets, the archive and
  * checksum names, where a published asset lives, the formula — so the
@@ -57,7 +57,7 @@ export const CHECKSUMS = BINARY_CHECKSUMS;
 
 /** One platform a standalone binary is built for. */
 export interface CliTarget {
-  /** The `deno compile --target` triple, which also names the archive. */
+  /** The target triple, which also names the archive. */
   readonly triple: BinaryTarget;
   /** The formula's `on_<os>` block it belongs in. */
   readonly os: FormulaOs;

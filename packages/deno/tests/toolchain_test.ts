@@ -3,6 +3,7 @@
 
 import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
 import {
+  DenoBundleSettings,
   DenoCleanSettings,
   DenoCompileSettings,
   DenoInfoSettings,
@@ -218,4 +219,36 @@ Deno.test("upgrade: version operand trails the flags", () => {
     "abc123",
     "canary",
   ]);
+});
+
+Deno.test("bundle: every flag, then the entrypoint", () => {
+  const argv = new DenoBundleSettings()
+    .output("dist/app.mjs")
+    .platform("browser")
+    .minify()
+    .script("mod.ts")
+    .argv()
+    .slice(1);
+  assertEquals(argv, [
+    "bundle",
+    "--output",
+    "dist/app.mjs",
+    "--platform",
+    "browser",
+    "--minify",
+    "mod.ts",
+  ]);
+  // Bare: the bundle goes to stdout, for the default platform.
+  assertEquals(new DenoBundleSettings().script("mod.ts").argv().slice(1), [
+    "bundle",
+    "mod.ts",
+  ]);
+});
+
+Deno.test("bundle: an entrypoint is required", () => {
+  assertThrows(
+    () => new DenoBundleSettings().output("x.mjs").argv(),
+    Error,
+    ".script() is required",
+  );
 });

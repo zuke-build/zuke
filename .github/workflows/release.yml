@@ -166,6 +166,7 @@ jobs:
         with:
           egress-policy: audit
           persist-credentials: "false"
+          node-version: 26.13.1
       - name: "Plan the CLI release, and compile when owed"
         id: plan
         run: ./zuke cliBinaries

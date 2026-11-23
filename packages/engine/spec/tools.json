@@ -584,6 +584,24 @@
               }
             },
             {
+              "name": "bundle",
+              "doc": "Bundle a module and its dependencies into one file: `deno bundle`.",
+              "params": [
+                {
+                  "name": "configure",
+                  "type": {
+                    "kind": "configure",
+                    "settings": "DenoBundleSettings"
+                  },
+                  "rest": false,
+                  "optional": true
+                }
+              ],
+              "returns": {
+                "kind": "output"
+              }
+            },
+            {
               "name": "clean",
               "doc": "Remove the cache directory: `deno clean`.",
               "params": [
@@ -6530,6 +6548,82 @@
                   "optional": false
                 }
               ],
+              "returns": {
+                "kind": "self"
+              }
+            }
+          ]
+        },
+        {
+          "name": "DenoBundleSettings",
+          "doc": "Settings for `deno bundle`.",
+          "extends": "DenoSettings",
+          "setters": [
+            {
+              "name": "script",
+              "doc": "The entrypoint to bundle (required).",
+              "params": [
+                {
+                  "name": "path",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "output",
+              "doc": "The file to write (`--output`); without it the bundle goes to stdout.",
+              "params": [
+                {
+                  "name": "path",
+                  "type": {
+                    "kind": "string"
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "platform",
+              "doc": "The platform to bundle for (`--platform`). `deno`, the default, leaves\n`node:` built-ins as imports, which is what a Node program needs too.",
+              "params": [
+                {
+                  "name": "value",
+                  "type": {
+                    "kind": "union",
+                    "members": [
+                      {
+                        "kind": "literal",
+                        "value": "deno"
+                      },
+                      {
+                        "kind": "literal",
+                        "value": "browser"
+                      }
+                    ]
+                  },
+                  "rest": false,
+                  "optional": false
+                }
+              ],
+              "returns": {
+                "kind": "self"
+              }
+            },
+            {
+              "name": "minify",
+              "doc": "Minify the output (`--minify`).",
+              "params": [],
               "returns": {
                 "kind": "self"
               }

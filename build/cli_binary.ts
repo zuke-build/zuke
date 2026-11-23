@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * The entry module the `zuke` binary is compiled from.
+ * The entry module the `zuke` binary is built from.
  *
- * A `deno compile` binary cannot import a module it was not compiled with, so
- * a binary compiled from `jsr:@zuke/cli` alone had to find a Deno to run a
- * Python build's engine, and the engine could not have reached its wrappers
- * from inside it anyway. The binary is compiled from this entry instead: the
+ * A standalone binary cannot import a module it was not built with, so a
+ * binary built from `jsr:@zuke/cli` alone had to find a Deno to run a Python
+ * build's engine, and the engine could not have reached its wrappers from
+ * inside it anyway. The binary is built from this entry instead: the
  * published `@zuke/cli`, `@zuke/engine` and every released wrapper, each at
  * the exact version this release commit holds, behind literal imports the
- * compile embeds. Started normally it is the CLI, carrying that engine;
+ * bundle inlines. Started normally it is the CLI, carrying that engine;
  * started by the CLI with `EMBEDDED_ENGINE_ENV` set it is the engine, with
  * `tool.call` served from the embedded wrappers. Core's `run` is called here,
  * in the entry module, because it acts only for the program's own module.

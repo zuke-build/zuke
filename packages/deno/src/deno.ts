@@ -53,6 +53,7 @@ import {
   DenoWhySettings,
 } from "./dependencies.ts";
 import {
+  DenoBundleSettings,
   DenoCleanSettings,
   DenoCompileSettings,
   DenoInfoSettings,
@@ -103,6 +104,8 @@ export interface DenoTasksApi {
   bench(configure?: Configure<DenoBenchSettings>): Promise<CommandOutput>;
   /** Build a self-contained executable: `deno compile`. */
   compile(configure?: Configure<DenoCompileSettings>): Promise<CommandOutput>;
+  /** Bundle a module and its dependencies into one file: `deno bundle`. */
+  bundle(configure?: Configure<DenoBundleSettings>): Promise<CommandOutput>;
   /** Remove the cache directory: `deno clean`. */
   clean(configure?: Configure<DenoCleanSettings>): Promise<CommandOutput>;
   /** Report on a module or the caches: `deno info`. */
@@ -234,6 +237,10 @@ export const DenoTasks: DenoTasksApi = {
   /** Build a self-contained executable: `deno compile`. */
   compile(configure?: Configure<DenoCompileSettings>): Promise<CommandOutput> {
     return runSettings(new DenoCompileSettings(), configure);
+  },
+  /** Bundle a module and its dependencies into one file: `deno bundle`. */
+  bundle(configure?: Configure<DenoBundleSettings>): Promise<CommandOutput> {
+    return runSettings(new DenoBundleSettings(), configure);
   },
   /** Remove the cache directory: `deno clean`. */
   clean(configure?: Configure<DenoCleanSettings>): Promise<CommandOutput> {

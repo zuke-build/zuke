@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * Tests for compiling the CLI's standalone binaries: what each compile is
- * asked for, and the version check run on the binary built for this machine.
+ * Tests for building the CLI's standalone binaries: what the bundle is asked
+ * for, and the version check run on the binary built for this machine.
  *
  * The version check runs a real executable — the running `deno`, whose
  * `--version` first line is known — so it is exercised without a compile.
@@ -17,18 +17,19 @@ import {
   assertStringIncludes,
 } from "../packages/core/tests/_assert.ts";
 import { withTemp, withTempCwd } from "../packages/core/tests/_temp.ts";
-import { absolutePath } from "@zuke/core";
-import { DenoCompileSettings } from "@zuke/deno";
+import { absolutePath, RuntimeTasks } from "@zuke/core";
+import { DenoBundleSettings } from "@zuke/deno";
 import {
   assertReportsVersion,
   awaitJsrListing,
+  BUNDLE_FILE,
   cliSpecifier,
   compileCliBinaries,
   ENTRY_FILE,
   jsrMetaUrl,
 } from "../build/cli_compile.ts";
+import { hostTriple } from "../build/cli_node_compile.ts";
 import { binaryPath } from "../build/cli_package.ts";
-import { CLI_TARGETS, WINDOWS_TRIPLE } from "../build/cli_release.ts";
 
 /** The running deno, as the absolute path the smoke check takes. */
 const deno = absolutePath(Deno.execPath());
@@ -45,42 +46,55 @@ Deno.test("the binaries are compiled from the published JSR release", () => {
   assertEquals(cliSpecifier("1.14.0"), "jsr:@zuke/cli@1.14.0");
 });
 
-Deno.test("compileCliBinaries compiles every target with -A into its own directory", async () => {
+/** Bundle settings that remember the directory the bundle runs in. */
+class InDirectory extends DenoBundleSettings {
+  /** The `cwd` it was given. */
+  dir = "";
+
+  /** Remember `path`, then set it. */
+  override cwd(path: string): this {
+    this.dir = path;
+    return super.cwd(path);
+  }
+}
+
+Deno.test("compileCliBinaries bundles the entry, compiles the bundle, and runs the host's binary", async () => {
   await withTemp(async (dir) => {
-    // Written as `absolutePath` normalises it, so the argv compares on Windows.
     const bin = absolutePath(dir, "bin");
-    const compiles: string[][] = [];
-    const triples = [...CLI_TARGETS.map((t) => t.triple), WINDOWS_TRIPLE];
-    const host = triples.find((triple) => triple === Deno.build.target);
+    const bundles: string[][] = [];
+    const host = hostTriple(RuntimeTasks.os(), RuntimeTasks.arch());
     const expected = host === undefined ? "1.14.0" : await denoVersionLine();
+    let compiled = "";
     await compileCliBinaries(
       expected,
       bin,
       "// the entry\n",
       async (configure) => {
-        const settings = configure(new DenoCompileSettings());
-        compiles.push(settings.argv());
+        const settings = new InDirectory();
+        configure(settings);
+        bundles.push(settings.argv().slice(1));
+        // The entry is written before the bundle reads it, in its directory.
+        const cwd = settings.dir;
+        assertEquals(
+          await Deno.readTextFile(`${cwd}/${ENTRY_FILE}`),
+          "// the entry\n",
+        );
+        await Deno.writeTextFile(`${cwd}/${BUNDLE_FILE}`, "// bundled\n");
+      },
+      async (bundle, binDir) => {
+        compiled = await Deno.readTextFile(bundle.path);
+        assertEquals(binDir.path, bin.path);
         // Stand in for the binary built for this machine with the running
         // deno, whose --version the check then reads. Copied, not linked:
         // a symlink needs privileges on Windows, which is a host too.
-        const target = settings.argv()[settings.argv().indexOf("--target") + 1];
-        if (target === host) {
-          await Deno.copyFile(Deno.execPath(), binaryPath(bin.path, target));
+        if (host !== undefined) {
+          await Deno.mkdir(`${bin.path}/${host}`, { recursive: true });
+          await Deno.copyFile(Deno.execPath(), binaryPath(bin.path, host));
         }
       },
     );
-    assertEquals(compiles.length, triples.length);
-    for (const [i, argv] of compiles.entries()) {
-      const target = triples[i];
-      assertEquals(argv.includes("--allow-all"), true, argv.join(" "));
-      assertEquals(argv[argv.indexOf("--target") + 1], target);
-      assertEquals(
-        argv[argv.indexOf("--output") + 1],
-        binaryPath(bin.path, target),
-      );
-      // The entry build/cli_binary.ts renders, written beside the compile.
-      assertEquals(argv.at(-1), ENTRY_FILE);
-    }
+    assertEquals(bundles, [["bundle", "--output", BUNDLE_FILE, ENTRY_FILE]]);
+    assertEquals(compiled, "// bundled\n");
   });
 });
 

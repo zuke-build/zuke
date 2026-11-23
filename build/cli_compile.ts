@@ -2,36 +2,42 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * Compiling the released `zuke` CLI into standalone binaries.
+ * Building the released `zuke` CLI into standalone binaries, each a Node
+ * single executable.
  *
- * The binaries are compiled from published releases, not from this
- * checkout: the entry `build/cli_binary.ts` renders imports
- * `jsr:@zuke/cli@<version>`, the engine and every wrapper at their exact
- * releases, so what Homebrew installs runs the same code `deno install -g`
- * resolves, and JSR's own provenance covers its source. `-A` matches the JSR
- * install's permissions, and is also what lets a compiled binary resolve its
- * own path to tell a Homebrew install from another
- * (`packages/cli/src/install_source.ts`).
+ * The binaries are built from published releases, not from this checkout:
+ * the entry `build/cli_binary.ts` renders imports `jsr:@zuke/cli@<version>`,
+ * the engine and every wrapper at their exact releases, so what Homebrew
+ * installs runs the same code `deno install -g` resolves, and JSR's own
+ * provenance covers its source. `deno bundle` resolves them into one ES
+ * module, which `build/cli_node_compile.ts` injects into each target's
+ * pinned Node.
  *
  * Deno looks for a configuration file from the working directory, and this
  * checkout's would map `@zuke/*` onto the workspace instead of JSR, so the
- * entry is written to, and compiled from, an empty temporary directory.
+ * entry is written to, and bundled in, an empty temporary directory.
  *
  * @module
  */
 
-import { type DenoCompileSettings, DenoTasks } from "@zuke/deno";
-import { type AbsolutePath, absolutePath } from "@zuke/core";
+import { type DenoBundleSettings, DenoTasks } from "@zuke/deno";
+import {
+  type AbsolutePath,
+  absolutePath,
+  FileTasks,
+  RuntimeTasks,
+} from "@zuke/core";
 import { $ } from "@zuke/core/shell";
 import { binaryPath } from "./cli_package.ts";
-import { CLI_TARGETS, type Fetch, WINDOWS_TRIPLE } from "./cli_release.ts";
+import { adHocSign, compileNodeCli, hostTriple } from "./cli_node_compile.ts";
+import type { Fetch } from "./cli_release.ts";
 
 /** The published package a release's binaries are compiled from. */
 export function cliSpecifier(version: string): string {
   return `jsr:@zuke/cli@${version}`;
 }
 
-/** The registry document `deno compile` resolves a `@zuke/<pkg>` release against. */
+/** The registry document `deno bundle` resolves a `@zuke/<pkg>` release against. */
 export function jsrMetaUrl(pkg: string): string {
   return `https://jsr.io/@zuke/${pkg}/meta.json`;
 }
@@ -50,7 +56,7 @@ function pause(ms: number): Promise<void> {
  * {@link jsrMetaUrl} every few seconds for up to three minutes.
  *
  * The publish job finishes seconds before the registry's metadata shows the
- * release it accepted, and `deno compile` resolves the specifier against that
+ * release it accepted, and `deno bundle` resolves the specifier against that
  * metadata: the first CLI release compiled right after its publish failed
  * with "Could not find version". `fetcher` and `wait` are injectable so the
  * wait is testable without the registry or the clock.
@@ -94,47 +100,56 @@ export async function awaitJsrListing(
   }
 }
 
-/** One `deno compile`, as {@link compileCliBinaries} runs it. */
-export type Compile = (
-  configure: (s: DenoCompileSettings) => DenoCompileSettings,
+/** One `deno bundle`, as {@link compileCliBinaries} runs it. */
+export type Bundle = (
+  configure: (s: DenoBundleSettings) => DenoBundleSettings,
 ) => Promise<unknown>;
+
+/** Turns a bundle into every target's binary in a directory. */
+export type CompileBundle = (
+  bundle: AbsolutePath,
+  binDir: AbsolutePath,
+) => Promise<void>;
 
 /** The entry module's file name in the compile's temporary directory. */
 export const ENTRY_FILE = "zuke.ts";
 
+/** The bundle's file name beside it. */
+export const BUNDLE_FILE = "zuke.mjs";
+
 /**
- * Compile `entry`, the module `build/cli_binary.ts` renders, into every
- * target's binary in `binDir` — absolute, since the compile runs from a
- * temporary directory — then run the one built for this machine, if any, to
- * check it reports `version`.
+ * Build `entry`, the module `build/cli_binary.ts` renders, into every
+ * target's binary in `binDir` (absolute, since the work happens in a
+ * temporary directory): `deno bundle` resolves the releases it names into
+ * one ES module, and `compile` injects that into each target's pinned Node
+ * (`build/cli_node_compile.ts`). Then the binary built for this machine, if
+ * any, is run to check it reports `version`, ad-hoc signed first on macOS,
+ * which will not start a binary whose signature the injection broke.
  */
 export async function compileCliBinaries(
   version: string,
   binDir: AbsolutePath,
   entry: string,
-  compile: Compile = (configure) => DenoTasks.compile(configure),
+  bundle: Bundle = (configure) => DenoTasks.bundle(configure),
+  compile: CompileBundle = (out, dir) => compileNodeCli(out, dir),
 ): Promise<void> {
-  const scratch = await Deno.makeTempDir({ prefix: "zuke-compile-" });
+  const scratch = absolutePath(
+    await FileTasks.makeTempDirectory((s) => s.prefix("zuke-compile-")),
+  );
   try {
-    await Deno.writeTextFile(`${scratch}/${ENTRY_FILE}`, entry);
-    const triples = [...CLI_TARGETS.map((t) => t.triple), WINDOWS_TRIPLE];
-    for (const triple of triples) {
-      const output = binaryPath(binDir.path, triple);
-      await Deno.mkdir(binDir(triple).path, { recursive: true });
-      await compile((s) =>
-        s.allowAll().target(triple).output(output)
-          .script(ENTRY_FILE).cwd(scratch)
-      );
-    }
-    const host = triples.find((triple) => triple === Deno.build.target);
+    await FileTasks.writeText(scratch(ENTRY_FILE).path, entry);
+    await bundle((s) =>
+      s.script(ENTRY_FILE).output(BUNDLE_FILE).cwd(scratch.path)
+    );
+    await compile(scratch(BUNDLE_FILE), binDir);
+    const host = hostTriple(RuntimeTasks.os(), RuntimeTasks.arch());
     if (host !== undefined) {
-      await assertReportsVersion(
-        absolutePath(binaryPath(binDir.path, host)),
-        version,
-      );
+      const binary = binaryPath(binDir.path, host);
+      if (RuntimeTasks.os() === "darwin") await adHocSign(binary);
+      await assertReportsVersion(absolutePath(binary), version);
     }
   } finally {
-    await Deno.remove(scratch, { recursive: true });
+    await FileTasks.remove(scratch, { recursive: true });
   }
 }
 

@@ -2,17 +2,16 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * The Node-built `zuke` binaries: the bundle `cliNodeBundle` writes, turned
- * into one single executable application per release target.
+ * The `zuke` binaries: the bundle `build/cli_compile.ts` writes, turned into
+ * one single executable application per release target.
  *
  * Each target's executable is that target's official Node release with the
  * bundle injected (`node --build-sea`, with the config's `executable`), so one
- * Linux runner builds all five, as `deno compile --target` does for the Deno
- * binary. The Node is the release the project launchers pin
+ * Linux runner builds all five. The Node is the release the project launchers pin
  * (`packages/cli/src/node_pin.ts`), downloaded from nodejs.org and checked
  * against that pin's SHA-256 before anything is taken from it. Injection
- * leaves a macOS binary's signature invalid; the release signs it afterwards,
- * as it signs the Deno binary.
+ * leaves a macOS binary's signature invalid; the release signs it afterwards
+ * (`build/cli_sign.ts`).
  *
  * @module
  */
