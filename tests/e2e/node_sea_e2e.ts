@@ -15,6 +15,7 @@
 
 import { absolutePath, gzip, sha256Hex, tar, zip } from "@zuke/core";
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { withTemp } from "../../packages/core/tests/_temp.ts";
 import {
   adHocSign,
   type BuildSea,
@@ -55,8 +56,10 @@ Deno.test({
   async fn() {
     const host = NODE_TARGETS.find((t) => t.triple === HOST);
     if (NODE === undefined || host === undefined) return;
-    const root = absolutePath(await Deno.makeTempDir());
-    try {
+    // withTemp, as the other e2e tests: Windows can hold the executable that
+    // just ran a moment past its exit, and a failed cleanup is not a failure.
+    await withTemp(async (dir) => {
+      const root = absolutePath(dir);
       const bundle = root("zuke.mjs");
       await Deno.writeTextFile(
         bundle.path,
@@ -106,8 +109,6 @@ Deno.test({
         "sea --version x",
         text.decode(run.stderr),
       );
-    } finally {
-      await Deno.remove(root.path, { recursive: true });
-    }
+    });
   },
 });
