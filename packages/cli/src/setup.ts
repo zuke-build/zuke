@@ -305,6 +305,10 @@ export const defaultHost: SetupHost = {
     // pre-write check. The temporary name is created exclusively, so it cannot
     // itself be a link someone left waiting.
     const temp = `${path}.zuke-${crypto.randomUUID().slice(0, 8)}.tmp`;
+    // `--dir` may name a directory that is not there yet; every path written
+    // is that directory joined with a file name.
+    const parent = path.lastIndexOf("/");
+    if (parent > 0) await FileTasks.createDirectory(path.slice(0, parent));
     try {
       await FileTasks.writeText(temp, content, (s) => s.createNew());
       await FileTasks.move(temp, path);

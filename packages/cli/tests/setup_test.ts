@@ -1009,14 +1009,18 @@ Deno.test("writeText leaves no temporary file behind, on success or failure", as
     for await (const entry of Deno.readDir(dir)) after.push(entry.name);
     assertEquals(after, ["zuke.json"]);
 
-    // A destination whose parent does not exist fails the rename; the
-    // temporary file must not survive it.
-    await assertRejects(() =>
-      defaultHost.writeText(`${dir}/missing/zuke.json`, "{}")
-    );
+    // A destination that is a directory with something in it fails the
+    // rename; the temporary file must not survive it.
+    await Deno.mkdir(`${dir}/occupied`);
+    await Deno.writeTextFile(`${dir}/occupied/keep`, "");
+    await assertRejects(() => defaultHost.writeText(`${dir}/occupied`, "{}"));
     const still: string[] = [];
     for await (const entry of Deno.readDir(dir)) still.push(entry.name);
-    assertEquals(still, ["zuke.json"]);
+    assertEquals(still.sort(), ["occupied", "zuke.json"]);
+
+    // A parent that is not there yet is created, as `--dir` needs.
+    await defaultHost.writeText(`${dir}/missing/zuke.json`, "{}");
+    assertEquals(await Deno.readTextFile(`${dir}/missing/zuke.json`), "{}");
   });
 });
 

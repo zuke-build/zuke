@@ -79,3 +79,24 @@ Deno.test("zuke setup --runtime node scaffolds a Node project that names no Deno
     await Deno.remove(dir, { recursive: true });
   }
 });
+
+Deno.test("zuke setup creates the --dir it is given when it is not there yet", async () => {
+  const root = await Deno.makeTempDir({ prefix: "zuke-it-node-" });
+  try {
+    const dir = `${root}/new/project`;
+    const lines: string[] = [];
+    const code = await main(
+      ["setup", "--yes", "--runtime", "node", "--dir", dir],
+      quietHost(lines),
+      defaultPrompter,
+    );
+    assertEquals(code, 0, lines.join("\n"));
+    assertEquals(
+      runtimeNamed(await Deno.readTextFile(`${dir}/zuke.json`)),
+      "node",
+    );
+    assertEquals((await Deno.stat(`${dir}/zuke`)).isFile, true);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
