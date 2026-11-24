@@ -150,8 +150,9 @@ export function parseHeaderList(value: string): Record<string, string> {
  * relative URL), and the two signals resolve **independently**: one per-signal
  * endpoint on its own enables just that signal, and only that one is exported.
  *
- * `readEnv` is the environment seam (defaults to `Deno.env.get`), kept injectable
- * so resolution is unit-testable without touching the process environment.
+ * `readEnv` is the environment seam (the process environment by default), kept
+ * injectable so resolution is unit-testable without touching the process
+ * environment.
  */
 export function resolveOtel(
   settings: OtelSettings,
