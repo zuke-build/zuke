@@ -10,7 +10,8 @@
  * @module
  */
 
-import { assertEquals } from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals } from "./_assert.ts";
 import {
   BASH_LAUNCHER,
   checkRootLaunchers,
@@ -18,20 +19,20 @@ import {
   renderRootLaunchers,
   syncRootLaunchers,
 } from "../build/launchers.ts";
-import { withTemp } from "../packages/core/tests/_temp.ts";
+import { withTemp } from "./_temp.ts";
 
-Deno.test("the committed launchers match the CLI's template", async () => {
+test("the committed launchers match the CLI's template", async () => {
   assertEquals(await checkRootLaunchers(), []);
 });
 
-Deno.test("the rendered launchers are the bootstrap variant", () => {
+test("the rendered launchers are the bootstrap variant", () => {
   const files = renderRootLaunchers();
   assertEquals([...files.keys()], [BASH_LAUNCHER, PWSH_LAUNCHER]);
   assertEquals(files.get(BASH_LAUNCHER)?.includes("deno_checksum_for()"), true);
   assertEquals(files.get(PWSH_LAUNCHER)?.includes("$DenoChecksums"), true);
 });
 
-Deno.test("syncRootLaunchers round-trips through generate then check", async () => {
+test("syncRootLaunchers round-trips through generate then check", async () => {
   await withTemp(async (dir) => {
     // Never sync into the repository root from a test: write only into the
     // temp dir, and assert that so re-introducing the default fails here.
@@ -53,7 +54,7 @@ Deno.test("syncRootLaunchers round-trips through generate then check", async () 
   });
 });
 
-Deno.test("checkRootLaunchers reports a missing and a drifted launcher", async () => {
+test("checkRootLaunchers reports a missing and a drifted launcher", async () => {
   await withTemp(async (dir) => {
     assertEquals(await checkRootLaunchers(dir), [
       `${dir}/${BASH_LAUNCHER} (missing)`,
@@ -67,7 +68,7 @@ Deno.test("checkRootLaunchers reports a missing and a drifted launcher", async (
   });
 });
 
-Deno.test("checkRootLaunchers tolerates CRLF from a Windows checkout", async () => {
+test("checkRootLaunchers tolerates CRLF from a Windows checkout", async () => {
   await withTemp(async (dir) => {
     await syncRootLaunchers(dir);
     for (const name of [BASH_LAUNCHER, PWSH_LAUNCHER]) {
@@ -79,7 +80,7 @@ Deno.test("checkRootLaunchers tolerates CRLF from a Windows checkout", async () 
   });
 });
 
-Deno.test("checkRootLaunchers rethrows an error that is not a missing file", async () => {
+test("checkRootLaunchers rethrows an error that is not a missing file", async () => {
   await withTemp(async (dir) => {
     // A directory where the launcher should be is neither missing nor
     // readable as text; that is a real error, not drift to report.

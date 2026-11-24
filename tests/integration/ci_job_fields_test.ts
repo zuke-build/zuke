@@ -9,11 +9,12 @@
  * refuse one of those fields stopping the command with the reason.
  */
 
+import { test } from "../_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+} from "../_assert.ts";
 import { Build, cicd, target } from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
 
@@ -74,7 +75,7 @@ class WebsiteBuild extends Build {
   });
 }
 
-Deno.test("generate-ci renders environment, outputs, sparse matrix and path filters", async () => {
+test("generate-ci renders environment, outputs, sparse matrix and path filters", async () => {
   await inTempDir(async (dir) => {
     const { code } = await runCli(WebsiteBuild, ["generate-ci"]);
     assertEquals(code, 0);
@@ -119,7 +120,7 @@ class AzureDeployBuild extends Build {
   });
 }
 
-Deno.test("generate-ci refuses, naming the field, when a provider cannot carry it", async () => {
+test("generate-ci refuses, naming the field, when a provider cannot carry it", async () => {
   // Rejected before anything is written: a configuration error, raised the way
   // every other `cicd` refusal is, rather than a file missing its approval gate.
   await inTempDir(async (dir) => {

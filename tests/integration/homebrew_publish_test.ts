@@ -11,7 +11,8 @@
  * @module
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import {
   type HomebrewPublishResult,
@@ -56,7 +57,7 @@ function fakeContents(): { fetch: typeof fetch; writes: string[] } {
   return { fetch: impl, writes };
 }
 
-Deno.test("homebrew: publishing the same formula twice commits once", async () => {
+test("homebrew: publishing the same formula twice commits once", async () => {
   const github = fakeContents();
   const results: HomebrewPublishResult[] = [];
 

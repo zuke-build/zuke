@@ -10,7 +10,8 @@
  * completes without re-dispatching.
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import {
   Build,
   defaultStateHost,
@@ -77,7 +78,7 @@ class FakeApi implements GhWorkflowApi {
   }
 }
 
-Deno.test("a githubWorkflow gate dispatches, suspends, then resumes on completion", async () => {
+test("a githubWorkflow gate dispatches, suspends, then resumes on completion", async () => {
   await withStateDir(async (dir) => {
     const api = new FakeApi();
     const log: string[] = [];
@@ -122,7 +123,7 @@ Deno.test("a githubWorkflow gate dispatches, suspends, then resumes on completio
   });
 });
 
-Deno.test("a githubWorkflow gate fails fast when the run never correlates", async () => {
+test("a githubWorkflow gate fails fast when the run never correlates", async () => {
   await withStateDir(async (dir) => {
     const api = new FakeApi();
     api.appears = false; // the target workflow never echoes the marker
@@ -156,7 +157,7 @@ Deno.test("a githubWorkflow gate fails fast when the run never correlates", asyn
   });
 });
 
-Deno.test("a transient GitHub error during a resume poll re-suspends, never strands the run", async () => {
+test("a transient GitHub error during a resume poll re-suspends, never strands the run", async () => {
   await withStateDir(async (dir) => {
     const api = new FakeApi();
     const log: string[] = [];
@@ -202,7 +203,7 @@ Deno.test("a transient GitHub error during a resume poll re-suspends, never stra
   });
 });
 
-Deno.test("a gate never adopts a marked run that its dispatch did not create", async () => {
+test("a gate never adopts a marked run that its dispatch did not create", async () => {
   await withStateDir(async () => {
     // The marker is echoed into a public run title, so a party who can list the
     // workflow's runs can read it and a party who can dispatch that workflow can

@@ -9,7 +9,8 @@
  * replay. Driven through the real CLI `main()` against a temp store.
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import {
   Build,
   defaultStateHost,
@@ -22,7 +23,7 @@ import { runCli, withStateDir } from "./_harness.ts";
 
 const TOKEN_ENV = "ZUKE_IT_RECORD_PARAMS_TOKEN";
 
-Deno.test("zuke resume re-resolves a secret from the environment, not the record", async () => {
+test("zuke resume re-resolves a secret from the environment, not the record", async () => {
   await withStateDir(async (dir) => {
     const seen: (string | undefined)[] = [];
     const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);

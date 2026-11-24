@@ -9,13 +9,14 @@
  * @module
  */
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "../../core/tests/_assert.ts";
-import { withEnv } from "../../core/tests/_env.ts";
+} from "../../../tests/_assert.ts";
+import { withEnv } from "../../../tests/_env.ts";
 import { CommandError, CommandTimeoutError } from "@zuke/core/shell";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
@@ -31,9 +32,12 @@ import {
   ChocoTasks,
   ChocoUninstallSettings,
 } from "../mod.ts";
-import { FAKE_CHOCO_UNSUPPORTED, fakeChoco } from "./_fake_choco.ts";
+import {
+  FAKE_CHOCO_UNSUPPORTED,
+  fakeChoco,
+} from "../../../tests/support/chocolatey/_fake_choco.ts";
 
-Deno.test("choco pack: the nuspec, then the options as --name=value", () => {
+test("choco pack: the nuspec, then the options as --name=value", () => {
   assertEquals(new ChocoPackSettings().argv(), ["choco", "pack"]);
   assertEquals(
     new ChocoPackSettings().nuspec("app.nuspec").version("1.2.3")
@@ -48,7 +52,7 @@ Deno.test("choco pack: the nuspec, then the options as --name=value", () => {
   );
 });
 
-Deno.test("choco push: the package, the source and the key", () => {
+test("choco push: the package, the source and the key", () => {
   assertEquals(new ChocoPushSettings().argv(), ["choco", "push"]);
   assertEquals(
     new ChocoPushSettings().nupkg("app.1.2.3.nupkg")
@@ -63,7 +67,7 @@ Deno.test("choco push: the package, the source and the key", () => {
   );
 });
 
-Deno.test("choco install and uninstall: ids, options, then the common switches", () => {
+test("choco install and uninstall: ids, options, then the common switches", () => {
   assertEquals(
     new ChocoInstallSettings().packages("app").argv(),
     ["choco", "install", "app"],
@@ -106,7 +110,7 @@ Deno.test("choco install and uninstall: ids, options, then the common switches",
   );
 });
 
-Deno.test("choco install and uninstall: a package is required", () => {
+test("choco install and uninstall: a package is required", () => {
   assertThrows(
     () => new ChocoInstallSettings().argv(),
     Error,
@@ -119,7 +123,7 @@ Deno.test("choco install and uninstall: a package is required", () => {
   );
 });
 
-Deno.test("choco apikey: list, add and remove", () => {
+test("choco apikey: list, add and remove", () => {
   assertEquals(new ChocoApikeySettings().argv(), ["choco", "apikey"]);
   assertEquals(
     new ChocoApikeySettings().list().argv(),
@@ -146,7 +150,7 @@ Deno.test("choco apikey: list, add and remove", () => {
   );
 });
 
-Deno.test("choco apikey: each action's requirements are enforced", () => {
+test("choco apikey: each action's requirements are enforced", () => {
   assertThrows(
     () => new ChocoApikeySettings().add().apiKey("k").argv(),
     Error,
@@ -176,14 +180,14 @@ Deno.test("choco apikey: each action's requirements are enforced", () => {
   );
 });
 
-Deno.test("choco: an option value that starts with '-' stays the option's value", () => {
+test("choco: an option value that starts with '-' stays the option's value", () => {
   assertEquals(
     new ChocoPushSettings().apiKey("--force").argv(),
     ["choco", "push", "--api-key=--force"],
   );
 });
 
-Deno.test("choco: operands choco would read as a switch are refused", () => {
+test("choco: operands choco would read as a switch are refused", () => {
   for (const operand of ["--force", "-y", "", "/y", "/force"]) {
     assertThrows(
       () => new ChocoInstallSettings().packages("app", operand).argv(),
@@ -207,7 +211,7 @@ Deno.test("choco: operands choco would read as a switch are refused", () => {
   );
 });
 
-Deno.test("choco: the escape hatches follow the typed argv", () => {
+test("choco: the escape hatches follow the typed argv", () => {
   assertEquals(
     new ChocoSettings().command("outdated").flag("limit-output").argv(),
     ["choco", "outdated", "--limit-output"],
@@ -219,7 +223,7 @@ Deno.test("choco: the escape hatches follow the typed argv", () => {
   );
 });
 
-Deno.test({
+test({
   name: "choco push: a failure outside a run masks the API key in the error",
   ignore: FAKE_CHOCO_UNSUPPORTED,
   async fn() {
@@ -248,7 +252,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "choco apikey add: a failure masks the key too",
   ignore: FAKE_CHOCO_UNSUPPORTED,
   async fn() {
@@ -271,7 +275,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "choco: a command without a key fails with its plain error",
   ignore: FAKE_CHOCO_UNSUPPORTED,
   async fn() {
@@ -293,7 +297,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "choco: a timeout masks the key in its error",
   ignore: FAKE_CHOCO_UNSUPPORTED,
   async fn() {
@@ -318,7 +322,7 @@ Deno.test({
   },
 });
 
-Deno.test("choco: every task reaches execution", async () => {
+test("choco: every task reaches execution", async () => {
   const tasks: Array<() => Promise<unknown>> = [
     () => ChocoTasks.run((s) => missingTool(s).command("outdated")),
     () => ChocoTasks.pack((s) => missingTool(s)),
@@ -330,7 +334,7 @@ Deno.test("choco: every task reaches execution", async () => {
   for (const task of tasks) await assertRejects(task, ToolNotFoundError);
 });
 
-Deno.test("choco: resolves its binary from PATH", async () => {
+test("choco: resolves its binary from PATH", async () => {
   await assertWrapperConformance(
     () => new ChocoInstallSettings().packages("app"),
     "choco",

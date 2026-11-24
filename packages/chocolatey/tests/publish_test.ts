@@ -10,14 +10,18 @@
  * @module
  */
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
-import { withEnv } from "../../core/tests/_env.ts";
+} from "../../../tests/_assert.ts";
+import { withEnv } from "../../../tests/_env.ts";
 import { type ChocolateyPackage, ChocolateyTasks } from "../mod.ts";
-import { FAKE_CHOCO_UNSUPPORTED, fakeChoco } from "./_fake_choco.ts";
+import {
+  FAKE_CHOCO_UNSUPPORTED,
+  fakeChoco,
+} from "../../../tests/support/chocolatey/_fake_choco.ts";
 
 /** A rendered package to publish. */
 const PKG: ChocolateyPackage = ChocolateyTasks.package((s) =>
@@ -37,7 +41,7 @@ function exists(path: string): boolean {
   }
 }
 
-Deno.test({
+test({
   name:
     "publish: a rendered package is packed and pushed to the community feed",
   ignore: FAKE_CHOCO_UNSUPPORTED,
@@ -71,7 +75,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "publish: a built .nupkg is pushed as it is, to the source given",
   ignore: FAKE_CHOCO_UNSUPPORTED,
   async fn() {
@@ -99,7 +103,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "publish: a failed push masks the key, and still removes the staging",
   ignore: FAKE_CHOCO_UNSUPPORTED,
   async fn() {
@@ -124,7 +128,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "publish: a failed pack pushes nothing",
   ignore: FAKE_CHOCO_UNSUPPORTED,
   async fn() {
@@ -147,7 +151,7 @@ Deno.test({
   },
 });
 
-Deno.test("publish: what to push, and where, is checked before choco runs", async () => {
+test("publish: what to push, and where, is checked before choco runs", async () => {
   const cases: Array<
     [Parameters<typeof ChocolateyTasks.publish>[0], string]
   > = [

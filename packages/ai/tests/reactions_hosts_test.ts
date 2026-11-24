@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { githubHost } from "../src/hosts/github.ts";
 import { gitlabHost } from "../src/hosts/gitlab.ts";
 import { azureHost, bitbucketHost } from "../src/hosts.ts";
@@ -60,7 +61,7 @@ const ghReaction = (id: number) =>
     { status: 201 },
   );
 
-Deno.test("GitHub: each signal is a reaction on the description, 🤏 shown as 😕", async () => {
+test("GitHub: each signal is a reaction on the description, 🤏 shown as 😕", async () => {
   const reactions = githubHost.reactions?.("tkn", githubEnv);
   assertEquals(reactions?.key, "github:zuke-build/zuke#12");
   const { fetch, calls } = hostFetch(() => ghReaction(5));
@@ -83,7 +84,7 @@ Deno.test("GitHub: each signal is a reaction on the description, 🤏 shown as �
   assertEquals(await reactions?.add("passed", down), false);
 });
 
-Deno.test("GitHub: a withdrawal deletes only the reviewer's own reaction, and never creates one", async () => {
+test("GitHub: a withdrawal deletes only the reviewer's own reaction, and never creates one", async () => {
   const reactions = githubHost.reactions?.("tkn", githubEnv);
   // Before the reviewer has reacted it does not know its login: nothing is
   // listed, deleted, or — the point — posted.
@@ -111,7 +112,7 @@ Deno.test("GitHub: a withdrawal deletes only the reviewer's own reaction, and ne
   assertEquals(await reactions?.remove("minor", empty.fetch), false);
 });
 
-Deno.test("GitHub: a failed listing or delete is false, never a throw", async () => {
+test("GitHub: a failed listing or delete is false, never a throw", async () => {
   const reactions = githubHost.reactions?.("tkn", githubEnv);
   await reactions?.add("reviewing", hostFetch(() => ghReaction(1)).fetch);
   const listFails = hostFetch(() => new Response("{}", { status: 500 }));
@@ -129,7 +130,7 @@ Deno.test("GitHub: a failed listing or delete is false, never a throw", async ()
   assertEquals(await reactions?.remove("failed", deleteRefused.fetch), false);
 });
 
-Deno.test("GitHub: a reaction GitHub answers without an author teaches no login", async () => {
+test("GitHub: a reaction GitHub answers without an author teaches no login", async () => {
   const reactions = githubHost.reactions?.("tkn", githubEnv);
   const anonymous = hostFetch(() =>
     new Response(JSON.stringify({ id: 4 }), { status: 200 })
@@ -140,7 +141,7 @@ Deno.test("GitHub: a reaction GitHub answers without an author teaches no login"
   assertEquals(after.calls, []);
 });
 
-Deno.test("GitHub: no pull request, no reactions", () => {
+test("GitHub: no pull request, no reactions", () => {
   const push = (name: string) =>
     ({ GITHUB_REPOSITORY: "a/b", GITHUB_REF: "refs/heads/master" })[name];
   assertEquals(githubHost.reactions?.("tkn", push), undefined);
@@ -156,7 +157,7 @@ const gitlabEnv = (name: string): string | undefined =>
 const GL_AWARDS =
   "https://gitlab.example/api/v4/projects/42/merge_requests/3/award_emoji";
 
-Deno.test("GitLab: each signal is an award emoji on the merge request, 🤏 included", async () => {
+test("GitLab: each signal is an award emoji on the merge request, 🤏 included", async () => {
   const reactions = gitlabHost.reactions?.("tkn", gitlabEnv);
   assertEquals(
     reactions?.key,
@@ -192,7 +193,7 @@ Deno.test("GitLab: each signal is an award emoji on the merge request, 🤏 incl
   assertEquals(await reactions?.add("passed", down), false);
 });
 
-Deno.test("GitLab: a withdrawal deletes only the token's own award of that name", async () => {
+test("GitLab: a withdrawal deletes only the token's own award of that name", async () => {
   const reactions = gitlabHost.reactions?.("tkn", gitlabEnv);
   const awards = [
     { id: 1, name: "eyes", user: { username: "project_42_bot1" } },
@@ -214,7 +215,7 @@ Deno.test("GitLab: a withdrawal deletes only the token's own award of that name"
   );
 });
 
-Deno.test("GitLab: an unknown identity, a failed listing or a refused delete is false", async () => {
+test("GitLab: an unknown identity, a failed listing or a refused delete is false", async () => {
   const reactions = gitlabHost.reactions?.("tkn", gitlabEnv);
   // No identity: nothing is listed, let alone deleted.
   const anonymous = hostFetch(() => new Response("{}", { status: 401 }));
@@ -239,7 +240,7 @@ Deno.test("GitLab: an unknown identity, a failed listing or a refused delete is 
   assertEquals(await reactions?.remove("passed", deleteRefused.fetch), false);
 });
 
-Deno.test("GitLab: no merge request, no reactions; Azure and Bitbucket have none", () => {
+test("GitLab: no merge request, no reactions; Azure and Bitbucket have none", () => {
   assertEquals(gitlabHost.reactions?.("tkn", () => undefined), undefined);
   assertEquals(azureHost.reactions, undefined);
   assertEquals(bitbucketHost.reactions, undefined);

@@ -16,7 +16,8 @@
  * @module
  */
 
-import { assertEquals } from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals } from "./_assert.ts";
 import { actionOf, isRecord, jobIn, stepsOf } from "./_workflow.ts";
 
 /** The `actionRelease` job as the committed workflow declares it. */
@@ -24,7 +25,7 @@ function actionReleaseJob(): Record<string, unknown> {
   return jobIn(".github/workflows/release.yml", "actionRelease");
 }
 
-Deno.test("the action release job is granted no write permission", () => {
+test("the action release job is granted no write permission", () => {
   // It writes plenty — tags, a branch, a pull request — but not with this
   // credential. Everything goes through an app installation token minted
   // inside the target, so a `contents: write` here would be an unused grant
@@ -32,7 +33,7 @@ Deno.test("the action release job is granted no write permission", () => {
   assertEquals(actionReleaseJob().permissions, { contents: "read" });
 });
 
-Deno.test("the action release job holds no GITHUB_TOKEN", () => {
+test("the action release job holds no GITHUB_TOKEN", () => {
   // GITHUB_TOKEN cannot do this job: there is no `workflows` permission to
   // grant it, so it may not write the regenerated `.github/workflows/*`, and a
   // pull request it opened would trigger no checks and so could never satisfy
@@ -46,7 +47,7 @@ Deno.test("the action release job holds no GITHUB_TOKEN", () => {
   assertEquals(env.includes("ZUKE_BUILD_APP_KEY"), true);
 });
 
-Deno.test("the action release job blocks egress and persists no credential", () => {
+test("the action release job blocks egress and persists no credential", () => {
   // The block bounds where a credential read out of this job could be sent; it
   // is not what stops the credential existing, which is what the API-based
   // writes address. Both, because neither is sufficient alone.
@@ -64,7 +65,7 @@ Deno.test("the action release job blocks egress and persists no credential", () 
   assertEquals(checkout.with["fetch-depth"], "0");
 });
 
-Deno.test("the action release job can reach what it actually calls", () => {
+test("the action release job can reach what it actually calls", () => {
   // Every call the target makes is to the REST API — minting the app token,
   // the tags, the branch, the pull request. A blocked allowlist that omits it
   // would fail the job at its first write, after the release job has already

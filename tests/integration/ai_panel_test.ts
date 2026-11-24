@@ -8,15 +8,13 @@
  * its gate neither stops the second from reviewing nor lets the body run.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { genericReviewer, securityReviewer } from "../../packages/ai/mod.ts";
 import { runCli } from "./_harness.ts";
-import { withEnv } from "../../packages/core/tests/_env.ts";
-import { reacted, REACTIONS } from "../../packages/ai/tests/_reactions.ts";
+import { withEnv } from "../_env.ts";
+import { reacted, REACTIONS } from "../support/ai/_reactions.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";
@@ -57,7 +55,7 @@ function fakeGithub(responses: string[]) {
   return { fetch: impl, posted };
 }
 
-Deno.test("two reviewers of one target post one comment, and both review when the first fails", async () => {
+test("two reviewers of one target post one comment, and both review when the first fails", async () => {
   const github = fakeGithub([
     // The security review trips its gate.
     claude({

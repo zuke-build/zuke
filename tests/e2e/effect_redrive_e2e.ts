@@ -20,7 +20,8 @@
  * @module
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import {
   defaultStateHost,
   FileSystemStateStore,
@@ -63,7 +64,7 @@ async function waitForLines(marker: string, count: number): Promise<string[]> {
   );
 }
 
-Deno.test("a SIGKILL mid-effect leaves a durable intent another process re-drives", async () => {
+test("a SIGKILL mid-effect leaves a durable intent another process re-drives", async () => {
   const dir = await Deno.makeTempDir({ prefix: "zuke-e2e-" });
   const marker = `${dir}/marker.log`;
   try {

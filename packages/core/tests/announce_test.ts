@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import {
   AnnounceError,
   AnnounceTasks,
@@ -30,7 +31,7 @@ function fakeFetch(
   return { fetch: impl, calls };
 }
 
-Deno.test("slack posts a JSON info card for a minimal message", async () => {
+test("slack posts a JSON info card for a minimal message", async () => {
   const { fetch, calls } = fakeFetch();
   await AnnounceTasks.slack((s) =>
     s.fetch(fetch).webhook("https://hooks.slack.com/x").text("Build passed")
@@ -46,7 +47,7 @@ Deno.test("slack posts a JSON info card for a minimal message", async () => {
   assertEquals("username" in calls[0].body, false);
 });
 
-Deno.test("slack renders title, success colour, fields, link and username", async () => {
+test("slack renders title, success colour, fields, link and username", async () => {
   const { fetch, calls } = fakeFetch();
   await AnnounceTasks.slack((s) =>
     s.fetch(fetch)
@@ -71,7 +72,7 @@ Deno.test("slack renders title, success colour, fields, link and username", asyn
   assertEquals(calls[0].body.username, "ci-bot");
 });
 
-Deno.test("discord posts an embed with an integer colour", async () => {
+test("discord posts an embed with an integer colour", async () => {
   const { fetch, calls } = fakeFetch(204, null); // Discord replies 204, no body
   await AnnounceTasks.discord((s) =>
     s.fetch(fetch)
@@ -94,7 +95,7 @@ Deno.test("discord posts an embed with an integer colour", async () => {
   assertEquals(calls[0].body.username, "ci-bot");
 });
 
-Deno.test("the level shortcuts are interchangeable, last one wins", async () => {
+test("the level shortcuts are interchangeable, last one wins", async () => {
   const { fetch, calls } = fakeFetch();
   await AnnounceTasks.slack((s) =>
     s.fetch(fetch).webhook("https://hooks.slack.com/x").text("ok").failure()
@@ -104,7 +105,7 @@ Deno.test("the level shortcuts are interchangeable, last one wins", async () => 
   assertEquals(attachment.color, "#2f81f7"); // .info() overrode .failure()
 });
 
-Deno.test("discord omits optional fields for a minimal message", async () => {
+test("discord omits optional fields for a minimal message", async () => {
   const { fetch, calls } = fakeFetch();
   await AnnounceTasks.discord((s) =>
     s.fetch(fetch).webhook("https://discord.com/api/webhooks/x").text("Hi")
@@ -117,7 +118,7 @@ Deno.test("discord omits optional fields for a minimal message", async () => {
   assertEquals("username" in calls[0].body, false);
 });
 
-Deno.test("teams posts a MessageCard with facts and an action", async () => {
+test("teams posts a MessageCard with facts and an action", async () => {
   const { fetch, calls } = fakeFetch();
   await AnnounceTasks.teams((s) =>
     s.fetch(fetch)
@@ -146,7 +147,7 @@ Deno.test("teams posts a MessageCard with facts and an action", async () => {
   assertEquals("username" in card, false);
 });
 
-Deno.test("teams summary falls back to the text when there is no title", async () => {
+test("teams summary falls back to the text when there is no title", async () => {
   const { fetch, calls } = fakeFetch();
   await AnnounceTasks.teams((s) =>
     s.fetch(fetch).webhook("https://outlook.office.com/webhook/x").text("Done")
@@ -158,7 +159,7 @@ Deno.test("teams summary falls back to the text when there is no title", async (
   assertEquals("potentialAction" in card, false);
 });
 
-Deno.test("a missing webhook destination throws AnnounceError", async () => {
+test("a missing webhook destination throws AnnounceError", async () => {
   await assertRejects(
     () => AnnounceTasks.teams((s) => s.text("orphan")),
     AnnounceError,
@@ -166,7 +167,7 @@ Deno.test("a missing webhook destination throws AnnounceError", async () => {
   );
 });
 
-Deno.test("a non-2xx webhook response throws HttpError carrying the status", async () => {
+test("a non-2xx webhook response throws HttpError carrying the status", async () => {
   const { fetch } = fakeFetch(400);
   const error = await assertRejects(
     () =>
@@ -182,7 +183,7 @@ Deno.test("a non-2xx webhook response throws HttpError carrying the status", asy
   }
 });
 
-Deno.test("slack runs with no lambda (defaults) and reports the missing webhook", async () => {
+test("slack runs with no lambda (defaults) and reports the missing webhook", async () => {
   await assertRejects(
     () => AnnounceTasks.slack(),
     AnnounceError,
@@ -190,7 +191,7 @@ Deno.test("slack runs with no lambda (defaults) and reports the missing webhook"
   );
 });
 
-Deno.test("slack bot mode posts to chat.postMessage with the channel", async () => {
+test("slack bot mode posts to chat.postMessage with the channel", async () => {
   const { fetch, calls } = fakeFetch(200, '{"ok":true}');
   await AnnounceTasks.slack((s) =>
     s.fetch(fetch)
@@ -215,7 +216,7 @@ Deno.test("slack bot mode posts to chat.postMessage with the channel", async () 
   assertEquals(attachment.text, "✅ Build passed");
 });
 
-Deno.test("slack bot mode is implied by setting a token", async () => {
+test("slack bot mode is implied by setting a token", async () => {
   const { fetch, calls } = fakeFetch(200, '{"ok":true}');
   await AnnounceTasks.slack((s) =>
     s.fetch(fetch).token("xoxb-9").channel("#x").text("hi")
@@ -223,7 +224,7 @@ Deno.test("slack bot mode is implied by setting a token", async () => {
   assertEquals(calls[0].url, "https://slack.com/api/chat.postMessage");
 });
 
-Deno.test("slack bot mode requires a token", async () => {
+test("slack bot mode requires a token", async () => {
   await assertRejects(
     () => AnnounceTasks.slack((s) => s.bot().channel("#x").text("hi")),
     AnnounceError,
@@ -231,7 +232,7 @@ Deno.test("slack bot mode requires a token", async () => {
   );
 });
 
-Deno.test("slack bot mode requires a channel", async () => {
+test("slack bot mode requires a channel", async () => {
   await assertRejects(
     () => AnnounceTasks.slack((s) => s.bot().token("xoxb-1").text("hi")),
     AnnounceError,
@@ -239,7 +240,7 @@ Deno.test("slack bot mode requires a channel", async () => {
   );
 });
 
-Deno.test("slack bot mode surfaces a Slack error code", async () => {
+test("slack bot mode surfaces a Slack error code", async () => {
   const { fetch } = fakeFetch(200, '{"ok":false,"error":"channel_not_found"}');
   const error = await assertRejects(
     () =>
@@ -254,7 +255,7 @@ Deno.test("slack bot mode surfaces a Slack error code", async () => {
   }
 });
 
-Deno.test("slack bot mode reports unknown_error when none is given", async () => {
+test("slack bot mode reports unknown_error when none is given", async () => {
   const { fetch } = fakeFetch(200, '{"ok":false}');
   const error = await assertRejects(
     () =>
@@ -269,7 +270,7 @@ Deno.test("slack bot mode reports unknown_error when none is given", async () =>
   }
 });
 
-Deno.test("slack bot mode throws HttpError on a non-2xx response", async () => {
+test("slack bot mode throws HttpError on a non-2xx response", async () => {
   const { fetch } = fakeFetch(429, "rate limited");
   const error = await assertRejects(
     () =>
@@ -285,7 +286,7 @@ Deno.test("slack bot mode throws HttpError on a non-2xx response", async () => {
   }
 });
 
-Deno.test("discord bot mode posts the embed to the REST channel endpoint", async () => {
+test("discord bot mode posts the embed to the REST channel endpoint", async () => {
   const { fetch, calls } = fakeFetch(200, '{"id":"1"}');
   await AnnounceTasks.discord((s) =>
     s.fetch(fetch)
@@ -310,7 +311,7 @@ Deno.test("discord bot mode posts the embed to the REST channel endpoint", async
   assertEquals("username" in calls[0].body, false); // not honoured in bot mode
 });
 
-Deno.test("discord bot mode throws HttpError on a non-2xx response", async () => {
+test("discord bot mode throws HttpError on a non-2xx response", async () => {
   const { fetch } = fakeFetch(403, '{"message":"Missing Access"}');
   const error = await assertRejects(
     () =>
@@ -325,7 +326,7 @@ Deno.test("discord bot mode throws HttpError on a non-2xx response", async () =>
   }
 });
 
-Deno.test("teams bot mode posts HTML to Microsoft Graph", async () => {
+test("teams bot mode posts HTML to Microsoft Graph", async () => {
   const { fetch, calls } = fakeFetch(201, '{"id":"1"}');
   await AnnounceTasks.teams((s) =>
     s.fetch(fetch)
@@ -358,7 +359,7 @@ Deno.test("teams bot mode posts HTML to Microsoft Graph", async () => {
   );
 });
 
-Deno.test("teams bot mode renders a minimal message without a heading title", async () => {
+test("teams bot mode renders a minimal message without a heading title", async () => {
   const { fetch, calls } = fakeFetch(201, '{"id":"1"}');
   await AnnounceTasks.teams((s) =>
     s.fetch(fetch).token("t").team("g").channel("c").text("Done")
@@ -367,7 +368,7 @@ Deno.test("teams bot mode renders a minimal message without a heading title", as
   assertEquals(graphBody.content, "<p><strong>ℹ️</strong></p><p>Done</p>");
 });
 
-Deno.test("teams bot mode requires a team", async () => {
+test("teams bot mode requires a team", async () => {
   await assertRejects(
     () =>
       AnnounceTasks.teams((s) => s.bot().token("t").channel("c").text("hi")),
@@ -376,7 +377,7 @@ Deno.test("teams bot mode requires a team", async () => {
   );
 });
 
-Deno.test("teams bot mode throws HttpError on a non-2xx response", async () => {
+test("teams bot mode throws HttpError on a non-2xx response", async () => {
   const { fetch } = fakeFetch(401, '{"error":"unauthorized"}');
   const error = await assertRejects(
     () =>

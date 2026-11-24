@@ -8,10 +8,8 @@
  * through the CLI — exercising the `formatRunDetail` audit section end to end.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   Build,
   defaultStateHost,
@@ -25,7 +23,7 @@ class Demo extends Build {
   go = target().executes(() => {});
 }
 
-Deno.test("runs show renders the MCP audit trail", async () => {
+test("runs show renders the MCP audit trail", async () => {
   await withStateDir(async (dir) => {
     const store = new FileSystemStateStore(dir, defaultStateHost);
     const now = new Date().toISOString();
@@ -61,7 +59,7 @@ Deno.test("runs show renders the MCP audit trail", async () => {
   });
 });
 
-Deno.test("runs show omits the audit section when there are no events", async () => {
+test("runs show omits the audit section when there are no events", async () => {
   await withStateDir(async (dir) => {
     class B extends Build {
       build = target().executes(() => {});

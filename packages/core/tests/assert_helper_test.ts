@@ -9,9 +9,10 @@
  * those built-ins and a loud failure for any type the helper can't compare.
  */
 
-import { assertEquals, assertThrows } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 
-Deno.test("assertEquals compares Sets by membership, not vacuously", () => {
+test("assertEquals compares Sets by membership, not vacuously", () => {
   assertEquals(new Set(["a", "b"]), new Set(["b", "a"])); // order-independent
   assertThrows(
     () => assertEquals(new Set(["a"]), new Set(["b", "c"])),
@@ -37,7 +38,7 @@ Deno.test("assertEquals compares Sets by membership, not vacuously", () => {
   );
 });
 
-Deno.test("assertEquals compares Maps by key and deep value", () => {
+test("assertEquals compares Maps by key and deep value", () => {
   assertEquals(new Map([["k", { n: 1 }]]), new Map([["k", { n: 1 }]]));
   assertThrows(
     () => assertEquals(new Map([["k", 1]]), new Map([["k", 2]])),
@@ -51,7 +52,7 @@ Deno.test("assertEquals compares Maps by key and deep value", () => {
   );
 });
 
-Deno.test("assertEquals compares Dates by instant", () => {
+test("assertEquals compares Dates by instant", () => {
   assertEquals(
     new Date("2026-01-01T00:00:00Z"),
     new Date("2026-01-01T00:00:00Z"),
@@ -63,7 +64,7 @@ Deno.test("assertEquals compares Dates by instant", () => {
   );
 });
 
-Deno.test("assertEquals compares Uint8Arrays element-wise", () => {
+test("assertEquals compares Uint8Arrays element-wise", () => {
   assertEquals(new Uint8Array([1, 2, 3]), new Uint8Array([1, 2, 3]));
   assertThrows(
     () => assertEquals(new Uint8Array([1, 2]), new Uint8Array([1, 3])),
@@ -77,7 +78,7 @@ Deno.test("assertEquals compares Uint8Arrays element-wise", () => {
   );
 });
 
-Deno.test("assertEquals throws on an opaque type it cannot structurally compare", () => {
+test("assertEquals throws on an opaque type it cannot structurally compare", () => {
   assertThrows(
     () => assertEquals(/a/, /a/),
     Error,
@@ -85,7 +86,7 @@ Deno.test("assertEquals throws on an opaque type it cannot structurally compare"
   );
 });
 
-Deno.test("assertEquals compares plain objects and arrays structurally", () => {
+test("assertEquals compares plain objects and arrays structurally", () => {
   assertEquals({ a: 1, b: { c: 2 } }, { a: 1, b: { c: 2 } });
   assertEquals({}, {});
   assertEquals([1, [2, 3]], [1, [2, 3]]);

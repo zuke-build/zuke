@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { terminateProcess } from "../src/terminate.ts";
 
 /**
@@ -29,32 +30,32 @@ function fakeChild(
   };
 }
 
-Deno.test("terminateProcess stops at SIGTERM when the process exits in grace", async () => {
+test("terminateProcess stops at SIGTERM when the process exits in grace", async () => {
   const child = fakeChild({ exitsOn: "SIGTERM" });
   await terminateProcess(child, "SIGTERM", 30_000);
   assertEquals(child.signals, ["SIGTERM"]);
 });
 
-Deno.test("terminateProcess escalates to SIGKILL when the grace window expires", async () => {
+test("terminateProcess escalates to SIGKILL when the grace window expires", async () => {
   const child = fakeChild(); // ignores SIGTERM entirely
   await terminateProcess(child, "SIGTERM", 5);
   assertEquals(child.signals, ["SIGTERM", "SIGKILL"]);
 });
 
-Deno.test("terminateProcess sends the requested signal", async () => {
+test("terminateProcess sends the requested signal", async () => {
   const child = fakeChild({ exitsOn: "SIGINT" });
   await terminateProcess(child, "SIGINT", 30_000);
   assertEquals(child.signals, ["SIGINT"]);
 });
 
-Deno.test("terminateProcess treats an already-exited process as stopped", async () => {
+test("terminateProcess treats an already-exited process as stopped", async () => {
   const child = fakeChild({ killThrows: true });
   await terminateProcess(child, "SIGTERM", 5);
   // Nothing was delivered, and it did not wait out the grace window or throw.
   assertEquals(child.signals, []);
 });
 
-Deno.test("terminateProcess tolerates a process that exits as SIGKILL is sent", async () => {
+test("terminateProcess tolerates a process that exits as SIGKILL is sent", async () => {
   const child = fakeChild();
   let killed = 0;
   const racing = {

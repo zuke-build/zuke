@@ -13,10 +13,8 @@
  * / integration.yml on the OS matrix.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   freePort,
   killMcpWithin,
@@ -71,7 +69,7 @@ function toolText(reply: unknown): string {
   return text;
 }
 
-Deno.test("a build registered after startup appears as a runnable MCP tool", async () => {
+test("a build registered after startup appears as a runnable MCP tool", async () => {
   const dir = await Deno.makeTempDir({ prefix: "zuke-reg-mcp-e2e-" });
   let server: Deno.ChildProcess | undefined;
   try {

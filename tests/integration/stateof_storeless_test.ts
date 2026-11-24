@@ -8,11 +8,12 @@
  * empty in-memory handle per `stateOf` call, silently dropping reads and writes.
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
 
-Deno.test("store-less ctx.stateOf(self) is equivalent to ctx.state", async () => {
+test("store-less ctx.stateOf(self) is equivalent to ctx.state", async () => {
   // Ensure no store resolves, so env.writer is undefined (the store-less path).
   const keys = ["ZUKE_STATE_DIR", "ZUKE_STATE_URL"];
   const saved = keys.map((k) => [k, Deno.env.get(k)] as const);

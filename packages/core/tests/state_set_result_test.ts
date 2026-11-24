@@ -11,10 +11,11 @@
  * @module
  */
 
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { Redactor } from "../src/redact.ts";
 import { inMemoryStateHandle, RunStateWriter } from "../src/state/writer.ts";
-import { MemStateStore, runRecord } from "./_fakes.ts";
+import { MemStateStore, runRecord } from "../../../tests/_fakes.ts";
 import type { TargetStateHandle } from "../src/target.ts";
 
 const NOW = "2026-09-08T12:00:00.000Z";
@@ -44,14 +45,14 @@ async function adopted(
   return { writer, handle: writer.stateHandle("deploy") };
 }
 
-Deno.test("a write that reaches the store reports true", async () => {
+test("a write that reaches the store reports true", async () => {
   const store = new MemStateStore();
   const { handle } = await adopted(store);
   assertEquals(await handle.trySet({ slot: "sit-7" }), true);
   assertEquals(store.record?.targets.deploy.meta, { slot: "sit-7" });
 });
 
-Deno.test("a write conflicted away for good reports false", async () => {
+test("a write conflicted away for good reports false", async () => {
   const store = new MemStateStore();
   const warnings: string[] = [];
   const { writer, handle } = await adopted(store, (m) => warnings.push(m));
@@ -65,7 +66,7 @@ Deno.test("a write conflicted away for good reports false", async () => {
   assertEquals(store.record?.targets.deploy.meta, {});
 });
 
-Deno.test("a write the store errored on reports false", async () => {
+test("a write the store errored on reports false", async () => {
   const store = new MemStateStore();
   const { writer, handle } = await adopted(store);
   store.failNextPut = true;
@@ -77,7 +78,7 @@ Deno.test("a write the store errored on reports false", async () => {
   assertEquals(writer.snapshot().degraded, undefined);
 });
 
-Deno.test("a write onto a vanished run reports false", async () => {
+test("a write onto a vanished run reports false", async () => {
   const store = new MemStateStore();
   const { handle } = await adopted(store);
   store.forceConflicts = 1;
@@ -86,7 +87,7 @@ Deno.test("a write onto a vanished run reports false", async () => {
   assertEquals(await handle.trySet({ slot: "sit-7" }), false);
 });
 
-Deno.test("a write from a process that no longer owns the run reports false", async () => {
+test("a write from a process that no longer owns the run reports false", async () => {
   const store = new MemStateStore();
   const { handle, writer } = await adopted(store);
   writer.disown();
@@ -97,7 +98,7 @@ Deno.test("a write from a process that no longer owns the run reports false", as
   assertEquals(store.record?.targets.deploy.meta, {});
 });
 
-Deno.test("a build with no state store always reports true", async () => {
+test("a build with no state store always reports true", async () => {
   const handle = inMemoryStateHandle();
   // Nothing is persisted, but nothing is dropped either — answering `false`
   // would make every write of a store-less build look failed.
@@ -105,7 +106,7 @@ Deno.test("a build with no state store always reports true", async () => {
   assertEquals(handle.get(), { slot: "sit-7" });
 });
 
-Deno.test("a write re-applied onto a run settled elsewhere reports true", async () => {
+test("a write re-applied onto a run settled elsewhere reports true", async () => {
   const store = new MemStateStore();
   const { handle } = await adopted(store);
   store.forceConflicts = 1;
@@ -118,7 +119,7 @@ Deno.test("a write re-applied onto a run settled elsewhere reports true", async 
   assertEquals(store.record?.targets.deploy.meta, { slot: "sit-7" });
 });
 
-Deno.test("a write whose re-apply also conflicts reports false", async () => {
+test("a write whose re-apply also conflicts reports false", async () => {
   const store = new MemStateStore();
   const warnings: string[] = [];
   const { writer, handle } = await adopted(store, (m) => warnings.push(m));
@@ -131,7 +132,7 @@ Deno.test("a write whose re-apply also conflicts reports false", async () => {
   assertEquals(warnings.length, 1);
 });
 
-Deno.test("a rejecting write is not also an unhandled rejection", async () => {
+test("a rejecting write is not also an unhandled rejection", async () => {
   const store = new MemStateStore();
   // The warning callback is called outside the persist try, so it can reject
   // the write — in production it writes to the reporter, which throws on a

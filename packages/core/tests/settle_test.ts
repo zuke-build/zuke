@@ -7,12 +7,13 @@
  * status — see `packages/core/src/state/settle.ts`.
  */
 
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   settleTargetRow,
   settleUnreachedTargets,
 } from "../src/state/settle.ts";
-import { runRecord } from "./_fakes.ts";
+import { runRecord } from "../../../tests/_fakes.ts";
 import type { TargetRunState } from "../src/state/types.ts";
 
 /** A target row parked on a signal gate with an hour left on its deadline. */
@@ -29,7 +30,7 @@ function waitingRow(): TargetRunState {
   };
 }
 
-Deno.test("settling a waiting row drops the wait it is no longer on", () => {
+test("settling a waiting row drops the wait it is no longer on", () => {
   const row = waitingRow();
   settleTargetRow(row, "failed", "2026-09-08T10:30:00.000Z");
   assertEquals(row.status, "failed");
@@ -40,7 +41,7 @@ Deno.test("settling a waiting row drops the wait it is no longer on", () => {
   assertEquals("waitingFor" in row, false);
 });
 
-Deno.test("settling leaves everything the row already recorded", () => {
+test("settling leaves everything the row already recorded", () => {
   const row = waitingRow();
   row.meta = { slot: "sit-7" };
   settleTargetRow(row, "skipped", "2026-09-08T10:30:00.000Z");
@@ -49,7 +50,7 @@ Deno.test("settling leaves everything the row already recorded", () => {
   assertEquals(row.status, "skipped");
 });
 
-Deno.test("settling a row that never waited is just the status and the time", () => {
+test("settling a row that never waited is just the status and the time", () => {
   const row: TargetRunState = { status: "running", meta: {} };
   settleTargetRow(row, "succeeded", "2026-09-08T10:30:00.000Z");
   assertEquals(row.status, "succeeded");
@@ -57,7 +58,7 @@ Deno.test("settling a row that never waited is just the status and the time", ()
   assertEquals("waitingFor" in row, false);
 });
 
-Deno.test("the sweep settles only the rows still parked on a gate", () => {
+test("the sweep settles only the rows still parked on a gate", () => {
   const record = runRecord({
     id: "r1",
     rootTarget: "root",
@@ -84,7 +85,7 @@ Deno.test("the sweep settles only the rows still parked on a gate", () => {
   assertEquals(typeof record.targets.later.endedAt, "string");
 });
 
-Deno.test("the sweep records why, when a deadline is what cancelled the run", () => {
+test("the sweep records why, when a deadline is what cancelled the run", () => {
   const record = runRecord({
     id: "r1",
     rootTarget: "gate",

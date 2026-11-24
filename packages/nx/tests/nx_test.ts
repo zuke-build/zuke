@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
   assertWrapperConformance,
@@ -18,11 +19,11 @@ import {
   NxTasks,
 } from "../src/nx.ts";
 
-Deno.test("the default binary is nx", () => {
+test("the default binary is nx", () => {
   assertEquals(new NxRunSettings().target("web:build").argv()[0], "nx");
 });
 
-Deno.test("nx: resolves its binary from node_modules by default", async () => {
+test("nx: resolves its binary from node_modules by default", async () => {
   await assertWrapperConformance(
     () => new NxRunSettings().target("web:build"),
     "nx",
@@ -32,7 +33,7 @@ Deno.test("nx: resolves its binary from node_modules by default", async () => {
   );
 });
 
-Deno.test("run: requires a target; configuration", () => {
+test("run: requires a target; configuration", () => {
   assertThrows(
     () => new NxRunSettings().argv(),
     Error,
@@ -49,7 +50,7 @@ Deno.test("run: requires a target; configuration", () => {
   );
 });
 
-Deno.test("runMany: requires a target; projects, configuration, parallel, all", () => {
+test("runMany: requires a target; projects, configuration, parallel, all", () => {
   assertThrows(
     () => new NxRunManySettings().argv(),
     Error,
@@ -79,7 +80,7 @@ Deno.test("runMany: requires a target; projects, configuration, parallel, all", 
   );
 });
 
-Deno.test("affected: requires a target; base, head, configuration, parallel", () => {
+test("affected: requires a target; base, head, configuration, parallel", () => {
   assertThrows(
     () => new NxAffectedSettings().argv(),
     Error,
@@ -105,7 +106,7 @@ Deno.test("affected: requires a target; base, head, configuration, parallel", ()
   );
 });
 
-Deno.test("every NxTasks function reaches execution", async () => {
+test("every NxTasks function reaches execution", async () => {
   await assertRejects(
     () => NxTasks.run((s) => missingTool(s).target("web:build")),
     ToolNotFoundError,

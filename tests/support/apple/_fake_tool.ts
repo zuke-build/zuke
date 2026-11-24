@@ -16,7 +16,7 @@
  * @module
  */
 
-import { assertRejects } from "../../core/tests/_assert.ts";
+import { assertRejects } from "../../_assert.ts";
 
 /**
  * Assert that `fn` rejects with an `ErrorClass` and return the error typed as

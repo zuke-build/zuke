@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
   assertWrapperConformance,
@@ -15,11 +16,11 @@ import {
   PlaywrightTestSettings,
 } from "../src/playwright.ts";
 
-Deno.test("the default binary is playwright", () => {
+test("the default binary is playwright", () => {
   assertEquals(new PlaywrightTestSettings().argv()[0], "playwright");
 });
 
-Deno.test("test: bare, projects, grep, headed, workers, reporter, config, paths", () => {
+test("test: bare, projects, grep, headed, workers, reporter, config, paths", () => {
   assertEquals(new PlaywrightTestSettings().argv().slice(1), ["test"]);
   assertEquals(
     new PlaywrightTestSettings()
@@ -51,7 +52,7 @@ Deno.test("test: bare, projects, grep, headed, workers, reporter, config, paths"
   );
 });
 
-Deno.test("install: bare, --with-deps, and named browsers", () => {
+test("install: bare, --with-deps, and named browsers", () => {
   assertEquals(new PlaywrightInstallSettings().argv().slice(1), ["install"]);
   assertEquals(
     new PlaywrightInstallSettings()
@@ -63,7 +64,7 @@ Deno.test("install: bare, --with-deps, and named browsers", () => {
   );
 });
 
-Deno.test("show-report: bare and with a directory", () => {
+test("show-report: bare and with a directory", () => {
   assertEquals(new PlaywrightShowReportSettings().argv().slice(1), [
     "show-report",
   ]);
@@ -73,7 +74,7 @@ Deno.test("show-report: bare and with a directory", () => {
   );
 });
 
-Deno.test("codegen: bare, --target, --output, and a url", () => {
+test("codegen: bare, --target, --output, and a url", () => {
   assertEquals(new PlaywrightCodegenSettings().argv().slice(1), ["codegen"]);
   assertEquals(
     new PlaywrightCodegenSettings()
@@ -86,7 +87,7 @@ Deno.test("codegen: bare, --target, --output, and a url", () => {
   );
 });
 
-Deno.test("playwright: resolves its binary from node_modules by default", async () => {
+test("playwright: resolves its binary from node_modules by default", async () => {
   await assertWrapperConformance(
     () => new PlaywrightTestSettings(),
     "playwright",
@@ -96,7 +97,7 @@ Deno.test("playwright: resolves its binary from node_modules by default", async 
   );
 });
 
-Deno.test("every PlaywrightTasks function reaches execution", async () => {
+test("every PlaywrightTasks function reaches execution", async () => {
   await assertRejects(
     () => PlaywrightTasks.test(missingTool),
     ToolNotFoundError,

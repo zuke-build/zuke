@@ -2,20 +2,26 @@
 // SPDX-License-Identifier: MIT
 // cspell:ignore frob
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../core/tests/_assert.ts";
-import { rejection } from "./_fake_tool.ts";
+} from "../../../tests/_assert.ts";
+import { rejection } from "../../../tests/support/apple/_fake_tool.ts";
 import { ProvisioningProfileError, ProvisioningProfileTasks } from "../mod.ts";
 import { readProvisioningProfile } from "../src/provisioning_profile.ts";
-import { base64, MemoryHost, profileBytes, profilePlist } from "./_profile.ts";
+import {
+  base64,
+  MemoryHost,
+  profileBytes,
+  profilePlist,
+} from "../../../tests/support/apple/_profile.ts";
 
 const UUID = "0f8fad5b-d9cb-469f-a165-70867728950e";
 const NOW = Date.parse("2026-06-01T00:00:00Z");
 
-Deno.test("profile: identity read from the embedded plist", () => {
+test("profile: identity read from the embedded plist", () => {
   assertEquals(readProvisioningProfile(profileBytes()), {
     uuid: UUID,
     name: "Example App Store",
@@ -31,7 +37,7 @@ Deno.test("profile: identity read from the embedded plist", () => {
   });
 });
 
-Deno.test("profile: the kind follows devices and debugging", () => {
+test("profile: the kind follows devices and debugging", () => {
   const kind = (p: Parameters<typeof profileBytes>[0]) =>
     readProvisioningProfile(profileBytes(p)).kind;
   assertEquals(kind({ devices: true, getTaskAllow: true }), "development");
@@ -44,7 +50,7 @@ Deno.test("profile: the kind follows devices and debugging", () => {
   );
 });
 
-Deno.test("profile: what is not a profile is refused with a reason", () => {
+test("profile: what is not a profile is refused with a reason", () => {
   const fails = (bytes: Uint8Array, reason: string) =>
     assertThrows(
       () => readProvisioningProfile(bytes),
@@ -104,7 +110,7 @@ Deno.test("profile: what is not a profile is refused with a reason", () => {
   );
 });
 
-Deno.test("inspect: from a file or from base64, exactly one", async () => {
+test("inspect: from a file or from base64, exactly one", async () => {
   const host = new MemoryHost();
   host.files.set("/p.mobileprovision", profileBytes());
   const fromFile = await ProvisioningProfileTasks.inspect((s) =>
@@ -132,7 +138,7 @@ Deno.test("inspect: from a file or from base64, exactly one", async () => {
   );
 });
 
-Deno.test("install: into Xcode's two directories, named by UUID", async () => {
+test("install: into Xcode's two directories, named by UUID", async () => {
   const host = new MemoryHost();
   const installed = await ProvisioningProfileTasks.install((s) =>
     s.host(host).now(() => NOW).base64(base64(profileBytes()))
@@ -147,7 +153,7 @@ Deno.test("install: into Xcode's two directories, named by UUID", async () => {
   assertEquals(installed.profile.uuid, UUID);
 });
 
-Deno.test("install: custom directories, expiry and unsafe UUIDs", async () => {
+test("install: custom directories, expiry and unsafe UUIDs", async () => {
   const host = new MemoryHost();
   const installed = await ProvisioningProfileTasks.install((s) =>
     s.host(host).now(() => NOW).directory("/tmp/a").base64(
@@ -181,7 +187,7 @@ Deno.test("install: custom directories, expiry and unsafe UUIDs", async () => {
   );
 });
 
-Deno.test("temporary: a profile that was already installed is left in place", async () => {
+test("temporary: a profile that was already installed is left in place", async () => {
   const host = new MemoryHost();
   const existing =
     `/Users/ci/Library/MobileDevice/Provisioning Profiles/${UUID}.mobileprovision`;
@@ -193,7 +199,7 @@ Deno.test("temporary: a profile that was already installed is left in place", as
   assertEquals([...host.files.keys()], [existing]);
 });
 
-Deno.test("profile: a malformed plist keeps the parser's error as the cause", async () => {
+test("profile: a malformed plist keeps the parser's error as the cause", async () => {
   const error = await rejection(
     () =>
       ProvisioningProfileTasks.inspect((s) =>
@@ -206,7 +212,7 @@ Deno.test("profile: a malformed plist keeps the parser's error as the cause", as
   assertEquals(error.cause instanceof Error, true);
 });
 
-Deno.test("install: a failed write removes what was written", async () => {
+test("install: a failed write removes what was written", async () => {
   const host = new MemoryHost();
   host.failWrite = (path) => path.includes("MobileDevice");
   await assertRejects(
@@ -220,7 +226,7 @@ Deno.test("install: a failed write removes what was written", async () => {
   assertEquals(host.files.size, 0);
 });
 
-Deno.test("temporary: installed for the callback, removed after", async () => {
+test("temporary: installed for the callback, removed after", async () => {
   const host = new MemoryHost();
   const seen = await ProvisioningProfileTasks.temporary(
     (s) => s.host(host).now(() => NOW).base64(base64(profileBytes())),
@@ -233,7 +239,7 @@ Deno.test("temporary: installed for the callback, removed after", async () => {
   assertEquals(host.files.size, 0);
 });
 
-Deno.test("temporary: removed when the callback throws, and its error kept", async () => {
+test("temporary: removed when the callback throws, and its error kept", async () => {
   const host = new MemoryHost();
   await assertRejects(
     () =>
@@ -247,7 +253,7 @@ Deno.test("temporary: removed when the callback throws, and its error kept", asy
   assertEquals(host.files.size, 0);
 });
 
-Deno.test("temporary: a removal that fails is reported, with the cause", async () => {
+test("temporary: a removal that fails is reported, with the cause", async () => {
   const host = new MemoryHost();
   host.failRemove = (path) => path.includes("MobileDevice");
   const ok = await rejection(

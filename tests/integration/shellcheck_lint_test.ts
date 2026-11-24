@@ -14,7 +14,8 @@
  * @module
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import {
   ShellcheckSettings,
@@ -25,7 +26,7 @@ import { runCli } from "./_harness.ts";
 /** A tool path that cannot exist, so resolution fails before any process runs. */
 const ABSENT = "/nonexistent/zuke-test-shellcheck";
 
-Deno.test("a shell gate lints its scripts, and refuses a run with none", async () => {
+test("a shell gate lints its scripts, and refuses a run with none", async () => {
   const sent: string[][] = [];
   class GateBuild extends Build {
     lint = target().description("lint the shipped shell").executes(async () => {

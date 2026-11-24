@@ -9,9 +9,10 @@
  * check, cache reuse, publication race and install retry all run as shipped.
  */
 
+import { test } from "../_testing.ts";
 import { sha256Hex } from "@zuke/core";
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
-import { withTemp } from "../../packages/core/tests/_temp.ts";
+import { assertEquals } from "../_assert.ts";
+import { withTemp } from "../_temp.ts";
 import { nodeLauncherPowerShell } from "../../packages/cli/src/node_launcher.ts";
 
 const WINDOWS = Deno.build.os === "windows";
@@ -101,7 +102,7 @@ async function world(root: string, beforeCopy = "") {
   return { project, bin, nodeHome, run, entries };
 }
 
-Deno.test({
+test({
   name:
     "the powershell node launcher bootstraps a verified Node, then reuses the cache",
   ignore: !WINDOWS,
@@ -123,7 +124,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name:
     "the powershell node launcher installs nothing on a checksum mismatch or an unpinned override",
   ignore: !WINDOWS,
@@ -141,7 +142,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name:
     "the powershell node launcher uses a Node a concurrent launcher published first",
   ignore: !WINDOWS,
@@ -169,7 +170,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name:
     "the powershell node launcher stops when npm fails, and retries the install next run",
   ignore: !WINDOWS,
@@ -207,7 +208,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name:
     "two powershell node launchers started at once install once, and both run the build",
   ignore: !WINDOWS,
@@ -244,7 +245,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name:
     "the powershell node launcher reports an install lock its owner left behind, and leaves it",
   ignore: !WINDOWS,

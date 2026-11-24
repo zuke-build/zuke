@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import {
   defaultReadEnv,
   delay,
@@ -18,21 +19,21 @@ import {
   writeFileEnsuringDir,
   writeTextEnsuringDir,
 } from "../src/internal.ts";
-import { withTemp } from "./_temp.ts";
+import { withTemp } from "../../../tests/_temp.ts";
 
-Deno.test("messageOf reads an Error's message, else stringifies", () => {
+test("messageOf reads an Error's message, else stringifies", () => {
   assertEquals(messageOf(new Error("boom")), "boom");
   assertEquals(messageOf("plain"), "plain");
   assertEquals(messageOf(42), "42");
 });
 
-Deno.test("delay resolves after the given time", async () => {
+test("delay resolves after the given time", async () => {
   const start = performance.now();
   await delay(10);
   assertEquals(performance.now() - start >= 8, true);
 });
 
-Deno.test("sha256Hex returns the known lowercase-hex digest", async () => {
+test("sha256Hex returns the known lowercase-hex digest", async () => {
   // The canonical SHA-256 of the empty string.
   assertEquals(
     await sha256Hex(""),
@@ -50,7 +51,7 @@ Deno.test("sha256Hex returns the known lowercase-hex digest", async () => {
   assertEquals(await sha256Hex("x"), await sha256Hex("x"));
 });
 
-Deno.test("sha256Hex digests bytes the same as the text they encode", async () => {
+test("sha256Hex digests bytes the same as the text they encode", async () => {
   // Multi-byte on purpose: an ASCII string would pass even if the encoding
   // step were wrong, since one character would be one byte either way.
   const text = "zuke café";
@@ -60,7 +61,7 @@ Deno.test("sha256Hex digests bytes the same as the text they encode", async () =
   );
 });
 
-Deno.test("the NotFound readers return null, and the writers create parents", async () => {
+test("the NotFound readers return null, and the writers create parents", async () => {
   await withTemp(async (root) => {
     assertEquals(await readTextOrNull(`${root}/missing.txt`), null);
     assertEquals(await readFileOrNull(`${root}/missing.bin`), null);
@@ -83,7 +84,7 @@ Deno.test("the NotFound readers return null, and the writers create parents", as
   });
 });
 
-Deno.test("a parentless path is written where it is, with no mkdir", async () => {
+test("a parentless path is written where it is, with no mkdir", async () => {
   // `slash > 0`, not `!== -1`: a bare name has no parent to create, and a
   // root-level path's parent is the root, which already exists. Either would
   // otherwise `Deno.mkdir("")` and throw.
@@ -99,7 +100,7 @@ Deno.test("a parentless path is written where it is, with no mkdir", async () =>
   }
 });
 
-Deno.test("defaultReadEnv reads a set variable through the process env", () => {
+test("defaultReadEnv reads a set variable through the process env", () => {
   Deno.env.set("ZUKE_INTERNAL_TEST", "value");
   try {
     assertEquals(defaultReadEnv("ZUKE_INTERNAL_TEST"), "value");
@@ -109,7 +110,7 @@ Deno.test("defaultReadEnv reads a set variable through the process env", () => {
   assertEquals(defaultReadEnv("ZUKE_INTERNAL_TEST_UNSET"), undefined);
 });
 
-Deno.test("defaultReadEnv returns undefined when env access is denied (throws)", () => {
+test("defaultReadEnv returns undefined when env access is denied (throws)", () => {
   // The whole point of the try/catch: a denied --allow-env must yield undefined,
   // not a thrown PermissionDenied. Stub Deno.env.get to throw, as the test suite
   // itself runs with -A and can't otherwise reach the catch branch.
@@ -124,7 +125,7 @@ Deno.test("defaultReadEnv returns undefined when env access is denied (throws)",
   }
 });
 
-Deno.test("runWithTimeout without a bound runs fn to completion", async () => {
+test("runWithTimeout without a bound runs fn to completion", async () => {
   let ran = false;
   await runWithTimeout(() => {
     ran = true;
@@ -132,7 +133,7 @@ Deno.test("runWithTimeout without a bound runs fn to completion", async () => {
   assertEquals(ran, true);
 });
 
-Deno.test("runWithTimeout resolves when fn finishes within the bound", async () => {
+test("runWithTimeout resolves when fn finishes within the bound", async () => {
   let ran = false;
   await runWithTimeout(async () => {
     await delay(1);
@@ -141,7 +142,7 @@ Deno.test("runWithTimeout resolves when fn finishes within the bound", async () 
   assertEquals(ran, true);
 });
 
-Deno.test("runWithTimeout rejects with a timeout error when fn overruns", async () => {
+test("runWithTimeout rejects with a timeout error when fn overruns", async () => {
   await assertRejects(
     () => runWithTimeout(() => delay(1000), 5),
     Error,
@@ -149,7 +150,7 @@ Deno.test("runWithTimeout rejects with a timeout error when fn overruns", async 
   );
 });
 
-Deno.test("runWithTimeout awaits a non-void fn's thenable and discards its value", async () => {
+test("runWithTimeout awaits a non-void fn's thenable and discards its value", async () => {
   // A body may return a value (e.g. a *Tasks call's CommandOutput promise);
   // the result is awaited — so a timeout still bounds it — then dropped.
   let settled = false;
@@ -162,7 +163,7 @@ Deno.test("runWithTimeout awaits a non-void fn's thenable and discards its value
   assertEquals(out, undefined);
 });
 
-Deno.test("runWithTimeout discards a returned value on the no-bound (undefined timeout) path", async () => {
+test("runWithTimeout discards a returned value on the no-bound (undefined timeout) path", async () => {
   // The unbounded branch returns the mapped promise directly, so its own
   // `.then(() => undefined)` — not the timeout branch's `resolve()` — is what
   // drops the value here.
@@ -173,7 +174,7 @@ Deno.test("runWithTimeout discards a returned value on the no-bound (undefined t
   assertEquals(out, undefined);
 });
 
-Deno.test("runWithTimeout propagates a rejection from fn", async () => {
+test("runWithTimeout propagates a rejection from fn", async () => {
   await assertRejects(
     () => runWithTimeout(() => Promise.reject(new Error("inner")), 1000),
     Error,
@@ -181,13 +182,13 @@ Deno.test("runWithTimeout propagates a rejection from fn", async () => {
   );
 });
 
-Deno.test("envFlag: unset and empty are off", () => {
+test("envFlag: unset and empty are off", () => {
   assertEquals(envFlag(undefined), false);
   assertEquals(envFlag(""), false);
   assertEquals(envFlag("   "), false);
 });
 
-Deno.test("envFlag: the conventional negatives are off, whatever their case", () => {
+test("envFlag: the conventional negatives are off, whatever their case", () => {
   // FALSE must not mean the opposite of false. That is the defect this
   // replaced: a hand-rolled comparison against the lowercase spellings.
   for (const value of ["false", "FALSE", "False", "0", "no", "NO", " false "]) {
@@ -195,7 +196,7 @@ Deno.test("envFlag: the conventional negatives are off, whatever their case", ()
   }
 });
 
-Deno.test("envFlag: anything else is on", () => {
+test("envFlag: anything else is on", () => {
   // An unfamiliar value still means the variable was set on purpose; refusing
   // to guess would be a silent no.
   for (const value of ["1", "true", "TRUE", "yes", "on", "please"]) {
@@ -208,7 +209,7 @@ function coded(code: string): Error {
   return Object.assign(new Error(code), { code });
 }
 
-Deno.test("the error checks read the code every runtime sets, and still know Deno's classes", async () => {
+test("the error checks read the code every runtime sets, and still know Deno's classes", async () => {
   // What the file system really throws.
   const missing = await Deno.stat(`${await Deno.makeTempDir()}/nope`).catch((
     e: unknown,

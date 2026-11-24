@@ -3,12 +3,17 @@
 
 /** Unit: series, labels, label values (and the label-name path guard), metadata. */
 
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { PrometheusRequestError, PrometheusTasks } from "../mod.ts";
 import { escapeLabelName } from "../src/metadata.ts";
-import { BASE, fakeFetch, success } from "./_fetch.ts";
+import {
+  BASE,
+  fakeFetch,
+  success,
+} from "../../../tests/support/prometheus/_fetch.ts";
 
-Deno.test("series POSTs repeated match[] with its range and limit", async () => {
+test("series POSTs repeated match[] with its range and limit", async () => {
   const fetcher = fakeFetch(() =>
     success([{ __name__: "up", job: "api" }, { __name__: "up", job: "db" }])
   );
@@ -35,7 +40,7 @@ Deno.test("series POSTs repeated match[] with its range and limit", async () => 
   }]);
 });
 
-Deno.test("series needs a selector, and GET puts them in the URL", async () => {
+test("series needs a selector, and GET puts them in the URL", async () => {
   const fetcher = fakeFetch(() => success([]));
   await assertRejects(
     () => PrometheusTasks.series((s) => s.url(BASE).fetch(fetcher)),
@@ -54,7 +59,7 @@ Deno.test("series needs a selector, and GET puts them in the URL", async () => {
   assertEquals(fetcher.sent[0].method, "GET");
 });
 
-Deno.test("labels lists names, by POST or GET", async () => {
+test("labels lists names, by POST or GET", async () => {
   const fetcher = fakeFetch(() => success(["__name__", "job"]));
   const response = await PrometheusTasks.labels((s) =>
     s.url(BASE).fetch(fetcher).match("up").start(1).end(2).limit(0)
@@ -69,7 +74,7 @@ Deno.test("labels lists names, by POST or GET", async () => {
   assertEquals(fetcher.sent[1].url.search, "");
 });
 
-Deno.test("labelValues GETs the label's path with its selection", async () => {
+test("labelValues GETs the label's path with its selection", async () => {
   const fetcher = fakeFetch(() => success(["200", "504"]));
   const response = await PrometheusTasks.labelValues((s) =>
     s.url(BASE).fetch(fetcher).labelName("http_status_code").start(1)
@@ -87,7 +92,7 @@ Deno.test("labelValues GETs the label's path with its selection", async () => {
   );
 });
 
-Deno.test("a UTF-8 label name is sent in the API's U__ escape", async () => {
+test("a UTF-8 label name is sent in the API's U__ escape", async () => {
   const fetcher = fakeFetch(() => success([]));
   await PrometheusTasks.labelValues((s) =>
     s.url(BASE).fetch(fetcher).labelName("http.status_code")
@@ -99,7 +104,7 @@ Deno.test("a UTF-8 label name is sent in the API's U__ escape", async () => {
   );
 });
 
-Deno.test("a label name cannot traverse out of its path segment", async () => {
+test("a label name cannot traverse out of its path segment", async () => {
   const fetcher = fakeFetch(() => success([]));
   for (
     const name of [
@@ -124,7 +129,7 @@ Deno.test("a label name cannot traverse out of its path segment", async () => {
   }
 });
 
-Deno.test("escapeLabelName matches prometheus/common's value-encoding escape", () => {
+test("escapeLabelName matches prometheus/common's value-encoding escape", () => {
   const cases: Array<[string, string]> = [
     ["job", "job"],
     ["__name__", "__name__"],
@@ -142,7 +147,7 @@ Deno.test("escapeLabelName matches prometheus/common's value-encoding escape", (
   }
 });
 
-Deno.test("metadata GETs its filters and answers metadata keyed by metric", async () => {
+test("metadata GETs its filters and answers metadata keyed by metric", async () => {
   // Raw JSON, so `__proto__` arrives as an own key the way a server sends it.
   const fetcher = fakeFetch(() =>
     new Response(
@@ -182,7 +187,7 @@ Deno.test("metadata GETs its filters and answers metadata keyed by metric", asyn
   );
 });
 
-Deno.test("malformed metadata answers are refused", async () => {
+test("malformed metadata answers are refused", async () => {
   const cases: Array<[() => Promise<unknown>, string]> = [
     [
       () =>

@@ -9,12 +9,13 @@
  * @module
  */
 
+import { test } from "./_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../packages/core/tests/_assert.ts";
-import { withTemp } from "../packages/core/tests/_temp.ts";
+} from "./_assert.ts";
+import { withTemp } from "./_temp.ts";
 import { gzip, tar } from "@zuke/core";
 import { CommandOutput } from "@zuke/core/shell";
 import {
@@ -109,7 +110,7 @@ function recordingGh(
   };
 }
 
-Deno.test("uploadCliRelease attaches everything to the draft, then publishes it without moving Latest", async () => {
+test("uploadCliRelease attaches everything to the draft, then publishes it without moving Latest", async () => {
   await withTemp(async (dir) => {
     await Deno.writeTextFile(`${dir}/bundle.json`, "{}");
     const argvs: string[][] = [];
@@ -152,7 +153,7 @@ Deno.test("uploadCliRelease attaches everything to the draft, then publishes it 
   });
 });
 
-Deno.test("uploadCliRelease leaves the release a draft when the upload fails", async () => {
+test("uploadCliRelease leaves the release a draft when the upload fails", async () => {
   await withTemp(async (dir) => {
     await Deno.writeTextFile(`${dir}/bundle.json`, "{}");
     const argvs: string[][] = [];
@@ -218,7 +219,7 @@ function draftsGh(
   };
 }
 
-Deno.test("publishStrandedCliDrafts publishes only the CLI drafts older than the current version", async () => {
+test("publishStrandedCliDrafts publishes only the CLI drafts older than the current version", async () => {
   const argvs: string[][] = [];
   const envs: Record<string, string>[][] = [];
   const published = await publishStrandedCliDrafts(
@@ -255,7 +256,7 @@ Deno.test("publishStrandedCliDrafts publishes only the CLI drafts older than the
   }]]);
 });
 
-Deno.test("publishStrandedCliDrafts edits nothing when no older CLI draft exists", async () => {
+test("publishStrandedCliDrafts edits nothing when no older CLI draft exists", async () => {
   const argvs: string[][] = [];
   const published = await publishStrandedCliDrafts(
     "2.2.0",
@@ -277,7 +278,7 @@ function serving(text: string, seen: Seen[] = []): typeof fetch {
   );
 }
 
-Deno.test("writeCliFormula renders the formula from the published checksums", async () => {
+test("writeCliFormula renders the formula from the published checksums", async () => {
   await withTemp(async (dir) => {
     const path = `${dir}/zuke.rb`;
     const formula = await writeCliFormula(VERSION, path, serving(manifest()));
@@ -286,7 +287,7 @@ Deno.test("writeCliFormula renders the formula from the published checksums", as
   });
 });
 
-Deno.test("verifyCliFormula installs the published formula, checking signatures only on macOS", async () => {
+test("verifyCliFormula installs the published formula, checking signatures only on macOS", async () => {
   await withTemp(async (dir) => {
     const systems: Array<typeof Deno.build.os> = ["linux", "darwin"];
     for (const os of systems) {
@@ -363,7 +364,7 @@ async function servingArchives(): Promise<typeof fetch> {
   });
 }
 
-Deno.test("verifyMacSignature checks each published macOS binary's Developer ID signature", async () => {
+test("verifyMacSignature checks each published macOS binary's Developer ID signature", async () => {
   const verified: string[] = [];
   await verifyMacSignature(
     VERSION,
@@ -374,7 +375,7 @@ Deno.test("verifyMacSignature checks each published macOS binary's Developer ID 
   for (const line of verified) assertStringIncludes(line, "--verify --strict");
 });
 
-Deno.test("verifyMacSignature refuses a binary not signed with a Developer ID", async () => {
+test("verifyMacSignature refuses a binary not signed with a Developer ID", async () => {
   for (const authorities of [[], ["Apple Development: someone (ABC)"]]) {
     await assertRejects(
       () =>
@@ -399,7 +400,7 @@ Deno.test("verifyMacSignature refuses a binary not signed with a Developer ID", 
   }
 });
 
-Deno.test("verifyMacSignature refuses an archive without a zuke binary", async () => {
+test("verifyMacSignature refuses an archive without a zuke binary", async () => {
   const empty = new Uint8Array(await gzip(tar([])));
   await assertRejects(
     () =>
@@ -413,7 +414,7 @@ Deno.test("verifyMacSignature refuses an archive without a zuke binary", async (
   );
 });
 
-Deno.test("publishCliFormula writes Formula/zuke.rb to the tap's main branch", async () => {
+test("publishCliFormula writes Formula/zuke.rb to the tap's main branch", async () => {
   const seen: Seen[] = [];
   const github = fakeFetch((request) => {
     if (request.url === releaseAssetUrl(VERSION, CHECKSUMS)) {

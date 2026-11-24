@@ -8,14 +8,15 @@
  * @module
  */
 
-import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target, type Validation } from "../src/target.ts";
 import { parameter } from "../src/params.ts";
 import { execute } from "../src/executor.ts";
 import { runWhileValidating } from "../src/validate_during.ts";
 import { messageOf } from "../src/internal.ts";
-import { withTempStore } from "./_store.ts";
+import { withTempStore } from "../../../tests/_store.ts";
 
 /** Resolve after `ms`, or as soon as `signal` fires. */
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
@@ -42,7 +43,7 @@ function counting(failOn = Infinity): Validation & { rounds: number } {
   return check;
 }
 
-Deno.test("a failing check stops the body and fails the target, without cancelling the run", async () => {
+test("a failing check stops the body and fails the target, without cancelling the run", async () => {
   const check = counting(1);
   let bodyAborted = false;
   class B extends Build {
@@ -64,7 +65,7 @@ Deno.test("a failing check stops the body and fails the target, without cancelli
   assertEquals(Date.now() - started < 2_000, true);
 });
 
-Deno.test("passing checks keep running while the body runs, and stop when it ends", async () => {
+test("passing checks keep running while the body runs, and stop when it ends", async () => {
   const check = counting();
   class B extends Build {
     bake = target()
@@ -81,7 +82,7 @@ Deno.test("passing checks keep running while the body runs, and stop when it end
   assertEquals(check.rounds, after); // nothing ran once the body settled
 });
 
-Deno.test("a round never overlaps the next one", async () => {
+test("a round never overlaps the next one", async () => {
   let inFlight = 0;
   let maxInFlight = 0;
   const slow: Validation = {
@@ -103,7 +104,7 @@ Deno.test("a round never overlaps the next one", async () => {
   assertEquals(maxInFlight, 1);
 });
 
-Deno.test("a body that ignores its signal still fails promptly on a failed check", async () => {
+test("a body that ignores its signal still fails promptly on a failed check", async () => {
   let release: () => void = () => {};
   const stuck = new Promise<void>((r) => (release = r));
   class B extends Build {
@@ -119,7 +120,7 @@ Deno.test("a body that ignores its signal still fails promptly on a failed check
   assertEquals(messageOf(result.error), "error ratio 1");
 });
 
-Deno.test("a failed check is not retried away by .retry", async () => {
+test("a failed check is not retried away by .retry", async () => {
   let attempts = 0;
   class B extends Build {
     bake = target()
@@ -138,7 +139,7 @@ Deno.test("a failed check is not retried away by .retry", async () => {
   assertEquals(attempts, 1);
 });
 
-Deno.test("a failed check reaches .onFailure like any other failure", async () => {
+test("a failed check reaches .onFailure like any other failure", async () => {
   await withTempStore(async (store) => {
     const undone: string[] = [];
     class B extends Build {
@@ -162,7 +163,7 @@ Deno.test("a failed check reaches .onFailure like any other failure", async () =
   });
 });
 
-Deno.test("checks are not run under a dry run", async () => {
+test("checks are not run under a dry run", async () => {
   const check = counting();
   class B extends Build {
     bake = target()
@@ -176,7 +177,7 @@ Deno.test("checks are not run under a dry run", async () => {
   assertEquals(check.rounds, 0);
 });
 
-Deno.test("each check gets the target name and the run's redactor", async () => {
+test("each check gets the target name and the run's redactor", async () => {
   const seen: string[] = [];
   class B extends Build {
     token = parameter("token").secret().default("s3cr3t-value");
@@ -198,7 +199,7 @@ Deno.test("each check gets the target name and the run's redactor", async () => 
   assertEquals(seen[0].includes("s3cr3t-value"), false);
 });
 
-Deno.test("every validation of one run gets that run's id", async () => {
+test("every validation of one run gets that run's id", async () => {
   const seen: Array<string | undefined> = [];
   const record: Validation = {
     validate: ({ runId }) => {
@@ -227,7 +228,7 @@ Deno.test("every validation of one run gets that run's id", async () => {
   assertEquals(seen.every((id) => id === seen[0] && id !== first), true);
 });
 
-Deno.test("a before or after validation sees the list it was attached in", async () => {
+test("a before or after validation sees the list it was attached in", async () => {
   const seen: Array<[string, readonly Validation[] | undefined]> = [];
   const named = (label: string): Validation => ({
     validate: ({ peers }) => {
@@ -258,7 +259,7 @@ Deno.test("a before or after validation sees the list it was attached in", async
   assertEquals(peersOf("during"), undefined);
 });
 
-Deno.test("a malformed .validateDuring fails the target before the body runs", async () => {
+test("a malformed .validateDuring fails the target before the body runs", async () => {
   const cases: Array<[string, (b: ReturnType<typeof target>) => unknown]> = [
     ["set no interval", (t) => t.validateDuring((s) => s.check(counting()))],
     ["set no checks", (t) => t.validateDuring((s) => s.every("1m"))],
@@ -289,7 +290,7 @@ Deno.test("a malformed .validateDuring fails the target before the body runs", a
   }
 });
 
-Deno.test("a check that fails as the body finishes still fails the target", async () => {
+test("a check that fails as the body finishes still fails the target", async () => {
   class B extends Build {
     bake = target()
       .executes(() => new Promise<void>((r) => setTimeout(r, 30)))
@@ -310,7 +311,7 @@ Deno.test("a check that fails as the body finishes still fails the target", asyn
   assertEquals(messageOf(result.error), "error rate 40%");
 });
 
-Deno.test("a stuck check gets an aborted signal and does not hold a cancelled run", async () => {
+test("a stuck check gets an aborted signal and does not hold a cancelled run", async () => {
   const run = new AbortController();
   let checkSignal: AbortSignal | undefined;
   const settled = runWhileValidating(
@@ -334,7 +335,7 @@ Deno.test("a stuck check gets an aborted signal and does not hold a cancelled ru
   assertEquals(checkSignal?.aborted, true);
 });
 
-Deno.test("a failed body does not wait for a check still running", async () => {
+test("a failed body does not wait for a check still running", async () => {
   let checkSignal: AbortSignal | undefined;
   const started = Date.now();
   const error = await runWhileValidating(
@@ -361,7 +362,7 @@ Deno.test("a failed body does not wait for a check still running", async () => {
   assertEquals(Date.now() - started < 1_000, true);
 });
 
-Deno.test("a round the body outlives stops before its next check and schedules none", async () => {
+test("a round the body outlives stops before its next check and schedules none", async () => {
   const ran: string[] = [];
   await runWhileValidating(
     () => new Promise<void>((r) => setTimeout(r, 20)),
@@ -387,7 +388,7 @@ Deno.test("a round the body outlives stops before its next check and schedules n
   assertEquals(ran, ["slow"]);
 });
 
-Deno.test("a body that settles after the run was cancelled does not wait on a round", async () => {
+test("a body that settles after the run was cancelled does not wait on a round", async () => {
   const run = new AbortController();
   run.abort();
   await runWhileValidating(

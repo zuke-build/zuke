@@ -14,7 +14,8 @@
  * @module
  */
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { DockerLoginSettings } from "../src/registry.ts";
 
 /** The password these tests hand the wrapper. */
@@ -41,7 +42,7 @@ class SpyLogin extends DockerLoginSettings {
   }
 }
 
-Deno.test("passwordStdin keeps the token off the command line", () => {
+test("passwordStdin keeps the token off the command line", () => {
   const settings = new SpyLogin().username("u").passwordStdin(TOKEN).registry(
     "ghcr.io",
   );
@@ -60,28 +61,28 @@ Deno.test("passwordStdin keeps the token off the command line", () => {
   assertEquals(argv.some((a) => a.includes(TOKEN)), false);
 });
 
-Deno.test("passwordStdin actually pipes the token to the child", () => {
+test("passwordStdin actually pipes the token to the child", () => {
   // The defect this replaces: the setter appended the flag and piped nothing,
   // so docker was left reading a stream no one ever wrote to.
   const settings = new SpyLogin().username("u").passwordStdin(TOKEN);
   assertEquals(settings.peekStdin(), TOKEN);
 });
 
-Deno.test("a login without passwordStdin leaves stdin alone", () => {
+test("a login without passwordStdin leaves stdin alone", () => {
   // `undefined`, not an empty string: core only attaches stdin when there is
   // something to attach, and every other docker command must keep inheriting.
   assertEquals(new SpyLogin().username("u").peekStdin(), undefined);
   assertEquals(new SpyLogin().password("p").peekStdin(), undefined);
 });
 
-Deno.test("both password routes register the value with the redactor", () => {
+test("both password routes register the value with the redactor", () => {
   // The stdin route for the renderings, and `-p` because masking the rendering
   // is the only thing that can be done for a flag docker itself accepts.
   assertEquals(new SpyLogin().passwordStdin(TOKEN).marked, [TOKEN]);
   assertEquals(new SpyLogin().password(TOKEN).marked, [TOKEN]);
 });
 
-Deno.test("password still renders -p, because docker accepts it", () => {
+test("password still renders -p, because docker accepts it", () => {
   // Kept deliberately: the wrapper mirrors the real CLI. The JSDoc carries the
   // warning rather than the API silently dropping a flag docker supports.
   assertEquals(new SpyLogin().password(TOKEN).argv(), [

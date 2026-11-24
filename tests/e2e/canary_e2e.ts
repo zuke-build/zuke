@@ -10,7 +10,8 @@
  * the first process recorded.
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import {
   defaultStateHost,
   FileSystemStateStore,
@@ -53,7 +54,7 @@ async function status(dir: string): Promise<string> {
   return runs[0].status;
 }
 
-Deno.test("a durable canary parks at its bake and a later process promotes it", async () => {
+test("a durable canary parks at its bake and a later process promotes it", async () => {
   const { dir, logFile, env } = await sandbox();
   try {
     const started = Date.now();
@@ -87,7 +88,7 @@ Deno.test("a durable canary parks at its bake and a later process promotes it", 
   }
 });
 
-Deno.test("a durable canary that fails its final analysis rolls back in the later process", async () => {
+test("a durable canary that fails its final analysis rolls back in the later process", async () => {
   const { dir, logFile, env } = await sandbox();
   try {
     const first = await runFixture(FIXTURE, ["ship"], env);

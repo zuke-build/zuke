@@ -21,7 +21,8 @@
  * @module
  */
 
-import { assertEquals } from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals } from "./_assert.ts";
 import { packageSources, withoutComments } from "./_package_sources.ts";
 
 /**
@@ -50,7 +51,7 @@ function nodeImports(source: string): number {
   ).length;
 }
 
-Deno.test("static and dynamic node: imports are counted, comments are not", () => {
+test("static and dynamic node: imports are counted, comments are not", () => {
   const cases: [source: string, imports: number][] = [
     ['import process from "node:process";', 1],
     ["import { readFile } from 'node:fs/promises';", 1],
@@ -68,7 +69,7 @@ Deno.test("static and dynamic node: imports are counted, comments are not", () =
   }
 });
 
-Deno.test("no package outside core imports a node: module outside its allowance", async () => {
+test("no package outside core imports a node: module outside its allowance", async () => {
   const found: Record<string, number> = {};
   for (const file of await packageSources()) {
     if (file.startsWith("packages/core/")) continue;

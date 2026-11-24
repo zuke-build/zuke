@@ -1,9 +1,10 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import { createServer, Socket } from "node:net";
 import { PassThrough, Readable } from "node:stream";
-import { assertEquals } from "./_assert.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   bodyStream,
   type FetchHandler,
@@ -51,7 +52,7 @@ async function serving(
 }
 
 for (const [backend, start] of BACKENDS) {
-  Deno.test(`${backend}: a request reaches the handler whole, and its response comes back whole`, async () => {
+  test(`${backend}: a request reaches the handler whole, and its response comes back whole`, async () => {
     const seen: string[] = [];
     await serving(start, async (request) => {
       const url = new URL(request.url);
@@ -78,7 +79,7 @@ for (const [backend, start] of BACKENDS) {
     assertEquals(seen, ["POST", "/path?q=1", "set", "y".repeat(100_000)]);
   });
 
-  Deno.test(`${backend}: a GET has no body, and a response with none has none`, async () => {
+  test(`${backend}: a GET has no body, and a response with none has none`, async () => {
     await serving(start, (request) => {
       assertEquals(request.body, null);
       return new Response(null, { status: 204 });
@@ -89,7 +90,7 @@ for (const [backend, start] of BACKENDS) {
     });
   });
 
-  Deno.test(`${backend}: a handler that throws is answered 500 and the server keeps serving`, async () => {
+  test(`${backend}: a handler that throws is answered 500 and the server keeps serving`, async () => {
     let calls = 0;
     await serving(start, () => {
       calls++;
@@ -103,7 +104,7 @@ for (const [backend, start] of BACKENDS) {
     });
   });
 
-  Deno.test(`${backend}: a body the handler leaves unread does not stall the answer`, async () => {
+  test(`${backend}: a body the handler leaves unread does not stall the answer`, async () => {
     await serving(
       start,
       () => new Response("early", { status: 413 }),
@@ -118,7 +119,7 @@ for (const [backend, start] of BACKENDS) {
     );
   });
 
-  Deno.test(`${backend}: an abort that lands while the server starts stops it`, async () => {
+  test(`${backend}: an abort that lands while the server starts stops it`, async () => {
     const controller = new AbortController();
     const finished = start({
       hostname: "127.0.0.1",
@@ -131,7 +132,7 @@ for (const [backend, start] of BACKENDS) {
     await finished;
   });
 
-  Deno.test(`${backend}: a listen callback that throws closes the server and passes the error on`, async () => {
+  test(`${backend}: a listen callback that throws closes the server and passes the error on`, async () => {
     let port = 0;
     const hook = new Error("hook");
     let thrown: unknown;
@@ -158,7 +159,7 @@ for (const [backend, start] of BACKENDS) {
   });
 }
 
-Deno.test("a request body reads whole, a chunk at a time", async () => {
+test("a request body reads whole, a chunk at a time", async () => {
   const body = bodyStream(
     Readable.from([new Uint8Array([1, 2]), new Uint8Array([3])]),
   );
@@ -168,7 +169,7 @@ Deno.test("a request body reads whole, a chunk at a time", async () => {
   );
 });
 
-Deno.test("cancelling a request body lets the rest flow away and leaves the source open", async () => {
+test("cancelling a request body lets the rest flow away and leaves the source open", async () => {
   const source = new PassThrough();
   const reader = bodyStream(source).getReader();
   source.write(new Uint8Array(10));
@@ -183,7 +184,7 @@ Deno.test("cancelling a request body lets the rest flow away and leaves the sour
   source.destroy();
 });
 
-Deno.test("a cancelled body that then ends, or fails, as it arrives throws nothing", async () => {
+test("a cancelled body that then ends, or fails, as it arrives throws nothing", async () => {
   const finishes: readonly ("end" | "error")[] = ["end", "error"];
   for (const finish of finishes) {
     const source = new PassThrough();
@@ -199,7 +200,7 @@ Deno.test("a cancelled body that then ends, or fails, as it arrives throws nothi
   }
 });
 
-Deno.test("a gentle close says no more but keeps taking what is still sent", async () => {
+test("a gentle close says no more but keeps taking what is still sent", async () => {
   let serverSide: Socket | undefined;
   const server = createServer((socket) => {
     serverSide = socket;
@@ -231,7 +232,7 @@ Deno.test("a gentle close says no more but keeps taking what is still sent", asy
   await new Promise((resolve) => server.close(resolve));
 });
 
-Deno.test("a connection whose request finishes after it closed is not kept", async () => {
+test("a connection whose request finishes after it closed is not kept", async () => {
   const connections = new OpenConnections();
   const socket = new Socket();
   connections.opened(socket);
@@ -248,7 +249,7 @@ Deno.test("a connection whose request finishes after it closed is not kept", asy
   assertEquals(connections.size, 0);
 });
 
-Deno.test("only idle connections are closed on stop", async () => {
+test("only idle connections are closed on stop", async () => {
   const connections = new OpenConnections();
   const [idle, busy] = [new Socket(), new Socket()];
   for (const socket of [idle, busy]) connections.opened(socket);
@@ -264,7 +265,7 @@ Deno.test("only idle connections are closed on stop", async () => {
   busy.destroy();
 });
 
-Deno.test("a connection answering two requests is idle only once both are answered", async () => {
+test("a connection answering two requests is idle only once both are answered", async () => {
   const connections = new OpenConnections();
   const socket = new Socket();
   connections.opened(socket);
@@ -281,7 +282,7 @@ Deno.test("a connection answering two requests is idle only once both are answer
   assertEquals(socket.destroyed, true);
 });
 
-Deno.test("a response Node refuses tears the connection down instead of throwing", async () => {
+test("a response Node refuses tears the connection down instead of throwing", async () => {
   let destroyed = false;
   const outgoing = Object.assign(new PassThrough(), {
     statusCode: 0,
@@ -298,7 +299,7 @@ Deno.test("a response Node refuses tears the connection down instead of throwing
   assertEquals(destroyed, true);
 });
 
-Deno.test("every Set-Cookie header is sent, not only the last", async () => {
+test("every Set-Cookie header is sent, not only the last", async () => {
   const set: Record<string, string | string[]> = {};
   const outgoing = Object.assign(new PassThrough(), {
     statusCode: 0,
@@ -314,7 +315,7 @@ Deno.test("every Set-Cookie header is sent, not only the last", async () => {
   assertEquals(set, { "x-one": "1", "set-cookie": ["a=1", "b=2"] });
 });
 
-Deno.test("Node: a Host header that makes no URL is answered on the bound address", async () => {
+test("Node: a Host header that makes no URL is answered on the bound address", async () => {
   await serving(serveOnNode, (request) => {
     return new Response(new URL(request.url).pathname);
   }, async (base) => {
@@ -335,7 +336,7 @@ Deno.test("Node: a Host header that makes no URL is answered on the bound addres
   });
 });
 
-Deno.test("a server whose signal was aborted before it starts resolves at once", async () => {
+test("a server whose signal was aborted before it starts resolves at once", async () => {
   const controller = new AbortController();
   controller.abort();
   await serve({

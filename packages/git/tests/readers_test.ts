@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import { missingTool } from "@zuke/core/tooling/conformance";
 import { GitTasks } from "../mod.ts";
@@ -24,14 +25,14 @@ import { requireCompleteOutput } from "../src/complete_output.ts";
 // which records carry a leading newline, the tab before a path — is the part
 // that cannot be reasoned out from the documentation.
 
-Deno.test("REF_ENTRY_FORMAT asks for its fields NUL-separated and terminated", () => {
+test("REF_ENTRY_FORMAT asks for its fields NUL-separated and terminated", () => {
   assertEquals(
     REF_ENTRY_FORMAT,
     "%(objectname)%00%(objecttype)%00%(refname)%00%(upstream)%00",
   );
 });
 
-Deno.test("parseRefs: records are separated by the format's NUL then a newline", () => {
+test("parseRefs: records are separated by the format's NUL then a newline", () => {
   // Captured from `git for-each-ref --format=<REF_ENTRY_FORMAT>`: note the \n
   // that begins every record after the first, which git adds per ref.
   const stdout = "0aa9f75 commit refs/heads/main refs/remotes/origin/main "
@@ -54,13 +55,13 @@ Deno.test("parseRefs: records are separated by the format's NUL then a newline",
   ]);
 });
 
-Deno.test("parseRefs: an empty listing and a truncated trailing record", () => {
+test("parseRefs: an empty listing and a truncated trailing record", () => {
   assertEquals(parseRefs(""), []);
   // A read cut short mid-record has no complete ref to report.
   assertEquals(parseRefs("0aa9f75\0commit\0"), []);
 });
 
-Deno.test("parseTreeEntries: the tab is what makes the path unambiguous", () => {
+test("parseTreeEntries: the tab is what makes the path unambiguous", () => {
   // Captured from `git ls-tree -z -r HEAD`.
   const stdout = "100644 blob 998e8a5c\tpackages/git/deno.json\0" +
     "100644 blob 8fbd58c0\tpackages/git/mod.ts\0" +
@@ -94,7 +95,7 @@ Deno.test("parseTreeEntries: the tab is what makes the path unambiguous", () => 
   ]);
 });
 
-Deno.test("parseTreeEntries: a path may contain spaces, a mode never does", () => {
+test("parseTreeEntries: a path may contain spaces, a mode never does", () => {
   const stdout = "100644 blob 998e8a5c\tdocs/a file with spaces.md\0";
   assertEquals(parseTreeEntries(stdout), [{
     mode: "100644",
@@ -107,7 +108,7 @@ Deno.test("parseTreeEntries: a path may contain spaces, a mode never does", () =
   assertEquals(parseTreeEntries(""), []);
 });
 
-Deno.test("parseBlameLines: metadata is carried forward across a commit's groups", () => {
+test("parseBlameLines: metadata is carried forward across a commit's groups", () => {
   // Captured shape from `git blame --porcelain`: the author block appears only
   // on a commit's first group. The second group for f92f929 below carries the
   // header alone, exactly as git emits it.
@@ -141,7 +142,7 @@ Deno.test("parseBlameLines: metadata is carried forward across a commit's groups
   assertEquals(lines[2]?.content, "line three");
 });
 
-Deno.test("parseBlameLines: line numbers, content, and an empty annotation", () => {
+test("parseBlameLines: line numbers, content, and an empty annotation", () => {
   const stdout = [
     "f92f929 12 34 2",
     "author Ada",
@@ -160,7 +161,7 @@ Deno.test("parseBlameLines: line numbers, content, and an empty annotation", () 
   assertEquals(parseBlameLines(""), []);
 });
 
-Deno.test("parseShortlogEntries: counts, names, and the -e address", () => {
+test("parseShortlogEntries: counts, names, and the -e address", () => {
   // Captured from `git shortlog -sne`: the count is right-aligned in spaces
   // and separated from the name by a tab.
   const stdout = [
@@ -179,7 +180,7 @@ Deno.test("parseShortlogEntries: counts, names, and the -e address", () => {
   ]);
 });
 
-Deno.test("parseShortlogEntries: a name holding angle brackets keeps them", () => {
+test("parseShortlogEntries: a name holding angle brackets keeps them", () => {
   // Anchoring on the last " <" is what keeps the name intact.
   const stdout = "     3\tA <weird> Name <real@example.com>";
   assertEquals(parseShortlogEntries(stdout), [{
@@ -262,12 +263,12 @@ const REACH: Array<[string, () => Promise<unknown>]> = [
 ];
 
 for (const [name, invoke] of REACH) {
-  Deno.test(`GitTasks.${name} reaches execution`, async () => {
+  test(`GitTasks.${name} reaches execution`, async () => {
     await assertRejects(invoke, ToolNotFoundError);
   });
 }
 
-Deno.test("the value-returning readers fail when git is absent", async () => {
+test("the value-returning readers fail when git is absent", async () => {
   // A reader that swallowed the resolution failure would hand back a confident
   // empty list or a false, which is worse than an error: the boolean readers
   // run with throwing suppressed so a legitimate non-zero status can be read
@@ -290,7 +291,7 @@ Deno.test("the value-returning readers fail when git is absent", async () => {
   );
 });
 
-Deno.test("the readers refuse the options that would misreport their result", async () => {
+test("the readers refuse the options that would misreport their result", async () => {
   // A caller-supplied --format moves the fields parseRefs reads by position.
   await assertRejects(
     () => GitTasks.refs((s) => missingTool(s).format("%(refname)")),
@@ -311,7 +312,7 @@ Deno.test("the readers refuse the options that would misreport their result", as
   );
 });
 
-Deno.test("a contradiction the caller set still surfaces through the task", async () => {
+test("a contradiction the caller set still surfaces through the task", async () => {
   // The guards live in subcommandArgs, which the argv is not built from until
   // the task runs — so the refusal arrives as a rejection rather than a throw,
   // and it must still name the fix rather than reaching git as an argv it
@@ -325,7 +326,7 @@ Deno.test("a contradiction the caller set still surfaces through the task", asyn
 
 // The exit-status readers share one interpreter, so its three-way branch is
 // tested once, directly, rather than three times through a fake process.
-Deno.test("yesNoFromStatus: 0 is yes, 1 is no, anything else is a failure", () => {
+test("yesNoFromStatus: 0 is yes, 1 is no, anything else is a failure", () => {
   const ok = { code: 0, stdout: "", stderr: "" };
   const no = { code: 1, stdout: "", stderr: "" };
   const opts = { task: "isAncestor", command: "git merge-base --is-ancestor" };
@@ -340,7 +341,7 @@ Deno.test("yesNoFromStatus: 0 is yes, 1 is no, anything else is a failure", () =
   assertEquals(failed.message.includes("exited 128 without answering"), true);
 });
 
-Deno.test("yesNoFromStatus: the failure carries git's own explanation", () => {
+test("yesNoFromStatus: the failure carries git's own explanation", () => {
   const error = assertThrows(
     () =>
       yesNoFromStatus(
@@ -362,7 +363,7 @@ Deno.test("yesNoFromStatus: the failure carries git's own explanation", () => {
   assertEquals(quiet.message.endsWith("rather than a verdict"), true);
 });
 
-Deno.test("yesNoFromStatus: merge-tree's 1 means 'no' only with a merge to show", () => {
+test("yesNoFromStatus: merge-tree's 1 means 'no' only with a merge to show", () => {
   const opts = {
     task: "mergesCleanly",
     command: "git merge-tree",
@@ -394,7 +395,7 @@ Deno.test("yesNoFromStatus: merge-tree's 1 means 'no' only with a merge to show"
   assertEquals(error.message.includes("not something we can merge"), true);
 });
 
-Deno.test("parseShortlogEntries: only the count shape git emits is accepted", () => {
+test("parseShortlogEntries: only the count shape git emits is accepted", () => {
   // Found by attacking the parser: Number() accepts "-3" and "1e3" and returns
   // -3 and 1000, neither of which git can produce. A confident wrong number is
   // worse than skipping the row.
@@ -412,14 +413,14 @@ Deno.test("parseShortlogEntries: only the count shape git emits is accepted", ()
 // cut mid-record. Every reader that groups fields by position would then shift
 // and return plausible but wrong values, which is why the check refuses rather
 // than parses. Confirmed from a review finding on the pull request.
-Deno.test("requireCompleteOutput: a complete capture passes", () => {
+test("requireCompleteOutput: a complete capture passes", () => {
   requireCompleteOutput(
     { truncated: false, maxCapturedBytes: 8388608 },
     "refs",
   );
 });
 
-Deno.test("requireCompleteOutput: a truncated capture is refused, not parsed", () => {
+test("requireCompleteOutput: a truncated capture is refused, not parsed", () => {
   const error = assertThrows(
     () =>
       requireCompleteOutput(
@@ -435,7 +436,7 @@ Deno.test("requireCompleteOutput: a truncated capture is refused, not parsed", (
   assertEquals(error.message.includes(".maxCapturedBytes("), true);
 });
 
-Deno.test("parseRefs: a head-truncated capture is what the guard prevents", () => {
+test("parseRefs: a head-truncated capture is what the guard prevents", () => {
   // What the parser would do if the guard were not there: the capture begins
   // mid-record, so the four-field grouping shifts and every value is read as
   // the wrong field. This asserts the damage, which is why it is refused

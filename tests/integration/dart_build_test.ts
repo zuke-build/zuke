@@ -16,7 +16,8 @@
  * @module
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { DartTasks } from "../../packages/dart/mod.ts";
 import { runCli } from "./_harness.ts";
@@ -67,7 +68,7 @@ async function runBuild(
   }
 }
 
-Deno.test("dart: a build runs pub get, analyze, then the publish dry run", async () => {
+test("dart: a build runs pub get, analyze, then the publish dry run", async () => {
   const { code, calls } = await runBuild(0);
   assertEquals(code, 0);
   assertEquals(calls, [
@@ -77,7 +78,7 @@ Deno.test("dart: a build runs pub get, analyze, then the publish dry run", async
   ]);
 });
 
-Deno.test("dart: a failing analyze fails the run before publish", async () => {
+test("dart: a failing analyze fails the run before publish", async () => {
   const { code, calls } = await runBuild(1);
   assertEquals(code, 1);
   // The wrapper threw on the non-zero exit, so publish never ran.

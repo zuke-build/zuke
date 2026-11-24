@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { CommandOutput } from "@zuke/core/shell";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import { missingTool } from "@zuke/core/tooling/conformance";
@@ -18,7 +19,7 @@ import { TemporaryKeychainSettings } from "../src/keychain.ts";
 import { SecurityTasks } from "../src/security.ts";
 import { SecurityListKeychainsSettings } from "../src/security_search.ts";
 import type { SecuritySettings } from "../src/security_settings.ts";
-import { rejection } from "./_fake_tool.ts";
+import { rejection } from "../../../tests/support/apple/_fake_tool.ts";
 
 const DIR = "/tmp/zuke-keychain-test";
 const KEYCHAIN = `${DIR}/zuke-hex8.keychain-db`;
@@ -106,7 +107,7 @@ const CLEANUP = [
   `rm ${DIR}`,
 ];
 
-Deno.test("temporaryKeychain sets up, runs the callback, and tears down, in order", async () => {
+test("temporaryKeychain sets up, runs the callback, and tears down, in order", async () => {
   const host = new FakeHost();
   const result = await SecurityTasks.temporaryKeychain(
     () => keychain(host),
@@ -123,7 +124,7 @@ Deno.test("temporaryKeychain sets up, runs the callback, and tears down, in orde
   ]);
 });
 
-Deno.test("cleanup runs in full when the callback throws, and the error survives", async () => {
+test("cleanup runs in full when the callback throws, and the error survives", async () => {
   const host = new FakeHost();
   await assertRejects(
     () =>
@@ -137,7 +138,7 @@ Deno.test("cleanup runs in full when the callback throws, and the error survives
   assertEquals(host.log, [...SETUP, ...CLEANUP]);
 });
 
-Deno.test("a failed create-keychain leaves nothing to delete, but still restores and removes", async () => {
+test("a failed create-keychain leaves nothing to delete, but still restores and removes", async () => {
   const host = new FakeHost();
   host.failures["create-keychain"] = "create failed";
   await assertRejects(
@@ -152,7 +153,7 @@ Deno.test("a failed create-keychain leaves nothing to delete, but still restores
   ]);
 });
 
-Deno.test("a failed read of the search list changes nothing and removes the directory", async () => {
+test("a failed read of the search list changes nothing and removes the directory", async () => {
   const host = new FakeHost();
   host.failures["list-keychains -d user"] = "no list";
   await assertRejects(
@@ -163,7 +164,7 @@ Deno.test("a failed read of the search list changes nothing and removes the dire
   assertEquals(host.log, [...SETUP.slice(0, 2), `rm ${DIR}`]);
 });
 
-Deno.test("a failed import still deletes the certificate file at once", async () => {
+test("a failed import still deletes the certificate file at once", async () => {
   const host = new FakeHost();
   host.failures["import"] = "bad passphrase";
   await assertRejects(
@@ -174,7 +175,7 @@ Deno.test("a failed import still deletes the certificate file at once", async ()
   assertEquals(host.log, [...SETUP.slice(0, 8), ...CLEANUP]);
 });
 
-Deno.test("a failed certificate write still removes the file and cleans up", async () => {
+test("a failed certificate write still removes the file and cleans up", async () => {
   const host = new FakeHost();
   host.failures["write"] = "disk full";
   await assertRejects(
@@ -189,7 +190,7 @@ Deno.test("a failed certificate write still removes the file and cleans up", asy
   ]);
 });
 
-Deno.test("every cleanup step runs even when one fails, and the failures are reported", async () => {
+test("every cleanup step runs even when one fails, and the failures are reported", async () => {
   const host = new FakeHost();
   host.failures["delete-keychain"] = "keychain busy";
   host.failures[`rm ${DIR}`] = "permission denied";
@@ -206,7 +207,7 @@ Deno.test("every cleanup step runs even when one fails, and the failures are rep
   assertEquals(error.message.includes("see the cause"), false);
 });
 
-Deno.test("a cleanup failure after a callback failure keeps the callback's error as the cause", async () => {
+test("a cleanup failure after a callback failure keeps the callback's error as the cause", async () => {
   const host = new FakeHost();
   const failure = new Error("signing failed");
   host.failures["delete-keychain"] = "keychain busy";
@@ -218,7 +219,7 @@ Deno.test("a cleanup failure after a callback failure keeps the callback's error
   assertStringIncludes(error.message, "see the cause");
 });
 
-Deno.test("a callback that rejects with undefined is still reported as failed when cleanup fails", async () => {
+test("a callback that rejects with undefined is still reported as failed when cleanup fails", async () => {
   // Regression: the cause used to be read as "absent" when it was undefined,
   // so the error claimed the callback had succeeded.
   const host = new FakeHost();
@@ -231,7 +232,7 @@ Deno.test("a callback that rejects with undefined is still reported as failed wh
   assertEquals("cause" in error, true);
 });
 
-Deno.test("a non-Error thrown by a cleanup step is still reported", async () => {
+test("a non-Error thrown by a cleanup step is still reported", async () => {
   const host = new FakeHost();
   host.remove = () => Promise.reject("plain string");
   const error = await rejection(
@@ -279,7 +280,7 @@ class SharedListHost extends FakeHost {
   }
 }
 
-Deno.test("overlapping keychains in one process are serialized, so the search list survives", async () => {
+test("overlapping keychains in one process are serialized, so the search list survives", async () => {
   // Regression (finding 1): each keychain restores the list it read, so two
   // that overlapped left a deleted keychain on the list, or dropped the
   // other's keychain while it was signing.
@@ -320,7 +321,7 @@ Deno.test("overlapping keychains in one process are serialized, so the search li
   assertEquals(b.log[0], "mkdtemp");
 });
 
-Deno.test("a failed keychain does not block the next one in the process", async () => {
+test("a failed keychain does not block the next one in the process", async () => {
   const failing = new FakeHost();
   failing.failures["create-keychain"] = "create failed";
   const first = keychain(failing).open_(() => Promise.resolve("first"));
@@ -331,7 +332,7 @@ Deno.test("a failed keychain does not block the next one in the process", async 
   assertEquals(await second, "second");
 });
 
-Deno.test("no identity in the certificate is a friendly KeychainError, and still cleans up", async () => {
+test("no identity in the certificate is a friendly KeychainError, and still cleans up", async () => {
   const host = new FakeHost();
   host.stdout["find-identity"] = "     0 valid identities found\n";
   await assertRejects(
@@ -342,7 +343,7 @@ Deno.test("no identity in the certificate is a friendly KeychainError, and still
   assertEquals(host.log.slice(-3), CLEANUP);
 });
 
-Deno.test("several identities need a filter, by name or by hash", async () => {
+test("several identities need a filter, by name or by hash", async () => {
   const other = "F".repeat(40);
   const listing = `  1) ${HASH} "Developer ID Application: A (T)"\n` +
     `  2) ${other} "Developer ID Installer: \u001b[31mB (T)"\n`;
@@ -382,7 +383,7 @@ Deno.test("several identities need a filter, by name or by hash", async () => {
   );
 });
 
-Deno.test("a bad certificate is refused before anything is created, without echoing it", async () => {
+test("a bad certificate is refused before anything is created, without echoing it", async () => {
   const cases: Array<[string | undefined, string]> = [
     [undefined, "no certificate"],
     ["", "not base64"],
@@ -403,7 +404,7 @@ Deno.test("a bad certificate is refused before anything is created, without echo
   }
 });
 
-Deno.test("whitespace in the base64 certificate is ignored", async () => {
+test("whitespace in the base64 certificate is ignored", async () => {
   const host = new FakeHost();
   const spaced = `${P12_BASE64.slice(0, 2)}\n ${P12_BASE64.slice(2)}\n`;
   await new TemporaryKeychainSettings().certificate(spaced).host(host)
@@ -418,7 +419,7 @@ Deno.test("whitespace in the base64 certificate is ignored", async () => {
   );
 });
 
-Deno.test("toolPath and application reach every security command", async () => {
+test("toolPath and application reach every security command", async () => {
   const host = new FakeHost();
   await keychain(host).toolPath("/opt/security").application(
     "/usr/bin/productsign",
@@ -431,7 +432,7 @@ Deno.test("toolPath and application reach every security command", async () => {
   );
 });
 
-Deno.test("the real host writes a private file, refuses to overwrite, and removes", async () => {
+test("the real host writes a private file, refuses to overwrite, and removes", async () => {
   const dir = await defaultKeychainHost.makeTempDir();
   try {
     assertStringIncludes(dir, "zuke-keychain-");
@@ -456,20 +457,20 @@ Deno.test("the real host writes a private file, refuses to overwrite, and remove
   }
 });
 
-Deno.test("the real host's remove still reports a failure that is not 'missing'", async () => {
+test("the real host's remove still reports a failure that is not 'missing'", async () => {
   await assertRejects(
     () => defaultKeychainHost.remove("bad\0path"),
     Error,
   );
 });
 
-Deno.test("the real host makes random hex of the requested length", () => {
+test("the real host makes random hex of the requested length", () => {
   const a = defaultKeychainHost.randomHex(32);
   assertEquals(/^[0-9a-f]{64}$/.test(a), true);
   assertEquals(a === defaultKeychainHost.randomHex(32), false);
 });
 
-Deno.test("the real host runs security commands for real", async () => {
+test("the real host runs security commands for real", async () => {
   await assertRejects(
     () =>
       defaultKeychainHost.security(

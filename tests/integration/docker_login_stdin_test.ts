@@ -19,7 +19,8 @@
  * @module
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { DockerLoginSettings } from "../../packages/docker/mod.ts";
 import { runCli } from "./_harness.ts";
@@ -46,7 +47,7 @@ class EchoLogin extends DockerLoginSettings {
   }
 }
 
-Deno.test("the login password reaches the child on stdin, not its argv", async () => {
+test("the login password reaches the child on stdin, not its argv", async () => {
   let received = "";
   let argv: string[] = [];
 

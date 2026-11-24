@@ -7,11 +7,12 @@
  * with conflict retry, `--json` output, and the no-registry error path.
  */
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "./_assert.ts";
+} from "../../../tests/_assert.ts";
 import { Build } from "../src/build.ts";
 import { target } from "../src/target.ts";
 import { parameter } from "../src/params.ts";
@@ -25,7 +26,7 @@ import type {
   PutBuildResult,
 } from "../src/registry/registry.ts";
 import { redactModuleUrl, registerCommand } from "../src/registry/register.ts";
-import { capture as captureLines } from "./_console.ts";
+import { capture as captureLines } from "../../../tests/_console.ts";
 
 /** Run `fn` with `console.log`/`console.error` captured instead of printed. */
 async function capture(
@@ -97,7 +98,7 @@ const LOCATION: BuildLocation = {
   cwd: "/repo",
 };
 
-Deno.test("registerCommand writes a descriptor built from the build", async () => {
+test("registerCommand writes a descriptor built from the build", async () => {
   const registry = new FakeBuildRegistry();
   const { code } = await capture(() =>
     registerCommand(new Sample(), {
@@ -120,7 +121,7 @@ Deno.test("registerCommand writes a descriptor built from the build", async () =
   );
 });
 
-Deno.test("registerCommand excludes secret parameters from the descriptor", async () => {
+test("registerCommand excludes secret parameters from the descriptor", async () => {
   const registry = new FakeBuildRegistry();
   // A secret is configured in the environment; it must never reach the record.
   await capture(() =>
@@ -141,7 +142,7 @@ Deno.test("registerCommand excludes secret parameters from the descriptor", asyn
   assertEquals(JSON.stringify(descriptor).includes("s3cr3t-value"), false);
 });
 
-Deno.test("registerCommand --json prints the written descriptor", async () => {
+test("registerCommand --json prints the written descriptor", async () => {
   const registry = new FakeBuildRegistry();
   const { code, out } = await capture(() =>
     registerCommand(new Sample(), {
@@ -158,7 +159,7 @@ Deno.test("registerCommand --json prints the written descriptor", async () => {
   assertStringIncludes(out, '"id": "Sample"');
 });
 
-Deno.test("registerCommand is idempotent and preserves createdAt on update", async () => {
+test("registerCommand is idempotent and preserves createdAt on update", async () => {
   const registry = new FakeBuildRegistry();
   const times = ["2026-03-01T00:00:00.000Z", "2026-03-02T00:00:00.000Z"];
   let i = 0;
@@ -171,7 +172,7 @@ Deno.test("registerCommand is idempotent and preserves createdAt on update", asy
   assertEquals(descriptor?.updatedAt, times[1]); // refreshed
 });
 
-Deno.test("registerCommand retries on a registry conflict", async () => {
+test("registerCommand retries on a registry conflict", async () => {
   const registry = new FakeBuildRegistry(1); // one forced conflict, then succeeds
   const { code } = await capture(() =>
     registerCommand(new Sample(), {
@@ -185,7 +186,7 @@ Deno.test("registerCommand retries on a registry conflict", async () => {
   assertEquals(registry.builds.has("Sample"), true);
 });
 
-Deno.test("registerCommand accepts an explicit id override", async () => {
+test("registerCommand accepts an explicit id override", async () => {
   const registry = new FakeBuildRegistry();
   await capture(() =>
     registerCommand(new Sample(), {
@@ -199,7 +200,7 @@ Deno.test("registerCommand accepts an explicit id override", async () => {
   assertEquals(registry.builds.get("sample-prod")?.descriptor.name, "Sample");
 });
 
-Deno.test("registerCommand derives a module location with the CI repo", async () => {
+test("registerCommand derives a module location with the CI repo", async () => {
   const registry = new FakeBuildRegistry();
   // No location injected, so deriveLocation runs against the running module.
   await capture(() =>
@@ -216,7 +217,7 @@ Deno.test("registerCommand derives a module location with the CI repo", async ()
   assertEquals(location?.repo, "acme/app");
 });
 
-Deno.test("registerCommand throws after repeated registry conflicts", async () => {
+test("registerCommand throws after repeated registry conflicts", async () => {
   const registry = new FakeBuildRegistry(999); // never stops conflicting
   await assertRejects(
     () =>
@@ -231,7 +232,7 @@ Deno.test("registerCommand throws after repeated registry conflicts", async () =
   );
 });
 
-Deno.test("redactModuleUrl strips credentials but leaves plain URLs and paths", () => {
+test("redactModuleUrl strips credentials but leaves plain URLs and paths", () => {
   // Embedded basic-auth userinfo is stripped from a remote entrypoint.
   assertEquals(
     redactModuleUrl("https://user:token@host/build.ts"),
@@ -245,7 +246,7 @@ Deno.test("redactModuleUrl strips credentials but leaves plain URLs and paths", 
   assertEquals(redactModuleUrl("/repo/zuke.ts"), "/repo/zuke.ts");
 });
 
-Deno.test("registerCommand errors when no registry is configured", async () => {
+test("registerCommand errors when no registry is configured", async () => {
   const { code, err } = await capture(() =>
     registerCommand(new Sample(), {
       registry: false,

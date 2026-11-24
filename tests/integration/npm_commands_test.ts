@@ -10,10 +10,8 @@
  * target rather than being swallowed by the executor.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { missingTool } from "../../packages/core/src/tooling_conformance.ts";
 import { NpmTasks } from "../../packages/npm/mod.ts";
@@ -75,7 +73,7 @@ const FAILS_ON_MISSING_NPM: Array<[string, string]> = [
 ];
 
 for (const [name, marker] of FAILS_ON_MISSING_NPM) {
-  Deno.test(`the ${name} target fails with the tool-not-found error`, async () => {
+  test(`the ${name} target fails with the tool-not-found error`, async () => {
     const { code, out, err } = await runCli(ReleaseBuild, [name]);
     assertEquals(code, 1);
     assertStringIncludes(err, "zuke-no-such-tool-xyz");
@@ -83,7 +81,7 @@ for (const [name, marker] of FAILS_ON_MISSING_NPM) {
   });
 }
 
-Deno.test("a settings validation failure fails the target, naming the fix", async () => {
+test("a settings validation failure fails the target, naming the fix", async () => {
   const { code, out, err } = await runCli(ReleaseBuild, ["wipe"]);
   assertEquals(code, 1);
   assertStringIncludes(err, "--force");

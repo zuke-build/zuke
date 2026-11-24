@@ -10,7 +10,8 @@
  * primitive for anyone who can write a file on the host.
  */
 
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   hostLaunchFileSystem,
   LAUNCH_COMMANDS_ENV,
@@ -70,7 +71,7 @@ function commandOf(...command: string[]): BuildLocation {
   return { kind: "command", command, cwd: "/work" };
 }
 
-Deno.test("a local entry module inside the allowed directory is allowed", () => {
+test("a local entry module inside the allowed directory is allowed", () => {
   for (
     const module of [
       "file:///work/zuke.ts", // what `zuke register` writes (Deno.mainModule)
@@ -91,7 +92,7 @@ Deno.test("a local entry module inside the allowed directory is allowed", () => 
   );
 });
 
-Deno.test("a Windows drive path is confined case-insensitively", () => {
+test("a Windows drive path is confined case-insensitively", () => {
   const fs = fakeFs({}, "C:\\Work");
   for (
     const module of [
@@ -118,7 +119,7 @@ Deno.test("a Windows drive path is confined case-insensitively", () => {
   );
 });
 
-Deno.test("a local entry module outside the allowed directories is refused", () => {
+test("a local entry module outside the allowed directories is refused", () => {
   // The finding's scenario: a registry writer drops /tmp/evil.ts and names it.
   for (
     const module of [
@@ -138,7 +139,7 @@ Deno.test("a local entry module outside the allowed directories is refused", () 
   }
 });
 
-Deno.test("a sibling sharing the allowed directory's prefix is outside it", () => {
+test("a sibling sharing the allowed directory's prefix is outside it", () => {
   assertEquals(
     deny(
       { kind: "module", module: "/work-evil/x.ts", cwd: "/work-evil" },
@@ -152,7 +153,7 @@ Deno.test("a sibling sharing the allowed directory's prefix is outside it", () =
   );
 });
 
-Deno.test("a working directory outside the allowed directories is refused", () => {
+test("a working directory outside the allowed directories is refused", () => {
   const outside: BuildLocation = {
     kind: "module",
     module: "/work/zuke.ts",
@@ -181,7 +182,7 @@ Deno.test("a working directory outside the allowed directories is refused", () =
   );
 });
 
-Deno.test("a symlink out of the allowed directory does not carry its target inside", () => {
+test("a symlink out of the allowed directory does not carry its target inside", () => {
   const fs = fakeFs({ "/work/link": "/tmp/planted" });
   assertEquals(
     deny(moduleAt("/work/link/evil.ts"), env(), fs)?.reason,
@@ -203,7 +204,7 @@ Deno.test("a symlink out of the allowed directory does not carry its target insi
   );
 });
 
-Deno.test("an allowed directory reached through a symlink is compared canonically", () => {
+test("an allowed directory reached through a symlink is compared canonically", () => {
   // The operator names /link; it resolves to /real, as do the paths under it.
   const fs = fakeFs({ "/link": "/real" }, "/link");
   assertEquals(
@@ -212,7 +213,7 @@ Deno.test("an allowed directory reached through a symlink is compared canonicall
   );
 });
 
-Deno.test("the operator names the allowed directories, or turns confinement off", () => {
+test("the operator names the allowed directories, or turns confinement off", () => {
   const elsewhere: BuildLocation = {
     kind: "module",
     module: "/srv/b/zuke.ts",
@@ -258,7 +259,7 @@ Deno.test("the operator names the allowed directories, or turns confinement off"
   );
 });
 
-Deno.test("a module on another host spelled as a path is remote", () => {
+test("a module on another host spelled as a path is remote", () => {
   // Windows opens every one of these over SMB, so each is a fetch the origin
   // allow-list has to approve, named by its host.
   const cases: [string, string][] = [
@@ -293,7 +294,7 @@ Deno.test("a module on another host spelled as a path is remote", () => {
   );
 });
 
-Deno.test("the host filesystem resolves symlinks and missing tails", async () => {
+test("the host filesystem resolves symlinks and missing tails", async () => {
   if (Deno.build.os === "windows") return; // symlink creation is privileged there
   const dir = await Deno.realPath(await Deno.makeTempDir());
   try {
@@ -337,7 +338,7 @@ Deno.test("the host filesystem resolves symlinks and missing tails", async () =>
   }
 });
 
-Deno.test("a remote entry module is refused unless its origin is allow-listed", () => {
+test("a remote entry module is refused unless its origin is allow-listed", () => {
   const denial = deny(
     moduleAt("https://attacker.example/x.ts"),
     env(),
@@ -379,7 +380,7 @@ Deno.test("a remote entry module is refused unless its origin is allow-listed", 
   );
 });
 
-Deno.test("a wildcard allow-list admits any origin", () => {
+test("a wildcard allow-list admits any origin", () => {
   assertEquals(
     deny(
       moduleAt("https://anywhere.example/x.ts"),
@@ -389,7 +390,7 @@ Deno.test("a wildcard allow-list admits any origin", () => {
   );
 });
 
-Deno.test("a remote specifier with no hostname is named by its scheme", () => {
+test("a remote specifier with no hostname is named by its scheme", () => {
   // `deno run jsr:@scope/build` fetches and executes code just as an https URL
   // does, but has no hostname — so the scheme is what an operator allow-lists.
   assertEquals(
@@ -413,7 +414,7 @@ Deno.test("a remote specifier with no hostname is named by its scheme", () => {
   );
 });
 
-Deno.test("an allow-listed plaintext origin still needs the insecure opt-out", () => {
+test("an allow-listed plaintext origin still needs the insecure opt-out", () => {
   const allowed = env({ [LAUNCH_HOSTS_ENV]: "builds.example.com" });
   const denial = deny(
     moduleAt("http://builds.example.com/zuke.ts"),
@@ -447,7 +448,7 @@ Deno.test("an allow-listed plaintext origin still needs the insecure opt-out", (
   );
 });
 
-Deno.test("a command location is refused unless its program is allow-listed", () => {
+test("a command location is refused unless its program is allow-listed", () => {
   // The registry writer chooses the program *and* its arguments, so a command
   // descriptor is code execution on a registry's say-so — the same threat the
   // module gate refuses, spelled without a fetch.
@@ -465,7 +466,7 @@ Deno.test("a command location is refused unless its program is allow-listed", ()
   );
 });
 
-Deno.test("an allow-listed command's working directory is confined like a module's", () => {
+test("an allow-listed command's working directory is confined like a module's", () => {
   // `make` run from a writer-chosen directory reads that directory's Makefile,
   // so naming the program does not let the registry choose where it runs.
   const allowed = env({ [LAUNCH_COMMANDS_ENV]: "make" });
@@ -491,7 +492,7 @@ Deno.test("an allow-listed command's working directory is confined like a module
   );
 });
 
-Deno.test("the command allow-list matches the program exactly", () => {
+test("the command allow-list matches the program exactly", () => {
   // An entry admits the exact string the descriptor wrote, and nothing else.
   assertEquals(
     deny(
@@ -517,7 +518,7 @@ Deno.test("the command allow-list matches the program exactly", () => {
   );
 });
 
-Deno.test("a bare allow-list entry does not admit a same-named file elsewhere", () => {
+test("a bare allow-list entry does not admit a same-named file elsewhere", () => {
   // The descriptor chooses the program string *and* the working directory a
   // relative one resolves against. Matching by basename would therefore let a
   // registry writer point the operator's trusted `make` at a file of their own
@@ -550,7 +551,7 @@ Deno.test("a bare allow-list entry does not admit a same-named file elsewhere", 
   );
 });
 
-Deno.test("a program that trims to nothing is never admitted", () => {
+test("a program that trims to nothing is never admitted", () => {
   // `allowList` drops empty entries, so no list can hold "" — but a program of
   // whitespace must be refused on its own account, not by that coincidence.
   for (const program of [" ", "\t", "\u00a0", "\u200b"]) {
@@ -567,7 +568,7 @@ Deno.test("a program that trims to nothing is never admitted", () => {
   }
 });
 
-Deno.test("the command allow-list is comma-separated, so a path may contain spaces", () => {
+test("the command allow-list is comma-separated, so a path may contain spaces", () => {
   // Trimmed, newline-tolerant, and separated on commas rather than whitespace —
   // a hostname never contains a space but a program path routinely does.
   for (
@@ -607,14 +608,14 @@ Deno.test("the command allow-list is comma-separated, so a path may contain spac
   );
 });
 
-Deno.test("an empty command is left for the caller to report", () => {
+test("an empty command is left for the caller to report", () => {
   // The server answers "no runnable launch command", which says more than a
   // policy denial would; the gate must not turn that into a refusal.
   assertEquals(deny(commandOf(), env()), null);
   assertEquals(deny(commandOf(""), env()), null);
 });
 
-Deno.test("the host allow-list does not admit a command program", () => {
+test("the host allow-list does not admit a command program", () => {
   // The two lists are separate decisions: trusting an origin to serve a module
   // is not trusting a registry to name a program and its arguments.
   assertEquals(
@@ -626,7 +627,7 @@ Deno.test("the host allow-list does not admit a command program", () => {
   );
 });
 
-Deno.test("an allow-listed program may not fetch from an un-allow-listed origin", () => {
+test("an allow-listed program may not fetch from an un-allow-listed origin", () => {
   // Allowing `deno` says the operator trusts the registry to run deno. It does
   // not say they trust it to run whatever deno downloads: that is the refused
   // remote-module case written as a command, so the origin rule applies to the
@@ -652,7 +653,7 @@ Deno.test("an allow-listed program may not fetch from an un-allow-listed origin"
   );
 });
 
-Deno.test("a plaintext argument needs the insecure opt-out, like a module", () => {
+test("a plaintext argument needs the insecure opt-out, like a module", () => {
   const base = {
     [LAUNCH_COMMANDS_ENV]: "deno",
     [LAUNCH_HOSTS_ENV]: "builds.example.com",
@@ -673,7 +674,7 @@ Deno.test("a plaintext argument needs the insecure opt-out, like a module", () =
   );
 });
 
-Deno.test("ordinary local arguments are untouched by the origin rule", () => {
+test("ordinary local arguments are untouched by the origin rule", () => {
   // The rule is about fetching, not about arguments in general: a path, a flag
   // and a bare word are not specifiers and must not be mistaken for one.
   assertEquals(
@@ -692,7 +693,7 @@ Deno.test("ordinary local arguments are untouched by the origin rule", () => {
   );
 });
 
-Deno.test("the wildcard program list still refuses a remote argument", () => {
+test("the wildcard program list still refuses a remote argument", () => {
   // `*` says the operator trusts the registry to pick programs. Fetching code
   // from an origin they never named is a separate decision, still theirs.
   assertEquals(

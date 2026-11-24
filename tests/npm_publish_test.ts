@@ -9,11 +9,8 @@
  * @module
  */
 
-import {
-  assertEquals,
-  assertRejects,
-  assertThrows,
-} from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals, assertRejects, assertThrows } from "./_assert.ts";
 import { PACKAGE_DEPENDENCIES, PACKAGES } from "../build/packages.ts";
 import {
   NPM_BIN_FILE,
@@ -43,7 +40,7 @@ async function denoJson(pkg: string): Promise<Record<string, unknown>> {
   return JSON.parse(await Deno.readTextFile(`packages/${pkg}/deno.json`));
 }
 
-Deno.test("only the engine, which imports jsr: at runtime, stays off npm", () => {
+test("only the engine, which imports jsr: at runtime, stays off npm", () => {
   assertEquals([...NPM_EXCLUDED], ["engine"]);
   for (const pkg of NPM_EXCLUDED) assertEquals(PACKAGES.includes(pkg), true);
   assertEquals(npmPackages(PACKAGES).length, PACKAGES.length - 1);
@@ -56,7 +53,7 @@ Deno.test("only the engine, which imports jsr: at runtime, stays off npm", () =>
   }
 });
 
-Deno.test("every published package's npm manifest agrees with its deno.json", async () => {
+test("every published package's npm manifest agrees with its deno.json", async () => {
   for (const pkg of npmPackages(PACKAGES)) {
     const json = await denoJson(pkg);
     const manifest = npmManifest(json);
@@ -94,7 +91,7 @@ Deno.test("every published package's npm manifest agrees with its deno.json", as
   }
 });
 
-Deno.test("only the cli's manifest carries the zuke bin, and its file is a deterministic node script", async () => {
+test("only the cli's manifest carries the zuke bin, and its file is a deterministic node script", async () => {
   for (const pkg of npmPackages(PACKAGES)) {
     const manifest = npmManifest(await denoJson(pkg));
     assertEquals(
@@ -113,7 +110,7 @@ Deno.test("only the cli's manifest carries the zuke bin, and its file is a deter
   assertEquals(NPM_BIN_SOURCE.includes("import.meta.main"), false);
 });
 
-Deno.test("a manifest takes a string export and omits a missing description", () => {
+test("a manifest takes a string export and omits a missing description", () => {
   const manifest = npmManifest({
     name: "@zuke/x",
     version: "1.0.0",
@@ -125,7 +122,7 @@ Deno.test("a manifest takes a string export and omits a missing description", ()
   assertEquals("description" in manifest, false);
 });
 
-Deno.test("a foreign or malformed deno.json is refused", () => {
+test("a foreign or malformed deno.json is refused", () => {
   const base = { name: "@zuke/x", version: "1.0.0", exports: "./mod.ts" };
   for (
     const imports of [
@@ -148,7 +145,7 @@ Deno.test("a foreign or malformed deno.json is refused", () => {
   assertThrows(() => npmManifest(null), Error, "object");
 });
 
-Deno.test("the tsconfig maps and emits every entry point", async () => {
+test("the tsconfig maps and emits every entry point", async () => {
   const config = npmTsconfig(
     [await denoJson("core"), await denoJson("deno")],
     "/r/packages",
@@ -207,7 +204,7 @@ function fake(
   return { registry, deps, published, said };
 }
 
-Deno.test("publishAllTo npm skips 0.0.0 and published, in order", async () => {
+test("publishAllTo npm skips 0.0.0 and published, in order", async () => {
   const { registry, deps, published, said } = fake(["deno"]);
   await publishAllTo(
     ["core", "engine", "deno", "docs", "ai"],
@@ -222,7 +219,7 @@ Deno.test("publishAllTo npm skips 0.0.0 and published, in order", async () => {
   ]);
 });
 
-Deno.test("publishAllTo npm skips what depends on a failure, then throws", async () => {
+test("publishAllTo npm skips what depends on a failure, then throws", async () => {
   const { registry, deps, published, said } = fake([], ["core", "gh"]);
   await assertRejects(
     () =>
@@ -242,7 +239,7 @@ Deno.test("publishAllTo npm skips what depends on a failure, then throws", async
   );
 });
 
-Deno.test("publishAllTo npm does not hold a published version to its dependencies", async () => {
+test("publishAllTo npm does not hold a published version to its dependencies", async () => {
   const { registry, deps, said } = fake(["deno"], ["core"]);
   await assertRejects(() => publishAllTo(["core", "deno"], {}, deps, registry));
   assertEquals(
@@ -251,7 +248,7 @@ Deno.test("publishAllTo npm does not hold a published version to its dependencie
   );
 });
 
-Deno.test("npmRegistry holds a package changed since its tag, and its dependents, refuses one with no tag, and uploads neither", async () => {
+test("npmRegistry holds a package changed since its tag, and its dependents, refuses one with no tag, and uploads neither", async () => {
   const said: string[] = [];
   const uploaded: string[] = [];
   const base = npmRegistry({
@@ -290,7 +287,7 @@ Deno.test("npmRegistry holds a package changed since its tag, and its dependents
   ]);
 });
 
-Deno.test("isPublishedToNpm reads the registry's versions, and 404 is no", async () => {
+test("isPublishedToNpm reads the registry's versions, and 404 is no", async () => {
   const real = globalThis.fetch;
   const asked: string[] = [];
   globalThis.fetch = (input) => {
@@ -317,7 +314,7 @@ Deno.test("isPublishedToNpm reads the registry's versions, and 404 is no", async
   }
 });
 
-Deno.test("the smoke consumer installs every alias and overrides each to its tarball", () => {
+test("the smoke consumer installs every alias and overrides each to its tarball", () => {
   const tarballs = {
     "@zuke/core": "file:/t/core.tgz",
     "@zuke/deno": "file:/t/deno.tgz",
@@ -331,7 +328,7 @@ Deno.test("the smoke consumer installs every alias and overrides each to its tar
   assertThrows(() => consumerManifest({}), Error, "@zuke/core");
 });
 
-Deno.test("the smoke build it generates opens with the license header", () => {
+test("the smoke build it generates opens with the license header", () => {
   assertEquals(
     SMOKE_BUILD.split("\n").slice(0, 2),
     [
@@ -359,7 +356,7 @@ const ok = (stdout = "") => ({ code: 0, stdout, stderr: "" });
 const fail = (stderr: string) => ({ code: 1, stdout: "", stderr });
 const E409 = fail("npm error code E409\nnpm error 409 Conflict - POST ...");
 
-Deno.test("trustAll accepts an existing publisher only when it is the release workflow", async () => {
+test("trustAll accepts an existing publisher only when it is the release workflow", async () => {
   const errors: string[] = [];
   const listed: string[] = [];
   const failed = await trustAll(
@@ -415,7 +412,7 @@ Deno.test("trustAll accepts an existing publisher only when it is the release wo
   ]);
 });
 
-Deno.test("jsonValues reads one object after another, and trustsRelease needs every field", () => {
+test("jsonValues reads one object after another, and trustsRelease needs every field", () => {
   assertEquals(jsonValues(`noise ${RELEASE}\n{"a":"}"}\n{bad}`).length, 2);
   assertEquals(jsonValues('{"s":"a\\"}"}'), [{ s: 'a"}' }]);
   assertEquals(jsonValues("{ unclosed"), []);
@@ -441,7 +438,7 @@ Deno.test("jsonValues reads one object after another, and trustsRelease needs ev
   assertEquals(trustsRelease(""), false);
 });
 
-Deno.test("standingOf: published first, then a held dependency or a hold, else due", async () => {
+test("standingOf: published first, then a held dependency or a hold, else due", async () => {
   const probed: string[] = [];
   const registry: PublishRegistry = {
     name: "npm",
@@ -468,7 +465,7 @@ Deno.test("standingOf: published first, then a held dependency or a hold, else d
   assertEquals([...held], ["gh", "ai"]);
 });
 
-Deno.test("npmRegistry's publish refuses a changed package itself, without the hold before it", async () => {
+test("npmRegistry's publish refuses a changed package itself, without the hold before it", async () => {
   const registry = npmRegistry({
     hasTag: () => Promise.resolve(true),
     changed: () => Promise.resolve(["packages/gh/a.ts"]),

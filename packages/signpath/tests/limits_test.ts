@@ -1,10 +1,11 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import { SignPathDownloadSettings, SignPathSubmitSettings } from "../mod.ts";
 
-Deno.test("limits: a NaN, negative or zero bound is refused, not silently disabled", () => {
+test("limits: a NaN, negative or zero bound is refused, not silently disabled", () => {
   // Regression (adversarial review): a NaN size cap let any download through.
   const settings = new SignPathDownloadSettings();
   assertThrows(() => settings.maxDownloadBytes(NaN), Error, "maxDownloadBytes");

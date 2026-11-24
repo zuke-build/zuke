@@ -15,7 +15,8 @@
  * @module
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { GitLsFilesSettings, GitTasks } from "../../packages/git/mod.ts";
 import { runCli } from "./_harness.ts";
@@ -23,7 +24,7 @@ import { runCli } from "./_harness.ts";
 /** A tool path that cannot exist, so resolution fails before any process runs. */
 const ABSENT = "/nonexistent/zuke-test-git";
 
-Deno.test("a settings refusal fails the target and names the fix", async () => {
+test("a settings refusal fails the target and names the fix", async () => {
   class RefusalBuild extends Build {
     ancestor = target().executes(async () => {
       // git: "--is-ancestor takes exactly two commits".
@@ -37,7 +38,7 @@ Deno.test("a settings refusal fails the target and names the fix", async () => {
   assertEquals(err.includes("exactly two commits"), true);
 });
 
-Deno.test("--error-unmatch needs the pathspecs it asserts about", async () => {
+test("--error-unmatch needs the pathspecs it asserts about", async () => {
   // The drift check this flag exists for has an order: git diff reports
   // nothing at all about an untracked file, so "is it tracked?" has to be
   // asked first. A caller who reached for the flag and forgot the pathspecs
@@ -76,7 +77,7 @@ Deno.test("--error-unmatch needs the pathspecs it asserts about", async () => {
   assertEquals(unscoped.err.includes(".paths("), true);
 });
 
-Deno.test("a reader refuses the option that would misreport its result", async () => {
+test("a reader refuses the option that would misreport its result", async () => {
   class FormatBuild extends Build {
     refs = target().executes(async () => {
       await GitTasks.refs((s) => s.toolPath(ABSENT).format("%(refname)"));
@@ -87,7 +88,7 @@ Deno.test("a reader refuses the option that would misreport its result", async (
   assertEquals(err.includes("move the fields this reader parses"), true);
 });
 
-Deno.test("the boolean readers fail on an absent git rather than answering", async () => {
+test("the boolean readers fail on an absent git rather than answering", async () => {
   // These run with throwing suppressed so a legitimate non-zero status can come
   // back as data. That suppression must not swallow tool resolution: a build
   // asking "is this an ancestor?" must not be told `false` because git is
@@ -127,7 +128,7 @@ Deno.test("the boolean readers fail on an absent git rather than answering", asy
   assertEquals(executed, []);
 });
 
-Deno.test("the value readers fail on an absent git rather than returning empty", async () => {
+test("the value readers fail on an absent git rather than returning empty", async () => {
   const executed: string[] = [];
   class ValueBuild extends Build {
     count = target().executes(async () => {
@@ -170,7 +171,7 @@ Deno.test("the value readers fail on an absent git rather than returning empty",
   assertEquals(executed, []);
 });
 
-Deno.test("dependent targets run in order and the graph reports the new tasks", async () => {
+test("dependent targets run in order and the graph reports the new tasks", async () => {
   const order: string[] = [];
   class GraphBuild extends Build {
     refs = target().description("list refs").executes(() => {

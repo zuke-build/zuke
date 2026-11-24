@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   binaryMcpEntry,
   MCP_CONFIG_FILE,
@@ -17,7 +18,7 @@ function documentOf(text: string): Record<string, unknown> {
   return config.state === "unparseable" ? {} : config.document;
 }
 
-Deno.test("mcpServerEntry launches the build's server, read-only by default", () => {
+test("mcpServerEntry launches the build's server, read-only by default", () => {
   assertEquals(mcpServerEntry(false, "zuke.ts"), {
     command: "deno",
     args: ["run", "-A", "zuke.ts", "mcp"],
@@ -25,7 +26,7 @@ Deno.test("mcpServerEntry launches the build's server, read-only by default", ()
   assertEquals(mcpServerEntry(true, "zuke.ts").args.at(-1), "--allow-run");
 });
 
-Deno.test("mcpServerEntry registers the compiled zuke when it is the one asked", () => {
+test("mcpServerEntry registers the compiled zuke when it is the one asked", () => {
   assertEquals(binaryMcpEntry(false), { command: "zuke", args: ["mcp"] });
   assertEquals(binaryMcpEntry(true), {
     command: "zuke",
@@ -33,7 +34,7 @@ Deno.test("mcpServerEntry registers the compiled zuke when it is the one asked",
   });
 });
 
-Deno.test("mergeMcpConfig writes a fresh file with just the zuke server", () => {
+test("mergeMcpConfig writes a fresh file with just the zuke server", () => {
   const text = mergeMcpConfig({}, mcpServerEntry(false, "zuke.ts"));
   assertEquals(text.endsWith("\n"), true);
   assertEquals(JSON.parse(text), {
@@ -43,7 +44,7 @@ Deno.test("mergeMcpConfig writes a fresh file with just the zuke server", () => 
   });
 });
 
-Deno.test("mergeMcpConfig keeps other servers and top-level keys", () => {
+test("mergeMcpConfig keeps other servers and top-level keys", () => {
   const existing = {
     mcpServers: { github: { command: "gh-mcp", args: [] } },
     other: { kept: true },
@@ -58,7 +59,7 @@ Deno.test("mergeMcpConfig keeps other servers and top-level keys", () => {
   assertEquals(Object.keys(existing.mcpServers), ["github"]);
 });
 
-Deno.test("mergeMcpConfig replaces an existing zuke entry", () => {
+test("mergeMcpConfig replaces an existing zuke entry", () => {
   const existing = documentOf(
     mergeMcpConfig({}, mcpServerEntry(true, "zuke.ts")),
   );
@@ -68,14 +69,14 @@ Deno.test("mergeMcpConfig replaces an existing zuke entry", () => {
   assertEquals(merged.mcpServers.zuke.args.includes("--allow-run"), false);
 });
 
-Deno.test("mergeMcpConfig replaces a non-object mcpServers", () => {
+test("mergeMcpConfig replaces a non-object mcpServers", () => {
   const merged = JSON.parse(
     mergeMcpConfig({ mcpServers: "nope" }, mcpServerEntry(false, "zuke.ts")),
   );
   assertEquals(Object.keys(merged.mcpServers), ["zuke"]);
 });
 
-Deno.test("parseMcpConfig classifies .mcp.json text", () => {
+test("parseMcpConfig classifies .mcp.json text", () => {
   assertEquals(
     parseMcpConfig(mergeMcpConfig({}, mcpServerEntry(false, "zuke.ts"))).state,
     "present",
@@ -108,17 +109,17 @@ Deno.test("parseMcpConfig classifies .mcp.json text", () => {
   assertEquals(parseMcpConfig(""), { state: "unparseable" });
 });
 
-Deno.test("parseMcpConfig hands the whole document to the merge", () => {
+test("parseMcpConfig hands the whole document to the merge", () => {
   const document = documentOf('{"mcpServers":{"a":{}},"b":1}');
   assertEquals(document, { mcpServers: { a: {} }, b: 1 });
 });
 
-Deno.test("the file and server names are the ones clients look for", () => {
+test("the file and server names are the ones clients look for", () => {
   assertEquals(MCP_CONFIG_FILE, ".mcp.json");
   assertEquals(MCP_SERVER_NAME, "zuke");
 });
 
-Deno.test("mcpServerEntry runs the build file it is given", () => {
+test("mcpServerEntry runs the build file it is given", () => {
   assertEquals(mcpServerEntry(false, "build.ts").args, [
     "run",
     "-A",

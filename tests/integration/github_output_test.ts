@@ -16,10 +16,8 @@
  * @module
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   appendJobSummary,
   Build,
@@ -28,7 +26,7 @@ import {
   target,
 } from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
-import { withEnv } from "../../packages/core/tests/_env.ts";
+import { withEnv } from "../_env.ts";
 
 /** Zuke's own workflow commands, which are supposed to open with `::`. */
 const OWN_COMMAND = /^::(?:endgroup::|group::|error title=|add-mask::)/;
@@ -68,7 +66,7 @@ const HOSTILE = [
   "note: ##[error]forged too",
 ].join("\n");
 
-Deno.test("integration: a failing target's output cannot forge workflow commands", async () => {
+test("integration: a failing target's output cannot forge workflow commands", async () => {
   class CI extends Build {
     lint = target().executes(() => {
       // Stands in for a captured tool failure: the message embeds the tool's
@@ -98,7 +96,7 @@ Deno.test("integration: a failing target's output cannot forge workflow commands
   );
 });
 
-Deno.test("integration: a hostile target name cannot forge workflow commands", async () => {
+test("integration: a hostile target name cannot forge workflow commands", async () => {
   // A fan-out sub-target's name embeds its item key, which comes from
   // repository or remote data. The name reaches the group header, the pass
   // footer, the summary row and the closing line.
@@ -120,7 +118,7 @@ Deno.test("integration: a hostile target name cannot forge workflow commands", a
   );
 });
 
-Deno.test("a force's echoed reason cannot forge a command", async () => {
+test("a force's echoed reason cannot forge a command", async () => {
   // `zuke force` echoes the operator's reason back to the log. In a scripted
   // force that reason is often interpolated from a pull request title or an
   // issue body, so it is not something the job's own author controls.
@@ -168,7 +166,7 @@ Deno.test("a force's echoed reason cannot forge a command", async () => {
   });
 });
 
-Deno.test("a remediation's job-summary section is redacted", async () => {
+test("a remediation's job-summary section is redacted", async () => {
   // Where the AI fixer writes. Its markdown is built from a failed command's
   // output and the model's response to it, which is exactly where a secret in
   // an argv would appear — and the summary is published to everyone who can
@@ -212,7 +210,7 @@ Deno.test("a remediation's job-summary section is redacted", async () => {
   }
 });
 
-Deno.test("a build's lifecycle hooks write a redacted job summary", async () => {
+test("a build's lifecycle hooks write a redacted job summary", async () => {
   // `onStart` and `onFinish` are the natural places for a build to add its own
   // section to the job summary, and they run OUTSIDE the executor's own ambient
   // scope, which covers the plan rather than the calls around it. The redaction
@@ -252,7 +250,7 @@ Deno.test("a build's lifecycle hooks write a redacted job summary", async () => 
   }
 });
 
-Deno.test("a CLI error quoting its own argument cannot forge a command", async () => {
+test("a CLI error quoting its own argument cannot forge a command", async () => {
   // The run's sinks are covered; the CLI's own writes were not. Every command
   // here echoes an argument the invoker chose, and on Actions that is commonly a
   // `workflow_dispatch` input rather than something a person typed. The catch
@@ -278,7 +276,7 @@ Deno.test("a CLI error quoting its own argument cannot forge a command", async (
   });
 });
 
-Deno.test("the run-inspection commands cannot print a forged command", async () => {
+test("the run-inspection commands cannot print a forged command", async () => {
   // `runs show` and `runs list` print an actor read back from the shared store,
   // and that actor is not always operator-typed: the registry MCP server feeds
   // `resolveActor` the client's own self-reported name from its `initialize`
@@ -311,7 +309,7 @@ Deno.test("the run-inspection commands cannot print a forged command", async () 
   });
 });
 
-Deno.test("machine-readable output is safe on a runner and unchanged by it", async () => {
+test("machine-readable output is safe on a runner and unchanged by it", async () => {
   // The sink cannot be applied to JSON. `escapeLine` encodes a legacy `##[`
   // marker wherever it appears, so a consumer doing
   // `zuke runs list --json | jq -r '.[0].actor'` would read a different string
@@ -355,7 +353,7 @@ Deno.test("machine-readable output is safe on a runner and unchanged by it", asy
   });
 });
 
-Deno.test("the graph command's own output cannot forge a command", async () => {
+test("the graph command's own output cannot forge a command", async () => {
   // `zuke graph --output html` reports where it wrote the file, and that path
   // includes the workspace directory — which on a runner can come from a
   // matrix entry or a dispatch input. It has its own host with its own console

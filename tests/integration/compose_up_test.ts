@@ -1,10 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { missingTool } from "../../packages/core/src/tooling_conformance.ts";
 import { DockerComposeTasks } from "../../packages/docker-compose/mod.ts";
@@ -63,7 +61,7 @@ class MissingToolBuild extends Build {
     });
 }
 
-Deno.test("the option reaches the command line a build actually runs", async () => {
+test("the option reaches the command line a build actually runs", async () => {
   const { code, out } = await runCli(DebugBuild, ["debug", "--dry-run"]);
   assertEquals(code, 0, out);
   // The whole command, in order: the flag lands among the up options and
@@ -71,14 +69,14 @@ Deno.test("the option reaches the command line a build actually runs", async () 
   assertStringIncludes(out, "compose -f base.yml up --build --no-deps api");
 });
 
-Deno.test("a build that did not ask for it gets the argv it always had", async () => {
+test("a build that did not ask for it gets the argv it always had", async () => {
   const { code, out } = await runCli(StackBuild, ["stack", "--dry-run"]);
   assertEquals(code, 0, out);
   assertStringIncludes(out, "compose -f base.yml up --build api");
   assertEquals(out.includes("--no-deps"), false, out);
 });
 
-Deno.test("a pull policy reaches the command line as its argument", async () => {
+test("a pull policy reaches the command line as its argument", async () => {
   const { code, out } = await runCli(PullingBuild, ["stack", "--dry-run"]);
   assertEquals(code, 0, out);
   // The policy is the option's argument, so the pair has to survive together
@@ -86,7 +84,7 @@ Deno.test("a pull policy reaches the command line as its argument", async () => 
   assertStringIncludes(out, "compose -f base.yml up -d --pull always");
 });
 
-Deno.test("a missing docker fails the target rather than skipping the option", async () => {
+test("a missing docker fails the target rather than skipping the option", async () => {
   const { code, out, err } = await runCli(MissingToolBuild, ["debug"]);
   assertEquals(code, 1);
   // The compose wrapper reports the invocation it resolved rather than the

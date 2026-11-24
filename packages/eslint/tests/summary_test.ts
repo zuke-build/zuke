@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   TargetSummary,
   withAmbientSummary,
@@ -15,7 +16,7 @@ function out(code: number, stdout = "", stderr = ""): CommandOutput {
   return new CommandOutput(code, stdout, stderr);
 }
 
-Deno.test("eslint: the stylish closing line yields Problems, Errors and Warnings", () => {
+test("eslint: the stylish closing line yields Problems, Errors and Warnings", () => {
   assertEquals(
     parseEslintSummary(
       out(
@@ -37,7 +38,7 @@ Deno.test("eslint: the stylish closing line yields Problems, Errors and Warnings
   );
 });
 
-Deno.test("eslint: a silent clean run is zero problems, a silent failure reports nothing", () => {
+test("eslint: a silent clean run is zero problems, a silent failure reports nothing", () => {
   assertEquals(parseEslintSummary(out(0)), {
     Problems: 0,
     Errors: 0,
@@ -56,7 +57,7 @@ class Probe extends EslintSettings {
   }
 }
 
-Deno.test("eslint: the hook reports the counts onto the running target", async () => {
+test("eslint: the hook reports the counts onto the running target", async () => {
   const summary = new TargetSummary();
   await withAmbientSummary(summary, () => {
     new Probe().probe(out(1, "✖ 3 problems (1 error, 2 warnings)\n"));

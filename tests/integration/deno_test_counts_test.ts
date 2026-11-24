@@ -10,10 +10,8 @@
  * executing the suite (the wrapper's default binary), so it stays hermetic.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { DenoTasks } from "../../packages/deno/mod.ts";
 import { runCli } from "./_harness.ts";
@@ -21,11 +19,11 @@ import { runCli } from "./_harness.ts";
 // Addressed by `file://` URL, which is byte-identical on every OS — a URL's
 // `pathname` is not: on Windows it reads `/D:/…`, which deno cannot open.
 const PASSING = new URL(
-  "../../packages/deno/tests/fixtures/passing_suite.ts",
+  "../support/deno/fixtures/passing_suite.ts",
   import.meta.url,
 ).href;
 const FAILING = new URL(
-  "../../packages/deno/tests/fixtures/failing_suite.ts",
+  "../support/deno/fixtures/failing_suite.ts",
   import.meta.url,
 ).href;
 
@@ -56,7 +54,7 @@ function row(out: string, name: string): string {
   ) ?? "";
 }
 
-Deno.test("the test target's row carries the run's counts and the body's own note", async () => {
+test("the test target's row carries the run's counts and the body's own note", async () => {
   const r = await runCli(CI, ["pack"]);
   assertEquals(r.code, 0, r.err);
   assertStringIncludes(
@@ -66,7 +64,7 @@ Deno.test("the test target's row carries the run's counts and the body's own not
   assertEquals(row(r.out, "pack").includes("//"), false);
 });
 
-Deno.test("a failed test target's row says how many tests failed", async () => {
+test("a failed test target's row says how many tests failed", async () => {
   const r = await runCli(Broken, ["test"]);
   assertEquals(r.code, 1);
   const line = row(r.out, "test");

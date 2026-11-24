@@ -1,10 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import {
   Budget,
   budget,
@@ -21,7 +19,7 @@ const PRICES: Record<string, ModelPrice> = {
   "gemini-3.5-flash": { input: 0.3, output: 1.2 },
 };
 
-Deno.test("a fresh budget with no caps is never exhausted", () => {
+test("a fresh budget with no caps is never exhausted", () => {
   const b = new Budget();
   assertEquals(b.exhausted_(), false);
   b.record_({ inputTokens: 1_000_000, outputTokens: 1_000_000 }, CLAUDE);
@@ -29,7 +27,7 @@ Deno.test("a fresh budget with no caps is never exhausted", () => {
   assertEquals(b.exhausted_(), false);
 });
 
-Deno.test("a token cap exhausts at or above the cap, not just under it", () => {
+test("a token cap exhausts at or above the cap, not just under it", () => {
   const b = budget((x) => x.maxTokens(1_000));
   b.record_({ totalTokens: 999 }, "unpriced-model");
   assertEquals(b.exhausted_(), false); // just under the cap
@@ -37,7 +35,7 @@ Deno.test("a token cap exhausts at or above the cap, not just under it", () => {
   assertEquals(b.exhausted_(), true); // exactly at the cap
 });
 
-Deno.test("a cost cap exhausts once a priced call crosses it", () => {
+test("a cost cap exhausts once a priced call crosses it", () => {
   // With a supplied $15/1M input price, 1M input tokens = $15.
   const b = budget((x) => x.maxCost(10).prices(PRICES));
   b.record_({ inputTokens: 500_000 }, CLAUDE); // $7.50, under the cap
@@ -46,7 +44,7 @@ Deno.test("a cost cap exhausts once a priced call crosses it", () => {
   assertEquals(b.exhausted_(), true);
 });
 
-Deno.test("a cost cap is ignored while no priced call has been recorded", () => {
+test("a cost cap is ignored while no priced call has been recorded", () => {
   const b = budget((x) => x.maxCost(0.000001));
   b.record_({ inputTokens: 10_000_000 }, "unpriced-model");
   // Cost is unknown (no priced call), so the cost cap can't fire.
@@ -55,7 +53,7 @@ Deno.test("a cost cap is ignored while no priced call has been recorded", () => 
   assertEquals(spend.cost, undefined);
 });
 
-Deno.test(".prices() sets prices for several models", () => {
+test(".prices() sets prices for several models", () => {
   const table: Record<string, ModelPrice> = {
     [CLAUDE]: { input: 1, output: 1 },
     "custom-model": { input: 2, output: 4 },
@@ -72,7 +70,7 @@ Deno.test(".prices() sets prices for several models", () => {
   assertEquals(b.spend_().cost, 8);
 });
 
-Deno.test(".prices() merges across calls rather than replacing", () => {
+test(".prices() merges across calls rather than replacing", () => {
   const b = new Budget();
   b.prices({ "a-model": { input: 1, output: 1 } });
   b.prices({ "b-model": { input: 2, output: 2 } });
@@ -81,7 +79,7 @@ Deno.test(".prices() merges across calls rather than replacing", () => {
   assertEquals(b.spend_().cost, 3);
 });
 
-Deno.test("record_ tolerates undefined usage and still counts the call", () => {
+test("record_ tolerates undefined usage and still counts the call", () => {
   const b = new Budget().prices(PRICES);
   b.record_(undefined, CLAUDE);
   const spend = b.spend_();
@@ -91,7 +89,7 @@ Deno.test("record_ tolerates undefined usage and still counts the call", () => {
   assertEquals(spend.cost, 0);
 });
 
-Deno.test("record_ with only input tokens derives the total from input", () => {
+test("record_ with only input tokens derives the total from input", () => {
   const b = new Budget();
   b.record_({ inputTokens: 42 }, "unpriced-model");
   const spend = b.spend_();
@@ -100,7 +98,7 @@ Deno.test("record_ with only input tokens derives the total from input", () => {
   assertEquals(spend.totalTokens, 42);
 });
 
-Deno.test("record_ with only a provider-reported total is preferred", () => {
+test("record_ with only a provider-reported total is preferred", () => {
   const b = new Budget();
   b.record_({ totalTokens: 100 }, "unpriced-model");
   const spend = b.spend_();
@@ -109,20 +107,20 @@ Deno.test("record_ with only a provider-reported total is preferred", () => {
   assertEquals(spend.totalTokens, 100);
 });
 
-Deno.test("record_ with both input and output sums them when no total given", () => {
+test("record_ with both input and output sums them when no total given", () => {
   const b = new Budget();
   b.record_({ inputTokens: 30, outputTokens: 70 }, "unpriced-model");
   assertEquals(b.spend_().totalTokens, 100);
 });
 
-Deno.test("record_ prefers a provider total over input + output", () => {
+test("record_ prefers a provider total over input + output", () => {
   const b = new Budget();
   // Provider total disagrees with input + output — the total wins.
   b.record_({ inputTokens: 30, outputTokens: 70, totalTokens: 250 }, "x");
   assertEquals(b.spend_().totalTokens, 250);
 });
 
-Deno.test("remainingTokens_ reports the gap and is undefined without a cap", () => {
+test("remainingTokens_ reports the gap and is undefined without a cap", () => {
   const uncapped = new Budget();
   assertEquals(uncapped.remainingTokens_(), undefined);
 
@@ -132,13 +130,13 @@ Deno.test("remainingTokens_ reports the gap and is undefined without a cap", () 
   assertEquals(capped.remainingTokens_(), 750);
 });
 
-Deno.test("remainingTokens_ clamps at zero once the cap is overshot", () => {
+test("remainingTokens_ clamps at zero once the cap is overshot", () => {
   const b = budget((x) => x.maxTokens(100));
   b.record_({ totalTokens: 250 }, "unpriced-model");
   assertEquals(b.remainingTokens_(), 0);
 });
 
-Deno.test("spend_ snapshots every accumulated field", () => {
+test("spend_ snapshots every accumulated field", () => {
   const b = new Budget().prices(PRICES);
   b.record_({ inputTokens: 10, outputTokens: 5 }, CLAUDE);
   b.record_({ inputTokens: 20, outputTokens: 10 }, CLAUDE);
@@ -150,7 +148,7 @@ Deno.test("spend_ snapshots every accumulated field", () => {
   assertEquals(spend.cost !== undefined && spend.cost > 0, true);
 });
 
-Deno.test("describe_ shows totals, cost, and both caps when priced and capped", () => {
+test("describe_ shows totals, cost, and both caps when priced and capped", () => {
   const b = budget((x) => x.maxTokens(10_000).maxCost(1).prices(PRICES));
   b.record_({ inputTokens: 1_234 }, CLAUDE);
   const text = b.describe_();
@@ -160,7 +158,7 @@ Deno.test("describe_ shows totals, cost, and both caps when priced and capped", 
   assertStringIncludes(text, "$1.00"); // the cost cap
 });
 
-Deno.test("describe_ omits the cost when no priced call was recorded", () => {
+test("describe_ omits the cost when no priced call was recorded", () => {
   const b = budget((x) => x.maxTokens(500));
   b.record_({ totalTokens: 100 }, "unpriced-model");
   const text = b.describe_();
@@ -169,7 +167,7 @@ Deno.test("describe_ omits the cost when no priced call was recorded", () => {
   assertEquals(text.includes("~$"), false); // no cost estimate without a price
 });
 
-Deno.test("describe_ shows just the total when uncapped", () => {
+test("describe_ shows just the total when uncapped", () => {
   const b = new Budget();
   b.record_({ totalTokens: 7 }, "unpriced-model");
   const text = b.describe_();
@@ -177,7 +175,7 @@ Deno.test("describe_ shows just the total when uncapped", () => {
   assertEquals(text.includes("of "), false);
 });
 
-Deno.test("describe_ uses up to four decimals for sub-cent costs", () => {
+test("describe_ uses up to four decimals for sub-cent costs", () => {
   const b = new Budget().prices(PRICES);
   // A few thousand cheap tokens lands well under a cent.
   b.record_({ inputTokens: 1_000 }, "gemini-3.5-flash"); // $0.0003
@@ -185,7 +183,7 @@ Deno.test("describe_ uses up to four decimals for sub-cent costs", () => {
   assertStringIncludes(text, "$0.0003");
 });
 
-Deno.test("describe_ shows a cost cap on its own when no token cap is set", () => {
+test("describe_ shows a cost cap on its own when no token cap is set", () => {
   const b = budget((x) => x.maxCost(2.5).prices(PRICES));
   b.record_({ inputTokens: 1_000 }, CLAUDE);
   const text = b.describe_();
@@ -193,18 +191,18 @@ Deno.test("describe_ shows a cost cap on its own when no token cap is set", () =
   assertEquals(text.includes("tokens of"), false); // no token cap precedes it
 });
 
-Deno.test("budget() returns a usable Budget without a configure lambda", () => {
+test("budget() returns a usable Budget without a configure lambda", () => {
   const b = budget();
   assertEquals(b instanceof Budget, true);
   assertEquals(b.exhausted_(), false);
 });
 
-Deno.test("budget() applies the configure lambda and returns the same instance", () => {
+test("budget() applies the configure lambda and returns the same instance", () => {
   const b = budget((x) => x.maxTokens(5));
   assertEquals(b.remainingTokens_(), 5);
 });
 
-Deno.test("no prices are configured by default, so cost stays unknown", () => {
+test("no prices are configured by default, so cost stays unknown", () => {
   const b = new Budget();
   // The default models are NOT priced out of the box — supply your own.
   b.record_({ inputTokens: 1_000_000, outputTokens: 1_000_000 }, CLAUDE);

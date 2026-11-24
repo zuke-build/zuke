@@ -1,12 +1,13 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { CommandOutput } from "@zuke/core/shell";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
@@ -21,11 +22,15 @@ import {
 // Internal to the package: the public surface is the task-shaped readers, so
 // these are imported from their modules rather than re-exported by mod.ts.
 import { readJson, readScalar } from "../src/scalar_output.ts";
-import { FakeAws, json, withEmptyPath } from "./_fake.ts";
+import {
+  FakeAws,
+  json,
+  withEmptyPath,
+} from "../../../tests/support/aws/_fake.ts";
 
 const CAP = 8388608;
 
-Deno.test("readScalar returns the single line the CLI printed", () => {
+test("readScalar returns the single line the CLI printed", () => {
   assertEquals(
     readScalar(
       { stdout: "123456789012\n", truncated: false, maxCapturedBytes: CAP },
@@ -36,7 +41,7 @@ Deno.test("readScalar returns the single line the CLI printed", () => {
   );
 });
 
-Deno.test("readScalar refuses empty, multi-line and truncated output", () => {
+test("readScalar refuses empty, multi-line and truncated output", () => {
   const empty = assertThrows(
     () =>
       readScalar(
@@ -73,7 +78,7 @@ Deno.test("readScalar refuses empty, multi-line and truncated output", () => {
   );
 });
 
-Deno.test("readJson parses, and never quotes output it cannot parse", () => {
+test("readJson parses, and never quotes output it cannot parse", () => {
   assertEquals(
     readJson(
       { stdout: '{"a":1}', truncated: false, maxCapturedBytes: CAP },
@@ -98,7 +103,7 @@ Deno.test("readJson parses, and never quotes output it cannot parse", () => {
   );
 });
 
-Deno.test("accountId pins --query Account --output text, quietly", async () => {
+test("accountId pins --query Account --output text, quietly", async () => {
   const fake = new FakeAws("123456789012\n");
   const id = await AwsTasks.accountId((s) =>
     s.profile("deploy").output("json").query("UserId").runner(fake.run)
@@ -117,7 +122,7 @@ Deno.test("accountId pins --query Account --output text, quietly", async () => {
   ]);
 });
 
-Deno.test("accountId reports an empty answer by name", async () => {
+test("accountId reports an empty answer by name", async () => {
   const fake = new FakeAws("\n");
   await assertRejects(
     () => AwsTasks.accountId((s) => s.runner(fake.run)),
@@ -126,7 +131,7 @@ Deno.test("accountId reports an empty answer by name", async () => {
   );
 });
 
-Deno.test("ecrLoginPassword reads the password", async () => {
+test("ecrLoginPassword reads the password", async () => {
   const fake = new FakeAws("registry-password-value\n");
   assertEquals(
     await AwsTasks.ecrLoginPassword((s) =>
@@ -137,7 +142,7 @@ Deno.test("ecrLoginPassword reads the password", async () => {
   assertEquals(fake.calls[0].slice(1, 3), ["ecr", "get-login-password"]);
 });
 
-Deno.test("lambdaPublishedVersion pins --query Version --output text", async () => {
+test("lambdaPublishedVersion pins --query Version --output text", async () => {
   const fake = new FakeAws("7\n");
   assertEquals(
     await AwsTasks.lambdaPublishedVersion((s) =>
@@ -149,7 +154,7 @@ Deno.test("lambdaPublishedVersion pins --query Version --output text", async () 
   assertEquals(fake.flag(0, "--output"), "text");
 });
 
-Deno.test("secretString reads a multi-line secret exactly", async () => {
+test("secretString reads a multi-line secret exactly", async () => {
   const pem = "-----BEGIN KEY-----\nabc\n-----END KEY-----\n";
   const fake = new FakeAws(json(pem));
   assertEquals(
@@ -160,7 +165,7 @@ Deno.test("secretString reads a multi-line secret exactly", async () => {
   assertEquals(fake.flag(0, "--output"), "json");
 });
 
-Deno.test("secretString refuses a binary secret", async () => {
+test("secretString refuses a binary secret", async () => {
   const fake = new FakeAws("null\n");
   await assertRejects(
     () => AwsTasks.secretString((s) => s.secretId("bin").runner(fake.run)),
@@ -169,7 +174,7 @@ Deno.test("secretString refuses a binary secret", async () => {
   );
 });
 
-Deno.test("parameterValue pins --query Parameter.Value", async () => {
+test("parameterValue pins --query Parameter.Value", async () => {
   const fake = new FakeAws(json("postgres://db"));
   assertEquals(
     await AwsTasks.parameterValue((s) =>
@@ -186,7 +191,7 @@ Deno.test("parameterValue pins --query Parameter.Value", async () => {
   );
 });
 
-Deno.test("stackOutput projects one output by key", async () => {
+test("stackOutput projects one output by key", async () => {
   const fake = new FakeAws(json(["https://api.example"]));
   assertEquals(
     await AwsTasks.stackOutput(
@@ -204,7 +209,7 @@ Deno.test("stackOutput projects one output by key", async () => {
   assertEquals(fake.flag(0, "--output"), "json");
 });
 
-Deno.test("stackOutput fails on a missing output, a bad shape, a bad key", async () => {
+test("stackOutput fails on a missing output, a bad shape, a bad key", async () => {
   await assertRejects(
     () =>
       AwsTasks.stackOutput(
@@ -258,7 +263,7 @@ class RecordingParameter extends AwsSsmGetParameterSettings {
   }
 }
 
-Deno.test("credential-bearing commands register what they return", async () => {
+test("credential-bearing commands register what they return", async () => {
   const assume = new RecordingAssumeRole().roleArn("r").roleSessionName("n")
     .runner(
       new FakeAws(json({
@@ -289,7 +294,7 @@ Deno.test("credential-bearing commands register what they return", async () => {
   assertEquals(parameter.marked, ["the-value"]);
 });
 
-Deno.test("credential-bearing output is searched by core's rules", async () => {
+test("credential-bearing output is searched by core's rules", async () => {
   // A JSON string answer is the secret, in the escaped spelling too.
   const multi = new RecordingSecret().secretId("s").query("SecretString")
     .runner(new FakeAws(json("line1\nline2")).run);
@@ -351,7 +356,7 @@ Deno.test("credential-bearing output is searched by core's rules", async () => {
   }
 });
 
-Deno.test("credential-bearing commands route through core's shared helper", async () => {
+test("credential-bearing commands route through core's shared helper", async () => {
   // Searched by core: a connection string's password on its own, and the
   // JSON-escaped spelling the raw output carries — neither of which the
   // package's own copy found.
@@ -373,7 +378,7 @@ Deno.test("credential-bearing commands route through core's shared helper", asyn
   assertEquals(marked, ["example/secret-key", "example\\/secret-key"]);
 });
 
-Deno.test("a reader's failed command surfaces as a CommandError", async () => {
+test("a reader's failed command surfaces as a CommandError", async () => {
   const fake = new FakeAws(
     new CommandOutput(254, "", "An error occurred (ResourceNotFoundException)"),
   );
@@ -383,7 +388,7 @@ Deno.test("a reader's failed command surfaces as a CommandError", async () => {
   assertStringIncludes(error.message, "ResourceNotFoundException");
 });
 
-Deno.test("readers run without a lambda", async () => {
+test("readers run without a lambda", async () => {
   await withEmptyPath(async () => {
     // These need no operand, so they reach the spawn and find no binary.
     const spawning: Array<() => Promise<unknown>> = [

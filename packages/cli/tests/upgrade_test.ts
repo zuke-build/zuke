@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { defaultPrompter, main, type UpgradeHost } from "../mod.ts";
 import {
   acceptsMinimumDependencyAge,
@@ -20,10 +21,10 @@ import {
   FakeStarActions,
   noProjectProbe,
   testPin,
-} from "./_fakes.ts";
+} from "../../../tests/support/cli/_fakes.ts";
 import type { BinaryPin } from "../src/binary_pin.ts";
-import { withTemp } from "../../core/tests/_temp.ts";
-import { withEnv } from "../../core/tests/_env.ts";
+import { withTemp } from "../../../tests/_temp.ts";
+import { withEnv } from "../../../tests/_env.ts";
 import { absolutePath } from "@zuke/core";
 
 /** The main module Deno reports for an installed CLI. */
@@ -187,7 +188,7 @@ async function upgrade(
   return { code, logs: host.logs };
 }
 
-Deno.test("parseUpgradeFlags reads the version and both flags", () => {
+test("parseUpgradeFlags reads the version and both flags", () => {
   assertEquals(parseUpgradeFlags([]), { dryRun: false, force: false });
   assertEquals(parseUpgradeFlags(["1.2.3", "--dry-run", "-f"]), {
     version: "1.2.3",
@@ -199,14 +200,14 @@ Deno.test("parseUpgradeFlags reads the version and both flags", () => {
 });
 
 // cspell:ignore dryrun
-Deno.test("parseUpgradeFlags refuses what it cannot read rather than reinstalling anyway", () => {
+test("parseUpgradeFlags refuses what it cannot read rather than reinstalling anyway", () => {
   assertThrows(() => parseUpgradeFlags(["--dryrun"]), Error, "unknown option");
   assertThrows(() => parseUpgradeFlags(["1.0.0", "1.1.0"]), Error, "one");
   assertThrows(() => parseUpgradeFlags(["latest"]), Error, "not a version");
   assertThrows(() => parseUpgradeFlags(["v1.0.0"]), Error, "not a version");
 });
 
-Deno.test("installArgs keeps the documented unversioned spec for latest, pins otherwise", () => {
+test("installArgs keeps the documented unversioned spec for latest, pins otherwise", () => {
   assertEquals(installArgs("2.0.0", true, "2.8.3"), [
     "install",
     "--global",
@@ -232,7 +233,7 @@ Deno.test("installArgs keeps the documented unversioned spec for latest, pins ot
   ]);
 });
 
-Deno.test("installArgs leaves the dependency-age flag off a Deno that would reject it", () => {
+test("installArgs leaves the dependency-age flag off a Deno that would reject it", () => {
   // 2.5.0 rejects the flag, failing the whole install; the gate is a whole
   // minor that has it.
   for (const old of ["2.5.6", "2.4.5", "1.46.3", "nightly"]) {
@@ -245,20 +246,20 @@ Deno.test("installArgs leaves the dependency-age flag off a Deno that would reje
   }
 });
 
-Deno.test("acceptsMinimumDependencyAge reads the major and minor", () => {
+test("acceptsMinimumDependencyAge reads the major and minor", () => {
   assertEquals(acceptsMinimumDependencyAge("2.6.0"), true);
   assertEquals(acceptsMinimumDependencyAge("2.7.0+fb4db33"), true);
   assertEquals(acceptsMinimumDependencyAge("2.5.9"), false);
   assertEquals(acceptsMinimumDependencyAge("garbage"), false);
 });
 
-Deno.test("writesInstallLock starts at 2.7, where deno install -g writes the lock", () => {
+test("writesInstallLock starts at 2.7, where deno install -g writes the lock", () => {
   assertEquals(writesInstallLock("2.7.0"), true);
   assertEquals(writesInstallLock("2.9.3"), true);
   assertEquals(writesInstallLock("2.6.0"), false);
 });
 
-Deno.test("zuke upgrade on a Deno that writes no install lock does not read a leftover one", async () => {
+test("zuke upgrade on a Deno that writes no install lock does not read a leftover one", async () => {
   // Deno 2.6 installs a --no-config shim and leaves a lock a newer Deno wrote
   // in place; that lock says nothing about this install.
   const fake = new FakeUpgradeHost();
@@ -270,7 +271,7 @@ Deno.test("zuke upgrade on a Deno that writes no install lock does not read a le
   assertStringIncludes(logs.join("\n"), `zuke ${NEWER} is installed`);
 });
 
-Deno.test("zuke upgrade fails when the install resolved another release than it asked for", async () => {
+test("zuke upgrade fails when the install resolved another release than it asked for", async () => {
   // Deno 2.9's dependency-age window made an unversioned install of 1.12.0
   // land on 1.8.0, and the command still said "Done — 1.12.0 is installed".
   const fake = new FakeUpgradeHost();
@@ -296,7 +297,7 @@ Deno.test("zuke upgrade fails when the install resolved another release than it 
   assertStringIncludes(missing.logs.join("\n"), "@zuke/cli to nothing");
 });
 
-Deno.test("zuke upgrade installs the latest release with an unversioned spec", async () => {
+test("zuke upgrade installs the latest release with an unversioned spec", async () => {
   const fake = new FakeUpgradeHost();
   const { code, logs } = await upgrade([], fake);
   assertEquals(code, 0);
@@ -306,7 +307,7 @@ Deno.test("zuke upgrade installs the latest release with an unversioned spec", a
   assertStringIncludes(logs.join("\n"), `zuke ${NEWER} is installed`);
 });
 
-Deno.test("zuke upgrade <version> pins an older release, and its own latest stays unversioned", async () => {
+test("zuke upgrade <version> pins an older release, and its own latest stays unversioned", async () => {
   const older = new FakeUpgradeHost();
   assertEquals((await upgrade(["1.0.0"], older)).code, 0);
   assertEquals(older.installs, [installArgs("1.0.0", false, DENO)]);
@@ -316,7 +317,7 @@ Deno.test("zuke upgrade <version> pins an older release, and its own latest stay
   assertEquals(latest.installs, [installArgs(NEWER, true, DENO)]);
 });
 
-Deno.test("zuke upgrade on the latest release says so and installs nothing, unless forced", async () => {
+test("zuke upgrade on the latest release says so and installs nothing, unless forced", async () => {
   const current = { latest: VERSION, versions: { [VERSION]: {} } };
   const idle = new FakeUpgradeHost(current);
   const quiet = await upgrade([], idle);
@@ -334,7 +335,7 @@ Deno.test("zuke upgrade on the latest release says so and installs nothing, unle
   assertEquals(forced.installs, [installArgs(VERSION, true, DENO)]);
 });
 
-Deno.test("zuke upgrade --dry-run names the command and installs nothing", async () => {
+test("zuke upgrade --dry-run names the command and installs nothing", async () => {
   const fake = new FakeUpgradeHost();
   const { code, logs } = await upgrade(["--dry-run"], fake);
   assertEquals(code, 0);
@@ -345,7 +346,7 @@ Deno.test("zuke upgrade --dry-run names the command and installs nothing", async
   );
 });
 
-Deno.test("zuke upgrade refuses an unpublished or yanked version", async () => {
+test("zuke upgrade refuses an unpublished or yanked version", async () => {
   const missing = new FakeUpgradeHost();
   const gone = await upgrade(["0.0.1"], missing);
   assertEquals(gone.code, 1);
@@ -358,7 +359,7 @@ Deno.test("zuke upgrade refuses an unpublished or yanked version", async () => {
   assertEquals([...missing.installs, ...yanked.installs], []);
 });
 
-Deno.test("zuke upgrade fails cleanly when JSR cannot answer", async () => {
+test("zuke upgrade fails cleanly when JSR cannot answer", async () => {
   const offline = new FakeUpgradeHost(new Error("connection refused"));
   const down = await upgrade([], offline);
   assertEquals(down.code, 1);
@@ -378,13 +379,13 @@ Deno.test("zuke upgrade fails cleanly when JSR cannot answer", async () => {
   }
 });
 
-Deno.test("zuke upgrade accepts a pinned JSR main module", async () => {
+test("zuke upgrade accepts a pinned JSR main module", async () => {
   const fake = new FakeUpgradeHost(undefined, "jsr:@zuke/cli@1.0.0");
   assertEquals((await upgrade([], fake)).code, 0);
   assertEquals(fake.installs.length, 1);
 });
 
-Deno.test("zuke upgrade refuses a CLI that does not run from JSR", async () => {
+test("zuke upgrade refuses a CLI that does not run from JSR", async () => {
   for (
     const running of [
       "file:///src/zuke/packages/cli/mod.ts",
@@ -401,7 +402,7 @@ Deno.test("zuke upgrade refuses a CLI that does not run from JSR", async () => {
   }
 });
 
-Deno.test("zuke upgrade sends a Homebrew install to brew, even one compiled from JSR", async () => {
+test("zuke upgrade sends a Homebrew install to brew, even one compiled from JSR", async () => {
   // A binary compiled from jsr:@zuke/cli still reports that specifier as its
   // main module. Classified by it alone, the Homebrew zuke would reinstall the
   // JSR one beside it and report success, leaving itself untouched.
@@ -421,7 +422,7 @@ Deno.test("zuke upgrade sends a Homebrew install to brew, even one compiled from
   assertEquals(fake.probed, []);
 });
 
-Deno.test("zuke upgrade tells an npm install the npm command and runs nothing", async () => {
+test("zuke upgrade tells an npm install the npm command and runs nothing", async () => {
   const fake = new FakeUpgradeHost(
     undefined,
     "file:///usr/lib/node_modules/@zuke-build/cli/zuke.js",
@@ -436,7 +437,7 @@ Deno.test("zuke upgrade tells an npm install the npm command and runs nothing", 
   assertEquals(fake.probed, []);
 });
 
-Deno.test("zuke upgrade sends a Chocolatey install to choco", async () => {
+test("zuke upgrade sends a Chocolatey install to choco", async () => {
   const fake = new FakeUpgradeHost(undefined, FROM_JSR);
   fake.compiled = true;
   fake.exe = "C:\\ProgramData\\chocolatey\\lib\\zuke\\tools\\zuke.exe";
@@ -449,7 +450,7 @@ Deno.test("zuke upgrade sends a Chocolatey install to choco", async () => {
   assertEquals(fake.probed, []);
 });
 
-Deno.test("zuke upgrade refuses any other standalone binary, naming where to get one", async () => {
+test("zuke upgrade refuses any other standalone binary, naming where to get one", async () => {
   const fake = new FakeUpgradeHost(undefined, FROM_JSR);
   fake.compiled = true;
   fake.exe = "/home/me/bin/zuke";
@@ -463,7 +464,7 @@ Deno.test("zuke upgrade refuses any other standalone binary, naming where to get
   assertEquals(fake.installs, []);
 });
 
-Deno.test("zuke upgrade refuses when there is no global install to replace", async () => {
+test("zuke upgrade refuses when there is no global install to replace", async () => {
   const absent = new FakeUpgradeHost();
   absent.present = false;
   const none = await upgrade([], absent);
@@ -479,7 +480,7 @@ Deno.test("zuke upgrade refuses when there is no global install to replace", asy
   assertEquals(rootless.probed, []);
 });
 
-Deno.test("zuke upgrade on Windows refuses to pin a version, but moves to latest", async () => {
+test("zuke upgrade on Windows refuses to pin a version, but moves to latest", async () => {
   const pinned = new FakeUpgradeHost();
   pinned.onWindows = true;
   const refused = await upgrade(["1.0.0"], pinned);
@@ -498,7 +499,7 @@ Deno.test("zuke upgrade on Windows refuses to pin a version, but moves to latest
   assertEquals(latest.installs, [installArgs(NEWER, true, DENO)]);
 });
 
-Deno.test("zuke upgrade treats a non-object version entry as unpublished", async () => {
+test("zuke upgrade treats a non-object version entry as unpublished", async () => {
   const fake = new FakeUpgradeHost({
     latest: NEWER,
     versions: { "1.0.0": null, "1.2.0": "yes" },
@@ -511,14 +512,14 @@ Deno.test("zuke upgrade treats a non-object version entry as unpublished", async
   assertEquals(fake.installs, []);
 });
 
-Deno.test("zuke upgrade propagates a failed deno install", async () => {
+test("zuke upgrade propagates a failed deno install", async () => {
   const fake = new FakeUpgradeHost(undefined, FROM_JSR, 7);
   const { code, logs } = await upgrade([], fake);
   assertEquals(code, 7);
   assertStringIncludes(logs.join("\n"), "deno install exited 7");
 });
 
-Deno.test("zuke upgrade reports a bad flag before reaching JSR", async () => {
+test("zuke upgrade reports a bad flag before reaching JSR", async () => {
   const fake = new FakeUpgradeHost();
   fake.meta = () => Promise.reject(new Error("must not be fetched"));
   const { code, logs } = await upgrade(["--dryrun"], fake);
@@ -526,7 +527,7 @@ Deno.test("zuke upgrade reports a bad flag before reaching JSR", async () => {
   assertStringIncludes(logs.join("\n"), "unknown option --dryrun");
 });
 
-Deno.test("zuke --help lists upgrade and its options", async () => {
+test("zuke --help lists upgrade and its options", async () => {
   const host = new FakeHost();
   await main(
     ["--help"],
@@ -542,7 +543,7 @@ Deno.test("zuke --help lists upgrade and its options", async () => {
   assertStringIncludes(help, "--dry-run");
 });
 
-Deno.test("the default upgrade host reports its main module and runs deno in isolation", async () => {
+test("the default upgrade host reports its main module and runs deno in isolation", async () => {
   assertEquals(defaultUpgradeHost.mainModule(), Deno.mainModule);
   assertEquals(defaultUpgradeHost.standalone(), Deno.build.standalone);
   assertEquals(defaultUpgradeHost.execPath(), Deno.execPath());
@@ -559,7 +560,7 @@ Deno.test("the default upgrade host reports its main module and runs deno in iso
   assertEquals(await defaultUpgradeHost.install(["--version"]), 0);
 });
 
-Deno.test("the default upgrade host finds the install root the way deno install does", async () => {
+test("the default upgrade host finds the install root the way deno install does", async () => {
   await withTemp(async (dir) => {
     const root = absolutePath(dir);
     await withEnv({ DENO_INSTALL_ROOT: root.path }, () => {

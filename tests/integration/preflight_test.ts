@@ -9,10 +9,8 @@
  * secrets fill.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   Build,
   parameter,
@@ -52,7 +50,7 @@ function pipeline(log: string[], check: Validation) {
   };
 }
 
-Deno.test("a refusing preflight stops the run before a dependency has started", async () => {
+test("a refusing preflight stops the run before a dependency has started", async () => {
   const log: string[] = [];
   const result = await runCli(pipeline(log, gate(log, true)), [
     "deploy",
@@ -66,7 +64,7 @@ Deno.test("a refusing preflight stops the run before a dependency has started", 
   );
 });
 
-Deno.test("an admitted run executes as before, its preflight first", async () => {
+test("an admitted run executes as before, its preflight first", async () => {
   const log: string[] = [];
   const result = await runCli(pipeline(log, gate(log, false)), [
     "deploy",
@@ -76,7 +74,7 @@ Deno.test("an admitted run executes as before, its preflight first", async () =>
   assertEquals(log, ["preflight:deploy", "prepare", "validate", "deploy"]);
 });
 
-Deno.test("--preflight runs only the preflights, without the secrets the run needs", async () => {
+test("--preflight runs only the preflights, without the secrets the run needs", async () => {
   const log: string[] = [];
   // No --key: the step that asks holds no secrets, by design.
   const passed = await runCli(pipeline(log, gate(log, false)), [
@@ -95,7 +93,7 @@ Deno.test("--preflight runs only the preflights, without the secrets the run nee
   assertEquals(log, ["preflight:deploy"]);
 });
 
-Deno.test("a missing secret still fails a real run, and a dry run skips the preflight", async () => {
+test("a missing secret still fails a real run, and a dry run skips the preflight", async () => {
   const log: string[] = [];
   const missing = await runCli(pipeline(log, gate(log, false)), ["deploy"]);
   assertEquals(missing.code === 0, false);

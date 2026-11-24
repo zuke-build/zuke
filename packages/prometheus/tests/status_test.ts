@@ -3,13 +3,18 @@
 
 /** Unit: targets, rules, alerts, build information and the health probes. */
 
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import {
   PrometheusApiError,
   PrometheusRequestError,
   PrometheusTasks,
 } from "../mod.ts";
-import { BASE, fakeFetch, success } from "./_fetch.ts";
+import {
+  BASE,
+  fakeFetch,
+  success,
+} from "../../../tests/support/prometheus/_fetch.ts";
 
 /** An active target as the API reference's example shows it. */
 const ACTIVE = {
@@ -26,7 +31,7 @@ const ACTIVE = {
   scrapeTimeout: "10s",
 };
 
-Deno.test("targets GETs with its state filter and answers typed targets", async () => {
+test("targets GETs with its state filter and answers typed targets", async () => {
   const fetcher = fakeFetch(() =>
     success({
       activeTargets: [ACTIVE],
@@ -48,7 +53,7 @@ Deno.test("targets GETs with its state filter and answers typed targets", async 
   });
 });
 
-Deno.test("a state filter's other side arrives as null and reads as empty", async () => {
+test("a state filter's other side arrives as null and reads as empty", async () => {
   // What Prometheus actually sends: the filtered-out list is a nil Go slice,
   // serialised as null rather than omitted.
   const active = await PrometheusTasks.targets((s) =>
@@ -73,7 +78,7 @@ Deno.test("a state filter's other side arrives as null and reads as empty", asyn
   assertEquals(dropped.data.droppedTargets.length, 1);
 });
 
-Deno.test("targets tolerates the optional fields and lists being absent", async () => {
+test("targets tolerates the optional fields and lists being absent", async () => {
   const fetcher = fakeFetch(() =>
     success({
       activeTargets: [{
@@ -150,7 +155,7 @@ const RULES = {
   }],
 };
 
-Deno.test("rules GETs every filter it was given and answers typed rules", async () => {
+test("rules GETs every filter it was given and answers typed rules", async () => {
   const fetcher = fakeFetch(() =>
     success({ ...RULES, groupNextToken: "next-page" })
   );
@@ -187,7 +192,7 @@ Deno.test("rules GETs every filter it was given and answers typed rules", async 
   assertEquals(recording.labels, {});
 });
 
-Deno.test("excludeAlerts' null alerts read as absent", async () => {
+test("excludeAlerts' null alerts read as absent", async () => {
   // With exclude_alerts=true the server keeps the key and sends null.
   const response = await PrometheusTasks.rules((s) =>
     s.url(BASE).fetch(
@@ -205,7 +210,7 @@ Deno.test("excludeAlerts' null alerts read as absent", async () => {
   assertEquals(rule.type === "alerting" ? rule.alerts : "?", undefined);
 });
 
-Deno.test("rules sends nothing it was not given, and refuses odd rules", async () => {
+test("rules sends nothing it was not given, and refuses odd rules", async () => {
   const fetcher = fakeFetch(() =>
     success({
       groups: [{
@@ -257,7 +262,7 @@ Deno.test("rules sends nothing it was not given, and refuses odd rules", async (
   );
 });
 
-Deno.test("alerts answers the active alerts", async () => {
+test("alerts answers the active alerts", async () => {
   const fetcher = fakeFetch(() =>
     success({
       alerts: [{
@@ -285,7 +290,7 @@ Deno.test("alerts answers the active alerts", async () => {
   );
 });
 
-Deno.test("buildInfo answers the server's version", async () => {
+test("buildInfo answers the server's version", async () => {
   const fetcher = fakeFetch(() =>
     success({ version: "3.5.0", revision: "abc", goVersion: "go1.24" })
   );
@@ -306,7 +311,7 @@ Deno.test("buildInfo answers the server's version", async () => {
   );
 });
 
-Deno.test("healthy and ready: 2xx is true, 503 is false, anything else throws", async () => {
+test("healthy and ready: 2xx is true, 503 is false, anything else throws", async () => {
   const fetcher = fakeFetch((r) =>
     r.url.pathname === "/-/healthy"
       ? new Response("Prometheus Server is Healthy.\n")

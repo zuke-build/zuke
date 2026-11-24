@@ -9,15 +9,16 @@
  * @module
  */
 
+import { test } from "../../../tests/_testing.ts";
 import { gunzip } from "@zuke/core";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { GhTasks } from "../mod.ts";
-import { withTemp } from "../../core/tests/_temp.ts";
-import { withEnv } from "../../core/tests/_env.ts";
+import { withTemp } from "../../../tests/_temp.ts";
+import { withEnv } from "../../../tests/_env.ts";
 
 /** A recorded request the fake `fetch` saw. */
 interface Seen {
@@ -68,7 +69,7 @@ async function sarifFixture(dir: string): Promise<string> {
   return path;
 }
 
-Deno.test("uploadSarif gzips and base64s the report the endpoint requires", async () => {
+test("uploadSarif gzips and base64s the report the endpoint requires", async () => {
   await withTemp(async (dir) => {
     const file = await sarifFixture(dir);
     const seen: Seen[] = [];
@@ -102,7 +103,7 @@ Deno.test("uploadSarif gzips and base64s the report the endpoint requires", asyn
   });
 });
 
-Deno.test("uploadSarif fills the repo, commit, ref, and token from the Actions env", async () => {
+test("uploadSarif fills the repo, commit, ref, and token from the Actions env", async () => {
   await withTemp(async (dir) => {
     const file = await sarifFixture(dir);
     await withEnv({
@@ -122,7 +123,7 @@ Deno.test("uploadSarif fills the repo, commit, ref, and token from the Actions e
   });
 });
 
-Deno.test("checkout_uri is sent only when it is set", async () => {
+test("checkout_uri is sent only when it is set", async () => {
   await withTemp(async (dir) => {
     const file = await sarifFixture(dir);
     const seen: Seen[] = [];
@@ -146,7 +147,7 @@ type GhSarifSettingsLike = Parameters<
   NonNullable<Parameters<typeof GhTasks.uploadSarif>[0]>
 >[0];
 
-Deno.test("uploadSarif names each missing input instead of sending a partial body", async () => {
+test("uploadSarif names each missing input instead of sending a partial body", async () => {
   await withTemp(async (dir) => {
     const file = await sarifFixture(dir);
     await withEnv({
@@ -181,7 +182,7 @@ Deno.test("uploadSarif names each missing input instead of sending a partial bod
   });
 });
 
-Deno.test("a missing token names the permission the upload needs", async () => {
+test("a missing token names the permission the upload needs", async () => {
   await withEnv({ GITHUB_TOKEN: undefined }, async () => {
     await assertRejects(
       () =>
@@ -194,7 +195,7 @@ Deno.test("a missing token names the permission the upload needs", async () => {
   });
 });
 
-Deno.test("a rejected upload reports the status and GitHub's message", async () => {
+test("a rejected upload reports the status and GitHub's message", async () => {
   await withTemp(async (dir) => {
     const file = await sarifFixture(dir);
     const error = await assertRejects(
@@ -213,7 +214,7 @@ Deno.test("a rejected upload reports the status and GitHub's message", async () 
   });
 });
 
-Deno.test("a repository that is not owner/name is refused before anything is sent", async () => {
+test("a repository that is not owner/name is refused before anything is sent", async () => {
   // The slug is interpolated into the request path, so `..` in it would send a
   // write-scoped token somewhere the caller never named. The upload routes
   // through the shared caller, which is what checks it — before the report is

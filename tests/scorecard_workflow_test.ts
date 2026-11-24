@@ -23,7 +23,8 @@
  * @module
  */
 
-import { assertEquals } from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals } from "./_assert.ts";
 import {
   actionOf,
   isRecord,
@@ -71,7 +72,7 @@ function scorecardJob(): Record<string, unknown> {
   return job;
 }
 
-Deno.test("the scorecard job runs only allowlisted actions, and no `run:` step", () => {
+test("the scorecard job runs only allowlisted actions, and no `run:` step", () => {
   // The rule that was broken: the Zuke prelude is not on the list, and a
   // `./zuke` step is a `run:`. Either one turns every publish into a 400.
   const offending = stepsOf(scorecardJob()).flatMap((step) => {
@@ -86,7 +87,7 @@ Deno.test("the scorecard job runs only allowlisted actions, and no `run:` step",
   );
 });
 
-Deno.test("the scorecard job carries no job-level env, container, or services", () => {
+test("the scorecard job carries no job-level env, container, or services", () => {
   const job = scorecardJob();
   assertEquals(job.env, undefined);
   assertEquals(job.container, undefined);
@@ -94,13 +95,13 @@ Deno.test("the scorecard job carries no job-level env, container, or services", 
   assertEquals(job.defaults, undefined);
 });
 
-Deno.test("the scorecard job runs on a hosted Ubuntu runner", () => {
+test("the scorecard job runs on a hosted Ubuntu runner", () => {
   const runsOn = scorecardJob()["runs-on"];
   assertEquals(typeof runsOn, "string");
   assertEquals(/^ubuntu-(latest|\d{2}\.\d{2})$/.test(String(runsOn)), true);
 });
 
-Deno.test("only the scorecard job may hold id-token: write", () => {
+test("only the scorecard job may hold id-token: write", () => {
   // The verifier rejects a workflow where any *other* job can mint an OIDC
   // token, and any workflow-level write permission at all.
   const file = readWorkflow(WORKFLOW);
@@ -125,7 +126,7 @@ Deno.test("only the scorecard job may hold id-token: write", () => {
   }
 });
 
-Deno.test("the scorecard job publishes its score and uploads the same SARIF", () => {
+test("the scorecard job publishes its score and uploads the same SARIF", () => {
   // `publish_results` is what refreshes the badge; `upload-sarif` reading the
   // file the scorecard step wrote is what puts the findings on the Security
   // tab. The two names must agree or the upload fails after the score is

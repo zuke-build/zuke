@@ -9,11 +9,12 @@
  * unknown flag or value fails with `VALIDATION_ERROR`.
  */
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import { missingTool } from "@zuke/core/tooling/conformance";
 import {
@@ -37,7 +38,7 @@ function args(settings: { argv(): string[] }): string[] {
   return settings.argv().slice(1);
 }
 
-Deno.test("deploy: shared flags, then the command's own, root last", () => {
+test("deploy: shared flags, then the command's own, root last", () => {
   assertEquals(args(new DenoDeploySettings()), ["deploy"]);
   assertEquals(
     args(
@@ -62,7 +63,7 @@ Deno.test("deploy: shared flags, then the command's own, root last", () => {
   );
 });
 
-Deno.test("deploy: the token goes to DENO_DEPLOY_TOKEN, masked, not the argv", () => {
+test("deploy: the token goes to DENO_DEPLOY_TOKEN, masked, not the argv", () => {
   class Spy extends DenoDeploySettings {
     readonly marked: string[] = [];
     readonly envs: Array<Record<string, string>> = [];
@@ -80,7 +81,7 @@ Deno.test("deploy: the token goes to DENO_DEPLOY_TOKEN, masked, not the argv", (
   assertEquals(args(settings), ["deploy"]);
 });
 
-Deno.test("env: a secret value is masked, a plain one is not", () => {
+test("env: a secret value is masked, a plain one is not", () => {
   class Spy extends DenoDeployEnvValueSettings {
     readonly marked: string[] = [];
     protected override markSecret(value: string): void {
@@ -91,7 +92,7 @@ Deno.test("env: a secret value is masked, a plain one is not", () => {
   assertEquals(new Spy("add").value("prod").marked, []);
 });
 
-Deno.test("create: every flag the wrapper exposes", () => {
+test("create: every flag the wrapper exposes", () => {
   assertEquals(
     args(
       new DenoDeployCreateSettings().org("acme").app("web").nonInteractive()
@@ -137,7 +138,7 @@ Deno.test("create: every flag the wrapper exposes", () => {
   assertEquals(args(new DenoDeployCreateSettings()), ["deploy", "create"]);
 });
 
-Deno.test("env: list, add, update-value, update-contexts, delete", () => {
+test("env: list, add, update-value, update-contexts, delete", () => {
   assertEquals(args(new DenoDeployEnvListSettings().app("api")), [
     "deploy",
     "env",
@@ -176,7 +177,7 @@ Deno.test("env: list, add, update-value, update-contexts, delete", () => {
   );
 });
 
-Deno.test("env load: file first, --non-secrets and its keys last", () => {
+test("env load: file first, --non-secrets and its keys last", () => {
   assertEquals(
     args(new DenoDeployEnvLoadSettings().file(".env.production")),
     ["deploy", "env", "load", ".env.production"],
@@ -201,7 +202,7 @@ Deno.test("env load: file first, --non-secrets and its keys last", () => {
   );
 });
 
-Deno.test("env: required parts and unsafe values are refused", () => {
+test("env: required parts and unsafe values are refused", () => {
   assertThrows(
     () => args(new DenoDeployEnvValueSettings("add").value("x")),
     Error,
@@ -254,7 +255,7 @@ Deno.test("env: required parts and unsafe values are refused", () => {
   );
 });
 
-Deno.test("logs, deployments, apps, orgs and whoami", () => {
+test("logs, deployments, apps, orgs and whoami", () => {
   assertEquals(
     args(
       new DenoDeployLogsSettings().app("api")
@@ -331,7 +332,7 @@ Deno.test("logs, deployments, apps, orgs and whoami", () => {
   );
 });
 
-Deno.test("DenoDeployTasks: every task reaches execution with its command", async () => {
+test("DenoDeployTasks: every task reaches execution with its command", async () => {
   const seen: string[][] = [];
   const probe = <S extends { argv(): string[] }>(s: S): S => {
     seen.push(args(s));

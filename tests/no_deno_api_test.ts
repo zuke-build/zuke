@@ -22,7 +22,8 @@
  * @module
  */
 
-import { assertEquals } from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals } from "./_assert.ts";
 import { packageSources } from "./_package_sources.ts";
 
 /**
@@ -130,7 +131,7 @@ export function denoUses(source: string): number {
   ).length;
 }
 
-Deno.test("only code is counted: comments and the text of strings are not", () => {
+test("only code is counted: comments and the text of strings are not", () => {
   const cases: [source: string, uses: number][] = [
     ["const cwd = Deno.cwd();", 1],
     ["new Deno.Command(Deno.execPath(), { env: Deno.env.toObject() })", 3],
@@ -163,7 +164,7 @@ Deno.test("only code is counted: comments and the text of strings are not", () =
   }
 });
 
-Deno.test("no package source uses Deno's API outside its allowance", async () => {
+test("no package source uses Deno's API outside its allowance", async () => {
   const found: Record<string, number> = {};
   for (const file of await packageSources()) {
     const uses = denoUses(await Deno.readTextFile(file));

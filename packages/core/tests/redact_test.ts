@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import { REDACTED, Redactor } from "../src/redact.ts";
 import { ActionsMaskingRedactor } from "../src/execute_output.ts";
 
-Deno.test("Redactor masks a registered secret anywhere in a line", () => {
+test("Redactor masks a registered secret anywhere in a line", () => {
   const r = new Redactor();
   r.add("s3cr3t");
   assertEquals(
@@ -14,7 +15,7 @@ Deno.test("Redactor masks a registered secret anywhere in a line", () => {
   );
 });
 
-Deno.test("Redactor ignores empty strings and de-duplicates", () => {
+test("Redactor ignores empty strings and de-duplicates", () => {
   const r = new Redactor();
   r.add("");
   r.add("abc");
@@ -24,13 +25,13 @@ Deno.test("Redactor ignores empty strings and de-duplicates", () => {
   assertEquals(r.redact("nothing here"), "nothing here");
 });
 
-Deno.test("Redactor leaves lines without a secret untouched", () => {
+test("Redactor leaves lines without a secret untouched", () => {
   const r = new Redactor();
   r.add("hunter2");
   assertEquals(r.redact("plain output"), "plain output");
 });
 
-Deno.test("Redactor masks the longest overlapping secret whole", () => {
+test("Redactor masks the longest overlapping secret whole", () => {
   const r = new Redactor();
   // Registered short-first, but a value containing another must still be
   // masked as one unit, not leave the outer part exposed.
@@ -39,7 +40,7 @@ Deno.test("Redactor masks the longest overlapping secret whole", () => {
   assertEquals(r.redact("value abcdef here"), `value ${REDACTED} here`);
 });
 
-Deno.test("Redactor treats regex-significant secrets literally", () => {
+test("Redactor treats regex-significant secrets literally", () => {
   const r = new Redactor();
   r.add("a.c*");
   assertEquals(r.redact("literal a.c* only"), `literal ${REDACTED} only`);
@@ -65,7 +66,7 @@ const MULTI_LINE = [
   "third-fragment-of-a-not-real-value",
 ].join("\n");
 
-Deno.test("Redactor masks every line of a multi-line secret", () => {
+test("Redactor masks every line of a multi-line secret", () => {
   const r = new Redactor();
   r.add(MULTI_LINE);
   // Each line, alone on a line of output, is masked — including the ones after
@@ -80,13 +81,13 @@ Deno.test("Redactor masks every line of a multi-line secret", () => {
   );
 });
 
-Deno.test("Redactor still masks a multi-line secret that arrives intact", () => {
+test("Redactor still masks a multi-line secret that arrives intact", () => {
   const r = new Redactor();
   r.add(MULTI_LINE);
   assertEquals(r.redact(MULTI_LINE), REDACTED);
 });
 
-Deno.test("Redactor ignores indentation when masking a secret's line", () => {
+test("Redactor ignores indentation when masking a secret's line", () => {
   // Lines are trimmed before registering, so the pattern matches the content
   // whatever wraps it — a YAML block scalar indents every line of an inlined
   // key. Trimming only ever widens the match: the registered pattern is a
@@ -101,7 +102,7 @@ Deno.test("Redactor ignores indentation when masking a secret's line", () => {
   assertEquals(r.redact("indented-fragment-of-a-not-real-value"), REDACTED);
 });
 
-Deno.test("Redactor does not register a trivially short line as its own pattern", () => {
+test("Redactor does not register a trivially short line as its own pattern", () => {
   // A two-character line would mask every `ok` in the log. The whole value is
   // still registered, so nothing is lost for output that contains it intact.
   const r = new Redactor();
@@ -124,7 +125,7 @@ function masking(): { r: ActionsMaskingRedactor; lines: string[] } {
   return { r, lines };
 }
 
-Deno.test("ActionsMaskingRedactor emits one single-line directive per secret line", () => {
+test("ActionsMaskingRedactor emits one single-line directive per secret line", () => {
   const { r, lines } = masking();
   r.add(MULTI_LINE);
   assertEquals(lines.length > 0, true);
@@ -142,7 +143,7 @@ Deno.test("ActionsMaskingRedactor emits one single-line directive per secret lin
 
 // The runner also ends a line at a lone `\r`, so a CR-separated secret must be
 // split there too, or its directive masks only the part before the `\r`.
-Deno.test("ActionsMaskingRedactor splits a secret on a lone carriage return", () => {
+test("ActionsMaskingRedactor splits a secret on a lone carriage return", () => {
   const { r, lines } = masking();
   r.add("first-line-secret\rsecond-line-secret");
   assertEquals(lines, [
@@ -151,7 +152,7 @@ Deno.test("ActionsMaskingRedactor splits a secret on a lone carriage return", ()
   ]);
 });
 
-Deno.test("ActionsMaskingRedactor still emits a single-line secret unchanged", () => {
+test("ActionsMaskingRedactor still emits a single-line secret unchanged", () => {
   const { r, lines } = masking();
   r.add("hunter2");
   assertEquals(lines, ["::add-mask::hunter2"]);
@@ -162,7 +163,7 @@ Deno.test("ActionsMaskingRedactor still emits a single-line secret unchanged", (
 // Every route into the run's redactor — a parameter, a wrapper's markSecret, the
 // engine's secret.register — ends in add(), so a value is announced once however
 // many routes register it, and only once it is new.
-Deno.test("ActionsMaskingRedactor emits a pattern once, and nothing for an empty value", () => {
+test("ActionsMaskingRedactor emits a pattern once, and nothing for an empty value", () => {
   const { r, lines } = masking();
   r.add("");
   r.add("hunter2");
@@ -176,7 +177,7 @@ Deno.test("ActionsMaskingRedactor emits a pattern once, and nothing for an empty
   assertEquals(r.redact(MULTI_LINE), REDACTED);
 });
 
-Deno.test("ActionsMaskingRedactor survives a throwing sink", () => {
+test("ActionsMaskingRedactor survives a throwing sink", () => {
   const r = new ActionsMaskingRedactor({
     info: () => {
       throw new Error("EPIPE");

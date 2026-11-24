@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { besideFile, shimScript, shimTarget } from "../src/process_shim.ts";
 
 const SCRIPT = "..\\typescript\\bin\\tsc";
@@ -52,7 +53,7 @@ const OLD_NPM = [
   "",
 ].join("\r\n");
 
-Deno.test("the script a Node shim starts is read from each form the package managers write", () => {
+test("the script a Node shim starts is read from each form the package managers write", () => {
   for (const shim of [NPM, PNPM, OLD_NPM]) {
     assertEquals(shimScript(shim), SCRIPT);
     // Line endings and a missing final one make no difference.
@@ -60,7 +61,7 @@ Deno.test("the script a Node shim starts is read from each form the package mana
   }
 });
 
-Deno.test("a file that is anything more than the shim is not seen through", () => {
+test("a file that is anything more than the shim is not seen through", () => {
   const not = (text: string) => assertEquals(shimScript(text), null);
   const start = `node "%~dp0\\cli.js" %*`;
   // An ordinary batch file, and ones that only hold the start line.
@@ -112,7 +113,7 @@ Deno.test("a file that is anything more than the shim is not seen through", () =
   not("");
 });
 
-Deno.test("a file is placed beside another by the other's directory", () => {
+test("a file is placed beside another by the other's directory", () => {
   assertEquals(
     besideFile("C:\\a\\b\\tsc.cmd", "node.exe"),
     "C:\\a\\b\\node.exe",
@@ -121,7 +122,7 @@ Deno.test("a file is placed beside another by the other's directory", () => {
   assertEquals(besideFile("tsc.cmd", "node.exe"), "node.exe");
 });
 
-Deno.test("a shim's target is the script beside it, when both are there", () => {
+test("a shim's target is the script beside it, when both are there", () => {
   const shim = "C:\\p\\node_modules\\.bin\\tsc.cmd";
   const target = `C:\\p\\node_modules\\.bin\\${SCRIPT}`;
   const readText = (path: string) => path === shim ? NPM : null;
@@ -141,7 +142,7 @@ Deno.test("a shim's target is the script beside it, when both are there", () => 
   assertEquals(shimTarget(shim, () => "@echo off\r\n", () => true), null);
 });
 
-Deno.test("a shim not named by its full path is not read at all", () => {
+test("a shim not named by its full path is not read at all", () => {
   const readText = () => {
     throw new Error("read");
   };

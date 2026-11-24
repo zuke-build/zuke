@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   TargetSummary,
   withAmbientSummary,
@@ -18,7 +19,7 @@ function out(code: number, stdout = "", stderr = ""): CommandOutput {
   return new CommandOutput(code, stdout, stderr);
 }
 
-Deno.test("dprint check: the stderr closing line yields Unformatted, silence and exit 0 is zero", () => {
+test("dprint check: the stderr closing line yields Unformatted, silence and exit 0 is zero", () => {
   assertEquals(
     parseDprintCheckSummary(
       out(20, "", "Found 2 not formatted files. Run dprint fmt to fix.\n"),
@@ -42,7 +43,7 @@ Deno.test("dprint check: the stderr closing line yields Unformatted, silence and
   );
 });
 
-Deno.test("dprint fmt: the stdout closing line yields Formatted, silence and exit 0 is zero", () => {
+test("dprint fmt: the stdout closing line yields Formatted, silence and exit 0 is zero", () => {
   assertEquals(
     parseDprintFmtSummary(out(0, "Formatted \x1b[1m3\x1b[0m files.\n")),
     { Formatted: 3 },
@@ -69,7 +70,7 @@ class FmtProbe extends DprintFmtSettings {
   }
 }
 
-Deno.test("dprint: each subcommand reports its own figure onto the running target", async () => {
+test("dprint: each subcommand reports its own figure onto the running target", async () => {
   const summary = new TargetSummary();
   await withAmbientSummary(summary, () => {
     new CheckProbe().probe(

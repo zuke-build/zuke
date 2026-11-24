@@ -9,10 +9,8 @@
  * reported before failing.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, reportSummary, target } from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
 
@@ -55,7 +53,7 @@ function row(out: string, name: string): string {
   ) ?? "";
 }
 
-Deno.test("a target's row carries the helper's counts and the body's own note", async () => {
+test("a target's row carries the helper's counts and the body's own note", async () => {
   const r = await runCli(CI, ["pack"]);
   assertEquals(r.code, 0, r.err);
   assertStringIncludes(
@@ -65,7 +63,7 @@ Deno.test("a target's row carries the helper's counts and the body's own note", 
   assertEquals(row(r.out, "pack").includes("//"), false);
 });
 
-Deno.test("a failed target's row keeps the notes reported before the failure", async () => {
+test("a failed target's row keeps the notes reported before the failure", async () => {
   const r = await runCli(Broken, ["test"]);
   assertEquals(r.code, 1);
   const line = row(r.out, "test");

@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { CommandOutput } from "../src/shell.ts";
 import {
   ToolNotFoundError,
@@ -37,7 +38,7 @@ class MisnamedToolSettings extends PathToolSettings {
   }
 }
 
-Deno.test("missingTool pins linux and an unresolvable binary", async () => {
+test("missingTool pins linux and an unresolvable binary", async () => {
   const settings = new PathToolSettings();
   settings.os_ = "windows";
   const missing = missingTool(settings);
@@ -45,7 +46,7 @@ Deno.test("missingTool pins linux and an unresolvable binary", async () => {
   await assertRejects(() => missing.run(), ToolNotFoundError);
 });
 
-Deno.test("a PATH wrapper conforms", async () => {
+test("a PATH wrapper conforms", async () => {
   await assertWrapperConformance(
     () => new PathToolSettings(),
     "zuke-fake-tool",
@@ -53,7 +54,7 @@ Deno.test("a PATH wrapper conforms", async () => {
   );
 });
 
-Deno.test("an ambient ZUKE_TOOL_RESOLUTION is ignored, then restored", async () => {
+test("an ambient ZUKE_TOOL_RESOLUTION is ignored, then restored", async () => {
   const previous = Deno.env.get("ZUKE_TOOL_RESOLUTION");
   Deno.env.set("ZUKE_TOOL_RESOLUTION", "node_modules");
   try {
@@ -71,7 +72,7 @@ Deno.test("an ambient ZUKE_TOOL_RESOLUTION is ignored, then restored", async () 
   }
 });
 
-Deno.test("a node_modules wrapper conforms when it declares so", async () => {
+test("a node_modules wrapper conforms when it declares so", async () => {
   await assertWrapperConformance(
     () => new NodeToolSettings(),
     "zuke-fake-tool",
@@ -79,7 +80,7 @@ Deno.test("a node_modules wrapper conforms when it declares so", async () => {
   );
 });
 
-Deno.test("a node_modules wrapper fails a declared PATH expectation", async () => {
+test("a node_modules wrapper fails a declared PATH expectation", async () => {
   await assertRejects(
     () =>
       assertWrapperConformance(
@@ -92,7 +93,7 @@ Deno.test("a node_modules wrapper fails a declared PATH expectation", async () =
   );
 });
 
-Deno.test("a PATH wrapper fails a node_modules expectation", async () => {
+test("a PATH wrapper fails a node_modules expectation", async () => {
   await assertRejects(
     () =>
       assertWrapperConformance(() => new PathToolSettings(), "zuke-fake-tool", {
@@ -103,7 +104,7 @@ Deno.test("a PATH wrapper fails a node_modules expectation", async () => {
   );
 });
 
-Deno.test("a mismatched default binary is reported", async () => {
+test("a mismatched default binary is reported", async () => {
   await assertRejects(
     () =>
       assertWrapperConformance(
@@ -116,7 +117,7 @@ Deno.test("a mismatched default binary is reported", async () => {
   );
 });
 
-Deno.test("a wrapper that swallows a missing binary is reported", async () => {
+test("a wrapper that swallows a missing binary is reported", async () => {
   /** A wrapper that resolves instead of raising ToolNotFoundError. */
   class SwallowingSettings extends PathToolSettings {
     override run(): Promise<CommandOutput> {
@@ -135,7 +136,7 @@ Deno.test("a wrapper that swallows a missing binary is reported", async () => {
   );
 });
 
-Deno.test("a wrapper that raises the wrong error is reported", async () => {
+test("a wrapper that raises the wrong error is reported", async () => {
   /** A wrapper that reports a missing binary as some other failure. */
   class WrongErrorSettings extends PathToolSettings {
     override run(): Promise<CommandOutput> {
@@ -155,7 +156,7 @@ Deno.test("a wrapper that raises the wrong error is reported", async () => {
   assertEquals(error instanceof ToolNotFoundError, false);
 });
 
-Deno.test("a non-Error rejection is reported by its value", async () => {
+test("a non-Error rejection is reported by its value", async () => {
   /** A wrapper that rejects with something that is not an Error at all. */
   class ThrowsLiteralSettings extends PathToolSettings {
     override run(): Promise<CommandOutput> {
@@ -174,7 +175,7 @@ Deno.test("a non-Error rejection is reported by its value", async () => {
   );
 });
 
-Deno.test("a ToolNotFoundError for another binary is not a pass", async () => {
+test("a ToolNotFoundError for another binary is not a pass", async () => {
   /**
    * A wrapper that resolves its real invocation by probing the host before
    * spawning — the `docker compose` / `docker-compose` shape — and so reports a

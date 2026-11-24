@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import {
   GhIssueCloseSettings,
   GhIssueCommentSettings,
@@ -12,7 +13,7 @@ import {
 } from "../mod.ts";
 import { parseIssues } from "../src/issue.ts";
 
-Deno.test("issue create renders its flags", () => {
+test("issue create renders its flags", () => {
   assertEquals(
     new GhIssueCreateSettings()
       .repo("acme/app")
@@ -57,7 +58,7 @@ Deno.test("issue create renders its flags", () => {
   );
 });
 
-Deno.test("issue create insists on a title, and on one body", () => {
+test("issue create insists on a title, and on one body", () => {
   // Without --title gh opens a prompt, and a build has no one to answer it.
   assertThrows(
     () => new GhIssueCreateSettings().body("details").argv(),
@@ -76,7 +77,7 @@ Deno.test("issue create insists on a title, and on one body", () => {
   );
 });
 
-Deno.test("issue list renders every filter", () => {
+test("issue list renders every filter", () => {
   assertEquals(
     new GhIssueListSettings()
       .state("all")
@@ -130,7 +131,7 @@ Deno.test("issue list renders every filter", () => {
   assertEquals(new GhIssueListSettings().argv().slice(1), ["issue", "list"]);
 });
 
-Deno.test("every issue command names its issue", () => {
+test("every issue command names its issue", () => {
   // gh has no "issue for the current branch" the way it has a pull request,
   // so the operand is required rather than optional.
   assertEquals(
@@ -155,7 +156,7 @@ Deno.test("every issue command names its issue", () => {
   );
 });
 
-Deno.test("issue comment renders its edit and delete modes", () => {
+test("issue comment renders its edit and delete modes", () => {
   assertEquals(
     new GhIssueCommentSettings().selector(42).body("on it").argv().slice(1),
     ["issue", "comment", "42", "--body", "on it"],
@@ -191,7 +192,7 @@ Deno.test("issue comment renders its edit and delete modes", () => {
   );
 });
 
-Deno.test("issue close renders its reason, and pairs the duplicate with it", () => {
+test("issue close renders its reason, and pairs the duplicate with it", () => {
   assertEquals(
     new GhIssueCloseSettings().selector(42).comment("shipped").reason(
       "completed",
@@ -224,7 +225,7 @@ Deno.test("issue close renders its reason, and pairs the duplicate with it", () 
   );
 });
 
-Deno.test("parseIssues reads gh's JSON array", () => {
+test("parseIssues reads gh's JSON array", () => {
   const stdout = JSON.stringify([
     {
       number: 406,
@@ -243,7 +244,7 @@ Deno.test("parseIssues reads gh's JSON array", () => {
   }]);
 });
 
-Deno.test("parseIssues treats anything but an array of objects as empty", () => {
+test("parseIssues treats anything but an array of objects as empty", () => {
   assertEquals(parseIssues("[]"), []);
   assertEquals(parseIssues("  "), []);
   assertEquals(parseIssues("no issues match your search"), []);
@@ -254,7 +255,7 @@ Deno.test("parseIssues treats anything but an array of objects as empty", () => 
   assertEquals(parseIssues('[{"author":"someone"}]'), [{}]);
 });
 
-Deno.test("the pinned issue field set is what the entry documents", () => {
+test("the pinned issue field set is what the entry documents", () => {
   assertEquals(ISSUE_LIST_FIELDS.includes("number"), true);
   assertEquals(ISSUE_LIST_FIELDS.includes("author"), true);
   assertEquals(ISSUE_LIST_FIELDS.length, 5);

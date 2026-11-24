@@ -1,9 +1,10 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals } from "./_assert.ts";
 import { defaultHost, runSetup } from "../packages/cli/src/setup.ts";
-import { withTemp } from "../packages/core/tests/_temp.ts";
+import { withTemp } from "./_temp.ts";
 
 /**
  * Guards against the launchers' Deno bootstrap regressing back to an
@@ -22,7 +23,7 @@ const PS_LAUNCHER = "zuke.ps1";
 /** A well-formed lowercase 64-character hex SHA-256. */
 const SHA256_RE = /^[0-9a-f]{64}$/;
 
-Deno.test("the bash launcher no longer pipes an unverified install script", async () => {
+test("the bash launcher no longer pipes an unverified install script", async () => {
   const script = await Deno.readTextFile(BASH_LAUNCHER);
   assertEquals(
     script.includes("deno.land/install.sh"),
@@ -31,7 +32,7 @@ Deno.test("the bash launcher no longer pipes an unverified install script", asyn
   );
 });
 
-Deno.test("the PowerShell launcher no longer pipes an unverified install script", async () => {
+test("the PowerShell launcher no longer pipes an unverified install script", async () => {
   const script = await Deno.readTextFile(PS_LAUNCHER);
   assertEquals(
     script.includes("deno.land/install.ps1"),
@@ -40,7 +41,7 @@ Deno.test("the PowerShell launcher no longer pipes an unverified install script"
   );
 });
 
-Deno.test("the bash launcher pins well-formed per-platform checksums", async () => {
+test("the bash launcher pins well-formed per-platform checksums", async () => {
   const script = await Deno.readTextFile(BASH_LAUNCHER);
   const hashes = [...script.matchAll(/echo "([0-9a-f]+)" ;;/g)].map((m) =>
     m[1]
@@ -56,7 +57,7 @@ Deno.test("the bash launcher pins well-formed per-platform checksums", async () 
   }
 });
 
-Deno.test("the PowerShell launcher pins well-formed per-platform checksums", async () => {
+test("the PowerShell launcher pins well-formed per-platform checksums", async () => {
   const script = await Deno.readTextFile(PS_LAUNCHER);
   const hashes = [...script.matchAll(/=\s*"([0-9a-f]{64})"/g)].map((m) => m[1]);
   // Two platforms: windows x86_64/aarch64.
@@ -70,7 +71,7 @@ Deno.test("the PowerShell launcher pins well-formed per-platform checksums", asy
   }
 });
 
-Deno.test("the bash launcher rejects DENO_VERSION=latest instead of fetching vlatest", async () => {
+test("the bash launcher rejects DENO_VERSION=latest instead of fetching vlatest", async () => {
   // `latest` used to be normalised to the non-existent tag "vlatest" and 404 on
   // every retry. There is nothing to pin a checksum to, so it must fail fast
   // with an explanation. Runs the real script — but exits before any network
@@ -106,7 +107,7 @@ Deno.test("the bash launcher rejects DENO_VERSION=latest instead of fetching vla
   }, { prefix: "zuke-launcher-" });
 });
 
-Deno.test("the PowerShell launcher rejects DENO_VERSION=latest", async () => {
+test("the PowerShell launcher rejects DENO_VERSION=latest", async () => {
   // pwsh is not guaranteed on every runner, so assert on the committed source:
   // the guard must sit in zuke.ps1 too, or Windows keeps fetching "vlatest".
   const script = await Deno.readTextFile(PS_LAUNCHER);
@@ -138,7 +139,7 @@ async function bareDenoOnPath(): Promise<boolean> {
   return false;
 }
 
-Deno.test("a scaffolded plain launcher fails closed when Deno is missing", async () => {
+test("a scaffolded plain launcher fails closed when Deno is missing", async () => {
   // `zuke setup --no-bootstrap-deno` stamps a launcher that must not download
   // anything. Scaffold for real and run the generated script with no Deno on
   // PATH: it must explain itself and exit non-zero.
@@ -169,7 +170,7 @@ Deno.test("a scaffolded plain launcher fails closed when Deno is missing", async
   }, { prefix: "zuke-scaffold-" });
 });
 
-Deno.test("a scaffolded bootstrap launcher verifies before it downloads", async () => {
+test("a scaffolded bootstrap launcher verifies before it downloads", async () => {
   // The default scaffold bootstraps Deno. Run the generated script with no
   // Deno on PATH and DENO_VERSION=latest: it must take the bootstrap branch
   // and refuse a version it cannot pin *before* any network call — the same
@@ -208,7 +209,7 @@ Deno.test("a scaffolded bootstrap launcher verifies before it downloads", async 
   }, { prefix: "zuke-scaffold-" });
 });
 
-Deno.test("both launchers pin the same default Deno version", async () => {
+test("both launchers pin the same default Deno version", async () => {
   const bash = await Deno.readTextFile(BASH_LAUNCHER);
   const ps = await Deno.readTextFile(PS_LAUNCHER);
   const bashMatch = bash.match(/DEFAULT_DENO_VERSION="v([0-9.]+)"/);

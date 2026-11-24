@@ -18,7 +18,8 @@
  * Excluded from the fast unit gate (`*_e2e.ts`); run by the `integration` target.
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import {
   defaultStateHost,
   FileSystemStateStore,
@@ -39,7 +40,7 @@ async function readCaptured(
   });
 }
 
-Deno.test("two processes export one complete trace under a shared trace id", async () => {
+test("two processes export one complete trace under a shared trace id", async () => {
   const dir = await Deno.makeTempDir({ prefix: "zuke-otel-e2e-" });
   const captureFile = `${dir}/otlp.ndjson`;
   await Deno.writeTextFile(captureFile, "");

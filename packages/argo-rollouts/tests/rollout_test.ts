@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import {
   ArgoRolloutsPromoteSettings,
   ArgoRolloutsRestartSettings,
@@ -10,7 +11,7 @@ import {
   ArgoRolloutsUndoSettings,
 } from "../mod.ts";
 
-Deno.test("setImage renders the rollout and one CONTAINER=IMAGE pair", () => {
+test("setImage renders the rollout and one CONTAINER=IMAGE pair", () => {
   assertEquals(
     new ArgoRolloutsSetImageSettings()
       .name("api")
@@ -27,7 +28,7 @@ Deno.test("setImage renders the rollout and one CONTAINER=IMAGE pair", () => {
   );
 });
 
-Deno.test("setImage requires a name and an image", () => {
+test("setImage requires a name and an image", () => {
   assertThrows(
     () => new ArgoRolloutsSetImageSettings().image("api", "x:1").argv(),
     Error,
@@ -40,7 +41,7 @@ Deno.test("setImage requires a name and an image", () => {
   );
 });
 
-Deno.test("promote: bare and --full", () => {
+test("promote: bare and --full", () => {
   assertEquals(
     new ArgoRolloutsPromoteSettings().name("api").argv().slice(1),
     ["promote", "api"],
@@ -56,7 +57,7 @@ Deno.test("promote: bare and --full", () => {
   );
 });
 
-Deno.test("status: bare, with a timeout, and without watching", () => {
+test("status: bare, with a timeout, and without watching", () => {
   assertEquals(
     new ArgoRolloutsStatusSettings().name("api").argv().slice(1),
     ["status", "api"],
@@ -73,7 +74,7 @@ Deno.test("status: bare, with a timeout, and without watching", () => {
   );
 });
 
-Deno.test("undo: bare and to a revision", () => {
+test("undo: bare and to a revision", () => {
   assertEquals(
     new ArgoRolloutsUndoSettings().name("api").argv().slice(1),
     ["undo", "api"],
@@ -96,7 +97,7 @@ Deno.test("undo: bare and to a revision", () => {
   );
 });
 
-Deno.test("restart: now and after a delay", () => {
+test("restart: now and after a delay", () => {
   assertEquals(
     new ArgoRolloutsRestartSettings().name("api").argv().slice(1),
     ["restart", "api"],

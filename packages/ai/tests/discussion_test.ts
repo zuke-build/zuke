@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import {
   acceptances,
   budgetComments,
@@ -25,7 +26,7 @@ function comment(over: Partial<HostComment>): HostComment {
   };
 }
 
-Deno.test("trustedComments keeps only platform-asserted maintainers", () => {
+test("trustedComments keeps only platform-asserted maintainers", () => {
   const comments = [
     comment({ id: 1, author: "owner", association: "OWNER" }),
     comment({ id: 2, author: "member", association: "MEMBER" }),
@@ -52,7 +53,7 @@ Deno.test("trustedComments keeps only platform-asserted maintainers", () => {
   assertEquals(trusted.map((c) => c.id), [1, 2, 3]);
 });
 
-Deno.test("trustAuthors extends and trustAssociations replaces the trust rule", () => {
+test("trustAuthors extends and trustAssociations replaces the trust rule", () => {
   const comments = [
     comment({ id: 1, author: "outside-expert", association: "NONE" }),
     comment({ id: 2, author: "member", association: "MEMBER" }),
@@ -77,7 +78,7 @@ Deno.test("trustAuthors extends and trustAssociations replaces the trust rule", 
   );
 });
 
-Deno.test("the default trusted associations are OWNER/MEMBER/COLLABORATOR", () => {
+test("the default trusted associations are OWNER/MEMBER/COLLABORATOR", () => {
   assertEquals(DEFAULT_TRUSTED_ASSOCIATIONS, [
     "OWNER",
     "MEMBER",
@@ -85,7 +86,7 @@ Deno.test("the default trusted associations are OWNER/MEMBER/COLLABORATOR", () =
   ]);
 });
 
-Deno.test("rebuttalsFor anchors comments to explicit finding ids", () => {
+test("rebuttalsFor anchors comments to explicit finding ids", () => {
   const comments = [
     comment({
       id: 1,
@@ -100,7 +101,7 @@ Deno.test("rebuttalsFor anchors comments to explicit finding ids", () => {
   assertEquals(rebuttals.get("def456")?.map((c) => c.id), [3]);
 });
 
-Deno.test("budgetComments caps total text, keeping the newest comments", () => {
+test("budgetComments caps total text, keeping the newest comments", () => {
   const comments = [
     comment({ id: 1, body: "a".repeat(400) }),
     comment({ id: 2, body: "b".repeat(400) }),
@@ -135,7 +136,7 @@ function thread(id: string, ...replyIds: number[]): [string, FindingThread] {
   }];
 }
 
-Deno.test("acceptances reads a command naming a tracked finding", () => {
+test("acceptances reads a command naming a tracked finding", () => {
   const accepted = acceptances(
     [
       comment({
@@ -160,7 +161,7 @@ Deno.test("acceptances reads a command naming a tracked finding", () => {
   assertEquals(accepted.get("ghi789")?.reason, DEFAULT_ACCEPT_REASON);
 });
 
-Deno.test("acceptances ignores an unknown id, a quoted command and a lookalike", () => {
+test("acceptances ignores an unknown id, a quoted command and a lookalike", () => {
   const accepted = acceptances(
     [
       comment({ id: 1, body: "@zuke-build accept zzz999: not tracked" }),
@@ -176,7 +177,7 @@ Deno.test("acceptances ignores an unknown id, a quoted command and a lookalike",
   assertEquals(accepted.size, 0);
 });
 
-Deno.test("acceptances matches the mention case-insensitively, like the workflow gate", () => {
+test("acceptances matches the mention case-insensitively, like the workflow gate", () => {
   const accepted = acceptances(
     [comment({ id: 1, body: "@Zuke-Build ACCEPT abc123 ok" })],
     "@zuke-build",
@@ -186,7 +187,7 @@ Deno.test("acceptances matches the mention case-insensitively, like the workflow
   assertEquals(accepted.get("abc123")?.reason, "ok");
 });
 
-Deno.test("acceptances takes the thread's finding for a reply that names none", () => {
+test("acceptances takes the thread's finding for a reply that names none", () => {
   const threads = new Map([thread("abc123", 7)]);
   const accepted = acceptances(
     [
@@ -229,7 +230,7 @@ Deno.test("acceptances takes the thread's finding for a reply that names none", 
   );
 });
 
-Deno.test("acceptances keeps the newest command per finding, bounded and one-lined", () => {
+test("acceptances keeps the newest command per finding, bounded and one-lined", () => {
   const accepted = acceptances(
     [
       comment({ id: 1, body: "@zuke-build accept abc123 first" }),
@@ -251,7 +252,7 @@ Deno.test("acceptances keeps the newest command per finding, bounded and one-lin
   assertEquals(reason.endsWith("…"), true);
 });
 
-Deno.test("acceptances carries the display name when the host reports one", () => {
+test("acceptances carries the display name when the host reports one", () => {
   const accepted = acceptances(
     [
       comment({
@@ -268,7 +269,7 @@ Deno.test("acceptances carries the display name when the host reports one", () =
   assertEquals(accepted.get("abc123")?.displayName, "Toto");
 });
 
-Deno.test("commands takes one mention word and rejects anything else", () => {
+test("commands takes one mention word and rejects anything else", () => {
   for (const mention of ["@zuke-build", "/zuke", "zuke:"]) {
     assertEquals(
       new DiscussionSettings().commands(mention).mention_(),

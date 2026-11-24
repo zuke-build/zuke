@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import {
   defaultMcpAuthorize,
   type McpCall,
@@ -36,7 +37,7 @@ function allows(identity: McpIdentity, call: McpCall): boolean {
 
 // ---- The role model --------------------------------------------------------
 
-Deno.test("the built-in roles are ordered, and custom names are exact", () => {
+test("the built-in roles are ordered, and custom names are exact", () => {
   // An operator satisfies everything below it…
   for (const required of ["read", "run", "operator"]) {
     assertEquals(satisfiesRole(["operator"], required), true, required);
@@ -59,7 +60,7 @@ Deno.test("the built-in roles are ordered, and custom names are exact", () => {
 
 // ---- The default policy ----------------------------------------------------
 
-Deno.test("read tools need read, and running needs run", () => {
+test("read tools need read, and running needs run", () => {
   const reader = caller("ada", ["read"]);
   for (const tool of ["list_runs", "show_run", "describe_build", "graph"]) {
     assertEquals(allows(reader, { tool }), true, tool);
@@ -69,7 +70,7 @@ Deno.test("read tools need read, and running needs run", () => {
   assertEquals(allows(caller("ada", []), { tool: "list_runs" }), false);
 });
 
-Deno.test("a target may ask for more than run, and only more", () => {
+test("a target may ask for more than run, and only more", () => {
   const runner = caller("ada", ["run"]);
   const op = caller("ada", ["operator"]);
   const call = { tool: "run:promote", requiredRoles: ["operator"] };
@@ -96,7 +97,7 @@ Deno.test("a target may ask for more than run, and only more", () => {
   );
 });
 
-Deno.test("a run-scoped mutation needs the initiator, or an operator", () => {
+test("a run-scoped mutation needs the initiator, or an operator", () => {
   const owned = run({
     initiator: { actor: "ada", kind: "human", at: "2026-09-06T10:00:00.000Z" },
   });
@@ -128,7 +129,7 @@ Deno.test("a run-scoped mutation needs the initiator, or an operator", () => {
   }
 });
 
-Deno.test("a service-initiated run may be steered by any run caller", () => {
+test("a service-initiated run may be steered by any run caller", () => {
   // A scheduler's run has no person to ask; treating the scheduler as its owner
   // would mean nobody could intervene.
   const machine = run({
@@ -148,7 +149,7 @@ Deno.test("a service-initiated run may be steered by any run caller", () => {
   );
 });
 
-Deno.test("a run with no initiator falls back to its actor as owner", () => {
+test("a run with no initiator falls back to its actor as owner", () => {
   // A record written before initiators existed; `actor` is the closest answer.
   const legacy = run({ actor: "ada" });
   assertEquals(
@@ -161,7 +162,7 @@ Deno.test("a run with no initiator falls back to its actor as owner", () => {
   );
 });
 
-Deno.test("a sweep over every run needs operator", () => {
+test("a sweep over every run needs operator", () => {
   // No run named: it touches all of them, which no single run's owner can
   // authorize.
   const sweep = { tool: "resume_check" };
@@ -178,7 +179,7 @@ Deno.test("a sweep over every run needs operator", () => {
   );
 });
 
-Deno.test("a denial says which rule refused, and names the owner", () => {
+test("a denial says which rule refused, and names the owner", () => {
   const owned = run({
     initiator: { actor: "ada", kind: "human", at: "2026-09-06T10:00:00.000Z" },
   });

@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "./_assert.ts";
+} from "../../../tests/_assert.ts";
 import { target } from "../src/target.ts";
 import { plan } from "../src/graph.ts";
 import {
@@ -19,7 +20,7 @@ import { execute, type Reporter } from "../src/executor.ts";
 /** Whether the affected set (by identity) contains `t`. */
 const has = (set: Set<unknown>, t: unknown) => set.has(t);
 
-Deno.test("affectedTargets: a target's own inputs gate it", () => {
+test("affectedTargets: a target's own inputs gate it", () => {
   const a = target().inputs("packages/a");
   const b = target().inputs("packages/b").dependsOn(a);
   const order = plan(b); // [a, b]
@@ -32,7 +33,7 @@ Deno.test("affectedTargets: a target's own inputs gate it", () => {
   assertEquals(none.size, 0);
 });
 
-Deno.test("affectedTargets: affectedness propagates along dependencies", () => {
+test("affectedTargets: affectedness propagates along dependencies", () => {
   const a = target().inputs("packages/a");
   const b = target().inputs("packages/b").dependsOn(a);
   const order = plan(b);
@@ -42,13 +43,13 @@ Deno.test("affectedTargets: affectedness propagates along dependencies", () => {
   assertEquals(has(set, b), true); // dirtied by its dependency
 });
 
-Deno.test("affectedTargets: a target with no inputs is always affected", () => {
+test("affectedTargets: a target with no inputs is always affected", () => {
   const c = target();
   const set = affectedTargets(plan(c), []);
   assertEquals(has(set, c), true);
 });
 
-Deno.test("affectedTargets: an affected target pulls its triggers along", () => {
+test("affectedTargets: an affected target pulls its triggers along", () => {
   const t2 = target().inputs("y");
   const t1 = target().inputs("x").triggers(t2);
   const order = plan(t1); // t1 before its trigger t2
@@ -61,7 +62,7 @@ Deno.test("affectedTargets: an affected target pulls its triggers along", () => 
   assertEquals(neither.size, 0);
 });
 
-Deno.test("affectedTargets: input matching covers files, directories, and the repo root", () => {
+test("affectedTargets: input matching covers files, directories, and the repo root", () => {
   const dir = target().inputs("src");
   assertEquals(has(affectedTargets([dir], ["src/a.ts"]), dir), true);
   assertEquals(has(affectedTargets([dir], ["./src/a.ts"]), dir), true); // leading ./
@@ -89,7 +90,7 @@ Deno.test("affectedTargets: input matching covers files, directories, and the re
   assertEquals(has(affectedTargets([empty], [""]), empty), false);
 });
 
-Deno.test("gitChangedFiles queries git and merges tracked + untracked, deduped", async () => {
+test("gitChangedFiles queries git and merges tracked + untracked, deduped", async () => {
   const calls: string[][] = [];
   const run = (args: string[]): Promise<string> => {
     calls.push(args);
@@ -103,7 +104,7 @@ Deno.test("gitChangedFiles queries git and merges tracked + untracked, deduped",
   assertEquals(calls[1], ["ls-files", "--others", "--exclude-standard"]);
 });
 
-Deno.test("gitChangedFiles defaults the base to HEAD", async () => {
+test("gitChangedFiles defaults the base to HEAD", async () => {
   const calls: string[][] = [];
   const run = (args: string[]): Promise<string> => {
     calls.push(args);
@@ -113,7 +114,7 @@ Deno.test("gitChangedFiles defaults the base to HEAD", async () => {
   assertEquals(calls[0][2], "HEAD");
 });
 
-Deno.test("gitChangedFiles rejects a base that git would read as an option", async () => {
+test("gitChangedFiles rejects a base that git would read as an option", async () => {
   let ran = false;
   const run = (): Promise<string> => {
     ran = true;
@@ -126,7 +127,7 @@ Deno.test("gitChangedFiles rejects a base that git would read as an option", asy
   assertEquals(ran, false); // rejected before git ran
 });
 
-Deno.test("runGitProcess returns stdout of a successful process", async () => {
+test("runGitProcess returns stdout of a successful process", async () => {
   // Stand in the running `deno` for `git` (always present, shell-free).
   const out = await runGitProcess(
     ["eval", "console.log('src/a.ts'); console.log('src/b.ts')"],
@@ -135,7 +136,7 @@ Deno.test("runGitProcess returns stdout of a successful process", async () => {
   assertEquals(out.trim().split("\n"), ["src/a.ts", "src/b.ts"]);
 });
 
-Deno.test("runGitProcess throws with stderr detail on a non-zero exit", async () => {
+test("runGitProcess throws with stderr detail on a non-zero exit", async () => {
   const err = await assertRejects(() =>
     runGitProcess(
       ["eval", "console.error('bad revision'); Deno.exit(1)"],
@@ -146,14 +147,14 @@ Deno.test("runGitProcess throws with stderr detail on a non-zero exit", async ()
   assertStringIncludes(err.message, "bad revision");
 });
 
-Deno.test("runGitProcess throws without detail when a failure prints nothing", async () => {
+test("runGitProcess throws without detail when a failure prints nothing", async () => {
   const err = await assertRejects(() =>
     runGitProcess(["eval", "Deno.exit(2)"], Deno.execPath())
   );
   assertStringIncludes(err.message, "Is this a git repository");
 });
 
-Deno.test("runGitProcess reports a friendly error when git cannot be spawned", async () => {
+test("runGitProcess reports a friendly error when git cannot be spawned", async () => {
   const err = await assertRejects(() =>
     runGitProcess(["diff"], "zuke-no-such-binary-xyz")
   );
@@ -172,7 +173,7 @@ function recorder(): { lines: string[]; reporter: Reporter } {
   };
 }
 
-Deno.test("execute --affected skips targets a change cannot reach", async () => {
+test("execute --affected skips targets a change cannot reach", async () => {
   class B extends Build {
     a = target().inputs("packages/a").executes(() => {});
     b = target().inputs("packages/b").dependsOn(this.a).executes(() => {});
@@ -190,7 +191,7 @@ Deno.test("execute --affected skips targets a change cannot reach", async () => 
   assertEquals(result.executed, ["b"]); // a is unaffected and skipped; b still runs
 });
 
-Deno.test("execute --affected reports when nothing is affected", async () => {
+test("execute --affected reports when nothing is affected", async () => {
   class B extends Build {
     a = target().inputs("packages/a").executes(() => {});
     b = target().inputs("packages/b").dependsOn(this.a).executes(() => {});

@@ -1,16 +1,17 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import { missingTool } from "@zuke/core/tooling/conformance";
 import { GhSettings, GhTasks } from "../src/gh.ts";
 
-Deno.test("the default binary is gh", () => {
+test("the default binary is gh", () => {
   assertEquals(new GhSettings().argv(), ["gh"]);
 });
 
-Deno.test("gh: command, repo, then flags", () => {
+test("gh: command, repo, then flags", () => {
   const argv = new GhSettings()
     .command("release", "create", "v1.2.3")
     .repo("acme/app")
@@ -30,7 +31,7 @@ Deno.test("gh: command, repo, then flags", () => {
   ]);
 });
 
-Deno.test("gh: minimal runs just the command", () => {
+test("gh: minimal runs just the command", () => {
   assertEquals(new GhSettings().command("pr", "list").argv(), [
     "gh",
     "pr",
@@ -38,7 +39,7 @@ Deno.test("gh: minimal runs just the command", () => {
   ]);
 });
 
-Deno.test("GhTasks.run reaches execution", async () => {
+test("GhTasks.run reaches execution", async () => {
   await assertRejects(
     () => GhTasks.run((s) => missingTool(s.command("auth", "status"))),
     ToolNotFoundError,

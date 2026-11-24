@@ -10,7 +10,7 @@
 import type {
   PrometheusCredentialsContext,
   PrometheusOutgoingRequest,
-} from "../mod.ts";
+} from "../../../packages/prometheus/mod.ts";
 import { fakeFetch, type SentRequest } from "./_fetch.ts";
 
 /** A mutable clock, in epoch ms. */

@@ -1,12 +1,13 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { HttpError } from "@zuke/core";
 import { CommandOutput } from "@zuke/core/shell";
 import {
@@ -15,7 +16,13 @@ import {
   CloudMonitoringTimeSeriesSettings,
   type GcloudSettings,
 } from "../mod.ts";
-import { NOW, pages, point, series, TOKEN } from "./_monitoring.ts";
+import {
+  NOW,
+  pages,
+  point,
+  series,
+  TOKEN,
+} from "../../../tests/support/gcloud/_monitoring.ts";
 
 /** A read of the Cloud Run 5xx count, with the fakes the tests share. */
 function fiveXx<S extends CloudMonitoringTimeSeriesSettings>(
@@ -34,7 +41,7 @@ function fiveXx<S extends CloudMonitoringTimeSeriesSettings>(
     .window("5m");
 }
 
-Deno.test("timeSeriesList sends the documented query, with the token as a bearer header", async () => {
+test("timeSeriesList sends the documented query, with the token as a bearer header", async () => {
   const fake = pages({ timeSeries: [series([1, 2])] });
   const result = await CloudMonitoringTasks.timeSeriesList((s) =>
     fiveXx(s, fake.fetch).pageSize(500)
@@ -73,7 +80,7 @@ Deno.test("timeSeriesList sends the documented query, with the token as a bearer
   });
 });
 
-Deno.test("timeSeriesList follows nextPageToken to the last page", async () => {
+test("timeSeriesList follows nextPageToken to the last page", async () => {
   const fake = pages(
     { timeSeries: [series([1])], nextPageToken: "t1" },
     { timeSeries: [series([2])], nextPageToken: "t2" },
@@ -92,7 +99,7 @@ Deno.test("timeSeriesList follows nextPageToken to the last page", async () => {
   assertEquals(fake.urls[2].searchParams.get("pageToken"), "t2");
 });
 
-Deno.test("timeSeriesList fails at the page cap rather than truncate", async () => {
+test("timeSeriesList fails at the page cap rather than truncate", async () => {
   const fake = pages({ timeSeries: [series([1])], nextPageToken: "again" });
   await assertRejects(
     () =>
@@ -111,7 +118,7 @@ Deno.test("timeSeriesList fails at the page cap rather than truncate", async () 
   );
 });
 
-Deno.test("timeSeriesList: an empty body and an empty object are no series", async () => {
+test("timeSeriesList: an empty body and an empty object are no series", async () => {
   assertEquals(
     await CloudMonitoringTasks.timeSeriesList((s) =>
       fiveXx(s, pages(new Response("")).fetch)
@@ -126,7 +133,7 @@ Deno.test("timeSeriesList: an empty body and an empty object are no series", asy
   );
 });
 
-Deno.test("timeSeriesList parses every typed value proto3 JSON can carry", async () => {
+test("timeSeriesList parses every typed value proto3 JSON can carry", async () => {
   const fake = pages({
     timeSeries: [{
       metric: { type: "m" },
@@ -182,7 +189,7 @@ function onePoint(value: unknown) {
   };
 }
 
-Deno.test("timeSeriesList refuses a shape it does not know, without quoting it", async () => {
+test("timeSeriesList refuses a shape it does not know, without quoting it", async () => {
   const cases: Array<[unknown, string]> = [
     ["aaaaaaaa", "a page that is not an object"],
     [{ timeSeries: ["aaaaaaaa"] }, "a series that is not an object"],
@@ -218,7 +225,7 @@ Deno.test("timeSeriesList refuses a shape it does not know, without quoting it",
   }
 });
 
-Deno.test("timeSeriesList refuses a partial answer the API flagged", async () => {
+test("timeSeriesList refuses a partial answer the API flagged", async () => {
   await assertRejects(
     () =>
       CloudMonitoringTasks.timeSeriesList((s) =>
@@ -233,7 +240,7 @@ Deno.test("timeSeriesList refuses a partial answer the API flagged", async () =>
   );
 });
 
-Deno.test("an auth failure is an HttpError that never carries the token", async () => {
+test("an auth failure is an HttpError that never carries the token", async () => {
   const fake = pages(new Response('{"error":{"code":401}}', { status: 401 }));
   const error = await assertRejects(
     () => CloudMonitoringTasks.timeSeriesList((s) => fiveXx(s, fake.fetch)),
@@ -244,7 +251,7 @@ Deno.test("an auth failure is an HttpError that never carries the token", async 
   assertEquals(String(error.stack).includes(TOKEN), false);
 });
 
-Deno.test("the default token comes from gcloud, through the .gcloud(...) lambda's instance", async () => {
+test("the default token comes from gcloud, through the .gcloud(...) lambda's instance", async () => {
   const calls: string[][] = [];
   const runner = (settings: GcloudSettings) => {
     calls.push(settings.argv());
@@ -267,7 +274,7 @@ Deno.test("the default token comes from gcloud, through the .gcloud(...) lambda'
   assertEquals(provided.headers[0].get("authorization"), "Bearer cccccccc");
 });
 
-Deno.test("the project comes from the environment when not named", async () => {
+test("the project comes from the environment when not named", async () => {
   const fake = pages({});
   await CloudMonitoringTasks.timeSeriesList((s) =>
     s.metricType("m").token(TOKEN).fetch(fake.fetch)
@@ -284,7 +291,7 @@ Deno.test("the project comes from the environment when not named", async () => {
   );
 });
 
-Deno.test("the filter: raw parts are parenthesised, and a metric must be named", async () => {
+test("the filter: raw parts are parenthesised, and a metric must be named", async () => {
   const fake = pages({});
   await CloudMonitoringTasks.timeSeriesList((s) =>
     s.project("p").token(TOKEN).fetch(fake.fetch)
@@ -304,7 +311,7 @@ Deno.test("the filter: raw parts are parenthesised, and a metric must be named",
   );
 });
 
-Deno.test("the filter refuses what the Monitoring language cannot escape", async () => {
+test("the filter refuses what the Monitoring language cannot escape", async () => {
   const fake = pages({});
   type Refused = [
     (s: CloudMonitoringTimeSeriesSettings) => CloudMonitoringTimeSeriesSettings,
@@ -334,7 +341,7 @@ Deno.test("the filter refuses what the Monitoring language cannot escape", async
   assertEquals(fake.urls.length, 0);
 });
 
-Deno.test("aggregation is refused where the API would refuse it", async () => {
+test("aggregation is refused where the API would refuse it", async () => {
   const base = (s: CloudMonitoringTimeSeriesSettings) =>
     s.project("p").metricType("m").token(TOKEN).fetch(pages({}).fetch);
   await assertRejects(
@@ -377,7 +384,7 @@ Deno.test("aggregation is refused where the API would refuse it", async () => {
   );
 });
 
-Deno.test("setters refuse values the API cannot take", () => {
+test("setters refuse values the API cannot take", () => {
   const s = new CloudMonitoringTimeSeriesSettings();
   assertThrows(() => s.alignmentPeriod("30s"), Error, "at least 60");
   assertThrows(() => s.alignmentPeriod(60_500), Error, "whole seconds");
@@ -391,7 +398,7 @@ Deno.test("setters refuse values the API cannot take", () => {
   );
 });
 
-Deno.test("the interval: explicit, unaligned, aligned, and refused", async () => {
+test("the interval: explicit, unaligned, aligned, and refused", async () => {
   const fake = pages({});
   const base = (s: CloudMonitoringTimeSeriesSettings) =>
     s.project("p").metricType("m").token(TOKEN).fetch(fake.fetch).now(NOW);
@@ -430,7 +437,7 @@ Deno.test("the interval: explicit, unaligned, aligned, and refused", async () =>
   );
 });
 
-Deno.test("metricValue: latest sums each series' own newest point", async () => {
+test("metricValue: latest sums each series' own newest point", async () => {
   const body = {
     timeSeries: [
       series([2, 7], 10, "a"),
@@ -450,7 +457,7 @@ Deno.test("metricValue: latest sums each series' own newest point", async () => 
   assertEquals(await read("minimum"), 2);
 });
 
-Deno.test("metricValue pins the FULL view after the caller's lambda", async () => {
+test("metricValue pins the FULL view after the caller's lambda", async () => {
   const fake = pages({ timeSeries: [series([1])] });
   await CloudMonitoringTasks.metricValue((s) =>
     fiveXx(s, fake.fetch).view("HEADERS")
@@ -458,7 +465,7 @@ Deno.test("metricValue pins the FULL view after the caller's lambda", async () =
   assertEquals(fake.urls[0].searchParams.get("view"), "FULL");
 });
 
-Deno.test("metricValue: no points fails unless missingDataAs says what it means", async () => {
+test("metricValue: no points fails unless missingDataAs says what it means", async () => {
   await assertRejects(
     () => CloudMonitoringTasks.metricValue((s) => fiveXx(s, pages({}).fetch)),
     Error,
@@ -472,7 +479,7 @@ Deno.test("metricValue: no points fails unless missingDataAs says what it means"
   );
 });
 
-Deno.test("metricValue: a distribution reads as its mean; bool, string and NaN are refused", async () => {
+test("metricValue: a distribution reads as its mean; bool, string and NaN are refused", async () => {
   const one = (value: unknown) =>
     CloudMonitoringTasks.metricValue((s) =>
       fiveXx(s, pages(onePoint(value)).fetch)
@@ -491,7 +498,7 @@ Deno.test("metricValue: a distribution reads as its mean; bool, string and NaN a
   await assertRejects(() => one({ doubleValue: "NaN" }), Error, "(NaN)");
 });
 
-Deno.test("metricValue folds a long series without overflowing the stack", async () => {
+test("metricValue folds a long series without overflowing the stack", async () => {
   const values = Array.from({ length: 200_000 }, (_, i) => i % 7);
   const big = {
     timeSeries: [{
@@ -509,7 +516,7 @@ Deno.test("metricValue folds a long series without overflowing the stack", async
   );
 });
 
-Deno.test("both tasks run without a lambda, and refuse for want of a metric", async () => {
+test("both tasks run without a lambda, and refuse for want of a metric", async () => {
   await assertRejects(
     () => CloudMonitoringTasks.timeSeriesList(),
     Error,
@@ -522,7 +529,7 @@ Deno.test("both tasks run without a lambda, and refuse for want of a metric", as
   );
 });
 
-Deno.test("minimum and maximum find their value wherever it sits", async () => {
+test("minimum and maximum find their value wherever it sits", async () => {
   const body = { timeSeries: [series([4, 1, 9, 3])] };
   const read = (how: "maximum" | "minimum") =>
     CloudMonitoringTasks.metricValue((s) =>
@@ -532,7 +539,7 @@ Deno.test("minimum and maximum find their value wherever it sits", async () => {
   assertEquals(await read("maximum"), 9);
 });
 
-Deno.test("a series' unit is kept, and a non-string end time is refused", async () => {
+test("a series' unit is kept, and a non-string end time is refused", async () => {
   const [one] = await CloudMonitoringTasks.timeSeriesList((s) =>
     fiveXx(s, pages({ timeSeries: [{ ...series([1]), unit: "1" }] }).fetch)
   );

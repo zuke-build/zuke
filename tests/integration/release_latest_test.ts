@@ -8,10 +8,8 @@
  * fake GitHub, mirroring how `build.ts`'s `release` target is wired.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { GhTasks } from "../../packages/gh/mod.ts";
 import { runCli } from "./_harness.ts";
@@ -102,7 +100,7 @@ function releaseBuild(
   return Release;
 }
 
-Deno.test("the release wiring pins Latest back and refreshes the archive", async () => {
+test("the release wiring pins Latest back and refreshes the archive", async () => {
   const root = await Deno.makeTempDir();
   try {
     const calls: string[] = [];
@@ -128,7 +126,7 @@ Deno.test("the release wiring pins Latest back and refreshes the archive", async
   }
 });
 
-Deno.test("the not-yet-cut release window writes nowhere at all", async () => {
+test("the not-yet-cut release window writes nowhere at all", async () => {
   // Regression: with the pointer on a package release and the action release
   // not yet cut, a refresh resolved through "latest" would have deleted and
   // replaced assets on that package release. The wiring must stop after the

@@ -7,10 +7,8 @@
  * separate reader can load, keeps secrets out, and is idempotent.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   Build,
   FileSystemBuildRegistry,
@@ -42,7 +40,7 @@ async function withRegistryDir(
   }
 }
 
-Deno.test("zuke register writes a descriptor a reader can load", async () => {
+test("zuke register writes a descriptor a reader can load", async () => {
   await withRegistryDir(async (dir) => {
     const first = await runCli(RegBuild, ["register"]);
     assertEquals(first.code, 0);
@@ -73,7 +71,7 @@ Deno.test("zuke register writes a descriptor a reader can load", async () => {
   });
 });
 
-Deno.test("zuke register recovers from a mutex marker a killed register left behind", async () => {
+test("zuke register recovers from a mutex marker a killed register left behind", async () => {
   await withRegistryDir(async (dir) => {
     // A previous `zuke register` was killed mid-write: its lock marker is still
     // there, stamped long enough ago to be past the mutex TTL. Every later
@@ -102,7 +100,7 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
-Deno.test("zuke register --json prints the written descriptor", async () => {
+test("zuke register --json prints the written descriptor", async () => {
   await withRegistryDir(async () => {
     const res = await runCli(RegBuild, ["register", "--json"]);
     assertEquals(res.code, 0);

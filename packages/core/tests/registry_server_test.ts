@@ -7,8 +7,9 @@
  * authz tiers keyed on the qualified `<buildId>:<target>` name, and auditing.
  */
 
+import { test } from "../../../tests/_testing.ts";
 import type { AwaitedWriter } from "../src/stdio.ts";
-import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import { Build } from "../src/build.ts";
 import { type JsonRpcResponse, METHOD_NOT_FOUND } from "../src/mcp/jsonrpc.ts";
 import { PROTOCOL_VERSION } from "../src/mcp/protocol.ts";
@@ -31,7 +32,7 @@ import type {
   PutBuildResult,
 } from "../src/registry/registry.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
-import { FakeStateHost } from "./_fakes.ts";
+import { FakeStateHost } from "../../../tests/_fakes.ts";
 
 // ---- fakes ------------------------------------------------------------------
 
@@ -193,7 +194,7 @@ async function call(
 
 // ---- tests ------------------------------------------------------------------
 
-Deno.test("initialize negotiates the version; ping is empty", async () => {
+test("initialize negotiates the version; ping is empty", async () => {
   const server = new RegistryMcpServer(new FakeRegistry());
   const res = await server.handleMessage(
     req("initialize", { protocolVersion: "2024-11-05" }),
@@ -204,7 +205,7 @@ Deno.test("initialize negotiates the version; ping is empty", async () => {
   assertEquals((await server.handleMessage(req("ping")))?.result, {});
 });
 
-Deno.test("tools/list is read-only until running is allowed, and re-reads live", async () => {
+test("tools/list is read-only until running is allowed, and re-reads live", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"]));
 
@@ -229,7 +230,7 @@ Deno.test("tools/list is read-only until running is allowed, and re-reads live",
   assertEquals(names.includes("run:Web:release"), true);
 });
 
-Deno.test("describe_build returns a surface or a friendly miss", async () => {
+test("describe_build returns a surface or a friendly miss", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"]));
   const server = new RegistryMcpServer(registry);
@@ -245,7 +246,7 @@ Deno.test("describe_build returns a surface or a friendly miss", async () => {
   assertEquals((await call(server, "describe_build", {})).isError, true);
 });
 
-Deno.test("list_builds returns the catalog", async () => {
+test("list_builds returns the catalog", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"]));
   const server = new RegistryMcpServer(registry);
@@ -253,7 +254,7 @@ Deno.test("list_builds returns the catalog", async () => {
   assertStringIncludes(text, "Api");
 });
 
-Deno.test("a run tool is disabled without --allow-run", async () => {
+test("a run tool is disabled without --allow-run", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"]));
   const { runner, calls } = recordingRunner();
@@ -264,7 +265,7 @@ Deno.test("a run tool is disabled without --allow-run", async () => {
   assertEquals(calls.length, 0);
 });
 
-Deno.test("a run tool spawns the descriptor's module location", async () => {
+test("a run tool spawns the descriptor's module location", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"]));
   const { runner, calls } = recordingRunner({
@@ -288,7 +289,7 @@ Deno.test("a run tool spawns the descriptor's module location", async () => {
   ]);
 });
 
-Deno.test("a non-zero exit is reported as an error", async () => {
+test("a non-zero exit is reported as an error", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"]));
   const { runner } = recordingRunner({
@@ -302,7 +303,7 @@ Deno.test("a non-zero exit is reported as an error", async () => {
   assertStringIncludes(result.text, "exited 2");
 });
 
-Deno.test("dryRun appends --dry-run to the spawn argv", async () => {
+test("dryRun appends --dry-run to the spawn argv", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"]));
   const { runner, calls } = recordingRunner();
@@ -311,7 +312,7 @@ Deno.test("dryRun appends --dry-run to the spawn argv", async () => {
   assertEquals(calls[0].argv.includes("--dry-run"), true);
 });
 
-Deno.test("the allow-list glob restricts by qualified name", async () => {
+test("the allow-list glob restricts by qualified name", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy", "check"]));
   registry.add(descriptor("Web", ["deploy"]));
@@ -332,7 +333,7 @@ Deno.test("the allow-list glob restricts by qualified name", async () => {
   assertEquals(calls.length, 0);
 });
 
-Deno.test("a protected target requires a valid operator token", async () => {
+test("a protected target requires a valid operator token", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"]));
   const { runner, calls } = recordingRunner();
@@ -361,7 +362,7 @@ Deno.test("a protected target requires a valid operator token", async () => {
   assertEquals(calls.length, 1);
 });
 
-Deno.test("a registry target that depends on a protected one still needs the token", async () => {
+test("a registry target that depends on a protected one still needs the token", async () => {
   const registry = new FakeRegistry();
   // release → deploy, declared in the registered surface. Spawning `release`
   // runs `deploy` in the child process, so protecting `deploy` has to reach it.
@@ -404,7 +405,7 @@ Deno.test("a registry target that depends on a protected one still needs the tok
   assertEquals(calls.length, 1);
 });
 
-Deno.test("a protected target with no server token is fail-closed", async () => {
+test("a protected target with no server token is fail-closed", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"]));
   const server = new RegistryMcpServer(registry, {
@@ -418,7 +419,7 @@ Deno.test("a protected target with no server token is fail-closed", async () => 
   );
 });
 
-Deno.test("--confirm-destructive returns a confirmation unless confirmed", async () => {
+test("--confirm-destructive returns a confirmation unless confirmed", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"]));
   const { runner, calls } = recordingRunner();
@@ -439,7 +440,7 @@ Deno.test("--confirm-destructive returns a confirmation unless confirmed", async
   assertEquals(calls.length, 1);
 });
 
-Deno.test("an unknown build/target run is a plain unknown tool", async () => {
+test("an unknown build/target run is a plain unknown tool", async () => {
   const registry = new FakeRegistry();
   const server = new RegistryMcpServer(registry, {
     allowRun: true,
@@ -453,7 +454,7 @@ Deno.test("an unknown build/target run is a plain unknown tool", async () => {
   assertStringIncludes((await call(server, "run:bare")).text, "Unknown tool");
 });
 
-Deno.test("a command location spawns the command; an empty one errors", async () => {
+test("a command location spawns the command; an empty one errors", async () => {
   const registry = new FakeRegistry();
   registry.add(
     descriptor("Api", ["deploy"], {
@@ -492,7 +493,7 @@ Deno.test("a command location spawns the command; an empty one errors", async ()
   assertStringIncludes(broke.text, "no runnable launch command");
 });
 
-Deno.test("a runner that throws is caught, not crashed", async () => {
+test("a runner that throws is caught, not crashed", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"]));
   const runner: RegistryRunner = () => Promise.reject(new Error("no exec"));
@@ -502,7 +503,7 @@ Deno.test("a runner that throws is caught, not crashed", async () => {
   assertStringIncludes(result.text, "Failed to spawn");
 });
 
-Deno.test("unknown methods and malformed calls are handled", async () => {
+test("unknown methods and malformed calls are handled", async () => {
   const server = new RegistryMcpServer(new FakeRegistry());
   const unknown = await server.handleMessage(req("does/not/exist"));
   assertEquals(
@@ -526,7 +527,7 @@ Deno.test("unknown methods and malformed calls are handled", async () => {
   );
 });
 
-Deno.test("mutating and denied calls are written to the audit log", async () => {
+test("mutating and denied calls are written to the audit log", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"]));
   const store = new FileSystemStateStore("/state", new FakeStateHost());
@@ -562,7 +563,7 @@ function toolDef(res: unknown, name: string): Record<string, unknown> {
   return found;
 }
 
-Deno.test("a protected/confirmable target advertises its extra inputs", async () => {
+test("a protected/confirmable target advertises its extra inputs", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"]));
   const server = new RegistryMcpServer(registry, {
@@ -584,7 +585,7 @@ Deno.test("a protected/confirmable target advertises its extra inputs", async ()
   );
 });
 
-Deno.test("a build deregistered between list and read is skipped, not crashed", async () => {
+test("a build deregistered between list and read is skipped, not crashed", async () => {
   // listBuilds names a build that getBuild can no longer load.
   class GhostRegistry extends FakeRegistry {
     override getBuild() {
@@ -600,7 +601,7 @@ Deno.test("a build deregistered between list and read is skipped, not crashed", 
   ]);
 });
 
-Deno.test("a registry error during a call is a JSON-RPC error, not a crash", async () => {
+test("a registry error during a call is a JSON-RPC error, not a crash", async () => {
   class BrokenRegistry extends FakeRegistry {
     override getBuild(): Promise<never> {
       return Promise.reject(new Error("store down"));
@@ -618,7 +619,7 @@ Deno.test("a registry error during a call is a JSON-RPC error, not a crash", asy
   );
 });
 
-Deno.test("serveMcp --registry resolves the registry and serves the catalog", async () => {
+test("serveMcp --registry resolves the registry and serves the catalog", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"]));
   const { output, text } = capturingWriter();
@@ -641,7 +642,7 @@ Deno.test("serveMcp --registry resolves the registry and serves the catalog", as
   assertStringIncludes(text(), "run:Api:deploy");
 });
 
-Deno.test("a throwing registry on tools/list is a JSON-RPC error, not a crash", async () => {
+test("a throwing registry on tools/list is a JSON-RPC error, not a crash", async () => {
   class BrokenListRegistry extends FakeRegistry {
     override listBuilds(): Promise<never> {
       return Promise.reject(new Error("registry down"));
@@ -660,7 +661,7 @@ Deno.test("a throwing registry on tools/list is a JSON-RPC error, not a crash", 
   assertEquals((await server.handleMessage(req("ping")))?.result, {});
 });
 
-Deno.test("defaultRegistryRunner spawns a real process and captures its output", async () => {
+test("defaultRegistryRunner spawns a real process and captures its output", async () => {
   const result = await defaultRegistryRunner(
     [Deno.execPath(), "eval", "console.log('spawned-ok')"],
     Deno.cwd(),
@@ -669,7 +670,7 @@ Deno.test("defaultRegistryRunner spawns a real process and captures its output",
   assertStringIncludes(result.stdout, "spawned-ok");
 });
 
-Deno.test("defaultRegistryRunner strips server secrets from the spawned env", async () => {
+test("defaultRegistryRunner strips server secrets from the spawned env", async () => {
   const prev = Deno.env.get("ZUKE_OPERATOR_TOKEN");
   Deno.env.set("ZUKE_OPERATOR_TOKEN", "server-secret");
   try {
@@ -692,7 +693,7 @@ Deno.test("defaultRegistryRunner strips server secrets from the spawned env", as
   }
 });
 
-Deno.test("defaultRegistryRunner suppresses the spawned build's banner", async () => {
+test("defaultRegistryRunner suppresses the spawned build's banner", async () => {
   // The child's stdout is returned verbatim as the tool's result, so its
   // opening banner would prepend six lines of ASCII, the server host's
   // directory and a run id that resolves to nothing to every answer an agent reads.
@@ -799,7 +800,7 @@ function runToolSchema(res: unknown, name: string): Record<string, unknown> {
   throw new Error(`no tool ${name}`);
 }
 
-Deno.test("a run tool's inputSchema exposes the build's parameters", async () => {
+test("a run tool's inputSchema exposes the build's parameters", async () => {
   const registry = new FakeRegistry();
   registry.add(paramDescriptor());
   const server = new RegistryMcpServer(registry, { allowRun: true });
@@ -836,7 +837,7 @@ Deno.test("a run tool's inputSchema exposes the build's parameters", async () =>
   assertEquals(isRec(props.dryRun), true);
 });
 
-Deno.test("a run tool forwards validated parameters as --flag=value", async () => {
+test("a run tool forwards validated parameters as --flag=value", async () => {
   const registry = new FakeRegistry();
   registry.add(paramDescriptor());
   const { runner, calls } = recordingRunner();
@@ -856,7 +857,7 @@ Deno.test("a run tool forwards validated parameters as --flag=value", async () =
   assertEquals(argv.includes("deploy"), true);
 });
 
-Deno.test("a boolean parameter forwards its false value explicitly", async () => {
+test("a boolean parameter forwards its false value explicitly", async () => {
   const registry = new FakeRegistry();
   registry.add(paramDescriptor());
   const { runner, calls } = recordingRunner();
@@ -865,7 +866,7 @@ Deno.test("a boolean parameter forwards its false value explicitly", async () =>
   assertEquals(calls[0].argv.includes("--skip-e2e=false"), true);
 });
 
-Deno.test("a type-mismatched array parameter is rejected before any spawn", async () => {
+test("a type-mismatched array parameter is rejected before any spawn", async () => {
   const registry = new FakeRegistry();
   registry.add(paramDescriptor());
   const { runner, calls } = recordingRunner();
@@ -879,7 +880,7 @@ Deno.test("a type-mismatched array parameter is rejected before any spawn", asyn
   assertEquals(calls.length, 0); // never spawned
 });
 
-Deno.test("a non-numeric number and an out-of-set enum are rejected", async () => {
+test("a non-numeric number and an out-of-set enum are rejected", async () => {
   const registry = new FakeRegistry();
   registry.add(paramDescriptor());
   const { runner, calls } = recordingRunner();
@@ -899,7 +900,7 @@ Deno.test("a non-numeric number and an out-of-set enum are rejected", async () =
   assertEquals(calls.length, 0);
 });
 
-Deno.test("an unknown parameter is rejected naming it", async () => {
+test("an unknown parameter is rejected naming it", async () => {
   const registry = new FakeRegistry();
   registry.add(paramDescriptor());
   const { runner, calls } = recordingRunner();
@@ -914,7 +915,7 @@ Deno.test("an unknown parameter is rejected naming it", async () => {
   assertEquals(calls.length, 0);
 });
 
-Deno.test("parameters coexist with the operator token and confirmation", async () => {
+test("parameters coexist with the operator token and confirmation", async () => {
   const registry = new FakeRegistry();
   registry.add(paramDescriptor());
   const { runner, calls } = recordingRunner();
@@ -941,7 +942,7 @@ Deno.test("parameters coexist with the operator token and confirmation", async (
 
 // ---- M12 adversarial-review regressions -------------------------------------
 
-Deno.test("a value supplied under an unknown/secret key is elided from the audit log", async () => {
+test("a value supplied under an unknown/secret key is elided from the audit log", async () => {
   const registry = new FakeRegistry();
   registry.add(paramDescriptor());
   const store = new FileSystemStateStore("/state", new FakeStateHost());
@@ -968,7 +969,7 @@ Deno.test("a value supplied under an unknown/secret key is elided from the audit
   assertEquals(serialized.includes("expense-service"), true);
 });
 
-Deno.test("a malformed default/enum from an untrusted descriptor is dropped from the schema", async () => {
+test("a malformed default/enum from an untrusted descriptor is dropped from the schema", async () => {
   const registry = new FakeRegistry();
   const base = descriptor("Api", ["deploy"]);
   registry.add({
@@ -1019,7 +1020,7 @@ function callWith(
   );
 }
 
-Deno.test("an identity hook attributes the call to the trusted actor, not the label", async () => {
+test("an identity hook attributes the call to the trusted actor, not the label", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"]));
   const store = new FileSystemStateStore("/state", new FakeStateHost());
@@ -1054,7 +1055,7 @@ Deno.test("an identity hook attributes the call to the trusted actor, not the la
   assertEquals(calls[0].actor, "engineer-a");
 });
 
-Deno.test("a throwing identity hook rejects the request and writes nothing", async () => {
+test("a throwing identity hook rejects the request and writes nothing", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"]));
   const store = new FileSystemStateStore("/state", new FakeStateHost());
@@ -1079,7 +1080,7 @@ Deno.test("a throwing identity hook rejects the request and writes nothing", asy
   assertEquals(await store.getRun("mcp-audit"), null);
 });
 
-Deno.test("without an identity hook, attribution is unchanged (stdio/local)", async () => {
+test("without an identity hook, attribution is unchanged (stdio/local)", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"]));
   const store = new FileSystemStateStore("/state", new FakeStateHost());
@@ -1095,7 +1096,7 @@ Deno.test("without an identity hook, attribution is unchanged (stdio/local)", as
   assertEquals(events.every((e) => e.actor === "ci-bot"), true);
 });
 
-Deno.test("a hook yielding an empty actor is rejected, never a spawn", async () => {
+test("a hook yielding an empty actor is rejected, never a spawn", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"]));
   const store = new FileSystemStateStore("/state", new FakeStateHost());
@@ -1149,7 +1150,7 @@ async function until(predicate: () => boolean): Promise<void> {
   }
 }
 
-Deno.test("the concurrency cap refuses a spawn past the limit, immediately", async () => {
+test("the concurrency cap refuses a spawn past the limit, immediately", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"]));
   const { runner, active, release } = gatedRunner();
@@ -1191,7 +1192,7 @@ Deno.test("the concurrency cap refuses a spawn past the limit, immediately", asy
   assertEquals((await call(server, "run:Api:deploy")).isError, false);
 });
 
-Deno.test("registry HTTP serving does not head-of-line-block a read behind a run", async () => {
+test("registry HTTP serving does not head-of-line-block a read behind a run", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"]));
   const { runner, active, release } = gatedRunner();
@@ -1241,7 +1242,7 @@ Deno.test("registry HTTP serving does not head-of-line-block a read behind a run
   }
 });
 
-Deno.test("a descriptor pointing at a remote entry module is refused, not spawned", async () => {
+test("a descriptor pointing at a remote entry module is refused, not spawned", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"], {
     kind: "module",
@@ -1273,7 +1274,7 @@ Deno.test("a descriptor pointing at a remote entry module is refused, not spawne
   );
 });
 
-Deno.test("a descriptor pointing at a local module outside the allowed directories is refused, not spawned", async () => {
+test("a descriptor pointing at a local module outside the allowed directories is refused, not spawned", async () => {
   // Local is not the same as trusted: on a shared host a registry writer can
   // plant /tmp/evil.ts and name it. The default confinement is the server's
   // project root, which this checkout's temp directory is not inside.
@@ -1321,7 +1322,7 @@ Deno.test("a descriptor pointing at a local module outside the allowed directori
   }
 });
 
-Deno.test("an allow-listed remote entry module spawns", async () => {
+test("an allow-listed remote entry module spawns", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"], {
     kind: "module",
@@ -1345,7 +1346,7 @@ Deno.test("an allow-listed remote entry module spawns", async () => {
   );
 });
 
-Deno.test("a descriptor naming an un-allow-listed command is refused, not spawned", async () => {
+test("a descriptor naming an un-allow-listed command is refused, not spawned", async () => {
   // The module twin of this attack is refused by origin; the command form is
   // the same code execution with no fetch to gate, so it is refused by program.
   const registry = new FakeRegistry();
@@ -1379,7 +1380,7 @@ Deno.test("a descriptor naming an un-allow-listed command is refused, not spawne
   );
 });
 
-Deno.test("the command launch check runs before the destructive-confirmation prompt", async () => {
+test("the command launch check runs before the destructive-confirmation prompt", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"], {
     kind: "command",
@@ -1400,7 +1401,7 @@ Deno.test("the command launch check runs before the destructive-confirmation pro
   assertEquals(calls.length, 0);
 });
 
-Deno.test("the launch check runs before the destructive-confirmation prompt", async () => {
+test("the launch check runs before the destructive-confirmation prompt", async () => {
   // A refused location must fail fast, not ask the operator to confirm a spawn
   // that could never happen.
   const registry = new FakeRegistry();
@@ -1425,7 +1426,7 @@ Deno.test("the launch check runs before the destructive-confirmation prompt", as
 
 // ---- remaining protocol edges, schema rendering, and audit resilience -------
 
-Deno.test("defaultRegistryRunner exports the resolved actor as ZUKE_ACTOR", async () => {
+test("defaultRegistryRunner exports the resolved actor as ZUKE_ACTOR", async () => {
   const result = await defaultRegistryRunner(
     [
       Deno.execPath(),
@@ -1440,7 +1441,7 @@ Deno.test("defaultRegistryRunner exports the resolved actor as ZUKE_ACTOR", asyn
   assertStringIncludes(result.stdout, "trusted-caller");
 });
 
-Deno.test("a run tool's schema renders enums on arrays and typed defaults", async () => {
+test("a run tool's schema renders enums on arrays and typed defaults", async () => {
   const registry = new FakeRegistry();
   const base = descriptor("Api", ["deploy"]);
   registry.add({
@@ -1500,7 +1501,7 @@ Deno.test("a run tool's schema renders enums on arrays and typed defaults", asyn
   assertEquals(props.region, { type: "string", default: "eu" });
 });
 
-Deno.test("an array parameter with a mismatched element is rejected before any spawn", async () => {
+test("an array parameter with a mismatched element is rejected before any spawn", async () => {
   const registry = new FakeRegistry();
   registry.add(paramDescriptor());
   const { runner, calls } = recordingRunner();
@@ -1514,7 +1515,7 @@ Deno.test("an array parameter with a mismatched element is rejected before any s
   assertEquals(calls.length, 0);
 });
 
-Deno.test("protection reaches a dependency shared through a diamond exactly once", async () => {
+test("protection reaches a dependency shared through a diamond exactly once", async () => {
   const registry = new FakeRegistry();
   // release → {a, b} → lint: the protected `lint` is reachable twice, and the
   // closure walk must both dedupe it and still enforce the token.
@@ -1550,7 +1551,7 @@ Deno.test("protection reaches a dependency shared through a diamond exactly once
   assertEquals(calls.length, 1);
 });
 
-Deno.test("an id-less unknown method is a silent notification; a bad name errors", async () => {
+test("an id-less unknown method is a silent notification; a bad name errors", async () => {
   const server = new RegistryMcpServer(new FakeRegistry());
   // An unknown method with no id is treated as a notification: no reply.
   assertEquals(
@@ -1571,7 +1572,7 @@ Deno.test("an id-less unknown method is a silent notification; a bad name errors
   assertStringIncludes(unknown.text, "Unknown tool: no_such_tool");
 });
 
-Deno.test("a dead audit store never blocks the run, and a later call retries", async () => {
+test("a dead audit store never blocks the run, and a later call retries", async () => {
   // Reads reject too, so even *opening* the audit log fails — the failed open
   // must be dropped (not memoized) so the next call can retry it.
   class BrokenHost extends FakeStateHost {
@@ -1601,7 +1602,7 @@ Deno.test("a dead audit store never blocks the run, and a later call retries", a
   assertEquals(calls.length, 2);
 });
 
-Deno.test("a supplied operator token is never recorded in the audit trail", async () => {
+test("a supplied operator token is never recorded in the audit trail", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"]));
   const store = new FileSystemStateStore("/state", new FakeStateHost());
@@ -1628,7 +1629,7 @@ Deno.test("a supplied operator token is never recorded in the audit trail", asyn
   assertEquals(JSON.stringify(events).includes("good-token"), false);
 });
 
-Deno.test("the HTTP banner names the registry mode, run state, and auth", async () => {
+test("the HTTP banner names the registry mode, run state, and auth", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"]));
   const banner: string[] = [];
@@ -1663,7 +1664,7 @@ Deno.test("the HTTP banner names the registry mode, run state, and auth", async 
   assertStringIncludes(text, "http://127.0.0.1:");
 });
 
-Deno.test("a valid number default is carried; a malformed boolean default is dropped", async () => {
+test("a valid number default is carried; a malformed boolean default is dropped", async () => {
   const registry = new FakeRegistry();
   const base = descriptor("Api", ["deploy"]);
   registry.add({
@@ -1717,7 +1718,7 @@ Deno.test("a valid number default is carried; a malformed boolean default is dro
   );
 });
 
-Deno.test("a protected dependency the surface does not declare still gates the run", async () => {
+test("a protected dependency the surface does not declare still gates the run", async () => {
   const registry = new FakeRegistry();
   // `release` names a dependency with no target entry of its own — a partial
   // surface from an out-of-date registration. The closure walk must neither
@@ -1746,7 +1747,7 @@ Deno.test("a protected dependency the surface does not declare still gates the r
   assertEquals(calls.length, 0);
 });
 
-Deno.test("a runner rejecting with a non-Error is still a structured failure", async () => {
+test("a runner rejecting with a non-Error is still a structured failure", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"]));
   // Not an Error instance: the message must fall back to a generic kind, and
@@ -1791,7 +1792,7 @@ async function withEnv(
   }
 }
 
-Deno.test("an authenticated run passes the caller's kind and roles to the runner", async () => {
+test("an authenticated run passes the caller's kind and roles to the runner", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"]));
   const { runner, calls } = recordingRunner();
@@ -1831,7 +1832,7 @@ Deno.test("an authenticated run passes the caller's kind and roles to the runner
   assertEquals(calls[1].actorRoles, undefined);
 });
 
-Deno.test("without an authenticator the runner gets the actor and no claim", async () => {
+test("without an authenticator the runner gets the actor and no claim", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"]));
   const { runner, calls } = recordingRunner();
@@ -1849,7 +1850,7 @@ Deno.test("without an authenticator the runner gets the actor and no claim", asy
   assertEquals(calls[0].actorRoles, undefined);
 });
 
-Deno.test("defaultRegistryRunner exports the actor, kind and roles", async () => {
+test("defaultRegistryRunner exports the actor, kind and roles", async () => {
   const withRoles = await defaultRegistryRunner(
     [Deno.execPath(), "eval", ACTOR_ECHO],
     Deno.cwd(),
@@ -1872,7 +1873,7 @@ Deno.test("defaultRegistryRunner exports the actor, kind and roles", async () =>
   assertEquals(noRoles.stdout.trim(), "engineer-a|human|NONE");
 });
 
-Deno.test("a fresh actor never inherits the parent's kind and roles", async () => {
+test("a fresh actor never inherits the parent's kind and roles", async () => {
   // The privilege-inheritance case: the server process itself runs as a
   // privileged service, and a spawn for an unprivileged human caller must not
   // hand the child that actor beside the parent's entitlements.
@@ -1891,7 +1892,7 @@ Deno.test("a fresh actor never inherits the parent's kind and roles", async () =
   );
 });
 
-Deno.test("with no actor the inherited environment is left alone", async () => {
+test("with no actor the inherited environment is left alone", async () => {
   // No actor means no claim to overwrite the inherited one with — a local
   // stdio server keeps attributing runs the way the environment already did.
   await withEnv(
@@ -1911,7 +1912,7 @@ Deno.test("with no actor the inherited environment is left alone", async () => {
   );
 });
 
-Deno.test("kind and roles without an actor change nothing", async () => {
+test("kind and roles without an actor change nothing", async () => {
   // The three describe one caller, so they are written together or not at all.
   // Honouring a supplied kind/roles here would pair one caller's entitlements
   // with the *inherited* actor — exactly the mismatch the coupling exists to
@@ -1947,7 +1948,7 @@ Deno.test("kind and roles without an actor change nothing", async () => {
   );
 });
 
-Deno.test("the server's tokens are stripped beside the exported claim", async () => {
+test("the server's tokens are stripped beside the exported claim", async () => {
   await withEnv(
     { ZUKE_OPERATOR_TOKEN: "server-secret", ZUKE_MCP_TOKEN: "bearer-secret" },
     async () => {
@@ -1969,7 +1970,7 @@ Deno.test("the server's tokens are stripped beside the exported claim", async ()
   );
 });
 
-Deno.test("in registry mode the role policy gates listing and spawning", async () => {
+test("in registry mode the role policy gates listing and spawning", async () => {
   // Without this the registry server applied no policy at all: a caller granted
   // nothing could list every registered build and spawn any of them, on a
   // server that does authenticate its callers.
@@ -2016,7 +2017,7 @@ Deno.test("in registry mode the role policy gates listing and spawning", async (
   assertEquals(calls.length, 1);
 });
 
-Deno.test("a role name carrying the separator survives the child's env", async () => {
+test("a role name carrying the separator survives the child's env", async () => {
   // Kept in the identity and escaped here, so sanitisation cannot turn a
   // granted role set into the empty one the policy reads as "granted nothing".
   const result = await defaultRegistryRunner(

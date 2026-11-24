@@ -12,7 +12,8 @@
  * @module
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import {
   Build,
   defaultStateHost,
@@ -51,7 +52,7 @@ async function strandAsKilled(dir: string, id: string): Promise<void> {
   assertEquals((await store.putRun(record, got.version)).ok, true);
 }
 
-Deno.test("one sweep reaps an abandoned run and re-drives what it owed", async () => {
+test("one sweep reaps an abandoned run and re-drives what it owed", async () => {
   // The whole point, end to end: nothing but `resume --check`, and the effect a
   // killed process left owed is performed.
   const drives: boolean[] = [];
@@ -88,7 +89,7 @@ Deno.test("one sweep reaps an abandoned run and re-drives what it owed", async (
   });
 });
 
-Deno.test("a sweep leaves a run alone while its holder is still there", async () => {
+test("a sweep leaves a run alone while its holder is still there", async () => {
   // Slow is not dead. A live lease means someone is working on it, and taking
   // that run away would put two processes on it.
   const drives: string[] = [];
@@ -122,7 +123,7 @@ Deno.test("a sweep leaves a run alone while its holder is still there", async ()
   });
 });
 
-Deno.test("a run past its deadline is settled failed rather than resumed", async () => {
+test("a run past its deadline is settled failed rather than resumed", async () => {
   const drives: string[] = [];
 
   class Cd extends Build {
@@ -150,7 +151,7 @@ Deno.test("a run past its deadline is settled failed rather than resumed", async
   });
 });
 
-Deno.test("time spent parked at a gate is not charged against the deadline", async () => {
+test("time spent parked at a gate is not charged against the deadline", async () => {
   // The documented contract, and the one it is easiest to get backwards. A
   // 45-minute budget behind a long approval gate would otherwise be exhausted
   // before anyone could approve, and the run would be settled the instant it
@@ -195,7 +196,7 @@ Deno.test("time spent parked at a gate is not charged against the deadline", asy
   });
 });
 
-Deno.test("a deadline added after a run suspended does not strand it", async () => {
+test("a deadline added after a run suspended does not strand it", async () => {
   // A build gains a deadline between the run suspending and the resume. The
   // resume adopts the record's own deadline, so nothing parses the build's — a
   // throw there would leave the run `running` to be reaped, resumed, and

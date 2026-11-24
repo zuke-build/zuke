@@ -10,15 +10,16 @@
  * behaviour rather than the renderer's.
  */
 
+import { test } from "../../../tests/_testing.ts";
 import { logoLines, ZUKE_LOGO } from "../src/logo.ts";
 import { SGR, stripAnsi } from "../src/render.ts";
-import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 
-Deno.test("logoLines without colour is the raw art, line by line", () => {
+test("logoLines without colour is the raw art, line by line", () => {
   assertEquals(logoLines(false), ZUKE_LOGO.split("\n"));
 });
 
-Deno.test("logoLines with colour paints letters and shadow separately", () => {
+test("logoLines with colour paints letters and shadow separately", () => {
   const lines = logoLines(true);
   assertEquals(lines.map(stripAnsi), ZUKE_LOGO.split("\n"));
   const [first] = lines;
@@ -26,20 +27,20 @@ Deno.test("logoLines with colour paints letters and shadow separately", () => {
   assertStringIncludes(first, SGR.dim);
 });
 
-Deno.test("logoLines starts a leading-shadow line with the shadow style", () => {
+test("logoLines starts a leading-shadow line with the shadow style", () => {
   // The second art line opens with box-drawing shadow, not a letter block.
   const second = logoLines(true)[1];
   assertEquals(second.startsWith(SGR.dim), true);
 });
 
-Deno.test("logoLines appends a dimmed tagline", () => {
+test("logoLines appends a dimmed tagline", () => {
   const plain = logoLines(false, { tagline: "v1.2.3" });
   assertEquals(plain[plain.length - 1], "v1.2.3");
   const painted = logoLines(true, { tagline: "v1.2.3" });
   assertEquals(painted[painted.length - 1], `${SGR.dim}v1.2.3${SGR.reset}`);
 });
 
-Deno.test("logoLines honours custom letter and shadow styles", () => {
+test("logoLines honours custom letter and shadow styles", () => {
   const [first] = logoLines(true, {
     letterStyle: ["magenta"],
     shadowStyle: ["gray"],

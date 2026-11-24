@@ -6,11 +6,12 @@
  * `GITHUB_TOKEN`, so a release tag may differ from master in workflow files.
  */
 
+import { test } from "./_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../packages/core/tests/_assert.ts";
+} from "./_assert.ts";
 import { GhAppTokenSettings } from "../packages/gh/mod.ts";
 import type { AppTokenMint } from "../build/app_token.ts";
 import { mintReleaseToken } from "../build/release_token.ts";
@@ -31,7 +32,7 @@ function recordingMint(): {
   return { mint, calls };
 }
 
-Deno.test("mintReleaseToken holds workflows: write, scoped to this repository", async () => {
+test("mintReleaseToken holds workflows: write, scoped to this repository", async () => {
   const { mint, calls } = recordingMint();
   const token = await mintReleaseToken(
     { appId: "1", privateKey: "pem", repo: "zuke-build/zuke" },
@@ -48,7 +49,7 @@ Deno.test("mintReleaseToken holds workflows: write, scoped to this repository", 
   });
 });
 
-Deno.test("mintReleaseToken fails without the app credentials instead of falling back", async () => {
+test("mintReleaseToken fails without the app credentials instead of falling back", async () => {
   const { mint, calls } = recordingMint();
   const error = await assertRejects(() =>
     mintReleaseToken({ appId: "1", repo: "zuke-build/zuke" }, mint)
@@ -58,7 +59,7 @@ Deno.test("mintReleaseToken fails without the app credentials instead of falling
   assertEquals(calls.length, 0);
 });
 
-Deno.test("mintReleaseToken refuses to mint for another repository", async () => {
+test("mintReleaseToken refuses to mint for another repository", async () => {
   const { mint, calls } = recordingMint();
   const error = await assertRejects(() =>
     mintReleaseToken(

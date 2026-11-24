@@ -3,10 +3,11 @@
 
 /** Tests for the fluent `QrSettings`. */
 
+import { test } from "../../../tests/_testing.ts";
 import { MAX_QUIET_ZONE, QrSettings } from "../src/settings.ts";
-import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 
-Deno.test("QrSettings defaults favour a compact, level-M code with a small border", () => {
+test("QrSettings defaults favour a compact, level-M code with a small border", () => {
   const s = new QrSettings();
   assertEquals(s.errorCorrection_, "M");
   assertEquals(s.boostErrorCorrection_, true);
@@ -15,7 +16,7 @@ Deno.test("QrSettings defaults favour a compact, level-M code with a small borde
   assertEquals(s.compact_, true);
 });
 
-Deno.test("every setter chains and records its value", () => {
+test("every setter chains and records its value", () => {
   const s = new QrSettings()
     .errorCorrection("H")
     .boostErrorCorrection(false)
@@ -32,7 +33,7 @@ Deno.test("every setter chains and records its value", () => {
   assertEquals(s.boostErrorCorrection().boostErrorCorrection_, true);
 });
 
-Deno.test("quietZone rejects a negative, fractional or absurd width", () => {
+test("quietZone rejects a negative, fractional or absurd width", () => {
   assertThrows(() => new QrSettings().quietZone(-1), RangeError, "got -1");
   assertThrows(() => new QrSettings().quietZone(1.5), RangeError, "got 1.5");
   assertThrows(
@@ -43,7 +44,7 @@ Deno.test("quietZone rejects a negative, fractional or absurd width", () => {
   assertEquals(new QrSettings().quietZone(MAX_QUIET_ZONE).quietZone_, 16);
 });
 
-Deno.test("errorCorrection refuses a level that is not L, M, Q or H", () => {
+test("errorCorrection refuses a level that is not L, M, Q or H", () => {
   // A build reads the level from a string parameter and `deno run` does not
   // type-check, so the guard must hold at runtime against a plain string.
   const settings = new QrSettings();

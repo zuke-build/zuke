@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
   assertWrapperConformance,
@@ -32,7 +33,7 @@ import {
   resolveComposeInvocation,
 } from "../mod.ts";
 
-Deno.test("the default invocation is the v2 plugin", () => {
+test("the default invocation is the v2 plugin", () => {
   assertEquals(new DockerComposePsSettings().argv(), [
     "docker",
     "compose",
@@ -40,7 +41,7 @@ Deno.test("the default invocation is the v2 plugin", () => {
   ]);
 });
 
-Deno.test("useStandalone/usePlugin pin the invocation form", () => {
+test("useStandalone/usePlugin pin the invocation form", () => {
   assertEquals(new DockerComposePsSettings().useStandalone().argv(), [
     "docker-compose",
     "ps",
@@ -52,7 +53,7 @@ Deno.test("useStandalone/usePlugin pin the invocation form", () => {
   ]);
 });
 
-Deno.test("global options precede the subcommand", () => {
+test("global options precede the subcommand", () => {
   const argv = new DockerComposeUpSettings()
     .file("a.yml").file("b.yml").projectName("proj").profile("dev")
     .projectDirectory("/work").envFile(".env").detach().argv();
@@ -76,7 +77,7 @@ Deno.test("global options precede the subcommand", () => {
   ]);
 });
 
-Deno.test("up: no-deps starts the named services alone", () => {
+test("up: no-deps starts the named services alone", () => {
   assertEquals(
     new DockerComposeUpSettings().services("api").build().noDeps().argv(),
     ["docker", "compose", "up", "--build", "--no-deps", "api"],
@@ -88,7 +89,7 @@ Deno.test("up: no-deps starts the named services alone", () => {
   );
 });
 
-Deno.test("up: a pull policy reaches compose as its argument", () => {
+test("up: a pull policy reaches compose as its argument", () => {
   assertEquals(
     new DockerComposeUpSettings().file("base.yml").pull("always").argv(),
     ["docker", "compose", "-f", "base.yml", "up", "--pull", "always"],
@@ -107,7 +108,7 @@ Deno.test("up: a pull policy reaches compose as its argument", () => {
   ]);
 });
 
-Deno.test("up: all flags, scale, and services", () => {
+test("up: all flags, scale, and services", () => {
   const argv = new DockerComposeUpSettings()
     .detach().build().forceRecreate().removeOrphans().wait()
     .abortOnContainerExit().exitCodeFrom("web")
@@ -136,7 +137,7 @@ Deno.test("up: all flags, scale, and services", () => {
   ]);
 });
 
-Deno.test("down: volumes, orphans, rmi, timeout", () => {
+test("down: volumes, orphans, rmi, timeout", () => {
   assertEquals(
     new DockerComposeDownSettings().volumes().removeOrphans().rmi("all")
       .timeout(5).argv(),
@@ -159,7 +160,7 @@ Deno.test("down: volumes, orphans, rmi, timeout", () => {
   ]);
 });
 
-Deno.test("build: no-cache, pull, build-arg, services", () => {
+test("build: no-cache, pull, build-arg, services", () => {
   assertEquals(
     new DockerComposeBuildSettings().noCache().pull().buildArg("V", "1")
       .services("web").argv(),
@@ -181,7 +182,7 @@ Deno.test("build: no-cache, pull, build-arg, services", () => {
   ]);
 });
 
-Deno.test("pull/push build their argv", () => {
+test("pull/push build their argv", () => {
   assertEquals(
     new DockerComposePullSettings().ignorePullFailures().quietOutput()
       .services("web").argv(),
@@ -210,7 +211,7 @@ Deno.test("pull/push build their argv", () => {
   ]);
 });
 
-Deno.test("run: flags, env, and command", () => {
+test("run: flags, env, and command", () => {
   const argv = new DockerComposeRunSettings()
     .service("web").rm().detach().noDeps().name("c").envVar("K", "v")
     .commandArgs("echo", 1).argv();
@@ -237,7 +238,7 @@ Deno.test("run: flags, env, and command", () => {
   ]);
 });
 
-Deno.test("exec: flags, env, workdir, and command", () => {
+test("exec: flags, env, workdir, and command", () => {
   const argv = new DockerComposeExecSettings()
     .service("web").detach().noTty().envVar("K", "v").workdir("/app")
     .commandArgs("sh", "-c", "echo hi").argv();
@@ -264,7 +265,7 @@ Deno.test("exec: flags, env, workdir, and command", () => {
   ]);
 });
 
-Deno.test("logs: follow, timestamps, tail, services", () => {
+test("logs: follow, timestamps, tail, services", () => {
   assertEquals(
     new DockerComposeLogsSettings().follow().timestamps().tail(100)
       .services("web").argv(),
@@ -293,7 +294,7 @@ Deno.test("logs: follow, timestamps, tail, services", () => {
   ]);
 });
 
-Deno.test("ps: all, quiet, services-only, and service filter", () => {
+test("ps: all, quiet, services-only, and service filter", () => {
   assertEquals(
     new DockerComposePsSettings().all().quietOutput().servicesOnly()
       .services("web").argv(),
@@ -314,7 +315,7 @@ Deno.test("ps: all, quiet, services-only, and service filter", () => {
   ]);
 });
 
-Deno.test("config: quiet, services, volumes, format", () => {
+test("config: quiet, services, volumes, format", () => {
   assertEquals(
     new DockerComposeConfigSettings().quietOutput().servicesOnly().volumesOnly()
       .format("json").argv(),
@@ -336,7 +337,7 @@ Deno.test("config: quiet, services, volumes, format", () => {
   ]);
 });
 
-Deno.test("start/stop/restart/rm build their argv", () => {
+test("start/stop/restart/rm build their argv", () => {
   assertEquals(new DockerComposeStartSettings().services("web").argv(), [
     "docker",
     "compose",
@@ -378,7 +379,7 @@ Deno.test("start/stop/restart/rm build their argv", () => {
   ]);
 });
 
-Deno.test("run/exec require a service", () => {
+test("run/exec require a service", () => {
   assertThrows(
     () => new DockerComposeRunSettings().argv(),
     Error,
@@ -391,7 +392,7 @@ Deno.test("run/exec require a service", () => {
   );
 });
 
-Deno.test("resolveComposeInvocation prefers the v2 plugin", async () => {
+test("resolveComposeInvocation prefers the v2 plugin", async () => {
   resetComposeInvocationCache_();
   const seen: string[][] = [];
   const probe = (argv: readonly string[]) => {
@@ -403,14 +404,14 @@ Deno.test("resolveComposeInvocation prefers the v2 plugin", async () => {
   assertEquals(seen, [["docker", "compose"]]);
 });
 
-Deno.test("resolveComposeInvocation falls back to the v1 binary", async () => {
+test("resolveComposeInvocation falls back to the v1 binary", async () => {
   resetComposeInvocationCache_();
   const probe = (argv: readonly string[]) =>
     Promise.resolve(argv[0] === "docker-compose");
   assertEquals(await resolveComposeInvocation(probe), ["docker-compose"]);
 });
 
-Deno.test("resolveComposeInvocation throws when neither is present", async () => {
+test("resolveComposeInvocation throws when neither is present", async () => {
   resetComposeInvocationCache_();
   await assertRejects(
     () => resolveComposeInvocation(() => Promise.resolve(false)),
@@ -423,7 +424,7 @@ Deno.test("resolveComposeInvocation throws when neither is present", async () =>
   );
 });
 
-Deno.test("resolveComposeInvocation caches the first success", async () => {
+test("resolveComposeInvocation caches the first success", async () => {
   resetComposeInvocationCache_();
   let calls = 0;
   const probe = () => {
@@ -435,7 +436,7 @@ Deno.test("resolveComposeInvocation caches the first success", async () => {
   assertEquals(calls, 1);
 });
 
-Deno.test("defaultComposeProbe reports presence by exit code", async () => {
+test("defaultComposeProbe reports presence by exit code", async () => {
   // The running `deno` is always present. The probe appends "version" to the
   // argv, so `deno eval "0" version` evaluates `0` (exit zero) and ignores the
   // trailing positional — a hermetic stand-in for a working `... version`.
@@ -447,7 +448,7 @@ Deno.test("defaultComposeProbe reports presence by exit code", async () => {
   assertEquals(await defaultComposeProbe(["zz-no-such-binary-zz"]), false);
 });
 
-Deno.test("every DockerComposeTasks function reaches execution", async () => {
+test("every DockerComposeTasks function reaches execution", async () => {
   // Seed the cache so the detection path resolves without touching the host.
   resetComposeInvocationCache_();
   await resolveComposeInvocation((argv) =>
@@ -475,7 +476,7 @@ Deno.test("every DockerComposeTasks function reaches execution", async () => {
   resetComposeInvocationCache_();
 });
 
-Deno.test("a pinned invocation skips detection", async () => {
+test("a pinned invocation skips detection", async () => {
   // No cache seeded: usePlugin/useStandalone must not consult the resolver.
   resetComposeInvocationCache_();
   await assertRejects(
@@ -488,7 +489,7 @@ Deno.test("a pinned invocation skips detection", async () => {
   );
 });
 
-Deno.test("compose: conforms to the wrapper contract", async () => {
+test("compose: conforms to the wrapper contract", async () => {
   await assertWrapperConformance(
     () => new DockerComposeUpSettings().usePlugin(),
     "docker",

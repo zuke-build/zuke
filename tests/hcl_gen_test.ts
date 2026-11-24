@@ -10,16 +10,17 @@
  * @module
  */
 
-import { assertEquals } from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals } from "./_assert.ts";
 import {
   checkHclWrappers,
   generateHclWrappers,
   type HclTarget,
   renderHcl,
 } from "../build/hcl_gen.ts";
-import { withTemp } from "../packages/core/tests/_temp.ts";
+import { withTemp } from "./_temp.ts";
 
-Deno.test("renderHcl substitutes body placeholders and injects the module doc last", () => {
+test("renderHcl substitutes body placeholders and injects the module doc last", () => {
   const template = '__MODULE_DOC__\nclass __NAME__X { tool = "__TOOL__"; }';
   const out = renderHcl(template, "/** doc mentions __NAME__ verbatim */\n", {
     name: "Terraform",
@@ -35,7 +36,7 @@ Deno.test("renderHcl substitutes body placeholders and injects the module doc la
   );
 });
 
-Deno.test("the committed wrappers round-trip through generate then check", async () => {
+test("the committed wrappers round-trip through generate then check", async () => {
   // Regenerating writes byte-identical content (they are already generated), so
   // the working tree is unchanged and the check then reports zero drift.
   const written = await generateHclWrappers();
@@ -43,7 +44,7 @@ Deno.test("the committed wrappers round-trip through generate then check", async
   assertEquals(await checkHclWrappers(), []);
 });
 
-Deno.test("checkHclWrappers flags a target that has drifted from the template", async () => {
+test("checkHclWrappers flags a target that has drifted from the template", async () => {
   await withTemp(async (dir) => {
     const path = `${dir}/drifted.ts`;
     await Deno.writeTextFile(path, "// not what the template renders\n");

@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
   assertWrapperConformance,
@@ -13,14 +14,14 @@ import {
 } from "@zuke/core/tooling/conformance";
 import { DittoSettings, DittoTasks } from "../src/ditto.ts";
 
-Deno.test("ditto: a plain copy is source then destination", () => {
+test("ditto: a plain copy is source then destination", () => {
   assertEquals(
     new DittoSettings().source("a.app").destination("out/a.app").argv(),
     ["ditto", "a.app", "out/a.app"],
   );
 });
 
-Deno.test("ditto: every flag renders, operands last", () => {
+test("ditto: every flag renders, operands last", () => {
   assertEquals(
     new DittoSettings().create().pkzip().sequesterRsrc().keepParent()
       .source("dist/MyApp.app").destination("dist/MyApp.zip").argv(),
@@ -40,14 +41,14 @@ Deno.test("ditto: every flag renders, operands last", () => {
   );
 });
 
-Deno.test("ditto: operands that look like flags stay operands", () => {
+test("ditto: operands that look like flags stay operands", () => {
   assertEquals(
     new DittoSettings().source("-rf").destination("--keepParent").argv(),
     ["ditto", "./-rf", "./--keepParent"],
   );
 });
 
-Deno.test("ditto: create and extract together are refused", () => {
+test("ditto: create and extract together are refused", () => {
   assertThrows(
     () =>
       new DittoSettings().create().extract().source("a").destination("b")
@@ -57,7 +58,7 @@ Deno.test("ditto: create and extract together are refused", () => {
   );
 });
 
-Deno.test("ditto: a missing source or destination is refused", () => {
+test("ditto: a missing source or destination is refused", () => {
   assertThrows(
     () => new DittoSettings().source("a").argv(),
     Error,
@@ -70,7 +71,7 @@ Deno.test("ditto: a missing source or destination is refused", () => {
   );
 });
 
-Deno.test("DittoTasks: archive presets -c -k, extract presets -x -k", async () => {
+test("DittoTasks: archive presets -c -k, extract presets -x -k", async () => {
   // The preset flags are visible on the settings the lambda receives.
   let archived: string[] = [];
   await assertRejects(
@@ -107,7 +108,7 @@ Deno.test("DittoTasks: archive presets -c -k, extract presets -x -k", async () =
   );
 });
 
-Deno.test("ditto resolves its binary from PATH", async () => {
+test("ditto resolves its binary from PATH", async () => {
   await assertWrapperConformance(
     () => new DittoSettings().source("a").destination("b"),
     "ditto",

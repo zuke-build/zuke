@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import {
   closingLine,
   formatDuration,
@@ -25,12 +26,12 @@ const COLOR: Style = { github: false, color: true, width: 40 };
 
 const NOW = new Date(2026, 5, 23, 7, 19); // 2026-06-23 07:19 local
 
-Deno.test("formatDuration renders ms as a one-decimal second value", () => {
+test("formatDuration renders ms as a one-decimal second value", () => {
   assertEquals(formatDuration(0), "0.0s");
   assertEquals(formatDuration(19_300), "19.3s");
 });
 
-Deno.test("targetHeader frames the name with two ═ rules in terminal mode", () => {
+test("targetHeader frames the name with two ═ rules in terminal mode", () => {
   const out = targetHeader(PLAIN, "test");
   assertEquals(out.length, 3);
   assertEquals(out[0], "═".repeat(40));
@@ -38,11 +39,11 @@ Deno.test("targetHeader frames the name with two ═ rules in terminal mode", ()
   assertEquals(out[2], "═".repeat(40));
 });
 
-Deno.test("targetHeader emits a ::group:: command under GitHub Actions", () => {
+test("targetHeader emits a ::group:: command under GitHub Actions", () => {
   assertEquals(targetHeader(GITHUB, "test"), ["::group::test"]);
 });
 
-Deno.test("targetPassFooter says 'succeeded in' and closes the group on Actions", () => {
+test("targetPassFooter says 'succeeded in' and closes the group on Actions", () => {
   assertEquals(targetPassFooter(PLAIN, "test", 1_200), [
     "✔ test succeeded in 1.2s",
   ]);
@@ -52,7 +53,7 @@ Deno.test("targetPassFooter says 'succeeded in' and closes the group on Actions"
   ]);
 });
 
-Deno.test("targetFailFooter routes the failure to stderr and adds a Actions annotation", () => {
+test("targetFailFooter routes the failure to stderr and adds a Actions annotation", () => {
   const plain = targetFailFooter(PLAIN, "boom", 500, new Error("nope"));
   assertEquals(plain.info, []);
   assertEquals(plain.error, ["✘ boom failed in 0.5s", "  nope"]);
@@ -70,14 +71,14 @@ Deno.test("targetFailFooter routes the failure to stderr and adds a Actions anno
   assertEquals(str.error[1], "  string failure");
 });
 
-Deno.test("targetDryRunFooter marks the target as not executed", () => {
+test("targetDryRunFooter marks the target as not executed", () => {
   assertEquals(targetDryRunFooter(PLAIN, "deploy"), [
     "✔ deploy (dry run — not executed)",
   ]);
   assertEquals(targetDryRunFooter(GITHUB, "deploy").length, 2);
 });
 
-Deno.test("summaryBlock renders an aligned table with a Total row and closing line", () => {
+test("summaryBlock renders an aligned table with a Total row and closing line", () => {
   const reports = [
     { name: "restore", status: "passed" as const, ms: 50 },
     { name: "test", status: "passed" as const, ms: 19_300 },
@@ -109,7 +110,7 @@ Deno.test("summaryBlock renders an aligned table with a Total row and closing li
   );
 });
 
-Deno.test("closingLine names a single failed target", () => {
+test("closingLine names a single failed target", () => {
   const reports = [
     { name: "first", status: "passed" as const, ms: 100 },
     { name: "boom", status: "failed" as const, ms: 200 },
@@ -121,7 +122,7 @@ Deno.test("closingLine names a single failed target", () => {
   );
 });
 
-Deno.test("closingLine pluralises when several targets failed", () => {
+test("closingLine pluralises when several targets failed", () => {
   const reports = [
     { name: "a", status: "failed" as const, ms: 100 },
     { name: "b", status: "failed" as const, ms: 100 },
@@ -132,7 +133,7 @@ Deno.test("closingLine pluralises when several targets failed", () => {
   );
 });
 
-Deno.test("closingLine falls back when nothing failed but the build still didn't succeed", () => {
+test("closingLine falls back when nothing failed but the build still didn't succeed", () => {
   // A degenerate case: ok=false with no failed targets (e.g. parameter error
   // upstream, leaving an empty/all-skipped report). Don't claim a culprit.
   assertEquals(
@@ -141,7 +142,7 @@ Deno.test("closingLine falls back when nothing failed but the build still didn't
   );
 });
 
-Deno.test("colour mode wraps headers, rows, and the closing line in ANSI codes", () => {
+test("colour mode wraps headers, rows, and the closing line in ANSI codes", () => {
   const header = targetHeader(COLOR, "test");
   assertEquals(header[0].includes("\x1b["), true); // top rule painted (dim)
   assertEquals(header[1].includes("\x1b["), true); // name painted (bold cyan)
@@ -155,7 +156,7 @@ Deno.test("colour mode wraps headers, rows, and the closing line in ANSI codes",
   assertEquals(block[block.length - 1].includes("\x1b["), true);
 });
 
-Deno.test("markup in a name cannot close the job-summary table", () => {
+test("markup in a name cannot close the job-summary table", () => {
   // The escape that matters most, and the one a pipe-only guard misses:
   // `</table>` is not a newline, a pipe or a comment marker, and GitHub's
   // sanitiser allows it — it stops scripts, it does not keep text in a cell.
@@ -171,7 +172,7 @@ Deno.test("markup in a name cannot close the job-summary table", () => {
   assertEquals(md.includes("&lt;/table&gt;&lt;h1&gt;"), true);
 });
 
-Deno.test("a newline in a name cannot end its job-summary row", () => {
+test("a newline in a name cannot end its job-summary row", () => {
   const NL = String.fromCharCode(10);
   const md = jobSummaryMarkdown(
     [
@@ -197,7 +198,7 @@ Deno.test("a newline in a name cannot end its job-summary row", () => {
   );
 });
 
-Deno.test("a pipe in a name cannot open a column of its own", () => {
+test("a pipe in a name cannot open a column of its own", () => {
   const md = jobSummaryMarkdown(
     [{ name: "a | b", status: "passed", ms: 100 }],
     100,
@@ -211,7 +212,7 @@ Deno.test("a pipe in a name cannot open a column of its own", () => {
   assertEquals(md.includes("a \\| b"), true);
 });
 
-Deno.test("a newline in a name cannot forge a row in the terminal table", () => {
+test("a newline in a name cannot forge a row in the terminal table", () => {
   // The same value, the other renderer. Left raw it prints a line of its own,
   // which can imitate a Total row, and destroys the column alignment because
   // the width is measured on a string that is no longer one line.
@@ -242,7 +243,7 @@ Deno.test("a newline in a name cannot forge a row in the terminal table", () => 
   );
 });
 
-Deno.test("jobSummaryMarkdown renders an aligned table with a bold Total row", () => {
+test("jobSummaryMarkdown renders an aligned table with a bold Total row", () => {
   const reports = [
     { name: "a", status: "passed" as const, ms: 100 },
     { name: "b", status: "failed" as const, ms: 200 },
@@ -256,7 +257,7 @@ Deno.test("jobSummaryMarkdown renders an aligned table with a bold Total row", (
   assertEquals(md.includes("| **Total** | | **0.3s** |"), true);
 });
 
-Deno.test("jobSummaryMarkdown uses ✅ on a successful build", () => {
+test("jobSummaryMarkdown uses ✅ on a successful build", () => {
   const md = jobSummaryMarkdown(
     [{ name: "ok", status: "passed", ms: 0 }],
     0,
@@ -268,7 +269,7 @@ Deno.test("jobSummaryMarkdown uses ✅ on a successful build", () => {
 // A workflow command ends at its line break, so any value interpolated into one
 // must not be able to introduce a second. A target's failure message embeds a
 // subprocess's stderr verbatim (see CommandError), which is not ours to trust.
-Deno.test("a failure annotation cannot be broken out of with a newline", () => {
+test("a failure annotation cannot be broken out of with a newline", () => {
   const hostile = new Error(
     "build failed\n::stop-commands::abc\n::error::forged annotation",
   );
@@ -286,7 +287,7 @@ Deno.test("a failure annotation cannot be broken out of with a newline", () => {
   assertStringIncludes(annotation ?? "", "stop-commands");
 });
 
-Deno.test("a percent in a failure message cannot spoof an escape", () => {
+test("a percent in a failure message cannot spoof an escape", () => {
   // `%` is encoded first, so a literal `%0A` in the input stays literal rather
   // than being handed to the runner as an encoded newline.
   const out = targetFailFooter(GITHUB, "deploy", 100, new Error("done 100%0A"));
@@ -294,7 +295,7 @@ Deno.test("a percent in a failure message cannot spoof an escape", () => {
   assertStringIncludes(annotation ?? "", "100%250A");
 });
 
-Deno.test("an annotation title escapes the property separators too", () => {
+test("an annotation title escapes the property separators too", () => {
   // A property list is comma-separated and colon-terminated, so a name carrying
   // either would otherwise end the title early and inject another property.
   const out = targetFailFooter(GITHUB, "deploy:1,2", 100, new Error("nope"));
@@ -302,7 +303,7 @@ Deno.test("an annotation title escapes the property separators too", () => {
   assertStringIncludes(annotation ?? "", "title=deploy%3A1%2C2::");
 });
 
-Deno.test("a group header cannot be broken out of either", () => {
+test("a group header cannot be broken out of either", () => {
   // A fan-out child's name is derived from a runtime list, so it is not
   // guaranteed to be an identifier.
   const [header] = targetHeader(GITHUB, "deploy[a\n::error::forged]");
@@ -310,7 +311,7 @@ Deno.test("a group header cannot be broken out of either", () => {
   assertStringIncludes(header, "%0A");
 });
 
-Deno.test("summaryBlock trails a row's notes after its duration, NUKE-style", () => {
+test("summaryBlock trails a row's notes after its duration, NUKE-style", () => {
   const reports = [
     {
       name: "test",
@@ -340,7 +341,7 @@ Deno.test("summaryBlock trails a row's notes after its duration, NUKE-style", ()
   assertEquals(lines[2], "─".repeat(6 + 2 + 9 + 2 + 8));
 });
 
-Deno.test("summaryBlock dims a row's notes when colour is on", () => {
+test("summaryBlock dims a row's notes when colour is on", () => {
   const lines = summaryBlock(
     COLOR,
     [{
@@ -357,7 +358,7 @@ Deno.test("summaryBlock dims a row's notes when colour is on", () => {
   assertStringIncludes(row ?? "", "\x1b[2m// Failed: 1\x1b[0m");
 });
 
-Deno.test("jobSummaryMarkdown adds a Notes column only when some row has notes", () => {
+test("jobSummaryMarkdown adds a Notes column only when some row has notes", () => {
   const md = jobSummaryMarkdown(
     [
       {
@@ -392,7 +393,7 @@ Deno.test("jobSummaryMarkdown adds a Notes column only when some row has notes",
   );
 });
 
-Deno.test("jobSummaryMarkdown escapes a pipe in a note so it cannot add a cell", () => {
+test("jobSummaryMarkdown escapes a pipe in a note so it cannot add a cell", () => {
   const md = jobSummaryMarkdown(
     [{
       name: "t",
@@ -438,7 +439,7 @@ function hasCommandLine(lines: readonly string[]): boolean {
 /** NEXT LINE: whitespace to the runner, not matched by this language's `\s`. */
 const NEL = String.fromCharCode(0x85);
 
-Deno.test("a failure message cannot open a workflow command", () => {
+test("a failure message cannot open a workflow command", () => {
   // A CommandError embeds the failed subprocess's stderr verbatim, so this is
   // attacker-influenced whenever a tool echoes repository content. Both runner
   // syntaxes are covered: a `::` line (leading whitespace is trimmed before the
@@ -470,7 +471,7 @@ Deno.test("a failure message cannot open a workflow command", () => {
   assertEquals(info, ["::endgroup::"]);
 });
 
-Deno.test("plain mode leaves a failure message exactly as it was", () => {
+test("plain mode leaves a failure message exactly as it was", () => {
   // Nothing parses a terminal, so encoding there would only hurt legibility.
   const hostile = "boom\n::stop-commands::x\n##[error]y";
   const { error } = targetFailFooter(PLAIN, "lint", 5, new Error(hostile));
@@ -478,7 +479,7 @@ Deno.test("plain mode leaves a failure message exactly as it was", () => {
   assertStringIncludes(error[1], "##[error]y");
 });
 
-Deno.test("a target name cannot open a workflow command in any footer", () => {
+test("a target name cannot open a workflow command in any footer", () => {
   // A fan-out sub-target's name embeds its item key, which is derived from
   // repository or remote data.
   const name = "build[a\n::stop-commands::x].compile";
@@ -496,7 +497,7 @@ Deno.test("a target name cannot open a workflow command in any footer", () => {
   assertStringIncludes(header[0], "%0A" + "::stop-commands::x");
 });
 
-Deno.test("a hostile target name cannot open a command from the summary", () => {
+test("a hostile target name cannot open a command from the summary", () => {
   const reports = [
     { name: "ok", status: "passed", ms: 1 },
     { name: "b\n::stop-commands::x", status: "failed", ms: 2 },
@@ -510,7 +511,7 @@ Deno.test("a hostile target name cannot open a command from the summary", () => 
   );
 });
 
-Deno.test("ordinary output is returned unchanged", () => {
+test("ordinary output is returned unchanged", () => {
   // The escape must be invisible to every build that is not under attack.
   const plain = summaryBlock(
     PLAIN,
@@ -527,7 +528,7 @@ Deno.test("ordinary output is returned unchanged", () => {
   assertEquals(github.filter((l) => l !== "::endgroup::"), plain);
 });
 
-Deno.test("a line the runner un-blanks cannot open a command", () => {
+test("a line the runner un-blanks cannot open a command", () => {
   // NEXT LINE is trimmed by the runner before it tests for `::`, and is not
   // matched by this language's `\s`. A line that looks indented here therefore
   // starts with `::` by the time the runner reads it.
@@ -540,7 +541,7 @@ Deno.test("a line the runner un-blanks cannot open a command", () => {
   assertEquals(hasCommandLine(error.slice(0, 2)), false);
 });
 
-Deno.test("a summary note cannot open a command", () => {
+test("a summary note cannot open a command", () => {
   // Notes are parsed out of a tool's own output by the wrapper packages, and
   // the legacy bracketed form needs no newline to be recognised.
   const reports: TargetReport[] = [{
@@ -552,7 +553,7 @@ Deno.test("a summary note cannot open a command", () => {
   assertEquals(hasCommandLine(summaryBlock(GITHUB, reports, 1, true)), false);
 });
 
-Deno.test("a wait footer's trigger cannot open a command", () => {
+test("a wait footer's trigger cannot open a command", () => {
   // The trigger names what is being waited on — for a workflow gate, a
   // repository and a workflow file.
   assertEquals(
@@ -561,7 +562,7 @@ Deno.test("a wait footer's trigger cannot open a command", () => {
   );
 });
 
-Deno.test("a pipe in a target name cannot add a column to the job summary", () => {
+test("a pipe in a target name cannot add a column to the job summary", () => {
   // The note cell already guarded against this; the name cell did not.
   const md = jobSummaryMarkdown(
     [{ name: "deploy|extra|cells", status: "passed", ms: 1 }],
@@ -574,7 +575,7 @@ Deno.test("a pipe in a target name cannot add a column to the job summary", () =
   assertEquals(row.split(/(?<!\\)\|/).length, 5);
 });
 
-Deno.test("a summary row's target name cannot open a workflow command", () => {
+test("a summary row's target name cannot open a workflow command", () => {
   // A row starts at column 0 with the name, so a name beginning `::` needs no
   // newline to reach the front of a line the runner parses — and `displayName`
   // trims, so indenting it does not help either. The legacy bracketed form is
@@ -611,7 +612,7 @@ Deno.test("a summary row's target name cannot open a workflow command", () => {
   assertEquals(plain.some((l) => l.startsWith("::error::forged")), true);
 });
 
-Deno.test("the build-failed line's culprit name cannot open a workflow command", () => {
+test("the build-failed line's culprit name cannot open a workflow command", () => {
   // The single-culprit name is the one target name `closingLine` interpolates.
   // It lands mid-line, after the icon and the opening quote, so the reachable
   // form here is the legacy bracketed one — recognised anywhere in a line

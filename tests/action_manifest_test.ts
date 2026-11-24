@@ -15,10 +15,8 @@
  * @module
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals, assertStringIncludes } from "./_assert.ts";
 
 /** The manifest, read once — every test here asserts against the real file. */
 const MANIFEST = Deno.readTextFileSync("action.yml");
@@ -91,7 +89,7 @@ function brandingValue(key: string): string | undefined {
   return value;
 }
 
-Deno.test("the manifest names the action as the Marketplace listing does", () => {
+test("the manifest names the action as the Marketplace listing does", () => {
   // The listing's unique identifier. Changing it is not a rename but a new
   // listing, so it is worth pinning to the value that was actually published.
   // "Zuke" alone is rejected: the uniqueness check spans users and
@@ -105,7 +103,7 @@ Deno.test("the manifest names the action as the Marketplace listing does", () =>
   );
 });
 
-Deno.test("the manifest carries a non-empty description", () => {
+test("the manifest carries a non-empty description", () => {
   // Shown under the name in Marketplace search results, and required.
   assertEquals(
     /^description: "[^"]+"$/m.test(MANIFEST),
@@ -114,7 +112,7 @@ Deno.test("the manifest carries a non-empty description", () => {
   );
 });
 
-Deno.test("the manifest carries a branding badge", () => {
+test("the manifest carries a branding badge", () => {
   // Documented as optional; the publish form rejects a release without it.
   const icon = brandingValue("icon");
   const color = brandingValue("color");
@@ -141,7 +139,7 @@ Deno.test("the manifest carries a branding badge", () => {
   );
 });
 
-Deno.test("no shell script in the action interpolates a template expression", () => {
+test("no shell script in the action interpolates a template expression", () => {
   // The regression test for the injection this action was already fixed once
   // for. `inputs.target` reaches the shell through `env:` and is quoted, rather
   // than being expanded into the script text, where a caller deriving it from a
@@ -171,7 +169,7 @@ Deno.test("no shell script in the action interpolates a template expression", ()
   assertStringIncludes(MANIFEST, './zuke "$ZUKE_TARGET"');
 });
 
-Deno.test("a custom ref is refused on every secret-bearing event", () => {
+test("a custom ref is refused on every secret-bearing event", () => {
   // The `ref` input exists because this repository's own gate job needs it to
   // push a fix to a pull request's head branch. It also hands every consumer
   // the classic escalation: on `pull_request_target` the job holds the base
@@ -240,13 +238,13 @@ Deno.test("a custom ref is refused on every secret-bearing event", () => {
   assertStringIncludes(guard, '"pull_request"');
 });
 
-Deno.test("the checkout honours the ref input", () => {
+test("the checkout honours the ref input", () => {
   // Without this the input would be accepted, documented, guarded — and
   // silently ignored, checking out the event's default ref instead.
   assertStringIncludes(MANIFEST, "ref: ${{ inputs.ref }}");
 });
 
-Deno.test("running a target checks for the launcher it needs", () => {
+test("running a target checks for the launcher it needs", () => {
   // The action checks the caller's repository out and then runs `./zuke` in it,
   // so a caller who found this on Marketplace but has never scaffolded Zuke
   // gets a bare "No such file or directory" from the shell. The guard turns
@@ -259,7 +257,7 @@ Deno.test("running a target checks for the launcher it needs", () => {
   assertStringIncludes(MANIFEST, "exit 1");
 });
 
-Deno.test("the actions-cache input exports the cache service to the job", () => {
+test("the actions-cache input exports the cache service to the job", () => {
   // The runner hands `ACTIONS_RUNTIME_TOKEN` and `ACTIONS_RESULTS_URL` to a
   // JavaScript action's process only, so the build's `envCacheStore` can see
   // them only if a JavaScript step exports them — and only when asked, since

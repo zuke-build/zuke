@@ -8,7 +8,8 @@
  * @module
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import {
   Build,
   defaultStateHost,
@@ -18,7 +19,7 @@ import {
 } from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 
-Deno.test("an always target runs when a dependency failed, and can report on it", async () => {
+test("an always target runs when a dependency failed, and can report on it", async () => {
   // The aggregate-gate shape: one target that reports a single verdict for a
   // fan of checks. It has to run in exactly the case a plain dependency edge
   // would block it.
@@ -49,7 +50,7 @@ Deno.test("an always target runs when a dependency failed, and can report on it"
   assertEquals(code, 1);
 });
 
-Deno.test("the failure's message reaches the always target", async () => {
+test("the failure's message reaches the always target", async () => {
   let message: string | undefined;
 
   class Ci extends Build {
@@ -65,7 +66,7 @@ Deno.test("the failure's message reaches the always target", async () => {
   assertEquals(message, "2 tests failed");
 });
 
-Deno.test("a non-always target is still blocked by a failed dependency", async () => {
+test("a non-always target is still blocked by a failed dependency", async () => {
   // The change is scoped to `.always()`. An ordinary dependent must not start
   // running against a dependency that failed.
   let ran = false;
@@ -84,7 +85,7 @@ Deno.test("a non-always target is still blocked by a failed dependency", async (
   assertEquals(code, 1);
 });
 
-Deno.test("an always target waits for a parked wait rather than reporting early", async () => {
+test("an always target waits for a parked wait rather than reporting early", async () => {
   // A dependency at a `.waitsFor(...)` gate has not settled — it is going to be
   // resumed. Releasing the always target here would have it report on a run
   // that is still in progress, and the resume would then find it already done.
@@ -112,7 +113,7 @@ Deno.test("an always target waits for a parked wait rather than reporting early"
   });
 });
 
-Deno.test("an always target still runs when its dependencies all passed", async () => {
+test("an always target still runs when its dependencies all passed", async () => {
   const ran: string[] = [];
 
   class Ci extends Build {

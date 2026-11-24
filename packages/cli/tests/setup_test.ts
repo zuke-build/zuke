@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import {
   defaultHost,
   delegatesImportMap,
@@ -26,10 +27,10 @@ import {
   starterSdkConfig,
   zukeDependency,
 } from "../src/starter.ts";
-import { FakeHost, testPin } from "./_fakes.ts";
-import { withTemp } from "../../core/tests/_temp.ts";
+import { FakeHost, testPin } from "../../../tests/support/cli/_fakes.ts";
+import { withTemp } from "../../../tests/_temp.ts";
 
-Deno.test("isRecord distinguishes plain objects", () => {
+test("isRecord distinguishes plain objects", () => {
   assertEquals(isRecord({}), true);
   assertEquals(isRecord({ a: 1 }), true);
   assertEquals(isRecord(null), false);
@@ -37,7 +38,7 @@ Deno.test("isRecord distinguishes plain objects", () => {
   assertEquals(isRecord(42), false);
 });
 
-Deno.test("starterBuild embeds the class name and entry point", () => {
+test("starterBuild embeds the class name and entry point", () => {
   const out = starterBuild("Acme");
   assertEquals(out.includes("import { Build, run, target }"), true);
   assertEquals(out.includes('from "@zuke/core";'), true);
@@ -45,7 +46,7 @@ Deno.test("starterBuild embeds the class name and entry point", () => {
   assertEquals(out.includes("await run(Acme)"), true);
 });
 
-Deno.test("starterBuild imports no inline jsr: specifier", () => {
+test("starterBuild imports no inline jsr: specifier", () => {
   // Deno's default lint set rejects an inline `jsr:`/`npm:`/`https:` specifier
   // (no-import-prefix), and the scaffold writes a deno.json that configures no
   // lint rules — so a specifier here fails `deno lint` on the project's own
@@ -55,19 +56,19 @@ Deno.test("starterBuild imports no inline jsr: specifier", () => {
   assertEquals(STARTER_IMPORTS["@zuke/core"], "jsr:@zuke/core@^1");
 });
 
-Deno.test("zukeDependency pins the caret major", () => {
+test("zukeDependency pins the caret major", () => {
   // The pin the scaffold puts in deno.json in place of the inline specifier.
   assertEquals(zukeDependency("core"), "jsr:@zuke/core@^1");
   assertEquals(zukeDependency("cmd"), "jsr:@zuke/cmd@^1");
 });
 
-Deno.test("starterConfig records the build name as JSON", () => {
+test("starterConfig records the build name as JSON", () => {
   const parsed: unknown = JSON.parse(starterConfig("Acme", "zuke.ts"));
   assertEquals(isRecord(parsed) && parsed.name === "Acme", true);
   assertEquals(starterConfig("Acme", "zuke.ts").endsWith("\n"), true);
 });
 
-Deno.test("starterPythonBuild names the class, depends on the SDK and ends in run", () => {
+test("starterPythonBuild names the class, depends on the SDK and ends in run", () => {
   const out = starterPythonBuild("Acme");
   // The inline metadata is what lets `uv run build.py` provide the SDK.
   assertEquals(out.startsWith("# /// script\n"), true);
@@ -77,7 +78,7 @@ Deno.test("starterPythonBuild names the class, depends on the SDK and ends in ru
   assertEquals(out.endsWith("run(Acme)\n"), true);
 });
 
-Deno.test("starterSdkConfig records the name, the worker command and the engine pin", () => {
+test("starterSdkConfig records the name, the worker command and the engine pin", () => {
   const parsed: unknown = JSON.parse(starterSdkConfig("Acme", "1.2.0"));
   assertEquals(parsed, {
     name: "Acme",
@@ -87,7 +88,7 @@ Deno.test("starterSdkConfig records the name, the worker command and the engine 
   assertEquals(PYTHON_SDK_COMMAND, ["uv", "run", "build.py"]);
 });
 
-Deno.test("runSetup --sdk python writes build.py and the SDK config, and no deno.json", async () => {
+test("runSetup --sdk python writes build.py and the SDK config, and no deno.json", async () => {
   const host = new FakeHost();
   const result = await runSetup(
     {
@@ -121,7 +122,7 @@ Deno.test("runSetup --sdk python writes build.py and the SDK config, and no deno
   assertEquals(host.chmods, [["zuke", 0o755]]);
 });
 
-Deno.test("runSetup --sdk python --no-bootstrap writes launchers that require zuke on PATH", async () => {
+test("runSetup --sdk python --no-bootstrap writes launchers that require zuke on PATH", async () => {
   const host = new FakeHost();
   await runSetup(
     {
@@ -142,7 +143,7 @@ Deno.test("runSetup --sdk python --no-bootstrap writes launchers that require zu
   );
 });
 
-Deno.test("runSetup --sdk python --mcp registers zuke mcp, which needs no Deno", async () => {
+test("runSetup --sdk python --mcp registers zuke mcp, which needs no Deno", async () => {
   const host = new FakeHost();
   await runSetup(
     {
@@ -161,7 +162,7 @@ Deno.test("runSetup --sdk python --mcp registers zuke mcp, which needs no Deno",
   });
 });
 
-Deno.test("runSetup --sdk python reserves build.py, and leaves a deno.json directory alone", async () => {
+test("runSetup --sdk python reserves build.py, and leaves a deno.json directory alone", async () => {
   const host = new FakeHost();
   // Not a scaffold name for an SDK build, so not a collision.
   host.directories.add("deno.json");
@@ -209,7 +210,7 @@ Deno.test("runSetup --sdk python reserves build.py, and leaves a deno.json direc
   );
 });
 
-Deno.test("mergeDenoJson seeds tasks and imports from scratch", () => {
+test("mergeDenoJson seeds tasks and imports from scratch", () => {
   const text = mergeDenoJson(null, STARTER_IMPORTS, "zuke.ts");
   const parsed: unknown = JSON.parse(text);
   assertEquals(isRecord(parsed) && isRecord(parsed.tasks), true);
@@ -225,7 +226,7 @@ Deno.test("mergeDenoJson seeds tasks and imports from scratch", () => {
   assertEquals(text.endsWith("\n"), true);
 });
 
-Deno.test("mergeDenoJson preserves existing keys, tasks, and import pins", () => {
+test("mergeDenoJson preserves existing keys, tasks, and import pins", () => {
   const before =
     '{"name":"x","imports":{"@zuke/core":"jsr:@zuke/core@1.2.3"},"tasks":{"fmt":"custom"}}';
   const parsed: unknown = JSON.parse(
@@ -241,7 +242,7 @@ Deno.test("mergeDenoJson preserves existing keys, tasks, and import pins", () =>
   }
 });
 
-Deno.test("mergeDenoJson adds a missing import beside existing ones", () => {
+test("mergeDenoJson adds a missing import beside existing ones", () => {
   const before = '{"imports":{"@std/yaml":"jsr:@std/yaml@^1"}}';
   const parsed: unknown = JSON.parse(
     mergeDenoJson(before, {
@@ -256,7 +257,7 @@ Deno.test("mergeDenoJson adds a missing import beside existing ones", () => {
   }
 });
 
-Deno.test("mergeDenoJson ignores a non-object document", () => {
+test("mergeDenoJson ignores a non-object document", () => {
   const parsed: unknown = JSON.parse(
     mergeDenoJson("[]", STARTER_IMPORTS, "zuke.ts"),
   );
@@ -267,7 +268,7 @@ Deno.test("mergeDenoJson ignores a non-object document", () => {
   }
 });
 
-Deno.test("mergeDenoJson ignores a non-object imports block", () => {
+test("mergeDenoJson ignores a non-object imports block", () => {
   const parsed: unknown = JSON.parse(
     mergeDenoJson('{"imports":5}', STARTER_IMPORTS, "zuke.ts"),
   );
@@ -276,7 +277,7 @@ Deno.test("mergeDenoJson ignores a non-object imports block", () => {
   }
 });
 
-Deno.test("denoJsonState classifies deno.json text", () => {
+test("denoJsonState classifies deno.json text", () => {
   const complete =
     '{"tasks":{"zuke":"x"},"imports":{"@zuke/core":"jsr:@zuke/core@^1"}}';
   assertEquals(denoJsonState(complete, STARTER_IMPORTS, "zuke.ts"), "present");
@@ -317,7 +318,7 @@ Deno.test("denoJsonState classifies deno.json text", () => {
   );
 });
 
-Deno.test("delegatesImportMap spots a document that points elsewhere", () => {
+test("delegatesImportMap spots a document that points elsewhere", () => {
   // Deno ignores `importMap` the moment `imports` or `scopes` appears, so only
   // a lone `importMap` is still delegating.
   assertEquals(delegatesImportMap({ importMap: "./m.json" }), true);
@@ -333,7 +334,7 @@ Deno.test("delegatesImportMap spots a document that points elsewhere", () => {
   assertEquals(delegatesImportMap({}), false);
 });
 
-Deno.test("mergeDenoJson leaves a delegated import map alone", () => {
+test("mergeDenoJson leaves a delegated import map alone", () => {
   // Writing `imports` beside a lone `importMap` makes Deno ignore the latter,
   // taking the project's whole module resolution down with it.
   const before = '{"importMap":"./import_map.json"}';
@@ -351,7 +352,7 @@ Deno.test("mergeDenoJson leaves a delegated import map alone", () => {
   }
 });
 
-Deno.test("remappedImports names a scaffold specifier pointing elsewhere", () => {
+test("remappedImports names a scaffold specifier pointing elsewhere", () => {
   const core = "@zuke/core";
   assertEquals(
     remappedImports(
@@ -375,7 +376,7 @@ Deno.test("remappedImports names a scaffold specifier pointing elsewhere", () =>
   );
 });
 
-Deno.test("runSetup scaffolds an empty project", async () => {
+test("runSetup scaffolds an empty project", async () => {
   const host = new FakeHost();
   const result = await runSetup({ dir: ".", force: false, name: "Foo" }, host);
   assertEquals(result.files.map((f) => f.status), [
@@ -395,7 +396,7 @@ Deno.test("runSetup scaffolds an empty project", async () => {
   assertEquals(host.chmods[0], ["zuke", 0o755]);
 });
 
-Deno.test("runSetup scaffolds the bootstrapping launchers by default", async () => {
+test("runSetup scaffolds the bootstrapping launchers by default", async () => {
   // Nothing installed up front is the default: the launchers carry the pinned
   // Deno release and its checksums, and the PowerShell one mirrors the bash.
   const host = new FakeHost();
@@ -410,7 +411,7 @@ Deno.test("runSetup scaffolds the bootstrapping launchers by default", async () 
   assertEquals(pwsh.includes("Deno not found on PATH"), false);
 });
 
-Deno.test("runSetup scaffolds the plain launchers when bootstrapDeno is false", async () => {
+test("runSetup scaffolds the plain launchers when bootstrapDeno is false", async () => {
   const host = new FakeHost();
   await runSetup(
     { dir: ".", force: false, name: "Acme", bootstrapDeno: false },
@@ -426,7 +427,7 @@ Deno.test("runSetup scaffolds the plain launchers when bootstrapDeno is false", 
   assertEquals(host.chmods, [["zuke", 0o755]]);
 });
 
-Deno.test("runSetup writes the launcher under a custom --launcher-name", async () => {
+test("runSetup writes the launcher under a custom --launcher-name", async () => {
   const host = new FakeHost();
   await runSetup(
     { dir: ".", force: false, name: "Foo", launcherName: "build" },
@@ -439,7 +440,7 @@ Deno.test("runSetup writes the launcher under a custom --launcher-name", async (
   assertEquals(host.chmods[0], ["build", 0o755]);
 });
 
-Deno.test("runSetup fails when the launcher name is a directory, suggesting --launcher-name", async () => {
+test("runSetup fails when the launcher name is a directory, suggesting --launcher-name", async () => {
   const host = new FakeHost();
   host.directories.add("zuke"); // a zuke/ package directory occupies the name
   await assertRejects(
@@ -451,7 +452,7 @@ Deno.test("runSetup fails when the launcher name is a directory, suggesting --la
   assertEquals(host.files.size, 0);
 });
 
-Deno.test("runSetup fails when a reserved non-launcher name is a directory", async () => {
+test("runSetup fails when a reserved non-launcher name is a directory", async () => {
   const host = new FakeHost();
   host.directories.add("zuke.ts");
   const err = await assertRejects(
@@ -462,7 +463,7 @@ Deno.test("runSetup fails when a reserved non-launcher name is a directory", asy
   assertEquals(err.message.includes("--launcher-name"), false); // not a launcher
 });
 
-Deno.test("runSetup rejects a launcher name with a path separator", async () => {
+test("runSetup rejects a launcher name with a path separator", async () => {
   const host = new FakeHost();
   await assertRejects(
     () =>
@@ -475,7 +476,7 @@ Deno.test("runSetup rejects a launcher name with a path separator", async () => 
   );
 });
 
-Deno.test("runSetup fails when deno.json is a directory", async () => {
+test("runSetup fails when deno.json is a directory", async () => {
   const host = new FakeHost();
   host.directories.add("deno.json"); // a deno.json/ directory, not a file
   await assertRejects(
@@ -486,7 +487,7 @@ Deno.test("runSetup fails when deno.json is a directory", async () => {
   assertEquals(host.files.size, 0);
 });
 
-Deno.test("runSetup rejects a launcher name that shadows a scaffolded file", async () => {
+test("runSetup rejects a launcher name that shadows a scaffolded file", async () => {
   const host = new FakeHost();
   await assertRejects(
     () =>
@@ -499,7 +500,7 @@ Deno.test("runSetup rejects a launcher name that shadows a scaffolded file", asy
   );
 });
 
-Deno.test("runSetup rejects a case-variant launcher name that shadows a file", async () => {
+test("runSetup rejects a case-variant launcher name that shadows a file", async () => {
   // On a case-insensitive filesystem `Build.ts` would clobber the `build.ts`
   // build file, so it must be rejected regardless of case.
   const host = new FakeHost();
@@ -516,7 +517,7 @@ Deno.test("runSetup rejects a case-variant launcher name that shadows a file", a
   }
 });
 
-Deno.test("runSetup rejects a launcher name containing a colon", async () => {
+test("runSetup rejects a launcher name containing a colon", async () => {
   const host = new FakeHost();
   for (const bad of ["C:evil", "foo:bar"]) {
     await assertRejects(
@@ -531,7 +532,7 @@ Deno.test("runSetup rejects a launcher name containing a colon", async () => {
   }
 });
 
-Deno.test("runSetup skips a .gitignore that already ignores .zuke/", async () => {
+test("runSetup skips a .gitignore that already ignores .zuke/", async () => {
   const host = new FakeHost({ ".gitignore": "node_modules/\n.zuke/\n" });
   const result = await runSetup({ dir: ".", force: false, name: "Foo" }, host);
   const gi = result.files.find((f) => f.path === ".gitignore");
@@ -539,7 +540,7 @@ Deno.test("runSetup skips a .gitignore that already ignores .zuke/", async () =>
   assertEquals(host.files.get(".gitignore"), "node_modules/\n.zuke/\n");
 });
 
-Deno.test("runSetup appends .zuke/ to an existing .gitignore", async () => {
+test("runSetup appends .zuke/ to an existing .gitignore", async () => {
   const host = new FakeHost({ ".gitignore": "node_modules/" });
   const result = await runSetup({ dir: ".", force: false, name: "Foo" }, host);
   const gi = result.files.find((f) => f.path === ".gitignore");
@@ -547,21 +548,21 @@ Deno.test("runSetup appends .zuke/ to an existing .gitignore", async () => {
   assertEquals(host.files.get(".gitignore"), "node_modules/\n.zuke/\n");
 });
 
-Deno.test("runSetup skips existing files without --force", async () => {
+test("runSetup skips existing files without --force", async () => {
   const host = new FakeHost({ "zuke.ts": "keep me" });
   const result = await runSetup({ dir: ".", force: false, name: "Foo" }, host);
   assertEquals(result.files[0], { path: "zuke.ts", status: "skipped" });
   assertEquals(host.files.get("zuke.ts"), "keep me");
 });
 
-Deno.test("runSetup overwrites existing files with --force", async () => {
+test("runSetup overwrites existing files with --force", async () => {
   const host = new FakeHost({ "zuke.ts": "old" });
   const result = await runSetup({ dir: ".", force: true, name: "Bar" }, host);
   assertEquals(result.files[0], { path: "zuke.ts", status: "overwritten" });
   assertEquals(host.files.get("zuke.ts")?.includes("class Bar"), true);
 });
 
-Deno.test("runSetup tolerates chmod failing", async () => {
+test("runSetup tolerates chmod failing", async () => {
   const host = new FakeHost();
   host.chmodFails = true;
   const result = await runSetup({ dir: ".", force: false, name: "Foo" }, host);
@@ -569,7 +570,7 @@ Deno.test("runSetup tolerates chmod failing", async () => {
   assertEquals(host.files.has("zuke"), true);
 });
 
-Deno.test("runSetup skips deno.json that already has the zuke task and imports", async () => {
+test("runSetup skips deno.json that already has the zuke task and imports", async () => {
   const complete =
     '{"tasks":{"zuke":"x"},"imports":{"@zuke/core":"jsr:@zuke/core@^1"}}';
   const host = new FakeHost({ "deno.json": complete });
@@ -579,7 +580,7 @@ Deno.test("runSetup skips deno.json that already has the zuke task and imports",
   assertEquals(host.files.get("deno.json"), complete);
 });
 
-Deno.test("runSetup completes a deno.json that has the zuke task but no imports", async () => {
+test("runSetup completes a deno.json that has the zuke task but no imports", async () => {
   // The regression: skipping on the task alone left the zuke.ts written by the
   // same run importing "@zuke/core" with nothing to resolve it.
   const host = new FakeHost({ "deno.json": '{"tasks":{"zuke":"x"}}' });
@@ -593,7 +594,7 @@ Deno.test("runSetup completes a deno.json that has the zuke task but no imports"
   }
 });
 
-Deno.test("runSetup declares the imports the supplied buildContent needs", async () => {
+test("runSetup declares the imports the supplied buildContent needs", async () => {
   const host = new FakeHost();
   await runSetup({
     dir: ".",
@@ -611,7 +612,7 @@ Deno.test("runSetup declares the imports the supplied buildContent needs", async
   }
 });
 
-Deno.test("runSetup merges a deno.json missing the zuke task", async () => {
+test("runSetup merges a deno.json missing the zuke task", async () => {
   const host = new FakeHost({ "deno.json": '{"tasks":{"a":"b"}}' });
   const result = await runSetup({ dir: ".", force: false, name: "Foo" }, host);
   const dj = result.files.find((f) => f.path === "deno.json");
@@ -619,7 +620,7 @@ Deno.test("runSetup merges a deno.json missing the zuke task", async () => {
   assertEquals(host.files.get("deno.json")?.includes('"zuke"'), true);
 });
 
-Deno.test("runSetup leaves an unparseable deno.json alone", async () => {
+test("runSetup leaves an unparseable deno.json alone", async () => {
   const host = new FakeHost({ "deno.json": "oops" });
   const result = await runSetup({ dir: ".", force: false, name: "Foo" }, host);
   const dj = result.files.find((f) => f.path === "deno.json");
@@ -627,7 +628,7 @@ Deno.test("runSetup leaves an unparseable deno.json alone", async () => {
   assertEquals(host.files.get("deno.json"), "oops");
 });
 
-Deno.test("runSetup reports a manual step for a JSONC deno.json", async () => {
+test("runSetup reports a manual step for a JSONC deno.json", async () => {
   // deno.json is JSONC: Deno accepts `//` comments that JSON.parse rejects, and
   // rewriting the file would discard them. The build now resolves through this
   // file, so silently skipping it left a scaffold that could not start.
@@ -643,7 +644,7 @@ Deno.test("runSetup reports a manual step for a JSONC deno.json", async () => {
   assertStringIncludes(result.manualSteps[0], "will not run until you do");
 });
 
-Deno.test("runSetup will not break a project that delegates its import map", async () => {
+test("runSetup will not break a project that delegates its import map", async () => {
   // Deno ignores `importMap` as soon as `imports` appears beside it, so writing
   // one would disable the project's entire module resolution.
   const host = new FakeHost({
@@ -657,7 +658,7 @@ Deno.test("runSetup will not break a project that delegates its import map", asy
   assertStringIncludes(result.manualSteps[0], 'that file\'s "imports" instead');
 });
 
-Deno.test("runSetup notes a kept mapping that is not the JSR package", async () => {
+test("runSetup notes a kept mapping that is not the JSR package", async () => {
   // Keeping the mapping is right — it is how a pin or a local checkout link
   // survives — but the run must not go on to call the dependency verified.
   const host = new FakeHost({
@@ -674,7 +675,7 @@ Deno.test("runSetup notes a kept mapping that is not the JSR package", async () 
   );
 });
 
-Deno.test("runSetup stops asking once the delegated import map declares it", async () => {
+test("runSetup stops asking once the delegated import map declares it", async () => {
   // The project did exactly what the previous run asked. Re-running must not
   // report the same step again — setup has to read the delegated map, since it
   // is the one place the entry can legitimately live.
@@ -686,7 +687,7 @@ Deno.test("runSetup stops asking once the delegated import map declares it", asy
   assertEquals(result.manualSteps, []);
 });
 
-Deno.test("runSetup still asks when the delegated map cannot confirm it", async () => {
+test("runSetup still asks when the delegated map cannot confirm it", async () => {
   // Every shape setup cannot read answers "not declared", so an unverifiable
   // map gets the step rather than a silent pass.
   const cases: Array<Record<string, string>> = [
@@ -712,7 +713,7 @@ Deno.test("runSetup still asks when the delegated map cannot confirm it", async 
   }
 });
 
-Deno.test("runSetup does not read an importMap pointing outside the directory", async () => {
+test("runSetup does not read an importMap pointing outside the directory", async () => {
   // An absolute path, a URL, or one climbing out with `..` names a file this
   // directory does not own; setup reports it unverified instead of reading it.
   for (
@@ -730,7 +731,7 @@ Deno.test("runSetup does not read an importMap pointing outside the directory", 
   }
 });
 
-Deno.test("runSetup notes that --mcp could not register into an unparseable file", async () => {
+test("runSetup notes that --mcp could not register into an unparseable file", async () => {
   // The user asked for the server and did not get it; that belongs in the
   // result, not only in a line of progress output.
   const host = new FakeHost({ ".mcp.json": "oops" });
@@ -743,14 +744,14 @@ Deno.test("runSetup notes that --mcp could not register into an unparseable file
   assertStringIncludes(result.notes[0], "was not registered");
 });
 
-Deno.test("runSetup reports no manual steps or notes for a clean scaffold", async () => {
+test("runSetup reports no manual steps or notes for a clean scaffold", async () => {
   const host = new FakeHost();
   const result = await runSetup({ dir: ".", force: false, name: "Foo" }, host);
   assertEquals(result.manualSteps, []);
   assertEquals(result.notes, []);
 });
 
-Deno.test("runSetup writes to disk via the default host", async () => {
+test("runSetup writes to disk via the default host", async () => {
   await withTemp(async (dir) => {
     const result = await runSetup({ dir, force: false, name: "Acme" });
     assertEquals(result.files.length, 6);
@@ -768,7 +769,7 @@ Deno.test("runSetup writes to disk via the default host", async () => {
   });
 });
 
-Deno.test("defaultHost.exists rethrows non-NotFound errors", async () => {
+test("defaultHost.exists rethrows non-NotFound errors", async () => {
   if (Deno.build.os === "windows") return; // ENOTDIR is POSIX-specific.
   const file = await Deno.makeTempFile();
   try {
@@ -779,7 +780,7 @@ Deno.test("defaultHost.exists rethrows non-NotFound errors", async () => {
   }
 });
 
-Deno.test("defaultHost.isDirectory distinguishes dirs, files, and missing paths", async () => {
+test("defaultHost.isDirectory distinguishes dirs, files, and missing paths", async () => {
   await withTemp(async (dir) => {
     assertEquals(await defaultHost.isDirectory(dir), true);
     const file = `${dir}/f.txt`;
@@ -793,7 +794,7 @@ Deno.test("defaultHost.isDirectory distinguishes dirs, files, and missing paths"
   });
 });
 
-Deno.test("runSetup writes .mcp.json only when --mcp asks for it", async () => {
+test("runSetup writes .mcp.json only when --mcp asks for it", async () => {
   const plain = new FakeHost();
   await runSetup({ dir: ".", force: false, name: "Foo" }, plain);
   assertEquals(plain.files.has(".mcp.json"), false);
@@ -808,7 +809,7 @@ Deno.test("runSetup writes .mcp.json only when --mcp asks for it", async () => {
   assertEquals(config.mcpServers.zuke.args, ["run", "-A", "build.ts", "mcp"]);
 });
 
-Deno.test("runSetup --mcp --allow-run registers the server with execution enabled", async () => {
+test("runSetup --mcp --allow-run registers the server with execution enabled", async () => {
   const host = new FakeHost();
   await runSetup(
     { dir: "app", force: false, name: "Foo", mcp: { allowRun: true } },
@@ -818,7 +819,7 @@ Deno.test("runSetup --mcp --allow-run registers the server with execution enable
   assertEquals(config.mcpServers.zuke.args.at(-1), "--allow-run");
 });
 
-Deno.test("runSetup merges .mcp.json around other servers and skips a present zuke entry", async () => {
+test("runSetup merges .mcp.json around other servers and skips a present zuke entry", async () => {
   const other = JSON.stringify({
     mcpServers: { github: { command: "gh-mcp" } },
   });
@@ -849,7 +850,7 @@ Deno.test("runSetup merges .mcp.json around other servers and skips a present zu
   assertEquals(replaced.mcpServers.zuke.args.at(-1), "--allow-run");
 });
 
-Deno.test("runSetup repairs a malformed zuke entry without --force", async () => {
+test("runSetup repairs a malformed zuke entry without --force", async () => {
   const host = new FakeHost({
     ".mcp.json": JSON.stringify({ mcpServers: { zuke: { command: "deno" } } }),
   });
@@ -862,7 +863,7 @@ Deno.test("runSetup repairs a malformed zuke entry without --force", async () =>
   assertEquals(repaired.mcpServers.zuke.args, ["run", "-A", "build.ts", "mcp"]);
 });
 
-Deno.test("runSetup skips an unparseable .mcp.json with a notice", async () => {
+test("runSetup skips an unparseable .mcp.json with a notice", async () => {
   const host = new FakeHost({ ".mcp.json": "{not json" });
   const result = await runSetup(
     { dir: ".", force: true, name: "Foo", mcp: { allowRun: false } },
@@ -873,7 +874,7 @@ Deno.test("runSetup skips an unparseable .mcp.json with a notice", async () => {
   assertEquals(host.logs.some((l) => l.includes("edit by hand")), true);
 });
 
-Deno.test("runSetup fails when .mcp.json is a directory, only if --mcp asked for it", async () => {
+test("runSetup fails when .mcp.json is a directory, only if --mcp asked for it", async () => {
   const host = new FakeHost();
   host.directories.add(".mcp.json");
   await runSetup({ dir: ".", force: false, name: "Foo" }, host); // fine: not requested
@@ -888,7 +889,7 @@ Deno.test("runSetup fails when .mcp.json is a directory, only if --mcp asked for
   );
 });
 
-Deno.test("runSetup rejects a launcher name that shadows .mcp.json", async () => {
+test("runSetup rejects a launcher name that shadows .mcp.json", async () => {
   const host = new FakeHost();
   await assertRejects(
     () =>
@@ -901,7 +902,7 @@ Deno.test("runSetup rejects a launcher name that shadows .mcp.json", async () =>
   );
 });
 
-Deno.test("setup refuses a symlink at any scaffold name, writing nothing", async () => {
+test("setup refuses a symlink at any scaffold name, writing nothing", async () => {
   // Setup is what a developer runs inside a freshly cloned project, so the
   // directory's layout is the untrusted input here. Writes follow links, and
   // the probes are lstat-based, so a link planted at a scaffold name would
@@ -934,7 +935,7 @@ Deno.test("setup refuses a symlink at any scaffold name, writing nothing", async
   }
 });
 
-Deno.test("setup refuses a real symlink rather than writing through it", async () => {
+test("setup refuses a real symlink rather than writing through it", async () => {
   if (Deno.build.os === "windows") return; // Deno.symlink needs privileges.
   await withTemp(async (dir) => {
     await withTemp(async (outside) => {
@@ -955,7 +956,7 @@ Deno.test("setup refuses a real symlink rather than writing through it", async (
   });
 });
 
-Deno.test("defaultHost.isSymlink reads the link, not its target", async () => {
+test("defaultHost.isSymlink reads the link, not its target", async () => {
   if (Deno.build.os === "windows") return; // Deno.symlink needs privileges.
   await withTemp(async (dir) => {
     const file = `${dir}/f.txt`;
@@ -978,7 +979,7 @@ Deno.test("defaultHost.isSymlink reads the link, not its target", async () => {
   });
 });
 
-Deno.test("a link planted after the check is replaced, not written through", async () => {
+test("a link planted after the check is replaced, not written through", async () => {
   if (Deno.build.os === "windows") return; // Deno.symlink needs privileges.
   // The pre-write check reports what is there when it runs, so a link planted
   // between the check and the write would escape it. Writing beside the
@@ -1002,7 +1003,7 @@ Deno.test("a link planted after the check is replaced, not written through", asy
   });
 });
 
-Deno.test("writeText leaves no temporary file behind, on success or failure", async () => {
+test("writeText leaves no temporary file behind, on success or failure", async () => {
   await withTemp(async (dir) => {
     await defaultHost.writeText(`${dir}/zuke.json`, "{}");
     const after: string[] = [];
@@ -1024,7 +1025,7 @@ Deno.test("writeText leaves no temporary file behind, on success or failure", as
   });
 });
 
-Deno.test("runSetup follows the build file an existing zuke.json names", async () => {
+test("runSetup follows the build file an existing zuke.json names", async () => {
   const config = '{\n  "name": "Acme",\n  "build": "build.ts"\n}\n';
   const host = new FakeHost({ "zuke.json": config });
   const result = await runSetup(
@@ -1050,7 +1051,7 @@ Deno.test("runSetup follows the build file an existing zuke.json names", async (
   );
 });
 
-Deno.test("runSetup refuses a launcher name that would shadow the named build file, and a bad build name", async () => {
+test("runSetup refuses a launcher name that would shadow the named build file, and a bad build name", async () => {
   await assertRejects(
     () =>
       runSetup(
@@ -1069,7 +1070,7 @@ Deno.test("runSetup refuses a launcher name that would shadow the named build fi
   assertEquals([...host.files.keys()], ["zuke.json"]);
 });
 
-Deno.test("starterConfig records a build file only when it is not the default", () => {
+test("starterConfig records a build file only when it is not the default", () => {
   assertEquals(JSON.parse(starterConfig("Acme", "zuke.ts")), { name: "Acme" });
   assertEquals(JSON.parse(starterConfig("Acme", "build.ts")), {
     name: "Acme",
@@ -1077,7 +1078,7 @@ Deno.test("starterConfig records a build file only when it is not the default", 
   });
 });
 
-Deno.test("a new project gets build.ts, recorded in zuke.json", async () => {
+test("a new project gets build.ts, recorded in zuke.json", async () => {
   const host = new FakeHost();
   const result = await runSetup({ dir: ".", force: false, name: "Acme" }, host);
   assertEquals(result.files.map((f) => f.path), [
@@ -1095,7 +1096,7 @@ Deno.test("a new project gets build.ts, recorded in zuke.json", async () => {
   assertEquals(await existingBuildFile(".", host), "build.ts");
 });
 
-Deno.test("--build-file names a new project's build file, and only a valid TypeScript one", async () => {
+test("--build-file names a new project's build file, and only a valid TypeScript one", async () => {
   const host = new FakeHost();
   await runSetup(
     { dir: "sub", force: false, name: "Acme", buildFile: "ci.ts" },
@@ -1131,7 +1132,7 @@ Deno.test("--build-file names a new project's build file, and only a valid TypeS
   );
 });
 
-Deno.test("an existing zuke.ts project stays one, with or without a zuke.json", async () => {
+test("an existing zuke.ts project stays one, with or without a zuke.json", async () => {
   const projects: Record<string, string>[] = [
     { "zuke.ts": "old" },
     { "zuke.json": '{ "name": "Old" }\n' },
@@ -1149,7 +1150,7 @@ Deno.test("an existing zuke.ts project stays one, with or without a zuke.json", 
   assertEquals(await existingBuildFile(".", new FakeHost()), undefined);
 });
 
-Deno.test("--build-file never moves an existing project's build file, --force or not", async () => {
+test("--build-file never moves an existing project's build file, --force or not", async () => {
   const before = {
     "zuke.json": '{ "name": "Old" }\n',
     "zuke.ts": "old",
@@ -1175,7 +1176,7 @@ Deno.test("--build-file never moves an existing project's build file, --force or
   assertEquals(kept.files.get("zuke.ts"), "old");
 });
 
-Deno.test("a project renamed in zuke.json gets its scaffolded zuke task moved, and a task of its own kept", async () => {
+test("a project renamed in zuke.json gets its scaffolded zuke task moved, and a task of its own kept", async () => {
   const config = '{\n  "name": "Acme",\n  "build": "build.ts"\n}\n';
   const tasks = (host: FakeHost): unknown => {
     const deno: unknown = JSON.parse(host.files.get("deno.json") ?? "");
@@ -1208,7 +1209,7 @@ Deno.test("a project renamed in zuke.json gets its scaffolded zuke task moved, a
   assertEquals(isRecord(kept) && kept.zuke, "deno run -A --frozen zuke.ts ci");
 });
 
-Deno.test("a new project never takes over an unrelated build.ts, even with --force", async () => {
+test("a new project never takes over an unrelated build.ts, even with --force", async () => {
   const unrelated = "console.log('my own script');\n";
   for (const force of [false, true]) {
     const host = new FakeHost({ "build.ts": unrelated });
@@ -1230,7 +1231,7 @@ Deno.test("a new project never takes over an unrelated build.ts, even with --for
   assertEquals(await existingBuildFile(".", host), "build.ts");
 });
 
-Deno.test("a link or a directory at the build file name is left to the collision check", async () => {
+test("a link or a directory at the build file name is left to the collision check", async () => {
   const linked = new FakeHost();
   linked.symlinks.add("build.ts");
   assertEquals(await unrelatedBuildFile(".", "build.ts", linked), false);
@@ -1252,7 +1253,7 @@ Deno.test("a link or a directory at the build file name is left to the collision
 
 const NODE_CORE = "npm:@zuke-build/core@^1";
 
-Deno.test("runSetup --runtime node writes build.ts, package.json, a Node zuke.json and launchers, and no deno.json", async () => {
+test("runSetup --runtime node writes build.ts, package.json, a Node zuke.json and launchers, and no deno.json", async () => {
   const host = new FakeHost();
   const result = await runSetup(
     {
@@ -1289,7 +1290,7 @@ Deno.test("runSetup --runtime node writes build.ts, package.json, a Node zuke.js
   }
 });
 
-Deno.test("runSetup --runtime node names a package after the working directory for '.'", async () => {
+test("runSetup --runtime node names a package after the working directory for '.'", async () => {
   const host = new FakeHost();
   await runSetup({ dir: ".", force: false, name: "A", runtime: "node" }, host);
   const name = JSON.parse(host.files.get("package.json") ?? "").name;
@@ -1302,7 +1303,7 @@ Deno.test("runSetup --runtime node names a package after the working directory f
   );
 });
 
-Deno.test("runSetup --runtime node merges into an existing package.json", async () => {
+test("runSetup --runtime node merges into an existing package.json", async () => {
   const host = new FakeHost({
     "package.json": JSON.stringify({
       name: "keep",
@@ -1324,7 +1325,7 @@ Deno.test("runSetup --runtime node merges into an existing package.json", async 
   });
 });
 
-Deno.test("runSetup --runtime node asks for one npm install when it adds @zuke/core beside a lockfile", async () => {
+test("runSetup --runtime node asks for one npm install when it adds @zuke/core beside a lockfile", async () => {
   const locked = new FakeHost({
     "package.json": JSON.stringify({ name: "p", type: "module" }),
     "package-lock.json": "{}",
@@ -1354,7 +1355,7 @@ Deno.test("runSetup --runtime node asks for one npm install when it adds @zuke/c
   }
 });
 
-Deno.test("runSetup --runtime node leaves a complete package.json, and keeps another type with a note", async () => {
+test("runSetup --runtime node leaves a complete package.json, and keeps another type with a note", async () => {
   const complete = {
     name: "p",
     type: "module",
@@ -1384,7 +1385,7 @@ Deno.test("runSetup --runtime node leaves a complete package.json, and keeps ano
   assertStringIncludes(noted.notes[0], '"commonjs"');
 });
 
-Deno.test("runSetup --runtime node leaves a package.json that is not a JSON object and reports a manual step", async () => {
+test("runSetup --runtime node leaves a package.json that is not a JSON object and reports a manual step", async () => {
   for (const text of ["{ nope", "[1, 2]", "null", '"text"']) {
     const host = new FakeHost({ "package.json": text });
     const result = await runSetup(
@@ -1401,7 +1402,7 @@ Deno.test("runSetup --runtime node leaves a package.json that is not a JSON obje
   }
 });
 
-Deno.test("runSetup --runtime node merges node_modules/ into an existing .gitignore", async () => {
+test("runSetup --runtime node merges node_modules/ into an existing .gitignore", async () => {
   const host = new FakeHost({ ".gitignore": "dist\n.zuke/" });
   await runSetup({ dir: ".", force: false, name: "A", runtime: "node" }, host);
   assertEquals(host.files.get(".gitignore"), "dist\n.zuke/\nnode_modules/\n");
@@ -1409,7 +1410,7 @@ Deno.test("runSetup --runtime node merges node_modules/ into an existing .gitign
   assertEquals(host.files.get(".gitignore"), "dist\n.zuke/\nnode_modules/\n");
 });
 
-Deno.test("runSetup refuses --runtime node with --sdk, and treats deno as today's setup", async () => {
+test("runSetup refuses --runtime node with --sdk, and treats deno as today's setup", async () => {
   await assertRejects(
     () =>
       runSetup(

@@ -7,12 +7,13 @@
  * failed against the code before its fix.
  */
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { CommandError, CommandOutput } from "@zuke/core/shell";
 import {
   AwsCloudformationDeleteStackSettings,
@@ -43,7 +44,11 @@ import {
   AwsTasks,
   cloudwatch,
 } from "../mod.ts";
-import { FakeAws, json, withEmptyPath } from "./_fake.ts";
+import {
+  FakeAws,
+  json,
+  withEmptyPath,
+} from "../../../tests/support/aws/_fake.ts";
 
 /** Record what a settings instance registers with the run's redactor. */
 function recording<S extends AwsSettings>(settings: S): {
@@ -59,7 +64,7 @@ function recording<S extends AwsSettings>(settings: S): {
   return { settings, marked };
 }
 
-Deno.test("S1: a text-output secret is still found and masked", async () => {
+test("S1: a text-output secret is still found and masked", async () => {
   const { settings, marked } = recording(
     new AwsSecretsmanagerGetSecretValueSettings().secretId("s")
       .output("text").query("SecretString"),
@@ -70,7 +75,7 @@ Deno.test("S1: a text-output secret is still found and masked", async () => {
   assertEquals(marked.includes("Pa55w0rdXYZ"), true);
 });
 
-Deno.test("S2: a numeric parameter and a reshaped assume-role are masked", async () => {
+test("S2: a numeric parameter and a reshaped assume-role are masked", async () => {
   const parameter = recording(new AwsSsmGetParameterSettings().name("/pin"));
   await parameter.settings.runner(new FakeAws("48213977\n").run).run();
   assertEquals(parameter.marked.includes("48213977"), true);
@@ -86,7 +91,7 @@ Deno.test("S2: a numeric parameter and a reshaped assume-role are masked", async
   assertEquals(role.marked.includes("st-value-5678"), true);
 });
 
-Deno.test("S3: a JSON secret's credential fields and long leaves are found nested", async () => {
+test("S3: a JSON secret's credential fields and long leaves are found nested", async () => {
   const secret = JSON.stringify({
     db: { password: "nested-pass-123" },
     apiKey: "short",
@@ -122,7 +127,7 @@ Deno.test("S3: a JSON secret's credential fields and long leaves are found neste
   }
 });
 
-Deno.test("S4: a SecretBinary is masked", async () => {
+test("S4: a SecretBinary is masked", async () => {
   const { settings, marked } = recording(
     new AwsSecretsmanagerGetSecretValueSettings().secretId("s"),
   );
@@ -133,7 +138,7 @@ Deno.test("S4: a SecretBinary is masked", async () => {
   assertEquals(marked.includes("binary-secret-base64=="), true);
 });
 
-Deno.test("S5: configure get of a credential setting is masked", async () => {
+test("S5: configure get of a credential setting is masked", async () => {
   const { settings, marked } = recording(
     new AwsConfigureGetSettings().varname("profile.ci.aws_secret_access_key"),
   );
@@ -144,13 +149,13 @@ Deno.test("S5: configure get of a credential setting is masked", async () => {
   assertEquals(plain.marked, []);
 });
 
-Deno.test("S6: configure set matches the dotted form's last segment", () => {
+test("S6: configure set matches the dotted form's last segment", () => {
   const { settings, marked } = recording(new AwsConfigureSetSettings());
   settings.varname("profile.ci.aws_session_token").value("tok-value-1234");
   assertEquals(marked, ["tok-value-1234"]);
 });
 
-Deno.test("S7: no list element or operand can be read as an option", async () => {
+test("S7: no list element or operand can be read as an option", async () => {
   const injected = "--endpoint-url=http://attacker.example";
   const refusals: Array<() => unknown> = [
     () =>
@@ -206,7 +211,7 @@ Deno.test("S7: no list element or operand can be read as an option", async () =>
   );
 });
 
-Deno.test("S8: free-text setters refuse what the CLI would read as a file", () => {
+test("S8: free-text setters refuse what the CLI would read as a file", () => {
   const files = "file://~/.aws/credentials";
   const refusals: Array<() => unknown> = [
     () => new AwsLambdaPublishVersionSettings().description(files),
@@ -222,7 +227,7 @@ Deno.test("S8: free-text setters refuse what the CLI would read as a file", () =
   for (const refuse of refusals) assertThrows(refuse, Error, "file://");
 });
 
-Deno.test("S9: a presigned URL and its session token are masked", async () => {
+test("S9: a presigned URL and its session token are masked", async () => {
   const url = "https://b.s3.amazonaws.com/k?X-Amz-Signature=abcdef123456" +
     "&X-Amz-Security-Token=SessionTokenValue123";
   const { settings, marked } = recording(
@@ -244,7 +249,7 @@ Deno.test("S9: a presigned URL and its session token are masked", async () => {
   }
 });
 
-Deno.test("S10: debug output's credentials are masked", () => {
+test("S10: debug output's credentials are masked", () => {
   const names = [
     "AWS_SECRET_ACCESS_KEY",
     "AWS_SESSION_TOKEN",
@@ -283,14 +288,14 @@ function insights(
   });
 }
 
-Deno.test("L2: the Logs Insights timeout does not wait out a long poll interval", async () => {
+test("L2: the Logs Insights timeout does not wait out a long poll interval", async () => {
   const fake = new FakeAws(json({ queryId: "q" }), json({ status: "Running" }));
   const started = Date.now();
   await assertRejects(() => insights(fake, 30, 10_000), Error, "still Running");
   assertEquals(Date.now() - started < 2_000, true);
 });
 
-Deno.test("L3: a Logs Insights query is stopped when cancelled or broken", async () => {
+test("L3: a Logs Insights query is stopped when cancelled or broken", async () => {
   const controller = new AbortController();
   const cancelled = new FakeAws(json({ queryId: "q" }), (argv) => {
     if (argv.includes("get-query-results")) controller.abort();
@@ -312,7 +317,7 @@ Deno.test("L3: a Logs Insights query is stopped when cancelled or broken", async
   assertEquals(lastBroken.slice(1, 3), ["logs", "stop-query"]);
 });
 
-Deno.test("L3: a signal cancels the pause between polls, and lets a healthy query finish", async () => {
+test("L3: a signal cancels the pause between polls, and lets a healthy query finish", async () => {
   const controller = new AbortController();
   const sleeping = new FakeAws(
     json({ queryId: "q" }),
@@ -335,7 +340,7 @@ Deno.test("L3: a signal cancels the pause between polls, and lets a healthy quer
   );
 });
 
-Deno.test("L4: a long series aggregates without a RangeError", async () => {
+test("L4: a long series aggregates without a RangeError", async () => {
   const count = 300_000;
   const values = Array.from({ length: count }, (_, i) => i % 1000);
   const start = Date.UTC(2026, 0, 1);
@@ -357,7 +362,7 @@ const redactor = {
   redact: (text: string) => text.replaceAll("s3cr3t", "[redacted]"),
 };
 
-Deno.test("L5: an error from the analysis's own lambda is redacted", async () => {
+test("L5: an error from the analysis's own lambda is redacted", async () => {
   const error = await assertRejects(() =>
     cloudwatch(() => {
       throw new Error("could not resolve s3cr3t");
@@ -366,7 +371,7 @@ Deno.test("L5: an error from the analysis's own lambda is redacted", async () =>
   assertEquals(error.message.includes("s3cr3t"), false);
 });
 
-Deno.test("R6: the analysis spawns aws when .aws(...) sets no runner", async () => {
+test("R6: the analysis spawns aws when .aws(...) sets no runner", async () => {
   await withEmptyPath(async () => {
     await assertRejects(
       () =>
@@ -378,7 +383,7 @@ Deno.test("R6: the analysis spawns aws when .aws(...) sets no runner", async () 
   });
 });
 
-Deno.test("L6: missingDataAs refuses a number that is not finite, for the reader too", async () => {
+test("L6: missingDataAs refuses a number that is not finite, for the reader too", async () => {
   await assertRejects(
     () => AwsTasks.metricValue((s) => s.missingDataAs(NaN)),
     Error,
@@ -386,7 +391,7 @@ Deno.test("L6: missingDataAs refuses a number that is not finite, for the reader
   );
 });
 
-Deno.test("L7a: the analysis's missing-statistic hint uses its own names", async () => {
+test("L7a: the analysis's missing-statistic hint uses its own names", async () => {
   const error = await assertRejects(() =>
     cloudwatch((m) =>
       m.namespace("n").metricName("m").max(1)
@@ -397,7 +402,7 @@ Deno.test("L7a: the analysis's missing-statistic hint uses its own names", async
   assertEquals(error.message.includes("AwsTasks."), false);
 });
 
-Deno.test("L7b: a reader's failed command is a CommandError even under noThrow", async () => {
+test("L7b: a reader's failed command is a CommandError even under noThrow", async () => {
   const failing = () => new FakeAws(new CommandOutput(254, "", "AccessDenied"));
   await assertRejects(
     () =>
@@ -420,7 +425,7 @@ Deno.test("L7b: a reader's failed command is a CommandError even under noThrow",
   );
 });
 
-Deno.test("L7c: a query set through .aws(...) does not reach the query's commands", async () => {
+test("L7c: a query set through .aws(...) does not reach the query's commands", async () => {
   const fake = new FakeAws(
     json({ queryId: "q" }),
     json({ status: "Complete", results: [] }),
@@ -432,7 +437,7 @@ Deno.test("L7c: a query set through .aws(...) does not reach the query's command
   for (const call of fake.calls) assertEquals(call.includes("bogus"), false);
 });
 
-Deno.test("L-window: the analysis window ends on a period boundary of an injected clock", async () => {
+test("L-window: the analysis window ends on a period boundary of an injected clock", async () => {
   const fake = new FakeAws(json({
     MetricDataResults: [{ Id: "m1", Timestamps: [], Values: [] }],
   }));
@@ -445,7 +450,7 @@ Deno.test("L-window: the analysis window ends on a period boundary of an injecte
   assertEquals(fake.flag(0, "--end-time"), "2026-10-07T12:05:00.000Z");
 });
 
-Deno.test("C1: metricValue refuses maxDatapoints and a partial page", async () => {
+test("C1: metricValue refuses maxDatapoints and a partial page", async () => {
   await assertRejects(
     () =>
       AwsTasks.metricValue((s) =>
@@ -474,7 +479,7 @@ Deno.test("C1: metricValue refuses maxDatapoints and a partial page", async () =
   );
 });
 
-Deno.test("C2: a Complete Logs Insights answer is followed through nextToken", async () => {
+test("C2: a Complete Logs Insights answer is followed through nextToken", async () => {
   const page = (value: string) => [[{ field: "n", value }]];
   const fake = new FakeAws(
     json({ queryId: "q" }),
@@ -489,7 +494,7 @@ Deno.test("C2: a Complete Logs Insights answer is followed through nextToken", a
   assertEquals(fake.flag(2, "--next-token"), "t2");
 });
 
-Deno.test("C3: alarmState reads log alarms too", async () => {
+test("C3: alarmState reads log alarms too", async () => {
   const fake = new FakeAws(
     json([{ AlarmName: "errors", StateValue: "ALARM" }]),
   );
@@ -504,7 +509,7 @@ Deno.test("C3: alarmState reads log alarms too", async () => {
   assertEquals(fake.calls[0].includes("LogAlarm"), true);
 });
 
-Deno.test("C5/C7: the off output format, and auto-prompt off in the environment", async () => {
+test("C5/C7: the off output format, and auto-prompt off in the environment", async () => {
   assertEquals(new AwsSettings().output("off").argv(), [
     "aws",
     "--output",
@@ -518,7 +523,7 @@ Deno.test("C5/C7: the off output format, and auto-prompt off in the environment"
   assertEquals(output.stdout.trim(), "off");
 });
 
-Deno.test("C4: IQM is a statistic", () => {
+test("C4: IQM is a statistic", () => {
   const argv = new AwsCloudwatchGetMetricDataSettings()
     .metricStat("m", (m) => m.namespace("n").metricName("x").stat("IQM"))
     .window("5m").argv();
@@ -526,7 +531,7 @@ Deno.test("C4: IQM is a statistic", () => {
   assertEquals(queries[0].MetricStat.Stat, "IQM");
 });
 
-Deno.test("S7: a runner never sees settings whose argv a refusal rejects", async () => {
+test("S7: a runner never sees settings whose argv a refusal rejects", async () => {
   // A runner that never builds the argv itself, unlike FakeAws: the refusal
   // must still fire, because the settings build it before handing over.
   const fake = new FakeAws("{}");

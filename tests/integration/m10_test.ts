@@ -9,10 +9,8 @@
  *   mode, while ordinary targets stay skipped.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   Build,
   defaultStateHost,
@@ -25,7 +23,7 @@ import type { TargetBuilder } from "../../packages/core/mod.ts";
 import { $ } from "../../packages/core/src/shell.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 
-Deno.test("extraEdges imposes consumer-supplied ordering", async () => {
+test("extraEdges imposes consumer-supplied ordering", async () => {
   const log: string[] = [];
   class Mono extends Build {
     web = target().executes(() => void log.push("web"));
@@ -46,7 +44,7 @@ Deno.test("extraEdges imposes consumer-supplied ordering", async () => {
   assertEquals(log.indexOf("web") < log.indexOf("api"), true);
 });
 
-Deno.test("dryRunnable runs the body with $ echoed; other targets stay skipped", async () => {
+test("dryRunnable runs the body with $ echoed; other targets stay skipped", async () => {
   const ran: string[] = [];
   class B extends Build {
     normal = target().executes(() => void ran.push("normal"));
@@ -68,7 +66,7 @@ Deno.test("dryRunnable runs the body with $ echoed; other targets stay skipped",
   assertEquals(ran.includes("all"), false);
 });
 
-Deno.test("a dryRunnable body that throws fails the target under --dry-run", async () => {
+test("a dryRunnable body that throws fails the target under --dry-run", async () => {
   class B extends Build {
     preview = target().dryRunnable().executes(() => {
       throw new Error("preview boom");
@@ -79,7 +77,7 @@ Deno.test("a dryRunnable body that throws fails the target under --dry-run", asy
   assertStringIncludes(res.err, "preview boom");
 });
 
-Deno.test("out-of-process cancel unwinds in extraEdges execution order", async () => {
+test("out-of-process cancel unwinds in extraEdges execution order", async () => {
   await withStateDir(async (dir) => {
     const log: string[] = [];
     class CD extends Build {

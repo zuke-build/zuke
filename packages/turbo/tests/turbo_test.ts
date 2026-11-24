@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
   assertWrapperConformance,
@@ -17,11 +18,11 @@ import {
   TurboTasks,
 } from "../src/turbo.ts";
 
-Deno.test("the default binary is turbo", () => {
+test("the default binary is turbo", () => {
   assertEquals(new TurboRunSettings().tasks("build").argv()[0], "turbo");
 });
 
-Deno.test("turbo: resolves its binary from node_modules by default", async () => {
+test("turbo: resolves its binary from node_modules by default", async () => {
   await assertWrapperConformance(
     () => new TurboRunSettings().tasks("build"),
     "turbo",
@@ -31,7 +32,7 @@ Deno.test("turbo: resolves its binary from node_modules by default", async () =>
   );
 });
 
-Deno.test("run: requires a task; tasks first, then flags", () => {
+test("run: requires a task; tasks first, then flags", () => {
   assertThrows(
     () => new TurboRunSettings().argv(),
     Error,
@@ -72,7 +73,7 @@ Deno.test("run: requires a task; tasks first, then flags", () => {
   );
 });
 
-Deno.test("prune: requires a package; --docker and --out-dir", () => {
+test("prune: requires a package; --docker and --out-dir", () => {
   assertThrows(
     () => new TurboPruneSettings().argv(),
     Error,
@@ -86,7 +87,7 @@ Deno.test("prune: requires a package; --docker and --out-dir", () => {
   );
 });
 
-Deno.test("every TurboTasks function reaches execution", async () => {
+test("every TurboTasks function reaches execution", async () => {
   await assertRejects(
     () => TurboTasks.run((s) => missingTool(s).tasks("build")),
     ToolNotFoundError,

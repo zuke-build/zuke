@@ -1,9 +1,14 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects, assertThrows } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import {
+  assertEquals,
+  assertRejects,
+  assertThrows,
+} from "../../../tests/_assert.ts";
 import { FileTasks } from "../src/file.ts";
-import { withTemp } from "./_temp.ts";
+import { withTemp } from "../../../tests/_temp.ts";
 
 /** Run `fn` with HOME/USERPROFILE set to `values`, restoring them afterwards. */
 function withHomeEnv(
@@ -26,7 +31,7 @@ function withHomeEnv(
   }
 }
 
-Deno.test("homeDirectory reads HOME, then USERPROFILE, else throws", () => {
+test("homeDirectory reads HOME, then USERPROFILE, else throws", () => {
   withHomeEnv({ HOME: "/home/zuke" }, () => {
     assertEquals(FileTasks.homeDirectory(), "/home/zuke");
   });
@@ -40,14 +45,14 @@ Deno.test("homeDirectory reads HOME, then USERPROFILE, else throws", () => {
   });
 });
 
-Deno.test("exists reports presence and absence", async () => {
+test("exists reports presence and absence", async () => {
   await withTemp(async (dir) => {
     assertEquals(await FileTasks.exists(dir), true);
     assertEquals(await FileTasks.exists(`${dir}/missing`), false);
   });
 });
 
-Deno.test("createDirectory makes nested dirs and is idempotent", async () => {
+test("createDirectory makes nested dirs and is idempotent", async () => {
   await withTemp(async (dir) => {
     await FileTasks.createDirectory(`${dir}/a/b/c`);
     assertEquals(await FileTasks.exists(`${dir}/a/b/c`), true);
@@ -56,7 +61,7 @@ Deno.test("createDirectory makes nested dirs and is idempotent", async () => {
   });
 });
 
-Deno.test("createDirectory without recursive fails on a missing parent", async () => {
+test("createDirectory without recursive fails on a missing parent", async () => {
   await withTemp(async (dir) => {
     await assertRejects(() =>
       FileTasks.createDirectory(`${dir}/x/y`, { recursive: false })
@@ -64,7 +69,7 @@ Deno.test("createDirectory without recursive fails on a missing parent", async (
   });
 });
 
-Deno.test("cleanDirectory empties contents but keeps the directory", async () => {
+test("cleanDirectory empties contents but keeps the directory", async () => {
   await withTemp(async (dir) => {
     const target = `${dir}/build`;
     await Deno.mkdir(`${target}/nested`, { recursive: true });
@@ -78,14 +83,14 @@ Deno.test("cleanDirectory empties contents but keeps the directory", async () =>
   });
 });
 
-Deno.test("cleanDirectory is a no-op for a missing directory", async () => {
+test("cleanDirectory is a no-op for a missing directory", async () => {
   await withTemp(async (dir) => {
     await FileTasks.cleanDirectory(`${dir}/never`);
     assertEquals(await FileTasks.exists(`${dir}/never`), false);
   });
 });
 
-Deno.test("cleanDirectory rethrows non-NotFound errors", async () => {
+test("cleanDirectory rethrows non-NotFound errors", async () => {
   await withTemp(async (dir) => {
     const file = `${dir}/a-file`;
     await Deno.writeTextFile(file, "x");
@@ -94,7 +99,7 @@ Deno.test("cleanDirectory rethrows non-NotFound errors", async () => {
   });
 });
 
-Deno.test("remove deletes and reports, tolerating a missing target", async () => {
+test("remove deletes and reports, tolerating a missing target", async () => {
   await withTemp(async (dir) => {
     const file = `${dir}/note.txt`;
     await Deno.writeTextFile(file, "x");
@@ -107,7 +112,7 @@ Deno.test("remove deletes and reports, tolerating a missing target", async () =>
   });
 });
 
-Deno.test("remove rethrows non-NotFound errors", async () => {
+test("remove rethrows non-NotFound errors", async () => {
   await withTemp(async (dir) => {
     await Deno.mkdir(`${dir}/full`);
     await Deno.writeTextFile(`${dir}/full/a.txt`, "a");
@@ -116,7 +121,7 @@ Deno.test("remove rethrows non-NotFound errors", async () => {
   });
 });
 
-Deno.test("copy duplicates a single file", async () => {
+test("copy duplicates a single file", async () => {
   await withTemp(async (dir) => {
     await Deno.writeTextFile(`${dir}/src.txt`, "hello");
     await FileTasks.copy(`${dir}/src.txt`, `${dir}/dst.txt`);
@@ -124,7 +129,7 @@ Deno.test("copy duplicates a single file", async () => {
   });
 });
 
-Deno.test("copy recurses through a directory tree", async () => {
+test("copy recurses through a directory tree", async () => {
   await withTemp(async (dir) => {
     await Deno.mkdir(`${dir}/src/inner`, { recursive: true });
     await Deno.writeTextFile(`${dir}/src/top.txt`, "t");
@@ -135,7 +140,7 @@ Deno.test("copy recurses through a directory tree", async () => {
   });
 });
 
-Deno.test("copy with overwrite false refuses an existing destination", async () => {
+test("copy with overwrite false refuses an existing destination", async () => {
   await withTemp(async (dir) => {
     await Deno.writeTextFile(`${dir}/a.txt`, "a");
     await Deno.writeTextFile(`${dir}/b.txt`, "b");
@@ -150,7 +155,7 @@ Deno.test("copy with overwrite false refuses an existing destination", async () 
   });
 });
 
-Deno.test("move renames a path", async () => {
+test("move renames a path", async () => {
   await withTemp(async (dir) => {
     await Deno.writeTextFile(`${dir}/from.txt`, "m");
     await FileTasks.move(`${dir}/from.txt`, `${dir}/to.txt`);
@@ -159,14 +164,14 @@ Deno.test("move renames a path", async () => {
   });
 });
 
-Deno.test("readText and writeText round-trip", async () => {
+test("readText and writeText round-trip", async () => {
   await withTemp(async (dir) => {
     await FileTasks.writeText(`${dir}/t.txt`, "round-trip");
     assertEquals(await FileTasks.readText(`${dir}/t.txt`), "round-trip");
   });
 });
 
-Deno.test("readJson parses a JSON file", async () => {
+test("readJson parses a JSON file", async () => {
   await withTemp(async (dir) => {
     await Deno.writeTextFile(
       `${dir}/d.json`,
@@ -184,7 +189,7 @@ Deno.test("readJson parses a JSON file", async () => {
 // extractor's symlink tests draw.
 const SYMLINKS_UNPRIVILEGED = Deno.build.os !== "windows";
 
-Deno.test({
+test({
   name: "symlink creates a link readLink reads back verbatim",
   ignore: !SYMLINKS_UNPRIVILEGED,
   fn: async () => {
@@ -200,7 +205,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "symlink stores a relative target as given, not resolved",
   ignore: !SYMLINKS_UNPRIVILEGED,
   fn: async () => {
@@ -222,7 +227,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name:
     "symlink without force refuses an occupied path, with force replaces it",
   ignore: !SYMLINKS_UNPRIVILEGED,
@@ -254,7 +259,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "force replaces a regular file, but never a directory",
   ignore: !SYMLINKS_UNPRIVILEGED,
   fn: async () => {
@@ -296,7 +301,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "a forced replacement never leaves the path missing",
   ignore: !SYMLINKS_UNPRIVILEGED,
   fn: async () => {
@@ -321,7 +326,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "a directory link takes type dir, and force re-points it",
   ignore: !SYMLINKS_UNPRIVILEGED,
   fn: async () => {
@@ -339,7 +344,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "readLink refuses a path that is not a link",
   ignore: !SYMLINKS_UNPRIVILEGED,
   fn: async () => {
@@ -350,7 +355,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "symlink surfaces a failure that is not an occupied path",
   ignore: !SYMLINKS_UNPRIVILEGED,
   fn: async () => {

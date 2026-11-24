@@ -18,7 +18,8 @@
  * @module
  */
 
-import { assertEquals } from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals } from "./_assert.ts";
 import { packageSources, withoutComments } from "./_package_sources.ts";
 
 /** What a shell shortcut looks like in code, by name. */
@@ -55,7 +56,7 @@ function shortcutsIn(source: string): string[] {
   );
 }
 
-Deno.test("a shell shortcut is recognised in each way it is written", () => {
+test("a shell shortcut is recognised in each way it is written", () => {
   for (
     const [source, expected] of [
       ["spawn(command, args, { shell: true });", ["the shell option"]],
@@ -80,7 +81,7 @@ Deno.test("a shell shortcut is recognised in each way it is written", () => {
   }
 });
 
-Deno.test("what only looks like a shortcut is not one", () => {
+test("what only looks like a shortcut is not one", () => {
   for (
     const source of [
       // The option off, or a field of the same name that is not the option.
@@ -100,7 +101,7 @@ Deno.test("what only looks like a shortcut is not one", () => {
   }
 });
 
-Deno.test("no package source starts a process through a shell", async () => {
+test("no package source starts a process through a shell", async () => {
   const found: Record<string, number> = {};
   const named: string[] = [];
   for (const file of await packageSources()) {

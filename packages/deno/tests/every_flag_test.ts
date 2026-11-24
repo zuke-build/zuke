@@ -13,7 +13,8 @@
  * only argvs this wrapper happens to produce.
  */
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   DenoCheckSettings,
   DenoDocSettings,
@@ -25,7 +26,7 @@ import {
   DenoTestSettings,
 } from "../mod.ts";
 
-Deno.test("run: every flag the wrapper exposes", () => {
+test("run: every flag the wrapper exposes", () => {
   const argv = new DenoRunSettings()
     .allowAll()
     .frozen()
@@ -101,7 +102,7 @@ Deno.test("run: every flag the wrapper exposes", () => {
   ]);
 });
 
-Deno.test("task: every flag the wrapper exposes", () => {
+test("task: every flag the wrapper exposes", () => {
   const argv = new DenoTaskSettings()
     .config("deno.json")
     .frozen()
@@ -140,7 +141,7 @@ Deno.test("task: every flag the wrapper exposes", () => {
   ]);
 });
 
-Deno.test("check: every flag the wrapper exposes", () => {
+test("check: every flag the wrapper exposes", () => {
   // --no-remote is left out: deno refuses it beside --all, which this sets.
   const argv = new DenoCheckSettings()
     .config("deno.json")
@@ -185,7 +186,7 @@ Deno.test("check: every flag the wrapper exposes", () => {
   ]);
 });
 
-Deno.test("check: --no-lock and --doc, the two the exhaustive run excludes", () => {
+test("check: --no-lock and --doc, the two the exhaustive run excludes", () => {
   assertEquals(
     new DenoCheckSettings().noLock().doc().noRemote().paths("mod.ts").argv()
       .slice(1),
@@ -193,7 +194,7 @@ Deno.test("check: --no-lock and --doc, the two the exhaustive run excludes", () 
   );
 });
 
-Deno.test("fmt: every flag the wrapper exposes", () => {
+test("fmt: every flag the wrapper exposes", () => {
   const argv = new DenoFmtSettings()
     .config("deno.json")
     .check()
@@ -247,7 +248,7 @@ Deno.test("fmt: every flag the wrapper exposes", () => {
   ]);
 });
 
-Deno.test("lint: every flag the wrapper exposes", () => {
+test("lint: every flag the wrapper exposes", () => {
   const argv = new DenoLintSettings()
     .config("deno.json")
     .fix()
@@ -288,7 +289,7 @@ Deno.test("lint: every flag the wrapper exposes", () => {
   ]);
 });
 
-Deno.test("doc: every flag the wrapper exposes", () => {
+test("doc: every flag the wrapper exposes", () => {
   const argv = new DenoDocSettings()
     .frozen()
     .noLock()
@@ -338,7 +339,7 @@ Deno.test("doc: every flag the wrapper exposes", () => {
   ]);
 });
 
-Deno.test("install: every flag a project install exposes", () => {
+test("install: every flag a project install exposes", () => {
   const argv = new DenoInstallSettings()
     .allowAll()
     .frozen()
@@ -405,7 +406,7 @@ Deno.test("install: every flag a project install exposes", () => {
   );
 });
 
-Deno.test("install: entrypoint belongs to the executable side, not the project one", () => {
+test("install: entrypoint belongs to the executable side, not the project one", () => {
   // deno accepts --entrypoint with --prod and --lockfile-only, and refuses it
   // with the rest of the dependency flags.
   assertEquals(
@@ -427,7 +428,7 @@ Deno.test("install: entrypoint belongs to the executable side, not the project o
   );
 });
 
-Deno.test("install: every flag a global install exposes", () => {
+test("install: every flag a global install exposes", () => {
   // --global takes the executable-shaped flags; the project-dependency ones
   // are refused beside it, which the guard test covers.
   assertEquals(
@@ -461,7 +462,7 @@ Deno.test("install: every flag a global install exposes", () => {
   );
 });
 
-Deno.test("test: every flag the wrapper exposes", () => {
+test("test: every flag the wrapper exposes", () => {
   const argv = new DenoTestSettings()
     .allowAll()
     .config("deno.json")

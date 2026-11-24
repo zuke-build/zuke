@@ -1,38 +1,36 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import { cell, codeSpan, fenceMarkdown, html } from "../src/markdown.ts";
 import { SUPPRESS_HINT, toMarkdown } from "../src/report.ts";
 import { decodeState, encodeState } from "../src/state.ts";
 
-Deno.test("fenceMarkdown wraps plain content in a three-backtick fence", () => {
+test("fenceMarkdown wraps plain content in a three-backtick fence", () => {
   assertEquals(fenceMarkdown("hello"), "```\nhello\n```");
   assertEquals(fenceMarkdown("x", "diff"), "```diff\nx\n```");
 });
 
-Deno.test("fenceMarkdown outgrows any backtick run so content cannot break out", () => {
+test("fenceMarkdown outgrows any backtick run so content cannot break out", () => {
   // A payload embedding a closing fence must not terminate the block: the fence
   // is one backtick longer than the longest run inside.
   assertEquals(fenceMarkdown("```"), "````\n```\n````");
   assertEquals(fenceMarkdown("a\n````\nb"), "`````\na\n````\nb\n`````");
 });
 
-Deno.test("fenceMarkdown drops backticks/newlines from the info string", () => {
+test("fenceMarkdown drops backticks/newlines from the info string", () => {
   // The info string shares the opening fence line; a newline or backtick there
   // would break out. Callers pass literals today, but keep the helper robust.
   assertEquals(fenceMarkdown("x", "di`ff\n## h"), "```diff## h\nx\n```");
 });
 
-Deno.test("codeSpan wraps a plain value in a single-backtick span", () => {
+test("codeSpan wraps a plain value in a single-backtick span", () => {
   assertEquals(codeSpan("zuke.ts:42-45"), "`zuke.ts:42-45`");
   assertEquals(codeSpan("a.ts:7"), "`a.ts:7`");
 });
 
-Deno.test("codeSpan neutralizes a backtick breakout in an inline label", () => {
+test("codeSpan neutralizes a backtick breakout in an inline label", () => {
   // A model-supplied file path with a backtick must not close the span early and
   // inject inline Markdown (a link/banner) into the surrounding heading.
   const label = "x` ✅ **APPROVED** [merge](http://evil) `y:1";
@@ -45,7 +43,7 @@ Deno.test("codeSpan neutralizes a backtick breakout in an inline label", () => {
   assertEquals(codeSpan("`x`"), "`` `x` ``");
 });
 
-Deno.test("cell applies all three escapes, not a subset of them", () => {
+test("cell applies all three escapes, not a subset of them", () => {
   // The two report renderers each used to carry half of this: one collapsed
   // newlines and escaped `|`, the other escaped `|` and the comment delimiters.
   // Either half alone leaves a live injection, so the one survivor does all three.
@@ -57,7 +55,7 @@ Deno.test("cell applies all three escapes, not a subset of them", () => {
   );
 });
 
-Deno.test("fenceMarkdown neutralizes a Markdown-injection payload", () => {
+test("fenceMarkdown neutralizes a Markdown-injection payload", () => {
   const payload = "ok\n```\n## ✅ Approved by security\n[click](http://evil)";
   const fenced = fenceMarkdown(payload, "diff");
   // The opening fence uses 4 backticks (longer than the payload's 3), so the
@@ -89,7 +87,7 @@ function report(extras: Parameters<typeof toMarkdown>[4]): string {
   );
 }
 
-Deno.test("a dismissal points at the suppress list as the cross-PR override", () => {
+test("a dismissal points at the suppress list as the cross-PR override", () => {
   // A dismissal is per-PR by design. Without this line a maintainer who has
   // refuted the same false positive on three PRs has no signal that the
   // committed suppress list is what ends it — the ID is right there in the
@@ -109,7 +107,7 @@ Deno.test("a dismissal points at the suppress list as the cross-PR override", ()
   assertEquals(table !== -1 && table < body.indexOf(SUPPRESS_HINT), true);
 });
 
-Deno.test("no dismissal, no suppress hint", () => {
+test("no dismissal, no suppress hint", () => {
   // The hint is advice about a thing that just happened. With nothing dismissed
   // it is noise on every clean report — and the section it belongs to is absent
   // entirely, so the hint must be too.
@@ -123,7 +121,7 @@ Deno.test("no dismissal, no suppress hint", () => {
   assertEquals(other.includes(SUPPRESS_HINT), false);
 });
 
-Deno.test("model text cannot smuggle a state block into the reviewer's comment", () => {
+test("model text cannot smuggle a state block into the reviewer's comment", () => {
   // The reviewer trusts the state block because the comment is its own. But its
   // own comment repeats the model's findings, and the model reads a diff the PR
   // author controls — so authorship of the comment is not authorship of every
@@ -189,7 +187,7 @@ Deno.test("model text cannot smuggle a state block into the reviewer's comment",
   assertEquals(decodeState(`${body}\n${own}`)?.findings[0].id, "real1");
 });
 
-Deno.test("html escapes markup and folds line breaks", () => {
+test("html escapes markup and folds line breaks", () => {
   assertEquals(
     html(`a<b>&"c'\n</summary>`),
     "a&lt;b&gt;&amp;&quot;c&#39; &lt;/summary&gt;",

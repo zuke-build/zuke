@@ -6,11 +6,12 @@
  * caller's scope, and the credential reader every minting target starts from.
  */
 
-import { assertEquals, assertRejects } from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals, assertRejects } from "./_assert.ts";
 import { GhAppTokenSettings } from "../packages/gh/mod.ts";
 import { mintAppToken, resolveAppCredentials } from "../build/app_token.ts";
 
-Deno.test("mintAppToken narrows the token to the repository and the permissions it is given", async () => {
+test("mintAppToken narrows the token to the repository and the permissions it is given", async () => {
   let settings: GhAppTokenSettings | undefined;
   const token = await mintAppToken(
     { appId: "12345", privateKey: "pem" },
@@ -36,7 +37,7 @@ Deno.test("mintAppToken narrows the token to the repository and the permissions 
   });
 });
 
-Deno.test("resolveAppCredentials needs both halves, and treats empty as absent", () => {
+test("resolveAppCredentials needs both halves, and treats empty as absent", () => {
   assertEquals(
     resolveAppCredentials({ appId: "1", privateKey: "pem" }),
     { appId: "1", privateKey: "pem" },
@@ -47,7 +48,7 @@ Deno.test("resolveAppCredentials needs both halves, and treats empty as absent",
   assertEquals(resolveAppCredentials({ appId: "1", privateKey: "" }), null);
 });
 
-Deno.test("mintAppToken refuses a repository that is not one owner/name pair", async () => {
+test("mintAppToken refuses a repository that is not one owner/name pair", async () => {
   // A slug with no name would leave the repository unset on the settings,
   // and an unset repository is the app's org-level installation: a token for
   // every repository the app is installed on. Refuse before any request.

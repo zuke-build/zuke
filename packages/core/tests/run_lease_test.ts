@@ -8,7 +8,8 @@
  * @module
  */
 
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   acquireLease,
   RUN_LEASE_PREFIX,
@@ -102,14 +103,14 @@ async function until(what: string, condition: () => boolean): Promise<void> {
   }
 }
 
-Deno.test("the default TTL leaves room for an ordinary pause", () => {
+test("the default TTL leaves room for an ordinary pause", () => {
   // Not a magic number worth changing casually: it is the window in which a
   // slow step must not be mistaken for a dead process.
   assertEquals(RUN_LEASE_TTL_MS, 60_000);
   assertEquals(RUN_LEASE_PREFIX, "zuke-run");
 });
 
-Deno.test("a lease is taken under its prefixed key and released", async () => {
+test("a lease is taken under its prefixed key and released", async () => {
   const store = new LockStore();
   const lease = await acquireLease(store, "zuke-run", "run-1", "me", NOW);
   if (lease === null) throw new Error("expected the lease");
@@ -119,13 +120,13 @@ Deno.test("a lease is taken under its prefixed key and released", async () => {
   assertEquals(store.released, ["zuke-run-run-1"]);
 });
 
-Deno.test("a live holder means no lease", async () => {
+test("a live holder means no lease", async () => {
   const store = new LockStore();
   store.refuseAcquire = true;
   assertEquals(await acquireLease(store, "zuke-run", "run-1", "me", NOW), null);
 });
 
-Deno.test("an explicit refusal from a renewal is loss", async () => {
+test("an explicit refusal from a renewal is loss", async () => {
   // The store says the claim is demonstrably somebody else's, so the holder has
   // to stop rather than keep working alongside whoever took it.
   const store = new LockStore();
@@ -149,7 +150,7 @@ Deno.test("an explicit refusal from a renewal is loss", async () => {
   await lease.release();
 });
 
-Deno.test("a renewal that throws is not loss", async () => {
+test("a renewal that throws is not loss", async () => {
   // A filesystem mutex it could not take in time, an HTTP 503, a DNS blip: none
   // of these say who holds the lease, and aborting a healthy build because the
   // state service had a bad second would be the wrong trade entirely.
@@ -167,7 +168,7 @@ Deno.test("a renewal that throws is not loss", async () => {
   await lease.release();
 });
 
-Deno.test("a released lease stops renewing", async () => {
+test("a released lease stops renewing", async () => {
   const store = new LockStore();
   const ttl = 2_000;
   const lease = await acquireLease(store, "zuke-run", "run-1", "me", NOW, ttl);
@@ -177,7 +178,7 @@ Deno.test("a released lease stops renewing", async () => {
   assertEquals(store.renewals.length, 0);
 });
 
-Deno.test("the cancel lock is the same lease under its own name", async () => {
+test("the cancel lock is the same lease under its own name", async () => {
   // It delegates, so the mechanics live in one place — but its key must not
   // change, or a canceller and the run's own claim would contend for one lock.
   const store = new LockStore();
@@ -188,7 +189,7 @@ Deno.test("the cancel lock is the same lease under its own name", async () => {
   assertEquals(store.released, ["zuke-cancel-run-1"]);
 });
 
-Deno.test("a cancel lock is refused when a live canceller holds it", async () => {
+test("a cancel lock is refused when a live canceller holds it", async () => {
   const store = new LockStore();
   store.refuseAcquire = true;
   assertEquals(await acquireCancelLock(store, "run-1", "me", NOW), null);

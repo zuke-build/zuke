@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import {
   GcloudArtifactsImagesDeleteSettings,
   GcloudArtifactsImagesListSettings,
@@ -45,7 +46,7 @@ import {
 // these command lines the real CLI accepts rather than only ones this wrapper
 // happens to produce.
 
-Deno.test("auth: activate, print tokens, configure-docker, list, revoke", () => {
+test("auth: activate, print tokens, configure-docker, list, revoke", () => {
   assertEquals(
     new GcloudAuthActivateServiceAccountSettings()
       .serviceAccount("svc@p.iam.gserviceaccount.com").keyFile("k.json").argv(),
@@ -97,7 +98,7 @@ Deno.test("auth: activate, print tokens, configure-docker, list, revoke", () => 
   );
 });
 
-Deno.test("auth: the operands each command cannot do without", () => {
+test("auth: the operands each command cannot do without", () => {
   assertThrows(
     () => new GcloudAuthActivateServiceAccountSettings().argv(),
     Error,
@@ -112,7 +113,7 @@ Deno.test("auth: the operands each command cannot do without", () => {
   );
 });
 
-Deno.test("config: set, unset, get-value, list", () => {
+test("config: set, unset, get-value, list", () => {
   assertEquals(
     new GcloudConfigSetSettings().property("project").value("my-proj").argv(),
     ["gcloud", "config", "set", "project", "my-proj"],
@@ -141,7 +142,7 @@ Deno.test("config: set, unset, get-value, list", () => {
   );
 });
 
-Deno.test("builds submit: every flag, and the three ways to say what to build", () => {
+test("builds submit: every flag, and the three ways to say what to build", () => {
   assertEquals(
     new GcloudBuildsSubmitSettings()
       .source(".").tag("gcr.io/p/i").timeout("600s")
@@ -185,7 +186,7 @@ Deno.test("builds submit: every flag, and the three ways to say what to build", 
   );
 });
 
-Deno.test("builds: list, describe, log, and the limit gcloud rejects", () => {
+test("builds: list, describe, log, and the limit gcloud rejects", () => {
   assertEquals(
     new GcloudBuildsListSettings().limit(5).filter("status=SUCCESS").ongoing()
       .region("us-central1").argv(),
@@ -238,7 +239,7 @@ Deno.test("builds: list, describe, log, and the limit gcloud rejects", () => {
   );
 });
 
-Deno.test("run deploy: every flag, in the order the argv builds them", () => {
+test("run deploy: every flag, in the order the argv builds them", () => {
   assertEquals(
     new GcloudRunDeploySettings()
       .service("api").image("gcr.io/p/i").region("us-central1")
@@ -299,7 +300,7 @@ Deno.test("run deploy: every flag, in the order the argv builds them", () => {
   );
 });
 
-Deno.test("run deploy: the contradictions worth refusing", () => {
+test("run deploy: the contradictions worth refusing", () => {
   assertThrows(
     () => new GcloudRunDeploySettings().argv(),
     Error,
@@ -324,7 +325,7 @@ Deno.test("run deploy: the contradictions worth refusing", () => {
   );
 });
 
-Deno.test("run services: describe, list, and the traffic destinations", () => {
+test("run services: describe, list, and the traffic destinations", () => {
   assertEquals(
     new GcloudRunServicesDescribeSettings().service("api")
       .region("us-central1").platform("managed").argv(),
@@ -387,7 +388,7 @@ Deno.test("run services: describe, list, and the traffic destinations", () => {
   );
 });
 
-Deno.test("run update-traffic: one destination, and at least one", () => {
+test("run update-traffic: one destination, and at least one", () => {
   // gcloud: "At most one of --to-latest | --to-revisions | --to-tags".
   assertThrows(
     () =>
@@ -403,7 +404,7 @@ Deno.test("run update-traffic: one destination, and at least one", () => {
   );
 });
 
-Deno.test("run services update: image and env amendments", () => {
+test("run services update: image and env amendments", () => {
   assertEquals(
     new GcloudRunServicesUpdateSettings().service("api")
       .region("europe-west1").platform("managed").image("gcr.io/p/i:tag")
@@ -458,7 +459,7 @@ Deno.test("run services update: image and env amendments", () => {
   );
 });
 
-Deno.test("run services update: clearing and amending env vars are exclusive", () => {
+test("run services update: clearing and amending env vars are exclusive", () => {
   // gcloud: "At most one of --clear-env-vars | --set-env-vars |
   // --update-env-vars --remove-env-vars can be specified."
   assertThrows(
@@ -477,7 +478,7 @@ Deno.test("run services update: clearing and amending env vars are exclusive", (
   );
 });
 
-Deno.test("artifacts: images and repositories", () => {
+test("artifacts: images and repositories", () => {
   assertEquals(
     new GcloudArtifactsImagesListSettings()
       .repository("us-docker.pkg.dev/p/r").includeTags().limit(10).filter("x")
@@ -562,7 +563,7 @@ Deno.test("artifacts: images and repositories", () => {
   );
 });
 
-Deno.test("storage: cp, rsync, ls, rm", () => {
+test("storage: cp, rsync, ls, rm", () => {
   assertEquals(
     new GcloudStorageCpSettings().sources("dist", "extra")
       .destination("gs://b/p").recursive().noClobber()
@@ -608,7 +609,7 @@ Deno.test("storage: cp, rsync, ls, rm", () => {
   );
 });
 
-Deno.test("storage: both ends of a transfer, and no blind delete", () => {
+test("storage: both ends of a transfer, and no blind delete", () => {
   assertThrows(
     () => new GcloudStorageCpSettings().sources("dist").argv(),
     Error,
@@ -626,7 +627,7 @@ Deno.test("storage: both ends of a transfer, and no blind delete", () => {
   );
 });
 
-Deno.test("clusters: credentials, list, describe", () => {
+test("clusters: credentials, list, describe", () => {
   assertEquals(
     new GcloudClustersGetCredentialsSettings().cluster("prod")
       .region("us-central1").internalIp().argv(),
@@ -683,7 +684,7 @@ Deno.test("clusters: credentials, list, describe", () => {
   );
 });
 
-Deno.test("clusters: one location flag, on every command that takes them", () => {
+test("clusters: one location flag, on every command that takes them", () => {
   // gcloud: "At most one of --location | --region | --zone can be specified."
   // The rule is shared, so each command that offers the flags enforces it.
   assertThrows(
@@ -714,7 +715,7 @@ Deno.test("clusters: one location flag, on every command that takes them", () =>
   );
 });
 
-Deno.test("functions: deploy, describe, and one trigger", () => {
+test("functions: deploy, describe, and one trigger", () => {
   assertEquals(
     new GcloudFunctionsDeploySettings()
       .function("ingest").runtime("nodejs20").region("us-central1")
@@ -799,7 +800,7 @@ Deno.test("functions: deploy, describe, and one trigger", () => {
   );
 });
 
-Deno.test("secrets: a version defaults to latest", () => {
+test("secrets: a version defaults to latest", () => {
   assertEquals(
     new GcloudSecretsVersionsAccessSettings().secret("api-key").argv(),
     [
@@ -824,7 +825,7 @@ Deno.test("secrets: a version defaults to latest", () => {
   );
 });
 
-Deno.test("the global flags reach every new command", () => {
+test("the global flags reach every new command", () => {
   // GcloudSettings emits them between the command path and any trailing flags,
   // which is the order gcloud accepts. A command that built its own argv
   // instead of going through leadingTokens would lose them.
@@ -858,7 +859,7 @@ Deno.test("the global flags reach every new command", () => {
   );
 });
 
-Deno.test("every location flag renders on every command that offers it", () => {
+test("every location flag renders on every command that offers it", () => {
   // The three commands share one location rule, so each must also emit each
   // flag it accepts — a setter writing the wrong field would change these.
   assertEquals(
@@ -897,7 +898,7 @@ Deno.test("every location flag renders on every command that offers it", () => {
   );
 });
 
-Deno.test("the remaining operands each command cannot do without", () => {
+test("the remaining operands each command cannot do without", () => {
   assertThrows(
     () => new GcloudConfigUnsetSettings().argv(),
     Error,
@@ -930,7 +931,7 @@ Deno.test("the remaining operands each command cannot do without", () => {
   );
 });
 
-Deno.test("the bare forms, with nothing configured", () => {
+test("the bare forms, with nothing configured", () => {
   // Each command must be usable with only its operand: a flag that rendered
   // unconditionally would show up here.
   assertEquals(new GcloudAuthListSettings().argv(), ["gcloud", "auth", "list"]);
@@ -1031,7 +1032,7 @@ Deno.test("the bare forms, with nothing configured", () => {
   );
 });
 
-Deno.test("a value containing a comma is refused by the flag that joins on one", () => {
+test("a value containing a comma is refused by the flag that joins on one", () => {
   // gcloud does notice — "Bad syntax for dict arg: [2]" — but that names the
   // argument it received, not the value responsible. The code doing the joining
   // is the code that can say which value cannot be joined.

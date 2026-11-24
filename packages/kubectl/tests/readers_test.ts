@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { CommandOutput } from "@zuke/core/shell";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import { missingTool } from "@zuke/core/tooling/conformance";
@@ -17,14 +18,14 @@ import {
 } from "../mod.ts";
 import { answerFromExitCode } from "../src/exit_code.ts";
 
-Deno.test("an exit code that is one of the two answers is a value, not a failure", () => {
+test("an exit code that is one of the two answers is a value, not a failure", () => {
   // kubectl diff exits 1 for "there are differences" and auth can-i exits
   // non-zero for "not allowed". Neither is the command failing.
   assertEquals(answerFromExitCode("t", new CommandOutput(0, "", ""), 1), true);
   assertEquals(answerFromExitCode("t", new CommandOutput(1, "", ""), 1), false);
 });
 
-Deno.test("an exit code that is neither answer fails, carrying kubectl's own words", () => {
+test("an exit code that is neither answer fails, carrying kubectl's own words", () => {
   // 2 and above mean kubectl or its differ broke; swallowing that would turn a
   // broken cluster connection into a confident "no differences".
   const failed = new CommandOutput(2, "", "error: unable to reach the server");
@@ -52,7 +53,7 @@ Deno.test("an exit code that is neither answer fails, carrying kubectl's own wor
   );
 });
 
-Deno.test("canI refuses a listing, which always exits zero", async () => {
+test("canI refuses a listing, which always exits zero", async () => {
   // `auth can-i --list` prints every allowed action and succeeds whatever it
   // found, so reading its exit code as a boolean would always answer "yes".
   await assertRejects(
@@ -62,7 +63,7 @@ Deno.test("canI refuses a listing, which always exits zero", async () => {
   );
 });
 
-Deno.test("parseResources reads the metadata every kind carries", () => {
+test("parseResources reads the metadata every kind carries", () => {
   const json = JSON.stringify({
     items: [
       {
@@ -97,7 +98,7 @@ Deno.test("parseResources reads the metadata every kind carries", () => {
   assertEquals(parseResources("  "), []);
 });
 
-Deno.test("parseEvents reads both spellings the server may use", () => {
+test("parseEvents reads both spellings the server may use", () => {
   // The events API says `regarding` and `series.count`; the older core/v1
   // Event says `involvedObject` and `count`. A build reads the same shape.
   assertEquals(
@@ -161,7 +162,7 @@ Deno.test("parseEvents reads both spellings the server may use", () => {
   );
 });
 
-Deno.test("parseVersion reads the two versions, and shrugs at anything else", () => {
+test("parseVersion reads the two versions, and shrugs at anything else", () => {
   assertEquals(
     parseVersion(
       '{"clientVersion":{"gitVersion":"v1.31.2"},"serverVersion":{"gitVersion":"v1.30.5"}}',
@@ -179,7 +180,7 @@ Deno.test("parseVersion reads the two versions, and shrugs at anything else", ()
   assertEquals(parseVersion(""), {});
 });
 
-Deno.test("every new task reaches execution", async () => {
+test("every new task reaches execution", async () => {
   const reaches: Array<[string, () => Promise<unknown>]> = [
     ["diff", () => KubectlTasks.diff((s) => missingTool(s).file("k8s/"))],
     [

@@ -10,10 +10,8 @@
  * @module
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { lintPrBody } from "../build/pr_body_lint.ts";
 
 const CI_WORKFLOW = await Deno.readTextFile(".github/workflows/ci.yml");
@@ -35,7 +33,7 @@ function pullRequestTrigger(workflow: string): string {
   return workflow.slice(start, end);
 }
 
-Deno.test("a clean prose body has no findings", () => {
+test("a clean prose body has no findings", () => {
   assertEquals(
     lintPrBody(
       "This fixes the retry logic so a timed-out request is retried once.",
@@ -44,11 +42,11 @@ Deno.test("a clean prose body has no findings", () => {
   );
 });
 
-Deno.test("ordinary prose parentheses are not flagged", () => {
+test("ordinary prose parentheses are not flagged", () => {
   assertEquals(lintPrBody("Fixes the race from before (see #241)."), []);
 });
 
-Deno.test("a fenced code block is flagged", () => {
+test("a fenced code block is flagged", () => {
   const body = [
     "Summary of the change.",
     "",
@@ -62,14 +60,14 @@ Deno.test("a fenced code block is flagged", () => {
   assertEquals(findings[0].includes("fenced code block"), true);
 });
 
-Deno.test("an unterminated fenced code block is still flagged once", () => {
+test("an unterminated fenced code block is still flagged once", () => {
   const body = ["Summary.", "", "```ts", "const x = 1;"].join("\n");
   const findings = lintPrBody(body);
   assertEquals(findings.length, 1);
   assertEquals(findings[0].includes("unterminated"), true);
 });
 
-Deno.test("lines inside a fence are not double-flagged individually", () => {
+test("lines inside a fence are not double-flagged individually", () => {
   const body = [
     "```ts",
     "map((x) => x);",
@@ -79,7 +77,7 @@ Deno.test("lines inside a fence are not double-flagged individually", () => {
   assertEquals(lintPrBody(body).length, 1);
 });
 
-Deno.test("an arrow-function line outside a fence is flagged", () => {
+test("an arrow-function line outside a fence is flagged", () => {
   const findings = lintPrBody(
     "Changed items.map((x) => x.id) to use a for loop.",
   );
@@ -87,13 +85,13 @@ Deno.test("an arrow-function line outside a fence is flagged", () => {
   assertEquals(findings[0].includes("line 1"), true);
 });
 
-Deno.test("a bare call statement line outside a fence is flagged", () => {
+test("a bare call statement line outside a fence is flagged", () => {
   const findings = lintPrBody("Run cleanup();\nto reset state.");
   assertEquals(findings.length, 1);
   assertEquals(findings[0].includes("line 1"), true);
 });
 
-Deno.test("a member-call fragment outside a fence is flagged", () => {
+test("a member-call fragment outside a fence is flagged", () => {
   // The exact shape that reached a commit body in the wrapper-catalogue work:
   // no arrow function and no bare `();`, so only the member-call rule catches
   // it, and release-please's parser still chokes on its parentheses.
@@ -105,7 +103,7 @@ Deno.test("a member-call fragment outside a fence is flagged", () => {
   assertEquals(findings[0].includes("line 1"), true);
 });
 
-Deno.test("a filename with a following parenthetical is not flagged", () => {
+test("a filename with a following parenthetical is not flagged", () => {
   assertEquals(
     lintPrBody(
       "Links the new guide from docs/README.md (both documentation indexes).",
@@ -114,7 +112,7 @@ Deno.test("a filename with a following parenthetical is not flagged", () => {
   );
 });
 
-Deno.test("the CI workflow re-runs on an edited PR description", () => {
+test("the CI workflow re-runs on an edited PR description", () => {
   // Without an explicit `types:`, `pull_request` fires only on opened,
   // synchronize and reopened — so editing the description after the last push
   // would leave the already-green status for the unchanged head SHA in place
@@ -127,7 +125,7 @@ Deno.test("the CI workflow re-runs on an edited PR description", () => {
   }
 });
 
-Deno.test("multiple fences and prose paragraphs each produce their own findings", () => {
+test("multiple fences and prose paragraphs each produce their own findings", () => {
   const body = [
     "First change.",
     "```ts",

@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import type { JsonValue, TargetStateHandle } from "@zuke/core";
 import { CommandError, CommandOutput } from "@zuke/core/shell";
 import { ToolNotFoundError } from "@zuke/core/tooling";
@@ -108,7 +109,7 @@ const UID_READ = [
   "value(metadata.uid)",
 ];
 
-Deno.test("stage reads the uid, deploys tagged with no traffic, and records the identity", async () => {
+test("stage reads the uid, deploys tagged with no traffic, and records the identity", async () => {
   const { runner, calls } = fakeGcloud("api-00002-abc");
   const ctx = context();
   await platform(runner).stage(ctx);
@@ -156,7 +157,7 @@ Deno.test("stage reads the uid, deploys tagged with no traffic, and records the 
   assertEquals(ctx.summary, { Candidate: "api-00002-abc" });
 });
 
-Deno.test("stage records an unset region as null and the flags as argv only", async () => {
+test("stage records an unset region as null and the flags as argv only", async () => {
   const { runner } = fakeGcloud("api-00002-abc");
   const ctx = context();
   await cloudRunCanary((r) =>
@@ -177,7 +178,7 @@ Deno.test("stage records an unset region as null and the flags as argv only", as
   assertEquals(JSON.stringify(state).includes("secret"), false);
 });
 
-Deno.test("the uid is recorded as gcloud printed it, a string never a number", async () => {
+test("the uid is recorded as gcloud printed it, a string never a number", async () => {
   // A uid that reads as a number would lose digits as one.
   const { runner, live } = fakeGcloud("api-00002-abc");
   live.uid = "12345678901234567890123";
@@ -186,7 +187,7 @@ Deno.test("the uid is recorded as gcloud printed it, a string never a number", a
   assertEquals(ctx.state.get().cloudRunServiceUid, "12345678901234567890123");
 });
 
-Deno.test("expose checks the record and the live uid, then routes a whole percent through the tag", async () => {
+test("expose checks the record and the live uid, then routes a whole percent through the tag", async () => {
   const { runner, calls, ctx } = await staged();
   assertEquals(
     await platform(runner, (r) => r.tag("canary")).expose(25, ctx),
@@ -207,7 +208,7 @@ Deno.test("expose checks the record and the live uid, then routes a whole percen
   ]]);
 });
 
-Deno.test("expose refuses a share Cloud Run cannot split", async () => {
+test("expose refuses a share Cloud Run cannot split", async () => {
   const { runner, calls, ctx } = await staged();
   for (const bad of [12.5, -1, 101, Number.NaN]) {
     await assertRejects(
@@ -219,7 +220,7 @@ Deno.test("expose refuses a share Cloud Run cannot split", async () => {
   assertEquals(calls, []);
 });
 
-Deno.test("promote sends traffic to latest once it is still the candidate", async () => {
+test("promote sends traffic to latest once it is still the candidate", async () => {
   const { runner, calls, ctx } = await staged();
   await platform(runner).promote(ctx);
   assertEquals(calls.length, 3);
@@ -235,7 +236,7 @@ Deno.test("promote sends traffic to latest once it is still the candidate", asyn
   assertEquals(calls[2].includes("--to-latest"), true);
 });
 
-Deno.test("promote refuses a revision the canary never staged", async () => {
+test("promote refuses a revision the canary never staged", async () => {
   const { runner, calls } = fakeGcloud("api-00002-abc", "api-00003-zzz");
   const ctx = context();
   const p = platform(runner);
@@ -250,7 +251,7 @@ Deno.test("promote refuses a revision the canary never staged", async () => {
   assertEquals(calls.some((argv) => argv.includes("--to-latest")), false);
 });
 
-Deno.test("promote with nothing staged refuses rather than guess", async () => {
+test("promote with nothing staged refuses rather than guess", async () => {
   const { runner, calls } = fakeGcloud();
   await assertRejects(
     () => platform(runner).promote(context()),
@@ -260,7 +261,7 @@ Deno.test("promote with nothing staged refuses rather than guess", async () => {
   assertEquals(calls, []);
 });
 
-Deno.test("abort mid-rollout takes the tag back to 0, and repeats harmlessly", async () => {
+test("abort mid-rollout takes the tag back to 0, and repeats harmlessly", async () => {
   const { runner, calls, ctx } = await staged();
   const p = platform(runner);
   await p.abort(ctx);
@@ -303,7 +304,7 @@ const CHANGES: ReadonlyArray<
   ],
 ];
 
-Deno.test("expose, promote and abort refuse a changed configuration before any command", async () => {
+test("expose, promote and abort refuse a changed configuration before any command", async () => {
   for (const [label, change, was, now] of CHANGES) {
     for (const call of ["expose", "promote", "abort"] as const) {
       const { runner, calls, ctx } = await staged();
@@ -325,7 +326,7 @@ Deno.test("expose, promote and abort refuse a changed configuration before any c
   }
 });
 
-Deno.test("a different live uid is refused after the read and before any change", async () => {
+test("a different live uid is refused after the read and before any change", async () => {
   for (const call of ["expose", "promote", "abort"] as const) {
     const { runner, calls, ctx, live } = await staged();
     live.uid = "0a0b0c0d-1111-4222-8333-444455556666";
@@ -348,7 +349,7 @@ Deno.test("a different live uid is refused after the read and before any change"
   }
 });
 
-Deno.test("a refusal gives the recovery built from the recorded values", async () => {
+test("a refusal gives the recovery built from the recorded values", async () => {
   const { runner, ctx } = await staged();
   const error = await assertRejects(
     () => platform(runner, (r) => r.service("billing")).abort(ctx),
@@ -385,7 +386,7 @@ Deno.test("a refusal gives the recovery built from the recorded values", async (
   );
 });
 
-Deno.test("the recovery leaves out a region never set and quotes what a shell would split", async () => {
+test("the recovery leaves out a region never set and quotes what a shell would split", async () => {
   const { runner } = fakeGcloud("api-00002-abc");
   const ctx = context();
   const configured = (flag: string) =>
@@ -410,7 +411,7 @@ Deno.test("the recovery leaves out a region never set and quotes what a shell wo
   );
 });
 
-Deno.test("a changed region is named against gcloud's default", async () => {
+test("a changed region is named against gcloud's default", async () => {
   const { runner } = fakeGcloud("api-00002-abc");
   const ctx = context();
   await cloudRunCanary((r) => r.service("api").image("i").runner(runner))
@@ -432,7 +433,7 @@ async function damagedBy(key: string, value: JsonValue) {
   return fixture;
 }
 
-Deno.test("a damaged record is refused before any command", async () => {
+test("a damaged record is refused before any command", async () => {
   const cases: ReadonlyArray<readonly [string, JsonValue, string]> = [
     ["cloudRunService", 1, "the service it staged (it holds 1)"],
     ["cloudRunService", "", 'the service it staged (it holds "")'],
@@ -465,7 +466,7 @@ Deno.test("a damaged record is refused before any command", async () => {
   }
 });
 
-Deno.test("a record from before the identity was recorded is refused, with the way out", async () => {
+test("a record from before the identity was recorded is refused, with the way out", async () => {
   // What an earlier @zuke/gcloud left for a rollout parked across the upgrade.
   for (const call of ["expose", "promote", "abort"] as const) {
     const ctx = context();
@@ -499,7 +500,7 @@ Deno.test("a record from before the identity was recorded is refused, with the w
   }
 });
 
-Deno.test("an unknown stage marker is refused, not overwritten or acted on", async () => {
+test("an unknown stage marker is refused, not overwritten or acted on", async () => {
   for (const call of ["expose", "abort", "stage"] as const) {
     const { runner, calls, ctx } = await damagedBy("cloudRunStage", "gone");
     const p = platform(runner, (r) => r.stable("api-00001-old"));
@@ -518,7 +519,7 @@ Deno.test("an unknown stage marker is refused, not overwritten or acted on", asy
   }
 });
 
-Deno.test("expose with no stage recorded refuses before any command", async () => {
+test("expose with no stage recorded refuses before any command", async () => {
   const { runner, calls } = fakeGcloud();
   await assertRejects(
     () => platform(runner).expose(10, context()),
@@ -528,7 +529,7 @@ Deno.test("expose with no stage recorded refuses before any command", async () =
   assertEquals(calls, []);
 });
 
-Deno.test("a stage run again over a tagged record is checked against it first", async () => {
+test("a stage run again over a tagged record is checked against it first", async () => {
   // A resume of a degraded record re-runs stage: it must not move the
   // marker back, and must not deploy to a service the rollout never staged.
   const changed = await staged();
@@ -557,7 +558,7 @@ Deno.test("a stage run again over a tagged record is checked against it first", 
   assertEquals(same.ctx.state.get().cloudRunServiceUid, UID);
 });
 
-Deno.test("abort after a stage that never tagged anything runs nothing", async () => {
+test("abort after a stage that never tagged anything runs nothing", async () => {
   // The update failed: no route carries the candidate, so there is nothing to
   // take back — and on a first rollout the tag does not even exist.
   const ctx = context();
@@ -575,7 +576,7 @@ Deno.test("abort after a stage that never tagged anything runs nothing", async (
   assertEquals(calls, []);
 });
 
-Deno.test("a stage whose uid read fails has touched nothing", async () => {
+test("a stage whose uid read fails has touched nothing", async () => {
   const ctx = context();
   const calls: string[][] = [];
   const p = cloudRunCanary((r) =>
@@ -590,7 +591,7 @@ Deno.test("a stage whose uid read fails has touched nothing", async () => {
   assertEquals(ctx.state.get(), { cloudRunStage: "deploying" });
 });
 
-Deno.test("a stage that fails on its own settings leaves a rollback nothing to do", async () => {
+test("a stage that fails on its own settings leaves a rollback nothing to do", async () => {
   // Stage refuses before touching the service. The engine then runs abort
   // inline; with no record of how far stage got, abort would read like a
   // hand-run one and send all traffic to the stable revision.
@@ -605,7 +606,7 @@ Deno.test("a stage that fails on its own settings leaves a rollback nothing to d
   assertEquals(calls, []);
 });
 
-Deno.test("a stage that cannot record the tag stops before any traffic moves", async () => {
+test("a stage that cannot record the tag stops before any traffic moves", async () => {
   const { runner, calls } = fakeGcloud("api-00002-abc");
   const ctx = context();
   ctx.state.trySet = () => Promise.resolve(false);
@@ -619,7 +620,7 @@ Deno.test("a stage that cannot record the tag stops before any traffic moves", a
   assertEquals(calls.length, 2);
 });
 
-Deno.test("a hand-run abort returns all traffic to the configured stable revision", async () => {
+test("a hand-run abort returns all traffic to the configured stable revision", async () => {
   const { runner, calls } = fakeGcloud();
   await platform(runner, (r) => r.stable("api-00001-old")).abort(context());
   // No record, so nothing to check against: the configuration as it is.
@@ -638,7 +639,7 @@ Deno.test("a hand-run abort returns all traffic to the configured stable revisio
   ]]);
 });
 
-Deno.test("a rollback with nothing recorded runs nothing, even with a stable revision set", async () => {
+test("a rollback with nothing recorded runs nothing, even with a stable revision set", async () => {
   // A degraded run record, or a stage whose first state write was rejected:
   // nothing was staged, so moving production to the stable revision would
   // change a service no rollout touched.
@@ -653,7 +654,7 @@ Deno.test("a rollback with nothing recorded runs nothing, even with a stable rev
   assertEquals(calls, []);
 });
 
-Deno.test("a hand-run abort, named or from an engine that names no reason, falls back alike", async () => {
+test("a hand-run abort, named or from an engine that names no reason, falls back alike", async () => {
   for (const reason of ["hand-run", undefined] as const) {
     const { runner, calls } = fakeGcloud();
     await platform(runner, (r) => r.stable("api-00001-old"))
@@ -664,7 +665,7 @@ Deno.test("a hand-run abort, named or from an engine that names no reason, falls
   }
 });
 
-Deno.test("a hand-run abort with no stable revision refuses rather than claim a rollback", async () => {
+test("a hand-run abort with no stable revision refuses rather than claim a rollback", async () => {
   const { runner, calls } = fakeGcloud();
   await assertRejects(
     () => platform(runner).abort(context()),
@@ -679,7 +680,7 @@ Deno.test("a hand-run abort with no stable revision refuses rather than claim a 
   assertEquals(calls, []);
 });
 
-Deno.test("the lambda is evaluated on every call, so it sees resolved values", async () => {
+test("the lambda is evaluated on every call, so it sees resolved values", async () => {
   const { runner, calls } = fakeGcloud();
   let image = "unresolved";
   const p = cloudRunCanary((r) => r.service("api").image(image).runner(runner));
@@ -688,7 +689,7 @@ Deno.test("the lambda is evaluated on every call, so it sees resolved values", a
   assertEquals(calls[1].includes("gcr.io/p/api:3"), true);
 });
 
-Deno.test("missing service, missing image and a bad tag are named", async () => {
+test("missing service, missing image and a bad tag are named", async () => {
   const { runner, calls } = fakeGcloud();
   await assertRejects(
     () => cloudRunCanary((r) => r.image("i").runner(runner)).stage(context()),
@@ -711,7 +712,7 @@ Deno.test("missing service, missing image and a bad tag are named", async () => 
   assertEquals(calls, []);
 });
 
-Deno.test("describe names the service", () => {
+test("describe names the service", () => {
   const { runner } = fakeGcloud();
   assertEquals(platform(runner).describe(), "Cloud Run service api");
   assertEquals(
@@ -721,7 +722,7 @@ Deno.test("describe names the service", () => {
   assertEquals(platform(runner).exposure, "traffic");
 });
 
-Deno.test("a failing gcloud command fails the call", async () => {
+test("a failing gcloud command fails the call", async () => {
   const p = cloudRunCanary((r) =>
     r.service("api").runner(() => Promise.reject(new Error("gcloud exit 1")))
   );
@@ -742,7 +743,7 @@ Deno.test("a failing gcloud command fails the call", async () => {
   );
 });
 
-Deno.test("a failed command fails the call even when gcloud is told not to throw", async () => {
+test("a failed command fails the call even when gcloud is told not to throw", async () => {
   // .gcloud((g) => g.noThrow()) would otherwise turn a failed rollback into a
   // reported one.
   const { ctx } = await staged();
@@ -767,7 +768,7 @@ Deno.test("a failed command fails the call even when gcloud is told not to throw
   );
 });
 
-Deno.test("an empty revision read-back is refused, not recorded", async () => {
+test("an empty revision read-back is refused, not recorded", async () => {
   const ctx = context();
   const p = cloudRunCanary((r) =>
     r.service("api").image("i").runner((settings) =>
@@ -787,7 +788,7 @@ Deno.test("an empty revision read-back is refused, not recorded", async () => {
   assertEquals(ctx.state.get().cloudRunCandidate, undefined);
 });
 
-Deno.test("an empty uid read is refused, and nothing is deployed", async () => {
+test("an empty uid read is refused, and nothing is deployed", async () => {
   const calls: string[][] = [];
   const p = cloudRunCanary((r) =>
     r.service("api").image("i").runner((settings) => {
@@ -799,7 +800,7 @@ Deno.test("an empty uid read is refused, and nothing is deployed", async () => {
   assertEquals(calls.length, 1);
 });
 
-Deno.test("the default runner runs gcloud itself", async () => {
+test("the default runner runs gcloud itself", async () => {
   // The default is the settings' own run(), so a gcloud that is not installed
   // surfaces as the wrapper's usual tool-not-found error.
   const p = cloudRunCanary((r) =>
@@ -808,7 +809,7 @@ Deno.test("the default runner runs gcloud itself", async () => {
   await assertRejects(() => p.abort(context()), ToolNotFoundError);
 });
 
-Deno.test("the recovery's uid check keeps its projection over a recorded --format", async () => {
+test("the recovery's uid check keeps its projection over a recorded --format", async () => {
   const { runner, live } = fakeGcloud("api-00002-abc");
   const ctx = context();
   const p = cloudRunCanary((r) =>
@@ -842,7 +843,7 @@ function flipping(runner: GcloudSettingsRunner) {
   return { p, lambda };
 }
 
-Deno.test("a gcloud lambda that resolves differently between commands is refused before the command runs", async () => {
+test("a gcloud lambda that resolves differently between commands is refused before the command runs", async () => {
   for (const call of ["expose", "promote", "abort"] as const) {
     const { runner, calls } = fakeGcloud("api-00002-abc", "api-00002-abc");
     const { p, lambda } = flipping(runner);
@@ -875,7 +876,7 @@ Deno.test("a gcloud lambda that resolves differently between commands is refused
   }
 });
 
-Deno.test("a stage whose gcloud lambda flips does not deploy", async () => {
+test("a stage whose gcloud lambda flips does not deploy", async () => {
   const { runner, calls } = fakeGcloud("api-00002-abc");
   const { p, lambda } = flipping(runner);
   lambda.armed = true;
@@ -891,7 +892,7 @@ Deno.test("a stage whose gcloud lambda flips does not deploy", async () => {
   assertEquals(ctx.state.get(), { cloudRunStage: "deploying" });
 });
 
-Deno.test("a gcloud lambda that adds a command token on a later run is refused", async () => {
+test("a gcloud lambda that adds a command token on a later run is refused", async () => {
   const { runner, calls } = fakeGcloud();
   let runs = 0;
   const p = cloudRunCanary((r) =>

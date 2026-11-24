@@ -6,10 +6,11 @@
  * version, and the resolver over the releases compiled in.
  */
 
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { embeddedTools, servesRelease } from "../src/embedded.ts";
 
-Deno.test("servesRelease: the same major, at the version asked for or newer", () => {
+test("servesRelease: the same major, at the version asked for or newer", () => {
   assertEquals(servesRelease("1.4.0", "1.4.0"), true);
   assertEquals(servesRelease("1.4.2", "1.4.0"), true);
   assertEquals(servesRelease("1.5.0", "1.4.9"), true);
@@ -30,7 +31,7 @@ Deno.test("servesRelease: the same major, at the version asked for or newer", ()
   assertEquals(servesRelease("1.4.0", "latest"), false);
 });
 
-Deno.test("embeddedTools loads the release a call is served by", async () => {
+test("embeddedTools loads the release a call is served by", async () => {
   const module = { DockerTasks: {} };
   let loads = 0;
   const resolve = embeddedTools({
@@ -46,7 +47,7 @@ Deno.test("embeddedTools loads the release a call is served by", async () => {
   assertEquals(loads, 1);
 });
 
-Deno.test("embeddedTools refuses a release it does not carry or cannot serve, naming the fix", async () => {
+test("embeddedTools refuses a release it does not carry or cannot serve, naming the fix", async () => {
   const resolve = embeddedTools({
     docker: { version: "1.4.0", load: () => Promise.resolve({}) },
   });

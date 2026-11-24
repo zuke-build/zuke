@@ -1,18 +1,19 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import { assertWrapperConformance } from "@zuke/core/tooling/conformance";
 import { ArgoRolloutsNamedSettings } from "../mod.ts";
 
-Deno.test("the default binary is the plugin, kubectl-argo-rollouts", () => {
+test("the default binary is the plugin, kubectl-argo-rollouts", () => {
   assertEquals(
     new ArgoRolloutsNamedSettings(["abort"], "abort").name("api").argv()[0],
     "kubectl-argo-rollouts",
   );
 });
 
-Deno.test("named settings render their command, the name, then cluster flags", () => {
+test("named settings render their command, the name, then cluster flags", () => {
   assertEquals(
     new ArgoRolloutsNamedSettings(["retry", "rollout"], "retryRollout")
       .name("api")
@@ -35,7 +36,7 @@ Deno.test("named settings render their command, the name, then cluster flags", (
   );
 });
 
-Deno.test("named settings require a name, naming the task", () => {
+test("named settings require a name, naming the task", () => {
   assertThrows(
     () => new ArgoRolloutsNamedSettings(["pause"], "pause").argv(),
     Error,
@@ -43,7 +44,7 @@ Deno.test("named settings require a name, naming the task", () => {
   );
 });
 
-Deno.test("argo-rollouts: conforms to the wrapper contract", async () => {
+test("argo-rollouts: conforms to the wrapper contract", async () => {
   await assertWrapperConformance(
     () => new ArgoRolloutsNamedSettings(["abort"], "abort").name("api"),
     "kubectl-argo-rollouts",

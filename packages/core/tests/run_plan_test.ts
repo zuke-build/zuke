@@ -8,7 +8,8 @@
  * @module
  */
 
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target } from "../src/target.ts";
 import { planGraph } from "../src/graph.ts";
@@ -32,7 +33,7 @@ function planFor(root: "top" | "left"): ReturnType<typeof buildRunPlan> {
   return buildRunPlan(order, predecessors);
 }
 
-Deno.test("the plan lists every reached target, dependencies before dependents", () => {
+test("the plan lists every reached target, dependencies before dependents", () => {
   // Sibling order is the graph's business (and deliberately not pinned by the
   // graph suite either); what the plan owes a reader is the full set and a
   // valid topological order.
@@ -42,7 +43,7 @@ Deno.test("the plan lists every reached target, dependencies before dependents",
   assertEquals(targets[3], "top");
 });
 
-Deno.test("includes reports the planned set, and is false for an unknown name", () => {
+test("includes reports the planned set, and is false for an unknown name", () => {
   const plan = planFor("top");
   assertEquals(plan.includes("base"), true);
   assertEquals(plan.includes("top"), true);
@@ -50,7 +51,7 @@ Deno.test("includes reports the planned set, and is false for an unknown name", 
   assertEquals(plan.includes("nope"), false);
 });
 
-Deno.test("the plan covers only what the root reaches", () => {
+test("the plan covers only what the root reaches", () => {
   // Rooted at `left`, the run never planned `right` or `top` — so a body
   // deciding whether its work is needed gets the answer for *this* run, not for
   // everything the build could do.
@@ -60,7 +61,7 @@ Deno.test("the plan covers only what the root reaches", () => {
   assertEquals(plan.includes("top"), false);
 });
 
-Deno.test("dependenciesOf reports a target's direct predecessors", () => {
+test("dependenciesOf reports a target's direct predecessors", () => {
   const plan = planFor("top");
   assertEquals([...plan.dependenciesOf("top")].sort(), ["left", "right"]);
   assertEquals(plan.dependenciesOf("left"), ["base"]);
@@ -70,7 +71,7 @@ Deno.test("dependenciesOf reports a target's direct predecessors", () => {
   assertEquals(plan.dependenciesOf("nope"), []);
 });
 
-Deno.test("the plan honours soft ordering edges", () => {
+test("the plan honours soft ordering edges", () => {
   // `before`/`after` are part of what determines when a target may start, so a
   // plan that reported only hard dependencies would understate the constraint.
   class B extends Build {
@@ -88,7 +89,7 @@ Deno.test("the plan honours soft ordering edges", () => {
   assertEquals(plan.dependenciesOf("b"), ["a"]);
 });
 
-Deno.test("the plan's arrays are frozen, so one body cannot corrupt another", () => {
+test("the plan's arrays are frozen, so one body cannot corrupt another", () => {
   // One plan object is shared by every body in a run, and bodies run
   // concurrently. `readonly` is erased at runtime and does not exist at all for
   // a JavaScript consumer, so without freezing, a body that sorts the array it

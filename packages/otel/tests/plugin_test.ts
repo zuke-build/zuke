@@ -1,11 +1,17 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import type { Plugin, RunRecord } from "@zuke/core";
 import { createOtelPlugin, DEDUP_CAP, otel, otelWith } from "../src/plugin.ts";
 import type { OtlpTransport } from "../src/exporter.ts";
-import { fakeTransport, makeRecord, RESOURCE, target } from "./_fixtures.ts";
+import {
+  fakeTransport,
+  makeRecord,
+  RESOURCE,
+  target,
+} from "../../../tests/support/otel/_fixtures.ts";
 
 /** Deliver a record to the plugin's `onRunStateChange`, failing if it has none. */
 async function deliver(plugin: Plugin, record: RunRecord): Promise<void> {
@@ -21,7 +27,7 @@ function metricNames(payload: {
   return payload.resourceMetrics[0].scopeMetrics[0].metrics.map((m) => m.name);
 }
 
-Deno.test("a fresh running record emits zuke.run.started only", async () => {
+test("a fresh running record emits zuke.run.started only", async () => {
   const { transport, captured } = fakeTransport();
   const plugin = createOtelPlugin(transport, RESOURCE);
   await deliver(
@@ -33,7 +39,7 @@ Deno.test("a fresh running record emits zuke.run.started only", async () => {
   assertEquals(metricNames(captured.metrics[0]), ["zuke.run.started"]);
 });
 
-Deno.test("a resumed running record emits nothing (not a fresh start)", async () => {
+test("a resumed running record emits nothing (not a fresh start)", async () => {
   const { transport, captured } = fakeTransport();
   const plugin = createOtelPlugin(transport, RESOURCE);
   await deliver(
@@ -53,7 +59,7 @@ Deno.test("a resumed running record emits nothing (not a fresh start)", async ()
   assertEquals(captured.traces.length, 0);
 });
 
-Deno.test("a suspended record emits zuke.run.suspended per waiting target", async () => {
+test("a suspended record emits zuke.run.suspended per waiting target", async () => {
   const { transport, captured } = fakeTransport();
   const plugin = createOtelPlugin(transport, RESOURCE);
   await deliver(
@@ -78,7 +84,7 @@ Deno.test("a suspended record emits zuke.run.suspended per waiting target", asyn
   );
 });
 
-Deno.test("suspended emits only for waiting targets, defaulting an unknown trigger", async () => {
+test("suspended emits only for waiting targets, defaulting an unknown trigger", async () => {
   const { transport, captured } = fakeTransport();
   const plugin = createOtelPlugin(transport, RESOURCE);
   await deliver(
@@ -104,7 +110,7 @@ Deno.test("suspended emits only for waiting targets, defaulting an unknown trigg
   assertEquals(trigger?.value.stringValue, "unknown");
 });
 
-Deno.test("a terminal record emits one trace and a zuke.runs metric", async () => {
+test("a terminal record emits one trace and a zuke.runs metric", async () => {
   const { transport, captured } = fakeTransport();
   const plugin = createOtelPlugin(transport, RESOURCE);
   await deliver(
@@ -124,7 +130,7 @@ Deno.test("a terminal record emits one trace and a zuke.runs metric", async () =
   assertEquals(metricNames(captured.metrics[0]), ["zuke.runs"]);
 });
 
-Deno.test("cancelling then cancelled exports the trace exactly once", async () => {
+test("cancelling then cancelled exports the trace exactly once", async () => {
   const { transport, captured } = fakeTransport();
   const plugin = createOtelPlugin(transport, RESOURCE);
   // In-process cancel drives running → cancelling → cancelled; the plugin must
@@ -138,13 +144,13 @@ Deno.test("cancelling then cancelled exports the trace exactly once", async () =
   assertEquals(outcome?.value.stringValue, "cancelled");
 });
 
-Deno.test("otelWith is inert when no endpoint resolves", () => {
+test("otelWith is inert when no endpoint resolves", () => {
   const plugin = otelWith(undefined, { readEnv: () => undefined });
   assertEquals(plugin.name, "otel");
   assertEquals(plugin.onRunStateChange, undefined);
 });
 
-Deno.test("with no reader injected, the endpoint comes from the ambient env", () => {
+test("with no reader injected, the endpoint comes from the ambient env", () => {
   // Every other test hands `otelWith` a reader, so the default one — now
   // core's rather than a copy declared here — is only reached by omitting it.
   // Both directions matter: an endpoint present makes the plugin live, and
@@ -160,7 +166,7 @@ Deno.test("with no reader injected, the endpoint comes from the ambient env", ()
   }
 });
 
-Deno.test("terminal traces and metrics are exported concurrently", async () => {
+test("terminal traces and metrics are exported concurrently", async () => {
   // traces() resolves only once metrics() has been entered. Serial
   // (await traces; await metrics) would deadlock; Promise.all completes.
   let metricsEntered = false;
@@ -181,7 +187,7 @@ Deno.test("terminal traces and metrics are exported concurrently", async () => {
   assertEquals(metricsEntered, true);
 });
 
-Deno.test("the dedup set is bounded — old run ids are evicted", async () => {
+test("the dedup set is bounded — old run ids are evicted", async () => {
   const { transport, captured } = fakeTransport();
   const plugin = createOtelPlugin(transport, RESOURCE);
   // Deliver DEDUP_CAP + 1 distinct terminal runs; each emits once, and the
@@ -202,7 +208,7 @@ Deno.test("the dedup set is bounded — old run ids are evicted", async () => {
   assertEquals(captured.traces.length, afterFill + 1);
 });
 
-Deno.test("otel() reads the environment and is inert with no endpoint", () => {
+test("otel() reads the environment and is inert with no endpoint", () => {
   // Exercises the public factory and its default `Deno.env.get` reader; clear
   // the OTLP endpoint vars so the assertion holds regardless of the host env.
   const keys = [
@@ -219,7 +225,7 @@ Deno.test("otel() reads the environment and is inert with no endpoint", () => {
   }
 });
 
-Deno.test("otelWith wires settings through to the transport", async () => {
+test("otelWith wires settings through to the transport", async () => {
   const { transport, captured } = fakeTransport();
   const plugin = otelWith((s) => s.endpoint("http://h:4318"), {
     transport,

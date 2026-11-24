@@ -108,13 +108,13 @@ regenerate them in the same PR.
   `publishNpm`; see `RELEASING.md`) and consumed there through an alias as
   `@zuke/<name>`.
 - **No runtime dependencies.** The library is dependency-free; tests use a local
-  assertion helper (`packages/core/tests/_assert.ts`) rather than a third-party
-  assert library so the suite runs with zero network access. This is a claim
-  about the **published packages** — every `packages/*/deno.json` — and it is
-  enforced by them declaring none. The build layer is separate and does have
-  dependencies: cspell and release-please are installed from npm on demand by
-  `installCli`, and the root `deno.json` imports `@std/yaml` for `build/`.
-  Nothing under `packages/` may import any of them.
+  assertion helper (`tests/_assert.ts`) rather than a third-party assert library
+  so the suite runs with zero network access. This is a claim about the
+  **published packages** — every `packages/*/deno.json` — and it is enforced by
+  them declaring none. The build layer is separate and does have dependencies:
+  cspell and release-please are installed from npm on demand by `installCli`,
+  and the root `deno.json` imports `@std/yaml` for `build/`. Nothing under
+  `packages/` may import any of them.
 
 ### TypeScript 7 / `tsgo`
 
@@ -368,17 +368,17 @@ could also use: work in a `Deno.makeTempDir()` instead. Name every test module
 naming convention.
 
 1. **Unit — `packages/<pkg>/tests/*_test.ts`.** One module in isolation, with
-   fakes and the local `packages/core/tests/_assert.ts` helper (never a
-   third-party assert library). For a tool wrapper, assert the **pure
-   `buildArgs()` argv** — do not run the real tool — and call
-   `assertWrapperConformance` from `@zuke/core/tooling/conformance`, which
-   asserts the wrapper's binary name, its **declared** resolution mode — the
-   `resolution` option is required, `"node_modules"` for a JS-ecosystem tool and
-   `"path"` for a native one, so every wrapper states its mode rather than
-   inheriting a default that could hide a missing `defaultResolution()` — and
-   its `ToolNotFoundError` path, so a wrapper cannot silently omit those checks.
-   This layer covers a module's branches and a wrapper's flags, and carries the
-   bulk of the 95% coverage gate.
+   fakes and the local `tests/_assert.ts` helper (never a third-party assert
+   library). For a tool wrapper, assert the **pure `buildArgs()` argv** — do not
+   run the real tool — and call `assertWrapperConformance` from
+   `@zuke/core/tooling/conformance`, which asserts the wrapper's binary name,
+   its **declared** resolution mode — the `resolution` option is required,
+   `"node_modules"` for a JS-ecosystem tool and `"path"` for a native one, so
+   every wrapper states its mode rather than inheriting a default that could
+   hide a missing `defaultResolution()` — and its `ToolNotFoundError` path, so a
+   wrapper cannot silently omit those checks. This layer covers a module's
+   branches and a wrapper's flags, and carries the bulk of the 95% coverage
+   gate.
 
 2. **Integration — `tests/integration/*_test.ts`.** Drive a _real_ build
    end-to-end through the CLI `main()` entry point using the harness in

@@ -8,10 +8,8 @@
  * target is wired (see `build.ts` and `build/pr_body_lint.ts`).
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, parameter, target } from "../../packages/core/mod.ts";
 import { lintPrBody } from "../../build/pr_body_lint.ts";
 import { runCli } from "./_harness.ts";
@@ -52,13 +50,13 @@ async function runWithPrBody(body: string | undefined) {
   }
 }
 
-Deno.test("no PR_BODY env (a push run, or local): the target is a clean no-op", async () => {
+test("no PR_BODY env (a push run, or local): the target is a clean no-op", async () => {
   const { code, out } = await runWithPrBody(undefined);
   assertEquals(code, 0);
   assertStringIncludes(out, "no PR body to lint");
 });
 
-Deno.test("a clean PR body passes the gate", async () => {
+test("a clean PR body passes the gate", async () => {
   const { code, out } = await runWithPrBody(
     "Fixes the retry logic (see #241).",
   );
@@ -66,7 +64,7 @@ Deno.test("a clean PR body passes the gate", async () => {
   assertStringIncludes(out, "PR body is clean");
 });
 
-Deno.test("a PR body with a member-call fragment fails the gate", async () => {
+test("a PR body with a member-call fragment fails the gate", async () => {
   const { code, err } = await runWithPrBody(
     'Names the anti-pattern CmdTasks.exec("docker", args) in the cheatsheet.',
   );
@@ -75,7 +73,7 @@ Deno.test("a PR body with a member-call fragment fails the gate", async () => {
   assertStringIncludes(err, "code fragment");
 });
 
-Deno.test("a PR body with a fenced code block fails the gate and points to RELEASING.md", async () => {
+test("a PR body with a fenced code block fails the gate and points to RELEASING.md", async () => {
   const { code, err } = await runWithPrBody(
     ["Summary.", "```ts", 'const x = () => "y";', "```"].join("\n"),
   );

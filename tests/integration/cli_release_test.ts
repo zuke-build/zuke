@@ -11,11 +11,9 @@
  * @module
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
-import { withTemp, withTempCwd } from "../../packages/core/tests/_temp.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
+import { withTemp, withTempCwd } from "../_temp.ts";
 import {
   absolutePath,
   Build,
@@ -46,7 +44,7 @@ import { writeStepOutputs } from "../../build/step_outputs.ts";
 
 const VERSION = "1.14.0";
 
-Deno.test("a release run plans, packages, and verifies the formula and package that pin what it packed", async () => {
+test("a release run plans, packages, and verifies the formula and package that pin what it packed", async () => {
   await withTemp(async (dir) => {
     const bin = `${dir}/bin`;
     const release = `${dir}/release`;
@@ -185,7 +183,7 @@ Deno.test("a release run plans, packages, and verifies the formula and package t
   });
 });
 
-Deno.test("a signing run checks the signed binary it names relative to the checkout", async () => {
+test("a signing run checks the signed binary it names relative to the checkout", async () => {
   // As cliSign does: the binaries directory is relative to the build's
   // working directory, while the version check runs from a temporary one.
   if (Deno.build.os === "windows") return;

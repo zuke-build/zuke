@@ -9,12 +9,13 @@
  * @module
  */
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
-import { withEnv } from "../../core/tests/_env.ts";
+} from "../../../tests/_assert.ts";
+import { withEnv } from "../../../tests/_env.ts";
 import {
   type ChocolateyPackage,
   ChocolateyTasks,
@@ -25,7 +26,7 @@ import {
   FAKE_CHOCO_UNSUPPORTED,
   type FakeChoco,
   fakeChoco,
-} from "./_fake_choco.ts";
+} from "../../../tests/support/chocolatey/_fake_choco.ts";
 
 /** A rendered package to verify. */
 const PKG: ChocolateyPackage = ChocolateyTasks.package((s) =>
@@ -67,7 +68,7 @@ function verify(
   );
 }
 
-Deno.test({
+test({
   name: "verify: pack, install, check, uninstall — in that order",
   ignore: FAKE_CHOCO_UNSUPPORTED,
   async fn() {
@@ -107,7 +108,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "verify: the binary only has to succeed when nothing is expected",
   ignore: FAKE_CHOCO_UNSUPPORTED,
   async fn() {
@@ -121,7 +122,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name:
     "verify: output that lacks the expected text fails, and still cleans up",
   ignore: FAKE_CHOCO_UNSUPPORTED,
@@ -146,7 +147,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "verify: a failing binary is raised, and still uninstalls",
   ignore: FAKE_CHOCO_UNSUPPORTED,
   async fn() {
@@ -164,7 +165,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "verify: a failed install skips the uninstall, and removes the staging",
   ignore: FAKE_CHOCO_UNSUPPORTED,
   async fn() {
@@ -183,7 +184,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "verify: a failed pack installs nothing",
   ignore: FAKE_CHOCO_UNSUPPORTED,
   async fn() {
@@ -198,7 +199,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "verify: a pack that wrote no .nupkg, or two, is refused",
   ignore: FAKE_CHOCO_UNSUPPORTED,
   async fn() {
@@ -218,7 +219,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "verify: when the cleanup fails too, both failures are raised together",
   ignore: FAKE_CHOCO_UNSUPPORTED,
   async fn() {
@@ -240,7 +241,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "verify: a cleanup failure after a passing check is raised on its own",
   ignore: FAKE_CHOCO_UNSUPPORTED,
   async fn() {
@@ -257,7 +258,7 @@ Deno.test({
   },
 });
 
-Deno.test("verify: a package and a binary are required before choco runs", async () => {
+test("verify: a package and a binary are required before choco runs", async () => {
   await assertRejects(
     () => ChocolateyTasks.verify((s) => s.binary("app")),
     Error,
@@ -275,7 +276,7 @@ Deno.test("verify: a package and a binary are required before choco runs", async
   );
 });
 
-Deno.test("verify: a hand-built package is checked before anything is written", async () => {
+test("verify: a hand-built package is checked before anything is written", async () => {
   const cases: Array<[ChocolateyPackage, string]> = [
     [{ ...PKG, id: "../evil" }, "invalid package id"],
     [{ ...PKG, version: "1.0 --force" }, "invalid package version"],

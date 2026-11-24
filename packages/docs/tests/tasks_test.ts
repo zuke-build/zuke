@@ -1,10 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import { DocsTasks } from "../src/tasks.ts";
 import type { ApiDocsOptions, PackageDoc } from "../src/types.ts";
 
@@ -53,7 +51,7 @@ async function fixture(): Promise<{ root: string; options: ApiDocsOptions }> {
   return { root, options };
 }
 
-Deno.test("apiDocs generates the index, reference, and README blocks", async () => {
+test("apiDocs generates the index, reference, and README blocks", async () => {
   const { root, options } = await fixture();
   try {
     const written = await DocsTasks.apiDocs(DOCS, options);
@@ -93,7 +91,7 @@ Deno.test("apiDocs generates the index, reference, and README blocks", async () 
   }
 });
 
-Deno.test("checkApiDocs reports clean, then stale after a manual edit", async () => {
+test("checkApiDocs reports clean, then stale after a manual edit", async () => {
   const { root, options } = await fixture();
   try {
     await DocsTasks.apiDocs(DOCS, options);
@@ -110,7 +108,7 @@ Deno.test("checkApiDocs reports clean, then stale after a manual edit", async ()
   }
 });
 
-Deno.test("readmes:false generates only the index and reference", async () => {
+test("readmes:false generates only the index and reference", async () => {
   const { root, options } = await fixture();
   try {
     const written = await DocsTasks.apiDocs(DOCS, {

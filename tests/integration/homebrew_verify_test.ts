@@ -14,17 +14,18 @@
  * @module
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
-import { withEnv } from "../../packages/core/tests/_env.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
+import { withEnv } from "../_env.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { BrewTasks, HomebrewTasks } from "../../packages/homebrew/mod.ts";
 import {
   FAKE_BREW_UNSUPPORTED,
   fakeBrew,
-} from "../../packages/homebrew/tests/_fake_brew.ts";
+} from "../support/homebrew/_fake_brew.ts";
 import { runCli } from "./_harness.ts";
 
-Deno.test({
+test({
   name:
     "homebrew: a build renders a formula, then verifies it with brew from PATH",
   ignore: FAKE_BREW_UNSUPPORTED,
@@ -99,7 +100,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "homebrew: a failing verification fails the build and still cleans up",
   ignore: FAKE_BREW_UNSUPPORTED,
   async fn() {

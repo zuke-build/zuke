@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import { Build } from "../src/build.ts";
 import {
   aggregateRunCounts,
@@ -14,9 +15,9 @@ import {
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { defaultStateHost } from "../src/state/store.ts";
 import type { RunRecord, RunStatus, RunSummary } from "../src/state/types.ts";
-import { runRecord } from "./_fakes.ts";
-import { capture as captureLines } from "./_console.ts";
-import { withTempStore as withStore } from "./_store.ts";
+import { runRecord } from "../../../tests/_fakes.ts";
+import { capture as captureLines } from "../../../tests/_console.ts";
+import { withTempStore as withStore } from "../../../tests/_store.ts";
 
 /** A trivial build; `runsCommand` only reads `build.stateStore()` from it. */
 class B extends Build {}
@@ -40,7 +41,7 @@ function sampleRecord(overrides: Partial<RunRecord> = {}): RunRecord {
   });
 }
 
-Deno.test("formatRunList renders headers and one row per run", () => {
+test("formatRunList renders headers and one row per run", () => {
   const text = formatRunList([
     {
       id: "run-9",
@@ -59,11 +60,11 @@ Deno.test("formatRunList renders headers and one row per run", () => {
   assertStringIncludes(text, "promote");
 });
 
-Deno.test("formatRunList reports an empty listing", () => {
+test("formatRunList reports an empty listing", () => {
   assertEquals(formatRunList([]), "No runs found.");
 });
 
-Deno.test("formatRunDetail shows header, params, targets, and signals", () => {
+test("formatRunDetail shows header, params, targets, and signals", () => {
   const record = sampleRecord({
     status: "failed",
     params: { env: "sit", repo: "expense-service" },
@@ -115,14 +116,14 @@ Deno.test("formatRunDetail shows header, params, targets, and signals", () => {
   assertStringIncludes(text, "approved");
 });
 
-Deno.test("formatRunDetail handles no params, no signals, no targets", () => {
+test("formatRunDetail handles no params, no signals, no targets", () => {
   const text = formatRunDetail(sampleRecord({ targets: {} }));
   assertEquals(text.includes("Parameters:"), false);
   assertEquals(text.includes("Signals:"), false);
   assertStringIncludes(text, "(none recorded)");
 });
 
-Deno.test("formatRunDetail flags a degraded record", () => {
+test("formatRunDetail flags a degraded record", () => {
   // What an operator sees after a resume refuses the record.
   assertStringIncludes(
     formatRunDetail(sampleRecord({ degraded: true })),
@@ -131,7 +132,7 @@ Deno.test("formatRunDetail flags a degraded record", () => {
   assertEquals(formatRunDetail(sampleRecord()).includes("degraded"), false);
 });
 
-Deno.test("formatRunDetail renders a waiting target without a deadline", () => {
+test("formatRunDetail renders a waiting target without a deadline", () => {
   const text = formatRunDetail(sampleRecord({
     status: "suspended",
     targets: {
@@ -146,7 +147,7 @@ Deno.test("formatRunDetail renders a waiting target without a deadline", () => {
   assertEquals(text.includes("deadline"), false);
 });
 
-Deno.test("runsCommand list prints seeded runs and defaults to list", async () => {
+test("runsCommand list prints seeded runs and defaults to list", async () => {
   await withStore(async (store) => {
     await store.putRun(sampleRecord({ id: "run-a" }), null);
     await store.putRun(sampleRecord({ id: "run-b", actor: "bob" }), null);
@@ -160,7 +161,7 @@ Deno.test("runsCommand list prints seeded runs and defaults to list", async () =
   });
 });
 
-Deno.test("runsCommand list --json emits a summary array", async () => {
+test("runsCommand list --json emits a summary array", async () => {
   await withStore(async (store) => {
     await store.putRun(sampleRecord({ id: "run-a" }), null);
     const { code, out } = await capture(() =>
@@ -173,7 +174,7 @@ Deno.test("runsCommand list --json emits a summary array", async () => {
   });
 });
 
-Deno.test("aggregateRunCounts tallies total and per-status, in stable order", () => {
+test("aggregateRunCounts tallies total and per-status, in stable order", () => {
   const summary = (id: string, status: RunStatus): RunSummary => ({
     id,
     build: "CI",
@@ -201,7 +202,7 @@ Deno.test("aggregateRunCounts tallies total and per-status, in stable order", ()
   assertEquals(aggregateRunCounts([]), { total: 0, byStatus: {} });
 });
 
-Deno.test("formatRunCounts renders a total and per-status lines, or an empty note", () => {
+test("formatRunCounts renders a total and per-status lines, or an empty note", () => {
   const text = formatRunCounts({
     total: 3,
     byStatus: { failed: 1, succeeded: 2 },
@@ -212,7 +213,7 @@ Deno.test("formatRunCounts renders a total and per-status lines, or an empty not
   assertEquals(formatRunCounts({ total: 0, byStatus: {} }), "No runs found.");
 });
 
-Deno.test("runsCommand list --counts prints aggregate counts, and --json emits them", async () => {
+test("runsCommand list --counts prints aggregate counts, and --json emits them", async () => {
   await withStore(async (store) => {
     await store.putRun(sampleRecord({ id: "a", status: "succeeded" }), null);
     await store.putRun(sampleRecord({ id: "b", status: "succeeded" }), null);
@@ -241,7 +242,7 @@ Deno.test("runsCommand list --counts prints aggregate counts, and --json emits t
   });
 });
 
-Deno.test("runsCommand list --counts honours the query filter", async () => {
+test("runsCommand list --counts honours the query filter", async () => {
   await withStore(async (store) => {
     await store.putRun(sampleRecord({ id: "ok", status: "succeeded" }), null);
     await store.putRun(sampleRecord({ id: "bad", status: "failed" }), null);
@@ -259,7 +260,7 @@ Deno.test("runsCommand list --counts honours the query filter", async () => {
   });
 });
 
-Deno.test("runsCommand list applies a status filter", async () => {
+test("runsCommand list applies a status filter", async () => {
   await withStore(async (store) => {
     await store.putRun(sampleRecord({ id: "ok", status: "succeeded" }), null);
     await store.putRun(sampleRecord({ id: "bad", status: "failed" }), null);
@@ -276,7 +277,7 @@ Deno.test("runsCommand list applies a status filter", async () => {
   });
 });
 
-Deno.test("runsCommand show prints one run's detail, and --json its record", async () => {
+test("runsCommand show prints one run's detail, and --json its record", async () => {
   await withStore(async (store) => {
     await store.putRun(sampleRecord({ id: "run-x" }), null);
 
@@ -306,7 +307,7 @@ Deno.test("runsCommand show prints one run's detail, and --json its record", asy
   });
 });
 
-Deno.test("runsCommand show without an id is a usage error", async () => {
+test("runsCommand show without an id is a usage error", async () => {
   await withStore(async (store) => {
     const { code, err } = await capture(() =>
       runsCommand(new B(), { action: "show", stateStore: store })
@@ -316,7 +317,7 @@ Deno.test("runsCommand show without an id is a usage error", async () => {
   });
 });
 
-Deno.test("runsCommand show reports an unknown run id", async () => {
+test("runsCommand show reports an unknown run id", async () => {
   await withStore(async (store) => {
     const { code, err } = await capture(() =>
       runsCommand(new B(), { action: "show", runId: "nope", stateStore: store })
@@ -326,7 +327,7 @@ Deno.test("runsCommand show reports an unknown run id", async () => {
   });
 });
 
-Deno.test("runsCommand resolves the store from ZUKE_STATE_DIR", async () => {
+test("runsCommand resolves the store from ZUKE_STATE_DIR", async () => {
   const dir = await Deno.makeTempDir();
   const prev = Deno.env.get("ZUKE_STATE_DIR");
   Deno.env.set("ZUKE_STATE_DIR", `${dir}/runs`);
@@ -346,7 +347,7 @@ Deno.test("runsCommand resolves the store from ZUKE_STATE_DIR", async () => {
   }
 });
 
-Deno.test("runsCommand errors with no store configured", async () => {
+test("runsCommand errors with no store configured", async () => {
   const { code, err } = await capture(() =>
     runsCommand(new B(), { action: "list", stateStore: false })
   );
@@ -354,7 +355,7 @@ Deno.test("runsCommand errors with no store configured", async () => {
   assertStringIncludes(err, "no state store is configured");
 });
 
-Deno.test("runsCommand rejects an unknown sub-action", async () => {
+test("runsCommand rejects an unknown sub-action", async () => {
   await withStore(async (store) => {
     const { code, err } = await capture(() =>
       runsCommand(new B(), { action: "delete", stateStore: store })
@@ -382,7 +383,7 @@ function sum(id: string, status: RunStatus, agoDays: number): RunSummary {
   };
 }
 
-Deno.test("selectRunsToPrune keeps non-terminal runs and honours both rules", () => {
+test("selectRunsToPrune keeps non-terminal runs and honours both rules", () => {
   // Newest first: a suspended run, then four terminal runs of increasing age.
   const summaries = [
     sum("suspended", "suspended", 0), // non-terminal → never pruned
@@ -401,7 +402,7 @@ Deno.test("selectRunsToPrune keeps non-terminal runs and honours both rules", ()
   assertEquals(ids, ["t-40d", "t-50d"]);
 });
 
-Deno.test("selectRunsToPrune with keep-last only keeps the newest N terminal", () => {
+test("selectRunsToPrune with keep-last only keeps the newest N terminal", () => {
   const summaries = [
     sum("t-1d", "succeeded", 1),
     sum("t-2d", "failed", 2),
@@ -413,7 +414,7 @@ Deno.test("selectRunsToPrune with keep-last only keeps the newest N terminal", (
   ]);
 });
 
-Deno.test("selectRunsToPrune with keep only prunes terminal runs past the window", () => {
+test("selectRunsToPrune with keep only prunes terminal runs past the window", () => {
   const summaries = [
     sum("suspended-old", "suspended", 100), // non-terminal, old → still kept
     sum("t-5d", "succeeded", 5),
@@ -424,13 +425,13 @@ Deno.test("selectRunsToPrune with keep only prunes terminal runs past the window
   ]);
 });
 
-Deno.test("selectRunsToPrune keeps a run with an unparseable timestamp", () => {
+test("selectRunsToPrune keeps a run with an unparseable timestamp", () => {
   const bad = sum("t-bad", "succeeded", 0);
   bad.createdAt = "not-a-date";
   assertEquals(selectRunsToPrune([bad], { keepMs: DAY }, NOW), []);
 });
 
-Deno.test("runs prune deletes old terminal runs, keeps recent and non-terminal", async () => {
+test("runs prune deletes old terminal runs, keeps recent and non-terminal", async () => {
   await withStore(async (store) => {
     const iso = (agoDays: number) =>
       new Date(NOW - agoDays * DAY).toISOString();
@@ -467,7 +468,7 @@ Deno.test("runs prune deletes old terminal runs, keeps recent and non-terminal",
   });
 });
 
-Deno.test("runs prune requires at least one retention rule", async () => {
+test("runs prune requires at least one retention rule", async () => {
   await withStore(async (store) => {
     await store.putRun(sampleRecord({ id: "r1" }), null);
     const { code, err } = await capture(() =>
@@ -479,7 +480,7 @@ Deno.test("runs prune requires at least one retention rule", async () => {
   });
 });
 
-Deno.test("runs prune --dry-run reports without deleting", async () => {
+test("runs prune --dry-run reports without deleting", async () => {
   await withStore(async (store) => {
     await store.putRun(
       sampleRecord({
@@ -505,7 +506,7 @@ Deno.test("runs prune --dry-run reports without deleting", async () => {
   });
 });
 
-Deno.test("runs prune --json emits the pruned and would-prune ids", async () => {
+test("runs prune --json emits the pruned and would-prune ids", async () => {
   await withStore(async (store) => {
     await store.putRun(
       sampleRecord({
@@ -542,7 +543,7 @@ Deno.test("runs prune --json emits the pruned and would-prune ids", async () => 
   });
 });
 
-Deno.test("runs prune reports zero when nothing matches", async () => {
+test("runs prune reports zero when nothing matches", async () => {
   await withStore(async (store) => {
     await store.putRun(
       sampleRecord({
@@ -566,7 +567,7 @@ Deno.test("runs prune reports zero when nothing matches", async () => {
   });
 });
 
-Deno.test("runs list honours --limit via the query", async () => {
+test("runs list honours --limit via the query", async () => {
   await withStore(async (store) => {
     for (let i = 0; i < 3; i++) {
       await store.putRun(
@@ -591,7 +592,7 @@ Deno.test("runs list honours --limit via the query", async () => {
   });
 });
 
-Deno.test("formatRunDetail trails a target's summary notes after its duration or error", () => {
+test("formatRunDetail trails a target's summary notes after its duration or error", () => {
   const record = sampleRecord({
     targets: {
       test: {
@@ -617,7 +618,7 @@ Deno.test("formatRunDetail trails a target's summary notes after its duration or
   assertStringIncludes(text, "Error: 2 problems  // Problems: 2");
 });
 
-Deno.test("runs show masks run-held lock tokens, in text and in --json", async () => {
+test("runs show masks run-held lock tokens, in text and in --json", async () => {
   await withStore(async (store) => {
     const locks = [
       {

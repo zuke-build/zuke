@@ -8,10 +8,8 @@
  * `build.ts`'s `release` target is wired (see `build/gemini_archive.ts`).
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { GhTasks } from "../../packages/gh/mod.ts";
 import {
@@ -19,7 +17,7 @@ import {
   GEMINI_ASSET_NAMES,
 } from "../../build/gemini_archive.ts";
 import { runCli } from "./_harness.ts";
-import { withTemp } from "../../packages/core/tests/_temp.ts";
+import { withTemp } from "../_temp.ts";
 
 /** A fake GitHub: one release, remembering the asset names it accepts. */
 function fakeGithub(uploaded: string[]): typeof fetch {
@@ -72,7 +70,7 @@ function releaseBuild(root: string, uploaded: string[]) {
   return Release;
 }
 
-Deno.test("the release wiring attaches missing assets and keeps existing ones", async () => {
+test("the release wiring attaches missing assets and keeps existing ones", async () => {
   await withTemp(async (root) => {
     await Deno.writeTextFile(
       `${root}/gemini-extension.json`,

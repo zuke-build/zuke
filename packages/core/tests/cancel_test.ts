@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "./_assert.ts";
+} from "../../../tests/_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { parameter } from "../src/params.ts";
 import { target } from "../src/target.ts";
@@ -29,9 +30,9 @@ import { lockKey } from "../src/state/lock.ts";
 import type { RunRecord } from "../src/state/types.ts";
 import type { Reporter } from "../src/executor.ts";
 import { externalSignal } from "../src/wait.ts";
-import { withTemp } from "./_temp.ts";
-import { runRecord, testPlan } from "./_fakes.ts";
-import { withTempStore } from "./_store.ts";
+import { withTemp } from "../../../tests/_temp.ts";
+import { runRecord, testPlan } from "../../../tests/_fakes.ts";
+import { withTempStore } from "../../../tests/_store.ts";
 
 /**
  * The percent-encoded `::`, kept as its own constant so the encoded prefix
@@ -65,7 +66,7 @@ function capturingReporter(): { reporter: Reporter; errors: string[] } {
   return { reporter: { info: () => {}, error: (l) => errors.push(l) }, errors };
 }
 
-Deno.test("cancelRun runs a suspended run's compensations in reverse order", async () => {
+test("cancelRun runs a suspended run's compensations in reverse order", async () => {
   await withTempStore(async (store) => {
     const undone: string[] = [];
     let rolledBackSlot: unknown;
@@ -125,7 +126,7 @@ Deno.test("cancelRun runs a suspended run's compensations in reverse order", asy
   });
 });
 
-Deno.test("cancelRun settles the target its run was parked on", async () => {
+test("cancelRun settles the target its run was parked on", async () => {
   await withTempStore(async (store) => {
     const makeBuild = () => {
       class B extends Build {
@@ -168,7 +169,7 @@ Deno.test("cancelRun settles the target its run was parked on", async () => {
   });
 });
 
-Deno.test("cancelRun is a friendly no-op on an already-finished run", async () => {
+test("cancelRun is a friendly no-op on an already-finished run", async () => {
   await withTempStore(async (store) => {
     const makeBuild = () => {
       class B extends Build {
@@ -199,7 +200,7 @@ Deno.test("cancelRun is a friendly no-op on an already-finished run", async () =
   });
 });
 
-Deno.test("cancelRun throws on a missing run", async () => {
+test("cancelRun throws on a missing run", async () => {
   await withTempStore(async (store) => {
     class B extends Build {
       go = target().executes(() => {});
@@ -214,7 +215,7 @@ Deno.test("cancelRun throws on a missing run", async () => {
   });
 });
 
-Deno.test("a failing compensation is recorded but the walk continues", async () => {
+test("a failing compensation is recorded but the walk continues", async () => {
   await withTempStore(async (store) => {
     const undone: string[] = [];
     const makeBuild = () => {
@@ -257,7 +258,7 @@ Deno.test("a failing compensation is recorded but the walk continues", async () 
   });
 });
 
-Deno.test("an in-process cancellation (options.signal) runs compensations", async () => {
+test("an in-process cancellation (options.signal) runs compensations", async () => {
   await withTempStore(async (store) => {
     const undone: string[] = [];
     let started: () => void = () => {};
@@ -302,7 +303,7 @@ Deno.test("an in-process cancellation (options.signal) runs compensations", asyn
   });
 });
 
-Deno.test("a live run observes an external cancel on its next write and stops", async () => {
+test("a live run observes an external cancel on its next write and stops", async () => {
   await withTempStore(async (store) => {
     const undone: string[] = [];
     let started: () => void = () => {};
@@ -349,7 +350,7 @@ Deno.test("a live run observes an external cancel on its next write and stops", 
   });
 });
 
-Deno.test("cancelRun throws when state is disabled", async () => {
+test("cancelRun throws when state is disabled", async () => {
   class B extends Build {
     go = target().executes(() => {});
   }
@@ -362,7 +363,7 @@ Deno.test("cancelRun throws when state is disabled", async () => {
   );
 });
 
-Deno.test("cancelRun recovers a run stranded mid-cancellation, without re-compensating", async () => {
+test("cancelRun recovers a run stranded mid-cancellation, without re-compensating", async () => {
   await withTempStore(async (store) => {
     const undone: string[] = [];
     const makeBuild = () => {
@@ -401,7 +402,7 @@ Deno.test("cancelRun recovers a run stranded mid-cancellation, without re-compen
   });
 });
 
-Deno.test("cancelRun cancels a run whose root target no longer exists", async () => {
+test("cancelRun cancels a run whose root target no longer exists", async () => {
   await withTempStore(async (store) => {
     class Old extends Build {
       gate = target().waitsFor((s) => s.on(externalSignal("x")));
@@ -428,7 +429,7 @@ Deno.test("cancelRun cancels a run whose root target no longer exists", async ()
   });
 });
 
-Deno.test("a compensation resolving to undefined or lacking a body is skipped", async () => {
+test("a compensation resolving to undefined or lacking a body is skipped", async () => {
   await withTempStore(async (store) => {
     const makeBuild = () => {
       class B extends Build {
@@ -462,7 +463,7 @@ Deno.test("a compensation resolving to undefined or lacking a body is skipped", 
   });
 });
 
-Deno.test("a compensation can write to its in-memory state handle", async () => {
+test("a compensation can write to its in-memory state handle", async () => {
   await withTempStore(async (store) => {
     let observed: unknown;
     const makeBuild = () => {
@@ -494,7 +495,7 @@ Deno.test("a compensation can write to its in-memory state handle", async () => 
   });
 });
 
-Deno.test("a timed-out wait with onTimeout cancel-run cancels the run", async () => {
+test("a timed-out wait with onTimeout cancel-run cancels the run", async () => {
   await withTempStore(async (store) => {
     const undone: string[] = [];
     const makeBuild = () => {
@@ -531,7 +532,7 @@ Deno.test("a timed-out wait with onTimeout cancel-run cancels the run", async ()
   });
 });
 
-Deno.test("a timed-out wait with a named onTimeout target runs it as a compensation", async () => {
+test("a timed-out wait with a named onTimeout target runs it as a compensation", async () => {
   await withTempStore(async (store) => {
     const ran: string[] = [];
     const makeBuild = () => {
@@ -566,7 +567,7 @@ Deno.test("a timed-out wait with a named onTimeout target runs it as a compensat
   });
 });
 
-Deno.test("a throwing .onCancel() thunk is recorded, not fatal", async () => {
+test("a throwing .onCancel() thunk is recorded, not fatal", async () => {
   await withTempStore(async (store) => {
     const undone: string[] = [];
     const makeBuild = () => {
@@ -605,7 +606,7 @@ Deno.test("a throwing .onCancel() thunk is recorded, not fatal", async () => {
   });
 });
 
-Deno.test("a secret in a compensation failure message is redacted", async () => {
+test("a secret in a compensation failure message is redacted", async () => {
   await withTempStore(async (store) => {
     const makeBuild = () => {
       class B extends Build {
@@ -640,7 +641,7 @@ Deno.test("a secret in a compensation failure message is redacted", async () => 
   });
 });
 
-Deno.test("a stored record cannot supply a secret parameter to a compensation", async () => {
+test("a stored record cannot supply a secret parameter to a compensation", async () => {
   // The record is read back from the store, so whoever can write there could
   // name a secret in `params`. Secrets re-resolve from the environment; a key
   // the build does not declare is ignored, and a non-secret one still replays.
@@ -688,7 +689,7 @@ Deno.test("a stored record cannot supply a secret parameter to a compensation", 
   });
 });
 
-Deno.test("an in-process cancellation records a cancel audit event", async () => {
+test("an in-process cancellation records a cancel audit event", async () => {
   await withTempStore(async (store) => {
     let started: () => void = () => {};
     const ready = new Promise<void>((resolve) => (started = resolve));
@@ -726,7 +727,7 @@ Deno.test("an in-process cancellation records a cancel audit event", async () =>
   });
 });
 
-Deno.test("a hung compensation is bounded by its .timeout()", async () => {
+test("a hung compensation is bounded by its .timeout()", async () => {
   await withTempStore(async (store) => {
     const makeBuild = () => {
       class B extends Build {
@@ -758,7 +759,7 @@ Deno.test("a hung compensation is bounded by its .timeout()", async () => {
   });
 });
 
-Deno.test("fan-out sub-target compensations run per item, in reverse, on cancel", async () => {
+test("fan-out sub-target compensations run per item, in reverse, on cancel", async () => {
   await withTempStore(async (store) => {
     const undone: string[] = [];
     const makeBuild = () => {
@@ -816,7 +817,7 @@ Deno.test("fan-out sub-target compensations run per item, in reverse, on cancel"
   });
 });
 
-Deno.test("a throwing fan-out item compensation is recorded; the others still run", async () => {
+test("a throwing fan-out item compensation is recorded; the others still run", async () => {
   await withTempStore(async (store) => {
     const undone: string[] = [];
     const makeBuild = () => {
@@ -866,7 +867,7 @@ Deno.test("a throwing fan-out item compensation is recorded; the others still ru
   });
 });
 
-Deno.test("an in-flight (running) fan-out item is compensated; a stage with no onCancel is skipped", async () => {
+test("an in-flight (running) fan-out item is compensated; a stage with no onCancel is skipped", async () => {
   const undone: string[] = [];
   class CD extends Build {
     deployBatch = target().forEach(
@@ -901,7 +902,7 @@ Deno.test("an in-flight (running) fan-out item is compensated; a stage with no o
   assertEquals(outcome.attempts.every((a) => a.ok), true);
 });
 
-Deno.test("a pending fan-out item (never started) is not compensated", async () => {
+test("a pending fan-out item (never started) is not compensated", async () => {
   const undone: string[] = [];
   class CD extends Build {
     deployBatch = target().forEach(
@@ -929,7 +930,7 @@ Deno.test("a pending fan-out item (never started) is not compensated", async () 
   assertEquals(outcome.attempts.length, 1);
 });
 
-Deno.test("a non-deterministic forEach list reports an unmatched recorded item", async () => {
+test("a non-deterministic forEach list reports an unmatched recorded item", async () => {
   class CD extends Build {
     deployBatch = target().forEach(
       () => ["a"], // cancel-time list no longer includes "z"
@@ -966,7 +967,7 @@ Deno.test("a non-deterministic forEach list reports an unmatched recorded item",
   assertEquals(errors.some((e) => e.includes("deployBatch[gone]")), false);
 });
 
-Deno.test("a forEach item list that throws at cancel is recorded, not fatal", async () => {
+test("a forEach item list that throws at cancel is recorded, not fatal", async () => {
   class CD extends Build {
     deployBatch = target().forEach(
       () => {
@@ -994,7 +995,7 @@ Deno.test("a forEach item list that throws at cancel is recorded, not fatal", as
   assertEquals(outcome.failures[0].forTarget, "deployBatch");
 });
 
-Deno.test("an item .onCancel() thunk that throws or returns undefined is skipped", async () => {
+test("an item .onCancel() thunk that throws or returns undefined is skipped", async () => {
   const undone: string[] = [];
   class CD extends Build {
     deployBatch = target().forEach(
@@ -1046,7 +1047,7 @@ Deno.test("an item .onCancel() thunk that throws or returns undefined is skipped
   );
 });
 
-Deno.test("cancel runs a nested fan-out item's onCancel without false-warning", async () => {
+test("cancel runs a nested fan-out item's onCancel without false-warning", async () => {
   const undone: string[] = [];
   class CD extends Build {
     // deployBatch fans out over ["a"]; each item's `inner` stage is itself a
@@ -1088,7 +1089,7 @@ Deno.test("cancel runs a nested fan-out item's onCancel without false-warning", 
   );
 });
 
-Deno.test("a declared target reused as a fan-out stage keeps its own name at cancel", async () => {
+test("a declared target reused as a fan-out stage keeps its own name at cancel", async () => {
   const undone: string[] = [];
   class CD extends Build {
     // `seed` is both a target of its own and the factory's stage builder, which a
@@ -1123,7 +1124,7 @@ Deno.test("a declared target reused as a fan-out stage keeps its own name at can
   assertEquals(outcome.attempts.map((a) => a.forTarget), ["seed"]);
 });
 
-Deno.test("a fan-out parent's own onCancel runs after its item compensations", async () => {
+test("a fan-out parent's own onCancel runs after its item compensations", async () => {
   const seq: string[] = [];
   class CD extends Build {
     deployBatch = target()
@@ -1155,7 +1156,7 @@ Deno.test("a fan-out parent's own onCancel runs after its item compensations", a
   assertEquals(seq, ["item:b", "item:a", "parent"]);
 });
 
-Deno.test("cancel degrades to base order when orderWith fails, still compensating", async () => {
+test("cancel degrades to base order when orderWith fails, still compensating", async () => {
   await withTempStore(async (store) => {
     const undone: string[] = [];
     // The ordering provider is reachable at run time, but not at cancel time
@@ -1220,7 +1221,7 @@ async function until(ready: () => boolean): Promise<void> {
   }
 }
 
-Deno.test("a second cancelRun is a no-op while the first holds the cancel lock", async () => {
+test("a second cancelRun is a no-op while the first holds the cancel lock", async () => {
   await withTempStore(async (store) => {
     let release!: () => void;
     const blocked = new Promise<void>((r) => {
@@ -1277,7 +1278,7 @@ Deno.test("a second cancelRun is a no-op while the first holds the cancel lock",
   });
 });
 
-Deno.test("a concurrent cancelRun is a no-op while the executor compensates in-process", async () => {
+test("a concurrent cancelRun is a no-op while the executor compensates in-process", async () => {
   await withTempStore(async (store) => {
     let release!: () => void;
     const blocked = new Promise<void>((r) => {
@@ -1343,7 +1344,7 @@ Deno.test("a concurrent cancelRun is a no-op while the executor compensates in-p
   });
 });
 
-Deno.test("the executor defers when another process already holds the cancel lock", async () => {
+test("the executor defers when another process already holds the cancel lock", async () => {
   await withTempStore(async (store) => {
     const undone: string[] = [];
     let workStarted!: () => void;
@@ -1392,7 +1393,7 @@ Deno.test("the executor defers when another process already holds the cancel loc
   });
 });
 
-Deno.test("a degraded record compensates targets whose settlement was lost", async () => {
+test("a degraded record compensates targets whose settlement was lost", async () => {
   // The record lost a state write for good, so a target that really did succeed
   // can still be recorded `pending` — or have no row at all. Skipping those
   // leaves real side effects un-rolled-back, so cancel treats every target whose
@@ -1436,7 +1437,7 @@ Deno.test("a degraded record compensates targets whose settlement was lost", asy
   assertStringIncludes(info.join("\n"), 'migrate" is not recorded');
 });
 
-Deno.test("a healthy record still skips a pending target's compensation", async () => {
+test("a healthy record still skips a pending target's compensation", async () => {
   // The flag is what licenses the extra cleanup: a record with nothing missing
   // keeps exactly the settled behaviour — a target that never ran is not undone.
   const undone: string[] = [];
@@ -1459,7 +1460,7 @@ Deno.test("a healthy record still skips a pending target's compensation", async 
   assertEquals(outcome.attempts, []);
 });
 
-Deno.test("a degraded record compensates a pending fan-out item", async () => {
+test("a degraded record compensates a pending fan-out item", async () => {
   // Same defect one level down: an item recorded pending on a degraded record
   // may have deployed. A failed one is not compensated either way — its
   // settlement landed, so nothing about it is unproven.
@@ -1494,7 +1495,7 @@ Deno.test("a degraded record compensates a pending fan-out item", async () => {
   assertEquals(outcome.attempts.length, 2);
 });
 
-Deno.test("cancelRun re-reads the record after transitioning to cancelling", async () => {
+test("cancelRun re-reads the record after transitioning to cancelling", async () => {
   // The transition's compare-and-swap returns the record as it looked *before*
   // the write, so a settlement that lands in that window is invisible in it —
   // and the owning process lands exactly one there: when its own write loses to
@@ -1589,7 +1590,7 @@ class FinishesBeforeCancelling extends FileSystemStateStore {
   }
 }
 
-Deno.test("a cancel that loses the transition race reports the run's terminal status", async () => {
+test("a cancel that loses the transition race reports the run's terminal status", async () => {
   // The run finished between the canceller's read and its write. The CAS
   // conflicts, the re-read finds `succeeded`, and the cancel becomes a
   // friendly no-op naming that status — never a walk over a finished run.
@@ -1646,7 +1647,7 @@ class VanishesOnCancel extends FileSystemStateStore {
   }
 }
 
-Deno.test("a run that vanishes mid-cancel is a no-op, not a crash", async () => {
+test("a run that vanishes mid-cancel is a no-op, not a crash", async () => {
   // Pruned between the read and the write (a retention sweep, a manual
   // delete): there is nothing left to cancel, and the caller is told so.
   await withTemp(async (dir) => {
@@ -1688,7 +1689,7 @@ class RefusesCancelling extends FileSystemStateStore {
   }
 }
 
-Deno.test("cancelRun surfaces a store that never accepts the transition", async () => {
+test("cancelRun surfaces a store that never accepts the transition", async () => {
   // Bounded retries: a store outage (or a pathological writer) must produce a
   // named error, not an infinite CAS loop.
   await withTemp(async (dir) => {
@@ -1741,7 +1742,7 @@ class VanishesAfterCancelling extends FileSystemStateStore {
   }
 }
 
-Deno.test("a run that vanishes after the transition still gets its compensations", async () => {
+test("a run that vanishes after the transition still gets its compensations", async () => {
   // The canceller's own snapshot is the last word when the record disappears:
   // the walk still runs from it, and the missing settlement write is a clean
   // return, not an error — the record it would update no longer exists.
@@ -1787,7 +1788,7 @@ class RefusesSettlement extends FileSystemStateStore {
   }
 }
 
-Deno.test("cancelRun surfaces a store that never accepts the settlement", async () => {
+test("cancelRun surfaces a store that never accepts the settlement", async () => {
   // The other bounded loop: compensations ran but the terminal write cannot
   // land. Surfacing the outage beats silently leaving the run `cancelling` —
   // and a re-cancel then recovers it.
@@ -1823,7 +1824,7 @@ Deno.test("cancelRun surfaces a store that never accepts the settlement", async 
   });
 });
 
-Deno.test("an extra compensation naming a missing target is skipped, not fatal", async () => {
+test("an extra compensation naming a missing target is skipped, not fatal", async () => {
   // The `also` list is how a timed-out wait's onTimeout names a specific
   // compensation target. A build edit can remove that target before the
   // timeout fires; the cancel must still unwind everything else.
@@ -1857,7 +1858,7 @@ Deno.test("an extra compensation naming a missing target is skipped, not fatal",
   });
 });
 
-Deno.test("the default reporter routes cancel diagnostics to the console's error stream", async () => {
+test("the default reporter routes cancel diagnostics to the console's error stream", async () => {
   // With no reporter and no `silent`, cancel prints through the console — and
   // its diagnostics (a failed compensation) must land on stderr, where CI log
   // scrapers and shell redirections expect errors.
@@ -1907,7 +1908,7 @@ Deno.test("the default reporter routes cancel diagnostics to the console's error
   });
 });
 
-Deno.test("without a redactor, a compensation failure message is kept verbatim", async () => {
+test("without a redactor, a compensation failure message is kept verbatim", async () => {
   // The executor's in-process walk can run with no redactor (no secrets are
   // known); the failure text must then pass through untouched — masking is
   // opt-in, not a mangling of every message.
@@ -1933,7 +1934,7 @@ Deno.test("without a redactor, a compensation failure message is kept verbatim",
   assertEquals(outcome.failures[0].error, "exact diagnostic text");
 });
 
-Deno.test("a compensation reads the run's plan, not an empty one", async () => {
+test("a compensation reads the run's plan, not an empty one", async () => {
   // `CompensationDeps.plan` promises a compensation body sees the graph this
   // walk is ordered by. Every other cancel test passes the empty `testPlan()`,
   // so nothing asserted the wiring: handing `runCompensations` an empty plan
@@ -1966,7 +1967,7 @@ Deno.test("a compensation reads the run's plan, not an empty one", async () => {
   assertEquals(seen, ["build,deploy", "includes(deploy)=true"]);
 });
 
-Deno.test("a failing compensation cannot forge a command on an Actions runner", async () => {
+test("a failing compensation cannot forge a command on an Actions runner", async () => {
   // Every line `cancelRun` prints carries text this process did not author — a
   // run id, an actor, a compensation's name, the message of something that
   // threw. None of them is ever a workflow command, so the whole sink is

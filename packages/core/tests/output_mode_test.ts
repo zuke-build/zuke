@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   NO_BANNER_ENV,
   PLAIN_ENV,
@@ -18,7 +19,7 @@ function env(
 const tty = () => true;
 const pipe = () => false;
 
-Deno.test("an interactive terminal off CI is rich, coloured, and keeps the banner", () => {
+test("an interactive terminal off CI is rich, coloured, and keeps the banner", () => {
   assertEquals(resolveOutputMode({ readEnv: env(), isTerminal: tty }), {
     rich: true,
     color: true,
@@ -26,7 +27,7 @@ Deno.test("an interactive terminal off CI is rich, coloured, and keeps the banne
   });
 });
 
-Deno.test("piped output is not rich, but nobody asked for plain, so the banner stays", () => {
+test("piped output is not rich, but nobody asked for plain, so the banner stays", () => {
   assertEquals(resolveOutputMode({ readEnv: env(), isTerminal: pipe }), {
     rich: false,
     color: false,
@@ -34,7 +35,7 @@ Deno.test("piped output is not rich, but nobody asked for plain, so the banner s
   });
 });
 
-Deno.test("CI drops the decoration and keeps the banner, even on a terminal", () => {
+test("CI drops the decoration and keeps the banner, even on a terminal", () => {
   const cases: Array<Record<string, string>> = [
     { CI: "true" },
     { GITHUB_ACTIONS: "true" },
@@ -46,7 +47,7 @@ Deno.test("CI drops the decoration and keeps the banner, even on a terminal", ()
   }
 });
 
-Deno.test("ZUKE_PLAIN is one level above ZUKE_NO_BANNER: plain, colourless, no banner", () => {
+test("ZUKE_PLAIN is one level above ZUKE_NO_BANNER: plain, colourless, no banner", () => {
   const mode = resolveOutputMode({
     readEnv: env({ [PLAIN_ENV]: "1" }),
     isTerminal: tty,
@@ -54,7 +55,7 @@ Deno.test("ZUKE_PLAIN is one level above ZUKE_NO_BANNER: plain, colourless, no b
   assertEquals(mode, { rich: false, color: false, banner: false });
 });
 
-Deno.test("ZUKE_PLAIN's conventional off values mean not plain", () => {
+test("ZUKE_PLAIN's conventional off values mean not plain", () => {
   for (const value of ["", "0", "false", "no", "FALSE"]) {
     const mode = resolveOutputMode({
       readEnv: env({ [PLAIN_ENV]: value }),
@@ -64,7 +65,7 @@ Deno.test("ZUKE_PLAIN's conventional off values mean not plain", () => {
   }
 });
 
-Deno.test("an explicit --plain wins over ZUKE_PLAIN in both directions", () => {
+test("an explicit --plain wins over ZUKE_PLAIN in both directions", () => {
   const off = resolveOutputMode({
     plain: false,
     readEnv: env({ [PLAIN_ENV]: "1" }),
@@ -80,7 +81,7 @@ Deno.test("an explicit --plain wins over ZUKE_PLAIN in both directions", () => {
   assertEquals(on.banner, false);
 });
 
-Deno.test("ZUKE_NO_BANNER removes only the banner", () => {
+test("ZUKE_NO_BANNER removes only the banner", () => {
   const mode = resolveOutputMode({
     readEnv: env({ [NO_BANNER_ENV]: "1" }),
     isTerminal: tty,
@@ -88,7 +89,7 @@ Deno.test("ZUKE_NO_BANNER removes only the banner", () => {
   assertEquals(mode, { rich: true, color: true, banner: false });
 });
 
-Deno.test("an explicit banner choice beats ZUKE_NO_BANNER, but never plain", () => {
+test("an explicit banner choice beats ZUKE_NO_BANNER, but never plain", () => {
   const kept = resolveOutputMode({
     banner: true,
     readEnv: env({ [NO_BANNER_ENV]: "1" }),
@@ -104,7 +105,7 @@ Deno.test("an explicit banner choice beats ZUKE_NO_BANNER, but never plain", () 
   assertEquals(plain.banner, false);
 });
 
-Deno.test("NO_COLOR keeps rich decoration and drops only the colour", () => {
+test("NO_COLOR keeps rich decoration and drops only the colour", () => {
   const mode = resolveOutputMode({
     readEnv: env({ NO_COLOR: "1" }),
     isTerminal: tty,
@@ -119,7 +120,7 @@ Deno.test("NO_COLOR keeps rich decoration and drops only the colour", () => {
   assertEquals(empty.color, true);
 });
 
-Deno.test("the defaults read the real process without throwing", () => {
+test("the defaults read the real process without throwing", () => {
   // Under `deno test` stdout is not a terminal, so nothing is rich.
   const mode = resolveOutputMode();
   assertEquals(mode.rich, false);

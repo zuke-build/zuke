@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import type { JsonValue, TargetStateHandle } from "@zuke/core";
 import { CommandError, CommandOutput } from "@zuke/core/shell";
 import {
@@ -14,8 +15,11 @@ import {
   lambdaCanary,
 } from "../mod.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
-import { withEmptyPath } from "./_fake.ts";
-import { flagValue, LambdaModel } from "./_lambda_model.ts";
+import { withEmptyPath } from "../../../tests/support/aws/_fake.ts";
+import {
+  flagValue,
+  LambdaModel,
+} from "../../../tests/support/aws/_lambda_model.ts";
 
 /** A state handle backed by a plain object, as the engine's in-memory one is. */
 function memoryState(accept = true): TargetStateHandle & {
@@ -74,7 +78,7 @@ async function staged() {
   return { model, ctx };
 }
 
-Deno.test("lambdaCanary: stage publishes the candidate and records the rollout without touching the alias", async () => {
+test("lambdaCanary: stage publishes the candidate and records the rollout without touching the alias", async () => {
   const { model, ctx } = await staged();
   assertEquals(model.calls.map((argv) => argv.slice(1, 3)), [
     ["get-alias", "--function-name=api"],
@@ -108,7 +112,7 @@ Deno.test("lambdaCanary: stage publishes the candidate and records the rollout w
   assertEquals(ctx.summary, { Candidate: "version 4", Stable: "version 3" });
 });
 
-Deno.test("lambdaCanary: expose weights the candidate on the alias, promote moves the alias", async () => {
+test("lambdaCanary: expose weights the candidate on the alias, promote moves the alias", async () => {
   const { model, ctx } = await staged();
   const lambda = platform(model);
   assertEquals(await lambda.expose(10, ctx), 10);
@@ -134,7 +138,7 @@ Deno.test("lambdaCanary: expose weights the candidate on the alias, promote move
   assertEquals(model.mutations().length, before);
 });
 
-Deno.test("lambdaCanary: exposing 0 % clears the routing and 100 % is a whole weight", async () => {
+test("lambdaCanary: exposing 0 % clears the routing and 100 % is a whole weight", async () => {
   const { model, ctx } = await staged();
   const lambda = platform(model);
   await lambda.expose(100, ctx);
@@ -143,7 +147,7 @@ Deno.test("lambdaCanary: exposing 0 % clears the routing and 100 % is a whole we
   assertEquals(model.live.weights, {});
 });
 
-Deno.test("lambdaCanary: a version given is rolled out without publishing", async () => {
+test("lambdaCanary: a version given is rolled out without publishing", async () => {
   const model = new LambdaModel();
   const ctx = context();
   await platform(model, (l) => l.version("2")).stage(ctx);
@@ -157,7 +161,7 @@ Deno.test("lambdaCanary: a version given is rolled out without publishing", asyn
   assertEquals(ctx.state.get().lambdaCanaryCodeSha256, "sha-2");
 });
 
-Deno.test("lambdaCanary: stage refuses what it cannot split", async () => {
+test("lambdaCanary: stage refuses what it cannot split", async () => {
   const cases: ReadonlyArray<
     readonly [
       label: string,
@@ -240,7 +244,7 @@ Deno.test("lambdaCanary: stage refuses what it cannot split", async () => {
   }
 });
 
-Deno.test("lambdaCanary: a publish whose version reads back with other code is refused", async () => {
+test("lambdaCanary: a publish whose version reads back with other code is refused", async () => {
   const model = new LambdaModel();
   const run = model.runner;
   // Another update reaches the function between the publish and the read.
@@ -264,7 +268,7 @@ Deno.test("lambdaCanary: a publish whose version reads back with other code is r
   assertEquals(model.aliasUpdates(), []);
 });
 
-Deno.test("lambdaCanary: a code source is shipped to the function the alias belongs to", async () => {
+test("lambdaCanary: a code source is shipped to the function the alias belongs to", async () => {
   const sources: ReadonlyArray<
     readonly [
       label: string,
@@ -297,7 +301,7 @@ Deno.test("lambdaCanary: a code source is shipped to the function the alias belo
   }
 });
 
-Deno.test("lambdaCanary: a read-back reporting another version is refused", async () => {
+test("lambdaCanary: a read-back reporting another version is refused", async () => {
   const model = new LambdaModel();
   const run = model.runner;
   const lambda = lambdaCanary((l) =>
@@ -318,7 +322,7 @@ Deno.test("lambdaCanary: a read-back reporting another version is refused", asyn
   );
 });
 
-Deno.test("lambdaCanary: an unrecordable rollout stops before any traffic moves", async () => {
+test("lambdaCanary: an unrecordable rollout stops before any traffic moves", async () => {
   const model = new LambdaModel();
   const ctx = context(memoryState(false));
   await assertRejects(
@@ -329,7 +333,7 @@ Deno.test("lambdaCanary: an unrecordable rollout stops before any traffic moves"
   assertEquals(model.aliasUpdates(), []);
 });
 
-Deno.test("lambdaCanary: a stage run again over its record checks it and publishes nothing", async () => {
+test("lambdaCanary: a stage run again over its record checks it and publishes nothing", async () => {
   const { model, ctx } = await staged();
   model.calls = [];
   await platform(model).stage(ctx);
@@ -350,7 +354,7 @@ Deno.test("lambdaCanary: a stage run again over its record checks it and publish
   );
 });
 
-Deno.test("lambdaCanary: an unknown stage marker is never acted on", async () => {
+test("lambdaCanary: an unknown stage marker is never acted on", async () => {
   for (const call of ["stage", "expose", "abort"] as const) {
     const model = new LambdaModel();
     const ctx = context();
@@ -370,7 +374,7 @@ Deno.test("lambdaCanary: an unknown stage marker is never acted on", async () =>
   }
 });
 
-Deno.test("lambdaCanary: a record missing a part changes nothing", async () => {
+test("lambdaCanary: a record missing a part changes nothing", async () => {
   const keys = [
     "lambdaCanaryFunction",
     "lambdaCanaryAlias",
@@ -394,7 +398,7 @@ Deno.test("lambdaCanary: a record missing a part changes nothing", async () => {
   }
 });
 
-Deno.test("lambdaCanary: a call configured for another alias, function or flags changes nothing", async () => {
+test("lambdaCanary: a call configured for another alias, function or flags changes nothing", async () => {
   const changes: ReadonlyArray<
     readonly [
       label: string,
@@ -439,7 +443,7 @@ Deno.test("lambdaCanary: a call configured for another alias, function or flags 
   assertEquals(model.calls, []);
 });
 
-Deno.test("lambdaCanary: an alias the CLI now reaches in another region is neither moved nor rolled back", async () => {
+test("lambdaCanary: an alias the CLI now reaches in another region is neither moved nor rolled back", async () => {
   // No flags: the CLI's own default decides the region, as AWS_REGION does.
   const model = new LambdaModel();
   const lambda = lambdaCanary((l) =>
@@ -480,7 +484,7 @@ Deno.test("lambdaCanary: an alias the CLI now reaches in another region is neith
   assertEquals(lambda.describe(), "Lambda alias api:live");
 });
 
-Deno.test("lambdaCanary: an alias changed by someone else is not moved", async () => {
+test("lambdaCanary: an alias changed by someone else is not moved", async () => {
   const changes: ReadonlyArray<
     readonly [label: string, change: (m: LambdaModel) => void]
   > = [
@@ -513,7 +517,7 @@ Deno.test("lambdaCanary: an alias changed by someone else is not moved", async (
   }
 });
 
-Deno.test("lambdaCanary: a candidate whose code changed is never sent traffic", async () => {
+test("lambdaCanary: a candidate whose code changed is never sent traffic", async () => {
   for (const call of ["expose", "promote"] as const) {
     const { model, ctx } = await staged();
     // Deleted and created again: version numbers start over with other code.
@@ -532,7 +536,7 @@ Deno.test("lambdaCanary: a candidate whose code changed is never sent traffic", 
   }
 });
 
-Deno.test("lambdaCanary: an alias changed between the read and the update fails the update", async () => {
+test("lambdaCanary: an alias changed between the read and the update fails the update", async () => {
   const { model, ctx } = await staged();
   const run = model.runner;
   const racing = lambdaCanary((l) =>
@@ -553,7 +557,7 @@ Deno.test("lambdaCanary: an alias changed between the read and the update fails 
   assertEquals(model.live.weights, {});
 });
 
-Deno.test("lambdaCanary: a failed update fails the call even under noThrow", async () => {
+test("lambdaCanary: a failed update fails the call even under noThrow", async () => {
   const { model, ctx } = await staged();
   const run = model.runner;
   const failing = lambdaCanary((l) =>
@@ -572,7 +576,7 @@ Deno.test("lambdaCanary: a failed update fails the call even under noThrow", asy
   assertEquals(model.live.weights, { "4": 0.1 });
 });
 
-Deno.test("lambdaCanary: an aws lambda that resolves differently per command runs nothing it disagrees with", async () => {
+test("lambdaCanary: an aws lambda that resolves differently per command runs nothing it disagrees with", async () => {
   const { model, ctx } = await staged();
   let calls = 0;
   const flaky = lambdaCanary((l) =>
@@ -593,7 +597,7 @@ Deno.test("lambdaCanary: an aws lambda that resolves differently per command run
   assertEquals(model.calls, []);
 });
 
-Deno.test("lambdaCanary: flags checked are the flags the command runs with", async () => {
+test("lambdaCanary: flags checked are the flags the command runs with", async () => {
   // The lambda resolves the staged region until the publish, then another:
   // the publish is refused before it runs, so no other region is changed.
   const model = new LambdaModel();
@@ -628,7 +632,7 @@ Deno.test("lambdaCanary: flags checked are the flags the command runs with", asy
   assertEquals(ctx.state.get().lambdaCanaryStage, "publishing");
 });
 
-Deno.test("lambdaCanary: a rollback takes only the candidate's weight off", async () => {
+test("lambdaCanary: a rollback takes only the candidate's weight off", async () => {
   const { model, ctx } = await staged();
   await platform(model).expose(10, ctx);
   // Another version was given a share after the stage — the rollback keeps it.
@@ -646,7 +650,7 @@ Deno.test("lambdaCanary: a rollback takes only the candidate's weight off", asyn
   assertEquals(model.live.weights, { "2": 0.05 });
 });
 
-Deno.test("lambdaCanary: a rollback writes the alias even with nothing to take back, so a racing expose cannot land after it", async () => {
+test("lambdaCanary: a rollback writes the alias even with nothing to take back, so a racing expose cannot land after it", async () => {
   // A zuke cancel from another process rolls back while this rollout's
   // expose is between its read and its update: the update carries the
   // revision it read, and the rollback's write makes that revision stale.
@@ -666,7 +670,7 @@ Deno.test("lambdaCanary: a rollback writes the alias even with nothing to take b
   assertEquals(model.live.weights, {});
 });
 
-Deno.test("lambdaCanary: a rollback that loses a race to another write reads again and retries", async () => {
+test("lambdaCanary: a rollback that loses a race to another write reads again and retries", async () => {
   const { model, ctx } = await staged();
   await platform(model).expose(10, ctx);
   const run = model.runner;
@@ -696,7 +700,7 @@ Deno.test("lambdaCanary: a rollback that loses a race to another write reads aga
   assertEquals(raced, 5);
 });
 
-Deno.test("lambdaCanary: a rollback clears the routing the candidate had alone", async () => {
+test("lambdaCanary: a rollback clears the routing the candidate had alone", async () => {
   const { model, ctx } = await staged();
   await platform(model).expose(25, ctx);
   await platform(model).abort(ctx);
@@ -706,7 +710,7 @@ Deno.test("lambdaCanary: a rollback clears the routing the candidate had alone",
   ]);
 });
 
-Deno.test("lambdaCanary: a rollback after the alias reached the candidate returns it to the stable version", async () => {
+test("lambdaCanary: a rollback after the alias reached the candidate returns it to the stable version", async () => {
   const { model, ctx } = await staged();
   await platform(model).promote(ctx);
   await platform(model).abort(ctx);
@@ -714,7 +718,7 @@ Deno.test("lambdaCanary: a rollback after the alias reached the candidate return
   assertEquals(model.live.weights, {});
 });
 
-Deno.test("lambdaCanary: a rollback never undoes a newer rollout built on the candidate", async () => {
+test("lambdaCanary: a rollback never undoes a newer rollout built on the candidate", async () => {
   // Version 4 was promoted, and a newer rollout now canaries version 5 on it.
   const { model, ctx } = await staged();
   await platform(model).promote(ctx);
@@ -731,7 +735,7 @@ Deno.test("lambdaCanary: a rollback never undoes a newer rollout built on the ca
   assertEquals(model.live.weights, { "5": 0.1 });
 });
 
-Deno.test("lambdaCanary: a rollback never returns the alias to a stable version whose code changed", async () => {
+test("lambdaCanary: a rollback never returns the alias to a stable version whose code changed", async () => {
   // The function was deleted and created again: version 3 is other code now.
   const { model, ctx } = await staged();
   await platform(model).promote(ctx);
@@ -746,14 +750,14 @@ Deno.test("lambdaCanary: a rollback never returns the alias to a stable version 
   assertEquals(model.live.version, "4");
 });
 
-Deno.test("lambdaCanary: a rollback run by hand goes to the configured stable version", async () => {
+test("lambdaCanary: a rollback run by hand goes to the configured stable version", async () => {
   const model = new LambdaModel();
   model.live.weights = { "2": 0.3 };
   await platform(model, (l) => l.stable("2")).abort(context());
   assertEquals(model.live, { version: "2", weights: {}, revision: "rev-1" });
 });
 
-Deno.test("lambdaCanary: an engine rollback with nothing recorded runs nothing", async () => {
+test("lambdaCanary: an engine rollback with nothing recorded runs nothing", async () => {
   // A degraded run record, or a stage whose first state write was rejected:
   // nothing was staged, so moving the alias to the stable version would
   // change a function no rollout touched.
@@ -775,7 +779,7 @@ Deno.test("lambdaCanary: an engine rollback with nothing recorded runs nothing",
   });
 });
 
-Deno.test("lambdaCanary: a hand run, named or from an engine that names no reason, falls back alike", async () => {
+test("lambdaCanary: a hand run, named or from an engine that names no reason, falls back alike", async () => {
   for (const reason of ["hand-run", undefined] as const) {
     const model = new LambdaModel();
     model.live.weights = { "2": 0.3 };
@@ -785,7 +789,7 @@ Deno.test("lambdaCanary: a hand run, named or from an engine that names no reaso
   }
 });
 
-Deno.test("lambdaCanary: a rollback run by hand without a usable stable version refuses", async () => {
+test("lambdaCanary: a rollback run by hand without a usable stable version refuses", async () => {
   const model = new LambdaModel();
   await assertRejects(
     () => platform(model).abort(context()),
@@ -800,7 +804,7 @@ Deno.test("lambdaCanary: a rollback run by hand without a usable stable version 
   assertEquals(model.calls, []);
 });
 
-Deno.test("lambdaCanary: promote needs a staged rollout", async () => {
+test("lambdaCanary: promote needs a staged rollout", async () => {
   const model = new LambdaModel();
   await assertRejects(
     () => platform(model).promote(context()),
@@ -810,7 +814,7 @@ Deno.test("lambdaCanary: promote needs a staged rollout", async () => {
   assertEquals(model.calls, []);
 });
 
-Deno.test("lambdaCanary: expose refuses a share outside 0 to 100 and an unstaged rollout", async () => {
+test("lambdaCanary: expose refuses a share outside 0 to 100 and an unstaged rollout", async () => {
   const model = new LambdaModel();
   for (const percent of [-1, 101, Number.NaN]) {
     await assertRejects(
@@ -827,7 +831,7 @@ Deno.test("lambdaCanary: expose refuses a share outside 0 to 100 and an unstaged
   assertEquals(model.calls, []);
 });
 
-Deno.test("lambdaCanary: names Lambda would not take are refused before any command", async () => {
+test("lambdaCanary: names Lambda would not take are refused before any command", async () => {
   const bad: ReadonlyArray<
     readonly [
       label: string,
@@ -855,7 +859,7 @@ Deno.test("lambdaCanary: names Lambda would not take are refused before any comm
   assertEquals(lambdaCanary((l) => l).describe(), "Lambda alias");
 });
 
-Deno.test("lambdaCanary: answers that are not what was asked for are refused", async () => {
+test("lambdaCanary: answers that are not what was asked for are refused", async () => {
   const answers: ReadonlyArray<readonly [stdout: string, message: string]> = [
     ["[]", "get-alias did not answer with an object"],
     ['{"arn":"a","revision":"r","weights":null}', "no FunctionVersion"],
@@ -924,7 +928,7 @@ Deno.test("lambdaCanary: answers that are not what was asked for are refused", a
   );
 });
 
-Deno.test("lambdaCanary: with no .aws(...) it runs the aws CLI found on PATH", async () => {
+test("lambdaCanary: with no .aws(...) it runs the aws CLI found on PATH", async () => {
   await withEmptyPath(async () => {
     const lambda = lambdaCanary((l) =>
       l.functionName("api").alias("live").version("2")

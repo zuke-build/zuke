@@ -15,14 +15,12 @@
  * @module
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals, assertStringIncludes } from "./_assert.ts";
 
 const WORKFLOW = ".github/workflows/codeql.yml";
 
-Deno.test("codeql.yml analyzes every pull request and push to master", async () => {
+test("codeql.yml analyzes every pull request and push to master", async () => {
   // Per-commit analysis is the point: the Scorecard SAST check counts the
   // commits that carry a code-scanning check run, so a schedule-only CodeQL
   // workflow would scan the code without ever crediting a commit.
@@ -32,7 +30,7 @@ Deno.test("codeql.yml analyzes every pull request and push to master", async () 
   assertStringIncludes(text, "schedule:");
 });
 
-Deno.test("codeql.yml grants the analyze job only what uploading needs", async () => {
+test("codeql.yml grants the analyze job only what uploading needs", async () => {
   // `security-events: write` is what lets `analyze` upload the SARIF; contents
   // stays read-only and nothing else is granted, keeping the workflow within
   // the least-privilege posture the other workflows hold.
@@ -42,7 +40,7 @@ Deno.test("codeql.yml grants the analyze job only what uploading needs", async (
   assertEquals(text.includes("id-token"), false);
 });
 
-Deno.test("codeql.yml covers the TypeScript sources and the workflows", async () => {
+test("codeql.yml covers the TypeScript sources and the workflows", async () => {
   // Two languages, one job: the `actions` pack audits the workflow YAML
   // itself, which for a repository that generates its workflows is the
   // artifact most worth scanning.
@@ -50,7 +48,7 @@ Deno.test("codeql.yml covers the TypeScript sources and the workflows", async ()
   assertStringIncludes(text, "javascript-typescript,actions");
 });
 
-Deno.test("codeql.yml pins both codeql-action halves to one SHA", async () => {
+test("codeql.yml pins both codeql-action halves to one SHA", async () => {
   // init and analyze ship as one release, so their pins must move together —
   // and each `uses:` must be a full SHA, like every other generated workflow.
   const text = await Deno.readTextFile(WORKFLOW);

@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
   assertWrapperConformance,
@@ -14,7 +15,7 @@ import {
 import { GitWorktreeSettings, parseWorktreeList } from "../src/worktree.ts";
 import { GitTasks } from "../mod.ts";
 
-Deno.test("worktree add checks a path out, with or without a new branch", () => {
+test("worktree add checks a path out, with or without a new branch", () => {
   assertEquals(new GitWorktreeSettings().add("../feature").argv(), [
     "git",
     "worktree",
@@ -38,7 +39,7 @@ Deno.test("worktree add checks a path out, with or without a new branch", () => 
   );
 });
 
-Deno.test("a start point is where a created branch forks from", () => {
+test("a start point is where a created branch forks from", () => {
   assertEquals(
     new GitWorktreeSettings().add("../feature").branch("feature")
       .createBranch().startPoint("origin/main").argv(),
@@ -59,7 +60,7 @@ Deno.test("a start point is where a created branch forks from", () => {
   );
 });
 
-Deno.test("a branch and a start point without -b are refused, not silently merged", () => {
+test("a branch and a start point without -b are refused, not silently merged", () => {
   assertThrows(
     () =>
       new GitWorktreeSettings().add("../feature").branch("feature")
@@ -69,7 +70,7 @@ Deno.test("a branch and a start point without -b are refused, not silently merge
   );
 });
 
-Deno.test("worktree list, remove, and prune build their own argv", () => {
+test("worktree list, remove, and prune build their own argv", () => {
   assertEquals(new GitWorktreeSettings().list().argv(), [
     "git",
     "worktree",
@@ -107,7 +108,7 @@ Deno.test("worktree list, remove, and prune build their own argv", () => {
   ]);
 });
 
-Deno.test("a worktree call with no subcommand says which ones exist", () => {
+test("a worktree call with no subcommand says which ones exist", () => {
   assertThrows(
     () => new GitWorktreeSettings().argv(),
     Error,
@@ -115,7 +116,7 @@ Deno.test("a worktree call with no subcommand says which ones exist", () => {
   );
 });
 
-Deno.test("createBranch without a name is refused rather than sent to git", () => {
+test("createBranch without a name is refused rather than sent to git", () => {
   assertThrows(
     () => new GitWorktreeSettings().add("../feature").createBranch().argv(),
     Error,
@@ -123,7 +124,7 @@ Deno.test("createBranch without a name is refused rather than sent to git", () =
   );
 });
 
-Deno.test("parseWorktreeList reads paths, heads, branches, and flags", () => {
+test("parseWorktreeList reads paths, heads, branches, and flags", () => {
   const stdout = [
     "worktree /repo",
     "HEAD 1111111111111111111111111111111111111111",
@@ -167,7 +168,7 @@ Deno.test("parseWorktreeList reads paths, heads, branches, and flags", () => {
   ]);
 });
 
-Deno.test("parseWorktreeList handles the bare entry, CRLF, and a missing final blank line", () => {
+test("parseWorktreeList handles the bare entry, CRLF, and a missing final blank line", () => {
   const stdout = "worktree /repo.git\r\nbare\r\n\r\nworktree /repo\r\n" +
     "HEAD 4444444444444444444444444444444444444444\r\n" +
     "branch refs/heads/main\r\nsomething-new value\r\n";
@@ -185,13 +186,13 @@ Deno.test("parseWorktreeList handles the bare entry, CRLF, and a missing final b
   ]);
 });
 
-Deno.test("parseWorktreeList yields nothing for empty or headless output", () => {
+test("parseWorktreeList yields nothing for empty or headless output", () => {
   assertEquals(parseWorktreeList(""), []);
   // An attribute with no `worktree` line above it belongs to no entry.
   assertEquals(parseWorktreeList("bare\ndetached\n"), []);
 });
 
-Deno.test("a branch ref outside refs/heads keeps its full name", () => {
+test("a branch ref outside refs/heads keeps its full name", () => {
   assertEquals(
     parseWorktreeList("worktree /repo\nbranch refs/remotes/origin/main\n"),
     [{
@@ -204,7 +205,7 @@ Deno.test("a branch ref outside refs/heads keeps its full name", () => {
   );
 });
 
-Deno.test("both worktree tasks reach execution", async () => {
+test("both worktree tasks reach execution", async () => {
   await assertRejects(
     () => GitTasks.worktree((s) => missingTool(s.prune())),
     ToolNotFoundError,
@@ -215,7 +216,7 @@ Deno.test("both worktree tasks reach execution", async () => {
   );
 });
 
-Deno.test("the worktree wrapper conforms to the tool contract", async () => {
+test("the worktree wrapper conforms to the tool contract", async () => {
   await assertWrapperConformance(
     () => new GitWorktreeSettings().prune(),
     "git",

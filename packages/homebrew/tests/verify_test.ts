@@ -9,14 +9,18 @@
  * @module
  */
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
-import { withEnv } from "../../core/tests/_env.ts";
+} from "../../../tests/_assert.ts";
+import { withEnv } from "../../../tests/_env.ts";
 import { HomebrewTasks } from "../mod.ts";
-import { FAKE_BREW_UNSUPPORTED, fakeBrew } from "./_fake_brew.ts";
+import {
+  FAKE_BREW_UNSUPPORTED,
+  fakeBrew,
+} from "../../../tests/support/homebrew/_fake_brew.ts";
 
 /** A formula file on disk, in a temp dir. */
 function formulaFile(): string {
@@ -31,7 +35,7 @@ function verbs(calls: Array<{ args: string[] }>): string[] {
   return calls.map((call) => call.args[0] ?? "");
 }
 
-Deno.test({
+test({
   name:
     "verify: tap-new, trust, install, test, uninstall, untap — in that order",
   ignore: FAKE_BREW_UNSUPPORTED,
@@ -82,7 +86,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "verify: a brew without `trust` is let refuse it, and the rest goes on",
   ignore: FAKE_BREW_UNSUPPORTED,
   async fn() {
@@ -111,7 +115,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name:
     "verify: a failing test still uninstalls and untaps, and its error is raised",
   ignore: FAKE_BREW_UNSUPPORTED,
@@ -144,7 +148,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name:
     "verify: a failed install skips the uninstall, and the forced untap cleans up",
   ignore: FAKE_BREW_UNSUPPORTED,
@@ -175,7 +179,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "verify: when the cleanup fails too, both failures are raised together",
   ignore: FAKE_BREW_UNSUPPORTED,
   async fn() {
@@ -203,7 +207,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "verify: a cleanup failure after a passing test is raised on its own",
   ignore: FAKE_BREW_UNSUPPORTED,
   async fn() {
@@ -226,7 +230,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "verify: a failed tap-new leaves nothing to clean up",
   ignore: FAKE_BREW_UNSUPPORTED,
   async fn() {
@@ -250,7 +254,7 @@ Deno.test({
   },
 });
 
-Deno.test("verify: the file and a valid name are required before brew runs", async () => {
+test("verify: the file and a valid name are required before brew runs", async () => {
   await assertRejects(
     () => HomebrewTasks.verify((s) => s.name("app")),
     Error,

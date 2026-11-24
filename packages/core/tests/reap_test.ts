@@ -12,7 +12,8 @@
  * @module
  */
 
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target } from "../src/target.ts";
 import { reapAbandoned, recoverStranded } from "../src/reap.ts";
@@ -21,8 +22,8 @@ import { RUN_LEASE_PREFIX } from "../src/state/run_lease.ts";
 import { lockKey } from "../src/state/lock.ts";
 import type { Reporter } from "../src/executor.ts";
 import type { RunRecord, RunStatus } from "../src/state/types.ts";
-import { runRecord } from "./_fakes.ts";
-import { withTempStore } from "./_store.ts";
+import { runRecord } from "../../../tests/_fakes.ts";
+import { withTempStore } from "../../../tests/_store.ts";
 
 const NOW = "2026-08-10T12:00:00.000Z";
 
@@ -98,7 +99,7 @@ async function amend(
   assertEquals((await store.putRun(next, loaded.version)).ok, true);
 }
 
-Deno.test("a run whose holder is still there is left alone", async () => {
+test("a run whose holder is still there is left alone", async () => {
   // The distinction the whole thing rests on: a live holder keeps renewing, so
   // a lease that cannot be taken means the run is slow, not dead.
   await withStore([record("run-1", "running")], async (store) => {
@@ -118,7 +119,7 @@ Deno.test("a run whose holder is still there is left alone", async () => {
   });
 });
 
-Deno.test("a run whose holder is gone goes back to suspended", async () => {
+test("a run whose holder is gone goes back to suspended", async () => {
   // Nothing holds its lease, so the process that was driving it is gone. The
   // run becomes resumable rather than being settled: its work may still be owed.
   await withStore([record("run-1", "running")], async (store) => {
@@ -139,7 +140,7 @@ Deno.test("a run whose holder is gone goes back to suspended", async () => {
   });
 });
 
-Deno.test("the reaper does not keep the lease it used to ask the question", async () => {
+test("the reaper does not keep the lease it used to ask the question", async () => {
   // It only acquired one to find out whether anyone else had it. Holding on
   // would make the resumer that follows refuse the run it just freed.
   await withStore([record("run-1", "running")], async (store) => {
@@ -154,7 +155,7 @@ Deno.test("the reaper does not keep the lease it used to ask the question", asyn
   });
 });
 
-Deno.test("a run past its deadline is settled failed, with its compensations", async () => {
+test("a run past its deadline is settled failed, with its compensations", async () => {
   await withStore(
     [record("run-1", "running", "2026-08-10T11:00:00.000Z")],
     async (store) => {
@@ -176,7 +177,7 @@ Deno.test("a run past its deadline is settled failed, with its compensations", a
   );
 });
 
-Deno.test("a deadline is only past when it is actually past", async () => {
+test("a deadline is only past when it is actually past", async () => {
   await withStore(
     [record("run-1", "running", "2026-08-10T13:00:00.000Z")],
     async (store) => {
@@ -189,7 +190,7 @@ Deno.test("a deadline is only past when it is actually past", async () => {
   );
 });
 
-Deno.test("a malformed deadline is not treated as a passed one", async () => {
+test("a malformed deadline is not treated as a passed one", async () => {
   // Refusing to guess beats settling a healthy run because a timestamp was junk.
   await withStore([record("run-1", "running", "not-a-date")], async (store) => {
     const { reporter } = capturing();
@@ -199,7 +200,7 @@ Deno.test("a malformed deadline is not treated as a passed one", async () => {
   });
 });
 
-Deno.test("a run with no deadline is never settled for time", async () => {
+test("a run with no deadline is never settled for time", async () => {
   await withStore([record("run-1", "running")], async (store) => {
     const { reporter } = capturing();
     const outcome = await reapAbandoned(depsFor(store, reporter));
@@ -207,7 +208,7 @@ Deno.test("a run with no deadline is never settled for time", async () => {
   });
 });
 
-Deno.test("only running runs are examined", async () => {
+test("only running runs are examined", async () => {
   await withStore(
     [
       record("done", "succeeded"),
@@ -223,7 +224,7 @@ Deno.test("only running runs are examined", async () => {
   );
 });
 
-Deno.test("a run settled between the lease and the write is left as it was found", async () => {
+test("a run settled between the lease and the write is left as it was found", async () => {
   // The window this closes: the reaper takes the lease of a run with no holder,
   // and a canceller settles it before the reaper writes. Moving it then would
   // undo the canceller's work.
@@ -249,7 +250,7 @@ Deno.test("a run settled between the lease and the write is left as it was found
   });
 });
 
-Deno.test("one bad run does not strand the rest of the sweep", async () => {
+test("one bad run does not strand the rest of the sweep", async () => {
   await withStore(
     [record("bad", "running"), record("good", "running")],
     async (store) => {
@@ -267,7 +268,7 @@ Deno.test("one bad run does not strand the rest of the sweep", async () => {
   );
 });
 
-Deno.test("a live run past its deadline is left to whoever is running it", async () => {
+test("a live run past its deadline is left to whoever is running it", async () => {
   // The ordering that keeps this safe. Settling a run whose process is still
   // working would run its compensations beside the work they undo, and leave a
   // live process reporting on a run somebody else had ended. Every case the
@@ -290,7 +291,7 @@ Deno.test("a live run past its deadline is left to whoever is running it", async
   );
 });
 
-Deno.test("another build's runs are not touched", async () => {
+test("another build's runs are not touched", async () => {
   // A store is commonly shared, and a listing has no build filter. Acting on
   // another build's run is worse than useless: its targets are not in this
   // build, so a settlement finds no compensations, stamps the record terminal
@@ -309,7 +310,7 @@ Deno.test("another build's runs are not touched", async () => {
   });
 });
 
-Deno.test("another build's stranded run is not settled either", async () => {
+test("another build's stranded run is not settled either", async () => {
   await withStore([record("foreign", "cancelling")], async (store) => {
     const loaded = await store.getRun("foreign");
     if (loaded === null) throw new Error("seed missing");
@@ -324,7 +325,7 @@ Deno.test("another build's stranded run is not settled either", async () => {
   });
 });
 
-Deno.test("a stranded run is recovered for a single-run sweep too", async () => {
+test("a stranded run is recovered for a single-run sweep too", async () => {
   // A plane that sweeps one run at a time is exactly the one that would
   // otherwise never recover it, since nothing else looks at `cancelling`.
   await withStore([record("run-1", "cancelling")], async (store) => {
@@ -338,7 +339,7 @@ Deno.test("a stranded run is recovered for a single-run sweep too", async () => 
   });
 });
 
-Deno.test("a same-named build without the run's root target is not ours", async () => {
+test("a same-named build without the run's root target is not ours", async () => {
   // A class name is not an identity: `Ci` is a name half the repos in an
   // organisation will use, and a shared store holds all of their runs. The root
   // target has to be here too, because that is what makes the compensations a
@@ -357,7 +358,7 @@ Deno.test("a same-named build without the run's root target is not ours", async 
   });
 });
 
-Deno.test("a stranded run settles into the terminal its settlement intended", async () => {
+test("a stranded run settles into the terminal its settlement intended", async () => {
   // `recoverStranded` names `cancelled` as a default, and the record overrides
   // it: the process that began the settlement recorded what it meant, and this
   // one is not it.
@@ -376,7 +377,7 @@ Deno.test("a stranded run settles into the terminal its settlement intended", as
   });
 });
 
-Deno.test("a colliding build with a different graph does not settle the run", async () => {
+test("a colliding build with a different graph does not settle the run", async () => {
   // Same class name, same root-target name, different graph — the residual the
   // name-and-root check cannot see. Settling is irreversible and skips
   // compensations it cannot resolve, so it asks the stricter question.
@@ -404,7 +405,7 @@ Deno.test("a colliding build with a different graph does not settle the run", as
   );
 });
 
-Deno.test("a colliding build with a different graph does not finish a stranded run", async () => {
+test("a colliding build with a different graph does not finish a stranded run", async () => {
   await withStore([record("run-1", "cancelling")], async (store) => {
     const loaded = await store.getRun("run-1");
     if (loaded === null) throw new Error("seed missing");
@@ -423,7 +424,7 @@ Deno.test("a colliding build with a different graph does not finish a stranded r
   });
 });
 
-Deno.test("a run from another origin is not touched, whatever its shape", async () => {
+test("a run from another origin is not touched, whatever its shape", async () => {
   // The case the shape checks cannot see: one `zuke.ts` templated across two
   // services, so the class name, the root target and the graph all agree and
   // only the target bodies differ. The recorded origin is what separates them.
@@ -446,7 +447,7 @@ Deno.test("a run from another origin is not touched, whatever its shape", async 
   );
 });
 
-Deno.test("a stranded run from another origin is left for its own build", async () => {
+test("a stranded run from another origin is left for its own build", async () => {
   await withStore([record("run-1", "cancelling")], async (store) => {
     await amend(store, "run-1", (r) => {
       r.buildId = "acme/web";
@@ -460,7 +461,7 @@ Deno.test("a stranded run from another origin is left for its own build", async 
   });
 });
 
-Deno.test("a run with no recorded origin is still reaped", async () => {
+test("a run with no recorded origin is still reaped", async () => {
   // The retrofit's whole safety: a record written before the field existed has
   // no origin, and a sweep that refused it would leave the effects it owed
   // never driven at all.
@@ -474,7 +475,7 @@ Deno.test("a run with no recorded origin is still reaped", async () => {
   });
 });
 
-Deno.test("a sweep with no origin of its own still reaps a run that has one", async () => {
+test("a sweep with no origin of its own still reaps a run that has one", async () => {
   // The mirror case: a process outside CI that sets no ZUKE_BUILD_ID cannot
   // claim to be a different build, so it must not refuse on that basis.
   await withStore([record("run-1", "running")], async (store) => {
@@ -487,7 +488,7 @@ Deno.test("a sweep with no origin of its own still reaps a run that has one", as
   });
 });
 
-Deno.test("a run from the same origin is reaped normally", async () => {
+test("a run from the same origin is reaped normally", async () => {
   await withStore([record("run-1", "running")], async (store) => {
     await amend(store, "run-1", (r) => {
       r.buildId = "acme/api";
@@ -500,7 +501,7 @@ Deno.test("a run from the same origin is reaped normally", async () => {
   });
 });
 
-Deno.test("a shared origin does not make another build's run ours", async () => {
+test("a shared origin does not make another build's run ours", async () => {
   // Two builds in one repository resolve the same `GITHUB_REPOSITORY`, so the
   // origin abstains between them. It only ever narrows what the shape checks
   // permit — it can refuse a run, never claim one — so the build name still
@@ -519,7 +520,7 @@ Deno.test("a shared origin does not make another build's run ours", async () => 
   });
 });
 
-Deno.test("one bad stranded run does not strand the rest of the recovery", async () => {
+test("one bad stranded run does not strand the rest of the recovery", async () => {
   // The same isolation the abandoned sweep has, on the stranded path: a store
   // hiccup on one `cancelling` record must not leave every other one stuck.
   await withStore(
@@ -545,7 +546,7 @@ Deno.test("one bad stranded run does not strand the rest of the recovery", async
   );
 });
 
-Deno.test("a run settled between the reaper's re-read and its write is left alone", async () => {
+test("a run settled between the reaper's re-read and its write is left alone", async () => {
   // Later than the window the earlier test closes: the run was still running
   // at the re-read under the lease, and a canceller settled it during the
   // suspend write's own compare-and-swap loop. The CAS notices and the reaper
@@ -573,7 +574,7 @@ Deno.test("a run settled between the reaper's re-read and its write is left alon
   });
 });
 
-Deno.test("a store that never accepts the suspend write is reported, not looped", async () => {
+test("a store that never accepts the suspend write is reported, not looped", async () => {
   // Bounded retries: a permanent conflict becomes one counted, named failure —
   // the sweep carries on, and the lease is not kept.
   await withStore([record("run-1", "running")], async (store) => {
@@ -603,7 +604,7 @@ Deno.test("a store that never accepts the suspend write is reported, not looped"
   });
 });
 
-Deno.test("a recorded graph with a different node name is not settled", async () => {
+test("a recorded graph with a different node name is not settled", async () => {
   // Same node count as this build's plan, but the names disagree — the
   // residual a length check alone cannot see. Handed back, never settled.
   await withStore(
@@ -620,7 +621,7 @@ Deno.test("a recorded graph with a different node name is not settled", async ()
   );
 });
 
-Deno.test("a recorded graph with a different dependency count is not settled", async () => {
+test("a recorded graph with a different dependency count is not settled", async () => {
   await withStore(
     [record("run-1", "running", "2026-08-10T11:00:00.000Z")],
     async (store) => {
@@ -636,7 +637,7 @@ Deno.test("a recorded graph with a different dependency count is not settled", a
   );
 });
 
-Deno.test("a recorded graph with re-wired dependencies is not settled", async () => {
+test("a recorded graph with re-wired dependencies is not settled", async () => {
   // Node names and dependency counts all match; only the edges point at
   // different targets. Still another build's run for settling purposes.
   class Pipeline extends Build {

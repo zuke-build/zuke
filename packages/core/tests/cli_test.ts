@@ -1,13 +1,14 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import process from "node:process";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "./_assert.ts";
+} from "../../../tests/_assert.ts";
 import {
   absolutePath,
   Build,
@@ -26,7 +27,7 @@ import {
   run,
 } from "../src/cli.ts";
 import { discoverGroups, discoverTargets } from "../src/build.ts";
-import { FakeGraphHost } from "./_fakes.ts";
+import { FakeGraphHost } from "../../../tests/_fakes.ts";
 import { CONFIG_FILE } from "../src/config.ts";
 import { discoverParameters, parameter } from "../src/params.ts";
 import {
@@ -38,9 +39,9 @@ import {
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { defaultStateHost } from "../src/state/store.ts";
 import type { RunRecord } from "../src/state/types.ts";
-import { withTemp } from "./_temp.ts";
-import { capture } from "./_console.ts";
-import { withEnv } from "./_env.ts";
+import { withTemp } from "../../../tests/_temp.ts";
+import { capture } from "../../../tests/_console.ts";
+import { withEnv } from "../../../tests/_env.ts";
 import { VERSION } from "../src/version.ts";
 import { cliPaint } from "../src/cli_paint.ts";
 import { stripAnsi } from "../src/render.ts";
@@ -87,11 +88,11 @@ class Demo extends Build {
   );
 }
 
-Deno.test("parseArgs reads a positional target", () => {
+test("parseArgs reads a positional target", () => {
   assertEquals(parseArgs(["build"]).target, "build");
 });
 
-Deno.test("parseArgs recognises flags and aliases", () => {
+test("parseArgs recognises flags and aliases", () => {
   assertEquals(parseArgs(["--list"]).list, true);
   assertEquals(parseArgs(["-l"]).list, true);
   assertEquals(parseArgs(["--help"]).help, true);
@@ -101,7 +102,7 @@ Deno.test("parseArgs recognises flags and aliases", () => {
   assertEquals(parseArgs(["build"]).version, false);
 });
 
-Deno.test("--version is a reserved flag, so a parameter may not render as one", () => {
+test("--version is a reserved flag, so a parameter may not render as one", () => {
   // Reserving it is what makes `./zuke --version` answerable at all, and the
   // cost is real: a build declaring a `version` parameter used to get the
   // value from this flag. The collision is refused at discovery — loudly, by
@@ -109,7 +110,7 @@ Deno.test("--version is a reserved flag, so a parameter may not render as one", 
   assertEquals(BUILTIN_FLAG_NAMES.includes("version"), true);
 });
 
-Deno.test("parseArgs recognises the graph command and its output formats", () => {
+test("parseArgs recognises the graph command and its output formats", () => {
   const text = parseArgs(["graph"]);
   assertEquals([text.graph, text.output, text.target], [
     true,
@@ -127,7 +128,7 @@ Deno.test("parseArgs recognises the graph command and its output formats", () =>
   assertEquals(parseArgs(["graph", "--output=svg"]).output, "text");
 });
 
-Deno.test("parseArgs defaults graph to false, output to text, open to true", () => {
+test("parseArgs defaults graph to false, output to text, open to true", () => {
   const parsed = parseArgs(["build"]);
   assertEquals([parsed.graph, parsed.output, parsed.open], [
     false,
@@ -136,13 +137,13 @@ Deno.test("parseArgs defaults graph to false, output to text, open to true", () 
   ]);
 });
 
-Deno.test("parseArgs reads the --json flag, defaulting to false", () => {
+test("parseArgs reads the --json flag, defaulting to false", () => {
   assertEquals(parseArgs(["build"]).json, false);
   assertEquals(parseArgs(["--list", "--json"]).json, true);
   assertEquals(parseArgs(["--json"]).json, true);
 });
 
-Deno.test("main --json prints the build surface as JSON", async () => {
+test("main --json prints the build surface as JSON", async () => {
   const { code, out } = await capture(() => main(Demo, ["--list", "--json"]));
   assertEquals(code, 0);
   const surface = JSON.parse(out.join("\n"));
@@ -154,7 +155,7 @@ Deno.test("main --json prints the build surface as JSON", async () => {
   assertEquals(surface.flags.length > 0, true);
 });
 
-Deno.test("parseArgs reads the completions sub-action and shell", () => {
+test("parseArgs reads the completions sub-action and shell", () => {
   const print = parseArgs(["completions", "print", "zsh"]);
   assertEquals(
     [print.completions, print.completionsAction, print.shell, print.target],
@@ -180,7 +181,7 @@ Deno.test("parseArgs reads the completions sub-action and shell", () => {
   assertEquals(parseArgs(["build"]).completions, false);
 });
 
-Deno.test("every reserved command is honoured by the parser and help", () => {
+test("every reserved command is honoured by the parser and help", () => {
   const targets = discoverTargets(new Demo());
   const help = formatHelp(targets);
   for (const command of RESERVED_COMMANDS) {
@@ -206,7 +207,7 @@ Deno.test("every reserved command is honoured by the parser and help", () => {
   }
 });
 
-Deno.test("the main help groups commands and options separately", () => {
+test("the main help groups commands and options separately", () => {
   // The defect this replaced: commands and flags were interleaved in one
   // Options block, so `graph` and `mcp` read as though they were flags.
   const help = formatHelp(discoverTargets(new Demo()));
@@ -239,7 +240,7 @@ Deno.test("the main help groups commands and options separately", () => {
   }
 });
 
-Deno.test("every command's help carries its own usage and flags", () => {
+test("every command's help carries its own usage and flags", () => {
   for (const command of RESERVED_COMMANDS) {
     const page = formatCommandHelp(command.name);
     assertEquals(page !== undefined, true, `no help for ${command.name}`);
@@ -253,14 +254,14 @@ Deno.test("every command's help carries its own usage and flags", () => {
   }
 });
 
-Deno.test("formatCommandHelp declines a name that is not a command", () => {
+test("formatCommandHelp declines a name that is not a command", () => {
   // The caller falls back to the main help on undefined, so a target that
   // happens to be passed here must not render an empty page.
   assertEquals(formatCommandHelp("build"), undefined);
   assertEquals(formatCommandHelp("--list"), undefined);
 });
 
-Deno.test("parseArgs accumulates --allowed-origin (repeatable and comma-list)", () => {
+test("parseArgs accumulates --allowed-origin (repeatable and comma-list)", () => {
   const p = parseArgs([
     "mcp",
     "--allowed-origin",
@@ -281,14 +282,14 @@ Deno.test("parseArgs accumulates --allowed-origin (repeatable and comma-list)", 
   );
 });
 
-Deno.test("parseArgs recognises the doc command and its spec", () => {
+test("parseArgs recognises the doc command and its spec", () => {
   const p = parseArgs(["doc", "jsr:@zuke/deno"]);
   assertEquals(p.doc, true);
   assertEquals(p.docSpec, "jsr:@zuke/deno");
   assertEquals(p.target, undefined); // a command, not a target
 });
 
-Deno.test("main doc runs the doc runner with the spec and passes its exit code", async () => {
+test("main doc runs the doc runner with the spec and passes its exit code", async () => {
   const seen: string[] = [];
   const runner = (spec: string) => {
     seen.push(spec);
@@ -301,7 +302,7 @@ Deno.test("main doc runs the doc runner with the spec and passes its exit code",
   assertEquals(seen, ["jsr:@zuke/deno"]);
 });
 
-Deno.test("main doc resolves a relative spec to an absolute path before running", async () => {
+test("main doc resolves a relative spec to an absolute path before running", async () => {
   const seen: string[] = [];
   const runner = (spec: string) => {
     seen.push(spec);
@@ -332,7 +333,7 @@ Deno.test("main doc resolves a relative spec to an absolute path before running"
   ]);
 });
 
-Deno.test("main doc reports a non-Error rejection from the runner", async () => {
+test("main doc reports a non-Error rejection from the runner", async () => {
   const { code, err } = await capture(() =>
     main(Demo, ["doc", "jsr:@zuke/x"], {
       // A non-Error rejection still surfaces as a friendly message.
@@ -343,7 +344,7 @@ Deno.test("main doc reports a non-Error rejection from the runner", async () => 
   assertStringIncludes(err.join("\n"), "doc blew up");
 });
 
-Deno.test("main doc returns a friendly non-zero exit when the runner throws", async () => {
+test("main doc returns a friendly non-zero exit when the runner throws", async () => {
   const { code, err } = await capture(() =>
     main(Demo, ["doc", "jsr:@zuke/deno"], {
       docRunner: () => Promise.reject(new Error("deno doc exploded")),
@@ -353,20 +354,20 @@ Deno.test("main doc returns a friendly non-zero exit when the runner throws", as
   assertStringIncludes(err.join("\n"), "deno doc exploded"); // not a raw stack
 });
 
-Deno.test("main doc propagates the runner's non-zero exit code", async () => {
+test("main doc propagates the runner's non-zero exit code", async () => {
   const { code } = await capture(() =>
     main(Demo, ["doc", "jsr:@zuke/x"], { docRunner: () => Promise.resolve(3) })
   );
   assertEquals(code, 3);
 });
 
-Deno.test("main doc without a spec prints usage and fails", async () => {
+test("main doc without a spec prints usage and fails", async () => {
   const { code, err } = await capture(() => main(Demo, ["doc"]));
   assertEquals(code, 1);
   assertStringIncludes(err.join("\n"), "Usage: zuke doc");
 });
 
-Deno.test("parseArgs collects declared parameter flags", () => {
+test("parseArgs collects declared parameter flags", () => {
   const valued = parseArgs(
     ["greet", "--environment", "prod", "--verbose"],
     greetFlags,
@@ -381,7 +382,7 @@ Deno.test("parseArgs collects declared parameter flags", () => {
   assertThrows(() => parseArgs(["--nope", "x"], greetFlags), Error, "--nope");
 });
 
-Deno.test("parseArgs rejects an unknown flag with a did-you-mean suggestion", () => {
+test("parseArgs rejects an unknown flag with a did-you-mean suggestion", () => {
   const error = assertThrows(
     () => parseArgs(["build", "--dry-rn"]),
     Error,
@@ -390,7 +391,7 @@ Deno.test("parseArgs rejects an unknown flag with a did-you-mean suggestion", ()
   assertStringIncludes(error.message, 'Did you mean "--dry-run"?');
 });
 
-Deno.test("parseArgs rejects an unknown flag with no near match, no suggestion offered", () => {
+test("parseArgs rejects an unknown flag with no near match, no suggestion offered", () => {
   const error = assertThrows(
     () => parseArgs(["build", "--no-such-flag"]),
     Error,
@@ -399,7 +400,7 @@ Deno.test("parseArgs rejects an unknown flag with no near match, no suggestion o
   assertEquals(error.message.includes("Did you mean"), false);
 });
 
-Deno.test("parseArgs accepts every flag it advertises in help", () => {
+test("parseArgs accepts every flag it advertises in help", () => {
   // Now that an unknown flag is fatal, a flag listed in cli_spec.ts without a
   // parser branch would be advertised in help and completions and then hard
   // rejected. Every entry must parse.
@@ -414,7 +415,7 @@ Deno.test("parseArgs accepts every flag it advertises in help", () => {
   assertEquals(rejected, []);
 });
 
-Deno.test("parseArgs rejects --builtin=value naming the real fix, not itself", () => {
+test("parseArgs rejects --builtin=value naming the real fix, not itself", () => {
   // Fifteen built-ins take no inline value, so `--skip=lint` never parsed. It
   // must not suggest "--skip" as the fix for "--skip".
   for (const arg of ["--skip=lint", "--dry-run=true", "--json=1"]) {
@@ -431,7 +432,7 @@ Deno.test("parseArgs rejects --builtin=value naming the real fix, not itself", (
   assertEquals(parseArgs(["build", "--parallel=2"]).parallel, 2);
 });
 
-Deno.test("parseArgs lets --help win over an unknown flag", () => {
+test("parseArgs lets --help win over an unknown flag", () => {
   // Help is exactly what someone who mistyped a flag is asking for, so it must
   // not be pre-empted by the rejection.
   assertEquals(parseArgs(["--help", "--bogus"]).help, true);
@@ -439,33 +440,33 @@ Deno.test("parseArgs lets --help win over an unknown flag", () => {
   assertEquals(parseArgs(["build", "-h", "--dry-rn"]).help, true);
 });
 
-Deno.test("parseArgs skips a bare -- argument separator", () => {
+test("parseArgs skips a bare -- argument separator", () => {
   // Wrappers insert one on their own; it is not an unknown flag.
   assertEquals(parseArgs(["--", "build"]).target, "build");
   assertEquals(parseArgs(["build", "--"]).target, "build");
   assertEquals(parseArgs(["--"]).target, undefined);
 });
 
-Deno.test("parseArgs still accepts a declared parameter flag", () => {
+test("parseArgs still accepts a declared parameter flag", () => {
   assertEquals(
     parseArgs(["greet", "--environment", "prod"], greetFlags).values,
     { environment: "prod" },
   );
 });
 
-Deno.test("parseArgs reads the --parallel flag and count", () => {
+test("parseArgs reads the --parallel flag and count", () => {
   assertEquals(parseArgs(["build", "--parallel"]).parallel, true);
   assertEquals(parseArgs(["build", "--parallel=4"]).parallel, 4);
   assertEquals(parseArgs(["build", "--parallel=bad"]).parallel, true);
   assertEquals(parseArgs(["build"]).parallel, undefined);
 });
 
-Deno.test("parseArgs reads --dry-run, defaulting to false", () => {
+test("parseArgs reads --dry-run, defaulting to false", () => {
   assertEquals(parseArgs(["build"]).dryRun, false);
   assertEquals(parseArgs(["build", "--dry-run"]).dryRun, true);
 });
 
-Deno.test("parseArgs reads --state and --actor", () => {
+test("parseArgs reads --state and --actor", () => {
   assertEquals(parseArgs(["build"]).state, false);
   assertEquals(parseArgs(["build"]).actor, undefined);
   assertEquals(parseArgs(["build", "--state"]).state, true);
@@ -478,7 +479,7 @@ Deno.test("parseArgs reads --state and --actor", () => {
   assertEquals(parseArgs(["build", "--actor="]).actor, "");
 });
 
-Deno.test("parseArgs reads resume with its run id, signal, data, and flags", () => {
+test("parseArgs reads resume with its run id, signal, data, and flags", () => {
   const p = parseArgs([
     "resume",
     "run-9",
@@ -504,7 +505,7 @@ Deno.test("parseArgs reads resume with its run id, signal, data, and flags", () 
   assertEquals(check.resumeRunId, undefined);
 });
 
-Deno.test("parseArgs reads the runs command, sub-action, id, and filters", () => {
+test("parseArgs reads the runs command, sub-action, id, and filters", () => {
   assertEquals(parseArgs(["runs"]).runs, true);
   assertEquals(parseArgs(["build"]).runs, false);
 
@@ -574,7 +575,7 @@ Deno.test("parseArgs reads the runs command, sub-action, id, and filters", () =>
   assertEquals([empty.keep, empty.keepLast], ["", "5"]);
 });
 
-Deno.test("main: runs list reads persisted runs; --json emits run data", async () => {
+test("main: runs list reads persisted runs; --json emits run data", async () => {
   await withTemp(async (dir) => {
     const store = new FileSystemStateStore(dir, defaultStateHost);
     await store.putRun(sampleRunRecord({ id: "run-z" }), null);
@@ -604,7 +605,7 @@ Deno.test("main: runs list reads persisted runs; --json emits run data", async (
   });
 });
 
-Deno.test("main: runs list rejects an unknown --status", async () => {
+test("main: runs list rejects an unknown --status", async () => {
   const { code, err } = await capture(() =>
     main(Demo, ["runs", "list", "--status", "bogus"])
   );
@@ -612,7 +613,7 @@ Deno.test("main: runs list rejects an unknown --status", async () => {
   assertStringIncludes(err.join("\n"), 'unknown --status "bogus"');
 });
 
-Deno.test("main: runs prune validates --limit, --keep, and --keep-last", async () => {
+test("main: runs prune validates --limit, --keep, and --keep-last", async () => {
   const badLimit = await capture(() =>
     main(Demo, ["runs", "list", "--limit", "nope"])
   );
@@ -640,7 +641,7 @@ Deno.test("main: runs prune validates --limit, --keep, and --keep-last", async (
   assertStringIncludes(emptyKeep.err.join("\n"), "--keep");
 });
 
-Deno.test("main: runs prune deletes eligible runs through the CLI", async () => {
+test("main: runs prune deletes eligible runs through the CLI", async () => {
   await withTemp(async (dir) => {
     const store = new FileSystemStateStore(dir, defaultStateHost);
     await store.putRun(
@@ -666,7 +667,7 @@ Deno.test("main: runs prune deletes eligible runs through the CLI", async () => 
   });
 });
 
-Deno.test("parseArgs reads the mcp --http address", () => {
+test("parseArgs reads the mcp --http address", () => {
   assertEquals(parseArgs(["mcp", "--http", "7777"]).httpAddr, "7777");
   assertEquals(
     parseArgs(["mcp", "--http=127.0.0.1:8080"]).httpAddr,
@@ -675,7 +676,7 @@ Deno.test("parseArgs reads the mcp --http address", () => {
   assertEquals(parseArgs(["mcp"]).httpAddr, undefined);
 });
 
-Deno.test("parseArgs reads --max-concurrent-runs as a positive integer", () => {
+test("parseArgs reads --max-concurrent-runs as a positive integer", () => {
   assertEquals(
     parseArgs(["mcp", "--registry", "--max-concurrent-runs", "8"])
       .maxConcurrentRuns,
@@ -697,7 +698,7 @@ Deno.test("parseArgs reads --max-concurrent-runs as a positive integer", () => {
   );
 });
 
-Deno.test("main: mcp --http rejects an invalid address", async () => {
+test("main: mcp --http rejects an invalid address", async () => {
   const { code, err } = await capture(() =>
     main(Demo, ["mcp", "--http", "nope"])
   );
@@ -705,7 +706,7 @@ Deno.test("main: mcp --http rejects an invalid address", async () => {
   assertStringIncludes(err.join("\n"), "invalid --http");
 });
 
-Deno.test("parseArgs reads --affected with an optional base", () => {
+test("parseArgs reads --affected with an optional base", () => {
   assertEquals(parseArgs(["build"]).affected, false);
   assertEquals(parseArgs(["build", "--affected"]).affected, true);
   assertEquals(parseArgs(["build", "--affected"]).affectedBase, undefined);
@@ -714,12 +715,12 @@ Deno.test("parseArgs reads --affected with an optional base", () => {
   assertEquals(based.affectedBase, "origin/main");
 });
 
-Deno.test("parseArgs reads --no-remote-cache, defaulting to undefined", () => {
+test("parseArgs reads --no-remote-cache, defaulting to undefined", () => {
   assertEquals(parseArgs(["build"]).remoteCache, undefined);
   assertEquals(parseArgs(["build", "--no-remote-cache"]).remoteCache, false);
 });
 
-Deno.test("parseArgs accumulates repeated list flags comma-joined", () => {
+test("parseArgs accumulates repeated list flags comma-joined", () => {
   const flags = [
     { name: "tags", flag: "tags", boolean: false, array: true },
   ];
@@ -730,7 +731,7 @@ Deno.test("parseArgs accumulates repeated list flags comma-joined", () => {
   assertEquals(parseArgs(["--tags", "solo"], flags).values, { tags: "solo" });
 });
 
-Deno.test("parseArgs collects repeatable --skip and keeps first positional", () => {
+test("parseArgs collects repeatable --skip and keeps first positional", () => {
   const parsed = parseArgs([
     "build",
     "--skip",
@@ -743,20 +744,20 @@ Deno.test("parseArgs collects repeatable --skip and keeps first positional", () 
   assertEquals(parsed.skip, ["clean", "restore"]);
 });
 
-Deno.test("formatList shows targets, descriptions and dependencies", () => {
+test("formatList shows targets, descriptions and dependencies", () => {
   const list = formatList(discoverTargets(new Demo()));
   assertEquals(list.includes("clean"), true);
   assertEquals(list.includes("Build"), true);
   assertEquals(list.includes("(depends on: clean)"), true);
 });
 
-Deno.test("formatGraph renders adjacency, formatHelp includes usage", () => {
+test("formatGraph renders adjacency, formatHelp includes usage", () => {
   const targets = discoverTargets(new Demo());
   assertEquals(formatGraph(targets).includes("build → clean"), true);
   assertEquals(formatHelp(targets).includes("Usage:"), true);
 });
 
-Deno.test("formatGraph annotates group membership", () => {
+test("formatGraph annotates group membership", () => {
   class B extends Build {
     checks = group();
     lint = target().partOf(this.checks).executes(() => {});
@@ -767,7 +768,7 @@ Deno.test("formatGraph annotates group membership", () => {
   assertEquals(formatGraph(targets).includes("lint  [group: checks]"), true);
 });
 
-Deno.test("formatList and formatHelp sort targets by name", () => {
+test("formatList and formatHelp sort targets by name", () => {
   class B extends Build {
     zeta = target().executes(() => {});
     Beta = target().executes(() => {});
@@ -783,7 +784,7 @@ Deno.test("formatList and formatHelp sort targets by name", () => {
   assertStringIncludes(formatList(targets), "(depends on: zeta, Beta)");
 });
 
-Deno.test("formatList hides unlisted targets but keeps the rest", () => {
+test("formatList hides unlisted targets but keeps the rest", () => {
   class B extends Build {
     visible = target().description("Shown").executes(() => {});
     helper = target().unlisted().executes(() => {});
@@ -793,20 +794,20 @@ Deno.test("formatList hides unlisted targets but keeps the rest", () => {
   assertEquals(list.includes("helper"), false);
 });
 
-Deno.test("formatList/formatGraph handle an empty build", () => {
+test("formatList/formatGraph handle an empty build", () => {
   class Empty extends Build {}
   const targets = discoverTargets(new Empty());
   assertEquals(formatList(targets), "No targets defined.");
   assertEquals(formatGraph(targets), "No targets defined.");
 });
 
-Deno.test("main --help prints usage and returns 0", async () => {
+test("main --help prints usage and returns 0", async () => {
   const { code, out } = await capture(() => main(Demo, ["--help"]));
   assertEquals(code, 0);
   assertEquals(out.join("\n").includes("Usage:"), true);
 });
 
-Deno.test("main --list and graph (text) return 0", async () => {
+test("main --list and graph (text) return 0", async () => {
   const list = await capture(() => main(Demo, ["--list"]));
   assertEquals(list.code, 0);
   assertEquals(list.out.join("\n").includes("Targets:"), true);
@@ -816,7 +817,7 @@ Deno.test("main --list and graph (text) return 0", async () => {
   assertEquals(graph.out.join("\n").includes("Dependency graph:"), true);
 });
 
-Deno.test("main completions print writes a script for a valid shell", async () => {
+test("main completions print writes a script for a valid shell", async () => {
   const { code, out } = await capture(() =>
     main(Demo, ["completions", "print", "bash"])
   );
@@ -824,7 +825,7 @@ Deno.test("main completions print writes a script for a valid shell", async () =
   assertStringIncludes(out.join("\n"), "complete -F _zuke_complete zuke");
 });
 
-Deno.test("main completions errors without a valid sub-action or shell", async () => {
+test("main completions errors without a valid sub-action or shell", async () => {
   // No sub-action.
   const missing = await capture(() => main(Demo, ["completions"]));
   assertEquals(missing.code, 1);
@@ -843,7 +844,7 @@ Deno.test("main completions errors without a valid sub-action or shell", async (
   assertStringIncludes(bad.err.join("\n"), "Usage: zuke completions");
 });
 
-Deno.test("main completions install wires up each shell and is idempotent", async () => {
+test("main completions install wires up each shell and is idempotent", async () => {
   await withTemp(async (home) => {
     const install = (shell: string) =>
       capture(() =>
@@ -872,7 +873,7 @@ Deno.test("main completions install wires up each shell and is idempotent", asyn
   });
 });
 
-Deno.test("main completions install reports a failure as exit 1", async () => {
+test("main completions install reports a failure as exit 1", async () => {
   // A regular file standing in for the home dir makes directory creation fail.
   const file = await Deno.makeTempFile();
   try {
@@ -888,7 +889,7 @@ Deno.test("main completions install reports a failure as exit 1", async () => {
   }
 });
 
-Deno.test("main graph --output=html renders HTML via the injected host", async () => {
+test("main graph --output=html renders HTML via the injected host", async () => {
   const host = new FakeGraphHost("/repo", [`/repo/${CONFIG_FILE}`]);
   const { code } = await capture(() =>
     main(Demo, ["graph", "--output=html", "--no-open"], { graphHost: host })
@@ -898,7 +899,7 @@ Deno.test("main graph --output=html renders HTML via the injected host", async (
   assertEquals(host.opened, []);
 });
 
-Deno.test("main lists declared parameters under --help and --list", async () => {
+test("main lists declared parameters under --help and --list", async () => {
   const help = await capture(() => main(Parameterised, ["--help"]));
   const text = help.out.join("\n");
   assertEquals(text.includes("Parameters:"), true);
@@ -907,7 +908,7 @@ Deno.test("main lists declared parameters under --help and --list", async () => 
   assertEquals(text.includes("one of: dev, prod"), true);
 });
 
-Deno.test("main resolves a parameter flag and runs the target", async () => {
+test("main resolves a parameter flag and runs the target", async () => {
   const { code, out } = await capture(() =>
     main(Parameterised, ["greet", "--environment", "dev", "--verbose"])
   );
@@ -915,7 +916,7 @@ Deno.test("main resolves a parameter flag and runs the target", async () => {
   assertEquals(out.join("\n").includes("env=dev verbose=true"), true);
 });
 
-Deno.test("main fails with exit 1 when a required parameter is missing", async () => {
+test("main fails with exit 1 when a required parameter is missing", async () => {
   // Ensure the value can't leak in from the ambient environment.
   const saved = Deno.env.get("ENVIRONMENT");
   Deno.env.delete("ENVIRONMENT");
@@ -928,7 +929,7 @@ Deno.test("main fails with exit 1 when a required parameter is missing", async (
   }
 });
 
-Deno.test("main runs a target and its dependencies, returning 0", async () => {
+test("main runs a target and its dependencies, returning 0", async () => {
   const log: string[] = [];
   class Tracked extends Build {
     a = target().executes(() => void log.push("a"));
@@ -939,7 +940,7 @@ Deno.test("main runs a target and its dependencies, returning 0", async () => {
   assertEquals(log, ["a", "b"]);
 });
 
-Deno.test("main runs targets in parallel and returns 0", async () => {
+test("main runs targets in parallel and returns 0", async () => {
   const log: string[] = [];
   class Par extends Build {
     a = target().executes(() => void log.push("a"));
@@ -954,7 +955,7 @@ Deno.test("main runs targets in parallel and returns 0", async () => {
   assertEquals(log.includes("a") && log.includes("b"), true);
 });
 
-Deno.test("main runs the default target when none is named", async () => {
+test("main runs the default target when none is named", async () => {
   const log: string[] = [];
   class WithDefault extends Build {
     work = target().executes(() => void log.push("work"));
@@ -965,20 +966,20 @@ Deno.test("main runs the default target when none is named", async () => {
   assertEquals(log, ["work"]);
 });
 
-Deno.test("main with no target and no default lists targets, returns 0", async () => {
+test("main with no target and no default lists targets, returns 0", async () => {
   const { code, out } = await capture(() => main(Demo, []));
   assertEquals(code, 0);
   assertEquals(out.join("\n").includes("Targets:"), true);
 });
 
-Deno.test("main reports an unknown target and returns 1", async () => {
+test("main reports an unknown target and returns 1", async () => {
   const { code, err } = await capture(() => main(Demo, ["nope"]));
   assertEquals(code, 1);
   assertEquals(err.join("\n").includes("Unknown target: nope"), true);
   assertEquals(err.join("\n").includes("Did you mean"), false);
 });
 
-Deno.test("main suggests the nearest target for a typo", async () => {
+test("main suggests the nearest target for a typo", async () => {
   // cspell:ignore biuld
   // Same courtesy an unknown flag gets.
   const { code, err } = await capture(() => main(Demo, ["biuld"]));
@@ -987,13 +988,13 @@ Deno.test("main suggests the nearest target for a typo", async () => {
   assertStringIncludes(err.join("\n"), 'Did you mean "build"?');
 });
 
-Deno.test("main prints help when an unknown flag is on the line too", async () => {
+test("main prints help when an unknown flag is on the line too", async () => {
   const { code, out } = await capture(() => main(Demo, ["--help", "--bogus"]));
   assertEquals(code, 0);
   assertStringIncludes(out.join("\n"), "Usage:");
 });
 
-Deno.test("main reports a dependency cycle and returns 1", async () => {
+test("main reports a dependency cycle and returns 1", async () => {
   class Cyclic extends Build {
     a = target().executes(() => {});
     b = target().executes(() => {});
@@ -1008,7 +1009,7 @@ Deno.test("main reports a dependency cycle and returns 1", async () => {
   assertEquals(err.join("\n").includes("cycle detected"), true);
 });
 
-Deno.test("main returns 1 when an executed target fails", async () => {
+test("main returns 1 when an executed target fails", async () => {
   class Failing extends Build {
     boom = target().executes(() => {
       throw new Error("explode");
@@ -1022,7 +1023,7 @@ Deno.test("main returns 1 when an executed target fails", async () => {
 /** Sentinel thrown by the stubbed `process.exit` so control returns to the test. */
 class ExitSignal extends Error {}
 
-Deno.test("run() drives main and sets the process exit code", async () => {
+test("run() drives main and sets the process exit code", async () => {
   const origExit = process.exit;
   let captured: number | undefined;
   process.exit = (code?: number): never => {
@@ -1042,7 +1043,7 @@ Deno.test("run() drives main and sets the process exit code", async () => {
   assertEquals(captured, 0);
 });
 
-Deno.test("run() is a no-op when its module isn't the program entry", async () => {
+test("run() is a no-op when its module isn't the program entry", async () => {
   // Simulate the build file being imported (e.g. under test) rather than run
   // directly: point Deno.mainModule at a different module than this caller.
   const origExit = process.exit;
@@ -1072,7 +1073,7 @@ Deno.test("run() is a no-op when its module isn't the program entry", async () =
   assertEquals(ran, false);
 });
 
-Deno.test("main honours --skip", async () => {
+test("main honours --skip", async () => {
   const log: string[] = [];
   class Tracked extends Build {
     setup = target().executes(() => void log.push("setup"));
@@ -1114,14 +1115,14 @@ async function inTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
   }
 }
 
-Deno.test("parseArgs recognises the generate-ci command and --check", () => {
+test("parseArgs recognises the generate-ci command and --check", () => {
   const a = parseArgs(["generate-ci", "--check"]);
   assertEquals(a.generateCi, true);
   assertEquals(a.check, true);
   assertEquals(a.target, undefined);
 });
 
-Deno.test("main: generate-ci writes the declared CI file", async () => {
+test("main: generate-ci writes the declared CI file", async () => {
   await inTempDir(async (dir) => {
     const { code, out } = await capture(() => main(CiBuild, ["generate-ci"]));
     assertEquals(code, 0);
@@ -1133,7 +1134,7 @@ Deno.test("main: generate-ci writes the declared CI file", async () => {
   });
 });
 
-Deno.test("main: generate-ci --check fails when the file is missing or stale", async () => {
+test("main: generate-ci --check fails when the file is missing or stale", async () => {
   await inTempDir(async () => {
     const { code, err } = await capture(() =>
       main(CiBuild, ["generate-ci", "--check"])
@@ -1143,13 +1144,13 @@ Deno.test("main: generate-ci --check fails when the file is missing or stale", a
   });
 });
 
-Deno.test("main: generate-ci reports when no CI config is declared", async () => {
+test("main: generate-ci reports when no CI config is declared", async () => {
   const { code, out } = await capture(() => main(Demo, ["generate-ci"]));
   assertEquals(code, 0);
   assertEquals(out.some((l) => l.includes("No CI configuration")), true);
 });
 
-Deno.test("main: running a target keeps a current CI file in sync", async () => {
+test("main: running a target keeps a current CI file in sync", async () => {
   await inTempDir(async (dir) => {
     // Pre-write the expected content so the on-run sync is a no-op regardless
     // of whether the tests themselves run on CI (check) or locally (write).
@@ -1165,7 +1166,7 @@ Deno.test("main: running a target keeps a current CI file in sync", async () => 
   });
 });
 
-Deno.test("main: running a target fails on CI when the CI file has drifted", async () => {
+test("main: running a target fails on CI when the CI file has drifted", async () => {
   await inTempDir(async () => {
     const prev = Deno.env.get("GITHUB_ACTIONS");
     Deno.env.set("GITHUB_ACTIONS", "true"); // force isCI() → check mode
@@ -1180,7 +1181,7 @@ Deno.test("main: running a target fails on CI when the CI file has drifted", asy
   });
 });
 
-Deno.test("main: --dry-run does not regenerate CI files", async () => {
+test("main: --dry-run does not regenerate CI files", async () => {
   await inTempDir(async (dir) => {
     const { code } = await capture(() => main(CiBuild, ["build", "--dry-run"]));
     assertEquals(code, 0);
@@ -1202,7 +1203,7 @@ async function assertRejectsNotFound(path: string): Promise<void> {
 
 // --- Plugins via the CLI entry points ---
 
-Deno.test("main forwards plugins to the build lifecycle", async () => {
+test("main forwards plugins to the build lifecycle", async () => {
   const seen: string[] = [];
   const plugin: Plugin = {
     onTargetEnd: (name, status) => void seen.push(`${name}:${status}`),
@@ -1216,7 +1217,7 @@ Deno.test("main forwards plugins to the build lifecycle", async () => {
   assertEquals(seen.includes("build:passed"), true);
 });
 
-Deno.test("run forwards args and plugins to main", async () => {
+test("run forwards args and plugins to main", async () => {
   const seen: string[] = [];
   const plugin: Plugin = { onFinish: () => void seen.push("finished") };
   const origExit = process.exit;
@@ -1239,7 +1240,7 @@ Deno.test("run forwards args and plugins to main", async () => {
   assertEquals(seen, ["finished"]);
 });
 
-Deno.test("parseArgs reads the inline = forms of --signal and --data", () => {
+test("parseArgs reads the inline = forms of --signal and --data", () => {
   const p = parseArgs([
     "resume",
     "run-9",
@@ -1250,7 +1251,7 @@ Deno.test("parseArgs reads the inline = forms of --signal and --data", () => {
   assertEquals(p.data, '{"by":"qa"}');
 });
 
-Deno.test("parseArgs reads --allow-run globs and --protect lists", () => {
+test("parseArgs reads --allow-run globs and --protect lists", () => {
   // The comma list is trimmed and empties are dropped.
   const globbed = parseArgs(["mcp", "--allow-run=deploy-*, ,test"]);
   assertEquals(globbed.allowRun, true);
@@ -1265,17 +1266,17 @@ Deno.test("parseArgs reads --allow-run globs and --protect lists", () => {
   assertEquals(inline.protectPatterns, ["a", "b"]);
 });
 
-Deno.test("parseArgs treats an empty --parallel= value as plain --parallel", () => {
+test("parseArgs treats an empty --parallel= value as plain --parallel", () => {
   assertEquals(parseArgs(["build", "--parallel="]).parallel, true);
 });
 
-Deno.test("main: resume without a run id prints usage and fails", async () => {
+test("main: resume without a run id prints usage and fails", async () => {
   const { code, err } = await capture(() => main(Demo, ["resume"]));
   assertEquals(code, 1);
   assertStringIncludes(err.join("\n"), "Usage: zuke resume <run-id>");
 });
 
-Deno.test("main: resume rejects invalid --data JSON without echoing it", async () => {
+test("main: resume rejects invalid --data JSON without echoing it", async () => {
   const { code, err } = await capture(() =>
     main(Demo, ["resume", "run-x", "--data", "{oops"])
   );
@@ -1286,7 +1287,7 @@ Deno.test("main: resume rejects invalid --data JSON without echoing it", async (
   assertEquals(text.includes("{oops"), false);
 });
 
-Deno.test("main: mcp --http refuses a non-loopback bind without a token", async () => {
+test("main: mcp --http refuses a non-loopback bind without a token", async () => {
   // The refusal happens before any socket is bound, so the test stays hermetic.
   const saved = Deno.env.get("ZUKE_MCP_TOKEN");
   Deno.env.delete("ZUKE_MCP_TOKEN");
@@ -1301,7 +1302,7 @@ Deno.test("main: mcp --http refuses a non-loopback bind without a token", async 
   }
 });
 
-Deno.test("main: cancel reports a missing run as a friendly error", async () => {
+test("main: cancel reports a missing run as a friendly error", async () => {
   await withTemp(async (dir) => {
     const store = new FileSystemStateStore(dir, defaultStateHost);
     class Stateful extends Build {
@@ -1318,7 +1319,7 @@ Deno.test("main: cancel reports a missing run as a friendly error", async () => 
   });
 });
 
-Deno.test("main: cancelling an already-finished run is a no-op exit 0", async () => {
+test("main: cancelling an already-finished run is a no-op exit 0", async () => {
   await withTemp(async (dir) => {
     const store = new FileSystemStateStore(dir, defaultStateHost);
     // A terminal (succeeded) run: cancel is documented as idempotent.
@@ -1337,7 +1338,7 @@ Deno.test("main: cancelling an already-finished run is a no-op exit 0", async ()
   });
 });
 
-Deno.test("main: cancel exits 1 when a compensation fails", async () => {
+test("main: cancel exits 1 when a compensation fails", async () => {
   await withTemp(async (dir) => {
     const store = new FileSystemStateStore(dir, defaultStateHost);
     class Failing extends Build {
@@ -1363,7 +1364,7 @@ Deno.test("main: cancel exits 1 when a compensation fails", async () => {
   });
 });
 
-Deno.test("run() defaults to the process's arguments when no args option is given", async () => {
+test("run() defaults to the process's arguments when no args option is given", async () => {
   const origArgv = process.argv;
   const origExit = process.exit;
   const origLog = console.log;
@@ -1386,7 +1387,7 @@ Deno.test("run() defaults to the process's arguments when no args option is give
   assertEquals(captured, 0);
 });
 
-Deno.test("main: --no-remote-cache flows through and the run still passes", async () => {
+test("main: --no-remote-cache flows through and the run still passes", async () => {
   const log: string[] = [];
   class T extends Build {
     go = target().executes(() => void log.push("go"));
@@ -1396,7 +1397,7 @@ Deno.test("main: --no-remote-cache flows through and the run still passes", asyn
   assertEquals(log, ["go"]);
 });
 
-Deno.test("formatGraph and formatList name an undiscovered dependency ?", () => {
+test("formatGraph and formatList name an undiscovered dependency ?", () => {
   const anon = target().executes(() => {});
   class B extends Build {
     build = target().dependsOn(anon).executes(() => {});
@@ -1405,7 +1406,7 @@ Deno.test("formatGraph and formatList name an undiscovered dependency ?", () => 
   assertStringIncludes(formatGraph(targets), "build → ?");
 });
 
-Deno.test("formatList renders a parameter declared without a description", () => {
+test("formatList renders a parameter declared without a description", () => {
   class B extends Build {
     quiet = parameter().boolean();
     go = target().executes(() => {});
@@ -1415,7 +1416,7 @@ Deno.test("formatList renders a parameter declared without a description", () =>
   assertStringIncludes(text, "--quiet");
 });
 
-Deno.test("main: runs list applies --status, --target, and --since filters", async () => {
+test("main: runs list applies --status, --target, and --since filters", async () => {
   await withTemp(async (dir) => {
     const store = new FileSystemStateStore(dir, defaultStateHost);
     await store.putRun(sampleRunRecord({ id: "ok-run" }), null);
@@ -1453,7 +1454,7 @@ Deno.test("main: runs list applies --status, --target, and --since filters", asy
   });
 });
 
-Deno.test("main: --affected rejects a git base that reads as a git option", async () => {
+test("main: --affected rejects a git base that reads as a git option", async () => {
   // A base beginning with "-" would be read by git as an option (e.g.
   // `--output=…` writes to a file), so it is rejected before any git process
   // is spawned. The failure is not a configuration error main knows how to
@@ -1464,7 +1465,7 @@ Deno.test("main: --affected rejects a git base that reads as a git option", asyn
   assertStringIncludes(error.message, "invalid git base revision");
 });
 
-Deno.test("main watchSignals: a signal cancels the run, a second force-exits", async () => {
+test("main watchSignals: a signal cancels the run, a second force-exits", async () => {
   const before = process.listeners("SIGINT");
   const added = () =>
     process.listeners("SIGINT").filter((known) => !before.includes(known));
@@ -1508,7 +1509,7 @@ Deno.test("main watchSignals: a signal cancels the run, a second force-exits", a
   }
 });
 
-Deno.test("main: resume rejects an oversized --data payload", async () => {
+test("main: resume rejects an oversized --data payload", async () => {
   const huge = JSON.stringify({ blob: "x".repeat(70_000) });
   const { code, err } = await capture(() =>
     main(Demo, ["resume", "run-x", "--data", huge])
@@ -1517,7 +1518,7 @@ Deno.test("main: resume rejects an oversized --data payload", async () => {
   assertEquals(err.join("\n").includes("too large"), true);
 });
 
-Deno.test("main: resume rejects a multibyte --data payload over the byte budget", async () => {
+test("main: resume rejects a multibyte --data payload over the byte budget", async () => {
   // 22k euro signs: ~22k UTF-16 code units (under the 64 KiB char length) but
   // ~66 KB of UTF-8 (over it). Measuring `.length` would wrongly let it through.
   const multibyte = JSON.stringify({ blob: "€".repeat(22_000) });
@@ -1546,7 +1547,7 @@ function stripPaint(text: string): string {
   return stripAnsi(text).replaceAll("◆ ", "");
 }
 
-Deno.test("rich help, list, graph and command help are the plain text plus paint", () => {
+test("rich help, list, graph and command help are the plain text plus paint", () => {
   const b = new Painted();
   const targets = discoverTargets(b);
   discoverGroups(b);
@@ -1567,12 +1568,12 @@ Deno.test("rich help, list, graph and command help are the plain text plus paint
   }
 });
 
-Deno.test("parseArgs reads --plain, and leaves it unset otherwise", () => {
+test("parseArgs reads --plain, and leaves it unset otherwise", () => {
   assertEquals(parseArgs(["--plain"]).plain, true);
   assertEquals(parseArgs(["build"]).plain, undefined);
 });
 
-Deno.test("--plain is a reserved flag, so a `plain` parameter is refused by name", () => {
+test("--plain is a reserved flag, so a `plain` parameter is refused by name", () => {
   // The same trade `--version` made: a build that declared a `plain`
   // parameter now has it refused at discovery, loudly, rather than having
   // `--plain` quietly mean the built-in instead of its value.
@@ -1587,7 +1588,7 @@ Deno.test("--plain is a reserved flag, so a `plain` parameter is refused by name
   );
 });
 
-Deno.test("--version is the rich panel on a terminal, and bare otherwise", async () => {
+test("--version is the rich panel on a terminal, and bare otherwise", async () => {
   class B extends Build {
     work = target().executes(() => {});
   }
@@ -1622,7 +1623,7 @@ Deno.test("--version is the rich panel on a terminal, and bare otherwise", async
   }
 });
 
-Deno.test("--list and --help are painted on a terminal, plain under --plain", async () => {
+test("--list and --help are painted on a terminal, plain under --plain", async () => {
   class B extends Build {
     work = target().description("Do work").executes(() => {});
   }
@@ -1648,7 +1649,7 @@ Deno.test("--list and --help are painted on a terminal, plain under --plain", as
   );
 });
 
-Deno.test("every general flag belongs to a help section, and every section has flags", () => {
+test("every general flag belongs to a help section, and every section has flags", () => {
   const general = BUILTIN_FLAGS.filter((f) => f.command === undefined);
   for (const flag of general) {
     assertEquals(flag.section !== undefined, true, flag.name);
@@ -1662,7 +1663,7 @@ Deno.test("every general flag belongs to a help section, and every section has f
   }
 });
 
-Deno.test("the main help groups the general flags under their sections, with values", () => {
+test("the main help groups the general flags under their sections, with values", () => {
   const help = formatHelp(new Map());
   const headings = FLAG_SECTIONS.map(([, heading]) => help.indexOf(heading));
   // Each heading appears, in order, after the commands.
@@ -1681,7 +1682,7 @@ Deno.test("the main help groups the general flags under their sections, with val
   assertEquals(help.includes("--allow-run"), false);
 });
 
-Deno.test("a command's help shows each flag with the value it takes", () => {
+test("a command's help shows each flag with the value it takes", () => {
   const mcp = formatCommandHelp("mcp") ?? "";
   assertStringIncludes(mcp, "--allow-run[=<globs>]");
   assertStringIncludes(mcp, "--http <host:port>");

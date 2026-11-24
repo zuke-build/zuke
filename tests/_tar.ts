@@ -75,7 +75,7 @@ export const GNU = "ustar ";
  */
 export function longLink(fullName: string, typeflag = 0x4c): RawTarEntry {
   return {
-    name: "././@LongLink",
+    name: "../packages/core/tests/@LongLink",
     prefix: "",
     data: new TextEncoder().encode(`${fullName}\0`),
     magic: GNU,

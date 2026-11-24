@@ -1,12 +1,13 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { stripAnsi } from "@zuke/core/render";
 import type { BuildProbe } from "../src/dispatch.ts";
 import { PLAIN_PAINT } from "../src/paint.ts";
@@ -23,7 +24,7 @@ import {
   parseDependencyArgs,
   runDependencies,
 } from "../src/dependencies.ts";
-import { noProjectProbe } from "./_fakes.ts";
+import { noProjectProbe } from "../../../tests/support/cli/_fakes.ts";
 
 /** The fake project's root. */
 const ROOT = "/work/app";
@@ -110,7 +111,7 @@ async function collect(
   return { code, logs: lines.join("\n") };
 }
 
-Deno.test("parseInstallFlags reads --min-dep-age in both forms, and --dry-run", () => {
+test("parseInstallFlags reads --min-dep-age in both forms, and --dry-run", () => {
   assertEquals(parseInstallFlags("relock", []), {
     entrypoints: [],
     dryRun: false,
@@ -132,7 +133,7 @@ Deno.test("parseInstallFlags reads --min-dep-age in both forms, and --dry-run", 
   });
 });
 
-Deno.test("parseInstallFlags refuses an unknown option or a missing value", () => {
+test("parseInstallFlags refuses an unknown option or a missing value", () => {
   assertThrows(
     () => parseInstallFlags("relock", ["--force"]),
     Error,
@@ -151,7 +152,7 @@ Deno.test("parseInstallFlags refuses an unknown option or a missing value", () =
   }
 });
 
-Deno.test("installArgs adds the dependency-age flag only when asked, and only where Deno has it", () => {
+test("installArgs adds the dependency-age flag only when asked, and only where Deno has it", () => {
   assertEquals(
     installArgs(
       "cache",
@@ -192,7 +193,7 @@ Deno.test("installArgs adds the dependency-age flag only when asked, and only wh
   );
 });
 
-Deno.test("relock regenerates the lock and reports core before and after", async () => {
+test("relock regenerates the lock and reports core before and after", async () => {
   const host = new FakeProjectHost();
   host.files.set(`${ROOT}/deno.lock`, coreLock("1.66.0"));
   host.writes = { [`${ROOT}/deno.lock`]: coreLock("1.69.0") };
@@ -223,7 +224,7 @@ Deno.test("relock regenerates the lock and reports core before and after", async
   );
 });
 
-Deno.test("relock says when core did not move, and handles a project with no lock yet", async () => {
+test("relock says when core did not move, and handles a project with no lock yet", async () => {
   const same = new FakeProjectHost();
   same.files.set(`${ROOT}/deno.lock`, coreLock("1.69.0"));
   same.writes = { [`${ROOT}/deno.lock`]: coreLock("1.69.0") };
@@ -242,7 +243,7 @@ Deno.test("relock says when core did not move, and handles a project with no loc
   assertStringIncludes(made.logs, "none → 1.69.0");
 });
 
-Deno.test("relock puts the old lock back, byte for byte, when the install fails", async () => {
+test("relock puts the old lock back, byte for byte, when the install fails", async () => {
   const original = coreLock("1.66.0") + "\n";
   const failed = new FakeProjectHost();
   failed.files.set(`${ROOT}/deno.lock`, original);
@@ -274,7 +275,7 @@ Deno.test("relock puts the old lock back, byte for byte, when the install fails"
   assertStringIncludes(none.logs, "wrote no deno.lock");
 });
 
-Deno.test("relock follows the configured lock path, and refuses a disabled lock", async () => {
+test("relock follows the configured lock path, and refuses a disabled lock", async () => {
   const moved = new FakeProjectHost();
   moved.files.set(`${ROOT}/deno.json`, '{ "lock": "locks/zuke.lock" }');
   moved.writes = { [`${ROOT}/locks/zuke.lock`]: coreLock("1.69.0") };
@@ -293,7 +294,7 @@ Deno.test("relock follows the configured lock path, and refuses a disabled lock"
   assertEquals(off.runs, []);
 });
 
-Deno.test("relock --dry-run names the command and changes nothing", async () => {
+test("relock --dry-run names the command and changes nothing", async () => {
   const host = new FakeProjectHost();
   host.files.set(`${ROOT}/deno.lock`, coreLock("1.66.0"));
   const { code, logs } = await collect((log) =>
@@ -305,7 +306,7 @@ Deno.test("relock --dry-run names the command and changes nothing", async () => 
   assertStringIncludes(logs, "deno install --entrypoint zuke.ts");
 });
 
-Deno.test("the project commands need a project", async () => {
+test("the project commands need a project", async () => {
   for (
     const run of [
       () =>
@@ -342,7 +343,7 @@ Deno.test("the project commands need a project", async () => {
   }
 });
 
-Deno.test("cache installs the build's graph, keeping the lock", async () => {
+test("cache installs the build's graph, keeping the lock", async () => {
   const host = new FakeProjectHost();
   host.files.set(`${ROOT}/deno.lock`, coreLock("1.66.0"));
   const ok = await collect((log) =>
@@ -379,7 +380,7 @@ Deno.test("cache installs the build's graph, keeping the lock", async () => {
   assertStringIncludes(bad.logs, "exited 3");
 });
 
-Deno.test("dependencySpecifier maps short names to Zuke packages and passes full specifiers", () => {
+test("dependencySpecifier maps short names to Zuke packages and passes full specifiers", () => {
   assertEquals(dependencySpecifier("add", "docker"), "jsr:@zuke/docker");
   assertEquals(dependencySpecifier("add", "@std/yaml"), "jsr:@std/yaml");
   assertEquals(
@@ -393,7 +394,7 @@ Deno.test("dependencySpecifier maps short names to Zuke packages and passes full
   }
 });
 
-Deno.test("parseDependencyArgs needs a package", () => {
+test("parseDependencyArgs needs a package", () => {
   assertThrows(() => parseDependencyArgs("add", []), Error, "at least one");
   assertThrows(
     () => parseDependencyArgs("remove", ["--dry-run"]),
@@ -406,7 +407,7 @@ Deno.test("parseDependencyArgs needs a package", () => {
   });
 });
 
-Deno.test("add and remove run deno add / remove in the root", async () => {
+test("add and remove run deno add / remove in the root", async () => {
   const host = new FakeProjectHost();
   host.files.set(`${ROOT}/deno.json`, "{}");
   host.writes = { [`${ROOT}/deno.json`]: '{ "imports": {} }' };
@@ -473,7 +474,7 @@ Deno.test("add and remove run deno add / remove in the root", async () => {
   assertStringIncludes(bad.logs, "deno remove exited 1");
 });
 
-Deno.test("remove says so when deno remove found nothing to remove", async () => {
+test("remove says so when deno remove found nothing to remove", async () => {
   const host = new FakeProjectHost();
   host.files.set(`${ROOT}/deno.json`, '{ "imports": {} }');
   const { code, logs } = await collect((log) =>
@@ -492,7 +493,7 @@ Deno.test("remove says so when deno remove found nothing to remove", async () =>
   assertEquals(logs.includes("Removed"), false);
 });
 
-Deno.test("relock keeps a backup on disk while it works, and removes it after", async () => {
+test("relock keeps a backup on disk while it works, and removes it after", async () => {
   const host = new FakeProjectHost();
   const original = coreLock("1.66.0");
   host.files.set(`${ROOT}/deno.lock`, original);
@@ -514,7 +515,7 @@ Deno.test("relock keeps a backup on disk while it works, and removes it after", 
   assertEquals(host.files.has(`${ROOT}/deno.lock.relock-backup`), false);
 });
 
-Deno.test("relock refuses to start over a backup a dead run left behind", async () => {
+test("relock refuses to start over a backup a dead run left behind", async () => {
   const host = new FakeProjectHost();
   host.files.set(`${ROOT}/deno.lock`, '{ "version": "5" }');
   host.files.set(`${ROOT}/deno.lock.relock-backup`, coreLock("1.66.0"));
@@ -530,7 +531,7 @@ Deno.test("relock refuses to start over a backup a dead run left behind", async 
   );
 });
 
-Deno.test("relock names further entrypoints, and the packages a narrower graph dropped", async () => {
+test("relock names further entrypoints, and the packages a narrower graph dropped", async () => {
   const host = new FakeProjectHost();
   host.files.set(
     `${ROOT}/deno.lock`,
@@ -556,7 +557,7 @@ Deno.test("relock names further entrypoints, and the packages a narrower graph d
   assertStringIncludes(logs, "zuke.ts and main.ts were resolved");
 });
 
-Deno.test("relock warns when Deno's dependency age resolved an older core", async () => {
+test("relock warns when Deno's dependency age resolved an older core", async () => {
   const host = new FakeProjectHost();
   host.files.set(`${ROOT}/deno.lock`, coreLock("1.70.0"));
   host.writes = { [`${ROOT}/deno.lock`]: coreLock("1.67.0") };
@@ -581,7 +582,7 @@ Deno.test("relock warns when Deno's dependency age resolved an older core", asyn
   assertEquals(told.logs.includes("resolved older"), false);
 });
 
-Deno.test("relock in a workspace member does not claim to restore what was never there", async () => {
+test("relock in a workspace member does not claim to restore what was never there", async () => {
   const host = new FakeProjectHost();
   const { code, logs } = await collect((log) =>
     runRelock([], log, host, PLAIN_PAINT, ROOT, projectProbe)
@@ -598,7 +599,7 @@ const hostedProbe: BuildProbe = {
   readText: () => Promise.resolve('{ "engine": "1.2.0" }'),
 };
 
-Deno.test("the project commands refuse a build another SDK hosts, running nothing", async () => {
+test("the project commands refuse a build another SDK hosts, running nothing", async () => {
   const host = new FakeProjectHost();
   const commands: Array<
     [string, (log: (line: string) => void) => Promise<number>]
@@ -653,7 +654,7 @@ const nodeProbe: BuildProbe = {
   readText: () => Promise.resolve('{ "runtime": "node" }'),
 };
 
-Deno.test("npmOperand maps a Zuke package to its npm alias, and passes npm: specifiers through", () => {
+test("npmOperand maps a Zuke package to its npm alias, and passes npm: specifiers through", () => {
   const docker = dependencySpecifier("add", "docker");
   assertEquals(
     npmOperand("add", docker),
@@ -668,7 +669,7 @@ Deno.test("npmOperand maps a Zuke package to its npm alias, and passes npm: spec
   assertStringIncludes(String(refused), "npm:<name>");
 });
 
-Deno.test("zuke add and remove run npm in a Node project, never deno", async () => {
+test("zuke add and remove run npm in a Node project, never deno", async () => {
   const host = new FakeProjectHost();
   host.files.set(`${ROOT}/package.json`, "{}");
   host.writes = { [`${ROOT}/package.json`]: '{"dependencies":{}}' };
@@ -753,7 +754,7 @@ Deno.test("zuke add and remove run npm in a Node project, never deno", async () 
   );
 });
 
-Deno.test("zuke cache runs npm ci over a Node project's lock, or npm install without one", async () => {
+test("zuke cache runs npm ci over a Node project's lock, or npm install without one", async () => {
   const host = new FakeProjectHost();
   const run = (args: string[]) =>
     collect((log) => runCache(args, log, host, PLAIN_PAINT, ROOT, nodeProbe));
@@ -781,7 +782,7 @@ Deno.test("zuke cache runs npm ci over a Node project's lock, or npm install wit
   assertEquals(host.runs, []);
 });
 
-Deno.test("zuke relock regenerates a Node project's package-lock.json behind a backup", async () => {
+test("zuke relock regenerates a Node project's package-lock.json behind a backup", async () => {
   const lock = `${ROOT}/package-lock.json`;
   const backup = `${lock}.relock-backup`;
   const host = new FakeProjectHost();

@@ -11,8 +11,9 @@
  * a checksum mismatch installs nothing, and a failing npm stops the run.
  */
 
+import { test } from "../_testing.ts";
 import { sha256Hex } from "@zuke/core";
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { assertEquals } from "../_assert.ts";
 import { nodeLauncherBash } from "../../packages/cli/src/node_launcher.ts";
 import { NODE_PIN } from "../../packages/cli/src/node_pin.ts";
 
@@ -21,7 +22,7 @@ async function script(path: string, body: string): Promise<void> {
   await Deno.writeTextFile(path, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
 }
 
-Deno.test({
+test({
   name: "the node launcher runs the build and npm ci with the node it finds",
   ignore: Deno.build.os === "windows",
   async fn() {
@@ -172,7 +173,7 @@ async function bootstrapWorld(root: string) {
   };
 }
 
-Deno.test({
+test({
   name:
     "the node launcher downloads, verifies and caches a Node, then reuses it",
   ignore: Deno.build.os === "windows",
@@ -205,7 +206,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name:
     "the node launcher installs nothing when the download's checksum is wrong",
   ignore: Deno.build.os === "windows",
@@ -236,7 +237,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name:
     "the node launcher stops when npm fails, never runs the build, and retries the install",
   ignore: Deno.build.os === "windows",
@@ -271,7 +272,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name:
     "the node launcher uses a Node a concurrent launcher published first, and leaves no copy of its own",
   ignore: Deno.build.os === "windows",
@@ -302,7 +303,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name:
     "the node launcher never deletes what is already at the cache path, and says what to remove",
   ignore: Deno.build.os === "windows",
@@ -328,7 +329,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name:
     "the node launcher uses the winner's Node when its own rename loses the race",
   ignore: Deno.build.os === "windows",
@@ -362,7 +363,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name:
     "the node launcher bootstraps when the node on PATH cannot report its version",
   ignore: Deno.build.os === "windows",
@@ -421,7 +422,7 @@ async function lockedProject(root: string) {
   return { lock: `${root}/project/.zuke/install.lock`, run, logged };
 }
 
-Deno.test({
+test({
   name:
     "two node launchers started at once install once, and both run the build",
   ignore: Deno.build.os === "windows",
@@ -448,7 +449,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name:
     "the node launcher reports an install lock its owner left behind, and leaves it",
   ignore: Deno.build.os === "windows",

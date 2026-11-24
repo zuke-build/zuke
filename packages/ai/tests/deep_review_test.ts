@@ -1,14 +1,15 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { AiReviewError, genericReviewer, securityReviewer } from "../mod.ts";
 import { changedPaths } from "../src/diff.ts";
 import { buildFileContext } from "../src/file_context.ts";
 import { findingFingerprint } from "../src/suppress.ts";
-import { captureLines } from "../../core/tests/_console.ts";
-import { withEnv } from "../../core/tests/_env.ts";
-import { noRedactionContext } from "./_context.ts";
+import { captureLines } from "../../../tests/_console.ts";
+import { withEnv } from "../../../tests/_env.ts";
+import { noRedactionContext } from "../../../tests/support/ai/_context.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";
@@ -70,7 +71,7 @@ function fakeGit(
 
 // ─── changedPaths / buildFileContext ────────────────────────────────────────
 
-Deno.test("changedPaths lists post-image paths once, skipping deletions", () => {
+test("changedPaths lists post-image paths once, skipping deletions", () => {
   const diff = "diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@\n+1\n" +
     "diff --git a/gone.ts b/gone.ts\n--- a/gone.ts\n+++ /dev/null\n@@\n-x\n" +
     "diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@\n+2\n" +
@@ -79,7 +80,7 @@ Deno.test("changedPaths lists post-image paths once, skipping deletions", () => 
   assertEquals(changedPaths("not a diff"), []);
 });
 
-Deno.test("buildFileContext reads files at HEAD within the budget", async () => {
+test("buildFileContext reads files at HEAD within the budget", async () => {
   const { run, calls } = fakeGit({
     "HEAD:a.ts": "aaaa".repeat(100), // 400 chars
     "HEAD:b.ts": "bbbb".repeat(100),
@@ -101,12 +102,12 @@ Deno.test("buildFileContext reads files at HEAD within the budget", async () => 
   assertEquals(calls.every((c) => c[0] === "git" && c[1] === "show"), true);
 });
 
-Deno.test("buildFileContext skips unreadable files and can come up empty", async () => {
+test("buildFileContext skips unreadable files and can come up empty", async () => {
   const { run } = fakeGit({});
   assertEquals(await buildFileContext(["missing.ts"], run, 100, "HEAD"), "");
 });
 
-Deno.test("buildFileContext reads from the head ref it is given", async () => {
+test("buildFileContext reads from the head ref it is given", async () => {
   // A pull request reviewed as data: the checkout is the default branch, so
   // the changed file must be read from the fetched merge, not from HEAD.
   const { run, calls } = fakeGit({
@@ -126,7 +127,7 @@ Deno.test("buildFileContext reads from the head ref it is given", async () => {
 
 // ─── conventionsFile ────────────────────────────────────────────────────────
 
-Deno.test("conventionsFile reads from the diff BASE ref, not the head", async () => {
+test("conventionsFile reads from the diff BASE ref, not the head", async () => {
   const { fetch, calls } = queuedFetch([claude({ score: 0, findings: [] })]);
   const git = fakeGit({
     "origin/master:AGENTS.md": "# Conventions\nNever use `any`.",
@@ -152,7 +153,7 @@ Deno.test("conventionsFile reads from the diff BASE ref, not the head", async ()
   assertEquals(user.includes("Never use `any`."), true);
 });
 
-Deno.test("an unreadable conventions file warns and reviews without it", async () => {
+test("an unreadable conventions file warns and reviews without it", async () => {
   const { fetch, calls } = queuedFetch([claude({ score: 0, findings: [] })]);
   const git = fakeGit({}); // git show fails
   const warnings: string[] = [];
@@ -176,7 +177,7 @@ Deno.test("an unreadable conventions file warns and reviews without it", async (
   assertEquals(user.includes("PROJECT_CONVENTIONS"), false);
 });
 
-Deno.test("conventionsFile without a base ref reads from disk, and truncates", async () => {
+test("conventionsFile without a base ref reads from disk, and truncates", async () => {
   const file = await Deno.makeTempFile({ suffix: ".md" });
   try {
     await Deno.writeTextFile(file, "rule ".repeat(200)); // 1000 chars
@@ -202,7 +203,7 @@ Deno.test("conventionsFile without a base ref reads from disk, and truncates", a
 
 // ─── criteriaFile ───────────────────────────────────────────────────────────
 
-Deno.test("criteriaFile reads from the diff BASE ref and extends the inline criteria", async () => {
+test("criteriaFile reads from the diff BASE ref and extends the inline criteria", async () => {
   const { fetch, calls } = queuedFetch([claude({ score: 0, findings: [] })]);
   const git = fakeGit({
     "origin/master:.github/review-criteria.md":
@@ -233,7 +234,7 @@ Deno.test("criteriaFile reads from the diff BASE ref and extends the inline crit
   );
 });
 
-Deno.test("criteriaFile without a base ref reads from disk, and truncates", async () => {
+test("criteriaFile without a base ref reads from disk, and truncates", async () => {
   const file = await Deno.makeTempFile({ suffix: ".md" });
   try {
     await Deno.writeTextFile(file, "note ".repeat(200)); // 1000 chars
@@ -258,7 +259,7 @@ Deno.test("criteriaFile without a base ref reads from disk, and truncates", asyn
   }
 });
 
-Deno.test("an unreadable criteria file warns and reviews with the inline criteria alone", async () => {
+test("an unreadable criteria file warns and reviews with the inline criteria alone", async () => {
   const { fetch, calls } = queuedFetch([claude({ score: 0, findings: [] })]);
   const git = fakeGit({}); // git show fails
   const warnings: string[] = [];
@@ -289,7 +290,7 @@ Deno.test("an unreadable criteria file warns and reviews with the inline criteri
 
 // ─── fileContext ────────────────────────────────────────────────────────────
 
-Deno.test("fileContext feeds changed-file contents to review AND verify", async () => {
+test("fileContext feeds changed-file contents to review AND verify", async () => {
   const finding = {
     title: "Unvalidated eval",
     severity: "high",
@@ -333,7 +334,7 @@ Deno.test("fileContext feeds changed-file contents to review AND verify", async 
 
 // ─── verify pass ────────────────────────────────────────────────────────────
 
-Deno.test("verify refutes a candidate: reported as refuted, not gated on", async () => {
+test("verify refutes a candidate: reported as refuted, not gated on", async () => {
   const findings = [
     { title: "SQL injection", severity: "high", file: "db.ts" },
     { title: "Missing null check", severity: "low", file: "app.ts" },
@@ -395,7 +396,7 @@ Deno.test("verify refutes a candidate: reported as refuted, not gated on", async
   );
 });
 
-Deno.test("a failed verify pass keeps the unverified findings (fail toward reporting)", async () => {
+test("a failed verify pass keeps the unverified findings (fail toward reporting)", async () => {
   const { fetch } = queuedFetch([
     claude({
       score: 9,
@@ -416,7 +417,7 @@ Deno.test("a failed verify pass keeps the unverified findings (fail toward repor
   );
 });
 
-Deno.test("verify is skipped cleanly when there are no findings", async () => {
+test("verify is skipped cleanly when there are no findings", async () => {
   const { fetch, calls } = queuedFetch([claude({ score: 0, findings: [] })]);
   await securityReviewer((r) =>
     r.provider("claude").apiKey("k").quiet()
@@ -430,7 +431,7 @@ Deno.test("verify is skipped cleanly when there are no findings", async () => {
 const captured = (fn: () => Promise<void>): Promise<string[]> =>
   captureLines(() => withEnv({ GITHUB_STEP_SUMMARY: undefined }, fn));
 
-Deno.test("verify candidates carry the finding's line; an evidence-free refutation cannot narrow", async () => {
+test("verify candidates carry the finding's line; an evidence-free refutation cannot narrow", async () => {
   const finding = {
     title: "SQL injection",
     severity: "high",
@@ -472,7 +473,7 @@ Deno.test("verify candidates carry the finding's line; an evidence-free refutati
   );
 });
 
-Deno.test("an uncertain verdict keeps the finding reported and gating", async () => {
+test("an uncertain verdict keeps the finding reported and gating", async () => {
   const findings = [
     { title: "Race in resume", severity: "high", file: "resume.ts" },
     { title: "Stray log line", severity: "low", file: "log.ts" },
@@ -524,7 +525,7 @@ Deno.test("an uncertain verdict keeps the finding reported and gating", async ()
   assertEquals(lines.some((l) => l.includes("refuted by verify")), false);
 });
 
-Deno.test("a failed verify pass warns on the console when not quiet", async () => {
+test("a failed verify pass warns on the console when not quiet", async () => {
   const { fetch } = queuedFetch([
     claude({
       score: 9,
@@ -554,7 +555,7 @@ Deno.test("a failed verify pass warns on the console when not quiet", async () =
   );
 });
 
-Deno.test("an empty file context is omitted from the prompt entirely", async () => {
+test("an empty file context is omitted from the prompt entirely", async () => {
   const { fetch, calls } = queuedFetch([claude({ score: 0, findings: [] })]);
   const git = fakeGit({}); // every `git show` fails — nothing to send
   await genericReviewer((r) =>

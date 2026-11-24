@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   TargetSummary,
   withAmbientSummary,
@@ -15,7 +16,7 @@ function out(code: number, stdout = "", stderr = ""): CommandOutput {
   return new CommandOutput(code, stdout, stderr);
 }
 
-Deno.test("vitest: the Tests line yields every category, in any order", () => {
+test("vitest: the Tests line yields every category, in any order", () => {
   const text =
     " Test Files  1 failed | 1 passed (2)\n      Tests  1 failed | 2 passed | 1 skipped | 1 todo (5)\n   Duration  195ms\n";
   assertEquals(parseTestSummary(out(1, text)), {
@@ -41,7 +42,7 @@ Deno.test("vitest: the Tests line yields every category, in any order", () => {
   );
 });
 
-Deno.test("vitest: no Tests line means nothing to report", () => {
+test("vitest: no Tests line means nothing to report", () => {
   assertEquals(
     parseTestSummary(out(0, "No test files found, exiting with code 0\n")),
     undefined,
@@ -64,7 +65,7 @@ class Probe extends VitestSettings {
   }
 }
 
-Deno.test("vitest: the hook reports the shared shape onto the running target", async () => {
+test("vitest: the hook reports the shared shape onto the running target", async () => {
   const summary = new TargetSummary();
   await withAmbientSummary(summary, () => {
     new Probe().probe(

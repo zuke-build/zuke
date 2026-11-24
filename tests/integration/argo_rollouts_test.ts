@@ -9,10 +9,8 @@
  * rollout through the run's compensation walk.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   Build,
   defaultStateHost,
@@ -53,7 +51,7 @@ class Rollout extends Build {
     .executes(() => ArgoRolloutsTasks.abort((s) => missingTool(s).name("api")));
 }
 
-Deno.test("a dry run renders the rollout's command lines in plan order", async () => {
+test("a dry run renders the rollout's command lines in plan order", async () => {
   const { code, out } = await runCli(Rollout, ["promote", "--dry-run"]);
   assertEquals(code, 0);
   const setImage = out.indexOf(
@@ -87,7 +85,7 @@ class BrokenRollout extends Build {
     .executes(() => ArgoRolloutsTasks.abort((s) => missingTool(s).name("api")));
 }
 
-Deno.test("a failed status check aborts the rollout through the compensation walk", async () => {
+test("a failed status check aborts the rollout through the compensation walk", async () => {
   await withStateDir(async (dir) => {
     const { code, out, err } = await runCli(BrokenRollout, ["wait"]);
     assertEquals(code, 1);
@@ -112,7 +110,7 @@ class Mistake extends Build {
   );
 }
 
-Deno.test("a settings validation failure fails the target, naming the fix", async () => {
+test("a settings validation failure fails the target, naming the fix", async () => {
   const { code, err } = await runCli(Mistake, ["oops"]);
   assertEquals(code, 1);
   assertStringIncludes(err, "ArgoRolloutsTasks.promote: .name() is required.");

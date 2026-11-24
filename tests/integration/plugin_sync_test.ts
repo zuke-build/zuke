@@ -9,17 +9,15 @@
  * `build/plugin_sync.ts`).
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import {
   checkPluginSkillsSync,
   syncPluginSkills,
 } from "../../build/plugin_sync.ts";
 import { runCli } from "./_harness.ts";
-import { withTemp } from "../../packages/core/tests/_temp.ts";
+import { withTemp } from "../_temp.ts";
 
 /** A fixture build gating on drift between `source` and `dest`, like `pluginSyncCheck`. */
 function gateBuild(source: string, dest: string) {
@@ -39,7 +37,7 @@ function gateBuild(source: string, dest: string) {
   return Gate;
 }
 
-Deno.test("pluginSyncCheck fails loudly when the destination has drifted", async () => {
+test("pluginSyncCheck fails loudly when the destination has drifted", async () => {
   await withTemp(async (dir) => {
     const source = `${dir}/skills`;
     const dest = `${dir}/plugin-skills`;
@@ -53,7 +51,7 @@ Deno.test("pluginSyncCheck fails loudly when the destination has drifted", async
   });
 });
 
-Deno.test("pluginSync then pluginSyncCheck round-trips clean through the CLI", async () => {
+test("pluginSync then pluginSyncCheck round-trips clean through the CLI", async () => {
   await withTemp(async (dir) => {
     const source = `${dir}/skills`;
     const dest = `${dir}/plugin-skills`;

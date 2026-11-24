@@ -1,10 +1,11 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { OtlpHttpExporter } from "../src/exporter.ts";
 import { buildMetrics, buildTraces, type RunSpanIds } from "../src/otlp.ts";
-import { makeRecord, RESOURCE } from "./_fixtures.ts";
+import { makeRecord, RESOURCE } from "../../../tests/support/otel/_fixtures.ts";
 
 const IDS: RunSpanIds = {
   traceId: "0123456789abcdef0123456789abcdef",
@@ -50,7 +51,7 @@ function exporter(fetch: FetchFn): OtlpHttpExporter {
   });
 }
 
-Deno.test("traces() POSTs JSON to the traces URL with headers", async () => {
+test("traces() POSTs JSON to the traces URL with headers", async () => {
   const { fetch, calls } = recordingFetch();
   const payload = buildTraces(
     makeRecord({ status: "succeeded" }),
@@ -67,7 +68,7 @@ Deno.test("traces() POSTs JSON to the traces URL with headers", async () => {
   assertEquals(calls[0].body, JSON.stringify(payload));
 });
 
-Deno.test("metrics() POSTs JSON to the metrics URL", async () => {
+test("metrics() POSTs JSON to the metrics URL", async () => {
   const { fetch, calls } = recordingFetch();
   const payload = buildMetrics([], RESOURCE);
   await exporter(fetch).metrics(payload);
@@ -76,25 +77,25 @@ Deno.test("metrics() POSTs JSON to the metrics URL", async () => {
   assertEquals(calls[0].body, JSON.stringify(payload));
 });
 
-Deno.test("a thrown fetch is swallowed (best-effort)", async () => {
+test("a thrown fetch is swallowed (best-effort)", async () => {
   const failing: FetchFn = () => Promise.reject(new Error("ECONNREFUSED"));
   // Resolves without throwing.
   await exporter(failing).metrics(buildMetrics([], RESOURCE));
 });
 
-Deno.test("a non-2xx response is swallowed (best-effort)", async () => {
+test("a non-2xx response is swallowed (best-effort)", async () => {
   const { fetch } = recordingFetch(() => new Response("nope", { status: 500 }));
   await exporter(fetch).metrics(buildMetrics([], RESOURCE));
 });
 
-Deno.test("a response with no body is tolerated", async () => {
+test("a response with no body is tolerated", async () => {
   const { fetch } = recordingFetch(() => new Response(null, { status: 202 }));
   await exporter(fetch).traces(
     buildTraces(makeRecord({ status: "succeeded" }), IDS, RESOURCE),
   );
 });
 
-Deno.test("skips a signal whose URL is absent", async () => {
+test("skips a signal whose URL is absent", async () => {
   const { fetch, calls } = recordingFetch();
   const tracesOnly = new OtlpHttpExporter({
     tracesUrl: "http://c:4318/v1/traces",
@@ -129,7 +130,7 @@ Deno.test("skips a signal whose URL is absent", async () => {
   assertEquals(calls2[0].url, "http://c:4318/v1/metrics");
 });
 
-Deno.test("defaults to the global fetch when none is injected", () => {
+test("defaults to the global fetch when none is injected", () => {
   // Construction alone exercises the `?? fetch` default (never called).
   const built = new OtlpHttpExporter({
     tracesUrl: "http://c/v1/traces",

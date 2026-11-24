@@ -16,8 +16,9 @@
  * launchers' `DENO_INSTALL` bootstrap directory when `PATH` has none.
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
-import { withTemp } from "../../packages/core/tests/_temp.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
+import { withTemp } from "../_temp.ts";
 import {
   buildWorkspaceNodeBinary,
   MUST_HAVE_SEA_NODE,
@@ -92,7 +93,7 @@ async function forward(
   return JSON.parse(await Deno.readTextFile(`${dir}/spawned.json`));
 }
 
-Deno.test({
+test({
   name: "the zuke binary forwards to a real Deno rather than to itself",
   // The bootstrap-directory case below builds a symlink, and the compiled
   // binary is ~150 MB; the resolution order itself is unit tested, and this
@@ -158,7 +159,7 @@ writeFileSync(
 );
 `;
 
-Deno.test({
+test({
   name: "the zuke binary runs a Node project's build on the node on PATH",
   ignore: SEA_NODE === undefined && !MUST_HAVE_SEA_NODE,
   fn: async () => {

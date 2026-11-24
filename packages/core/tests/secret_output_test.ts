@@ -11,7 +11,8 @@
  * @module
  */
 
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { secretsInOutput } from "../src/secret_output.ts";
 import { SecretOutputSettings } from "../src/tooling.ts";
 
@@ -42,7 +43,7 @@ function json(value: unknown): string {
   return `${JSON.stringify(value, null, 4)}\n`;
 }
 
-Deno.test("settings accumulate keys and record the query", () => {
+test("settings accumulate keys and record the query", () => {
   const settings = new SecretOutputSettings().keys("a").keys("b", "c")
     .queried(true);
   assertEquals(settings.keys_, ["a", "b", "c"]);
@@ -50,7 +51,7 @@ Deno.test("settings accumulate keys and record the query", () => {
   assertEquals(new SecretOutputSettings().queried_, false);
 });
 
-Deno.test("only the value under an expected key is registered when it is present", () => {
+test("only the value under an expected key is registered when it is present", () => {
   const secrets = found(
     json({ Name: "prod/db", SecretString: "pin1", VersionId: "aaaa-bbbb-1" }),
     (s) => s.keys("SecretString"),
@@ -58,7 +59,7 @@ Deno.test("only the value under an expected key is registered when it is present
   assertEquals(secrets, ["pin1"]);
 });
 
-Deno.test("expected keys are found at any depth", () => {
+test("expected keys are found at any depth", () => {
   const secrets = found(
     json({ Parameter: { Name: "/pin", Value: "aaaaaaaaa", Version: 3 } }),
     (s) => s.keys("Value"),
@@ -66,7 +67,7 @@ Deno.test("expected keys are found at any depth", () => {
   assertEquals(secrets, ["aaaaaaaaa"]);
 });
 
-Deno.test("SecretBinary-style keys: every expected key is registered", () => {
+test("SecretBinary-style keys: every expected key is registered", () => {
   const secrets = found(
     json({ Name: "s", SecretBinary: "gICAgICAgIA=" }),
     (s) => s.keys("SecretString", "SecretBinary"),
@@ -75,7 +76,7 @@ Deno.test("SecretBinary-style keys: every expected key is registered", () => {
   assertEquals(secrets, ["gICAgICAgIA="]);
 });
 
-Deno.test("a text-output JSON secret is the secret, and its fields are too", () => {
+test("a text-output JSON secret is the secret, and its fields are too", () => {
   const inner = JSON.stringify({ username: "app", password: "aaaaaaaaaaa" });
   const secrets = found(
     `${JSON.stringify(inner)}\n`,
@@ -85,16 +86,16 @@ Deno.test("a text-output JSON secret is the secret, and its fields are too", () 
   assertNotFound(secrets, "app");
 });
 
-Deno.test("a JSON string answer is the secret whatever its length", () => {
+test("a JSON string answer is the secret whatever its length", () => {
   assertEquals(found(json("pin1")), ["pin1"]);
 });
 
-Deno.test("a numeric parameter is registered as written", () => {
+test("a numeric parameter is registered as written", () => {
   assertEquals(found("48213977\n", (s) => s.keys("Value")), ["48213977"]);
   assertEquals(found("12\n", (s) => s.keys("Value")), ["12"]);
 });
 
-Deno.test("a reshaped assume-role query registers every scalar it moved", () => {
+test("a reshaped assume-role query registers every scalar it moved", () => {
   // Neither expected key survives the query, so every leaf may be a secret —
   // the duration too, as a keyed value of three or more characters.
   const secrets = found(
@@ -105,7 +106,7 @@ Deno.test("a reshaped assume-role query registers every scalar it moved", () => 
   assertNotFound(secrets, "12");
 });
 
-Deno.test("a query that moves the secret to another key still masks it", () => {
+test("a query that moves the secret to another key still masks it", () => {
   // `{accessToken: tokenType, moved: accessToken}`: the expected key now holds
   // `Bearer`, which is registered too — a short queried PIN must be.
   const secrets = found(
@@ -115,7 +116,7 @@ Deno.test("a query that moves the secret to another key still masks it", () => {
   assertFound(secrets, "aaaaaaaaaaaaaaa", "Bearer");
 });
 
-Deno.test("short derived values are not registered", () => {
+test("short derived values are not registered", () => {
   // The expected key is present, so the other leaves are only derived.
   const secrets = found(
     json({ x: "xxxxxxxx", other: [true, 12, "Bearer", "aaaaaaaaaa"] }),
@@ -131,7 +132,7 @@ Deno.test("short derived values are not registered", () => {
   );
 });
 
-Deno.test("a long number found as a leaf is registered; a boolean is not", () => {
+test("a long number found as a leaf is registered; a boolean is not", () => {
   const secrets = found(
     json([1791633600, true]),
     (s) => s.keys("accessToken").queried(true),
@@ -140,7 +141,7 @@ Deno.test("a long number found as a leaf is registered; a boolean is not", () =>
   assertNotFound(secrets, "true");
 });
 
-Deno.test("with no expected key present, every long scalar is registered", () => {
+test("with no expected key present, every long scalar is registered", () => {
   const secrets = found(
     json({ moved: "aaaaaaaaaa", count: 123456789, flag: false, note: "ok" }),
     (s) => s.keys("SecretString"),
@@ -149,11 +150,11 @@ Deno.test("with no expected key present, every long scalar is registered", () =>
   assertNotFound(secrets, "false", "ok");
 });
 
-Deno.test("a number under an expected key is the key's secret", () => {
+test("a number under an expected key is the key's secret", () => {
   assertEquals(found(json({ Value: 1234 }), (s) => s.keys("Value")), ["1234"]);
 });
 
-Deno.test("credential-named fields are registered across the whole document", () => {
+test("credential-named fields are registered across the whole document", () => {
   const secrets = found(
     json({
       accessToken: "aaaaaaaaaaaa",
@@ -171,7 +172,7 @@ Deno.test("credential-named fields are registered across the whole document", ()
   ]);
 });
 
-Deno.test("credential fields and long leaves of a JSON secret are registered", () => {
+test("credential fields and long leaves of a JSON secret are registered", () => {
   const secret = JSON.stringify({
     db: { password: "aaaaaaaaaaaaaaa" },
     apiKey: "abc",
@@ -194,14 +195,14 @@ Deno.test("credential fields and long leaves of a JSON secret are registered", (
   assertNotFound(secrets, "db");
 });
 
-Deno.test("a JSON secret's number leaves are registered as written when long", () => {
+test("a JSON secret's number leaves are registered as written when long", () => {
   const secret = '{"port": 5432, "account": 12345678901234567891}';
   const secrets = found(json({ value: secret }), (s) => s.keys("value"));
   assertFound(secrets, secret, "12345678901234567891");
   assertNotFound(secrets, "5432");
 });
 
-Deno.test("a secret that is a JSON list has the credential fields of its items", () => {
+test("a secret that is a JSON list has the credential fields of its items", () => {
   const secret = JSON.stringify([
     { db: { password: "aaaaaaaaaaaaaaa" } },
     { note: "short" },
@@ -211,7 +212,7 @@ Deno.test("a secret that is a JSON list has the credential fields of its items",
   assertNotFound(secrets, "short");
 });
 
-Deno.test("Azure's credential field names are registered", () => {
+test("Azure's credential field names are registered", () => {
   const fields = {
     db_pwd: "pwd",
     accountKey: "bbbbbbbbbbbbbbb",
@@ -232,7 +233,7 @@ Deno.test("Azure's credential field names are registered", () => {
   }
 });
 
-Deno.test("a credential-named number or list of scalars is registered", () => {
+test("a credential-named number or list of scalars is registered", () => {
   const secrets = found(
     json({
       password: 123456789,
@@ -245,25 +246,25 @@ Deno.test("a credential-named number or list of scalars is registered", () => {
   assertNotFound(secrets, "ok");
 });
 
-Deno.test("output that is not JSON is registered whole, trimmed", () => {
+test("output that is not JSON is registered whole, trimmed", () => {
   assertEquals(found("aaaaaaaaaaaaaaaa\n"), ["aaaaaaaaaaaaaaaa"]);
   // It is the secret itself, so even a short one is registered.
   assertEquals(found("  pin1 \n"), ["pin1"]);
 });
 
-Deno.test("empty output, or an empty answer, registers nothing", () => {
+test("empty output, or an empty answer, registers nothing", () => {
   for (const stdout of ["", "  \n", '""\n', "null\n", "{}\n", "[]\n"]) {
     assertEquals(found(stdout, (s) => s.keys("value")), [], stdout);
   }
 });
 
-Deno.test("a blank value is never registered, even under an expected key", () => {
+test("a blank value is never registered, even under an expected key", () => {
   // Registering " " would replace every space in the build's output.
   assertEquals(found(json({ value: " " }), (s) => s.keys("value")), []);
   assertEquals(found(json("\t \n")), []);
 });
 
-Deno.test("a connection string's credential pairs are registered on their own", () => {
+test("a connection string's credential pairs are registered on their own", () => {
   const connection = "DefaultEndpointsProtocol=https;AccountName=acct-name;" +
     "AccountKey=aaaaaaaaaaaaaa==;EndpointSuffix=core.windows.net";
   const secrets = found(
@@ -279,7 +280,7 @@ Deno.test("a connection string's credential pairs are registered on their own", 
   );
 });
 
-Deno.test("a dotenv or YAML secret's credential lines are registered", () => {
+test("a dotenv or YAML secret's credential lines are registered", () => {
   const dotenv = [
     "DB_HOST=db.example.internal",
     "DB_PASSWORD=aaaaaaaaaa",
@@ -297,7 +298,7 @@ Deno.test("a dotenv or YAML secret's credential lines are registered", () => {
   assertFound(found(yaml), "dddddddddd");
 });
 
-Deno.test("a URL's password is registered on its own, raw and decoded", () => {
+test("a URL's password is registered on its own, raw and decoded", () => {
   const url = "postgres://app:aaaaaaaa%40b@db.example:5432/app";
   const secrets = found(
     json({ SecretString: url }),
@@ -310,7 +311,7 @@ Deno.test("a URL's password is registered on its own, raw and decoded", () => {
   assertNotFound(short, "pw");
 });
 
-Deno.test("a URL inside a connection string or a JSON secret has its password found", () => {
+test("a URL inside a connection string or a JSON secret has its password found", () => {
   const secrets = found(
     json({
       value: JSON.stringify({ dsn: "mysql://app:bbbbbbbbbb@db/app" }),
@@ -322,13 +323,13 @@ Deno.test("a URL inside a connection string or a JSON secret has its password fo
   assertFound(pairs, "cccccccccc");
 });
 
-Deno.test("a JSON-encoded secret registers the string it decodes to", () => {
+test("a JSON-encoded secret registers the string it decodes to", () => {
   const inner = JSON.stringify("aaaaaaaaaaaa");
   const secrets = found(json({ value: inner }), (s) => s.keys("value"));
   assertFound(secrets, inner, "aaaaaaaaaaaa");
 });
 
-Deno.test("a secret that nests without end is searched to a bounded depth", () => {
+test("a secret that nests without end is searched to a bounded depth", () => {
   // Each `db_pwd=` layer is a credential pair holding the rest; the search
   // stops after a few layers instead of walking the whole string pair by pair.
   const nested = `${"db_pwd=".repeat(50)}aaaaaaaaaa`;
@@ -342,7 +343,7 @@ Deno.test("a secret that nests without end is searched to a bounded depth", () =
   assertEquals(performance.now() - start < 5_000, true);
 });
 
-Deno.test("a deeply nested document neither overflows the stack nor throws", () => {
+test("a deeply nested document neither overflows the stack nor throws", () => {
   const depth = 200_000;
   const deep = `${"[".repeat(depth)}"aaaaaaaaaa"${"]".repeat(depth)}`;
   assertFound(found(deep), "aaaaaaaaaa");
@@ -355,7 +356,7 @@ Deno.test("a deeply nested document neither overflows the stack nor throws", () 
   assertFound(found(objects, (s) => s.keys("x")), "bbbbbbbbbb");
 });
 
-Deno.test("a base64 credential that decodes to control characters is left encoded", () => {
+test("a base64 credential that decodes to control characters is left encoded", () => {
   const encoded = btoa("aaaa\u0001bbbb");
   const secrets = found(json({ password: encoded }), (s) => s.keys("x"));
   assertFound(secrets, encoded);

@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals } from "./_assert.ts";
 import { PACKAGES as PACKAGE_DIRS } from "../build/packages.ts";
 
 // `build/packages.ts` is the single source of truth for workspace membership —
@@ -18,7 +19,7 @@ async function readJson(path: string): Promise<Record<string, unknown>> {
 
 const CONFIG = ".release-please-config.json";
 
-Deno.test("release-please config matches the workspace packages", async () => {
+test("release-please config matches the workspace packages", async () => {
   const config = await readJson(CONFIG);
   const packages = config.packages;
   if (packages === null || typeof packages !== "object") {
@@ -27,14 +28,14 @@ Deno.test("release-please config matches the workspace packages", async () => {
   assertEquals(Object.keys(packages).sort(), [...PACKAGES].sort());
 });
 
-Deno.test("the config uses the simple release type", async () => {
+test("the config uses the simple release type", async () => {
   // release-please has no "deno" releaser; the version lives in each package's
   // deno.json, bumped via the simple releaser plus a json extra-files updater.
   const config = await readJson(CONFIG);
   assertEquals(config["release-type"], "simple");
 });
 
-Deno.test("manifest versions match each package deno.json", async () => {
+test("manifest versions match each package deno.json", async () => {
   const manifest = await readJson(".release-please-manifest.json");
   for (const path of PACKAGES) {
     const pkg = await readJson(`${path}/deno.json`);
@@ -46,7 +47,7 @@ Deno.test("manifest versions match each package deno.json", async () => {
   }
 });
 
-Deno.test("a package that was never released is registered at 0.0.0", async () => {
+test("a package that was never released is registered at 0.0.0", async () => {
   // release-please reads the manifest as the last *released* version. Any
   // version but 0.0.0 becomes a synthetic previous release, so a package
   // registered at 1.0.0 is first released as 1.1.0 and 1.0.0 never exists —
@@ -113,7 +114,7 @@ async function markedFiles(): Promise<MarkedFile[]> {
   return files;
 }
 
-Deno.test("extra-file version markers match the manifest version", async () => {
+test("extra-file version markers match the manifest version", async () => {
   // A package may list files beyond its deno.json — @zuke/cli embeds its
   // version in src/version.ts so `zuke --version` can print it. release-please
   // rewrites the line tagged `x-release-please-version`, so a version set by
@@ -137,7 +138,7 @@ Deno.test("extra-file version markers match the manifest version", async () => {
   }
 });
 
-Deno.test("a marked constant declares a widened type", async () => {
+test("a marked constant declares a widened type", async () => {
   // `export const VERSION = "1.2.3"` declares the *literal* type "1.2.3", and
   // `deno doc` records a declared type verbatim — so an exported one is copied
   // into llms-full.txt and the package README. release-please rewrites the
@@ -167,7 +168,7 @@ Deno.test("a marked constant declares a widened type", async () => {
   }
 });
 
-Deno.test("every package declares the MIT license", async () => {
+test("every package declares the MIT license", async () => {
   // Per-package license metadata so a published JSR artifact carries its own
   // license rather than relying solely on root inference. Keep it in lock-step
   // with the root LICENSE (MIT).
@@ -181,7 +182,7 @@ Deno.test("every package declares the MIT license", async () => {
   }
 });
 
-Deno.test("the deno workspace lists exactly the configured packages", async () => {
+test("the deno workspace lists exactly the configured packages", async () => {
   const root = await readJson("deno.json");
   const workspace = root.workspace;
   if (!Array.isArray(workspace)) {
@@ -194,7 +195,7 @@ Deno.test("the deno workspace lists exactly the configured packages", async () =
 const MATRIX_ROW =
   /^\| \[`@zuke\/([a-z-]+)`\]\(https:\/\/jsr\.io\/@zuke\/\1\)/gm;
 
-Deno.test("the docs package matrix lists exactly the workspace packages", async () => {
+test("the docs package matrix lists exactly the workspace packages", async () => {
   // docs/packages.md is the human-facing catalogue; a package missing there is
   // invisible to anyone browsing the repo, and a row for a package that does
   // not exist (or listed twice) makes the stated count a lie. Enforce exact
@@ -210,7 +211,7 @@ Deno.test("the docs package matrix lists exactly the workspace packages", async 
   assertEquals([...rows].sort(), [...PACKAGE_DIRS].sort());
 });
 
-Deno.test("the README still reaches the package matrix", async () => {
+test("the README still reaches the package matrix", async () => {
   // The README names only the notable wrappers; the full catalogue lives in
   // docs/packages.md, so the README must keep linking to it or the catalogue
   // becomes unreachable from the landing page.
@@ -222,7 +223,7 @@ Deno.test("the README still reaches the package matrix", async () => {
   );
 });
 
-Deno.test("deno.lock captures release-please's full npm tree", async () => {
+test("deno.lock captures release-please's full npm tree", async () => {
   // `build.ts`'s `release` target provisions release-please through a launcher
   // that runs `deno run --frozen npm:release-please@16.18.0` from the repository
   // root (see `installCli`), so the lock is what pins its transitive tree — and
@@ -269,7 +270,7 @@ const PACKAGE_COUNT_PROSE = [
 const PACKAGE_COUNT =
   /\b(\d+)(?=(?:-package\b| (?:independent )?(?:JSR )?packages\b| total\)))/g;
 
-Deno.test("every prose mention of the package count matches the workspace", async () => {
+test("every prose mention of the package count matches the workspace", async () => {
   const expected = PACKAGE_DIRS.length;
   const wrong: string[] = [];
   for (const path of PACKAGE_COUNT_PROSE) {

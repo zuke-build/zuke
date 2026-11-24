@@ -1,9 +1,10 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { publishFile } from "../src/state/json_file_cas.ts";
-import { FakeStateHost } from "./_fakes.ts";
+import { FakeStateHost } from "../../../tests/_fakes.ts";
 import type { StateHost } from "../src/state/store.ts";
 
 /**
@@ -39,7 +40,7 @@ function sharingViolation(): Error {
   return new Deno.errors.PermissionDenied("os error 32");
 }
 
-Deno.test("publishFile lands once the reader holding the destination lets go", async () => {
+test("publishFile lands once the reader holding the destination lets go", async () => {
   const { host, attempts } = flakyRenameHost(2, sharingViolation);
   await host.writeText("/runs/run-1.json.tmp-x", "{}");
 
@@ -49,7 +50,7 @@ Deno.test("publishFile lands once the reader holding the destination lets go", a
   assertEquals(await host.readText("/runs/run-1.json"), "{}");
 });
 
-Deno.test("publishFile gives the caller the real error once the budget is spent", async () => {
+test("publishFile gives the caller the real error once the budget is spent", async () => {
   const { host, attempts } = flakyRenameHost(
     Number.MAX_SAFE_INTEGER,
     sharingViolation,
@@ -65,7 +66,7 @@ Deno.test("publishFile gives the caller the real error once the budget is spent"
   assertEquals(attempts(), 5);
 });
 
-Deno.test("publishFile does not retry a missing temp file", async () => {
+test("publishFile does not retry a missing temp file", async () => {
   const { host, attempts } = flakyRenameHost(
     Number.MAX_SAFE_INTEGER,
     () => new Deno.errors.NotFound("rename /runs/run-1.json.tmp-x"),

@@ -9,7 +9,8 @@
  * @module
  */
 
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import { missingTool } from "@zuke/core/tooling/conformance";
 import { withAmbientEcho } from "../../core/src/ambient_echo.ts";
@@ -25,7 +26,7 @@ async function echoed(run: () => Promise<unknown>): Promise<string> {
 
 const BIN = "kubectl-argo-rollouts";
 
-Deno.test("every task runs its own subcommand", async () => {
+test("every task runs its own subcommand", async () => {
   const cases: Array<[() => Promise<unknown>, string]> = [
     [
       () =>
@@ -89,7 +90,7 @@ Deno.test("every task runs its own subcommand", async () => {
   }
 });
 
-Deno.test("a missing plugin binary is reported as ToolNotFoundError", async () => {
+test("a missing plugin binary is reported as ToolNotFoundError", async () => {
   await assertRejects(
     () => ArgoRolloutsTasks.version(missingTool),
     ToolNotFoundError,

@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   aliasIndex,
   decodeState,
@@ -42,7 +43,7 @@ const STATE: ReviewState = {
   ],
 };
 
-Deno.test("state round-trips through the hidden comment block", () => {
+test("state round-trips through the hidden comment block", () => {
   const block = encodeState(STATE);
   // The block is a single hidden HTML comment — inert in rendered Markdown.
   assertEquals(block.startsWith("<!-- zuke-ai-state:"), true);
@@ -51,7 +52,7 @@ Deno.test("state round-trips through the hidden comment block", () => {
   assertEquals(decoded, STATE);
 });
 
-Deno.test("state content cannot break out of the hidden block", () => {
+test("state content cannot break out of the hidden block", () => {
   // A title embedding `-->` (and marker-ish text) must not terminate the HTML
   // comment early — base64 makes the payload inert by construction.
   const hostile: ReviewState = {
@@ -70,7 +71,7 @@ Deno.test("state content cannot break out of the hidden block", () => {
   );
 });
 
-Deno.test("decodeState is best-effort on garbage", () => {
+test("decodeState is best-effort on garbage", () => {
   assertEquals(decodeState("no block here"), undefined);
   assertEquals(
     decodeState("<!-- zuke-ai-state:!!!not-base64!!! -->"),
@@ -88,7 +89,7 @@ Deno.test("decodeState is best-effort on garbage", () => {
   );
 });
 
-Deno.test("decodeState skips malformed entries but keeps valid ones", () => {
+test("decodeState skips malformed entries but keeps valid ones", () => {
   const mixed = JSON.stringify({
     findings: [
       { id: "ok1", title: "kept", severity: "high", status: "open" },
@@ -115,7 +116,7 @@ Deno.test("decodeState skips malformed entries but keeps valid ones", () => {
   });
 });
 
-Deno.test("state survives non-ASCII titles", () => {
+test("state survives non-ASCII titles", () => {
   const unicode: ReviewState = {
     findings: [{
       id: "u1",
@@ -127,7 +128,7 @@ Deno.test("state survives non-ASCII titles", () => {
   assertEquals(decodeState(encodeState(unicode)), unicode);
 });
 
-Deno.test("fixed findings round-trip, and the per-status views select correctly", async () => {
+test("fixed findings round-trip, and the per-status views select correctly", async () => {
   const { fixedOf, openOf } = await import("../src/state.ts");
   const state: ReviewState = {
     findings: [
@@ -145,7 +146,7 @@ Deno.test("fixed findings round-trip, and the per-status views select correctly"
   assertEquals(openOf(undefined).size, 0);
 });
 
-Deno.test("dismissedOf keys the dismissed and the accepted findings, nothing else", () => {
+test("dismissedOf keys the dismissed and the accepted findings, nothing else", () => {
   const dismissed = dismissedOf(STATE);
   assertEquals(dismissed.size, 1);
   assertEquals(dismissed.get("abc123")?.author, "maintainer");
@@ -167,7 +168,7 @@ Deno.test("dismissedOf keys the dismissed and the accepted findings, nothing els
   assertEquals([...dismissedOf(state).keys()], ["b"]);
 });
 
-Deno.test("an accepted finding round-trips with its author and reason", () => {
+test("an accepted finding round-trips with its author and reason", () => {
   const state: ReviewState = {
     findings: [{
       id: "b",
@@ -182,7 +183,7 @@ Deno.test("an accepted finding round-trips with its author and reason", () => {
   assertEquals(decodeState(encodeState(state)), state);
 });
 
-Deno.test("aliases round-trip through the state block", () => {
+test("aliases round-trip through the state block", () => {
   const state = {
     findings: [{
       id: "abc1",
@@ -195,7 +196,7 @@ Deno.test("aliases round-trip through the state block", () => {
   assertEquals(decodeState(encodeState(state)), state);
 });
 
-Deno.test("a state written before aliases existed round-trips unchanged", () => {
+test("a state written before aliases existed round-trips unchanged", () => {
   // Old comments carry no `aliases` key, and a new one must not sprout an
   // empty list: that would churn every state block on the first new run.
   const state = {
@@ -211,7 +212,7 @@ Deno.test("a state written before aliases existed round-trips unchanged", () => 
   assertEquals("aliases" in (decoded?.findings[0] ?? {}), false);
 });
 
-Deno.test("a malformed alias list is dropped, never the record", () => {
+test("a malformed alias list is dropped, never the record", () => {
   const entry = {
     id: "abc1",
     title: "t",
@@ -242,20 +243,20 @@ Deno.test("a malformed alias list is dropped, never the record", () => {
   assertEquals(decodeState(mixed)?.findings[0].aliases, ["0c12"]);
 });
 
-Deno.test("an alias list is capped so the state block cannot grow forever", () => {
+test("an alias list is capped so the state block cannot grow forever", () => {
   const many = ["a1", "b2", "c3", "d4", "e5", "f6", "a7"];
   const merged = mergeAliases(many, ["9ee1"], "own");
   assertEquals(merged.length, MAX_ALIASES);
   assertEquals(merged[0], "9ee1"); // newest survives the cap, oldest is dropped
 });
 
-Deno.test("mergeAliases de-duplicates and never records the entry's own id", () => {
+test("mergeAliases de-duplicates and never records the entry's own id", () => {
   assertEquals(mergeAliases(["aa"], ["aa"], "own"), ["aa"]);
   assertEquals(mergeAliases(["own"], ["own"], "own"), []);
   assertEquals(mergeAliases(undefined, ["bb"], "own"), ["bb"]);
 });
 
-Deno.test("aliasIndex maps every alias to its owner across statuses", () => {
+test("aliasIndex maps every alias to its owner across statuses", () => {
   const state = {
     findings: [
       {
@@ -290,7 +291,7 @@ Deno.test("aliasIndex maps every alias to its owner across statuses", () => {
   assertEquals(aliasIndex(undefined).size, 0);
 });
 
-Deno.test("an alias never shadows a real finding's identity", () => {
+test("an alias never shadows a real finding's identity", () => {
   const state = {
     findings: [
       {
@@ -311,7 +312,7 @@ Deno.test("an alias never shadows a real finding's identity", () => {
   assertEquals(aliasIndex(state).has("bb22"), false);
 });
 
-Deno.test("aliases do not leak into the status maps", () => {
+test("aliases do not leak into the status maps", () => {
   // dismissedOf/openOf/fixedOf are consumed by `.values()` for the prompt's
   // prior-findings block and the fixed table; an alias key would duplicate
   // every one of those lines.
@@ -327,7 +328,7 @@ Deno.test("aliases do not leak into the status maps", () => {
   assertEquals(dismissedOf(state).size, 1);
 });
 
-Deno.test("the reviewer's own state block outranks one smuggled in earlier", () => {
+test("the reviewer's own state block outranks one smuggled in earlier", () => {
   // The reviewer publishes its state inside its own comment — and that comment
   // also repeats model output, which derives from an attacker-controlled diff.
   // A block that reached the body through a finding title therefore sits BEFORE
@@ -357,7 +358,7 @@ Deno.test("the reviewer's own state block outranks one smuggled in earlier", () 
   assertEquals(decoded?.findings[0].status, "open");
 });
 
-Deno.test("a refuted finding round-trips with its rationale and evidence digest", () => {
+test("a refuted finding round-trips with its rationale and evidence digest", () => {
   const state: ReviewState = {
     findings: [{
       id: "3ab12cd34ef56",
@@ -377,7 +378,7 @@ Deno.test("a refuted finding round-trips with its rationale and evidence digest"
   assertEquals(dismissedOf(decoded).size, 0);
 });
 
-Deno.test("a malformed evidence digest is dropped, never the record", () => {
+test("a malformed evidence digest is dropped, never the record", () => {
   const forged = JSON.stringify({
     findings: [{
       id: "aa11",
@@ -394,7 +395,7 @@ Deno.test("a malformed evidence digest is dropped, never the record", () => {
   assertEquals("evidence" in (decoded?.findings[0] ?? {}), false);
 });
 
-Deno.test("a block tagged with a reviewer's name is that reviewer's, and only theirs", () => {
+test("a block tagged with a reviewer's name is that reviewer's, and only theirs", () => {
   const mine: ReviewState = {
     findings: [{ id: "a1", title: "Mine", severity: "high", status: "open" }],
   };
@@ -414,7 +415,7 @@ Deno.test("a block tagged with a reviewer's name is that reviewer's, and only th
   assertEquals(stateNames(encodeState(mine)), []);
 });
 
-Deno.test("a tag that is not base64 UTF-8 names no reviewer", () => {
+test("a tag that is not base64 UTF-8 names no reviewer", () => {
   const block = encodeState({ findings: [] }).replace(
     "zuke-ai-state:",
     "zuke-ai-state@/w==:",
@@ -437,7 +438,7 @@ Deno.test("a tag that is not base64 UTF-8 names no reviewer", () => {
   );
 });
 
-Deno.test("only a tag's canonical spelling names a reviewer", () => {
+test("only a tag's canonical spelling names a reviewer", () => {
   const state: ReviewState = {
     findings: [{ id: "a1", title: "T", severity: "low", status: "open" }],
   };

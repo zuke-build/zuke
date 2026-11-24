@@ -11,7 +11,8 @@
  * capture console lines and raw child bytes into one ordered transcript.
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import { Build, group, target } from "../../packages/core/mod.ts";
 import { main, type MainOptions } from "../../packages/core/src/cli.ts";
 import type { Plugin } from "../../packages/core/src/plugin.ts";
@@ -79,7 +80,7 @@ class GroupedBuild extends Build {
   ci = target().dependsOn(this.checks).executes(() => {});
 }
 
-Deno.test("integration: concurrent targets keep their command output in their own block", async () => {
+test("integration: concurrent targets keep their command output in their own block", async () => {
   const { code, lines } = await transcript(GroupedBuild, ["ci", "--plain"]);
   assertEquals(code === 0, true, lines.join("\n"));
   const slowHeader = lineOf(lines, /\bslow\b/);
@@ -103,7 +104,7 @@ class SerialScheduledBuild extends Build {
   });
 }
 
-Deno.test("integration: a target that runs alone prints its header before its command output", async () => {
+test("integration: a target that runs alone prints its header before its command output", async () => {
   const { code, lines } = await transcript(SerialScheduledBuild, [
     "teardown",
     "--plain",
@@ -134,7 +135,7 @@ class NestedFanOutBuild extends Build {
   ci = target().dependsOn(this.checks).executes(() => {});
 }
 
-Deno.test("integration: a fan-out's item output stays inside its parent's block", async () => {
+test("integration: a fan-out's item output stays inside its parent's block", async () => {
   const { code, lines } = await transcript(NestedFanOutBuild, [
     "ci",
     "--plain",
@@ -164,7 +165,7 @@ class SerialFanOutBuild extends Build {
   );
 }
 
-Deno.test("integration: a fan-out limited to one item at a time streams each item live", async () => {
+test("integration: a fan-out limited to one item at a time streams each item live", async () => {
   let build: SerialFanOutBuild | undefined;
   class Probe extends SerialFanOutBuild {
     constructor() {
@@ -190,7 +191,7 @@ class HungBuild extends Build {
   other = target().partOf(this.checks).executes(() => {});
 }
 
-Deno.test("integration: a forced exit prints what a hung target had written", async () => {
+test("integration: a forced exit prints what a hung target had written", async () => {
   let build: HungBuild | undefined;
   class Probe extends HungBuild {
     constructor() {
@@ -225,7 +226,7 @@ class HungItemBuild extends Build {
   other = target().partOf(this.checks).executes(() => {});
 }
 
-Deno.test("integration: a forced exit flushes a fan-out item to the sink it launched with", async () => {
+test("integration: a forced exit flushes a fan-out item to the sink it launched with", async () => {
   let build: HungItemBuild | undefined;
   class Probe extends HungItemBuild {
     constructor() {
@@ -254,7 +255,7 @@ class ConsoleAndServiceBuild extends Build {
   ci = target().dependsOn(this.checks).executes(() => {});
 }
 
-Deno.test("integration: a concurrent target's console and service output stay in its block", async () => {
+test("integration: a concurrent target's console and service output stay in its block", async () => {
   const { code, lines } = await transcript(ConsoleAndServiceBuild, [
     "ci",
     "--plain",
@@ -286,7 +287,7 @@ class SkippedLogBuild extends Build {
   ci = target().dependsOn(this.checks).executes(() => {});
 }
 
-Deno.test("integration: a skipped concurrent target still prints what its onlyWhen logged", async () => {
+test("integration: a skipped concurrent target still prints what its onlyWhen logged", async () => {
   const { code, lines } = await transcript(SkippedLogBuild, ["ci", "--plain"]);
   assertEquals(code === 0, true, lines.join("\n"));
   lineOf(lines, /^GATE-SAYS-SKIP$/);
@@ -301,7 +302,7 @@ class HookedBuild extends Build {
   ci = target().dependsOn(this.checks).executes(() => {});
 }
 
-Deno.test("integration: a plugin's start and end lines stay inside the target's block", async () => {
+test("integration: a plugin's start and end lines stay inside the target's block", async () => {
   const plugin: Plugin = {
     name: "probe",
     onTargetStart: (target) => console.log(`START-${target}`),

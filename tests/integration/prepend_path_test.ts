@@ -1,10 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, prependPath, target } from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
 
@@ -27,7 +25,7 @@ class PathBuild extends Build {
     });
 }
 
-Deno.test("prependPath makes a provisioned bin resolve by bare name via the CLI", async () => {
+test("prependPath makes a provisioned bin resolve by bare name via the CLI", async () => {
   if (Deno.build.os === "windows") return; // bare-name shell scripts are POSIX
   const dir = await Deno.makeTempDir({ prefix: "zuke-path-it-" });
   const savedPath = Deno.env.get("PATH");

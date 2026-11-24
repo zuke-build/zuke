@@ -1,10 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { missingTool } from "../../packages/core/src/tooling_conformance.ts";
 import { GitTasks } from "../../packages/git/mod.ts";
@@ -45,21 +43,21 @@ class SessionsBuild extends Build {
     });
 }
 
-Deno.test("a target creating a worktree fails with the tool-not-found error", async () => {
+test("a target creating a worktree fails with the tool-not-found error", async () => {
   const { code, out, err } = await runCli(SessionsBuild, ["create"]);
   assertEquals(code, 1);
   assertStringIncludes(err, "zuke-no-such-tool-xyz");
   assertEquals(out.includes("created"), false);
 });
 
-Deno.test("a start-point worktree reaches git like any other", async () => {
+test("a start-point worktree reaches git like any other", async () => {
   const { code, out, err } = await runCli(SessionsBuild, ["ticket"]);
   assertEquals(code, 1);
   assertStringIncludes(err, "zuke-no-such-tool-xyz");
   assertEquals(out.includes("created"), false);
 });
 
-Deno.test("a missing git fails the listing rather than reporting no worktrees", async () => {
+test("a missing git fails the listing rather than reporting no worktrees", async () => {
   const { code, out, err } = await runCli(SessionsBuild, ["report"]);
   assertEquals(code, 1);
   assertStringIncludes(err, "zuke-no-such-tool-xyz");

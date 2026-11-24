@@ -10,10 +10,8 @@
  * @module
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { glob } from "../packages/core/mod.ts";
 
 const ZUKE_SOURCE = await Deno.readTextFile("build.ts");
@@ -41,12 +39,12 @@ function integrationTargetBody(source: string): string {
   return source.slice(start, start + 1 + next.index);
 }
 
-Deno.test("the integration target discovers e2e suites by glob, not a hardcoded list", () => {
+test("the integration target discovers e2e suites by glob, not a hardcoded list", () => {
   const body = integrationTargetBody(ZUKE_SOURCE);
   assertStringIncludes(body, 'glob("tests/e2e/*_e2e.ts")');
 });
 
-Deno.test("glob(tests/e2e/*_e2e.ts) picks up a newly added suite with no code change", async () => {
+test("glob(tests/e2e/*_e2e.ts) picks up a newly added suite with no code change", async () => {
   const before = await glob("tests/e2e/*_e2e.ts");
   const dummyPath = "tests/e2e/__dummy_e2e.ts";
   await Deno.writeTextFile(

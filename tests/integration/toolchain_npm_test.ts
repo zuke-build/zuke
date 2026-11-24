@@ -1,10 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target, toolchain } from "../../packages/core/mod.ts";
 import type { NpmRunner } from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
@@ -38,7 +36,7 @@ class ProvisionBuild extends Build {
     });
 }
 
-Deno.test("a build provisions an npm-package tool end-to-end via the CLI", async () => {
+test("a build provisions an npm-package tool end-to-end via the CLI", async () => {
   npmCalls = [];
   toolsDir = await Deno.makeTempDir({ prefix: "zuke-npm-it-" });
   try {
@@ -52,7 +50,7 @@ Deno.test("a build provisions an npm-package tool end-to-end via the CLI", async
   }
 });
 
-Deno.test("re-provisioning the same pin reuses the cache (npm runs once)", async () => {
+test("re-provisioning the same pin reuses the cache (npm runs once)", async () => {
   npmCalls = [];
   toolsDir = await Deno.makeTempDir({ prefix: "zuke-npm-it-" });
   try {

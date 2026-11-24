@@ -3,17 +3,18 @@
 
 /** Unit tests for `metricThreshold(...)` and the shared bounds check. */
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { metricThreshold, type MetricThresholdSettings } from "../mod.ts";
 import { checkThreshold } from "../src/threshold.ts";
-import { analysisContext } from "./_context.ts";
+import { analysisContext } from "../../../tests/support/canary/_context.ts";
 
-Deno.test("a metric within bounds passes, and the reader sees the rollout", async () => {
+test("a metric within bounds passes, and the reader sees the rollout", async () => {
   let seen = 0;
   const analysis = metricThreshold((m) =>
     m.name("error ratio").read((ctx) => {
@@ -26,7 +27,7 @@ Deno.test("a metric within bounds passes, and the reader sees the rollout", asyn
   assertEquals(seen, 10);
 });
 
-Deno.test("a metric out of bounds fails, naming it", async () => {
+test("a metric out of bounds fails, naming it", async () => {
   await assertRejects(
     async () =>
       await metricThreshold((m) =>
@@ -44,7 +45,7 @@ Deno.test("a metric out of bounds fails, naming it", async () => {
   );
 });
 
-Deno.test("a metric with no reader or no bound is refused", async () => {
+test("a metric with no reader or no bound is refused", async () => {
   await assertRejects(
     async () =>
       await metricThreshold((m) => m.max(1)).validate(analysisContext()),
@@ -59,7 +60,7 @@ Deno.test("a metric with no reader or no bound is refused", async () => {
   );
 });
 
-Deno.test("a reading that is not a number fails", () => {
+test("a reading that is not a number fails", () => {
   assertThrows(
     () => checkThreshold("x", Number.NaN, { max: 1 }),
     Error,
@@ -68,7 +69,7 @@ Deno.test("a reading that is not a number fails", () => {
   checkThreshold("x", 1, { max: 1, min: 1 });
 });
 
-Deno.test("a reader's failure has the credentials in its URLs cleaned", async () => {
+test("a reader's failure has the credentials in its URLs cleaned", async () => {
   const error = await assertRejects(
     async () =>
       await metricThreshold((m) =>
@@ -89,7 +90,7 @@ Deno.test("a reader's failure has the credentials in its URLs cleaned", async ()
   }
 });
 
-Deno.test("bounds that could never judge anything are refused", async () => {
+test("bounds that could never judge anything are refused", async () => {
   const cases: Array<
     [(m: MetricThresholdSettings) => MetricThresholdSettings, string]
   > = [
@@ -105,7 +106,7 @@ Deno.test("bounds that could never judge anything are refused", async () => {
   }
 });
 
-Deno.test("a failing metric's message is redacted", async () => {
+test("a failing metric's message is redacted", async () => {
   const error = await assertRejects(
     async () =>
       await metricThreshold((m) => m.name("s3cr3t ratio").read(() => 2).max(1))

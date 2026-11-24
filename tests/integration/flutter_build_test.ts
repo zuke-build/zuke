@@ -15,7 +15,8 @@
  * @module
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { FlutterTasks } from "../../packages/flutter/mod.ts";
 import { runCli } from "./_harness.ts";
@@ -61,7 +62,7 @@ async function runApp(
   }
 }
 
-Deno.test("flutter: a build runs pub get, then the app bundle", async () => {
+test("flutter: a build runs pub get, then the app bundle", async () => {
   const { code, calls } = await runApp(0);
   assertEquals(code, 0);
   assertEquals(calls, [
@@ -78,7 +79,7 @@ Deno.test("flutter: a build runs pub get, then the app bundle", async () => {
   ]);
 });
 
-Deno.test("flutter: a failing flutter build fails the run", async () => {
+test("flutter: a failing flutter build fails the run", async () => {
   const { code, calls } = await runApp(1);
   assertEquals(code, 1);
   // The wrapper threw on the non-zero exit, so only pub get was recorded.

@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import {
   GhRunCancelSettings,
   GhRunDeleteSettings,
@@ -14,7 +15,7 @@ import {
 } from "../mod.ts";
 import { parseRuns } from "../src/actions_run.ts";
 
-Deno.test("run list renders every filter", () => {
+test("run list renders every filter", () => {
   assertEquals(
     new GhRunListSettings()
       .repo("acme/app")
@@ -59,7 +60,7 @@ Deno.test("run list renders every filter", () => {
   assertEquals(new GhRunListSettings().argv().slice(1), ["run", "list"]);
 });
 
-Deno.test("every run command names its run", () => {
+test("every run command names its run", () => {
   // gh shows a picker without a run id, and a build has no one to answer it.
   for (
     const [task, build] of [
@@ -75,7 +76,7 @@ Deno.test("every run command names its run", () => {
   }
 });
 
-Deno.test("run view renders its log and job flags", () => {
+test("run view renders its log and job flags", () => {
   assertEquals(
     new GhRunViewSettings().selector(123).attempt(2).job(456).logFailed()
       .exitStatus().verbose().json("conclusion").web().argv().slice(1),
@@ -108,7 +109,7 @@ Deno.test("run view renders its log and job flags", () => {
   );
 });
 
-Deno.test("run rerun renders its scope, and refuses two of them", () => {
+test("run rerun renders its scope, and refuses two of them", () => {
   assertEquals(
     new GhRunRerunSettings().selector(123).failed().debug().argv().slice(1),
     ["run", "rerun", "123", "--failed", "--debug"],
@@ -124,7 +125,7 @@ Deno.test("run rerun renders its scope, and refuses two of them", () => {
   );
 });
 
-Deno.test("run cancel, delete, download and watch render their flags", () => {
+test("run cancel, delete, download and watch render their flags", () => {
   assertEquals(
     new GhRunCancelSettings().selector(123).force().argv().slice(1),
     ["run", "cancel", "123", "--force"],
@@ -157,7 +158,7 @@ Deno.test("run cancel, delete, download and watch render their flags", () => {
   );
 });
 
-Deno.test("parseRuns reads gh's JSON array", () => {
+test("parseRuns reads gh's JSON array", () => {
   const stdout = JSON.stringify([
     {
       databaseId: 33197307624,
@@ -191,7 +192,7 @@ Deno.test("parseRuns reads gh's JSON array", () => {
   }]);
 });
 
-Deno.test("parseRuns treats anything but an array of objects as empty", () => {
+test("parseRuns treats anything but an array of objects as empty", () => {
   assertEquals(parseRuns("[]"), []);
   assertEquals(parseRuns(""), []);
   assertEquals(parseRuns("no runs found"), []);
@@ -201,7 +202,7 @@ Deno.test("parseRuns treats anything but an array of objects as empty", () => {
   assertEquals(parseRuns('[{"databaseId":"33197307624"}]'), [{}]);
 });
 
-Deno.test("the pinned run field set is what the entry documents", () => {
+test("the pinned run field set is what the entry documents", () => {
   assertEquals(RUN_LIST_FIELDS.includes("databaseId"), true);
   assertEquals(RUN_LIST_FIELDS.includes("conclusion"), true);
   assertEquals(RUN_LIST_FIELDS.length, 10);

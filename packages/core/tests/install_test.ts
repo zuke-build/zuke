@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import {
   type DownloadFn,
   hostPlatform,
@@ -12,9 +13,9 @@ import {
 import { operatingSystem } from "../src/host.ts";
 import { sha256Hex } from "../src/internal.ts";
 import { createTarGzip } from "../src/compression.ts";
-import { makeZip, STORED } from "./_zip.ts";
-import { withTemp } from "./_temp.ts";
-import { fixture, FLUTTER_TAR_XZ } from "./_xz.ts";
+import { makeZip, STORED } from "../../../tests/_zip.ts";
+import { withTemp } from "../../../tests/_temp.ts";
+import { fixture, FLUTTER_TAR_XZ } from "../../../tests/_xz.ts";
 
 /**
  * The suffix `installRelease` adds to the installed filename for the host
@@ -37,7 +38,7 @@ function fakeDownload(
   };
 }
 
-Deno.test("hostPlatform reports a normalised os and labels the os/arch", () => {
+test("hostPlatform reports a normalised os and labels the os/arch", () => {
   const p = hostPlatform();
   assertEquals(p.os, operatingSystem()); // "macos", not "darwin"
   assertEquals(p.arch, Deno.build.arch);
@@ -49,7 +50,7 @@ Deno.test("hostPlatform reports a normalised os and labels the os/arch", () => {
   assertEquals(p.archLabel({ [Deno.build.arch]: "mapped" }), "mapped");
 });
 
-Deno.test("the url callback receives a normalised, labelled Platform", async () => {
+test("the url callback receives a normalised, labelled Platform", async () => {
   const dir = await Deno.makeTempDir();
   const seen: { url?: string } = {};
   try {
@@ -72,7 +73,7 @@ Deno.test("the url callback receives a normalised, labelled Platform", async () 
   }
 });
 
-Deno.test("installRelease (raw) downloads the binary and returns its path", async () => {
+test("installRelease (raw) downloads the binary and returns its path", async () => {
   await withTemp(async (dir) => {
     const seen: { url?: string } = {};
     const bin = await installRelease({
@@ -99,7 +100,7 @@ Deno.test("installRelease (raw) downloads the binary and returns its path", asyn
   });
 });
 
-Deno.test("installRelease (raw) creates a missing destination directory", async () => {
+test("installRelease (raw) creates a missing destination directory", async () => {
   await withTemp(async (root) => {
     const dest = `${root}/nested/bin`;
     const bin = await installRelease({
@@ -113,7 +114,7 @@ Deno.test("installRelease (raw) creates a missing destination directory", async 
   });
 });
 
-Deno.test("installRelease (raw) resolves a relative destDir against cwd", async () => {
+test("installRelease (raw) resolves a relative destDir against cwd", async () => {
   const root = await Deno.makeTempDir();
   const prev = Deno.cwd();
   Deno.chdir(root);
@@ -135,7 +136,7 @@ Deno.test("installRelease (raw) resolves a relative destDir against cwd", async 
   }
 });
 
-Deno.test("installRelease (tar.gz) unpacks and installs the inner binary", async () => {
+test("installRelease (tar.gz) unpacks and installs the inner binary", async () => {
   await withTemp(async (root) => {
     // Build a real .tar.gz containing bin/mytool, then serve it via the seam.
     await Deno.mkdir(`${root}/pkg/bin`, { recursive: true });
@@ -162,7 +163,7 @@ Deno.test("installRelease (tar.gz) unpacks and installs the inner binary", async
   });
 });
 
-Deno.test("installRelease (tar.xz) unpacks and installs the inner binary", async () => {
+test("installRelease (tar.xz) unpacks and installs the inner binary", async () => {
   await withTemp(async (root) => {
     const bin = await installRelease({
       name: "flutter",
@@ -180,7 +181,7 @@ Deno.test("installRelease (tar.xz) unpacks and installs the inner binary", async
   });
 });
 
-Deno.test("installRelease (tar.gz) defaults binaryPath to the tool name", async () => {
+test("installRelease (tar.gz) defaults binaryPath to the tool name", async () => {
   await withTemp(async (root) => {
     await Deno.writeFile(
       `${root}/flat`,
@@ -203,7 +204,7 @@ Deno.test("installRelease (tar.gz) defaults binaryPath to the tool name", async 
   });
 });
 
-Deno.test("installRelease resolves a per-platform archive and binaryPath", async () => {
+test("installRelease resolves a per-platform archive and binaryPath", async () => {
   await withTemp(async (root) => {
     // The shape almost every Go/Rust release has: .zip on Windows carrying
     // `tool.exe`, .tar.gz elsewhere carrying `tool`. One declaration, both.
@@ -252,7 +253,7 @@ Deno.test("installRelease resolves a per-platform archive and binaryPath", async
   });
 });
 
-Deno.test("installRelease (zip) unpacks and installs the inner binary", async () => {
+test("installRelease (zip) unpacks and installs the inner binary", async () => {
   await withTemp(async (root) => {
     // A zip carrying bin/dprint (dprint et al. ship zip-only), served via the seam.
     const bytes = await makeZip([
@@ -273,7 +274,7 @@ Deno.test("installRelease (zip) unpacks and installs the inner binary", async ()
   });
 });
 
-Deno.test("installRelease (zip) defaults binaryPath to the tool name and verifies a checksum", async () => {
+test("installRelease (zip) defaults binaryPath to the tool name and verifies a checksum", async () => {
   await withTemp(async (root) => {
     const bytes = await makeZip([
       {
@@ -317,7 +318,7 @@ Deno.test("installRelease (zip) defaults binaryPath to the tool name and verifie
   });
 });
 
-Deno.test("installRelease (windows) appends .exe and skips chmod", async () => {
+test("installRelease (windows) appends .exe and skips chmod", async () => {
   await withTemp(async (dir) => {
     const windows: InstallPlatform = { os: "windows", arch: "x86_64" };
     const seen: { url?: string } = {};
@@ -333,7 +334,7 @@ Deno.test("installRelease (windows) appends .exe and skips chmod", async () => {
   });
 });
 
-Deno.test("installRelease (windows) does not double a .exe suffix", async () => {
+test("installRelease (windows) does not double a .exe suffix", async () => {
   await withTemp(async (dir) => {
     const bin = await installRelease({
       name: "already.exe",
@@ -346,7 +347,7 @@ Deno.test("installRelease (windows) does not double a .exe suffix", async () => 
   });
 });
 
-Deno.test("installRelease cleans up its scratch dir even when extraction fails", async () => {
+test("installRelease cleans up its scratch dir even when extraction fails", async () => {
   await withTemp(async (root) => {
     const dest = `${root}/install`;
     // Serve non-tar bytes so gunzip/untar throws; the scratch dir must still go.
@@ -373,7 +374,7 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
-Deno.test("installRelease verifies a matching checksum and records a marker", async () => {
+test("installRelease verifies a matching checksum and records a marker", async () => {
   await withTemp(async (dir) => {
     const body = "#!/bin/sh\necho hi\n";
     const bin = await installRelease({
@@ -388,7 +389,7 @@ Deno.test("installRelease verifies a matching checksum and records a marker", as
   });
 });
 
-Deno.test("installRelease rejects a checksum mismatch and installs nothing", async () => {
+test("installRelease rejects a checksum mismatch and installs nothing", async () => {
   await withTemp(async (dir) => {
     const error = await assertRejects(() =>
       installRelease({
@@ -404,7 +405,7 @@ Deno.test("installRelease rejects a checksum mismatch and installs nothing", asy
   });
 });
 
-Deno.test("installRelease reuses a cached install without downloading again", async () => {
+test("installRelease reuses a cached install without downloading again", async () => {
   await withTemp(async (dir) => {
     const body = "binary";
     let calls = 0;
@@ -426,7 +427,7 @@ Deno.test("installRelease reuses a cached install without downloading again", as
   });
 });
 
-Deno.test("installRelease re-downloads when the cached binary was tampered with", async () => {
+test("installRelease re-downloads when the cached binary was tampered with", async () => {
   await withTemp(async (dir) => {
     const body = "trusted-binary";
     let calls = 0;
@@ -453,7 +454,7 @@ Deno.test("installRelease re-downloads when the cached binary was tampered with"
   });
 });
 
-Deno.test("installRelease re-downloads a raw binary whose marker was swapped with it", async () => {
+test("installRelease re-downloads a raw binary whose marker was swapped with it", async () => {
   await withTemp(async (dir) => {
     const body = "trusted-binary";
     let calls = 0;
@@ -485,7 +486,7 @@ Deno.test("installRelease re-downloads a raw binary whose marker was swapped wit
   });
 });
 
-Deno.test("installRelease re-downloads when the cache marker is corrupt", async () => {
+test("installRelease re-downloads when the cache marker is corrupt", async () => {
   await withTemp(async (dir) => {
     const body = "payload";
     let calls = 0;
@@ -507,7 +508,7 @@ Deno.test("installRelease re-downloads when the cache marker is corrupt", async 
   });
 });
 
-Deno.test("installRelease re-downloads when the pinned checksum changes", async () => {
+test("installRelease re-downloads when the pinned checksum changes", async () => {
   await withTemp(async (dir) => {
     let calls = 0;
     const versioned = (body: string): DownloadFn => async (_url, dest) => {
@@ -536,7 +537,7 @@ Deno.test("installRelease re-downloads when the pinned checksum changes", async 
   });
 });
 
-Deno.test("installRelease (tar.gz) verifies the archive checksum", async () => {
+test("installRelease (tar.gz) verifies the archive checksum", async () => {
   const dir = await Deno.makeTempDir();
   const src = await Deno.makeTempDir();
   try {
@@ -574,7 +575,7 @@ Deno.test("installRelease (tar.gz) verifies the archive checksum", async () => {
   }
 });
 
-Deno.test("installRelease resolves a per-platform checksum from the platform", async () => {
+test("installRelease resolves a per-platform checksum from the platform", async () => {
   await withTemp(async (dir) => {
     const body = "arm64-binary";
     const sum = await sha256Hex(body);
@@ -596,7 +597,7 @@ Deno.test("installRelease resolves a per-platform checksum from the platform", a
   });
 });
 
-Deno.test("installRelease rejects a malformed checksum before downloading", async () => {
+test("installRelease rejects a malformed checksum before downloading", async () => {
   await withTemp(async (dir) => {
     let downloaded = false;
     const err = await assertRejects(() =>
@@ -616,7 +617,7 @@ Deno.test("installRelease rejects a malformed checksum before downloading", asyn
   });
 });
 
-Deno.test("installRelease reports a clear error when a resolver has no checksum for the platform", async () => {
+test("installRelease reports a clear error when a resolver has no checksum for the platform", async () => {
   await withTemp(async (dir) => {
     const sums: Record<string, string> = {}; // this platform isn't mapped
     const err = await assertRejects(() =>

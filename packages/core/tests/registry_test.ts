@@ -7,7 +7,12 @@
  * and {@link resolveBuildRegistry} precedence. Mirrors the state-layer tests.
  */
 
-import { assertEquals, assertRejects, assertThrows } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import {
+  assertEquals,
+  assertRejects,
+  assertThrows,
+} from "../../../tests/_assert.ts";
 import { defaultStateHost } from "../src/state/store.ts";
 import { type CliDescription, describeCli } from "../src/describe.ts";
 import { Build, parameter, target } from "../mod.ts";
@@ -24,8 +29,8 @@ import {
   envBuildRegistry,
   resolveBuildRegistry,
 } from "../src/registry/resolve.ts";
-import { withTemp } from "./_temp.ts";
-import { FakeStateHost } from "./_fakes.ts";
+import { withTemp } from "../../../tests/_temp.ts";
+import { FakeStateHost } from "../../../tests/_fakes.ts";
 
 /** A minimal CLI surface for a descriptor. */
 function sampleSurface(): CliDescription {
@@ -74,7 +79,7 @@ function sampleDescriptor(
 
 // ------------------------------------------------------------- descriptor
 
-Deno.test("stringify then parse round-trips a descriptor", () => {
+test("stringify then parse round-trips a descriptor", () => {
   const descriptor = sampleDescriptor();
   assertEquals(
     parseBuildDescriptor(stringifyBuildDescriptor(descriptor)),
@@ -82,7 +87,7 @@ Deno.test("stringify then parse round-trips a descriptor", () => {
   );
 });
 
-Deno.test("parseBuildDescriptor round-trips a command location with a repo", () => {
+test("parseBuildDescriptor round-trips a command location with a repo", () => {
   const descriptor = sampleDescriptor({
     location: {
       kind: "command",
@@ -97,7 +102,7 @@ Deno.test("parseBuildDescriptor round-trips a command location with a repo", () 
   );
 });
 
-Deno.test("toBuildSummary projects the summary fields", () => {
+test("toBuildSummary projects the summary fields", () => {
   assertEquals(toBuildSummary(sampleDescriptor()), {
     id: "CI",
     name: "CI",
@@ -107,7 +112,7 @@ Deno.test("toBuildSummary projects the summary fields", () => {
   });
 });
 
-Deno.test("parseBuildDescriptor rejects malformed descriptors", () => {
+test("parseBuildDescriptor rejects malformed descriptors", () => {
   assertThrows(() => parseBuildDescriptor("not json"), Error, "not valid JSON");
   assertThrows(() => parseBuildDescriptor("[]"), Error, "not an object");
   // Missing required field.
@@ -146,7 +151,7 @@ function mangled(overrides: Record<string, unknown>): string {
   return JSON.stringify({ ...sampleDescriptor(), ...overrides });
 }
 
-Deno.test("parseBuildDescriptor validates surface and location shapes", () => {
+test("parseBuildDescriptor validates surface and location shapes", () => {
   // A non-string field that is not `id`.
   assertThrows(
     () => parseBuildDescriptor(mangled({ name: 5 })),
@@ -218,7 +223,7 @@ Deno.test("parseBuildDescriptor validates surface and location shapes", () => {
   );
 });
 
-Deno.test("parseParameterInfo carries kind/default and tolerates a legacy descriptor", () => {
+test("parseParameterInfo carries kind/default and tolerates a legacy descriptor", () => {
   const withParams = (parameters: unknown[]) =>
     JSON.stringify({
       ...sampleDescriptor(),
@@ -283,7 +288,7 @@ Deno.test("parseParameterInfo carries kind/default and tolerates a legacy descri
   );
 });
 
-Deno.test("parseBuildDescriptor round-trips a module location with a repo", () => {
+test("parseBuildDescriptor round-trips a module location with a repo", () => {
   const descriptor = sampleDescriptor({
     location: {
       kind: "module",
@@ -298,7 +303,7 @@ Deno.test("parseBuildDescriptor round-trips a module location with a repo", () =
   );
 });
 
-Deno.test("parseBuildSummary validates untrusted summaries", () => {
+test("parseBuildSummary validates untrusted summaries", () => {
   assertThrows(() => parseBuildSummary(42), Error, "not an object");
   assertThrows(() => parseBuildSummary({ id: 1 }), Error, '"id"');
   assertEquals(parseBuildSummary(toBuildSummary(sampleDescriptor())).id, "CI");
@@ -306,7 +311,7 @@ Deno.test("parseBuildSummary validates untrusted summaries", () => {
 
 // ----------------------------------------------------- filesystem backend
 
-Deno.test("FileSystemBuildRegistry persists and reconstructs a descriptor", async () => {
+test("FileSystemBuildRegistry persists and reconstructs a descriptor", async () => {
   const host = new FakeStateHost();
   const registry = new FileSystemBuildRegistry("/builds", host);
   const created = await registry.register(sampleDescriptor(), null);
@@ -317,7 +322,7 @@ Deno.test("FileSystemBuildRegistry persists and reconstructs a descriptor", asyn
   assertEquals(await registry.getBuild("missing"), null);
 });
 
-Deno.test("FileSystemBuildRegistry CAS rejects a stale write", async () => {
+test("FileSystemBuildRegistry CAS rejects a stale write", async () => {
   const host = new FakeStateHost();
   const registry = new FileSystemBuildRegistry("/builds", host);
   const created = await registry.register(sampleDescriptor(), null);
@@ -340,7 +345,7 @@ Deno.test("FileSystemBuildRegistry CAS rejects a stale write", async () => {
   assertEquals(ok.ok, true);
 });
 
-Deno.test("FileSystemBuildRegistry: concurrent registrations — exactly one wins", async () => {
+test("FileSystemBuildRegistry: concurrent registrations — exactly one wins", async () => {
   const host = new FakeStateHost();
   const registry = new FileSystemBuildRegistry("/builds", host);
   const created = await registry.register(sampleDescriptor(), null);
@@ -353,7 +358,7 @@ Deno.test("FileSystemBuildRegistry: concurrent registrations — exactly one win
   assertEquals(results.filter((r) => !r.ok).length, 1);
 });
 
-Deno.test("FileSystemBuildRegistry deregister removes a build", async () => {
+test("FileSystemBuildRegistry deregister removes a build", async () => {
   const host = new FakeStateHost();
   const registry = new FileSystemBuildRegistry("/builds", host);
   await registry.register(sampleDescriptor(), null);
@@ -363,7 +368,7 @@ Deno.test("FileSystemBuildRegistry deregister removes a build", async () => {
   await registry.deregister("CI");
 });
 
-Deno.test("FileSystemBuildRegistry listBuilds filters, sorts, and skips junk", async () => {
+test("FileSystemBuildRegistry listBuilds filters, sorts, and skips junk", async () => {
   const host = new FakeStateHost();
   const registry = new FileSystemBuildRegistry("/builds", host);
   await registry.register(
@@ -398,7 +403,7 @@ Deno.test("FileSystemBuildRegistry listBuilds filters, sorts, and skips junk", a
   assertEquals(since.map((s) => s.id), ["b"]);
 });
 
-Deno.test("FileSystemBuildRegistry rejects an unsafe build id", async () => {
+test("FileSystemBuildRegistry rejects an unsafe build id", async () => {
   const registry = new FileSystemBuildRegistry("/builds", new FakeStateHost());
   await assertRejects(
     () => registry.getBuild("../escape"),
@@ -417,7 +422,7 @@ Deno.test("FileSystemBuildRegistry rejects an unsafe build id", async () => {
   );
 });
 
-Deno.test("FileSystemBuildRegistry listBuilds skips a vanished file", async () => {
+test("FileSystemBuildRegistry listBuilds skips a vanished file", async () => {
   // A file listed by the directory but gone by the time it is read (deleted
   // between listing and reading) is skipped, not an error.
   class PhantomHost extends FakeStateHost {
@@ -429,7 +434,7 @@ Deno.test("FileSystemBuildRegistry listBuilds skips a vanished file", async () =
   assertEquals(await registry.listBuilds({}), []);
 });
 
-Deno.test("FileSystemBuildRegistry gives up on a permanently held mutex", async () => {
+test("FileSystemBuildRegistry gives up on a permanently held mutex", async () => {
   const host = new FakeStateHost();
   // Pre-hold the lock marker so createExclusive never succeeds, stamped now so
   // it reads as a live holder that is never stolen from.
@@ -445,7 +450,7 @@ Deno.test("FileSystemBuildRegistry gives up on a permanently held mutex", async 
   assertEquals(host.locks.has(marker), true); // never stolen from a live holder
 });
 
-Deno.test("FileSystemBuildRegistry takes over a mutex marker left past its TTL", async () => {
+test("FileSystemBuildRegistry takes over a mutex marker left past its TTL", async () => {
   // A `zuke register` killed mid-write leaves its marker behind. Without an
   // expiry that marker wedges every later writer until a human deletes it, so
   // the registry shares the state store's mutex: past the TTL it is reclaimed.
@@ -462,7 +467,7 @@ Deno.test("FileSystemBuildRegistry takes over a mutex marker left past its TTL",
   assertEquals(host.files.has("/builds/CI.json"), true);
 });
 
-Deno.test("FileSystemBuildRegistry never steals an unstamped mutex marker", async () => {
+test("FileSystemBuildRegistry never steals an unstamped mutex marker", async () => {
   // An unstamped marker reads exactly like a holder that has created its marker
   // and not yet stamped it, so reclaiming one could put two registrations inside
   // the mutex at once — both then winning the same compare-and-swap. The gain in
@@ -479,7 +484,7 @@ Deno.test("FileSystemBuildRegistry never steals an unstamped mutex marker", asyn
   assertEquals(host.locks.has(marker), true); // left for its holder
 });
 
-Deno.test("FileSystemBuildRegistry round-trips through the real filesystem", async () => {
+test("FileSystemBuildRegistry round-trips through the real filesystem", async () => {
   await withTemp(async (dir) => {
     const registry = new FileSystemBuildRegistry(
       `${dir}/builds`,
@@ -495,7 +500,7 @@ Deno.test("FileSystemBuildRegistry round-trips through the real filesystem", asy
 
 // --------------------------------------------------------------- resolve
 
-Deno.test("resolveBuildRegistry follows its precedence", () => {
+test("resolveBuildRegistry follows its precedence", () => {
   const host = new FakeStateHost();
   const explicit = new FileSystemBuildRegistry("/explicit", host);
   const declared = new FileSystemBuildRegistry("/declared", host);
@@ -521,7 +526,7 @@ Deno.test("resolveBuildRegistry follows its precedence", () => {
   assertEquals(defaulted instanceof FileSystemBuildRegistry, true);
 });
 
-Deno.test("resolveBuildRegistry reads the environment when nothing is declared", () => {
+test("resolveBuildRegistry reads the environment when nothing is declared", () => {
   const host = new FakeStateHost();
   const env = new Map<string, string>([["ZUKE_REGISTRY_DIR", "/env-builds"]]);
   const fromDir = resolveBuildRegistry(undefined, undefined, {
@@ -533,7 +538,7 @@ Deno.test("resolveBuildRegistry reads the environment when nothing is declared",
   assertEquals(fromDir instanceof FileSystemBuildRegistry, true);
 });
 
-Deno.test("envBuildRegistry prefers URL over DIR", () => {
+test("envBuildRegistry prefers URL over DIR", () => {
   const host = new FakeStateHost();
   const env = new Map<string, string>([
     ["ZUKE_REGISTRY_URL", "https://registry.example"],
@@ -553,7 +558,7 @@ Deno.test("envBuildRegistry prefers URL over DIR", () => {
   assertEquals(envBuildRegistry(() => undefined, host), undefined);
 });
 
-Deno.test("parseBuildDescriptor refuses a parameter flag that shadows a built-in", () => {
+test("parseBuildDescriptor refuses a parameter flag that shadows a built-in", () => {
   // A registry backend is a service Zuke does not control, and the MCP host
   // renders a descriptor's `flag` straight onto the spawned child's argv. The
   // child's parser matches a built-in ahead of a declared parameter, so a
@@ -633,7 +638,7 @@ Deno.test("parseBuildDescriptor refuses a parameter flag that shadows a built-in
   );
 });
 
-Deno.test("any surface describeCli produces still parses, awkward names included", () => {
+test("any surface describeCli produces still parses, awkward names included", () => {
   // A pre-M12 descriptor carries no `name`, so the name is recovered from the
   // flag — which means `flagName` must be idempotent, or a descriptor a
   // previous Zuke wrote would come back with a different name than it went in
@@ -667,7 +672,7 @@ Deno.test("any surface describeCli produces still parses, awkward names included
   );
 });
 
-Deno.test("parseBuildDescriptor refuses two parameters claiming one flag", () => {
+test("parseBuildDescriptor refuses two parameters claiming one flag", () => {
   const withParams = (parameters: Record<string, unknown>[]) =>
     JSON.stringify({
       ...sampleDescriptor(),

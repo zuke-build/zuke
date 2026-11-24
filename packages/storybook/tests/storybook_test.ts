@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
   assertWrapperConformance,
@@ -13,11 +14,11 @@ import {
   StorybookTasks,
 } from "../src/storybook.ts";
 
-Deno.test("storybook dev: the default invocation is the bare subcommand", () => {
+test("storybook dev: the default invocation is the bare subcommand", () => {
   assertEquals(new StorybookDevSettings().argv(), ["storybook", "dev"]);
 });
 
-Deno.test("storybook dev: every option renders", () => {
+test("storybook dev: every option renders", () => {
   const argv = new StorybookDevSettings()
     .configDir(".storybook").port(6006).host("0.0.0.0").noOpen().ci().argv();
   assertEquals(argv, [
@@ -34,7 +35,7 @@ Deno.test("storybook dev: every option renders", () => {
   ]);
 });
 
-Deno.test("storybook build: every option renders", () => {
+test("storybook build: every option renders", () => {
   const argv = new StorybookBuildSettings()
     .configDir("config/storybook").outputDir("storybook-static").quietOutput()
     .argv();
@@ -49,11 +50,11 @@ Deno.test("storybook build: every option renders", () => {
   ]);
 });
 
-Deno.test("storybook build: the default invocation is the bare subcommand", () => {
+test("storybook build: the default invocation is the bare subcommand", () => {
   assertEquals(new StorybookBuildSettings().argv(), ["storybook", "build"]);
 });
 
-Deno.test("StorybookTasks reach execution", async () => {
+test("StorybookTasks reach execution", async () => {
   await assertRejects(() => StorybookTasks.dev(missingTool), ToolNotFoundError);
   await assertRejects(
     () => StorybookTasks.build(missingTool),
@@ -61,7 +62,7 @@ Deno.test("StorybookTasks reach execution", async () => {
   );
 });
 
-Deno.test("storybook: resolves its binary from node_modules by default", async () => {
+test("storybook: resolves its binary from node_modules by default", async () => {
   await assertWrapperConformance(
     () => new StorybookDevSettings(),
     "storybook",

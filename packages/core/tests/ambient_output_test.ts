@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   ambientOutput,
   type ByteWriter,
@@ -26,13 +27,13 @@ function recorder(max = Infinity): ByteWriter & { text: () => string } {
   };
 }
 
-Deno.test("ambientOutput: defaults to the process's own stdout and stderr", () => {
+test("ambientOutput: defaults to the process's own stdout and stderr", () => {
   const out = ambientOutput();
   assertEquals(out.stdout === Deno.stdout, true);
   assertEquals(out.stderr === Deno.stderr, true);
 });
 
-Deno.test("withAmbientOutput: a command's live output goes to the installed sink", async () => {
+test("withAmbientOutput: a command's live output goes to the installed sink", async () => {
   const stdout = recorder();
   const stderr = recorder();
   const code = `console.log("to-out"); console.error("to-err");`;
@@ -48,7 +49,7 @@ Deno.test("withAmbientOutput: a command's live output goes to the installed sink
   assertEquals(ambientOutput().stdout === Deno.stdout, true);
 });
 
-Deno.test("bufferReporter: flushes lines and command bytes in arrival order", () => {
+test("bufferReporter: flushes lines and command bytes in arrival order", () => {
   const buffer = bufferReporter();
   buffer.reporter.info("header");
   buffer.output.stdout.writeSync(encoder.encode("child out\n"));
@@ -78,7 +79,7 @@ Deno.test("bufferReporter: flushes lines and command bytes in arrival order", ()
   ]);
 });
 
-Deno.test("bufferReporter: keeps a chunk the stream reuses, and writes it whole", () => {
+test("bufferReporter: keeps a chunk the stream reuses, and writes it whole", () => {
   const buffer = bufferReporter();
   const chunk = encoder.encode("abcdef");
   buffer.output.stdout.writeSync(chunk);
@@ -92,7 +93,7 @@ Deno.test("bufferReporter: keeps a chunk the stream reuses, and writes it whole"
   assertEquals(out.text(), "abcdef");
 });
 
-Deno.test("bufferReporter: writes after a flush pass straight through", () => {
+test("bufferReporter: writes after a flush pass straight through", () => {
   const buffer = bufferReporter();
   const out = recorder();
   const lines: string[] = [];
@@ -113,7 +114,7 @@ async function until(done: () => boolean, ms = 5000): Promise<void> {
   }
 }
 
-Deno.test("withAmbientOutput: console output inside the scope goes to the sink", async () => {
+test("withAmbientOutput: console output inside the scope goes to the sink", async () => {
   const origLog = console.log;
   const origError = console.error;
   const direct: string[] = [];
@@ -145,7 +146,7 @@ Deno.test("withAmbientOutput: console output inside the scope goes to the sink",
   }
 });
 
-Deno.test("withAmbientOutput: a console replaced after the first wrap is wrapped too", async () => {
+test("withAmbientOutput: a console replaced after the first wrap is wrapped too", async () => {
   const origLog = console.log;
   try {
     // Wrap whatever is installed now.
@@ -168,7 +169,7 @@ Deno.test("withAmbientOutput: a console replaced after the first wrap is wrapped
   }
 });
 
-Deno.test("withAmbientOutput: a spawned process's output goes to the sink", async () => {
+test("withAmbientOutput: a spawned process's output goes to the sink", async () => {
   const stdout = recorder();
   const stderr = recorder();
   const code = `console.log("svc-out"); console.error("svc-err");`;
@@ -182,7 +183,7 @@ Deno.test("withAmbientOutput: a spawned process's output goes to the sink", asyn
   assertEquals(stderr.text(), "svc-err\n");
 });
 
-Deno.test("withAmbientOutput: a spawned process does not hang when the sink fails", async () => {
+test("withAmbientOutput: a spawned process does not hang when the sink fails", async () => {
   const broken: ByteWriter = {
     writeSync: () => {
       throw new Deno.errors.BrokenPipe("terminal closed");

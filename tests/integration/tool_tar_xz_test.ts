@@ -8,11 +8,12 @@
  * and the symlinked `bin/dart` preserved — then puts its `bin/` on `PATH`.
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import { Build, target, ToolTasks } from "../../packages/core/mod.ts";
 import { sha256Hex } from "../../packages/core/src/internal.ts";
-import { fixture, FLUTTER_TAR_XZ } from "../../packages/core/tests/_xz.ts";
-import { withTemp } from "../../packages/core/tests/_temp.ts";
+import { fixture, FLUTTER_TAR_XZ } from "../_xz.ts";
+import { withTemp } from "../_temp.ts";
 import { runCli } from "./_harness.ts";
 
 /** Install the fixture SDK through a real build and report what it saw. */
@@ -46,12 +47,12 @@ async function installFlutter(): Promise<void> {
   });
 }
 
-Deno.test(
+test(
   "a build installs a tar.xz runtime tree through ToolTasks.installTree",
   installFlutter,
 );
 
-Deno.test("a build installs a tar.xz tree with the built-in decoder when no xz is on PATH", async () => {
+test("a build installs a tar.xz tree with the built-in decoder when no xz is on PATH", async () => {
   const path = Deno.env.get("PATH");
   Deno.env.set("PATH", "");
   try {

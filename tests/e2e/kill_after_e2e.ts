@@ -12,7 +12,8 @@
  * matrix.
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import { runFixture } from "./_harness.ts";
 
 const FIXTURE = new URL("./fixtures/kill_after_build.ts", import.meta.url);
@@ -20,7 +21,7 @@ const FIXTURE = new URL("./fixtures/kill_after_build.ts", import.meta.url);
 /** The child sleeps 60s; anything under this bound proves it was killed. */
 const MAX_MS = 30_000;
 
-Deno.test("a killAfter timeout escalates to SIGKILL and does not hang", async () => {
+test("a killAfter timeout escalates to SIGKILL and does not hang", async () => {
   const started = performance.now();
   const { code, out, err } = await runFixture(FIXTURE, ["timeout"], {});
   const elapsed = performance.now() - started;

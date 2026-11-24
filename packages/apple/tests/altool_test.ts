@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: MIT
 // cspell:ignore efgh ijkl mnop
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
   assertWrapperConformance,
@@ -14,7 +15,7 @@ import {
 } from "@zuke/core/tooling/conformance";
 import { AltoolSettings, AltoolTasks } from "../mod.ts";
 
-Deno.test("altool resolves xcrun from PATH", async () => {
+test("altool resolves xcrun from PATH", async () => {
   await assertWrapperConformance(
     () =>
       new AltoolSettings("--upload-app").file("a.ipa").type("ios").apiKey(
@@ -26,7 +27,7 @@ Deno.test("altool resolves xcrun from PATH", async () => {
   );
 });
 
-Deno.test("altool: upload with an API key, JSON output", () => {
+test("altool: upload with an API key, JSON output", () => {
   assertEquals(
     new AltoolSettings("--upload-app").file("-App.ipa").type("ios")
       .apiKey("ABC123", "issuer-uuid").argv().slice(1),
@@ -47,7 +48,7 @@ Deno.test("altool: upload with an API key, JSON output", () => {
   );
 });
 
-Deno.test("altool: the password rides an environment variable, masked", () => {
+test("altool: the password rides an environment variable, masked", () => {
   class Spy extends AltoolSettings {
     readonly marked: string[] = [];
     readonly envs: Array<Record<string, string>> = [];
@@ -77,7 +78,7 @@ Deno.test("altool: the password rides an environment variable, masked", () => {
   ]);
 });
 
-Deno.test("altool: file, type and credentials are required", () => {
+test("altool: file, type and credentials are required", () => {
   assertThrows(
     () =>
       new AltoolSettings("--upload-app").type("ios").apiKey("K", "I").argv(),
@@ -91,7 +92,7 @@ Deno.test("altool: file, type and credentials are required", () => {
   );
 });
 
-Deno.test("AltoolTasks: both tasks reach execution", async () => {
+test("AltoolTasks: both tasks reach execution", async () => {
   for (const task of [AltoolTasks.uploadApp, AltoolTasks.validateApp]) {
     await assertRejects(
       () =>

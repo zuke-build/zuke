@@ -1,12 +1,13 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "./_assert.ts";
+} from "../../../tests/_assert.ts";
 import {
   assertSafeEntryName,
   assertSafeLinkTarget,
@@ -27,15 +28,24 @@ import {
   unzip,
   zip,
 } from "../src/compression.ts";
-import { DEFLATE, makeZip, STORED } from "./_zip.ts";
-import { GNU, longLink, sealHeader, ustarArchive } from "./_tar.ts";
-import { withTemp } from "./_temp.ts";
-import { ESCAPING_TAR_XZ, fixture, FLUTTER_TAR_XZ } from "./_xz.ts";
+import { DEFLATE, makeZip, STORED } from "../../../tests/_zip.ts";
+import {
+  GNU,
+  longLink,
+  sealHeader,
+  ustarArchive,
+} from "../../../tests/_tar.ts";
+import { withTemp } from "../../../tests/_temp.ts";
+import {
+  ESCAPING_TAR_XZ,
+  fixture,
+  FLUTTER_TAR_XZ,
+} from "../../../tests/_xz.ts";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 const dec = (b: Uint8Array) => new TextDecoder().decode(b);
 
-Deno.test("gzip/gunzip round-trips bytes", async () => {
+test("gzip/gunzip round-trips bytes", async () => {
   const original = enc("hello, world".repeat(100));
   const compressed = await gzip(original);
   // gzip has a header; the magic bytes are 0x1f 0x8b.
@@ -43,7 +53,7 @@ Deno.test("gzip/gunzip round-trips bytes", async () => {
   assertEquals(dec(await gunzip(compressed)), dec(original));
 });
 
-Deno.test("tar/untar round-trips entries in order", () => {
+test("tar/untar round-trips entries in order", () => {
   const entries: TarEntry[] = [
     { name: "a.txt", data: enc("alpha") },
     { name: "dir/b.bin", data: enc("beta-content-longer-than-a-bit") },
@@ -59,7 +69,7 @@ Deno.test("tar/untar round-trips entries in order", () => {
   assertEquals(out[2].data.length, 0);
 });
 
-Deno.test("tar writes a file's mode, defaulting to 0644", () => {
+test("tar writes a file's mode, defaulting to 0644", () => {
   // The mode field is 7 octal digits at offset 100 of each 512-byte header.
   const modeOf = (archive: Uint8Array, header: number) =>
     parseInt(dec(archive.slice(header * 512 + 100, header * 512 + 107)), 8);
@@ -80,7 +90,7 @@ Deno.test("tar writes a file's mode, defaulting to 0644", () => {
   assertEquals(modeOf(link, 0), 0o777);
 });
 
-Deno.test("tar rejects a mode that is not permission bits", () => {
+test("tar rejects a mode that is not permission bits", () => {
   for (const mode of [-1, 0o10000, 1.5, Number.NaN]) {
     assertThrows(
       () => tar([{ name: "x", data: enc("x"), mode }]),
@@ -90,12 +100,12 @@ Deno.test("tar rejects a mode that is not permission bits", () => {
   }
 });
 
-Deno.test("tar output is reproducible (fixed mtime)", () => {
+test("tar output is reproducible (fixed mtime)", () => {
   const e: TarEntry[] = [{ name: "x", data: enc("same") }];
   assertEquals(tar(e), tar(e));
 });
 
-Deno.test("tar carries a name past the ustar limit in a pax header", () => {
+test("tar carries a name past the ustar limit in a pax header", () => {
   // Multi-byte, so the record length counts bytes, not characters.
   const longName = "é/".repeat(60) + "file";
   const out = untar(tar([
@@ -107,7 +117,7 @@ Deno.test("tar carries a name past the ustar limit in a pax header", () => {
   assertEquals(out[0].mode, 0o755);
 });
 
-Deno.test("untar stops at the zero-block trailer and ignores non-files", () => {
+test("untar stops at the zero-block trailer and ignores non-files", () => {
   // A valid archive followed by trailing zero blocks decodes to just its files.
   const archive = tar([{ name: "only.txt", data: enc("data") }]);
   const out = untar(archive);
@@ -115,7 +125,7 @@ Deno.test("untar stops at the zero-block trailer and ignores non-files", () => {
   assertEquals(out[0].name, "only.txt");
 });
 
-Deno.test("untar reconstructs a long path from the ustar prefix field", () => {
+test("untar reconstructs a long path from the ustar prefix field", () => {
   // A >100-byte path POSIX tar split across prefix + name (as Node's tarball
   // does for npm's deeply-nested bundled deps).
   const prefix =
@@ -133,7 +143,7 @@ Deno.test("untar reconstructs a long path from the ustar prefix field", () => {
   assertEquals(dec(out[1].data), "no prefix");
 });
 
-Deno.test("untar ignores the prefix field for a non-ustar (GNU) header", () => {
+test("untar ignores the prefix field for a non-ustar (GNU) header", () => {
   // GNU tar writes "ustar " (trailing space) and reuses the byte-345 region for
   // other fields, so the prefix must not be treated as a path there.
   const out = untar(ustarArchive([
@@ -146,7 +156,7 @@ Deno.test("untar ignores the prefix field for a non-ustar (GNU) header", () => {
 // GNU tar (which builds Node's Linux tarballs) stores a >100-byte path as a
 // `@LongLink` pseudo-entry (typeflag 'L') whose *data* is the full name; the
 // following real header carries the name truncated to 100 bytes.
-Deno.test("untar reconstructs a GNU @LongLink long name", () => {
+test("untar reconstructs a GNU @LongLink long name", () => {
   const full =
     "node-v1/lib/node_modules/npm/node_modules/exponential-backoff/dist/delay/always/alwaysDelayStrategy.class.js";
   const out = untar(ustarArchive([
@@ -159,7 +169,7 @@ Deno.test("untar reconstructs a GNU @LongLink long name", () => {
   assertEquals(dec(out[0].data), "long");
 });
 
-Deno.test("untar reconstructs a GNU @LongLink symlink target (typeflag K)", () => {
+test("untar reconstructs a GNU @LongLink symlink target (typeflag K)", () => {
   const target = `../${"t".repeat(100)}/npm-cli.js`; // > 100 bytes
   const out = untar(ustarArchive([
     longLink(target, 0x4b), // 'K' — the next entry's link target
@@ -175,7 +185,7 @@ Deno.test("untar reconstructs a GNU @LongLink symlink target (typeflag K)", () =
   assertEquals(out[0].linkname, target);
 });
 
-Deno.test("extractTarGzip refuses a @LongLink symlink target that escapes or is absolute", async () => {
+test("extractTarGzip refuses a @LongLink symlink target that escapes or is absolute", async () => {
   // A 'K'-provided long target goes through the same assertSafeLinkTarget as a
   // short one — a poisoned GNU tarball can't use @LongLink to smuggle an
   // escaping or absolute symlink past the guard.
@@ -224,7 +234,7 @@ Deno.test("extractTarGzip refuses a @LongLink symlink target that escapes or is 
   });
 });
 
-Deno.test("extractTarGzip handles a @LongLink name whose 100-byte truncation ends on a slash", async () => {
+test("extractTarGzip handles a @LongLink name whose 100-byte truncation ends on a slash", async () => {
   // The consumer-reported crash: the truncated name ends exactly at a "/", so
   // the un-fixed reader mkdir'd that path and then writeFile'd the directory —
   // "Is a directory (os error 21)".
@@ -242,7 +252,7 @@ Deno.test("extractTarGzip handles a @LongLink name whose 100-byte truncation end
   });
 });
 
-Deno.test("untar ignores an empty @LongLink and keeps the following entry's real name", () => {
+test("untar ignores an empty @LongLink and keeps the following entry's real name", () => {
   // A zero-size 'L' pseudo-entry must not blank the next name: `longName = ""`
   // would defeat the `?? entryName(...)` fallback and drop the file.
   const out = untar(ustarArchive([
@@ -259,7 +269,7 @@ Deno.test("untar ignores an empty @LongLink and keeps the following entry's real
   assertEquals(dec(out[0].data), "hello");
 });
 
-Deno.test("untar reconstructs a pax path= long name and lets pax win over a GNU name", () => {
+test("untar reconstructs a pax path= long name and lets pax win over a GNU name", () => {
   const paxPath = `deep/${"p".repeat(120)}/module.js`; // > 100 bytes
   const paxRecord = (key: string, value: string) => {
     // A pax record is "<len> key=value\n", where len counts the whole record —
@@ -300,7 +310,7 @@ Deno.test("untar reconstructs a pax path= long name and lets pax win over a GNU 
   assertEquals(outBoth.map((e) => e.name), [paxPath]);
 });
 
-Deno.test("untar keeps a GNU long name across a pax metadata header (accumulation)", () => {
+test("untar keeps a GNU long name across a pax metadata header (accumulation)", () => {
   const full = `keep/${"k".repeat(120)}/index.js`; // > 100 bytes
   // 'L' (name) then an 'x' header carrying only mtime (no path=) then the file:
   // the long name must survive the intervening metadata, not be dropped.
@@ -319,7 +329,7 @@ Deno.test("untar keeps a GNU long name across a pax metadata header (accumulatio
   assertEquals(dec(out[0].data), "kept");
 });
 
-Deno.test("untar emits a '5' directory entry (with the GNU long name consumed by it)", () => {
+test("untar emits a '5' directory entry (with the GNU long name consumed by it)", () => {
   const longDir = `d/${"l".repeat(120)}`; // > 100 bytes, a long-named directory
   const out = untar(ustarArchive([
     longLink(`${longDir}/`),
@@ -337,7 +347,7 @@ Deno.test("untar emits a '5' directory entry (with the GNU long name consumed by
   assertEquals(out[0].data.length, 0);
 });
 
-Deno.test("untar attaches a 'K' long target to a symlink and does not leak it to a regular file", () => {
+test("untar attaches a 'K' long target to a symlink and does not leak it to a regular file", () => {
   const target = `../${"t".repeat(120)}/npm-cli.js`; // > 100 bytes
   // 'K' then a regular file (not a symlink): the file has no linkname and the
   // pending target is consumed, not leaked onto a later symlink.
@@ -357,7 +367,7 @@ Deno.test("untar attaches a 'K' long target to a symlink and does not leak it to
   assertEquals(out[1].linkname, ""); // its own (empty) header target, not the 'K'
 });
 
-Deno.test("untar clamps a malformed huge @LongLink size (no out-of-bounds scan or hang)", () => {
+test("untar clamps a malformed huge @LongLink size (no out-of-bounds scan or hang)", () => {
   // A hand-built 'L' header whose size field claims far more than the archive
   // holds, with no trailing NUL: the clamp bounds the read to what's present.
   const header = new Uint8Array(512);
@@ -401,7 +411,7 @@ async function assertSymlinkChainContained(
   });
 }
 
-Deno.test("extractTarGzip refuses to extract through an archive-planted symlink chain", async () => {
+test("extractTarGzip refuses to extract through an archive-planted symlink chain", async () => {
   await withTemp(async (dir) => {
     const archive = `${dir}/evil.tar.gz`;
     await Deno.writeFile(
@@ -424,7 +434,7 @@ Deno.test("extractTarGzip refuses to extract through an archive-planted symlink 
   });
 });
 
-Deno.test("extractTarGzip contains a symlink chain hidden behind '.' segments", async () => {
+test("extractTarGzip contains a symlink chain hidden behind '.' segments", async () => {
   // "." segments keep the archive string different from the resolved path, so a
   // lexical ancestor check misses them; the on-disk chain still escapes.
   await assertSymlinkChainContained([
@@ -434,7 +444,7 @@ Deno.test("extractTarGzip contains a symlink chain hidden behind '.' segments", 
   ], "pwned.txt");
 });
 
-Deno.test("extractTarGzip contains a symlink chain hidden behind case variation", async () => {
+test("extractTarGzip contains a symlink chain hidden behind case variation", async () => {
   // On a case-insensitive filesystem (macOS/Windows), "sub/A" aliases the
   // symlink planted at "sub/a"; on a case-sensitive one the chain simply stays
   // inside the destination. Either way, nothing escapes.
@@ -445,7 +455,7 @@ Deno.test("extractTarGzip contains a symlink chain hidden behind case variation"
   ], "pwned.txt");
 });
 
-Deno.test("extractTarGzip refuses a link hop that would let a same-name file escape", async () => {
+test("extractTarGzip refuses a link hop that would let a same-name file escape", async () => {
   if (Deno.build.os === "windows") return; // symlink creation is privileged there
   await withTemp(async (dir) => {
     // A symlink planted AT the leaf (target lexically in-bounds via one hop),
@@ -474,7 +484,7 @@ Deno.test("extractTarGzip refuses a link hop that would let a same-name file esc
   });
 });
 
-Deno.test("extractTarGzip does not follow a symlink left in a reused destination", async () => {
+test("extractTarGzip does not follow a symlink left in a reused destination", async () => {
   if (Deno.build.os === "windows") return; // symlink creation is privileged there
   await withTemp(async (dir) => {
     // A reused destDir already holding a symlink that points outside it; a plain
@@ -494,7 +504,7 @@ Deno.test("extractTarGzip does not follow a symlink left in a reused destination
   });
 });
 
-Deno.test("extractTarGzip lets a directory entry replace an existing file at that path", async () => {
+test("extractTarGzip lets a directory entry replace an existing file at that path", async () => {
   if (Deno.build.os === "windows") return; // symlink-adjacent edge; keep POSIX
   await withTemp(async (dir) => {
     const archive = `${dir}/dup.tar.gz`;
@@ -514,7 +524,7 @@ Deno.test("extractTarGzip lets a directory entry replace an existing file at tha
   });
 });
 
-Deno.test("extractTarGzip creates a trailing-slash directory entry instead of writing a file", async () => {
+test("extractTarGzip creates a trailing-slash directory entry instead of writing a file", async () => {
   // Old (pre-ustar) tar marks a directory as a size-0 *file* entry with a
   // trailing slash; writing it as a file would crash on the just-created dir.
   await withTemp(async (dir) => {
@@ -530,7 +540,7 @@ Deno.test("extractTarGzip creates a trailing-slash directory entry instead of wr
   });
 });
 
-Deno.test("extractTarGzip lands a >100-byte prefixed path at its full location", async () => {
+test("extractTarGzip lands a >100-byte prefixed path at its full location", async () => {
   await withTemp(async (dir) => {
     const prefix =
       "lib/node_modules/npm/node_modules/@npmcli/config/lib/definitions";
@@ -549,7 +559,7 @@ Deno.test("extractTarGzip lands a >100-byte prefixed path at its full location",
   });
 });
 
-Deno.test("createTarGzip then extractTarGzip round-trips files on disk", async () => {
+test("createTarGzip then extractTarGzip round-trips files on disk", async () => {
   await withTemp(async (dir) => {
     await Deno.mkdir(`${dir}/src`);
     await Deno.writeTextFile(`${dir}/src/app.js`, "console.log(1)");
@@ -568,7 +578,7 @@ Deno.test("createTarGzip then extractTarGzip round-trips files on disk", async (
   });
 });
 
-Deno.test("extractTarGzip writes top-level entries without a subdirectory", async () => {
+test("extractTarGzip writes top-level entries without a subdirectory", async () => {
   await withTemp(async (dir) => {
     await Deno.writeTextFile(`${dir}/flat.txt`, "flat");
     const archive = `${dir}/a.tar.gz`;
@@ -578,7 +588,7 @@ Deno.test("extractTarGzip writes top-level entries without a subdirectory", asyn
   });
 });
 
-Deno.test("createTarGzip fails clearly when a file is missing", async () => {
+test("createTarGzip fails clearly when a file is missing", async () => {
   await withTemp(async (dir) => {
     await assertRejects(
       () => createTarGzip(["nope.txt"], `${dir}/x.tar.gz`, { cwd: dir }),
@@ -587,7 +597,7 @@ Deno.test("createTarGzip fails clearly when a file is missing", async () => {
   });
 });
 
-Deno.test("extractTarGzip refuses a path that escapes the destination", async () => {
+test("extractTarGzip refuses a path that escapes the destination", async () => {
   await withTemp(async (dir) => {
     // A hand-built archive with a traversing entry — a poisoned tarball.
     const archive = `${dir}/evil.tar.gz`;
@@ -605,7 +615,7 @@ Deno.test("extractTarGzip refuses a path that escapes the destination", async ()
   });
 });
 
-Deno.test("unzip round-trips a stored and a deflate entry", async () => {
+test("unzip round-trips a stored and a deflate entry", async () => {
   const compressible = enc("deflate ".repeat(200));
   const zip = await makeZip([
     { name: "raw.txt", data: enc("stored-bytes"), method: STORED },
@@ -617,7 +627,7 @@ Deno.test("unzip round-trips a stored and a deflate entry", async () => {
   assertEquals(dec(out[1].data), dec(compressible));
 });
 
-Deno.test("unzip skips directory entries and keeps nested files", async () => {
+test("unzip skips directory entries and keeps nested files", async () => {
   const zip = await makeZip([
     { name: "bin/" }, // directory entry — no data
     { name: "bin/tool", data: enc("#!/bin/sh\n"), method: DEFLATE },
@@ -627,7 +637,7 @@ Deno.test("unzip skips directory entries and keeps nested files", async () => {
   assertEquals(dec(out[0].data), "#!/bin/sh\n");
 });
 
-Deno.test("unzip reads a Unix zip's modes and symlinks", async () => {
+test("unzip reads a Unix zip's modes and symlinks", async () => {
   const zip = await makeZip([
     { name: "bin/tool", data: enc("#!/bin/sh\n"), unixMode: 0o104755 },
     {
@@ -648,7 +658,7 @@ Deno.test("unzip reads a Unix zip's modes and symlinks", async () => {
   assertEquals(out[3].mode, undefined);
 });
 
-Deno.test({
+test({
   name: "extractZip keeps Unix modes and recreates symlinks",
   ignore: Deno.build.os === "windows",
   fn: async () => {
@@ -674,7 +684,7 @@ Deno.test({
   },
 });
 
-Deno.test("assertSafeLinkTarget refuses .. after a name, and empty or NUL targets", () => {
+test("assertSafeLinkTarget refuses .. after a name, and empty or NUL targets", () => {
   // Leading climbs stay allowed (Node's bin/npm -> ../lib/...).
   assertSafeLinkTarget("bin/npm", "../lib/npm-cli.js");
   for (const target of ["x/up/..", "a/../b", "", "a\0b"]) {
@@ -682,7 +692,7 @@ Deno.test("assertSafeLinkTarget refuses .. after a name, and empty or NUL target
   }
 });
 
-Deno.test("extractZip refuses a symlink chain that would climb out", async () => {
+test("extractZip refuses a symlink chain that would climb out", async () => {
   await withTemp(async (dir) => {
     await Deno.writeFile(
       `${dir}/chain.zip`,
@@ -699,7 +709,7 @@ Deno.test("extractZip refuses a symlink chain that would climb out", async () =>
   });
 });
 
-Deno.test({
+test({
   name: "extraction keeps files owner-readable and never world-writable",
   ignore: Deno.build.os === "windows",
   fn: async () => {
@@ -720,7 +730,7 @@ Deno.test({
   },
 });
 
-Deno.test("extractZip refuses a Unix symlink that escapes", async () => {
+test("extractZip refuses a Unix symlink that escapes", async () => {
   await withTemp(async (dir) => {
     await Deno.writeFile(
       `${dir}/evil.zip`,
@@ -736,7 +746,7 @@ Deno.test("extractZip refuses a Unix symlink that escapes", async () => {
   });
 });
 
-Deno.test({
+test({
   name: "extractTarGzip applies each file's mode",
   ignore: Deno.build.os === "windows",
   fn: async () => {
@@ -761,7 +771,7 @@ Deno.test({
   },
 });
 
-Deno.test("extractZip writes files (stored + deflate + nested) to disk", async () => {
+test("extractZip writes files (stored + deflate + nested) to disk", async () => {
   await withTemp(async (dir) => {
     const zip = `${dir}/tool.zip`;
     await Deno.writeFile(
@@ -784,7 +794,7 @@ Deno.test("extractZip writes files (stored + deflate + nested) to disk", async (
   });
 });
 
-Deno.test("extractZip refuses a traversing or absolute entry (zip slip)", async () => {
+test("extractZip refuses a traversing or absolute entry (zip slip)", async () => {
   await withTemp(async (dir) => {
     const evil = `${dir}/evil.zip`;
     await Deno.writeFile(
@@ -809,19 +819,19 @@ Deno.test("extractZip refuses a traversing or absolute entry (zip slip)", async 
   });
 });
 
-Deno.test("unzip rejects an encrypted entry", async () => {
+test("unzip rejects an encrypted entry", async () => {
   const zip = await makeZip([
     { name: "secret", data: enc("x"), flags: 0x0001 },
   ]);
   await assertRejects(() => unzip(zip), Error, "encrypted");
 });
 
-Deno.test("unzip rejects a zip64 archive", async () => {
+test("unzip rejects a zip64 archive", async () => {
   const zip = await makeZip([{ name: "big", data: enc("x"), zip64: true }]);
   await assertRejects(() => unzip(zip), Error, "zip64");
 });
 
-Deno.test("unzip rejects an unsupported compression method", async () => {
+test("unzip rejects an unsupported compression method", async () => {
   const zip = await makeZip([{ name: "bz", data: enc("x"), method: 12 }]);
   await assertRejects(
     () => unzip(zip),
@@ -830,7 +840,7 @@ Deno.test("unzip rejects an unsupported compression method", async () => {
   );
 });
 
-Deno.test("unzip rejects bytes that are not a zip", async () => {
+test("unzip rejects bytes that are not a zip", async () => {
   await assertRejects(
     () => unzip(enc("not a zip at all, no signature here")),
     Error,
@@ -838,13 +848,13 @@ Deno.test("unzip rejects bytes that are not a zip", async () => {
   );
 });
 
-Deno.test("unzip rejects a corrupt local file header", async () => {
+test("unzip rejects a corrupt local file header", async () => {
   const zip = await makeZip([{ name: "x", data: enc("data") }]);
   zip[0] = 0; // corrupt the local file-header signature
   await assertRejects(() => unzip(zip), Error, "malformed local header");
 });
 
-Deno.test("unzip rejects a zip64 end-of-central-directory", async () => {
+test("unzip rejects a zip64 end-of-central-directory", async () => {
   const zip = await makeZip([{ name: "x", data: enc("data") }]);
   const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
   // Point the central-directory offset at the zip64 sentinel.
@@ -852,7 +862,7 @@ Deno.test("unzip rejects a zip64 end-of-central-directory", async () => {
   await assertRejects(() => unzip(zip), Error, "zip64");
 });
 
-Deno.test("unzip rejects a corrupt central directory", async () => {
+test("unzip rejects a corrupt central directory", async () => {
   const zip = await makeZip([{ name: "x", data: enc("data") }]);
   const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
   const cdOffset = view.getUint32(zip.length - 22 + 16, true);
@@ -860,7 +870,7 @@ Deno.test("unzip rejects a corrupt central directory", async () => {
   await assertRejects(() => unzip(zip), Error, "malformed central directory");
 });
 
-Deno.test("unzip reports an out-of-range central-directory offset as malformed, not a RangeError", async () => {
+test("unzip reports an out-of-range central-directory offset as malformed, not a RangeError", async () => {
   const zip = await makeZip([{ name: "x", data: enc("data") }]);
   const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
   view.setUint32(zip.length - 22 + 16, zip.length + 100, true); // cdOffset past end
@@ -869,7 +879,7 @@ Deno.test("unzip reports an out-of-range central-directory offset as malformed, 
   assertEquals(err.message.includes("RangeError"), false);
 });
 
-Deno.test("unzip rejects a central-directory name that runs past the end", async () => {
+test("unzip rejects a central-directory name that runs past the end", async () => {
   const zip = await makeZip([{ name: "x", data: enc("data") }]);
   const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
   const cdOffset = view.getUint32(zip.length - 22 + 16, true);
@@ -877,7 +887,7 @@ Deno.test("unzip rejects a central-directory name that runs past the end", async
   await assertRejects(() => unzip(zip), Error, "name runs past end");
 });
 
-Deno.test("unzip reports an out-of-range local-header offset as malformed", async () => {
+test("unzip reports an out-of-range local-header offset as malformed", async () => {
   const zip = await makeZip([{ name: "x", data: enc("data") }]);
   const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
   const cdOffset = view.getUint32(zip.length - 22 + 16, true);
@@ -885,7 +895,7 @@ Deno.test("unzip reports an out-of-range local-header offset as malformed", asyn
   await assertRejects(() => unzip(zip), Error, "malformed local header");
 });
 
-Deno.test("unzip rejects an entry whose data runs past the archive", async () => {
+test("unzip rejects an entry whose data runs past the archive", async () => {
   const zip = await makeZip([{ name: "x", data: enc("data") }]);
   const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
   const cdOffset = view.getUint32(zip.length - 22 + 16, true);
@@ -893,7 +903,7 @@ Deno.test("unzip rejects an entry whose data runs past the archive", async () =>
   await assertRejects(() => unzip(zip), Error, "runs past the archive");
 });
 
-Deno.test("unzip uses the local header's extra length, not the central directory's", async () => {
+test("unzip uses the local header's extra length, not the central directory's", async () => {
   // The local header carries a 5-byte extra field the central directory omits.
   // A reader that used the central-directory extra length would land 5 bytes
   // early and decode garbage; this proves it reads the local length.
@@ -908,7 +918,7 @@ Deno.test("unzip uses the local header's extra length, not the central directory
   assertEquals(dec(out[0].data), "payload");
 });
 
-Deno.test("tar/untar round-trips a symlink entry (linkname, no data)", () => {
+test("tar/untar round-trips a symlink entry (linkname, no data)", () => {
   const archive = tar([
     { name: "bin/node", data: enc("ELF-binary") },
     {
@@ -926,14 +936,14 @@ Deno.test("tar/untar round-trips a symlink entry (linkname, no data)", () => {
   assertEquals(out[1].data.length, 0); // a symlink carries no data
 });
 
-Deno.test("tar carries a long name and symlink target in one pax header", () => {
+test("tar carries a long name and symlink target in one pax header", () => {
   const name = "n/".repeat(55) + "link";
   const target = "x/".repeat(60) + "t";
   const out = untar(tar([{ name, data: new Uint8Array(0), linkname: target }]));
   assertEquals(out, [{ name, data: new Uint8Array(0), linkname: target }]);
 });
 
-Deno.test("extractTarGzip strips leading path components", async () => {
+test("extractTarGzip strips leading path components", async () => {
   await withTemp(async (dir) => {
     const archive = `${dir}/a.tar.gz`;
     await Deno.writeFile(
@@ -955,7 +965,7 @@ Deno.test("extractTarGzip strips leading path components", async () => {
   });
 });
 
-Deno.test("extractTarGzip recreates an in-tree symlink on disk (POSIX)", async () => {
+test("extractTarGzip recreates an in-tree symlink on disk (POSIX)", async () => {
   if (Deno.build.os === "windows") return; // symlink creation is privileged there
   await withTemp(async (dir) => {
     const archive = `${dir}/a.tar.gz`;
@@ -973,7 +983,7 @@ Deno.test("extractTarGzip recreates an in-tree symlink on disk (POSIX)", async (
   });
 });
 
-Deno.test("extractTarGzip lets a later symlink overwrite an earlier entry (no AlreadyExists crash)", async () => {
+test("extractTarGzip lets a later symlink overwrite an earlier entry (no AlreadyExists crash)", async () => {
   if (Deno.build.os === "windows") return; // symlink creation is privileged there
   await withTemp(async (dir) => {
     const archive = `${dir}/dup.tar.gz`;
@@ -994,7 +1004,7 @@ Deno.test("extractTarGzip lets a later symlink overwrite an earlier entry (no Al
   });
 });
 
-Deno.test("extractTarGzip refuses a symlink whose target escapes the destination", async () => {
+test("extractTarGzip refuses a symlink whose target escapes the destination", async () => {
   await withTemp(async (dir) => {
     const archive = `${dir}/evil.tar.gz`;
     await Deno.writeFile(
@@ -1015,7 +1025,7 @@ Deno.test("extractTarGzip refuses a symlink whose target escapes the destination
   });
 });
 
-Deno.test("assertSafeLinkTarget accepts in-tree targets and rejects escapes", () => {
+test("assertSafeLinkTarget accepts in-tree targets and rejects escapes", () => {
   assertSafeLinkTarget("bin/npm", "../lib/npm-cli.js"); // resolves inside the tree
   assertSafeLinkTarget("bin/x", "./sibling");
   assertSafeLinkTarget("a/b/c", "../../top"); // climbs to root, not above
@@ -1036,7 +1046,7 @@ Deno.test("assertSafeLinkTarget accepts in-tree targets and rejects escapes", ()
   );
 });
 
-Deno.test("assertSafeEntryName accepts safe names and rejects escapes", () => {
+test("assertSafeEntryName accepts safe names and rejects escapes", () => {
   assertSafeEntryName("bin/tool"); // no throw
   assertSafeEntryName("a/b/c.txt");
   assertThrows(() => assertSafeEntryName("/abs"), Error, "absolute path");
@@ -1073,12 +1083,12 @@ async function inflateBounded(
   }
 }
 
-Deno.test("gunzipStreamBounded yields the bytes when they fit under the limit", async () => {
+test("gunzipStreamBounded yields the bytes when they fit under the limit", async () => {
   const data = new TextEncoder().encode("hello");
   assertEquals(await inflateBounded(await gzip(data), 1024), data);
 });
 
-Deno.test("gunzipStreamBounded fails a stream that expands past the limit", async () => {
+test("gunzipStreamBounded fails a stream that expands past the limit", async () => {
   // A zip bomb in miniature: highly compressible input whose *decompressed*
   // size is what has to be caught. The compressed artifact is tiny, so any cap
   // applied to the archive rather than to the inflating stream would pass it.
@@ -1088,7 +1098,7 @@ Deno.test("gunzipStreamBounded fails a stream that expands past the limit", asyn
   assertEquals(result instanceof Error ? result.message : "", "too large");
 });
 
-Deno.test("gunzipStreamBounded counts decompressed bytes, not compressed ones", async () => {
+test("gunzipStreamBounded counts decompressed bytes, not compressed ones", async () => {
   // The same bytes pass under a limit above their inflated size and fail under
   // one below it, which is what makes the bound meaningful.
   const payload = new Uint8Array(4096);
@@ -1098,7 +1108,7 @@ Deno.test("gunzipStreamBounded counts decompressed bytes, not compressed ones", 
   assertEquals(await inflateBounded(archive, 4095) instanceof Error, true);
 });
 
-Deno.test("byteStream feeds an artifact larger than one slice", async () => {
+test("byteStream feeds an artifact larger than one slice", async () => {
   // Past the 64 KiB feed slice, so the artifact arrives in several pieces.
   const payload = crypto.getRandomValues(new Uint8Array(60_000));
   const big = new Uint8Array(200_000);
@@ -1109,7 +1119,7 @@ Deno.test("byteStream feeds an artifact larger than one slice", async () => {
   assertEquals(await inflateBounded(compressed, big.length), big);
 });
 
-Deno.test("zip writes entries unzip reads back, in order", async () => {
+test("zip writes entries unzip reads back, in order", async () => {
   const entries = [
     { name: "zuke.exe", data: enc("MZ".repeat(5000)) },
     { name: "docs/naïve.txt", data: enc("hello") },
@@ -1125,7 +1135,7 @@ Deno.test("zip writes entries unzip reads back, in order", async () => {
   );
 });
 
-Deno.test("zip is deterministic and records each entry's CRC-32", async () => {
+test("zip is deterministic and records each entry's CRC-32", async () => {
   const entries = [{ name: "check", data: enc("123456789") }];
   const archive = await zip(entries);
   assertEquals(archive, await zip(entries));
@@ -1136,7 +1146,7 @@ Deno.test("zip is deterministic and records each entry's CRC-32", async () => {
   assertEquals([view.getUint16(10, true), view.getUint16(12, true)], [0, 0x21]);
 });
 
-Deno.test("zip refuses a symlink entry", async () => {
+test("zip refuses a symlink entry", async () => {
   await assertRejects(
     () => zip([{ name: "link", data: new Uint8Array(0), linkname: "target" }]),
     Error,
@@ -1144,7 +1154,7 @@ Deno.test("zip refuses a symlink entry", async () => {
   );
 });
 
-Deno.test("extractTarXz unpacks an xz tarball with strip and keeps its symlink", async () => {
+test("extractTarXz unpacks an xz tarball with strip and keeps its symlink", async () => {
   await withTemp(async (dir) => {
     const archive = `${dir}/flutter.tar.xz`;
     await Deno.writeFile(archive, fixture(FLUTTER_TAR_XZ));
@@ -1165,7 +1175,7 @@ Deno.test("extractTarXz unpacks an xz tarball with strip and keeps its symlink",
   });
 });
 
-Deno.test("extractTarXz refuses a path that escapes the destination", async () => {
+test("extractTarXz refuses a path that escapes the destination", async () => {
   await withTemp(async (dir) => {
     const archive = `${dir}/evil.tar.xz`;
     await Deno.writeFile(archive, fixture(ESCAPING_TAR_XZ));
@@ -1179,7 +1189,7 @@ Deno.test("extractTarXz refuses a path that escapes the destination", async () =
   });
 });
 
-Deno.test("extractTarXz falls back to the built-in decoder with no system xz", async () => {
+test("extractTarXz falls back to the built-in decoder with no system xz", async () => {
   const path = Deno.env.get("PATH");
   Deno.env.set("PATH", "");
   try {
@@ -1195,7 +1205,7 @@ Deno.test("extractTarXz falls back to the built-in decoder with no system xz", a
   }
 });
 
-Deno.test("decompressWith returns stdout, or null on a failed or missing command", async () => {
+test("decompressWith returns stdout, or null on a failed or missing command", async () => {
   const deno = Deno.execPath();
   const out = await decompressWith(deno, [
     "eval",
@@ -1248,7 +1258,7 @@ async function drain(stream: ReadableStream<Uint8Array>): Promise<Uint8Array> {
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
-Deno.test("gzipTarStream produces exactly gzip(tar(...)) once inflated", async () => {
+test("gzipTarStream produces exactly gzip(tar(...)) once inflated", async () => {
   const entries = varietyEntries();
   async function* source(): AsyncGenerator<TarEntry> {
     yield* entries;
@@ -1259,7 +1269,7 @@ Deno.test("gzipTarStream produces exactly gzip(tar(...)) once inflated", async (
   );
 });
 
-Deno.test("gzipTarStream pulls each entry only when it is needed", async () => {
+test("gzipTarStream pulls each entry only when it is needed", async () => {
   // A source that records how far it has been read: the whole archive is not
   // materialised first, so the reads interleave with compression.
   const pulled: string[] = [];
@@ -1274,7 +1284,7 @@ Deno.test("gzipTarStream pulls each entry only when it is needed", async () => {
   assertEquals(untar(await gunzip(archive)).map((e) => e.name), ["one", "two"]);
 });
 
-Deno.test("untarStream reads the same entries as untar, whatever the chunk size", async () => {
+test("untarStream reads the same entries as untar, whatever the chunk size", async () => {
   const gnu = ustarArchive([
     longLink(`${"g".repeat(120)}/name.js`),
     { name: "g".repeat(100), prefix: "", data: enc("gnu"), magic: GNU },
@@ -1299,7 +1309,7 @@ Deno.test("untarStream reads the same entries as untar, whatever the chunk size"
   }
 });
 
-Deno.test("untarStream without data keeps names, links and modes but no file bytes", async () => {
+test("untarStream without data keeps names, links and modes but no file bytes", async () => {
   const entries = await collect(
     untarStream(chunked(tar(varietyEntries()), 100), false),
   );
@@ -1310,7 +1320,7 @@ Deno.test("untarStream without data keeps names, links and modes but no file byt
   );
 });
 
-Deno.test("untarStream reads a truncated archive as untar does", async () => {
+test("untarStream reads a truncated archive as untar does", async () => {
   const archive = tar([
     { name: "whole", data: enc("complete") },
     { name: "cut", data: new Uint8Array(2000).fill(1) },
@@ -1332,7 +1342,7 @@ function withSizeField(field: string): Uint8Array {
   return archive;
 }
 
-Deno.test("untar refuses a negative or non-numeric size instead of looping", async () => {
+test("untar refuses a negative or non-numeric size instead of looping", async () => {
   // " -1750" is octal -1000: the reader used to step back onto the same
   // header and append entries until memory ran out.
   for (const field of [" -1750", "zz"]) {
@@ -1345,7 +1355,7 @@ Deno.test("untar refuses a negative or non-numeric size instead of looping", asy
   }
 });
 
-Deno.test("untarStream ignores empty chunks between and inside members", async () => {
+test("untarStream ignores empty chunks between and inside members", async () => {
   const archive = tar(varietyEntries());
   const chunks: Uint8Array[] = [new Uint8Array(0)];
   for (let i = 0; i < archive.length; i += 300) {
@@ -1366,7 +1376,7 @@ function oneZeroBlock(entries: TarEntry[]): Uint8Array {
   return archive.subarray(0, archive.length - 512);
 }
 
-Deno.test("untar refuses members after a lone zero block, and accepts a one-block trailer", async () => {
+test("untar refuses members after a lone zero block, and accepts a one-block trailer", async () => {
   const clean = oneZeroBlock([{
     name: "package/package.json",
     data: enc("{}"),
@@ -1390,7 +1400,7 @@ Deno.test("untar refuses members after a lone zero block, and accepts a one-bloc
   );
 });
 
-Deno.test("untar refuses a member whose header checksum is wrong", async () => {
+test("untar refuses a member whose header checksum is wrong", async () => {
   const archive = tar([{ name: "a.js", data: enc("x") }]);
   archive[0] = enc("b")[0]; // the name changes, the stored checksum does not
   assertThrows(() => untar(archive), Error, "checksum");
@@ -1407,7 +1417,7 @@ Deno.test("untar refuses a member whose header checksum is wrong", async () => {
   assertEquals(untar(high).map((e) => e.name), ["é.txt"]);
 });
 
-Deno.test("untar refuses a global pax header that sets path or linkpath", async () => {
+test("untar refuses a global pax header that sets path or linkpath", async () => {
   const record = (key: string, value: string) => {
     const body = ` ${key}=${value}\n`;
     let len = body.length + 1;

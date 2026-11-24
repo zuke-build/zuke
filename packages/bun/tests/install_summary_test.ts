@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   TargetSummary,
   withAmbientSummary,
@@ -19,7 +20,7 @@ function out(code: number, stdout = "", stderr = ""): CommandOutput {
   return new CommandOutput(code, stdout, stderr);
 }
 
-Deno.test("bun install: the closing line yields Installed and Removed", () => {
+test("bun install: the closing line yields Installed and Removed", () => {
   assertEquals(
     parseBunInstallSummary(
       out(
@@ -44,7 +45,7 @@ Deno.test("bun install: the closing line yields Installed and Removed", () => {
   );
 });
 
-Deno.test("bun install: a run without the closing line reports nothing", () => {
+test("bun install: a run without the closing line reports nothing", () => {
   assertEquals(parseBunInstallSummary(out(0)), undefined);
   assertEquals(
     parseBunInstallSummary(
@@ -71,7 +72,7 @@ class RemoveProbe extends BunRemoveSettings {
   }
 }
 
-Deno.test("bun install, add and remove report onto the running target", async () => {
+test("bun install, add and remove report onto the running target", async () => {
   const summary = new TargetSummary();
   await withAmbientSummary(summary, () => {
     new Probe().probe(out(0, "3 packages installed [9ms]\n"));

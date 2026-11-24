@@ -7,11 +7,12 @@
  * size cap, error details, and that no secret reaches an error.
  */
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { InsecureBackendUrlError } from "@zuke/core";
 import {
   answerSeconds,
@@ -22,8 +23,8 @@ import {
   type AuthStep,
   readAuthFile,
 } from "../src/auth_http.ts";
-import { context } from "./_auth.ts";
-import { fakeFetch } from "./_fetch.ts";
+import { context } from "../../../tests/support/prometheus/_auth.ts";
+import { fakeFetch } from "../../../tests/support/prometheus/_fetch.ts";
 
 /** The step every test request is named by. */
 const STEP: AuthStep = {
@@ -59,7 +60,7 @@ const METADATA_URLS = [
   "http://[fd00:ec2::23]/v1/credentials",
 ];
 
-Deno.test("a step that sends a secret gets no metadata exemption", async () => {
+test("a step that sends a secret gets no metadata exemption", async () => {
   for (const url of METADATA_URLS) {
     const { fetcher, result } = get(url, () => new Response("ok"));
     await assertRejects(
@@ -71,7 +72,7 @@ Deno.test("a step that sends a secret gets no metadata exemption", async () => {
   }
 });
 
-Deno.test("the private-network allowance admits RFC 1918 and link-local IPv4 only", async () => {
+test("the private-network allowance admits RFC 1918 and link-local IPv4 only", async () => {
   const appService: AuthStep = { ...STEP, plaintext: "private" };
   for (
     const url of [
@@ -112,7 +113,7 @@ Deno.test("the private-network allowance admits RFC 1918 and link-local IPv4 onl
   await assertRejects(() => result, InsecureBackendUrlError);
 });
 
-Deno.test("the link-local metadata endpoints are the only plaintext ones a metadata request may use", async () => {
+test("the link-local metadata endpoints are the only plaintext ones a metadata request may use", async () => {
   const metadata: AuthStep = { ...STEP, plaintext: "metadata" };
   for (
     const url of [
@@ -157,7 +158,7 @@ Deno.test("the link-local metadata endpoints are the only plaintext ones a metad
   }
 });
 
-Deno.test("ZUKE_ALLOW_INSECURE_URL opens a plaintext token endpoint, as it does the server", async () => {
+test("ZUKE_ALLOW_INSECURE_URL opens a plaintext token endpoint, as it does the server", async () => {
   const { result } = get(
     "http://login.example/token",
     () => new Response("ok"),
@@ -166,13 +167,13 @@ Deno.test("ZUKE_ALLOW_INSECURE_URL opens a plaintext token endpoint, as it does 
   assertEquals(await result, "ok");
 });
 
-Deno.test("a malformed endpoint is refused without quoting it", async () => {
+test("a malformed endpoint is refused without quoting it", async () => {
   const { result } = get("not a url secret-value-1234", () => new Response());
   const error = await assertRejects(() => result, Error, "is not a valid URL");
   assertEquals(error.message.includes("secret-value-1234"), false);
 });
 
-Deno.test("the request is sent as given, with the caller's signal and no redirect following", async () => {
+test("the request is sent as given, with the caller's signal and no redirect following", async () => {
   const signal = new AbortController().signal;
   const fetcher = fakeFetch(() => new Response("ok"));
   await authRequest(context({ fetch: fetcher, signal }), STEP, {
@@ -189,7 +190,7 @@ Deno.test("the request is sent as given, with the caller's signal and no redirec
   assertEquals(sent.signal, signal);
 });
 
-Deno.test("a network failure names the provider and step, with the secret masked", async () => {
+test("a network failure names the provider and step, with the secret masked", async () => {
   const { result } = get("https://login.example/token", () => {
     throw new TypeError("connection reset carrying secret-value-1234");
   });
@@ -205,7 +206,7 @@ Deno.test("a network failure names the provider and step, with the secret masked
   await assertRejects(() => thrown.result, Error, "a string, not an Error");
 });
 
-Deno.test("a redirect is refused rather than followed", async () => {
+test("a redirect is refused rather than followed", async () => {
   const opaque = Object.defineProperty(new Response(null), "type", {
     value: "opaqueredirect",
   });
@@ -225,7 +226,7 @@ Deno.test("a redirect is refused rather than followed", async () => {
   }
 });
 
-Deno.test("an answer over the cap is refused", async () => {
+test("an answer over the cap is refused", async () => {
   const { result } = get(
     "https://login.example/token",
     () => new Response("x".repeat(1024 * 1024 + 1)),
@@ -233,7 +234,7 @@ Deno.test("an answer over the cap is refused", async () => {
   await assertRejects(() => result, Error, "the answer is larger than");
 });
 
-Deno.test("a refusal reports the useful part of the answer, secrets masked", async () => {
+test("a refusal reports the useful part of the answer, secrets masked", async () => {
   const cases: Array<[Response, string]> = [
     [
       Response.json({
@@ -292,7 +293,7 @@ Deno.test("a refusal reports the useful part of the answer, secrets masked", asy
   assertEquals(error.message.endsWith("…"), true);
 });
 
-Deno.test("a JSON answer is parsed; anything else fails without quoting the body", async () => {
+test("a JSON answer is parsed; anything else fails without quoting the body", async () => {
   const fetcher = fakeFetch(() => Response.json({ access_token: "tok" }));
   const ctx = context({ fetch: fetcher });
   const request: AuthRequest = {
@@ -318,7 +319,7 @@ Deno.test("a JSON answer is parsed; anything else fails without quoting the body
   }
 });
 
-Deno.test("answer fields: strings required, lifetimes as numbers or numeric strings", () => {
+test("answer fields: strings required, lifetimes as numbers or numeric strings", () => {
   assertEquals(answerString({ a: "x" }, "a", STEP), "x");
   for (const answer of [{}, { a: "" }, { a: 1 }]) {
     let message = "";
@@ -346,7 +347,7 @@ Deno.test("answer fields: strings required, lifetimes as numbers or numeric stri
   }
 });
 
-Deno.test("an unreadable file names the provider and path", async () => {
+test("an unreadable file names the provider and path", async () => {
   await assertRejects(
     () => readAuthFile(context(), "test", "the token", "/no/such"),
     Error,

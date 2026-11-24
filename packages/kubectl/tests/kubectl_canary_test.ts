@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import type { JsonValue, TargetStateHandle } from "@zuke/core";
 import { CommandOutput } from "@zuke/core/shell";
 import { ToolNotFoundError } from "@zuke/core/tooling";
@@ -166,7 +167,7 @@ const setImage = (deployment: string, image: string) => [
   `api=${image}`,
 ];
 
-Deno.test("stage reads the stable image, checks both Deployments, and sets the candidate on the empty canary", async () => {
+test("stage reads the stable image, checks both Deployments, and sets the candidate on the empty canary", async () => {
   const { runner, calls } = fakeKubectl({ stableImage: "reg/api:1\n" });
   const ctx = context();
   await platform(runner).stage(ctx);
@@ -184,7 +185,7 @@ Deno.test("stage reads the stable image, checks both Deployments, and sets the c
   assertEquals(ctx.summary, { Candidate: "reg/api:2", Stable: "reg/api:1" });
 });
 
-Deno.test("expose grows the canary, waits for it, then shrinks stable, and reports the share reached", async () => {
+test("expose grows the canary, waits for it, then shrinks stable, and reports the share reached", async () => {
   const { runner, calls } = fakeKubectl();
   assertEquals(await platform(runner).expose(30, await staged()), 30);
   assertEquals(calls, [
@@ -194,7 +195,7 @@ Deno.test("expose grows the canary, waits for it, then shrinks stable, and repor
   ]);
 });
 
-Deno.test("expose quantises to whole replicas and keeps one on each side", async () => {
+test("expose quantises to whole replicas and keeps one on each side", async () => {
   const cases: [number, number, number][] = [
     // [total, requested, achieved]
     [5, 10, 20], // 0.5 replicas rounds up to one
@@ -213,7 +214,7 @@ Deno.test("expose quantises to whole replicas and keeps one on each side", async
   }
 });
 
-Deno.test("expose 0 returns every replica to stable before emptying the canary", async () => {
+test("expose 0 returns every replica to stable before emptying the canary", async () => {
   const { runner, calls } = fakeKubectl();
   assertEquals(await platform(runner).expose(0, await staged()), 0);
   assertEquals(calls, [
@@ -223,7 +224,7 @@ Deno.test("expose 0 returns every replica to stable before emptying the canary",
   ]);
 });
 
-Deno.test("expose refuses a share outside 0 to 100, and a split of one replica", async () => {
+test("expose refuses a share outside 0 to 100, and a split of one replica", async () => {
   const { runner, calls } = fakeKubectl();
   for (const bad of [-1, 101, Number.NaN, Number.POSITIVE_INFINITY]) {
     await assertRejects(
@@ -240,7 +241,7 @@ Deno.test("expose refuses a share outside 0 to 100, and a split of one replica",
   assertEquals(calls, []);
 });
 
-Deno.test("expose refuses a step that asks for less than half a replica", async () => {
+test("expose refuses a step that asks for less than half a replica", async () => {
   // 4 replicas at 10 % is 0.4 of one: exposing one would be 25 %, two and a
   // half times what the step asked for.
   const { runner, calls } = fakeKubectl();
@@ -257,7 +258,7 @@ Deno.test("expose refuses a step that asks for less than half a replica", async 
   assertEquals(calls, []);
 });
 
-Deno.test("an expose whose canary never becomes ready leaves stable at full size", async () => {
+test("an expose whose canary never becomes ready leaves stable at full size", async () => {
   const { runner, calls } = fakeKubectl({
     fails: (argv) => argv[0] === "rollout",
   });
@@ -270,7 +271,7 @@ Deno.test("an expose whose canary never becomes ready leaves stable at full size
   assertEquals(calls.some((argv) => argv.includes("deployment/api")), false);
 });
 
-Deno.test("promote puts the staged image on stable, grows it, waits, then empties the canary", async () => {
+test("promote puts the staged image on stable, grows it, waits, then empties the canary", async () => {
   const { runner, calls } = fakeKubectl();
   const ctx = context();
   await platform(runner).stage(ctx);
@@ -287,7 +288,7 @@ Deno.test("promote puts the staged image on stable, grows it, waits, then emptie
   assertEquals(calls.slice(STAGED + 4), calls.slice(STAGED, STAGED + 4));
 });
 
-Deno.test("promote with nothing staged refuses rather than guess", async () => {
+test("promote with nothing staged refuses rather than guess", async () => {
   const { runner, calls } = fakeKubectl();
   await assertRejects(
     () => platform(runner).promote(context()),
@@ -297,7 +298,7 @@ Deno.test("promote with nothing staged refuses rather than guess", async () => {
   assertEquals(calls, []);
 });
 
-Deno.test("abort mid-rollout restores the stable image and size, then empties the canary", async () => {
+test("abort mid-rollout restores the stable image and size, then empties the canary", async () => {
   const { runner, calls } = fakeKubectl();
   const ctx = context();
   const p = platform(runner);
@@ -314,7 +315,7 @@ Deno.test("abort mid-rollout restores the stable image and size, then empties th
   assertEquals(calls.slice(STAGED + 3), [...rollback, ...rollback]);
 });
 
-Deno.test("abort after a promote that failed part-way puts the stable image back", async () => {
+test("abort after a promote that failed part-way puts the stable image back", async () => {
   // Promote set the candidate on stable, then stable never became ready. The
   // engine rolls back with the stage's record — which must not leave stable
   // running the candidate while the summary says "Rolled back".
@@ -336,7 +337,7 @@ Deno.test("abort after a promote that failed part-way puts the stable image back
   ]);
 });
 
-Deno.test("a promote whose stable never becomes ready keeps the canary serving", async () => {
+test("a promote whose stable never becomes ready keeps the canary serving", async () => {
   const { runner, calls } = fakeKubectl({
     fails: (argv) => argv[0] === "rollout",
   });
@@ -347,7 +348,7 @@ Deno.test("a promote whose stable never becomes ready keeps the canary serving",
   assertEquals(calls.at(-1), status("api"));
 });
 
-Deno.test("a stable image read that is not one image is refused", async () => {
+test("a stable image read that is not one image is refused", async () => {
   const { runner, calls } = fakeKubectl({
     stableImage: "reg/api:1 reg/api:2",
   });
@@ -359,7 +360,7 @@ Deno.test("a stable image read that is not one image is refused", async () => {
   assertEquals(calls.length, 1);
 });
 
-Deno.test("a rollback empties the canary even when stable does not become ready", async () => {
+test("a rollback empties the canary even when stable does not become ready", async () => {
   const { runner, calls } = fakeKubectl({
     fails: (argv) => argv[0] === "rollout",
   });
@@ -370,7 +371,7 @@ Deno.test("a rollback empties the canary even when stable does not become ready"
   assertEquals(calls.at(-1), scale("api-canary", 0));
 });
 
-Deno.test("abort after a stage that never recorded the candidate runs nothing", async () => {
+test("abort after a stage that never recorded the candidate runs nothing", async () => {
   // The canary had no replicas and stable was never touched.
   const ctx = context();
   const failing = platform(() => Promise.reject(new Error("forbidden")));
@@ -381,7 +382,7 @@ Deno.test("abort after a stage that never recorded the candidate runs nothing", 
   assertEquals(calls, []);
 });
 
-Deno.test("a stage that cannot record the candidate stops before the canary runs", async () => {
+test("a stage that cannot record the candidate stops before the canary runs", async () => {
   const { runner, calls } = fakeKubectl();
   const ctx = context();
   ctx.state.trySet = () => Promise.resolve(false);
@@ -394,7 +395,7 @@ Deno.test("a stage that cannot record the candidate stops before the canary runs
   assertEquals(ctx.state.get(), { kubectlCanaryStage: "deploying" });
 });
 
-Deno.test("a hand-run abort restores the configured stable image", async () => {
+test("a hand-run abort restores the configured stable image", async () => {
   const { runner, calls } = fakeKubectl();
   await platform(runner, (k) => k.stableImage("reg/api:1")).abort(context());
   assertEquals(calls, [
@@ -405,7 +406,7 @@ Deno.test("a hand-run abort restores the configured stable image", async () => {
   ]);
 });
 
-Deno.test("a rollback with nothing recorded runs nothing, even with a stable image set", async () => {
+test("a rollback with nothing recorded runs nothing, even with a stable image set", async () => {
   // A degraded run record, or a stage whose first state write was rejected:
   // nothing was staged, so restoring the stable image would change a
   // Deployment no rollout touched.
@@ -417,7 +418,7 @@ Deno.test("a rollback with nothing recorded runs nothing, even with a stable ima
   assertEquals(calls, []);
 });
 
-Deno.test("a rollback refuses a stage marker stage never writes, and runs nothing", async () => {
+test("a rollback refuses a stage marker stage never writes, and runs nothing", async () => {
   const { runner, calls } = fakeKubectl();
   const stray = context("rollback");
   await stray.state.set({
@@ -433,7 +434,7 @@ Deno.test("a rollback refuses a stage marker stage never writes, and runs nothin
   assertEquals(calls, []);
 });
 
-Deno.test("a hand-run abort, named or from an engine that names no reason, falls back alike", async () => {
+test("a hand-run abort, named or from an engine that names no reason, falls back alike", async () => {
   for (const reason of ["hand-run", undefined] as const) {
     const { runner, calls } = fakeKubectl();
     await platform(runner, (k) => k.stableImage("reg/api:1"))
@@ -447,7 +448,7 @@ Deno.test("a hand-run abort, named or from an engine that names no reason, falls
   }
 });
 
-Deno.test("a hand-run abort with no stable image refuses rather than claim a rollback", async () => {
+test("a hand-run abort with no stable image refuses rather than claim a rollback", async () => {
   const { runner, calls } = fakeKubectl();
   await assertRejects(
     () => platform(runner).abort(context()),
@@ -462,7 +463,7 @@ Deno.test("a hand-run abort with no stable image refuses rather than claim a rol
   assertEquals(calls, []);
 });
 
-Deno.test("a stable Deployment without the container is named at stage", async () => {
+test("a stable Deployment without the container is named at stage", async () => {
   const { runner, calls } = fakeKubectl({ stableImage: "" });
   const ctx = context();
   await assertRejects(
@@ -474,7 +475,7 @@ Deno.test("a stable Deployment without the container is named at stage", async (
   assertEquals(calls.length, 1);
 });
 
-Deno.test("a stable image read that came back truncated is refused", async () => {
+test("a stable image read that came back truncated is refused", async () => {
   const p = platform(() =>
     Promise.resolve(new CommandOutput(0, "reg/api:1", "", true, 8))
   );
@@ -485,7 +486,7 @@ Deno.test("a stable image read that came back truncated is refused", async () =>
   );
 });
 
-Deno.test("a non-zero exit fails the call even when kubectl was told not to throw", async () => {
+test("a non-zero exit fails the call even when kubectl was told not to throw", async () => {
   const p = platform(
     () => Promise.resolve(new CommandOutput(1, "", "error: forbidden\n")),
   );
@@ -505,7 +506,7 @@ Deno.test("a non-zero exit fails the call even when kubectl was told not to thro
   );
 });
 
-Deno.test("the lambda is evaluated on every call, so it sees resolved values", async () => {
+test("the lambda is evaluated on every call, so it sees resolved values", async () => {
   const { runner, calls } = fakeKubectl();
   let image = "unresolved";
   const p = platform(runner, (k) => k.image(image));
@@ -514,7 +515,7 @@ Deno.test("the lambda is evaluated on every call, so it sees resolved values", a
   assertEquals(calls[STAGED - 1].at(-1), "api=reg/api:3");
 });
 
-Deno.test("missing and malformed settings are named before anything runs", async () => {
+test("missing and malformed settings are named before anything runs", async () => {
   const { runner, calls } = fakeKubectl();
   const refusals: [
     (k: KubectlCanarySettings) => KubectlCanarySettings,
@@ -583,7 +584,7 @@ Deno.test("missing and malformed settings are named before anything runs", async
   assertEquals(calls, []);
 });
 
-Deno.test("timeout and the absence of a namespace reach the command line", async () => {
+test("timeout and the absence of a namespace reach the command line", async () => {
   const { runner, calls } = fakeKubectl();
   await kubectlCanary((k) =>
     k.stable("api").canary("api-canary").container("api").replicas(2)
@@ -596,7 +597,7 @@ Deno.test("timeout and the absence of a namespace reach the command line", async
   ]);
 });
 
-Deno.test("describe names the deployments", () => {
+test("describe names the deployments", () => {
   const { runner } = fakeKubectl();
   assertEquals(
     platform(runner).describe(),
@@ -610,7 +611,7 @@ Deno.test("describe names the deployments", () => {
   assertEquals(platform(runner).exposure, "replicas");
 });
 
-Deno.test("the default runner runs kubectl itself", async () => {
+test("the default runner runs kubectl itself", async () => {
   // The default is the settings' own run(), so a kubectl that is not
   // installed surfaces as the wrapper's usual tool-not-found error.
   const p = kubectlCanary((k) =>
@@ -623,7 +624,7 @@ Deno.test("the default runner runs kubectl itself", async () => {
   );
 });
 
-Deno.test("a stage refused by its own settings leaves a rollback with nothing to do", async () => {
+test("a stage refused by its own settings leaves a rollback with nothing to do", async () => {
   // The image parameter resolved empty. Stage changed nothing, so the inline
   // rollback must not take the hand-run path and roll production back to
   // stableImage.
@@ -636,7 +637,7 @@ Deno.test("a stage refused by its own settings leaves a rollback with nothing to
   assertEquals(calls, []);
 });
 
-Deno.test("stage refuses a canary Deployment that still has replicas", async () => {
+test("stage refuses a canary Deployment that still has replicas", async () => {
   // A leftover from an earlier rollout: scaling it away would drop serving
   // capacity while stable is below its total, and its image is not the
   // stable one.
@@ -654,7 +655,7 @@ Deno.test("stage refuses a canary Deployment that still has replicas", async () 
   assertEquals(calls.length, STAGE_READS.length * 2);
 });
 
-Deno.test("stage refuses a replica count it cannot read as a number", async () => {
+test("stage refuses a replica count it cannot read as a number", async () => {
   const { runner } = fakeKubectl({ canaryReplicas: "" });
   await assertRejects(
     () => platform(runner).stage(context()),
@@ -663,7 +664,7 @@ Deno.test("stage refuses a replica count it cannot read as a number", async () =
   );
 });
 
-Deno.test("stage refuses a paused Deployment", async () => {
+test("stage refuses a paused Deployment", async () => {
   for (const paused of ["api", "api-canary"]) {
     const { runner, calls } = fakeKubectl({ paused: [paused] });
     await assertRejects(
@@ -675,7 +676,7 @@ Deno.test("stage refuses a paused Deployment", async () => {
   }
 });
 
-Deno.test("expose sizes the step from the replica total stage recorded", async () => {
+test("expose sizes the step from the replica total stage recorded", async () => {
   // A resumed process whose parameter now resolves to 4 must not shrink stable
   // below the 10 replicas it had when the rollout started.
   const { runner, calls } = fakeKubectl();
@@ -693,7 +694,7 @@ Deno.test("expose sizes the step from the replica total stage recorded", async (
   ]);
 });
 
-Deno.test("a staged rollout with a damaged record refuses rather than guess", async () => {
+test("a staged rollout with a damaged record refuses rather than guess", async () => {
   // Reachable only through edited state; it must not read as a hand-run abort
   // or quietly fall back to the configured total.
   const { runner } = fakeKubectl();
@@ -717,7 +718,7 @@ Deno.test("a staged rollout with a damaged record refuses rather than guess", as
   );
 });
 
-Deno.test("promote and abort restore the replica total stage recorded", async () => {
+test("promote and abort restore the replica total stage recorded", async () => {
   // A resumed or cancelling process whose parameter resolved differently, or
   // not at all, must still put stable back to the size it had.
   const { runner, calls } = fakeKubectl();
@@ -734,7 +735,7 @@ Deno.test("promote and abort restore the replica total stage recorded", async ()
   assertEquals(sizes, [scale("api", 10), scale("api", 10)]);
 });
 
-Deno.test("the recorded stable image wins over stableImage in a rollback", async () => {
+test("the recorded stable image wins over stableImage in a rollback", async () => {
   const { runner, calls } = fakeKubectl();
   const ctx = context();
   await platform(runner).stage(ctx);
@@ -742,7 +743,7 @@ Deno.test("the recorded stable image wins over stableImage in a rollback", async
   assertEquals(calls[STAGED], setImage("api", "reg/api:1"));
 });
 
-Deno.test("images and totals read back from state are validated before use", async () => {
+test("images and totals read back from state are validated before use", async () => {
   const { runner, calls } = fakeKubectl();
   const tampered = context();
   await tampered.state.set({
@@ -774,7 +775,7 @@ Deno.test("images and totals read back from state are validated before use", asy
   assertEquals(calls, []);
 });
 
-Deno.test("a stage without a namespace records that it had none, and a rollback matches it", async () => {
+test("a stage without a namespace records that it had none, and a rollback matches it", async () => {
   const { runner, calls } = fakeKubectl();
   const ctx = context();
   const p = kubectlCanary((k) =>
@@ -791,7 +792,7 @@ Deno.test("a stage without a namespace records that it had none, and a rollback 
   ]);
 });
 
-Deno.test("a rollout configured for other Deployments than it was staged on refuses to act", async () => {
+test("a rollout configured for other Deployments than it was staged on refuses to act", async () => {
   // A resumed process, or a `zuke cancel`, whose configuration changed must
   // not set images on or scale a Deployment the rollout never touched — nor
   // restore the recorded stable image onto one.
@@ -849,7 +850,7 @@ Deno.test("a rollout configured for other Deployments than it was staged on refu
   assertEquals(calls.length, STAGED);
 });
 
-Deno.test("a staged record that does not say which Deployments it changed refuses", async () => {
+test("a staged record that does not say which Deployments it changed refuses", async () => {
   const damaged: Record<string, JsonValue>[] = [
     { kubectlCanaryStable: null },
     { kubectlCanaryCanary: "api/x" },
@@ -893,7 +894,7 @@ Deno.test("a staged record that does not say which Deployments it changed refuse
   assertEquals(calls.length, STAGED * damaged.length);
 });
 
-Deno.test("only a staged record is trusted: a stray image without the marker is ignored", async () => {
+test("only a staged record is trusted: a stray image without the marker is ignored", async () => {
   // Promote needs the staged marker, and a rollback without one is the
   // hand-run kind, which uses the configured stable image.
   const { runner, calls } = fakeKubectl();
@@ -911,7 +912,7 @@ Deno.test("only a staged record is trusted: a stray image without the marker is 
   assertEquals(calls[0], setImage("api", "reg/api:1"));
 });
 
-Deno.test("a staged record without a stable or candidate image refuses", async () => {
+test("a staged record without a stable or candidate image refuses", async () => {
   const { runner, calls } = fakeKubectl();
   const ctx = context();
   await platform(runner).stage(ctx);
@@ -938,7 +939,7 @@ Deno.test("a staged record without a stable or candidate image refuses", async (
   assertEquals(calls.length, STAGED);
 });
 
-Deno.test("expose refuses a rollout that was not staged rather than scale from configuration", async () => {
+test("expose refuses a rollout that was not staged rather than scale from configuration", async () => {
   // Without a staged record there is no identity to check the configured
   // Deployments against, nor a total to size the step from.
   const { runner, calls } = fakeKubectl();
@@ -957,7 +958,7 @@ Deno.test("expose refuses a rollout that was not staged rather than scale from c
   assertEquals(calls, []);
 });
 
-Deno.test("a hand-run abort ignores a replica total recorded without the staged marker", async () => {
+test("a hand-run abort ignores a replica total recorded without the staged marker", async () => {
   const { runner, calls } = fakeKubectl();
   const stray = context();
   await stray.state.set({ kubectlCanaryReplicas: 3 });

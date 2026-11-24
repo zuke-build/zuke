@@ -20,10 +20,8 @@
  * which exits before binding anything, does go through `runCli`.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   Build,
   defaultStateHost,
@@ -45,7 +43,7 @@ import type {
   RegistryRunner,
   RegistryRunOptions,
 } from "../../packages/core/src/mcp/registry_server.ts";
-import { silence } from "../../packages/core/tests/_console.ts";
+import { silence } from "../_console.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 
 /** The key the fixture trusts — a stand-in for a verified credential. */
@@ -143,7 +141,7 @@ function rpcErrorMessage(body: unknown): string {
   return typeof message === "string" ? message : "";
 }
 
-Deno.test("an authenticated call runs the target, attributed to the resolved actor", async () => {
+test("an authenticated call runs the target, attributed to the resolved actor", async () => {
   await withStateDir(async (dir) => {
     const store = new FileSystemStateStore(dir, defaultStateHost);
     // `--actor` is set too: the authenticated identity must outrank it.
@@ -182,7 +180,7 @@ Deno.test("an authenticated call runs the target, attributed to the resolved act
   });
 });
 
-Deno.test("a refused call gets the refusal's status and challenge, and writes nothing", async () => {
+test("a refused call gets the refusal's status and challenge, and writes nothing", async () => {
   await withStateDir(async (dir) => {
     const store = new FileSystemStateStore(dir, defaultStateHost);
     const server = await startMcp(new Fleet(), { allowRun: true });
@@ -210,7 +208,7 @@ Deno.test("a refused call gets the refusal's status and challenge, and writes no
   });
 });
 
-Deno.test("in registry mode the caller's kind and roles reach the spawned build", async () => {
+test("in registry mode the caller's kind and roles reach the spawned build", async () => {
   await withStateDir(async (dir) => {
     const registry = new FileSystemBuildRegistry(`${dir}/builds`);
     await silence(async () => {
@@ -257,7 +255,7 @@ Deno.test("in registry mode the caller's kind and roles reach the spawned build"
   });
 });
 
-Deno.test("a build declaring both mcpAuth() and mcpIdentity() refuses to start", async () => {
+test("a build declaring both mcpAuth() and mcpIdentity() refuses to start", async () => {
   class Confused extends Build {
     deploy = target().executes(() => {});
 
@@ -290,7 +288,7 @@ class Guarded extends Build {
   }
 }
 
-Deno.test("the metadata document is served at the path-inserted location", async () => {
+test("the metadata document is served at the path-inserted location", async () => {
   const server = await startMcp(new Guarded(), {});
   try {
     // Only there. A client that probed the root would derive the bare origin as
@@ -321,7 +319,7 @@ Deno.test("the metadata document is served at the path-inserted location", async
   }
 });
 
-Deno.test("a malformed Host header does not fault the server", async () => {
+test("a malformed Host header does not fault the server", async () => {
   // The metadata branch runs before every other check and parses the request
   // URL, which Deno builds from the raw Host header — and it accepts hosts the
   // WHATWG parser rejects. Unguarded, that answered *every* request with a 500,
@@ -349,7 +347,7 @@ Deno.test("a malformed Host header does not fault the server", async () => {
   }
 });
 
-Deno.test("an unauthenticated call is refused with a challenge naming the document", async () => {
+test("an unauthenticated call is refused with a challenge naming the document", async () => {
   const server = await startMcp(new Guarded(), { token: "shared-token" });
   try {
     const bare = await fetch(`${server.url}`, {
@@ -385,7 +383,7 @@ Deno.test("an unauthenticated call is refused with a challenge naming the docume
   }
 });
 
-Deno.test("a build declaring no protected resource publishes nothing", async () => {
+test("a build declaring no protected resource publishes nothing", async () => {
   // The surface is opt-in: no document, and no discovery parameters on any
   // challenge. The one thing that did change for such a build is deliberate —
   // a token that was presented and rejected now says so.
@@ -430,7 +428,7 @@ Deno.test("a build declaring no protected resource publishes nothing", async () 
   }
 });
 
-Deno.test("a preflight for the metadata document is answered", async () => {
+test("a preflight for the metadata document is answered", async () => {
   const server = await startMcp(new Guarded(), {});
   try {
     const response = await fetch(
@@ -448,7 +446,7 @@ Deno.test("a preflight for the metadata document is answered", async () => {
   }
 });
 
-Deno.test("two real protocol-version header lines arrive comma-joined", async () => {
+test("two real protocol-version header lines arrive comma-joined", async () => {
   // The unit tests exercise the comma-joined string; this pins that a genuine
   // duplicate header line is what produces one, so the tolerance for an
   // agreeing proxy copy is about the wire shape rather than about a string a
@@ -489,7 +487,7 @@ Deno.test("two real protocol-version header lines arrive comma-joined", async ()
   }
 });
 
-Deno.test("the metadata response is a cacheable JSON document, and answers HEAD", async () => {
+test("the metadata response is a cacheable JSON document, and answers HEAD", async () => {
   // RFC 9728 3.2 makes the 200 + application/json a MUST; the cache header is
   // what stops every cold client re-fetching a constant.
   const server = await startMcp(new Guarded(), {});
@@ -512,7 +510,7 @@ Deno.test("the metadata response is a cacheable JSON document, and answers HEAD"
   }
 });
 
-Deno.test("an unusable protected-resource declaration stops the server starting", async () => {
+test("an unusable protected-resource declaration stops the server starting", async () => {
   // Validated once at startup rather than per request: a client discovering the
   // mistake would be a client that cannot authenticate, and the throw would
   // land on a public route as a 500.
@@ -529,7 +527,7 @@ Deno.test("an unusable protected-resource declaration stops the server starting"
   assertStringIncludes(err, "authorization server");
 });
 
-Deno.test("an unsupported protocol version header is refused over HTTP", async () => {
+test("an unsupported protocol version header is refused over HTTP", async () => {
   const server = await startMcp(new Guarded(), {});
   try {
     const body = JSON.stringify({

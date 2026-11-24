@@ -1,18 +1,24 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { CommandOutput } from "@zuke/core/shell";
 import {
   cloudMonitoring,
   CloudMonitoringAnalysisSettings,
   type GcloudSettings,
 } from "../mod.ts";
-import { NOW, pages, series, TOKEN } from "./_monitoring.ts";
+import {
+  NOW,
+  pages,
+  series,
+  TOKEN,
+} from "../../../tests/support/gcloud/_monitoring.ts";
 
 /** A context whose redactor masks nothing. */
 const plain = { redact: (text: string) => text };
@@ -42,11 +48,11 @@ function analysis(
   );
 }
 
-Deno.test("cloudMonitoring has the canary analysis shape", () => {
+test("cloudMonitoring has the canary analysis shape", () => {
   assertEquals(analysis(pages({}).fetch).name, "cloudMonitoring");
 });
 
-Deno.test("cloudMonitoring passes when every point is within bounds", async () => {
+test("cloudMonitoring passes when every point is within bounds", async () => {
   const fake = pages({ timeSeries: [series([0, 5, 1])] });
   await analysis(fake.fetch).validate(plain);
   assertEquals(fake.urls[0].searchParams.get("view"), "FULL");
@@ -57,7 +63,7 @@ Deno.test("cloudMonitoring passes when every point is within bounds", async () =
   );
 });
 
-Deno.test("cloudMonitoring fails on the first point out of bounds, in canary's words", async () => {
+test("cloudMonitoring fails on the first point out of bounds, in canary's words", async () => {
   const fake = pages({ timeSeries: [series([0, 9, 1])] });
   await assertRejects(
     () => analysis(fake.fetch).validate(plain),
@@ -73,7 +79,7 @@ Deno.test("cloudMonitoring fails on the first point out of bounds, in canary's w
   );
 });
 
-Deno.test("cloudMonitoring: no data fails unless missingDataAs says what it means", async () => {
+test("cloudMonitoring: no data fails unless missingDataAs says what it means", async () => {
   await assertRejects(
     () => analysis(pages({}).fetch).validate(plain),
     Error,
@@ -87,7 +93,7 @@ Deno.test("cloudMonitoring: no data fails unless missingDataAs says what it mean
   );
 });
 
-Deno.test("cloudMonitoring refuses a window shorter than the alignment period", async () => {
+test("cloudMonitoring refuses a window shorter than the alignment period", async () => {
   const fake = pages({});
   await assertRejects(
     () => analysis(fake.fetch, (m) => m.alignmentPeriod("10m")).validate(plain),
@@ -98,7 +104,7 @@ Deno.test("cloudMonitoring refuses a window shorter than the alignment period", 
   assertEquals(fake.urls.length, 0);
 });
 
-Deno.test("cloudMonitoring fails, never truncates, at the page cap", async () => {
+test("cloudMonitoring fails, never truncates, at the page cap", async () => {
   await assertRejects(
     () =>
       analysis(
@@ -110,7 +116,7 @@ Deno.test("cloudMonitoring fails, never truncates, at the page cap", async () =>
   );
 });
 
-Deno.test("cloudMonitoring judges a NaN point as a failure", async () => {
+test("cloudMonitoring judges a NaN point as a failure", async () => {
   const nan = {
     timeSeries: [{
       points: [{
@@ -126,7 +132,7 @@ Deno.test("cloudMonitoring judges a NaN point as a failure", async () => {
   );
 });
 
-Deno.test("cloudMonitoring refuses bounds that cannot work", async () => {
+test("cloudMonitoring refuses bounds that cannot work", async () => {
   await assertRejects(
     () => cloudMonitoring((m) => m.metricType("m")).validate(plain),
     Error,
@@ -156,7 +162,7 @@ Deno.test("cloudMonitoring refuses bounds that cannot work", async () => {
   );
 });
 
-Deno.test("every failure passes through the redactor, the lambda's own included", async () => {
+test("every failure passes through the redactor, the lambda's own included", async () => {
   const secret = "dddddddd";
   await assertRejects(
     () =>
@@ -196,7 +202,7 @@ Deno.test("every failure passes through the redactor, the lambda's own included"
   assertEquals(empty.message.includes(secret), false);
 });
 
-Deno.test("the instance the lambda returns is the one read", async () => {
+test("the instance the lambda returns is the one read", async () => {
   const fake = pages({ timeSeries: [series([0])] });
   // A lambda that ignores the instance it is handed and returns another.
   await cloudMonitoring(() =>
@@ -221,7 +227,7 @@ function logs(n: number) {
   return { calls, run };
 }
 
-Deno.test("log mode counts entries over the window, ids only", async () => {
+test("log mode counts entries over the window, ids only", async () => {
   const fake = logs(2);
   await cloudMonitoring((m) =>
     m.name("canary errors").project("p").now(NOW).window("10m").max(3)
@@ -250,7 +256,7 @@ Deno.test("log mode counts entries over the window, ids only", async () => {
   ]);
 });
 
-Deno.test("log mode fails over the bound and when more entries match than it counts", async () => {
+test("log mode fails over the bound and when more entries match than it counts", async () => {
   await assertRejects(
     () =>
       cloudMonitoring((m) =>
@@ -271,14 +277,14 @@ Deno.test("log mode fails over the bound and when more entries match than it cou
   );
 });
 
-Deno.test("log mode: zero entries is a count, judged as itself", async () => {
+test("log mode: zero entries is a count, judged as itself", async () => {
   await cloudMonitoring((m) =>
     m.now(NOW).min(0).max(0).logEntries((l) => l)
       .gcloud((g) => g.runner(logs(0).run))
   ).validate(plain);
 });
 
-Deno.test("a metric and log entries together are refused", async () => {
+test("a metric and log entries together are refused", async () => {
   await assertRejects(
     () =>
       cloudMonitoring((m) => m.metricType("m").max(1).logEntries((l) => l))
@@ -310,7 +316,7 @@ Deno.test("a metric and log entries together are refused", async () => {
   }
 });
 
-Deno.test("a lambda that throws a non-Error is still redacted and reported", async () => {
+test("a lambda that throws a non-Error is still redacted and reported", async () => {
   await assertRejects(
     () =>
       cloudMonitoring(() => {
@@ -321,7 +327,7 @@ Deno.test("a lambda that throws a non-Error is still redacted and reported", asy
   );
 });
 
-Deno.test("a minimum alone is a bound", async () => {
+test("a minimum alone is a bound", async () => {
   const fetch = pages({ timeSeries: [series([3])] }).fetch;
   await cloudMonitoring((m) =>
     m.project("p").token(TOKEN).fetch(fetch).now(NOW).metricType("m").min(1)
@@ -340,7 +346,7 @@ function cloudRun(revision: string, code = 0) {
   return { calls, run };
 }
 
-Deno.test("cloudRunCandidate narrows the metric to the latest created revision", async () => {
+test("cloudRunCandidate narrows the metric to the latest created revision", async () => {
   const gcloud = cloudRun("api-00007-abc");
   const fake = pages({ timeSeries: [series([1])] });
   // One instance, configured once and returned by every run of the lambda.
@@ -379,7 +385,7 @@ Deno.test("cloudRunCandidate narrows the metric to the latest created revision",
   }
 });
 
-Deno.test("cloudRunCandidate narrows the log filter too", async () => {
+test("cloudRunCandidate narrows the log filter too", async () => {
   const gcloud = cloudRun("api-00007-abc");
   await cloudMonitoring((m) =>
     m.now(NOW).max(0).cloudRunCandidate("api")
@@ -394,7 +400,7 @@ Deno.test("cloudRunCandidate narrows the log filter too", async () => {
   );
 });
 
-Deno.test("cloudRunCandidate: a failed or ambiguous read fails the check", async () => {
+test("cloudRunCandidate: a failed or ambiguous read fails the check", async () => {
   await assertRejects(
     () =>
       cloudMonitoring((m) =>

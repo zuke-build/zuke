@@ -10,14 +10,12 @@
  * in a later command line. Neither may reach the build's output.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import type { CommandOutput } from "../../packages/core/src/shell.ts";
 import { ToolSettings } from "../../packages/core/src/tooling.ts";
-import { withEnv } from "../../packages/core/tests/_env.ts";
+import { withEnv } from "../_env.ts";
 import { runCli, withoutMaskDirectives } from "./_harness.ts";
 
 /** The password inside the fake secret — low-entropy and obviously fake. */
@@ -148,7 +146,7 @@ for (
     ["leakArgv", "Command failed (exit 3)"],
   ]
 ) {
-  Deno.test(`a secret a tool printed is masked when ${name} prints it`, async () => {
+  test(`a secret a tool printed is masked when ${name} prints it`, async () => {
     // Plain mode: no CI host, so nothing but the redactor stands between the
     // secret and the output.
     await withEnv({ CI: undefined, GITHUB_ACTIONS: undefined }, async () => {
@@ -162,7 +160,7 @@ for (
   });
 }
 
-Deno.test("a short password in a secret printed as text is masked", async () => {
+test("a short password in a secret printed as text is masked", async () => {
   await withEnv({ CI: undefined, GITHUB_ACTIONS: undefined }, async () => {
     const { code, out, err } = await runCli(Leaky, ["leakShort"]);
     assertEquals(code, 1);
@@ -172,7 +170,7 @@ Deno.test("a short password in a secret printed as text is masked", async () => 
   });
 });
 
-Deno.test("a secret a tool printed stays masked under GitHub Actions", async () => {
+test("a secret a tool printed stays masked under GitHub Actions", async () => {
   await withEnv({ CI: "true", GITHUB_ACTIONS: "true" }, async () => {
     const { code, out, err } = await runCli(Leaky, ["leakPart"]);
     assertEquals(code, 1);

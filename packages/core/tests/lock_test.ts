@@ -1,13 +1,14 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import { RunLockHolder } from "../src/run_locks.ts";
-import { testPlan } from "./_fakes.ts";
+import { testPlan } from "../../../tests/_fakes.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "./_assert.ts";
+} from "../../../tests/_assert.ts";
 import { acquireTargetLock } from "../src/lock.ts";
 import { target } from "../src/target.ts";
 import { LockConflictError, type LockHolder } from "../src/state/lock.ts";
@@ -85,7 +86,7 @@ function envWith(store: StateStore, signal?: AbortSignal): RunEnv {
   };
 }
 
-Deno.test("a lock with no wait fails on the first conflict", async () => {
+test("a lock with no wait fails on the first conflict", async () => {
   const store = new FakeStore(5);
   const t = target()
     .lock((s) => s.key("dev-env").withTtl("1h"))
@@ -100,7 +101,7 @@ Deno.test("a lock with no wait fails on the first conflict", async () => {
   assertEquals(error.message.includes("after waiting"), false);
 });
 
-Deno.test("waitUpTo queues for the lock and takes it when it frees", async () => {
+test("waitUpTo queues for the lock and takes it when it frees", async () => {
   const store = new FakeStore(2);
   const lines: string[] = [];
   const t = target()
@@ -121,7 +122,7 @@ Deno.test("waitUpTo queues for the lock and takes it when it frees", async () =>
   assertEquals(store.released, 1);
 });
 
-Deno.test("a waiter that runs out of time fails, naming the holder and the wait", async () => {
+test("a waiter that runs out of time fails, naming the holder and the wait", async () => {
   const store = new FakeStore(Number.MAX_SAFE_INTEGER);
   const t = target()
     .lock((s) =>
@@ -142,7 +143,7 @@ Deno.test("a waiter that runs out of time fails, naming the holder and the wait"
   assertEquals(store.attempts > 1, true); // it really retried
 });
 
-Deno.test("the waiting line is reprinted only when the holder changes", async () => {
+test("the waiting line is reprinted only when the holder changes", async () => {
   const store = new FakeStore(4);
   const lines: string[] = [];
   const t = target()
@@ -172,7 +173,7 @@ Deno.test("the waiting line is reprinted only when the holder changes", async ()
   assertStringIncludes(lines[1] ?? "", "held by carol");
 });
 
-Deno.test("a cancelled run stops waiting instead of holding the run open", async () => {
+test("a cancelled run stops waiting instead of holding the run open", async () => {
   const store = new FakeStore(Number.MAX_SAFE_INTEGER);
   const controller = new AbortController();
   const t = target()
@@ -189,7 +190,7 @@ Deno.test("a cancelled run stops waiting instead of holding the run open", async
   assertEquals(store.attempts <= 2, true);
 });
 
-Deno.test("a custom onConflict still renders the failure after a wait", async () => {
+test("a custom onConflict still renders the failure after a wait", async () => {
   const store = new FakeStore(Number.MAX_SAFE_INTEGER);
   const t = target()
     .lock((s) =>
@@ -205,7 +206,7 @@ Deno.test("a custom onConflict still renders the failure after a wait", async ()
   assertEquals(error.message, "the stack belongs to alice right now");
 });
 
-Deno.test("a run cancelled before the wait starts never sleeps at all", async () => {
+test("a run cancelled before the wait starts never sleeps at all", async () => {
   const store = new FakeStore(Number.MAX_SAFE_INTEGER);
   const controller = new AbortController();
   controller.abort(); // cancelled before the target is even reached

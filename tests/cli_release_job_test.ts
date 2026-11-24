@@ -16,7 +16,8 @@
  * @module
  */
 
-import { assertEquals } from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals } from "./_assert.ts";
 import {
   actionOf,
   isRecord,
@@ -58,7 +59,7 @@ const APPLE_SECRETS = [
   "APPLE_NOTARY_ISSUER",
 ];
 
-Deno.test("the CLI release stages run in order, each after the one it reads from", () => {
+test("the CLI release stages run in order, each after the one it reads from", () => {
   const needs = (id: string) => job(id).needs;
   assertEquals(needs("cliBinaries"), ["publishJsr"]);
   assertEquals(needs("cliSign"), ["cliBinaries"]);
@@ -69,7 +70,7 @@ Deno.test("the CLI release stages run in order, each after the one it reads from
   assertEquals(needs("cliChocolatey"), ["cliBinaries", "cliChocolateyVerify"]);
 });
 
-Deno.test("the Apple signing secrets reach only the macOS signing job, in its environment", () => {
+test("the Apple signing secrets reach only the macOS signing job, in its environment", () => {
   for (const [id, subject] of jobs()) {
     const held = envKeys(id).filter((key) => APPLE_SECRETS.includes(key));
     if (id === "cliSign") {
@@ -85,7 +86,7 @@ Deno.test("the Apple signing secrets reach only the macOS signing job, in its en
   }
 });
 
-Deno.test("only the upload job may write the release or sign an attestation", () => {
+test("only the upload job may write the release or sign an attestation", () => {
   assertEquals(job("cliUpload").permissions, {
     contents: "write",
     "id-token": "write",
@@ -105,7 +106,7 @@ Deno.test("only the upload job may write the release or sign an attestation", ()
   }
 });
 
-Deno.test("the upload attests the archives and the manifest before uploading them", () => {
+test("the upload attests the archives and the manifest before uploading them", () => {
   const steps = stepsOf(job("cliUpload"));
   const order = steps.map((step) =>
     actionOf(step) ?? (typeof step.run === "string" ? step.run : "")
@@ -148,7 +149,7 @@ Deno.test("the upload attests the archives and the manifest before uploading the
   );
 });
 
-Deno.test("the upload publishes the signed macOS binaries, not the unsigned ones", () => {
+test("the upload publishes the signed macOS binaries, not the unsigned ones", () => {
   const downloads = stepsOf(job("cliUpload")).filter((step) =>
     actionOf(step) === "actions/download-artifact"
   ).map((step) => isRecord(step.with) ? step.with.name : undefined);
@@ -156,7 +157,7 @@ Deno.test("the upload publishes the signed macOS binaries, not the unsigned ones
   assertEquals(downloads, ["cli-binaries", "cli-binaries-signed"]);
 });
 
-Deno.test("nothing is verified or tapped unless the upload it depends on succeeded", () => {
+test("nothing is verified or tapped unless the upload it depends on succeeded", () => {
   const verify = String(job("cliFormulaVerify").if);
   for (
     const part of [
@@ -176,7 +177,7 @@ Deno.test("nothing is verified or tapped unless the upload it depends on succeed
   }
 });
 
-Deno.test("the Chocolatey API key reaches only the push job, in its environment", () => {
+test("the Chocolatey API key reaches only the push job, in its environment", () => {
   for (const [id, subject] of jobs()) {
     const held = envKeys(id).includes("CHOCOLATEY_API_KEY");
     assertEquals(held, id === "cliChocolatey", id);
@@ -187,7 +188,7 @@ Deno.test("the Chocolatey API key reaches only the push job, in its environment"
   }
 });
 
-Deno.test("the Chocolatey package is verified only after a settled upload, and pushed only once verified and CHOCOLATEY_PUSH is enabled", () => {
+test("the Chocolatey package is verified only after a settled upload, and pushed only once verified and CHOCOLATEY_PUSH is enabled", () => {
   const verify = String(job("cliChocolateyVerify").if);
   for (
     const part of [
@@ -205,7 +206,7 @@ Deno.test("the Chocolatey package is verified only after a settled upload, and p
   );
 });
 
-Deno.test("the tap job holds the app key with egress blocked, and no GITHUB_TOKEN", () => {
+test("the tap job holds the app key with egress blocked, and no GITHUB_TOKEN", () => {
   const keys = envKeys("cliTap");
   assertEquals(keys.includes("ZUKE_BUILD_APP_KEY"), true);
   assertEquals(keys.includes("GITHUB_TOKEN"), false);
@@ -216,7 +217,7 @@ Deno.test("the tap job holds the app key with egress blocked, and no GITHUB_TOKE
   );
 });
 
-Deno.test("the formula is verified with the real brew on macOS and Linux", () => {
+test("the formula is verified with the real brew on macOS and Linux", () => {
   const verify = job("cliFormulaVerify");
   assertEquals(
     isRecord(verify.strategy) && isRecord(verify.strategy.matrix)
@@ -230,7 +231,7 @@ Deno.test("the formula is verified with the real brew on macOS and Linux", () =>
   );
 });
 
-Deno.test("the Python SDK's sync is started only after this run published a CLI release, with the app key and egress blocked", () => {
+test("the Python SDK's sync is started only after this run published a CLI release, with the app key and egress blocked", () => {
   const sync = job("pythonSync");
   assertEquals(sync.needs, ["cliBinaries", "cliUpload"]);
   // A run that published no CLI release has nothing new for the SDK.

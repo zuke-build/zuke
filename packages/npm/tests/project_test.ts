@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import { missingTool } from "@zuke/core/tooling/conformance";
 import {
@@ -17,7 +18,7 @@ import {
 } from "../mod.ts";
 import { parsePkgField } from "../src/project.ts";
 
-Deno.test("init renders the initializer and forwards its arguments", () => {
+test("init renders the initializer and forwards its arguments", () => {
   assertEquals(new NpmInitSettings().yes().argv().slice(1), ["init", "--yes"]);
   assertEquals(
     new NpmInitSettings().yes().scope("@acme").initializer("vite")
@@ -40,7 +41,7 @@ Deno.test("init renders the initializer and forwards its arguments", () => {
   );
 });
 
-Deno.test("pkg renders each operation", () => {
+test("pkg renders each operation", () => {
   assertEquals(new NpmPkgSettings().get("version").argv().slice(1), [
     "pkg",
     "get",
@@ -58,7 +59,7 @@ Deno.test("pkg renders each operation", () => {
   assertEquals(new NpmPkgSettings().fix().argv().slice(1), ["pkg", "fix"]);
 });
 
-Deno.test("pkg refuses an operation npm would misread", () => {
+test("pkg refuses an operation npm would misread", () => {
   assertThrows(
     () => new NpmPkgSettings().argv(),
     Error,
@@ -78,7 +79,7 @@ Deno.test("pkg refuses an operation npm would misread", () => {
   );
 });
 
-Deno.test("config renders each operation and its location", () => {
+test("config renders each operation and its location", () => {
   assertEquals(
     new NpmConfigSettings().set("registry=https://r.example.test/")
       .location("project").argv().slice(1),
@@ -109,7 +110,7 @@ Deno.test("config renders each operation and its location", () => {
   );
 });
 
-Deno.test("cache verifies by default and refuses an unforced clean", () => {
+test("cache verifies by default and refuses an unforced clean", () => {
   assertEquals(new NpmCacheSettings().argv().slice(1), ["cache", "verify"]);
   assertEquals(
     new NpmCacheSettings().add("react@18").argv().slice(1),
@@ -133,7 +134,7 @@ Deno.test("cache verifies by default and refuses an unforced clean", () => {
   );
 });
 
-Deno.test("pkgGet reads a missing field as undefined rather than failing", async () => {
+test("pkgGet reads a missing field as undefined rather than failing", async () => {
   // Hermetic: the running `deno` stands in for npm and exits non-zero, which
   // is what `npm pkg get` does outside a package.
   const value = await NpmTasks.pkgGet(
@@ -143,7 +144,7 @@ Deno.test("pkgGet reads a missing field as undefined rather than failing", async
   assertEquals(value, undefined);
 });
 
-Deno.test("the project tasks reach execution", async () => {
+test("the project tasks reach execution", async () => {
   await assertRejects(() => NpmTasks.init(missingTool), ToolNotFoundError);
   await assertRejects(
     () => NpmTasks.pkg((s) => missingTool(s).get("version")),
@@ -160,7 +161,7 @@ Deno.test("the project tasks reach execution", async () => {
   );
 });
 
-Deno.test("the remaining tasks reach execution", async () => {
+test("the remaining tasks reach execution", async () => {
   await assertRejects(() => NpmTasks.dedupe(missingTool), ToolNotFoundError);
   await assertRejects(() => NpmTasks.prune(missingTool), ToolNotFoundError);
   await assertRejects(() => NpmTasks.rebuild(missingTool), ToolNotFoundError);
@@ -187,7 +188,7 @@ Deno.test("the remaining tasks reach execution", async () => {
   );
 });
 
-Deno.test("init renders an initializer without arguments, and a bare init", () => {
+test("init renders an initializer without arguments, and a bare init", () => {
   assertEquals(new NpmInitSettings().initializer("vite").argv().slice(1), [
     "init",
     "vite",
@@ -198,7 +199,7 @@ Deno.test("init renders an initializer without arguments, and a bare init", () =
   ]);
 });
 
-Deno.test("cache ls narrows to a spec, and add takes several", () => {
+test("cache ls narrows to a spec, and add takes several", () => {
   assertEquals(new NpmCacheSettings().ls("react@18").argv().slice(1), [
     "cache",
     "ls",
@@ -214,7 +215,7 @@ Deno.test("cache ls narrows to a spec, and add takes several", () => {
   );
 });
 
-Deno.test("pkg and config carry workspace and location selection", () => {
+test("pkg and config carry workspace and location selection", () => {
   assertEquals(
     new NpmPkgSettings().get("version").workspace("app").argv().slice(1),
     ["pkg", "get", "version", "--workspace=app"],
@@ -225,7 +226,7 @@ Deno.test("pkg and config carry workspace and location selection", () => {
   );
 });
 
-Deno.test("pkg refuses each keyless operation by its own name", () => {
+test("pkg refuses each keyless operation by its own name", () => {
   assertThrows(
     () => new NpmPkgSettings().deleteKeys().argv(),
     Error,
@@ -238,7 +239,7 @@ Deno.test("pkg refuses each keyless operation by its own name", () => {
   );
 });
 
-Deno.test("parsePkgField unwraps every shape npm answers with", () => {
+test("parsePkgField unwraps every shape npm answers with", () => {
   // A scalar field comes back as bare JSON.
   assertEquals(parsePkgField('"1.2.3"', "version"), "1.2.3");
   assertEquals(parsePkgField("42", "port"), "42");

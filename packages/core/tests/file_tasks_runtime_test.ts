@@ -1,13 +1,14 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { FileTasks } from "../src/file.ts";
-import { withTemp } from "./_temp.ts";
+import { withTemp } from "../../../tests/_temp.ts";
 
 const WINDOWS = Deno.build.os === "windows";
 
-Deno.test("readBytes and writeBytes round-trip bytes", async () => {
+test("readBytes and writeBytes round-trip bytes", async () => {
   await withTemp(async (dir) => {
     const path = `${dir}/data.bin`;
     await FileTasks.writeBytes(path, new Uint8Array([0, 1, 255]));
@@ -15,7 +16,7 @@ Deno.test("readBytes and writeBytes round-trip bytes", async () => {
   });
 });
 
-Deno.test("writeBytes with createNew refuses an existing file", async () => {
+test("writeBytes with createNew refuses an existing file", async () => {
   await withTemp(async (dir) => {
     const path = `${dir}/data.bin`;
     await FileTasks.writeBytes(path, new Uint8Array([1]), (s) => s.createNew());
@@ -26,7 +27,7 @@ Deno.test("writeBytes with createNew refuses an existing file", async () => {
   });
 });
 
-Deno.test("writeText applies the mode it is given", async () => {
+test("writeText applies the mode it is given", async () => {
   await withTemp(async (dir) => {
     const path = `${dir}/secret.txt`;
     await FileTasks.writeText(path, "hidden", (s) => s.mode(0o600));
@@ -39,7 +40,7 @@ Deno.test("writeText applies the mode it is given", async () => {
   });
 });
 
-Deno.test("stat, statSync and lstat describe a file and a link to it", async () => {
+test("stat, statSync and lstat describe a file and a link to it", async () => {
   await withTemp(async (dir) => {
     await FileTasks.writeText(`${dir}/file.txt`, "four");
     const info = await FileTasks.stat(`${dir}/file.txt`);
@@ -57,7 +58,7 @@ Deno.test("stat, statSync and lstat describe a file and a link to it", async () 
   });
 });
 
-Deno.test("readDirectory lists files and directories", async () => {
+test("readDirectory lists files and directories", async () => {
   await withTemp(async (dir) => {
     await FileTasks.writeText(`${dir}/a.txt`, "");
     await FileTasks.createDirectory(`${dir}/sub`);
@@ -70,7 +71,7 @@ Deno.test("readDirectory lists files and directories", async () => {
   });
 });
 
-Deno.test("makeTempDirectory names it with the prefix", async () => {
+test("makeTempDirectory names it with the prefix", async () => {
   const dir = await FileTasks.makeTempDirectory((s) => s.prefix("zuke-tasks-"));
   try {
     assertEquals(dir.split(/[\\/]/).at(-1)?.startsWith("zuke-tasks-"), true);
@@ -83,7 +84,7 @@ Deno.test("makeTempDirectory names it with the prefix", async () => {
   assertEquals(plain.split(/[\\/]/).at(-1)?.startsWith("zuke-"), true);
 });
 
-Deno.test({
+test({
   name: "chmod sets the permission bits",
   ignore: WINDOWS,
   fn: async () => {
@@ -96,7 +97,7 @@ Deno.test({
   },
 });
 
-Deno.test("isNotFound tells a missing path from other failures", async () => {
+test("isNotFound tells a missing path from other failures", async () => {
   await withTemp(async (dir) => {
     const missing = await FileTasks.readText(`${dir}/none`).catch((e) => e);
     assertEquals(FileTasks.isNotFound(missing), true);
@@ -106,7 +107,7 @@ Deno.test("isNotFound tells a missing path from other failures", async () => {
   });
 });
 
-Deno.test("makeTempDirectory refuses a prefix that would leave the temp root", async () => {
+test("makeTempDirectory refuses a prefix that would leave the temp root", async () => {
   for (const prefix of ["../escape-", "a/b-", "a\\b-"]) {
     await assertRejects(() =>
       FileTasks.makeTempDirectory((s) => s.prefix(prefix))

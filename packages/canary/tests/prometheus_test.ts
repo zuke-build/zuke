@@ -3,13 +3,17 @@
 
 /** Unit tests for `prometheus(...)`, answered by a fake `fetch`. */
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { prometheus, type PrometheusSettings } from "../mod.ts";
-import { analysisContext, fakeFetch } from "./_context.ts";
+import {
+  analysisContext,
+  fakeFetch,
+} from "../../../tests/support/canary/_context.ts";
 
 /** A successful instant-query response. */
 function result(resultType: string, result: unknown): Response {
@@ -24,7 +28,7 @@ function vector(...values: string[]): Response {
   );
 }
 
-Deno.test("a vector within bounds passes, and the query is sent encoded with headers", async () => {
+test("a vector within bounds passes, and the query is sent encoded with headers", async () => {
   const fetcher = fakeFetch(() => vector("0.001", "0.004"));
   await prometheus((p) =>
     p.url("https://prom.example/").query('rate(errors{rev="canary"}[5m])')
@@ -43,7 +47,7 @@ Deno.test("a vector within bounds passes, and the query is sent encoded with hea
   assertEquals(fetcher.headers[0].get("Authorization"), "Bearer t");
 });
 
-Deno.test("a scalar result is judged too", async () => {
+test("a scalar result is judged too", async () => {
   await assertRejects(
     async () =>
       await prometheus((p) =>
@@ -55,7 +59,7 @@ Deno.test("a scalar result is judged too", async () => {
   );
 });
 
-Deno.test("any sample out of bounds fails, and the message is redacted", async () => {
+test("any sample out of bounds fails, and the message is redacted", async () => {
   const error = await assertRejects(
     async () =>
       await prometheus((p) =>
@@ -70,7 +74,7 @@ Deno.test("any sample out of bounds fails, and the message is redacted", async (
   );
 });
 
-Deno.test("an unreadable answer fails with the reason, redacted", async () => {
+test("an unreadable answer fails with the reason, redacted", async () => {
   const cases: Array<[Response, string]> = [
     [vector(), "returned no samples"],
     [result("matrix", []), "expected a vector or scalar result, got matrix"],
@@ -102,7 +106,7 @@ Deno.test("an unreadable answer fails with the reason, redacted", async () => {
   }
 });
 
-Deno.test("a query with no URL, no query or no bound is refused", async () => {
+test("a query with no URL, no query or no bound is refused", async () => {
   for (
     const [configure, message] of [
       [
@@ -127,7 +131,7 @@ Deno.test("a query with no URL, no query or no bound is refused", async () => {
   }
 });
 
-Deno.test("a base URL's path and query string are kept", async () => {
+test("a base URL's path and query string are kept", async () => {
   const fetcher = fakeFetch(() => vector("0"));
   await prometheus((p) =>
     p.url("https://proxy.example/prom/?org=7").query("up").max(1).fetch(fetcher)
@@ -138,7 +142,7 @@ Deno.test("a base URL's path and query string are kept", async () => {
   assertEquals(sent.searchParams.get("query"), "up");
 });
 
-Deno.test("an HTML error page reports its status, not a JSON parse error", async () => {
+test("an HTML error page reports its status, not a JSON parse error", async () => {
   await assertRejects(
     async () =>
       await prometheus((p) =>
@@ -152,7 +156,7 @@ Deno.test("an HTML error page reports its status, not a JSON parse error", async
   );
 });
 
-Deno.test("infinite samples are judged as infinities, NaN as not a number", async () => {
+test("infinite samples are judged as infinities, NaN as not a number", async () => {
   const judge = async (value: string) =>
     await prometheus((p) =>
       p.name("ratio").url("https://prom.example").query("q").max(1)
@@ -170,7 +174,7 @@ Deno.test("infinite samples are judged as infinities, NaN as not a number", asyn
   ).validate(analysisContext());
 });
 
-Deno.test("an unauthenticated in-cluster http URL is queried, as it always was", async () => {
+test("an unauthenticated in-cluster http URL is queried, as it always was", async () => {
   const fetcher = fakeFetch(() => vector("0.001"));
   await prometheus((p) =>
     p.url("http://prometheus.monitoring.svc:9090").query("q").max(0.01)
@@ -182,7 +186,7 @@ Deno.test("an unauthenticated in-cluster http URL is queried, as it always was",
   );
 });
 
-Deno.test("a tenant header over in-cluster http works; an Authorization header is refused", async () => {
+test("a tenant header over in-cluster http works; an Authorization header is refused", async () => {
   const fetcher = fakeFetch(() => vector("0.001"));
   await prometheus((p) =>
     p.url("http://mimir.monitoring.svc:8080/prometheus").query("q")
@@ -205,7 +209,7 @@ Deno.test("a tenant header over in-cluster http works; an Authorization header i
   assertEquals(fetcher.urls.length, 1);
 });
 
-Deno.test("connection(...) reaches the client's own settings — a SigV4 signer", async () => {
+test("connection(...) reaches the client's own settings — a SigV4 signer", async () => {
   const fetcher = fakeFetch(() => vector("0.001"));
   const env = new Map([
     ["AWS_ACCESS_KEY_ID", "AKIDEXAMPLE"],
@@ -227,7 +231,7 @@ Deno.test("connection(...) reaches the client's own settings — a SigV4 signer"
   assertStringIncludes(authorization, "x-team");
 });
 
-Deno.test("credentials in a URL never reach the failure message", async () => {
+test("credentials in a URL never reach the failure message", async () => {
   const error = await assertRejects(
     async () =>
       await prometheus((p) =>
@@ -248,7 +252,7 @@ Deno.test("credentials in a URL never reach the failure message", async () => {
   }
 });
 
-Deno.test("the run's cancellation is not reported as an unreadable query", async () => {
+test("the run's cancellation is not reported as an unreadable query", async () => {
   const stop = new AbortController();
   const fetcher = fakeFetch(() => {
     stop.abort(new Error("run cancelled"));

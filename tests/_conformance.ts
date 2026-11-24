@@ -13,7 +13,8 @@
  * started there runs the case's build.
  */
 
-import { assertEquals } from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals } from "./_assert.ts";
 import { isRecord } from "../packages/engine/src/protocol.ts";
 import {
   defaultStateHost,
@@ -26,7 +27,7 @@ const CASES = new URL("../packages/engine/conformance/", import.meta.url);
 
 /** The scripted worker every case's build runs on. */
 export const FAKE_WORKER =
-  new URL("../packages/engine/tests/_fake_worker.ts", import.meta.url).href;
+  new URL("./support/engine/_fake_worker.ts", import.meta.url).href;
 
 /** The command that starts {@link FAKE_WORKER}, as `zuke.json` names it. */
 export const WORKER_COMMAND = [Deno.execPath(), "run", "-A", FAKE_WORKER];
@@ -188,7 +189,7 @@ export async function conformanceSuite(
     );
     const death = engineDeathOf(raw, name);
     const spec = death === undefined ? caseOf(raw, name) : undefined;
-    Deno.test({
+    test({
       name: `${prefix}: ${name}`,
       ignore,
       fn: async () => {

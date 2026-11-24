@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   TargetSummary,
   withAmbientSummary,
@@ -15,7 +16,7 @@ function out(code: number, stdout = "", stderr = ""): CommandOutput {
   return new CommandOutput(code, stdout, stderr);
 }
 
-Deno.test("tsc-alias: the verbose closing line yields Files, silence yields nothing", () => {
+test("tsc-alias: the verbose closing line yields Files, silence yields nothing", () => {
   assertEquals(
     parseTscAliasSummary(out(0, "tsc-alias info: 3 files were affected!\n")),
     { Files: 3 },
@@ -38,7 +39,7 @@ class Probe extends TscAliasRunSettings {
   }
 }
 
-Deno.test("tsc-alias: the hook reports onto the running target", async () => {
+test("tsc-alias: the hook reports onto the running target", async () => {
   const summary = new TargetSummary();
   await withAmbientSummary(summary, () => {
     new Probe().probe(out(0, "tsc-alias info: 2 files were affected!\n"));

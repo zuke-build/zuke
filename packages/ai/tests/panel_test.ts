@@ -10,11 +10,12 @@
  * @module
  */
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import type { Validation, ValidationContext } from "@zuke/core";
 import {
   AiReviewError,
@@ -24,9 +25,9 @@ import {
   type Reviewer,
   securityReviewer,
 } from "../mod.ts";
-import { withEnv } from "../../core/tests/_env.ts";
-import { silence } from "../../core/tests/_console.ts";
-import { reacted, REACTIONS } from "./_reactions.ts";
+import { withEnv } from "../../../tests/_env.ts";
+import { silence } from "../../../tests/_console.ts";
+import { reacted, REACTIONS } from "../../../tests/support/ai/_reactions.ts";
 import { decodeState, encodeState, stateNames } from "../src/state.ts";
 import { Panel, renderPanel, seatOf } from "../src/panel.ts";
 
@@ -158,7 +159,7 @@ function pair(
   return [securityReviewer(base), genericReviewer(base)];
 }
 
-Deno.test("the reviewers of one target post one comment between them", async () => {
+test("the reviewers of one target post one comment between them", async () => {
   const github = fakeGithub({ [SECURITY]: MINOR, [QUALITY]: CLEAN });
   const threw = await runAll(pair(github.fetch));
   assertEquals(threw, undefined);
@@ -194,7 +195,7 @@ Deno.test("the reviewers of one target post one comment between them", async () 
   );
 });
 
-Deno.test("every reviewer runs when an earlier one fails; the last raises every failure", async () => {
+test("every reviewer runs when an earlier one fails; the last raises every failure", async () => {
   const github = fakeGithub({ [SECURITY]: FAILING, [QUALITY]: FAILING });
   const [security, quality] = pair(github.fetch);
   const threw = await runAll([security, quality]);
@@ -219,7 +220,7 @@ Deno.test("every reviewer runs when an earlier one fails; the last raises every 
   );
 });
 
-Deno.test("findings are merged most severe first, each with its reviewer and id", async () => {
+test("findings are merged most severe first, each with its reviewer and id", async () => {
   const github = fakeGithub({ [SECURITY]: MINOR, [QUALITY]: FAILING });
   await runAll(pair(github.fetch));
   const body = github.comments[0].body;
@@ -230,7 +231,7 @@ Deno.test("findings are merged most severe first, each with its reviewer and id"
   assertStringIncludes(body, `| src/app.ts:4 | \`${id}\` |`);
 });
 
-Deno.test("a re-run updates the panel's comment; any appending member appends", async () => {
+test("a re-run updates the panel's comment; any appending member appends", async () => {
   const github = fakeGithub({ [SECURITY]: CLEAN, [QUALITY]: CLEAN });
   await runAll(pair(github.fetch));
   await runAll(pair(github.fetch));
@@ -242,7 +243,7 @@ Deno.test("a re-run updates the panel's comment; any appending member appends", 
   assertEquals(github.comments.length, 2);
 });
 
-Deno.test("a skipped or broken member keeps its row", async () => {
+test("a skipped or broken member keeps its row", async () => {
   const github = fakeGithub({ [SECURITY]: CLEAN, [QUALITY]: CLEAN });
   const [security] = pair(github.fetch);
   const keyless = genericReviewer((r) =>
@@ -283,7 +284,7 @@ Deno.test("a skipped or broken member keeps its row", async () => {
   );
 });
 
-Deno.test("only reviewers side by side that post form a panel", async () => {
+test("only reviewers side by side that post form a panel", async () => {
   // Another validation between them splits the two: each posts alone.
   const github = fakeGithub({ [SECURITY]: CLEAN, [QUALITY]: CLEAN });
   const [security, quality] = pair(github.fetch);
@@ -326,7 +327,7 @@ Deno.test("only reviewers side by side that post form a panel", async () => {
   );
 });
 
-Deno.test("each member's state rides in the comment under its name, and is read back", async () => {
+test("each member's state rides in the comment under its name, and is read back", async () => {
   const github = fakeGithub({ [SECURITY]: FAILING, [QUALITY]: MINOR });
   const discussing = (r: Reviewer) => r.discussion();
   await runAll(pair(github.fetch, discussing));
@@ -354,7 +355,7 @@ Deno.test("each member's state rides in the comment under its name, and is read 
   assertEquals(after?.findings.map((f) => f.status), ["fixed"]);
 });
 
-Deno.test("a reviewer moving into a panel keeps the state of its own old comment", async () => {
+test("a reviewer moving into a panel keeps the state of its own old comment", async () => {
   const id = findingFingerprint("security", EVAL);
   const github = fakeGithub({ [SECURITY]: CLEAN, [QUALITY]: CLEAN }, [{
     id: 1,
@@ -379,7 +380,7 @@ Deno.test("a reviewer moving into a panel keeps the state of its own old comment
   ]);
 });
 
-Deno.test("a badge can be set, and every value the panel shows is escaped", async () => {
+test("a badge can be set, and every value the panel shows is escaped", async () => {
   const github = fakeGithub({ [SECURITY]: CLEAN, [QUALITY]: CLEAN });
   const [security, quality] = pair(github.fetch);
   security.badge("🔒");
@@ -391,7 +392,7 @@ Deno.test("a badge can be set, and every value the panel shows is escaped", asyn
   assertStringIncludes(body, "<b>a|b &lt;i&gt;</b>");
 });
 
-Deno.test("seatOf: a validation named twice acts alone, and a panel is per run", () => {
+test("seatOf: a validation named twice acts alone, and a panel is per run", () => {
   const member = (peer: unknown): peer is { name: string } =>
     typeof peer === "object" && peer !== null && "name" in peer;
   const a = { name: "a" };
@@ -409,7 +410,7 @@ Deno.test("seatOf: a validation named twice acts alone, and a panel is per run",
   assertEquals(one?.panel === other?.panel, false);
 });
 
-Deno.test("renderPanel: a member that never reported fails the panel's verdict", () => {
+test("renderPanel: a member that never reported fails the panel's verdict", () => {
   const panel = new Panel(["a", "b"]);
   panel.sections.set("a", {
     name: "a",
@@ -434,7 +435,7 @@ Deno.test("renderPanel: a member that never reported fails the panel's verdict",
   assertEquals(renderPanel(panel, "t").includes("### Findings"), false);
 });
 
-Deno.test("a refused member posts nothing and the panel still fails", async () => {
+test("a refused member posts nothing and the panel still fails", async () => {
   const github = fakeGithub({ [SECURITY]: CLEAN, [QUALITY]: CLEAN });
   const [security, quality] = pair(github.fetch);
   // Without a provider every member throws before reporting.
@@ -454,7 +455,7 @@ Deno.test("a refused member posts nothing and the panel still fails", async () =
   assertEquals(github.comments.length, 1);
 });
 
-Deno.test("a decision one member made this run reaches the next member before anything is posted", async () => {
+test("a decision one member made this run reaches the next member before anything is posted", async () => {
   const id = findingFingerprint("security", EVAL);
   const github = fakeGithub({ [SECURITY]: FAILING, [QUALITY]: CLEAN }, [{
     id: 1,
@@ -477,7 +478,7 @@ Deno.test("a decision one member made this run reaches the next member before an
   );
 });
 
-Deno.test("two reviewers sharing a name act alone rather than overwrite each other", async () => {
+test("two reviewers sharing a name act alone rather than overwrite each other", async () => {
   const github = fakeGithub({ [QUALITY]: FAILING });
   const base = (r: Reviewer) =>
     r.provider("claude").apiKey("k").comment().diff((d) => d.text(DIFF))
@@ -495,7 +496,7 @@ Deno.test("two reviewers sharing a name act alone rather than overwrite each oth
   assertStringIncludes(github.comments[0].body, "Eval of user input");
 });
 
-Deno.test("a comment token that fails costs the comment, never a member's failure", async () => {
+test("a comment token that fails costs the comment, never a member's failure", async () => {
   const github = fakeGithub({ [SECURITY]: FAILING, [QUALITY]: CLEAN });
   const [security, quality] = pair(github.fetch);
   quality.commentToken(() => Promise.reject(new Error("token boom")));
@@ -508,7 +509,7 @@ Deno.test("a comment token that fails costs the comment, never a member's failur
   assertEquals(github.comments.length, 0);
 });
 
-Deno.test("a member's own panel comment is its state, even holding no block for it", async () => {
+test("a member's own panel comment is its state, even holding no block for it", async () => {
   const id = findingFingerprint("security", EVAL);
   // Its old comment from before the panel says the finding is open.
   const github = fakeGithub({ [SECURITY]: CLEAN, [QUALITY]: CLEAN }, [{
@@ -542,7 +543,7 @@ Deno.test("a member's own panel comment is its state, even holding no block for 
   );
 });
 
-Deno.test("a member that sat a run out carries its state forward", async () => {
+test("a member that sat a run out carries its state forward", async () => {
   const id = findingFingerprint("security", EVAL);
   const accepted = {
     id,
@@ -590,7 +591,7 @@ Deno.test("a member that sat a run out carries its state forward", async () => {
   assertEquals(stateNames(plain.comments[0].body), []);
 });
 
-Deno.test("a skipped member is counted in the verdict of a panel that passed", async () => {
+test("a skipped member is counted in the verdict of a panel that passed", async () => {
   const github = fakeGithub({ [SECURITY]: CLEAN });
   const [security] = pair(github.fetch);
   const keyless = genericReviewer((r) =>
@@ -604,7 +605,7 @@ Deno.test("a skipped member is counted in the verdict of a panel that passed", a
   );
 });
 
-Deno.test("state that cannot be carried is a fresh start, not a failed run", async () => {
+test("state that cannot be carried is a fresh start, not a failed run", async () => {
   const github = fakeGithub({ [QUALITY]: CLEAN });
   const [, quality] = pair(github.fetch);
   const keyless = securityReviewer((r) =>

@@ -12,10 +12,8 @@
  * revision every update changes.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   Build,
   defaultStateHost,
@@ -25,7 +23,7 @@ import {
 import { splitShellArgs } from "../../packages/core/src/shell.ts";
 import { canary } from "../../packages/canary/mod.ts";
 import { lambdaCanary } from "../../packages/aws/mod.ts";
-import { LambdaModel } from "../../packages/aws/tests/_lambda_model.ts";
+import { LambdaModel } from "../support/aws/_lambda_model.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 
 /** The modelled Lambda, fresh for each test. */
@@ -112,7 +110,7 @@ function quotedCommand(message: string, lead: string): string[] {
   return splitShellArgs(text);
 }
 
-Deno.test("Lambda: staged, stepped, parked, and promoted by a later process", async () => {
+test("Lambda: staged, stepped, parked, and promoted by a later process", async () => {
   fresh();
   await withStateDir(async (dir) => {
     const parked = await runCli(Deploy, ["ship"]);
@@ -137,7 +135,7 @@ Deno.test("Lambda: staged, stepped, parked, and promoted by a later process", as
   });
 });
 
-Deno.test("Lambda: a failed analysis takes the candidate's weight back", async () => {
+test("Lambda: a failed analysis takes the candidate's weight back", async () => {
   fresh();
   healthy = false;
   await withStateDir(async () => {
@@ -156,7 +154,7 @@ Deno.test("Lambda: a failed analysis takes the candidate's weight back", async (
   });
 });
 
-Deno.test("Lambda: an alias moved by someone else mid-rollout is never promoted", async () => {
+test("Lambda: an alias moved by someone else mid-rollout is never promoted", async () => {
   fresh();
   await withStateDir(async (dir) => {
     await runCli(Deploy, ["ship"]);
@@ -214,7 +212,7 @@ function recover(message: string): void {
   assertEquals(model.live.weights, {});
 }
 
-Deno.test("Lambda: a resume or cancel configured for another alias or account changes nothing, and says how to recover", async () => {
+test("Lambda: a resume or cancel configured for another alias or account changes nothing, and says how to recover", async () => {
   for (const [label, change] of CHANGES) {
     for (const command of ["resume", "cancel"]) {
       fresh();
@@ -245,7 +243,7 @@ Deno.test("Lambda: a resume or cancel configured for another alias or account ch
   }
 });
 
-Deno.test("Lambda: an alias the CLI now reaches in another account is neither promoted nor rolled back", async () => {
+test("Lambda: an alias the CLI now reaches in another account is neither promoted nor rolled back", async () => {
   for (const command of ["resume", "cancel"]) {
     fresh();
     await withStateDir(async (dir) => {
@@ -280,7 +278,7 @@ Deno.test("Lambda: an alias the CLI now reaches in another account is neither pr
   }
 });
 
-Deno.test("Lambda: a rollback run by hand goes to the configured stable version", async () => {
+test("Lambda: a rollback run by hand goes to the configured stable version", async () => {
   fresh();
   stable = "2";
   model.live.weights = { "4": 0.5 };
@@ -295,7 +293,7 @@ Deno.test("Lambda: a rollback run by hand goes to the configured stable version"
   });
 });
 
-Deno.test("Lambda: a rollback run by hand with no stable version refuses", async () => {
+test("Lambda: a rollback run by hand with no stable version refuses", async () => {
   fresh();
   await withStateDir(async () => {
     const { code, out, err } = await runCli(Deploy, ["rollout.abort"]);
@@ -305,7 +303,7 @@ Deno.test("Lambda: a rollback run by hand with no stable version refuses", async
   });
 });
 
-Deno.test("Lambda: a stage that fails before reaching the alias rolls nothing back", async () => {
+test("Lambda: a stage that fails before reaching the alias rolls nothing back", async () => {
   // The package is the one already serving, so stage refuses after
   // publishing; the engine's inline rollback must not then move the alias.
   fresh();

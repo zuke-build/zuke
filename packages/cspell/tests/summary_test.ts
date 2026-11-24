@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   TargetSummary,
   withAmbientSummary,
@@ -15,7 +16,7 @@ function out(code: number, stdout = "", stderr = ""): CommandOutput {
   return new CommandOutput(code, stdout, stderr);
 }
 
-Deno.test("cspell: the closing line on stderr yields Files and Issues", () => {
+test("cspell: the closing line on stderr yields Files and Issues", () => {
   assertEquals(
     parseCspellSummary(
       out(1, "", "CSpell: Files checked: 1000, Issues found: 4 in 3 files.\n"),
@@ -30,7 +31,7 @@ Deno.test("cspell: the closing line on stderr yields Files and Issues", () => {
   );
 });
 
-Deno.test("cspell: a run without the closing line reports nothing", () => {
+test("cspell: a run without the closing line reports nothing", () => {
   assertEquals(parseCspellSummary(out(0)), undefined);
   assertEquals(
     parseCspellSummary(out(1, "", "error: unknown option --no-config")),
@@ -45,7 +46,7 @@ class Probe extends CspellSettings {
   }
 }
 
-Deno.test("cspell: the hook reports the counts onto the running target", async () => {
+test("cspell: the hook reports the counts onto the running target", async () => {
   const summary = new TargetSummary();
   await withAmbientSummary(summary, () => {
     new Probe().probe(

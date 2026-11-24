@@ -9,17 +9,18 @@
  * against a fake GitHub; the host adapters are covered as units at the end.
  */
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { type Reviewer, securityReviewer } from "../mod.ts";
 import type { Configure } from "@zuke/core/tooling";
 import { findingFingerprint } from "../src/suppress.ts";
 import { commentMarker } from "../src/hosts/types.ts";
 import { githubHost } from "../src/hosts/github.ts";
 import { gitlabHost } from "../src/hosts/gitlab.ts";
-import { withEnv } from "../../core/tests/_env.ts";
-import { captureLines } from "../../core/tests/_console.ts";
-import { noRedactionContext } from "./_context.ts";
-import { fakeReactions } from "./_reactions.ts";
+import { withEnv } from "../../../tests/_env.ts";
+import { captureLines } from "../../../tests/_console.ts";
+import { noRedactionContext } from "../../../tests/support/ai/_context.ts";
+import { fakeReactions } from "../../../tests/support/ai/_reactions.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";
@@ -129,7 +130,7 @@ const STRANGER = comment(
   "NONE",
 );
 
-Deno.test("a rebuttal the adjudicator accepts gets 👀 and ❤️; a stranger's comment gets nothing", async () => {
+test("a rebuttal the adjudicator accepts gets 👀 and ❤️; a stranger's comment gets nothing", async () => {
   const on = await discuss([OWN, REBUTTAL, STRANGER], [
     claude({ score: 9, severity: "high", findings: [FINDING] }),
     claude({ verdicts: [{ id: ID, verdict: "dismissed", reason: "holds" }] }),
@@ -139,7 +140,7 @@ Deno.test("a rebuttal the adjudicator accepts gets 👀 and ❤️; a stranger's
   assertEquals(on(1), []);
 });
 
-Deno.test("a rebuttal the adjudicator upholds is read, not loved", async () => {
+test("a rebuttal the adjudicator upholds is read, not loved", async () => {
   const on = await discuss([OWN, REBUTTAL], [
     claude({ score: 9, severity: "high", findings: [FINDING] }),
     claude({ verdicts: [{ id: ID, verdict: "upheld", reason: "it is not" }] }),
@@ -147,7 +148,7 @@ Deno.test("a rebuttal the adjudicator upholds is read, not loved", async () => {
   assertEquals(on(2), ["eyes"]);
 });
 
-Deno.test("an accept command that decides a finding gets ❤️", async () => {
+test("an accept command that decides a finding gets ❤️", async () => {
   const accept = comment(
     4,
     `@zuke-build accept ${ID}: by design`,
@@ -161,7 +162,7 @@ Deno.test("an accept command that decides a finding gets ❤️", async () => {
   assertEquals(on(4), ["eyes", "heart"]);
 });
 
-Deno.test("reactions(false) and quiet() leave the replies alone", async () => {
+test("reactions(false) and quiet() leave the replies alone", async () => {
   const responses = [
     claude({ score: 9, severity: "high", findings: [FINDING] }),
     claude({ verdicts: [{ id: ID, verdict: "dismissed", reason: "holds" }] }),
@@ -198,7 +199,7 @@ function hostFetch(answer: () => Response): {
   return { fetch: impl, calls };
 }
 
-Deno.test("GitHub: a conversation comment and a thread reply are reacted on in their own streams", async () => {
+test("GitHub: a conversation comment and a thread reply are reacted on in their own streams", async () => {
   const env = (name: string) =>
     ({ GITHUB_REPOSITORY: "zuke-build/zuke", GITHUB_REF: "refs/pull/7/merge" })[
       name
@@ -224,7 +225,7 @@ Deno.test("GitHub: a conversation comment and a thread reply are reacted on in t
   assertEquals(githubHost.replyReactions?.("tkn", () => undefined), undefined);
 });
 
-Deno.test("GitLab: a note is reacted on with an award emoji", async () => {
+test("GitLab: a note is reacted on with an award emoji", async () => {
   const env = (name: string) =>
     ({
       CI_PROJECT_ID: "42",

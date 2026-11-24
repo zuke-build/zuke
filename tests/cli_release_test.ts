@@ -8,13 +8,14 @@
  * @module
  */
 
+import { test } from "./_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "../packages/core/tests/_assert.ts";
-import { withTemp } from "../packages/core/tests/_temp.ts";
+} from "./_assert.ts";
+import { withTemp } from "./_temp.ts";
 import { gunzip, sha256Hex, untar, unzip } from "@zuke/core";
 import {
   archiveName,
@@ -50,7 +51,7 @@ function sums(): Map<string, string> {
   );
 }
 
-Deno.test("release names follow the tag release-please cuts", () => {
+test("release names follow the tag release-please cuts", () => {
   assertEquals(cliReleaseTag(VERSION), "cli-v1.14.0");
   assertEquals(
     archiveName(VERSION, CLI_TARGETS[0]),
@@ -87,7 +88,7 @@ Deno.test("release names follow the tag release-please cuts", () => {
   ]);
 });
 
-Deno.test("checksumsText is sha256sum's format, sorted, and parseChecksums reads it back", () => {
+test("checksumsText is sha256sum's format, sorted, and parseChecksums reads it back", () => {
   const text = checksumsText([
     { name: "b.tar.gz", sha256: "b".repeat(64) },
     { name: "a.tar.gz", sha256: "a".repeat(64) },
@@ -107,7 +108,7 @@ Deno.test("checksumsText is sha256sum's format, sorted, and parseChecksums reads
   );
 });
 
-Deno.test("parseChecksums refuses what it cannot read rather than skipping it", () => {
+test("parseChecksums refuses what it cannot read rather than skipping it", () => {
   for (
     const bad of [
       "not a checksum",
@@ -130,7 +131,7 @@ Deno.test("parseChecksums refuses what it cannot read rather than skipping it", 
   );
 });
 
-Deno.test("cliFormula pins every archive to its digest, with no version line", () => {
+test("cliFormula pins every archive to its digest, with no version line", () => {
   const formula = cliFormula(VERSION, sums());
   assertStringIncludes(formula, "class Zuke < Formula");
   for (const [i, target] of CLI_TARGETS.entries()) {
@@ -147,7 +148,7 @@ Deno.test("cliFormula pins every archive to its digest, with no version line", (
   assertEquals(/^\s*version "/m.test(formula), false);
 });
 
-Deno.test("cliFormula refuses checksums missing an archive", () => {
+test("cliFormula refuses checksums missing an archive", () => {
   const partial = sums();
   partial.delete(archiveName(VERSION, CLI_TARGETS[2]));
   assertThrows(
@@ -192,7 +193,7 @@ function probe(
   };
 }
 
-Deno.test("planCliRelease owes nothing for a version older than the first binary release", async () => {
+test("planCliRelease owes nothing for a version older than the first binary release", async () => {
   // 1.13.0 predates the CLI's own Homebrew support: its upgrade would put a
   // JSR zuke beside the brewed one, so it must never reach the tap.
   for (const old of ["1.13.0", "1.13.9", "0.9.0"]) {
@@ -219,7 +220,7 @@ Deno.test("planCliRelease owes nothing for a version older than the first binary
   assertEquals(first.build, true);
 });
 
-Deno.test("planCliRelease owes everything while the release is an unpublished draft", async () => {
+test("planCliRelease owes everything while the release is an unpublished draft", async () => {
   const asked: string[] = [];
   const plan = await planCliRelease(
     VERSION,
@@ -231,7 +232,7 @@ Deno.test("planCliRelease owes everything while the release is an unpublished dr
   assertEquals(asked, ["release"]);
 });
 
-Deno.test("planCliRelease owes nothing for a release published without its binaries", async () => {
+test("planCliRelease owes nothing for a release published without its binaries", async () => {
   // Immutable once published: nothing can be added, so retrying would only
   // fail on every push. The next CLI release ships the binaries.
   const plan = await planCliRelease(
@@ -242,7 +243,7 @@ Deno.test("planCliRelease owes nothing for a release published without its binar
   assertStringIncludes(plan.reason, "immutable");
 });
 
-Deno.test("planCliRelease owes only the tap when its formula points elsewhere", async () => {
+test("planCliRelease owes only the tap when its formula points elsewhere", async () => {
   for (const tap of [undefined, 'url ".../cli-v1.13.0/zuke-1.13.0-x.tar.gz"']) {
     const plan = await planCliRelease(
       VERSION,
@@ -258,7 +259,7 @@ Deno.test("planCliRelease owes only the tap when its formula points elsewhere", 
   assertEquals(longer.tap, true);
 });
 
-Deno.test("planCliRelease owes nothing once the formula points at the release", async () => {
+test("planCliRelease owes nothing once the formula points at the release", async () => {
   const plan = await planCliRelease(
     VERSION,
     probe({
@@ -270,7 +271,7 @@ Deno.test("planCliRelease owes nothing once the formula points at the release", 
   assertEquals([plan.build, plan.tap, plan.chocolatey], [false, false, false]);
 });
 
-Deno.test("planCliRelease owes the Chocolatey package while Chocolatey lacks the published zip's version", async () => {
+test("planCliRelease owes the Chocolatey package while Chocolatey lacks the published zip's version", async () => {
   const tap = `url "${releaseAssetUrl(VERSION, "zuke.tar.gz")}"`;
   const asked: string[] = [];
   const owed = await planCliRelease(
@@ -299,7 +300,7 @@ Deno.test("planCliRelease owes the Chocolatey package while Chocolatey lacks the
   assertEquals(asked2.includes("chocolatey"), false);
 });
 
-Deno.test("planCliRelease still plans the tap when Chocolatey cannot be asked", async () => {
+test("planCliRelease still plans the tap when Chocolatey cannot be asked", async () => {
   const plan = await planCliRelease(VERSION, {
     ...probe({ release: true, sums: true, windows: true }),
     chocolateyPublished: () => Promise.reject(new Error("answered 403")),
@@ -323,7 +324,7 @@ function fakeFetch(
   };
 }
 
-Deno.test("httpCliReleaseProbe reads presence from status codes, without a token", async () => {
+test("httpCliReleaseProbe reads presence from status codes, without a token", async () => {
   const seen: string[] = [];
   const http = httpCliReleaseProbe(
     VERSION,
@@ -364,7 +365,7 @@ Deno.test("httpCliReleaseProbe reads presence from status codes, without a token
   assertEquals(await absent.chocolateyPublished(), false);
 });
 
-Deno.test("httpCliReleaseProbe fails on an answer that is neither present nor absent", async () => {
+test("httpCliReleaseProbe fails on an answer that is neither present nor absent", async () => {
   const broken = () => new Response("oops", { status: 500 });
   const http = httpCliReleaseProbe(
     VERSION,
@@ -378,7 +379,7 @@ Deno.test("httpCliReleaseProbe fails on an answer that is neither present nor ab
   await assertRejects(() => http.tapFormula(), Error, "answered 500");
 });
 
-Deno.test("fetchChecksums parses the published manifest and fails on a missing one", async () => {
+test("fetchChecksums parses the published manifest and fails on a missing one", async () => {
   const text = checksumsText([{ name: "a.tar.gz", sha256: "a".repeat(64) }]);
   const read = await fetchChecksums(
     VERSION,
@@ -400,7 +401,7 @@ async function fakeBinaries(bin: string): Promise<void> {
   }
 }
 
-Deno.test("packageCliArchives packs each binary executable, with matching checksums", async () => {
+test("packageCliArchives packs each binary executable, with matching checksums", async () => {
   await withTemp(async (dir) => {
     await fakeBinaries(`${dir}/bin`);
     const out = `${dir}/release`;
@@ -446,7 +447,7 @@ Deno.test("packageCliArchives packs each binary executable, with matching checks
   });
 });
 
-Deno.test("packageCliArchives refuses a release missing a platform", async () => {
+test("packageCliArchives refuses a release missing a platform", async () => {
   await withTemp(async (dir) => {
     await assertRejects(
       () => packageCliArchives(VERSION, `${dir}/bin`, `${dir}/out`),
@@ -464,7 +465,7 @@ Deno.test("packageCliArchives refuses a release missing a platform", async () =>
   });
 });
 
-Deno.test("writeStepOutputs appends name=value lines, and does nothing off Actions", async () => {
+test("writeStepOutputs appends name=value lines, and does nothing off Actions", async () => {
   await withTemp(async (dir) => {
     const file = `${dir}/output`;
     await Deno.writeTextFile(file, "earlier=1\n");
@@ -478,7 +479,7 @@ Deno.test("writeStepOutputs appends name=value lines, and does nothing off Actio
   });
 });
 
-Deno.test("writeStepOutputs refuses a value that could forge another output", async () => {
+test("writeStepOutputs refuses a value that could forge another output", async () => {
   await withTemp(async (dir) => {
     const file = `${dir}/output`;
     const forged: Record<string, string>[] = [

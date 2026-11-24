@@ -10,8 +10,9 @@
  * @module
  */
 
-import { testPlan } from "./_fakes.ts";
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { testPlan } from "../../../tests/_fakes.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target } from "../src/target.ts";
 import { conditionSkips, defaultPrompt } from "../src/execute_plan.ts";
@@ -56,7 +57,7 @@ function withPrompt(
   }
 }
 
-Deno.test("defaultPrompt never prompts when stdin is not a terminal", () => {
+test("defaultPrompt never prompts when stdin is not a terminal", () => {
   withLocalHost(() =>
     withPrompt(() => {
       throw new Error("prompt must not be reached");
@@ -69,7 +70,7 @@ Deno.test("defaultPrompt never prompts when stdin is not a terminal", () => {
   );
 });
 
-Deno.test("defaultPrompt asks at an interactive terminal, labelling flag and description", () => {
+test("defaultPrompt asks at an interactive terminal, labelling flag and description", () => {
   withLocalHost(() => {
     const asked: (string | undefined)[] = [];
     withPrompt((message) => {
@@ -87,7 +88,7 @@ Deno.test("defaultPrompt asks at an interactive terminal, labelling flag and des
   });
 });
 
-Deno.test("a dismissed prompt leaves the parameter unset", () => {
+test("a dismissed prompt leaves the parameter unset", () => {
   withLocalHost(() => {
     const asked: (string | undefined)[] = [];
     withPrompt((message) => {
@@ -101,7 +102,7 @@ Deno.test("a dismissed prompt leaves the parameter unset", () => {
   });
 });
 
-Deno.test("conditionSkips keeps triggered targets and tolerates an unbound dependency", async () => {
+test("conditionSkips keeps triggered targets and tolerates an unbound dependency", async () => {
   class B extends Build {
     helper = target().executes(() => {});
     optional = target()

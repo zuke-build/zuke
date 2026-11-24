@@ -1,12 +1,13 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { CommandError, CommandOutput } from "@zuke/core/shell";
 import {
   DEFAULT_COUNT_LIMIT,
@@ -20,7 +21,7 @@ import {
 // each parses (gcloud gets as far as asking for credentials), and the
 // refusals below mirror gcloud's own parse errors.
 
-Deno.test("logging read: typed parts, quoted, then raw text, joined by AND", () => {
+test("logging read: typed parts, quoted, then raw text, joined by AND", () => {
   const argv = new GcloudLoggingReadSettings()
     .resourceType("cloud_run_revision")
     .resourceLabel("service_name", "api")
@@ -48,7 +49,7 @@ Deno.test("logging read: typed parts, quoted, then raw text, joined by AND", () 
   ]);
 });
 
-Deno.test("logging read: no filter emits no positional", () => {
+test("logging read: no filter emits no positional", () => {
   assertEquals(new GcloudLoggingReadSettings().argv(), [
     "gcloud",
     "logging",
@@ -56,7 +57,7 @@ Deno.test("logging read: no filter emits no positional", () => {
   ]);
 });
 
-Deno.test("logging read: a typed value is escaped so it cannot end its string", () => {
+test("logging read: a typed value is escaped so it cannot end its string", () => {
   const [, , , filter] = new GcloudLoggingReadSettings()
     .resourceLabel("revision_name", 'api" OR resource.type="gce_instance')
     .argv();
@@ -69,7 +70,7 @@ Deno.test("logging read: a typed value is escaped so it cannot end its string", 
   assertEquals(slashed, 'resource.type="a\\\\"');
 });
 
-Deno.test("logging read: control characters and odd label keys are refused", () => {
+test("logging read: control characters and odd label keys are refused", () => {
   assertThrows(
     () => new GcloudLoggingReadSettings().resourceType("a\nb"),
     Error,
@@ -87,13 +88,13 @@ Deno.test("logging read: control characters and odd label keys are refused", () 
   );
 });
 
-Deno.test("logging read: a raw filter starting with '-' cannot become a flag", () => {
+test("logging read: a raw filter starting with '-' cannot become a flag", () => {
   // gcloud: "unrecognized arguments: -severity=ERROR" for the bare form.
   const argv = new GcloudLoggingReadSettings().filter("-severity=DEBUG").argv();
   assertEquals(argv[3], "(-severity=DEBUG)");
 });
 
-Deno.test("logging read: the parent and the place to read from", () => {
+test("logging read: the parent and the place to read from", () => {
   assertEquals(
     new GcloudLoggingReadSettings().organization("123")
       .logView("b", "global", "_AllLogs").argv().slice(3),
@@ -115,7 +116,7 @@ Deno.test("logging read: the parent and the place to read from", () => {
   );
 });
 
-Deno.test("logging read: refusals in gcloud's own terms", () => {
+test("logging read: refusals in gcloud's own terms", () => {
   assertThrows(
     () =>
       new GcloudLoggingReadSettings().logView("b", "l", "v")
@@ -146,7 +147,7 @@ Deno.test("logging read: refusals in gcloud's own terms", () => {
   );
 });
 
-Deno.test("logging logs list: view, filter, limit and sort", () => {
+test("logging logs list: view, filter, limit and sort", () => {
   assertEquals(
     new GcloudLoggingLogsListSettings().logView("b", "l", "v")
       .filter("name:x").limit(2).sortBy("~name").project("p").argv(),
@@ -195,7 +196,7 @@ function entries(n: number): string {
   );
 }
 
-Deno.test("logEntryCount reads ids only, one past the limit, quietly", async () => {
+test("logEntryCount reads ids only, one past the limit, quietly", async () => {
   const fake = answering(entries(3));
   const count = await GcloudTasks.logEntryCount((s) =>
     s.minSeverity("ERROR").limit(10).format("yaml").runner(fake.run)
@@ -207,7 +208,7 @@ Deno.test("logEntryCount reads ids only, one past the limit, quietly", async () 
   assertEquals(argv.slice(-2), ["--format", "json(insertId)"]);
 });
 
-Deno.test("logEntryCount: an empty list is zero", async () => {
+test("logEntryCount: an empty list is zero", async () => {
   const fake = answering("[]\n");
   assertEquals(
     await GcloudTasks.logEntryCount((s) => s.runner(fake.run)),
@@ -219,7 +220,7 @@ Deno.test("logEntryCount: an empty list is zero", async () => {
   );
 });
 
-Deno.test("logEntryCount: exactly the limit is exact, one more is refused", async () => {
+test("logEntryCount: exactly the limit is exact, one more is refused", async () => {
   assertEquals(
     await GcloudTasks.logEntryCount((s) =>
       s.limit(5).runner(answering(entries(5)).run)
@@ -236,7 +237,7 @@ Deno.test("logEntryCount: exactly the limit is exact, one more is refused", asyn
   );
 });
 
-Deno.test("logEntryCount: a bad limit is refused before the + 1 hides it", async () => {
+test("logEntryCount: a bad limit is refused before the + 1 hides it", async () => {
   const fake = answering("[]");
   await assertRejects(
     () => GcloudTasks.logEntryCount((s) => s.limit(0).runner(fake.run)),
@@ -246,7 +247,7 @@ Deno.test("logEntryCount: a bad limit is refused before the + 1 hides it", async
   assertEquals(fake.calls.length, 0);
 });
 
-Deno.test("logEntryCount fails on a failed exit, even after noThrow", async () => {
+test("logEntryCount fails on a failed exit, even after noThrow", async () => {
   await assertRejects(
     () =>
       GcloudTasks.logEntryCount((s) =>
@@ -256,7 +257,7 @@ Deno.test("logEntryCount fails on a failed exit, even after noThrow", async () =
   );
 });
 
-Deno.test("logEntryCount refuses output that is not a JSON list, without quoting it", async () => {
+test("logEntryCount refuses output that is not a JSON list, without quoting it", async () => {
   const secret = "aaaaaaaa-not-json";
   const error = await assertRejects(
     () => GcloudTasks.logEntryCount((s) => s.runner(answering(secret).run)),
@@ -271,7 +272,7 @@ Deno.test("logEntryCount refuses output that is not a JSON list, without quoting
   );
 });
 
-Deno.test("logEntryCount refuses a truncated capture", async () => {
+test("logEntryCount refuses a truncated capture", async () => {
   const run = () => Promise.resolve(new CommandOutput(0, "]", "", true, 16));
   await assertRejects(
     () => GcloudTasks.logEntryCount((s) => s.runner(run)),
@@ -280,7 +281,7 @@ Deno.test("logEntryCount refuses a truncated capture", async () => {
   );
 });
 
-Deno.test("loggingRead runs through a runner with the settings' argv", async () => {
+test("loggingRead runs through a runner with the settings' argv", async () => {
   const fake = answering("[]");
   const out = await GcloudTasks.loggingRead((s) =>
     s.resourceType("global").runner(fake.run)

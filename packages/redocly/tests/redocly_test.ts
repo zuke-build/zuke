@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
   assertWrapperConformance,
@@ -18,11 +19,11 @@ import {
   RedoclyTasks,
 } from "../src/redocly.ts";
 
-Deno.test("redocly lint: the default invocation is the bare subcommand", () => {
+test("redocly lint: the default invocation is the bare subcommand", () => {
   assertEquals(new RedoclyLintSettings().argv(), ["redocly", "lint"]);
 });
 
-Deno.test("redocly lint: every option renders, descriptions last", () => {
+test("redocly lint: every option renders, descriptions last", () => {
   const argv = new RedoclyLintSettings()
     .config("redocly.yaml")
     .skipRule("no-empty-servers", "operation-4xx-response")
@@ -45,7 +46,7 @@ Deno.test("redocly lint: every option renders, descriptions last", () => {
   ]);
 });
 
-Deno.test("redocly bundle: every option renders, descriptions last", () => {
+test("redocly bundle: every option renders, descriptions last", () => {
   const argv = new RedoclyBundleSettings()
     .config("redocly.yaml").output("dist/openapi.yaml").dereferenced()
     .ext("yaml").paths("openapi.yaml").argv();
@@ -63,7 +64,7 @@ Deno.test("redocly bundle: every option renders, descriptions last", () => {
   ]);
 });
 
-Deno.test("redocly split: the description is positional, the target directory a flag", () => {
+test("redocly split: the description is positional, the target directory a flag", () => {
   const argv = new RedoclySplitSettings()
     .api("openapi.yaml").outDir("docs/api").separator("_").argv();
   assertEquals(argv, [
@@ -77,7 +78,7 @@ Deno.test("redocly split: the description is positional, the target directory a 
   ]);
 });
 
-Deno.test("redocly split: both required arguments are enforced", () => {
+test("redocly split: both required arguments are enforced", () => {
   assertThrows(
     () => new RedoclySplitSettings().outDir("docs/api").argv(),
     Error,
@@ -90,7 +91,7 @@ Deno.test("redocly split: both required arguments are enforced", () => {
   );
 });
 
-Deno.test("RedoclyTasks reach execution", async () => {
+test("RedoclyTasks reach execution", async () => {
   await assertRejects(() => RedoclyTasks.lint(missingTool), ToolNotFoundError);
   await assertRejects(
     () => RedoclyTasks.bundle(missingTool),
@@ -102,7 +103,7 @@ Deno.test("RedoclyTasks reach execution", async () => {
   );
 });
 
-Deno.test("redocly: resolves its binary from node_modules by default", async () => {
+test("redocly: resolves its binary from node_modules by default", async () => {
   await assertWrapperConformance(() => new RedoclyLintSettings(), "redocly", {
     resolution: "node_modules",
   });

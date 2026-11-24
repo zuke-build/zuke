@@ -8,7 +8,8 @@
  * @module
  */
 
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { outcomesFromRecord, outcomeView } from "../src/run_support.ts";
 import type { TargetRunState } from "../src/state/types.ts";
 import { parseRunRecord } from "../src/state/types.ts";
@@ -18,13 +19,13 @@ function row(over: Partial<TargetRunState> = {}): TargetRunState {
   return { status: "succeeded", meta: {}, ...over };
 }
 
-Deno.test("a status with no record row is the whole view", () => {
+test("a status with no record row is the whole view", () => {
   assertEquals(outcomeView({ status: "succeeded" }, undefined), {
     status: "succeeded",
   });
 });
 
-Deno.test("the row contributes its detail but never its status", () => {
+test("the row contributes its detail but never its status", () => {
   // The row is the durable copy and can be a write behind the status passed in,
   // so carrying `row.status` over would reintroduce exactly the staleness the
   // caller resolved before calling.
@@ -45,7 +46,7 @@ Deno.test("the row contributes its detail but never its status", () => {
   });
 });
 
-Deno.test("the settlement carries the failure message when there is no record", () => {
+test("the settlement carries the failure message when there is no record", () => {
   // No record row exists to read `error` from, so a run with no state store
   // would otherwise report *that* a target failed but never *why*.
   assertEquals(outcomeView({ status: "failed", error: "boom" }, undefined), {
@@ -54,7 +55,7 @@ Deno.test("the settlement carries the failure message when there is no record", 
   });
 });
 
-Deno.test("the settlement's message wins over the record's", () => {
+test("the settlement's message wins over the record's", () => {
   // Same reason its status does: the row can be a write behind.
   const view = outcomeView(
     { status: "failed", error: "this attempt" },
@@ -63,7 +64,7 @@ Deno.test("the settlement's message wins over the record's", () => {
   assertEquals(view.error, "this attempt");
 });
 
-Deno.test("absent detail is absent, not undefined-valued", () => {
+test("absent detail is absent, not undefined-valued", () => {
   // `{ status }` and `{ status, error: undefined }` compare differently, and
   // the second would make `"error" in outcome` true for a target that succeeded.
   const view = outcomeView({ status: "succeeded" }, row());
@@ -72,7 +73,7 @@ Deno.test("absent detail is absent, not undefined-valued", () => {
   assertEquals("startedAt" in view, false);
 });
 
-Deno.test("a record becomes one entry per settled target", () => {
+test("a record becomes one entry per settled target", () => {
   const all = outcomesFromRecord({
     unit: row({ status: "succeeded", endedAt: "t1" }),
     lint: row({ status: "failed", error: "nope" }),
@@ -87,11 +88,11 @@ Deno.test("a record becomes one entry per settled target", () => {
   assertEquals(all.get("unit")?.endedAt, "t1");
 });
 
-Deno.test("an empty record has no outcomes", () => {
+test("an empty record has no outcomes", () => {
   assertEquals(outcomesFromRecord({}).size, 0);
 });
 
-Deno.test("an effect record claiming zero attempts is refused", () => {
+test("an effect record claiming zero attempts is refused", () => {
   // An armed effect has been attempted once by definition, and a zero would make
   // a genuine re-drive report itself as a first attempt. Records can come from
   // another writer, so the shape is checked rather than trusted.
@@ -128,7 +129,7 @@ Deno.test("an effect record claiming zero attempts is refused", () => {
   assertEquals(message.includes("positive integer"), true, message);
 });
 
-Deno.test("the settlement's notes win, and the row's fill in after a resume", () => {
+test("the settlement's notes win, and the row's fill in after a resume", () => {
   const live = outcomeView(
     { status: "succeeded", summary: [{ key: "Tests", value: "3" }] },
     row({ summary: [{ key: "Tests", value: "2" }] }),

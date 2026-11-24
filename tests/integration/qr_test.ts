@@ -7,10 +7,8 @@
  * page, a setup build showing a pairing token, or any other data to scan.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { runCli } from "./_harness.ts";
 import { Build, parameter, target } from "../../packages/core/mod.ts";
 import { QrTasks } from "../../packages/qr/mod.ts";
@@ -25,7 +23,7 @@ class QrBuild extends Build {
     });
 }
 
-Deno.test("a build prints the parameter's URL as a QR code", async () => {
+test("a build prints the parameter's URL as a QR code", async () => {
   const url = "https://zuke.build/releases/1.60.0";
   const { code, out } = await runCli(QrBuild, ["qr", "--url", url]);
   assertEquals(code, 0);
@@ -35,7 +33,7 @@ Deno.test("a build prints the parameter's URL as a QR code", async () => {
   assertStringIncludes(out, expected.join("\n"));
 });
 
-Deno.test("the qr target fails without its required parameter", async () => {
+test("the qr target fails without its required parameter", async () => {
   const { code, err } = await runCli(QrBuild, ["qr"]);
   assertEquals(code, 1);
   assertStringIncludes(err, "url");

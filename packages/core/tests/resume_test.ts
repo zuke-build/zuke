@@ -1,7 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects, messageOf } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import {
+  assertEquals,
+  assertRejects,
+  messageOf,
+} from "../../../tests/_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target } from "../src/target.ts";
 import { parameter } from "../src/params.ts";
@@ -19,9 +24,9 @@ import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { defaultStateHost, type PutResult } from "../src/state/store.ts";
 import type { RunRecord } from "../src/state/types.ts";
 import { externalSignal, resumeWhen } from "../src/wait.ts";
-import { withTemp } from "./_temp.ts";
-import { withTempStore } from "./_store.ts";
-import { runRecord } from "./_fakes.ts";
+import { withTemp } from "../../../tests/_temp.ts";
+import { withTempStore } from "../../../tests/_store.ts";
+import { runRecord } from "../../../tests/_fakes.ts";
 
 /**
  * The percent-encoded `::`, kept as its own constant so the encoded prefix
@@ -31,7 +36,7 @@ import { runRecord } from "./_fakes.ts";
  */
 const ENC = "%3A%3A";
 
-Deno.test("deploy → wait → promote survives across processes, exactly once", async () => {
+test("deploy → wait → promote survives across processes, exactly once", async () => {
   await withTempStore(async (store) => {
     let deployRuns = 0;
     let promoteRuns = 0;
@@ -106,7 +111,7 @@ Deno.test("deploy → wait → promote survives across processes, exactly once",
   });
 });
 
-Deno.test("resumeRun errors on a missing or non-suspended run", async () => {
+test("resumeRun errors on a missing or non-suspended run", async () => {
   await withTempStore(async (store) => {
     class B extends Build {
       go = target().executes(() => {});
@@ -131,7 +136,7 @@ Deno.test("resumeRun errors on a missing or non-suspended run", async () => {
   });
 });
 
-Deno.test("resumeRun rejects a drifted graph unless forced", async () => {
+test("resumeRun rejects a drifted graph unless forced", async () => {
   await withTempStore(async (store) => {
     class Suspends extends Build {
       gate = target().waitsFor((s) => s.on(externalSignal("go")));
@@ -244,7 +249,7 @@ async function suspendedDegradedRun(
   return { store, runId, log, makeBuild };
 }
 
-Deno.test("resumeRun refuses a degraded record unless overridden", async () => {
+test("resumeRun refuses a degraded record unless overridden", async () => {
   await withTemp(async (dir) => {
     const { store, runId, log, makeBuild } = await suspendedDegradedRun(
       `${dir}/runs`,
@@ -284,7 +289,7 @@ Deno.test("resumeRun refuses a degraded record unless overridden", async () => {
   });
 });
 
-Deno.test("resume --check counts a degraded run as failed and reports why", async () => {
+test("resume --check counts a degraded run as failed and reports why", async () => {
   await withTemp(async (dir) => {
     const { store, runId, makeBuild } = await suspendedDegradedRun(
       `${dir}/runs`,
@@ -314,7 +319,7 @@ Deno.test("resume --check counts a degraded run as failed and reports why", asyn
   });
 });
 
-Deno.test("resumeRun times out a wait past its deadline", async () => {
+test("resumeRun times out a wait past its deadline", async () => {
   await withTempStore(async (store) => {
     class B extends Build {
       // A zero-length deadline is already past by the time we resume.
@@ -345,7 +350,7 @@ Deno.test("resumeRun times out a wait past its deadline", async () => {
   });
 });
 
-Deno.test("resuming a run already running gives AlreadyResumedError", async () => {
+test("resuming a run already running gives AlreadyResumedError", async () => {
   await withTempStore(async (store) => {
     class B extends Build {
       gate = target().waitsFor((s) => s.on(externalSignal("go")));
@@ -384,7 +389,7 @@ Deno.test("resuming a run already running gives AlreadyResumedError", async () =
   });
 });
 
-Deno.test("a resumed run's plugins observe it under the original run id (M7)", async () => {
+test("a resumed run's plugins observe it under the original run id (M7)", async () => {
   await withTempStore(async (store) => {
     const makeBuild = () => {
       class B extends Build {
@@ -419,7 +424,7 @@ Deno.test("a resumed run's plugins observe it under the original run id (M7)", a
   });
 });
 
-Deno.test("resumeCheck isolates a per-run error and keeps sweeping", async () => {
+test("resumeCheck isolates a per-run error and keeps sweeping", async () => {
   await withTempStore(async (store) => {
     let ready = false;
     let ran = false;
@@ -467,7 +472,7 @@ Deno.test("resumeCheck isolates a per-run error and keeps sweeping", async () =>
   });
 });
 
-Deno.test("resumeCheck sweeps suspended runs and advances satisfied predicates", async () => {
+test("resumeCheck sweeps suspended runs and advances satisfied predicates", async () => {
   await withTempStore(async (store) => {
     let ready = false;
     let ran = false;
@@ -510,7 +515,7 @@ Deno.test("resumeCheck sweeps suspended runs and advances satisfied predicates",
   });
 });
 
-Deno.test("a resume refuses a run another build owns", async () => {
+test("a resume refuses a run another build owns", async () => {
   // The gap the shape checks leave: one `zuke.ts` templated across two services
   // agrees on every target name and edge, so the graph check passes and the
   // resume would run *this* service's bodies against the other's run. Only the
@@ -560,7 +565,7 @@ Deno.test("a resume refuses a run another build owns", async () => {
   });
 });
 
-Deno.test("a sweep skips another build's run without counting it failed", async () => {
+test("a sweep skips another build's run without counting it failed", async () => {
   // A cron watches the failure count. Counting a run this build must not touch
   // would report a permanent non-zero result that no operator could ever clear.
   await withTempStore(async (store) => {
@@ -617,7 +622,7 @@ Deno.test("a sweep skips another build's run without counting it failed", async 
   });
 });
 
-Deno.test("a run recorded with no origin is still resumable", async () => {
+test("a run recorded with no origin is still resumable", async () => {
   // The retrofit's safety: a record written before the field existed has no
   // origin, and a resume that refused it would strand whatever it owed.
   await withTempStore(async (store) => {
@@ -659,7 +664,7 @@ Deno.test("a run recorded with no origin is still resumable", async () => {
   });
 });
 
-Deno.test("a sweep does not count a run another process already finished", async () => {
+test("a sweep does not count a run another process already finished", async () => {
   // Two sweeps racing one run is the normal case. The loser lists the run as
   // suspended, and by the time it resumes, the winner has finished it — so it
   // reads a terminal status. That is a discovered success, not a fault, and
@@ -691,7 +696,7 @@ Deno.test("a sweep does not count a run another process already finished", async
   });
 });
 
-Deno.test("the typed error carries the status it found instead", async () => {
+test("the typed error carries the status it found instead", async () => {
   await withTempStore(async (store) => {
     class B extends Build {
       go = target().executes(() => {});
@@ -714,7 +719,7 @@ Deno.test("the typed error carries the status it found instead", async () => {
   });
 });
 
-Deno.test("resumeRun and resumeCheck refuse to start with state disabled", async () => {
+test("resumeRun and resumeCheck refuse to start with state disabled", async () => {
   // A resume without a store has nothing to resume from; the refusal names
   // every way to configure one.
   class B extends Build {
@@ -734,7 +739,7 @@ Deno.test("resumeRun and resumeCheck refuse to start with state disabled", async
   );
 });
 
-Deno.test("resumeRun names a target the build lost since the run suspended", async () => {
+test("resumeRun names a target the build lost since the run suspended", async () => {
   // The drift check's third shape: not an added or re-wired target, but one
   // the record has and the build no longer declares. The refusal has to name
   // it, or the operator cannot decide whether --force-graph is safe.
@@ -797,7 +802,7 @@ class VanishesOnResume extends FileSystemStateStore {
   }
 }
 
-Deno.test("a run that vanishes mid-resume is reported by name", async () => {
+test("a run that vanishes mid-resume is reported by name", async () => {
   await withTemp(async (dir) => {
     const makeBuild = () => {
       class B extends Build {
@@ -843,7 +848,7 @@ class RefusesRunning extends FileSystemStateStore {
   }
 }
 
-Deno.test("resumeRun surfaces a store that never accepts the transition", async () => {
+test("resumeRun surfaces a store that never accepts the transition", async () => {
   // Bounded retries: a store outage produces a named error, not an infinite
   // CAS loop — and the run stays suspended, so a later resume can retry.
   await withTemp(async (dir) => {
@@ -877,7 +882,7 @@ Deno.test("resumeRun surfaces a store that never accepts the transition", async 
   });
 });
 
-Deno.test("a throwing plugin does not break a timed-out resume", async () => {
+test("a throwing plugin does not break a timed-out resume", async () => {
   // The timeout fast-path settles the run without execute()'s lifecycle, so
   // it announces the terminal record to plugins itself — and a plugin is an
   // observer whose throw must never change the outcome.
@@ -930,7 +935,7 @@ class ConflictsOnceOnFail extends FileSystemStateStore {
   }
 }
 
-Deno.test("a timeout settlement retries a conflicting write", async () => {
+test("a timeout settlement retries a conflicting write", async () => {
   // Another writer (an audit append, a lock heartbeat) can land between the
   // read and the settle. The settlement re-reads and retries rather than
   // leaving the expired run suspended forever.
@@ -968,7 +973,7 @@ Deno.test("a timeout settlement retries a conflicting write", async () => {
   });
 });
 
-Deno.test("time parked at a gate is credited back to the run's deadline", async () => {
+test("time parked at a gate is credited back to the run's deadline", async () => {
   // A deadline is a budget for *running*: a 45-minute budget behind a 72-hour
   // approval gate would otherwise be spent before anyone could approve, and
   // the run settled the instant it woke up.
@@ -1036,7 +1041,7 @@ class VanishesOnFail extends FileSystemStateStore {
   }
 }
 
-Deno.test("a run that vanishes during the timeout settlement still fails cleanly", async () => {
+test("a run that vanishes during the timeout settlement still fails cleanly", async () => {
   // The settlement CAS conflicts and the re-read finds nothing: the record was
   // pruned. There is nothing left to settle, but the caller still gets the
   // timeout failure rather than a crash or a false success.
@@ -1068,7 +1073,7 @@ Deno.test("a run that vanishes during the timeout settlement still fails cleanly
   });
 });
 
-Deno.test("resume --check counts a run that resumed and then failed", async () => {
+test("resume --check counts a run that resumed and then failed", async () => {
   // The sweep's exit code is what a cron watches: a run it advanced into a
   // failure (here, a timed-out wait) must count, not just runs it could not
   // touch at all.
@@ -1097,7 +1102,7 @@ Deno.test("resume --check counts a run that resumed and then failed", async () =
   });
 });
 
-Deno.test("a sweep skips a run another process holds, without counting it", async () => {
+test("a sweep skips a run another process holds, without counting it", async () => {
   // A live resumer holds the run's lease. The sweep's own resume attempt gets
   // AlreadyResumedError from the other side of that race — which is a run in
   // good hands, not a failure for the cron to alarm on.
@@ -1133,7 +1138,7 @@ Deno.test("a sweep skips a run another process holds, without counting it", asyn
   });
 });
 
-Deno.test("a record's root target cannot forge a command during a sweep", async () => {
+test("a record's root target cannot forge a command during a sweep", async () => {
   // A sweep reads records another process wrote — on a store shared between
   // builds, another *repository's* process. A record naming a root target this
   // build does not declare makes `resumeRun` throw, and the sweep prints the
@@ -1179,7 +1184,7 @@ Deno.test("a record's root target cannot forge a command during a sweep", async 
   });
 });
 
-Deno.test("a stored record cannot supply a secret parameter to a resume", async () => {
+test("a stored record cannot supply a secret parameter to a resume", async () => {
   // Secrets are never written into a record, so a record naming one was
   // crafted by whoever can write to the store. The resume must take the
   // secret from the environment, while a recorded non-secret value replays.

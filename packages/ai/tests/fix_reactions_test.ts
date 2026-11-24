@@ -6,10 +6,11 @@
  * for both the AI fixer and the agent fixer, against a fake GitHub.
  */
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import type { RemediationContext } from "@zuke/core";
 import { type AgentFixer, agentFixer, type AiFixer, aiFixer } from "../mod.ts";
-import { fakeReactions } from "./_reactions.ts";
+import { fakeReactions } from "../../../tests/support/ai/_reactions.ts";
 
 const CTX: RemediationContext = {
   target: "test",
@@ -77,13 +78,13 @@ function ai(doFetch: typeof fetch, extra: (f: AiFixer) => AiFixer): AiFixer {
   ).fetch(doFetch).quiet();
 }
 
-Deno.test("the AI fixer reacts 🚀 once it has pushed a fix", async () => {
+test("the AI fixer reacts 🚀 once it has pushed a fix", async () => {
   const github = fakeGithub(ONE_EDIT);
   await ai(github.fetch, (f) => f).remediate(CTX);
   assertEquals(github.reactions.on(DESCRIPTION), ["rocket"]);
 });
 
-Deno.test("the AI fixer reacts nothing when it did not push, or does not comment", async () => {
+test("the AI fixer reacts nothing when it did not push, or does not comment", async () => {
   const committedOnly = fakeGithub(ONE_EDIT);
   await ai(committedOnly.fetch, (f) => f.noPush()).remediate(CTX);
   assertEquals(committedOnly.reactions.on(DESCRIPTION), []);
@@ -111,13 +112,13 @@ function agent(
   ).fetch(doFetch).quiet();
 }
 
-Deno.test("the agent fixer reacts 🚀 once it has pushed a fix", async () => {
+test("the agent fixer reacts 🚀 once it has pushed a fix", async () => {
   const github = fakeGithub();
   await agent(github.fetch, " M src/app.ts", (f) => f).remediate(CTX);
   assertEquals(github.reactions.on(DESCRIPTION), ["rocket"]);
 });
 
-Deno.test("the agent fixer reacts nothing when it changed nothing, did not push, or does not comment", async () => {
+test("the agent fixer reacts nothing when it changed nothing, did not push, or does not comment", async () => {
   const unchanged = fakeGithub();
   await agent(unchanged.fetch, "", (f) => f).remediate(CTX);
   assertEquals(unchanged.reactions.on(DESCRIPTION), []);
@@ -131,7 +132,7 @@ Deno.test("the agent fixer reacts nothing when it changed nothing, did not push,
   assertEquals(silent.reactions.on(DESCRIPTION), []);
 });
 
-Deno.test("a fixer off a pull request reacts nothing, and does not fail", async () => {
+test("a fixer off a pull request reacts nothing, and does not fail", async () => {
   const github = fakeGithub(ONE_EDIT);
   const result = await aiFixer((f) =>
     f.provider("claude").apiKey("k").commitFixes()

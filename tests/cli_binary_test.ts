@@ -8,10 +8,8 @@
  * (`tests/e2e/embedded_engine_e2e.ts`).
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import {
   binaryEntry,
   embeddedReleases,
@@ -37,7 +35,7 @@ const ENTRY = {
   ],
 };
 
-Deno.test("binaryEntry imports the CLI, the engine, its core and every wrapper by literal specifier", () => {
+test("binaryEntry imports the CLI, the engine, its core and every wrapper by literal specifier", () => {
   const source = binaryEntry(ENTRY);
   assertEquals(
     source.startsWith(
@@ -78,7 +76,7 @@ Deno.test("binaryEntry imports the CLI, the engine, its core and every wrapper b
   assertEquals(binaryEntry(ENTRY), source);
 });
 
-Deno.test("binaryEntry escapes what it writes as string literals", () => {
+test("binaryEntry escapes what it writes as string literals", () => {
   const source = binaryEntry({
     ...ENTRY,
     engineVersion: '1.0.0"; Deno.exit(1); "',
@@ -89,7 +87,7 @@ Deno.test("binaryEntry escapes what it writes as string literals", () => {
   );
 });
 
-Deno.test("releaseEntry embeds this checkout's engine and every released wrapper from JSR", async () => {
+test("releaseEntry embeds this checkout's engine and every released wrapper from JSR", async () => {
   const entry = await releaseEntry("9.9.9");
   const engine = await localVersion("engine");
   assertEquals(entry.cli, "jsr:@zuke/cli@9.9.9");
@@ -122,7 +120,7 @@ Deno.test("releaseEntry embeds this checkout's engine and every released wrapper
   );
 });
 
-Deno.test("the launchers download a target for every platform the release builds", () => {
+test("the launchers download a target for every platform the release builds", () => {
   // The names come from one module; the target lists are each side's own.
   assertEquals(
     BINARY_POSIX_TARGETS,

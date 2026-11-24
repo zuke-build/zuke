@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
   assertWrapperConformance,
@@ -13,15 +14,15 @@ import {
   TsdownTasks,
 } from "../src/tsdown.ts";
 
-Deno.test("the default binary is tsdown (build)", () => {
+test("the default binary is tsdown (build)", () => {
   assertEquals(new TsdownBuildSettings().argv(), ["tsdown"]);
 });
 
-Deno.test("the default binary is tsdown (migrate)", () => {
+test("the default binary is tsdown (migrate)", () => {
   assertEquals(new TsdownMigrateSettings().argv(), ["tsdown", "migrate"]);
 });
 
-Deno.test("build: every option renders", () => {
+test("build: every option renders", () => {
   assertEquals(
     new TsdownBuildSettings()
       .entry("src/index.ts", "src/cli.ts")
@@ -64,14 +65,14 @@ Deno.test("build: every option renders", () => {
   );
 });
 
-Deno.test("build: entry-only is minimal argv", () => {
+test("build: entry-only is minimal argv", () => {
   assertEquals(
     new TsdownBuildSettings().entry("src/index.ts").argv().slice(1),
     ["src/index.ts"],
   );
 });
 
-Deno.test("migrate: every option renders", () => {
+test("migrate: every option renders", () => {
   assertEquals(
     new TsdownMigrateSettings()
       .from("tsup")
@@ -82,18 +83,18 @@ Deno.test("migrate: every option renders", () => {
   );
 });
 
-Deno.test("TsdownTasks.build reaches execution", async () => {
+test("TsdownTasks.build reaches execution", async () => {
   await assertRejects(() => TsdownTasks.build(missingTool), ToolNotFoundError);
 });
 
-Deno.test("TsdownTasks.migrate reaches execution", async () => {
+test("TsdownTasks.migrate reaches execution", async () => {
   await assertRejects(
     () => TsdownTasks.migrate(missingTool),
     ToolNotFoundError,
   );
 });
 
-Deno.test("tsdown: resolves its binary from node_modules by default", async () => {
+test("tsdown: resolves its binary from node_modules by default", async () => {
   await assertWrapperConformance(() => new TsdownBuildSettings(), "tsdown", {
     resolution: "node_modules",
   });

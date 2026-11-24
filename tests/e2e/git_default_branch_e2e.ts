@@ -13,7 +13,8 @@
  * Needs a real `git` and skips without one; on CI the skip is refused.
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import { runFixture } from "./_harness.ts";
 
 const FIXTURE = new URL(
@@ -40,7 +41,7 @@ const HAS_GIT = await gitAvailable();
 /** On CI a missing git is an environment regression, not a reason to skip. */
 const MUST_HAVE_GIT = Deno.env.get("CI") === "true";
 
-Deno.test({
+test({
   name: "CI runs the default-branch test rather than skipping it",
   ignore: !MUST_HAVE_GIT,
   fn: () => {
@@ -53,7 +54,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "the default branch resolves from the local ref and from the remote",
   ignore: !HAS_GIT,
   fn: async () => {

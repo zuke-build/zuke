@@ -1,10 +1,11 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { AiCache, aiCache } from "../src/cache.ts";
 import type { CacheEntry, CacheStore } from "../src/cache.ts";
-import { withTemp } from "../../core/tests/_temp.ts";
+import { withTemp } from "../../../tests/_temp.ts";
 
 /** An in-memory {@link CacheStore} (a Map) so tests touch no real filesystem. */
 function memoryStore(): CacheStore & { entries: Map<string, CacheEntry> } {
@@ -33,12 +34,12 @@ function failingStore(): CacheStore {
   };
 }
 
-Deno.test("enabled_ is true by default and disable() turns it off", () => {
+test("enabled_ is true by default and disable() turns it off", () => {
   assertEquals(new AiCache().enabled_(), true);
   assertEquals(new AiCache().disable().enabled_(), false);
 });
 
-Deno.test("key_ is deterministic for the same parts and distinct for different ones", () => {
+test("key_ is deterministic for the same parts and distinct for different ones", () => {
   const cache = new AiCache();
   assertEquals(cache.key_(["a", "b"]), cache.key_(["a", "b"]));
   // The NUL separator keeps adjacent parts from colliding.
@@ -46,12 +47,12 @@ Deno.test("key_ is deterministic for the same parts and distinct for different o
   assertEquals(split, false);
 });
 
-Deno.test("get_ is a miss for an unknown key", async () => {
+test("get_ is a miss for an unknown key", async () => {
   const cache = new AiCache().store(memoryStore());
   assertEquals(await cache.get_("nope"), undefined);
 });
 
-Deno.test("get_ returns a previously stored entry (round-trip through put_)", async () => {
+test("get_ returns a previously stored entry (round-trip through put_)", async () => {
   const cache = new AiCache().store(memoryStore()).now(() => 1_000);
   await cache.put_("k", "hello", { inputTokens: 3 });
   assertEquals(await cache.get_("k"), {
@@ -61,14 +62,14 @@ Deno.test("get_ returns a previously stored entry (round-trip through put_)", as
   });
 });
 
-Deno.test("get_ misses while disabled, even when the store has the entry", async () => {
+test("get_ misses while disabled, even when the store has the entry", async () => {
   const store = memoryStore();
   store.entries.set("k", { text: "cached", createdAt: 0 });
   const cache = new AiCache().store(store).disable();
   assertEquals(await cache.get_("k"), undefined);
 });
 
-Deno.test("get_ treats an entry past its TTL as a miss", async () => {
+test("get_ treats an entry past its TTL as a miss", async () => {
   const store = memoryStore();
   store.entries.set("k", { text: "old", createdAt: 0 });
   let nowMs = 0;
@@ -79,14 +80,14 @@ Deno.test("get_ treats an entry past its TTL as a miss", async () => {
   assertEquals(await cache.get_("k"), undefined);
 });
 
-Deno.test("ttl(0) means an entry never expires", async () => {
+test("ttl(0) means an entry never expires", async () => {
   const store = memoryStore();
   store.entries.set("k", { text: "ancient", createdAt: 0 });
   const cache = new AiCache().store(store).ttl(0).now(() => 1_000_000_000);
   assertEquals(await cache.get_("k"), { text: "ancient", createdAt: 0 });
 });
 
-Deno.test("get_ rejects a malformed entry (missing string text)", async () => {
+test("get_ rejects a malformed entry (missing string text)", async () => {
   const store = memoryStore();
   // The store's runtime contents can drift from the type (a hand-edited file);
   // @ts-expect-error deliberately exercises the runtime guard with a bad entry.
@@ -95,27 +96,27 @@ Deno.test("get_ rejects a malformed entry (missing string text)", async () => {
   assertEquals(await cache.get_("k"), undefined);
 });
 
-Deno.test("put_ omits usage when none is given", async () => {
+test("put_ omits usage when none is given", async () => {
   const store = memoryStore();
   const cache = new AiCache().store(store).now(() => 5);
   await cache.put_("k", "text-only");
   assertEquals(store.entries.get("k"), { text: "text-only", createdAt: 5 });
 });
 
-Deno.test("put_ is a no-op when the cache is disabled", async () => {
+test("put_ is a no-op when the cache is disabled", async () => {
   const store = memoryStore();
   const cache = new AiCache().store(store).disable();
   await cache.put_("k", "ignored");
   assertEquals(store.entries.size, 0);
 });
 
-Deno.test("put_ swallows a store error so caching never breaks a build", async () => {
+test("put_ swallows a store error so caching never breaks a build", async () => {
   const cache = new AiCache().store(failingStore());
   // Resolves rather than throwing, despite the store's rejecting set().
   await cache.put_("k", "anything");
 });
 
-Deno.test("the default clock stamps createdAt from real wall-clock time", async () => {
+test("the default clock stamps createdAt from real wall-clock time", async () => {
   const store = memoryStore();
   const before = Date.now();
   // No now() seam — exercises the default `() => Date.now()` clock.
@@ -126,7 +127,7 @@ Deno.test("the default clock stamps createdAt from real wall-clock time", async 
   assertEquals((entry?.createdAt ?? 0) >= before, true);
 });
 
-Deno.test("aiCache() builds a default instance and applies a configure lambda", () => {
+test("aiCache() builds a default instance and applies a configure lambda", () => {
   assertEquals(aiCache() instanceof AiCache, true);
   const store = memoryStore();
   const configured = aiCache((c) => c.store(store).ttl(1).disable());
@@ -134,7 +135,7 @@ Deno.test("aiCache() builds a default instance and applies a configure lambda", 
   assertEquals(configured.enabled_(), false);
 });
 
-Deno.test("the default file store round-trips and misses cleanly", async () => {
+test("the default file store round-trips and misses cleanly", async () => {
   await withTemp(async (dir) => {
     const cache = new AiCache().dir(dir).now(() => 42);
     const key = cache.key_(["model", "diff"]);
@@ -163,7 +164,7 @@ Deno.test("the default file store round-trips and misses cleanly", async () => {
   });
 });
 
-Deno.test("get_ swallows a throwing store and reports a miss (its contract)", async () => {
+test("get_ swallows a throwing store and reports a miss (its contract)", async () => {
   const throwing: CacheStore = {
     get() {
       return Promise.reject(new Error("boom"));

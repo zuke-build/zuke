@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   TargetSummary,
   withAmbientSummary,
@@ -15,7 +16,7 @@ function out(code: number, stdout = "", stderr = ""): CommandOutput {
   return new CommandOutput(code, stdout, stderr);
 }
 
-Deno.test("dpdm: the numbered entries under the circular heading are counted", () => {
+test("dpdm: the numbered entries under the circular heading are counted", () => {
   assertEquals(
     parseDpdmSummary(
       out(
@@ -46,7 +47,7 @@ Deno.test("dpdm: the numbered entries under the circular heading are counted", (
   );
 });
 
-Deno.test("dpdm: a run without the heading reports nothing", () => {
+test("dpdm: a run without the heading reports nothing", () => {
   assertEquals(parseDpdmSummary(out(0)), undefined);
   assertEquals(parseDpdmSummary(out(1, "", "Cannot find module")), undefined);
 });
@@ -58,7 +59,7 @@ class Probe extends DpdmAnalyzeSettings {
   }
 }
 
-Deno.test("dpdm: the hook reports onto the running target", async () => {
+test("dpdm: the hook reports onto the running target", async () => {
   const summary = new TargetSummary();
   await withAmbientSummary(summary, () => {
     new Probe().probe(out(0, "• Circular Dependencies\n  1) a.js -> b.js\n"));

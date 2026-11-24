@@ -6,11 +6,12 @@
  * `monitor metrics list`.
  */
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import {
   AzMonitorActivityLogListSettings,
   AzMonitorMetricsAlertListSettings,
@@ -22,7 +23,7 @@ import {
   AzTasks,
 } from "../mod.ts";
 import type { Configure } from "@zuke/core/tooling";
-import { FakeAz, json } from "./_fake.ts";
+import { FakeAz, json } from "../../../tests/support/az/_fake.ts";
 
 /** The argv after the binary. */
 function args(settings: { argv(): string[] }): string[] {
@@ -68,7 +69,7 @@ function read(
   };
 }
 
-Deno.test("metrics list: every option", () => {
+test("metrics list: every option", () => {
   assertEquals(
     args(
       new AzMonitorMetricsListSettings().resource("/subs/x/app")
@@ -131,7 +132,7 @@ Deno.test("metrics list: every option", () => {
   );
 });
 
-Deno.test("metrics list: refuses a missing resource and mixed filters", () => {
+test("metrics list: refuses a missing resource and mixed filters", () => {
   assertThrows(
     () => new AzMonitorMetricsListSettings().argv(),
     Error,
@@ -156,7 +157,7 @@ Deno.test("metrics list: refuses a missing resource and mixed filters", () => {
   );
 });
 
-Deno.test("metrics list-definitions, alert list/show, activity-log list", () => {
+test("metrics list-definitions, alert list/show, activity-log list", () => {
   assertEquals(
     args(new AzMonitorMetricsListDefinitionsSettings().resource("r")),
     ["monitor", "metrics", "list-definitions", "--resource=r"],
@@ -237,7 +238,7 @@ Deno.test("metrics list-definitions, alert list/show, activity-log list", () => 
   );
 });
 
-Deno.test("metricValue: latest by default, aggregates on request", async () => {
+test("metricValue: latest by default, aggregates on request", async () => {
   const answer = [metric("Requests", [data("total", [1, null, 4, 2])])];
   const latest = read(answer);
   assertEquals(await latest.value, 2);
@@ -252,7 +253,7 @@ Deno.test("metricValue: latest by default, aggregates on request", async () => {
   assertEquals(await read(answer, (s) => s.aggregate("minimum")).value, 1);
 });
 
-Deno.test("metricValue: every series counts, and the metric is named case-blind", async () => {
+test("metricValue: every series counts, and the metric is named case-blind", async () => {
   const answer = [
     metric("Requests", [data("total", [1, 2]), data("total", [10])]),
   ];
@@ -262,7 +263,7 @@ Deno.test("metricValue: every series counts, and the metric is named case-blind"
   );
 });
 
-Deno.test("metricValue: no data fails, unless missingDataAs says what it means", async () => {
+test("metricValue: no data fails, unless missingDataAs says what it means", async () => {
   const empty = [metric("Requests", [data("total", [null, null])])];
   await assertRejects(
     () => read(empty).value,
@@ -277,7 +278,7 @@ Deno.test("metricValue: no data fails, unless missingDataAs says what it means",
   );
 });
 
-Deno.test("metricValue: needs exactly one aggregation", async () => {
+test("metricValue: needs exactly one aggregation", async () => {
   const answer = [metric("Requests", [data("total", [1])])];
   await assertRejects(
     () => read(answer, (s) => s.aggregation("Average")).value,
@@ -294,7 +295,7 @@ Deno.test("metricValue: needs exactly one aggregation", async () => {
   );
 });
 
-Deno.test("metricValue: refuses an answer that may be cut at --top", async () => {
+test("metricValue: refuses an answer that may be cut at --top", async () => {
   const many = Array.from({ length: 10 }, () => data("total", [1]));
   await assertRejects(
     () => read([metric("Requests", many)], (s) => s.splitBy("Instance")).value,
@@ -311,7 +312,7 @@ Deno.test("metricValue: refuses an answer that may be cut at --top", async () =>
   );
 });
 
-Deno.test("metricValue: refuses answers of the wrong shape", async () => {
+test("metricValue: refuses answers of the wrong shape", async () => {
   const cases: Array<[unknown, string]> = [
     [{}, "no list of metrics"],
     [[metric("A", []), metric("B", [])], "carries 2 metrics"],

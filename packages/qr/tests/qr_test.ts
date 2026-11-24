@@ -3,6 +3,7 @@
 
 /** Tests for the `QrTasks` surface and the package entrypoint. */
 
+import { test } from "../../../tests/_testing.ts";
 import {
   type ErrorCorrectionLevel,
   QrCapacityError,
@@ -10,21 +11,21 @@ import {
   QrSettings,
   QrTasks,
 } from "../mod.ts";
-import { toRows, ZUKE_BUILD_M } from "./_golden.ts";
+import { toRows, ZUKE_BUILD_M } from "../../../tests/support/qr/_golden.ts";
 import {
   assertEquals,
   assertStringIncludes,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 
-Deno.test("QrTasks.encode returns the module matrix", () => {
+test("QrTasks.encode returns the module matrix", () => {
   const code: QrCode = QrTasks.encode("https://zuke.build");
   assertEquals(code.version, 2);
   assertEquals(code.errorCorrection, "Q");
   assertEquals(toRows(code.modules), ZUKE_BUILD_M);
 });
 
-Deno.test("QrTasks.encode honours the settings lambda", () => {
+test("QrTasks.encode honours the settings lambda", () => {
   const level: ErrorCorrectionLevel = "L";
   const code = QrTasks.encode(
     "https://zuke.build",
@@ -35,7 +36,7 @@ Deno.test("QrTasks.encode honours the settings lambda", () => {
   assertEquals(code.errorCorrection, "L");
 });
 
-Deno.test("QrTasks.encode encodes text as UTF-8 bytes, not code units", () => {
+test("QrTasks.encode encodes text as UTF-8 bytes, not code units", () => {
   // Five emoji are 10 UTF-16 code units but 20 UTF-8 bytes: too many for
   // version 1 at level L (17 bytes), so the version tells the two apart.
   const emoji = QrTasks.encode(
@@ -54,7 +55,7 @@ Deno.test("QrTasks.encode encodes text as UTF-8 bytes, not code units", () => {
   );
 });
 
-Deno.test("QrTasks.encode fills version 40 exactly and refuses one byte more", () => {
+test("QrTasks.encode fills version 40 exactly and refuses one byte more", () => {
   const exact = QrTasks.encode(
     "x".repeat(2953),
     (s) => s.errorCorrection("L").boostErrorCorrection(false),
@@ -68,7 +69,7 @@ Deno.test("QrTasks.encode fills version 40 exactly and refuses one byte more", (
   );
 });
 
-Deno.test("QrTasks.encode surfaces the capacity error with the level it tried", () => {
+test("QrTasks.encode surfaces the capacity error with the level it tried", () => {
   const error = assertThrows(
     () => QrTasks.encode("x".repeat(3000)),
     QrCapacityError,
@@ -77,7 +78,7 @@ Deno.test("QrTasks.encode surfaces the capacity error with the level it tried", 
   assertEquals(error instanceof QrCapacityError && error.level, "M");
 });
 
-Deno.test("QrTasks.encode refuses a hopeless string before encoding it", () => {
+test("QrTasks.encode refuses a hopeless string before encoding it", () => {
   // 10 MB of ASCII is refused by the string-length check, so the call is
   // quick and never allocates the UTF-8 copy.
   const started = performance.now();
@@ -106,14 +107,14 @@ Deno.test("QrTasks.encode refuses a hopeless string before encoding it", () => {
   assertEquals(wide instanceof QrCapacityError && wide.bytes, 3000);
 });
 
-Deno.test("QrTasks refuses a non-string, such as an unset optional parameter", () => {
+test("QrTasks refuses a non-string, such as an unset optional parameter", () => {
   // @ts-expect-error: deliberately exercising the runtime guard with a value the type forbids.
   assertThrows(() => QrTasks.encode(undefined), TypeError, "got undefined");
   // @ts-expect-error: deliberately exercising the runtime guard with a value the type forbids.
   assertThrows(() => QrTasks.render(42), TypeError, "got number");
 });
 
-Deno.test("QrTasks.renderLines and render agree, with the border applied", () => {
+test("QrTasks.renderLines and render agree, with the border applied", () => {
   const lines = QrTasks.renderLines("zuke", (s) => s.quietZone(1));
   // 21 modules + 2 border rows = 23 rows → 12 half-block lines, 23 wide.
   assertEquals(lines.length, 12);
@@ -122,7 +123,7 @@ Deno.test("QrTasks.renderLines and render agree, with the border applied", () =>
   assertStringIncludes(lines[1], "█");
 });
 
-Deno.test("QrTasks.print writes each line through the given writer", () => {
+test("QrTasks.print writes each line through the given writer", () => {
   const written: string[] = [];
   QrTasks.print("zuke", (s) => s.compact(false).quietZone(0), {
     write: (line) => written.push(line),
@@ -131,7 +132,7 @@ Deno.test("QrTasks.print writes each line through the given writer", () => {
   assertEquals(written[0].startsWith("██████████████"), true);
 });
 
-Deno.test("QrTasks.print defaults to console.log", () => {
+test("QrTasks.print defaults to console.log", () => {
   const logged: string[] = [];
   const original = console.log;
   console.log = (...args: unknown[]) => void logged.push(args.join(" "));
@@ -143,6 +144,6 @@ Deno.test("QrTasks.print defaults to console.log", () => {
   assertEquals(logged, QrTasks.renderLines("zuke", (s) => s.quietZone(0)));
 });
 
-Deno.test("the entrypoint exports the settings class", () => {
+test("the entrypoint exports the settings class", () => {
   assertEquals(new QrSettings().errorCorrection("Q").errorCorrection_, "Q");
 });

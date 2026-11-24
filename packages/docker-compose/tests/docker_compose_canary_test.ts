@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import type { JsonValue, TargetStateHandle } from "@zuke/core";
 import { CommandOutput } from "@zuke/core/shell";
 import { ToolNotFoundError } from "@zuke/core/tooling";
@@ -324,7 +325,7 @@ async function staged(runner: DockerComposeSettingsRunner) {
   return ctx;
 }
 
-Deno.test("stage records the rollout, pulls the candidate, and settles at 0 %", async () => {
+test("stage records the rollout, pulls the candidate, and settles at 0 %", async () => {
   const { runner, calls } = fakeCompose();
   const ctx = context();
   await platform(runner).stage(ctx);
@@ -351,7 +352,7 @@ Deno.test("stage records the rollout, pulls the candidate, and settles at 0 %", 
   assertEquals(ctx.summary, { Candidate: "app:v2", Stable: "app:v1" });
 });
 
-Deno.test("expose scales the canary up first, checks its image, then the stable service down", async () => {
+test("expose scales the canary up first, checks its image, then the stable service down", async () => {
   const { runner, calls, world } = fakeCompose();
   const ctx = await staged(runner);
   const p = platform(runner);
@@ -382,7 +383,7 @@ Deno.test("expose scales the canary up first, checks its image, then the stable 
   });
 });
 
-Deno.test("expose to a smaller share grows the stable service first", async () => {
+test("expose to a smaller share grows the stable service first", async () => {
   const { runner, calls } = fakeCompose();
   const ctx = await staged(runner);
   const p = platform(runner);
@@ -405,7 +406,7 @@ Deno.test("expose to a smaller share grows the stable service first", async () =
   ]);
 });
 
-Deno.test("expose quantises to whole replicas of the recorded total", async () => {
+test("expose quantises to whole replicas of the recorded total", async () => {
   const { runner, calls } = fakeCompose({
     world: { app: ["app:v1", "app:v1", "app:v1"], "app-canary": [] },
   });
@@ -423,7 +424,7 @@ Deno.test("expose quantises to whole replicas of the recorded total", async () =
   assertEquals(calls.at(-1)?.argv, scale("app", 0, true));
 });
 
-Deno.test("expose refuses a share outside 0 to 100", async () => {
+test("expose refuses a share outside 0 to 100", async () => {
   const { runner, calls } = fakeCompose();
   const ctx = await staged(runner);
   calls.length = 0;
@@ -437,7 +438,7 @@ Deno.test("expose refuses a share outside 0 to 100", async () => {
   assertEquals(calls, []);
 });
 
-Deno.test("expose refuses a canary whose image does not read its variable", async () => {
+test("expose refuses a canary whose image does not read its variable", async () => {
   // The canary service's image: is a literal, so it runs the stable release
   // and an analysis of it would judge the wrong image.
   const { runner, calls } = fakeCompose({
@@ -474,7 +475,7 @@ Deno.test("expose refuses a canary whose image does not read its variable", asyn
   );
 });
 
-Deno.test("expose and promote refuse without a stage that succeeded", async () => {
+test("expose and promote refuse without a stage that succeeded", async () => {
   const { runner, calls } = fakeCompose();
   await assertRejects(
     () => platform(runner).expose(25, context()),
@@ -492,7 +493,7 @@ Deno.test("expose and promote refuse without a stage that succeeded", async () =
   assertEquals(calls, []);
 });
 
-Deno.test("a damaged record is refused rather than read as some other rollout", async () => {
+test("a damaged record is refused rather than read as some other rollout", async () => {
   const { runner, calls } = fakeCompose();
   for (
     const [key, value] of [
@@ -520,7 +521,7 @@ Deno.test("a damaged record is refused rather than read as some other rollout", 
   assertEquals(calls, []);
 });
 
-Deno.test("promote hands the stable service to the candidate without a capacity dip", async () => {
+test("promote hands the stable service to the candidate without a capacity dip", async () => {
   const { runner, calls, world } = fakeCompose();
   const ctx = await staged(runner);
   const p = platform(runner);
@@ -548,7 +549,7 @@ Deno.test("promote hands the stable service to the candidate without a capacity 
   assertEquals(calls, []);
 });
 
-Deno.test("promote refuses a stable service whose image does not read its variable", async () => {
+test("promote refuses a stable service whose image does not read its variable", async () => {
   // image: repo:${TAG}, or a literal: setting APP_IMAGE changes nothing, so
   // reporting a promotion would be a lie.
   const { runner, calls } = fakeCompose({ hardCoded: { app: "app:v1" } });
@@ -587,7 +588,7 @@ Deno.test("promote refuses a stable service whose image does not read its variab
   );
 });
 
-Deno.test("abort mid-rollout scales the stable service back without recreating it, and repeats harmlessly", async () => {
+test("abort mid-rollout scales the stable service back without recreating it, and repeats harmlessly", async () => {
   const { runner, calls, world } = fakeCompose();
   const ctx = await staged(runner);
   const p = platform(runner);
@@ -609,7 +610,7 @@ Deno.test("abort mid-rollout scales the stable service back without recreating i
   });
 });
 
-Deno.test("abort after a promotion that failed part-way surges the canary on the stable image before recreating", async () => {
+test("abort after a promotion that failed part-way surges the canary on the stable image before recreating", async () => {
   // The stable service was recreated on the candidate, then the last command
   // failed. Compose recreates every stable replica at once, so the canary
   // holds the load on the stable image while it does.
@@ -640,7 +641,7 @@ Deno.test("abort after a promotion that failed part-way surges the canary on the
   });
 });
 
-Deno.test("abort after a stage that changed nothing runs nothing", async () => {
+test("abort after a stage that changed nothing runs nothing", async () => {
   // The stable read failed: nothing was pulled or scaled.
   const ctx = context();
   const failing = platform(() => Promise.reject(new Error("no daemon")));
@@ -651,7 +652,7 @@ Deno.test("abort after a stage that changed nothing runs nothing", async () => {
   assertEquals(calls, []);
 });
 
-Deno.test("a stage its own settings refuse is marked first, so the rollback is a no-op", async () => {
+test("a stage its own settings refuse is marked first, so the rollback is a no-op", async () => {
   // The engine rolls back a failed stage inline. Had the refusal come before
   // the marker, that rollback would take the hand-run path and recreate the
   // stable service on d.stable(...).
@@ -675,7 +676,7 @@ Deno.test("a stage its own settings refuse is marked first, so the rollback is a
   assertEquals(calls, []);
 });
 
-Deno.test("a stage that cannot record the stable image stops before anything scales", async () => {
+test("a stage that cannot record the stable image stops before anything scales", async () => {
   const { runner, calls } = fakeCompose();
   const ctx = context();
   ctx.state.trySet = () => Promise.resolve(false);
@@ -693,7 +694,7 @@ Deno.test("a stage that cannot record the stable image stops before anything sca
   ]);
 });
 
-Deno.test("stage refuses a stable service with no single running image", async () => {
+test("stage refuses a stable service with no single running image", async () => {
   for (
     const [serving, message] of [
       ["", "has no running replicas"],
@@ -713,7 +714,7 @@ Deno.test("stage refuses a stable service with no single running image", async (
   }
 });
 
-Deno.test("a truncated ps capture is refused, since it may begin mid-image", async () => {
+test("a truncated ps capture is refused, since it may begin mid-image", async () => {
   const { runner } = fakeCompose({
     answer: (argv) =>
       argv.includes("ps")
@@ -727,7 +728,7 @@ Deno.test("a truncated ps capture is refused, since it may begin mid-image", asy
   );
 });
 
-Deno.test("a hand-run abort on stable replicas already on the image only scales them back", async () => {
+test("a hand-run abort on stable replicas already on the image only scales them back", async () => {
   const { runner, calls } = fakeCompose({
     world: { app: ["app:v1", "app:v1"], "app-canary": ["app:v2", "app:v2"] },
   });
@@ -741,7 +742,7 @@ Deno.test("a hand-run abort on stable replicas already on the image only scales 
   ]);
 });
 
-Deno.test("a hand-run abort after a promotion surges the canary on the stable image, then recreates", async () => {
+test("a hand-run abort after a promotion surges the canary on the stable image, then recreates", async () => {
   // Every stable replica runs the promoted release. Recreating them with the
   // canary at none would leave nothing serving while Compose replaces them.
   const { runner, calls, world } = fakeCompose({
@@ -765,7 +766,7 @@ Deno.test("a hand-run abort after a promotion surges the canary on the stable im
   });
 });
 
-Deno.test("a rollback with nothing recorded reads and changes no container, even with a stable image set", async () => {
+test("a rollback with nothing recorded reads and changes no container, even with a stable image set", async () => {
   // A degraded run record, or a stage whose first state write was rejected:
   // nothing was staged, so putting the stable service on the configured image
   // would change a project no rollout touched — here, undo a promotion.
@@ -787,7 +788,7 @@ Deno.test("a rollback with nothing recorded reads and changes no container, even
   });
 });
 
-Deno.test("a hand-run abort, named or from an engine that names no reason, falls back alike", async () => {
+test("a hand-run abort, named or from an engine that names no reason, falls back alike", async () => {
   for (const reason of ["hand-run", undefined] as const) {
     const { runner, calls } = fakeCompose({
       world: { app: ["app:v1", "app:v1"], "app-canary": ["app:v2", "app:v2"] },
@@ -807,7 +808,7 @@ Deno.test("a hand-run abort, named or from an engine that names no reason, falls
   }
 });
 
-Deno.test("a hand-run abort with no usable stable image refuses rather than claim a rollback", async () => {
+test("a hand-run abort with no usable stable image refuses rather than claim a rollback", async () => {
   const { runner, calls } = fakeCompose();
   await assertRejects(
     () => platform(runner).abort(context()),
@@ -824,7 +825,7 @@ Deno.test("a hand-run abort with no usable stable image refuses rather than clai
   assertEquals(calls, []);
 });
 
-Deno.test("every call after stage acts on what stage recorded, not on the lambda", async () => {
+test("every call after stage acts on what stage recorded, not on the lambda", async () => {
   // A resumed or cancelling process whose parameters resolve differently.
   const { runner, calls } = fakeCompose();
   const ctx = await staged(runner);
@@ -861,7 +862,7 @@ Deno.test("every call after stage acts on what stage recorded, not on the lambda
   assertEquals(calls[2].env, ALL_V2_ID);
 });
 
-Deno.test("the lambda is evaluated on every call, so it sees resolved values", async () => {
+test("the lambda is evaluated on every call, so it sees resolved values", async () => {
   const { runner, calls } = fakeCompose();
   let image = "unresolved";
   const p = platform(runner, (d) => d.image(image));
@@ -873,7 +874,7 @@ Deno.test("the lambda is evaluated on every call, so it sees resolved values", a
   });
 });
 
-Deno.test("missing and malformed settings are named before anything runs", async () => {
+test("missing and malformed settings are named before anything runs", async () => {
   const { runner, calls } = fakeCompose();
   const cases: Array<
     [(d: DockerComposeCanarySettings) => DockerComposeCanarySettings, string]
@@ -995,7 +996,7 @@ Deno.test("missing and malformed settings are named before anything runs", async
   assertEquals(calls, []);
 });
 
-Deno.test("service names may start with '_' or '.', as the compose spec allows", async () => {
+test("service names may start with '_' or '.', as the compose spec allows", async () => {
   const { runner, calls } = fakeCompose({
     world: { "_app": ["app:v1", "app:v1"], ".canary": [] },
   });
@@ -1006,7 +1007,7 @@ Deno.test("service names may start with '_' or '.', as the compose spec allows",
   assertEquals(calls.at(-1)?.argv.slice(-2), [".canary=0", ".canary"]);
 });
 
-Deno.test("trailing arguments from the global lambda are refused", async () => {
+test("trailing arguments from the global lambda are refused", async () => {
   // They would follow the service operand: `up ... app other-svc` moves a
   // service the rollout never named.
   const { runner, calls } = fakeCompose();
@@ -1051,7 +1052,7 @@ const OTHER_PROJECTS: [
   ["no global flags", (s) => s.usePlugin()],
 ];
 
-Deno.test("stage records the project scope the global lambda gives, and no .env values", async () => {
+test("stage records the project scope the global lambda gives, and no .env values", async () => {
   // Without a lambda there are no global flags to record.
   const bare = fakeCompose();
   const none = context();
@@ -1122,7 +1123,7 @@ Deno.test("stage records the project scope the global lambda gives, and no .env 
   ]);
 });
 
-Deno.test("a call whose lambda selects another project refuses before any command", async () => {
+test("a call whose lambda selects another project refuses before any command", async () => {
   for (const [shown, other] of OTHER_PROJECTS) {
     for (const extra of RECORDED_STATES) {
       const { runner, calls, world } = fakeCompose();
@@ -1151,7 +1152,7 @@ Deno.test("a call whose lambda selects another project refuses before any comman
   }
 });
 
-Deno.test("abort refuses another project whatever stage the record says it reached", async () => {
+test("abort refuses another project whatever stage the record says it reached", async () => {
   // A record past promotion, or with a stage this version does not know, is
   // still a record of the project the rollout ran in.
   for (const stage of ["promoted", "mystery"]) {
@@ -1175,7 +1176,7 @@ Deno.test("abort refuses another project whatever stage the record says it reach
   }
 });
 
-Deno.test("flags are compared as written, so a reordering is refused too", async () => {
+test("flags are compared as written, so a reordering is refused too", async () => {
   const { runner, calls } = fakeCompose();
   const ctx = context();
   await platform(
@@ -1196,7 +1197,7 @@ Deno.test("flags are compared as written, so a reordering is refused too", async
   assertEquals(calls, []);
 });
 
-Deno.test("the project refusal gives a hand-run recovery naming the recorded stable image", async () => {
+test("the project refusal gives a hand-run recovery naming the recorded stable image", async () => {
   const { runner } = fakeCompose();
   const ctx = await recordedAs({ composeCanaryProject: [] });
   const error = await assertRejects(
@@ -1223,7 +1224,7 @@ Deno.test("the project refusal gives a hand-run recovery naming the recorded sta
   }
 });
 
-Deno.test("a record with no usable project scope is refused before any command", async () => {
+test("a record with no usable project scope is refused before any command", async () => {
   const { runner, calls } = fakeCompose();
   const p = platform(runner);
   for (
@@ -1252,7 +1253,7 @@ Deno.test("a record with no usable project scope is refused before any command",
   assertEquals(calls, []);
 });
 
-Deno.test("a hand-run abort has no record, so it acts on whatever project the lambda selects", async () => {
+test("a hand-run abort has no record, so it acts on whatever project the lambda selects", async () => {
   const { runner, calls } = fakeCompose({
     world: { app: ["app:v1", "app:v1"], "app-canary": ["app:v2", "app:v2"] },
   });
@@ -1266,7 +1267,7 @@ Deno.test("a hand-run abort has no record, so it acts on whatever project the la
   }
 });
 
-Deno.test("a lambda that gives different flags from one command to the next is refused before that command runs", async () => {
+test("a lambda that gives different flags from one command to the next is refused before that command runs", async () => {
   // The probe and each command run the lambda separately: one that reads a
   // clock or a counter must not send a single command to another project.
   let runs = 0;
@@ -1295,7 +1296,7 @@ Deno.test("a lambda that gives different flags from one command to the next is r
   assertEquals(calls, []);
 });
 
-Deno.test("a trailing argument spelled like the probe's placeholder is still a trailing argument", async () => {
+test("a trailing argument spelled like the probe's placeholder is still a trailing argument", async () => {
   const { runner, calls } = fakeCompose();
   await assertRejects(
     () =>
@@ -1316,7 +1317,7 @@ Deno.test("a trailing argument spelled like the probe's placeholder is still a t
   assertEquals(ctx.state.get().composeCanaryProject, ["-p", "<subcommand>"]);
 });
 
-Deno.test("stage refuses stable replicas that are not in one Compose project", async () => {
+test("stage refuses stable replicas that are not in one Compose project", async () => {
   for (
     const [reported, message] of [
       ["", "replicas of app in no project"],
@@ -1342,7 +1343,7 @@ function recordedCalls(p: ReturnType<typeof platform>) {
   ];
 }
 
-Deno.test("a call refuses, after only the project read, when Compose reports the services in another project", async () => {
+test("a call refuses, after only the project read, when Compose reports the services in another project", async () => {
   // The flags are the same; COMPOSE_PROJECT_NAME, a .env file or the working
   // directory changed what they resolve to.
   const cases: [Fake, string][] = [
@@ -1400,7 +1401,7 @@ Deno.test("a call refuses, after only the project read, when Compose reports the
   }
 });
 
-Deno.test("the reported-project refusal says what changes the project and how to recover", async () => {
+test("the reported-project refusal says what changes the project and how to recover", async () => {
   const { runner } = fakeCompose({ project: "shop-staging" });
   const ctx = await recordedAs();
   const error = await assertRejects(
@@ -1423,7 +1424,7 @@ Deno.test("the reported-project refusal says what changes the project and how to
   }
 });
 
-Deno.test("a record with no usable project name is refused before any command", async () => {
+test("a record with no usable project name is refused before any command", async () => {
   const { runner, calls } = fakeCompose();
   for (
     const [name, message] of [
@@ -1445,7 +1446,7 @@ Deno.test("a record with no usable project name is refused before any command", 
   assertEquals(calls, []);
 });
 
-Deno.test("a recorded abort restores a project whose containers are all stopped", async () => {
+test("a recorded abort restores a project whose containers are all stopped", async () => {
   // A daemon restart during a parked approval, with restart: no. The project
   // read counts stopped containers, so the rollback is not refused, and
   // images, which counts them too, finds the stable ID: the keep path starts
@@ -1472,7 +1473,7 @@ Deno.test("a recorded abort restores a project whose containers are all stopped"
   });
 });
 
-Deno.test("a hand-run abort on a stopped project brings the stable service up first, rather than read no replicas as on the stable image", async () => {
+test("a hand-run abort on a stopped project brings the stable service up first, rather than read no replicas as on the stable image", async () => {
   // ps lists no running replica; that is not every replica on the stable
   // image, so the stable service is brought up on it — recreated where it
   // must be — before the canary is emptied.
@@ -1494,7 +1495,7 @@ Deno.test("a hand-run abort on a stopped project brings the stable service up fi
   });
 });
 
-Deno.test("a hand-run abort with no stable replica brings it up first, while the canary keeps serving", async () => {
+test("a hand-run abort with no stable replica brings it up first, while the canary keeps serving", async () => {
   // The canary serves everything — a crashed stable service, or one removed
   // after a promotion failed. Recreating the canary first would take every
   // serving container down at once.
@@ -1513,7 +1514,7 @@ Deno.test("a hand-run abort with no stable replica brings it up first, while the
   assertEquals(world, { app: [V1_ID, V1_ID, V1_ID, V1_ID], "app-canary": [] });
 });
 
-Deno.test("a recorded abort after a step to 100 % brings the stable service up first", async () => {
+test("a recorded abort after a step to 100 % brings the stable service up first", async () => {
   // expose(100) leaves no stable replica at all; images, which counts
   // stopped ones too, finds none, so nothing needs protecting but the
   // canary, which is never recreated.
@@ -1536,7 +1537,7 @@ Deno.test("a recorded abort after a step to 100 % brings the stable service up f
   assertEquals(world, { app: [V1_ID, V1_ID, V1_ID, V1_ID], "app-canary": [] });
 });
 
-Deno.test("a recorded abort whose stable replicas are all stopped on another image brings them up first", async () => {
+test("a recorded abort whose stable replicas are all stopped on another image brings them up first", async () => {
   // A promotion recreated them on the candidate, then the daemon stopped
   // them; only the canary serves.
   const { runner, calls, world, serving } = fakeCompose({
@@ -1560,7 +1561,7 @@ Deno.test("a recorded abort whose stable replicas are all stopped on another ima
   assertEquals(world, { app: [V1_ID, V1_ID, V1_ID, V1_ID], "app-canary": [] });
 });
 
-Deno.test("a hand-run abort counts stopped and created stable containers, so a stale one is never started as stable", async () => {
+test("a hand-run abort counts stopped and created stable containers, so a stale one is never started as stable", async () => {
   // A promotion whose recreate crashed: two stable replicas run the
   // reference, two more sit stopped — or created and never started — on the
   // candidate. A scale that keeps them would start those two in the stable
@@ -1591,14 +1592,14 @@ Deno.test("a hand-run abort counts stopped and created stable containers, so a s
   }
 });
 
-Deno.test("describe names the stable service", () => {
+test("describe names the stable service", () => {
   const { runner } = fakeCompose();
   assertEquals(platform(runner).describe(), "Compose service app");
   assertEquals(dockerComposeCanary((d) => d).describe(), "Compose service");
   assertEquals(platform(runner).exposure, "replicas");
 });
 
-Deno.test("global flags apply to every command, and cannot override the image variables", async () => {
+test("global flags apply to every command, and cannot override the image variables", async () => {
   const { runner, calls } = fakeCompose();
   const p = platform(
     runner,
@@ -1620,7 +1621,7 @@ Deno.test("global flags apply to every command, and cannot override the image va
   assertEquals(calls[0].env.APP_CANARY_IMAGE, "app:v2");
 });
 
-Deno.test("a failing compose command fails the call", async () => {
+test("a failing compose command fails the call", async () => {
   const { runner } = fakeCompose();
   const ctx = await staged(runner);
   const p = platform(() => Promise.reject(new Error("compose exit 1")));
@@ -1628,7 +1629,7 @@ Deno.test("a failing compose command fails the call", async () => {
   assertStringIncludes(error.message, "compose exit 1");
 });
 
-Deno.test("a non-zero exit fails the call even when the runner returns it", async () => {
+test("a non-zero exit fails the call even when the runner returns it", async () => {
   // As `.compose((s) => s.noThrow())` makes the default runner do: a
   // rollback whose commands all failed must not report itself done.
   const { runner, calls } = fakeCompose({
@@ -1655,7 +1656,7 @@ Deno.test("a non-zero exit fails the call even when the runner returns it", asyn
   );
 });
 
-Deno.test("the default runner runs compose itself", async () => {
+test("the default runner runs compose itself", async () => {
   // The default is the settings' own run(), so a compose that is not
   // installed surfaces as the wrapper's usual tool-not-found error.
   const p = dockerComposeCanary((d) =>
@@ -1693,7 +1694,7 @@ async function fakeDocker(failUp: boolean): Promise<string> {
   return path;
 }
 
-Deno.test({
+test({
   name:
     "the default runner runs compose with the image variables over a global .env",
   ignore: Deno.build.os === "windows",
@@ -1715,7 +1716,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name:
     "the default runner with noThrow still fails a rollback whose commands fail",
   ignore: Deno.build.os === "windows",
@@ -1737,7 +1738,7 @@ Deno.test({
   },
 });
 
-Deno.test("promote and a hand-run abort tell the operator what to persist", async () => {
+test("promote and a hand-run abort tell the operator what to persist", async () => {
   // Both are overrides for the platform's own commands: a plain
   // `docker compose up` reverts them unless the variable and scale are kept.
   const { runner } = fakeCompose();
@@ -1765,7 +1766,7 @@ Deno.test("promote and a hand-run abort tell the operator what to persist", asyn
   assertEquals(mid.summary, before);
 });
 
-Deno.test("a stable tag moved mid-rollout cannot bring a never-analysed image into the stable service", async () => {
+test("a stable tag moved mid-rollout cannot bring a never-analysed image into the stable service", async () => {
   // A local pull or build moves app:v1 to another image. ps now reports the
   // stable replicas by ID, and a rollback that recreated them from the tag
   // would install a release nobody analysed — while reporting success.
@@ -1787,7 +1788,7 @@ Deno.test("a stable tag moved mid-rollout cannot bring a never-analysed image in
   assertEquals(world, { app: [V1_ID, V1_ID, V1_ID, V1_ID], "app-canary": [] });
 });
 
-Deno.test("abort decides by the recorded ID, not by the tag ps shows", async () => {
+test("abort decides by the recorded ID, not by the tag ps shows", async () => {
   // Replicas shown by tag or by ID that resolve to the recorded ID are left
   // in place.
   const { runner, calls, world, tags } = fakeCompose();
@@ -1820,7 +1821,7 @@ Deno.test("abort decides by the recorded ID, not by the tag ps shows", async () 
   assertEquals(world.app, [V1_ID, V1_ID, V1_ID, V1_ID]);
 });
 
-Deno.test("promote installs the candidate the steps ran, even if its tag moved since", async () => {
+test("promote installs the candidate the steps ran, even if its tag moved since", async () => {
   // The analysis judged the canary's image; a pull or build that moves
   // app:v2 afterwards must not change what promote puts in the stable
   // service.
@@ -1835,7 +1836,7 @@ Deno.test("promote installs the candidate the steps ran, even if its tag moved s
   assertEquals(world.app, [V2_ID, V2_ID, V2_ID, V2_ID]);
 });
 
-Deno.test("a later step refuses a canary that no longer resolves to the pinned candidate", async () => {
+test("a later step refuses a canary that no longer resolves to the pinned candidate", async () => {
   const { runner, world, tags } = fakeCompose();
   const ctx = await staged(runner);
   const p = platform(runner);
@@ -1868,7 +1869,7 @@ Deno.test("a later step refuses a canary that no longer resolves to the pinned c
   );
 });
 
-Deno.test("every move that sets an image ID passes --pull never, so pull_policy: always cannot fail it", async () => {
+test("every move that sets an image ID passes --pull never, so pull_policy: always cannot fail it", async () => {
   // A hand-run rollback to a tag may still pull; one to an ID may not.
   const { runner, calls } = fakeCompose({
     world: { app: [V1_ID, V1_ID, V1_ID, V1_ID], "app-canary": [] },
@@ -1882,7 +1883,7 @@ Deno.test("every move that sets an image ID passes --pull never, so pull_policy:
   );
 });
 
-Deno.test("stage refuses stable replicas that do not resolve to one full image ID", async () => {
+test("stage refuses stable replicas that do not resolve to one full image ID", async () => {
   for (
     const [listed, message] of [
       ["", "resolve to no image ID"],
@@ -1911,7 +1912,7 @@ Deno.test("stage refuses stable replicas that do not resolve to one full image I
   assertEquals(ctx.state.get().composeCanaryStableImageId, V1_ID);
 });
 
-Deno.test("a recorded stable image ID that is not one is refused", async () => {
+test("a recorded stable image ID that is not one is refused", async () => {
   const { runner, calls } = fakeCompose();
   const ctx = context();
   await ctx.state.set({ ...STAGED, composeCanaryStableImageId: "app:v1" });
@@ -1923,7 +1924,7 @@ Deno.test("a recorded stable image ID that is not one is refused", async () => {
   assertEquals(calls, []);
 });
 
-Deno.test("promote reports what to persist before it records the promotion", async () => {
+test("promote reports what to persist before it records the promotion", async () => {
   // A process that dies between the two re-drives the promotion and reports
   // again; the other order would leave it recorded and never reported.
   const { runner } = fakeCompose();
@@ -1943,7 +1944,7 @@ Deno.test("promote reports what to persist before it records the promotion", asy
   );
 });
 
-Deno.test("a rollback whose recreate changed nothing refuses rather than report itself done", async () => {
+test("a rollback whose recreate changed nothing refuses rather than report itself done", async () => {
   // The stable image: is a literal, so setting the variable recreates the
   // replicas on the same wrong image. Run by hand, ps judges by reference.
   const { runner, calls, world } = fakeCompose({
@@ -1996,7 +1997,7 @@ Deno.test("a rollback whose recreate changed nothing refuses rather than report 
   );
 });
 
-Deno.test("a canary shown by an ID that images agrees on is pinned, even after its tag moved", async () => {
+test("a canary shown by an ID that images agrees on is pinned, even after its tag moved", async () => {
   // A process died after the first canary replica started and before the
   // pin; then app:v2 moved. ps shows the replica by its ID, which is still
   // the candidate it was created from.

@@ -1,10 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { $ } from "../../packages/core/src/shell.ts";
 import { runCli } from "./_harness.ts";
@@ -22,7 +20,7 @@ class SlowBuild extends Build {
     });
 }
 
-Deno.test("a killAfter timeout fails the build through the CLI", async () => {
+test("a killAfter timeout fails the build through the CLI", async () => {
   const started = performance.now();
   const { code, err } = await runCli(SlowBuild, ["slow"]);
   const elapsed = performance.now() - started;

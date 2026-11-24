@@ -10,11 +10,12 @@
  * @module
  */
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import type { Configure } from "@zuke/core/tooling";
 import { type ChocolateyPackageSettings, ChocolateyTasks } from "../mod.ts";
 
@@ -95,7 +96,7 @@ const full: Configure<ChocolateyPackageSettings> = (s) =>
     .releaseNotes("https://github.com/acme/app/releases/tag/v1.2.3")
     .url64bit(URL64).checksum64(SHA.toUpperCase());
 
-Deno.test("package: every field renders, in the nuspec's order", () => {
+test("package: every field renders, in the nuspec's order", () => {
   const pkg = ChocolateyTasks.package(full);
   assertEquals(pkg.id, "app");
   assertEquals(pkg.version, "1.2.3");
@@ -108,7 +109,7 @@ Deno.test("package: every field renders, in the nuspec's order", () => {
   assertEquals(pkg.files["tools/chocolateyinstall.ps1"], INSTALL_SCRIPT);
 });
 
-Deno.test("package: optional fields are left out when unset", () => {
+test("package: optional fields are left out when unset", () => {
   const nuspec = ChocolateyTasks.package(minimal()).files["app.nuspec"];
   assertEquals(
     nuspec,
@@ -130,14 +131,14 @@ Deno.test("package: optional fields are left out when unset", () => {
   );
 });
 
-Deno.test("package: rendering is deterministic", () => {
+test("package: rendering is deterministic", () => {
   assertEquals(
     JSON.stringify(ChocolateyTasks.package(full)),
     JSON.stringify(ChocolateyTasks.package(full)),
   );
 });
 
-Deno.test("package: no value can close its XML element", () => {
+test("package: no value can close its XML element", () => {
   const nuspec = ChocolateyTasks.package(
     minimal((s) =>
       s.title(`</title><dependencies><dependency id="evil"/></dependencies>`)
@@ -163,7 +164,7 @@ Deno.test("package: no value can close its XML element", () => {
   assertEquals(nuspec.includes('id="evil"'), false);
 });
 
-Deno.test("package: invisible characters are written as references", () => {
+test("package: invisible characters are written as references", () => {
   const nuspec = ChocolateyTasks.package(
     minimal((s) =>
       s.description(`${DESCRIPTION} \u202e\u200b\u2028\u0085\ufeff end`)
@@ -175,7 +176,7 @@ Deno.test("package: invisible characters are written as references", () => {
   );
 });
 
-Deno.test("package: characters XML cannot hold are refused", () => {
+test("package: characters XML cannot hold are refused", () => {
   for (const bad of ["\u0000", "\u0008", "\u001b", "\ud800", "\uffff"]) {
     assertThrows(
       () =>
@@ -188,7 +189,7 @@ Deno.test("package: characters XML cannot hold are refused", () => {
   }
 });
 
-Deno.test("package: the install script's strings cannot be escaped", () => {
+test("package: the install script's strings cannot be escaped", () => {
   // Every value in the script is validated first, so a quote cannot get
   // there through the settings; the URL may legitimately hold one.
   const url = "https://example.com/a'b/app.zip";
@@ -200,7 +201,7 @@ Deno.test("package: the install script's strings cannot be escaped", () => {
   );
 });
 
-Deno.test("package: a required field is named when it is missing", () => {
+test("package: a required field is named when it is missing", () => {
   const cases: Array<[Configure<ChocolateyPackageSettings>, string]> = [
     [(s) => s, ".id(...)"],
     [(s) => s.id("app"), ".version(...)"],
@@ -239,7 +240,7 @@ Deno.test("package: a required field is named when it is missing", () => {
   );
 });
 
-Deno.test("package: ids are lowercase names that cannot become paths", () => {
+test("package: ids are lowercase names that cannot become paths", () => {
   for (
     const id of ["App", "../app", "app/x", "a..b", "-app", "app-", "", "a b"]
   ) {
@@ -259,7 +260,7 @@ Deno.test("package: ids are lowercase names that cannot become paths", () => {
   }
 });
 
-Deno.test("package: versions are NuGet versions", () => {
+test("package: versions are NuGet versions", () => {
   for (
     const version of ["1", "1.02.3", "v1.2.3", "1.2.3.4.5", "1.2.3-", "1.2 .3"]
   ) {
@@ -279,7 +280,7 @@ Deno.test("package: versions are NuGet versions", () => {
   }
 });
 
-Deno.test("package: URLs must be https, plain ASCII, with no credentials", () => {
+test("package: URLs must be https, plain ASCII, with no credentials", () => {
   const cases: Array<[Configure<ChocolateyPackageSettings>, string]> = [
     [(s) => s.projectUrl("http://example.com"), "not http://"],
     [(s) => s.projectUrl("not a url"), "well-formed https://"],
@@ -311,7 +312,7 @@ Deno.test("package: URLs must be https, plain ASCII, with no credentials", () =>
   assertEquals(String(error).includes("hunter2"), false);
 });
 
-Deno.test("package: the checksum must be a SHA-256", () => {
+test("package: the checksum must be a SHA-256", () => {
   for (const sha of ["", "ab".repeat(31), "zz".repeat(32), `${SHA}\n`]) {
     assertThrows(
       () => ChocolateyTasks.package(minimal((s) => s.checksum64(sha))),
@@ -321,7 +322,7 @@ Deno.test("package: the checksum must be a SHA-256", () => {
   }
 });
 
-Deno.test("package: the description is held to the community length rules", () => {
+test("package: the description is held to the community length rules", () => {
   assertThrows(
     () => ChocolateyTasks.package(minimal((s) => s.description("Too short"))),
     Error,
@@ -342,7 +343,7 @@ Deno.test("package: the description is held to the community length rules", () =
   ChocolateyTasks.package(minimal((s) => s.description("x".repeat(4000))));
 });
 
-Deno.test("package: one-line fields refuse line breaks and controls", () => {
+test("package: one-line fields refuse line breaks and controls", () => {
   const cases: Array<[Configure<ChocolateyPackageSettings>, string]> = [
     [(s) => s.title("App\n<injected>"), ".title("],
     [(s) => s.summary("a\tb"), ".summary("],
@@ -365,7 +366,7 @@ Deno.test("package: one-line fields refuse line breaks and controls", () => {
   );
 });
 
-Deno.test("package: tags are single words", () => {
+test("package: tags are single words", () => {
   for (const tag of ["two words", "", "tab\tbed", "line\nbreak"]) {
     assertThrows(
       () => ChocolateyTasks.package(minimal((s) => s.tags(tag))),

@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { CommandError } from "@zuke/core/shell";
 import { AiFixer, aiFixer, type Fix } from "../mod.ts";
 import { applyEdits, checkEdits, DEFAULT_FIX_EXCLUDES } from "../src/apply.ts";
@@ -85,7 +86,7 @@ const ONE_EDIT: Partial<Fix> = {
   edits: [{ path: "src/app.ts", content: "export const x = 1;\n" }],
 };
 
-Deno.test("default diagnoses without writing or asking to retry", async () => {
+test("default diagnoses without writing or asking to retry", async () => {
   const s = seams();
   const { fetch, calls } = recordFetch(claudeFix(ONE_EDIT));
   const fixer = s.apply(aiFixer((f) => f.provider("claude").apiKey("k")))
@@ -99,7 +100,7 @@ Deno.test("default diagnoses without writing or asking to retry", async () => {
   assertEquals(calls[0].body.includes("boom: a test failed"), true);
 });
 
-Deno.test("autoApply writes the fix and asks the executor to retry", async () => {
+test("autoApply writes the fix and asks the executor to retry", async () => {
   const s = seams();
   const { fetch } = recordFetch(claudeFix(ONE_EDIT));
   const fixer = s.apply(
@@ -113,7 +114,7 @@ Deno.test("autoApply writes the fix and asks the executor to retry", async () =>
   }]);
 });
 
-Deno.test("autoApply is blocked on CI unless allowCI is set", async () => {
+test("autoApply is blocked on CI unless allowCI is set", async () => {
   const s = seams();
   const { fetch } = recordFetch(claudeFix(ONE_EDIT));
   const ciEnv = (name: string) =>
@@ -136,7 +137,7 @@ Deno.test("autoApply is blocked on CI unless allowCI is set", async () => {
   assertEquals(s.writes.length, 1);
 });
 
-Deno.test("an edit outside the allowlist is refused, nothing is written", async () => {
+test("an edit outside the allowlist is refused, nothing is written", async () => {
   const s = seams();
   const { fetch } = recordFetch(claudeFix(ONE_EDIT));
   const fixer = s.apply(
@@ -149,7 +150,7 @@ Deno.test("an edit outside the allowlist is refused, nothing is written", async 
   assertEquals(s.writes.length, 0);
 });
 
-Deno.test("commitFixes stages, commits, and pushes the applied files", async () => {
+test("commitFixes stages, commits, and pushes the applied files", async () => {
   const s = seams();
   const { fetch } = recordFetch(claudeFix(ONE_EDIT));
   const fixer = s.apply(
@@ -164,7 +165,7 @@ Deno.test("commitFixes stages, commits, and pushes the applied files", async () 
   ]);
 });
 
-Deno.test("noPush commits without pushing", async () => {
+test("noPush commits without pushing", async () => {
   const s = seams();
   const { fetch } = recordFetch(claudeFix(ONE_EDIT));
   const fixer = s.apply(
@@ -180,7 +181,7 @@ Deno.test("noPush commits without pushing", async () => {
   ]);
 });
 
-Deno.test("a failed push is reported but the fix still retries", async () => {
+test("a failed push is reported but the fix still retries", async () => {
   const s = seams();
   const { fetch } = recordFetch(claudeFix(ONE_EDIT));
   const fixer = aiFixer((f) => f.provider("claude").apiKey("k").commitFixes())
@@ -199,7 +200,7 @@ Deno.test("a failed push is reported but the fix still retries", async () => {
   assertEquals(s.writes.length, 1);
 });
 
-Deno.test("a missing API key skips with no provider call", async () => {
+test("a missing API key skips with no provider call", async () => {
   const s = seams();
   const { fetch, calls } = recordFetch(claudeFix(ONE_EDIT));
   const fixer = s.apply(aiFixer((f) => f.provider("claude"))).fetch(fetch)
@@ -209,12 +210,12 @@ Deno.test("a missing API key skips with no provider call", async () => {
   assertEquals(calls.length, 0);
 });
 
-Deno.test("a missing provider skips", async () => {
+test("a missing provider skips", async () => {
   const result = await new AiFixer().remediate(CTX);
   assertEquals(result.retry, false);
 });
 
-Deno.test("a provider error is swallowed (never masks the build failure)", async () => {
+test("a provider error is swallowed (never masks the build failure)", async () => {
   const s = seams();
   const { fetch } = recordFetch("bad request", 400);
   const fixer = s.apply(
@@ -224,7 +225,7 @@ Deno.test("a provider error is swallowed (never masks the build failure)", async
   assertEquals(result.retry, false);
 });
 
-Deno.test("invalid JSON from the model is handled gracefully", async () => {
+test("invalid JSON from the model is handled gracefully", async () => {
   const s = seams();
   const { fetch } = recordFetch(
     JSON.stringify({
@@ -238,7 +239,7 @@ Deno.test("invalid JSON from the model is handled gracefully", async () => {
   assertEquals(result.retry, false);
 });
 
-Deno.test("a fix with no edits is diagnosed, not applied", async () => {
+test("a fix with no edits is diagnosed, not applied", async () => {
   const s = seams();
   const { fetch } = recordFetch(claudeFix({ ...ONE_EDIT, edits: [] }));
   const fixer = s.apply(
@@ -249,7 +250,7 @@ Deno.test("a fix with no edits is diagnosed, not applied", async () => {
   assertEquals(s.writes.length, 0);
 });
 
-Deno.test("CommandError context feeds the failed command and stderr to the prompt", async () => {
+test("CommandError context feeds the failed command and stderr to the prompt", async () => {
   const s = seams();
   const { fetch, calls } = recordFetch(claudeFix(ONE_EDIT));
   const fixer = s.apply(aiFixer((f) => f.provider("claude").apiKey("k")))
@@ -264,7 +265,7 @@ Deno.test("CommandError context feeds the failed command and stderr to the promp
   assertEquals(calls[0].body.includes("unused variable x"), true);
 });
 
-Deno.test("conventions and the context diff reach the prompt", async () => {
+test("conventions and the context diff reach the prompt", async () => {
   const { fetch, calls } = recordFetch(claudeFix(ONE_EDIT));
   const fixer = aiFixer((f) => f.provider("claude").apiKey("k"))
     .conventions("Never use any.")
@@ -276,7 +277,7 @@ Deno.test("conventions and the context diff reach the prompt", async () => {
   assertEquals(calls[0].body.includes("diff --git a/x b/x"), true);
 });
 
-Deno.test("conventions are read from CLAUDE.md/AGENTS.md via the file seam", async () => {
+test("conventions are read from CLAUDE.md/AGENTS.md via the file seam", async () => {
   const { fetch, calls } = recordFetch(claudeFix(ONE_EDIT));
   const fixer = aiFixer((f) => f.provider("claude").apiKey("k"))
     .diff((d) => d.text("")).env(() => undefined)
@@ -288,7 +289,7 @@ Deno.test("conventions are read from CLAUDE.md/AGENTS.md via the file seam", asy
   assertEquals(calls[0].body.includes("Agent rules here"), true);
 });
 
-Deno.test("checkEdits enforces the allowlist, exclusions, traversal, and the cap", () => {
+test("checkEdits enforces the allowlist, exclusions, traversal, and the cap", () => {
   const guards = { allow: ["src/**"], exclude: [], maxEdits: 2 };
   assertEquals(
     checkEdits([{ path: "./src/a.ts", content: "" }], guards),
@@ -372,7 +373,7 @@ Deno.test("checkEdits enforces the allowlist, exclusions, traversal, and the cap
   assertEquals(DEFAULT_FIX_EXCLUDES.length > 0, true);
 });
 
-Deno.test("the exclude guard is case-insensitive and covers nested .git", () => {
+test("the exclude guard is case-insensitive and covers nested .git", () => {
   const guards = { allow: ["**"], exclude: [], maxEdits: 5 };
   // On macOS/Windows these resolve to the protected files, so a case variant
   // must not slip past the exclude (which lists lowercase `.env`/`.github`/…).
@@ -396,7 +397,7 @@ Deno.test("the exclude guard is case-insensitive and covers nested .git", () => 
   }
 });
 
-Deno.test("the allowlist is case-sensitive, so a case variant is not silently widened", () => {
+test("the allowlist is case-sensitive, so a case variant is not silently widened", () => {
   const guards = { allow: ["src/**"], exclude: [], maxEdits: 5 };
   // On a case-sensitive FS, `SRC/` is a distinct dir; it must NOT pass an
   // `allow: ["src/**"]` (case-insensitive matching there would be fail-open).
@@ -414,7 +415,7 @@ Deno.test("the allowlist is case-sensitive, so a case variant is not silently wi
   );
 });
 
-Deno.test("applyEdits (default write) creates missing parent directories", async () => {
+test("applyEdits (default write) creates missing parent directories", async () => {
   // Exercises the real default write — every other test injects a write seam,
   // so the mkdir path would otherwise be uncovered. chdir into a temp dir so the
   // repo-relative write lands there, not in the repo; restored in finally.
@@ -464,7 +465,7 @@ function routedFetch(body: string): { fetch: typeof fetch; calls: Call[] } {
   return { fetch: impl, calls };
 }
 
-Deno.test("non-quiet diagnose prints findings and posts a PR comment", async () => {
+test("non-quiet diagnose prints findings and posts a PR comment", async () => {
   const { fetch, calls } = routedFetch(
     claudeFixUsage(ONE_EDIT, { input_tokens: 10, output_tokens: 5 }),
   );
@@ -484,7 +485,7 @@ Deno.test("non-quiet diagnose prints findings and posts a PR comment", async () 
   assertEquals(posted, true);
 });
 
-Deno.test("a non-quiet missing key prints a skip line", async () => {
+test("a non-quiet missing key prints a skip line", async () => {
   const { fetch } = recordFetch(claudeFix(ONE_EDIT));
   const fixer = aiFixer((f) => f.provider("claude"))
     .conventions("").diff((d) => d.text("")).env(() => undefined).fetch(fetch);
@@ -492,7 +493,7 @@ Deno.test("a non-quiet missing key prints a skip line", async () => {
   assertEquals(result.retry, false);
 });
 
-Deno.test("the working-tree diff is gathered via git for context", async () => {
+test("the working-tree diff is gathered via git for context", async () => {
   const { fetch, calls } = recordFetch(claudeFix(ONE_EDIT));
   const fixer = aiFixer((f) => f.provider("claude").apiKey("k"))
     .conventions("").env(() => undefined)
@@ -506,7 +507,7 @@ Deno.test("the working-tree diff is gathered via git for context", async () => {
   assertEquals(calls[0].body.includes("diff --git a/y b/y"), true);
 });
 
-Deno.test("fetchBase fetches the PR base branch itself for diff context", async () => {
+test("fetchBase fetches the PR base branch itself for diff context", async () => {
   const { fetch, calls } = recordFetch(claudeFix(ONE_EDIT));
   const git: string[][] = [];
   const fixer = aiFixer((f) => f.provider("claude").apiKey("k"))
@@ -533,7 +534,7 @@ Deno.test("fetchBase fetches the PR base branch itself for diff context", async 
   assertEquals(calls[0].body.includes("base context"), true);
 });
 
-Deno.test("fetchBase honours an explicit branch and remote", async () => {
+test("fetchBase honours an explicit branch and remote", async () => {
   const { fetch } = recordFetch(claudeFix(ONE_EDIT));
   const git: string[][] = [];
   const fixer = aiFixer((f) => f.provider("claude").apiKey("k"))
@@ -556,7 +557,7 @@ Deno.test("fetchBase honours an explicit branch and remote", async () => {
   ]);
 });
 
-Deno.test("an option-like base branch is rejected, not fetched (no arg injection)", async () => {
+test("an option-like base branch is rejected, not fetched (no arg injection)", async () => {
   const { fetch } = recordFetch(claudeFix(ONE_EDIT));
   const git: string[][] = [];
   const fixer = aiFixer((f) => f.provider("claude").apiKey("k"))
@@ -574,7 +575,7 @@ Deno.test("an option-like base branch is rejected, not fetched (no arg injection
   assertEquals(git.some((a) => a[1] === "diff" && a.length === 2), true);
 });
 
-Deno.test("a failed base fetch falls back to the working-tree diff", async () => {
+test("a failed base fetch falls back to the working-tree diff", async () => {
   const { fetch } = recordFetch(claudeFix(ONE_EDIT));
   const git: string[][] = [];
   const fixer = aiFixer((f) => f.provider("claude").apiKey("k"))
@@ -592,7 +593,7 @@ Deno.test("a failed base fetch falls back to the working-tree diff", async () =>
   assertEquals(git.some((a) => a[1] === "diff" && a.length === 2), true);
 });
 
-Deno.test("fetchBase with no resolvable base skips the fetch", async () => {
+test("fetchBase with no resolvable base skips the fetch", async () => {
   const { fetch } = recordFetch(claudeFix(ONE_EDIT));
   const git: string[][] = [];
   const fixer = aiFixer((f) => f.provider("claude").apiKey("k"))
@@ -609,7 +610,7 @@ Deno.test("fetchBase with no resolvable base skips the fetch", async () => {
   assertEquals(git.some((a) => a[1] === "diff" && a.length === 2), true);
 });
 
-Deno.test("a git failure while gathering the diff is tolerated", async () => {
+test("a git failure while gathering the diff is tolerated", async () => {
   const { fetch } = recordFetch(claudeFix(ONE_EDIT));
   const fixer = aiFixer((f) => f.provider("claude").apiKey("k"))
     .conventions("").env(() => undefined)
@@ -619,7 +620,7 @@ Deno.test("a git failure while gathering the diff is tolerated", async () => {
   assertEquals(result.retry, false);
 });
 
-Deno.test("a non-Error failure value is stringified into the prompt", async () => {
+test("a non-Error failure value is stringified into the prompt", async () => {
   const { fetch, calls } = recordFetch(claudeFix(ONE_EDIT));
   const s = seams();
   const fixer = s.apply(aiFixer((f) => f.provider("claude").apiKey("k")))
@@ -633,7 +634,7 @@ Deno.test("a non-Error failure value is stringified into the prompt", async () =
   assertEquals(calls[0].body.includes("raw string failure"), true);
 });
 
-Deno.test("parseFix normalises confidence and drops malformed edits", () => {
+test("parseFix normalises confidence and drops malformed edits", () => {
   const fix = parseFix(JSON.stringify({
     diagnosis: "d",
     rootCause: "r",
@@ -648,7 +649,7 @@ Deno.test("parseFix normalises confidence and drops malformed edits", () => {
   assertEquals(fix.edits, [{ path: "a.ts", content: "x" }]);
 });
 
-Deno.test("parseFix unwraps a fenced object and defaults missing strings", () => {
+test("parseFix unwraps a fenced object and defaults missing strings", () => {
   const fix = parseFix(
     '```json\n{"confidence":"medium","edits":[]}\n```',
   );
@@ -657,7 +658,7 @@ Deno.test("parseFix unwraps a fenced object and defaults missing strings", () =>
   assertEquals(fix.rootCause, "");
 });
 
-Deno.test("every fluent setter is chainable", () => {
+test("every fluent setter is chainable", () => {
   const f = aiFixer((x) =>
     x.provider("openai").apiKey("k").model("gpt").effort("high")
       .criteria("strict").conventions("rules").include("src/**")
@@ -669,7 +670,7 @@ Deno.test("every fluent setter is chainable", () => {
   assertEquals(f instanceof AiFixer, true);
 });
 
-Deno.test("noComment writes the summary but posts no PR comment", async () => {
+test("noComment writes the summary but posts no PR comment", async () => {
   const { fetch, calls } = routedFetch(claudeFix(ONE_EDIT));
   const prEnv: Record<string, string> = {
     GITHUB_ACTIONS: "true",
@@ -687,7 +688,7 @@ Deno.test("noComment writes the summary but posts no PR comment", async () => {
   );
 });
 
-Deno.test("a failed PR comment is swallowed", async () => {
+test("a failed PR comment is swallowed", async () => {
   const calls: string[] = [];
   const prEnv: Record<string, string> = {
     GITHUB_ACTIONS: "true",
@@ -710,7 +711,7 @@ Deno.test("a failed PR comment is swallowed", async () => {
   assertEquals(result.retry, false); // comment failure never changes the outcome
 });
 
-Deno.test("a transient provider failure is retried, announced when not quiet", async () => {
+test("a transient provider failure is retried, announced when not quiet", async () => {
   let n = 0;
   const impl = (() => {
     n++;
@@ -726,7 +727,7 @@ Deno.test("a transient provider failure is retried, announced when not quiet", a
   assertEquals(n, 2);
 });
 
-Deno.test("criteria are passed through to the prompt", async () => {
+test("criteria are passed through to the prompt", async () => {
   const { fetch, calls } = recordFetch(claudeFix(ONE_EDIT));
   const fixer = aiFixer((f) =>
     f.provider("claude").apiKey("k").criteria("NO ANY")
@@ -777,7 +778,7 @@ function suggestFetch(fixBody: string): { fetch: typeof fetch; calls: Call[] } {
   return { fetch: impl, calls };
 }
 
-Deno.test("on GitHub with locations, posts inline suggestions, not an overview comment", async () => {
+test("on GitHub with locations, posts inline suggestions, not an overview comment", async () => {
   const { fetch, calls } = suggestFetch(claudeFix(FIX_WITH_LOC));
   const prEnv: Record<string, string> = {
     GITHUB_ACTIONS: "true",
@@ -797,7 +798,7 @@ Deno.test("on GitHub with locations, posts inline suggestions, not an overview c
   assertEquals(calls.some((c) => c.url.includes("/issues/")), false);
 });
 
-Deno.test("autoApply posts an overview comment with the code, not inline suggestions", async () => {
+test("autoApply posts an overview comment with the code, not inline suggestions", async () => {
   const { fetch, calls } = suggestFetch(claudeFix(FIX_WITH_LOC));
   const prEnv: Record<string, string> = {
     GITHUB_ACTIONS: "true",
@@ -818,7 +819,7 @@ Deno.test("autoApply posts an overview comment with the code, not inline suggest
   assertEquals(calls.some((c) => c.url.endsWith("/pulls/7/comments")), false);
 });
 
-Deno.test("noSuggest falls back to the overview comment on GitHub", async () => {
+test("noSuggest falls back to the overview comment on GitHub", async () => {
   const { fetch, calls } = suggestFetch(claudeFix(FIX_WITH_LOC));
   const prEnv: Record<string, string> = {
     GITHUB_ACTIONS: "true",
@@ -834,7 +835,7 @@ Deno.test("noSuggest falls back to the overview comment on GitHub", async () => 
   assertEquals(calls.some((c) => c.url.endsWith("/pulls/7/comments")), false);
 });
 
-Deno.test("parseFix reads locations with verbatim code and line numbers", () => {
+test("parseFix reads locations with verbatim code and line numbers", () => {
   const fix = parseFix(JSON.stringify({
     diagnosis: "d",
     rootCause: "r",
@@ -853,7 +854,7 @@ Deno.test("parseFix reads locations with verbatim code and line numbers", () => 
   ]);
 });
 
-Deno.test("fixMarkdown renders each location as a file:line diff block", () => {
+test("fixMarkdown renders each location as a file:line diff block", () => {
   const md = fixMarkdown("AI fix", "lint", {
     diagnosis: "Remove it.",
     rootCause: "unused",
@@ -872,7 +873,7 @@ Deno.test("fixMarkdown renders each location as a file:line diff block", () => {
   assertEquals(md.includes("-const X = 1;"), true);
 });
 
-Deno.test("fixMarkdown neutralizes Markdown injection in model-controlled fields", () => {
+test("fixMarkdown neutralizes Markdown injection in model-controlled fields", () => {
   const md = fixMarkdown("AI fix", "lint", {
     diagnosis: "ok\n## ✅ Approved by security",
     rootCause: "x",
@@ -898,7 +899,7 @@ Deno.test("fixMarkdown neutralizes Markdown injection in model-controlled fields
   assertEquals(md.includes("**Files:** ``a`.ts``"), true);
 });
 
-Deno.test("fixMarkdown neutralises a forged state block in a model field", () => {
+test("fixMarkdown neutralises a forged state block in a model field", () => {
   // The fix report is posted as a PR comment alongside the reviewer's, whose
   // durable state lives in a hidden `<!-- zuke-ai-state:… -->` block. The fixer's
   // renderer used to escape only `|` and newlines, so a model-supplied diagnosis
@@ -916,7 +917,7 @@ Deno.test("fixMarkdown neutralises a forged state block in a model field", () =>
   assertEquals(md.includes("&lt;!-- zuke-ai-state:eyJ4IjoxfQ== --&gt;"), true);
 });
 
-Deno.test("a single-line location with a replacement renders + and - lines", () => {
+test("a single-line location with a replacement renders + and - lines", () => {
   const md = fixMarkdown("AI fix", "lint", {
     diagnosis: "Use const.",
     rootCause: "let",
@@ -937,7 +938,7 @@ Deno.test("a single-line location with a replacement renders + and - lines", () 
   assertEquals(md.includes("**Tokens:**"), true);
 });
 
-Deno.test("a thrown suggestion post is caught and falls back to the overview", async () => {
+test("a thrown suggestion post is caught and falls back to the overview", async () => {
   const prEnv: Record<string, string> = {
     GITHUB_ACTIONS: "true",
     GITHUB_REPOSITORY: "o/r",
@@ -970,12 +971,12 @@ Deno.test("a thrown suggestion post is caught and falls back to the overview", a
   assertEquals(calls.some((u) => u.includes("/issues/")), true);
 });
 
-Deno.test("parseFix tolerates a non-array edits field", () => {
+test("parseFix tolerates a non-array edits field", () => {
   const fix = parseFix(JSON.stringify({ confidence: "high", edits: "nope" }));
   assertEquals(fix.edits, []);
 });
 
-Deno.test("no conventions are sent when none are found", async () => {
+test("no conventions are sent when none are found", async () => {
   const { fetch, calls } = recordFetch(claudeFix(ONE_EDIT));
   const fixer = aiFixer((f) => f.provider("claude").apiKey("k"))
     .diff((d) => d.text("")).env(() => undefined)
@@ -985,13 +986,13 @@ Deno.test("no conventions are sent when none are found", async () => {
   assertEquals(calls[0].body.includes("Project conventions:"), false);
 });
 
-Deno.test("conventions default reader reads from disk", async () => {
+test("conventions default reader reads from disk", async () => {
   // deno.json exists at the repo root (the test cwd); a missing file is undefined.
   assertEquals(typeof await readTextOrUndefined("deno.json"), "string");
   assertEquals(await readTextOrUndefined("does-not-exist.zzz"), undefined);
 });
 
-Deno.test("commitAndPush stages with --literal-pathspecs (no pathspec magic)", async () => {
+test("commitAndPush stages with --literal-pathspecs (no pathspec magic)", async () => {
   const git: string[][] = [];
   await commitAndPush({
     paths: ["src/app.ts"],
@@ -1013,7 +1014,7 @@ Deno.test("commitAndPush stages with --literal-pathspecs (no pathspec magic)", a
   ]);
 });
 
-Deno.test("commitAndPush is a no-op when there are nothing to commit", async () => {
+test("commitAndPush is a no-op when there are nothing to commit", async () => {
   const git: string[][] = [];
   await commitAndPush({
     paths: [],
@@ -1026,11 +1027,11 @@ Deno.test("commitAndPush is a no-op when there are nothing to commit", async () 
   assertEquals(git.length, 0);
 });
 
-Deno.test("aiFixer without a configure lambda returns a bare fixer", () => {
+test("aiFixer without a configure lambda returns a bare fixer", () => {
   assertEquals(aiFixer() instanceof AiFixer, true);
 });
 
-Deno.test("an explicit commentToken authenticates the inline suggestions", async () => {
+test("an explicit commentToken authenticates the inline suggestions", async () => {
   // GITHUB_TOKEN is deliberately unset: posting can only succeed through the
   // configured token, so the assertion pins the commentToken resolution path.
   const withVariedLocs: Partial<Fix> = {
@@ -1078,7 +1079,7 @@ Deno.test("an explicit commentToken authenticates the inline suggestions", async
   );
 });
 
-Deno.test("on GitHub without any token, no comment or suggestion is attempted", async () => {
+test("on GitHub without any token, no comment or suggestion is attempted", async () => {
   // The CI host is detected and locations exist, but the empty token yields no
   // PR context: the fixer must stay silent instead of calling the API.
   const { fetch, calls } = suggestFetch(claudeFix(FIX_WITH_LOC));
@@ -1098,7 +1099,7 @@ Deno.test("on GitHub without any token, no comment or suggestion is attempted", 
   );
 });
 
-Deno.test("a non-Error suggestion-post failure is stringified and falls back", async () => {
+test("a non-Error suggestion-post failure is stringified and falls back", async () => {
   const prEnv: Record<string, string> = {
     GITHUB_ACTIONS: "true",
     GITHUB_REPOSITORY: "o/r",
@@ -1141,7 +1142,7 @@ Deno.test("a non-Error suggestion-post failure is stringified and falls back", a
   assertEquals(calls.some((u) => u.includes("/issues/")), true);
 });
 
-Deno.test("a non-Error provider failure is stringified into the warning", async () => {
+test("a non-Error provider failure is stringified into the warning", async () => {
   const s = seams();
   const { fetch } = recordFetch("overloaded", 503); // always transient
   const warnings: string[] = [];
@@ -1173,7 +1174,7 @@ Deno.test("a non-Error provider failure is stringified into the warning", async 
   );
 });
 
-Deno.test("a non-Error apply failure is stringified into the report action", async () => {
+test("a non-Error apply failure is stringified into the report action", async () => {
   const { fetch } = recordFetch(claudeFix(ONE_EDIT));
   const lines: string[] = [];
   const log = console.log;
@@ -1195,7 +1196,7 @@ Deno.test("a non-Error apply failure is stringified into the report action", asy
   );
 });
 
-Deno.test("a non-Error commit failure is stringified into the report action", async () => {
+test("a non-Error commit failure is stringified into the report action", async () => {
   const { fetch } = recordFetch(claudeFix(ONE_EDIT));
   const lines: string[] = [];
   const log = console.log;

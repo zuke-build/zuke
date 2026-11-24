@@ -9,15 +9,16 @@
  * @module
  */
 
-import { assertEquals, assertRejects } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { execute } from "../src/executor.ts";
 import { target } from "../src/target.ts";
 import { Redactor } from "../src/redact.ts";
 import { RunNotActiveError, RunStateWriter } from "../src/state/writer.ts";
 import type { EffectState, RunRecord, RunStatus } from "../src/state/types.ts";
-import { MemStateStore } from "./_fakes.ts";
-import { runRecord } from "./_fakes.ts";
+import { MemStateStore } from "../../../tests/_fakes.ts";
+import { runRecord } from "../../../tests/_fakes.ts";
 
 const NOW = "2026-08-10T10:00:00.000Z";
 
@@ -61,7 +62,7 @@ function effectOf(
   return store.record?.targets["gate"]?.effects?.[name];
 }
 
-Deno.test("beginEffect arms the intent and says to run", async () => {
+test("beginEffect arms the intent and says to run", async () => {
   const store = new MemStateStore();
   const writer = await writerFor(store);
   assertEquals(await writer.beginEffect("gate", "post"), "run");
@@ -72,7 +73,7 @@ Deno.test("beginEffect arms the intent and says to run", async () => {
   assertEquals(effectOf(store)?.attempts, 1);
 });
 
-Deno.test("an effect already done is skipped rather than repeated", async () => {
+test("an effect already done is skipped rather than repeated", async () => {
   const store = new MemStateStore();
   const writer = await writerFor(store);
   await writer.beginEffect("gate", "post");
@@ -83,7 +84,7 @@ Deno.test("an effect already done is skipped rather than repeated", async () => 
   assertEquals(effectOf(store)?.attempts, 1);
 });
 
-Deno.test("a failed effect is re-armed, keeping its first intent time", async () => {
+test("a failed effect is re-armed, keeping its first intent time", async () => {
   const store = new MemStateStore();
   let clock = "2026-08-10T10:00:00.000Z";
   const writer = await RunStateWriter.open(
@@ -106,7 +107,7 @@ Deno.test("a failed effect is re-armed, keeping its first intent time", async ()
   assertEquals(effectOf(store)?.intentAt, "2026-08-10T10:00:00.000Z");
 });
 
-Deno.test("a settled effect records when, and a failure's message is redacted", async () => {
+test("a settled effect records when, and a failure's message is redacted", async () => {
   const store = new MemStateStore();
   const writer = await writerFor(store);
   await writer.beginEffect("gate", "post");
@@ -115,7 +116,7 @@ Deno.test("a settled effect records when, and a failure's message is redacted", 
   assertEquals(effectOf(store)?.error?.includes("swordfish"), false);
 });
 
-Deno.test("an effect is refused on a run that is no longer running", async () => {
+test("an effect is refused on a run that is no longer running", async () => {
   // The one that matters. A process can be alive holding a stale view of a run
   // a sweeper already settled; arming an effect there would let it publish a
   // result over the one the settler already published — for a merge gate, a
@@ -142,7 +143,7 @@ Deno.test("an effect is refused on a run that is no longer running", async () =>
   }
 });
 
-Deno.test("a conflicting re-read that has been settled elsewhere is refused too", async () => {
+test("a conflicting re-read that has been settled elsewhere is refused too", async () => {
   // The window the best-effort path handles by re-applying onto the settling
   // record and carrying on. For an effect that is exactly wrong.
   const store = new MemStateStore();
@@ -158,7 +159,7 @@ Deno.test("a conflicting re-read that has been settled elsewhere is refused too"
   assertEquals(cancelled, 1);
 });
 
-Deno.test("a vanished run refuses the effect rather than dropping the write", async () => {
+test("a vanished run refuses the effect rather than dropping the write", async () => {
   // The best-effort path drops this one with a warning. Doing that here would
   // run a side effect that nothing recorded as owed.
   const store = new MemStateStore();
@@ -172,7 +173,7 @@ Deno.test("a vanished run refuses the effect rather than dropping the write", as
   );
 });
 
-Deno.test("exhausting the retries refuses the effect", async () => {
+test("exhausting the retries refuses the effect", async () => {
   const store = new MemStateStore();
   const writer = await writerFor(store);
   store.forceConflicts = 99; // every attempt conflicts
@@ -183,7 +184,7 @@ Deno.test("exhausting the retries refuses the effect", async () => {
   );
 });
 
-Deno.test("a store error refuses the effect", async () => {
+test("a store error refuses the effect", async () => {
   const store = new MemStateStore();
   const writer = await writerFor(store);
   store.failNextPut = true;
@@ -194,7 +195,7 @@ Deno.test("a store error refuses the effect", async () => {
   );
 });
 
-Deno.test("a refused effect does not poison the writer's other writes", async () => {
+test("a refused effect does not poison the writer's other writes", async () => {
   // Every write shares one serialising chain. A rejected effect write that was
   // left on it would make each later best-effort write reject too, so one
   // failed intent would take the run's whole bookkeeping down with it.
@@ -209,7 +210,7 @@ Deno.test("a refused effect does not poison the writer's other writes", async ()
   assertEquals(effectOf(store)?.status, "pending");
 });
 
-Deno.test("a run with state disabled refuses to start a build that declares an effect", async () => {
+test("a run with state disabled refuses to start a build that declares an effect", async () => {
   // With nowhere to record the intent there is nothing for a later process to
   // re-drive from, which is the entire guarantee — so the run is refused rather
   // than performing a side effect nothing knows was owed.
@@ -226,7 +227,7 @@ Deno.test("a run with state disabled refuses to start a build that declares an e
   assertEquals(ran, false);
 });
 
-Deno.test("a refused intent leaves nothing behind for a later write to persist", async () => {
+test("a refused intent leaves nothing behind for a later write to persist", async () => {
   // The mutation is applied to the live record before the write is attempted, so
   // a throw that left it there would have the next landing write persist an
   // intent for an effect that provably never ran — and make the body's first
@@ -245,7 +246,7 @@ Deno.test("a refused intent leaves nothing behind for a later write to persist",
   assertEquals(effectOf(store)?.attempts, 1);
 });
 
-Deno.test("a settlement never writes over an effect another process completed", async () => {
+test("a settlement never writes over an effect another process completed", async () => {
   // Once two live processes can share a running run, a re-applied `failed` from
   // the slower one would bury a `done` the faster one recorded, leaving the
   // record claiming an effect failed when it had in fact succeeded.
@@ -258,7 +259,7 @@ Deno.test("a settlement never writes over an effect another process completed", 
   assertEquals(effectOf(store)?.error, undefined);
 });
 
-Deno.test("giving up after repeated conflicts marks the record degraded", async () => {
+test("giving up after repeated conflicts marks the record degraded", async () => {
   // The last attempt's mutation goes with the stale base it was applied to and
   // no later write carries it — a permanent loss, and the flag is what makes a
   // resume demand `--resume-degraded` before repeating a non-idempotent step.
@@ -269,7 +270,7 @@ Deno.test("giving up after repeated conflicts marks the record degraded", async 
   assertEquals(writer.snapshot().degraded, true);
 });
 
-Deno.test("a run settled elsewhere is not reported as succeeded by the process it settled", async () => {
+test("a run settled elsewhere is not reported as succeeded by the process it settled", async () => {
   // The spurious green. A sweep settles a run it found past its deadline and
   // unwinds it; the process still working on that run then finishes normally and
   // would report success — a green result for work another process had already
@@ -293,7 +294,7 @@ Deno.test("a run settled elsewhere is not reported as succeeded by the process i
   assertEquals(writer.settledElsewhere(), true);
 });
 
-Deno.test("a run settled elsewhere is not marked suspended either", async () => {
+test("a run settled elsewhere is not marked suspended either", async () => {
   const store = new MemStateStore();
   const writer = await writerFor(store);
   store.forceConflicts = 1;
@@ -304,7 +305,7 @@ Deno.test("a run settled elsewhere is not marked suspended either", async () => 
   assertEquals(store.record?.status, "cancelled");
 });
 
-Deno.test("a refused intent leaves the record's modification time alone too", async () => {
+test("a refused intent leaves the record's modification time alone too", async () => {
   // `updatedAt` is stamped alongside the mutation, before the write is
   // attempted. Leaving a bumped one behind would have the record claim a
   // modification no write ever landed — and the next best-effort write would
@@ -327,7 +328,7 @@ Deno.test("a refused intent leaves the record's modification time alone too", as
   assertEquals(writer.snapshot().updatedAt, before);
 });
 
-Deno.test("a refused intent restores the record in place, not by replacing it", async () => {
+test("a refused intent restores the record in place, not by replacing it", async () => {
   // A compensation walk is handed `snapshot()` and reads it across awaits, so a
   // rollback that swapped the reference would leave that walk reading a record
   // nothing writes to any more. This guards that invariant against a future

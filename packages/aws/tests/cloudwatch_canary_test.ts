@@ -1,15 +1,16 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { CommandOutput } from "@zuke/core/shell";
 import type { Configure } from "@zuke/core/tooling";
 import { type AwsCloudwatchAnalysisSettings, cloudwatch } from "../mod.ts";
-import { FakeAws, json } from "./_fake.ts";
+import { FakeAws, json } from "../../../tests/support/aws/_fake.ts";
 
 /** A context whose redactor masks one secret. */
 const context = {
@@ -47,7 +48,7 @@ function errors5xx(
   );
 }
 
-Deno.test("cloudwatch passes when every datapoint is within bounds", async () => {
+test("cloudwatch passes when every datapoint is within bounds", async () => {
   const fake = new FakeAws(results("m1", [0, 5, 2]));
   const analysis = errors5xx(fake);
   assertEquals(analysis.name, "cloudwatch");
@@ -84,7 +85,7 @@ Deno.test("cloudwatch passes when every datapoint is within bounds", async () =>
   assertEquals(end - start, 5 * 60_000);
 });
 
-Deno.test("cloudwatch fails on a breach, naming the metric, value and bound", async () => {
+test("cloudwatch fails on a breach, naming the metric, value and bound", async () => {
   const fake = new FakeAws(results("m1", [1, 7]));
   await assertRejects(
     () => errors5xx(fake).validate(context),
@@ -93,7 +94,7 @@ Deno.test("cloudwatch fails on a breach, naming the metric, value and bound", as
   );
 });
 
-Deno.test("cloudwatch checks a minimum too", async () => {
+test("cloudwatch checks a minimum too", async () => {
   const fake = new FakeAws(results("m1", [99.5]));
   await assertRejects(
     () =>
@@ -113,7 +114,7 @@ Deno.test("cloudwatch checks a minimum too", async () => {
   assertEquals(query[0].MetricStat.Unit, "Percent");
 });
 
-Deno.test("cloudwatch fails on no data unless told what it means", async () => {
+test("cloudwatch fails on no data unless told what it means", async () => {
   await assertRejects(
     () => errors5xx(new FakeAws(results("m1", []))).validate(context),
     Error,
@@ -130,7 +131,7 @@ Deno.test("cloudwatch fails on no data unless told what it means", async () => {
   );
 });
 
-Deno.test("cloudwatch judges an expression over hidden metrics", async () => {
+test("cloudwatch judges an expression over hidden metrics", async () => {
   const fake = new FakeAws(results("e1", [0.4]));
   await cloudwatch((s) =>
     s.metricStat(
@@ -171,7 +172,7 @@ Deno.test("cloudwatch judges an expression over hidden metrics", async () => {
   );
 });
 
-Deno.test("cloudwatch judges a lone metricStat by its own id", async () => {
+test("cloudwatch judges a lone metricStat by its own id", async () => {
   const fake = new FakeAws(results("lat", [120]));
   await assertRejects(
     () =>
@@ -187,7 +188,7 @@ Deno.test("cloudwatch judges a lone metricStat by its own id", async () => {
   );
 });
 
-Deno.test("cloudwatch refuses settings that cannot be judged", async () => {
+test("cloudwatch refuses settings that cannot be judged", async () => {
   const cases: Array<[Configure<AwsCloudwatchAnalysisSettings>, string]> = [
     [(s) => s.namespace("n").metricName("m").stat("Sum"), "sets no bound"],
     [(s) => s.max(1), "reads 0 metrics but judges one"],
@@ -228,7 +229,7 @@ Deno.test("cloudwatch refuses settings that cannot be judged", async () => {
   );
 });
 
-Deno.test("cloudwatch reports a read failure, redacted", async () => {
+test("cloudwatch reports a read failure, redacted", async () => {
   const failing = new FakeAws(
     new CommandOutput(254, "", "AccessDenied for token s3cr3t"),
   );
@@ -261,7 +262,7 @@ Deno.test("cloudwatch reports a read failure, redacted", async () => {
   );
 });
 
-Deno.test("cloudwatch pins its own output and query after .aws(...)", async () => {
+test("cloudwatch pins its own output and query after .aws(...)", async () => {
   const fake = new FakeAws(results("m1", [0]));
   await cloudwatch((s) =>
     s.namespace("n").metricName("m").stat("Sum").max(1).aws((a) =>

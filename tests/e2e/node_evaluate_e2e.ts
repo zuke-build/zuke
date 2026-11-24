@@ -16,7 +16,8 @@
  * still gets a green `deno task ci`.
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import { runFixture, spawnFixture } from "./_harness.ts";
 
 const FIXTURE = new URL("./fixtures/node_evaluate_build.ts", import.meta.url);
@@ -51,7 +52,7 @@ const HAS_NODE = await nodeAvailable();
  */
 const MUST_HAVE_NODE = Deno.env.get("CI") === "true";
 
-Deno.test({
+test({
   name: "CI runs these tests rather than skipping them",
   ignore: !MUST_HAVE_NODE,
   fn: () => {
@@ -64,7 +65,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "exitAfterResult finishes a build whose module never exits",
   ignore: !HAS_NODE,
   fn: async () => {
@@ -83,7 +84,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "without the option the same module hangs, which is what it fixes",
   ignore: !HAS_NODE,
   fn: async () => {

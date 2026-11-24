@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import { missingTool } from "@zuke/core/tooling/conformance";
 import {
@@ -15,7 +16,7 @@ import {
   DenoTasks,
 } from "../mod.ts";
 
-Deno.test("serve: permissions, address and the module operand", () => {
+test("serve: permissions, address and the module operand", () => {
   const argv = new DenoServeSettings()
     .allow("net", "0.0.0.0:8000")
     .frozen()
@@ -47,19 +48,19 @@ Deno.test("serve: permissions, address and the module operand", () => {
   ]);
 });
 
-Deno.test("serve: port 0 is a real choice, not an unset one", () => {
+test("serve: port 0 is a real choice, not an unset one", () => {
   assertEquals(
     new DenoServeSettings().port(0).script("main.ts").argv().slice(1),
     ["serve", "--port", "0", "main.ts"],
   );
 });
 
-Deno.test("serve: the module is required", () => {
+test("serve: the module is required", () => {
   const error = assertThrows(() => new DenoServeSettings().argv(), Error);
   assertEquals(error.message.includes(".script() is required"), true);
 });
 
-Deno.test("eval: the source is one argv entry, never a shell string", () => {
+test("eval: the source is one argv entry, never a shell string", () => {
   const source = 'console.log("a b"); // ; rm -rf /';
   const argv = new DenoEvalSettings()
     .allowAll()
@@ -78,16 +79,16 @@ Deno.test("eval: the source is one argv entry, never a shell string", () => {
   ]);
 });
 
-Deno.test("eval: the source is required", () => {
+test("eval: the source is required", () => {
   const error = assertThrows(() => new DenoEvalSettings().argv(), Error);
   assertEquals(error.message.includes(".code() is required"), true);
 });
 
-Deno.test("bench: bare run is just the subcommand", () => {
+test("bench: bare run is just the subcommand", () => {
   assertEquals(new DenoBenchSettings().argv().slice(1), ["bench"]);
 });
 
-Deno.test("bench: flags precede the paths", () => {
+test("bench: flags precede the paths", () => {
   const argv = new DenoBenchSettings()
     .allowAll()
     .config("deno.json")
@@ -114,7 +115,7 @@ Deno.test("bench: flags precede the paths", () => {
   ]);
 });
 
-Deno.test("every new DenoTasks function reaches execution", async () => {
+test("every new DenoTasks function reaches execution", async () => {
   // Each entry configures the settings only as far as its own required
   // operands, so the reach it proves is the tool resolution, not the argv.
   const reaches: Array<[string, () => Promise<unknown>]> = [

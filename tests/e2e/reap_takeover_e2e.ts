@@ -13,7 +13,8 @@
  * @module
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import {
   defaultStateHost,
   FileSystemStateStore,
@@ -29,7 +30,7 @@ const run = (args: string[], dir: string, marker: string) =>
     ZUKE_E2E_MARKER: marker,
   });
 
-Deno.test("two sweepers race an abandoned run; exactly one reaps it", async () => {
+test("two sweepers race an abandoned run; exactly one reaps it", async () => {
   const dir = await Deno.makeTempDir({ prefix: "zuke-e2e-" });
   const marker = `${dir}/marker.log`;
   try {

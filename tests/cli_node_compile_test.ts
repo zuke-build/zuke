@@ -8,7 +8,8 @@
  * download and the injection faked.
  */
 
-import { assertEquals, assertRejects } from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals, assertRejects } from "./_assert.ts";
 import { absolutePath, gzip, sha256Hex, tar, zip } from "@zuke/core";
 import {
   compileNodeCli,
@@ -29,7 +30,7 @@ import {
 
 const encoder = new TextEncoder();
 
-Deno.test("every release target is built on the Node release of its own platform", () => {
+test("every release target is built on the Node release of its own platform", () => {
   assertEquals(
     NODE_TARGETS.map((t) => t.triple),
     [...CLI_TARGETS.map((t) => t.triple), WINDOWS_TRIPLE],
@@ -49,7 +50,7 @@ Deno.test("every release target is built on the Node release of its own platform
   assertEquals(hostTriple("freebsd", "x86_64"), undefined);
 });
 
-Deno.test("nodeAsset names the pinned release archive, its checksum and its node", () => {
+test("nodeAsset names the pinned release archive, its checksum and its node", () => {
   const linux = nodeAsset("linux-x64");
   assertEquals(
     linux.url,
@@ -74,7 +75,7 @@ function serving(url: string, body: Uint8Array) {
     );
 }
 
-Deno.test("fetchNodeBinary takes node out of a release that matches its pin, from a tarball or a zip", async () => {
+test("fetchNodeBinary takes node out of a release that matches its pin, from a tarball or a zip", async () => {
   const node = encoder.encode("node binary");
   const tarball = await gzip(tar([{ name: "r/bin/node", data: node }]));
   const posix: NodeAsset = {
@@ -97,7 +98,7 @@ Deno.test("fetchNodeBinary takes node out of a release that matches its pin, fro
   );
 });
 
-Deno.test("fetchNodeBinary refuses a failed download, a checksum mismatch and a release with no node", async () => {
+test("fetchNodeBinary refuses a failed download, a checksum mismatch and a release with no node", async () => {
   const tarball = await gzip(
     tar([{ name: "r/bin/other", data: encoder.encode("x") }]),
   );
@@ -128,7 +129,7 @@ Deno.test("fetchNodeBinary refuses a failed download, a checksum mismatch and a 
   );
 });
 
-Deno.test("seaConfig injects an ES module bundle into the given Node", () => {
+test("seaConfig injects an ES module bundle into the given Node", () => {
   const config = JSON.parse(seaConfig("/b/zuke.mjs", "/n/node", "/o/zuke"));
   assertEquals(config, {
     main: "/b/zuke.mjs",
@@ -139,7 +140,7 @@ Deno.test("seaConfig injects an ES module bundle into the given Node", () => {
   });
 });
 
-Deno.test("compileNodeCli builds every target from its own verified Node, laid out as the Deno binaries are", async () => {
+test("compileNodeCli builds every target from its own verified Node, laid out as the Deno binaries are", async () => {
   const dir = await Deno.makeTempDir({ prefix: "zuke-node-compile-" });
   try {
     // One small release per platform, pinned by its own checksum.

@@ -9,10 +9,11 @@
  * @module
  */
 
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { AiReviewError, AiTasks, ReviewSettings } from "../mod.ts";
-import { withEnv } from "../../core/tests/_env.ts";
-import { captureLines } from "../../core/tests/_console.ts";
+import { withEnv } from "../../../tests/_env.ts";
+import { captureLines } from "../../../tests/_console.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";
@@ -34,7 +35,7 @@ function answering(body: string): { fetch: typeof fetch; calls: string[] } {
   return { fetch: impl, calls };
 }
 
-Deno.test("ReviewSettings names the target and adds a reviewer per kind, in order", () => {
+test("ReviewSettings names the target and adds a reviewer per kind, in order", () => {
   const settings = new ReviewSettings()
     .target("gate")
     .security()
@@ -56,7 +57,7 @@ Deno.test("ReviewSettings names the target and adds a reviewer per kind, in orde
   assertEquals(new ReviewSettings().target_, "review");
 });
 
-Deno.test("AiTasks.review runs every reviewer against the provider and passes under the gate", async () => {
+test("AiTasks.review runs every reviewer against the provider and passes under the gate", async () => {
   const { fetch, calls } = answering(
     openai({ score: 2, severity: "low", summary: "fine", findings: [] }),
   );
@@ -79,7 +80,7 @@ Deno.test("AiTasks.review runs every reviewer against the provider and passes un
   ]);
 });
 
-Deno.test("AiTasks.review fails the call when a reviewer's gate trips", async () => {
+test("AiTasks.review fails the call when a reviewer's gate trips", async () => {
   const { fetch } = answering(
     openai({
       score: 9,
@@ -105,7 +106,7 @@ Deno.test("AiTasks.review fails the call when a reviewer's gate trips", async ()
   });
 });
 
-Deno.test("AiTasks.preflight is a no-op off a comment-started run", async () => {
+test("AiTasks.preflight is a no-op off a comment-started run", async () => {
   await withEnv(
     { ZUKE_REVIEW_PR: undefined, ZUKE_REVIEW_COMMENT: undefined },
     () =>

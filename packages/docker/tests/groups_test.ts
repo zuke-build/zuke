@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
   assertWrapperConformance,
@@ -27,7 +28,7 @@ import {
   DockerVolumeSettings,
 } from "../mod.ts";
 
-Deno.test("the image commands render their new options", () => {
+test("the image commands render their new options", () => {
   assertEquals(
     new DockerImagesSettings().digests().format("{{json .}}").argv().slice(1),
     ["images", "--digests", "--format", "{{json .}}"],
@@ -70,7 +71,7 @@ Deno.test("the image commands render their new options", () => {
   );
 });
 
-Deno.test("logout and search render their arguments", () => {
+test("logout and search render their arguments", () => {
   assertEquals(new DockerLogoutSettings().argv().slice(1), ["logout"]);
   assertEquals(
     new DockerLogoutSettings().registry("ghcr.io").argv().slice(1),
@@ -98,7 +99,7 @@ Deno.test("logout and search render their arguments", () => {
   );
 });
 
-Deno.test("system picks a subcommand and keeps prune options to prune", () => {
+test("system picks a subcommand and keeps prune options to prune", () => {
   assertEquals(
     new DockerSystemSettings().prune().all().volumes().force()
       .filter("until=24h").argv().slice(1),
@@ -133,7 +134,7 @@ Deno.test("system picks a subcommand and keeps prune options to prune", () => {
   );
 });
 
-Deno.test("info and version render their format", () => {
+test("info and version render their format", () => {
   assertEquals(
     new DockerInfoSettings().format("{{json .}}").argv().slice(1),
     ["info", "--format", "{{json .}}"],
@@ -144,7 +145,7 @@ Deno.test("info and version render their format", () => {
   );
 });
 
-Deno.test("volume renders each subcommand", () => {
+test("volume renders each subcommand", () => {
   assertEquals(new DockerVolumeSettings().argv().slice(1), ["volume", "ls"]);
   assertEquals(
     new DockerVolumeSettings().create("cache").driver("local")
@@ -195,7 +196,7 @@ Deno.test("volume renders each subcommand", () => {
   );
 });
 
-Deno.test("network renders each subcommand, and keeps --alias to connect", () => {
+test("network renders each subcommand, and keeps --alias to connect", () => {
   assertEquals(new DockerNetworkSettings().argv().slice(1), ["network", "ls"]);
   assertEquals(
     new DockerNetworkSettings().create("test-net").driver("bridge")
@@ -249,7 +250,7 @@ Deno.test("network renders each subcommand, and keeps --alias to connect", () =>
   );
 });
 
-Deno.test("context renders each subcommand", () => {
+test("context renders each subcommand", () => {
   assertEquals(new DockerContextSettings().argv().slice(1), ["context", "ls"]);
   assertEquals(
     new DockerContextSettings().create("remote")
@@ -334,12 +335,12 @@ const TASKS: Array<[string, () => Promise<unknown>]> = [
 ];
 
 for (const [name, invoke] of TASKS) {
-  Deno.test(`DockerTasks.${name} reaches execution`, async () => {
+  test(`DockerTasks.${name} reaches execution`, async () => {
     await assertRejects(invoke, ToolNotFoundError);
   });
 }
 
-Deno.test("the new settings classes conform to the wrapper contract", async () => {
+test("the new settings classes conform to the wrapper contract", async () => {
   for (
     const make of [
       () => new DockerVolumeSettings(),
@@ -352,7 +353,7 @@ Deno.test("the new settings classes conform to the wrapper contract", async () =
   }
 });
 
-Deno.test("the listing groups render their remaining options", () => {
+test("the listing groups render their remaining options", () => {
   assertEquals(
     new DockerNetworkSettings().ls().quietOutput().filter("driver=bridge")
       .format("{{.Name}}").argv().slice(1),

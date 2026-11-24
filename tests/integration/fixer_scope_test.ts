@@ -17,7 +17,8 @@
  * @module
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { type AiFixer, aiFixer } from "../../packages/ai/mod.ts";
 import { runCli } from "./_harness.ts";
@@ -95,7 +96,7 @@ async function runWithFixer(
   return { code, recorded };
 }
 
-Deno.test('runOnly("ci") leaves a failing local build failed, untouched, and costing nothing', async () => {
+test('runOnly("ci") leaves a failing local build failed, untouched, and costing nothing', async () => {
   const { code, recorded } = await runWithFixer((f) => f.runOnly("ci"), OFF_CI);
 
   // The target stays red — the developer fixes it, not the fixer.
@@ -107,7 +108,7 @@ Deno.test('runOnly("ci") leaves a failing local build failed, untouched, and cos
   assertEquals(recorded.modelCalls, []);
 });
 
-Deno.test('runOnly("ci") heals the same build on CI', async () => {
+test('runOnly("ci") heals the same build on CI', async () => {
   const { code, recorded } = await runWithFixer((f) => f.runOnly("ci"), ON_CI);
 
   // Applied the fix and the executor re-ran the body, which now passes.
@@ -116,7 +117,7 @@ Deno.test('runOnly("ci") heals the same build on CI', async () => {
   assertEquals(recorded.modelCalls.length, 1);
 });
 
-Deno.test("the default scope is unchanged: it still heals a local build", async () => {
+test("the default scope is unchanged: it still heals a local build", async () => {
   // .runOnly("ci") is additive — a fixer that does not ask for it behaves exactly as
   // it did before, which is what keeps this a non-breaking change.
   const { code, recorded } = await runWithFixer((f) => f, OFF_CI);
@@ -125,7 +126,7 @@ Deno.test("the default scope is unchanged: it still heals a local build", async 
   assertEquals(recorded.writes, ["src/app.ts"]);
 });
 
-Deno.test('runOnly("ci") heals a build on a CI system Zuke has no generator for', async () => {
+test('runOnly("ci") heals a build on a CI system Zuke has no generator for', async () => {
   // The whole-build half of the scope fix. Before it, this run reported a skip
   // and left the target red on every Jenkins build, because the host was read
   // as a developer's machine.
@@ -139,7 +140,7 @@ Deno.test('runOnly("ci") heals a build on a CI system Zuke has no generator for'
   assertEquals(recorded.modelCalls.length, 1);
 });
 
-Deno.test("the default scope does not rewrite a Jenkins checkout", async () => {
+test("the default scope does not rewrite a Jenkins checkout", async () => {
   // The half that actually mattered. The default scope applies and commits on
   // what it believes is a working tree someone is editing — so reading a CI
   // runner as local meant writing to a checkout nobody was watching. It now

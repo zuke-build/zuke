@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import { missingTool } from "@zuke/core/tooling/conformance";
 import {
@@ -46,7 +47,7 @@ function output(code: number, stdout = "", stderr = ""): ComposeRunOutcome {
   return { code, stdout, stderr };
 }
 
-Deno.test("waitStatus: every exit code a container stopped with is an answer", () => {
+test("waitStatus: every exit code a container stopped with is an answer", () => {
   assertEquals(waitStatus(output(0)), 0);
   assertEquals(waitStatus(output(1)), 1);
   assertEquals(waitStatus(output(137)), 137);
@@ -55,7 +56,7 @@ Deno.test("waitStatus: every exit code a container stopped with is an answer", (
   assertEquals(waitStatus(output(2, "2\n")), 2);
 });
 
-Deno.test("parsePublishedPort: IPv4, IPv6, a hostname and a bare port", () => {
+test("parsePublishedPort: IPv4, IPv6, a hostname and a bare port", () => {
   assertEquals(parsePublishedPort("0.0.0.0:32768\n"), 32768);
   assertEquals(parsePublishedPort("[::]:32768\n"), 32768);
   assertEquals(parsePublishedPort("[::1]:5432"), 5432);
@@ -65,7 +66,7 @@ Deno.test("parsePublishedPort: IPv4, IPv6, a hostname and a bare port", () => {
   assertEquals(parsePublishedPort("0.0.0.0:65535"), 65535);
 });
 
-Deno.test("parsePublishedPort: an unpublished port and a malformed line", () => {
+test("parsePublishedPort: an unpublished port and a malformed line", () => {
   const empty = assertThrows(() => parsePublishedPort("  \n"), Error);
   assertEquals(empty.message.includes("printed no binding"), true);
   const malformed = assertThrows(
@@ -75,7 +76,7 @@ Deno.test("parsePublishedPort: an unpublished port and a malformed line", () => 
   assertEquals(malformed.message.includes("not a host and port"), true);
 });
 
-Deno.test("parsePublishedPort: several bindings are refused, not guessed at", () => {
+test("parsePublishedPort: several bindings are refused, not guessed at", () => {
   // Taking the last line would hand a build a port it never asked about.
   const error = assertThrows(
     () => parsePublishedPort("0.0.0.0:32768\n0.0.0.0:32769\n"),
@@ -84,7 +85,7 @@ Deno.test("parsePublishedPort: several bindings are refused, not guessed at", ()
   assertEquals(error.message.includes("more than one"), true);
 });
 
-Deno.test("parsePublishedPort: a line that merely ends in digits is not a binding", () => {
+test("parsePublishedPort: a line that merely ends in digits is not a binding", () => {
   // Compose writes diagnostics too, and one ending in a number would have
   // parsed as a port when only the tail after the last colon was read.
   const error = assertThrows(
@@ -94,7 +95,7 @@ Deno.test("parsePublishedPort: a line that merely ends in digits is not a bindin
   assertEquals(error.message.includes("not a host and port"), true);
 });
 
-Deno.test("parsePublishedPort: a port outside 1-65535 is refused", () => {
+test("parsePublishedPort: a port outside 1-65535 is refused", () => {
   for (const line of [":0", "0.0.0.0:0", ":99999"]) {
     const error = assertThrows(() => parsePublishedPort(line), Error);
     assertEquals(
@@ -105,14 +106,14 @@ Deno.test("parsePublishedPort: a port outside 1-65535 is refused", () => {
   }
 });
 
-Deno.test("parseComposeVersion: the shape compose actually emits", () => {
+test("parseComposeVersion: the shape compose actually emits", () => {
   // Verified against `docker compose version --format json` on v5.1.1.
   assertEquals(parseComposeVersion('{"version":"v5.1.1"}'), {
     version: "v5.1.1",
   });
 });
 
-Deno.test("parseComposeVersion: non-JSON and a missing version field", () => {
+test("parseComposeVersion: non-JSON and a missing version field", () => {
   const notJson = assertThrows(
     () => parseComposeVersion("docker: not found"),
     Error,
@@ -124,7 +125,7 @@ Deno.test("parseComposeVersion: non-JSON and a missing version field", () => {
   }
 });
 
-Deno.test("every new DockerComposeTasks function reaches execution", async () => {
+test("every new DockerComposeTasks function reaches execution", async () => {
   const reaches: Array<[string, () => Promise<unknown>]> = [
     ["create", () => DockerComposeTasks.create(missingTool)],
     ["kill", () => DockerComposeTasks.kill(missingTool)],
@@ -189,7 +190,7 @@ Deno.test("every new DockerComposeTasks function reaches execution", async () =>
   });
 });
 
-Deno.test("waitExitCode fails loudly when compose is missing", async () => {
+test("waitExitCode fails loudly when compose is missing", async () => {
   // noThrow lets a container's non-zero status through, but a missing binary
   // is not a container status — the reader must still fail.
   await withDetectedCompose(async () => {

@@ -17,10 +17,8 @@
  * @module
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { aiFixer } from "../../packages/ai/mod.ts";
 import { runCli } from "./_harness.ts";
@@ -90,7 +88,7 @@ function promptOf(body: string): { system: string; user: string } {
   return { system, user: messages.map(contentOf).join("\n") };
 }
 
-Deno.test("a build's conventions reach the model fenced as untrusted data", async () => {
+test("a build's conventions reach the model fenced as untrusted data", async () => {
   const bodies: string[] = [];
   const writes: string[] = [];
   // Annotated rather than cast: `as` would let this drift from the real `fetch`

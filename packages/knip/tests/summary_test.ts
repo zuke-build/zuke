@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   TargetSummary,
   withAmbientSummary,
@@ -15,7 +16,7 @@ function out(code: number, stdout = "", stderr = ""): CommandOutput {
   return new CommandOutput(code, stdout, stderr);
 }
 
-Deno.test("knip: the section counts are summed into Issues", () => {
+test("knip: the section counts are summed into Issues", () => {
   const text =
     "Unused files (1)\norphan.js\nUnused dependencies (1)\nleft-pad  package.json\nUnused exports (2)\na.js: x\nb.js: y\n";
   assertEquals(parseKnipSummary(out(1, text)), { Issues: 4 });
@@ -24,7 +25,7 @@ Deno.test("knip: the section counts are summed into Issues", () => {
   });
 });
 
-Deno.test("knip: a silent clean run is zero, a silent failure reports nothing", () => {
+test("knip: a silent clean run is zero, a silent failure reports nothing", () => {
   assertEquals(parseKnipSummary(out(0)), { Issues: 0 });
   assertEquals(
     parseKnipSummary(out(2, "", "Unable to find a config")),
@@ -39,7 +40,7 @@ class Probe extends KnipRunSettings {
   }
 }
 
-Deno.test("knip: the hook reports onto the running target", async () => {
+test("knip: the hook reports onto the running target", async () => {
   const summary = new TargetSummary();
   await withAmbientSummary(summary, () => {
     new Probe().probe(out(1, "Unused files (2)\na.js\nb.js\n"));

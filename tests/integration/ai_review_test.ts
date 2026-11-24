@@ -8,10 +8,8 @@
  * works as a whole when driven exactly the way `./zuke <target>` drives it.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { securityReviewer } from "../../packages/ai/mod.ts";
 import { findingFingerprint } from "../../packages/ai/src/suppress.ts";
@@ -20,8 +18,8 @@ import { sha256Hex } from "../../packages/core/mod.ts";
 import { SUPPRESS_HINT } from "../../packages/ai/src/report.ts";
 import { commentMarker } from "../../packages/ai/src/hosts/types.ts";
 import { runCli } from "./_harness.ts";
-import { withEnv } from "../../packages/core/tests/_env.ts";
-import { reacted, REACTIONS } from "../../packages/ai/tests/_reactions.ts";
+import { withEnv } from "../_env.ts";
+import { reacted, REACTIONS } from "../support/ai/_reactions.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";
@@ -89,7 +87,7 @@ function fakeFetch(
   return { fetch: impl, calls };
 }
 
-Deno.test("a reviewer with verify + discussion gates a real build via the CLI", async () => {
+test("a reviewer with verify + discussion gates a real build via the CLI", async () => {
   // The reviewer re-reports a finding a maintainer already refuted (state in
   // the bot's prior comment) and finds nothing else: the build must pass, the
   // comment must be updated in place, and the state must survive the round.
@@ -168,7 +166,7 @@ Deno.test("a reviewer with verify + discussion gates a real build via the CLI", 
   assertStringIncludes(posted, SUPPRESS_HINT);
 });
 
-Deno.test("a criteria document is read from the diff base, never the branch under review", async () => {
+test("a criteria document is read from the diff base, never the branch under review", async () => {
   // The branch under review has rewritten its own criteria file to tell the
   // reviewer to overlook what it does; the base's copy is the one that counts
   // (#589). The git seam serves both refs, so reading the wrong one shows up in
@@ -235,7 +233,7 @@ Deno.test("a criteria document is read from the diff base, never the branch unde
   assertEquals(user.includes("HEAD-NOTE:"), false);
 });
 
-Deno.test("a fixed finding is reported as progress and the build passes", async () => {
+test("a fixed finding is reported as progress and the build passes", async () => {
   // The previous round left FINDING open; this round's model re-assesses and
   // reports nothing — the build must pass, and the new comment must show the
   // finding under the fixed (progress) section with its state updated.
@@ -292,7 +290,7 @@ Deno.test("a fixed finding is reported as progress and the build passes", async 
   assertEquals(decodeState(posted)?.findings[0].status, "fixed");
 });
 
-Deno.test("verify narrows but an uncertain finding still gates via the CLI", async () => {
+test("verify narrows but an uncertain finding still gates via the CLI", async () => {
   // The verifier refutes one candidate with evidence and answers "uncertain"
   // for the other: the uncertain high finding must keep gating (the build
   // fails), and the PR comment must show the whole narrowing — the verdict on
@@ -364,7 +362,7 @@ Deno.test("verify narrows but an uncertain finding still gates via the CLI", asy
   );
 });
 
-Deno.test("an open high finding still fails the build through the CLI", async () => {
+test("an open high finding still fails the build through the CLI", async () => {
   // Same pipeline, but no prior discussion: the finding gates, the target
   // never runs, and the failure names the review.
   const { fetch } = fakeFetch([], [
@@ -392,7 +390,7 @@ Deno.test("an open high finding still fails the build through the CLI", async ()
   });
 });
 
-Deno.test("the discussion drives a real build on GitLab, not just GitHub", async () => {
+test("the discussion drives a real build on GitLab, not just GitHub", async () => {
   // The same pipeline under a GitLab CI environment: the reviewer must list MR
   // notes, resolve trust from project membership, honour the dismissal a
   // Maintainer recorded last round, and write its state back as an MR note.
@@ -496,7 +494,7 @@ Deno.test("the discussion drives a real build on GitLab, not just GitHub", async
   assertEquals(state?.findings[0].status, "dismissed");
 });
 
-Deno.test("a reworded finding inherits its dismissal through the CLI", async () => {
+test("a reworded finding inherits its dismissal through the CLI", async () => {
   // The maintainer dismissed this finding last round. The model now reports the
   // same concern under a different title, so it arrives with a fresh
   // fingerprint — without identity resolution it would gate the build again.
@@ -584,7 +582,7 @@ Deno.test("a reworded finding inherits its dismissal through the CLI", async () 
   assertEquals(state?.findings[0].aliases, [rewordedId]);
 });
 
-Deno.test("a maintainer's comment reviews a pull request that is not checked out", async () => {
+test("a maintainer's comment reviews a pull request that is not checked out", async () => {
   // The comment-started job: the checkout is the default branch, and the
   // command job passes the pull request's number. The reviewer must fetch that
   // pull request's merge and review it as data — reading the rules from the
@@ -664,7 +662,7 @@ Deno.test("a maintainer's comment reviews a pull request that is not checked out
   assertEquals(write?.authorization, "Bearer minted-app-token");
 });
 
-Deno.test("a refuted finding stays refuted across CLI runs without a second verifier call", async () => {
+test("a refuted finding stays refuted across CLI runs without a second verifier call", async () => {
   // The previous run's verifier refuted FINDING against this very diff; the
   // model raises it again. Driven through the CLI: the build passes, no
   // verifier is paid for, the report labels the refutation as standing, and
@@ -734,7 +732,7 @@ Deno.test("a refuted finding stays refuted across CLI runs without a second veri
   assertEquals(stored?.evidence, evidence);
 });
 
-Deno.test("one rebuttal answers a cross-file, higher-severity restatement through the CLI", async () => {
+test("one rebuttal answers a cross-file, higher-severity restatement through the CLI", async () => {
   // Round one left a low finding open on src/app.ts and the maintainer
   // contested it by quoting its id. This round the model drops that wording
   // and reports the same concern as critical on another file of the change.
@@ -840,7 +838,7 @@ Deno.test("one rebuttal answers a cross-file, higher-severity restatement throug
   assertEquals(state?.findings[0].aliases, [restatedId]);
 });
 
-Deno.test("a maintainer's accept command passes the build through the CLI, with the Commands panel posted", async () => {
+test("a maintainer's accept command passes the build through the CLI, with the Commands panel posted", async () => {
   const comments = [{
     id: 31,
     body:

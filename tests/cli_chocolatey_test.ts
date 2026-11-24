@@ -8,11 +8,8 @@
  * @module
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-  assertThrows,
-} from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals, assertStringIncludes, assertThrows } from "./_assert.ts";
 import {
   ChocolateyPublishSettings,
   ChocolateyVerifySettings,
@@ -44,7 +41,7 @@ const github: typeof fetch = (input) =>
       : new Response("not found", { status: 404 }),
   );
 
-Deno.test("cliChocolateyPackage pins the release's Windows zip, and says it is unsigned", () => {
+test("cliChocolateyPackage pins the release's Windows zip, and says it is unsigned", () => {
   const pkg = cliChocolateyPackage(VERSION, new Map([[ZIP, SHA]]));
   assertEquals([pkg.id, pkg.version], ["zuke", VERSION]);
   const script = pkg.files["tools/chocolateyinstall.ps1"];
@@ -62,7 +59,7 @@ Deno.test("cliChocolateyPackage pins the release's Windows zip, and says it is u
   assertStringIncludes(nuspec, `<owners>${CHOCOLATEY_OWNER}</owners>`);
 });
 
-Deno.test("cliChocolateyPackage refuses checksums without the Windows zip", () => {
+test("cliChocolateyPackage refuses checksums without the Windows zip", () => {
   assertThrows(
     () => cliChocolateyPackage(VERSION, new Map()),
     Error,
@@ -70,7 +67,7 @@ Deno.test("cliChocolateyPackage refuses checksums without the Windows zip", () =
   );
 });
 
-Deno.test("verifyCliChocolatey runs zuke --version from the package the release pins", async () => {
+test("verifyCliChocolatey runs zuke --version from the package the release pins", async () => {
   let seen: ChocolateyVerifySettings | undefined;
   await verifyCliChocolatey(VERSION, github, {
     verify: (configure) => {
@@ -87,7 +84,7 @@ Deno.test("verifyCliChocolatey runs zuke --version from the package the release 
   assertEquals(seen?.expectation_, { kind: "version" });
 });
 
-Deno.test("publishCliChocolatey pushes the pinned package with the API key", async () => {
+test("publishCliChocolatey pushes the pinned package with the API key", async () => {
   let seen: ChocolateyPublishSettings | undefined;
   await publishCliChocolatey(VERSION, "choco-key", github, {
     publish: (configure) => {
@@ -103,7 +100,7 @@ Deno.test("publishCliChocolatey pushes the pinned package with the API key", asy
   assertEquals(seen?.source_, "https://push.chocolatey.org/");
 });
 
-Deno.test("the package's copyright is the LICENSE's own line", async () => {
+test("the package's copyright is the LICENSE's own line", async () => {
   const license = await Deno.readTextFile(
     new URL("../LICENSE", import.meta.url),
   );

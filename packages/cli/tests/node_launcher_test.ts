@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import {
   nodeLauncherBash,
   nodeLauncherPowerShell,
@@ -17,7 +18,7 @@ import {
   type NodePlatform,
 } from "../src/node_pin.ts";
 
-Deno.test("the node pin has a well-formed checksum for every platform", () => {
+test("the node pin has a well-formed checksum for every platform", () => {
   assertEquals(
     Object.keys(NODE_PIN.checksums).sort(),
     [...NODE_POSIX_PLATFORMS, ...NODE_WINDOWS_PLATFORMS].sort(),
@@ -38,7 +39,7 @@ const LAUNCHERS: ReadonlyArray<
   ],
 ];
 for (const [name, script, platforms] of LAUNCHERS) {
-  Deno.test(`the ${name} node launcher carries the pin, header and build file`, () => {
+  test(`the ${name} node launcher carries the pin, header and build file`, () => {
     assertStringIncludes(script, "SPDX-License-Identifier: MIT");
     assertStringIncludes(script, NODE_PIN.version);
     assertStringIncludes(script, "build.ts");
@@ -56,7 +57,7 @@ for (const [name, script, platforms] of LAUNCHERS) {
   });
 }
 
-Deno.test("the node launchers default to zuke.ts and refuse an unsafe build file", () => {
+test("the node launchers default to zuke.ts and refuse an unsafe build file", () => {
   assertStringIncludes(nodeLauncherBash(), 'exec node zuke.ts "$@"');
   assertThrows(() => nodeLauncherBash({ buildFile: "x; rm -rf ~.ts" }));
   assertThrows(() => nodeLauncherPowerShell({ buildFile: "../x.ts" }));

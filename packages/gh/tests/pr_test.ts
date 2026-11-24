@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import {
   GhPrChecksSettings,
   GhPrCloseSettings,
@@ -15,7 +16,7 @@ import {
 } from "../mod.ts";
 import { parsePullRequests } from "../src/pr.ts";
 
-Deno.test("the command path leads, then --repo, then the command's flags", () => {
+test("the command path leads, then --repo, then the command's flags", () => {
   // `--repo` is the package's existing placement; a typed command adds its own
   // flags after it rather than replacing the layout.
   assertEquals(
@@ -25,7 +26,7 @@ Deno.test("the command path leads, then --repo, then the command's flags", () =>
   );
 });
 
-Deno.test("pr create renders its flags", () => {
+test("pr create renders its flags", () => {
   assertEquals(
     new GhPrCreateSettings()
       .title("feat: thing")
@@ -69,7 +70,7 @@ Deno.test("pr create renders its flags", () => {
   );
 });
 
-Deno.test("pr create refuses two sources for the same text", () => {
+test("pr create refuses two sources for the same text", () => {
   // gh takes one; silently preferring one would hide which body was posted.
   assertThrows(
     () => new GhPrCreateSettings().body("a").bodyFile("b.md").argv(),
@@ -83,7 +84,7 @@ Deno.test("pr create refuses two sources for the same text", () => {
   );
 });
 
-Deno.test("pr create renders its fill modes and its rehearsal", () => {
+test("pr create renders its fill modes and its rehearsal", () => {
   // gh's three --fill spellings differ in what they take from the commits, so
   // each is its own flag rather than an argument to one.
   assertEquals(
@@ -109,7 +110,7 @@ Deno.test("pr create renders its fill modes and its rehearsal", () => {
   );
 });
 
-Deno.test("pr list renders every filter", () => {
+test("pr list renders every filter", () => {
   assertEquals(
     new GhPrListSettings()
       .state("merged")
@@ -159,7 +160,7 @@ Deno.test("pr list renders every filter", () => {
   );
 });
 
-Deno.test("the pull request operand is optional, as it is on the command line", () => {
+test("the pull request operand is optional, as it is on the command line", () => {
   // gh falls back to the PR for the current branch.
   assertEquals(new GhPrViewSettings().argv().slice(1), ["pr", "view"]);
   assertEquals(
@@ -177,7 +178,7 @@ Deno.test("the pull request operand is optional, as it is on the command line", 
   ]);
 });
 
-Deno.test("pr merge renders each method and its guards", () => {
+test("pr merge renders each method and its guards", () => {
   assertEquals(
     new GhPrMergeSettings().selector(123).squash().deleteBranch()
       .subject("feat: thing").body("notes").matchHeadCommit("abc123")
@@ -217,7 +218,7 @@ Deno.test("pr merge renders each method and its guards", () => {
   );
 });
 
-Deno.test("pr checks keeps the watch-only flags to watching", () => {
+test("pr checks keeps the watch-only flags to watching", () => {
   assertEquals(
     new GhPrChecksSettings().selector(123).required().argv().slice(1),
     ["pr", "checks", "123", "--required"],
@@ -235,7 +236,7 @@ Deno.test("pr checks keeps the watch-only flags to watching", () => {
   );
 });
 
-Deno.test("pr comment renders its edit and delete modes", () => {
+test("pr comment renders its edit and delete modes", () => {
   assertEquals(
     new GhPrCommentSettings().selector(123).body("CI is green").argv().slice(1),
     ["pr", "comment", "123", "--body", "CI is green"],
@@ -270,7 +271,7 @@ Deno.test("pr comment renders its edit and delete modes", () => {
   );
 });
 
-Deno.test("pr edit renders every add and remove", () => {
+test("pr edit renders every add and remove", () => {
   assertEquals(
     new GhPrEditSettings()
       .selector(123)
@@ -329,7 +330,7 @@ Deno.test("pr edit renders every add and remove", () => {
   );
 });
 
-Deno.test("pr close renders its comment and branch cleanup", () => {
+test("pr close renders its comment and branch cleanup", () => {
   assertEquals(
     new GhPrCloseSettings().selector(123).comment("superseded").deleteBranch()
       .argv().slice(1),
@@ -338,7 +339,7 @@ Deno.test("pr close renders its comment and branch cleanup", () => {
   assertEquals(new GhPrCloseSettings().argv().slice(1), ["pr", "close"]);
 });
 
-Deno.test("parsePullRequests reads gh's JSON array", () => {
+test("parsePullRequests reads gh's JSON array", () => {
   const stdout = JSON.stringify([
     {
       number: 404,
@@ -363,7 +364,7 @@ Deno.test("parsePullRequests reads gh's JSON array", () => {
   }]);
 });
 
-Deno.test("parsePullRequests treats anything but an array of objects as empty", () => {
+test("parsePullRequests treats anything but an array of objects as empty", () => {
   // gh prints `[]` for an empty listing, and prose when it has something else
   // to say; neither is a crash.
   assertEquals(parsePullRequests("[]"), []);
@@ -377,7 +378,7 @@ Deno.test("parsePullRequests treats anything but an array of objects as empty", 
   assertEquals(parsePullRequests('[{"author":{}}]'), [{}]);
 });
 
-Deno.test("the pinned field set is what the entry documents", () => {
+test("the pinned field set is what the entry documents", () => {
   // gh requires --json fields by name, so the reader's set and the entry's
   // shape have to stay in step.
   assertEquals(PR_LIST_FIELDS.includes("number"), true);

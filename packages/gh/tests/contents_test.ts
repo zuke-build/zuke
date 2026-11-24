@@ -10,12 +10,13 @@
  * @module
  */
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
-import { withEnv } from "../../core/tests/_env.ts";
+} from "../../../tests/_assert.ts";
+import { withEnv } from "../../../tests/_env.ts";
 import { GhApiError, type GhContentsSettings, GhTasks } from "../mod.ts";
 
 /** The git blob SHA of `hello\n` — `git hash-object` on that content. */
@@ -67,7 +68,7 @@ function write(
       .message("app 1.2.3").branch("main").fetch(fetchImpl);
 }
 
-Deno.test("contents: a missing file is created, with no sha sent", async () => {
+test("contents: a missing file is created, with no sha sent", async () => {
   const { fetch, seen } = fake([[404, { message: "Not Found" }], WRITTEN]);
   const result = await GhTasks.createOrUpdateFile(write(fetch));
   assertEquals(result, {
@@ -93,7 +94,7 @@ Deno.test("contents: a missing file is created, with no sha sent", async () => {
   assertEquals(seen[1].authorization, "Bearer tok");
 });
 
-Deno.test("contents: a file with other content is updated against its sha", async () => {
+test("contents: a file with other content is updated against its sha", async () => {
   const { fetch, seen } = fake([
     [200, { type: "file", sha: "old-sha" }],
     WRITTEN,
@@ -104,7 +105,7 @@ Deno.test("contents: a file with other content is updated against its sha", asyn
   assertEquals(seen[1].body.sha, "old-sha");
 });
 
-Deno.test("contents: identical content writes nothing", async () => {
+test("contents: identical content writes nothing", async () => {
   const { fetch, seen } = fake([[200, { type: "file", sha: HELLO_SHA }]]);
   const result = await GhTasks.createOrUpdateFile(write(fetch));
   assertEquals(result, {
@@ -115,7 +116,7 @@ Deno.test("contents: identical content writes nothing", async () => {
   assertEquals(seen.length, 1);
 });
 
-Deno.test("contents: UTF-8 content is hashed and encoded as bytes", async () => {
+test("contents: UTF-8 content is hashed and encoded as bytes", async () => {
   // `printf 'é\n' | git hash-object --stdin`.
   const { fetch, seen } = fake([[404, {}], WRITTEN]);
   await GhTasks.createOrUpdateFile((s) => write(fetch)(s).content("é\n"));
@@ -130,7 +131,7 @@ Deno.test("contents: UTF-8 content is hashed and encoded as bytes", async () => 
   assertEquals(result.state, "unchanged");
 });
 
-Deno.test("contents: with no branch the default branch is read and written", async () => {
+test("contents: with no branch the default branch is read and written", async () => {
   const { fetch, seen } = fake([[404, {}], WRITTEN]);
   await GhTasks.createOrUpdateFile((s) =>
     s.repo("acme/tap").token("tok").path("a.txt").content("hello\n")
@@ -143,7 +144,7 @@ Deno.test("contents: with no branch the default branch is read and written", asy
   assertEquals("branch" in seen[1].body, false);
 });
 
-Deno.test("contents: a lost race that wrote the same content is unchanged", async () => {
+test("contents: a lost race that wrote the same content is unchanged", async () => {
   const { fetch, seen } = fake([
     [404, {}],
     [422, { message: "sha wasn't supplied" }],
@@ -154,7 +155,7 @@ Deno.test("contents: a lost race that wrote the same content is unchanged", asyn
   assertEquals(seen.map((request) => request.method), ["GET", "PUT", "GET"]);
 });
 
-Deno.test("contents: a lost race with different content raises the conflict and never writes again", async () => {
+test("contents: a lost race with different content raises the conflict and never writes again", async () => {
   // Finding 2 of the adversarial review: the retry used to PUT over the other
   // writer's newer blob. The second read decides only between "unchanged" and
   // the conflict; it must never lead to a second write.
@@ -174,7 +175,7 @@ Deno.test("contents: a lost race with different content raises the conflict and 
   }
 });
 
-Deno.test("contents: a lost create race whose file vanished again is still a conflict", async () => {
+test("contents: a lost create race whose file vanished again is still a conflict", async () => {
   const { fetch, seen } = fake([
     [404, {}],
     [422, { message: "sha wasn't supplied" }],
@@ -189,7 +190,7 @@ Deno.test("contents: a lost create race whose file vanished again is still a con
   assertEquals(seen.filter((request) => request.method === "PUT").length, 1);
 });
 
-Deno.test("contents: an auth failure is raised at once and never carries the token", async () => {
+test("contents: an auth failure is raised at once and never carries the token", async () => {
   const { fetch, seen } = fake([[401, { message: "Bad credentials" }]]);
   const error = await assertRejects(
     () => GhTasks.createOrUpdateFile(write(fetch)),
@@ -208,7 +209,7 @@ Deno.test("contents: an auth failure is raised at once and never carries the tok
   assertEquals(denied.seen.length, 2);
 });
 
-Deno.test("contents: a directory, symlink or submodule at the path is left alone", async () => {
+test("contents: a directory, symlink or submodule at the path is left alone", async () => {
   for (const payload of [[{ type: "file" }], { type: "symlink", sha: "x" }]) {
     const { fetch, seen } = fake([[200, payload]]);
     await assertRejects(
@@ -220,7 +221,7 @@ Deno.test("contents: a directory, symlink or submodule at the path is left alone
   }
 });
 
-Deno.test("contents: required settings are named when missing", async () => {
+test("contents: required settings are named when missing", async () => {
   const { fetch } = fake([]);
   const base = (s: GhContentsSettings) =>
     s.repo("acme/tap").token("tok").fetch(fetch);
@@ -242,7 +243,7 @@ Deno.test("contents: required settings are named when missing", async () => {
   await assertRejects(() => GhTasks.createOrUpdateFile(), Error, ".path(...)");
 });
 
-Deno.test("contents: a path that could leave the endpoint is refused before any request", async () => {
+test("contents: a path that could leave the endpoint is refused before any request", async () => {
   const { fetch, seen } = fake([]);
   for (
     const path of [
@@ -270,7 +271,7 @@ Deno.test("contents: a path that could leave the endpoint is refused before any 
   assertEquals(seen.length, 0);
 });
 
-Deno.test("contents: a percent sequence in the path stays an ordinary segment", async () => {
+test("contents: a percent sequence in the path stays an ordinary segment", async () => {
   const { fetch, seen } = fake([[404, {}], WRITTEN]);
   await GhTasks.createOrUpdateFile((s) => write(fetch)(s).path("%2e%2e/x"));
   assertStringIncludes(seen[0].url, "/contents/%252e%252e/x");
@@ -283,7 +284,7 @@ Deno.test("contents: a percent sequence in the path stays an ordinary segment", 
   );
 });
 
-Deno.test("contents: the repository and token fall back to the Actions environment", async () => {
+test("contents: the repository and token fall back to the Actions environment", async () => {
   const { fetch, seen } = fake([[404, {}], WRITTEN]);
   await withEnv(
     { GITHUB_REPOSITORY: "acme/env", GITHUB_TOKEN: "env-token" },

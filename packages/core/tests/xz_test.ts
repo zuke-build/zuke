@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { unxz } from "../src/xz.ts";
 import { crc32 } from "../src/internal.ts";
 import {
@@ -11,28 +12,28 @@ import {
   NONE_XZ,
   STRESS_XZ,
   stressPayload,
-} from "./_xz.ts";
+} from "../../../tests/_xz.ts";
 
 const dec = (b: Uint8Array) => new TextDecoder().decode(b);
 const HELLO = "hello from xz\n".repeat(3);
 
-Deno.test("unxz decodes a multi-block SHA-256-checked stream byte for byte", async () => {
+test("unxz decodes a multi-block SHA-256-checked stream byte for byte", async () => {
   assertEquals(await unxz(fixture(STRESS_XZ)), stressPayload());
 });
 
-Deno.test("unxz decodes non-default lc/lp/pb literal and position contexts", async () => {
+test("unxz decodes non-default lc/lp/pb literal and position contexts", async () => {
   assertEquals(
     await unxz(fixture(LPPB_XZ)),
     stressPayload().subarray(0, 3000),
   );
 });
 
-Deno.test("unxz verifies a CRC32 check and accepts a stream with no check", async () => {
+test("unxz verifies a CRC32 check and accepts a stream with no check", async () => {
   assertEquals(dec(await unxz(fixture(CRC32_XZ))), HELLO);
   assertEquals(dec(await unxz(fixture(NONE_XZ))), HELLO);
 });
 
-Deno.test("unxz decodes concatenated streams separated by stream padding", async () => {
+test("unxz decodes concatenated streams separated by stream padding", async () => {
   const a = fixture(CRC32_XZ);
   const b = fixture(NONE_XZ);
   const joined = new Uint8Array(a.length + 4 + b.length);
@@ -49,7 +50,7 @@ function checkOffset(data: Uint8Array): number {
   return footer - indexSize - 4; // the CRC32 check sits just before the index
 }
 
-Deno.test("unxz reports a block check mismatch", async () => {
+test("unxz reports a block check mismatch", async () => {
   const data = fixture(CRC32_XZ);
   data[checkOffset(data)] ^= 0xff;
   await assertRejects(() => unxz(data), Error, "block CRC32 check mismatch");
@@ -73,7 +74,7 @@ Deno.test("unxz reports a block check mismatch", async () => {
   await assertRejects(() => unxz(sha), Error, "block SHA-256 check mismatch");
 });
 
-Deno.test("unxz rejects bytes that are not an xz archive", async () => {
+test("unxz rejects bytes that are not an xz archive", async () => {
   await assertRejects(() => unxz(new Uint8Array(0)), Error, "empty input");
   await assertRejects(
     () => unxz(new TextEncoder().encode("definitely not xz data")),
@@ -84,7 +85,7 @@ Deno.test("unxz rejects bytes that are not an xz archive", async () => {
   await assertRejects(() => unxz(padded), Error, "bad stream padding");
 });
 
-Deno.test("unxz rejects a truncated archive", async () => {
+test("unxz rejects a truncated archive", async () => {
   const data = fixture(CRC32_XZ);
   await assertRejects(() => unxz(data.subarray(0, 40)), Error, "xz: corrupt");
   await assertRejects(
@@ -94,7 +95,7 @@ Deno.test("unxz rejects a truncated archive", async () => {
   );
 });
 
-Deno.test("unxz rejects unsupported stream flags, check types and filters", async () => {
+test("unxz rejects unsupported stream flags, check types and filters", async () => {
   const flags = fixture(CRC32_XZ);
   flags[6] = 1; // a reserved stream-flags byte (CRC32 no longer matches either)
   await assertRejects(() => unxz(flags), Error, "bad stream flags");
@@ -111,7 +112,7 @@ Deno.test("unxz rejects unsupported stream flags, check types and filters", asyn
   await assertRejects(() => unxz(filter), Error, "unsupported filter chain");
 });
 
-Deno.test("unxz rejects corrupt LZMA2 chunk sequences", async () => {
+test("unxz rejects corrupt LZMA2 chunk sequences", async () => {
   const headerEnd = (data: Uint8Array) => 12 + (data[12] + 1) * 4;
   for (
     const [control, message] of [
@@ -139,7 +140,7 @@ Deno.test("unxz rejects corrupt LZMA2 chunk sequences", async () => {
   await assertRejects(() => unxz(long), Error, "xz: corrupt");
 });
 
-Deno.test("unxz rejects a block header whose CRC32 does not match", async () => {
+test("unxz rejects a block header whose CRC32 does not match", async () => {
   const data = fixture(CRC32_XZ);
   data[16] ^= 0x01; // the LZMA2 dictionary-size byte, covered by the header CRC32
   await assertRejects(() => unxz(data), Error, "block header CRC32 mismatch");

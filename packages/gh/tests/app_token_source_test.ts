@@ -10,8 +10,9 @@
  * @module
  */
 
-import { assertEquals } from "../../core/tests/_assert.ts";
-import { captureLines } from "../../core/tests/_console.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
+import { captureLines } from "../../../tests/_console.ts";
 import { parameter } from "../../core/mod.ts";
 import { GhTasks } from "../mod.ts";
 import {
@@ -44,7 +45,7 @@ function env(
   return (name) => values[name];
 }
 
-Deno.test("appTokenSource mints once, for the run's repository, and shares the token", async () => {
+test("appTokenSource mints once, for the run's repository, and shares the token", async () => {
   const { mint, seen } = fakeMint();
   const source = GhTasks.appTokenSource((s) =>
     s.app("123", "PEM").env(env({ GITHUB_REPOSITORY: "acme/widgets" }))
@@ -61,7 +62,7 @@ Deno.test("appTokenSource mints once, for the run's repository, and shares the t
   assertEquals(seen[0].permissions_, {});
 });
 
-Deno.test("appTokenSource reads the credentials from parameters when first called", async () => {
+test("appTokenSource reads the credentials from parameters when first called", async () => {
   const appId = parameter("App id").env("APP_ID");
   const appKey = parameter("App key").secret().env("APP_KEY");
   const { mint, seen } = fakeMint();
@@ -76,7 +77,7 @@ Deno.test("appTokenSource reads the credentials from parameters when first calle
   assertEquals(seen[0].privateKey_, "KEY");
 });
 
-Deno.test("without the App's credentials the source yields GITHUB_TOKEN, silently", async () => {
+test("without the App's credentials the source yields GITHUB_TOKEN, silently", async () => {
   const appKey = parameter("App key").secret().env("APP_KEY");
   appKey.resolve_(undefined);
   const { mint, seen } = fakeMint();
@@ -93,7 +94,7 @@ Deno.test("without the App's credentials the source yields GITHUB_TOKEN, silentl
   assertEquals(await bare(), "");
 });
 
-Deno.test("a configured fallback wins over GITHUB_TOKEN", async () => {
+test("a configured fallback wins over GITHUB_TOKEN", async () => {
   const pat = parameter("Bot token").secret().env("BOT_TOKEN");
   pat.resolve_("ghp_bot");
   const source = appTokenSource((s) =>
@@ -102,7 +103,7 @@ Deno.test("a configured fallback wins over GITHUB_TOKEN", async () => {
   assertEquals(await source(), "ghp_bot");
 });
 
-Deno.test("a repository that is not owner/name is refused with a warning, not minted for", async () => {
+test("a repository that is not owner/name is refused with a warning, not minted for", async () => {
   const { mint, seen } = fakeMint();
   const lines = await captureLines(async () => {
     const source = appTokenSource((s) =>
@@ -117,7 +118,7 @@ Deno.test("a repository that is not owner/name is refused with a warning, not mi
   );
 });
 
-Deno.test("a failed mint falls back with a warning naming the cause", async () => {
+test("a failed mint falls back with a warning naming the cause", async () => {
   const mint: GhAppTokenMint = () => Promise.reject(new Error("HTTP 401"));
   const lines = await captureLines(async () => {
     const source = appTokenSource((s) =>
@@ -135,7 +136,7 @@ Deno.test("a failed mint falls back with a warning naming the cause", async () =
   );
 });
 
-Deno.test("permissions, fetch and baseUrl are handed to the mint", async () => {
+test("permissions, fetch and baseUrl are handed to the mint", async () => {
   const { mint, seen } = fakeMint();
   const doFetch =
     ((input: string | URL | Request) =>
@@ -156,7 +157,7 @@ Deno.test("permissions, fetch and baseUrl are handed to the mint", async () => {
   assertEquals(seen[0].baseUrl_, "https://ghe.example/api/v3");
 });
 
-Deno.test("a pinned repository refuses to mint on a run elsewhere, and mints on its own", async () => {
+test("a pinned repository refuses to mint on a run elsewhere, and mints on its own", async () => {
   const { mint, seen } = fakeMint();
   const lines = await captureLines(async () => {
     const elsewhere = appTokenSource((s) =>

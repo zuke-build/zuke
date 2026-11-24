@@ -3,10 +3,11 @@
 
 /** Tests for the terminal renderer: half blocks, full blocks, borders, inversion. */
 
+import { test } from "../../../tests/_testing.ts";
 import { renderLines } from "../src/render.ts";
 import { QrSettings } from "../src/settings.ts";
 import type { QrCode } from "../src/symbol.ts";
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 
 /** A fake 3×3 "code" whose modules spell a diagonal, enough to see every glyph. */
 function diagonal(size: number): QrCode {
@@ -22,24 +23,24 @@ function diagonal(size: number): QrCode {
   };
 }
 
-Deno.test("compact rendering packs two rows per line with half blocks", () => {
+test("compact rendering packs two rows per line with half blocks", () => {
   const lines = renderLines(diagonal(2), new QrSettings().quietZone(0));
   // Row 0 = [dark, light], row 1 = [light, dark]: top-half, bottom-half.
   assertEquals(lines, ["▀▄"]);
 });
 
-Deno.test("compact rendering treats a missing last row as light", () => {
+test("compact rendering treats a missing last row as light", () => {
   const lines = renderLines(diagonal(3), new QrSettings().quietZone(0));
   assertEquals(lines, ["▀▄ ", "  ▀"]);
 });
 
-Deno.test("compact rendering with a border pads the last line with light modules", () => {
+test("compact rendering with a border pads the last line with light modules", () => {
   const lines = renderLines(diagonal(2), new QrSettings().quietZone(1));
   // 4 rows in pairs: (border, row 0), (row 1, border).
   assertEquals(lines, [" ▄  ", "  ▀ "]);
 });
 
-Deno.test("inverting swaps dark and light, including the missing row", () => {
+test("inverting swaps dark and light, including the missing row", () => {
   const lines = renderLines(
     diagonal(3),
     new QrSettings().quietZone(0).invert(),
@@ -47,7 +48,7 @@ Deno.test("inverting swaps dark and light, including the missing row", () => {
   assertEquals(lines, ["▄▀█", "██▄"]);
 });
 
-Deno.test("inverting draws the quiet zone as blocks in both modes", () => {
+test("inverting draws the quiet zone as blocks in both modes", () => {
   // Rows: (border, row 0), (row 1, border) with a light diagonal inside.
   assertEquals(
     renderLines(diagonal(2), new QrSettings().quietZone(1).invert()),
@@ -62,7 +63,7 @@ Deno.test("inverting draws the quiet zone as blocks in both modes", () => {
   );
 });
 
-Deno.test("full-block rendering draws one row per line with two-character cells", () => {
+test("full-block rendering draws one row per line with two-character cells", () => {
   const lines = renderLines(
     diagonal(2),
     new QrSettings().quietZone(1).compact(false),
@@ -75,7 +76,7 @@ Deno.test("full-block rendering draws one row per line with two-character cells"
   ]);
 });
 
-Deno.test("full-block rendering honours inversion", () => {
+test("full-block rendering honours inversion", () => {
   const lines = renderLines(
     diagonal(2),
     new QrSettings().quietZone(0).compact(false).invert(),

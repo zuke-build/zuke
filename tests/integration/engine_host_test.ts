@@ -7,6 +7,7 @@
  * unmodified core engine, with every subprocess spawned by the engine.
  */
 
+import { test } from "../_testing.ts";
 import {
   Build,
   cicd,
@@ -19,8 +20,8 @@ import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
-import { FakeGraphHost } from "../../packages/core/tests/_fakes.ts";
+} from "../_assert.ts";
+import { FakeGraphHost } from "../_fakes.ts";
 import { embeddedTools } from "../../packages/engine/src/embedded.ts";
 import { WorkerHost } from "../../packages/engine/src/host.ts";
 import { hostedBuild } from "../../packages/engine/src/hosted.ts";
@@ -31,12 +32,11 @@ import {
   ambientEcho,
   type EchoSink,
 } from "../../packages/core/src/ambient_echo.ts";
-import { withEnv as withEnvs } from "../../packages/core/tests/_env.ts";
+import { withEnv as withEnvs } from "../_env.ts";
 import { runCli, withoutMaskDirectives, withStateDir } from "./_harness.ts";
 
-const FAKE =
-  new URL("../../packages/engine/tests/_fake_worker.ts", import.meta.url)
-    .href;
+const FAKE = new URL("../support/engine/_fake_worker.ts", import.meta.url)
+  .href;
 
 interface PlanTarget {
   name: string;
@@ -100,7 +100,7 @@ function evalArgv(source: string): string[] {
   return [Deno.execPath(), "eval", source];
 }
 
-Deno.test("--list --json for a worker-described build matches its zuke.ts twin", async () => {
+test("--list --json for a worker-described build matches its zuke.ts twin", async () => {
   class Twin extends Build {
     lint = target().description("lint it");
     test = target().description("test it").dependsOn(this.lint);
@@ -121,7 +121,7 @@ Deno.test("--list --json for a worker-described build matches its zuke.ts twin",
   }
 });
 
-Deno.test("the engine runs the graph, spawns each exec itself with the worker's env, and logs the worker's prints to stderr", async () => {
+test("the engine runs the graph, spawns each exec itself with the worker's env, and logs the worker's prints to stderr", async () => {
   await withStateDir(async (dir) => {
     const marker = `${dir}/marker`;
     const { host, Remote } = await fake([
@@ -152,7 +152,7 @@ Deno.test("the engine runs the graph, spawns each exec itself with the worker's 
   });
 });
 
-Deno.test("a body that fails marks its target failed with the worker's message", async () => {
+test("a body that fails marks its target failed with the worker's message", async () => {
   await withStateDir(async () => {
     const { host, Remote } = await fake([
       { name: "boom", fail: "the worker said no" },
@@ -168,7 +168,7 @@ Deno.test("a body that fails marks its target failed with the worker's message",
   });
 });
 
-Deno.test("a worker hook that throws fails the run with its message", async () => {
+test("a worker hook that throws fails the run with its message", async () => {
   await withStateDir(async () => {
     const { host, Remote } = await fake(
       [{ name: "a" }],
@@ -190,7 +190,7 @@ Deno.test("a worker hook that throws fails the run with its message", async () =
   });
 });
 
-Deno.test("a condition answered with the wrong type is refused, naming the target", async () => {
+test("a condition answered with the wrong type is refused, naming the target", async () => {
   await withStateDir(async () => {
     const { host, Remote } = await fake([
       { name: "gated", condition: true, condition_answer: "yes" },
@@ -209,7 +209,7 @@ Deno.test("a condition answered with the wrong type is refused, naming the targe
   });
 });
 
-Deno.test("a cache key answered with the wrong type is refused, naming the target", async () => {
+test("a cache key answered with the wrong type is refused, naming the target", async () => {
   await withStateDir(async () => {
     const { host, Remote } = await fake([
       { name: "keyed", cacheKey: true, cacheKey_answer: 1 },
@@ -227,7 +227,7 @@ Deno.test("a cache key answered with the wrong type is refused, naming the targe
   });
 });
 
-Deno.test("a registered secret is redacted from the summary the engine renders", async () => {
+test("a registered secret is redacted from the summary the engine renders", async () => {
   await withStateDir(async () => {
     const { host, Remote } = await fake([{
       name: "leaky",
@@ -258,7 +258,7 @@ Deno.test("a registered secret is redacted from the summary the engine renders",
   });
 });
 
-Deno.test("a secret parameter and a registered secret never reach the log through a worker's log call or its own stdout", async () => {
+test("a secret parameter and a registered secret never reach the log through a worker's log call or its own stdout", async () => {
   await withStateDir(async () => {
     const { host, Remote } = await fake([{
       name: "leaky",
@@ -303,7 +303,7 @@ Deno.test("a secret parameter and a registered secret never reach the log throug
   });
 });
 
-Deno.test("under GitHub Actions a secret a worker registers is add-masked once", async () => {
+test("under GitHub Actions a secret a worker registers is add-masked once", async () => {
   await withStateDir(async () => {
     const { host, Remote } = await fake([{
       name: "leaky",
@@ -330,7 +330,7 @@ Deno.test("under GitHub Actions a secret a worker registers is add-masked once",
   });
 });
 
-Deno.test("a body reads a settled dependency's outcome, null for an unknown target, and the outcomes map", async () => {
+test("a body reads a settled dependency's outcome, null for an unknown target, and the outcomes map", async () => {
   await withStateDir(async () => {
     const { host, Remote } = await fake([
       { name: "dep" },
@@ -359,7 +359,7 @@ Deno.test("a body reads a settled dependency's outcome, null for an unknown targ
   });
 });
 
-Deno.test("a malformed context call is refused naming the field, and the body goes on", async () => {
+test("a malformed context call is refused naming the field, and the body goes on", async () => {
   await withStateDir(async () => {
     const { host, Remote } = await fake([{
       name: "sloppy",
@@ -389,7 +389,7 @@ Deno.test("a malformed context call is refused naming the field, and the body go
   });
 });
 
-Deno.test("a validateDuring check the worker fails ends the target with its message", async () => {
+test("a validateDuring check the worker fails ends the target with its message", async () => {
   await withStateDir(async () => {
     const { host, Remote } = await fake([{
       name: "slow",
@@ -415,7 +415,7 @@ Deno.test("a validateDuring check the worker fails ends the target with its mess
   });
 });
 
-Deno.test("a service's start phase execs through the engine, and a body-only call is refused by name", async () => {
+test("a service's start phase execs through the engine, and a body-only call is refused by name", async () => {
   await withStateDir(async (dir) => {
     const marker = `${dir}/service-marker`;
     const { host, Remote } = await fake([
@@ -444,7 +444,7 @@ Deno.test("a service's start phase execs through the engine, and a body-only cal
   });
 });
 
-Deno.test("a service whose probe never turns true fails the run with core's timeout", async () => {
+test("a service whose probe never turns true fails the run with core's timeout", async () => {
   await withStateDir(async () => {
     const { host, Remote } = await fake([
       {
@@ -470,7 +470,7 @@ Deno.test("a service whose probe never turns true fails the run with core's time
   });
 });
 
-Deno.test("a worker that dies mid-body fails the target with its exit code, and the compensation runs in a fresh worker", async () => {
+test("a worker that dies mid-body fails the target with its exit code, and the compensation runs in a fresh worker", async () => {
   await withStateDir(async () => {
     const { host, Remote } = await fake([
       { name: "deploy", onCancel: "rollback" },
@@ -500,7 +500,7 @@ Deno.test("a worker that dies mid-body fails the target with its exit code, and 
   });
 });
 
-Deno.test("a replacement worker that describes a different build is refused", async () => {
+test("a replacement worker that describes a different build is refused", async () => {
   await withStateDir(async (dir) => {
     Deno.env.set("ZUKE_FAKE_GENERATION_FILE", `${dir}/generation`);
     Deno.env.set(
@@ -546,7 +546,7 @@ Deno.test("a replacement worker that describes a different build is refused", as
   });
 });
 
-Deno.test("--dry-run never calls a body, so nothing is spawned", async () => {
+test("--dry-run never calls a body, so nothing is spawned", async () => {
   await withStateDir(async (dir) => {
     const marker = `${dir}/dry-marker`;
     const { host, Remote } = await fake([
@@ -568,7 +568,7 @@ Deno.test("--dry-run never calls a body, so nothing is spawned", async () => {
   });
 });
 
-Deno.test("a cancel mid-exec kills the child, fails the body as cancelled, and ends the run", async () => {
+test("a cancel mid-exec kills the child, fails the body as cancelled, and ends the run", async () => {
   await withStateDir(async () => {
     const { host, Remote } = await fake([
       {
@@ -592,7 +592,7 @@ Deno.test("a cancel mid-exec kills the child, fails the body as cancelled, and e
   });
 });
 
-Deno.test("an exec attributed to a target with no running body is refused", async () => {
+test("an exec attributed to a target with no running body is refused", async () => {
   await withStateDir(async () => {
     const { host, Remote } = await fake([
       { name: "x", execAs: "ghost", exec: [evalArgv("1")] },
@@ -611,7 +611,7 @@ Deno.test("an exec attributed to a target with no running body is refused", asyn
   });
 });
 
-Deno.test({
+test({
   name:
     "a worker that ignores SIGTERM is killed within the grace period on a failed start",
   ignore: Deno.build.os === "windows", // No SIGTERM listener there; kill is final.
@@ -635,7 +635,7 @@ Deno.test({
   },
 });
 
-Deno.test("a worker that never connects, exits early, or greets with the wrong token, is reported and killed", async () => {
+test("a worker that never connects, exits early, or greets with the wrong token, is reported and killed", async () => {
   await assertRejects(
     () =>
       WorkerHost.start({
@@ -691,7 +691,7 @@ async function withEnv<T>(
   }
 }
 
-Deno.test("graph, its HTML page and the completion script for a worker-described build match the twin's", async () => {
+test("graph, its HTML page and the completion script for a worker-described build match the twin's", async () => {
   class Twin extends Build {
     lint = target().description("lint it");
     test = target().description("test it").dependsOn(this.lint);
@@ -727,7 +727,7 @@ Deno.test("graph, its HTML page and the completion script for a worker-described
   }
 });
 
-Deno.test("generate-ci writes for a worker-described build the files its twin declares, byte for byte", async () => {
+test("generate-ci writes for a worker-described build the files its twin declares, byte for byte", async () => {
   const pin = (action: string) =>
     `${action}@0000000000000000000000000000000000000000`;
   const gate = {
@@ -802,7 +802,7 @@ Deno.test("generate-ci writes for a worker-described build the files its twin de
   }
 });
 
-Deno.test("register writes for a worker-described build the descriptor its twin writes", async () => {
+test("register writes for a worker-described build the descriptor its twin writes", async () => {
   class Twin extends Build {
     apiToken = parameter("api token").secret();
     lint = target().description("lint it");
@@ -846,7 +846,7 @@ Deno.test("register writes for a worker-described build the descriptor its twin 
   }
 });
 
-Deno.test("an MCP server lists the twin's tools for a worker-described build, and every run it serves gets a worker", async () => {
+test("an MCP server lists the twin's tools for a worker-described build, and every run it serves gets a worker", async () => {
   await withStateDir(async () => {
     class Twin extends Build {
       a = target().description("A").executes(() => {});
@@ -885,7 +885,7 @@ Deno.test("an MCP server lists the twin's tools for a worker-described build, an
   });
 });
 
-Deno.test("a replacement worker that cannot describe the build ends the run, naming why, and serves nothing", async () => {
+test("a replacement worker that cannot describe the build ends the run, naming why, and serves nothing", async () => {
   await withStateDir(async (dir) => {
     Deno.env.set("ZUKE_FAKE_GENERATION_FILE", `${dir}/generation`);
     Deno.env.set("ZUKE_FAKE_RESPAWN_PLAN", JSON.stringify({ name: 5 }));
@@ -918,7 +918,7 @@ Deno.test("a replacement worker that cannot describe the build ends the run, nam
   });
 });
 
-Deno.test("kill() ends one run's phases without poisoning the next run's service phases", async () => {
+test("kill() ends one run's phases without poisoning the next run's service phases", async () => {
   await withStateDir(async (dir) => {
     const marker = `${dir}/service-marker`;
     const { host, Remote } = await fake([
@@ -941,7 +941,7 @@ Deno.test("kill() ends one run's phases without poisoning the next run's service
   });
 });
 
-Deno.test({
+test({
   name:
     "a worker that hangs up but keeps running is stopped before its replacement serves the compensation",
   ignore: Deno.build.os === "windows", // the fake records SIGTERM, which Windows has no listener for
@@ -984,7 +984,7 @@ async function workersStarted(file: string): Promise<number> {
   );
 }
 
-Deno.test("a pre-warming host has the next worker up before the next run asks", async () => {
+test("a pre-warming host has the next worker up before the next run asks", async () => {
   await withStateDir(async (dir) => {
     const started = `${dir}/started`;
     Deno.env.set("ZUKE_FAKE_STARTED_FILE", started);
@@ -1023,7 +1023,7 @@ Deno.test("a pre-warming host has the next worker up before the next run asks", 
   });
 });
 
-Deno.test("a pre-warm that fails is the next run's to meet, not the finished run's", async () => {
+test("a pre-warm that fails is the next run's to meet, not the finished run's", async () => {
   await withStateDir(async (dir) => {
     Deno.env.set("ZUKE_FAKE_GENERATION_FILE", `${dir}/generation`);
     Deno.env.set(
@@ -1055,7 +1055,7 @@ Deno.test("a pre-warm that fails is the next run's to meet, not the finished run
 });
 
 const FAKE_TOOL =
-  new URL("../../packages/engine/tests/_fake_tool.ts", import.meta.url).href;
+  new URL("../support/engine/_fake_tool.ts", import.meta.url).href;
 
 /** A worker call of the fake wrapper's task with `args`. */
 function toolCall(
@@ -1087,7 +1087,7 @@ function toolAnswers(err: string): string[] {
   return err.split("\n").filter((l) => l.includes("answer: tool.call"));
 }
 
-Deno.test("tool.call runs a wrapper's task with the worker's environment and directory under its settings", async () => {
+test("tool.call runs a wrapper's task with the worker's environment and directory under its settings", async () => {
   await withStateDir(async () => {
     const { host, Remote } = await fake([{
       name: "caller",
@@ -1130,7 +1130,7 @@ Deno.test("tool.call runs a wrapper's task with the worker's environment and dir
   });
 });
 
-Deno.test("exec no longer hands a command the engine's own variables", async () => {
+test("exec no longer hands a command the engine's own variables", async () => {
   await withStateDir(async () => {
     const { host, Remote } = await fake([{
       name: "peek",
@@ -1148,7 +1148,7 @@ Deno.test("exec no longer hands a command the engine's own variables", async () 
   });
 });
 
-Deno.test("a malformed or unknown tool.call is refused by name, and the body goes on", async () => {
+test("a malformed or unknown tool.call is refused by name, and the body goes on", async () => {
   await withStateDir(async () => {
     const { host, Remote } = await fake([{
       name: "sloppy",
@@ -1204,7 +1204,7 @@ Deno.test("a malformed or unknown tool.call is refused by name, and the body goe
   });
 });
 
-Deno.test("under --dry-run a dryRunnable body's tool.call echoes the command and spawns nothing", async () => {
+test("under --dry-run a dryRunnable body's tool.call echoes the command and spawns nothing", async () => {
   await withStateDir(async () => {
     const { host, Remote } = await fake([{
       name: "echoing",
@@ -1224,7 +1224,7 @@ Deno.test("under --dry-run a dryRunnable body's tool.call echoes the command and
   });
 });
 
-Deno.test("a wrapper's module is imported outside the body's scope, so a dry run's echo cannot outlive it", async () => {
+test("a wrapper's module is imported outside the body's scope, so a dry run's echo cannot outlive it", async () => {
   await withStateDir(async () => {
     // Deno keeps the context a module was first imported in alive past the
     // import: resolved inside the body, a dry run's echo sink would reach every
@@ -1250,7 +1250,7 @@ Deno.test("a wrapper's module is imported outside the body's scope, so a dry run
   });
 });
 
-Deno.test("a cancel mid-tool.call ends the wrapper's command, and the body as cancelled", async () => {
+test("a cancel mid-tool.call ends the wrapper's command, and the body as cancelled", async () => {
   await withStateDir(async () => {
     const { host, Remote } = await fake([{
       name: "slow",
@@ -1276,7 +1276,7 @@ Deno.test("a cancel mid-tool.call ends the wrapper's command, and the body as ca
   });
 });
 
-Deno.test("the default resolver finds a workspace wrapper at its own version", async () => {
+test("the default resolver finds a workspace wrapper at its own version", async () => {
   await withStateDir(async () => {
     const version: unknown = JSON.parse(
       await Deno.readTextFile("packages/deno/deno.json"),
@@ -1315,7 +1315,7 @@ Deno.test("the default resolver finds a workspace wrapper at its own version", a
   });
 });
 
-Deno.test("hostedBuild runs the worker zuke.json names, serving tool.call from the releases a binary carries", async () => {
+test("hostedBuild runs the worker zuke.json names, serving tool.call from the releases a binary carries", async () => {
   await withStateDir(() =>
     inTempDir(async (dir) => {
       await Deno.writeTextFile(
@@ -1356,7 +1356,7 @@ Deno.test("hostedBuild runs the worker zuke.json names, serving tool.call from t
   );
 });
 
-Deno.test("a worker program that does not exist rejects the start and leaves no listener open", async () => {
+test("a worker program that does not exist rejects the start and leaves no listener open", async () => {
   // A listener left open keeps the event loop alive, so the leak shows as a
   // process that never exits after the error is caught.
   const script = `

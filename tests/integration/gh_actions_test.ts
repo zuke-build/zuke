@@ -9,10 +9,8 @@
  * and that a settings class's own validation surfaces as a failed target.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { missingTool } from "../../packages/core/src/tooling_conformance.ts";
 import { GhTasks } from "../../packages/gh/mod.ts";
@@ -134,7 +132,7 @@ const FAILS_ON_MISSING_GH: Array<[string, string]> = [
 ];
 
 for (const [name, marker] of FAILS_ON_MISSING_GH) {
-  Deno.test(`the ${name} target fails with the tool-not-found error`, async () => {
+  test(`the ${name} target fails with the tool-not-found error`, async () => {
     const { code, out, err } = await runCli(ActionsBuild, [name]);
     assertEquals(code, 1);
     assertStringIncludes(err, "zuke-no-such-tool-xyz");
@@ -142,7 +140,7 @@ for (const [name, marker] of FAILS_ON_MISSING_GH) {
   });
 }
 
-Deno.test("a settings validation failure fails the target, naming the fix", async () => {
+test("a settings validation failure fails the target, naming the fix", async () => {
   const { code, out, err } = await runCli(ActionsBuild, ["mistake"]);
   assertEquals(code, 1);
   assertStringIncludes(err, ".repository(...) is required");

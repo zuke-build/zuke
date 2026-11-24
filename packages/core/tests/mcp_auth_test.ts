@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   authenticateRequest,
   authenticatorFromHook,
@@ -30,7 +31,7 @@ function run(
 
 // ---- normalizeIdentity: what is, and is not, an identity -------------------
 
-Deno.test("normalizeIdentity refuses anything that is not an identity object", () => {
+test("normalizeIdentity refuses anything that is not an identity object", () => {
   assertEquals(normalizeIdentity(null), null);
   assertEquals(normalizeIdentity(undefined), null);
   assertEquals(normalizeIdentity("ada"), null);
@@ -43,7 +44,7 @@ Deno.test("normalizeIdentity refuses anything that is not an identity object", (
   assertEquals(normalizeIdentity({ actor: "" }), null); // empty actor
 });
 
-Deno.test("normalizeIdentity settles kind, and leaves unclaimed roles unclaimed", () => {
+test("normalizeIdentity settles kind, and leaves unclaimed roles unclaimed", () => {
   // The key count is compared too, so this pins that neither `via` nor `roles`
   // is invented for an identity that carried neither. An authenticator that
   // never mentions roles does not speak roles, which is not the same claim as
@@ -54,7 +55,7 @@ Deno.test("normalizeIdentity settles kind, and leaves unclaimed roles unclaimed"
   });
 });
 
-Deno.test("normalizeIdentity keeps an explicitly empty role list", () => {
+test("normalizeIdentity keeps an explicitly empty role list", () => {
   // The opposite claim to omitting it: the authenticator considered the
   // question and granted nothing, so the policy has something to deny with.
   assertEquals(normalizeIdentity({ actor: "ada", roles: [] }), {
@@ -64,14 +65,14 @@ Deno.test("normalizeIdentity keeps an explicitly empty role list", () => {
   });
 });
 
-Deno.test("normalizeIdentity honours an explicit service kind", () => {
+test("normalizeIdentity honours an explicit service kind", () => {
   assertEquals(normalizeIdentity({ actor: "deploy-bot", kind: "service" }), {
     actor: "deploy-bot",
     kind: "service",
   });
 });
 
-Deno.test("normalizeIdentity reads an unknown kind as human, never service", () => {
+test("normalizeIdentity reads an unknown kind as human, never service", () => {
   // The conservative default: only the exact literal `"service"` grants the
   // service kind, so a garbage value can never buy the more-privileged claim.
   for (
@@ -82,14 +83,14 @@ Deno.test("normalizeIdentity reads an unknown kind as human, never service", () 
   }
 });
 
-Deno.test("normalizeIdentity keeps only the non-empty string roles", () => {
+test("normalizeIdentity keeps only the non-empty string roles", () => {
   assertEquals(
     normalizeIdentity({ actor: "ada", roles: ["ops", "", 7, null, "deploy"] }),
     { actor: "ada", kind: "human", roles: ["ops", "deploy"] },
   );
 });
 
-Deno.test("normalizeIdentity yields no roles for a non-array roles", () => {
+test("normalizeIdentity yields no roles for a non-array roles", () => {
   // A malformed claim is still a claim: the authenticator meant to say
   // something about roles, so it settles to "none" rather than to unclaimed.
   for (const roles of ["ops", 7, null, { ops: true }]) {
@@ -101,7 +102,7 @@ Deno.test("normalizeIdentity yields no roles for a non-array roles", () => {
   assertEquals(omitted !== null && Object.hasOwn(omitted, "roles"), false);
 });
 
-Deno.test("normalizeIdentity keeps a non-empty via and omits any other", () => {
+test("normalizeIdentity keeps a non-empty via and omits any other", () => {
   assertEquals(normalizeIdentity({ actor: "ada", via: "oauth-proxy" }), {
     actor: "ada",
     kind: "human",
@@ -119,12 +120,12 @@ Deno.test("normalizeIdentity keeps a non-empty via and omits any other", () => {
 
 // ---- authenticateRequest: accepting a caller -------------------------------
 
-Deno.test("authenticateRequest settles a synchronous identity", async () => {
+test("authenticateRequest settles a synchronous identity", async () => {
   const result = await run(() => ({ actor: "ada", kind: "service" }));
   assertEquals(result, { actor: "ada", kind: "service" });
 });
 
-Deno.test("authenticateRequest awaits an asynchronous identity", async () => {
+test("authenticateRequest awaits an asynchronous identity", async () => {
   const result = await run(() =>
     Promise.resolve({ actor: "ada", roles: ["ops"], via: "oauth-proxy" })
   );
@@ -136,7 +137,7 @@ Deno.test("authenticateRequest awaits an asynchronous identity", async () => {
   });
 });
 
-Deno.test("authenticateRequest passes the request context through", async () => {
+test("authenticateRequest passes the request context through", async () => {
   const ctx: McpRequestContext = {
     headers: new Headers({ "x-forwarded-user": "ada" }),
   };
@@ -155,19 +156,19 @@ Deno.test("authenticateRequest passes the request context through", async () => 
 
 // ---- authenticateRequest: fail-closed on a misbehaving authenticator -------
 
-Deno.test("authenticateRequest turns a throw into the bare 401", async () => {
+test("authenticateRequest turns a throw into the bare 401", async () => {
   const result = await run(() => {
     throw new Error("upstream token endpoint is down");
   });
   assertEquals(result, UNAUTHORIZED);
 });
 
-Deno.test("authenticateRequest turns a rejected promise into the bare 401", async () => {
+test("authenticateRequest turns a rejected promise into the bare 401", async () => {
   const result = await run(() => Promise.reject(new Error("timeout")));
   assertEquals(result, UNAUTHORIZED);
 });
 
-Deno.test("authenticateRequest refuses a result that is neither identity nor reject", async () => {
+test("authenticateRequest refuses a result that is neither identity nor reject", async () => {
   // @ts-expect-error - a misbehaving authenticator returning `null`; the runtime guard must refuse it.
   assertEquals(await run(() => null), UNAUTHORIZED);
   // @ts-expect-error - likewise `undefined`, the value a forgotten `return` produces.
@@ -183,7 +184,7 @@ Deno.test("authenticateRequest refuses a result that is neither identity nor rej
 
 // ---- authenticateRequest: rejections cannot be laundered into successes ----
 
-Deno.test("authenticateRequest keeps a well-formed rejection intact", async () => {
+test("authenticateRequest keeps a well-formed rejection intact", async () => {
   const result = await run(() => ({
     status: 403,
     error: "insufficient_scope",
@@ -198,7 +199,7 @@ Deno.test("authenticateRequest keeps a well-formed rejection intact", async () =
   });
 });
 
-Deno.test("authenticateRequest accepts the client-error status range's ends", async () => {
+test("authenticateRequest accepts the client-error status range's ends", async () => {
   assertEquals(await run(() => ({ status: 400, error: "bad_request" })), {
     status: 400,
     error: "bad_request",
@@ -209,7 +210,7 @@ Deno.test("authenticateRequest accepts the client-error status range's ends", as
   });
 });
 
-Deno.test("authenticateRequest collapses a non-client-error status to the bare 401", async () => {
+test("authenticateRequest collapses a non-client-error status to the bare 401", async () => {
   // The security-critical arm: a refusal must never become a success (200), a
   // redirect (302), or a server error (500) at the transport, whatever the
   // authenticator put in `status`.
@@ -227,7 +228,7 @@ Deno.test("authenticateRequest collapses a non-client-error status to the bare 4
   assertEquals(await run(() => ({ error: "nope" })), UNAUTHORIZED);
 });
 
-Deno.test("authenticateRequest drops empty rejection strings", async () => {
+test("authenticateRequest drops empty rejection strings", async () => {
   const result = await run(() => ({
     status: 403,
     error: "",
@@ -241,7 +242,7 @@ Deno.test("authenticateRequest drops empty rejection strings", async () => {
 
 // ---- isResolvedIdentity ----------------------------------------------------
 
-Deno.test("a result that is both an identity and a refusal is refused", async () => {
+test("a result that is both an identity and a refusal is refused", async () => {
   // The typed union cannot produce this; an authenticator written in plain JS
   // can. A value carrying a `status` is a refusal even though it also names an
   // actor — between "deny" and "admit" for a value that says both, fail-closed
@@ -258,7 +259,7 @@ Deno.test("a result that is both an identity and a refusal is refused", async ()
   assertEquals(await run(() => ({ actor: "ada", status: 200 })), UNAUTHORIZED);
 });
 
-Deno.test("isResolvedIdentity tells an identity from a refusal", () => {
+test("isResolvedIdentity tells an identity from a refusal", () => {
   assertEquals(
     isResolvedIdentity({ actor: "ada", kind: "human", roles: [] }),
     true,
@@ -272,7 +273,7 @@ Deno.test("isResolvedIdentity tells an identity from a refusal", () => {
 
 // ---- authenticatorFromHook: the older synchronous seam ---------------------
 
-Deno.test("authenticatorFromHook passes a hook's identity through", async () => {
+test("authenticatorFromHook passes a hook's identity through", async () => {
   const auth = authenticatorFromHook((ctx) => ({
     actor: ctx.headers.get("x-forwarded-user") ?? "",
     kind: "service",
@@ -288,14 +289,14 @@ Deno.test("authenticatorFromHook passes a hook's identity through", async () => 
   });
 });
 
-Deno.test("authenticatorFromHook turns a throwing hook into the bare 401", async () => {
+test("authenticatorFromHook turns a throwing hook into the bare 401", async () => {
   const auth = authenticatorFromHook(() => {
     throw new Error("no trusted header");
   });
   assertEquals(await authenticateRequest(auth, EMPTY_CONTEXT), UNAUTHORIZED);
 });
 
-Deno.test("authenticatorFromHook refuses a hook that yields an empty actor", async () => {
+test("authenticatorFromHook refuses a hook that yields an empty actor", async () => {
   // The `headers.get(x) ?? ""` idiom: a hook that reads a header the proxy did
   // not set must refuse the request, not admit an anonymous caller under "".
   const auth = authenticatorFromHook((ctx) => ({
@@ -306,7 +307,7 @@ Deno.test("authenticatorFromHook refuses a hook that yields an empty actor", asy
 
 // ---- the shared refusal ----------------------------------------------------
 
-Deno.test("UNAUTHORIZED is the bare 401 Bearer challenge", () => {
+test("UNAUTHORIZED is the bare 401 Bearer challenge", () => {
   // Pinned because the static-bearer path and the authenticator path share it:
   // a wrong token and a failed authenticator answer identically, so neither
   // tells a prober which of the two it got past.
@@ -320,7 +321,7 @@ Deno.test("UNAUTHORIZED is the bare 401 Bearer challenge", () => {
 
 // ---- Regressions: an authenticator's own failure is still a refusal ---------
 
-Deno.test("a throwing property getter on the result is a refusal, not a fault", async () => {
+test("a throwing property getter on the result is a refusal, not a fault", async () => {
   // Wrapping verified claims in getters is the natural shape for an OAuth
   // authenticator, and a getter can throw — a missing `scope` claim, say. Every
   // read of the result must therefore be guarded, not just the call that
@@ -348,7 +349,7 @@ Deno.test("a throwing property getter on the result is a refusal, not a fault", 
   );
 });
 
-Deno.test("a role name carrying the child's separator is kept", async () => {
+test("a role name carrying the child's separator is kept", async () => {
   // It is escaped where it matters — the comma-joined environment variable a
   // registry-spawned child reads — rather than dropped here. Dropping would let
   // sanitisation manufacture an empty list, which the role policy reads as
@@ -365,7 +366,7 @@ Deno.test("a role name carrying the child's separator is kept", async () => {
   });
 });
 
-Deno.test("a challenge a header cannot carry is dropped, not sent", async () => {
+test("a challenge a header cannot carry is dropped, not sent", async () => {
   // `Headers.set` throws on CR/LF, NUL and anything outside Latin-1. The
   // challenge is the one field of a refusal that becomes a header, so an
   // one that cannot be sent is dropped exactly like an absent one — the refusal still

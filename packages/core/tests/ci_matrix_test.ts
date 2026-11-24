@@ -1,10 +1,11 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertThrows } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import { expandMatrix, hasMatrix, isSparse } from "../src/ci_matrix.ts";
 
-Deno.test("expandMatrix: axes alone are their cartesian product", () => {
+test("expandMatrix: axes alone are their cartesian product", () => {
   assertEquals(
     expandMatrix("t", { matrix: { os: ["linux", "mac"], node: [22, 24] } }),
     [
@@ -16,7 +17,7 @@ Deno.test("expandMatrix: axes alone are their cartesian product", () => {
   );
 });
 
-Deno.test("expandMatrix: include-only rows are the matrix", () => {
+test("expandMatrix: include-only rows are the matrix", () => {
   // The Forge case: four Node lines on Ubuntu and one on macOS — five jobs, not
   // the eight a Node × OS product would run.
   const rows = [
@@ -29,7 +30,7 @@ Deno.test("expandMatrix: include-only rows are the matrix", () => {
   assertEquals(expandMatrix("t", { matrixInclude: rows }), rows);
 });
 
-Deno.test("expandMatrix: exclude rows are partial matches over the axes", () => {
+test("expandMatrix: exclude rows are partial matches over the axes", () => {
   assertEquals(
     expandMatrix("t", {
       matrix: { os: ["linux", "mac", "win"], node: [22, 24] },
@@ -43,7 +44,7 @@ Deno.test("expandMatrix: exclude rows are partial matches over the axes", () => 
   );
 });
 
-Deno.test("expandMatrix: follows GitHub's documented include example", () => {
+test("expandMatrix: follows GitHub's documented include example", () => {
   // Verbatim from GitHub's "Expanding or adding matrix configurations" docs:
   // a row extends every combination it does not contradict on an original
   // axis, an added value may be overwritten by a later row, and a row that
@@ -71,7 +72,7 @@ Deno.test("expandMatrix: follows GitHub's documented include example", () => {
   );
 });
 
-Deno.test("expandMatrix: exclude applies before include", () => {
+test("expandMatrix: exclude applies before include", () => {
   // An excluded combination is gone before include runs, so a row matching it
   // is added back as a combination of its own rather than resurrecting it.
   assertEquals(
@@ -84,7 +85,7 @@ Deno.test("expandMatrix: exclude applies before include", () => {
   );
 });
 
-Deno.test("expandMatrix: an exclude key that is not an axis is refused", () => {
+test("expandMatrix: an exclude key that is not an axis is refused", () => {
   assertThrows(
     () =>
       expandMatrix("test", {
@@ -96,7 +97,7 @@ Deno.test("expandMatrix: an exclude key that is not an axis is refused", () => {
   );
 });
 
-Deno.test("expandMatrix: a matrix with nothing left to run is refused", () => {
+test("expandMatrix: a matrix with nothing left to run is refused", () => {
   assertThrows(
     () =>
       expandMatrix("test", {
@@ -114,7 +115,7 @@ Deno.test("expandMatrix: a matrix with nothing left to run is refused", () => {
   );
 });
 
-Deno.test("hasMatrix and isSparse read all three parts", () => {
+test("hasMatrix and isSparse read all three parts", () => {
   assertEquals(hasMatrix({}), false);
   assertEquals(hasMatrix({ matrix: { os: ["linux"] } }), true);
   assertEquals(hasMatrix({ matrixInclude: [{ os: "linux" }] }), true);
@@ -124,7 +125,7 @@ Deno.test("hasMatrix and isSparse read all three parts", () => {
   assertEquals(isSparse({ matrixExclude: [] }), true);
 });
 
-Deno.test("expandMatrix: an axis named like GitHub's row lists is refused", () => {
+test("expandMatrix: an axis named like GitHub's row lists is refused", () => {
   assertThrows(
     () => expandMatrix("test", { matrix: { exclude: ["a"] } }),
     Error,

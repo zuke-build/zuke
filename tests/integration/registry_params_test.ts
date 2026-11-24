@@ -10,10 +10,8 @@
  * Unlike the unit tests, nothing here hand-builds a descriptor.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   Build,
   denoExecutable,
@@ -26,8 +24,8 @@ import {
   RegistryMcpServer,
   type RegistryRunner,
 } from "../../packages/core/src/mcp/registry_server.ts";
-import { withTemp } from "../../packages/core/tests/_temp.ts";
-import { silence } from "../../packages/core/tests/_console.ts";
+import { withTemp } from "../_temp.ts";
+import { silence } from "../_console.ts";
 
 /** A parameterized deploy build, including a secret that must never surface. */
 class Deploy extends Build {
@@ -67,7 +65,7 @@ function callResult(reply: unknown): { text: string; isError: boolean } {
   return { text, isError: isRecord(result) && result.isError === true };
 }
 
-Deno.test("a registered build's parameters flow into the registry run tool", async () => {
+test("a registered build's parameters flow into the registry run tool", async () => {
   await withTemp(async (dir) => {
     const registry = new FileSystemBuildRegistry(dir);
     await silence(async () => {
@@ -152,7 +150,7 @@ Deno.test("a registered build's parameters flow into the registry run tool", asy
   }, { prefix: "zuke-it-registry-params-" });
 });
 
-Deno.test("a registered remote entry module is refused by the run tool, not spawned", async () => {
+test("a registered remote entry module is refused by the run tool, not spawned", async () => {
   await withTemp(async (dir) => {
     const registry = new FileSystemBuildRegistry(dir);
     // Whoever can write the registry names where the build lives. Here that is
@@ -216,7 +214,7 @@ Deno.test("a registered remote entry module is refused by the run tool, not spaw
   }, { prefix: "zuke-it-registry-launch-" });
 });
 
-Deno.test("a registered command location is refused by the run tool, not spawned", async () => {
+test("a registered command location is refused by the run tool, not spawned", async () => {
   await withTemp(async (dir) => {
     const registry = new FileSystemBuildRegistry(dir);
     // The command form of the same attack: whoever writes the registry chooses
@@ -302,7 +300,7 @@ Deno.test("a registered command location is refused by the run tool, not spawned
   }, { prefix: "zuke-it-registry-command-" });
 });
 
-Deno.test("a registered local module is confined to the allowed directories", async () => {
+test("a registered local module is confined to the allowed directories", async () => {
   if (Deno.build.os === "windows") return; // symlink creation is privileged there
   await withTemp(async (dir) => {
     const root = await Deno.realPath(dir);

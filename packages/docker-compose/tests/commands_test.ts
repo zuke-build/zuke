@@ -8,7 +8,8 @@
  * CLI accepts rather than only argvs this wrapper happens to produce.
  */
 
-import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import {
   DockerComposeCommitSettings,
   DockerComposeCpSettings,
@@ -36,7 +37,7 @@ function args(settings: { argv(): string[] }): string[] {
   return settings.argv().slice(2);
 }
 
-Deno.test("create: every flag, with the services trailing", () => {
+test("create: every flag, with the services trailing", () => {
   const settings = new DockerComposeCreateSettings()
     .usePlugin()
     .build()
@@ -62,7 +63,7 @@ Deno.test("create: every flag, with the services trailing", () => {
   ]);
 });
 
-Deno.test("create: the two recreate answers, and the two build answers", () => {
+test("create: the two recreate answers, and the two build answers", () => {
   assertEquals(
     args(new DockerComposeCreateSettings().usePlugin().noBuild().noRecreate()),
     ["create", "--no-build", "--no-recreate"],
@@ -85,7 +86,7 @@ Deno.test("create: the two recreate answers, and the two build answers", () => {
   assertEquals(recreate.message.includes("pick one"), true);
 });
 
-Deno.test("up: no-recreate only changes the replica count", () => {
+test("up: no-recreate only changes the replica count", () => {
   assertEquals(
     args(
       new DockerComposeUpSettings()
@@ -120,7 +121,7 @@ Deno.test("up: no-recreate only changes the replica count", () => {
   assertEquals(both.message.includes("pick one"), true);
 });
 
-Deno.test("pull: a policy precedes the services", () => {
+test("pull: a policy precedes the services", () => {
   assertEquals(
     args(
       new DockerComposePullSettings()
@@ -137,7 +138,7 @@ Deno.test("pull: a policy precedes the services", () => {
   );
 });
 
-Deno.test("ps: a Go template format precedes the services", () => {
+test("ps: a Go template format precedes the services", () => {
   assertEquals(
     args(
       new DockerComposePsSettings()
@@ -150,7 +151,7 @@ Deno.test("ps: a Go template format precedes the services", () => {
   );
 });
 
-Deno.test("kill: signal and orphan removal precede the services", () => {
+test("kill: signal and orphan removal precede the services", () => {
   assertEquals(
     args(
       new DockerComposeKillSettings()
@@ -164,7 +165,7 @@ Deno.test("kill: signal and orphan removal precede the services", () => {
   assertEquals(args(new DockerComposeKillSettings().usePlugin()), ["kill"]);
 });
 
-Deno.test("pause and unpause differ only in the verb", () => {
+test("pause and unpause differ only in the verb", () => {
   assertEquals(
     args(new DockerComposePauseSettings().usePlugin().services("db")),
     ["pause", "db"],
@@ -176,7 +177,7 @@ Deno.test("pause and unpause differ only in the verb", () => {
   assertEquals(args(new DockerComposePauseSettings().usePlugin()), ["pause"]);
 });
 
-Deno.test("scale: each service is one operand, and one is required", () => {
+test("scale: each service is one operand, and one is required", () => {
   assertEquals(
     args(
       new DockerComposeScaleSettings()
@@ -194,7 +195,7 @@ Deno.test("scale: each service is one operand, and one is required", () => {
   assertEquals(error.message.includes(".scale(service, replicas)"), true);
 });
 
-Deno.test("wait: services are required, since compose waits on named ones", () => {
+test("wait: services are required, since compose waits on named ones", () => {
   assertEquals(
     args(
       new DockerComposeWaitSettings().usePlugin().downProject().services(
@@ -210,7 +211,7 @@ Deno.test("wait: services are required, since compose waits on named ones", () =
   assertEquals(error.message.includes(".services()"), true);
 });
 
-Deno.test("cp: one end names a service, the other is local", () => {
+test("cp: one end names a service, the other is local", () => {
   assertEquals(
     args(
       new DockerComposeCpSettings()
@@ -244,7 +245,7 @@ Deno.test("cp: one end names a service, the other is local", () => {
   );
 });
 
-Deno.test("cp: two services, two local paths, or one end missing are refused", () => {
+test("cp: two services, two local paths, or one end missing are refused", () => {
   const services = assertThrows(
     () =>
       new DockerComposeCpSettings()
@@ -271,7 +272,7 @@ Deno.test("cp: two services, two local paths, or one end missing are refused", (
   assertEquals(missing.message.includes("both ends are required"), true);
 });
 
-Deno.test("top: bare and service-scoped", () => {
+test("top: bare and service-scoped", () => {
   assertEquals(args(new DockerComposeTopSettings().usePlugin()), ["top"]);
   assertEquals(
     args(new DockerComposeTopSettings().usePlugin().services("db")),
@@ -279,7 +280,7 @@ Deno.test("top: bare and service-scoped", () => {
   );
 });
 
-Deno.test("export: the service is required and trails the flags", () => {
+test("export: the service is required and trails the flags", () => {
   assertEquals(
     args(
       new DockerComposeExportSettings()
@@ -297,7 +298,7 @@ Deno.test("export: the service is required and trails the flags", () => {
   assertEquals(error.message.includes(".service() is required"), true);
 });
 
-Deno.test("commit: the reference follows the service, and pause is opt-out", () => {
+test("commit: the reference follows the service, and pause is opt-out", () => {
   assertEquals(
     args(
       new DockerComposeCommitSettings()
@@ -338,7 +339,7 @@ Deno.test("commit: the reference follows the service, and pause is opt-out", () 
   assertEquals(error.message.includes(".service() is required"), true);
 });
 
-Deno.test("the listing commands share one rendering of format and quiet", () => {
+test("the listing commands share one rendering of format and quiet", () => {
   assertEquals(
     args(
       new DockerComposeImagesSettings().usePlugin().json().quietOutput()
@@ -363,7 +364,7 @@ Deno.test("the listing commands share one rendering of format and quiet", () => 
   );
 });
 
-Deno.test("version: json and short are separate answers", () => {
+test("version: json and short are separate answers", () => {
   assertEquals(args(new DockerComposeVersionSettings().usePlugin()), [
     "version",
   ]);
@@ -378,7 +379,7 @@ Deno.test("version: json and short are separate answers", () => {
   ]);
 });
 
-Deno.test("port: both operands are required", () => {
+test("port: both operands are required", () => {
   assertEquals(
     args(
       new DockerComposePortSettings()
@@ -402,7 +403,7 @@ Deno.test("port: both operands are required", () => {
   assertEquals(noService.message.includes(".service()"), true);
 });
 
-Deno.test("events: the window flags precede the services", () => {
+test("events: the window flags precede the services", () => {
   assertEquals(
     args(
       new DockerComposeEventsSettings()

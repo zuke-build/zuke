@@ -1,16 +1,17 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { targetMatcher, timingSafeEqual } from "../src/mcp/authz.ts";
 
-Deno.test("targetMatcher: undefined patterns match every target", () => {
+test("targetMatcher: undefined patterns match every target", () => {
   const match = targetMatcher(undefined);
   assertEquals(match("deploy"), true);
   assertEquals(match("release.publish"), true);
 });
 
-Deno.test("targetMatcher: exact names and globs, spanning dots", () => {
+test("targetMatcher: exact names and globs, spanning dots", () => {
   const match = targetMatcher(["deploy", "checks*"]);
   assertEquals(match("deploy"), true);
   assertEquals(match("deployToProd"), false); // 'deploy' is exact-anchored
@@ -19,7 +20,7 @@ Deno.test("targetMatcher: exact names and globs, spanning dots", () => {
   assertEquals(match("promote"), false);
 });
 
-Deno.test("targetMatcher: an empty list matches nothing", () => {
+test("targetMatcher: an empty list matches nothing", () => {
   const match = targetMatcher([]);
   assertEquals(match("deploy"), false);
 });
@@ -33,7 +34,7 @@ Deno.test("targetMatcher: an empty list matches nothing", () => {
 // length, not the contents, which is an accepted trade-off (a token's length is
 // not the secret). These cases pin the value semantics; the constant-time
 // property is a structural guarantee of the implementation, not timed here.
-Deno.test("timingSafeEqual compares by value, length first", () => {
+test("timingSafeEqual compares by value, length first", () => {
   assertEquals(timingSafeEqual("abc", "abc"), true);
   assertEquals(timingSafeEqual("abc", "abd"), false);
   assertEquals(timingSafeEqual("abc", "ab"), false); // length mismatch

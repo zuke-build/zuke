@@ -6,7 +6,8 @@
  * once, in plan order, stopping at the first refusal.
  */
 
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target, type Validation } from "../src/target.ts";
 import { runPreflights } from "../src/preflight.ts";
@@ -22,7 +23,7 @@ function check(log: string[], name: string, refuse = false): Validation {
   };
 }
 
-Deno.test("runPreflights calls each distinct validation once, before, during and after, in plan order", async () => {
+test("runPreflights calls each distinct validation once, before, during and after, in plan order", async () => {
   const log: string[] = [];
   const shared = check(log, "shared");
   class B extends Build {
@@ -46,7 +47,7 @@ Deno.test("runPreflights calls each distinct validation once, before, during and
   ]);
 });
 
-Deno.test("runPreflights stops at the first refusal and names its target", async () => {
+test("runPreflights stops at the first refusal and names its target", async () => {
   const log: string[] = [];
   const refusal = check(log, "gate", true);
   class B extends Build {
@@ -65,7 +66,7 @@ Deno.test("runPreflights stops at the first refusal and names its target", async
   assertEquals(log, ["gate@a:r:x"]);
 });
 
-Deno.test("runPreflights skips validations without one, and a malformed during block", async () => {
+test("runPreflights skips validations without one, and a malformed during block", async () => {
   class B extends Build {
     a = target()
       .validateBefore({ validate: () => {} })

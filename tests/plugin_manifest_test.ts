@@ -20,7 +20,8 @@
  * @module
  */
 
-import { assertEquals } from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals } from "./_assert.ts";
 import {
   CODEX_PLUGIN_MANIFEST,
   GEMINI_EXTENSION_MANIFEST,
@@ -64,7 +65,7 @@ function entry(marketplace: Record<string, unknown>): Record<string, unknown> {
   return found;
 }
 
-Deno.test("every version-carrying manifest declares the same version", () => {
+test("every version-carrying manifest declares the same version", () => {
   // The bump is manual and lives in four files. Missing one publishes a
   // listing that advertises a version the plugin does not carry.
   const version = PLUGIN.version;
@@ -85,7 +86,7 @@ Deno.test("every version-carrying manifest declares the same version", () => {
   );
 });
 
-Deno.test("the plugin version is a plain semver triple", () => {
+test("the plugin version is a plain semver triple", () => {
   // Clients compare these to decide whether an install is stale, so a
   // pre-release or a two-part version is not worth discovering at publish time.
   assertEquals(
@@ -95,7 +96,7 @@ Deno.test("the plugin version is a plain semver triple", () => {
   );
 });
 
-Deno.test("both marketplace manifests point at the plugin directory in this repo", () => {
+test("both marketplace manifests point at the plugin directory in this repo", () => {
   // A source that drifts from the real path resolves to nothing, and the
   // listing installs an empty plugin rather than failing loudly.
   assertEquals(entry(MARKETPLACE).source, "./plugins/zuke");
@@ -109,7 +110,7 @@ Deno.test("both marketplace manifests point at the plugin directory in this repo
   assertEquals(source.path, "./plugins/zuke");
 });
 
-Deno.test("the Codex plugin manifest mirrors the Claude one and declares its skills", () => {
+test("the Codex plugin manifest mirrors the Claude one and declares its skills", () => {
   // Codex resolves `.codex-plugin/plugin.json` first when present, so the copy
   // must agree with the Claude manifest it shadows — and unlike hooks, the
   // `skills` path has no documented auto-default, so it is declared.
@@ -119,7 +120,7 @@ Deno.test("the Codex plugin manifest mirrors the Claude one and declares its ski
   assertEquals(CODEX_PLUGIN.skills, "./skills/");
 });
 
-Deno.test("the Codex marketplace entry carries the required policy fields", () => {
+test("the Codex marketplace entry carries the required policy fields", () => {
   // The Codex docs require policy.installation, policy.authentication, and
   // category on every entry; an entry without them is not installable.
   const codexEntry = entry(CODEX_MARKETPLACE);
@@ -130,7 +131,7 @@ Deno.test("the Codex marketplace entry carries the required policy fields", () =
   assertEquals(typeof codexEntry.category, "string");
 });
 
-Deno.test("the Gemini extension is named for the repo and finds skills/ at its root", () => {
+test("the Gemini extension is named for the repo and finds skills/ at its root", () => {
   // `gemini extensions install` requires the manifest at the repo root, and
   // the extension name must match the installed directory — the repo name.
   assertEquals(GEMINI.name, "zuke");

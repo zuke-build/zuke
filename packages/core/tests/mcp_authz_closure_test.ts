@@ -17,14 +17,15 @@
  * rather than merely undisplayed.
  */
 
-import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import { Build, parameter, target } from "../mod.ts";
 import { McpServer, type McpServerOptions } from "../src/mcp/server.ts";
 import type { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { AUDIT_RUN_ID } from "../src/mcp/audit.ts";
 import type { RunEvent } from "../src/state/types.ts";
-import { runRecord } from "./_fakes.ts";
-import { withTempStore } from "./_store.ts";
+import { runRecord } from "../../../tests/_fakes.ts";
+import { withTempStore } from "../../../tests/_store.ts";
 
 /**
  * A build with a real dependency chain. `release` → `deploy` → `lint`, plus an
@@ -138,7 +139,7 @@ async function auditEvents(store: FileSystemStateStore): Promise<RunEvent[]> {
 
 // --- The bypass itself -----------------------------------------------------
 
-Deno.test("a protected target reached as a dependency still needs the token", async () => {
+test("a protected target reached as a dependency still needs the token", async () => {
   await withServer(
     { allowRun: true, protectPatterns: ["deploy"], operatorToken: "swordfish" },
     async (server, store) => {
@@ -169,7 +170,7 @@ Deno.test("a protected target reached as a dependency still needs the token", as
   );
 });
 
-Deno.test("a dependent of a protected target advertises operatorToken as required", async () => {
+test("a dependent of a protected target advertises operatorToken as required", async () => {
   await withServer(
     { allowRun: true, protectPatterns: ["deploy"], operatorToken: "swordfish" },
     async (server) => {
@@ -195,7 +196,7 @@ Deno.test("a dependent of a protected target advertises operatorToken as require
   );
 });
 
-Deno.test("protection over the plan also gates signal_run and cancel_run", async () => {
+test("protection over the plan also gates signal_run and cancel_run", async () => {
   await withServer(
     { allowRun: true, protectPatterns: ["deploy"], operatorToken: "swordfish" },
     async (server, store) => {
@@ -228,7 +229,7 @@ class Triggering extends Build {
   );
 }
 
-Deno.test("a protected target reached through triggers also needs the token", async () => {
+test("a protected target reached through triggers also needs the token", async () => {
   // `triggers` is the second way a target enters the execution set (executionSet
   // walks dependsOn_ *and* triggers_), so a gate that only followed dependsOn
   // would leave this route open.
@@ -247,7 +248,7 @@ Deno.test("a protected target reached through triggers also needs the token", as
   assertEquals(allowed.isError, false);
 });
 
-Deno.test("confirm-destructive does not leak a protected plan before the token", async () => {
+test("confirm-destructive does not leak a protected plan before the token", async () => {
   // The confirmation gate answers with the resolved plan — the target names a
   // run would touch. It must sit *behind* the operator-token check, or an
   // unauthenticated caller could enumerate a protected pipeline just by
@@ -272,7 +273,7 @@ Deno.test("confirm-destructive does not leak a protected plan before the token",
 
 // --- The allow-list stays an entry-point control ---------------------------
 
-Deno.test("the allow-list gates invocation, not the dependencies invoking pulls in", async () => {
+test("the allow-list gates invocation, not the dependencies invoking pulls in", async () => {
   await withServer(
     { allowRun: true, allowRunPatterns: ["release"] },
     async (server) => {
@@ -292,7 +293,7 @@ Deno.test("the allow-list gates invocation, not the dependencies invoking pulls 
 
 // --- Read-tool visibility follows the allow-list closure --------------------
 
-Deno.test("an allow-list narrows the read tools to its closure", async () => {
+test("an allow-list narrows the read tools to its closure", async () => {
   await withServer(
     { allowRun: true, allowRunPatterns: ["release"] },
     async (server) => {
@@ -310,7 +311,7 @@ Deno.test("an allow-list narrows the read tools to its closure", async () => {
   );
 });
 
-Deno.test("without an allow-list every target stays visible (the inspect tier)", async () => {
+test("without an allow-list every target stays visible (the inspect tier)", async () => {
   // A bare --allow-run, and the read-only server, both describe the whole build.
   await withServer({ allowRun: true }, async (server) => {
     assertEquals(await visibleTargets(server), [
@@ -332,7 +333,7 @@ Deno.test("without an allow-list every target stays visible (the inspect tier)",
 
 // --- The audit trail is not readable through the tools it audits ------------
 
-Deno.test("the audit trail is not readable over MCP", async () => {
+test("the audit trail is not readable over MCP", async () => {
   await withServer(
     { allowRun: true, actor: "agent" },
     async (server, store) => {
@@ -353,7 +354,7 @@ Deno.test("the audit trail is not readable over MCP", async () => {
   );
 });
 
-Deno.test("the audit trail stays unreadable under a differently-cased id", async () => {
+test("the audit trail stays unreadable under a differently-cased id", async () => {
   // The store maps a run id straight to `<id>.json` and permits capitals, so on
   // a case-insensitive volume (macOS, Windows) `MCP-AUDIT` opens the very same
   // file. An exact-match refusal would hold on Linux and serve the trail on the
@@ -369,7 +370,7 @@ Deno.test("the audit trail stays unreadable under a differently-cased id", async
   });
 });
 
-Deno.test("an unresolvable plan is denied without saying so to the caller", async () => {
+test("an unresolvable plan is denied without saying so to the caller", async () => {
   // The denial must not separate "not in the allow-list" from "no longer in the
   // build" — that distinction is an existence signal the opaque answer exists
   // to withhold. The caller sees the collapsed reason; the operator still gets
@@ -394,7 +395,7 @@ Deno.test("an unresolvable plan is denied without saying so to the caller", asyn
   );
 });
 
-Deno.test("a value under an undeclared key is elided from the trail", async () => {
+test("a value under an undeclared key is elided from the trail", async () => {
   // Redaction can only mask what it recognises. A value supplied under a
   // *misspelled* secret parameter's name matches no declared secret, so nothing
   // would mask it and it would land in the durable trail verbatim. Undeclared
@@ -416,7 +417,7 @@ Deno.test("a value under an undeclared key is elided from the trail", async () =
   );
 });
 
-Deno.test("a secret supplied as a non-string is still masked where it is echoed", async () => {
+test("a secret supplied as a non-string is still masked where it is echoed", async () => {
   await withServer(
     { allowRun: true, actor: "agent" },
     async (server, store) => {
@@ -431,7 +432,7 @@ Deno.test("a secret supplied as a non-string is still masked where it is echoed"
   );
 });
 
-Deno.test("a target whose plan cannot even be resolved fails closed", async () => {
+test("a target whose plan cannot even be resolved fails closed", async () => {
   // A cycle the authoring API forbids, forged by mutating the (public)
   // dependsOn_ array after construction: planGraph throws on it, so the plan
   // is unknowable — an unknown blast radius must be treated as protected.

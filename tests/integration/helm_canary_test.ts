@@ -13,10 +13,8 @@
  * set.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   Build,
   defaultStateHost,
@@ -152,7 +150,7 @@ function fresh(): void {
   namespace = "prod";
 }
 
-Deno.test("Helm: staged, stepped, parked, and promoted by a later process", async () => {
+test("Helm: staged, stepped, parked, and promoted by a later process", async () => {
   fresh();
   await withStateDir(async (dir) => {
     const parked = await runCli(Deploy, ["ship"]);
@@ -192,7 +190,7 @@ Deno.test("Helm: staged, stepped, parked, and promoted by a later process", asyn
   });
 });
 
-Deno.test("Helm: a failed analysis rolls the stable release back to its revision", async () => {
+test("Helm: a failed analysis rolls the stable release back to its revision", async () => {
   fresh();
   healthy = false;
   await withStateDir(async () => {
@@ -206,7 +204,7 @@ Deno.test("Helm: a failed analysis rolls the stable release back to its revision
   });
 });
 
-Deno.test("Helm: a rollback after resume, in another process, uses the recorded revision", async () => {
+test("Helm: a rollback after resume, in another process, uses the recorded revision", async () => {
   fresh();
   await withStateDir(async (dir) => {
     await runCli(Deploy, ["ship"]);
@@ -224,7 +222,7 @@ Deno.test("Helm: a rollback after resume, in another process, uses the recorded 
   });
 });
 
-Deno.test("Helm: a stage with a bad image runs no helm command, even with a hand-run revision set", async () => {
+test("Helm: a stage with a bad image runs no helm command, even with a hand-run revision set", async () => {
   // The engine rolls a failed stage back inline. A stage that failed on its
   // configuration changed nothing, so that rollback must not downgrade the
   // stable release to the hand-run revision.
@@ -239,7 +237,7 @@ Deno.test("Helm: a stage with a bad image runs no helm command, even with a hand
   });
 });
 
-Deno.test("Helm: a canary release left by an earlier rollout is refused, not taken over", async () => {
+test("Helm: a canary release left by an earlier rollout is refused, not taken over", async () => {
   fresh();
   leftover = true;
   await withStateDir(async () => {
@@ -250,7 +248,7 @@ Deno.test("Helm: a canary release left by an earlier rollout is refused, not tak
   });
 });
 
-Deno.test("Helm: a rollback run by hand goes to the configured revision", async () => {
+test("Helm: a rollback run by hand goes to the configured revision", async () => {
   fresh();
   stableRevision = 11;
   await withStateDir(async () => {
@@ -260,7 +258,7 @@ Deno.test("Helm: a rollback run by hand goes to the configured revision", async 
   });
 });
 
-Deno.test("Helm: a rollback run by hand with no revision refuses", async () => {
+test("Helm: a rollback run by hand with no revision refuses", async () => {
   fresh();
   await withStateDir(async () => {
     const { code, out, err } = await runCli(Deploy, ["rollout.abort"]);
@@ -282,7 +280,7 @@ function mutations(): string[] {
   return steps().filter((step) => !step.startsWith("get "));
 }
 
-Deno.test("Helm: a resume or cancel with other releases changes nothing, and says how to recover", async () => {
+test("Helm: a resume or cancel with other releases changes nothing, and says how to recover", async () => {
   for (const [label, move] of MOVES) {
     for (const command of ["resume", "cancel"]) {
       fresh();
@@ -318,7 +316,7 @@ Deno.test("Helm: a resume or cancel with other releases changes nothing, and say
   }
 });
 
-Deno.test("Helm: a stable release reinstalled while the rollout was parked is neither promoted nor rolled back", async () => {
+test("Helm: a stable release reinstalled while the rollout was parked is neither promoted nor rolled back", async () => {
   for (const command of ["resume", "cancel"]) {
     fresh();
     await withStateDir(async (dir) => {

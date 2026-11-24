@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: MIT
 // cspell:ignore frob
 
-import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import { parsePlist } from "../src/plist.ts";
 
 const doc = (body: string) =>
   `<?xml version="1.0"?><!-- a comment --><!DOCTYPE plist SYSTEM "x"><plist version="1.0">${body}</plist>`;
 
-Deno.test("plist: every value type", () => {
+test("plist: every value type", () => {
   const value = parsePlist(doc(`<dict>
     <key>s</key><string>a &amp; b &lt;c&gt; &quot;d&quot; &apos;e&apos; &#65;&#x42; &bogus;</string>
     <key>empty</key><string></string>
@@ -39,7 +40,7 @@ Deno.test("plist: every value type", () => {
   });
 });
 
-Deno.test("plist: malformed documents are refused with a reason", () => {
+test("plist: malformed documents are refused with a reason", () => {
   const cases: Array<[string, string]> = [
     ["<dict>", "no <plist> element"],
     ["<plist><dict><key>a</key>", "unexpected end"],

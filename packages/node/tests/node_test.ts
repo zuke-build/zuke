@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
   assertWrapperConformance,
@@ -18,11 +19,11 @@ import {
   NodeTestSettings,
 } from "../src/node.ts";
 
-Deno.test("the default binary is node", () => {
+test("the default binary is node", () => {
   assertEquals(new NodeTestSettings().argv(), ["node", "--test"]);
 });
 
-Deno.test("run renders every option in order", () => {
+test("run renders every option in order", () => {
   const argv = new NodeRunSettings()
     .requireModule("a.cjs", "b.cjs")
     .importModule("a.mjs", "b.mjs")
@@ -67,18 +68,18 @@ Deno.test("run renders every option in order", () => {
   ]);
 });
 
-Deno.test("run with only a script", () => {
+test("run with only a script", () => {
   assertEquals(new NodeRunSettings().script("main.js").argv(), [
     "node",
     "main.js",
   ]);
 });
 
-Deno.test("run requires a script", () => {
+test("run requires a script", () => {
   assertThrows(() => new NodeRunSettings().argv(), Error, ".script()");
 });
 
-Deno.test("eval renders every option and uses --eval by default", () => {
+test("eval renders every option and uses --eval by default", () => {
   const argv = new NodeEvalSettings()
     .requireModule("a.cjs")
     .importModule("a.mjs")
@@ -95,18 +96,18 @@ Deno.test("eval renders every option and uses --eval by default", () => {
   ]);
 });
 
-Deno.test("eval print uses --print", () => {
+test("eval print uses --print", () => {
   assertEquals(
     new NodeEvalSettings().code("1 + 1").print().argv(),
     ["node", "--print", "1 + 1"],
   );
 });
 
-Deno.test("eval requires code", () => {
+test("eval requires code", () => {
   assertThrows(() => new NodeEvalSettings().argv(), Error, ".code()");
 });
 
-Deno.test("test renders every option in order", () => {
+test("test renders every option in order", () => {
   const argv = new NodeTestSettings()
     .testNamePattern("login")
     .testReporter("tap")
@@ -133,28 +134,28 @@ Deno.test("test renders every option in order", () => {
   ]);
 });
 
-Deno.test("NodeTasks.run reaches execution", async () => {
+test("NodeTasks.run reaches execution", async () => {
   await assertRejects(
     () => NodeTasks.run((s) => missingTool(s).script("main.js")),
     ToolNotFoundError,
   );
 });
 
-Deno.test("NodeTasks.eval reaches execution", async () => {
+test("NodeTasks.eval reaches execution", async () => {
   await assertRejects(
     () => NodeTasks.eval((s) => missingTool(s).code("1")),
     ToolNotFoundError,
   );
 });
 
-Deno.test("NodeTasks.test reaches execution", async () => {
+test("NodeTasks.test reaches execution", async () => {
   await assertRejects(
     () => NodeTasks.test((s) => missingTool(s)),
     ToolNotFoundError,
   );
 });
 
-Deno.test("node: conforms to the wrapper contract", async () => {
+test("node: conforms to the wrapper contract", async () => {
   await assertWrapperConformance(
     () => new NodeRunSettings().script("app.js"),
     "node",

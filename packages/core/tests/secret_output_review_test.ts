@@ -9,7 +9,8 @@
  * @module
  */
 
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { secretsInOutput } from "../src/secret_output.ts";
 import { SecretOutputSettings } from "../src/tooling.ts";
 import { maskPatterns, Redactor } from "../src/redact.ts";
@@ -45,7 +46,7 @@ function within(ms: number, fn: () => unknown): boolean {
   return performance.now() - start < ms;
 }
 
-Deno.test("H1: a JSON object printed as text is registered whole", () => {
+test("H1: a JSON object printed as text is registered whole", () => {
   // `--query SecretString --output text` prints the secret's own JSON.
   const text = '{"username":"admin","password":"hunter2"}';
   const queried = found(
@@ -57,12 +58,12 @@ Deno.test("H1: a JSON object printed as text is registered whole", () => {
   assertFound(found(text, (s) => s.keys("SecretString")), text, "hunter2");
 });
 
-Deno.test("H1: a document whose expected key matched is not registered whole", () => {
+test("H1: a document whose expected key matched is not registered whole", () => {
   const text = '{"Name":"prod/db","SecretString":"aaaaaaaaaa"}';
   assertNotFound(found(text, (s) => s.keys("SecretString")), text);
 });
 
-Deno.test("H2: a number, boolean or long numeric answer is registered as written", () => {
+test("H2: a number, boolean or long numeric answer is registered as written", () => {
   assertEquals(found("123456\n"), ["123456"]);
   const long = "12345678901234567891";
   const secrets = found(`${long}\n`);
@@ -73,7 +74,7 @@ Deno.test("H2: a number, boolean or long numeric answer is registered as written
   assertEquals(found("null\n"), []);
 });
 
-Deno.test("H2: a number leaf is registered in its source spelling", () => {
+test("H2: a number leaf is registered in its source spelling", () => {
   const long = "12345678901234567891";
   const keyed = found(`{"Value": ${long}}`, (s) => s.keys("Value"));
   assertFound(keyed, long);
@@ -84,7 +85,7 @@ Deno.test("H2: a number leaf is registered in its source spelling", () => {
   );
 });
 
-Deno.test("M1: a short credential or keyed value is registered from 3 characters", () => {
+test("M1: a short credential or keyed value is registered from 3 characters", () => {
   assertFound(
     found(
       '{"username":"admin","password":"hunter2"}',
@@ -120,7 +121,7 @@ Deno.test("M1: a short credential or keyed value is registered from 3 characters
   }
 });
 
-Deno.test("M1: a one-element array or a lone string leaf is the answer", () => {
+test("M1: a one-element array or a lone string leaf is the answer", () => {
   assertFound(found('["ab"]', (s) => s.keys("Value").queried(true)), "ab");
   assertFound(found("[12]", (s) => s.keys("Value")), "12");
   assertFound(
@@ -129,13 +130,13 @@ Deno.test("M1: a one-element array or a lone string leaf is the answer", () => {
   );
 });
 
-Deno.test("M1b: short array elements under an expected key are not registered", () => {
+test("M1b: short array elements under an expected key are not registered", () => {
   const secrets = found('{"value":["1","ab","abcd"]}', (s) => s.keys("value"));
   assertFound(secrets, "abcd");
   assertNotFound(secrets, "1", "ab");
 });
 
-Deno.test("M2: every long leaf of a secret that is itself JSON is registered", () => {
+test("M2: every long leaf of a secret that is itself JSON is registered", () => {
   const secret = JSON.stringify({ value: "aaaaaaaaaa", note: "x", pin: "123" });
   const secrets = found(
     JSON.stringify({ value: secret }),
@@ -145,7 +146,7 @@ Deno.test("M2: every long leaf of a secret that is itself JSON is registered", (
   assertNotFound(secrets, "x");
 });
 
-Deno.test("M3: a value JSON escapes is registered in its escaped spellings", () => {
+test("M3: a value JSON escapes is registered in its escaped spellings", () => {
   const value = 'p"a\\ss/<&>aa';
   const secrets = found(JSON.stringify({ value }), (s) => s.keys("value"));
   const escaped = JSON.stringify(value).slice(1, -1);
@@ -159,7 +160,7 @@ Deno.test("M3: a value JSON escapes is registered in its escaped spellings", () 
   );
 });
 
-Deno.test("M4: pair values lose their JSON punctuation", () => {
+test("M4: pair values lose their JSON punctuation", () => {
   const pretty = [
     "{",
     '  "aws_secret_access_key": "aaaaaaaaaaaa",',
@@ -176,12 +177,12 @@ Deno.test("M4: pair values lose their JSON punctuation", () => {
   assertNotFound(lines, '"bbbbbbbbbb"}');
 });
 
-Deno.test("M4: a quoted value keeps its separators, and names are unquoted", () => {
+test("M4: a quoted value keeps its separators, and names are unquoted", () => {
   assertFound(found('Server=db;Password="word;other";Mode=rw'), "word;other");
   assertFound(found("'password': 'aaaaaaaa'"), "aaaaaaaa");
 });
 
-Deno.test("M4: query-string and XML attribute pairs are found", () => {
+test("M4: query-string and XML attribute pairs are found", () => {
   assertFound(
     found("jdbc:mysql://db/app?user=app&password=aaaaaaaa"),
     "aaaaaaaa",
@@ -194,7 +195,7 @@ Deno.test("M4: query-string and XML attribute pairs are found", () => {
   assertNotFound(secrets, "$app");
 });
 
-Deno.test("M5: credential names gained and lost", () => {
+test("M5: credential names gained and lost", () => {
   for (
     const name of [
       "auth",
@@ -243,7 +244,7 @@ Deno.test("M5: credential names gained and lost", () => {
   }
 });
 
-Deno.test("M6: derived leaves skip non-secret vocabulary", () => {
+test("M6: derived leaves skip non-secret vocabulary", () => {
   const secrets = found(
     JSON.stringify({
       region: "eu-west-1-zone",
@@ -282,7 +283,7 @@ Deno.test("M6: derived leaves skip non-secret vocabulary", () => {
   );
 });
 
-Deno.test("M7: a padded secret is registered trimmed too", () => {
+test("M7: a padded secret is registered trimmed too", () => {
   assertFound(
     found('{"SecretString":"hunter2\\n"}', (s) => s.keys("SecretString")),
     "hunter2\n",
@@ -290,7 +291,7 @@ Deno.test("M7: a padded secret is registered trimmed too", () => {
   );
 });
 
-Deno.test("M8: a long name is no credential and costs linear time", () => {
+test("M8: a long name is no credential and costs linear time", () => {
   const name = `${"A".repeat(100_000)}aPassword`;
   let matched = true;
   assertEquals(within(1_000, () => (matched = isCredentialName(name))), true);
@@ -302,7 +303,7 @@ Deno.test("M8: a long name is no credential and costs linear time", () => {
   );
 });
 
-Deno.test("M8: registering many patterns is not quadratic", () => {
+test("M8: registering many patterns is not quadratic", () => {
   const lines = Array.from({ length: 50_000 }, (_, i) => `line-${i}-aaaaaaa`);
   assertEquals(
     within(
@@ -319,7 +320,7 @@ Deno.test("M8: registering many patterns is not quadratic", () => {
   assertEquals(redactor.redact("x line-7-aaaaaaa y"), "x [redacted] y");
 });
 
-Deno.test("M8: a large output registers in bounded time and count", async () => {
+test("M8: a large output registers in bounded time and count", async () => {
   const leaves = Array.from({ length: 40_000 }, (_, i) => `leaf-${i}-aaaaaaa`);
   // The key is present, so the 40000 other leaves are derived and capped.
   const stdout = JSON.stringify({ SecretString: "ssssssssss", items: leaves });
@@ -344,7 +345,7 @@ Deno.test("M8: a large output registers in bounded time and count", async () => 
   assertEquals(performance.now() - start < 2_000, true);
 });
 
-Deno.test("M8: a large moved output registers in bounded time", async () => {
+test("M8: a large moved output registers in bounded time", async () => {
   // With no expected key every leaf is keyed and uncapped, so this is the
   // worst case for registration: still linear.
   const leaves = Array.from({ length: 40_000 }, (_, i) => `leaf-${i}-aaaaaaa`);
@@ -362,7 +363,7 @@ Deno.test("M8: a large moved output registers in bounded time", async () => {
   assertEquals(redactor.redact("leaf-39999-aaaaaaa"), "[redacted]");
 });
 
-Deno.test("L1: a base64 credential is registered decoded, with its password", () => {
+test("L1: a base64 credential is registered decoded, with its password", () => {
   const auth = btoa("app:aaaaaaaa");
   const secrets = found(
     JSON.stringify({ auths: { "registry.example": { auth } } }),
@@ -373,12 +374,12 @@ Deno.test("L1: a base64 credential is registered decoded, with its password", ()
   assertNotFound(found('{"token":"abcd"}', (s) => s.keys("x")), "i·");
 });
 
-Deno.test("L2: a URL password hidden by # or ? is still found", () => {
+test("L2: a URL password hidden by # or ? is still found", () => {
   assertFound(found("postgres://u:1234#abcd@host/db"), "1234#abcd");
   assertFound(found("mysql://u:12345?ab@host/db"), "12345?ab");
 });
 
-Deno.test("L2: a JSON-escaped URL in a secret has its password found", () => {
+test("L2: a JSON-escaped URL in a secret has its password found", () => {
   const secret = '{"dsn":"mysql:\\/\\/app:aaaaaaaaaa@db\\/app"}';
   assertFound(
     found(JSON.stringify({ value: secret }), (s) => s.keys("value")),
@@ -386,7 +387,7 @@ Deno.test("L2: a JSON-escaped URL in a secret has its password found", () => {
   );
 });
 
-Deno.test("M8: no pattern in the pair search is quadratic", () => {
+test("M8: no pattern in the pair search is quadratic", () => {
   // A long word with no `=` after it, and a long run of JSON closers, were
   // each rescanned from every character — seconds at this size.
   for (
@@ -401,7 +402,7 @@ Deno.test("M8: no pattern in the pair search is quadratic", () => {
   assertFound(found(`password=aaaaaaaa${"}".repeat(3)}`), "aaaaaaaa");
 });
 
-Deno.test("M8: a 50k-line output registers and redacts in bounded time", async () => {
+test("M8: a 50k-line output registers and redacts in bounded time", async () => {
   const stdout = Array.from(
     { length: 50_000 },
     (_, i) => `line ${i}: value-${i}-aaaaaaa`,
@@ -416,7 +417,7 @@ Deno.test("M8: a 50k-line output registers and redacts in bounded time", async (
   assertEquals(performance.now() - start < 2_000, true);
 });
 
-Deno.test("moved: a secret renamed onto ordinary vocabulary is still registered", () => {
+test("moved: a secret renamed onto ordinary vocabulary is still registered", () => {
   // `--query "{id:SecretString,Name:Name}"` and its kin: the expected key is
   // gone, so no field name says anything about what its value is.
   for (const key of ["id", "type", "status", "region", "CreatedDate"]) {
@@ -433,7 +434,7 @@ Deno.test("moved: a secret renamed onto ordinary vocabulary is still registered"
   assertFound(inError, "Sup3r-Value-9");
 });
 
-Deno.test("moved: a short secret moved into a list is registered", () => {
+test("moved: a short secret moved into a list is registered", () => {
   // `--query "[Name,SecretString]"`.
   const secrets = found(
     JSON.stringify(["name-x", "pin7"]),
@@ -451,7 +452,7 @@ Deno.test("moved: a short secret moved into a list is registered", () => {
   );
 });
 
-Deno.test("moved: a renamed JSON secret has its inner password found", () => {
+test("moved: a renamed JSON secret has its inner password found", () => {
   const inner = JSON.stringify({ username: "app", password: "hunter2" });
   const secrets = found(
     JSON.stringify({ id: inner, Name: "name-x" }),
@@ -460,7 +461,7 @@ Deno.test("moved: a renamed JSON secret has its inner password found", () => {
   assertFound(secrets, inner, "hunter2");
 });
 
-Deno.test("moved: a renamed connection string has its password found", () => {
+test("moved: a renamed connection string has its password found", () => {
   const connection = "Server=db;User ID=app;Password=hunter2;";
   const secrets = found(
     JSON.stringify({ type: connection, Name: "name-x" }),
@@ -469,7 +470,7 @@ Deno.test("moved: a renamed connection string has its password found", () => {
   assertFound(secrets, connection, "hunter2");
 });
 
-Deno.test("moved: output with none of the keys and no query is read the same way", () => {
+test("moved: output with none of the keys and no query is read the same way", () => {
   // No query, but none of the expected keys either: the wrapper's knowledge
   // of the shape is void, exactly as when a query moved the secret.
   const secrets = found(
@@ -479,7 +480,7 @@ Deno.test("moved: output with none of the keys and no query is read the same way
   assertFound(secrets, "Sup3r-Value-9", "pin7");
 });
 
-Deno.test("moved: keyed leaves are not starved by the derived budget", () => {
+test("moved: keyed leaves are not starved by the derived budget", () => {
   // Thousands of moved leaves, each a candidate; the 2000 cap on *derived*
   // values must not drop the ones past it.
   const leaves = Array.from({ length: 3_000 }, (_, i) => `leaf-${i}-aaaa`);
@@ -490,7 +491,7 @@ Deno.test("moved: keyed leaves are not starved by the derived budget", () => {
   assertFound(secrets, "leaf-0-aaaa", "leaf-2999-aaaa");
 });
 
-Deno.test("kept: a queried output that still has its key skips vocabulary", () => {
+test("kept: a queried output that still has its key skips vocabulary", () => {
   // The key is present, so the secret did not move: the other leaves are only
   // derived, and ordinary vocabulary and short values stay unregistered.
   const secrets = found(

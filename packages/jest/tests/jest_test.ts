@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
   assertWrapperConformance,
@@ -9,11 +10,11 @@ import {
 } from "@zuke/core/tooling/conformance";
 import { JestSettings, JestTasks } from "../src/jest.ts";
 
-Deno.test("the default binary is jest", () => {
+test("the default binary is jest", () => {
   assertEquals(new JestSettings().argv(), ["jest"]);
 });
 
-Deno.test("jest: every option renders, patterns last", () => {
+test("jest: every option renders, patterns last", () => {
   const argv = new JestSettings()
     .config("jest.config.js").coverage().watch().watchAll().ci().runInBand()
     .maxWorkers("50%").updateSnapshot().bail(2).verbose().silent()
@@ -50,7 +51,7 @@ Deno.test("jest: every option renders, patterns last", () => {
   ]);
 });
 
-Deno.test("jest: array flags use = form so positional patterns survive", () => {
+test("jest: array flags use = form so positional patterns survive", () => {
   // Space-separated array flags let jest's yargs parser greedily swallow the
   // trailing `src/` into --reporters; the `=` form binds one value per flag so
   // the positional test-path pattern survives.
@@ -64,19 +65,19 @@ Deno.test("jest: array flags use = form so positional patterns survive", () => {
   );
 });
 
-Deno.test("jest: bail defaults to one suite", () => {
+test("jest: bail defaults to one suite", () => {
   assertEquals(new JestSettings().bail().argv(), ["jest", "--bail", "1"]);
 });
 
-Deno.test("jest: minimal invocation is bare", () => {
+test("jest: minimal invocation is bare", () => {
   assertEquals(new JestSettings().argv(), ["jest"]);
 });
 
-Deno.test("JestTasks.run reaches execution", async () => {
+test("JestTasks.run reaches execution", async () => {
   await assertRejects(() => JestTasks.run(missingTool), ToolNotFoundError);
 });
 
-Deno.test("jest: resolves its binary from node_modules by default", async () => {
+test("jest: resolves its binary from node_modules by default", async () => {
   await assertWrapperConformance(() => new JestSettings(), "jest", {
     resolution: "node_modules",
   });

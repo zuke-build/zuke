@@ -1,15 +1,20 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { CommandOutput } from "@zuke/core/shell";
 import type { Configure } from "@zuke/core/tooling";
 import { type AzMonitorAnalysisSettings, azureMonitor } from "../mod.ts";
-import { FakeAz, json, withEmptyPath } from "./_fake.ts";
+import {
+  FakeAz,
+  json,
+  withEmptyPath,
+} from "../../../tests/support/az/_fake.ts";
 
 /** A context whose redactor masks one secret. */
 const context = {
@@ -49,7 +54,7 @@ function failures(
   );
 }
 
-Deno.test("azureMonitor passes when every datapoint is within bounds", async () => {
+test("azureMonitor passes when every datapoint is within bounds", async () => {
   const fake = new FakeAz(answer([0, 5, null, 2]));
   const analysis = failures(fake);
   assertEquals(analysis.name, "azureMonitor");
@@ -74,7 +79,7 @@ Deno.test("azureMonitor passes when every datapoint is within bounds", async () 
   ]);
 });
 
-Deno.test("azureMonitor aligns the window to the interval", async () => {
+test("azureMonitor aligns the window to the interval", async () => {
   const fake = new FakeAz(answer([1]));
   await failures(
     fake,
@@ -86,7 +91,7 @@ Deno.test("azureMonitor aligns the window to the interval", async () => {
   assertEquals(fake.flag(0, "--namespace"), "ns");
 });
 
-Deno.test("azureMonitor fails on a breach, naming the datapoint", async () => {
+test("azureMonitor fails on a breach, naming the datapoint", async () => {
   const error = await assertRejects(() =>
     failures(new FakeAz(answer([1, 9]))).validate(context)
   );
@@ -100,7 +105,7 @@ Deno.test("azureMonitor fails on a breach, naming the datapoint", async () => {
   assertStringIncludes(low.message, "is 1, below the minimum 2");
 });
 
-Deno.test("azureMonitor fails on no data unless missingDataAs says what it means", async () => {
+test("azureMonitor fails on no data unless missingDataAs says what it means", async () => {
   const error = await assertRejects(() =>
     failures(new FakeAz(answer([null, null]))).validate(context)
   );
@@ -114,7 +119,7 @@ Deno.test("azureMonitor fails on no data unless missingDataAs says what it means
   assertStringIncludes(breach.message, "canary failures (no data) is 10");
 });
 
-Deno.test("azureMonitor refuses settings that cannot work", async () => {
+test("azureMonitor refuses settings that cannot work", async () => {
   const cases: Array<[Configure<AzMonitorAnalysisSettings>, string]> = [
     [(m) => m.metric("x").aggregation("Total").max(1), "needs a resource"],
     [(m) => m.resource("r").metric("x").max(1), "needs a resource"],
@@ -135,7 +140,7 @@ Deno.test("azureMonitor refuses settings that cannot work", async () => {
   }
 });
 
-Deno.test("azureMonitor labels a failure by metric when it has no name", async () => {
+test("azureMonitor labels a failure by metric when it has no name", async () => {
   const error = await assertRejects(() =>
     azureMonitor((m) =>
       m.resource("r").metric("requests/failed").aggregation("Total").max(0)
@@ -149,7 +154,7 @@ Deno.test("azureMonitor labels a failure by metric when it has no name", async (
   assertStringIncludes(unnamed.message, "azure monitor metric");
 });
 
-Deno.test("azureMonitor redacts every failure", async () => {
+test("azureMonitor redacts every failure", async () => {
   const fromLambda = await assertRejects(() =>
     azureMonitor(() => {
       throw new Error("could not resolve s3cr3t");
@@ -176,7 +181,7 @@ Deno.test("azureMonitor redacts every failure", async () => {
   assertEquals(fromNoData.message.includes("s3cr3t"), false);
 });
 
-Deno.test("azureMonitor spawns az when .az(...) sets no runner", async () => {
+test("azureMonitor spawns az when .az(...) sets no runner", async () => {
   await withEmptyPath(async () => {
     await assertRejects(
       () =>
@@ -202,7 +207,7 @@ function kql(
   );
 }
 
-Deno.test("azureMonitor's KQL mode judges the one number the query returns", async () => {
+test("azureMonitor's KQL mode judges the one number the query returns", async () => {
   const fake = new FakeAz(json([{ TableName: "PrimaryResult", n: "3" }]));
   await kql(fake).validate(context);
   assertEquals(fake.calls[0], [
@@ -222,7 +227,7 @@ Deno.test("azureMonitor's KQL mode judges the one number the query returns", asy
   assertStringIncludes(error.message, "5xx count is 7.5, above the maximum 5");
 });
 
-Deno.test("azureMonitor's KQL mode treats no row or an empty cell as no data", async () => {
+test("azureMonitor's KQL mode treats no row or an empty cell as no data", async () => {
   for (const rows of [[], [{ TableName: "T", n: "None" }], [{ n: "" }]]) {
     await assertRejects(
       () => kql(new FakeAz(json(rows))).validate(context),
@@ -234,7 +239,7 @@ Deno.test("azureMonitor's KQL mode treats no row or an empty cell as no data", a
   }
 });
 
-Deno.test("azureMonitor's KQL mode refuses an answer that is not one number", async () => {
+test("azureMonitor's KQL mode refuses an answer that is not one number", async () => {
   const cases: Array<[unknown, string]> = [
     [[{ n: "1" }, { n: "2" }], "one row with one column"],
     [[{ a: "1", b: "2" }], "one row with one column"],
@@ -249,7 +254,7 @@ Deno.test("azureMonitor's KQL mode refuses an answer that is not one number", as
   }
 });
 
-Deno.test("azureMonitor refuses a NaN bound, takes a minimum alone, and reports a thrown non-Error", async () => {
+test("azureMonitor refuses a NaN bound, takes a minimum alone, and reports a thrown non-Error", async () => {
   const nan = await assertRejects(() =>
     kql(new FakeAz(json([{ n: "1" }])), (m) => m.max(NaN)).validate(context)
   );

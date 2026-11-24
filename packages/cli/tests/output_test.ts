@@ -8,14 +8,15 @@
  * survive as text, and what must not happen is it opening a command.
  */
 
-import { assertEquals } from "../../core/tests/_assert.ts";
-import { withEnv } from "../../core/tests/_env.ts";
-import { capture } from "../../core/tests/_console.ts";
-import { consoleWriters, ENC } from "../../core/tests/_escaping.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
+import { withEnv } from "../../../tests/_env.ts";
+import { capture } from "../../../tests/_console.ts";
+import { consoleWriters, ENC } from "../../../tests/_escaping.ts";
 import { neutralise, output } from "../src/output.ts";
 import { cliReporter } from "@zuke/core";
 
-Deno.test("output neutralises a workflow command on an Actions runner, on both streams", async () => {
+test("output neutralises a workflow command on an Actions runner, on both streams", async () => {
   const { out, err } = await capture(async () => {
     await withEnv({ GITHUB_ACTIONS: "true" }, () => {
       output.info("::stop-commands::forged");
@@ -36,7 +37,7 @@ Deno.test("output neutralises a workflow command on an Actions runner, on both s
   ]);
 });
 
-Deno.test("output is core's own sink, and neutralise makes the same decision", async () => {
+test("output is core's own sink, and neutralise makes the same decision", async () => {
   // The escaping has one implementation: the sink is `cliReporter` itself,
   // not a composition that could drift from it, and the prompt's step agrees
   // with it line for line in both environments.
@@ -56,7 +57,7 @@ Deno.test("output is core's own sink, and neutralise makes the same decision", a
   });
 });
 
-Deno.test("output leaves every line alone off a runner", async () => {
+test("output leaves every line alone off a runner", async () => {
   // Explicitly unset: the suite itself runs under Actions, where the variable
   // is inherited and the sink would otherwise escape for the wrong reason.
   const { out, err } = await capture(async () => {
@@ -70,7 +71,7 @@ Deno.test("output leaves every line alone off a runner", async () => {
   assertEquals(err, ["held by ##[group]x"]);
 });
 
-Deno.test("output decides per line, not once at import", async () => {
+test("output decides per line, not once at import", async () => {
   // The module was loaded before this test set the environment; a decision
   // captured at import time would escape neither line, or both.
   const { out } = await capture(async () => {
@@ -85,7 +86,7 @@ Deno.test("output decides per line, not once at import", async () => {
   assertEquals(out, ["::group::one", ENC + "group::two"]);
 });
 
-Deno.test("no module of @zuke/cli writes to the console except its sink", async () => {
+test("no module of @zuke/cli writes to the console except its sink", async () => {
   // The bug behind #575 was a bare `console.log` in the package's host, and
   // reverting the sink to one leaves every behavioural test above green only
   // as long as its inputs happen to reach that write. This holds the property

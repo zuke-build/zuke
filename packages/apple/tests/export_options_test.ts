@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import { ExportOptionsSettings, XcodebuildTasks } from "../mod.ts";
 
 const HEAD = '<?xml version="1.0" encoding="UTF-8"?>\n' +
@@ -9,7 +10,7 @@ const HEAD = '<?xml version="1.0" encoding="UTF-8"?>\n' +
   '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n' +
   '<plist version="1.0">\n<dict>\n';
 
-Deno.test("export options: every key renders, in the order set", () => {
+test("export options: every key renders, in the order set", () => {
   const plist = new ExportOptionsSettings().method("app-store-connect")
     .teamId("ABCDE12345").signingStyle("manual")
     .signingCertificate("Apple Distribution")
@@ -39,7 +40,7 @@ Deno.test("export options: every key renders, in the order set", () => {
   );
 });
 
-Deno.test("export options: a value cannot close its element", () => {
+test("export options: a value cannot close its element", () => {
   const plist = new ExportOptionsSettings().method("debugging")
     .teamId("</string><key>method</key><string>enterprise").render();
   assertEquals(plist.match(/<key>method<\/key>/g)?.length, 1);
@@ -51,7 +52,7 @@ Deno.test("export options: a value cannot close its element", () => {
   );
 });
 
-Deno.test("export options: method is required and control characters are refused", () => {
+test("export options: method is required and control characters are refused", () => {
   assertThrows(
     () => new ExportOptionsSettings().teamId("X").render(),
     Error,
@@ -80,7 +81,7 @@ Deno.test("export options: method is required and control characters are refused
   );
 });
 
-Deno.test("writeExportOptions writes the rendered plist", async () => {
+test("writeExportOptions writes the rendered plist", async () => {
   const dir = await Deno.makeTempDir({ prefix: "zuke-export-options-" });
   try {
     const path = `${dir}/ExportOptions.plist`;

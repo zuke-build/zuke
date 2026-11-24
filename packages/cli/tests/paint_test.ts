@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { stripAnsi } from "@zuke/core/render";
 import { cliPaint, invocationPaint, PLAIN_PAINT } from "../src/paint.ts";
 import * as core from "@zuke/core/render";
-import { withEnv } from "../../core/tests/_env.ts";
+import { withEnv } from "../../../tests/_env.ts";
 
 const KINDS = [
   "heading",
@@ -18,7 +19,7 @@ const KINDS = [
   "fail",
 ] as const;
 
-Deno.test("plain paint is the identity, and keeps the banner unless plain was asked for", () => {
+test("plain paint is the identity, and keeps the banner unless plain was asked for", () => {
   for (const kind of KINDS) assertEquals(PLAIN_PAINT[kind]("text"), "text");
   assertEquals(PLAIN_PAINT.banner, true);
   // A pipe or CI: not rich, banner kept.
@@ -33,7 +34,7 @@ Deno.test("plain paint is the identity, and keeps the banner unless plain was as
   );
 });
 
-Deno.test("rich paint adds glyphs and colour, never words", () => {
+test("rich paint adds glyphs and colour, never words", () => {
   const paint = cliPaint({ rich: true, color: true, banner: true });
   assertEquals(stripAnsi(paint.heading("Usage:")), "◆ Usage:");
   assertEquals(stripAnsi(paint.ok("Done")), "✔ Done");
@@ -45,13 +46,13 @@ Deno.test("rich paint adds glyphs and colour, never words", () => {
   }
 });
 
-Deno.test("rich paint under NO_COLOR keeps the glyphs and emits no escapes", () => {
+test("rich paint under NO_COLOR keeps the glyphs and emits no escapes", () => {
   const paint = cliPaint({ rich: true, color: false, banner: true });
   assertEquals(paint.ok("Done"), "✔ Done");
   assertEquals(paint.command("x"), "x");
 });
 
-Deno.test("invocationPaint reads --plain, ZUKE_PLAIN and the terminal through core", async () => {
+test("invocationPaint reads --plain, ZUKE_PLAIN and the terminal through core", async () => {
   await withEnv(
     { ZUKE_PLAIN: undefined, CI: undefined, GITHUB_ACTIONS: undefined },
     () => {
@@ -66,7 +67,7 @@ Deno.test("invocationPaint reads --plain, ZUKE_PLAIN and the terminal through co
   });
 });
 
-Deno.test("the palette is core's, with the banner beside it", () => {
+test("the palette is core's, with the banner beside it", () => {
   const mode = { rich: true, color: true, banner: false };
   const mine = cliPaint(mode);
   const theirs = core.cliPaint(mode);

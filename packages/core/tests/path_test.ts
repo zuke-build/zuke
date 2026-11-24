@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertThrows } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import { absolutePath } from "../src/path.ts";
 import { tokenize } from "../src/shell.ts";
 
-Deno.test("joins segments via call and .join, and normalises", () => {
+test("joins segments via call and .join, and normalises", () => {
   const root = absolutePath("/app");
   assertEquals(root("src", "main.ts").path, "/app/src/main.ts");
   assertEquals(root.join("src", "main.ts").path, "/app/src/main.ts");
@@ -16,13 +17,13 @@ Deno.test("joins segments via call and .join, and normalises", () => {
   assertEquals(absolutePath("/a//b///c").path, "/a/b/c");
 });
 
-Deno.test("preserves a Windows drive root and normalises backslashes", () => {
+test("preserves a Windows drive root and normalises backslashes", () => {
   assertEquals(absolutePath("C:\\repo", "x").path, "C:/repo/x");
   assertEquals(absolutePath("C:").path, "C:/");
   assertEquals(absolutePath("C:/repo").isRoot, false);
 });
 
-Deno.test("rejects a relative base", () => {
+test("rejects a relative base", () => {
   assertThrows(
     () => absolutePath("src/main.ts"),
     Error,
@@ -31,7 +32,7 @@ Deno.test("rejects a relative base", () => {
   assertThrows(() => absolutePath(".."), Error, "expected an absolute path");
 });
 
-Deno.test("name, stem, and extension", () => {
+test("name, stem, and extension", () => {
   const f = absolutePath("/app/src/main.ts");
   assertEquals(f.name, "main.ts");
   assertEquals(f.stem, "main");
@@ -50,7 +51,7 @@ Deno.test("name, stem, and extension", () => {
   assertEquals(binary.stem, "deno");
 });
 
-Deno.test("root has empty name and is its own parent", () => {
+test("root has empty name and is its own parent", () => {
   const root = absolutePath("/");
   assertEquals(root.isRoot, true);
   assertEquals(root.name, "");
@@ -62,13 +63,13 @@ Deno.test("root has empty name and is its own parent", () => {
   assertEquals(absolutePath("/a/../..").path, "/");
 });
 
-Deno.test("parent walks up the tree", () => {
+test("parent walks up the tree", () => {
   assertEquals(absolutePath("/app/src/main.ts").parent().path, "/app/src");
   assertEquals(absolutePath("/app").parent().path, "/");
   assertEquals(absolutePath("/app").parent().isRoot, true);
 });
 
-Deno.test("relativeTo computes descendant, ancestor, and sibling paths", () => {
+test("relativeTo computes descendant, ancestor, and sibling paths", () => {
   const base = absolutePath("/app");
   assertEquals(
     absolutePath("/app/src/main.ts").relativeTo(base),
@@ -83,7 +84,7 @@ Deno.test("relativeTo computes descendant, ancestor, and sibling paths", () => {
   assertEquals(absolutePath("/app/x").relativeTo("/app"), "x");
 });
 
-Deno.test("relativeTo rejects mismatched roots", () => {
+test("relativeTo rejects mismatched roots", () => {
   assertThrows(
     () => absolutePath("/app").relativeTo("C:/app"),
     Error,
@@ -91,7 +92,7 @@ Deno.test("relativeTo rejects mismatched roots", () => {
   );
 });
 
-Deno.test("equals normalises both sides and accepts strings or paths", () => {
+test("equals normalises both sides and accepts strings or paths", () => {
   const f = absolutePath("/app/src");
   assertEquals(f.equals("/app/lib/../src"), true);
   assertEquals(f.equals(absolutePath("/app/src")), true);
@@ -100,7 +101,7 @@ Deno.test("equals normalises both sides and accepts strings or paths", () => {
   assertEquals(f.equals("../../x"), false);
 });
 
-Deno.test("toString lets a path interpolate into the $ tokenizer", () => {
+test("toString lets a path interpolate into the $ tokenizer", () => {
   const f = absolutePath("/app/src/main.ts");
   assertEquals(`${f}`, "/app/src/main.ts");
   assertEquals(String(f), "/app/src/main.ts");

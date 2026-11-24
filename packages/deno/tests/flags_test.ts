@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import {
   DenoCheckSettings,
   DenoCoverageSettings,
@@ -15,7 +16,7 @@ import {
   DenoTestSettings,
 } from "../mod.ts";
 
-Deno.test("test: the reporting flags a CI run needs", () => {
+test("test: the reporting flags a CI run needs", () => {
   const argv = new DenoTestSettings()
     .allowAll()
     .reporter("junit")
@@ -42,14 +43,14 @@ Deno.test("test: the reporting flags a CI run needs", () => {
   ]);
 });
 
-Deno.test("test: shuffle and fail-fast render bare without a value", () => {
+test("test: shuffle and fail-fast render bare without a value", () => {
   assertEquals(
     new DenoTestSettings().shuffle().failFast().noRun().argv().slice(1),
     ["test", "--fail-fast", "--no-run", "--shuffle"],
   );
 });
 
-Deno.test("test: the coverage-shaping flags stand on their own", () => {
+test("test: the coverage-shaping flags stand on their own", () => {
   // deno accepts both without --coverage, and DENO_COVERAGE_DIR can name the
   // directory instead, so neither is tied to the .coverage() setter.
   assertEquals(
@@ -67,7 +68,7 @@ Deno.test("test: the coverage-shaping flags stand on their own", () => {
   );
 });
 
-Deno.test("test: file selection and sanitizers", () => {
+test("test: file selection and sanitizers", () => {
   assertEquals(
     new DenoTestSettings()
       .sanitizeOps()
@@ -91,7 +92,7 @@ Deno.test("test: file selection and sanitizers", () => {
   );
 });
 
-Deno.test("test: type-check and no-check contradict each other", () => {
+test("test: type-check and no-check contradict each other", () => {
   assertEquals(
     new DenoTestSettings().typeCheck("all").argv().slice(1),
     ["test", "--check=all"],
@@ -107,7 +108,7 @@ Deno.test("test: type-check and no-check contradict each other", () => {
   assertEquals(error.message.includes("opposite answers"), true);
 });
 
-Deno.test("test: the dependency and runtime groups render once, in order", () => {
+test("test: the dependency and runtime groups render once, in order", () => {
   const argv = new DenoTestSettings()
     .config("deno.json")
     .lock("custom.lock")
@@ -145,7 +146,7 @@ Deno.test("test: the dependency and runtime groups render once, in order", () =>
   ]);
 });
 
-Deno.test("run: watch-hmr replaces watch rather than joining it", () => {
+test("run: watch-hmr replaces watch rather than joining it", () => {
   assertEquals(
     new DenoRunSettings().watch().watchHmr().script("main.ts").argv().slice(1),
     ["run", "--watch-hmr", "main.ts"],
@@ -168,7 +169,7 @@ Deno.test("run: watch-hmr replaces watch rather than joining it", () => {
   );
 });
 
-Deno.test("run: only one inspector attaches, the last one asked for", () => {
+test("run: only one inspector attaches, the last one asked for", () => {
   assertEquals(
     new DenoRunSettings().inspect().script("m.ts").argv().slice(1),
     ["run", "--inspect", "m.ts"],
@@ -184,7 +185,7 @@ Deno.test("run: only one inspector attaches, the last one asked for", () => {
   );
 });
 
-Deno.test("run: a bare reload beats a scoped one", () => {
+test("run: a bare reload beats a scoped one", () => {
   assertEquals(
     new DenoRunSettings().reload("npm:").reload().script("m.ts").argv().slice(
       1,
@@ -198,7 +199,7 @@ Deno.test("run: a bare reload beats a scoped one", () => {
   );
 });
 
-Deno.test("run: config and no-config contradict each other", () => {
+test("run: config and no-config contradict each other", () => {
   const error = assertThrows(
     () =>
       new DenoRunSettings().config("a.json").noConfig().script("m.ts").argv(),
@@ -207,7 +208,7 @@ Deno.test("run: config and no-config contradict each other", () => {
   assertEquals(error.message.includes("pick one"), true);
 });
 
-Deno.test("lint: rule selection and the machine-readable formats", () => {
+test("lint: rule selection and the machine-readable formats", () => {
   const argv = new DenoLintSettings()
     .json()
     .rulesTags("recommended")
@@ -228,7 +229,7 @@ Deno.test("lint: rule selection and the machine-readable formats", () => {
   ]);
 });
 
-Deno.test("lint: --json and --compact are one format, not two", () => {
+test("lint: --json and --compact are one format, not two", () => {
   assertEquals(new DenoLintSettings().compact().compact().argv().slice(1), [
     "lint",
     "--compact",
@@ -240,7 +241,7 @@ Deno.test("lint: --json and --compact are one format, not two", () => {
   assertEquals(error.message.includes("report formats"), true);
 });
 
-Deno.test("lint: listing the rules silently ignores fixing, so it is refused", () => {
+test("lint: listing the rules silently ignores fixing, so it is refused", () => {
   assertEquals(new DenoLintSettings().listRules().json().argv().slice(1), [
     "lint",
     "--rules",
@@ -255,7 +256,7 @@ Deno.test("lint: listing the rules silently ignores fixing, so it is refused", (
   assertEquals(error.message.includes("silently ignores"), true);
 });
 
-Deno.test("fmt: the style flags render with their explicit values", () => {
+test("fmt: the style flags render with their explicit values", () => {
   const argv = new DenoFmtSettings()
     .check()
     .failFast()
@@ -294,14 +295,14 @@ Deno.test("fmt: the style flags render with their explicit values", () => {
   ]);
 });
 
-Deno.test("fmt: a boolean style flag can be turned back off explicitly", () => {
+test("fmt: a boolean style flag can be turned back off explicitly", () => {
   assertEquals(
     new DenoFmtSettings().useTabs(false).singleQuote(false).argv().slice(1),
     ["fmt", "--use-tabs=false", "--single-quote=false"],
   );
 });
 
-Deno.test("check: the checking flags, and doc versus doc-only", () => {
+test("check: the checking flags, and doc versus doc-only", () => {
   assertEquals(
     new DenoCheckSettings()
       .all()
@@ -320,7 +321,7 @@ Deno.test("check: the checking flags, and doc versus doc-only", () => {
   assertEquals(error.message.includes("pick one"), true);
 });
 
-Deno.test("check: watching is available here, unlike on doc", () => {
+test("check: watching is available here, unlike on doc", () => {
   assertEquals(
     new DenoCheckSettings().watch().paths("mod.ts").argv().slice(1),
     ["check", "--watch", "mod.ts"],
@@ -338,7 +339,7 @@ Deno.test("check: watching is available here, unlike on doc", () => {
   assertEquals("watchHmr" in new DenoRunSettings(), true);
 });
 
-Deno.test("doc: the HTML-rendering extras, and the two output formats", () => {
+test("doc: the HTML-rendering extras, and the two output formats", () => {
   const argv = new DenoDocSettings()
     .html()
     .stripTrailingHtml()
@@ -364,7 +365,7 @@ Deno.test("doc: the HTML-rendering extras, and the two output formats", () => {
   assertEquals(error.message.includes("output formats"), true);
 });
 
-Deno.test("coverage: html is refused beside lcov, which deno would silently win", () => {
+test("coverage: html is refused beside lcov, which deno would silently win", () => {
   assertEquals(
     new DenoCoverageSettings()
       .dir("cov")
@@ -395,7 +396,7 @@ Deno.test("coverage: html is refused beside lcov, which deno would silently win"
   assertEquals(gated.message.includes("two calls"), true);
 });
 
-Deno.test("task: workspace selection and the task's own directory", () => {
+test("task: workspace selection and the task's own directory", () => {
   assertEquals(
     new DenoTaskSettings()
       .recursive()
@@ -427,14 +428,14 @@ Deno.test("task: workspace selection and the task's own directory", () => {
   );
 });
 
-Deno.test("task: evaluating a shell command instead of a named task", () => {
+test("task: evaluating a shell command instead of a named task", () => {
   assertEquals(
     new DenoTaskSettings().evalShell().name("echo hi").argv().slice(1),
     ["task", "--eval", "echo hi"],
   );
 });
 
-Deno.test("publish: the release flags a version-bumping job needs", () => {
+test("publish: the release flags a version-bumping job needs", () => {
   assertEquals(
     new DenoPublishSettings()
       .setVersion("1.2.3")
@@ -451,7 +452,7 @@ Deno.test("publish: the release flags a version-bumping job needs", () => {
   assertEquals(error.message.includes("opposite answers"), true);
 });
 
-Deno.test("install: dependency-set flags, and the cross-compile pair", () => {
+test("install: dependency-set flags, and the cross-compile pair", () => {
   assertEquals(
     new DenoInstallSettings()
       .dev()
@@ -484,7 +485,7 @@ Deno.test("install: dependency-set flags, and the cross-compile pair", () => {
   assertEquals(registry.message.includes("registry"), true);
 });
 
-Deno.test("install: os and arch only mean something with a compiled launcher", () => {
+test("install: os and arch only mean something with a compiled launcher", () => {
   assertEquals(
     new DenoInstallSettings()
       .compile()
@@ -559,7 +560,7 @@ Deno.test("install: os and arch only mean something with a compiled launcher", (
   assertEquals(error.message.includes("silently ignores"), true);
 });
 
-Deno.test("test: an inspector and coverage cannot share the V8 session", () => {
+test("test: an inspector and coverage cannot share the V8 session", () => {
   // deno itself refuses the pair; both want the inspector session.
   assertEquals(new DenoTestSettings().inspectBrk().argv().slice(1), [
     "test",
@@ -576,7 +577,7 @@ Deno.test("test: an inspector and coverage cannot share the V8 session", () => {
   assertEquals(error.message.includes("inspector"), true);
 });
 
-Deno.test("test: coverage and the watch flags cannot combine", () => {
+test("test: coverage and the watch flags cannot combine", () => {
   assertEquals(
     new DenoTestSettings().watch().watchExclude("d").argv().slice(1),
     ["test", "--watch", "--watch-exclude=d"],
@@ -588,7 +589,7 @@ Deno.test("test: coverage and the watch flags cannot combine", () => {
   assertEquals(error.message.includes("watch"), true);
 });
 
-Deno.test("install: launcher arguments follow the separator deno requires", () => {
+test("install: launcher arguments follow the separator deno requires", () => {
   // Without the `--`, deno rejects a flag-shaped launcher argument outright.
   assertEquals(
     new DenoInstallSettings()

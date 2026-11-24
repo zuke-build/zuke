@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "./_assert.ts";
+} from "../../../tests/_assert.ts";
 import { target } from "../src/target.ts";
 import {
   type BuildCache,
@@ -17,8 +18,8 @@ import {
 } from "../src/cache.ts";
 import { archiveOutputs, remoteCacheKey } from "../src/remote_cache.ts";
 import { byteStream, gzip, tar } from "../src/compression.ts";
-import { withTemp } from "./_temp.ts";
-import { MemCacheStore } from "./_fakes.ts";
+import { withTemp } from "../../../tests/_temp.ts";
+import { MemCacheStore } from "../../../tests/_fakes.ts";
 import { signedKey, signingStream } from "../src/cache_signing.ts";
 
 const enc = (text: string) => new TextEncoder().encode(text);
@@ -77,7 +78,7 @@ class MemHost implements CacheHost {
 
 const STORE = "/repo/.zuke/cache.json";
 
-Deno.test("fingerprint changes with file content and with missing files", async () => {
+test("fingerprint changes with file content and with missing files", async () => {
   const host = new MemHost();
   host.files.set("a.txt", enc("one"));
   const t = target().inputs("a.txt");
@@ -93,7 +94,7 @@ Deno.test("fingerprint changes with file content and with missing files", async 
   assertEquals(a === b, false); // appearance of the file changes the fingerprint
 });
 
-Deno.test("fingerprint hashes directories recursively", async () => {
+test("fingerprint hashes directories recursively", async () => {
   const host = new MemHost();
   host.dirs.set("src", ["a.ts", "b.ts"]);
   host.files.set("src/a.ts", enc("a"));
@@ -105,7 +106,7 @@ Deno.test("fingerprint hashes directories recursively", async () => {
   assertEquals(before === after, false);
 });
 
-Deno.test("a cache round-trip skips an unchanged target", async () => {
+test("a cache round-trip skips an unchanged target", async () => {
   const host = new MemHost();
   host.files.set("in.txt", enc("v1"));
   const make = () => {
@@ -131,7 +132,7 @@ Deno.test("a cache round-trip skips an unchanged target", async () => {
   assertEquals(await reopened.upToDate(make()), false);
 });
 
-Deno.test("a cacheKey contributes to the fingerprint", async () => {
+test("a cacheKey contributes to the fingerprint", async () => {
   const host = new MemHost();
   let key = "v1";
   const t = target().cacheKey(() => key);
@@ -153,7 +154,7 @@ Deno.test("a cacheKey contributes to the fingerprint", async () => {
   assertEquals(await reopened.upToDate(t), false);
 });
 
-Deno.test("a target without inputs is never cached", async () => {
+test("a target without inputs is never cached", async () => {
   const host = new MemHost();
   const cache = await openCache(STORE, host);
   const t = target();
@@ -164,7 +165,7 @@ Deno.test("a target without inputs is never cached", async () => {
   assertEquals(host.stores.has(STORE), false);
 });
 
-Deno.test("defaultCacheHost hashes a real directory and tolerates missing paths", async () => {
+test("defaultCacheHost hashes a real directory and tolerates missing paths", async () => {
   await withTemp(async (dir) => {
     await Deno.mkdir(`${dir}/src`);
     await Deno.writeTextFile(`${dir}/src/a.ts`, "a");
@@ -176,7 +177,7 @@ Deno.test("defaultCacheHost hashes a real directory and tolerates missing paths"
   });
 });
 
-Deno.test("a corrupt or non-object store is treated as empty", async () => {
+test("a corrupt or non-object store is treated as empty", async () => {
   const host = new MemHost();
   host.files.set("in.txt", enc("v1"));
   host.stores.set(STORE, "not json {");
@@ -202,7 +203,7 @@ function buildTarget(): ReturnType<typeof target> {
   return t;
 }
 
-Deno.test("the remote store restores outputs on a local miss", async () => {
+test("the remote store restores outputs on a local miss", async () => {
   const host = new MemHost();
   host.files.set("in.txt", enc("v1"));
   host.dirs.set("dist", ["app.js"]);
@@ -226,7 +227,7 @@ Deno.test("the remote store restores outputs on a local miss", async () => {
   assertEquals(dec(host.files.get("dist/app.js") ?? enc("")), "built"); // written back
 });
 
-Deno.test("a restore honours the store's maxInflatedBytes", async () => {
+test("a restore honours the store's maxInflatedBytes", async () => {
   const host = new MemHost();
   host.files.set("in.txt", enc("v1"));
   host.dirs.set("dist", ["app.js"]);
@@ -253,7 +254,7 @@ Deno.test("a restore honours the store's maxInflatedBytes", async () => {
   assertEquals(warnings.some((w) => w.includes("more than 64 bytes")), true);
 });
 
-Deno.test("a successful run uploads outputs to the remote store", async () => {
+test("a successful run uploads outputs to the remote store", async () => {
   const host = new MemHost();
   host.files.set("in.txt", enc("v1"));
   host.dirs.set("dist", ["app.js"]);
@@ -268,7 +269,7 @@ Deno.test("a successful run uploads outputs to the remote store", async () => {
   assertEquals(store.map.has(remoteCacheKey("build", fp)), true);
 });
 
-Deno.test("outputs just restored are not re-uploaded", async () => {
+test("outputs just restored are not re-uploaded", async () => {
   const host = new MemHost();
   host.files.set("in.txt", enc("v1"));
   host.dirs.set("dist", ["app.js"]);
@@ -289,7 +290,7 @@ Deno.test("outputs just restored are not re-uploaded", async () => {
   assertEquals(store.puts, []);
 });
 
-Deno.test("a remote lookup failure warns and falls back to a rebuild", async () => {
+test("a remote lookup failure warns and falls back to a rebuild", async () => {
   const host = new MemHost();
   host.files.set("in.txt", enc("v1"));
   host.dirs.set("dist", ["app.js"]);
@@ -307,7 +308,7 @@ Deno.test("a remote lookup failure warns and falls back to a rebuild", async () 
   assertStringIncludes(warnings.join("\n"), "lookup");
 });
 
-Deno.test("a remote upload failure warns but never fails the build", async () => {
+test("a remote upload failure warns but never fails the build", async () => {
   const host = new MemHost();
   host.files.set("in.txt", enc("v1"));
   host.dirs.set("dist", ["app.js"]);
@@ -325,7 +326,7 @@ Deno.test("a remote upload failure warns but never fails the build", async () =>
   assertStringIncludes(warnings.join("\n"), "upload");
 });
 
-Deno.test("targets without outputs never touch the remote store", async () => {
+test("targets without outputs never touch the remote store", async () => {
   const host = new MemHost();
   host.files.set("in.txt", enc("v1"));
   const t = target().inputs("in.txt"); // no outputs
@@ -339,7 +340,7 @@ Deno.test("targets without outputs never touch the remote store", async () => {
   assertEquals(store.puts, []);
 });
 
-Deno.test("a poisoned remote archive is a cache miss and a warning, never a restore", async () => {
+test("a poisoned remote archive is a cache miss and a warning, never a restore", async () => {
   const host = new MemHost();
   host.files.set("in.txt", enc("v1"));
   const t = buildTarget(); // declares `dist` as its only output
@@ -436,7 +437,7 @@ async function seeded(
   return { t, key };
 }
 
-Deno.test("a streaming store restores through the host's spool, then removes it", async () => {
+test("a streaming store restores through the host's spool, then removes it", async () => {
   const host = new SpoolingHost();
   const store = new StreamingStore();
   const { t, key } = await seeded(host, store);
@@ -449,7 +450,7 @@ Deno.test("a streaming store restores through the host's spool, then removes it"
   assertEquals(dec(host.files.get("dist/app.js") ?? enc("")), "built");
 });
 
-Deno.test("a refused spooled restore still removes the spool", async () => {
+test("a refused spooled restore still removes the spool", async () => {
   const host = new SpoolingHost();
   const store = new StreamingStore();
   const { t, key } = await seeded(host, store);
@@ -464,7 +465,7 @@ Deno.test("a refused spooled restore still removes the spool", async () => {
   assertEquals(warnings.some((w) => w.includes("was refused")), true);
 });
 
-Deno.test("a streaming store misses without spooling anything", async () => {
+test("a streaming store misses without spooling anything", async () => {
   const host = new SpoolingHost();
   const store = new StreamingStore();
   const { t, key } = await seeded(host, store);
@@ -474,7 +475,7 @@ Deno.test("a streaming store misses without spooling anything", async () => {
   assertEquals(host.opens + host.removes, 0);
 });
 
-Deno.test("a host without a spool reads a streaming store whole", async () => {
+test("a host without a spool reads a streaming store whole", async () => {
   const host = new MemHost();
   const store = new StreamingStore();
   const { t, key } = await seeded(host, store);
@@ -484,7 +485,7 @@ Deno.test("a host without a spool reads a streaming store whole", async () => {
   assertEquals(store.streamGets, []);
 });
 
-Deno.test("an upload streams to a store that takes a stream", async () => {
+test("an upload streams to a store that takes a stream", async () => {
   const host = new MemHost();
   host.files.set("in.txt", enc("v1"));
   host.dirs.set("dist", ["app.js"]);
@@ -499,7 +500,7 @@ Deno.test("an upload streams to a store that takes a stream", async () => {
   assertEquals(store.map.get(key), await archiveOutputs(["dist"], host));
 });
 
-Deno.test("defaultCacheHost spools to a temporary file it can reopen and remove", async () => {
+test("defaultCacheHost spools to a temporary file it can reopen and remove", async () => {
   await withTemp(async (dir) => {
     // So the spool's file is the only one here.
     await withTempDirEnv(dir, async () => {
@@ -531,7 +532,7 @@ Deno.test("defaultCacheHost spools to a temporary file it can reopen and remove"
   });
 });
 
-Deno.test("defaultCacheHost cancels the download when it cannot make a spool file", async () => {
+test("defaultCacheHost cancels the download when it cannot make a spool file", async () => {
   await withTemp(async (dir) => {
     let cancelled = false;
     const download = new ReadableStream<Uint8Array<ArrayBuffer>>({
@@ -571,7 +572,7 @@ async function withTempDirEnv(
   }
 }
 
-Deno.test("a store error quoting a credentialed URL is redacted in the warning", async () => {
+test("a store error quoting a credentialed URL is redacted in the warning", async () => {
   const host = new MemHost();
   const store = new MemCacheStore();
   const { t } = await seeded(host, store);
@@ -642,7 +643,7 @@ async function signBlob(
   );
 }
 
-Deno.test("a signed artifact is restored by a consumer holding the key", async () => {
+test("a signed artifact is restored by a consumer holding the key", async () => {
   for (const store of [new MemCacheStore(), new StreamingStore()]) {
     const host = new SpoolingHost();
     const { t, key } = await signedUpload(host, store);
@@ -655,7 +656,7 @@ Deno.test("a signed artifact is restored by a consumer holding the key", async (
   }
 });
 
-Deno.test("an unsigned artifact is never restored when a signing key is set", async () => {
+test("an unsigned artifact is never restored when a signing key is set", async () => {
   const host = new MemHost();
   const store = new MemCacheStore();
   const { t, key } = await seeded(host, store); // uploaded with no signature
@@ -671,7 +672,7 @@ Deno.test("an unsigned artifact is never restored when a signing key is set", as
   assertEquals(host.files.has("dist/app.js"), false);
 });
 
-Deno.test("an artifact with a wrong or missing MAC is refused", async () => {
+test("an artifact with a wrong or missing MAC is refused", async () => {
   const host = new MemHost();
   const store = new MemCacheStore();
   const { t, key } = await signedUpload(host, store);
@@ -698,7 +699,7 @@ Deno.test("an artifact with a wrong or missing MAC is refused", async () => {
   assertEquals(host.files.has("dist/app.js"), false);
 });
 
-Deno.test("a signature does not carry over to another target's key", async () => {
+test("a signature does not carry over to another target's key", async () => {
   const host = new MemHost();
   const store = new MemCacheStore();
   const { key } = await signedUpload(host, store);
@@ -723,7 +724,7 @@ class FirstWriteStore extends MemCacheStore {
 // The MAC used to be a second entry: on a store that keeps its first write, an
 // earlier unsigned upload, or a racing upload of different bytes, left an
 // archive no stored MAC matched — a miss on every run until eviction.
-Deno.test("a store that keeps its first write still hits after signing is turned on or uploads race", async () => {
+test("a store that keeps its first write still hits after signing is turned on or uploads race", async () => {
   const host = new MemHost();
   const store = new FirstWriteStore();
   await seeded(host, store); // an upload from before the key was set
@@ -737,7 +738,7 @@ Deno.test("a store that keeps its first write still hits after signing is turned
   assertEquals(dec(host.files.get("dist/app.js") ?? enc("")), "built by A");
 });
 
-Deno.test("without a signing key nothing is signed, checked or read signed", async () => {
+test("without a signing key nothing is signed, checked or read signed", async () => {
   const host = new MemHost();
   const store = new MemCacheStore();
   await signedUpload(host, store);

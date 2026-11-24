@@ -13,10 +13,8 @@
  * documented `zuke runs show mcp-audit` still renders it on the host.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   Build,
   defaultStateHost,
@@ -60,7 +58,7 @@ async function call(
   };
 }
 
-Deno.test("a protected dependency blocks the run and the denial reaches the trail", async () => {
+test("a protected dependency blocks the run and the denial reaches the trail", async () => {
   await withStateDir(async (dir) => {
     const store = new FileSystemStateStore(dir, defaultStateHost);
     const server = new McpServer(new Pipeline(), {
@@ -97,7 +95,7 @@ Deno.test("a protected dependency blocks the run and the denial reaches the trai
   });
 });
 
-Deno.test("the trail is unreadable over MCP while the CLI still renders it", async () => {
+test("the trail is unreadable over MCP while the CLI still renders it", async () => {
   await withStateDir(async (dir) => {
     const store = new FileSystemStateStore(dir, defaultStateHost);
     const server = new McpServer(new Pipeline(), {

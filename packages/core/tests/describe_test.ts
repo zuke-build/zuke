@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { Build, describeCli, parameter, target } from "../mod.ts";
 import { BUILTIN_FLAGS, RESERVED_COMMANDS } from "../src/cli_spec.ts";
 
@@ -18,7 +19,7 @@ class Sample extends Build {
   verbose = parameter("Verbose").boolean();
 }
 
-Deno.test("describeCli mirrors the shared command and flag registry", () => {
+test("describeCli mirrors the shared command and flag registry", () => {
   const d = describeCli(new Sample());
   assertEquals(
     d.commands.map((c) => c.name),
@@ -27,7 +28,7 @@ Deno.test("describeCli mirrors the shared command and flag registry", () => {
   assertEquals(d.flags.map((f) => f.name), BUILTIN_FLAGS.map((f) => f.name));
 });
 
-Deno.test("describeCli reports targets with deps, default, and unlisted", () => {
+test("describeCli reports targets with deps, default, and unlisted", () => {
   const targets = describeCli(new Sample()).targets;
 
   const build = targets.find((t) => t.name === "build");
@@ -46,7 +47,7 @@ Deno.test("describeCli reports targets with deps, default, and unlisted", () => 
   assertEquals(hidden?.description, "");
 });
 
-Deno.test("describeCli reports parameter flags, kinds, and options", () => {
+test("describeCli reports parameter flags, kinds, and options", () => {
   const params = describeCli(new Sample()).parameters;
 
   const env = params.find((p) => p.flag === "environment");
@@ -58,7 +59,7 @@ Deno.test("describeCli reports parameter flags, kinds, and options", () => {
   assertEquals(params.find((p) => p.flag === "verbose")?.boolean, true);
 });
 
-Deno.test("describeCli hides a secret parameter's option values", () => {
+test("describeCli hides a secret parameter's option values", () => {
   class WithSecret extends Build {
     // A secret whose declared options are real credentials must not surface.
     apiKey = parameter("API key").secret().options("sk-live-a", "sk-live-b");
@@ -69,7 +70,7 @@ Deno.test("describeCli hides a secret parameter's option values", () => {
   assertEquals(key?.options, []);
 });
 
-Deno.test("describeCli reports the property name, kind, and default", () => {
+test("describeCli reports the property name, kind, and default", () => {
   class Params extends Build {
     skipE2e = parameter("Skip e2e").boolean();
     workers = parameter("Workers").number().default(4);
@@ -91,14 +92,14 @@ Deno.test("describeCli reports the property name, kind, and default", () => {
   assertEquals(params.find((p) => p.name === "region")?.default, "eu");
 });
 
-Deno.test("describeCli reports an empty description when none was set", () => {
+test("describeCli reports an empty description when none was set", () => {
   class B extends Build {
     quiet = parameter().boolean();
   }
   assertEquals(describeCli(new B()).parameters[0].description, "");
 });
 
-Deno.test("describeCli never surfaces a secret parameter's default value", () => {
+test("describeCli never surfaces a secret parameter's default value", () => {
   class WithSecret extends Build {
     // A secret's declared default could itself be a live credential.
     apiKey = parameter("API key").secret().default("sk-live-real");
@@ -110,7 +111,7 @@ Deno.test("describeCli never surfaces a secret parameter's default value", () =>
   assertEquals(params.find((p) => p.name === "region")?.default, "eu");
 });
 
-Deno.test("describeCli names a dependency that is not a build field with ?", () => {
+test("describeCli names a dependency that is not a build field with ?", () => {
   // A dependency that was never discovered as a field has no name; the surface
   // reports the placeholder rather than crashing or silently dropping the edge.
   const anon = target().executes(() => {});
@@ -121,7 +122,7 @@ Deno.test("describeCli names a dependency that is not a build field with ?", () 
   assertEquals(build?.dependsOn, ["?"]);
 });
 
-Deno.test("describeCli omitSecrets drops secret parameters entirely", () => {
+test("describeCli omitSecrets drops secret parameters entirely", () => {
   class WithSecret extends Build {
     apiKey = parameter("API key").secret();
     region = parameter("Region");

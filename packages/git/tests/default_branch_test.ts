@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
   assertWrapperConformance,
@@ -14,7 +15,7 @@ import {
 } from "../src/default_branch.ts";
 import { GitTasks } from "../mod.ts";
 
-Deno.test("the local read asks for the remote's HEAD ref", () => {
+test("the local read asks for the remote's HEAD ref", () => {
   assertEquals(new GitDefaultBranchSettings().argv(), [
     "git",
     "symbolic-ref",
@@ -36,7 +37,7 @@ Deno.test("the local read asks for the remote's HEAD ref", () => {
   );
 });
 
-Deno.test("the fallback asks the remote itself", () => {
+test("the fallback asks the remote itself", () => {
   const settings = new GitDefaultBranchSettings().remote("upstream");
   settings.askRemote_ = true;
   assertEquals(settings.argv(), [
@@ -48,7 +49,7 @@ Deno.test("the fallback asks the remote itself", () => {
   ]);
 });
 
-Deno.test("parseSymbolicRef takes the branch out of either ref form", () => {
+test("parseSymbolicRef takes the branch out of either ref form", () => {
   assertEquals(parseSymbolicRef("origin/main\n", "origin"), "main");
   // A branch with slashes in its name survives intact.
   assertEquals(
@@ -65,7 +66,7 @@ Deno.test("parseSymbolicRef takes the branch out of either ref form", () => {
   assertEquals(parseSymbolicRef("", "origin"), undefined);
 });
 
-Deno.test("parseSymrefListing reads the symref line of the remote listing", () => {
+test("parseSymrefListing reads the symref line of the remote listing", () => {
   const stdout = "ref: refs/heads/main\tHEAD\n" +
     "1111111111111111111111111111111111111111\tHEAD\n";
   assertEquals(parseSymrefListing(stdout), "main");
@@ -77,14 +78,14 @@ Deno.test("parseSymrefListing reads the symref line of the remote listing", () =
   assertEquals(parseSymrefListing(""), undefined);
 });
 
-Deno.test("defaultBranch reaches execution", async () => {
+test("defaultBranch reaches execution", async () => {
   await assertRejects(
     () => GitTasks.defaultBranch((s) => missingTool(s)),
     ToolNotFoundError,
   );
 });
 
-Deno.test("the default-branch wrapper conforms to the tool contract", async () => {
+test("the default-branch wrapper conforms to the tool contract", async () => {
   await assertWrapperConformance(
     () => new GitDefaultBranchSettings(),
     "git",

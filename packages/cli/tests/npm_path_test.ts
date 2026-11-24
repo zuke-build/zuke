@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import type { DenoHost } from "../src/deno_path.ts";
 import { NODE_PIN } from "../src/node_pin.ts";
 import { npmCandidates, runNpm } from "../src/npm_path.ts";
@@ -21,7 +22,7 @@ function hostOf(env: Record<string, string>, windows = false): DenoHost {
 
 const release = `v${NODE_PIN.version}`;
 
-Deno.test("npmCandidates tries PATH, then the pinned Node the launchers cache", () => {
+test("npmCandidates tries PATH, then the pinned Node the launchers cache", () => {
   assertEquals(npmCandidates(hostOf({ HOME: "/home/u" })), [
     "npm",
     `/home/u/.zuke/node/${release}/bin/npm`,
@@ -39,7 +40,7 @@ Deno.test("npmCandidates tries PATH, then the pinned Node the launchers cache", 
   assertEquals(npmCandidates(hostOf({ ZUKE_NODE_HOME: "relative" })), ["npm"]);
 });
 
-Deno.test("runNpm skips a candidate that is not installed, and names every one when none is", async () => {
+test("runNpm skips a candidate that is not installed, and names every one when none is", async () => {
   const dir = await Deno.makeTempDir();
   try {
     const missing = `${dir}/no-such-npm`;

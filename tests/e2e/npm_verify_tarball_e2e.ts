@@ -17,11 +17,9 @@
  * @module
  */
 
+import { test } from "../_testing.ts";
 import { absolutePath, gunzip, gzip, untar } from "../../packages/core/mod.ts";
-import {
-  assertEquals,
-  assertThrows,
-} from "../../packages/core/tests/_assert.ts";
+import { assertEquals, assertThrows } from "../_assert.ts";
 import { RELEASE_PROVENANCE } from "../../build/npm_provenance.ts";
 import {
   type NpmProbe,
@@ -104,7 +102,7 @@ function hasNpm(): boolean {
 }
 
 for (const [name, parts] of Object.entries(variants)) {
-  Deno.test({
+  test({
     name: `verifyAll: ${name}`,
     ignore: !hasNpm(),
     fn: async () => {

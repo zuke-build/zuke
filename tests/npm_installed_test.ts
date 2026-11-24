@@ -8,7 +8,8 @@
  * @module
  */
 
-import { assertEquals, assertRejects } from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals, assertRejects } from "./_assert.ts";
 import {
   compareFiles,
   manifestProblems,
@@ -17,7 +18,7 @@ import {
 } from "../build/npm_installed.ts";
 import { text } from "./_npm_verify.ts";
 
-Deno.test("only an exact match of the installed files with the rebuild is accepted", () => {
+test("only an exact match of the installed files with the rebuild is accepted", () => {
   const rebuilt = new Map([
     ["package.json", text('{"name":"x","version":"1.0.0"}\n')],
     ["mod.js", text("export {};\n")],
@@ -49,7 +50,7 @@ Deno.test("only an exact match of the installed files with the rebuild is accept
   }
 });
 
-Deno.test("readTree lists nested files by relative path, and refuses a symlink", async () => {
+test("readTree lists nested files by relative path, and refuses a symlink", async () => {
   const dir = await Deno.makeTempDir();
   try {
     await Deno.mkdir(`${dir}/src`);
@@ -72,7 +73,7 @@ Deno.test("readTree lists nested files by relative path, and refuses a symlink",
   }
 });
 
-Deno.test("manifestProblems lists every field npm acts on and nothing else", () => {
+test("manifestProblems lists every field npm acts on and nothing else", () => {
   assertEquals(NPM_ACTED_ON_FIELDS.includes("scripts"), true);
   assertEquals(
     manifestProblems(

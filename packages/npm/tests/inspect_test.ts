@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import { missingTool } from "@zuke/core/tooling/conformance";
 import {
@@ -17,7 +18,7 @@ import {
 } from "../mod.ts";
 import { parseAuditSummary, parseOutdated } from "../src/inspect.ts";
 
-Deno.test("ls renders its depth and grouping options", () => {
+test("ls renders its depth and grouping options", () => {
   assertEquals(
     new NpmLsSettings().all().long().parseable().depth(0).omit("dev")
       .spec("react").argv().slice(1),
@@ -33,7 +34,7 @@ Deno.test("ls renders its depth and grouping options", () => {
   );
 });
 
-Deno.test("outdated renders its scope options", () => {
+test("outdated renders its scope options", () => {
   assertEquals(
     new NpmOutdatedSettings().all().long().workspace("app")
       .packages("typescript").argv().slice(1),
@@ -41,7 +42,7 @@ Deno.test("outdated renders its scope options", () => {
   );
 });
 
-Deno.test("audit renders its subcommands, and refuses two at once", () => {
+test("audit renders its subcommands, and refuses two at once", () => {
   assertEquals(
     new NpmAuditSettings().auditLevel("high").omit("dev").packageLockOnly()
       .argv().slice(1),
@@ -62,7 +63,7 @@ Deno.test("audit renders its subcommands, and refuses two at once", () => {
   );
 });
 
-Deno.test("sbom requires the format npm has no default for", () => {
+test("sbom requires the format npm has no default for", () => {
   assertThrows(
     () => new NpmSbomSettings().argv(),
     Error,
@@ -81,7 +82,7 @@ Deno.test("sbom requires the format npm has no default for", () => {
   );
 });
 
-Deno.test("parseOutdated reads npm's package-keyed payload", () => {
+test("parseOutdated reads npm's package-keyed payload", () => {
   const stdout = JSON.stringify({
     typescript: {
       current: "5.4.0",
@@ -106,7 +107,7 @@ Deno.test("parseOutdated reads npm's package-keyed payload", () => {
   ]);
 });
 
-Deno.test("parseOutdated treats nothing-to-report as no entries", () => {
+test("parseOutdated treats nothing-to-report as no entries", () => {
   // npm prints `{}` when everything is current, and nothing at all in some
   // versions; a proxy error page is not JSON. None of them is a crash.
   assertEquals(parseOutdated("{}"), []);
@@ -118,7 +119,7 @@ Deno.test("parseOutdated treats nothing-to-report as no entries", () => {
   assertEquals(parseOutdated(JSON.stringify({ typescript: "5.4.0" })), []);
 });
 
-Deno.test("parseAuditSummary reads the nested vulnerability counts", () => {
+test("parseAuditSummary reads the nested vulnerability counts", () => {
   const stdout = JSON.stringify({
     metadata: {
       vulnerabilities: {
@@ -141,7 +142,7 @@ Deno.test("parseAuditSummary reads the nested vulnerability counts", () => {
   });
 });
 
-Deno.test("parseAuditSummary falls back to the sum, and reads an absent payload as clean", () => {
+test("parseAuditSummary falls back to the sum, and reads an absent payload as clean", () => {
   const withoutTotal = JSON.stringify({
     metadata: { vulnerabilities: { high: 2, critical: 1 } },
   });
@@ -173,7 +174,7 @@ Deno.test("parseAuditSummary falls back to the sum, and reads an absent payload 
   );
 });
 
-Deno.test("the inspecting tasks reach execution", async () => {
+test("the inspecting tasks reach execution", async () => {
   await assertRejects(() => NpmTasks.ls(missingTool), ToolNotFoundError);
   await assertRejects(() => NpmTasks.outdated(missingTool), ToolNotFoundError);
   await assertRejects(() => NpmTasks.audit(missingTool), ToolNotFoundError);
@@ -193,7 +194,7 @@ Deno.test("the inspecting tasks reach execution", async () => {
   );
 });
 
-Deno.test("the inspecting commands render their remaining options", () => {
+test("the inspecting commands render their remaining options", () => {
   assertEquals(
     new NpmLsSettings().workspaces().argv().slice(1),
     ["ls", "--workspaces"],

@@ -9,10 +9,11 @@
  * @module
  */
 
-import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import { formulaClassName } from "../src/formula_name.ts";
 
-Deno.test("formula name: class names match Homebrew's derivation", () => {
+test("formula name: class names match Homebrew's derivation", () => {
   const table: Array<[string, string]> = [
     ["zuke", "Zuke"],
     ["foo-bar", "FooBar"],
@@ -33,7 +34,7 @@ Deno.test("formula name: class names match Homebrew's derivation", () => {
   }
 });
 
-Deno.test("formula name: a path, a capital, a leading digit or a separator is refused", () => {
+test("formula name: a path, a capital, a leading digit or a separator is refused", () => {
   for (
     const name of [
       "",
@@ -55,7 +56,7 @@ Deno.test("formula name: a path, a capital, a leading digit or a separator is re
   }
 });
 
-Deno.test("formula name: a derivation that is not a Ruby constant is refused", () => {
+test("formula name: a derivation that is not a Ruby constant is refused", () => {
   for (const name of ["foo--bar", "foo@bar", "foo-", "foo.", "foo_@2"]) {
     assertThrows(
       () => formulaClassName(name),

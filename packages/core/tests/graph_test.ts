@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertThrows } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import { Build, discoverTargets, resolveOrderingEdges } from "../src/build.ts";
 import { target, type TargetBuilder } from "../src/target.ts";
 import {
@@ -20,7 +21,7 @@ function discover(b: Build) {
   return discoverTargets(b);
 }
 
-Deno.test("planGraph returns the order and each target's predecessors", () => {
+test("planGraph returns the order and each target's predecessors", () => {
   class B extends Build {
     base = target().executes(() => {});
     left = target().dependsOn(this.base).executes(() => {});
@@ -43,7 +44,7 @@ Deno.test("planGraph returns the order and each target's predecessors", () => {
   );
 });
 
-Deno.test("planGraph detects cycles", () => {
+test("planGraph detects cycles", () => {
   class B extends Build {
     a = target().executes(() => {});
     b = target().executes(() => {});
@@ -58,7 +59,7 @@ Deno.test("planGraph detects cycles", () => {
   assertThrows(() => planGraph(b.a), GraphError, "cycle");
 });
 
-Deno.test("triggers pull targets into the plan and run them after", () => {
+test("triggers pull targets into the plan and run them after", () => {
   class B extends Build {
     cleanup = target().executes(() => {});
     main = target().triggers(this.cleanup).executes(() => {});
@@ -70,7 +71,7 @@ Deno.test("triggers pull targets into the plan and run them after", () => {
   assertEquals(order.indexOf("main") < order.indexOf("cleanup"), true);
 });
 
-Deno.test("validateReferences rejects an undefined trigger", () => {
+test("validateReferences rejects an undefined trigger", () => {
   const main = target();
   main.name_ = "main";
   // @ts-expect-error simulate a forward-referenced (unbound) trigger
@@ -82,7 +83,7 @@ Deno.test("validateReferences rejects an undefined trigger", () => {
   );
 });
 
-Deno.test("topological order respects dependencies", () => {
+test("topological order respects dependencies", () => {
   class B extends Build {
     clean = target().executes(() => {});
     restore = target().executes(() => {});
@@ -101,7 +102,7 @@ Deno.test("topological order respects dependencies", () => {
   assertEquals(idx("restore") < idx("compile"), true);
 });
 
-Deno.test("diamond dependencies appear exactly once", () => {
+test("diamond dependencies appear exactly once", () => {
   class B extends Build {
     base = target().executes(() => {});
     left = target().dependsOn(this.base).executes(() => {});
@@ -117,7 +118,7 @@ Deno.test("diamond dependencies appear exactly once", () => {
   assertEquals(order[order.length - 1], "top");
 });
 
-Deno.test("execution set is the transitive closure of the root", () => {
+test("execution set is the transitive closure of the root", () => {
   class B extends Build {
     a = target().executes(() => {});
     b = target().dependsOn(this.a).executes(() => {});
@@ -130,7 +131,7 @@ Deno.test("execution set is the transitive closure of the root", () => {
   assertEquals(set, ["a", "b", "c"]);
 });
 
-Deno.test("findCycle reports the offending path", () => {
+test("findCycle reports the offending path", () => {
   class B extends Build {
     a = target();
     b = target();
@@ -149,7 +150,7 @@ Deno.test("findCycle reports the offending path", () => {
   assertEquals(cycle[0], cycle[cycle.length - 1]);
 });
 
-Deno.test("validateGraph throws GraphError with the cycle path", () => {
+test("validateGraph throws GraphError with the cycle path", () => {
   class B extends Build {
     a = target();
     b = target();
@@ -165,7 +166,7 @@ Deno.test("validateGraph throws GraphError with the cycle path", () => {
   );
 });
 
-Deno.test("validateReferences rejects a dependency on an undiscovered target", () => {
+test("validateReferences rejects a dependency on an undiscovered target", () => {
   const orphan = target(); // never assigned to a property
   class B extends Build {
     a = target().dependsOn(orphan);
@@ -177,7 +178,7 @@ Deno.test("validateReferences rejects a dependency on an undiscovered target", (
   );
 });
 
-Deno.test("validateReferences rejects an undefined (forward-referenced) dep", () => {
+test("validateReferences rejects an undefined (forward-referenced) dep", () => {
   class B extends Build {
     // TypeScript catches this forward reference (TS2729); the suppression
     // simulates a consumer that bypassed type-checking, exercising the runtime
@@ -194,7 +195,7 @@ Deno.test("validateReferences rejects an undefined (forward-referenced) dep", ()
   );
 });
 
-Deno.test("soft before/after hints order nodes within the plan", () => {
+test("soft before/after hints order nodes within the plan", () => {
   class B extends Build {
     setup = target().executes(() => {});
     work = target().dependsOn(this.setup).executes(() => {});
@@ -213,7 +214,7 @@ Deno.test("soft before/after hints order nodes within the plan", () => {
   assertEquals(idx("lint") < idx("work"), true);
 });
 
-Deno.test("plan detects a cycle introduced by soft edges", () => {
+test("plan detects a cycle introduced by soft edges", () => {
   class B extends Build {
     a = target().executes(() => {});
     b = target().executes(() => {});
@@ -229,7 +230,7 @@ Deno.test("plan detects a cycle introduced by soft edges", () => {
   assertThrows(() => plan(root), GraphError, "cycle detected");
 });
 
-Deno.test("extra edges impose soft ordering between independent targets", () => {
+test("extra edges impose soft ordering between independent targets", () => {
   class B extends Build {
     a = target().executes(() => {});
     b = target().executes(() => {});
@@ -246,7 +247,7 @@ Deno.test("extra edges impose soft ordering between independent targets", () => 
   assertEquals(names([[inst.a, inst.b]]), ["a", "b", "root"]);
 });
 
-Deno.test("an extra edge with an endpoint outside the run is ignored", () => {
+test("an extra edge with an endpoint outside the run is ignored", () => {
   class B extends Build {
     a = target().executes(() => {});
     b = target().executes(() => {});
@@ -263,7 +264,7 @@ Deno.test("an extra edge with an endpoint outside the run is ignored", () => {
   );
 });
 
-Deno.test("an extra edge that forms a cycle is reported", () => {
+test("an extra edge that forms a cycle is reported", () => {
   class B extends Build {
     a = target().executes(() => {});
     root = target().dependsOn(this.a).executes(() => {});
@@ -278,17 +279,17 @@ Deno.test("an extra edge that forms a cycle is reported", () => {
   );
 });
 
-Deno.test("Build.extraEdges defaults to no edges", () => {
+test("Build.extraEdges defaults to no edges", () => {
   class B extends Build {}
   assertEquals(new B().extraEdges(new Map()), []);
 });
 
-Deno.test("Build.orderWith defaults to no edges", async () => {
+test("Build.orderWith defaults to no edges", async () => {
   class B extends Build {}
   assertEquals(await new B().orderWith(new Map()), []);
 });
 
-Deno.test("resolveOrderingEdges merges extraEdges with an async orderWith", async () => {
+test("resolveOrderingEdges merges extraEdges with an async orderWith", async () => {
   class B extends Build {
     a = target().executes(() => {});
     b = target().executes(() => {});
@@ -317,7 +318,7 @@ Deno.test("resolveOrderingEdges merges extraEdges with an async orderWith", asyn
   assertEquals(order.indexOf("b") < order.indexOf("c"), true);
 });
 
-Deno.test("planGraph rejects a forward-referenced (undefined) dependency", () => {
+test("planGraph rejects a forward-referenced (undefined) dependency", () => {
   class B extends Build {
     // @ts-expect-error -- deliberately forward-references a later field
     early = target().dependsOn(this.later).executes(() => {});

@@ -1,10 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { missingTool } from "../../packages/core/src/tooling_conformance.ts";
 import { NodeTasks } from "../../packages/node/mod.ts";
@@ -40,7 +38,7 @@ class ExitAfterResultBuild extends Build {
     });
 }
 
-Deno.test("a target evaluating a Node module fails with the tool-not-found error", async () => {
+test("a target evaluating a Node module fails with the tool-not-found error", async () => {
   const { code, out, err } = await runCli(SpecBuild, ["spec"]);
   assertEquals(code, 1);
   assertStringIncludes(err, "zuke-no-such-tool-xyz");
@@ -48,7 +46,7 @@ Deno.test("a target evaluating a Node module fails with the tool-not-found error
   assertEquals(out.includes("document="), false);
 });
 
-Deno.test("exitAfterResult leaves the tool-not-found failure unchanged", async () => {
+test("exitAfterResult leaves the tool-not-found failure unchanged", async () => {
   const { code, out, err } = await runCli(ExitAfterResultBuild, ["spec"]);
   assertEquals(code, 1);
   assertStringIncludes(err, "zuke-no-such-tool-xyz");

@@ -11,7 +11,8 @@
  * code coming back.
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import { CONFIG_FILE } from "../../packages/core/src/config.ts";
 import {
   type BuildProbe,
@@ -32,10 +33,10 @@ import {
   defaultProjectHost,
   type ProjectHost,
 } from "../../packages/cli/src/project.ts";
-import { withTemp } from "../../packages/core/tests/_temp.ts";
-import { withEnv } from "../../packages/core/tests/_env.ts";
-import { capture } from "../../packages/core/tests/_console.ts";
-import { ENC } from "../../packages/core/tests/_escaping.ts";
+import { withTemp } from "../_temp.ts";
+import { withEnv } from "../_env.ts";
+import { capture } from "../_console.ts";
+import { ENC } from "../_escaping.ts";
 import { stripAnsi } from "../../packages/core/src/render.ts";
 import { ZUKE_LOGO } from "../../packages/core/src/logo.ts";
 
@@ -95,7 +96,7 @@ async function inDir(dir: string, fn: () => Promise<void>): Promise<void> {
   }
 }
 
-Deno.test("zuke <target> from a subdirectory runs the build at the project root", async () => {
+test("zuke <target> from a subdirectory runs the build at the project root", async () => {
   await withTemp(async (dir) => {
     await Deno.writeTextFile(
       `${dir}/${CONFIG_FILE}`,
@@ -118,7 +119,7 @@ Deno.test("zuke <target> from a subdirectory runs the build at the project root"
   }, { prefix: "zuke-global-cli-" });
 });
 
-Deno.test({
+test({
   name: "zuke <target> runs the project's own ./zuke launcher when it has one",
   // POSIX launchers only: Windows reports no file mode, so it keeps `deno run`.
   ignore: Deno.build.os === "windows",
@@ -150,7 +151,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name:
     "zuke <target> builds this repo when ./zuke is a symlink to a shared launcher",
   // POSIX launchers only: Windows reports no file mode, so it keeps `deno run`.
@@ -186,7 +187,7 @@ Deno.test({
   },
 });
 
-Deno.test("zuke <target> propagates a failing target's exit code", async () => {
+test("zuke <target> propagates a failing target's exit code", async () => {
   await withTemp(async (dir) => {
     await Deno.writeTextFile(
       `${dir}/${CONFIG_FILE}`,
@@ -224,7 +225,7 @@ function confinedTo(dir: string): BuildProbe {
   };
 }
 
-Deno.test("zuke <target> outside any project is an unknown command, not a spawn", async () => {
+test("zuke <target> outside any project is an unknown command, not a spawn", async () => {
   await withTemp(async (dir) => {
     // No zuke.json in the temp dir, and none reachable above it.
     await inDir(dir, async () => {
@@ -244,7 +245,7 @@ Deno.test("zuke <target> outside any project is an unknown command, not a spawn"
   }, { prefix: "zuke-global-cli-" });
 });
 
-Deno.test("zuke <argv> cannot forge a workflow command on an Actions runner", async () => {
+test("zuke <argv> cannot forge a workflow command on an Actions runner", async () => {
   // The whole path, as the binary runs it: the real host writing through the
   // package's sink, the real probe (confined to the temp dir, so there is no
   // build to forward to), and the runner's environment. The unknown-command
@@ -279,7 +280,7 @@ Deno.test("zuke <argv> cannot forge a workflow command on an Actions runner", as
   }, { prefix: "zuke-global-cli-" });
 });
 
-Deno.test("a forwarded build resolves a real Deno when the CLI is a compiled binary", async () => {
+test("a forwarded build resolves a real Deno when the CLI is a compiled binary", async () => {
   // The compiled case, which nothing in-process can otherwise reach: under
   // `deno test` the running executable *is* Deno, so `Deno.execPath()` happens
   // to be the right answer and the bug is invisible. A host that says it is
@@ -334,7 +335,7 @@ Deno.test("a forwarded build resolves a real Deno when the CLI is a compiled bin
   }, { prefix: "zuke-global-cli-" });
 });
 
-Deno.test("zuke upgrade is the CLI's own; a build target named upgrade stays reachable past --", async () => {
+test("zuke upgrade is the CLI's own; a build target named upgrade stays reachable past --", async () => {
   await withTemp(async (dir) => {
     await Deno.writeTextFile(
       `${dir}/${CONFIG_FILE}`,
@@ -415,7 +416,7 @@ await run(Shadowed);
   }, { prefix: "zuke-global-cli-" });
 });
 
-Deno.test({
+test({
   name: "a Homebrew zuke names itself in --version and sends upgrade to brew",
   // Homebrew's link on PATH is a symbolic link, which Windows only lets an
   // elevated or developer-mode process create; Homebrew does not run there.
@@ -522,7 +523,7 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
-Deno.test("zuke --version in a real project reads its core from deno.lock and runs nothing", async () => {
+test("zuke --version in a real project reads its core from deno.lock and runs nothing", async () => {
   await withTemp(async (dir) => {
     await Deno.writeTextFile(`${dir}/${CONFIG_FILE}`, '{ "name": "Old" }\n');
     // A build that marks any run of it: --version must not reach it.
@@ -546,7 +547,7 @@ Deno.test("zuke --version in a real project reads its core from deno.lock and ru
   }, { prefix: "zuke-global-cli-" });
 });
 
-Deno.test({
+test({
   name: "a forwarded launcher runs with Deno's update check off",
   // POSIX launchers only: Windows reports no file mode, so it keeps `deno run`.
   ignore: Deno.build.os === "windows",
@@ -567,7 +568,7 @@ Deno.test({
   },
 });
 
-Deno.test("zuke --version reads the lockfile a real project's deno.json names", async () => {
+test("zuke --version reads the lockfile a real project's deno.json names", async () => {
   await withTemp(async (dir) => {
     await Deno.writeTextFile(`${dir}/${CONFIG_FILE}`, '{ "name": "Moved" }\n');
     await Deno.writeTextFile(
@@ -597,7 +598,7 @@ Deno.test("zuke --version reads the lockfile a real project's deno.json names", 
   }, { prefix: "zuke-global-cli-" });
 });
 
-Deno.test("zuke --help on a terminal opens with the logo and paints the build's heading", async () => {
+test("zuke --help on a terminal opens with the logo and paints the build's heading", async () => {
   await withTemp(async (dir) => {
     await Deno.writeTextFile(
       `${dir}/${CONFIG_FILE}`,
@@ -628,7 +629,7 @@ Deno.test("zuke --help on a terminal opens with the logo and paints the build's 
   }, { prefix: "zuke-global-cli-" });
 });
 
-Deno.test("zuke upgrade reports an install that resolved another release as a failure", async () => {
+test("zuke upgrade reports an install that resolved another release as a failure", async () => {
   // Deno 2.9's dependency-age window resolved an unversioned install of the
   // latest release to an older one; the lock the install wrote says so.
   await withTemp(async (dir) => {
@@ -700,7 +701,7 @@ async function withModuleServer(
   }
 }
 
-Deno.test("zuke <target> runs the build file zuke.json names", async () => {
+test("zuke <target> runs the build file zuke.json names", async () => {
   await withTemp(async (dir) => {
     await Deno.writeTextFile(
       `${dir}/${CONFIG_FILE}`,
@@ -724,7 +725,7 @@ Deno.test("zuke <target> runs the build file zuke.json names", async () => {
   }, { prefix: "zuke-global-cli-" });
 });
 
-Deno.test("zuke relock and cache drive a real deno install in the project root", async () => {
+test("zuke relock and cache drive a real deno install in the project root", async () => {
   await withModuleServer(async (url) => {
     await withTemp(async (dir) => {
       await Deno.writeTextFile(`${dir}/${CONFIG_FILE}`, '{ "name": "Lock" }\n');
@@ -803,7 +804,7 @@ Deno.test("zuke relock and cache drive a real deno install in the project root",
   });
 });
 
-Deno.test("zuke add maps short names and runs deno add in the project root", async () => {
+test("zuke add maps short names and runs deno add in the project root", async () => {
   await withTemp(async (dir) => {
     await Deno.writeTextFile(`${dir}/${CONFIG_FILE}`, '{ "name": "Deps" }\n');
     await Deno.writeTextFile(`${dir}/zuke.ts`, "\n");
@@ -844,7 +845,7 @@ Deno.test("zuke add maps short names and runs deno add in the project root", asy
   }, { prefix: "zuke-global-cli-" });
 });
 
-Deno.test("zuke add in a Node project runs npm install in its root, never deno", async () => {
+test("zuke add in a Node project runs npm install in its root, never deno", async () => {
   await withTemp(async (dir) => {
     await Deno.writeTextFile(
       `${dir}/${CONFIG_FILE}`,
@@ -896,7 +897,7 @@ Deno.test("zuke add in a Node project runs npm install in its root, never deno",
   }, { prefix: "zuke-global-cli-" });
 });
 
-Deno.test({
+test({
   name: "zuke relock keeps a Node project's symlinked package-lock.json a link",
   // Creating a symlink needs privileges Windows runners do not grant.
   ignore: Deno.build.os === "windows",
@@ -957,7 +958,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "zuke relock writes through a symlinked lock, keeping the link",
   // Creating a symlink needs privileges Windows runners do not grant.
   ignore: Deno.build.os === "windows",

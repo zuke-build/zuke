@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import {
   TargetSummary,
   withAmbientSummary,
@@ -13,10 +14,16 @@ import { DenoTasks } from "../src/deno.ts";
 // The fixtures are addressed by `file://` URL, which is byte-identical on
 // every OS — a URL's `pathname` is not: on Windows it reads `/D:/…`, which
 // deno cannot open.
-const PASSING = new URL("./fixtures/passing_suite.ts", import.meta.url).href;
-const FAILING = new URL("./fixtures/failing_suite.ts", import.meta.url).href;
+const PASSING = new URL(
+  "../../../tests/support/deno/fixtures/passing_suite.ts",
+  import.meta.url,
+).href;
+const FAILING = new URL(
+  "../../../tests/support/deno/fixtures/failing_suite.ts",
+  import.meta.url,
+).href;
 
-Deno.test("parseTestSummary reads the pretty/dot result line in each of its shapes", () => {
+test("parseTestSummary reads the pretty/dot result line in each of its shapes", () => {
   assertEquals(parseTestSummary("ok | 5 passed | 0 failed (12ms)\n"), {
     passed: 5,
     failed: 0,
@@ -42,7 +49,7 @@ Deno.test("parseTestSummary reads the pretty/dot result line in each of its shap
   );
 });
 
-Deno.test("parseTestSummary ignores deno's colour codes and takes the last result line", () => {
+test("parseTestSummary ignores deno's colour codes and takes the last result line", () => {
   const styled =
     "\x1b[0m\x1b[32mok\x1b[0m | 3 passed | 0 failed \x1b[38;5;245m(9ms)\x1b[0m\n";
   assertEquals(parseTestSummary(styled), { passed: 3, failed: 0, skipped: 0 });
@@ -53,7 +60,7 @@ Deno.test("parseTestSummary ignores deno's colour codes and takes the last resul
   assertEquals(parseTestSummary(echoed), { passed: 1, failed: 2, skipped: 0 });
 });
 
-Deno.test("parseTestSummary reads the segments by name, whatever order they come in", () => {
+test("parseTestSummary reads the segments by name, whatever order they come in", () => {
   // Deno prints ignored, then measured, then filtered out; a future release
   // that reorders or renames nothing but shuffles them must still parse.
   assertEquals(
@@ -72,7 +79,7 @@ Deno.test("parseTestSummary reads the segments by name, whatever order they come
   assertEquals(parseTestSummary("ok | 3 passed (1ms)"), undefined);
 });
 
-Deno.test("parseTestSummary reports nothing for output without a result line", () => {
+test("parseTestSummary reports nothing for output without a result line", () => {
   assertEquals(parseTestSummary(""), undefined);
   assertEquals(
     parseTestSummary('<testsuites tests="3"></testsuites>'),
@@ -81,7 +88,7 @@ Deno.test("parseTestSummary reports nothing for output without a result line", (
   assertEquals(parseTestSummary("  ok | 1 passed | 0 failed (1ms)"), undefined);
 });
 
-Deno.test("DenoTasks.test reports a real run's counts into the ambient summary", async () => {
+test("DenoTasks.test reports a real run's counts into the ambient summary", async () => {
   const summary = new TargetSummary();
   const out = await withAmbientSummary(
     summary,
@@ -96,7 +103,7 @@ Deno.test("DenoTasks.test reports a real run's counts into the ambient summary",
   ]);
 });
 
-Deno.test("DenoTasks.test reports the counts of a failed run before it throws", async () => {
+test("DenoTasks.test reports the counts of a failed run before it throws", async () => {
   const summary = new TargetSummary();
   await assertRejects(
     () =>
@@ -113,7 +120,7 @@ Deno.test("DenoTasks.test reports the counts of a failed run before it throws", 
   ]);
 });
 
-Deno.test("DenoTasks.test reports nothing under a reporter that prints no result line", async () => {
+test("DenoTasks.test reports nothing under a reporter that prints no result line", async () => {
   const summary = new TargetSummary();
   await withAmbientSummary(
     summary,

@@ -1,8 +1,9 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
-import { withTemp } from "../../packages/core/tests/_temp.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
+import { withTemp } from "../_temp.ts";
 import { Build, glob, target } from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
 
@@ -22,7 +23,7 @@ class ManifestBuild extends Build {
     });
 }
 
-Deno.test("a target globbing an absolute path finds its files", async () => {
+test("a target globbing an absolute path finds its files", async () => {
   await withTemp(async (dir) => {
     root = dir;
     await Deno.mkdir(`${dir}/one`);

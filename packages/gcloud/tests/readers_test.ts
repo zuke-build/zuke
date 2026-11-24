@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import { missingTool } from "@zuke/core/tooling/conformance";
 import { GcloudTasks, RUN_SERVICE_URL_FORMAT } from "../mod.ts";
@@ -14,13 +15,13 @@ import { GcloudTasks, RUN_SERVICE_URL_FORMAT } from "../mod.ts";
 // its module rather than re-exported by mod.ts.
 import { readScalar } from "../src/scalar_output.ts";
 
-Deno.test("the URL reader pins gcloud's own value projection", () => {
+test("the URL reader pins gcloud's own value projection", () => {
   // The reader promises a URL, so gcloud does the extraction and this package
   // never parses a JSON document it has no project to produce a sample of.
   assertEquals(RUN_SERVICE_URL_FORMAT, "value(status.url)");
 });
 
-Deno.test("readScalar returns the single line gcloud printed", () => {
+test("readScalar returns the single line gcloud printed", () => {
   const ok = {
     stdout: "https://api-abc.a.run.app\n",
     truncated: false,
@@ -41,7 +42,7 @@ Deno.test("readScalar returns the single line gcloud printed", () => {
   );
 });
 
-Deno.test("readScalar refuses an empty answer rather than returning one", () => {
+test("readScalar refuses an empty answer rather than returning one", () => {
   // An unset property and a field the resource does not carry both look like
   // this. Returning "" would let a build interpolate emptiness into a URL or an
   // Authorization header and only fail much later.
@@ -58,7 +59,7 @@ Deno.test("readScalar refuses an empty answer rather than returning one", () => 
   assertEquals(error.message.includes("configured value"), true);
 });
 
-Deno.test("readScalar refuses a truncated capture", () => {
+test("readScalar refuses a truncated capture", () => {
   // Capture keeps the newest bytes, so a truncated capture begins mid-value —
   // a token or URL cut at the front is worse than no answer.
   const error = assertThrows(
@@ -246,12 +247,12 @@ const REACH: Array<[string, () => Promise<unknown>]> = [
 ];
 
 for (const [name, invoke] of REACH) {
-  Deno.test(`GcloudTasks.${name} reaches execution`, async () => {
+  test(`GcloudTasks.${name} reaches execution`, async () => {
     await assertRejects(invoke, ToolNotFoundError);
   });
 }
 
-Deno.test("the value readers fail when gcloud is absent", async () => {
+test("the value readers fail when gcloud is absent", async () => {
   // A reader that swallowed the resolution failure would hand back a confident
   // empty string, which a build would then use as a URL, a token, or a secret.
   await assertRejects(
@@ -268,7 +269,7 @@ Deno.test("the value readers fail when gcloud is absent", async () => {
   );
 });
 
-Deno.test("readScalar refuses output that is not one value", () => {
+test("readScalar refuses output that is not one value", () => {
   // A value(...) projection emits one line per resource. Joining them would
   // return a string that looks like a single URL and is not — found by
   // attacking the reader rather than by a failing command.

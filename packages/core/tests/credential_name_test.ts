@@ -12,14 +12,15 @@
  * @module
  */
 
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   isCredentialName,
   isErrorName,
   isNonSecretName,
 } from "../src/credential_name.ts";
 
-Deno.test("credential names match on their last segment, in every case style", () => {
+test("credential names match on their last segment, in every case style", () => {
   for (
     const name of [
       "pass",
@@ -80,7 +81,7 @@ Deno.test("credential names match on their last segment, in every case style", (
   }
 });
 
-Deno.test("names that only look like credentials do not match", () => {
+test("names that only look like credentials do not match", () => {
   for (
     const name of [
       "keyId",
@@ -110,7 +111,7 @@ Deno.test("names that only look like credentials do not match", () => {
   }
 });
 
-Deno.test("non-secret vocabulary is recognised, unless it is a credential", () => {
+test("non-secret vocabulary is recognised, unless it is a credential", () => {
   for (
     const name of [
       "region",
@@ -146,7 +147,7 @@ Deno.test("non-secret vocabulary is recognised, unless it is a credential", () =
   }
 });
 
-Deno.test("error fields are recognised by their last segment", () => {
+test("error fields are recognised by their last segment", () => {
   for (const name of ["error", "errors", "lastError", "validation_errors"]) {
     assertEquals(isErrorName(name), true, name);
   }

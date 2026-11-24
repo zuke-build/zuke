@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import {
   GitApplySettings,
   GitArchiveSettings,
@@ -17,7 +18,7 @@ import {
 } from "../mod.ts";
 import { parseRemoteList } from "../src/remote.ts";
 
-Deno.test("remote renders each subcommand after the -v it takes first", () => {
+test("remote renders each subcommand after the -v it takes first", () => {
   assertEquals(new GitRemoteSettings().argv(), ["git", "remote"]);
   assertEquals(new GitRemoteSettings().list().verbose().argv(), [
     "git",
@@ -79,7 +80,7 @@ Deno.test("remote renders each subcommand after the -v it takes first", () => {
   ]);
 });
 
-Deno.test("remote refuses an option its subcommand does not take", () => {
+test("remote refuses an option its subcommand does not take", () => {
   // git would reject the flag; saying so here beats dropping it and running a
   // subtly different command.
   assertThrows(
@@ -94,7 +95,7 @@ Deno.test("remote refuses an option its subcommand does not take", () => {
   );
 });
 
-Deno.test("parseRemoteList folds a remote's two lines into one entry", () => {
+test("parseRemoteList folds a remote's two lines into one entry", () => {
   const stdout = "origin\tgit@host:r.git (fetch)\n" +
     "origin\tgit@host:r.git (push)\n" +
     "upstream\thttps://host/up.git (fetch)\n" +
@@ -118,7 +119,7 @@ Deno.test("parseRemoteList folds a remote's two lines into one entry", () => {
   ]);
 });
 
-Deno.test("ls-remote renders its filters and keeps patterns after the remote", () => {
+test("ls-remote renders its filters and keeps patterns after the remote", () => {
   assertEquals(
     new GitLsRemoteSettings().heads().tags().refs().symref().exitCode()
       .remote("origin").patterns("main", "v1.*").argv(),
@@ -143,7 +144,7 @@ Deno.test("ls-remote renders its filters and keeps patterns after the remote", (
   );
 });
 
-Deno.test("config renders each operation and scope", () => {
+test("config renders each operation and scope", () => {
   assertEquals(new GitConfigSettings().get("remote.origin.url").argv(), [
     "git",
     "config",
@@ -182,7 +183,7 @@ Deno.test("config renders each operation and scope", () => {
   );
 });
 
-Deno.test("config refuses no operation, and a scope that fights .file()", () => {
+test("config refuses no operation, and a scope that fights .file()", () => {
   assertThrows(() => new GitConfigSettings().argv(), Error, "no operation");
   assertThrows(
     () => new GitConfigSettings().get("a.b").global().file("x").argv(),
@@ -191,7 +192,7 @@ Deno.test("config refuses no operation, and a scope that fights .file()", () => 
   );
 });
 
-Deno.test("configGet insists on an operation that produces a value", async () => {
+test("configGet insists on an operation that produces a value", async () => {
   await assertRejects(
     () => GitTasks.configGet((s) => s.set("user.name", "ci-bot")),
     Error,
@@ -199,7 +200,7 @@ Deno.test("configGet insists on an operation that produces a value", async () =>
   );
 });
 
-Deno.test("configGet reports an unset key as undefined, not a failure", async () => {
+test("configGet reports an unset key as undefined, not a failure", async () => {
   // Hermetic: the running `deno` stands in for git — it exits non-zero on a
   // subcommand it does not have, which is exactly how `git config --get`
   // reports a key that is not set.
@@ -209,7 +210,7 @@ Deno.test("configGet reports an unset key as undefined, not a failure", async ()
   assertEquals(value, undefined);
 });
 
-Deno.test("submodule renders each subcommand and its flags", () => {
+test("submodule renders each subcommand and its flags", () => {
   assertEquals(
     new GitSubmoduleSettings().update().withInit().recursive().depth(1).jobs(4)
       .argv(),
@@ -274,7 +275,7 @@ Deno.test("submodule renders each subcommand and its flags", () => {
   );
 });
 
-Deno.test("submodule refuses a missing subcommand and a misplaced --init", () => {
+test("submodule refuses a missing subcommand and a misplaced --init", () => {
   assertThrows(
     () => new GitSubmoduleSettings().argv(),
     Error,
@@ -299,7 +300,7 @@ Deno.test("submodule refuses a missing subcommand and a misplaced --init", () =>
   );
 });
 
-Deno.test("archive needs a tree-ish and renders its packaging options", () => {
+test("archive needs a tree-ish and renders its packaging options", () => {
   assertEquals(
     new GitArchiveSettings()
       .format("tar.gz")
@@ -324,7 +325,7 @@ Deno.test("archive needs a tree-ish and renders its packaging options", () => {
   assertThrows(() => new GitArchiveSettings().argv(), Error, ".treeish(...)");
 });
 
-Deno.test("apply renders its options and refuses index+cached", () => {
+test("apply renders its options and refuses index+cached", () => {
   assertEquals(
     new GitApplySettings().check().reverse().threeWay().index().strip(0)
       .whitespace("fix").exclude("vendor/*").patches("fix.patch").argv(),

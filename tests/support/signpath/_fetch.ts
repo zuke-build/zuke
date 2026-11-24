@@ -3,7 +3,7 @@
 
 /** A recording fake `fetch`, fixed ids, and settings helpers for the SignPath tests. */
 
-import type { SignPathConnectionSettings } from "../src/connection.ts";
+import type { SignPathConnectionSettings } from "../../../packages/signpath/src/connection.ts";
 
 /** The organization every test talks to. */
 export const ORG = "0b5d3f2c-8c7e-4a1b-9d2e-3f4a5b6c7d8e";

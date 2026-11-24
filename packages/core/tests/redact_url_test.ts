@@ -8,7 +8,8 @@
  * @module
  */
 
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { HttpError, redactUrl, redactUrls } from "../mod.ts";
 import { urlPasswords } from "../src/redact_url.ts";
 
@@ -19,7 +20,7 @@ function assertClean(text: string, ...secrets: string[]): void {
   }
 }
 
-Deno.test("userinfo is stripped and only credential parameters are masked", () => {
+test("userinfo is stripped and only credential parameters are masked", () => {
   assertEquals(
     redactUrl("https://ci:hunter2@host.example/x?token=abc&page=2"),
     "https://host.example/x?token=REDACTED&page=2",
@@ -31,7 +32,7 @@ Deno.test("userinfo is stripped and only credential parameters are masked", () =
   );
 });
 
-Deno.test("common credential names are recognised, and short ones only whole", () => {
+test("common credential names are recognised, and short ones only whole", () => {
   for (
     const name of [
       "pass",
@@ -59,7 +60,7 @@ Deno.test("common credential names are recognised, and short ones only whole", (
   );
 });
 
-Deno.test("a fragment's parameters are masked like the query's", () => {
+test("a fragment's parameters are masked like the query's", () => {
   assertEquals(
     redactUrl("https://h.example/cb#access_token=SECRET&state=xyz"),
     "https://h.example/cb#access_token=REDACTED&state=xyz",
@@ -67,12 +68,12 @@ Deno.test("a fragment's parameters are masked like the query's", () => {
   assertEquals(redactUrl("https://h.example/#top"), "https://h.example/#top");
 });
 
-Deno.test("an empty name and a semicolon-separated credential are masked", () => {
+test("an empty name and a semicolon-separated credential are masked", () => {
   assertClean(redactUrl("https://h.example/?=SECRET"), "SECRET");
   assertClean(redactUrl("https://h.example/?a=1;token=SECRET"), "SECRET");
 });
 
-Deno.test("a URL nested in a parameter value is redacted in turn", () => {
+test("a URL nested in a parameter value is redacted in turn", () => {
   const plain = redactUrl(
     "https://h.example/?next=https://u:S1@inner/?token=T1",
   );
@@ -83,7 +84,7 @@ Deno.test("a URL nested in a parameter value is redacted in turn", () => {
   assertClean(decodeURIComponent(encoded), "S2", "T2");
 });
 
-Deno.test("input the URL parser rejects is still scrubbed — the redactor fails closed", () => {
+test("input the URL parser rejects is still scrubbed — the redactor fails closed", () => {
   for (
     const raw of [
       "https://u:SECRET@h.example:99999/x?token=TOK",
@@ -96,7 +97,7 @@ Deno.test("input the URL parser rejects is still scrubbed — the redactor fails
   assertEquals(redactUrl("not a url"), "not a url");
 });
 
-Deno.test("redactUrls redacts every URL in a message and leaves the rest", () => {
+test("redactUrls redacts every URL in a message and leaves the rest", () => {
   const message = redactUrls(
     "fetch failed for https://u:SECRET@h.example/x?token=TOK (retry " +
       "redis://:PW@cache.internal/0 later)",
@@ -109,7 +110,7 @@ Deno.test("redactUrls redacts every URL in a message and leaves the rest", () =>
   assertEquals(redactUrls("no URL here"), "no URL here");
 });
 
-Deno.test("flags, malformed encoding and harmless parameters pass through", () => {
+test("flags, malformed encoding and harmless parameters pass through", () => {
   assertEquals(
     redactUrl("https://h.example/?verbose&page=2"),
     "https://h.example/?verbose&page=2",
@@ -126,7 +127,7 @@ Deno.test("flags, malformed encoding and harmless parameters pass through", () =
   );
 });
 
-Deno.test("deeply nested URLs never throw, and the credential after them is masked", () => {
+test("deeply nested URLs never throw, and the credential after them is masked", () => {
   const deep = "https://h.example/?n=".repeat(2000) + "x&token=SECRET";
   const redacted = redactUrl(deep);
   assertClean(redacted, "SECRET");
@@ -135,7 +136,7 @@ Deno.test("deeply nested URLs never throw, and the credential after them is mask
   assertClean(error.message, "SECRET");
 });
 
-Deno.test("long hostile input costs linear time, not quadratic", () => {
+test("long hostile input costs linear time, not quadratic", () => {
   for (
     const hostile of [
       "a".repeat(100_000),
@@ -152,7 +153,7 @@ Deno.test("long hostile input costs linear time, not quadratic", () => {
   }
 });
 
-Deno.test("redactUrls keeps the punctuation a sentence put after a URL", () => {
+test("redactUrls keeps the punctuation a sentence put after a URL", () => {
   assertEquals(
     redactUrls("see (https://h.example/x?token=a). ok"),
     "see (https://h.example/x?token=REDACTED). ok",
@@ -163,7 +164,7 @@ Deno.test("redactUrls keeps the punctuation a sentence put after a URL", () => {
   );
 });
 
-Deno.test("nested URLs are found through bad, double and missing encoding", () => {
+test("nested URLs are found through bad, double and missing encoding", () => {
   for (
     const raw of [
       "https://h.example/?next=https%3A%2F%2Fe%2F%3Ftoken%3DSECRET%FF",
@@ -179,7 +180,7 @@ Deno.test("nested URLs are found through bad, double and missing encoding", () =
   }
 });
 
-Deno.test("a password holding a delimiter is stripped on the fallback path", () => {
+test("a password holding a delimiter is stripped on the fallback path", () => {
   for (
     const raw of [
       "https://u:pa?ssSECRET@h.example/",
@@ -191,7 +192,7 @@ Deno.test("a password holding a delimiter is stripped on the fallback path", () 
   }
 });
 
-Deno.test("more credential names are recognised", () => {
+test("more credential names are recognised", () => {
   for (
     const name of [
       "access_code",
@@ -206,14 +207,14 @@ Deno.test("more credential names are recognised", () => {
   }
 });
 
-Deno.test("a nested URL with nothing to redact keeps its spelling", () => {
+test("a nested URL with nothing to redact keeps its spelling", () => {
   assertEquals(
     redactUrl("https://h.example/?next=https://e/?a=b+c"),
     "https://h.example/?next=https://e/?a=b+c",
   );
 });
 
-Deno.test("the textual scrub has no length past which it gives up", () => {
+test("the textual scrub has no length past which it gives up", () => {
   assertClean(
     redactUrl("https://u:" + "a".repeat(600) + "SECRET@h.example:99999/"),
     "SECRET",
@@ -224,7 +225,7 @@ Deno.test("the textual scrub has no length past which it gives up", () => {
   );
 });
 
-Deno.test("a nested credential is masked whatever form its URL takes", () => {
+test("a nested credential is masked whatever form its URL takes", () => {
   for (
     const raw of [
       "https://h.example/?next=https%3A%2F%2Fu%3Apa%2520ssSECRET%40evil%2F",
@@ -239,7 +240,7 @@ Deno.test("a nested credential is masked whatever form its URL takes", () => {
   assertClean(redactUrl("https:\\\\u:pSECRET@h.example:99999/"), "SECRET");
 });
 
-Deno.test("redactUrls finds a URL whatever comes before it", () => {
+test("redactUrls finds a URL whatever comes before it", () => {
   for (
     const message of [
       "log --https://u:pSECRET@h.example/x",
@@ -253,7 +254,7 @@ Deno.test("redactUrls finds a URL whatever comes before it", () => {
   }
 });
 
-Deno.test("trailing punctuation and slash runs cost linear time", () => {
+test("trailing punctuation and slash runs cost linear time", () => {
   for (
     const hostile of [
       "https://h.example/" + ")".repeat(100_000) + "x",
@@ -270,7 +271,7 @@ Deno.test("trailing punctuation and slash runs cost linear time", () => {
   }
 });
 
-Deno.test("edge tokens: no scheme letter, both separators, encoding past the limit", () => {
+test("edge tokens: no scheme letter, both separators, encoding past the limit", () => {
   // `://` with no scheme in front is not a URL: left as written.
   assertEquals(redactUrls("ratio 3://4 and ://x"), "ratio 3://4 and ://x");
   // The first separator wins when a token holds both kinds.
@@ -285,7 +286,7 @@ Deno.test("edge tokens: no scheme letter, both separators, encoding past the lim
   );
 });
 
-Deno.test("input the parser rejects gets the same value checks as parsed input", () => {
+test("input the parser rejects gets the same value checks as parsed input", () => {
   for (
     const raw of [
       "https://h.example:99999/?next=https%3A%2F%2Fu%3ApSECRET%40h",
@@ -306,7 +307,7 @@ Deno.test("input the parser rejects gets the same value checks as parsed input",
   );
 });
 
-Deno.test("redactUrls redacts every URL in a token, wherever it starts", () => {
+test("redactUrls redacts every URL in a token, wherever it starts", () => {
   for (
     const message of [
       "mirrors=https://a.example/,https://u:pSECRET@b.example",
@@ -324,7 +325,7 @@ Deno.test("redactUrls redacts every URL in a token, wherever it starts", () => {
   }
 });
 
-Deno.test("urlPasswords finds each URL's password, as parsed and decoded", () => {
+test("urlPasswords finds each URL's password, as parsed and decoded", () => {
   assertEquals(
     urlPasswords(
       "db postgres://app:aaaaaaaa%40b@db/app and redis://:bbbbbbbb@cache",
@@ -340,12 +341,12 @@ Deno.test("urlPasswords finds each URL's password, as parsed and decoded", () =>
   assertEquals(urlPasswords("https://u:eeee%zz@h"), ["eeee%zz"]);
 });
 
-Deno.test("urlPasswords finds nothing without a password", () => {
+test("urlPasswords finds nothing without a password", () => {
   assertEquals(urlPasswords("https://host/x https://user@host/ plain"), []);
   assertEquals(urlPasswords("https://[bad https://user@[bad"), []);
 });
 
-Deno.test("urlPasswords reads a URL the parser rejects textually", () => {
+test("urlPasswords reads a URL the parser rejects textually", () => {
   // A rejected host, a bare `/` in the password (which the parser reads as the
   // end of the authority, then rejects the port), and a malformed port.
   assertEquals(urlPasswords("https://u:ffffffff@[bad"), ["ffffffff"]);

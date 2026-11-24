@@ -7,11 +7,12 @@
  * CLI runner — plus the wire protocol-version handshake on the HTTP client.
  */
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "./_assert.ts";
+} from "../../../tests/_assert.ts";
 import {
   checkBuildRegistry,
   checkStateStore,
@@ -30,7 +31,7 @@ import {
   type BuildQuery,
   toBuildSummary,
 } from "../src/registry/descriptor.ts";
-import { withTemp } from "./_temp.ts";
+import { withTemp } from "../../../tests/_temp.ts";
 
 /** A short TTL keeps the lock-takeover scenarios fast in the test lane. */
 const FAST = { lockTtlMs: 50 };
@@ -40,7 +41,7 @@ function failures(results: ConformanceResult[]): string[] {
   return results.filter((r) => !r.ok).map((r) => r.name);
 }
 
-Deno.test("the kit passes against the filesystem state store", async () => {
+test("the kit passes against the filesystem state store", async () => {
   await withTemp(async (dir) => {
     const results = await checkStateStore(
       () => new FileSystemStateStore(`${dir}/runs`, defaultStateHost),
@@ -51,7 +52,7 @@ Deno.test("the kit passes against the filesystem state store", async () => {
   }, { prefix: "zuke-conf-state-" });
 });
 
-Deno.test("the kit passes against the filesystem build registry", async () => {
+test("the kit passes against the filesystem build registry", async () => {
   await withTemp(async (dir) => {
     const results = await checkBuildRegistry(
       () => new FileSystemBuildRegistry(`${dir}/builds`, defaultStateHost),
@@ -86,7 +87,7 @@ class NoCasStore implements StateStore {
   }
 }
 
-Deno.test("the kit fails loudly against a CAS-violating store", async () => {
+test("the kit fails loudly against a CAS-violating store", async () => {
   const results = await checkStateStore(() => new NoCasStore(), FAST);
   const failed = failures(results);
   // The CAS scenario in particular must be reported as a failure.
@@ -97,7 +98,7 @@ Deno.test("the kit fails loudly against a CAS-violating store", async () => {
   assertEquals(failed.length > 0, true);
 });
 
-Deno.test("runConformanceCli passes over injected FS backends, fails on violations", async () => {
+test("runConformanceCli passes over injected FS backends, fails on violations", async () => {
   const dir = await Deno.makeTempDir({ prefix: "zuke-conf-cli-" });
   const lines: string[] = [];
   try {
@@ -129,7 +130,7 @@ Deno.test("runConformanceCli passes over injected FS backends, fails on violatio
   }
 });
 
-Deno.test("the HTTP client rejects a server that declares a mismatched protocol", async () => {
+test("the HTTP client rejects a server that declares a mismatched protocol", async () => {
   const store = new HttpStateStore({
     url: "https://s.example",
     fetch: () =>
@@ -143,7 +144,7 @@ Deno.test("the HTTP client rejects a server that declares a mismatched protocol"
   await assertRejects(() => store.getRun("run-1"), Error, "protocol mismatch");
 });
 
-Deno.test("the HTTP client tolerates a server that omits the protocol header", async () => {
+test("the HTTP client tolerates a server that omits the protocol header", async () => {
   // A backend predating the header is assumed compatible (no version declared).
   const store = new HttpStateStore({
     url: "https://s.example",
@@ -188,14 +189,14 @@ class BadOrderRegistry implements BuildRegistry {
   }
 }
 
-Deno.test("the kit catches a registry that violates listBuilds ordering", async () => {
+test("the kit catches a registry that violates listBuilds ordering", async () => {
   const results = await checkBuildRegistry(() => new BadOrderRegistry());
   // CAS/round-trip/deregister pass; only the ordering+filter scenario fails.
   assertEquals(results.find((r) => r.name.includes("newest first"))?.ok, false);
   assertEquals(results.find((r) => r.name.includes("CAS"))?.ok, true);
 });
 
-Deno.test("runConformanceCli refuses a token passed as an argument", async () => {
+test("runConformanceCli refuses a token passed as an argument", async () => {
   // Refused rather than ignored: an ignored --token would authenticate as
   // anonymous and fail somewhere less obvious, and the credential would already
   // be in the process table and the transcript by then.
@@ -212,7 +213,7 @@ Deno.test("runConformanceCli refuses a token passed as an argument", async () =>
   assertEquals(message.includes("hunter2"), false);
 });
 
-Deno.test("runConformanceCli reads each token from its own variable", async () => {
+test("runConformanceCli reads each token from its own variable", async () => {
   // The two stores have separate credentials, and every other consumer of them
   // already reads these names. Both factories return a working store so the run
   // completes and *both* are actually reached — an earlier cut of this test

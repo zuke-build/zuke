@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import {
   TargetSummary,
   withAmbientSummary,
@@ -19,7 +20,7 @@ function out(code: number, stdout = "", stderr = ""): CommandOutput {
   return new CommandOutput(code, stdout, stderr);
 }
 
-Deno.test("deno lint: Checked yields Files, Found yields Problems", () => {
+test("deno lint: Checked yields Files, Found yields Problems", () => {
   assertEquals(parseDenoLintSummary(out(0, "", "Checked 312 files\n")), {
     Files: 312,
     Problems: 0,
@@ -36,7 +37,7 @@ Deno.test("deno lint: Checked yields Files, Found yields Problems", () => {
   );
 });
 
-Deno.test("deno fmt: Checked yields Files, and --check's closing line the Unformatted count", () => {
+test("deno fmt: Checked yields Files, and --check's closing line the Unformatted count", () => {
   assertEquals(parseDenoFmtSummary(out(0, "", "Checked 312 files\n")), {
     Files: 312,
     Unformatted: 0,
@@ -53,7 +54,7 @@ Deno.test("deno fmt: Checked yields Files, and --check's closing line the Unform
   );
 });
 
-Deno.test("deno check: the closing line or the diagnostics yield Errors, silence and exit 0 is zero", () => {
+test("deno check: the closing line or the diagnostics yield Errors, silence and exit 0 is zero", () => {
   assertEquals(parseDenoCheckSummary(out(0)), { Errors: 0 });
   assertEquals(
     parseDenoCheckSummary(
@@ -83,7 +84,7 @@ Deno.test("deno check: the closing line or the diagnostics yield Errors, silence
 
 // The real deno drives the wrapper end to end: it is always present under the
 // test runner, so these stay hermetic.
-Deno.test("DenoTasks.lint, fmt and check report onto the ambient summary for real", async () => {
+test("DenoTasks.lint, fmt and check report onto the ambient summary for real", async () => {
   const dir = await Deno.makeTempDir();
   try {
     await Deno.writeTextFile(`${dir}/ok.ts`, "export const n: number = 1;\n");

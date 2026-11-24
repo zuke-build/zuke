@@ -39,9 +39,9 @@
  * @module
  */
 
-import { Peer, RpcFailure } from "../src/peer.ts";
+import { Peer, RpcFailure } from "../../../packages/engine/src/peer.ts";
 import { connect } from "./_conn.ts";
-import { isRecord } from "../src/protocol.ts";
+import { isRecord } from "../../../packages/engine/src/protocol.ts";
 
 interface Script {
   exec: string[][];

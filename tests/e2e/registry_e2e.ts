@@ -10,20 +10,18 @@
  * `integration` OS matrix where Windows filesystem-lock semantics get coverage.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   defaultStateHost,
   FileSystemBuildRegistry,
 } from "../../packages/core/mod.ts";
-import { withTemp } from "../../packages/core/tests/_temp.ts";
+import { withTemp } from "../_temp.ts";
 import { runFixture } from "./_harness.ts";
 
 const FIXTURE = new URL("./fixtures/register_build.ts", import.meta.url);
 
-Deno.test("two real processes register concurrently; no torn write", async () => {
+test("two real processes register concurrently; no torn write", async () => {
   await withTemp(async (dir) => {
     // A secret is present in the environment; the descriptor must not carry it.
     const env = { ZUKE_REGISTRY_DIR: dir, API_TOKEN: "e2e-secret-xyz" };

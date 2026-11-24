@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import {
   CACHE_LIST_FIELDS,
   GhCacheDeleteSettings,
@@ -20,7 +21,7 @@ import { parseSecrets } from "../src/secret.ts";
 import { parseVariables } from "../src/variable.ts";
 import { parseCaches } from "../src/cache.ts";
 
-Deno.test("secret set renders its value and its scope", () => {
+test("secret set renders its value and its scope", () => {
   assertEquals(
     new GhSecretSetSettings().name("NPM_TOKEN").body("token-value").repo(
       "acme/app",
@@ -66,7 +67,7 @@ Deno.test("secret set renders its value and its scope", () => {
   );
 });
 
-Deno.test("secret set refuses the scopes gh would resolve for itself", () => {
+test("secret set refuses the scopes gh would resolve for itself", () => {
   assertThrows(
     () => new GhSecretSetSettings().body("a").envFile(".env").argv(),
     Error,
@@ -108,7 +109,7 @@ Deno.test("secret set refuses the scopes gh would resolve for itself", () => {
   );
 });
 
-Deno.test("secret list and delete render their scope", () => {
+test("secret list and delete render their scope", () => {
   assertEquals(
     new GhSecretListSettings().app("actions").org("acme").json("name").argv()
       .slice(1),
@@ -130,7 +131,7 @@ Deno.test("secret list and delete render their scope", () => {
   );
 });
 
-Deno.test("variable set, get, list and delete render their flags", () => {
+test("variable set, get, list and delete render their flags", () => {
   assertEquals(
     new GhVariableSetSettings().name("REGION").body("eu-central-1").org("acme")
       .visibility("all").argv().slice(1),
@@ -162,7 +163,7 @@ Deno.test("variable set, get, list and delete render their flags", () => {
   );
 });
 
-Deno.test("variable commands insist on the name they act on", () => {
+test("variable commands insist on the name they act on", () => {
   assertThrows(
     () => new GhVariableSetSettings().body("x").argv(),
     Error,
@@ -185,7 +186,7 @@ Deno.test("variable commands insist on the name they act on", () => {
   );
 });
 
-Deno.test("the org and environment scopes render on every variable command", () => {
+test("the org and environment scopes render on every variable command", () => {
   assertEquals(
     new GhVariableGetSettings().name("REGION").org("acme").argv().slice(1),
     ["variable", "get", "REGION", "--org", "acme"],
@@ -201,7 +202,7 @@ Deno.test("the org and environment scopes render on every variable command", () 
   );
 });
 
-Deno.test("a user secret renders --user, and an org one can share with nobody", () => {
+test("a user secret renders --user, and an org one can share with nobody", () => {
   assertEquals(
     new GhSecretSetSettings().name("TOKEN").user().argv().slice(1),
     ["secret", "set", "TOKEN", "--user"],
@@ -213,7 +214,7 @@ Deno.test("a user secret renders --user, and an org one can share with nobody", 
   );
 });
 
-Deno.test("cache list renders its filters", () => {
+test("cache list renders its filters", () => {
   assertEquals(
     new GhCacheListSettings().key("deno-").ref("refs/heads/master").sort(
       "size_in_bytes",
@@ -237,7 +238,7 @@ Deno.test("cache list renders its filters", () => {
   );
 });
 
-Deno.test("cache delete names one cache or asks for all of them", () => {
+test("cache delete names one cache or asks for all of them", () => {
   assertEquals(
     new GhCacheDeleteSettings().selector("deno-lock-abc").argv().slice(1),
     ["cache", "delete", "deno-lock-abc"],
@@ -273,7 +274,7 @@ Deno.test("cache delete names one cache or asks for all of them", () => {
   );
 });
 
-Deno.test("the readers parse gh's JSON arrays", () => {
+test("the readers parse gh's JSON arrays", () => {
   assertEquals(
     parseSecrets(
       '[{"name":"NPM_TOKEN","updatedAt":"2026-08-01T00:00:00Z","visibility":"all"}]',
@@ -310,7 +311,7 @@ Deno.test("the readers parse gh's JSON arrays", () => {
   );
 });
 
-Deno.test("the readers treat anything but an array of objects as empty", () => {
+test("the readers treat anything but an array of objects as empty", () => {
   for (const parse of [parseSecrets, parseVariables, parseCaches]) {
     assertEquals(parse("[]"), []);
     assertEquals(parse(""), []);
@@ -323,7 +324,7 @@ Deno.test("the readers treat anything but an array of objects as empty", () => {
   assertEquals(parseCaches('[{"sizeInBytes":"1024"}]'), [{}]);
 });
 
-Deno.test("the pinned field sets are what the entries document", () => {
+test("the pinned field sets are what the entries document", () => {
   assertEquals(SECRET_LIST_FIELDS.length, 3);
   assertEquals(VARIABLE_LIST_FIELDS.includes("value"), true);
   assertEquals(VARIABLE_LIST_FIELDS.length, 4);

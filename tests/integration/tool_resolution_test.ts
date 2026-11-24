@@ -10,7 +10,8 @@
  * spawnable — the resolution logic itself is unit-covered on every platform.
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { defineTool } from "../../packages/core/src/tooling.ts";
 import { runCli } from "./_harness.ts";
@@ -23,7 +24,7 @@ function plantLocalDeno(dir: string, name: string): void {
   Deno.chmodSync(`${binDir}/${name}`, 0o755);
 }
 
-Deno.test({
+test({
   name: "a build resolves a wrapper's binary from node_modules/.bin",
   ignore: Deno.build.os === "windows",
   fn: async () => {

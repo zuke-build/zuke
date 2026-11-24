@@ -9,14 +9,12 @@
  * the whole parse → graph → execute path is exercised, not a unit seam.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
 
-Deno.test("onlyWhen(() => false) skips the target; onlyWhen(() => true) runs it", async () => {
+test("onlyWhen(() => false) skips the target; onlyWhen(() => true) runs it", async () => {
   const skippedLog: string[] = [];
   class Skipped extends Build {
     gated = target().onlyWhen(() => false).executes(() =>
@@ -38,7 +36,7 @@ Deno.test("onlyWhen(() => false) skips the target; onlyWhen(() => true) runs it"
   assertEquals(ranLog, ["gated"]);
 });
 
-Deno.test("whenSkipped('run-dependencies') (also the default) still runs a skipped target's dependencies", async () => {
+test("whenSkipped('run-dependencies') (also the default) still runs a skipped target's dependencies", async () => {
   // Explicit "run-dependencies": the dependency still runs; the gated target
   // itself is skipped (its condition is false).
   const explicitLog: string[] = [];
@@ -68,7 +66,7 @@ Deno.test("whenSkipped('run-dependencies') (also the default) still runs a skipp
   assertEquals(defaultLog, ["onlyForDocs"]);
 });
 
-Deno.test("whenSkipped('skip-dependencies') skips the target's exclusive dependencies too", async () => {
+test("whenSkipped('skip-dependencies') skips the target's exclusive dependencies too", async () => {
   const log: string[] = [];
   class SkipDeps extends Build {
     onlyForDocs = target().executes(() => void log.push("onlyForDocs"));
@@ -83,7 +81,7 @@ Deno.test("whenSkipped('skip-dependencies') skips the target's exclusive depende
   assertEquals(log, []); // both the target and its exclusive dependency skipped
 });
 
-Deno.test("always() runs a target for cleanup even after a dependency failed", async () => {
+test("always() runs a target for cleanup even after a dependency failed", async () => {
   const log: string[] = [];
   class B extends Build {
     boom = target().executes(() => {
@@ -102,7 +100,7 @@ Deno.test("always() runs a target for cleanup even after a dependency failed", a
   assertEquals(log.includes("all"), false); // blocked by the failed dependency
 });
 
-Deno.test("triggers() and dependentFor() pull extra targets into the run", async () => {
+test("triggers() and dependentFor() pull extra targets into the run", async () => {
   const log: string[] = [];
   class B extends Build {
     notify = target().executes(() => void log.push("notify"));
@@ -123,7 +121,7 @@ Deno.test("triggers() and dependentFor() pull extra targets into the run", async
   assertEquals(log, ["audit", "build", "notify"]);
 });
 
-Deno.test("retry(3, 0) re-runs a flaky body until it succeeds", async () => {
+test("retry(3, 0) re-runs a flaky body until it succeeds", async () => {
   let attempts = 0;
   class B extends Build {
     flaky = target()
@@ -138,7 +136,7 @@ Deno.test("retry(3, 0) re-runs a flaky body until it succeeds", async () => {
   assertEquals(attempts, 3); // 2 failures then a success
 });
 
-Deno.test("timeout(10) fails a body that sleeps longer than the deadline", async () => {
+test("timeout(10) fails a body that sleeps longer than the deadline", async () => {
   // The executor abandons a timed-out body but cannot cancel it (documented in
   // runWithTimeout), so the body's own timer keeps running. Capture it and
   // clear it after asserting, so this test never leaves a live timer behind for
@@ -159,7 +157,7 @@ Deno.test("timeout(10) fails a body that sleeps longer than the deadline", async
   if (bodyTimer !== undefined) clearTimeout(bodyTimer);
 });
 
-Deno.test("validateBefore failing skips the body; a passing validateAfter runs after it", async () => {
+test("validateBefore failing skips the body; a passing validateAfter runs after it", async () => {
   const log: string[] = [];
   class Blocked extends Build {
     work = target()
@@ -185,7 +183,7 @@ Deno.test("validateBefore failing skips the body; a passing validateAfter runs a
   assertEquals(log, ["body", "after"]);
 });
 
-Deno.test("recoverWith runs a remediation on failure and can recover the target", async () => {
+test("recoverWith runs a remediation on failure and can recover the target", async () => {
   const log: string[] = [];
   let healed = false;
   class B extends Build {

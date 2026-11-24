@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   isPublished,
   jsrVersions,
@@ -14,7 +15,7 @@ function sortedMembers(set: Set<string>): string[] {
   return [...set].sort();
 }
 
-Deno.test("publishedVersions extracts version keys", () => {
+test("publishedVersions extracts version keys", () => {
   assertEquals(
     sortedMembers(
       publishedVersions({ versions: { "1.0.0": {}, "1.1.0": {} } }),
@@ -23,7 +24,7 @@ Deno.test("publishedVersions extracts version keys", () => {
   );
 });
 
-Deno.test("publishedVersions tolerates malformed payloads", () => {
+test("publishedVersions tolerates malformed payloads", () => {
   assertEquals(sortedMembers(publishedVersions(null)), []);
   assertEquals(sortedMembers(publishedVersions("nope")), []);
   assertEquals(sortedMembers(publishedVersions({})), []);
@@ -42,21 +43,21 @@ function stubFetch(
     );
 }
 
-Deno.test("jsrVersions returns the published set on a 2xx", async () => {
+test("jsrVersions returns the published set on a 2xx", async () => {
   const versions = await jsrVersions("@zuke/core", {
     fetch: stubFetch({ versions: { "0.13.0": {} } }),
   });
   assertEquals(sortedMembers(versions), ["0.13.0"]);
 });
 
-Deno.test("jsrVersions resolves to an empty set on a non-2xx", async () => {
+test("jsrVersions resolves to an empty set on a non-2xx", async () => {
   const versions = await jsrVersions("@zuke/nope", {
     fetch: stubFetch({}, false),
   });
   assertEquals(sortedMembers(versions), []);
 });
 
-Deno.test("jsrVersions requests the package meta.json", async () => {
+test("jsrVersions requests the package meta.json", async () => {
   let requested = "";
   const versions = await jsrVersions("@zuke/core", {
     fetch: (url) => {
@@ -68,7 +69,7 @@ Deno.test("jsrVersions requests the package meta.json", async () => {
   assertEquals(sortedMembers(versions), []);
 });
 
-Deno.test("isPublished reflects membership in the published set", async () => {
+test("isPublished reflects membership in the published set", async () => {
   const fetch = stubFetch({ versions: { "0.13.0": {} } });
   assertEquals(await isPublished("@zuke/core", "0.13.0", { fetch }), true);
   assertEquals(await isPublished("@zuke/core", "9.9.9", { fetch }), false);

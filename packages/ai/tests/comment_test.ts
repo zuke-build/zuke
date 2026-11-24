@@ -9,10 +9,8 @@
  * @module
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import {
   postComment,
   postGithubSuggestions,
@@ -58,7 +56,7 @@ const PR_ENV: Record<string, string> = {
   GITHUB_REF: "refs/pull/7/merge",
 };
 
-Deno.test("postComment is a no-op off any CI host", async () => {
+test("postComment is a no-op off any CI host", async () => {
   const { fetch, calls } = recordFetch();
   await postComment("sec", "## body", {
     env: () => undefined,
@@ -68,7 +66,7 @@ Deno.test("postComment is a no-op off any CI host", async () => {
   assertEquals(calls.length, 0);
 });
 
-Deno.test("an explicit commentToken wins over the host env token", async () => {
+test("an explicit commentToken wins over the host env token", async () => {
   const { fetch, calls } = recordFetch();
   await postComment("sec", "## body", {
     commentToken: "explicit-token",
@@ -82,7 +80,7 @@ Deno.test("an explicit commentToken wins over the host env token", async () => {
   }
 });
 
-Deno.test("no token at all prepares no upsert — nothing is fetched", async () => {
+test("no token at all prepares no upsert — nothing is fetched", async () => {
   const { fetch, calls } = recordFetch();
   // The host is detected, but GITHUB_TOKEN is unset, so the empty token yields
   // no PR context and the comment is silently skipped.
@@ -94,7 +92,7 @@ Deno.test("no token at all prepares no upsert — nothing is fetched", async () 
   assertEquals(calls.length, 0);
 });
 
-Deno.test("a non-Error throw from the upsert is stringified into the warning", async () => {
+test("a non-Error throw from the upsert is stringified into the warning", async () => {
   // Rejects with a bare string (not an Error), pinning the String(error)
   // fallback in postComment's catch.
   const throwing = (() => Promise.reject("socket torn down")) as typeof fetch;
@@ -151,7 +149,7 @@ function suggestFetch(): { fetch: typeof fetch; calls: Call[] } {
 const CANARY = "canary-value-that-must-not-escape";
 const MASK: Redact = (text) => text.replaceAll(CANARY, "***");
 
-Deno.test("postComment masks a run secret before the comment body is sent", async () => {
+test("postComment masks a run secret before the comment body is sent", async () => {
   const { fetch, calls } = recordFetch();
   await postComment("sec", `## body\n\nfailed with ${CANARY} in the log`, {
     commentToken: "tok",
@@ -168,7 +166,7 @@ Deno.test("postComment masks a run secret before the comment body is sent", asyn
   assertStringIncludes(posted[0].body, "***");
 });
 
-Deno.test("postGithubSuggestions masks a run secret in a suggestion body", async () => {
+test("postGithubSuggestions masks a run secret in a suggestion body", async () => {
   const { fetch, calls } = suggestFetch();
   const posted = await postGithubSuggestions("sec", [{
     path: "src/app.ts",
@@ -191,7 +189,7 @@ Deno.test("postGithubSuggestions masks a run secret in a suggestion body", async
   assertStringIncludes(creates[0].body, "***");
 });
 
-Deno.test("a suggestion's diff coordinates survive redaction", () => {
+test("a suggestion's diff coordinates survive redaction", () => {
   // `path` and the `key` derived from it are not passed through the redactor:
   // GitHub matches them against the diff, so masking them would break posting
   // rather than protect anything. Pinned so a later "redact everything" does
@@ -220,7 +218,7 @@ Deno.test("a suggestion's diff coordinates survive redaction", () => {
   });
 });
 
-Deno.test("a throwing redactor never escapes either publish path", async () => {
+test("a throwing redactor never escapes either publish path", async () => {
   // Both functions promise they cannot fail a build — postComment returns
   // nothing and swallows, postGithubSuggestions is documented "total by
   // construction". The redactor comes from the caller, so it is the one piece

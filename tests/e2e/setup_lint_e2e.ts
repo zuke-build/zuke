@@ -25,7 +25,8 @@
  * @module
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import { main } from "../../packages/cli/mod.ts";
 import { defaultHost, type SetupHost } from "../../packages/cli/src/setup.ts";
 
@@ -85,7 +86,7 @@ async function assertClean(dir: string): Promise<void> {
   );
 }
 
-Deno.test("e2e: a `zuke setup` scaffold passes its own deno lint and fmt", async () => {
+test("e2e: a `zuke setup` scaffold passes its own deno lint and fmt", async () => {
   await withScaffold(
     ["setup", "--yes", "--name", "Demo"],
     {},
@@ -93,7 +94,7 @@ Deno.test("e2e: a `zuke setup` scaffold passes its own deno lint and fmt", async
   );
 });
 
-Deno.test("e2e: a `zuke import` scaffold passes its own deno lint and fmt", async () => {
+test("e2e: a `zuke import` scaffold passes its own deno lint and fmt", async () => {
   // A script that becomes a `CmdTasks.exec` call, so the generated build
   // imports `@zuke/cmd` as well and both bare specifiers must resolve.
   await withScaffold(
@@ -116,7 +117,7 @@ Deno.test("e2e: a `zuke import` scaffold passes its own deno lint and fmt", asyn
   );
 });
 
-Deno.test("e2e: setup completes a deno.json that already declares the zuke task", async () => {
+test("e2e: setup completes a deno.json that already declares the zuke task", async () => {
   // Re-scaffolding a project whose deno.json carries the `zuke` task but no
   // import map used to skip the file outright, leaving the freshly written
   // `zuke.ts` importing "@zuke/core" with nothing to resolve it — and, once
@@ -154,7 +155,7 @@ Deno.test("e2e: setup completes a deno.json that already declares the zuke task"
   );
 });
 
-Deno.test("e2e: setup leaves a delegated import map resolving for real", async () => {
+test("e2e: setup leaves a delegated import map resolving for real", async () => {
   // The regression: writing an `imports` block beside a lone `importMap` makes
   // Deno ignore the delegation, so a project that resolved before setup ran
   // stops resolving after. Only a real `deno run` shows that — the in-process

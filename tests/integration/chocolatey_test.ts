@@ -15,8 +15,9 @@
  * @module
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
-import { withEnv } from "../../packages/core/tests/_env.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
+import { withEnv } from "../_env.ts";
 import { Build, parameter, target } from "../../packages/core/mod.ts";
 import {
   type ChocolateyPackage,
@@ -26,7 +27,7 @@ import {
 import {
   FAKE_CHOCO_UNSUPPORTED,
   fakeChoco,
-} from "../../packages/chocolatey/tests/_fake_choco.ts";
+} from "../support/chocolatey/_fake_choco.ts";
 import { runCli } from "./_harness.ts";
 
 /** A stand-in Chocolatey API key: the test checks it never reaches the output. */
@@ -43,7 +44,7 @@ function render(): ChocolateyPackage {
   );
 }
 
-Deno.test({
+test({
   name:
     "chocolatey: a build renders, verifies and publishes with choco from PATH",
   ignore: FAKE_CHOCO_UNSUPPORTED,
@@ -123,7 +124,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name:
     "chocolatey: a failing verification fails the build and still cleans up",
   ignore: FAKE_CHOCO_UNSUPPORTED,

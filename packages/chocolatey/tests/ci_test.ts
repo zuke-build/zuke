@@ -8,11 +8,12 @@
  * @module
  */
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertStringIncludes,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { Build, cicd, generateCi, target } from "@zuke/core";
 import { ChocolateyTasks } from "../mod.ts";
 
@@ -25,7 +26,7 @@ class Release extends Build {
   });
 }
 
-Deno.test("verify job: a Windows matrix running the target", () => {
+test("verify job: a Windows matrix running the target", () => {
   const build = new Release();
   const job = ChocolateyTasks.verifyJob((s) => s.target(build.verifyPackage));
   assertEquals(job, {
@@ -36,7 +37,7 @@ Deno.test("verify job: a Windows matrix running the target", () => {
   });
 });
 
-Deno.test("verify job: the runners are configurable, and each job owns its matrix", () => {
+test("verify job: the runners are configurable, and each job owns its matrix", () => {
   const build = new Release();
   const job = ChocolateyTasks.verifyJob((s) =>
     s.target(build.verifyPackage).runners("windows-2022", "windows-2025")
@@ -48,7 +49,7 @@ Deno.test("verify job: the runners are configurable, and each job owns its matri
   assertEquals(next.matrix, { os: ["windows-latest"] });
 });
 
-Deno.test("verify job: it renders as a matrix job in a generated workflow", () => {
+test("verify job: it renders as a matrix job in a generated workflow", () => {
   const build = new Release();
   const targets = new Map([["verifyPackage", build.verifyPackage]]);
   const yaml = generateCi(build.releaseWorkflow.pipelineFor(targets), "github");
@@ -59,7 +60,7 @@ Deno.test("verify job: it renders as a matrix job in a generated workflow", () =
   assertStringIncludes(yaml, "verifyPackage");
 });
 
-Deno.test("verify job: a target and at least one runner are required", () => {
+test("verify job: a target and at least one runner are required", () => {
   assertThrows(
     () => ChocolateyTasks.verifyJob((s) => s),
     Error,

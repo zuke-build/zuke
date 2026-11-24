@@ -12,10 +12,8 @@
  * plain string the build's own redactor knows nothing about.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, parameter, target } from "../../packages/core/mod.ts";
 import {
   type SignPathConnectionSettings,
@@ -30,7 +28,7 @@ import {
   STATUS_URL,
   TOKEN,
   WEB_URL,
-} from "../../packages/signpath/tests/_fetch.ts";
+} from "../support/signpath/_fetch.ts";
 import { runCli, withoutMaskDirectives } from "./_harness.ts";
 
 /** SignPath's hosted GitHub connector endpoint for {@link ORG}. */
@@ -98,7 +96,7 @@ class Release extends Build {
   });
 }
 
-Deno.test("a build signs through SignPath with GitHub origin verification", async () => {
+test("a build signs through SignPath with GitHub origin verification", async () => {
   finalStatus = "Completed";
   net = server();
   seen.length = 0;
@@ -127,7 +125,7 @@ Deno.test("a build signs through SignPath with GitHub origin verification", asyn
   assertEquals(withoutMaskDirectives(out + err).includes(TOKEN), false);
 });
 
-Deno.test("a denied signing request fails the build, naming it and its page", async () => {
+test("a denied signing request fails the build, naming it and its page", async () => {
   finalStatus = "Denied";
   net = server();
   const { code, out, err } = await runCli(Release, [
@@ -142,7 +140,7 @@ Deno.test("a denied signing request fails the build, naming it and its page", as
   );
 });
 
-Deno.test("a SignPath answer echoing the token never gets it printed", async () => {
+test("a SignPath answer echoing the token never gets it printed", async () => {
   class Leaky extends Build {
     sign = target().executes(async () => {
       await SignPathTasks.status((s) =>

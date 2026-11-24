@@ -1,10 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import {
   API_END,
   API_START,
@@ -25,7 +23,7 @@ const FOO: DocEntry = {
   doc: "`@acme/foo` — does a thing.\n\nfunction go(): void",
 };
 
-Deno.test("cleanDoc strips machine paths, trailing space, and blank runs", () => {
+test("cleanDoc strips machine paths, trailing space, and blank runs", () => {
   const raw = [
     "`@acme/foo` — does a thing.   ",
     "",
@@ -45,7 +43,7 @@ Deno.test("cleanDoc strips machine paths, trailing space, and blank runs", () =>
   assertStringIncludes(out, "function go(): void");
 });
 
-Deno.test("cleanDoc strips deno doc multi-file file:// headers and reference lines", () => {
+test("cleanDoc strips deno doc multi-file file:// headers and reference lines", () => {
   // `deno doc a.ts b.ts` (a multi-entrypoint package) emits bare `file://`
   // section headers and `reference X: file://` re-export pointers, both with an
   // absolute checkout path. Neither is a `Defined in` line, so both must be
@@ -67,22 +65,22 @@ Deno.test("cleanDoc strips deno doc multi-file file:// headers and reference lin
   assertEquals(summarize(out), "the core");
 });
 
-Deno.test("summarize takes the text after the em dash, without trailing dot", () => {
+test("summarize takes the text after the em dash, without trailing dot", () => {
   assertEquals(summarize("`@acme/foo` — does a thing."), "does a thing");
 });
 
-Deno.test("summarize returns empty string for blank doc text", () => {
+test("summarize returns empty string for blank doc text", () => {
   assertEquals(summarize("\n\n"), "");
 });
 
-Deno.test("summarize falls back to the whole first line without a dash", () => {
+test("summarize falls back to the whole first line without a dash", () => {
   assertEquals(
     summarize("A module with no dash.\nmore"),
     "A module with no dash",
   );
 });
 
-Deno.test("apiBlock wraps the doc in markers and a four-backtick fence", () => {
+test("apiBlock wraps the doc in markers and a four-backtick fence", () => {
   const block = apiBlock(FOO.doc);
   assertStringIncludes(block, API_START);
   assertStringIncludes(block, API_END);
@@ -90,14 +88,14 @@ Deno.test("apiBlock wraps the doc in markers and a four-backtick fence", () => {
   assertStringIncludes(block, FOO.doc);
 });
 
-Deno.test("withApiBlock appends when there are no markers", () => {
+test("withApiBlock appends when there are no markers", () => {
   const out = withApiBlock("# @acme/foo\n\nIntro.\n", FOO.doc);
   assertStringIncludes(out, "Intro.");
   assertStringIncludes(out, API_START);
   assertEquals(out.split(API_START).length - 1, 1); // exactly one block
 });
 
-Deno.test("withApiBlock replaces an existing block in place", () => {
+test("withApiBlock replaces an existing block in place", () => {
   const once = withApiBlock("# @acme/foo\n\nIntro.\n", FOO.doc);
   const twice = withApiBlock(once, "function go2(): void");
   assertEquals(twice.split(API_START).length - 1, 1); // still one block
@@ -106,7 +104,7 @@ Deno.test("withApiBlock replaces an existing block in place", () => {
   assertStringIncludes(twice, "Intro."); // surrounding prose preserved
 });
 
-Deno.test("buildIndex renders title, blockquote, example, install, guidance, links", () => {
+test("buildIndex renders title, blockquote, example, install, guidance, links", () => {
   const opts = resolveOptions({
     full: "out/llms-full.txt",
     project: {
@@ -139,7 +137,7 @@ Deno.test("buildIndex renders title, blockquote, example, install, guidance, lin
   );
 });
 
-Deno.test("buildIndex omits the optional example, install, and guidance", () => {
+test("buildIndex omits the optional example, install, and guidance", () => {
   const opts = resolveOptions({
     project: { title: "Bare", summary: "Just a summary." },
   });
@@ -149,7 +147,7 @@ Deno.test("buildIndex omits the optional example, install, and guidance", () => 
   assertEquals(/## CLI/.test(index), false);
 });
 
-Deno.test("buildReference renders the header and one section per package", () => {
+test("buildReference renders the header and one section per package", () => {
   const opts = resolveOptions({
     project: { title: "Acme", summary: "x" },
     regenerateCommand: "./build docs",

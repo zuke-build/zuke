@@ -8,11 +8,12 @@
  * output, and refusals a runner could bypass.
  */
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { CommandError, CommandOutput } from "@zuke/core/shell";
 import {
   AzAccountGetAccessTokenSettings,
@@ -36,7 +37,7 @@ import {
   AzWebappConfigAppsettingsSetSettings,
   AzWebappDeploySettings,
 } from "../mod.ts";
-import { FakeAz, json } from "./_fake.ts";
+import { FakeAz, json } from "../../../tests/support/az/_fake.ts";
 
 /** Record what a settings instance registers with the run's redactor. */
 function recording<S extends AzSettings>(settings: S): {
@@ -52,7 +53,7 @@ function recording<S extends AzSettings>(settings: S): {
   return { settings, marked };
 }
 
-Deno.test("H1: no list element or operand can be read as an option", async () => {
+test("H1: no list element or operand can be read as an option", async () => {
   const injected = "--subscription=attacker";
   const refusals: Array<() => unknown> = [
     () => new AzAccountGetAccessTokenSettings().scope(injected).argv(),
@@ -95,7 +96,7 @@ Deno.test("H1: no list element or operand can be read as an option", async () =>
   );
 });
 
-Deno.test("H2: no typed value can make the CLI read a file", () => {
+test("H2: no typed value can make the CLI read a file", () => {
   const file = "@~/.azure/msal_token_cache.json";
   const refusals: Array<() => unknown> = [
     // A single-valued option: --name=@file is expanded by the CLI.
@@ -182,7 +183,7 @@ class DownloadProbe extends AzStorageBlobDownloadSettings {
   }
 }
 
-Deno.test("H3: a credential goes to standard input, never the argv, and is masked", () => {
+test("H3: a credential goes to standard input, never the argv, and is masked", () => {
   const cases: Array<
     [{ argv(): string[]; input(): string | undefined }, string]
   > = [
@@ -241,7 +242,7 @@ Deno.test("H3: a credential goes to standard input, never the argv, and is maske
   assertEquals(storage.marked, ["s-secret-1"]);
 });
 
-Deno.test("H3: the spawned CLI receives the credential on standard input", async () => {
+test("H3: the spawned CLI receives the credential on standard input", async () => {
   // A real subprocess — the running deno, not az — through the same run path
   // a command takes, so the stdin hook is proven to reach the child.
   class StdinEcho extends AzSettings {
@@ -259,7 +260,7 @@ Deno.test("H3: the spawned CLI receives the credential on standard input", async
   assertEquals(output.stdout.trim(), "piped-secret");
 });
 
-Deno.test("H4: credential-bearing commands pin json and mask what they print", async () => {
+test("H4: credential-bearing commands pin json and mask what they print", async () => {
   const token = recording(
     new AzAccountGetAccessTokenSettings().output("tsv").query("accessToken"),
   );
@@ -326,7 +327,7 @@ Deno.test("H4: credential-bearing commands pin json and mask what they print", a
   assertEquals(plain.marked, ["plain-secret-text"]);
 });
 
-Deno.test("H5: debug registers the credentials the CLI reads from the environment", () => {
+test("H5: debug registers the credentials the CLI reads from the environment", () => {
   const names = [
     "AZURE_CLIENT_SECRET",
     "AZURE_STORAGE_KEY",
@@ -357,7 +358,7 @@ Deno.test("H5: debug registers the credentials the CLI reads from the environmen
   }
 });
 
-Deno.test("H6: a runner never sees settings whose argv a refusal rejects", async () => {
+test("H6: a runner never sees settings whose argv a refusal rejects", async () => {
   // A runner that never builds the argv itself, unlike FakeAz: the refusal
   // must still fire, because the settings build it before handing over.
   let handedOver = 0;
@@ -384,7 +385,7 @@ Deno.test("H6: a runner never sees settings whose argv a refusal rejects", async
   assertEquals(handedOver, 0);
 });
 
-Deno.test("H7: a reader's failed command is a CommandError even under noThrow", async () => {
+test("H7: a reader's failed command is a CommandError even under noThrow", async () => {
   const failing = () =>
     new FakeAz(new CommandOutput(1, "", "AuthorizationFailed"));
   const readers: Array<() => Promise<unknown>> = [
@@ -399,7 +400,7 @@ Deno.test("H7: a reader's failed command is a CommandError even under noThrow", 
   for (const reader of readers) await assertRejects(reader, CommandError);
 });
 
-Deno.test("H8: a query set through .az(...) does not reach the analysis's command", async () => {
+test("H8: a query set through .az(...) does not reach the analysis's command", async () => {
   const fake = new FakeAz(json([{
     name: { value: "m" },
     timeseries: [{ data: [] }],
@@ -412,7 +413,7 @@ Deno.test("H8: a query set through .az(...) does not reach the analysis's comman
   assertEquals(fake.flag(0, "--output"), "json");
 });
 
-Deno.test("H9: aks get-credentials refuses to print credentials", () => {
+test("H9: aks get-credentials refuses to print credentials", () => {
   assertThrows(
     () => new AzAksGetCredentialsSettings().file("-"),
     Error,
@@ -420,7 +421,7 @@ Deno.test("H9: aks get-credentials refuses to print credentials", () => {
   );
 });
 
-Deno.test("H10: masking finds long numbers and credentials nested in lists", async () => {
+test("H10: masking finds long numbers and credentials nested in lists", async () => {
   const reshaped = recording(
     new AzAccountGetAccessTokenSettings().query("[expires_on, tokenType]"),
   );
@@ -440,7 +441,7 @@ Deno.test("H10: masking finds long numbers and credentials nested in lists", asy
   assertEquals(shown.marked.includes("short"), false);
 });
 
-Deno.test("H11: credential-bearing commands route through core's shared helper", async () => {
+test("H11: credential-bearing commands route through core's shared helper", async () => {
   // A number answer, as a query can print it, is masked as written — the
   // package's own copy skipped a leaf this short.
   const pin = recording(

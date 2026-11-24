@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
   assertWrapperConformance,
@@ -13,11 +14,11 @@ import {
   CodexTasks,
 } from "../src/codex.ts";
 
-Deno.test("exec: the default binary is codex and minimal runs just exec", () => {
+test("exec: the default binary is codex and minimal runs just exec", () => {
   assertEquals(new CodexExecSettings().argv(), ["codex", "exec"]);
 });
 
-Deno.test("exec: a prompt is appended as the trailing positional", () => {
+test("exec: a prompt is appended as the trailing positional", () => {
   assertEquals(new CodexExecSettings().prompt("hi").argv(), [
     "codex",
     "exec",
@@ -25,7 +26,7 @@ Deno.test("exec: a prompt is appended as the trailing positional", () => {
   ]);
 });
 
-Deno.test("exec: every typed option renders in order", () => {
+test("exec: every typed option renders in order", () => {
   const argv = new CodexExecSettings()
     .model("gpt-5-codex")
     .image("a.png")
@@ -82,11 +83,11 @@ Deno.test("exec: every typed option renders in order", () => {
   ]);
 });
 
-Deno.test("mcp: minimal runs just the group", () => {
+test("mcp: minimal runs just the group", () => {
   assertEquals(new CodexMcpSettings().argv(), ["codex", "mcp"]);
 });
 
-Deno.test("mcp: command then bare and valued flags", () => {
+test("mcp: command then bare and valued flags", () => {
   const argv = new CodexMcpSettings()
     .command("add", "fs")
     .flag("env", "K=V")
@@ -103,21 +104,21 @@ Deno.test("mcp: command then bare and valued flags", () => {
   ]);
 });
 
-Deno.test("CodexTasks.exec reaches execution", async () => {
+test("CodexTasks.exec reaches execution", async () => {
   await assertRejects(
     () => CodexTasks.exec((s) => missingTool(s.prompt("hi"))),
     ToolNotFoundError,
   );
 });
 
-Deno.test("CodexTasks.mcp reaches execution", async () => {
+test("CodexTasks.mcp reaches execution", async () => {
   await assertRejects(
     () => CodexTasks.mcp((s) => missingTool(s.command("list"))),
     ToolNotFoundError,
   );
 });
 
-Deno.test("codex: conforms to the wrapper contract", async () => {
+test("codex: conforms to the wrapper contract", async () => {
   await assertWrapperConformance(() => new CodexExecSettings(), "codex", {
     resolution: "path",
   });

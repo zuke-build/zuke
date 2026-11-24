@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
   assertWrapperConformance,
@@ -9,15 +10,15 @@ import {
 } from "@zuke/core/tooling/conformance";
 import { TsupBuildSettings, TsupTasks } from "../src/tsup.ts";
 
-Deno.test("the default binary is tsup", () => {
+test("the default binary is tsup", () => {
   assertEquals(new TsupBuildSettings().argv()[0], "tsup");
 });
 
-Deno.test("build: bare is empty argv", () => {
+test("build: bare is empty argv", () => {
   assertEquals(new TsupBuildSettings().argv().slice(1), []);
 });
 
-Deno.test("build: entries first, then flags; formats joined", () => {
+test("build: entries first, then flags; formats joined", () => {
   assertEquals(
     new TsupBuildSettings()
       .entry("src/index.ts", "src/cli.ts")
@@ -55,11 +56,11 @@ Deno.test("build: entries first, then flags; formats joined", () => {
   );
 });
 
-Deno.test("TsupTasks.build reaches execution", async () => {
+test("TsupTasks.build reaches execution", async () => {
   await assertRejects(() => TsupTasks.build(missingTool), ToolNotFoundError);
 });
 
-Deno.test("tsup: resolves its binary from node_modules by default", async () => {
+test("tsup: resolves its binary from node_modules by default", async () => {
   await assertWrapperConformance(() => new TsupBuildSettings(), "tsup", {
     resolution: "node_modules",
   });

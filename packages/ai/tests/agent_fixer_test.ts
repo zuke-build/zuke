@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { CommandError, CommandOutput } from "@zuke/core/shell";
 import { type AgentContext, type AgentFixer, agentFixer } from "../mod.ts";
 import { commitChanged, porcelainPaths } from "../src/commit.ts";
@@ -44,7 +45,7 @@ function hermetic(f: AgentFixer, git?: string[][]): AgentFixer {
     .quiet();
 }
 
-Deno.test("runs the agent and asks the executor to retry", async () => {
+test("runs the agent and asks the executor to retry", async () => {
   const r = recorder();
   const fixer = hermetic(agentFixer(r.run));
   const result = await fixer.remediate(CTX);
@@ -54,7 +55,7 @@ Deno.test("runs the agent and asks the executor to retry", async () => {
   assertEquals(r.calls[0].prompt.includes("boom: a test failed"), true);
 });
 
-Deno.test("the failed command and stderr feed the prompt", async () => {
+test("the failed command and stderr feed the prompt", async () => {
   const r = recorder();
   const fixer = hermetic(agentFixer(r.run));
   await fixer.remediate({
@@ -68,7 +69,7 @@ Deno.test("the failed command and stderr feed the prompt", async () => {
   assertEquals(r.calls[0].prompt.includes("unused variable x"), true);
 });
 
-Deno.test("the agent is gated off CI unless allowCI is set", async () => {
+test("the agent is gated off CI unless allowCI is set", async () => {
   const r = recorder();
   const ciEnv = (n: string) => n === "GITHUB_ACTIONS" ? "true" : undefined;
   const fixer = agentFixer(r.run).conventions("").readFile(() =>
@@ -83,7 +84,7 @@ Deno.test("the agent is gated off CI unless allowCI is set", async () => {
   assertEquals(r.calls.length, 1);
 });
 
-Deno.test("commitFixes stages all changes, commits, and pushes", async () => {
+test("commitFixes stages all changes, commits, and pushes", async () => {
   const git: string[][] = [];
   const r = recorder();
   const fixer = hermetic(agentFixer(r.run, (f) => f.commitFixes()), git);
@@ -98,7 +99,7 @@ Deno.test("commitFixes stages all changes, commits, and pushes", async () => {
   ]);
 });
 
-Deno.test("commitFixes makes no commit when the agent changed nothing", async () => {
+test("commitFixes makes no commit when the agent changed nothing", async () => {
   const git: string[][] = [];
   const r = recorder();
   const fixer = agentFixer(r.run, (f) => f.commitFixes())
@@ -117,7 +118,7 @@ Deno.test("commitFixes makes no commit when the agent changed nothing", async ()
   ]); // no add, no commit, no push
 });
 
-Deno.test("a failed push is reported but the fix still retries", async () => {
+test("a failed push is reported but the fix still retries", async () => {
   const r = recorder();
   let statusCalls = 0;
   const fixer = agentFixer(r.run, (f) => f.commitFixes())
@@ -137,7 +138,7 @@ Deno.test("a failed push is reported but the fix still retries", async () => {
   assertEquals(result.retry, true);
 });
 
-Deno.test("a failing agent run is swallowed (no retry, build failure intact)", async () => {
+test("a failing agent run is swallowed (no retry, build failure intact)", async () => {
   const fixer = hermetic(
     agentFixer(() => Promise.reject(new Error("agent crashed"))),
   );
@@ -145,7 +146,7 @@ Deno.test("a failing agent run is swallowed (no retry, build failure intact)", a
   assertEquals(result.retry, false);
 });
 
-Deno.test("noPush commits without pushing, with a custom message", async () => {
+test("noPush commits without pushing, with a custom message", async () => {
   const git: string[][] = [];
   const r = recorder();
   const fixer = hermetic(
@@ -164,7 +165,7 @@ Deno.test("noPush commits without pushing, with a custom message", async () => {
   ]); // no push
 });
 
-Deno.test("conventions and criteria reach the prompt", async () => {
+test("conventions and criteria reach the prompt", async () => {
   const r = recorder();
   const fixer = agentFixer(r.run, (f) => f.criteria("NO ANY"))
     .conventions("Never use any.").env(() => undefined).quiet();
@@ -173,7 +174,7 @@ Deno.test("conventions and criteria reach the prompt", async () => {
   assertEquals(r.calls[0].prompt.includes("NO ANY"), true);
 });
 
-Deno.test("the agent's stdout is captured and posted as a PR comment", async () => {
+test("the agent's stdout is captured and posted as a PR comment", async () => {
   const prEnv: Record<string, string> = {
     GITHUB_ACTIONS: "true",
     GITHUB_REPOSITORY: "o/r",
@@ -202,7 +203,7 @@ Deno.test("the agent's stdout is captured and posted as a PR comment", async () 
   assertEquals(posted, true);
 });
 
-Deno.test("suggest mode posts the agent's diff as inline suggestions, no commit, no retry", async () => {
+test("suggest mode posts the agent's diff as inline suggestions, no commit, no retry", async () => {
   const prEnv: Record<string, string> = {
     GITHUB_ACTIONS: "true",
     GITHUB_REPOSITORY: "o/r",
@@ -262,7 +263,7 @@ Deno.test("suggest mode posts the agent's diff as inline suggestions, no commit,
   assertEquals(posted, true);
 });
 
-Deno.test("suggest mode scopes the diff to the agent's paths, not pre-existing dirt", async () => {
+test("suggest mode scopes the diff to the agent's paths, not pre-existing dirt", async () => {
   const prEnv: Record<string, string> = {
     GITHUB_ACTIONS: "true",
     GITHUB_REPOSITORY: "o/r",
@@ -297,7 +298,7 @@ Deno.test("suggest mode scopes the diff to the agent's paths, not pre-existing d
   assertEquals(diffCall?.includes("secrets.env"), false);
 });
 
-Deno.test("suggest mode off GitHub reports no committable suggestions", async () => {
+test("suggest mode off GitHub reports no committable suggestions", async () => {
   const r = recorder();
   const fixer = agentFixer(r.run, (f) => f.suggest())
     .conventions("").env(() => undefined).readFile(() =>
@@ -309,7 +310,7 @@ Deno.test("suggest mode off GitHub reports no committable suggestions", async ()
   assertEquals(r.calls.length, 1); // the agent still ran
 });
 
-Deno.test("suggest mode tolerates a git diff failure", async () => {
+test("suggest mode tolerates a git diff failure", async () => {
   const prEnv: Record<string, string> = {
     GITHUB_ACTIONS: "true",
     GITHUB_REPOSITORY: "o/r",
@@ -337,7 +338,7 @@ Deno.test("suggest mode tolerates a git diff failure", async () => {
   assertEquals(result.retry, false);
 });
 
-Deno.test("noComment writes no PR comment", async () => {
+test("noComment writes no PR comment", async () => {
   const prEnv: Record<string, string> = {
     GITHUB_ACTIONS: "true",
     GITHUB_REPOSITORY: "o/r",
@@ -361,7 +362,7 @@ Deno.test("noComment writes no PR comment", async () => {
   );
 });
 
-Deno.test("a non-quiet run prints what the agent did", async () => {
+test("a non-quiet run prints what the agent did", async () => {
   const r = recorder();
   const fixer = agentFixer(r.run).conventions("").env(() => undefined)
     .readFile(() => Promise.resolve(undefined));
@@ -369,7 +370,7 @@ Deno.test("a non-quiet run prints what the agent did", async () => {
   assertEquals(result.retry, true);
 });
 
-Deno.test("commitChanged stages only the agent's new changes, not pre-existing dirt", async () => {
+test("commitChanged stages only the agent's new changes, not pre-existing dirt", async () => {
   const calls: string[][] = [];
   await commitChanged({
     before: ["already.ts"], // the developer had this dirty before the agent ran
@@ -390,7 +391,7 @@ Deno.test("commitChanged stages only the agent's new changes, not pre-existing d
   ]);
 });
 
-Deno.test("commitChanged is a no-op when only pre-existing files are dirty", async () => {
+test("commitChanged is a no-op when only pre-existing files are dirty", async () => {
   const calls: string[][] = [];
   await commitChanged({
     before: ["already.ts"],
@@ -403,7 +404,7 @@ Deno.test("commitChanged is a no-op when only pre-existing files are dirty", asy
   assertEquals(calls, [["git", "status", "--porcelain"]]); // nothing to commit
 });
 
-Deno.test("porcelainPaths takes a rename's new name but not a literal ' -> ' in a filename", () => {
+test("porcelainPaths takes a rename's new name but not a literal ' -> ' in a filename", () => {
   assertEquals(
     // A rename (R) splits on the arrow; a *modified* file (` M`) whose name
     // literally contains ` -> ` must be kept whole.
@@ -412,7 +413,7 @@ Deno.test("porcelainPaths takes a rename's new name but not a literal ' -> ' in 
   );
 });
 
-Deno.test("commitFixes fails closed when the pre-snapshot cannot be taken", async () => {
+test("commitFixes fails closed when the pre-snapshot cannot be taken", async () => {
   const git: string[][] = [];
   const r = recorder();
   let firstStatus = true;
@@ -489,7 +490,7 @@ function githubFetch(): {
   return { fetch: impl, calls };
 }
 
-Deno.test("suggest mode authenticates with an explicit commentToken", async () => {
+test("suggest mode authenticates with an explicit commentToken", async () => {
   // GITHUB_TOKEN is unset, so the inline suggestions can only be posted through
   // .commentToken(...) — success pins the explicit-token resolution path.
   const { fetch, calls } = githubFetch();
@@ -513,7 +514,7 @@ Deno.test("suggest mode authenticates with an explicit commentToken", async () =
   assertEquals(post?.auth, "Bearer agent-tok");
 });
 
-Deno.test("suggest mode without any token proposes nothing and calls no API", async () => {
+test("suggest mode without any token proposes nothing and calls no API", async () => {
   const { fetch, calls } = githubFetch();
   const lines: string[] = [];
   const log = console.log;
@@ -544,7 +545,7 @@ Deno.test("suggest mode without any token proposes nothing and calls no API", as
   );
 });
 
-Deno.test("suggest mode fails closed when the post-agent status cannot be read", async () => {
+test("suggest mode fails closed when the post-agent status cannot be read", async () => {
   const prEnv: Record<string, string> = {
     ...TOKENLESS_PR_ENV,
     GITHUB_TOKEN: "tok",
@@ -582,7 +583,7 @@ Deno.test("suggest mode fails closed when the post-agent status cannot be read",
   );
 });
 
-Deno.test("suggest mode with an idle agent takes no diff and proposes nothing", async () => {
+test("suggest mode with an idle agent takes no diff and proposes nothing", async () => {
   const prEnv: Record<string, string> = {
     ...TOKENLESS_PR_ENV,
     GITHUB_TOKEN: "tok",
@@ -611,7 +612,7 @@ Deno.test("suggest mode with an idle agent takes no diff and proposes nothing", 
   );
 });
 
-Deno.test("a non-Error suggestion-post failure is stringified and swallowed", async () => {
+test("a non-Error suggestion-post failure is stringified and swallowed", async () => {
   const prEnv: Record<string, string> = {
     ...TOKENLESS_PR_ENV,
     GITHUB_TOKEN: "tok",
@@ -646,7 +647,7 @@ Deno.test("a non-Error suggestion-post failure is stringified and swallowed", as
   );
 });
 
-Deno.test("a non-Error agent failure is stringified into the warning", async () => {
+test("a non-Error agent failure is stringified into the warning", async () => {
   const warnings: string[] = [];
   const warn = console.warn;
   console.warn = (...a: unknown[]) => void warnings.push(a.join(" "));
@@ -665,7 +666,7 @@ Deno.test("a non-Error agent failure is stringified into the warning", async () 
   );
 });
 
-Deno.test("suggest mode skips suggestions when the pre-agent snapshot fails", async () => {
+test("suggest mode skips suggestions when the pre-agent snapshot fails", async () => {
   const lines: string[] = [];
   const log = console.log;
   console.log = (...a: unknown[]) => void lines.push(a.join(" "));
@@ -692,7 +693,7 @@ Deno.test("suggest mode skips suggestions when the pre-agent snapshot fails", as
   );
 });
 
-Deno.test("a non-Error commit failure is stringified into the report action", async () => {
+test("a non-Error commit failure is stringified into the report action", async () => {
   const lines: string[] = [];
   const log = console.log;
   console.log = (...a: unknown[]) => void lines.push(a.join(" "));
@@ -721,7 +722,7 @@ Deno.test("a non-Error commit failure is stringified into the report action", as
   );
 });
 
-Deno.test("a long agent transcript is truncated in the PR comment", async () => {
+test("a long agent transcript is truncated in the PR comment", async () => {
   const prEnv: Record<string, string> = {
     ...TOKENLESS_PR_ENV,
     GITHUB_TOKEN: "tok",
@@ -738,7 +739,7 @@ Deno.test("a long agent transcript is truncated in the PR comment", async () => 
   assertEquals(post.body.includes("x".repeat(4001)), false);
 });
 
-Deno.test("an Error from the suggestion post is warned with its message", async () => {
+test("an Error from the suggestion post is warned with its message", async () => {
   const prEnv: Record<string, string> = {
     ...TOKENLESS_PR_ENV,
     GITHUB_TOKEN: "tok",

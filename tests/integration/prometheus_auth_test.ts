@@ -11,17 +11,15 @@
  * printed.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import {
   type PrometheusConnectionSettings,
   PrometheusTasks,
 } from "../../packages/prometheus/mod.ts";
-import { vector } from "../../packages/prometheus/tests/_fetch.ts";
-import { routes, rsaKey } from "../../packages/prometheus/tests/_auth.ts";
+import { vector } from "../support/prometheus/_fetch.ts";
+import { routes, rsaKey } from "../support/prometheus/_auth.ts";
 import { runCli } from "./_harness.ts";
 
 const { pem } = await rsaKey();
@@ -120,7 +118,7 @@ class Managed extends Build {
   );
 }
 
-Deno.test("a build queries all three managed services with built-in credentials", async () => {
+test("a build queries all three managed services with built-in credentials", async () => {
   azureRefuses = false;
   net = server();
   values.length = 0;
@@ -143,7 +141,7 @@ Deno.test("a build queries all three managed services with built-in credentials"
   );
 });
 
-Deno.test("a token endpoint echoing the client secret never gets it printed", async () => {
+test("a token endpoint echoing the client secret never gets it printed", async () => {
   azureRefuses = true;
   net = server();
   const { code, out, err } = await runCli(Managed, ["azure"]);
@@ -170,7 +168,7 @@ class TwoQueries extends Build {
   });
 }
 
-Deno.test("concurrent queries share one token request that fails at once", async () => {
+test("concurrent queries share one token request that fails at once", async () => {
   azureRefuses = true;
   net = server();
   const { code, out, err } = await runCli(TwoQueries, ["both"]);

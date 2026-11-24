@@ -8,14 +8,12 @@
  * wired (see `build.ts` and `build/skill_check.ts`).
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { checkSkillTree } from "../../build/skill_check.ts";
 import { runCli } from "./_harness.ts";
-import { withTemp } from "../../packages/core/tests/_temp.ts";
+import { withTemp } from "../_temp.ts";
 
 /** A fixture build gating on spec violations under `root`, like `skillsCheck`. */
 function gateBuild(root: string) {
@@ -31,7 +29,7 @@ function gateBuild(root: string) {
   return Gate;
 }
 
-Deno.test("skillsCheck passes a conforming tree through the CLI", async () => {
+test("skillsCheck passes a conforming tree through the CLI", async () => {
   await withTemp(async (dir) => {
     await Deno.mkdir(`${dir}/my-skill`);
     await Deno.writeTextFile(
@@ -45,7 +43,7 @@ Deno.test("skillsCheck passes a conforming tree through the CLI", async () => {
   });
 });
 
-Deno.test("skillsCheck fails loudly on a renamed directory through the CLI", async () => {
+test("skillsCheck fails loudly on a renamed directory through the CLI", async () => {
   await withTemp(async (dir) => {
     // The realistic slip: the folder was renamed, the frontmatter was not.
     await Deno.mkdir(`${dir}/new-name`);

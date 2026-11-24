@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import {
   GitCherryPickSettings,
   GitMergeSettings,
@@ -11,7 +12,7 @@ import {
   GitStashSettings,
 } from "../mod.ts";
 
-Deno.test("merge renders its strategy, message, and refs", () => {
+test("merge renders its strategy, message, and refs", () => {
   assertEquals(
     new GitMergeSettings()
       .noFf()
@@ -42,7 +43,7 @@ Deno.test("merge renders its strategy, message, and refs", () => {
   );
 });
 
-Deno.test("merge refuses the contradictions git would only report as usage", () => {
+test("merge refuses the contradictions git would only report as usage", () => {
   assertThrows(() => new GitMergeSettings().argv(), Error, ".refs(...)");
   assertThrows(
     () => new GitMergeSettings().noFf().ffOnly().refs("x").argv(),
@@ -51,7 +52,7 @@ Deno.test("merge refuses the contradictions git would only report as usage", () 
   );
 });
 
-Deno.test("a control flag runs alone, on every command that has one", () => {
+test("a control flag runs alone, on every command that has one", () => {
   assertEquals(new GitMergeSettings().abort().argv(), [
     "git",
     "merge",
@@ -84,7 +85,7 @@ Deno.test("a control flag runs alone, on every command that has one", () => {
   ]);
 });
 
-Deno.test("a control flag alongside the command's own arguments is refused", () => {
+test("a control flag alongside the command's own arguments is refused", () => {
   // git resumes or drops the operation already in progress and takes nothing
   // else; the refusal names the argument that has no meaning, rather than
   // dropping it and running something the caller did not ask for.
@@ -120,7 +121,7 @@ Deno.test("a control flag alongside the command's own arguments is refused", () 
   );
 });
 
-Deno.test("rebase renders --onto before the upstream and branch", () => {
+test("rebase renders --onto before the upstream and branch", () => {
   assertEquals(
     new GitRebaseSettings()
       .autosquash()
@@ -155,7 +156,7 @@ Deno.test("rebase renders --onto before the upstream and branch", () => {
   );
 });
 
-Deno.test("cherry-pick and revert share the replay flags and add their own", () => {
+test("cherry-pick and revert share the replay flags and add their own", () => {
   assertEquals(
     new GitCherryPickSettings().noCommit().signoff().mainline(1).allowEmpty()
       .ff().commits("abc123", "def456").argv(),
@@ -184,7 +185,7 @@ Deno.test("cherry-pick and revert share the replay flags and add their own", () 
   assertThrows(() => new GitRevertSettings().argv(), Error, ".commits(...)");
 });
 
-Deno.test("reset renders each mode, and refuses a mode with pathspecs", () => {
+test("reset renders each mode, and refuses a mode with pathspecs", () => {
   assertEquals(new GitResetSettings().hard().ref("origin/main").argv(), [
     "git",
     "reset",
@@ -227,7 +228,7 @@ Deno.test("reset renders each mode, and refuses a mode with pathspecs", () => {
   );
 });
 
-Deno.test("stash renders each subcommand", () => {
+test("stash renders each subcommand", () => {
   assertEquals(
     new GitStashSettings().push().includeUntracked().keepIndex().staged()
       .message("before regen").paths("packages").argv(),
@@ -262,7 +263,7 @@ Deno.test("stash renders each subcommand", () => {
   ]);
 });
 
-Deno.test("stash refuses a subcommand it was never given, or a stash push cannot take", () => {
+test("stash refuses a subcommand it was never given, or a stash push cannot take", () => {
   assertThrows(() => new GitStashSettings().argv(), Error, "no subcommand");
   assertThrows(
     () => new GitStashSettings().push().stash("stash@{0}").argv(),

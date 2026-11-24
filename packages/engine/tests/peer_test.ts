@@ -1,10 +1,11 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { type NetConnection, NetTasks } from "@zuke/core";
 import { MAX_LINE, Peer, RpcFailure } from "../src/peer.ts";
-import { connect } from "./_conn.ts";
+import { connect } from "../../../tests/support/engine/_conn.ts";
 import { INVALID_PARAMS, isRecord } from "../src/protocol.ts";
 
 /** The RPC code of a rejection, or NaN when it was not an RpcFailure. */
@@ -83,7 +84,7 @@ async function readLine(conn: NetConnection): Promise<string> {
   return text.slice(0, text.indexOf("\n"));
 }
 
-Deno.test("a request is answered with the handler's result", async () => {
+test("a request is answered with the handler's result", async () => {
   const { a, b, close } = await pair();
   b.on("add", (params) => {
     if (!isRecord(params)) throw new Error("expected an object");
@@ -97,7 +98,7 @@ Deno.test("a request is answered with the handler's result", async () => {
   await close();
 });
 
-Deno.test("a handler's throw becomes an RpcFailure, keeping an explicit code", async () => {
+test("a handler's throw becomes an RpcFailure, keeping an explicit code", async () => {
   const { a, b, close } = await pair();
   b.on("plain", () => {
     throw new Error("bad input");
@@ -122,7 +123,7 @@ Deno.test("a handler's throw becomes an RpcFailure, keeping an explicit code", a
   await close();
 });
 
-Deno.test("a notification reaches its handler and expects no answer", async () => {
+test("a notification reaches its handler and expects no answer", async () => {
   const { a, b, close } = await pair();
   let seen: unknown;
   const arrived = new Promise<void>((resolve) => {
@@ -138,7 +139,7 @@ Deno.test("a notification reaches its handler and expects no answer", async () =
   await close();
 });
 
-Deno.test("close(reason) rejects what is pending with that reason", async () => {
+test("close(reason) rejects what is pending with that reason", async () => {
   const { a, b, close } = await pair();
   b.on("slow", () => new Promise(() => {}));
   const pending = a.request("slow", {});
@@ -148,7 +149,7 @@ Deno.test("close(reason) rejects what is pending with that reason", async () => 
   await close();
 });
 
-Deno.test("close() rejects every pending request and makes later sends no-ops", async () => {
+test("close() rejects every pending request and makes later sends no-ops", async () => {
   const { a, b, close } = await pair();
   b.on("hang", () => new Promise(() => {}));
   const hanging = a.request("hang", {});
@@ -159,7 +160,7 @@ Deno.test("close() rejects every pending request and makes later sends no-ops", 
   await close();
 });
 
-Deno.test("framing: split chunks are joined and junk lines are ignored", async () => {
+test("framing: split chunks are joined and junk lines are ignored", async () => {
   const { peer, raw, close } = await rawPair();
   peer.on("ping", () => "pong");
   const encoder = new TextEncoder();
@@ -174,7 +175,7 @@ Deno.test("framing: split chunks are joined and junk lines are ignored", async (
   await close();
 });
 
-Deno.test("an error answer without code or message gets defaults", async () => {
+test("an error answer without code or message gets defaults", async () => {
   const { peer, raw, close } = await rawPair();
   const pending = peer.request("x", {});
   const line = JSON.parse(await readLine(raw));
@@ -188,7 +189,7 @@ Deno.test("an error answer without code or message gets defaults", async () => {
   await close();
 });
 
-Deno.test("the remote side closing ends serve() and rejects what is pending", async () => {
+test("the remote side closing ends serve() and rejects what is pending", async () => {
   const { peer, raw, close } = await rawPair();
   const pending = peer.request("x", {});
   await readLine(raw);
@@ -197,7 +198,7 @@ Deno.test("the remote side closing ends serve() and rejects what is pending", as
   await close();
 });
 
-Deno.test("a request made after close() rejects at once with the close reason", async () => {
+test("a request made after close() rejects at once with the close reason", async () => {
   const { a, b, close } = await pair();
   a.close("the worker exited with code 7");
   const error = await assertRejects(
@@ -210,7 +211,7 @@ Deno.test("a request made after close() rejects at once with the close reason", 
   await close();
 });
 
-Deno.test("a line longer than the cap closes the connection instead of growing the buffer", async () => {
+test("a line longer than the cap closes the connection instead of growing the buffer", async () => {
   const { a, b, close } = await pair();
   // One notification well over the cap: b's serve() sees the unfinished
   // line outgrow the cap before its newline arrives and closes b, naming why.

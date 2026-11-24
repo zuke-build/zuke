@@ -12,10 +12,8 @@
  * drives the missing-binary path rather than a real daemon.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { missingTool } from "../../packages/core/src/tooling_conformance.ts";
 import {
@@ -88,7 +86,7 @@ class RefusalBuild extends Build {
     });
 }
 
-Deno.test("a missing Compose fails the build rather than yielding a number", async () => {
+test("a missing Compose fails the build rather than yielding a number", async () => {
   // The point of the guard: waitExitCode runs with noThrow so a container's
   // non-zero status can come back as data, which must not also swallow "there
   // is no Compose here".
@@ -103,7 +101,7 @@ Deno.test("a missing Compose fails the build rather than yielding a number", asy
   });
 });
 
-Deno.test("a settings refusal fails the target, and says how to fix it", async () => {
+test("a settings refusal fails the target, and says how to fix it", async () => {
   await withDetectedCompose(async () => {
     const cp = await runCli(RefusalBuild, ["copyBetweenServices"]);
     assertEquals(cp.code, 1);

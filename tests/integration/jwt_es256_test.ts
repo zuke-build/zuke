@@ -11,10 +11,8 @@
  * @module
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, signJwtEs256, target } from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
 
@@ -73,7 +71,7 @@ function caller(key: string, url: string, statuses: number[]) {
   };
 }
 
-Deno.test("an ES256 token signed in a build verifies at the server", async () => {
+test("an ES256 token signed in a build verifies at the server", async () => {
   const pair = await crypto.subtle.generateKey(
     { name: "ECDSA", namedCurve: "P-256" },
     true,

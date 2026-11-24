@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
   assertWrapperConformance,
@@ -18,11 +19,11 @@ import {
   TerraformValidateSettings,
 } from "../src/terraform.ts";
 
-Deno.test("the default binary is terraform", () => {
+test("the default binary is terraform", () => {
   assertEquals(new TerraformInitSettings().argv()[0], "terraform");
 });
 
-Deno.test("init: bare and all flags", () => {
+test("init: bare and all flags", () => {
   assertEquals(new TerraformInitSettings().argv().slice(1), ["init"]);
   assertEquals(
     new TerraformInitSettings()
@@ -36,7 +37,7 @@ Deno.test("init: bare and all flags", () => {
   );
 });
 
-Deno.test("validate: bare and -json", () => {
+test("validate: bare and -json", () => {
   assertEquals(new TerraformValidateSettings().argv().slice(1), ["validate"]);
   assertEquals(
     new TerraformValidateSettings().json().argv().slice(1),
@@ -44,7 +45,7 @@ Deno.test("validate: bare and -json", () => {
   );
 });
 
-Deno.test("plan: out, vars, var-files, -destroy, -input=false", () => {
+test("plan: out, vars, var-files, -destroy, -input=false", () => {
   assertEquals(new TerraformPlanSettings().argv().slice(1), ["plan"]);
   assertEquals(
     new TerraformPlanSettings()
@@ -68,7 +69,7 @@ Deno.test("plan: out, vars, var-files, -destroy, -input=false", () => {
   );
 });
 
-Deno.test("apply: auto-approve, vars, var-files, -input=false, plan file", () => {
+test("apply: auto-approve, vars, var-files, -input=false, plan file", () => {
   assertEquals(new TerraformApplySettings().argv().slice(1), ["apply"]);
   assertEquals(
     new TerraformApplySettings()
@@ -90,7 +91,7 @@ Deno.test("apply: auto-approve, vars, var-files, -input=false, plan file", () =>
   );
 });
 
-Deno.test("destroy: auto-approve, vars, var-files", () => {
+test("destroy: auto-approve, vars, var-files", () => {
   assertEquals(new TerraformDestroySettings().argv().slice(1), ["destroy"]);
   assertEquals(
     new TerraformDestroySettings()
@@ -103,7 +104,7 @@ Deno.test("destroy: auto-approve, vars, var-files", () => {
   );
 });
 
-Deno.test("fmt: bare, -check, -recursive, -diff", () => {
+test("fmt: bare, -check, -recursive, -diff", () => {
   assertEquals(new TerraformFmtSettings().argv().slice(1), ["fmt"]);
   assertEquals(
     new TerraformFmtSettings().check().recursive().diff().argv().slice(1),
@@ -111,7 +112,7 @@ Deno.test("fmt: bare, -check, -recursive, -diff", () => {
   );
 });
 
-Deno.test("output: bare, -json, -raw, and a name", () => {
+test("output: bare, -json, -raw, and a name", () => {
   assertEquals(new TerraformOutputSettings().argv().slice(1), ["output"]);
   assertEquals(
     new TerraformOutputSettings().raw().name("ip").argv().slice(1),
@@ -123,7 +124,7 @@ Deno.test("output: bare, -json, -raw, and a name", () => {
   );
 });
 
-Deno.test("every TerraformTasks function reaches execution", async () => {
+test("every TerraformTasks function reaches execution", async () => {
   await assertRejects(
     () => TerraformTasks.init(missingTool),
     ToolNotFoundError,
@@ -151,7 +152,7 @@ Deno.test("every TerraformTasks function reaches execution", async () => {
   );
 });
 
-Deno.test("terraform: conforms to the wrapper contract", async () => {
+test("terraform: conforms to the wrapper contract", async () => {
   await assertWrapperConformance(
     () => new TerraformInitSettings(),
     "terraform",

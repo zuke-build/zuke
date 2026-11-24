@@ -13,10 +13,8 @@
  * swallowed by the executor.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
 import { BiomeCheckSettings } from "../../packages/biome/mod.ts";
@@ -26,7 +24,7 @@ import { GitStatusSettings } from "../../packages/git/mod.ts";
 // wrapper package imports is exercised too.
 import { assertWrapperConformance } from "@zuke/core/tooling/conformance";
 
-Deno.test("real wrappers pass the conformance kit inside a build", async () => {
+test("real wrappers pass the conformance kit inside a build", async () => {
   class Conformance extends Build {
     git = target()
       .description("@zuke/git resolves from PATH")
@@ -62,7 +60,7 @@ Deno.test("real wrappers pass the conformance kit inside a build", async () => {
   assertEquals(code, 0, err);
 });
 
-Deno.test("a conformance failure fails the build through the CLI", async () => {
+test("a conformance failure fails the build through the CLI", async () => {
   class Wrong extends Build {
     // @zuke/biome really resolves npx-style; claiming PATH must fail loudly.
     biome = target().executes(async () => {

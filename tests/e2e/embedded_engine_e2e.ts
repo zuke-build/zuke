@@ -24,11 +24,9 @@
  * Python project's CI job takes.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
-import { withTemp } from "../../packages/core/tests/_temp.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
+import { withTemp } from "../_temp.ts";
 import { localVersion } from "../../build/packages.ts";
 import { gzip, sha256Hex, tar, zip } from "@zuke/core";
 import {
@@ -47,7 +45,7 @@ import {
 } from "../../packages/cli/src/binary_launcher.ts";
 
 const FAKE_WORKER = new URL(
-  "../../packages/engine/tests/_fake_worker.ts",
+  "../support/engine/_fake_worker.ts",
   import.meta.url,
 ).pathname.replace(/^\/([A-Za-z]:)/, "$1");
 
@@ -279,7 +277,7 @@ async function runsHostedBuild(): Promise<void> {
   }, { prefix: "zuke-embedded-engine-" });
 }
 
-Deno.test({
+test({
   name:
     "the zuke binary runs a hosted build on its own engine, directly and through the launchers that download it, with no Deno",
   ignore: SEA_NODE === undefined && !MUST_HAVE_SEA_NODE,

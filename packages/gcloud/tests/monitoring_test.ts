@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import {
   GcloudMonitoringDashboardsListSettings,
   GcloudMonitoringPoliciesDescribeSettings,
@@ -12,7 +13,7 @@ import {
 // Run through Google Cloud SDK 588.0.0: all four commands are GA there, and
 // each argv below parses.
 
-Deno.test("monitoring policies list: every list flag, one token each", () => {
+test("monitoring policies list: every list flag, one token each", () => {
   assertEquals(
     new GcloudMonitoringPoliciesListSettings().filter("display_name:api")
       .limit(2).pageSize(5).sortBy("display_name", "~name").uri()
@@ -33,7 +34,7 @@ Deno.test("monitoring policies list: every list flag, one token each", () => {
   );
 });
 
-Deno.test("monitoring dashboards list and uptime list-configs", () => {
+test("monitoring dashboards list and uptime list-configs", () => {
   assertEquals(new GcloudMonitoringDashboardsListSettings().argv(), [
     "gcloud",
     "monitoring",
@@ -46,7 +47,7 @@ Deno.test("monitoring dashboards list and uptime list-configs", () => {
   );
 });
 
-Deno.test("monitoring lists refuse a count gcloud would", () => {
+test("monitoring lists refuse a count gcloud would", () => {
   assertThrows(
     () => new GcloudMonitoringDashboardsListSettings().limit(1.5).argv(),
     Error,
@@ -64,7 +65,7 @@ Deno.test("monitoring lists refuse a count gcloud would", () => {
   );
 });
 
-Deno.test("monitoring policies describe: the policy is a guarded operand", () => {
+test("monitoring policies describe: the policy is a guarded operand", () => {
   assertEquals(
     new GcloudMonitoringPoliciesDescribeSettings()
       .policy("projects/p/alertPolicies/1").argv(),

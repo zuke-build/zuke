@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import {
   DenoAddSettings,
   DenoApproveScriptsSettings,
@@ -14,7 +15,7 @@ import {
   DenoWhySettings,
 } from "../mod.ts";
 
-Deno.test("add: specifiers trail the flags", () => {
+test("add: specifiers trail the flags", () => {
   const argv = new DenoAddSettings()
     .dev()
     .saveExact()
@@ -32,7 +33,7 @@ Deno.test("add: specifiers trail the flags", () => {
   ]);
 });
 
-Deno.test("add: lock flags come from the shared base, once", () => {
+test("add: lock flags come from the shared base, once", () => {
   const argv = new DenoAddSettings()
     .frozen()
     .noLock()
@@ -52,7 +53,7 @@ Deno.test("add: lock flags come from the shared base, once", () => {
   ]);
 });
 
-Deno.test("add: a registry is recorded once, and two are refused", () => {
+test("add: a registry is recorded once, and two are refused", () => {
   assertEquals(
     new DenoAddSettings().jsr().jsr().packages("x").argv().slice(1),
     ["add", "--jsr", "x"],
@@ -65,12 +66,12 @@ Deno.test("add: a registry is recorded once, and two are refused", () => {
   assertEquals(error.message.includes("registry"), true);
 });
 
-Deno.test("add: at least one package is required", () => {
+test("add: at least one package is required", () => {
   const error = assertThrows(() => new DenoAddSettings().argv(), Error);
   assertEquals(error.message.includes(".packages()"), true);
 });
 
-Deno.test("remove: names trail the flags, and are required", () => {
+test("remove: names trail the flags, and are required", () => {
   assertEquals(
     new DenoRemoveSettings()
       .lockfileOnly()
@@ -83,7 +84,7 @@ Deno.test("remove: names trail the flags, and are required", () => {
   assertThrows(() => new DenoRemoveSettings().argv(), Error);
 });
 
-Deno.test("uninstall: global executable with an install root", () => {
+test("uninstall: global executable with an install root", () => {
   const argv = new DenoUninstallSettings()
     .global()
     .root("/opt/deno")
@@ -99,7 +100,7 @@ Deno.test("uninstall: global executable with an install root", () => {
   ]);
 });
 
-Deno.test("uninstall: an install root without --global is refused", () => {
+test("uninstall: an install root without --global is refused", () => {
   const error = assertThrows(
     () => new DenoUninstallSettings().root("/opt/deno").packages("x").argv(),
     Error,
@@ -107,7 +108,7 @@ Deno.test("uninstall: an install root without --global is refused", () => {
   assertEquals(error.message.includes(".global()"), true);
 });
 
-Deno.test("uninstall: a project dependency needs neither flag", () => {
+test("uninstall: a project dependency needs neither flag", () => {
   assertEquals(
     new DenoUninstallSettings()
       .lockfileOnly()
@@ -120,11 +121,11 @@ Deno.test("uninstall: a project dependency needs neither flag", () => {
   assertThrows(() => new DenoUninstallSettings().argv(), Error);
 });
 
-Deno.test("outdated: bare report changes nothing", () => {
+test("outdated: bare report changes nothing", () => {
   assertEquals(new DenoOutdatedSettings().argv().slice(1), ["outdated"]);
 });
 
-Deno.test("outdated: filters trail the flags", () => {
+test("outdated: filters trail the flags", () => {
   const argv = new DenoOutdatedSettings()
     .compatible()
     .recursive()
@@ -143,7 +144,7 @@ Deno.test("outdated: filters trail the flags", () => {
   ]);
 });
 
-Deno.test("outdated: --compatible and --latest are mutually exclusive", () => {
+test("outdated: --compatible and --latest are mutually exclusive", () => {
   assertEquals(new DenoOutdatedSettings().latest().latest().argv().slice(1), [
     "outdated",
     "--latest",
@@ -155,7 +156,7 @@ Deno.test("outdated: --compatible and --latest are mutually exclusive", () => {
   assertEquals(error.message.includes("--latest"), true);
 });
 
-Deno.test("why: the package operand is required and comes last", () => {
+test("why: the package operand is required and comes last", () => {
   assertEquals(
     new DenoWhySettings().frozen().packageName("express@4.18.2").argv().slice(
       1,
@@ -166,7 +167,7 @@ Deno.test("why: the package operand is required and comes last", () => {
   assertEquals(error.message.includes(".packageName()"), true);
 });
 
-Deno.test("ci: production install with types skipped", () => {
+test("ci: production install with types skipped", () => {
   assertEquals(new DenoCiSettings().argv().slice(1), ["ci"]);
   assertEquals(
     new DenoCiSettings().prod().skipTypes().envFile(".env.ci").argv().slice(1),
@@ -174,7 +175,7 @@ Deno.test("ci: production install with types skipped", () => {
   );
 });
 
-Deno.test("approveScripts: an empty selection would prompt, so it is refused", () => {
+test("approveScripts: an empty selection would prompt, so it is refused", () => {
   const error = assertThrows(
     () => new DenoApproveScriptsSettings().argv(),
     Error,
@@ -190,7 +191,7 @@ Deno.test("approveScripts: an empty selection would prompt, so it is refused", (
   );
 });
 
-Deno.test("bumpVersion: the increment operand comes last", () => {
+test("bumpVersion: the increment operand comes last", () => {
   const argv = new DenoBumpVersionSettings()
     .dryRun()
     .workspace()
@@ -211,7 +212,7 @@ Deno.test("bumpVersion: the increment operand comes last", () => {
   ]);
 });
 
-Deno.test("bumpVersion: conventional-commits mode needs no increment", () => {
+test("bumpVersion: conventional-commits mode needs no increment", () => {
   const argv = new DenoBumpVersionSettings()
     .noWorkspace()
     .base("main")
@@ -231,7 +232,7 @@ Deno.test("bumpVersion: conventional-commits mode needs no increment", () => {
   ]);
 });
 
-Deno.test("bumpVersion: --workspace and --no-workspace are mutually exclusive", () => {
+test("bumpVersion: --workspace and --no-workspace are mutually exclusive", () => {
   assertEquals(
     new DenoBumpVersionSettings().workspace().workspace().argv().slice(1),
     ["bump-version", "--workspace"],
@@ -243,7 +244,7 @@ Deno.test("bumpVersion: --workspace and --no-workspace are mutually exclusive", 
   assertEquals(error.message.includes("--no-workspace"), true);
 });
 
-Deno.test("pack: ignore patterns join into one flag, files trail", () => {
+test("pack: ignore patterns join into one flag, files trail", () => {
   const argv = new DenoPackSettings()
     .allowDirty()
     .allowSlowTypes()

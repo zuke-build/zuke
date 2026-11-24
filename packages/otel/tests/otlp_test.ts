@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   buildMetrics,
   buildTraces,
@@ -11,7 +12,11 @@ import {
   type RunSpanIds,
   SCOPE_NAME,
 } from "../src/otlp.ts";
-import { makeRecord, RESOURCE, target } from "./_fixtures.ts";
+import {
+  makeRecord,
+  RESOURCE,
+  target,
+} from "../../../tests/support/otel/_fixtures.ts";
 
 const IDS: RunSpanIds = {
   traceId: "0123456789abcdef0123456789abcdef",
@@ -23,25 +28,25 @@ const IDS: RunSpanIds = {
   ]),
 };
 
-Deno.test("isoToNano converts millisecond timestamps exactly", () => {
+test("isoToNano converts millisecond timestamps exactly", () => {
   assertEquals(isoToNano("1970-01-01T00:00:00.000Z"), "0");
   assertEquals(isoToNano("1970-01-01T00:00:01.000Z"), "1000000000");
   // Millisecond precision is preserved without float overflow.
   assertEquals(isoToNano("2026-01-01T00:00:00.000Z"), "1767225600000000000");
 });
 
-Deno.test("isoToNano returns 0 for an unparseable timestamp", () => {
+test("isoToNano returns 0 for an unparseable timestamp", () => {
   assertEquals(isoToNano("not-a-date"), "0");
 });
 
-Deno.test("runOutcome maps cancelling to cancelled, else passes through", () => {
+test("runOutcome maps cancelling to cancelled, else passes through", () => {
   assertEquals(runOutcome("cancelling"), "cancelled");
   assertEquals(runOutcome("cancelled"), "cancelled");
   assertEquals(runOutcome("succeeded"), "succeeded");
   assertEquals(runOutcome("failed"), "failed");
 });
 
-Deno.test("buildTraces emits a run span plus one span per executed target", () => {
+test("buildTraces emits a run span plus one span per executed target", () => {
   const record = makeRecord({
     status: "succeeded",
     targets: {
@@ -93,7 +98,7 @@ Deno.test("buildTraces emits a run span plus one span per executed target", () =
   assertEquals(test.status.message, "1 test failed");
 });
 
-Deno.test("buildTraces marks a failed run span as error", () => {
+test("buildTraces marks a failed run span as error", () => {
   const record = makeRecord({ status: "failed" });
   const run = buildTraces(record, IDS, RESOURCE).resourceSpans[0]
     .scopeSpans[0].spans[0];
@@ -101,7 +106,7 @@ Deno.test("buildTraces marks a failed run span as error", () => {
   assertEquals(run.status.message, "run failed");
 });
 
-Deno.test("buildTraces marks a cancelling run span as cancelled error", () => {
+test("buildTraces marks a cancelling run span as cancelled error", () => {
   const record = makeRecord({ status: "cancelling" });
   const run = buildTraces(record, IDS, RESOURCE).resourceSpans[0]
     .scopeSpans[0].spans[0];
@@ -109,7 +114,7 @@ Deno.test("buildTraces marks a cancelling run span as cancelled error", () => {
   assertEquals(run.status.message, "run cancelled");
 });
 
-Deno.test("buildTraces omits a started target with no span id and defaults a missing end", () => {
+test("buildTraces omits a started target with no span id and defaults a missing end", () => {
   const ids: RunSpanIds = {
     traceId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     runSpanId: "bbbbbbbbbbbbbbbb",
@@ -140,7 +145,7 @@ Deno.test("buildTraces omits a started target with no span id and defaults a mis
   );
 });
 
-Deno.test("buildMetrics renders a delta Sum data point per point", () => {
+test("buildMetrics renders a delta Sum data point per point", () => {
   const points: MetricPoint[] = [{
     name: "zuke.runs",
     unit: "1",

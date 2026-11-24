@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import {
   DenoBundleSettings,
   DenoCleanSettings,
@@ -11,7 +12,7 @@ import {
   DenoUpgradeSettings,
 } from "../mod.ts";
 
-Deno.test("compile: entrypoint, output, target and permissions", () => {
+test("compile: entrypoint, output, target and permissions", () => {
   const argv = new DenoCompileSettings()
     .allowAll()
     .output("dist/app")
@@ -32,7 +33,7 @@ Deno.test("compile: entrypoint, output, target and permissions", () => {
   ]);
 });
 
-Deno.test("compile: include and exclude repeat, each with its own flag", () => {
+test("compile: include and exclude repeat, each with its own flag", () => {
   const argv = new DenoCompileSettings()
     .include("assets", "workers/main.ts")
     .exclude("assets/fixtures")
@@ -55,7 +56,7 @@ Deno.test("compile: include and exclude repeat, each with its own flag", () => {
   ]);
 });
 
-Deno.test("compile: minify implies bundle, and is refused without it", () => {
+test("compile: minify implies bundle, and is refused without it", () => {
   const bundled = new DenoCompileSettings()
     .bundle()
     .minify()
@@ -71,7 +72,7 @@ Deno.test("compile: minify implies bundle, and is refused without it", () => {
   assertEquals(error.message.includes(".bundle()"), true);
 });
 
-Deno.test("compile: the Windows icon is refused on a non-Windows target", () => {
+test("compile: the Windows icon is refused on a non-Windows target", () => {
   const windows = new DenoCompileSettings()
     .target("x86_64-pc-windows-msvc")
     .icon("app.ico")
@@ -108,12 +109,12 @@ Deno.test("compile: the Windows icon is refused on a non-Windows target", () => 
   assertEquals(error.message.includes("aarch64-apple-darwin"), true);
 });
 
-Deno.test("compile: the entrypoint is required", () => {
+test("compile: the entrypoint is required", () => {
   const error = assertThrows(() => new DenoCompileSettings().argv(), Error);
   assertEquals(error.message.includes(".script() is required"), true);
 });
 
-Deno.test("clean: bare, dry run, and retained paths", () => {
+test("clean: bare, dry run, and retained paths", () => {
   assertEquals(new DenoCleanSettings().argv().slice(1), ["clean"]);
   assertEquals(
     new DenoCleanSettings().dryRun().except("a.ts", "b.ts").argv().slice(1),
@@ -121,7 +122,7 @@ Deno.test("clean: bare, dry run, and retained paths", () => {
   );
 });
 
-Deno.test("info: flags precede the module operand", () => {
+test("info: flags precede the module operand", () => {
   const argv = new DenoInfoSettings()
     .json()
     .config("deno.json")
@@ -148,7 +149,7 @@ Deno.test("info: flags precede the module operand", () => {
   ]);
 });
 
-Deno.test("info: modulePath reports the operand, not a trailing flag value", () => {
+test("info: modulePath reports the operand, not a trailing flag value", () => {
   assertEquals(new DenoInfoSettings().modulePath, undefined);
   // The regression this accessor exists for: --import-map leaves a non-flag
   // token last, which reading the argv would mistake for the module.
@@ -158,14 +159,14 @@ Deno.test("info: modulePath reports the operand, not a trailing flag value", () 
   assertEquals(new DenoInfoSettings().path("mod.ts").modulePath, "mod.ts");
 });
 
-Deno.test("info: no-lock is distinct from frozen", () => {
+test("info: no-lock is distinct from frozen", () => {
   assertEquals(new DenoInfoSettings().noLock().argv().slice(1), [
     "info",
     "--no-lock",
   ]);
 });
 
-Deno.test("init: shape, registry and directory", () => {
+test("init: shape, registry and directory", () => {
   assertEquals(
     new DenoInitSettings().lib().yes().directory("my-lib").argv().slice(1),
     ["init", "--lib", "--yes", "my-lib"],
@@ -183,7 +184,7 @@ Deno.test("init: shape, registry and directory", () => {
   assertEquals(new DenoInitSettings().npm().argv().slice(1), ["init", "--npm"]);
 });
 
-Deno.test("init: two project shapes are refused, one repeated is not", () => {
+test("init: two project shapes are refused, one repeated is not", () => {
   assertEquals(new DenoInitSettings().lib().lib().argv().slice(1), [
     "init",
     "--lib",
@@ -197,7 +198,7 @@ Deno.test("init: two project shapes are refused, one repeated is not", () => {
   assertEquals(registry.message.includes("registries"), true);
 });
 
-Deno.test("upgrade: version operand trails the flags", () => {
+test("upgrade: version operand trails the flags", () => {
   assertEquals(new DenoUpgradeSettings().argv().slice(1), ["upgrade"]);
   const argv = new DenoUpgradeSettings()
     .dryRun()
@@ -221,7 +222,7 @@ Deno.test("upgrade: version operand trails the flags", () => {
   ]);
 });
 
-Deno.test("bundle: every flag, then the entrypoint", () => {
+test("bundle: every flag, then the entrypoint", () => {
   const argv = new DenoBundleSettings()
     .output("dist/app.mjs")
     .platform("browser")
@@ -245,7 +246,7 @@ Deno.test("bundle: every flag, then the entrypoint", () => {
   ]);
 });
 
-Deno.test("bundle: an entrypoint is required", () => {
+test("bundle: an entrypoint is required", () => {
   assertThrows(
     () => new DenoBundleSettings().output("x.mjs").argv(),
     Error,

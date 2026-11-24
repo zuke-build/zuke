@@ -15,7 +15,8 @@
  * @module
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import {
   Build,
   defaultStateHost,
@@ -52,7 +53,7 @@ async function withBuildId(id: string, fn: () => Promise<void>): Promise<void> {
   }
 }
 
-Deno.test("a sweep drives its own build's run and leaves another's alone", async () => {
+test("a sweep drives its own build's run and leaves another's alone", async () => {
   await withStateDir(async (dir) => {
     const promoted: string[] = [];
     // The gate is shut on the first pass and open afterwards, so a sweep that
@@ -100,7 +101,7 @@ Deno.test("a sweep drives its own build's run and leaves another's alone", async
   });
 });
 
-Deno.test("a run recorded with no origin is still swept", async () => {
+test("a run recorded with no origin is still swept", async () => {
   // No ZUKE_BUILD_ID and no GITHUB_REPOSITORY in the environment of either pass,
   // so nothing is recorded and nothing is compared — the behaviour every build
   // had before the field existed, and the reason its absence abstains.

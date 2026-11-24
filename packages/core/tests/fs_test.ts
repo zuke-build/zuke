@@ -7,7 +7,8 @@
  * they are run side by side on the same inputs.
  */
 
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   alreadyExists,
   appendTextSync,
@@ -36,7 +37,7 @@ import {
   writeFile,
   writeStream,
 } from "../src/fs.ts";
-import { withTemp } from "./_temp.ts";
+import { withTemp } from "../../../tests/_temp.ts";
 
 /** What a failed call threw: its class name and its code. */
 interface Failure {
@@ -93,7 +94,7 @@ function shared(info: Deno.FileInfo) {
   };
 }
 
-Deno.test("reads return what Deno's return, as plain bytes and text", async () => {
+test("reads return what Deno's return, as plain bytes and text", async () => {
   await withTemp(async (dir) => {
     const path = `${dir}/data.bin`;
     await Deno.writeFile(path, new Uint8Array([0, 1, 2, 250, 255]));
@@ -110,7 +111,7 @@ Deno.test("reads return what Deno's return, as plain bytes and text", async () =
   });
 });
 
-Deno.test("stat and lstat describe a file, a directory and a link as Deno does", async () => {
+test("stat and lstat describe a file, a directory and a link as Deno does", async () => {
   await withTemp(async (dir) => {
     await Deno.writeTextFile(`${dir}/file`, "12345");
     await Deno.mkdir(`${dir}/sub`);
@@ -122,7 +123,7 @@ Deno.test("stat and lstat describe a file, a directory and a link as Deno does",
   });
 });
 
-Deno.test({
+test({
   name: "lstat describes a link and stat follows it, as Deno does",
   // Creating a symlink needs a privilege a Windows runner does not have.
   ignore: Deno.build.os === "windows",
@@ -145,7 +146,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "a symlink loop surfaces as Deno's FilesystemLoop on every operation",
   ignore: Deno.build.os === "windows",
   fn: async () => {
@@ -179,7 +180,7 @@ Deno.test({
   },
 });
 
-Deno.test("mkdirRecursive creates the whole path and accepts one that exists", async () => {
+test("mkdirRecursive creates the whole path and accepts one that exists", async () => {
   await withTemp(async (dir) => {
     await mkdirRecursive(`${dir}/a/b/c`);
     assertEquals((await Deno.stat(`${dir}/a/b/c`)).isDirectory, true);
@@ -187,7 +188,7 @@ Deno.test("mkdirRecursive creates the whole path and accepts one that exists", a
   });
 });
 
-Deno.test("writeFile writes bytes and text, replacing what is there", async () => {
+test("writeFile writes bytes and text, replacing what is there", async () => {
   await withTemp(async (dir) => {
     await writeFile(`${dir}/out`, new Uint8Array([9, 8, 7]));
     assertEquals(await Deno.readFile(`${dir}/out`), new Uint8Array([9, 8, 7]));
@@ -202,7 +203,7 @@ Deno.test("writeFile writes bytes and text, replacing what is there", async () =
   });
 });
 
-Deno.test({
+test({
   name:
     "writeFile sets the mode on a new file and on one that exists, as Deno does",
   ignore: Deno.build.os === "windows",
@@ -225,7 +226,7 @@ Deno.test({
   },
 });
 
-Deno.test("each failure surfaces as the Deno error class it always was, keeping its code", async () => {
+test("each failure surfaces as the Deno error class it always was, keeping its code", async () => {
   await withTemp(async (dir) => {
     await Deno.writeTextFile(`${dir}/file`, "x");
     const missing = `${dir}/nope`;
@@ -286,7 +287,7 @@ Deno.test("each failure surfaces as the Deno error class it always was, keeping 
   });
 });
 
-Deno.test("directories are made, listed, copied into, renamed and removed as Deno does", async () => {
+test("directories are made, listed, copied into, renamed and removed as Deno does", async () => {
   await withTemp(async (dir) => {
     await mkdir(`${dir}/d`);
     await mkdir(`${dir}/d/sub`);
@@ -319,7 +320,7 @@ Deno.test("directories are made, listed, copied into, renamed and removed as Den
   });
 });
 
-Deno.test({
+test({
   name: "a link holds its target as given, and is removed without its target",
   ignore: Deno.build.os === "windows",
   fn: async () => {
@@ -347,7 +348,7 @@ Deno.test({
   },
 });
 
-Deno.test("directory, copy, rename and remove failures surface as Deno's do", async () => {
+test("directory, copy, rename and remove failures surface as Deno's do", async () => {
   // Some of these succeed on one platform or another, and change what is on
   // disk when they do, so each side of each pair gets a tree of its own.
   const inFreshTree = async (call: (dir: string) => unknown) => {
@@ -465,7 +466,7 @@ Deno.test("directory, copy, rename and remove failures surface as Deno's do", as
   );
 });
 
-Deno.test({
+test({
   name: "a link onto a taken path fails as Deno's does",
   ignore: Deno.build.os === "windows",
   fn: async () => {
@@ -488,7 +489,7 @@ Deno.test({
   },
 });
 
-Deno.test("alreadyExists is the class and code of the file system's own refusal", async () => {
+test("alreadyExists is the class and code of the file system's own refusal", async () => {
   await withTemp(async (dir) => {
     const made = alreadyExists("taken");
     assertEquals(made instanceof Deno.errors.AlreadyExists, true);
@@ -501,7 +502,7 @@ Deno.test("alreadyExists is the class and code of the file system's own refusal"
   });
 });
 
-Deno.test("makeTempDir makes a new, empty directory each time, where Deno makes its own", async () => {
+test("makeTempDir makes a new, empty directory each time, where Deno makes its own", async () => {
   const [a, b, theirs] = [
     await makeTempDir(),
     await makeTempDir(),
@@ -521,7 +522,7 @@ Deno.test("makeTempDir makes a new, empty directory each time, where Deno makes 
   }
 });
 
-Deno.test({
+test({
   name: "chmod sets the bits Deno's sets, and fails as Deno's does",
   ignore: Deno.build.os === "windows",
   fn: async () => {
@@ -546,7 +547,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name: "makeTempDir works without permission to read the environment",
   ignore: Deno.build.os === "windows",
   fn: async () => {
@@ -579,7 +580,7 @@ Deno.test({
   },
 });
 
-Deno.test("createNew makes an empty file once, and refuses a taken path as Deno does", async () => {
+test("createNew makes an empty file once, and refuses a taken path as Deno does", async () => {
   await withTemp(async (dir) => {
     await createNew(`${dir}/lock`);
     assertEquals(await readFile(`${dir}/lock`), new Uint8Array());
@@ -603,7 +604,7 @@ Deno.test("createNew makes an empty file once, and refuses a taken path as Deno 
   });
 });
 
-Deno.test("of many callers racing to createNew one path, exactly one succeeds", async () => {
+test("of many callers racing to createNew one path, exactly one succeeds", async () => {
   await withTemp(async (dir) => {
     const outcomes = await Promise.allSettled(
       Array.from({ length: 20 }, () => createNew(`${dir}/lock`)),
@@ -615,7 +616,7 @@ Deno.test("of many callers racing to createNew one path, exactly one succeeds", 
   });
 });
 
-Deno.test("realPath gives the path Deno's gives, and fails as Deno's does", async () => {
+test("realPath gives the path Deno's gives, and fails as Deno's does", async () => {
   await withTemp(async (dir) => {
     await Deno.mkdir(`${dir}/a/b`, { recursive: true });
     for (const path of [dir, `${dir}/a/b/..`, `${dir}/a/./b`]) {
@@ -632,7 +633,7 @@ Deno.test("realPath gives the path Deno's gives, and fails as Deno's does", asyn
   });
 });
 
-Deno.test({
+test({
   name: "realPath resolves a link as Deno's does",
   ignore: Deno.build.os === "windows",
   fn: async () => {
@@ -673,7 +674,7 @@ function chunked(
   });
 }
 
-Deno.test("openFile streams the bytes Deno's open does, with the owner and mode of its stat", async () => {
+test("openFile streams the bytes Deno's open does, with the owner and mode of its stat", async () => {
   await withTemp(async (dir) => {
     // Larger than one read, and not a multiple of it, so chunks are joined.
     const bytes = new Uint8Array(200_001).map((_, index) => index % 251);
@@ -694,7 +695,7 @@ Deno.test("openFile streams the bytes Deno's open does, with the owner and mode 
   });
 });
 
-Deno.test("openFile closes the file when it is closed unread or its stream is cancelled", async () => {
+test("openFile closes the file when it is closed unread or its stream is cancelled", async () => {
   await withTemp(async (dir) => {
     await Deno.writeFile(`${dir}/file`, new Uint8Array(100_000));
     // The test runner fails a test that leaves a file open.
@@ -705,7 +706,7 @@ Deno.test("openFile closes the file when it is closed unread or its stream is ca
   });
 });
 
-Deno.test("openFile fails as Deno's open does", async () => {
+test("openFile fails as Deno's open does", async () => {
   await withTemp(async (dir) => {
     const theirs = (path: string) => async () =>
       (await Deno.open(path)).close();
@@ -723,7 +724,7 @@ Deno.test("openFile fails as Deno's open does", async () => {
   });
 });
 
-Deno.test("writeStream writes every chunk in order, replacing what is there, as Deno's does", async () => {
+test("writeStream writes every chunk in order, replacing what is there, as Deno's does", async () => {
   await withTemp(async (dir) => {
     const chunks = () => [
       new Uint8Array([1, 2, 3]),
@@ -743,7 +744,7 @@ Deno.test("writeStream writes every chunk in order, replacing what is there, as 
   });
 });
 
-Deno.test("writeStream fails with the stream's own error, and with Deno's for a path it cannot open", async () => {
+test("writeStream fails with the stream's own error, and with Deno's for a path it cannot open", async () => {
   await withTemp(async (dir) => {
     const reset = new Error("connection reset");
     const thrown = await writeStream(
@@ -773,11 +774,11 @@ Deno.test("writeStream fails with the stream's own error, and with Deno's for a 
   });
 });
 
-Deno.test("userId is the id Deno gives", () => {
+test("userId is the id Deno gives", () => {
   assertEquals(userId(), Deno.uid());
 });
 
-Deno.test("the calls that do not wait give what Deno's give, and fail the same way", async () => {
+test("the calls that do not wait give what Deno's give, and fail the same way", async () => {
   await withTemp(async (dir) => {
     await Deno.writeTextFile(`${dir}/file`, "12345");
     for (const path of [dir, `${dir}/file`]) {
@@ -811,7 +812,7 @@ Deno.test("the calls that do not wait give what Deno's give, and fail the same w
   });
 });
 
-Deno.test("appendTextSync creates the file, then adds to its end, as Deno's append does", async () => {
+test("appendTextSync creates the file, then adds to its end, as Deno's append does", async () => {
   await withTemp(async (dir) => {
     for (const text of ["first\n", "second\n"]) {
       appendTextSync(`${dir}/ours`, text);
@@ -825,7 +826,7 @@ Deno.test("appendTextSync creates the file, then adds to its end, as Deno's appe
   });
 });
 
-Deno.test({
+test({
   name: "appendTextSync leaves a file's mode alone, and makes one with Deno's",
   ignore: Deno.build.os === "windows",
   fn: async () => {
@@ -844,7 +845,7 @@ Deno.test({
   },
 });
 
-Deno.test("readSmallTextSync reads a file within the limit, and nothing else", async () => {
+test("readSmallTextSync reads a file within the limit, and nothing else", async () => {
   await withTemp(async (dir) => {
     await writeFile(`${dir}/small`, "12345");
     assertEquals(readSmallTextSync(`${dir}/small`, 5), "12345");

@@ -9,14 +9,12 @@
  * a unit seam.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
 
-Deno.test("runs dependencies before dependents, in declared order", async () => {
+test("runs dependencies before dependents, in declared order", async () => {
   const log: string[] = [];
   class B extends Build {
     clean = target().executes(() => void log.push("clean"));
@@ -32,7 +30,7 @@ Deno.test("runs dependencies before dependents, in declared order", async () => 
   assertEquals(log, ["clean", "compile", "test"]);
 });
 
-Deno.test("a diamond runs the shared dependency exactly once", async () => {
+test("a diamond runs the shared dependency exactly once", async () => {
   const log: string[] = [];
   class B extends Build {
     base = target().executes(() => void log.push("base"));
@@ -50,7 +48,7 @@ Deno.test("a diamond runs the shared dependency exactly once", async () => {
   assertEquals(log[log.length - 1], "top");
 });
 
-Deno.test("a body returning a value runs, and its promise is awaited before dependents", async () => {
+test("a body returning a value runs, and its promise is awaited before dependents", async () => {
   // TargetFn accepts any return, so `.executes(() => SomeTasks.run())` — which
   // resolves to a CommandOutput — needs no async wrapper; the returned promise
   // is still awaited before dependents start.
@@ -69,7 +67,7 @@ Deno.test("a body returning a value runs, and its promise is awaited before depe
   assertEquals(log, ["produce", "consume"]);
 });
 
-Deno.test("--parallel still honours dependency order", async () => {
+test("--parallel still honours dependency order", async () => {
   const log: string[] = [];
   class B extends Build {
     a = target().executes(() => void log.push("a"));
@@ -80,7 +78,7 @@ Deno.test("--parallel still honours dependency order", async () => {
   assertEquals(log.indexOf("a") < log.indexOf("b"), true);
 });
 
-Deno.test("--skip prunes a dependency from the run", async () => {
+test("--skip prunes a dependency from the run", async () => {
   const log: string[] = [];
   class B extends Build {
     slow = target().executes(() => void log.push("slow"));
@@ -93,7 +91,7 @@ Deno.test("--skip prunes a dependency from the run", async () => {
   assertEquals(log, ["build"]);
 });
 
-Deno.test("a failing target exits 1 and skips its dependents", async () => {
+test("a failing target exits 1 and skips its dependents", async () => {
   const log: string[] = [];
   class B extends Build {
     setup = target().executes(() => void log.push("setup"));
@@ -111,7 +109,7 @@ Deno.test("a failing target exits 1 and skips its dependents", async () => {
   assertEquals(log, ["setup", "boom"]);
 });
 
-Deno.test("the default target runs when no target is named", async () => {
+test("the default target runs when no target is named", async () => {
   const log: string[] = [];
   class B extends Build {
     other = target().executes(() => void log.push("other"));
@@ -124,7 +122,7 @@ Deno.test("the default target runs when no target is named", async () => {
   assertEquals(log, ["other", "default"]);
 });
 
-Deno.test("--list names every declared target", async () => {
+test("--list names every declared target", async () => {
   class B extends Build {
     clean = target().description("Remove artifacts").executes(() => {});
     build = target().description("Compile").executes(() => {});

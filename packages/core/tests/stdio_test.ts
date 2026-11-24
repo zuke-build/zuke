@@ -1,8 +1,9 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import { PassThrough } from "node:stream";
-import { assertEquals } from "./_assert.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   awaitedWriter,
   flushOutput,
@@ -22,7 +23,7 @@ function drained(stream: PassThrough): string {
   return chunk instanceof Uint8Array ? new TextDecoder().decode(chunk) : "";
 }
 
-Deno.test("a queued writer returns at once and keeps the order", () => {
+test("a queued writer returns at once and keeps the order", () => {
   const stream = new PassThrough();
   const writer = queuedWriter(stream);
   assertEquals(writer.writeSync(bytes("one ")), 4);
@@ -30,7 +31,7 @@ Deno.test("a queued writer returns at once and keeps the order", () => {
   assertEquals(drained(stream), "one two");
 });
 
-Deno.test("a writer copies what it is given, so the caller may reuse it", async () => {
+test("a writer copies what it is given, so the caller may reuse it", async () => {
   const stream = new PassThrough();
   const reused = bytes("first");
   queuedWriter(stream).writeSync(reused);
@@ -41,7 +42,7 @@ Deno.test("a writer copies what it is given, so the caller may reuse it", async 
   assertEquals(drained(stream), "first" + "again");
 });
 
-Deno.test("an awaited write resolves only once the bytes before it have gone", async () => {
+test("an awaited write resolves only once the bytes before it have gone", async () => {
   const stream = new PassThrough({ highWaterMark: 1 });
   const writer = awaitedWriter(stream);
   let done = false;
@@ -55,13 +56,13 @@ Deno.test("an awaited write resolves only once the bytes before it have gone", a
   assertEquals(done, true);
 });
 
-Deno.test("an awaited write to a stream that has gone still resolves", async () => {
+test("an awaited write to a stream that has gone still resolves", async () => {
   const stream = new PassThrough();
   stream.destroy();
   assertEquals(await awaitedWriter(stream).write(bytes("lost")), 4);
 });
 
-Deno.test("on Deno the process's streams are Deno's own, and a flush is immediate", async () => {
+test("on Deno the process's streams are Deno's own, and a flush is immediate", async () => {
   assertEquals(processOutput(), { stdout: Deno.stdout, stderr: Deno.stderr });
   assertEquals(stdoutWriter(), Deno.stdout);
   assertEquals(stdinBytes(), Deno.stdin.readable);
@@ -79,29 +80,29 @@ function reader(text: string): (buffer: Uint8Array) => number {
   };
 }
 
-Deno.test("a line is read up to its line break, which is dropped", () => {
+test("a line is read up to its line break, which is dropped", () => {
   assertEquals(readLine(reader("staging\n")), "staging");
   assertEquals(readLine(reader("staging\r\n")), "staging");
   assertEquals(readLine(reader("\n")), "");
 });
 
-Deno.test("a line read takes nothing after the line break", () => {
+test("a line read takes nothing after the line break", () => {
   const read = reader("one\ntwo\n");
   assertEquals(readLine(read), "one");
   assertEquals(readLine(read), "two");
   assertEquals(readLine(read), null);
 });
 
-Deno.test("input that ends without a line break is still a line, and none at all is not", () => {
+test("input that ends without a line break is still a line, and none at all is not", () => {
   assertEquals(readLine(reader("unfinished")), "unfinished");
   assertEquals(readLine(reader("")), null);
 });
 
-Deno.test("a character whose bytes arrive in separate reads is one character", () => {
+test("a character whose bytes arrive in separate reads is one character", () => {
   assertEquals(readLine(reader("café → 東京\n")), "café → 東京");
 });
 
-Deno.test("on Deno the prompt is Deno's own", () => {
+test("on Deno the prompt is Deno's own", () => {
   const original = globalThis.prompt;
   const asked: (string | undefined)[] = [];
   globalThis.prompt = (message) => {

@@ -1,14 +1,15 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import {
   KubectlCordonSettings,
   KubectlDrainSettings,
   KubectlTaintSettings,
 } from "../mod.ts";
 
-Deno.test("cordon and uncordon are the same command with a different verb", () => {
+test("cordon and uncordon are the same command with a different verb", () => {
   assertEquals(
     new KubectlCordonSettings().node("worker-1").argv().slice(1),
     ["cordon", "worker-1"],
@@ -47,7 +48,7 @@ Deno.test("cordon and uncordon are the same command with a different verb", () =
   );
 });
 
-Deno.test("drain renders every override it needs to proceed", () => {
+test("drain renders every override it needs to proceed", () => {
   assertEquals(
     new KubectlDrainSettings()
       .node("worker-1")
@@ -85,7 +86,7 @@ Deno.test("drain renders every override it needs to proceed", () => {
   );
 });
 
-Deno.test("taint adds and removes in kubectl's own spelling", () => {
+test("taint adds and removes in kubectl's own spelling", () => {
   assertEquals(
     new KubectlTaintSettings().node("worker-1").taint(
       "dedicated",
@@ -129,7 +130,7 @@ Deno.test("taint adds and removes in kubectl's own spelling", () => {
   );
 });
 
-Deno.test("taint insists on both a taint and something to taint", () => {
+test("taint insists on both a taint and something to taint", () => {
   assertThrows(
     () => new KubectlTaintSettings().node("worker-1").argv(),
     Error,

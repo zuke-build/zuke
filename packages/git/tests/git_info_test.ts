@@ -1,16 +1,17 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { gitInfo, type GitRunner } from "../src/git_info.ts";
-import { withTemp } from "../../core/tests/_temp.ts";
+import { withTemp } from "../../../tests/_temp.ts";
 
 /** Build a fake {@link GitRunner} from a map of `git <args>` → output (or null). */
 function fakeRun(responses: Record<string, string | null>): GitRunner {
   return (args) => Promise.resolve(responses[args.join(" ")] ?? null);
 }
 
-Deno.test("gitInfo resolves a full clean repository", async () => {
+test("gitInfo resolves a full clean repository", async () => {
   const info = await gitInfo({
     run: fakeRun({
       "rev-parse HEAD": "abcdef0123456789",
@@ -31,7 +32,7 @@ Deno.test("gitInfo resolves a full clean repository", async () => {
   });
 });
 
-Deno.test("gitInfo reports a dirty tree", async () => {
+test("gitInfo reports a dirty tree", async () => {
   const info = await gitInfo({
     run: fakeRun({
       "rev-parse HEAD": "9f01ab23",
@@ -45,7 +46,7 @@ Deno.test("gitInfo reports a dirty tree", async () => {
   assertEquals(info.remoteUrl, undefined); // no remote configured
 });
 
-Deno.test("gitInfo falls back when branch/short are unavailable (detached HEAD)", async () => {
+test("gitInfo falls back when branch/short are unavailable (detached HEAD)", async () => {
   const info = await gitInfo({
     run: fakeRun({
       "rev-parse HEAD": "0123456789abcdef",
@@ -58,7 +59,7 @@ Deno.test("gitInfo falls back when branch/short are unavailable (detached HEAD)"
   assertEquals(info.shortCommit, "0123456"); // first 7 chars of the commit
 });
 
-Deno.test("gitInfo treats an empty tag/remote result as undefined", async () => {
+test("gitInfo treats an empty tag/remote result as undefined", async () => {
   const info = await gitInfo({
     run: fakeRun({
       "rev-parse HEAD": "abc1234",
@@ -73,7 +74,7 @@ Deno.test("gitInfo treats an empty tag/remote result as undefined", async () => 
   assertEquals(info.remoteUrl, undefined);
 });
 
-Deno.test("gitInfo throws when HEAD cannot be resolved", async () => {
+test("gitInfo throws when HEAD cannot be resolved", async () => {
   await assertRejects(
     () => gitInfo({ run: fakeRun({}) }),
     Error,
@@ -81,7 +82,7 @@ Deno.test("gitInfo throws when HEAD cannot be resolved", async () => {
   );
 });
 
-Deno.test("gitInfo's default runner returns nothing outside a repository", async () => {
+test("gitInfo's default runner returns nothing outside a repository", async () => {
   // Exercises the real spawning runner against a non-repo temp dir: whether git
   // exits non-zero or is absent, HEAD resolves to null and gitInfo throws.
   await withTemp(async (dir) => {

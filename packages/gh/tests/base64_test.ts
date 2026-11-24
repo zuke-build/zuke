@@ -8,10 +8,11 @@
  * @module
  */
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { base64 } from "../src/base64.ts";
 
-Deno.test("base64: bytes of every range encode as the standard alphabet", () => {
+test("base64: bytes of every range encode as the standard alphabet", () => {
   assertEquals(base64(new Uint8Array()), "");
   assertEquals(base64(new TextEncoder().encode("hello\n")), "aGVsbG8K");
   // High bytes are bytes, not UTF-16 units: é is two bytes in UTF-8.

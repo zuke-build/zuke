@@ -10,7 +10,7 @@
  * (`EnvTasks`, `FileTasks`, `ProcessTasks`, …) instead.
  */
 
-import { assertEquals } from "../packages/core/tests/_assert.ts";
+import { assertEquals } from "./_assert.ts";
 
 /** Every `.ts` file under `dir`, recursively. */
 async function sources(dir: URL): Promise<URL[]> {

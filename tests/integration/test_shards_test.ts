@@ -9,10 +9,8 @@
  * shard's, and a failing shard fails the target while the others still report.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { DenoTasks } from "../../packages/deno/mod.ts";
 import { runShards } from "../../build/test_shards.ts";
@@ -20,16 +18,16 @@ import { runCli } from "./_harness.ts";
 
 // Addressed by `file://` URL, which is byte-identical on every OS.
 const PASSING = new URL(
-  "../../packages/deno/tests/fixtures/passing_suite.ts",
+  "../support/deno/fixtures/passing_suite.ts",
   import.meta.url,
 ).href;
 const FAILING = new URL(
-  "../../packages/deno/tests/fixtures/failing_suite.ts",
+  "../support/deno/fixtures/failing_suite.ts",
   import.meta.url,
 ).href;
 // No such file: deno exits before running any test, as it did on #852's runner.
 const MISSING = new URL(
-  "../../packages/deno/tests/fixtures/no_such_suite.ts",
+  "../support/deno/fixtures/no_such_suite.ts",
   import.meta.url,
 ).href;
 
@@ -67,7 +65,7 @@ function row(out: string, name: string): string {
   ) ?? "";
 }
 
-Deno.test("the test row sums every shard's counts", async () => {
+test("the test row sums every shard's counts", async () => {
   const r = await runCli(shardedBuild([[PASSING], [PASSING]]), ["test"]);
   assertEquals(r.code, 0, r.err);
   assertStringIncludes(
@@ -79,7 +77,7 @@ Deno.test("the test row sums every shard's counts", async () => {
   assertEquals(first >= 0 && second > first, true, r.out);
 });
 
-Deno.test("a failing shard fails the target, and the row still counts both", async () => {
+test("a failing shard fails the target, and the row still counts both", async () => {
   const r = await runCli(shardedBuild([[FAILING], [PASSING]]), ["test"]);
   assertEquals(r.code, 1);
   assertStringIncludes(
@@ -92,7 +90,7 @@ Deno.test("a failing shard fails the target, and the row still counts both", asy
   );
 });
 
-Deno.test("a shard whose deno died before testing is run again, and passes", async () => {
+test("a shard whose deno died before testing is run again, and passes", async () => {
   const r = await runCli(
     shardedBuild([[PASSING]], (paths, run) => run === 0 ? [MISSING] : paths),
     ["test"],
@@ -110,7 +108,7 @@ Deno.test("a shard whose deno died before testing is run again, and passes", asy
   );
 });
 
-Deno.test("a shard that dies before testing twice fails the target", async () => {
+test("a shard that dies before testing twice fails the target", async () => {
   const r = await runCli(shardedBuild([[MISSING]]), ["test"]);
   assertEquals(r.code, 1);
   assertStringIncludes(

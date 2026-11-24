@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { BUILD_FILE } from "../src/build_file.ts";
 import {
   buildLabel,
@@ -27,8 +28,8 @@ import {
 } from "../src/dispatch.ts";
 import { EMBEDDED_ENGINE_ENV } from "../src/embedded_engine.ts";
 import { CONFIG_FILE } from "@zuke/core";
-import { withTemp } from "../../core/tests/_temp.ts";
-import { withEnv } from "../../core/tests/_env.ts";
+import { withTemp } from "../../../tests/_temp.ts";
+import { withEnv } from "../../../tests/_env.ts";
 
 /** What a fake filesystem knows: which paths exist, and who owns what. */
 interface Fixture {
@@ -102,7 +103,7 @@ async function refused(
   throw new Error("expected the trust gate to refuse");
 }
 
-Deno.test("locateBuild finds zuke.json in the cwd itself", async () => {
+test("locateBuild finds zuke.json in the cwd itself", async () => {
   const found = await locateBuild(
     "/repo",
     probe({ present: ["/repo/zuke.json"] }),
@@ -117,7 +118,7 @@ Deno.test("locateBuild finds zuke.json in the cwd itself", async () => {
   });
 });
 
-Deno.test("locateBuild reads the runtime from zuke.json, and refuses one it does not know", async () => {
+test("locateBuild reads the runtime from zuke.json, and refuses one it does not know", async () => {
   // A Node project: its build file is present, so no engine runs it.
   const node = probe({
     present: ["/n/zuke.json", "/n/build.ts"],
@@ -131,7 +132,7 @@ Deno.test("locateBuild reads the runtime from zuke.json, and refuses one it does
   await assertRejects(() => locateBuild("/b", bun), Error, "'runtime'");
 });
 
-Deno.test("locateBuild walks up to the nearest ancestor holding zuke.json", async () => {
+test("locateBuild walks up to the nearest ancestor holding zuke.json", async () => {
   // Two nested projects: the nearest one wins, so a monorepo's package-level
   // build is picked over the workspace root's.
   const found = await locateBuild(
@@ -141,7 +142,7 @@ Deno.test("locateBuild walks up to the nearest ancestor holding zuke.json", asyn
   assertEquals(found?.root, "/mono/packages/app");
 });
 
-Deno.test("locateBuild reports a lockfile beside the config as frozen", async () => {
+test("locateBuild reports a lockfile beside the config as frozen", async () => {
   const found = await locateBuild(
     "/repo/src",
     probe({ present: ["/repo/zuke.json", "/repo/deno.lock"] }),
@@ -162,7 +163,7 @@ Deno.test("locateBuild reports a lockfile beside the config as frozen", async ()
   assertEquals(elsewhere?.frozen, false);
 });
 
-Deno.test("locateBuild returns null when no ancestor has zuke.json", async () => {
+test("locateBuild returns null when no ancestor has zuke.json", async () => {
   assertEquals(await locateBuild("/a/b/c", probe({})), null);
   // The filesystem root is probed too, then the walk stops.
   const probed: string[] = [];
@@ -181,7 +182,7 @@ Deno.test("locateBuild returns null when no ancestor has zuke.json", async () =>
   assertEquals(probed, ["/a/b/zuke.json", "/a/zuke.json", "/zuke.json"]);
 });
 
-Deno.test("locateBuild accepts a Windows drive path", async () => {
+test("locateBuild accepts a Windows drive path", async () => {
   const found = await locateBuild(
     "C:\\work\\repo\\src",
     probe({ present: ["C:/work/repo/zuke.json"] }),
@@ -190,7 +191,7 @@ Deno.test("locateBuild accepts a Windows drive path", async () => {
   assertEquals(await locateBuild("C:\\other", probe({})), null);
 });
 
-Deno.test("the trust gate accepts a root the current user owns", async () => {
+test("the trust gate accepts a root the current user owns", async () => {
   const found = await locateBuild(
     "/home/me/app/src",
     probe({
@@ -209,7 +210,7 @@ Deno.test("the trust gate accepts a root the current user owns", async () => {
   });
 });
 
-Deno.test("the trust gate does not judge the root a launcher started zuke in, and only that root", async () => {
+test("the trust gate does not judge the root a launcher started zuke in, and only that root", async () => {
   // A container job runs as root over a checkout another uid owns: the
   // launcher run there names the project, as git's safe.directory would.
   const fixture: Fixture = {
@@ -242,7 +243,7 @@ Deno.test("the trust gate does not judge the root a launcher started zuke in, an
   }
 });
 
-Deno.test("the trust gate refuses a root owned by another user", async () => {
+test("the trust gate refuses a root owned by another user", async () => {
   // A `zuke.json` planted by another local user in a shared parent (`/tmp`)
   // must not have `zuke ci` below it run their `zuke.ts` with -A.
   const error = await refused("/tmp/scratch", {
@@ -266,7 +267,7 @@ Deno.test("the trust gate refuses a root owned by another user", async () => {
   assertEquals(error.message.includes("./zuke"), true);
 });
 
-Deno.test("the trust gate refuses a world-writable root even when the user owns it", async () => {
+test("the trust gate refuses a world-writable root even when the user owns it", async () => {
   // Ownership alone is not enough: anyone can plant files in a 777 directory.
   const error = await refused("/home/me/open", {
     present: ["/home/me/open/zuke.json"],
@@ -286,7 +287,7 @@ Deno.test("the trust gate refuses a world-writable root even when the user owns 
   assertEquals(found?.root, "/home/me/shared");
 });
 
-Deno.test("the trust gate refuses an ancestor config file Deno would read that another user owns", async () => {
+test("the trust gate refuses an ancestor config file Deno would read that another user owns", async () => {
   // Deno discovers deno.json / package.json above the root, and an import
   // map planted there rewrites what zuke.ts imports — the sibling of the
   // planted-zuke.json attack, closed the same way.
@@ -307,7 +308,7 @@ Deno.test("the trust gate refuses an ancestor config file Deno would read that a
   }
 });
 
-Deno.test("the trust gate accepts ancestor config files the user owns, and asks only above the root", async () => {
+test("the trust gate accepts ancestor config files the user owns, and asks only above the root", async () => {
   const fake = probe({
     present: ["/home/me/mono/app/zuke.json"],
     owned: {
@@ -347,7 +348,7 @@ Deno.test("the trust gate accepts ancestor config files the user owns, and asks 
   ]);
 });
 
-Deno.test("the trust gate refuses a build file in the root that another user owns", async () => {
+test("the trust gate refuses a build file in the root that another user owns", async () => {
   // A `chown` of the directory alone passes the directory check; the files
   // that decide what runs must be the user's too.
   for (
@@ -368,7 +369,7 @@ Deno.test("the trust gate refuses a build file in the root that another user own
   }
 });
 
-Deno.test("the trust gate is inert where ownership cannot be compared", async () => {
+test("the trust gate is inert where ownership cannot be compared", async () => {
   // Windows: no user id at all — nothing is ever asked about ownership, and
   // there is no launcher to ask about either.
   const noUid = probe({
@@ -391,7 +392,7 @@ Deno.test("the trust gate is inert where ownership cannot be compared", async ()
   assertEquals((await locateBuild("/repo", noOwner))?.root, "/repo");
 });
 
-Deno.test("buildRunArgs mirrors the launcher: --frozen only with a lockfile", () => {
+test("buildRunArgs mirrors the launcher: --frozen only with a lockfile", () => {
   assertEquals(
     buildRunArgs(
       {
@@ -449,7 +450,7 @@ function fileMode(permissions: number): number {
   return 0o100000 | permissions;
 }
 
-Deno.test("locateBuild reports an executable launcher at the root", async () => {
+test("locateBuild reports an executable launcher at the root", async () => {
   const found = await locateBuild(
     "/repo/src",
     probe({
@@ -468,7 +469,7 @@ Deno.test("locateBuild reports an executable launcher at the root", async () => 
   });
 });
 
-Deno.test("locateBuild resolves a symlinked launcher and judges its directory", async () => {
+test("locateBuild resolves a symlinked launcher and judges its directory", async () => {
   const fixture = (shared: Ownership): Fixture => ({
     present: ["/w/app/zuke.json"],
     owned: {
@@ -490,7 +491,7 @@ Deno.test("locateBuild resolves a symlinked launcher and judges its directory", 
   assertEquals(theirs.reason, "/w/shared is owned by user 0, not you (1000)");
 });
 
-Deno.test("a symlinked launcher runs by its root path only as one hop to the judged file", async () => {
+test("a symlinked launcher runs by its root path only as one hop to the judged file", async () => {
   const fixture = (written: string): Fixture => ({
     present: ["/w/app/zuke.json"],
     owned: {
@@ -532,7 +533,7 @@ Deno.test("a symlinked launcher runs by its root path only as one hop to the jud
   assertEquals(chain?.root, "/w/app");
 });
 
-Deno.test("the trust gate refuses a root file writable by everyone", async () => {
+test("the trust gate refuses a root file writable by everyone", async () => {
   const error = await refused("/repo", {
     present: ["/repo/zuke.json"],
     owned: { "/repo/zuke": ownedBy(1000, fileMode(0o777)) },
@@ -541,7 +542,7 @@ Deno.test("the trust gate refuses a root file writable by everyone", async () =>
   assertEquals(error.reason, "/repo/zuke is writable by everyone");
 });
 
-Deno.test("locateBuild ignores a launcher that is not an executable regular file", async () => {
+test("locateBuild ignores a launcher that is not an executable regular file", async () => {
   const at = (mode: number | null) =>
     locateBuild(
       "/repo",
@@ -558,7 +559,7 @@ Deno.test("locateBuild ignores a launcher that is not an executable regular file
   assertEquals((await at(null))?.launcher, null);
 });
 
-Deno.test("runBuild runs the launcher with the bare args, else Deno", async () => {
+test("runBuild runs the launcher with the bare args, else Deno", async () => {
   const calls: Array<[string, string[], string | undefined]> = [];
   const runner = (root: string, args: string[], program?: string) => {
     calls.push([root, args, program]);
@@ -620,7 +621,7 @@ const EMBEDDED = {
   serves: (pin: string) => pin.startsWith("1.") && pin <= "1.3.0",
 };
 
-Deno.test("runBuild runs a hosted build the binary's engine serves on the binary itself, launcher or not", async () => {
+test("runBuild runs a hosted build the binary's engine serves on the binary itself, launcher or not", async () => {
   const calls: Array<
     [string, string[], string | undefined, Record<string, string> | undefined]
   > = [];
@@ -689,7 +690,7 @@ Deno.test("runBuild runs a hosted build the binary's engine serves on the binary
   ]);
 });
 
-Deno.test("the binary never falls back to Deno for a hosted build it cannot serve", async () => {
+test("the binary never falls back to Deno for a hosted build it cannot serve", async () => {
   const runner = () => Promise.reject(new Error("nothing may run"));
   const unserved: BuildLocation = {
     root: "/py",
@@ -750,7 +751,7 @@ Deno.test("the binary never falls back to Deno for a hosted build it cannot serv
   ]]);
 });
 
-Deno.test("the binary's engine is named when it runs the build, and when it cannot", async () => {
+test("the binary's engine is named when it runs the build, and when it cannot", async () => {
   const hosted: BuildLocation = {
     root: "/home/me/app",
     frozen: false,
@@ -797,7 +798,7 @@ Deno.test("the binary's engine is named when it runs the build, and when it cann
   );
 });
 
-Deno.test("the running notice names the build file at the root, or the engine release", () => {
+test("the running notice names the build file at the root, or the engine release", () => {
   assertEquals(
     runningNotice({
       root: "/home/me/app",
@@ -822,7 +823,7 @@ Deno.test("the running notice names the build file at the root, or the engine re
   );
 });
 
-Deno.test("a root without zuke.ts runs the engine release its zuke.json names", async () => {
+test("a root without zuke.ts runs the engine release its zuke.json names", async () => {
   const sdk = {
     present: ["/app/zuke.json"],
     texts: {
@@ -878,7 +879,7 @@ Deno.test("a root without zuke.ts runs the engine release its zuke.json names", 
   assertEquals(own?.engine, null);
 });
 
-Deno.test("a root without zuke.ts and without an engine version is refused, and bad JSON is named", async () => {
+test("a root without zuke.ts and without an engine version is refused, and bad JSON is named", async () => {
   // Nothing could run it: not the binary, and never Deno for a hosted build.
   for (
     const text of ['{ "sdk": { "command": ["python3"] } }', '{ "engine": "" }']
@@ -911,11 +912,11 @@ Deno.test("a root without zuke.ts and without an engine version is refused, and 
   );
 });
 
-Deno.test("the no-lock notice names the lockfile", () => {
+test("the no-lock notice names the lockfile", () => {
   assertEquals(NO_LOCK_NOTICE.includes(LOCK_FILE), true);
 });
 
-Deno.test("defaultBuildProbe answers from the real filesystem", async () => {
+test("defaultBuildProbe answers from the real filesystem", async () => {
   await withTemp(async (dir) => {
     await Deno.writeTextFile(`${dir}/zuke.json`, "{}\n");
     assertEquals(await defaultBuildProbe.exists(`${dir}/zuke.json`), true);
@@ -936,7 +937,7 @@ Deno.test("defaultBuildProbe answers from the real filesystem", async () => {
   }, { prefix: "zuke-dispatch-" });
 });
 
-Deno.test("defaultBuildRunner runs the given deno argv from the root and returns its code", async () => {
+test("defaultBuildRunner runs the given deno argv from the root and returns its code", async () => {
   await withTemp(async (dir) => {
     // A self-contained script proves the runner's contract without a build:
     // it runs from `dir` (the cwd it reports) and exits with the code we set.
@@ -952,7 +953,7 @@ Deno.test("defaultBuildRunner runs the given deno argv from the root and returns
   }, { prefix: "zuke-dispatch-" });
 });
 
-Deno.test({
+test({
   name:
     "defaultBuildRunner runs a launcher program from the root with the args",
   ignore: Deno.build.os === "windows",
@@ -979,7 +980,7 @@ Deno.test({
   },
 });
 
-Deno.test("defaultBuildRunner gives the child a PATH even when the parent has none", async () => {
+test("defaultBuildRunner gives the child a PATH even when the parent has none", async () => {
   const inherited = Deno.env.get("PATH");
   try {
     Deno.env.delete("PATH");
@@ -1000,7 +1001,7 @@ Deno.test("defaultBuildRunner gives the child a PATH even when the parent has no
   }
 });
 
-Deno.test("defaultBuildRunner puts the running Deno first on the child's PATH", async () => {
+test("defaultBuildRunner puts the running Deno first on the child's PATH", async () => {
   await withTemp(async (dir) => {
     await Deno.writeTextFile(
       `${dir}/${BUILD_FILE}`,
@@ -1021,7 +1022,7 @@ Deno.test("defaultBuildRunner puts the running Deno first on the child's PATH", 
   }, { prefix: "zuke-dispatch-" });
 });
 
-Deno.test({
+test({
   name:
     "a symlinked shared launcher runs by its path under the root, building this repo",
   // POSIX launchers only: Windows reports no file mode, so it keeps `deno run`.
@@ -1062,7 +1063,7 @@ Deno.test({
   },
 });
 
-Deno.test({
+test({
   name:
     "a launcher reached through a chain of links falls back to deno run, never the chain",
   ignore: Deno.build.os === "windows",
@@ -1091,7 +1092,7 @@ Deno.test({
   },
 });
 
-Deno.test("runBuild hands an env to the runner on both the launcher and the Deno path", async () => {
+test("runBuild hands an env to the runner on both the launcher and the Deno path", async () => {
   const seen: Array<
     [string | undefined, Readonly<Record<string, string>> | undefined]
   > = [];
@@ -1143,7 +1144,7 @@ Deno.test("runBuild hands an env to the runner on both the launcher and the Deno
   ]]);
 });
 
-Deno.test("a root whose zuke.json names its build file runs that file", async () => {
+test("a root whose zuke.json names its build file runs that file", async () => {
   const found = await locateBuild(
     "/repo/src",
     probe({
@@ -1159,7 +1160,7 @@ Deno.test("a root whose zuke.json names its build file runs that file", async ()
   assertEquals(runningNotice(found), "zuke: running /repo/build.ts");
 });
 
-Deno.test("a zuke.json that is not JSON still means zuke.ts beside it", async () => {
+test("a zuke.json that is not JSON still means zuke.ts beside it", async () => {
   // The file's presence alone marked a project before the build field.
   const found = await locateBuild(
     "/repo",
@@ -1172,7 +1173,7 @@ Deno.test("a zuke.json that is not JSON still means zuke.ts beside it", async ()
   assertEquals(found?.engine, null);
 });
 
-Deno.test("a build name that is not a plain file name is refused before anything runs", async () => {
+test("a build name that is not a plain file name is refused before anything runs", async () => {
   for (const name of ["-A.ts", "../evil.ts", "a b.ts", "build.py"]) {
     await assertRejects(
       () =>
@@ -1189,7 +1190,7 @@ Deno.test("a build name that is not a plain file name is refused before anything
   }
 });
 
-Deno.test("the trust gate judges the build file zuke.json names", async () => {
+test("the trust gate judges the build file zuke.json names", async () => {
   const fixture = {
     present: ["/home/me/app/zuke.json", "/home/me/app/build.ts"],
     texts: { "/home/me/app/zuke.json": '{ "build": "build.ts" }' },
@@ -1231,7 +1232,7 @@ Deno.test("the trust gate judges the build file zuke.json names", async () => {
   assertEquals(fake.asked, []);
 });
 
-Deno.test("a root missing the build file it names, with no engine, says which file", async () => {
+test("a root missing the build file it names, with no engine, says which file", async () => {
   await assertRejects(
     () =>
       locateBuild(
@@ -1246,7 +1247,7 @@ Deno.test("a root missing the build file it names, with no engine, says which fi
   );
 });
 
-Deno.test("runBuild on Node refuses a hosted build no launcher can run, rather than ask for Deno", async () => {
+test("runBuild on Node refuses a hosted build no launcher can run, rather than ask for Deno", async () => {
   const calls: string[][] = [];
   const runner = (_root: string, args: string[], program?: string) => {
     calls.push(program === undefined ? args : [program, ...args]);
@@ -1288,7 +1289,7 @@ Deno.test("runBuild on Node refuses a hosted build no launcher can run, rather t
   ]);
 });
 
-Deno.test("runBuild runs a build file on Node as node <build>, unless a launcher or an engine runs it", async () => {
+test("runBuild runs a build file on Node as node <build>, unless a launcher or an engine runs it", async () => {
   const calls: Array<[string[], string | undefined]> = [];
   const runner = (_root: string, args: string[], program?: string) => {
     calls.push([args, program]);

@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertRejects } from "../../../tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
   assertWrapperConformance,
@@ -59,12 +60,12 @@ const TASKS: Array<[string, () => Promise<unknown>]> = [
 ];
 
 for (const [name, invoke] of TASKS) {
-  Deno.test(`GitTasks.${name} reaches execution`, async () => {
+  test(`GitTasks.${name} reaches execution`, async () => {
     await assertRejects(invoke, ToolNotFoundError);
   });
 }
 
-Deno.test("the new settings classes conform to the wrapper contract", async () => {
+test("the new settings classes conform to the wrapper contract", async () => {
   // One per module family: a reader, a writer, a sequencer, and a patcher all
   // resolve `git` from PATH and report a missing binary the same way.
   for (

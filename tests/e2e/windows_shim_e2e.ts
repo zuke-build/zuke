@@ -23,7 +23,8 @@
  * @module
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import { runFixture } from "./_harness.ts";
 
 const FIXTURE = new URL("./fixtures/windows_shim_build.ts", import.meta.url);
@@ -59,7 +60,7 @@ async function plantShim(dir: string): Promise<void> {
   await Deno.chmod(shim, 0o755);
 }
 
-Deno.test("a batch shim receives a cmd metacharacter as one argument", async () => {
+test("a batch shim receives a cmd metacharacter as one argument", async () => {
   const dir = await Deno.makeTempDir({ prefix: "zuke-e2e-shim-" });
   try {
     await plantShim(dir);

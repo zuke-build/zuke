@@ -12,10 +12,8 @@
  * traffic that `ingress traffic set` rescales as the CLI does.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   Build,
   defaultStateHost,
@@ -25,7 +23,7 @@ import {
 import { splitShellArgs } from "../../packages/core/src/shell.ts";
 import { canary } from "../../packages/canary/mod.ts";
 import { containerAppCanary } from "../../packages/az/mod.ts";
-import { ContainerAppModel } from "../../packages/az/tests/_containerapp_model.ts";
+import { ContainerAppModel } from "../support/az/_containerapp_model.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 
 /** The modelled Container Apps, fresh for each test. */
@@ -117,7 +115,7 @@ function quotedCommand(message: string, lead: string): string[] {
   return splitShellArgs(text);
 }
 
-Deno.test("Container Apps: staged, stepped, parked, and promoted by a later process", async () => {
+test("Container Apps: staged, stepped, parked, and promoted by a later process", async () => {
   fresh();
   await withStateDir(async (dir) => {
     const parked = await runCli(Deploy, ["ship"]);
@@ -144,7 +142,7 @@ Deno.test("Container Apps: staged, stepped, parked, and promoted by a later proc
   });
 });
 
-Deno.test("Container Apps: a failed analysis takes the candidate's traffic back", async () => {
+test("Container Apps: a failed analysis takes the candidate's traffic back", async () => {
   fresh();
   healthy = false;
   await withStateDir(async () => {
@@ -160,7 +158,7 @@ Deno.test("Container Apps: a failed analysis takes the candidate's traffic back"
   });
 });
 
-Deno.test("Container Apps: a revision deployed mid-rollout is never promoted", async () => {
+test("Container Apps: a revision deployed mid-rollout is never promoted", async () => {
   fresh();
   await withStateDir(async (dir) => {
     await runCli(Deploy, ["ship"]);
@@ -221,7 +219,7 @@ function recover(message: string): void {
   assertEquals(model.shares(), { "api--v1": 100 });
 }
 
-Deno.test("Container Apps: a resume or cancel configured for another resource group or subscription changes nothing, and says how to recover", async () => {
+test("Container Apps: a resume or cancel configured for another resource group or subscription changes nothing, and says how to recover", async () => {
   for (const [label, change] of CHANGES) {
     for (const command of ["resume", "cancel"]) {
       fresh();
@@ -249,7 +247,7 @@ Deno.test("Container Apps: a resume or cancel configured for another resource gr
   }
 });
 
-Deno.test("Container Apps: an app the CLI now reaches in another subscription is neither promoted nor rolled back", async () => {
+test("Container Apps: an app the CLI now reaches in another subscription is neither promoted nor rolled back", async () => {
   for (const command of ["resume", "cancel"]) {
     fresh();
     await withStateDir(async (dir) => {
@@ -281,7 +279,7 @@ Deno.test("Container Apps: an app the CLI now reaches in another subscription is
   }
 });
 
-Deno.test("Container Apps: a rollback run by hand goes to the configured stable revision", async () => {
+test("Container Apps: a rollback run by hand goes to the configured stable revision", async () => {
   fresh();
   stable = "api--v1";
   model.api.revisions["api--v2"] = {
@@ -301,7 +299,7 @@ Deno.test("Container Apps: a rollback run by hand goes to the configured stable 
   });
 });
 
-Deno.test("Container Apps: a rollback run by hand with no stable revision refuses", async () => {
+test("Container Apps: a rollback run by hand with no stable revision refuses", async () => {
   fresh();
   await withStateDir(async () => {
     const { code, out, err } = await runCli(Deploy, ["rollout.abort"]);
@@ -311,7 +309,7 @@ Deno.test("Container Apps: a rollback run by hand with no stable revision refuse
   });
 });
 
-Deno.test("Container Apps: a stage whose candidate never took traffic rolls nothing back", async () => {
+test("Container Apps: a stage whose candidate never took traffic rolls nothing back", async () => {
   // The candidate fails to provision, so stage refuses after the deploy; the
   // engine's inline rollback must not then move the traffic.
   fresh();

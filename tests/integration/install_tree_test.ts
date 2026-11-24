@@ -1,10 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   Build,
   gzip,
@@ -59,7 +57,7 @@ class TreeBuild extends Build {
     });
 }
 
-Deno.test("a build installs a multi-file runtime tree end-to-end via the CLI", async () => {
+test("a build installs a multi-file runtime tree end-to-end via the CLI", async () => {
   const entries: TarEntry[] = [
     {
       name: "node-v1/bin/node",

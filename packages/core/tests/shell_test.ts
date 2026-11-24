@@ -1,13 +1,14 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
   messageOf,
-} from "./_assert.ts";
+} from "../../../tests/_assert.ts";
 import {
   $,
   CommandError,
@@ -26,21 +27,21 @@ const SLEEP = "await new Promise((r) => setTimeout(r, 30000))";
 // makes a reliable, cross-platform subject for these tests.
 const DENO = Deno.execPath();
 
-Deno.test("tokenize splits literals on whitespace", () => {
+test("tokenize splits literals on whitespace", () => {
   assertEquals(tokenize(["deno  test   -A"], []), ["deno", "test", "-A"]);
 });
 
-Deno.test("tokenize keeps interpolated values as atomic args", () => {
+test("tokenize keeps interpolated values as atomic args", () => {
   // `cmd ${"a b"}` → two template strings, one value with a space inside.
   assertEquals(tokenize(["cmd ", ""], ["a b"]), ["cmd", "a b"]);
 });
 
-Deno.test("tokenize attaches a value to an adjacent literal", () => {
+test("tokenize attaches a value to an adjacent literal", () => {
   // `--flag=${"v"}` → no whitespace boundary.
   assertEquals(tokenize(["--flag=", ""], ["v"]), ["--flag=v"]);
 });
 
-Deno.test("tokenize expands arrays into multiple args", () => {
+test("tokenize expands arrays into multiple args", () => {
   assertEquals(tokenize(["cmd ", ""], [["a", "b", "c"]]), [
     "cmd",
     "a",
@@ -49,23 +50,23 @@ Deno.test("tokenize expands arrays into multiple args", () => {
   ]);
 });
 
-Deno.test("$ captures trimmed stdout via .text()", async () => {
+test("$ captures trimmed stdout via .text()", async () => {
   const out = await $`${DENO} eval ${"console.log('hello world')"}`.text();
   assertEquals(out, "hello world");
 });
 
-Deno.test("$ .lines() splits stdout into lines", async () => {
+test("$ .lines() splits stdout into lines", async () => {
   const lines = await $`${DENO} eval ${"console.log('a');console.log('b')"}`
     .lines();
   assertEquals(lines, ["a", "b"]);
 });
 
-Deno.test("$ .code() returns the exit code without throwing", async () => {
+test("$ .code() returns the exit code without throwing", async () => {
   const code = await $`${DENO} eval ${"Deno.exit(3)"}`.noThrow().code();
   assertEquals(code, 3);
 });
 
-Deno.test("$ throws CommandError on non-zero exit by default", async () => {
+test("$ throws CommandError on non-zero exit by default", async () => {
   const err = await assertRejects(
     () => $`${DENO} eval ${"Deno.exit(2)"}`.quiet().then(),
     CommandError,
@@ -73,19 +74,19 @@ Deno.test("$ throws CommandError on non-zero exit by default", async () => {
   assertEquals((err as CommandError).code, 2);
 });
 
-Deno.test("$ .noThrow() suppresses the throw", async () => {
+test("$ .noThrow() suppresses the throw", async () => {
   const result = await $`${DENO} eval ${"Deno.exit(5)"}`.noThrow();
   assertEquals(result.code, 5);
 });
 
-Deno.test("$ .env() injects environment variables", async () => {
+test("$ .env() injects environment variables", async () => {
   const out = await $`${DENO} eval ${"console.log(Deno.env.get('ZUKE_T'))"}`
     .env({ ZUKE_T: "present" })
     .text();
   assertEquals(out, "present");
 });
 
-Deno.test("$ .cwd() sets the working directory", async () => {
+test("$ .cwd() sets the working directory", async () => {
   const dir = await Deno.makeTempDir();
   // Canonicalise inside the child too: on Windows `Deno.cwd()` can report the
   // 8.3 short form (RUNNER~1) while the parent's realPath returns the long form;
@@ -97,7 +98,7 @@ Deno.test("$ .cwd() sets the working directory", async () => {
   assertEquals(out, await Deno.realPath(dir));
 });
 
-Deno.test("$ interpolated values are not re-split (injection safe)", async () => {
+test("$ interpolated values are not re-split (injection safe)", async () => {
   // The whole string is one argv entry, printed verbatim — not run as a command.
   const payload = "; rm -rf /";
   const out = await $`${DENO} eval ${"console.log(Deno.args[0])"} ${payload}`
@@ -105,7 +106,7 @@ Deno.test("$ interpolated values are not re-split (injection safe)", async () =>
   assertEquals(out, payload);
 });
 
-Deno.test("$ .text() throws on non-zero exit by default", async () => {
+test("$ .text() throws on non-zero exit by default", async () => {
   const err = await assertRejects(
     () => $`${DENO} eval ${"console.log('x'); Deno.exit(1)"}`.text(),
     CommandError,
@@ -113,29 +114,29 @@ Deno.test("$ .text() throws on non-zero exit by default", async () => {
   assertEquals(err instanceof CommandError && err.code === 1, true);
 });
 
-Deno.test("$ .lines() on empty output is an empty array", async () => {
+test("$ .lines() on empty output is an empty array", async () => {
   const lines = await $`${DENO} eval ${"// prints nothing"}`.lines();
   assertEquals(lines, []);
 });
 
-Deno.test("$ .quiet() suppresses streaming but still captures", async () => {
+test("$ .quiet() suppresses streaming but still captures", async () => {
   const out = await $`${DENO} eval ${"console.log('quiet capture')"}`
     .quiet()
     .text();
   assertEquals(out, "quiet capture");
 });
 
-Deno.test("$ awaited result exposes code/stdout and CommandOutput.text()", async () => {
+test("$ awaited result exposes code/stdout and CommandOutput.text()", async () => {
   const result = await $`${DENO} eval ${"console.log('  hi  ')"}`.quiet();
   assertEquals(result.code, 0);
   assertEquals(result.text(), "hi");
 });
 
-Deno.test("$ on an empty command rejects", async () => {
+test("$ on an empty command rejects", async () => {
   await assertRejects(() => $``.quiet(), Error, "empty command");
 });
 
-Deno.test("$ .killAfter() kills a slow process and throws", async () => {
+test("$ .killAfter() kills a slow process and throws", async () => {
   const err = await assertRejects(
     () =>
       $`${DENO} eval ${"await new Promise((r) => setTimeout(r, 30000))"}`
@@ -150,14 +151,14 @@ Deno.test("$ .killAfter() kills a slow process and throws", async () => {
   );
 });
 
-Deno.test("$ .killAfter() does not fire for a fast process", async () => {
+test("$ .killAfter() does not fire for a fast process", async () => {
   const out = await $`${DENO} eval ${"console.log('quick')"}`
     .killAfter(30000)
     .text();
   assertEquals(out, "quick");
 });
 
-Deno.test("$ .killAfter() fires even under .noThrow()", async () => {
+test("$ .killAfter() fires even under .noThrow()", async () => {
   await assertRejects(
     () =>
       $`${DENO} eval ${"await new Promise((r) => setTimeout(r, 30000))"}`
@@ -169,7 +170,7 @@ Deno.test("$ .killAfter() fires even under .noThrow()", async () => {
   );
 });
 
-Deno.test("$ caps captured output and keeps the tail", async () => {
+test("$ caps captured output and keeps the tail", async () => {
   // 40 lines of 1 KiB, numbered, into a 4 KiB cap: only the last few survive.
   const emit =
     `for (let i = 0; i < 40; i++) console.log(String(i).padStart(4, "0") + "x".repeat(1019));`;
@@ -188,7 +189,7 @@ Deno.test("$ caps captured output and keeps the tail", async () => {
   assertEquals(out.text().startsWith("[output truncated to last 4 KiB]"), true);
 });
 
-Deno.test("$ leaves output under the cap untouched and not truncated", async () => {
+test("$ leaves output under the cap untouched and not truncated", async () => {
   const out = await $`${DENO} eval ${"console.log('small')"}`
     .maxCapturedBytes(4096)
     .then();
@@ -196,7 +197,7 @@ Deno.test("$ leaves output under the cap untouched and not truncated", async () 
   assertEquals(out.text(), "small");
 });
 
-Deno.test("$ .maxCapturedBytes() rejects a cap capture cannot honour", () => {
+test("$ .maxCapturedBytes() rejects a cap capture cannot honour", () => {
   // `-1` is the conventional "no limit" idiom and used to spin the trim loop
   // into an internal TypeError mid-stream; a fractional cap hit a RangeError
   // deep in a subarray. Both must fail at the setter, naming the setting.
@@ -210,7 +211,7 @@ Deno.test("$ .maxCapturedBytes() rejects a cap capture cannot honour", () => {
   }
 });
 
-Deno.test("$ caps stderr independently of stdout", async () => {
+test("$ caps stderr independently of stdout", async () => {
   const emit =
     `console.log("out"); for (let i = 0; i < 8; i++) console.error("e".repeat(1024));`;
   const out = await $`${DENO} eval ${emit}`.quiet().maxCapturedBytes(2048)
@@ -220,7 +221,7 @@ Deno.test("$ caps stderr independently of stdout", async () => {
   assertEquals(out.stderr.length <= 2048, true);
 });
 
-Deno.test("$ .signal() terminates a running command when it aborts", async () => {
+test("$ .signal() terminates a running command when it aborts", async () => {
   const controller = new AbortController();
   const running = $`${DENO} eval ${SLEEP}`
     .quiet()
@@ -233,7 +234,7 @@ Deno.test("$ .signal() terminates a running command when it aborts", async () =>
   assertEquals(result.code !== 0, true);
 });
 
-Deno.test("$ picks up the ambient signal and is terminated on abort", async () => {
+test("$ picks up the ambient signal and is terminated on abort", async () => {
   const controller = new AbortController();
   await withAmbientSignal(controller.signal, async () => {
     const running = $`${DENO} eval ${SLEEP}`.quiet().noThrow().then();
@@ -243,7 +244,7 @@ Deno.test("$ picks up the ambient signal and is terminated on abort", async () =
   });
 });
 
-Deno.test("$ .signal() overrides the ambient signal", async () => {
+test("$ .signal() overrides the ambient signal", async () => {
   // Ambient stays un-aborted; the explicit per-command signal does the killing.
   const ambient = new AbortController();
   await withAmbientSignal(ambient.signal, async () => {
@@ -260,7 +261,7 @@ Deno.test("$ .signal() overrides the ambient signal", async () => {
   });
 });
 
-Deno.test("$ .killAfter() and .signal() combine — either can end it", async () => {
+test("$ .killAfter() and .signal() combine — either can end it", async () => {
   // A generous timeout is armed, but the abort signal fires first and kills it.
   const controller = new AbortController();
   const running = $`${DENO} eval ${SLEEP}`
@@ -274,7 +275,7 @@ Deno.test("$ .killAfter() and .signal() combine — either can end it", async ()
   assertEquals(result.code !== 0, true);
 });
 
-Deno.test("commandLine masks an ambient secret but the OS still gets it raw", async () => {
+test("commandLine masks an ambient secret but the OS still gets it raw", async () => {
   const redactor = new Redactor();
   redactor.add("hunter2");
   await withAmbientRedactor(redactor, async () => {
@@ -288,7 +289,7 @@ Deno.test("commandLine masks an ambient secret but the OS still gets it raw", as
   });
 });
 
-Deno.test("a failed command's error message masks an ambient secret", async () => {
+test("a failed command's error message masks an ambient secret", async () => {
   const redactor = new Redactor();
   redactor.add("hunter2");
   await withAmbientRedactor(redactor, async () => {
@@ -301,7 +302,7 @@ Deno.test("a failed command's error message masks an ambient secret", async () =
   });
 });
 
-Deno.test("a dry-run echo of a secret argv token is masked", async () => {
+test("a dry-run echo of a secret argv token is masked", async () => {
   const redactor = new Redactor();
   redactor.add("hunter2");
   const echoed: string[] = [];
@@ -316,12 +317,12 @@ Deno.test("a dry-run echo of a secret argv token is masked", async () => {
   assertEquals(echoed, [`login --password ${REDACTED}`]);
 });
 
-Deno.test("without an ambient redactor the command line is verbatim", () => {
+test("without an ambient redactor the command line is verbatim", () => {
   const cmd = $`login --password ${"hunter2"}`;
   assertEquals(cmd.commandLine, "login --password hunter2");
 });
 
-Deno.test("under an ambient echo sink, a command is echoed, not spawned", async () => {
+test("under an ambient echo sink, a command is echoed, not spawned", async () => {
   const echoed: string[] = [];
   // Would exit 3 (→ CommandError) if actually run; echo mode returns empty success.
   const out = await withAmbientEcho(
@@ -333,7 +334,7 @@ Deno.test("under an ambient echo sink, a command is echoed, not spawned", async 
   assertEquals(echoed, [`${DENO} eval Deno.exit(3)`]);
 });
 
-Deno.test("echo mode makes .text() return empty without running", async () => {
+test("echo mode makes .text() return empty without running", async () => {
   const echoed: string[] = [];
   const text = await withAmbientEcho(
     (line) => echoed.push(line),
@@ -343,14 +344,14 @@ Deno.test("echo mode makes .text() return empty without running", async () => {
   assertEquals(echoed.length, 1);
 });
 
-Deno.test("echo mode is scoped to the withAmbientEcho subtree", async () => {
+test("echo mode is scoped to the withAmbientEcho subtree", async () => {
   await withAmbientEcho(() => {}, () => Promise.resolve());
   // Outside the scope, commands run for real again.
   const code = await $`${DENO} eval ${"Deno.exit(7)"}`.noThrow().code();
   assertEquals(code, 7);
 });
 
-Deno.test("under echo, .spawn() echoes and returns a no-op stub", async () => {
+test("under echo, .spawn() echoes and returns a no-op stub", async () => {
   const echoed: string[] = [];
   // Would start a real process (exit 5) if not intercepted.
   const proc = await withAmbientEcho(
@@ -363,7 +364,7 @@ Deno.test("under echo, .spawn() echoes and returns a no-op stub", async () => {
   await proc.stop(); // no-op, does not throw
 });
 
-Deno.test("stdin writes to the child and closes the stream", async () => {
+test("stdin writes to the child and closes the stream", async () => {
   // A real subprocess, because the property is about a real pipe: the child has
   // to see end-of-input, or a tool reading a credential from stdin hangs.
   const out = await $`${Deno.execPath()} eval --no-lock ${
@@ -374,7 +375,7 @@ Deno.test("stdin writes to the child and closes the stream", async () => {
   assertEquals(out.trim(), "read 7");
 });
 
-Deno.test("a credential passed on stdin stays out of the command line", async () => {
+test("a credential passed on stdin stays out of the command line", async () => {
   // The whole reason the setter exists. argv is what `ps` and `/proc` expose,
   // and what every rendered form of the command is built from.
   const command = $`${Deno.execPath()} eval --no-lock ${"console.log(1)"}`
@@ -383,7 +384,7 @@ Deno.test("a credential passed on stdin stays out of the command line", async ()
   await command;
 });
 
-Deno.test("stdin does not deadlock on a child that outruns its pipe", async () => {
+test("stdin does not deadlock on a child that outruns its pipe", async () => {
   // Writing before draining stdout would wedge here: the child fills its output
   // pipe and stops, while the parent is still blocked writing input. Both sides
   // have to move at once.
@@ -397,7 +398,7 @@ Deno.test("stdin does not deadlock on a child that outruns its pipe", async () =
   assertStringIncludes(result.stderr, "read 100000");
 });
 
-Deno.test("without stdin the child keeps an inherited stream", async () => {
+test("without stdin the child keeps an inherited stream", async () => {
   // The non-breaking half: nothing changes for every existing call site.
   const result =
     await $`${Deno.execPath()} eval --no-lock ${"console.log('ok')"}`

@@ -13,6 +13,7 @@
  * directory, whose `zuke.json` names the fake worker as the build's SDK.
  */
 
+import { test } from "../_testing.ts";
 import { type ConformanceRunner, conformanceSuite } from "../_conformance.ts";
 import {
   buildWorkspaceNodeBinary,
@@ -69,7 +70,7 @@ await conformanceSuite(
 );
 
 // Registered after every case, so it runs last.
-Deno.test("binary conformance: remove the binary", async () => {
+test("binary conformance: remove the binary", async () => {
   // A Windows lock on the executable that just ran is not a failure.
   await Deno.remove(BIN_DIR, { recursive: true }).catch(() => {});
 });

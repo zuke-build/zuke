@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
 import {
   assertWrapperConformance,
@@ -18,7 +19,7 @@ import {
   ZizmorSettings,
 } from "../src/security.ts";
 
-Deno.test("zizmor: full and minimal argv", () => {
+test("zizmor: full and minimal argv", () => {
   assertEquals(
     new ZizmorSettings()
       .config("zizmor.yml").format("sarif").minSeverity("medium")
@@ -42,7 +43,7 @@ Deno.test("zizmor: full and minimal argv", () => {
   assertEquals(new ZizmorSettings().argv(), ["zizmor"]);
 });
 
-Deno.test("actionlint: full and minimal argv", () => {
+test("actionlint: full and minimal argv", () => {
   assertEquals(
     new ActionlintSettings()
       .format("{{json .}}").color().files("ci.yml").argv(),
@@ -55,7 +56,7 @@ Deno.test("actionlint: full and minimal argv", () => {
   assertEquals(new ActionlintSettings().argv(), ["actionlint"]);
 });
 
-Deno.test("gitleaks: full and minimal argv", () => {
+test("gitleaks: full and minimal argv", () => {
   assertEquals(
     new GitleaksDetectSettings()
       .source(".").config(".gitleaks.toml").reportFormat("sarif")
@@ -79,7 +80,7 @@ Deno.test("gitleaks: full and minimal argv", () => {
   assertEquals(new GitleaksDetectSettings().argv(), ["gitleaks", "detect"]);
 });
 
-Deno.test("gitleaks: logOpts scopes the commits scanned", () => {
+test("gitleaks: logOpts scopes the commits scanned", () => {
   // Without a range, `detect` walks the history reachable from every ref in the
   // checkout, so a secret on an unrelated branch fails the scan.
   assertEquals(
@@ -102,7 +103,7 @@ Deno.test("gitleaks: logOpts scopes the commits scanned", () => {
   );
 });
 
-Deno.test("osv-scanner: full and minimal argv", () => {
+test("osv-scanner: full and minimal argv", () => {
   assertEquals(
     new OsvScannerSettings()
       .lockfile("deno.lock").lockfile("b/deno.lock").format("sarif")
@@ -124,7 +125,7 @@ Deno.test("osv-scanner: full and minimal argv", () => {
   assertEquals(new OsvScannerSettings().argv(), ["osv-scanner"]);
 });
 
-Deno.test("semgrep: full and minimal argv", () => {
+test("semgrep: full and minimal argv", () => {
   assertEquals(
     new SemgrepScanSettings()
       .config("auto").config("p/ci").sarif().json().output("sg.sarif")
@@ -148,7 +149,7 @@ Deno.test("semgrep: full and minimal argv", () => {
   assertEquals(new SemgrepScanSettings().argv(), ["semgrep", "scan"]);
 });
 
-Deno.test("trivy fs: full and minimal argv", () => {
+test("trivy fs: full and minimal argv", () => {
   assertEquals(
     new TrivyFsSettings()
       .scanners("vuln", "secret", "misconfig").format("sarif")
@@ -173,7 +174,7 @@ Deno.test("trivy fs: full and minimal argv", () => {
   assertEquals(new TrivyFsSettings().argv(), ["trivy", "fs", "."]);
 });
 
-Deno.test("trivy config: full and minimal argv", () => {
+test("trivy config: full and minimal argv", () => {
   assertEquals(
     new TrivyConfigSettings()
       .format("sarif").output("c.sarif").severity("CRITICAL").exitCode(0)
@@ -195,7 +196,7 @@ Deno.test("trivy config: full and minimal argv", () => {
   assertEquals(new TrivyConfigSettings().argv(), ["trivy", "config", "."]);
 });
 
-Deno.test("every SecurityTasks function reaches execution", async () => {
+test("every SecurityTasks function reaches execution", async () => {
   const calls: Array<() => Promise<unknown>> = [
     () => SecurityTasks.zizmor(missingTool),
     () => SecurityTasks.actionlint(missingTool),
@@ -210,7 +211,7 @@ Deno.test("every SecurityTasks function reaches execution", async () => {
   }
 });
 
-Deno.test("security: every wrapper conforms to the wrapper contract", async () => {
+test("security: every wrapper conforms to the wrapper contract", async () => {
   const wrappers: Array<[() => ToolSettings, string]> = [
     [() => new ZizmorSettings(), "zizmor"],
     [() => new ActionlintSettings(), "actionlint"],

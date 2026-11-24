@@ -17,11 +17,12 @@
  * @module
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals } from "../_assert.ts";
 import { Build, parameter, target } from "../../packages/core/mod.ts";
 import { securityReviewer } from "../../packages/ai/mod.ts";
 import { hostOf, runCli } from "./_harness.ts";
-import { reacted, REACTIONS } from "../../packages/ai/tests/_reactions.ts";
+import { reacted, REACTIONS } from "../support/ai/_reactions.ts";
 
 /** The value the build declares secret, which comes back in the assessment. */
 const CANARY = "review-value-that-must-not-escape";
@@ -72,7 +73,7 @@ interface Sent {
   body: string;
 }
 
-Deno.test("the AI reviewer never puts a declared secret on the pull request", async () => {
+test("the AI reviewer never puts a declared secret on the pull request", async () => {
   const sent: Sent[] = [];
 
   const fetchImpl = ((input: string | URL | Request, init?: RequestInit) => {

@@ -12,11 +12,8 @@
  * @module
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-  assertThrows,
-} from "../packages/core/tests/_assert.ts";
+import { test } from "./_testing.ts";
+import { assertEquals, assertStringIncludes, assertThrows } from "./_assert.ts";
 import { collectActionPins, SEED_PINS } from "../build/action_pins.ts";
 
 const SHA_A = "a".repeat(40);
@@ -42,7 +39,7 @@ function pinsFrom(dir: string): Map<string, { ref: string; version?: string }> {
   return collectActionPins(dir, `${dir}/__no_manifest__.yml`);
 }
 
-Deno.test("a pinned uses line yields its action, sha, and version", async () => {
+test("a pinned uses line yields its action, sha, and version", async () => {
   const dir = await workflows({
     "ci.yml": [
       "jobs:",
@@ -68,7 +65,7 @@ Deno.test("a pinned uses line yields its action, sha, and version", async () => 
   }
 });
 
-Deno.test("a pin with no version comment is still collected", async () => {
+test("a pin with no version comment is still collected", async () => {
   const dir = await workflows({
     "a.yml": `      - uses: actions/checkout@${SHA_A}\n`,
   });
@@ -82,7 +79,7 @@ Deno.test("a pin with no version comment is still collected", async () => {
   }
 });
 
-Deno.test("the file that names the version wins over one that omits it", async () => {
+test("the file that names the version wins over one that omits it", async () => {
   // Same SHA in both. Without this, the alphabetically-first file would decide,
   // and a generated file with no comment would drop the version Dependabot
   // tracks purely because of directory order.
@@ -100,7 +97,7 @@ Deno.test("the file that names the version wins over one that omits it", async (
   }
 });
 
-Deno.test("two files pinning one action to different SHAs is an error", async () => {
+test("two files pinning one action to different SHAs is an error", async () => {
   // A half-applied bump. Picking either silently would revert it or spread it
   // only partly, so the error names both files.
   const dir = await workflows({
@@ -120,7 +117,7 @@ Deno.test("two files pinning one action to different SHAs is an error", async ()
   }
 });
 
-Deno.test("a floating tag or a short sha is not treated as a pin", async () => {
+test("a floating tag or a short sha is not treated as a pin", async () => {
   // Only a full 40-character SHA counts. A tag is not a pin, and pretending it
   // is would let the generator emit an unpinned reference.
   const dir = await workflows({
@@ -143,7 +140,7 @@ Deno.test("a floating tag or a short sha is not treated as a pin", async () => {
   }
 });
 
-Deno.test("a missing workflow directory yields no pins rather than throwing", async () => {
+test("a missing workflow directory yields no pins rather than throwing", async () => {
   const dir = await Deno.makeTempDir();
   await Deno.remove(dir);
   // Generating into a repository with no workflows yet must fall back to the
@@ -151,7 +148,7 @@ Deno.test("a missing workflow directory yields no pins rather than throwing", as
   assertEquals(pinsFrom(dir).size, 0);
 });
 
-Deno.test("non-YAML files in the directory are ignored", async () => {
+test("non-YAML files in the directory are ignored", async () => {
   const dir = await workflows({
     "README.md": `      - uses: actions/checkout@${SHA_B} # v0.0.0`,
     "ci.yaml": `      - uses: actions/checkout@${SHA_A} # v7.0.1`,
@@ -168,7 +165,7 @@ Deno.test("non-YAML files in the directory are ignored", async () => {
   }
 });
 
-Deno.test("every seed pin is a full SHA with a version", () => {
+test("every seed pin is a full SHA with a version", () => {
   // The seed only ever bootstraps, but a malformed entry there would emit an
   // unpinned or mislabelled reference into a generated workflow.
   for (const [action, pin] of Object.entries(SEED_PINS)) {
@@ -179,7 +176,7 @@ Deno.test("every seed pin is a full SHA with a version", () => {
   }
 });
 
-Deno.test("the codeql-action seeds pin one SHA for every subpath", () => {
+test("the codeql-action seeds pin one SHA for every subpath", () => {
   // init, analyze and upload-sarif are one action reached by three subpaths,
   // and pins are keyed by the full path — so nothing else holds them together.
   // Seeding two of them from one release and the third from another would
@@ -192,7 +189,7 @@ Deno.test("the codeql-action seeds pin one SHA for every subpath", () => {
   assertEquals(shas.size, 1, `codeql-action seeds disagree: ${[...shas]}`);
 });
 
-Deno.test("no declared workflow hardcodes an action SHA", async () => {
+test("no declared workflow hardcodes an action SHA", async () => {
   // The trap this module exists to remove, asserted rather than trusted: a
   // generated workflow whose SHA is a literal in the build (or in a published
   // package) silently reverts a bot's bump on the next run. It had already
@@ -219,7 +216,7 @@ Deno.test("no declared workflow hardcodes an action SHA", async () => {
  */
 const NO_VERSION_COMMENTS = new Set(["ai-review.yml"]);
 
-Deno.test("every generated workflow pin carries its version comment", async () => {
+test("every generated workflow pin carries its version comment", async () => {
   // Dependabot rewrites the SHA and the `# vX.Y.Z` beside it together, and its
   // metadata tracks that version. A generated file that dropped the comment
   // would leave the bump with no version to report.
@@ -238,7 +235,7 @@ Deno.test("every generated workflow pin carries its version comment", async () =
   }
 });
 
-Deno.test("the action.yml manifest outranks a generated workflow", () => {
+test("the action.yml manifest outranks a generated workflow", () => {
   // The point of the manifest: the generator never writes it, so a bump landing
   // there cannot be undone by regenerating. A workflow disagreeing with it is
   // not a conflict — it is a file about to be rewritten.
@@ -266,7 +263,7 @@ Deno.test("the action.yml manifest outranks a generated workflow", () => {
   }
 });
 
-Deno.test("a manifest pin silences the disagreement between two workflows", () => {
+test("a manifest pin silences the disagreement between two workflows", () => {
   // With an authoritative source there is nothing to disagree about — the
   // half-applied-bump error is for when no such source names the action.
   const dir = Deno.makeTempDirSync();
@@ -292,7 +289,7 @@ Deno.test("a manifest pin silences the disagreement between two workflows", () =
   }
 });
 
-Deno.test("an absent manifest falls back to the workflows", () => {
+test("an absent manifest falls back to the workflows", () => {
   const workflows = Deno.makeTempDirSync();
   Deno.writeTextFileSync(
     `${workflows}/a.yml`,
@@ -309,7 +306,7 @@ Deno.test("an absent manifest falls back to the workflows", () => {
   }
 });
 
-Deno.test("the committed action.yml pins every action the build uses", () => {
+test("the committed action.yml pins every action the build uses", () => {
   // The manifest is only a useful source for actions it actually names, so a
   // new pinned action must be added there rather than left to the workflows.
   const manifest = Deno.readTextFileSync("action.yml");
@@ -318,7 +315,7 @@ Deno.test("the committed action.yml pins every action the build uses", () => {
   }
 });
 
-Deno.test("the manifest's own pins resolve from it, not by fallback", () => {
+test("the manifest's own pins resolve from it, not by fallback", () => {
   // Closes the gap in "the manifest is authoritative": a mangled SHA would not
   // match the pin pattern, so the action would quietly fall through to a
   // workflow or the seed and the manifest would stop being the source without

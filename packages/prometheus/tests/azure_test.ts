@@ -10,11 +10,12 @@
 
 // cspell:ignore Fprometheus uami
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { InsecureBackendUrlError } from "@zuke/core";
 import { PrometheusAzureSettings, PrometheusTasks } from "../mod.ts";
 import { azureCredentials } from "../src/azure.ts";
@@ -26,8 +27,8 @@ import {
   routes,
   type Seams,
   T0,
-} from "./_auth.ts";
-import { vector } from "./_fetch.ts";
+} from "../../../tests/support/prometheus/_auth.ts";
+import { vector } from "../../../tests/support/prometheus/_fetch.ts";
 
 const TENANT = "00000000-0000-0000-0000-000000000001";
 const TOKEN_URL =
@@ -61,7 +62,7 @@ const SECRET_ENV = {
   AZURE_CLIENT_SECRET: "app-client-secret-value",
 };
 
-Deno.test("the client secret in the environment comes first, and the token is cached", async () => {
+test("the client secret in the environment comes first, and the token is cached", async () => {
   const clock: Clock = { now: T0 };
   const fetcher = routes({ [`POST ${TOKEN_URL}`]: entra("secret-token") });
   const seams: Seams = {
@@ -85,7 +86,7 @@ Deno.test("the client secret in the environment comes first, and the token is ca
   assertEquals(fetcher.sent.length, 2);
 });
 
-Deno.test("settings override the environment: tenant, client, secret, authority, scope", async () => {
+test("settings override the environment: tenant, client, secret, authority, scope", async () => {
   const fetcher = routes({
     "POST https://login.microsoftonline.us/contoso.onmicrosoft.com/oauth2/v2.0/token":
       entra("gov-token"),
@@ -120,7 +121,7 @@ Deno.test("settings override the environment: tenant, client, secret, authority,
   assertEquals(env.sent.length, 1);
 });
 
-Deno.test("workload identity sends the federated token as the client assertion", async () => {
+test("workload identity sends the federated token as the client assertion", async () => {
   const fetcher = routes({ [`POST ${TOKEN_URL}`]: entra("wi-token") });
   const sent = await headers({
     env: {
@@ -155,7 +156,7 @@ Deno.test("workload identity sends the federated token as the client assertion",
   assertEquals(form(explicit.sent[0].body).client_assertion, "t2");
 });
 
-Deno.test("with no application configured, the VM's managed identity is asked", async () => {
+test("with no application configured, the VM's managed identity is asked", async () => {
   const fetcher = routes({
     [`GET ${IMDS}`]: () =>
       Response.json({
@@ -190,7 +191,7 @@ Deno.test("with no application configured, the VM's managed identity is asked", 
   assertEquals(fromEnv.sent[0].url.searchParams.get("resource"), "api://other");
 });
 
-Deno.test("App Service's identity endpoint is used when it is configured", async () => {
+test("App Service's identity endpoint is used when it is configured", async () => {
   const endpoint = "http://127.0.0.1:41056/msi/token";
   const fetcher = routes({
     [`GET ${endpoint}`]: () =>
@@ -227,7 +228,7 @@ Deno.test("App Service's identity endpoint is used when it is configured", async
   assertEquals(system.sent[0].url.searchParams.has("client_id"), false);
 });
 
-Deno.test("Linux App Service's private plain-http identity endpoint is allowed, nothing broader", async () => {
+test("Linux App Service's private plain-http identity endpoint is allowed, nothing broader", async () => {
   const endpoint = "http://172.16.1.5:8081/msi/token";
   const fetcher = routes({ [`GET ${endpoint}`]: entra("linux-app-token") });
   assertEquals(
@@ -256,7 +257,7 @@ Deno.test("Linux App Service's private plain-http identity endpoint is allowed, 
   }
 });
 
-Deno.test("an authority host on a metadata address is refused, secret unsent", async () => {
+test("an authority host on a metadata address is refused, secret unsent", async () => {
   const fetcher = routes({});
   for (
     const host of ["http://169.254.169.254", "http://metadata.google.internal"]
@@ -273,7 +274,7 @@ Deno.test("an authority host on a metadata address is refused, secret unsent", a
   assertEquals(fetcher.sent.length, 0);
 });
 
-Deno.test("unsupported managed-identity environments are refused by name", async () => {
+test("unsupported managed-identity environments are refused by name", async () => {
   const cases: Array<[Record<string, string>, string]> = [
     [{
       IDENTITY_ENDPOINT:
@@ -298,7 +299,7 @@ Deno.test("unsupported managed-identity environments are refused by name", async
   }
 });
 
-Deno.test("a missing or malformed setting is named", async () => {
+test("a missing or malformed setting is named", async () => {
   const cases: Array<
     [
       Record<string, string>,
@@ -361,7 +362,7 @@ Deno.test("a missing or malformed setting is named", async () => {
   }
 });
 
-Deno.test("a refused token request names the step, never the secret or header", async () => {
+test("a refused token request names the step, never the secret or header", async () => {
   const echo = routes({
     [`POST ${TOKEN_URL}`]: (request) =>
       Response.json({
@@ -400,7 +401,7 @@ Deno.test("a refused token request names the step, never the secret or header", 
   assertStringIncludes(headerError.message, "bad header [redacted]");
 });
 
-Deno.test("an answer with no lifetime is used once, not cached", async () => {
+test("an answer with no lifetime is used once, not cached", async () => {
   const fetcher = routes({
     [`GET ${IMDS}`]: () => Response.json({ access_token: "no-expiry" }),
   });
@@ -409,7 +410,7 @@ Deno.test("an answer with no lifetime is used once, not cached", async () => {
   assertEquals(fetcher.sent.length, 2);
 });
 
-Deno.test("azure() authenticates a PrometheusTasks query end to end", async () => {
+test("azure() authenticates a PrometheusTasks query end to end", async () => {
   const fetcher = routes({
     [`POST ${TOKEN_URL}`]: entra("query-token"),
     "POST https://amw.eastus.prometheus.monitor.azure.com/api/v1/query": () =>

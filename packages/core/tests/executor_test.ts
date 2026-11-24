@@ -1,12 +1,13 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   messageOf,
-} from "./_assert.ts";
+} from "../../../tests/_assert.ts";
 import { GraphError, type OrderingEdge } from "../src/graph.ts";
 import {
   Build,
@@ -50,10 +51,10 @@ import { externalSignal, resumeWhen } from "../src/wait.ts";
 import type { HeldLease } from "../src/state/run_lease.ts";
 import { buildRunRecord } from "../src/state/record.ts";
 import type { RunRecord } from "../src/state/types.ts";
-import { withTemp } from "./_temp.ts";
-import { MemCacheStore } from "./_fakes.ts";
-import { silence } from "./_console.ts";
-import { withTempStore } from "./_store.ts";
+import { withTemp } from "../../../tests/_temp.ts";
+import { MemCacheStore } from "../../../tests/_fakes.ts";
+import { silence } from "../../../tests/_console.ts";
+import { withTempStore } from "../../../tests/_store.ts";
 
 const silent: ExecuteOptions = { silent: true };
 
@@ -89,7 +90,7 @@ async function withEnv(
   }
 }
 
-Deno.test("executes dependencies before dependents, in order", async () => {
+test("executes dependencies before dependents, in order", async () => {
   const log: string[] = [];
   class B extends Build {
     clean = target().executes(() => void log.push("clean"));
@@ -111,7 +112,7 @@ Deno.test("executes dependencies before dependents, in order", async () => {
   assertEquals(log.indexOf("clean") < log.indexOf("compile"), true);
 });
 
-Deno.test("diamond shared target runs exactly once", async () => {
+test("diamond shared target runs exactly once", async () => {
   const log: string[] = [];
   class B extends Build {
     base = target().executes(() => void log.push("base"));
@@ -130,7 +131,7 @@ Deno.test("diamond shared target runs exactly once", async () => {
   assertEquals(log.filter((n) => n === "base").length, 1);
 });
 
-Deno.test("a failing target aborts the run", async () => {
+test("a failing target aborts the run", async () => {
   const log: string[] = [];
   class B extends Build {
     first = target().executes(() => void log.push("first"));
@@ -152,7 +153,7 @@ Deno.test("a failing target aborts the run", async () => {
   assertEquals(result.executed, ["first"]);
 });
 
-Deno.test("lifecycle hooks run around the plan", async () => {
+test("lifecycle hooks run around the plan", async () => {
   const events: string[] = [];
   class B extends Build {
     override onStart() {
@@ -170,7 +171,7 @@ Deno.test("lifecycle hooks run around the plan", async () => {
   assertEquals(events, ["start", "work", "finish:true"]);
 });
 
-Deno.test("skip removes a target from the plan", async () => {
+test("skip removes a target from the plan", async () => {
   const log: string[] = [];
   class B extends Build {
     setup = target().executes(() => void log.push("setup"));
@@ -184,7 +185,7 @@ Deno.test("skip removes a target from the plan", async () => {
   assertEquals(log, ["main"]);
 });
 
-Deno.test("a target without a body fails fast", async () => {
+test("a target without a body fails fast", async () => {
   class B extends Build {
     incomplete = target().description("no body here");
   }
@@ -196,7 +197,7 @@ Deno.test("a target without a body fails fast", async () => {
   assertEquals(messageOf(result.error).includes("no body"), true);
 });
 
-Deno.test("plain mode prints a ruled header, success footer, and summary table", async () => {
+test("plain mode prints a ruled header, success footer, and summary table", async () => {
   const { lines, reporter } = recorder();
   class B extends Build {
     work = target().executes(() => {});
@@ -219,7 +220,7 @@ Deno.test("plain mode prints a ruled header, success footer, and summary table",
   assertEquals(closing.startsWith("✔ Build succeeded — 1/1 targets in "), true);
 });
 
-Deno.test("plain mode reports a failure footer and names the culprit at the end", async () => {
+test("plain mode reports a failure footer and names the culprit at the end", async () => {
   const { lines, reporter } = recorder();
   class B extends Build {
     boom = target().executes(() => {
@@ -240,7 +241,7 @@ Deno.test("plain mode reports a failure footer and names the culprit at the end"
   );
 });
 
-Deno.test("a non-Error throw is reported via String coercion", async () => {
+test("a non-Error throw is reported via String coercion", async () => {
   const { lines, reporter } = recorder();
   class B extends Build {
     boom = target().executes(() => {
@@ -256,7 +257,7 @@ Deno.test("a non-Error throw is reported via String coercion", async () => {
   assertEquals(lines.includes("  string failure"), true);
 });
 
-Deno.test("github mode wraps each target in a collapsible group", async () => {
+test("github mode wraps each target in a collapsible group", async () => {
   const { lines, reporter } = recorder();
   class B extends Build {
     work = target().executes(() => {});
@@ -272,7 +273,7 @@ Deno.test("github mode wraps each target in a collapsible group", async () => {
   assertEquals(lines.includes("::endgroup::"), true);
 });
 
-Deno.test("github mode emits an ::error annotation on failure", async () => {
+test("github mode emits an ::error annotation on failure", async () => {
   const { lines, reporter } = recorder();
   class B extends Build {
     boom = target().executes(() => {
@@ -293,7 +294,7 @@ Deno.test("github mode emits an ::error annotation on failure", async () => {
   assertEquals(lines.some((l) => l.includes("boom failed: nope")), true);
 });
 
-Deno.test("summary table lists skipped and succeeded rows with the count", async () => {
+test("summary table lists skipped and succeeded rows with the count", async () => {
   const { lines, reporter } = recorder();
   class B extends Build {
     setup = target().executes(() => {});
@@ -316,7 +317,7 @@ Deno.test("summary table lists skipped and succeeded rows with the count", async
   assertEquals(closing.startsWith("✔ Build succeeded — 1/2 targets in "), true);
 });
 
-Deno.test("targets after a failure are marked skipped in the summary table", async () => {
+test("targets after a failure are marked skipped in the summary table", async () => {
   const { lines, reporter } = recorder();
   class B extends Build {
     first = target().executes(() => {});
@@ -348,7 +349,7 @@ Deno.test("targets after a failure are marked skipped in the summary table", asy
   );
 });
 
-Deno.test("auto-detects GitHub Actions from the environment", async () => {
+test("auto-detects GitHub Actions from the environment", async () => {
   const { lines, reporter } = recorder();
   class B extends Build {
     work = target().executes(() => {});
@@ -372,7 +373,7 @@ Deno.test("auto-detects GitHub Actions from the environment", async () => {
   });
 });
 
-Deno.test("github mode appends a Markdown job summary (default console)", async () => {
+test("github mode appends a Markdown job summary (default console)", async () => {
   const tmp = await Deno.makeTempFile();
   class B extends Build {
     a = target().executes(() => {});
@@ -397,7 +398,7 @@ Deno.test("github mode appends a Markdown job summary (default console)", async 
   }
 });
 
-Deno.test("the job summary is appended, preserving content written during the run", async () => {
+test("the job summary is appended, preserving content written during the run", async () => {
   class B extends Build {
     // A validation writes its own summary section before the body, the way the
     // AI reviewers/fixer do; the build table must not overwrite it.
@@ -427,7 +428,7 @@ Deno.test("the job summary is appended, preserving content written during the ru
   }
 });
 
-Deno.test("the job summary is NOT written when output is redirected or silent", async () => {
+test("the job summary is NOT written when output is redirected or silent", async () => {
   const { reporter } = recorder();
   class B extends Build {
     work = target().executes(() => {});
@@ -449,7 +450,7 @@ Deno.test("the job summary is NOT written when output is redirected or silent", 
   }
 });
 
-Deno.test("falls back to the console reporter when none is given", async () => {
+test("falls back to the console reporter when none is given", async () => {
   const realLog = console.log;
   const realError = console.error;
   const captured: string[] = [];
@@ -481,7 +482,7 @@ Deno.test("falls back to the console reporter when none is given", async () => {
   assertEquals(captured.some((l) => l.includes("Build failed")), true);
 });
 
-Deno.test("colour mode wraps output in ANSI codes", async () => {
+test("colour mode wraps output in ANSI codes", async () => {
   const { lines, reporter } = recorder();
   class B extends Build {
     work = target().executes(() => {});
@@ -497,7 +498,7 @@ Deno.test("colour mode wraps output in ANSI codes", async () => {
   assertEquals(lines[lines.length - 1].includes("\x1b["), true);
 });
 
-Deno.test("plain mode separates consecutive targets with a blank line", async () => {
+test("plain mode separates consecutive targets with a blank line", async () => {
   const { lines, reporter } = recorder();
   class B extends Build {
     a = target().executes(() => {});
@@ -520,7 +521,7 @@ Deno.test("plain mode separates consecutive targets with a blank line", async ()
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-Deno.test("parallel runs independent targets concurrently", async () => {
+test("parallel runs independent targets concurrently", async () => {
   let active = 0;
   let peak = 0;
   const track = async () => {
@@ -547,7 +548,7 @@ Deno.test("parallel runs independent targets concurrently", async () => {
   assertEquals(peak, 1);
 });
 
-Deno.test("parallel still runs dependencies before dependents", async () => {
+test("parallel still runs dependencies before dependents", async () => {
   const order: string[] = [];
   const rec = (name: string) => async () => {
     await delay(5);
@@ -566,7 +567,7 @@ Deno.test("parallel still runs dependencies before dependents", async () => {
   assertEquals(order, ["base", "mid", "top"]);
 });
 
-Deno.test("parallel diamond runs the shared dep once and overlaps the middle", async () => {
+test("parallel diamond runs the shared dep once and overlaps the middle", async () => {
   let active = 0;
   let peak = 0;
   const counts = new Map<string, number>();
@@ -591,7 +592,7 @@ Deno.test("parallel diamond runs the shared dep once and overlaps the middle", a
   assertEquals(peak, 2); // left and right overlap; base and top run alone
 });
 
-Deno.test("parallel skips dependents of a failed target but finishes peers", async () => {
+test("parallel skips dependents of a failed target but finishes peers", async () => {
   const ran: string[] = [];
   class B extends Build {
     boom = target().executes(() => {
@@ -616,7 +617,7 @@ Deno.test("parallel skips dependents of a failed target but finishes peers", asy
   assertEquals(ran.includes("all"), false); // transitively blocked
 });
 
-Deno.test("parallel treats --skip targets as satisfied dependencies", async () => {
+test("parallel treats --skip targets as satisfied dependencies", async () => {
   const ran: string[] = [];
   class B extends Build {
     setup = target().executes(() => void ran.push("setup"));
@@ -634,7 +635,7 @@ Deno.test("parallel treats --skip targets as satisfied dependencies", async () =
   assertEquals(ran, ["main"]);
 });
 
-Deno.test("parallel=true uses the host CPU count and succeeds", async () => {
+test("parallel=true uses the host CPU count and succeeds", async () => {
   class B extends Build {
     a = target().executes(() => {});
     b = target().executes(() => {});
@@ -649,7 +650,7 @@ Deno.test("parallel=true uses the host CPU count and succeeds", async () => {
   assertEquals(result.ok, true);
 });
 
-Deno.test("parallel buffers each target's block (plain and github)", async () => {
+test("parallel buffers each target's block (plain and github)", async () => {
   class B extends Build {
     a = target().executes(() => {});
     boom = target().executes(() => {
@@ -693,7 +694,7 @@ Deno.test("parallel buffers each target's block (plain and github)", async () =>
   assertEquals(gh.lines[open + 2], "::endgroup::");
 });
 
-Deno.test("a group runs its members in parallel without the --parallel flag", async () => {
+test("a group runs its members in parallel without the --parallel flag", async () => {
   const order: string[] = [];
   let active = 0;
   let peak = 0;
@@ -729,7 +730,7 @@ Deno.test("a group runs its members in parallel without the --parallel flag", as
   assertEquals(order[order.length - 1], "deploy"); // deploy ran after the group
 });
 
-Deno.test("ungrouped targets stay sequential while a group runs in parallel", async () => {
+test("ungrouped targets stay sequential while a group runs in parallel", async () => {
   let active = 0;
   let peak = 0;
   const track = async () => {
@@ -758,7 +759,7 @@ Deno.test("ungrouped targets stay sequential while a group runs in parallel", as
   assertEquals(peak, 2);
 });
 
-Deno.test("a failing group member skips the group's dependents", async () => {
+test("a failing group member skips the group's dependents", async () => {
   const ran: string[] = [];
   class B extends Build {
     checks = group();
@@ -778,7 +779,7 @@ Deno.test("a failing group member skips the group's dependents", async () => {
   assertEquals(ran.includes("deploy"), false); // group member failed
 });
 
-Deno.test("onlyWhen=false skips the target but its dependents still run", async () => {
+test("onlyWhen=false skips the target but its dependents still run", async () => {
   const ran: string[] = [];
   class B extends Build {
     gated = target().onlyWhen(() => false).executes(() =>
@@ -796,7 +797,7 @@ Deno.test("onlyWhen=false skips the target but its dependents still run", async 
   assertEquals(ran, ["after"]); // gated skipped, dependent still ran
 });
 
-Deno.test("onlyWhen can gate on a resolved parameter", async () => {
+test("onlyWhen can gate on a resolved parameter", async () => {
   const ran: string[] = [];
   class B extends Build {
     env = parameter("env").default("dev");
@@ -815,7 +816,7 @@ Deno.test("onlyWhen can gate on a resolved parameter", async () => {
   assertEquals(ran, ["deploy"]);
 });
 
-Deno.test("a cached target is skipped and counted as succeeded", async () => {
+test("a cached target is skipped and counted as succeeded", async () => {
   const { lines, reporter } = recorder();
   const ran: string[] = [];
   class B extends Build {
@@ -843,7 +844,7 @@ Deno.test("a cached target is skipped and counted as succeeded", async () => {
   assertEquals(closing.startsWith("✔ Build succeeded — 1/1 targets in "), true);
 });
 
-Deno.test("a stale target runs and records its fingerprint", async () => {
+test("a stale target runs and records its fingerprint", async () => {
   const ran: string[] = [];
   class B extends Build {
     build = target().inputs("x").executes(() => void ran.push("build"));
@@ -857,7 +858,7 @@ Deno.test("a stale target runs and records its fingerprint", async () => {
   assertEquals(cache.recorded, ["build"]);
 });
 
-Deno.test("cache:false runs cacheable targets without touching the cache", async () => {
+test("cache:false runs cacheable targets without touching the cache", async () => {
   const ran: string[] = [];
   class B extends Build {
     build = target().inputs("x").executes(() => void ran.push("build"));
@@ -869,7 +870,7 @@ Deno.test("cache:false runs cacheable targets without touching the cache", async
   assertEquals(ran, ["build"]);
 });
 
-Deno.test("execute caches incrementally via the default .zuke store", async () => {
+test("execute caches incrementally via the default .zuke store", async () => {
   const dir = await Deno.makeTempDir();
   const original = Deno.cwd();
   try {
@@ -901,7 +902,7 @@ Deno.test("execute caches incrementally via the default .zuke store", async () =
   }
 });
 
-Deno.test("triggers run the triggered target after this one", async () => {
+test("triggers run the triggered target after this one", async () => {
   const order: string[] = [];
   class B extends Build {
     notify = target().executes(() => void order.push("notify"));
@@ -916,7 +917,7 @@ Deno.test("triggers run the triggered target after this one", async () => {
   assertEquals(order, ["build", "notify"]);
 });
 
-Deno.test("proceedAfterFailure keeps the build going but still fails", async () => {
+test("proceedAfterFailure keeps the build going but still fails", async () => {
   const ran: string[] = [];
   class B extends Build {
     flaky = target().proceedAfterFailure().executes(() => {
@@ -939,7 +940,7 @@ Deno.test("proceedAfterFailure keeps the build going but still fails", async () 
   assertEquals(ran.includes("all"), false); // transitively blocked
 });
 
-Deno.test("requires fails a target whose parameter is unset", async () => {
+test("requires fails a target whose parameter is unset", async () => {
   class B extends Build {
     token = parameter("API token");
     publish = target().requires(this.token).executes(() => {});
@@ -954,7 +955,7 @@ Deno.test("requires fails a target whose parameter is unset", async () => {
   assertEquals(messageOf(result.error).includes("requires parameter"), true);
 });
 
-Deno.test("requires passes once the parameter is set", async () => {
+test("requires passes once the parameter is set", async () => {
   const ran: string[] = [];
   class B extends Build {
     token = parameter("API token");
@@ -972,7 +973,7 @@ Deno.test("requires passes once the parameter is set", async () => {
   assertEquals(ran, ["publish"]);
 });
 
-Deno.test("always targets run for cleanup even after a failure", async () => {
+test("always targets run for cleanup even after a failure", async () => {
   const ran: string[] = [];
   class B extends Build {
     boom = target().executes(() => {
@@ -991,7 +992,7 @@ Deno.test("always targets run for cleanup even after a failure", async () => {
   assertEquals(ran.includes("all"), false); // blocked by the failed dep
 });
 
-Deno.test("whenSkipped(skip-dependencies) skips the target and its exclusive deps", async () => {
+test("whenSkipped(skip-dependencies) skips the target and its exclusive deps", async () => {
   const ran: string[] = [];
   class B extends Build {
     onlyForDocs = target().executes(() => void ran.push("onlyForDocs"));
@@ -1011,7 +1012,7 @@ Deno.test("whenSkipped(skip-dependencies) skips the target and its exclusive dep
   assertEquals(ran.includes("site"), true); // dependent still runs
 });
 
-Deno.test("onTargetStart and onTargetEnd fire around each target", async () => {
+test("onTargetStart and onTargetEnd fire around each target", async () => {
   const events: string[] = [];
   class B extends Build {
     override onTargetStart(name: string) {
@@ -1034,7 +1035,7 @@ Deno.test("onTargetStart and onTargetEnd fire around each target", async () => {
   ]);
 });
 
-Deno.test("secret parameter values are masked to the real console under GitHub Actions", async () => {
+test("secret parameter values are masked to the real console under GitHub Actions", async () => {
   class B extends Build {
     token = parameter("token").secret();
     go = target().executes(() => {});
@@ -1056,7 +1057,7 @@ Deno.test("secret parameter values are masked to the real console under GitHub A
   assertEquals(printed.includes("::add-mask::s3cr3t"), true);
 });
 
-Deno.test("a custom reporter never receives a raw ::add-mask:: secret", async () => {
+test("a custom reporter never receives a raw ::add-mask:: secret", async () => {
   const { lines, reporter } = recorder();
   class B extends Build {
     token = parameter("token").secret();
@@ -1078,7 +1079,7 @@ Deno.test("a custom reporter never receives a raw ::add-mask:: secret", async ()
   assertEquals(lines.some((l) => l.startsWith("::add-mask::")), false);
 });
 
-Deno.test("execute prompts for a missing required parameter", async () => {
+test("execute prompts for a missing required parameter", async () => {
   const seen: string[] = [];
   class B extends Build {
     token = parameter("token").required();
@@ -1095,7 +1096,7 @@ Deno.test("execute prompts for a missing required parameter", async () => {
   assertEquals(seen, ["prompted"]);
 });
 
-Deno.test("targets from a reusable component run in dependency order", async () => {
+test("targets from a reusable component run in dependency order", async () => {
   const ran: string[] = [];
   const releasable = () => {
     const pack = target().executes(() => void ran.push("pack"));
@@ -1118,7 +1119,7 @@ Deno.test("targets from a reusable component run in dependency order", async () 
   assertEquals(ran, ["pack", "publish", "deploy"]);
 });
 
-Deno.test("an unwritable job-summary file never fails the build", async () => {
+test("an unwritable job-summary file never fails the build", async () => {
   const dir = await Deno.makeTempDir(); // a directory is not writable as a file
   class B extends Build {
     work = target().executes(() => {});
@@ -1141,7 +1142,7 @@ Deno.test("an unwritable job-summary file never fails the build", async () => {
   }
 });
 
-Deno.test("dry run reports the plan without executing bodies or cache", async () => {
+test("dry run reports the plan without executing bodies or cache", async () => {
   const log: string[] = [];
   const cache = new FakeCache();
   class B extends Build {
@@ -1168,7 +1169,7 @@ Deno.test("dry run reports the plan without executing bodies or cache", async ()
   assertEquals(lines.some((l) => l.includes("dry run")), true);
 });
 
-Deno.test("dry run still skips targets whose condition is false", async () => {
+test("dry run still skips targets whose condition is false", async () => {
   class B extends Build {
     deploy = target()
       .onlyWhen(() => false)
@@ -1182,7 +1183,7 @@ Deno.test("dry run still skips targets whose condition is false", async () => {
   assertEquals(result.executed, []); // skipped, not "executed"
 });
 
-Deno.test("timeout fails a body that runs too long", async () => {
+test("timeout fails a body that runs too long", async () => {
   class B extends Build {
     slow = target()
       .timeout(20)
@@ -1198,7 +1199,7 @@ Deno.test("timeout fails a body that runs too long", async () => {
   assertEquals(messageOf(result.error).includes("timed out"), true);
 });
 
-Deno.test("a fast body within the timeout passes", async () => {
+test("a fast body within the timeout passes", async () => {
   let ran = false;
   class B extends Build {
     quick = target().timeout(1000).executes(() => void (ran = true));
@@ -1211,7 +1212,7 @@ Deno.test("a fast body within the timeout passes", async () => {
   assertEquals(ran, true);
 });
 
-Deno.test("a body with a timeout that fails fast surfaces its own error", async () => {
+test("a body with a timeout that fails fast surfaces its own error", async () => {
   class B extends Build {
     boom = target()
       .timeout(1000)
@@ -1227,7 +1228,7 @@ Deno.test("a body with a timeout that fails fast surfaces its own error", async 
   assertEquals(messageOf(result.error), "real error"); // not a timeout
 });
 
-Deno.test("dry run closes the log group under GitHub Actions", async () => {
+test("dry run closes the log group under GitHub Actions", async () => {
   const { lines, reporter } = recorder();
   class B extends Build {
     work = target().executes(() => {});
@@ -1245,7 +1246,7 @@ Deno.test("dry run closes the log group under GitHub Actions", async () => {
   assertEquals(lines.includes("::endgroup::"), true);
 });
 
-Deno.test("retry re-runs a flaky body until it succeeds", async () => {
+test("retry re-runs a flaky body until it succeeds", async () => {
   let attempts = 0;
   class B extends Build {
     flaky = target()
@@ -1263,7 +1264,7 @@ Deno.test("retry re-runs a flaky body until it succeeds", async () => {
   assertEquals(attempts, 3);
 });
 
-Deno.test("retry gives up after the configured attempts (with delay)", async () => {
+test("retry gives up after the configured attempts (with delay)", async () => {
   let attempts = 0;
   class B extends Build {
     doomed = target()
@@ -1284,7 +1285,7 @@ Deno.test("retry gives up after the configured attempts (with delay)", async () 
 
 // --- Plugins (lifecycle observers) ---
 
-Deno.test("execute runs plugin hooks alongside the build hooks, in order", async () => {
+test("execute runs plugin hooks alongside the build hooks, in order", async () => {
   const events: string[] = [];
   class B extends Build {
     override onStart() {
@@ -1323,7 +1324,7 @@ Deno.test("execute runs plugin hooks alongside the build hooks, in order", async
   ]);
 });
 
-Deno.test("execute supports multiple plugins and partial hook sets", async () => {
+test("execute supports multiple plugins and partial hook sets", async () => {
   const calls: string[] = [];
   class B extends Build {
     a = target().executes(() => {});
@@ -1338,7 +1339,7 @@ Deno.test("execute supports multiple plugins and partial hook sets", async () =>
   assertEquals(calls, ["p1:a:passed", "p2:finish"]);
 });
 
-Deno.test("plugin hooks carry the run id, dry-run flag, and target timing (M7)", async () => {
+test("plugin hooks carry the run id, dry-run flag, and target timing (M7)", async () => {
   const seen: {
     startRunId?: string;
     tsRunId?: string;
@@ -1386,7 +1387,7 @@ Deno.test("plugin hooks carry the run id, dry-run flag, and target timing (M7)",
   assertEquals(dry, [true]);
 });
 
-Deno.test("old-style plugin hooks (fewer args) still compile and run (M7)", async () => {
+test("old-style plugin hooks (fewer args) still compile and run (M7)", async () => {
   const calls: string[] = [];
   class B extends Build {
     a = target().executes(() => {});
@@ -1404,7 +1405,7 @@ Deno.test("old-style plugin hooks (fewer args) still compile and run (M7)", asyn
   assertEquals(calls, ["start", "ts:a", "te:a:passed", "finish:true"]);
 });
 
-Deno.test("onRunStateChange fires with the record on run-level transitions (M7)", async () => {
+test("onRunStateChange fires with the record on run-level transitions (M7)", async () => {
   await withTempStore(async (store) => {
     const statuses: string[] = [];
     const runIds = new Set<string>();
@@ -1432,7 +1433,7 @@ Deno.test("onRunStateChange fires with the record on run-level transitions (M7)"
   });
 });
 
-Deno.test("onRunStateChange stays silent without a state store (M7)", async () => {
+test("onRunStateChange stays silent without a state store (M7)", async () => {
   const calls: string[] = [];
   class B extends Build {
     a = target().executes(() => {});
@@ -1447,7 +1448,7 @@ Deno.test("onRunStateChange stays silent without a state store (M7)", async () =
   assertEquals(calls, []); // no store → no record → no run-state events
 });
 
-Deno.test("onRunStateChange delivers running → cancelling → cancelled on self-cancel (M7)", async () => {
+test("onRunStateChange delivers running → cancelling → cancelled on self-cancel (M7)", async () => {
   await withTempStore(async (store) => {
     const statuses: string[] = [];
     let started: () => void = () => {};
@@ -1478,7 +1479,7 @@ Deno.test("onRunStateChange delivers running → cancelling → cancelled on sel
   });
 });
 
-Deno.test("a throwing plugin hook is isolated and never breaks the run (M7)", async () => {
+test("a throwing plugin hook is isolated and never breaks the run (M7)", async () => {
   const events: string[] = [];
   class B extends Build {
     a = target().executes(() => void events.push("body"));
@@ -1505,7 +1506,7 @@ Deno.test("a throwing plugin hook is isolated and never breaks the run (M7)", as
   assertEquals(events, ["body", "good:finish"]); // the good plugin still ran
 });
 
-Deno.test("both validation hooks receive the run's redactor", async () => {
+test("both validation hooks receive the run's redactor", async () => {
   // The seam itself, at the unit level: a validation that publishes has to be
   // able to mask, and whether it runs before or after the body does not change
   // that. The integration test proves it masks a real declared secret; this
@@ -1528,7 +1529,7 @@ Deno.test("both validation hooks receive the run's redactor", async () => {
   assertEquals(got, ["function", "function"]);
 });
 
-Deno.test("validateBefore runs before the body; validateAfter runs after", async () => {
+test("validateBefore runs before the body; validateAfter runs after", async () => {
   const log: string[] = [];
   class B extends Build {
     work = target()
@@ -1543,7 +1544,7 @@ Deno.test("validateBefore runs before the body; validateAfter runs after", async
   assertEquals(log, ["before", "body", "after"]);
 });
 
-Deno.test("a throwing validateBefore fails the target and skips the body", async () => {
+test("a throwing validateBefore fails the target and skips the body", async () => {
   let bodyRan = false;
   class B extends Build {
     work = target()
@@ -1562,7 +1563,7 @@ Deno.test("a throwing validateBefore fails the target and skips the body", async
   assertEquals(messageOf(result.error).includes("gate on work"), true);
 });
 
-Deno.test("a throwing validateAfter fails the target after the body ran", async () => {
+test("a throwing validateAfter fails the target after the body ran", async () => {
   let bodyRan = false;
   class B extends Build {
     work = target()
@@ -1581,7 +1582,7 @@ Deno.test("a throwing validateAfter fails the target after the body ran", async 
   assertEquals(messageOf(result.error).includes("post-check failed"), true);
 });
 
-Deno.test("a cached target runs no validations", async () => {
+test("a cached target runs no validations", async () => {
   let validated = false;
   class B extends Build {
     work = target()
@@ -1597,7 +1598,7 @@ Deno.test("a cached target runs no validations", async () => {
   assertEquals(validated, false);
 });
 
-Deno.test("recoverWith heals a failing body on the first attempt", async () => {
+test("recoverWith heals a failing body on the first attempt", async () => {
   const log: string[] = [];
   let pass = false;
   class B extends Build {
@@ -1621,7 +1622,7 @@ Deno.test("recoverWith heals a failing body on the first attempt", async () => {
   assertEquals(log, ["body", "fix work attempt 1", "body"]);
 });
 
-Deno.test("a remediation that declines to retry leaves the failure standing", async () => {
+test("a remediation that declines to retry leaves the failure standing", async () => {
   let attempts = 0;
   class B extends Build {
     work = target()
@@ -1641,7 +1642,7 @@ Deno.test("a remediation that declines to retry leaves the failure standing", as
   assertEquals(messageOf(result.error).includes("still broken"), true);
 });
 
-Deno.test("recoverAttempts bounds the fix-then-rerun cycles", async () => {
+test("recoverAttempts bounds the fix-then-rerun cycles", async () => {
   let bodyRuns = 0;
   let fixes = 0;
   class B extends Build {
@@ -1666,7 +1667,7 @@ Deno.test("recoverAttempts bounds the fix-then-rerun cycles", async () => {
   assertEquals(bodyRuns, 4); // initial run + one re-run per attempt
 });
 
-Deno.test("recovery heals on a later attempt", async () => {
+test("recovery heals on a later attempt", async () => {
   let bodyRuns = 0;
   class B extends Build {
     work = target()
@@ -1684,7 +1685,7 @@ Deno.test("recovery heals on a later attempt", async () => {
   assertEquals(bodyRuns, 3);
 });
 
-Deno.test("a throwing remediation never masks the build failure", async () => {
+test("a throwing remediation never masks the build failure", async () => {
   class B extends Build {
     work = target()
       .recoverWith({
@@ -1703,7 +1704,7 @@ Deno.test("a throwing remediation never masks the build failure", async () => {
   assertEquals(messageOf(result.error).includes("original failure"), true);
 });
 
-Deno.test("a build-level recoverWith heals a target with no per-target one", async () => {
+test("a build-level recoverWith heals a target with no per-target one", async () => {
   let pass = false;
   const fixer = {
     remediate: () => {
@@ -1725,7 +1726,7 @@ Deno.test("a build-level recoverWith heals a target with no per-target one", asy
   assertEquals(result.ok, true);
 });
 
-Deno.test("per-target recoverWith runs before the build-level one", async () => {
+test("per-target recoverWith runs before the build-level one", async () => {
   const order: string[] = [];
   let healed = false;
   class B extends Build {
@@ -1756,7 +1757,7 @@ Deno.test("per-target recoverWith runs before the build-level one", async () => 
   assertEquals(order, ["target", "global"]); // target's own first, then global
 });
 
-Deno.test("recoverWith only runs after a body failure, not on success", async () => {
+test("recoverWith only runs after a body failure, not on success", async () => {
   let fixed = false;
   class B extends Build {
     work = target()
@@ -1770,7 +1771,7 @@ Deno.test("recoverWith only runs after a body failure, not on success", async ()
   assertEquals(fixed, false);
 });
 
-Deno.test("execute uploads to and restores from a remote cache store", async () => {
+test("execute uploads to and restores from a remote cache store", async () => {
   const dir = await Deno.makeTempDir();
   const original = Deno.cwd();
   try {
@@ -1813,7 +1814,7 @@ Deno.test("execute uploads to and restores from a remote cache store", async () 
   }
 });
 
-Deno.test("target body receives a context with a stable runId and its name", async () => {
+test("target body receives a context with a stable runId and its name", async () => {
   const runIds: string[] = [];
   const names: string[] = [];
   let signalPresent = false;
@@ -1843,7 +1844,7 @@ Deno.test("target body receives a context with a stable runId and its name", asy
   assertEquals(dryRunSeen, false);
 });
 
-Deno.test("options.signal aborts the context signal of an in-flight target", async () => {
+test("options.signal aborts the context signal of an in-flight target", async () => {
   // Deterministic: no subprocess, no timing — proves the run's cancellation
   // reaches a running body through ctx.signal.
   let started: () => void = () => {};
@@ -1878,7 +1879,7 @@ Deno.test("options.signal aborts the context signal of an in-flight target", asy
   assertEquals(result.cancelled, true);
 });
 
-Deno.test("cancelling a run terminates an in-flight shell command", async () => {
+test("cancelling a run terminates an in-flight shell command", async () => {
   let started: () => void = () => {};
   const ready = new Promise<void>((resolve) => (started = resolve));
   const controller = new AbortController();
@@ -1908,7 +1909,7 @@ Deno.test("cancelling a run terminates an in-flight shell command", async () => 
   assertEquals(result.ok, false); // the killed command failed the target
 });
 
-Deno.test("cancelling a parallel run terminates in-flight commands in every branch", async () => {
+test("cancelling a parallel run terminates in-flight commands in every branch", async () => {
   // Proves the ambient signal propagates through the scheduled (parallel)
   // runner's callback-based pump, not just the sequential path.
   let up = 0;
@@ -1942,7 +1943,7 @@ Deno.test("cancelling a parallel run terminates in-flight commands in every bran
   assertEquals(result.ok, false); // both branches' commands were killed
 });
 
-Deno.test("a pre-aborted options.signal cancels the run without starting a target", async () => {
+test("a pre-aborted options.signal cancels the run without starting a target", async () => {
   const controller = new AbortController();
   controller.abort();
   const ran: string[] = [];
@@ -1965,7 +1966,7 @@ Deno.test("a pre-aborted options.signal cancels the run without starting a targe
   assertEquals(result.cancelled, true);
 });
 
-Deno.test("a body sees the run's cancellation on its own context signal", async () => {
+test("a body sees the run's cancellation on its own context signal", async () => {
   const controller = new AbortController();
   let sawAborted = false;
   class B extends Build {
@@ -1988,7 +1989,7 @@ Deno.test("a body sees the run's cancellation on its own context signal", async 
   assertEquals(result.cancelled, true);
 });
 
-Deno.test("a run with a state store reconstructs full status from disk", async () => {
+test("a run with a state store reconstructs full status from disk", async () => {
   await withTempStore(async (store, dir) => {
     const log: string[] = [];
     class B extends Build {
@@ -2028,7 +2029,7 @@ Deno.test("a run with a state store reconstructs full status from disk", async (
   });
 });
 
-Deno.test("with no state store, ctx.state is an in-memory no-op", async () => {
+test("with no state store, ctx.state is an in-memory no-op", async () => {
   let readBack: unknown;
   class B extends Build {
     a = target().executes(async (ctx) => {
@@ -2043,7 +2044,7 @@ Deno.test("with no state store, ctx.state is an in-memory no-op", async () => {
   assertEquals(readBack, "v"); // visible within the run, persisted nowhere
 });
 
-Deno.test("a second run of a locked target fails with a typed conflict", async () => {
+test("a second run of a locked target fails with a typed conflict", async () => {
   await withTempStore(async (store) => {
     let acquired: () => void = () => {};
     const ready = new Promise<void>((resolve) => (acquired = resolve));
@@ -2098,7 +2099,7 @@ Deno.test("a second run of a locked target fails with a typed conflict", async (
   });
 });
 
-Deno.test("a locked target with no store fails with a friendly error", async () => {
+test("a locked target with no store fails with a friendly error", async () => {
   class B extends Build {
     promote = target().lock((s) => s.key("k").withTtl("1h")).executes(() => {});
   }
@@ -2112,7 +2113,7 @@ Deno.test("a locked target with no store fails with a friendly error", async () 
   assertStringIncludes(messageOf(result.error), "no state store");
 });
 
-Deno.test("a lock with no key or no TTL fails with a friendly error", async () => {
+test("a lock with no key or no TTL fails with a friendly error", async () => {
   await withTempStore(async (store) => {
     class NoKey extends Build {
       go = target().lock((s) => s.withTtl("1h")).executes(() => {});
@@ -2140,7 +2141,7 @@ Deno.test("a lock with no key or no TTL fails with a friendly error", async () =
   });
 });
 
-Deno.test("cancelling a locked run releases the lock", async () => {
+test("cancelling a locked run releases the lock", async () => {
   await withTempStore(async (store) => {
     const controller = new AbortController();
     let started: () => void = () => {};
@@ -2177,7 +2178,7 @@ Deno.test("cancelling a locked run releases the lock", async () => {
   });
 });
 
-Deno.test("an unsatisfied waitsFor suspends the run and records it", async () => {
+test("an unsatisfied waitsFor suspends the run and records it", async () => {
   await withTempStore(async (store) => {
     const log: string[] = [];
     class B extends Build {
@@ -2234,7 +2235,7 @@ Deno.test("an unsatisfied waitsFor suspends the run and records it", async () =>
   });
 });
 
-Deno.test("a satisfied waitsFor passes through and dependents run", async () => {
+test("a satisfied waitsFor passes through and dependents run", async () => {
   await withTempStore(async (store) => {
     const log: string[] = [];
     class B extends Build {
@@ -2259,7 +2260,7 @@ Deno.test("a satisfied waitsFor passes through and dependents run", async () => 
   });
 });
 
-Deno.test("waitsFor with no store fails with a friendly error", async () => {
+test("waitsFor with no store fails with a friendly error", async () => {
   class B extends Build {
     gate = target().waitsFor((s) => s.on(externalSignal("x")));
   }
@@ -2270,7 +2271,7 @@ Deno.test("waitsFor with no store fails with a friendly error", async () => {
   assertStringIncludes(messageOf(result.error), "needs a state store");
 });
 
-Deno.test("waitsFor with no trigger fails with a friendly error", async () => {
+test("waitsFor with no trigger fails with a friendly error", async () => {
   await withTempStore(async (store) => {
     class B extends Build {
       gate = target().waitsFor((s) => s); // never called .on(...)
@@ -2286,7 +2287,7 @@ Deno.test("waitsFor with no trigger fails with a friendly error", async () => {
   });
 });
 
-Deno.test("a throwing onlyWhen predicate fails the target, not the process (sequential)", async () => {
+test("a throwing onlyWhen predicate fails the target, not the process (sequential)", async () => {
   const { lines, reporter } = recorder();
   class B extends Build {
     setup = target().executes(() => {});
@@ -2306,7 +2307,7 @@ Deno.test("a throwing onlyWhen predicate fails the target, not the process (sequ
   assertEquals(lines.some((l) => l.includes("predicate boom")), true);
 });
 
-Deno.test("a throwing predicate settles the parallel scheduler without hanging", async () => {
+test("a throwing predicate settles the parallel scheduler without hanging", async () => {
   const { reporter } = recorder();
   class B extends Build {
     good = target().executes(() => {});
@@ -2331,7 +2332,7 @@ Deno.test("a throwing predicate settles the parallel scheduler without hanging",
   assertEquals(result.executed.includes("good"), true);
 });
 
-Deno.test("a throwing cacheKey thunk fails the target, not the process (sequential)", async () => {
+test("a throwing cacheKey thunk fails the target, not the process (sequential)", async () => {
   const dir = await Deno.makeTempDir();
   const original = Deno.cwd();
   try {
@@ -2362,7 +2363,7 @@ Deno.test("a throwing cacheKey thunk fails the target, not the process (sequenti
   }
 });
 
-Deno.test("a throwing cacheKey settles the parallel scheduler without hanging", async () => {
+test("a throwing cacheKey settles the parallel scheduler without hanging", async () => {
   const dir = await Deno.makeTempDir();
   const original = Deno.cwd();
   try {
@@ -2396,7 +2397,7 @@ Deno.test("a throwing cacheKey settles the parallel scheduler without hanging", 
   }
 });
 
-Deno.test("a rejected lock renewal never crashes the build", async () => {
+test("a rejected lock renewal never crashes the build", async () => {
   await withTemp(async (dir) => {
     // A store whose lock renewal always rejects, counting the heartbeat's calls.
     class RenewFails extends FileSystemStateStore {
@@ -2439,7 +2440,7 @@ const throwingReporter: Reporter = {
   },
 };
 
-Deno.test("a throwing reporter never strands the run record (sequential)", async () => {
+test("a throwing reporter never strands the run record (sequential)", async () => {
   await withTempStore(async (store) => {
     class B extends Build {
       // A reject from outside runTarget's own try/catch, so failTarget prints
@@ -2463,7 +2464,7 @@ Deno.test("a throwing reporter never strands the run record (sequential)", async
   });
 });
 
-Deno.test("a throwing reporter never hangs the parallel scheduler or strands the record", async () => {
+test("a throwing reporter never hangs the parallel scheduler or strands the record", async () => {
   await withTempStore(async (store) => {
     class B extends Build {
       good = target().executes(() => {});
@@ -2489,7 +2490,7 @@ Deno.test("a throwing reporter never hangs the parallel scheduler or strands the
   });
 });
 
-Deno.test("a throwing predicate on a lenient target does not halt its siblings", async () => {
+test("a throwing predicate on a lenient target does not halt its siblings", async () => {
   const { reporter } = recorder();
   class B extends Build {
     bad = target()
@@ -2516,7 +2517,7 @@ Deno.test("a throwing predicate on a lenient target does not halt its siblings",
 
 // --- Cancellation stops retries and remediations (F6) ---
 
-Deno.test("a cancelled run stops retrying immediately", async () => {
+test("a cancelled run stops retrying immediately", async () => {
   let attempts = 0;
   const controller = new AbortController();
   class B extends Build {
@@ -2538,7 +2539,7 @@ Deno.test("a cancelled run stops retrying immediately", async () => {
   assertEquals(attempts, 1); // no further retries after the cancel (pre-fix: 6)
 });
 
-Deno.test("a cancelled run does not invoke recoverWith remediations", async () => {
+test("a cancelled run does not invoke recoverWith remediations", async () => {
   let fixes = 0;
   const controller = new AbortController();
   class B extends Build {
@@ -2567,7 +2568,7 @@ Deno.test("a cancelled run does not invoke recoverWith remediations", async () =
 
 // --- Public API validates the graph, emitting GraphError not TypeError (F10) ---
 
-Deno.test("execute rejects a forward-referenced dependency with GraphError", async () => {
+test("execute rejects a forward-referenced dependency with GraphError", async () => {
   class B extends Build {
     // @ts-expect-error -- deliberately forward-references a later field
     early = target().dependsOn(this.later).executes(() => {});
@@ -2584,7 +2585,7 @@ Deno.test("execute rejects a forward-referenced dependency with GraphError", asy
 
 // --- A failed run strands no `waiting` target row (F8) ---
 
-Deno.test("a failed run leaves no waiting target stranded in the record", async () => {
+test("a failed run leaves no waiting target stranded in the record", async () => {
   await withTempStore(async (store) => {
     class B extends Build {
       // Independent branches: one parks at a wait gate, the other fails.
@@ -2609,7 +2610,7 @@ Deno.test("a failed run leaves no waiting target stranded in the record", async 
   });
 });
 
-Deno.test("execute flags an ordering edge to a target not in the build", async () => {
+test("execute flags an ordering edge to a target not in the build", async () => {
   const { lines, reporter } = recorder();
   class Mono extends Build {
     a = target().executes(() => {});
@@ -2675,7 +2676,7 @@ function fakeLease(): { lease: HeldLease; lose: () => void } {
   };
 }
 
-Deno.test("losing the lease stops the run without running its compensations", async () => {
+test("losing the lease stops the run without running its compensations", async () => {
   await withTempStore(async (store) => {
     const { lease, lose } = fakeLease();
     const compensated: string[] = [];
@@ -2714,7 +2715,7 @@ Deno.test("losing the lease stops the run without running its compensations", as
   });
 });
 
-Deno.test("losing the lease leaves the record for its new holder to settle", async () => {
+test("losing the lease leaves the record for its new holder to settle", async () => {
   await withTempStore(async (store) => {
     const { lease, lose } = fakeLease();
     class B extends Build {
@@ -2736,7 +2737,7 @@ Deno.test("losing the lease leaves the record for its new holder to settle", asy
   });
 });
 
-Deno.test("a lease lost before the plan starts stops the run just the same", async () => {
+test("a lease lost before the plan starts stops the run just the same", async () => {
   await withTempStore(async (store) => {
     const { lease, lose } = fakeLease();
     lose(); // already gone by the time execute() reads the signal
@@ -2762,7 +2763,7 @@ Deno.test("a lease lost before the plan starts stops the run just the same", asy
   });
 });
 
-Deno.test("a cancelled run does not persist the cache its compensations undid", async () => {
+test("a cancelled run does not persist the cache its compensations undid", async () => {
   await withTempStore(async (store) => {
     const cache = new FakeCache();
     const controller = new AbortController();
@@ -2788,7 +2789,7 @@ Deno.test("a cancelled run does not persist the cache its compensations undid", 
   });
 });
 
-Deno.test("a cancelled run with no state store at all keeps its cache", async () => {
+test("a cancelled run with no state store at all keeps its cache", async () => {
   // The default shape for a build that declares no compensation: no store, so no
   // writer, so no walk that could have undone anything. Asserted separately from
   // the with-a-store case because it reaches the decision by a different route —
@@ -2811,7 +2812,7 @@ Deno.test("a cancelled run with no state store at all keeps its cache", async ()
   assertEquals(cache.saved, true);
 });
 
-Deno.test("a cancelled run with nothing to roll back keeps its cache", async () => {
+test("a cancelled run with nothing to roll back keeps its cache", async () => {
   await withTempStore(async (store) => {
     const cache = new FakeCache();
     const controller = new AbortController();
@@ -2834,7 +2835,7 @@ Deno.test("a cancelled run with nothing to roll back keeps its cache", async () 
   });
 });
 
-Deno.test("an ordinary failure still persists the cache", async () => {
+test("an ordinary failure still persists the cache", async () => {
   const cache = new FakeCache();
   class B extends Build {
     ok = target().executes(() => {});
@@ -2854,7 +2855,7 @@ Deno.test("an ordinary failure still persists the cache", async () => {
   assertEquals(cache.saved, true);
 });
 
-Deno.test("a store that cannot answer the lease fails the run cleanly, not by rejecting", async () => {
+test("a store that cannot answer the lease fails the run cleanly, not by rejecting", async () => {
   await withTemp(async (dir) => {
     // A store whose lock acquire always throws — a filesystem mutex it could not
     // take in time, an HTTP 503, a DNS blip. None of those say who holds the
@@ -2891,7 +2892,7 @@ Deno.test("a store that cannot answer the lease fails the run cleanly, not by re
   });
 });
 
-Deno.test("a lease that recovers on a retry lets the run proceed", async () => {
+test("a lease that recovers on a retry lets the run proceed", async () => {
   await withTemp(async (dir) => {
     class FlakyOnce extends FileSystemStateStore {
       calls = 0;
@@ -2920,7 +2921,7 @@ Deno.test("a lease that recovers on a retry lets the run proceed", async () => {
   });
 });
 
-Deno.test("a cancelled run gives its lease back rather than holding it to the TTL", async () => {
+test("a cancelled run gives its lease back rather than holding it to the TTL", async () => {
   await withTempStore(async (store) => {
     const controller = new AbortController();
     class B extends Build {
@@ -2947,7 +2948,7 @@ Deno.test("a cancelled run gives its lease back rather than holding it to the TT
   });
 });
 
-Deno.test("a cancelled run still runs its always targets", async () => {
+test("a cancelled run still runs its always targets", async () => {
   // Cancelling stops ordinary work, but `always` is teardown — and Ctrl-C is
   // exactly when teardown matters. Skipping it would leak whatever it reclaims.
   const controller = new AbortController();
@@ -2977,7 +2978,7 @@ Deno.test("a cancelled run still runs its always targets", async () => {
   assertEquals(ran.includes("more"), false);
 });
 
-Deno.test("a cancelled run runs teardown that sits behind a target it never reached", async () => {
+test("a cancelled run runs teardown that sits behind a target it never reached", async () => {
   // The dangerous arrangement: teardown depends on a target that had not been
   // launched when the cancel arrived. An `always` target waits for its
   // predecessors to *settle*, so a predecessor that is merely never started
@@ -3008,7 +3009,7 @@ Deno.test("a cancelled run runs teardown that sits behind a target it never reac
   assertEquals(ran.includes("teardown"), true); // cleanup did not
 });
 
-Deno.test("a failed run runs teardown that sits behind a target it never reached", async () => {
+test("a failed run runs teardown that sits behind a target it never reached", async () => {
   // The same hole on the failure path, which predates the cancellation change:
   // `more` never launches because its dependency failed, so it never settles,
   // so the `always` teardown behind it was never ready and was swept away.
@@ -3035,7 +3036,7 @@ Deno.test("a failed run runs teardown that sits behind a target it never reached
   assertEquals(ran.includes("teardown"), true);
 });
 
-Deno.test("a lost lease writes nothing more to the record it no longer owns", async () => {
+test("a lost lease writes nothing more to the record it no longer owns", async () => {
   await withTempStore(async (store) => {
     const { lease, lose } = fakeLease();
     class B extends Build {
@@ -3073,7 +3074,7 @@ Deno.test("a lost lease writes nothing more to the record it no longer owns", as
   });
 });
 
-Deno.test("a lease lost mid-rollback stops the walk where it stands", async () => {
+test("a lease lost mid-rollback stops the walk where it stands", async () => {
   await withTemp(async (dir) => {
     // A compensation walk can be long — real rollbacks talk to real systems —
     // and a lease lapses on time, not on health. Losing the claim partway
@@ -3121,7 +3122,7 @@ Deno.test("a lease lost mid-rollback stops the walk where it stands", async () =
   });
 });
 
-Deno.test("a cancelled fan-out is not reported as a batch that succeeded", async () => {
+test("a cancelled fan-out is not reported as a batch that succeeded", async () => {
   await withTempStore(async (store) => {
     const controller = new AbortController();
     const ran: string[] = [];
@@ -3160,7 +3161,7 @@ Deno.test("a cancelled fan-out is not reported as a batch that succeeded", async
   });
 });
 
-Deno.test("teardown behind a gate that will never reopen runs, parallel or not", async () => {
+test("teardown behind a gate that will never reopen runs, parallel or not", async () => {
   // A failed run never suspends, so the gate will never be resumed and anything
   // behind it is unreachable. Whether the teardown fires must not depend on
   // whether the gate happened to launch before the failure — which is to say,
@@ -3198,7 +3199,7 @@ Deno.test("teardown behind a gate that will never reopen runs, parallel or not",
   }
 });
 
-Deno.test("summary: a body's ctx.reportSummary and the ambient reportSummary land on its row", async () => {
+test("summary: a body's ctx.reportSummary and the ambient reportSummary land on its row", async () => {
   const { lines, reporter } = recorder();
   class B extends Build {
     test = target().executes(async (ctx) => {
@@ -3228,7 +3229,7 @@ Deno.test("summary: a body's ctx.reportSummary and the ambient reportSummary lan
   assertEquals(pack?.includes("//"), false);
 });
 
-Deno.test("summary: a failed target keeps the notes it reported before failing", async () => {
+test("summary: a failed target keeps the notes it reported before failing", async () => {
   const { lines, reporter } = recorder();
   class B extends Build {
     test = target().executes((ctx) => {
@@ -3245,7 +3246,7 @@ Deno.test("summary: a failed target keeps the notes it reported before failing",
   assertStringIncludes(row ?? "", "// Tests: 2 · Failed: 1");
 });
 
-Deno.test("summary: concurrent targets never see each other's notes", async () => {
+test("summary: concurrent targets never see each other's notes", async () => {
   const { lines, reporter } = recorder();
   class B extends Build {
     a = target().executes(async () => {
@@ -3268,7 +3269,7 @@ Deno.test("summary: concurrent targets never see each other's notes", async () =
   assertStringIncludes(rowB ?? "", "// Who: b");
 });
 
-Deno.test("summary: a dry-runnable body's notes show under --dry-run", async () => {
+test("summary: a dry-runnable body's notes show under --dry-run", async () => {
   const { lines, reporter } = recorder();
   class B extends Build {
     plan = target().dryRunnable().executes((ctx) => {
@@ -3286,7 +3287,7 @@ Deno.test("summary: a dry-runnable body's notes show under --dry-run", async () 
   assertStringIncludes(row ?? "", "// Mode: dry · Ambient: yes");
 });
 
-Deno.test("summary: a target's notes land in the run record and in a dependent's outcomeOf", async () => {
+test("summary: a target's notes land in the run record and in a dependent's outcomeOf", async () => {
   await withTempStore(async (store) => {
     let seen: readonly { key: string; value: string }[] | undefined;
     class B extends Build {
@@ -3317,7 +3318,7 @@ Deno.test("summary: a target's notes land in the run record and in a dependent's
   });
 });
 
-Deno.test("a secret in a summary note is redacted in the job summary too", async () => {
+test("a secret in a summary note is redacted in the job summary too", async () => {
   // Every other sink for a resolved secret() parameter is redacted — the
   // console through the reporter, the run record as it is persisted — and this
   // one was not, so the value read [redacted] on the terminal while the job

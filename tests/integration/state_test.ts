@@ -8,10 +8,8 @@
  * to assert status transitions, and pre-seeds a lock to force a conflict.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   Build,
   defaultStateHost,
@@ -26,7 +24,7 @@ function storeAt(dir: string): FileSystemStateStore {
   return new FileSystemStateStore(dir, defaultStateHost);
 }
 
-Deno.test("a successful run is persisted as a succeeded record", async () => {
+test("a successful run is persisted as a succeeded record", async () => {
   await withStateDir(async (dir) => {
     class B extends Build {
       compile = target().executes(() => {});
@@ -48,7 +46,7 @@ Deno.test("a successful run is persisted as a succeeded record", async () => {
   });
 });
 
-Deno.test("a failing run is persisted as a failed record", async () => {
+test("a failing run is persisted as a failed record", async () => {
   await withStateDir(async (dir) => {
     class B extends Build {
       boom = target().executes(() => {
@@ -69,7 +67,7 @@ Deno.test("a failing run is persisted as a failed record", async () => {
   });
 });
 
-Deno.test("zuke runs prune keeps non-terminal runs and the newest terminal, honouring --limit", async () => {
+test("zuke runs prune keeps non-terminal runs and the newest terminal, honouring --limit", async () => {
   await withStateDir(async (dir) => {
     class Ok extends Build {
       go = target().executes(() => {});
@@ -103,7 +101,7 @@ Deno.test("zuke runs prune keeps non-terminal runs and the newest terminal, hono
   });
 });
 
-Deno.test("zuke runs list --counts aggregates by status end-to-end", async () => {
+test("zuke runs list --counts aggregates by status end-to-end", async () => {
   await withStateDir(async () => {
     class Ok extends Build {
       go = target().executes(() => {});
@@ -129,7 +127,7 @@ Deno.test("zuke runs list --counts aggregates by status end-to-end", async () =>
   });
 });
 
-Deno.test("zuke runs prune with no retention rule refuses to delete", async () => {
+test("zuke runs prune with no retention rule refuses to delete", async () => {
   await withStateDir(async (dir) => {
     class Ok extends Build {
       go = target().executes(() => {});
@@ -142,7 +140,7 @@ Deno.test("zuke runs prune with no retention rule refuses to delete", async () =
   });
 });
 
-Deno.test("listRuns can filter persisted runs by status", async () => {
+test("listRuns can filter persisted runs by status", async () => {
   await withStateDir(async (dir) => {
     class Ok extends Build {
       go = target().executes(() => {});
@@ -162,7 +160,7 @@ Deno.test("listRuns can filter persisted runs by status", async () => {
   });
 });
 
-Deno.test("a lock acquire recovers from a mutex marker a killed run left behind", async () => {
+test("a lock acquire recovers from a mutex marker a killed run left behind", async () => {
   await withStateDir(async (dir) => {
     const log: string[] = [];
     // A previous run was killed while acquiring: its `.acq` mutex marker is still
@@ -185,7 +183,7 @@ Deno.test("a lock acquire recovers from a mutex marker a killed run left behind"
   });
 });
 
-Deno.test("an unstamped mutex marker is left alone, with the file named", async () => {
+test("an unstamped mutex marker is left alone, with the file named", async () => {
   await withStateDir(async (dir) => {
     const log: string[] = [];
     // An unstamped marker carries no age, and reads exactly like a holder in the
@@ -220,7 +218,7 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
-Deno.test("a target loses a held lock and fails with the conflict guidance", async () => {
+test("a target loses a held lock and fails with the conflict guidance", async () => {
   await withStateDir(async (dir) => {
     const log: string[] = [];
     // Pre-seed the lock as held by another actor, with a long TTL so it is live.
@@ -251,7 +249,7 @@ Deno.test("a target loses a held lock and fails with the conflict guidance", asy
   });
 });
 
-Deno.test("a body reads back whether its durable write landed", async () => {
+test("a body reads back whether its durable write landed", async () => {
   await withStateDir(async (dir) => {
     const reported: boolean[] = [];
     class B extends Build {
@@ -272,7 +270,7 @@ Deno.test("a body reads back whether its durable write landed", async () => {
   });
 });
 
-Deno.test("a store-less build still reports its write as recorded", async () => {
+test("a store-less build still reports its write as recorded", async () => {
   await withoutStateDir(async () => {
     const reported: boolean[] = [];
     class B extends Build {
@@ -289,7 +287,7 @@ Deno.test("a store-less build still reports its write as recorded", async () => 
   });
 });
 
-Deno.test("a store-less run keeps one state handle per target", async () => {
+test("a store-less run keeps one state handle per target", async () => {
   await withoutStateDir(async () => {
     const seen: Record<string, unknown>[] = [];
     let sameObject = false;
@@ -312,7 +310,7 @@ Deno.test("a store-less run keeps one state handle per target", async () => {
   });
 });
 
-Deno.test("a run WITH a store also hands a body one handle for its own state", async () => {
+test("a run WITH a store also hands a body one handle for its own state", async () => {
   await withStateDir(async () => {
     let sameObject = false;
     class B extends Build {

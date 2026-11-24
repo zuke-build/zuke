@@ -19,7 +19,8 @@
  * (botocore's `SigV4Auth`); that rule is tested on its own below.
  */
 
-import { assertEquals, assertRejects } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { sha256Hex } from "../src/internal.ts";
 import { signSigV4 } from "../src/aws_sigv4.ts";
 
@@ -153,7 +154,7 @@ function urlOf(target: string): string {
 }
 
 for (const vector of VECTORS) {
-  Deno.test(`SigV4 test suite: ${vector.name}`, async () => {
+  test(`SigV4 test suite: ${vector.name}`, async () => {
     const body = new TextEncoder().encode(vector.body);
     const headers = vector.signBody
       ? { ...vector.headers, "x-amz-content-sha256": await sha256Hex(body) }
@@ -186,7 +187,7 @@ for (const vector of VECTORS) {
   });
 }
 
-Deno.test("SigV4 canonicalises a + as a space, repeated names by value, and %20 the same", async () => {
+test("SigV4 canonicalises a + as a space, repeated names by value, and %20 the same", async () => {
   const sign = (url: string) =>
     signSigV4(
       { method: "GET", url, headers: {}, body: new Uint8Array(0) },
@@ -204,7 +205,7 @@ Deno.test("SigV4 canonicalises a + as a space, repeated names by value, and %20 
   assertEquals(encoded.headers.authorization, plus.headers.authorization);
 });
 
-Deno.test("SigV4 trims and collapses header values and signs the port in host", async () => {
+test("SigV4 trims and collapses header values and signs the port in host", async () => {
   const signed = await signSigV4(
     {
       method: "GET",
@@ -225,7 +226,7 @@ Deno.test("SigV4 trims and collapses header values and signs the port in host", 
   ]);
 });
 
-Deno.test("SigV4 double-encodes the wire path and drops empty and dot segments", async () => {
+test("SigV4 double-encodes the wire path and drops empty and dot segments", async () => {
   const cases: Array<[string, string]> = [
     ["https://h.example/example%20space/", "/example%2520space/"],
     ["https://h.example/\u1234", "/%25E1%2588%25B4"],
@@ -246,7 +247,7 @@ Deno.test("SigV4 double-encodes the wire path and drops empty and dot segments",
   }
 });
 
-Deno.test("SigV4 refuses a query that is not valid percent-encoding", async () => {
+test("SigV4 refuses a query that is not valid percent-encoding", async () => {
   await assertRejects(
     () =>
       signSigV4(
@@ -266,7 +267,7 @@ Deno.test("SigV4 refuses a query that is not valid percent-encoding", async () =
   );
 });
 
-Deno.test("SigV4 for S3 signs the path exactly as sent", async () => {
+test("SigV4 for S3 signs the path exactly as sent", async () => {
   // S3 neither normalises nor re-encodes the path (botocore's S3SigV4Auth):
   // an `%20` on the wire is `%20` in the canonical request, not `%2520`.
   const signed = await signSigV4(

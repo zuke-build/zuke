@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { HttpError } from "@zuke/core";
 import { GcsTasks } from "../src/gcs.ts";
 
@@ -22,7 +23,7 @@ function fakeFetch(
   return { fetch, calls };
 }
 
-Deno.test("GcsTasks.readJson GETs the object media with a bearer token", async () => {
+test("GcsTasks.readJson GETs the object media with a bearer token", async () => {
   const { fetch, calls } = fakeFetch(() =>
     new Response(JSON.stringify({ slot: "sit-7" }), { status: 200 })
   );
@@ -45,7 +46,7 @@ Deno.test("GcsTasks.readJson GETs the object media with a bearer token", async (
   );
 });
 
-Deno.test("GcsTasks.writeJson POSTs the JSON body to the upload endpoint", async () => {
+test("GcsTasks.writeJson POSTs the JSON body to the upload endpoint", async () => {
   // An empty write response (no body) is fine — exercises the null-body path.
   const { fetch, calls } = fakeFetch(() => new Response(null, { status: 204 }));
   await GcsTasks.writeJson("b", "k.json", { a: 1 }, { token: "t0", fetch });
@@ -56,7 +57,7 @@ Deno.test("GcsTasks.writeJson POSTs the JSON body to the upload endpoint", async
   assertEquals(calls[0].init?.body, JSON.stringify({ a: 1 }));
 });
 
-Deno.test("GcsTasks.list returns object names, honouring a prefix", async () => {
+test("GcsTasks.list returns object names, honouring a prefix", async () => {
   const { fetch, calls } = fakeFetch(() =>
     new Response(
       JSON.stringify({
@@ -75,12 +76,12 @@ Deno.test("GcsTasks.list returns object names, honouring a prefix", async () => 
   assertStringIncludes(calls[0].url, "prefix=state%2F");
 });
 
-Deno.test("GcsTasks.list tolerates a body with no items array", async () => {
+test("GcsTasks.list tolerates a body with no items array", async () => {
   const { fetch } = fakeFetch(() => new Response("{}", { status: 200 }));
   assertEquals(await GcsTasks.list("b", { token: "t0", fetch }), []);
 });
 
-Deno.test("GcsTasks surfaces a non-2xx response as an HttpError", async () => {
+test("GcsTasks surfaces a non-2xx response as an HttpError", async () => {
   const { fetch } = fakeFetch(() => new Response("nope", { status: 404 }));
   await assertRejects(
     () => GcsTasks.readJson("b", "missing", { token: "t0", fetch }),
@@ -88,7 +89,7 @@ Deno.test("GcsTasks surfaces a non-2xx response as an HttpError", async () => {
   );
 });
 
-Deno.test("GcsTasks resolves the token via the provider when none is given", async () => {
+test("GcsTasks resolves the token via the provider when none is given", async () => {
   let used = "";
   const { fetch } = fakeFetch((_url, init) => {
     used = new Headers(init?.headers).get("authorization") ?? "";

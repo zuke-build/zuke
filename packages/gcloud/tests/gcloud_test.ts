@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import { CommandError, CommandOutput } from "@zuke/core/shell";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
@@ -10,11 +11,11 @@ import {
 } from "@zuke/core/tooling/conformance";
 import { GcloudSettings, GcloudTasks } from "../src/gcloud.ts";
 
-Deno.test("the default binary is gcloud", () => {
+test("the default binary is gcloud", () => {
   assertEquals(new GcloudSettings().argv(), ["gcloud"]);
 });
 
-Deno.test("gcloud: command, global flags, then extra flags", () => {
+test("gcloud: command, global flags, then extra flags", () => {
   const argv = new GcloudSettings()
     .command("run", "deploy", "api")
     .project("proj").account("me@example.com").configuration("default")
@@ -43,7 +44,7 @@ Deno.test("gcloud: command, global flags, then extra flags", () => {
   ]);
 });
 
-Deno.test("gcloud: minimal runs just the command", () => {
+test("gcloud: minimal runs just the command", () => {
   assertEquals(new GcloudSettings().command("auth", "list").argv(), [
     "gcloud",
     "auth",
@@ -51,14 +52,14 @@ Deno.test("gcloud: minimal runs just the command", () => {
   ]);
 });
 
-Deno.test("GcloudTasks.run reaches execution", async () => {
+test("GcloudTasks.run reaches execution", async () => {
   await assertRejects(
     () => GcloudTasks.run((s) => missingTool(s.command("version"))),
     ToolNotFoundError,
   );
 });
 
-Deno.test("containerImagesAddTag tags across registries, quietly", () => {
+test("containerImagesAddTag tags across registries, quietly", () => {
   assertEquals(
     new GcloudSettings()
       .containerImagesAddTag("gcr.io/p/img:sha", "eu.gcr.io/p/img:prod")
@@ -75,7 +76,7 @@ Deno.test("containerImagesAddTag tags across registries, quietly", () => {
   );
 });
 
-Deno.test("containerImagesAddTag accepts multiple destination tags", () => {
+test("containerImagesAddTag accepts multiple destination tags", () => {
   const argv = new GcloudSettings()
     .containerImagesAddTag("src:sha", "a:prod", "b:latest")
     .argv();
@@ -89,21 +90,21 @@ Deno.test("containerImagesAddTag accepts multiple destination tags", () => {
   assertEquals(argv.includes("b:latest"), true);
 });
 
-Deno.test("sqlInstancesDescribe builds the describe command", () => {
+test("sqlInstancesDescribe builds the describe command", () => {
   assertEquals(
     new GcloudSettings().sqlInstancesDescribe("prod-db").format("json").argv(),
     ["gcloud", "sql", "instances", "describe", "prod-db", "--format", "json"],
   );
 });
 
-Deno.test("sqlOperationsWait builds the wait command", () => {
+test("sqlOperationsWait builds the wait command", () => {
   assertEquals(
     new GcloudSettings().sqlOperationsWait("op-123").project("p").argv(),
     ["gcloud", "sql", "operations", "wait", "op-123", "--project", "p"],
   );
 });
 
-Deno.test("gcloud: conforms to the wrapper contract", async () => {
+test("gcloud: conforms to the wrapper contract", async () => {
   await assertWrapperConformance(
     () => new GcloudSettings().sqlInstancesDescribe("db"),
     "gcloud",
@@ -113,7 +114,7 @@ Deno.test("gcloud: conforms to the wrapper contract", async () => {
   );
 });
 
-Deno.test("a runner answers in place of gcloud, and the exit is still judged", async () => {
+test("a runner answers in place of gcloud, and the exit is still judged", async () => {
   const seen: string[][] = [];
   const out = await GcloudTasks.run((s) =>
     s.command("auth", "list").runner((settings) => {
@@ -135,7 +136,7 @@ Deno.test("a runner answers in place of gcloud, and the exit is still judged", a
   assertEquals(tolerated.code, 2);
 });
 
-Deno.test("a runner never sees settings whose argv a setter refused", async () => {
+test("a runner never sees settings whose argv a setter refused", async () => {
   let ran = false;
   await assertRejects(
     () =>

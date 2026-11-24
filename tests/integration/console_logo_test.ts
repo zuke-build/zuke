@@ -9,16 +9,14 @@
  * not just in isolation.
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { runCli } from "./_harness.ts";
 import { BrowserOpenSettings, Build, target } from "../../packages/core/mod.ts";
 import { ConsoleTasks, ZUKE_LOGO } from "../../packages/console/mod.ts";
 import { GhApiSettings } from "../../packages/gh/mod.ts";
 
-Deno.test("a build target prints the logo and shapes the star commands", async () => {
+test("a build target prints the logo and shapes the star commands", async () => {
   const seen: string[] = [];
   const argvs: string[][] = [];
 

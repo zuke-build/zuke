@@ -77,7 +77,7 @@ PeyzE73+ajWU1zn8dWKqMem+rPBbycRAc/sMYWU9rsFJiUlWFpy1fRDi3i27zcnTRHr/kNo5
 3djv5lH33BSuR9TUjRQT9tYW46zDXGXpTpy8rRa27ovcMbp80AC+v2AAAAAAAIrfY17fNO29
 AAHJAYAkAAAW6s8ascRn+wIAAAAABFla`;
 
-/** A `.tar.xz` holding `pkg/ok` and a `../escape` entry (zip slip). */
+/** A `.tar.xz` holding `pkg/ok` and a `../packages/core/escape` entry (zip slip). */
 export const ESCAPING_TAR_XZ = `
 /Td6WFoAAATm1rRGAgAhARYAAAB0L+Wj4Av/AF9dADgayRWcjqrFfSNhhp7xFmCg6Vz6qjwQ
 qooZpBxYtg88U77BoKqTtDjyZMiB6wgYL2dnfSmZVVfjP5c6/MHvyc7ODIVtrRX04/xYiec6

@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertStringIncludes } from "../../../tests/_assert.ts";
 import { Build, parameter, target } from "../mod.ts";
 import { McpServer, type McpServerOptions } from "../src/mcp/server.ts";
 import {
@@ -19,8 +20,8 @@ import type { FileSystemStateStore } from "../src/state/fs_store.ts";
 import type { StateStore } from "../src/state/store.ts";
 import { AUDIT_RUN_ID } from "../src/mcp/audit.ts";
 import type { RunEvent } from "../src/state/types.ts";
-import { runRecord } from "./_fakes.ts";
-import { withTempStore } from "./_store.ts";
+import { runRecord } from "../../../tests/_fakes.ts";
+import { withTempStore } from "../../../tests/_store.ts";
 
 /** A build with a read-only, a plain, and a protected-worthy target, plus params. */
 class Demo extends Build {
@@ -90,7 +91,7 @@ async function auditEvents(store: FileSystemStateStore): Promise<RunEvent[]> {
   return loaded === null ? [] : loaded.record.events;
 }
 
-Deno.test("readOnly targets advertise readOnlyHint; others destructiveHint", async () => {
+test("readOnly targets advertise readOnlyHint; others destructiveHint", async () => {
   await withServer({ allowRun: true }, async (server) => {
     const tools = await toolList(server);
     const status = tools.find((t) => t.name === "run:status");
@@ -100,7 +101,7 @@ Deno.test("readOnly targets advertise readOnlyHint; others destructiveHint", asy
   });
 });
 
-Deno.test("the allow-list hides non-matching run tools and denies them opaquely", async () => {
+test("the allow-list hides non-matching run tools and denies them opaquely", async () => {
   await withServer(
     { allowRun: true, allowRunPatterns: ["deploy"] },
     async (server) => {
@@ -116,7 +117,7 @@ Deno.test("the allow-list hides non-matching run tools and denies them opaquely"
   );
 });
 
-Deno.test("run tools are absent, and a run call is refused, without --allow-run", async () => {
+test("run tools are absent, and a run call is refused, without --allow-run", async () => {
   await withServer({ allowRun: false }, async (server) => {
     const names = (await toolList(server)).map((t) => t.name);
     assertEquals(names.some((n) => n.startsWith("run:")), false);
@@ -126,7 +127,7 @@ Deno.test("run tools are absent, and a run call is refused, without --allow-run"
   });
 });
 
-Deno.test("a protected target requires a valid operator token, fail-closed", async () => {
+test("a protected target requires a valid operator token, fail-closed", async () => {
   // Configured token.
   await withServer(
     {
@@ -175,7 +176,7 @@ Deno.test("a protected target requires a valid operator token, fail-closed", asy
   );
 });
 
-Deno.test("confirm-destructive returns a plan until confirm:true; readOnly is exempt", async () => {
+test("confirm-destructive returns a plan until confirm:true; readOnly is exempt", async () => {
   await withServer(
     { allowRun: true, confirmDestructive: true },
     async (server) => {
@@ -201,7 +202,7 @@ Deno.test("confirm-destructive returns a plan until confirm:true; readOnly is ex
   );
 });
 
-Deno.test("store-backed run tools appear with a store; mutating ones need --allow-run", async () => {
+test("store-backed run tools appear with a store; mutating ones need --allow-run", async () => {
   await withServer({ allowRun: false }, async (server) => {
     const names = (await toolList(server)).map((t) => t.name);
     assertEquals(names.includes("list_runs"), true);
@@ -216,7 +217,7 @@ Deno.test("store-backed run tools appear with a store; mutating ones need --allo
   });
 });
 
-Deno.test("cancel_run cancels a suspended run, gated by the allow-list and audited", async () => {
+test("cancel_run cancels a suspended run, gated by the allow-list and audited", async () => {
   await withServer(
     { allowRun: true, allowRunPatterns: ["safe*"], actor: "ops" },
     async (server, store) => {
@@ -245,7 +246,7 @@ Deno.test("cancel_run cancels a suspended run, gated by the allow-list and audit
   });
 });
 
-Deno.test("run tools query the store and return structured errors", async () => {
+test("run tools query the store and return structured errors", async () => {
   await withServer({ allowRun: true }, async (server, store) => {
     const list = await call(server, "list_runs");
     assertEquals(list.isError, false);
@@ -269,7 +270,7 @@ Deno.test("run tools query the store and return structured errors", async () => 
   });
 });
 
-Deno.test("mutating tool calls are audited with a redacted, attributed trail", async () => {
+test("mutating tool calls are audited with a redacted, attributed trail", async () => {
   await withServer(
     {
       allowRun: true,
@@ -322,7 +323,7 @@ async function seedSuspended(
   return record.id;
 }
 
-Deno.test("resume tools respect the allow-list (no bypass of an excluded target)", async () => {
+test("resume tools respect the allow-list (no bypass of an excluded target)", async () => {
   await withServer(
     { allowRun: true, allowRunPatterns: ["safe*"] },
     async (server, store) => {
@@ -343,7 +344,7 @@ Deno.test("resume tools respect the allow-list (no bypass of an excluded target)
   );
 });
 
-Deno.test("resume tools require the operator token for a protected target", async () => {
+test("resume tools require the operator token for a protected target", async () => {
   await withServer(
     {
       allowRun: true,
@@ -386,7 +387,7 @@ Deno.test("resume tools require the operator token for a protected target", asyn
   );
 });
 
-Deno.test("a secret echoed into a non-secret argument is masked in the audit", async () => {
+test("a secret echoed into a non-secret argument is masked in the audit", async () => {
   await withServer({ allowRun: true }, async (server, store) => {
     await call(server, "run:deploy", {
       environment: "dev",
@@ -401,7 +402,7 @@ Deno.test("a secret echoed into a non-secret argument is masked in the audit", a
   });
 });
 
-Deno.test("a truthy-but-not-true confirm still returns the plan, not an execution", async () => {
+test("a truthy-but-not-true confirm still returns the plan, not an execution", async () => {
   await withServer(
     { allowRun: true, confirmDestructive: true },
     async (server) => {
@@ -414,7 +415,7 @@ Deno.test("a truthy-but-not-true confirm still returns the plan, not an executio
   );
 });
 
-Deno.test("a thrown framework error returns a structured result, not a crash", async () => {
+test("a thrown framework error returns a structured result, not a crash", async () => {
   // A build whose onStart throws makes execute() throw out of #run.
   class Boom extends Build {
     override onStart(): void {
@@ -460,7 +461,7 @@ const xUser = (ctx: { headers: Headers }): { actor: string } => {
   return { actor: sub };
 };
 
-Deno.test("an identity hook overrides --actor and the client label", async () => {
+test("an identity hook overrides --actor and the client label", async () => {
   await withServer({
     allowRun: true,
     actor: "ci-bot",
@@ -484,7 +485,7 @@ Deno.test("an identity hook overrides --actor and the client label", async () =>
   });
 });
 
-Deno.test("a run and a later signal are attributed to their own callers", async () => {
+test("a run and a later signal are attributed to their own callers", async () => {
   await withServer(
     { allowRun: true, authenticator: authenticatorFromHook(xUser) },
     async (server, store) => {
@@ -511,7 +512,7 @@ Deno.test("a run and a later signal are attributed to their own callers", async 
   );
 });
 
-Deno.test("a throwing identity hook rejects the request and writes nothing", async () => {
+test("a throwing identity hook rejects the request and writes nothing", async () => {
   await withServer(
     { allowRun: true, authenticator: authenticatorFromHook(xUser) },
     async (server, store) => {
@@ -527,7 +528,7 @@ Deno.test("a throwing identity hook rejects the request and writes nothing", asy
   );
 });
 
-Deno.test("a hook yielding an empty actor is rejected, never the static fallback", async () => {
+test("a hook yielding an empty actor is rejected, never the static fallback", async () => {
   // The natural idiom `headers.get(...) ?? ""` yields `{ actor: "" }` — a valid
   // string, no throw — when the header is missing. It must reject (fail-closed),
   // NOT silently attribute the call to the static `--actor`/env.
@@ -583,7 +584,7 @@ async function toolSchema(
   throw new Error(`no tool ${name}`);
 }
 
-Deno.test("an array parameter is advertised as an array-of-strings schema", async () => {
+test("an array parameter is advertised as an array-of-strings schema", async () => {
   class WithTags extends Build {
     tags = parameter("Image tags").array();
     ship = target().executes(() => {});
@@ -593,7 +594,7 @@ Deno.test("an array parameter is advertised as an array-of-strings schema", asyn
   assertEquals(properties.tags, { type: "array", items: { type: "string" } });
 });
 
-Deno.test("confirm-destructive advertises confirm on destructive tools only", async () => {
+test("confirm-destructive advertises confirm on destructive tools only", async () => {
   await withServer(
     { allowRun: true, confirmDestructive: true },
     async (server) => {
@@ -606,7 +607,7 @@ Deno.test("confirm-destructive advertises confirm on destructive tools only", as
   );
 });
 
-Deno.test("a mutating run tool without --allow-run is refused with guidance", async () => {
+test("a mutating run tool without --allow-run is refused with guidance", async () => {
   await withServer({ allowRun: false }, async (server) => {
     for (const name of ["signal_run", "resume_check", "cancel_run"]) {
       const refused = await call(server, name, { runId: "whatever" });
@@ -617,7 +618,7 @@ Deno.test("a mutating run tool without --allow-run is refused with guidance", as
   });
 });
 
-Deno.test("with a store, an unknown tool still gets the opaque unknown answer", async () => {
+test("with a store, an unknown tool still gets the opaque unknown answer", async () => {
   // The run-state dispatcher must decline a name it does not own (returning
   // null), so the server falls through to the standard "Unknown tool" result.
   await withServer({ allowRun: true }, async (server) => {
@@ -655,7 +656,7 @@ class BrokenStore implements StateStore {
   }
 }
 
-Deno.test("a dead audit store never blocks or fails the tool call", async () => {
+test("a dead audit store never blocks or fails the tool call", async () => {
   // Auditing is best-effort: the run must succeed even though every audit
   // write rejects.
   const server = new McpServer(new Demo(), {
@@ -667,7 +668,7 @@ Deno.test("a dead audit store never blocks or fails the tool call", async () => 
   assertStringIncludes(res.text, "deploy succeeded");
 });
 
-Deno.test("a store fault in a read tool is a generic JSON-RPC error, detail withheld", async () => {
+test("a store fault in a read tool is a generic JSON-RPC error, detail withheld", async () => {
   const server = new McpServer(new Demo(), {
     allowRun: true,
     stateStore: new BrokenStore(),
@@ -682,7 +683,7 @@ Deno.test("a store fault in a read tool is a generic JSON-RPC error, detail with
   assertEquals((await server.handleMessage(req("ping")))?.result, {});
 });
 
-Deno.test("a throwing tools/list is a JSON-RPC error, not a transport crash", async () => {
+test("a throwing tools/list is a JSON-RPC error, not a transport crash", async () => {
   class ExplodingServer extends McpServer {
     override tools(): McpTool[] {
       throw new Error("tool listing exploded");
@@ -695,7 +696,7 @@ Deno.test("a throwing tools/list is a JSON-RPC error, not a transport crash", as
   assertEquals((await server.handleMessage(req("ping")))?.result, {});
 });
 
-Deno.test("an explicitly-undefined secret argument never seeds redaction", async () => {
+test("an explicitly-undefined secret argument never seeds redaction", async () => {
   // The redactor is seeded from supplied secret values. An `undefined` one
   // must be skipped — seeding from it would redact the literal word
   // "undefined" out of every other recorded argument.
@@ -714,7 +715,7 @@ Deno.test("an explicitly-undefined secret argument never seeds redaction", async
   );
 });
 
-Deno.test("a non-Error framework throw is reported by kind, generically", async () => {
+test("a non-Error framework throw is reported by kind, generically", async () => {
   // A framework failure that is not even an Error object must still produce
   // the structured "errored during execution" result, not a crash — and the
   // thrown value itself is never echoed (it bypassed the reporter's redaction).
@@ -731,7 +732,7 @@ Deno.test("a non-Error framework throw is reported by kind, generically", async 
   assertEquals(res.text.includes("hunter2"), false);
 });
 
-Deno.test("null and object argument values are recorded faithfully in the trail", async () => {
+test("null and object argument values are recorded faithfully in the trail", async () => {
   await withServer(
     { allowRun: true, actor: "agent" },
     async (server, store) => {
@@ -776,7 +777,7 @@ class Recording extends Build {
   deploy = target().executes(() => void this.ran.push("deploy"));
 }
 
-Deno.test("an async authenticator attributes the run to its resolved actor", async () => {
+test("an async authenticator attributes the run to its resolved actor", async () => {
   await withServer(
     { allowRun: true, actor: "ci-bot", authenticator: asyncProxy },
     async (server, store) => {
@@ -792,7 +793,7 @@ Deno.test("an async authenticator attributes the run to its resolved actor", asy
   );
 });
 
-Deno.test("a returned rejection refuses exactly as a throw does", async () => {
+test("a returned rejection refuses exactly as a throw does", async () => {
   // The modern seam refuses by *returning* a reject; the older hook refuses by
   // throwing. The *effect* must be identical — nothing executed, nothing
   // audited, no result — while each still reports its own reason: a throw leaks
@@ -833,7 +834,7 @@ Deno.test("a returned rejection refuses exactly as a throw does", async () => {
   assertEquals(refusals[0]?.error?.code, refusals[1]?.error?.code);
 });
 
-Deno.test("a transport-authenticated identity is used and skips the authenticator", async () => {
+test("a transport-authenticated identity is used and skips the authenticator", async () => {
   // The HTTP transport authenticates at its edge so a refusal can carry a real
   // status; dispatch must then trust that caller and not authenticate twice.
   let calls = 0;
@@ -863,7 +864,7 @@ Deno.test("a transport-authenticated identity is used and skips the authenticato
   );
 });
 
-Deno.test("without an authenticator, a transport identity still attributes the call", async () => {
+test("without an authenticator, a transport identity still attributes the call", async () => {
   await withServer(
     { allowRun: true, actor: "ci-bot" },
     async (server, store) => {
@@ -883,7 +884,7 @@ Deno.test("without an authenticator, a transport identity still attributes the c
   );
 });
 
-Deno.test("on stdio the authenticator still runs, so a header-trusting one refuses", async () => {
+test("on stdio the authenticator still runs, so a header-trusting one refuses", async () => {
   // The stdio transport has no request to describe, so it hands the handler
   // EMPTY_CONTEXT. Authentication is not skipped there: an authenticator that
   // needs a header finds none and refuses, which is the fail-closed answer.
@@ -903,7 +904,7 @@ Deno.test("on stdio the authenticator still runs, so a header-trusting one refus
   );
 });
 
-Deno.test("the authenticator gates initialize, ping and tools/list too", async () => {
+test("the authenticator gates initialize, ping and tools/list too", async () => {
   await withServer(
     { allowRun: true, authenticator: authenticatorFromHook(xUser) },
     async (server) => {
@@ -926,7 +927,7 @@ Deno.test("the authenticator gates initialize, ping and tools/list too", async (
   );
 });
 
-Deno.test("the audit row carries the roles, but not the kind or via", async () => {
+test("the audit row carries the roles, but not the kind or via", async () => {
   // The roles are what makes a denial answerable afterwards — who was refused,
   // by which rule, and what they were carrying — so they are persisted. The
   // other claims are inputs to that decision, not part of the account of it.
@@ -951,7 +952,7 @@ Deno.test("the audit row carries the roles, but not the kind or via", async () =
 
 // ---- M15: the caller's kind reaches the run record -------------------------
 
-Deno.test("a run's initiator takes its kind from the caller, not the server", async () => {
+test("a run's initiator takes its kind from the caller, not the server", async () => {
   // The kind travels with the actor. Without it the initiator would take its
   // kind from the *server process's* environment — recording a service token as
   // a person, or, on a host where ZUKE_ACTOR_KIND is set, every engineer as
@@ -997,7 +998,7 @@ Deno.test("a run's initiator takes its kind from the caller, not the server", as
 
 // ---- M16: force_target is gated exactly as cancel_run is -------------------
 
-Deno.test("force_target requires the operator token for a protected run", async () => {
+test("force_target requires the operator token for a protected run", async () => {
   // It routes through the same `runDenial` gate `cancel_run` uses, so the
   // operator token in the call's arguments reaches `operatorTokenDenial` and a
   // protected plan is refused without it.
@@ -1060,7 +1061,7 @@ Deno.test("force_target requires the operator token for a protected run", async 
   );
 });
 
-Deno.test("force_target is not exposed without execution enabled", async () => {
+test("force_target is not exposed without execution enabled", async () => {
   await withServer({ allowRun: false }, async (server) => {
     const names = (await server.tools()).map((t) => t.name);
     assertEquals(names.includes("force_target"), false);
@@ -1080,7 +1081,7 @@ function withRoles(actor: string, roles?: readonly string[]): McpAuthenticator {
   };
 }
 
-Deno.test("an authenticator claiming no roles is not constrained by the policy", async () => {
+test("an authenticator claiming no roles is not constrained by the policy", async () => {
   // The compatibility guarantee: a proxy-header hook never spoke roles, so the
   // policy has nothing to decide with and the server's own gates stand alone.
   // Without this, every server whose authenticator predates roles would be
@@ -1097,7 +1098,7 @@ Deno.test("an authenticator claiming no roles is not constrained by the policy",
   );
 });
 
-Deno.test("an authenticator claiming an empty role set is denied", async () => {
+test("an authenticator claiming an empty role set is denied", async () => {
   // The opposite claim: the question was considered and nothing granted.
   await withServer(
     { allowRun: true, authenticator: withRoles("ada", []) },
@@ -1111,7 +1112,7 @@ Deno.test("an authenticator claiming an empty role set is denied", async () => {
   );
 });
 
-Deno.test("with no authenticator at all the policy never runs", async () => {
+test("with no authenticator at all the policy never runs", async () => {
   // The other half of the guarantee — an unauthenticated server is exactly what
   // it was before roles existed.
   await withServer({ allowRun: true }, async (server) => {
@@ -1120,7 +1121,7 @@ Deno.test("with no authenticator at all the policy never runs", async () => {
   });
 });
 
-Deno.test("the role policy gates running a target, and a denial is audited with the roles", async () => {
+test("the role policy gates running a target, and a denial is audited with the roles", async () => {
   await withServer(
     { allowRun: true, authenticator: withRoles("ada", ["read"]) },
     async (server, store) => {
@@ -1147,7 +1148,7 @@ Deno.test("the role policy gates running a target, and a denial is audited with 
   );
 });
 
-Deno.test("the operator token grants the operator role for that call", async () => {
+test("the operator token grants the operator role for that call", async () => {
   // The shared secret and the role model are one policy, not two that can
   // disagree: presenting the token is presenting the role.
   class Guarded extends Build {
@@ -1175,7 +1176,7 @@ Deno.test("the operator token grants the operator role for that call", async () 
   });
 });
 
-Deno.test("a run-scoped mutation needs the run's initiator or an operator", async () => {
+test("a run-scoped mutation needs the run's initiator or an operator", async () => {
   const initiator = {
     actor: "ada",
     kind: "human" as const,
@@ -1219,7 +1220,7 @@ Deno.test("a run-scoped mutation needs the run's initiator or an operator", asyn
   );
 });
 
-Deno.test("a policy that throws denies rather than opening the door", async () => {
+test("a policy that throws denies rather than opening the door", async () => {
   class Broken extends Build {
     deploy = target().executes(() => {});
     override mcpAuthorize(): never {
@@ -1245,7 +1246,7 @@ Deno.test("a policy that throws denies rather than opening the door", async () =
   });
 });
 
-Deno.test("a run-scoped tool cannot reach a target its role gate refuses", async () => {
+test("a run-scoped tool cannot reach a target its role gate refuses", async () => {
   // Resuming, signalling or forcing a run executes that run's plan, so the
   // roles its targets declare apply there exactly as they do to `run:`. Without
   // this, a caller refused `run:promote` reached the same body via signal_run.
@@ -1275,7 +1276,7 @@ Deno.test("a run-scoped tool cannot reach a target its role gate refuses", async
   });
 });
 
-Deno.test("a role denial on a run-scoped tool is audited as a denial, with the roles", async () => {
+test("a role denial on a run-scoped tool is audited as a denial, with the roles", async () => {
   class Gated extends Build {
     promote = target().requiresRole("operator").executes(() => {});
   }
@@ -1302,7 +1303,7 @@ Deno.test("a role denial on a run-scoped tool is audited as a denial, with the r
   });
 });
 
-Deno.test("an overridden mcpAuthorize runs even for the legacy identity seam", async () => {
+test("an overridden mcpAuthorize runs even for the legacy identity seam", async () => {
   // The override exists to express rules the engine cannot know — a change
   // window, a freeze — and those apply whether or not the authenticator speaks
   // roles. Only the *default* policy steps aside for an unclaimed identity.
@@ -1326,7 +1327,7 @@ Deno.test("an overridden mcpAuthorize runs even for the legacy identity seam", a
   });
 });
 
-Deno.test("a role-gated target is refused on a seam that cannot express roles", async () => {
+test("a role-gated target is refused on a seam that cannot express roles", async () => {
   // The legacy hook has no roles to give, so the policy leaves it alone — until
   // a target actually declares a requirement. Ignoring that declaration would
   // tell an author their target is gated when nothing is checking, and the

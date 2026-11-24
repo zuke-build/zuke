@@ -3,15 +3,22 @@
 
 /** Unit: instant and range queries — the exact request, and every result type. */
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { PrometheusRequestError, PrometheusTasks } from "../mod.ts";
-import { BASE, fakeFetch, queryResult, success, vector } from "./_fetch.ts";
+import {
+  BASE,
+  fakeFetch,
+  queryResult,
+  success,
+  vector,
+} from "../../../tests/support/prometheus/_fetch.ts";
 
-Deno.test("query POSTs a form with every parameter it was given", async () => {
+test("query POSTs a form with every parameter it was given", async () => {
   const fetcher = fakeFetch(() => vector([{ job: "api" }, "1"]));
   await PrometheusTasks.query((s) =>
     s.url(BASE).fetch(fetcher)
@@ -38,7 +45,7 @@ Deno.test("query POSTs a form with every parameter it was given", async () => {
   ]);
 });
 
-Deno.test("query with httpMethod GET puts the parameters in the URL, encoded", async () => {
+test("query with httpMethod GET puts the parameters in the URL, encoded", async () => {
   const fetcher = fakeFetch(() => vector());
   await PrometheusTasks.query((s) =>
     s.url(BASE).fetch(fetcher).httpMethod("GET").query("a & b = c#d").time(17)
@@ -52,7 +59,7 @@ Deno.test("query with httpMethod GET puts the parameters in the URL, encoded", a
   assertEquals(sent.url.hash, "");
 });
 
-Deno.test("query_range sends its range and answers a typed matrix", async () => {
+test("query_range sends its range and answers a typed matrix", async () => {
   const fetcher = fakeFetch(() =>
     queryResult("matrix", [{
       metric: { job: "api" },
@@ -86,7 +93,7 @@ Deno.test("query_range sends its range and answers a typed matrix", async () => 
   assertEquals(second.histograms, []);
 });
 
-Deno.test("a matrix series with only native histograms has no float values", async () => {
+test("a matrix series with only native histograms has no float values", async () => {
   const response = await PrometheusTasks.queryRange((s) =>
     s.url(BASE).query("h").start(1).end(2).step(1).fetch(
       fakeFetch(() =>
@@ -102,7 +109,7 @@ Deno.test("a matrix series with only native histograms has no float values", asy
   assertEquals(series.histograms[0].histogram.count, 1);
 });
 
-Deno.test("a range query answering anything but a matrix is refused", async () => {
+test("a range query answering anything but a matrix is refused", async () => {
   await assertRejects(
     () =>
       PrometheusTasks.queryRange((s) =>
@@ -114,7 +121,7 @@ Deno.test("a range query answering anything but a matrix is refused", async () =
   );
 });
 
-Deno.test("a range query without its range or an expression is refused before sending", async () => {
+test("a range query without its range or an expression is refused before sending", async () => {
   const fetcher = fakeFetch(() => vector());
   await assertRejects(
     () =>
@@ -132,7 +139,7 @@ Deno.test("a range query without its range or an expression is refused before se
   assertEquals(fetcher.sent.length, 0);
 });
 
-Deno.test("every result type is parsed: vector, scalar, string, and native histograms", async () => {
+test("every result type is parsed: vector, scalar, string, and native histograms", async () => {
   const answer = async (response: Response) =>
     await PrometheusTasks.query((s) =>
       s.url(BASE).fetch(fakeFetch(() => response)).query("q")
@@ -179,7 +186,7 @@ Deno.test("every result type is parsed: vector, scalar, string, and native histo
   );
 });
 
-Deno.test("warnings and infos come back with the result; absent ones are empty", async () => {
+test("warnings and infos come back with the result; absent ones are empty", async () => {
   const annotated = await PrometheusTasks.query((s) =>
     s.url(BASE).query("q").fetch(
       fakeFetch(() =>
@@ -199,7 +206,7 @@ Deno.test("warnings and infos come back with the result; absent ones are empty",
   assertEquals(plain.infos, []);
 });
 
-Deno.test("a malformed query result names what is wrong", async () => {
+test("a malformed query result names what is wrong", async () => {
   const cases: Array<[unknown, string]> = [
     [
       { resultType: "vector", result: [{ value: [1, 2] }] },
@@ -277,7 +284,7 @@ Deno.test("a malformed query result names what is wrong", async () => {
   }
 });
 
-Deno.test("annotations that are not lists of strings are refused", async () => {
+test("annotations that are not lists of strings are refused", async () => {
   for (const extra of [{ warnings: "x" }, { infos: [1] }]) {
     await assertRejects(
       () =>
@@ -294,7 +301,7 @@ Deno.test("annotations that are not lists of strings are refused", async () => {
   }
 });
 
-Deno.test("query parameters are checked where they are set", async () => {
+test("query parameters are checked where they are set", async () => {
   const cases: Array<[() => unknown, string]> = [
     [
       () => PrometheusTasks.query((s) => s.query("")),

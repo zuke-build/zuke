@@ -11,14 +11,15 @@
  * @module
  */
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { postCheckRun } from "../src/check_run.ts";
 import { GhApiError } from "../src/api.ts";
-import { withEnv } from "../../core/tests/_env.ts";
+import { withEnv } from "../../../tests/_env.ts";
 
 /** A full commit SHA — the only shape the API accepts. */
 const SHA = "a".repeat(40);
@@ -73,7 +74,7 @@ function noneYet(
   };
 }
 
-Deno.test("a commit with no check run of that name gets one created", async () => {
+test("a commit with no check run of that name gets one created", async () => {
   const { fetch, calls } = fakeFetch({
     ...noneYet("CI / Required checks"),
     "POST /check-runs": {
@@ -98,7 +99,7 @@ Deno.test("a commit with no check run of that name gets one created", async () =
   assertEquals(post.body.conclusion, "success");
 });
 
-Deno.test("an existing check run of that name is updated, not duplicated", async () => {
+test("an existing check run of that name is updated, not duplicated", async () => {
   // The re-drive case: a second attempt at the same post must leave the commit
   // with one check run, not two of which the newest silently wins.
   const { fetch, calls } = fakeFetch({
@@ -131,7 +132,7 @@ Deno.test("an existing check run of that name is updated, not duplicated", async
   assertEquals(calls.filter((c) => c.method === "POST").length, 0);
 });
 
-Deno.test("the newest matching check run wins", async () => {
+test("the newest matching check run wins", async () => {
   // GitHub documents no order for the listing, and the stale one is the one a
   // previous attempt superseded — updating it would leave the visible check
   // saying whatever it said before.
@@ -157,7 +158,7 @@ Deno.test("the newest matching check run wins", async () => {
   assertEquals(calls[calls.length - 1].path, "/check-runs/11");
 });
 
-Deno.test("with an external id, only a check run carrying it is updated", async () => {
+test("with an external id, only a check run carrying it is updated", async () => {
   // Two callers reporting under one required context stay distinct: a re-drive
   // of one must not overwrite the other's conclusion.
   const { fetch, calls } = fakeFetch({
@@ -183,7 +184,7 @@ Deno.test("with an external id, only a check run carrying it is updated", async 
   assertEquals(calls[calls.length - 1].body.external_id, "run-a/gate");
 });
 
-Deno.test("an external id that matches nothing creates rather than overwrites", async () => {
+test("an external id that matches nothing creates rather than overwrites", async () => {
   const { fetch, calls } = fakeFetch({
     [listPath("gate")]: {
       status: 200,
@@ -202,7 +203,7 @@ Deno.test("an external id that matches nothing creates rather than overwrites", 
   assertEquals(calls.filter((c) => c.method === "PATCH").length, 0);
 });
 
-Deno.test("the listing is paginated to the last candidate", async () => {
+test("the listing is paginated to the last candidate", async () => {
   // A missed candidate is a duplicate check run — the one failure this whole
   // lookup exists to prevent — so the first page is not taken on trust.
   const page1 = Array.from({ length: 100 }, (_, i) => ({
@@ -228,7 +229,7 @@ Deno.test("the listing is paginated to the last candidate", async () => {
   assertEquals(calls.filter((c) => c.method === "GET").length, 2);
 });
 
-Deno.test("a listing that stops short of its own total does not loop", async () => {
+test("a listing that stops short of its own total does not loop", async () => {
   // A total_count that overstates the pages must not spin: an empty page ends
   // the walk with whatever was found.
   const { fetch, calls } = fakeFetch({
@@ -250,7 +251,7 @@ Deno.test("a listing that stops short of its own total does not loop", async () 
   assertEquals(calls.filter((c) => c.method === "GET").length, 2);
 });
 
-Deno.test("naming either half of the output panel fills in the other", async () => {
+test("naming either half of the output panel fills in the other", async () => {
   // GitHub rejects an output panel with a title and no summary, or the reverse.
   const { fetch, calls } = fakeFetch({
     ...noneYet("gate"),
@@ -279,7 +280,7 @@ Deno.test("naming either half of the output panel fills in the other", async () 
   });
 });
 
-Deno.test("no output panel is sent when neither half is named", async () => {
+test("no output panel is sent when neither half is named", async () => {
   const { fetch, calls } = fakeFetch({
     ...noneYet("gate"),
     "POST /check-runs": { status: 201, body: { id: 1, html_url: "u" } },
@@ -293,7 +294,7 @@ Deno.test("no output panel is sent when neither half is named", async () => {
   assertEquals(post.body.details_url, "https://ci.example/run/1");
 });
 
-Deno.test("the required settings are named individually when missing", async () => {
+test("the required settings are named individually when missing", async () => {
   const { fetch } = fakeFetch({});
   await assertRejects(
     () => postCheckRun((s) => s.repo("acme/app").token("t").fetch(fetch)),
@@ -318,7 +319,7 @@ Deno.test("the required settings are named individually when missing", async () 
   );
 });
 
-Deno.test("a branch name or an abbreviated SHA is refused before the call", async () => {
+test("a branch name or an abbreviated SHA is refused before the call", async () => {
   const { fetch, calls } = fakeFetch({});
   for (const bad of ["master", "a1b2c3d", `${SHA}/../../x`]) {
     const error = await assertRejects(
@@ -336,7 +337,7 @@ Deno.test("a branch name or an abbreviated SHA is refused before the call", asyn
   assertEquals(calls.length, 0);
 });
 
-Deno.test("the listing asks for every check run, not just the latest per name", async () => {
+test("the listing asks for every check run, not just the latest per name", async () => {
   // GitHub's default is filter=latest, which returns at most one run per name.
   // On a commit that already carries two, the one being looked for may not be
   // in the response at all — and this would create a third.
@@ -351,7 +352,7 @@ Deno.test("the listing asks for every check run, not just the latest per name", 
   assertStringIncludes(calls[0].path, "filter=all");
 });
 
-Deno.test("a check run owned by another app is not updated but replaced", async () => {
+test("a check run owned by another app is not updated but replaced", async () => {
   // A check run may only be updated by the app that created it. During a
   // migration the same name is often still produced by the workflow being
   // replaced, owned by a different app — and a refusal that propagated would
@@ -379,7 +380,7 @@ Deno.test("a check run owned by another app is not updated but replaced", async 
   assertEquals(calls.map((c) => c.method), ["GET", "PATCH", "POST"]);
 });
 
-Deno.test("a refused create is not masked by the update fallback", async () => {
+test("a refused create is not masked by the update fallback", async () => {
   // The fallback must not turn a token that genuinely lacks checks:write into
   // silence: the create is refused too, and that error is the one to report.
   const { fetch } = fakeFetch({
@@ -401,7 +402,7 @@ Deno.test("a refused create is not masked by the update fallback", async () => {
   assertStringIncludes(error.message, "still nope");
 });
 
-Deno.test("an update failure that is not a refusal propagates", async () => {
+test("an update failure that is not a refusal propagates", async () => {
   // A 500 says nothing about ownership. Creating a second check run because
   // the server had a bad minute is the duplicate this function exists to avoid.
   const { fetch, calls } = fakeFetch({
@@ -422,7 +423,7 @@ Deno.test("an update failure that is not a refusal propagates", async () => {
   assertEquals(calls.filter((c) => c.method === "POST").length, 0);
 });
 
-Deno.test("an update rewrites the output panel rather than leaving a stale one", async () => {
+test("an update rewrites the output panel rather than leaving a stale one", async () => {
   // A partial update would leave the previous attempt's text under this
   // attempt's conclusion — "12 of 12 checks passed" above a failure.
   const { fetch, calls } = fakeFetch({
@@ -442,7 +443,7 @@ Deno.test("an update rewrites the output panel rather than leaving a stale one",
   });
 });
 
-Deno.test("a caller with no external id does not adopt one that has it", async () => {
+test("a caller with no external id does not adopt one that has it", async () => {
   // The isolation has to hold from both sides, or the setting only protects
   // the caller that remembered to set it.
   const { fetch, calls } = fakeFetch({
@@ -463,7 +464,7 @@ Deno.test("a caller with no external id does not adopt one that has it", async (
   assertEquals(calls.filter((c) => c.method === "PATCH").length, 0);
 });
 
-Deno.test("the repo and token fall back to the Actions environment", async () => {
+test("the repo and token fall back to the Actions environment", async () => {
   const { fetch, calls } = fakeFetch({
     ...noneYet("gate"),
     "POST /check-runs": { status: 201, body: { id: 1, html_url: "u" } },
@@ -481,7 +482,7 @@ Deno.test("the repo and token fall back to the Actions environment", async () =>
   assertEquals(calls[0].path.startsWith("/commits/"), true);
 });
 
-Deno.test("a missing repo or token says which setting to reach for", async () => {
+test("a missing repo or token says which setting to reach for", async () => {
   const { fetch } = fakeFetch({});
   await withEnv({ GITHUB_REPOSITORY: undefined }, async () => {
     const error = await assertRejects(
@@ -511,7 +512,7 @@ Deno.test("a missing repo or token says which setting to reach for", async () =>
   });
 });
 
-Deno.test("a GitHub Enterprise base URL is used, trailing slashes and all", async () => {
+test("a GitHub Enterprise base URL is used, trailing slashes and all", async () => {
   const calls: string[] = [];
   const impl: typeof fetch = (input) => {
     calls.push(String(input));
@@ -537,7 +538,7 @@ Deno.test("a GitHub Enterprise base URL is used, trailing slashes and all", asyn
   );
 });
 
-Deno.test("a listing of junk is treated as no match, not as a candidate", async () => {
+test("a listing of junk is treated as no match, not as a candidate", async () => {
   // Every field of the response is checked rather than trusted: a malformed
   // entry that slipped through as a match would send the update to whatever id
   // happened to parse.
@@ -564,7 +565,7 @@ Deno.test("a listing of junk is treated as no match, not as a candidate", async 
   assertEquals(calls.filter((c) => c.method === "PATCH").length, 0);
 });
 
-Deno.test("a listing that is not an object at all creates rather than guessing", async () => {
+test("a listing that is not an object at all creates rather than guessing", async () => {
   const { fetch } = fakeFetch({
     [listPath("gate")]: { status: 200, body: "gateway said hello" },
     "POST /check-runs": { status: 201, body: { id: 60, html_url: "u" } },
@@ -576,7 +577,7 @@ Deno.test("a listing that is not an object at all creates rather than guessing",
   assertEquals(result.created, true);
 });
 
-Deno.test("a refused write surfaces as a GhApiError carrying the status", async () => {
+test("a refused write surfaces as a GhApiError carrying the status", async () => {
   const { fetch } = fakeFetch({
     ...noneYet("gate"),
     "POST /check-runs": {

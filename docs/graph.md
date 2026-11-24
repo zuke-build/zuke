@@ -7,7 +7,7 @@ arrow points from a dependency to the target that depends on it, so a target
 runs after everything that points at it. This is the same graph `./zuke graph`
 prints as text and `./zuke graph --output=html` renders interactively.
 
-62 target(s), 33 dependency edge(s). Regenerate with `./zuke graphDoc`; the
+63 target(s), 33 dependency edge(s). Regenerate with `./zuke graphDoc`; the
 `graphDocCheck` target in the CI gate fails when this page drifts from the
 build.
 
@@ -20,94 +20,95 @@ flowchart TD
   t4["spell"]
   t5["check"]
   t6["test"]
-  t7["integration"]
-  t8["coverage"]
-  t9["provisionTools"]
-  t10["coverageUpload"]
-  t11["apiDocs"]
-  t12["apiDocsCheck"]
-  t13["apiReference"]
-  t14["syncWebsite"]
-  t15["docLint"]
-  t16["snippetsCheck"]
-  t17["examplesCheck"]
-  t18["toolSpec"]
-  t19["toolSpecCheck"]
-  t20["hclGen"]
-  t21["hclSyncCheck"]
-  t22["pluginSync"]
-  t23["pluginSyncCheck"]
-  t24["packageJsonSync"]
-  t25["packageJsonSyncCheck"]
-  t26["launcherSync"]
-  t27["launcherSyncCheck"]
-  t28["skillsCheck"]
-  t29["graphDoc"]
-  t30["graphDocCheck"]
-  t31["pluginVersionCheck"]
-  t32["prBodyLint"]
-  t33["coreFloorCheck"]
-  t34["lockCheck"]
-  t35["security"]
-  t36["actionPinCheck"]
-  t37["npmSmoke"]
-  t38["npmSigstoreCheck"]
-  t39["ci"]
-  t40["scorecard"]
-  t41["codeql"]
-  t42["reviewBase"]
-  t43["review"]
-  t44["release"]
-  t45["actionRelease"]
-  t46["publishJsr"]
-  t47["npmBuild"]
-  t48["publishNpm"]
-  t49["npmVerify"]
-  t50["npmTrust"]
-  t51["cliBinaries"]
-  t52["cliSign"]
-  t53["cliPackage"]
-  t54["cliUpload"]
-  t55["cliFormulaVerify"]
-  t56["cliTap"]
-  t57["pythonSync"]
-  t58["cliChocolateyVerify"]
-  t59["cliChocolatey"]
-  t60["publish"]
-  t61["default"]
+  t7["nodeTest"]
+  t8["integration"]
+  t9["coverage"]
+  t10["provisionTools"]
+  t11["coverageUpload"]
+  t12["apiDocs"]
+  t13["apiDocsCheck"]
+  t14["apiReference"]
+  t15["syncWebsite"]
+  t16["docLint"]
+  t17["snippetsCheck"]
+  t18["examplesCheck"]
+  t19["toolSpec"]
+  t20["toolSpecCheck"]
+  t21["hclGen"]
+  t22["hclSyncCheck"]
+  t23["pluginSync"]
+  t24["pluginSyncCheck"]
+  t25["packageJsonSync"]
+  t26["packageJsonSyncCheck"]
+  t27["launcherSync"]
+  t28["launcherSyncCheck"]
+  t29["skillsCheck"]
+  t30["graphDoc"]
+  t31["graphDocCheck"]
+  t32["pluginVersionCheck"]
+  t33["prBodyLint"]
+  t34["coreFloorCheck"]
+  t35["lockCheck"]
+  t36["security"]
+  t37["actionPinCheck"]
+  t38["npmSmoke"]
+  t39["npmSigstoreCheck"]
+  t40["ci"]
+  t41["scorecard"]
+  t42["codeql"]
+  t43["reviewBase"]
+  t44["review"]
+  t45["release"]
+  t46["actionRelease"]
+  t47["publishJsr"]
+  t48["npmBuild"]
+  t49["publishNpm"]
+  t50["npmVerify"]
+  t51["npmTrust"]
+  t52["cliBinaries"]
+  t53["cliSign"]
+  t54["cliPackage"]
+  t55["cliUpload"]
+  t56["cliFormulaVerify"]
+  t57["cliTap"]
+  t58["pythonSync"]
+  t59["cliChocolateyVerify"]
+  t60["cliChocolatey"]
+  t61["publish"]
+  t62["default"]
   t1 --> t5
   t5 --> t6
-  t6 --> t8
-  t8 --> t10
-  t9 --> t10
-  t9 --> t35
-  t2 --> t39
-  t3 --> t39
-  t4 --> t39
-  t8 --> t39
-  t10 --> t39
-  t12 --> t39
-  t15 --> t39
-  t16 --> t39
-  t17 --> t39
-  t21 --> t39
-  t23 --> t39
-  t27 --> t39
-  t25 --> t39
-  t28 --> t39
-  t30 --> t39
-  t19 --> t39
-  t31 --> t39
-  t32 --> t39
-  t36 --> t39
-  t37 --> t39
-  t38 --> t39
-  t35 --> t39
-  t34 --> t39
-  t42 --> t43
-  t44 --> t60
-  t46 --> t60
-  t39 --> t61
+  t6 --> t9
+  t9 --> t11
+  t10 --> t11
+  t10 --> t36
+  t2 --> t40
+  t3 --> t40
+  t4 --> t40
+  t9 --> t40
+  t11 --> t40
+  t13 --> t40
+  t16 --> t40
+  t17 --> t40
+  t18 --> t40
+  t22 --> t40
+  t24 --> t40
+  t28 --> t40
+  t26 --> t40
+  t29 --> t40
+  t31 --> t40
+  t20 --> t40
+  t32 --> t40
+  t33 --> t40
+  t37 --> t40
+  t38 --> t40
+  t39 --> t40
+  t36 --> t40
+  t35 --> t40
+  t43 --> t44
+  t45 --> t61
+  t47 --> t61
+  t40 --> t62
 ```
 
 ## Targets
@@ -121,6 +122,7 @@ flowchart TD
 | `spell`                | Spell-check the repository (cspell)                                                                                           | —                                                                                                                                                                                                                                                                                                                                                                    |
 | `check`                | Type-check the whole workspace                                                                                                | `restore`                                                                                                                                                                                                                                                                                                                                                            |
 | `test`                 | Run the test suite with coverage                                                                                              | `check`                                                                                                                                                                                                                                                                                                                                                              |
+| `nodeTest`             | Run the test suite on Node with Vitest (ported files)                                                                         | —                                                                                                                                                                                                                                                                                                                                                                    |
 | `integration`          | Run the subprocess e2e suite (real processes, OS matrix)                                                                      | —                                                                                                                                                                                                                                                                                                                                                                    |
 | `coverage`             | Enforce the 95% coverage gate                                                                                                 | `test`                                                                                                                                                                                                                                                                                                                                                               |
 | `provisionTools`       | Provision the pinned scanner binaries into .zuke/tools                                                                        | —                                                                                                                                                                                                                                                                                                                                                                    |

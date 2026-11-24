@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import { EnvTasks } from "../src/env.ts";
 import { RuntimeTasks } from "../src/runtime_tasks.ts";
 
-Deno.test("RuntimeTasks reports this Deno process", () => {
+test("RuntimeTasks reports this Deno process", () => {
   assertEquals(RuntimeTasks.facts().name, "deno");
   assertEquals(RuntimeTasks.facts().version, Deno.version.deno);
   assertEquals(RuntimeTasks.os(), Deno.build.os);
@@ -23,7 +24,7 @@ Deno.test("RuntimeTasks reports this Deno process", () => {
   assertEquals(RuntimeTasks.isTerminal("stderr"), Deno.stderr.isTerminal());
 });
 
-Deno.test("RuntimeTasks.cwd follows a change of directory", () => {
+test("RuntimeTasks.cwd follows a change of directory", () => {
   const before = Deno.cwd();
   const dir = Deno.makeTempDirSync();
   try {
@@ -35,7 +36,7 @@ Deno.test("RuntimeTasks.cwd follows a change of directory", () => {
   }
 });
 
-Deno.test("RuntimeTasks.exit ends the process with the code", async () => {
+test("RuntimeTasks.exit ends the process with the code", async () => {
   const runtimeTasks = new URL("../src/runtime_tasks.ts", import.meta.url).href;
   const { code, stdout } = await new Deno.Command(Deno.execPath(), {
     args: [
@@ -51,7 +52,7 @@ Deno.test("RuntimeTasks.exit ends the process with the code", async () => {
   assertEquals(new TextDecoder().decode(stdout), "");
 });
 
-Deno.test("EnvTasks reads a variable, and an unset one as undefined", () => {
+test("EnvTasks reads a variable, and an unset one as undefined", () => {
   const name = `ZUKE_ENV_TASKS_${crypto.randomUUID().replaceAll("-", "_")}`;
   assertEquals(EnvTasks.get(name), undefined);
   Deno.env.set(name, "value");
@@ -62,7 +63,7 @@ Deno.test("EnvTasks reads a variable, and an unset one as undefined", () => {
   }
 });
 
-Deno.test({
+test({
   name: "EnvTasks reads a denied environment as unset",
   permissions: { env: false },
   fn: () => {

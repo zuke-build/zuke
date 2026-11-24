@@ -1,12 +1,13 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
   assertThrows,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { CommandOutput } from "@zuke/core/shell";
 import type { Configure } from "@zuke/core/tooling";
 import {
@@ -20,7 +21,7 @@ import {
   AwsOutputError,
   AwsTasks,
 } from "../mod.ts";
-import { FakeAws, json } from "./_fake.ts";
+import { FakeAws, json } from "../../../tests/support/aws/_fake.ts";
 
 const END = new Date("2026-10-07T12:00:00.000Z");
 
@@ -29,7 +30,7 @@ function args(settings: { argv(): string[] }): string[] {
   return settings.argv().slice(1);
 }
 
-Deno.test("logs start-query sends epoch seconds", () => {
+test("logs start-query sends epoch seconds", () => {
   assertEquals(
     args(
       new AwsLogsStartQuerySettings().logGroupNames("/ecs/api", "/ecs/web")
@@ -68,7 +69,7 @@ Deno.test("logs start-query sends epoch seconds", () => {
   );
 });
 
-Deno.test("logs get-query-results and stop-query", () => {
+test("logs get-query-results and stop-query", () => {
   assertEquals(args(new AwsLogsGetQueryResultsSettings().queryId("q-1")), [
     "logs",
     "get-query-results",
@@ -87,7 +88,7 @@ Deno.test("logs get-query-results and stop-query", () => {
   assertThrows(() => new AwsLogsStopQuerySettings().argv(), Error, "queryId");
 });
 
-Deno.test("logs filter-log-events sends epoch milliseconds", () => {
+test("logs filter-log-events sends epoch milliseconds", () => {
   assertEquals(
     args(
       new AwsLogsFilterLogEventsSettings().logGroupName("/ecs/api")
@@ -132,7 +133,7 @@ Deno.test("logs filter-log-events sends epoch milliseconds", () => {
   );
 });
 
-Deno.test("logs tail with every option", () => {
+test("logs tail with every option", () => {
   assertEquals(
     args(
       new AwsLogsTailSettings().groupName("/ecs/api").since("10m").follow()
@@ -179,7 +180,7 @@ function query(
   );
 }
 
-Deno.test("logsInsightsQuery polls until Complete and returns the rows", async () => {
+test("logsInsightsQuery polls until Complete and returns the rows", async () => {
   const fake = new FakeAws(
     json({ queryId: "q-1" }),
     poll("Scheduled"),
@@ -212,7 +213,7 @@ Deno.test("logsInsightsQuery polls until Complete and returns the rows", async (
   }
 });
 
-Deno.test("logsInsightsQuery takes an explicit time range", async () => {
+test("logsInsightsQuery takes an explicit time range", async () => {
   const fake = new FakeAws(json({ queryId: "q" }), poll("Complete"));
   await AwsTasks.logsInsightsQuery((q) =>
     q.logGroupNames("g").queryString("q").startTime(new Date(1000))
@@ -222,7 +223,7 @@ Deno.test("logsInsightsQuery takes an explicit time range", async () => {
   assertEquals(fake.flag(0, "--end-time"), "2");
 });
 
-Deno.test("logsInsightsQuery fails on Failed, Cancelled and Timeout", async () => {
+test("logsInsightsQuery fails on Failed, Cancelled and Timeout", async () => {
   for (const status of ["Failed", "Cancelled", "Timeout", "Unknown"]) {
     const fake = new FakeAws(json({ queryId: "q-2" }), poll(status));
     const error = await assertRejects(
@@ -235,7 +236,7 @@ Deno.test("logsInsightsQuery fails on Failed, Cancelled and Timeout", async () =
   }
 });
 
-Deno.test("logsInsightsQuery stops a query that outlasts its timeout", async () => {
+test("logsInsightsQuery stops a query that outlasts its timeout", async () => {
   const fake = new FakeAws(
     json({ queryId: "q-3" }),
     (argv) =>
@@ -255,7 +256,7 @@ Deno.test("logsInsightsQuery stops a query that outlasts its timeout", async () 
   assertEquals(last.slice(1, 4), ["logs", "stop-query", "--query-id=q-3"]);
 });
 
-Deno.test("a failure to stop the query does not hide the timeout", async () => {
+test("a failure to stop the query does not hide the timeout", async () => {
   const fake = new FakeAws(
     json({ queryId: "q-4" }),
     (argv) =>
@@ -289,7 +290,7 @@ Deno.test("a failure to stop the query does not hide the timeout", async () => {
   assertEquals(polls, 2);
 });
 
-Deno.test("logsInsightsQuery refuses answers of the wrong shape", async () => {
+test("logsInsightsQuery refuses answers of the wrong shape", async () => {
   const cases: Array<[string[], string]> = [
     [["not json"], "not JSON"],
     [[json({})], "no queryId"],

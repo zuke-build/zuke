@@ -3,7 +3,8 @@
 
 // cspell:ignore linuxbrew libexec
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   type InstallHost,
   installLabel,
@@ -30,7 +31,7 @@ function host(facts: {
   };
 }
 
-Deno.test("isJsrModule accepts the package with or without a version, and nothing else", () => {
+test("isJsrModule accepts the package with or without a version, and nothing else", () => {
   assertEquals(isJsrModule("jsr:@zuke/cli"), true);
   assertEquals(isJsrModule("jsr:@zuke/cli@1.14.0"), true);
   for (
@@ -45,7 +46,7 @@ Deno.test("isJsrModule accepts the package with or without a version, and nothin
   }
 });
 
-Deno.test("installSource reads a process under Deno by its main module", async () => {
+test("installSource reads a process under Deno by its main module", async () => {
   assertEquals(await installSource(host({})), {
     kind: "jsr",
     location: "jsr:@zuke/cli@1.14.0",
@@ -56,7 +57,7 @@ Deno.test("installSource reads a process under Deno by its main module", async (
   );
 });
 
-Deno.test("installSource asks whether the process is compiled before reading its main module", async () => {
+test("installSource asks whether the process is compiled before reading its main module", async () => {
   // A binary compiled from JSR keeps `jsr:@zuke/cli` as its main module, so
   // the specifier alone would call it a JSR install.
   const compiled = await installSource(
@@ -65,7 +66,7 @@ Deno.test("installSource asks whether the process is compiled before reading its
   assertEquals(compiled, { kind: "binary", location: "/home/me/bin/zuke" });
 });
 
-Deno.test("installSource finds Homebrew's Cellar through the link on PATH", async () => {
+test("installSource finds Homebrew's Cellar through the link on PATH", async () => {
   for (
     const cellar of [
       "/opt/homebrew/Cellar/zuke/1.14.0/bin/zuke",
@@ -82,7 +83,7 @@ Deno.test("installSource finds Homebrew's Cellar through the link on PATH", asyn
   }
 });
 
-Deno.test("installSource does not take another formula's or directory's Cellar for zuke's", async () => {
+test("installSource does not take another formula's or directory's Cellar for zuke's", async () => {
   for (
     const path of [
       "/opt/homebrew/Cellar/zuke-evil/1.0.0/bin/zuke",
@@ -96,7 +97,7 @@ Deno.test("installSource does not take another formula's or directory's Cellar f
   }
 });
 
-Deno.test("installSource finds Chocolatey's package directory, wherever choco lives", async () => {
+test("installSource finds Chocolatey's package directory, wherever choco lives", async () => {
   for (
     const path of [
       "C:\\ProgramData\\chocolatey\\lib\\zuke\\tools\\zuke.exe",
@@ -109,7 +110,7 @@ Deno.test("installSource finds Chocolatey's package directory, wherever choco li
   }
 });
 
-Deno.test("installSource does not take another package's or directory's lib for zuke's", async () => {
+test("installSource does not take another package's or directory's lib for zuke's", async () => {
   for (
     const path of [
       "C:\\ProgramData\\chocolatey\\lib\\zuke-evil\\tools\\zuke.exe",
@@ -123,7 +124,7 @@ Deno.test("installSource does not take another package's or directory's lib for 
   }
 });
 
-Deno.test("installSource reads a Node process whose main module is under node_modules as npm", async () => {
+test("installSource reads a Node process whose main module is under node_modules as npm", async () => {
   for (
     const main of [
       "file:///home/me/.npm/_npx/ab/node_modules/@zuke-build/cli/zuke.js",
@@ -145,7 +146,7 @@ Deno.test("installSource reads a Node process whose main module is under node_mo
   ) assertEquals((await installSource(host({ main }))).kind, "source", main);
 });
 
-Deno.test("installSource keeps the reported path when the link cannot be resolved", async () => {
+test("installSource keeps the reported path when the link cannot be resolved", async () => {
   const source = await installSource(host({
     standalone: true,
     exe: "/opt/homebrew/Cellar/zuke/1.14.0/bin/zuke",
@@ -157,7 +158,7 @@ Deno.test("installSource keeps the reported path when the link cannot be resolve
   });
 });
 
-Deno.test("installLabel names the kind, shortening a path but never a specifier", () => {
+test("installLabel names the kind, shortening a path but never a specifier", () => {
   const tilde = (path: string) => path.replace("/home/me", "~");
   assertEquals(
     installLabel({ kind: "npm", location: "file:///home/me/x/zuke.js" }, tilde),

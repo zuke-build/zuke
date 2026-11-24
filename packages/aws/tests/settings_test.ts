@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { CommandError, CommandOutput } from "@zuke/core/shell";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
@@ -13,13 +14,13 @@ import {
   missingTool,
 } from "@zuke/core/tooling/conformance";
 import { AwsSettings, AwsTasks } from "../mod.ts";
-import { FakeAws } from "./_fake.ts";
+import { FakeAws } from "../../../tests/support/aws/_fake.ts";
 
-Deno.test("the default binary is aws", () => {
+test("the default binary is aws", () => {
   assertEquals(new AwsSettings().argv(), ["aws"]);
 });
 
-Deno.test("aws: command, global options, then extra flags", () => {
+test("aws: command, global options, then extra flags", () => {
   const argv = new AwsSettings()
     .command("sns", "publish")
     .profile("deploy").region("eu-west-1").output("json")
@@ -60,7 +61,7 @@ Deno.test("aws: command, global options, then extra flags", () => {
   ]);
 });
 
-Deno.test("aws: a minimal command carries no global options", () => {
+test("aws: a minimal command carries no global options", () => {
   assertEquals(new AwsSettings().command("s3", "ls").argv(), [
     "aws",
     "s3",
@@ -68,7 +69,7 @@ Deno.test("aws: a minimal command carries no global options", () => {
   ]);
 });
 
-Deno.test("aws: conforms to the wrapper contract", async () => {
+test("aws: conforms to the wrapper contract", async () => {
   await assertWrapperConformance(
     () => new AwsSettings().command("sts", "get-caller-identity"),
     "aws",
@@ -76,14 +77,14 @@ Deno.test("aws: conforms to the wrapper contract", async () => {
   );
 });
 
-Deno.test("AwsTasks.run reaches execution", async () => {
+test("AwsTasks.run reaches execution", async () => {
   await assertRejects(
     () => AwsTasks.run((s) => missingTool(s.command("s3", "ls"))),
     ToolNotFoundError,
   );
 });
 
-Deno.test("the pager is switched off in the child's environment", async () => {
+test("the pager is switched off in the child's environment", async () => {
   // A real subprocess, but the running deno rather than aws: the settings
   // carry the environment, so whatever they spawn sees it.
   const output = await new AwsSettings()
@@ -94,7 +95,7 @@ Deno.test("the pager is switched off in the child's environment", async () => {
   assertEquals(output.stdout.trim(), '""');
 });
 
-Deno.test("a runner replaces the spawn and sees the full argv", async () => {
+test("a runner replaces the spawn and sees the full argv", async () => {
   const fake = new FakeAws("ok\n");
   const output = await AwsTasks.run((s) =>
     s.command("s3", "ls").region("us-east-1").runner(fake.run)
@@ -103,7 +104,7 @@ Deno.test("a runner replaces the spawn and sees the full argv", async () => {
   assertEquals(fake.calls, [["aws", "s3", "ls", "--region", "us-east-1"]]);
 });
 
-Deno.test("a runner's failed exit throws a CommandError", async () => {
+test("a runner's failed exit throws a CommandError", async () => {
   const fake = new FakeAws(new CommandOutput(254, "", "AccessDenied"));
   const error = await assertRejects(
     () => AwsTasks.run((s) => s.command("s3", "ls").runner(fake.run)),
@@ -114,7 +115,7 @@ Deno.test("a runner's failed exit throws a CommandError", async () => {
   assertStringIncludes(error.message, "AccessDenied");
 });
 
-Deno.test("a runner's failed exit is returned under noThrow", async () => {
+test("a runner's failed exit is returned under noThrow", async () => {
   const fake = new FakeAws(new CommandOutput(1, "", "nope"));
   const output = await AwsTasks.run((s) =>
     s.command("s3", "ls").noThrow().runner(fake.run)

@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects } from "./_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertRejects } from "../../../tests/_assert.ts";
 import {
   findOutdated,
   formatOutdated,
@@ -9,7 +10,7 @@ import {
   lockedJsrSpecifiers,
   minDepAgeCutoff,
 } from "../src/outdated.ts";
-import { withTemp } from "./_temp.ts";
+import { withTemp } from "../../../tests/_temp.ts";
 
 /** A `fetch` that answers `meta.json` from a name → latest-version map. */
 function registryFetch(
@@ -44,7 +45,7 @@ async function lockWith(
   return path;
 }
 
-Deno.test("lockedJsrSpecifiers reads the jsr entries and skips the rest", () => {
+test("lockedJsrSpecifiers reads the jsr entries and skips the rest", () => {
   const text = JSON.stringify({
     specifiers: {
       "jsr:@zuke/git@^1": "1.5.0",
@@ -58,7 +59,7 @@ Deno.test("lockedJsrSpecifiers reads the jsr entries and skips the rest", () => 
   ]);
 });
 
-Deno.test("lockedJsrSpecifiers yields nothing for a lock it cannot read", () => {
+test("lockedJsrSpecifiers yields nothing for a lock it cannot read", () => {
   // Every shape that is not "an object with a specifiers object of strings":
   // an unreadable lock reports no packages rather than throwing, and the
   // caller distinguishes that from "all current" by the count.
@@ -81,7 +82,7 @@ Deno.test("lockedJsrSpecifiers yields nothing for a lock it cannot read", () => 
   );
 });
 
-Deno.test("lockedJsrSpecifiers keeps a specifier written without a range", () => {
+test("lockedJsrSpecifiers keeps a specifier written without a range", () => {
   assertEquals(
     lockedJsrSpecifiers(
       JSON.stringify({ specifiers: { "jsr:@zuke/git": "1.5.0" } }),
@@ -90,7 +91,7 @@ Deno.test("lockedJsrSpecifiers keeps a specifier written without a range", () =>
   );
 });
 
-Deno.test("isBehind orders versions numerically, not lexically", () => {
+test("isBehind orders versions numerically, not lexically", () => {
   assertEquals(isBehind("1.9.0", "1.10.0"), true); // the string sort's mistake
   assertEquals(isBehind("1.10.0", "1.9.0"), false);
   assertEquals(isBehind("1.5.0", "1.11.0"), true);
@@ -100,7 +101,7 @@ Deno.test("isBehind orders versions numerically, not lexically", () => {
   assertEquals(isBehind("1.2.3", "1.2.4"), true);
 });
 
-Deno.test("isBehind puts a prerelease behind the release it precedes", () => {
+test("isBehind puts a prerelease behind the release it precedes", () => {
   assertEquals(isBehind("1.2.0-rc.1", "1.2.0"), true);
   assertEquals(isBehind("1.2.0", "1.2.0-rc.1"), false);
   // Two prereleases of the same core cannot be ordered by the numeric core
@@ -108,7 +109,7 @@ Deno.test("isBehind puts a prerelease behind the release it precedes", () => {
   assertEquals(isBehind("1.2.0-rc.1", "1.2.0-rc.2"), false);
 });
 
-Deno.test("isBehind reports a version it cannot parse as not behind", () => {
+test("isBehind reports a version it cannot parse as not behind", () => {
   // Silence beats a wrong "you are behind", which would send someone bumping
   // a pin that is already current.
   assertEquals(isBehind("latest", "1.2.3"), false);
@@ -116,7 +117,7 @@ Deno.test("isBehind reports a version it cannot parse as not behind", () => {
   assertEquals(isBehind("1.2", "1.3"), false);
 });
 
-Deno.test("findOutdated reports only the packages that are behind", async () => {
+test("findOutdated reports only the packages that are behind", async () => {
   await withTemp(async (dir) => {
     const lockPath = await lockWith(dir, {
       "jsr:@zuke/git@^1": "1.5.0",
@@ -147,7 +148,7 @@ Deno.test("findOutdated reports only the packages that are behind", async () => 
   });
 });
 
-Deno.test("findOutdated asks the registry once per package name", async () => {
+test("findOutdated asks the registry once per package name", async () => {
   await withTemp(async (dir) => {
     // Two ranges resolving to different versions of one package: one request,
     // both stale specifiers reported, so the caller sees which pin to move.
@@ -167,7 +168,7 @@ Deno.test("findOutdated asks the registry once per package name", async () => {
   });
 });
 
-Deno.test("findOutdated lists a package once however many ranges resolve it to one version", async () => {
+test("findOutdated lists a package once however many ranges resolve it to one version", async () => {
   await withTemp(async (dir) => {
     // Every wrapper depends on its own range of core; all of them resolving
     // 1.66.0 is one package to move, reported once and counted once.
@@ -201,7 +202,7 @@ Deno.test("findOutdated lists a package once however many ranges resolve it to o
   });
 });
 
-Deno.test("findOutdated reports a package it could not check, and still checks the rest", async () => {
+test("findOutdated reports a package it could not check, and still checks the rest", async () => {
   await withTemp(async (dir) => {
     // A private scope, a rename, or an offline runner. The report still speaks
     // for the packages it could reach — and says so about the one it could not,
@@ -222,7 +223,7 @@ Deno.test("findOutdated reports a package it could not check, and still checks t
   });
 });
 
-Deno.test("a transport failure is reported as unchecked, not as current", async () => {
+test("a transport failure is reported as unchecked, not as current", async () => {
   await withTemp(async (dir) => {
     // The whole point: a runner with no network must not be told every pin is
     // at its latest release.
@@ -247,7 +248,7 @@ Deno.test("a transport failure is reported as unchecked, not as current", async 
   });
 });
 
-Deno.test("a thrown non-Error still yields a readable reason", async () => {
+test("a thrown non-Error still yields a readable reason", async () => {
   await withTemp(async (dir) => {
     const lockPath = await lockWith(dir, { "jsr:@zuke/git@^1": "1.5.0" });
     const report = await findOutdated({
@@ -259,7 +260,7 @@ Deno.test("a thrown non-Error still yields a readable reason", async () => {
   });
 });
 
-Deno.test("findOutdated reports a meta document with no usable latest", async () => {
+test("findOutdated reports a meta document with no usable latest", async () => {
   await withTemp(async (dir) => {
     const lockPath = await lockWith(dir, { "jsr:@zuke/git@^1": "1.5.0" });
     const bodies = ["null", "{}", JSON.stringify({ latest: 7 })];
@@ -280,7 +281,7 @@ Deno.test("findOutdated reports a meta document with no usable latest", async ()
   });
 });
 
-Deno.test("an unreachable package is reported once, not once per specifier", async () => {
+test("an unreachable package is reported once, not once per specifier", async () => {
   await withTemp(async (dir) => {
     const lockPath = await lockWith(dir, {
       "jsr:@private/thing@*": "1.0.0",
@@ -295,7 +296,7 @@ Deno.test("an unreachable package is reported once, not once per specifier", asy
   });
 });
 
-Deno.test("findOutdated names the missing lock rather than reporting nothing", async () => {
+test("findOutdated names the missing lock rather than reporting nothing", async () => {
   await withTemp(async (dir) => {
     // "Nothing is behind" and "I never read a lock" must not look the same.
     await assertRejects(
@@ -306,7 +307,7 @@ Deno.test("findOutdated names the missing lock rather than reporting nothing", a
   });
 });
 
-Deno.test("formatOutdated aligns the report and says how to refresh", () => {
+test("formatOutdated aligns the report and says how to refresh", () => {
   assertEquals(
     formatOutdated({ behind: [], unchecked: [] }),
     "Every JSR package the lock resolves is at its latest release.",
@@ -358,7 +359,7 @@ Deno.test("formatOutdated aligns the report and says how to refresh", () => {
   assertEquals(two.includes("@zuke/git     1.5.0"), true);
 });
 
-Deno.test("formatOutdated names what it could not check, however the run went", () => {
+test("formatOutdated names what it could not check, however the run went", () => {
   const unchecked = [{
     name: "@private/thing",
     resolved: "1.0.0",
@@ -411,7 +412,7 @@ function hoursAgo(hours: number): string {
   return new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
 }
 
-Deno.test("findOutdated targets the newest release Deno would install", async () => {
+test("findOutdated targets the newest release Deno would install", async () => {
   await withTemp(async (dir) => {
     const lockPath = await lockWith(dir, { "jsr:@zuke/core@^1": "1.1.0" });
     // Deno refuses releases younger than 24h by default, so the registry's
@@ -438,7 +439,7 @@ Deno.test("findOutdated targets the newest release Deno would install", async ()
   });
 });
 
-Deno.test("findOutdated is silent when every newer release is too young", async () => {
+test("findOutdated is silent when every newer release is too young", async () => {
   await withTemp(async (dir) => {
     const lockPath = await lockWith(dir, { "jsr:@zuke/core@1.66.0": "1.66.0" });
     const report = await findOutdated({
@@ -456,7 +457,7 @@ Deno.test("findOutdated is silent when every newer release is too young", async 
   });
 });
 
-Deno.test("findOutdated still compares a prerelease-only package", async () => {
+test("findOutdated still compares a prerelease-only package", async () => {
   await withTemp(async (dir) => {
     const lockPath = await lockWith(dir, { "jsr:@x/alpha@*": "0.1.0-alpha.1" });
     const { behind } = await findOutdated({
@@ -474,7 +475,7 @@ Deno.test("findOutdated still compares a prerelease-only package", async () => {
   });
 });
 
-Deno.test("minDepAgeCutoff reads every form Deno's --min-dep-age takes", () => {
+test("minDepAgeCutoff reads every form Deno's --min-dep-age takes", () => {
   const now = Date.parse("2026-10-07T12:00:00Z");
   const hour = 60 * 60 * 1000;
   assertEquals(minDepAgeCutoff(undefined, now), now - 24 * hour);
@@ -496,7 +497,7 @@ Deno.test("minDepAgeCutoff reads every form Deno's --min-dep-age takes", () => {
   );
 });
 
-Deno.test("minDepAgeCutoff refuses what it cannot read as an age", () => {
+test("minDepAgeCutoff refuses what it cannot read as an age", () => {
   for (
     const bad of [
       "",
@@ -521,7 +522,7 @@ Deno.test("minDepAgeCutoff refuses what it cannot read as an age", () => {
   }
 });
 
-Deno.test("findOutdated honours a --min-dep-age of 0", async () => {
+test("findOutdated honours a --min-dep-age of 0", async () => {
   await withTemp(async (dir) => {
     const lockPath = await lockWith(dir, { "jsr:@zuke/core@^1": "1.66.0" });
     const { behind } = await findOutdated({
@@ -540,7 +541,7 @@ Deno.test("findOutdated honours a --min-dep-age of 0", async () => {
   });
 });
 
-Deno.test("minDepAgeCutoff takes only the strict RFC3339 forms Deno honours", () => {
+test("minDepAgeCutoff takes only the strict RFC3339 forms Deno honours", () => {
   // Deno silently ignores a looser date, so accepting one would compute the
   // report with a cutoff `deno install` never applies.
   assertEquals(

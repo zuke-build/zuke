@@ -11,18 +11,19 @@
  * @module
  */
 
+import { test } from "./_testing.ts";
 import { gunzip, untar } from "../packages/core/mod.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../packages/core/tests/_assert.ts";
+} from "./_assert.ts";
 import {
   buildGeminiArchive,
   GEMINI_ASSET_NAMES,
   geminiArchiveFiles,
 } from "../build/gemini_archive.ts";
-import { withTemp } from "../packages/core/tests/_temp.ts";
+import { withTemp } from "./_temp.ts";
 
 /** Lay out a minimal extension root (manifest, license, two skills). */
 async function extensionFixture(): Promise<string> {
@@ -40,7 +41,7 @@ async function extensionFixture(): Promise<string> {
   return root;
 }
 
-Deno.test("the file list is the manifest, license, and skills — sorted", async () => {
+test("the file list is the manifest, license, and skills — sorted", async () => {
   const root = await extensionFixture();
   try {
     assertEquals(await geminiArchiveFiles(root), [
@@ -55,7 +56,7 @@ Deno.test("the file list is the manifest, license, and skills — sorted", async
   }
 });
 
-Deno.test("the archive round-trips with the manifest at its root", async () => {
+test("the archive round-trips with the manifest at its root", async () => {
   const root = await extensionFixture();
   try {
     const dest = `${root}/out.tar.gz`;
@@ -75,7 +76,7 @@ Deno.test("the archive round-trips with the manifest at its root", async () => {
   }
 });
 
-Deno.test("two builds of the same tree are byte-identical", async () => {
+test("two builds of the same tree are byte-identical", async () => {
   // The release upload is skip-if-present; that is only meaningful when a
   // rebuild produces the same bytes rather than a fresh timestamped archive.
   const root = await extensionFixture();
@@ -91,7 +92,7 @@ Deno.test("two builds of the same tree are byte-identical", async () => {
   }
 });
 
-Deno.test("the asset names are platform-prefixed the way Gemini matches", () => {
+test("the asset names are platform-prefixed the way Gemini matches", () => {
   // `findReleaseAsset` matches `{platform}.`-prefixed names case-insensitively
   // and only falls back to a generic asset when it is alone on the release —
   // so every supported `os.platform()` value must have its own prefix.
@@ -108,7 +109,7 @@ Deno.test("the asset names are platform-prefixed the way Gemini matches", () => 
   }
 });
 
-Deno.test("a broken extension root fails with errors that name the fix", async () => {
+test("a broken extension root fails with errors that name the fix", async () => {
   await withTemp(async (root) => {
     // No manifest at all.
     await assertRejects(
@@ -128,7 +129,7 @@ Deno.test("a broken extension root fails with errors that name the fix", async (
   });
 });
 
-Deno.test({
+test({
   name: "a symlink under skills/ is refused, not silently dropped",
   // Creating symlinks on Windows needs a privilege the CI runner may lack.
   ignore: Deno.build.os === "windows",
@@ -152,7 +153,7 @@ Deno.test({
   },
 });
 
-Deno.test("the repo's real tree packs cleanly", async () => {
+test("the repo's real tree packs cleanly", async () => {
   // The actual release-time operation, run against this repository: the
   // manifest, license, and both skills pack without hitting tar's 100-byte
   // name limit.

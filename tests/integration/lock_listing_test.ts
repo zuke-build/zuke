@@ -1,10 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   Build,
   defaultStateHost,
@@ -51,7 +49,7 @@ class ReportBuild extends Build {
     });
 }
 
-Deno.test("a build can report who holds a lock while another run holds it", async () => {
+test("a build can report who holds a lock while another run holds it", async () => {
   await withStateDir(async () => {
     held.length = 0;
     // The actor is what a reader most wants to see, so name it: the CLI takes

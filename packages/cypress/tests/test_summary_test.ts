@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   TargetSummary,
   withAmbientSummary,
@@ -32,7 +33,7 @@ function box(
     "  └────────────────────────────────────────────────────────────────┘\n";
 }
 
-Deno.test("cypress run: the per-spec Results boxes are summed", () => {
+test("cypress run: the per-spec Results boxes are summed", () => {
   const text = box(3, 2, 1, 0, 0) + "\n" + box(4, 3, 0, 1, 0) +
     "\n  ✖  1 of 2 failed (50%)\n";
   assertEquals(parseTestSummary(out(1, text)), {
@@ -53,7 +54,7 @@ Deno.test("cypress run: the per-spec Results boxes are summed", () => {
   });
 });
 
-Deno.test("cypress run: no Results box means nothing to report", () => {
+test("cypress run: no Results box means nothing to report", () => {
   assertEquals(parseTestSummary(out(0)), undefined);
   assertEquals(
     parseTestSummary(out(1, "Could not find a Cypress configuration file.\n")),
@@ -68,7 +69,7 @@ class Probe extends CypressRunSettings {
   }
 }
 
-Deno.test("cypress run: the hook reports the shared shape onto the running target", async () => {
+test("cypress run: the hook reports the shared shape onto the running target", async () => {
   const summary = new TargetSummary();
   await withAmbientSummary(summary, () => {
     new Probe().probe(out(0, box(3, 3, 0, 0, 0)));

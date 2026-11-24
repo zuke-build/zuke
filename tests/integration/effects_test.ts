@@ -12,10 +12,8 @@
  * @module
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import {
   Build,
   defaultStateHost,
@@ -49,7 +47,7 @@ async function effectRow(
   return got?.record.targets[targetName]?.effects?.[effect];
 }
 
-Deno.test("the intent is already durable when the effect body runs", async () => {
+test("the intent is already durable when the effect body runs", async () => {
   // The ordering that makes the whole feature work: from inside the body, the
   // store already says this effect is owed. A process killed on the next line
   // leaves that behind.
@@ -74,7 +72,7 @@ Deno.test("the intent is already durable when the effect body runs", async () =>
   });
 });
 
-Deno.test("a state store is enabled automatically for an effect", async () => {
+test("a state store is enabled automatically for an effect", async () => {
   // Declaring an effect is enough; no --state flag, no ZUKE_STATE_DIR by hand.
   let ran = false;
 
@@ -92,7 +90,7 @@ Deno.test("a state store is enabled automatically for an effect", async () => {
   });
 });
 
-Deno.test("a failed effect is recorded, and the target fails with it", async () => {
+test("a failed effect is recorded, and the target fails with it", async () => {
   class Ci extends Build {
     gate = target().effect("post", () => {
       throw new Error("the API refused");
@@ -109,7 +107,7 @@ Deno.test("a failed effect is recorded, and the target fails with it", async () 
   });
 });
 
-Deno.test("an unfinished effect is driven again on resume; a finished one is not", async () => {
+test("an unfinished effect is driven again on resume; a finished one is not", async () => {
   // The crash case, staged deterministically: the effect runs before a wait, so
   // the first process settles it, and the resume must leave it alone. Then the
   // same build with a body that would fail proves the skip is what spared it.
@@ -147,7 +145,7 @@ Deno.test("an unfinished effect is driven again on resume; a finished one is not
   });
 });
 
-Deno.test("an effect left pending by a dead process is re-driven, and told so", async () => {
+test("an effect left pending by a dead process is re-driven, and told so", async () => {
   // What a killed process leaves: a `pending` row with no settlement. Written
   // directly, because the point is what a *later* process does with it.
   const drives: boolean[] = [];
@@ -199,7 +197,7 @@ Deno.test("an effect left pending by a dead process is re-driven, and told so", 
   });
 });
 
-Deno.test("a re-driven effect sees the parameter the run started with", async () => {
+test("a re-driven effect sees the parameter the run started with", async () => {
   // The rule effects live or die by: inputs are pinned when the run starts. If
   // a re-drive could see a newer value, a gate re-driven after a fresh push
   // would report on a commit whose checks never ran.
@@ -248,7 +246,7 @@ Deno.test("a re-driven effect sees the parameter the run started with", async ()
   });
 });
 
-Deno.test("a resume that re-supplies a parameter overrides the recorded value", async () => {
+test("a resume that re-supplies a parameter overrides the recorded value", async () => {
   // The other half, and it is deliberate rather than a gap: the record seeds a
   // resume so nothing has to be repeated, and an explicit value still wins —
   // which is the only way to re-supply a secret, since secrets are kept out of
@@ -295,7 +293,7 @@ Deno.test("a resume that re-supplies a parameter overrides the recorded value", 
   });
 });
 
-Deno.test("state written before an effect is stable across its re-drive", async () => {
+test("state written before an effect is stable across its re-drive", async () => {
   // The pinning that always holds, and so the one an effect should rely on:
   // durable target state is replayed from the record and cannot be overridden
   // from a command line.
@@ -338,7 +336,7 @@ Deno.test("state written before an effect is stable across its re-drive", async 
   });
 });
 
-Deno.test("a cache hit never swallows an effect", async () => {
+test("a cache hit never swallows an effect", async () => {
   // A cache hit returns before the effects are driven, so a cacheable target
   // that declares one would drop it outright on the second run — nothing run,
   // nothing recorded as owed, and the run reporting success.
@@ -362,7 +360,7 @@ Deno.test("a cache hit never swallows an effect", async () => {
   });
 });
 
-Deno.test("a wait gate that is already satisfied still drives its effects", async () => {
+test("a wait gate that is already satisfied still drives its effects", async () => {
   // The gate opened, so this is the target's real run and the effect is owed
   // now. The satisfied path returns early and used to return past the effects.
   const calls: string[] = [];
@@ -387,7 +385,7 @@ Deno.test("a wait gate that is already satisfied still drives its effects", asyn
   });
 });
 
-Deno.test("two effects of the same name are refused rather than one being lost", () => {
+test("two effects of the same name are refused rather than one being lost", () => {
   // Same name means the same record row, so the first to settle makes the second
   // skip — a copy-paste losing a side effect with no error at all.
   let message = "";
@@ -399,7 +397,7 @@ Deno.test("two effects of the same name are refused rather than one being lost",
   assertStringIncludes(message, "already declares an effect named");
 });
 
-Deno.test("an effect on a fan-out is refused, on the parent and on a stage", () => {
+test("an effect on a fan-out is refused, on the parent and on a stage", () => {
   // A fan-out parent runs no body of its own, and its materialised sub-targets
   // are invisible both to the state store's enablement and to any resume — so an
   // effect there is recorded nowhere and never re-driven.
@@ -426,7 +424,7 @@ Deno.test("an effect on a fan-out is refused, on the parent and on a stage", () 
   assertStringIncludes(stageMessage, 'stage "work" uses .effect()');
 });
 
-Deno.test("an effect on a service is refused", () => {
+test("an effect on a service is refused", () => {
   // A service launches a process and runs no body, so an effect declared on it
   // would never be driven.
   let message = "";

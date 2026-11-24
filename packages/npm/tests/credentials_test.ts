@@ -21,7 +21,8 @@
  * core's half, and core tests it.
  */
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals } from "../../../tests/_assert.ts";
 import {
   NpmAccessSettings,
   NpmDeprecateSettings,
@@ -79,7 +80,7 @@ function withOtp(): ReadonlyArray<
   ];
 }
 
-Deno.test("a one-time password never reaches the command line", () => {
+test("a one-time password never reaches the command line", () => {
   const cases = withOtp();
   // All five, because this is the failure that shows up at the one site
   // somebody forgot — the flag was written out separately in each class before
@@ -103,7 +104,7 @@ Deno.test("a one-time password never reaches the command line", () => {
   }
 });
 
-Deno.test("revoking a token still names it, because npm takes it positionally", () => {
+test("revoking a token still names it, because npm takes it positionally", () => {
   // The honest other half. There is no environment route for this one, so the
   // value is in argv and the wrapper says so; what it does is mask every
   // rendering. Pinned so a later change cannot quietly drop the argument and

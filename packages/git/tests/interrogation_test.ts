@@ -1,7 +1,8 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import {
   GitBlameSettings,
   GitCatFileSettings,
@@ -24,7 +25,7 @@ import {
 // down, so these are command lines the real CLI accepts rather than only ones
 // this wrapper happens to produce.
 
-Deno.test("merge-base: argv, and the modes git treats as separate usages", () => {
+test("merge-base: argv, and the modes git treats as separate usages", () => {
   assertEquals(
     new GitMergeBaseSettings().commits("HEAD", "origin/main").argv(),
     ["git", "merge-base", "HEAD", "origin/main"],
@@ -52,7 +53,7 @@ Deno.test("merge-base: argv, and the modes git treats as separate usages", () =>
   assertEquals(twoModes.message.includes("pick one"), true);
 });
 
-Deno.test("merge-base: --all is refused only where git rejects it", () => {
+test("merge-base: --all is refused only where git rejects it", () => {
   // git: "options '--is-ancestor' and '--all' cannot be used together".
   assertThrows(
     () =>
@@ -73,7 +74,7 @@ Deno.test("merge-base: --all is refused only where git rejects it", () => {
   );
 });
 
-Deno.test("merge-base: --is-ancestor takes exactly two commits", () => {
+test("merge-base: --is-ancestor takes exactly two commits", () => {
   // git: "--is-ancestor takes exactly two commits".
   assertThrows(
     () => new GitMergeBaseSettings().isAncestor().commits("a").argv(),
@@ -87,7 +88,7 @@ Deno.test("merge-base: --is-ancestor takes exactly two commits", () => {
   );
 });
 
-Deno.test("rev-list: argv and the starting point it requires", () => {
+test("rev-list: argv and the starting point it requires", () => {
   assertEquals(
     new GitRevListSettings().count().commits("HEAD").argv(),
     ["git", "rev-list", "--count", "HEAD"],
@@ -121,7 +122,7 @@ Deno.test("rev-list: argv and the starting point it requires", () => {
   );
 });
 
-Deno.test("rev-list: the contradiction git answers with a plausible zero", () => {
+test("rev-list: the contradiction git answers with a plausible zero", () => {
   // git accepts --merges --no-merges and reports 0 commits, which reads like a
   // real empty result rather than the impossible request it is.
   assertThrows(
@@ -131,14 +132,14 @@ Deno.test("rev-list: the contradiction git answers with a plausible zero", () =>
   );
 });
 
-Deno.test("rev-list: paths are separated from revisions by --", () => {
+test("rev-list: paths are separated from revisions by --", () => {
   assertEquals(
     new GitRevListSettings().commits("HEAD").paths("src", "-weird").argv(),
     ["git", "rev-list", "HEAD", "--", "src", "-weird"],
   );
 });
 
-Deno.test("for-each-ref: argv and the disjoint filters", () => {
+test("for-each-ref: argv and the disjoint filters", () => {
   assertEquals(
     new GitForEachRefSettings().sort("-creatordate").count(3)
       .patterns("refs/tags/").argv(),
@@ -166,7 +167,7 @@ Deno.test("for-each-ref: argv and the disjoint filters", () => {
   );
 });
 
-Deno.test("show-ref: argv, and --verify against --exists", () => {
+test("show-ref: argv, and --verify against --exists", () => {
   assertEquals(
     new GitShowRefSettings().tags().heads().dereference().abbrev(8)
       .patterns("v1").argv(),
@@ -193,7 +194,7 @@ Deno.test("show-ref: argv, and --verify against --exists", () => {
   );
 });
 
-Deno.test("symbolic-ref: reading, writing, and what cannot be both", () => {
+test("symbolic-ref: reading, writing, and what cannot be both", () => {
   assertEquals(
     new GitSymbolicRefSettings().name("HEAD").short().argv(),
     ["git", "symbolic-ref", "--short", "HEAD"],
@@ -217,7 +218,7 @@ Deno.test("symbolic-ref: reading, writing, and what cannot be both", () => {
   );
 });
 
-Deno.test("name-rev: argv, and that --all is a starting point of its own", () => {
+test("name-rev: argv, and that --all is a starting point of its own", () => {
   assertEquals(
     new GitNameRevSettings().tags().nameOnly().alwaysName().commits("HEAD")
       .argv(),
@@ -234,7 +235,7 @@ Deno.test("name-rev: argv, and that --all is a starting point of its own", () =>
   );
 });
 
-Deno.test("ls-tree: argv, the tree it needs, and the single-column forms", () => {
+test("ls-tree: argv, the tree it needs, and the single-column forms", () => {
   assertEquals(
     new GitLsTreeSettings().tree("HEAD").recursive().long().nulTerminated()
       .paths("packages").argv(),
@@ -253,7 +254,7 @@ Deno.test("ls-tree: argv, the tree it needs, and the single-column forms", () =>
   );
 });
 
-Deno.test("cat-file: the query forms and the contents form", () => {
+test("cat-file: the query forms and the contents form", () => {
   assertEquals(
     new GitCatFileSettings().object("HEAD:deno.json").argv(),
     ["git", "cat-file", "-p", "HEAD:deno.json"],
@@ -286,7 +287,7 @@ Deno.test("cat-file: the query forms and the contents form", () => {
   );
 });
 
-Deno.test("check-ignore: the two pairings git itself rejects", () => {
+test("check-ignore: the two pairings git itself rejects", () => {
   assertEquals(
     new GitCheckIgnoreSettings().quietOutput().paths("cov_profile").argv(),
     ["git", "check-ignore", "-q", "--", "cov_profile"],
@@ -316,7 +317,7 @@ Deno.test("check-ignore: the two pairings git itself rejects", () => {
   );
 });
 
-Deno.test("blame: argv, the file it needs, and the two porcelain forms", () => {
+test("blame: argv, the file it needs, and the two porcelain forms", () => {
   assertEquals(
     new GitBlameSettings().file("mod.ts").porcelain().lineRange(1, 40).argv(),
     ["git", "blame", "--porcelain", "-L", "1,40", "--", "mod.ts"],
@@ -345,7 +346,7 @@ Deno.test("blame: argv, the file it needs, and the two porcelain forms", () => {
   );
 });
 
-Deno.test("shortlog: argv, with paths kept apart from revisions", () => {
+test("shortlog: argv, with paths kept apart from revisions", () => {
   assertEquals(
     new GitShortlogSettings().summary().numbered().email().commits("v1..HEAD")
       .argv(),
@@ -369,7 +370,7 @@ Deno.test("shortlog: argv, with paths kept apart from revisions", () => {
   );
 });
 
-Deno.test("grep: argv, with -e before every pattern", () => {
+test("grep: argv, with -e before every pattern", () => {
   assertEquals(
     new GitGrepSettings().pattern("TODO").lineNumber().ignoreCase()
       .extendedRegexp().context(1).maxDepth(3).paths("src").argv(),
@@ -396,7 +397,7 @@ Deno.test("grep: argv, with -e before every pattern", () => {
   assertThrows(() => new GitGrepSettings().argv(), Error, "no pattern given");
 });
 
-Deno.test("grep: the pairings git accepts but answers differently than asked", () => {
+test("grep: the pairings git accepts but answers differently than asked", () => {
   // git accepts -E -F and lets the last flag win, so `Zu.e` matches or does
   // not depending only on call order.
   assertThrows(
@@ -419,7 +420,7 @@ Deno.test("grep: the pairings git accepts but answers differently than asked", (
   );
 });
 
-Deno.test("verify-commit and verify-tag: argv, and the format only one takes", () => {
+test("verify-commit and verify-tag: argv, and the format only one takes", () => {
   assertEquals(
     new GitVerifyCommitSettings().verbose().objects("HEAD").argv(),
     ["git", "verify-commit", "-v", "HEAD"],
@@ -441,7 +442,7 @@ Deno.test("verify-commit and verify-tag: argv, and the format only one takes", (
   );
 });
 
-Deno.test("merge-tree: argv, and that it merges exactly two commits", () => {
+test("merge-tree: argv, and that it merges exactly two commits", () => {
   assertEquals(
     new GitMergeTreeSettings().branches("HEAD", "origin/main").messages()
       .argv(),

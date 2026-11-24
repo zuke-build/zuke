@@ -1,11 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { test } from "../../../tests/_testing.ts";
 import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
-} from "../../core/tests/_assert.ts";
+} from "../../../tests/_assert.ts";
 import { InsecureBackendUrlError } from "@zuke/core";
 import {
   SignPathApiError,
@@ -29,7 +30,7 @@ import {
   STATUS_URL,
   TOKEN,
   WEB_URL,
-} from "./_fetch.ts";
+} from "../../../tests/support/signpath/_fetch.ts";
 
 /** The direct-upload endpoint. */
 const SUBMIT_URL = `${API}/SigningRequests/SubmitWithArtifact`;
@@ -63,7 +64,7 @@ async function artifact(content = "MZ unsigned"): Promise<string> {
 /** An artifact most tests upload. */
 const path = await artifact();
 
-Deno.test("submit: uploads the artifact, waits, and downloads the signed file", async () => {
+test("submit: uploads the artifact, waits, and downloads the signed file", async () => {
   const output = `${await Deno.makeTempDir()}/signed/zuke.exe`;
   const net = routes({
     [`POST ${SUBMIT_URL}`]: [created],
@@ -112,7 +113,7 @@ Deno.test("submit: uploads the artifact, waits, and downloads the signed file", 
   }
 });
 
-Deno.test("submit: without an output it only waits, and omits unset form fields", async () => {
+test("submit: without an output it only waits, and omits unset form fields", async () => {
   const net = routes({
     [`POST ${SUBMIT_URL}`]: [() =>
       new Response(null, {
@@ -133,7 +134,7 @@ Deno.test("submit: without an output it only waits, and omits unset form fields"
   assertEquals(net.sent.length, 2);
 });
 
-Deno.test("submit: a submission without a usable Location is a request error", async () => {
+test("submit: a submission without a usable Location is a request error", async () => {
   for (
     const location of [
       undefined,
@@ -160,7 +161,7 @@ Deno.test("submit: a submission without a usable Location is a request error", a
   }
 });
 
-Deno.test("submit: a refused upload is an API error and is not waited on", async () => {
+test("submit: a refused upload is an API error and is not waited on", async () => {
   const net = routes({
     [`POST ${SUBMIT_URL}`]: [
       () => Response.json({ error: "Unknown project slug" }, { status: 400 }),
@@ -178,7 +179,7 @@ Deno.test("submit: a refused upload is an API error and is not waited on", async
   assertEquals(net.sent.length, 1);
 });
 
-Deno.test("submit: a POST is retried only on 429 and 503, never on a network error", async () => {
+test("submit: a POST is retried only on 429 and 503, never on a network error", async () => {
   const busy = routes({
     [`POST ${SUBMIT_URL}`]: [
       () => new Response("", { status: 429 }),
@@ -224,7 +225,7 @@ Deno.test("submit: a POST is retried only on 429 and 503, never on a network err
   assertEquals(calls, 1);
 });
 
-Deno.test("submit: a missing artifact file is reported by path before anything is sent", async () => {
+test("submit: a missing artifact file is reported by path before anything is sent", async () => {
   const net = routes({});
   await assertRejects(
     () =>
@@ -238,7 +239,7 @@ Deno.test("submit: a missing artifact file is reported by path before anything i
   assertEquals(net.sent.length, 0);
 });
 
-Deno.test("submit: settings are validated before anything is sent", async () => {
+test("submit: settings are validated before anything is sent", async () => {
   const net = routes({});
   const base = connected<SignPathSubmitSettings>(net);
   const cases: Array<
@@ -299,7 +300,7 @@ const accepted = () =>
     logs: [{ level: "Information", message: "ok" }],
   });
 
-Deno.test("submit: a GitHub origin goes through the connector with the run's context", async () => {
+test("submit: a GitHub origin goes through the connector with the run's context", async () => {
   const net = routes({
     [`POST ${CONNECTOR_URL}`]: [accepted],
     [`GET ${STATUS_URL}`]: [status("Completed")],
@@ -326,7 +327,7 @@ Deno.test("submit: a GitHub origin goes through the connector with the run's con
   });
 });
 
-Deno.test("submit: explicit GitHub settings win over the environment", async () => {
+test("submit: explicit GitHub settings win over the environment", async () => {
   const net = routes({
     [`POST https://connector.internal/GitHub/${ORG}/SigningRequests?api-version=1.0`]:
       [accepted],
@@ -352,7 +353,7 @@ Deno.test("submit: explicit GitHub settings win over the environment", async () 
   assertEquals("signPathArtifactConfigurationSlug" in body, false);
 });
 
-Deno.test("submit: origin validation errors are listed, scrubbed of both tokens", async () => {
+test("submit: origin validation errors are listed, scrubbed of both tokens", async () => {
   const net = routes({
     [`POST ${CONNECTOR_URL}`]: [() =>
       Response.json({
@@ -386,7 +387,7 @@ Deno.test("submit: origin validation errors are listed, scrubbed of both tokens"
   );
 });
 
-Deno.test("submit: a connector refusal or a foreign answer is reported plainly", async () => {
+test("submit: a connector refusal or a foreign answer is reported plainly", async () => {
   const refused = routes({
     [`POST ${CONNECTOR_URL}`]: [() =>
       Response.json({
@@ -418,7 +419,7 @@ Deno.test("submit: a connector refusal or a foreign answer is reported plainly",
   }
 });
 
-Deno.test("submit: the GitHub context is validated before anything is sent", async () => {
+test("submit: the GitHub context is validated before anything is sent", async () => {
   const net = routes({});
   const env = (entries: Array<[string, string]>) =>
     new Map([...GITHUB_ENV, ...entries]);
@@ -510,7 +511,7 @@ function waitWith(
   );
 }
 
-Deno.test("submit: every final status but Completed is a signing error naming the request", async () => {
+test("submit: every final status but Completed is a signing error naming the request", async () => {
   for (const final of ["Denied", "Failed", "Canceled"]) {
     const error = await assertRejects(
       () => waitWith([status("WaitingForApproval"), status(final)], []),
@@ -537,7 +538,7 @@ Deno.test("submit: every final status but Completed is a signing error naming th
   );
 });
 
-Deno.test("submit: the wait ends at the deadline with a timeout naming the request", async () => {
+test("submit: the wait ends at the deadline with a timeout naming the request", async () => {
   const sleeps: number[] = [];
   const error = await assertRejects(
     () =>
@@ -556,7 +557,7 @@ Deno.test("submit: the wait ends at the deadline with a timeout naming the reque
   );
 });
 
-Deno.test("submit: a lasting status failure ends the wait with its error", async () => {
+test("submit: a lasting status failure ends the wait with its error", async () => {
   await assertRejects(
     () => waitWith([() => new Response("gone", { status: 404 })], []),
     SignPathApiError,
@@ -564,7 +565,7 @@ Deno.test("submit: a lasting status failure ends the wait with its error", async
   );
 });
 
-Deno.test("submit: a flood of validation errors is capped", async () => {
+test("submit: a flood of validation errors is capped", async () => {
   // Regression (adversarial review): the list was unbounded.
   const net = routes({
     [`POST ${CONNECTOR_URL}`]: [() =>

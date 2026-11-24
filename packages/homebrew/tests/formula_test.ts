@@ -9,7 +9,8 @@
  * @module
  */
 
-import { assertEquals, assertThrows } from "../../core/tests/_assert.ts";
+import { test } from "../../../tests/_testing.ts";
+import { assertEquals, assertThrows } from "../../../tests/_assert.ts";
 import { type FormulaSettings, HomebrewTasks } from "../mod.ts";
 
 /** A valid SHA-256 for each platform, distinct so the order is visible. */
@@ -87,11 +88,11 @@ const GOLDEN = `class App < Formula
 end
 `;
 
-Deno.test("formula: the full rendering, macOS before Linux and ARM before Intel", () => {
+test("formula: the full rendering, macOS before Linux and ARM before Intel", () => {
   assertEquals(HomebrewTasks.formula(complete), GOLDEN);
 });
 
-Deno.test("formula: the rendering is deterministic whatever order binaries are declared in", () => {
+test("formula: the rendering is deterministic whatever order binaries are declared in", () => {
   const forward = HomebrewTasks.formula((s) => {
     const base = s.name("app").description("Command-line tool for widgets")
       .homepage("https://example.com/app").license("MIT");
@@ -121,7 +122,7 @@ Deno.test("formula: the rendering is deterministic whatever order binaries are d
   );
 });
 
-Deno.test("formula: a URL that carries the version gets no version line, so brew audit does not call it redundant", () => {
+test("formula: a URL that carries the version gets no version line, so brew audit does not call it redundant", () => {
   // Finding 3 of the adversarial review: brew audit's ResourceAuditor rejects
   // a `version` that repeats the one Version.detect scans from the URL, which
   // every GitHub release asset URL carries. Unset, no line is rendered — and
@@ -132,7 +133,7 @@ Deno.test("formula: a URL that carries the version gets no version line, so brew
   assertEquals(ruby.includes("assert_match version.to_s"), true);
 });
 
-Deno.test("formula: a single platform, no license, several binaries, caveats and a plain test", () => {
+test("formula: a single platform, no license, several binaries, caveats and a plain test", () => {
   const ruby = HomebrewTasks.formula((s) =>
     s.name("app-cli@2").description("Widget tool, version 2")
       .homepage("https://example.com").version("2.0.0-rc.1")
@@ -175,7 +176,7 @@ end
   );
 });
 
-Deno.test("formula: an output expectation, and arguments that need shell quoting", () => {
+test("formula: an output expectation, and arguments that need shell quoting", () => {
   const ruby = HomebrewTasks.formula((s) =>
     complete(s).test((t) =>
       t.command("greet", "it's me", "$(id)").expectOutput('Hello, "it\'s me"')
@@ -189,7 +190,7 @@ Deno.test("formula: an output expectation, and arguments that need shell quoting
   );
 });
 
-Deno.test("formula: hostile values stay inside their literals", () => {
+test("formula: hostile values stay inside their literals", () => {
   const ruby = HomebrewTasks.formula((s) =>
     complete(s)
       .description('Evil" ; system("id") ; "')
@@ -229,7 +230,7 @@ Deno.test("formula: hostile values stay inside their literals", () => {
   assertEquals(/[^\\]#\{(?!bin\})/.test(ruby), false);
 });
 
-Deno.test("formula: each missing field is named", () => {
+test("formula: each missing field is named", () => {
   const sha = SHA.macArm;
   const cases: Array<[(s: FormulaSettings) => FormulaSettings, string]> = [
     [(s) => s, ".name(...)"],
@@ -253,7 +254,7 @@ Deno.test("formula: each missing field is named", () => {
   }
 });
 
-Deno.test("formula: binary fields are validated and named", () => {
+test("formula: binary fields are validated and named", () => {
   const binary = (
     configure: Parameters<FormulaSettings["binary"]>[0],
   ) =>
@@ -294,7 +295,7 @@ Deno.test("formula: binary fields are validated and named", () => {
   }
 });
 
-Deno.test("formula: a URL carrying a credential is refused without echoing it", () => {
+test("formula: a URL carrying a credential is refused without echoing it", () => {
   const error = assertThrows(
     () =>
       HomebrewTasks.formula((s) =>
@@ -319,7 +320,7 @@ Deno.test("formula: a URL carrying a credential is refused without echoing it", 
   assertEquals(ftp.message.includes("hunter2"), false);
 });
 
-Deno.test("formula: a platform declared twice is refused", () => {
+test("formula: a platform declared twice is refused", () => {
   assertThrows(
     () =>
       HomebrewTasks.formula((s) =>
@@ -332,7 +333,7 @@ Deno.test("formula: a platform declared twice is refused", () => {
   );
 });
 
-Deno.test("formula: the description is held to brew audit's rules", () => {
+test("formula: the description is held to brew audit's rules", () => {
   const cases: Array<[string, string]> = [
     ["x".repeat(81).replace(/^x/, "X"), "is 81 characters"],
     ["lowercase start", "must start with a capital letter"],
@@ -365,7 +366,7 @@ Deno.test("formula: the description is held to brew audit's rules", () => {
   }
 });
 
-Deno.test("formula: version, license and install names are validated", () => {
+test("formula: version, license and install names are validated", () => {
   for (const version of ["", "1 2", "-1", "1\n", '1#{system("id")}']) {
     assertThrows(
       () => HomebrewTasks.formula((s) => complete(s).version(version)),
@@ -389,7 +390,7 @@ Deno.test("formula: version, license and install names are validated", () => {
   }
 });
 
-Deno.test("formula: the test must run a binary the formula installs", () => {
+test("formula: the test must run a binary the formula installs", () => {
   assertThrows(
     () =>
       HomebrewTasks.formula((s) =>
@@ -400,7 +401,7 @@ Deno.test("formula: the test must run a binary the formula installs", () => {
   );
 });
 
-Deno.test("formula: an invalid name is refused before anything renders", () => {
+test("formula: an invalid name is refused before anything renders", () => {
   assertThrows(
     () => HomebrewTasks.formula((s) => complete(s).name("../evil")),
     Error,

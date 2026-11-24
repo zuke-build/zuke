@@ -10,17 +10,15 @@
  * @module
  */
 
-import {
-  assertEquals,
-  assertStringIncludes,
-} from "../../packages/core/tests/_assert.ts";
+import { test } from "../_testing.ts";
+import { assertEquals, assertStringIncludes } from "../_assert.ts";
 import { Build, parameter, target } from "../../packages/core/mod.ts";
 import { GooglePlayTasks } from "../../packages/google/mod.ts";
 import {
   fakeGoogle,
   type PlayCall,
   serviceAccountKey,
-} from "../../packages/google/tests/_play.ts";
+} from "../support/google/_play.ts";
 import { runCli, withoutMaskDirectives } from "./_harness.ts";
 
 const KEY = await serviceAccountKey();
@@ -57,7 +55,7 @@ function appBuild(bundle: string, fake: { fetch: typeof fetch }) {
   };
 }
 
-Deno.test("a build uploads a bundle to the internal track through the CLI", async () => {
+test("a build uploads a bundle to the internal track through the CLI", async () => {
   const bundle = await Deno.makeTempFile({ suffix: ".aab" });
   await Deno.writeFile(bundle, new Uint8Array([1, 2, 3]));
   const fake = google(false);
@@ -78,7 +76,7 @@ Deno.test("a build uploads a bundle to the internal track through the CLI", asyn
   assertEquals(fake.calls[2].body, 3);
 });
 
-Deno.test("a refused commit fails the run with Google's message, deletes the edit and never prints the key", async () => {
+test("a refused commit fails the run with Google's message, deletes the edit and never prints the key", async () => {
   const bundle = await Deno.makeTempFile({ suffix: ".aab" });
   const fake = google(true);
   const { code, out, err } = await runCli(appBuild(bundle, fake), [
